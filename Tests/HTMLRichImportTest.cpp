@@ -7,6 +7,7 @@
 //
 // Builds without the UI stack (the parser, the style resolver, the model and
 // the editing core are all UI-free), so it needs no display.
+// Version: 1.2.0 - Word list paragraphs; the newlines of a <pre>
 // Version: 1.1.0 - dir="rtl", preAsCodeBlock, skipWordListLabels
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -389,15 +390,127 @@ static void TestDirectionAndPasteOptions() {
         CHECK_EQ(Text(doc.blocks[2]), std::string("after"));
     }
 
-    // The list label Word types out: kept by default (a browser shows it),
-    // left out with skipWordListLabels.
-    const std::string word =
-        "<p class=MsoListParagraph style='mso-list:l0 level1 lfo1'><![if !supportLists]>"
-        "<span style='mso-list:Ignore'>1.<span>&nbsp;&nbsp;</span></span><![endif]>Item</p>";
-    doc = ImportHTMLToRichDocument(word);
-    CHECK(doc.blocks.size() == 1 && Contains(Text(doc.blocks[0]), "1.") && Contains(Text(doc.blocks[0]), "Item"));
-    doc = ImportHTMLToRichDocument(word, paste);
-    CHECK(doc.blocks.size() == 1 && Text(doc.blocks[0]) == "Item");
+    // A list label Word types out where no list item takes it - a numbered
+    // heading: kept by default (a browser shows it), left out with
+    // skipWordListLabels.
+    const std::string heading =
+        "<h2 style='mso-list:l1 level1 lfo2'><![if !supportLists]>"
+        "<span style='mso-list:Ignore'>1.<span>&nbsp;&nbsp;</span></span><![endif]>Introduction</h2>";
+    doc = ImportHTMLToRichDocument(heading);
+    CHECK(doc.blocks.size() == 1 && doc.blocks[0].type == RichBlockType::Heading
+          && Contains(Text(doc.blocks[0]), "1.") && Contains(Text(doc.blocks[0]), "Introduction"));
+    doc = ImportHTMLToRichDocument(heading, paste);
+    CHECK(doc.blocks.size() == 1 && Text(doc.blocks[0]) == "Introduction");
+}
+
+// One paragraph of Word's list HTML, as Word puts it on the clipboard and
+// Outlook sends it: the level in mso-list, the label typed out in front.
+static std::string WordItem(int level, const std::string& label, const std::string& text,
+                            const std::string& labelFont = "") {
+    return "<p class=MsoListParagraph style='margin-left:" + std::to_string(36 * level)
+         + "pt;text-indent:-18pt;mso-list:l0 level" + std::to_string(level) + " lfo1'>"
+         + "<![if !supportLists]>"
+         + (labelFont.empty() ? std::string("<span>") : "<span style='font-family:" + labelFont + "'>")
+         + "<span style='mso-list:Ignore'>" + label
+         + "<span style='font:7.0pt \"Times New Roman\"'>&nbsp;&nbsp;&nbsp; </span></span></span>"
+         + "<![endif]>" + text + "<o:p></o:p></p>";
+}
+
+static void TestWordLists() {
+    std::cout << "\n--- Word list paragraphs ---\n";
+    // Bullets in Word's symbol fonts, three levels deep.
+    UCRichDocument doc = ImportHTMLToRichDocument(
+        WordItem(1, "\xC2\xB7", "First", "Symbol") + WordItem(1, "\xC2\xB7", "Second", "Symbol")
+        + WordItem(2, "o", "Inner", "\"Courier New\"") + WordItem(3, "\xC2\xA7", "Deepest", "Wingdings"));
+    CHECK_EQ(doc.blocks.size(), size_t(4));
+    if (doc.blocks.size() == 4) {
+        for (const RichDocBlock& block : doc.blocks) {
+            CHECK(block.type == RichBlockType::ListItem && !block.orderedList);
+        }
+        CHECK_EQ(Text(doc.blocks[0]), std::string("First"));   // the label is the marker, not text
+        CHECK(doc.blocks[0].listLevel == 0 && doc.blocks[0].bulletText.empty());
+        CHECK(doc.blocks[2].listLevel == 1 && doc.blocks[2].bulletText == "\xE2\x97\xA6");   // ◦
+        CHECK(doc.blocks[3].listLevel == 2 && doc.blocks[3].bulletText == "\xE2\x96\xAA");   // ▪
+    }
+
+    // Numbers, letters under them, and the count going on after them.
+    doc = ImportHTMLToRichDocument(WordItem(1, "1.", "One") + WordItem(1, "2.", "Two")
+                                   + WordItem(2, "a.", "Two a") + WordItem(2, "b.", "Two b")
+                                   + WordItem(1, "3.", "Three"));
+    CHECK_EQ(doc.blocks.size(), size_t(5));
+    if (doc.blocks.size() == 5) {
+        CHECK(doc.blocks[0].orderedList && doc.blocks[0].numberFormat == RichNumberFormat::Decimal);
+        CHECK(doc.blocks[2].orderedList && doc.blocks[2].listLevel == 1
+              && doc.blocks[2].numberFormat == RichNumberFormat::LowerLetter);
+        // The model counts these itself: no item needs a number of its own.
+        for (const RichDocBlock& block : doc.blocks) CHECK_EQ(block.listStartNumber, 0);
+        CHECK_EQ(RichDocOrderedItemNumber(doc.blocks, 4), 3);
+        CHECK_EQ(RichDocOrderedItemNumber(doc.blocks, 3), 2);
+        CHECK_EQ(Text(doc.blocks[4]), std::string("Three"));
+    }
+
+    // A list that starts at 4, and one Word continues past a paragraph.
+    doc = ImportHTMLToRichDocument(WordItem(1, "4.", "Four") + WordItem(1, "5.", "Five")
+                                   + "<p>A note.</p>" + WordItem(1, "6)", "Six"));
+    CHECK_EQ(doc.blocks.size(), size_t(4));
+    if (doc.blocks.size() == 4) {
+        CHECK_EQ(doc.blocks[0].listStartNumber, 4);
+        CHECK_EQ(doc.blocks[1].listStartNumber, 0);
+        CHECK_EQ(RichDocOrderedItemNumber(doc.blocks, 1), 5);
+        CHECK_EQ(RichDocOrderedItemNumber(doc.blocks, 3), 6);
+    }
+
+    // Roman numerals, and an "i." that is the ninth letter.
+    doc = ImportHTMLToRichDocument(WordItem(1, "i.", "one") + WordItem(1, "ii.", "two")
+                                   + WordItem(1, "iv.", "four") + WordItem(1, "(v)", "five"));
+    CHECK_EQ(doc.blocks.size(), size_t(4));
+    if (doc.blocks.size() == 4) {
+        for (const RichDocBlock& block : doc.blocks) CHECK(block.numberFormat == RichNumberFormat::LowerRoman);
+        CHECK_EQ(RichDocOrderedItemNumber(doc.blocks, 2), 4);   // iii. skipped
+        CHECK_EQ(RichDocOrderedItemNumber(doc.blocks, 3), 5);
+    }
+    doc = ImportHTMLToRichDocument(WordItem(1, "h.", "eighth") + WordItem(1, "i.", "ninth")
+                                   + WordItem(1, "A.", "upper") + WordItem(1, "IV.", "four"));
+    CHECK_EQ(doc.blocks.size(), size_t(4));
+    if (doc.blocks.size() == 4) {
+        CHECK(doc.blocks[1].numberFormat == RichNumberFormat::LowerLetter);
+        CHECK_EQ(RichDocOrderedItemNumber(doc.blocks, 1), 9);
+        CHECK(doc.blocks[2].numberFormat == RichNumberFormat::UpperLetter);
+        CHECK(doc.blocks[3].numberFormat == RichNumberFormat::UpperRoman);
+        CHECK_EQ(RichDocOrderedItemNumber(doc.blocks, 3), 4);
+    }
+
+    // An item with nothing typed in it is still an item.
+    doc = ImportHTMLToRichDocument(WordItem(1, "1.", "One") + WordItem(1, "2.", ""));
+    CHECK(doc.blocks.size() == 2 && doc.blocks[1].type == RichBlockType::ListItem);
+
+    // The same paragraphs in a table cell are lines of that cell, their
+    // labels spelled out (the model has no list in a cell).
+    doc = ImportHTMLToRichDocument("<table><tr><td>" + WordItem(1, "1.", "One") + WordItem(1, "2.", "Two")
+                                   + "</td><td>x</td></tr></table>");
+    CHECK(doc.blocks.size() == 1 && doc.blocks[0].type == RichBlockType::Table);
+    if (doc.blocks.size() == 1 && !doc.blocks[0].tableRows.empty() && !doc.blocks[0].tableRows[0].cells.empty()) {
+        const std::string cell = UCRichDocumentEditor::RunsText(doc.blocks[0].tableRows[0].cells[0].runs);
+        CHECK(Contains(cell, "1.") && Contains(cell, "One") && Contains(cell, "2.") && Contains(cell, "\n"));
+    }
+}
+
+static void TestPreNewlines() {
+    std::cout << "\n--- <pre> and its newlines ---\n";
+    HTMLRichImportOptions code;
+    code.preAsCodeBlock = true;
+    for (const HTMLRichImportOptions& options : {HTMLRichImportOptions{}, code}) {
+        // The newline right after <pre> is not content - and only that one.
+        UCRichDocument doc = ImportHTMLToRichDocument("<pre>\nfirst\nsecond</pre>", options);
+        CHECK(doc.blocks.size() == 1 && Text(doc.blocks[0]) == "first\nsecond");
+        doc = ImportHTMLToRichDocument("<pre>\n\nafter a blank line</pre>", options);
+        CHECK(doc.blocks.size() == 1 && Text(doc.blocks[0]) == "\nafter a blank line");
+        doc = ImportHTMLToRichDocument("<pre>\r\n\r\n\r\ntwo blank lines</pre>", options);
+        CHECK(doc.blocks.size() == 1 && Text(doc.blocks[0]) == "\n\ntwo blank lines");
+        // After <code> a newline is content again, as in a browser.
+        doc = ImportHTMLToRichDocument("<pre><code>\nx</code></pre>", options);
+        CHECK(doc.blocks.size() == 1 && Text(doc.blocks[0]) == "\nx");
+    }
 }
 
 int main() {
@@ -413,6 +526,8 @@ int main() {
     TestEditingQuotes();
     TestQuoteLevelCommands();
     TestDirectionAndPasteOptions();
+    TestWordLists();
+    TestPreNewlines();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

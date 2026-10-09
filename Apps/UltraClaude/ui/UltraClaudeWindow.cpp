@@ -210,6 +210,14 @@ UltraClaudeWindow::~UltraClaudeWindow() {
     session_.StopAndWait();
     loginProcess_.StopAndWait();
     JoinBackgroundThread();
+    // The measuring thread holds its own share of the queue and stops after
+    // the git command it is in; it touches nothing else of this window.
+    {
+        std::lock_guard<std::mutex> lock(measure_->mutex);
+        measure_->stop = true;
+        measure_->folders.clear();
+    }
+    measure_->wake.notify_all();
     if (timer_ != 0) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(timer_);
         timer_ = 0;
@@ -379,10 +387,11 @@ std::shared_ptr<UltraCanvasContainer> UltraClaudeWindow::BuildChatSidebar() {
     head->AddChild(newChat);
     sidebar->AddChild(head);
 
-    chatModel_ = std::make_shared<UltraCanvasSimpleListModel>();
+    chatModel_ = std::make_shared<ChatListModel>();
     chatList_ = std::make_shared<UltraCanvasListView>("uc-chat-list", 0, 0, kSidebarWidth - 16, 200);
     chatList_->SetModel(chatModel_);
-    chatList_->SetRowHeight(28);
+    chatList_->SetDelegate(std::make_shared<ChatListDelegate>());
+    chatList_->SetRowHeight(30);
     chatList_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     chatList_->onSelectionChanged = [this](const std::vector<int>& rows) {
         if (fillingChatList_ || rows.empty()) return;
@@ -771,6 +780,7 @@ void UltraClaudeWindow::SendCurrentPrompt() {
         currentChatId_ = chat.id;
         SetFolderLocked(true);
         RefreshChatList();
+        MeasureFolder(chat.folder);
     } else if (ChatRecord* chat = chats_.Find(currentChatId_)) {
         chat->model = options.model;
         chat->permissionMode = options.permissionMode;
@@ -828,19 +838,21 @@ void UltraClaudeWindow::LoadChats() {
     std::string error;
     if (!chats_.Load(error)) SetStatus(error);
     RefreshChatList();
+    for (const ChatRecord& chat : chats_.Chats()) MeasureFolder(chat.folder);
 }
 
 void UltraClaudeWindow::RefreshChatList() {
     if (!chatModel_ || !chatList_) return;
     fillingChatList_ = true;
-    chatModel_->Clear();
+    std::vector<ChatListRow> rows;
     int currentRow = -1;
     const auto& list = chats_.Chats();
     for (size_t i = 0; i < list.size(); ++i) {
         const ChatRecord& chat = list[i];
-        chatModel_->AddItem(ListItem(chat.title, "", chat.folder));
+        rows.push_back(ChatListRow{chat.title, chat.folder, BadgeFor(chat.folder)});
         if (chat.id == currentChatId_) currentRow = static_cast<int>(i);
     }
+    chatModel_->SetRows(std::move(rows));
     if (IListSelection* selection = chatList_->GetSelection()) {
         selection->Clear();
         if (currentRow >= 0) selection->Select(currentRow);
@@ -871,6 +883,7 @@ void UltraClaudeWindow::OpenChat(const std::string& chatId) {
 
     folder_->SetText(chat->folder);
     SetFolderLocked(true);
+    MeasureFolder(chat->folder);
     for (size_t i = 0; i < std::size(kModels); ++i)
         if (chat->model == kModels[i].value) model_->SetSelectedIndex(static_cast<int>(i), false);
     for (size_t i = 0; i < std::size(kPermissionModes); ++i)
@@ -893,6 +906,88 @@ void UltraClaudeWindow::SaveCurrentChat() {
     }
     if (!saved) SetStatus("The chat could not be saved: " + error);
     RefreshChatList();
+    // The turn may have changed files: count again.
+    if (const ChatRecord* chat = chats_.Find(currentChatId_)) MeasureFolder(chat->folder);
+}
+
+// ============================================================ badges
+
+ChatBadge UltraClaudeWindow::BadgeFor(const std::string& folder) const {
+    ChatBadge badge;
+    const auto it = measured_.find(folder);
+    if (it == measured_.end()) {
+        if (measuring_.count(folder)) badge.kind = ChatBadge::Kind::Measuring;
+        if (measuring_.count(folder)) badge.tooltip = "Counting the lines not yet in the default branch\xE2\x80\xA6";
+        return badge;
+    }
+    const RepoLines& r = it->second;
+    switch (r.state) {
+        case RepoLines::State::Measured:
+            badge.kind = ChatBadge::Kind::Lines;
+            badge.lines = r.lines;
+            badge.tooltip = r.lines == 0
+                ? "Everything here is in " + r.base + "."
+                : std::to_string(r.lines) + " lines not yet in " + r.base +
+                  " (committed, uncommitted and new files)" +
+                  (r.branch.empty() ? std::string() : " on " + r.branch) + ".";
+            if (!r.fetched) badge.tooltip += " " + r.base + " could not be fetched; compared with it as last fetched.";
+            break;
+        case RepoLines::State::NoBase:
+            badge.kind = ChatBadge::Kind::NoBadge;
+            badge.tooltip = "A git folder with no origin/main to compare with.";
+            break;
+        case RepoLines::State::NotARepo:
+            break;   // nothing to count, nothing to say
+        case RepoLines::State::Failed:
+            badge.kind = ChatBadge::Kind::Unknown;
+            badge.tooltip = "Could not count the lines: " + FirstLineShortened(r.error, 200);
+            break;
+    }
+    return badge;
+}
+
+void UltraClaudeWindow::MeasureFolder(const std::string& folder) {
+    if (folder.empty() || measuring_.count(folder)) return;
+    StartMeasureThread();
+    measuring_.insert(folder);
+    {
+        std::lock_guard<std::mutex> lock(measure_->mutex);
+        measure_->folders.push_back(folder);
+    }
+    measure_->wake.notify_one();
+    ++activeWork_;   // until its result is applied
+    EnsureTimer();
+    // A folder never measured shows "…" while it is.
+    if (!measured_.count(folder)) RefreshChatList();
+}
+
+void UltraClaudeWindow::ApplyMeasurement(const std::string& folder, const RepoLines& lines) {
+    measuring_.erase(folder);
+    measured_[folder] = lines;
+    RefreshChatList();
+}
+
+void UltraClaudeWindow::StartMeasureThread() {
+    if (measureThreadStarted_) return;
+    measureThreadStarted_ = true;
+    // Detached on purpose: it owns its share of the queue and nothing else,
+    // so the window can close while it waits on git (see ~UltraClaudeWindow).
+    std::thread([queue = measure_]() {
+        for (;;) {
+            std::string folder;
+            {
+                std::unique_lock<std::mutex> lock(queue->mutex);
+                queue->wake.wait(lock, [&] { return queue->stop || !queue->folders.empty(); });
+                if (queue->stop) return;
+                folder = std::move(queue->folders.front());
+                queue->folders.pop_front();
+            }
+            RepoLines lines = MeasureLinesNotMerged(folder);
+            std::lock_guard<std::mutex> lock(queue->mutex);
+            if (queue->stop) return;
+            queue->results.emplace_back(folder, std::move(lines));
+        }
+    }).detach();
 }
 
 void UltraClaudeWindow::SetFolderLocked(bool locked) {
@@ -1016,6 +1111,16 @@ void UltraClaudeWindow::RunPosted() {
         work.swap(posted_);
     }
     for (auto& w : work) w();
+
+    std::vector<std::pair<std::string, RepoLines>> measured;
+    {
+        std::lock_guard<std::mutex> lock(measure_->mutex);
+        measured.swap(measure_->results);
+    }
+    for (const auto& [folder, lines] : measured) {
+        --activeWork_;
+        ApplyMeasurement(folder, lines);
+    }
 
     // Idle: nothing is running that could post. The next action that
     // starts something starts the timer again.

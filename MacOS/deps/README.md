@@ -57,6 +57,12 @@ does `cmake/UltraCanvasMacOSDeps.cmake`.
 The first build compiles every library and takes an hour or more; vcpkg's
 binary cache (`~/.cache/vcpkg/archives` locally, `.vcpkg/binary-cache` in CI,
 restored and saved between runs) makes later ones take a minute or two.
+CI also keeps every library's source in vcpkg's asset cache
+(`X_VCPKG_ASSET_SOURCES`, `.vcpkg/asset-cache`): a run that has to rebuild a
+library builds it from that copy, so its home site being down - as
+download.gnome.org was for glib on 2026-10-08 - no longer fails the build.
+`UC_VCPKG_ONLY_DOWNLOADS=1 scripts/macos-deps.sh` fetches the sources without
+building anything, which is how CI fills it.
 `cmake/UltraCanvasMacOSDeps.cmake` is what makes CMake use the prefix instead
 of `brew --prefix`; `package-macos.sh` bundles from it and checks that every
 binary in the suite runs on `MACOSX_DEPLOYMENT_TARGET`.

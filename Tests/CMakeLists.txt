@@ -1160,6 +1160,7 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasCompoundFile.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         # UCWordDocumentIO dispatches .tex to the LaTeX document reader
@@ -1282,6 +1283,7 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasCompoundFile.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
@@ -3634,6 +3636,30 @@ message(STATUS "    Test registered: FilerVolumeSpaceTest")
 
 message(STATUS "")
 
+# ===== SPREADSHEET FORMULA ENGINE TEST =====
+# References to formula cells (same and other sheets, missing sheets), number
+# to text, error literals in the tokenizer, Excel's Sheet!A1 syntax through an
+# .xlsx round trip, and the Excel-compatible function library. Needs the full
+# library (the spreadsheet element and its formula engine).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SpreadsheetFormulaEngineTest...")
+    add_executable(SpreadsheetFormulaEngineTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetFormulaEngineTest.cpp
+    )
+    target_include_directories(SpreadsheetFormulaEngineTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SpreadsheetFormulaEngineTest PRIVATE cxx_std_20)
+    target_link_libraries(SpreadsheetFormulaEngineTest PRIVATE UltraCanvas)
+    set_target_properties(SpreadsheetFormulaEngineTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SpreadsheetFormulaEngineTest COMMAND SpreadsheetFormulaEngineTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(SpreadsheetFormulaEngineTest PROPERTIES TIMEOUT 120)
+    message(STATUS "    Test registered: SpreadsheetFormulaEngineTest")
+else()
+    message(STATUS "  SpreadsheetFormulaEngineTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILER FORMAT LIST TEST =====
 # The list of files behind Display > Thumbnails and Display > Detail view has
 # to hold every format the FileLoader inventory reports for this build, filed
@@ -3658,6 +3684,33 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: SpreadsheetOdsFileTest")
 else()
     message(STATUS "  SpreadsheetOdsFileTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== SPREADSHEET XLS FILE TEST =====
+# Legacy Excel workbooks (.xls): the OLE2 compound-file reader, the .xls
+# reader's model for BIFF8, BIFF5, an HTML table and Excel 2003 XML under the
+# name, LoadFromFile and the engine recalculating the translated formulas,
+# what is refused, and UltraFiler's preview page and detail pane. Needs the
+# full library (the spreadsheet element, the file display, the media viewer).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SpreadsheetXlsFileTest...")
+    add_executable(SpreadsheetXlsFileTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetXlsFileTest.cpp
+    )
+    target_include_directories(SpreadsheetXlsFileTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SpreadsheetXlsFileTest PRIVATE cxx_std_20)
+    target_link_libraries(SpreadsheetXlsFileTest PRIVATE UltraCanvas)
+    target_compile_definitions(SpreadsheetXlsFileTest PRIVATE
+        XLSTEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(SpreadsheetXlsFileTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SpreadsheetXlsFileTest COMMAND SpreadsheetXlsFileTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SpreadsheetXlsFileTest")
+else()
+    message(STATUS "  SpreadsheetXlsFileTest skipped (UltraCanvas target not present)")
 endif()
 
 # open but cannot list is one whose thumbnail nobody can switch on.

@@ -1,5 +1,6 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
+// Version: 1.12.0 - widthSetByParent: an Exact width is the used width (table cells)
 // Version: 1.11.0 - min / max limits apply to the box its box-sizing names (border
 //                  box for widgets), as in the flex path and the docs
 // Version: 1.10.0 - merged with main's floats (1.8.0 there)
@@ -20,7 +21,7 @@
 //                 size, so a stretched/grown container reports and lays out its
 //                 children against its used size. Single-axis Exact (block fill
 //                 hint) still lets an explicit size win.
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -88,6 +89,10 @@ namespace UltraCanvas {
                 const bool authoritative =
                     c.horizontal.mode == ConstraintMode::Exact &&
                     c.vertical.mode   == ConstraintMode::Exact;
+                // The width alone is the used one when the parent decides it
+                // (a table's cell: its column width).
+                const bool usedWidth = authoritative ||
+                    (e.widthSetByParent && c.horizontal.mode == ConstraintMode::Exact);
 
                 // Resolve padding+border on each axis against parent inline size
                 // (this matches CSS — padding/border percentages always use inline).
@@ -104,7 +109,7 @@ namespace UltraCanvas {
                 // Width
                 {
                     auto specW = resolveDimension(e.size.width, parentInline, ctx);
-                    if (authoritative) {
+                    if (usedWidth) {
                         // Used size wins over an explicit width (stretched/grown box).
                         float cw = borderBoxToContent(c.horizontal.available, padH, bordH);
                         cw = clampContentBox(e, cw, true, padH + bordH, parentInline, ctx);

@@ -1,3 +1,15 @@
+#### 2026-10-09 *0.2.12*
+- **The Fill tool can make an area transparent.** Filling with a colour
+  whose alpha is 0 did nothing at all: the fill only ever painted over the
+  pixels, and a colour with no alpha adds nothing, so the layer never became
+  transparent and the checkerboard never showed through. The Fill options
+  have a *Mode* now: *Normal* paints over as before, *Replace* puts the
+  colour in the pixels' place, alpha included - alpha 0 clears the area,
+  alpha 128 leaves it half transparent in that colour. In Normal mode a
+  fully transparent colour no longer looks like an ignored click: the status
+  bar says nothing was filled and points at Replace. The framework side is
+  in `Docs/UltraCanvas/changelog.d/raster-fill-replace.md`.
+
 #### 2026-10-08 *0.2.11*
 - **Paste offers the last picture copied when the clipboard holds none.**
   Copy a picture, then a line of text, and Paste said "Nothing to paste".

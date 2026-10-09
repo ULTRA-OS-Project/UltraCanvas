@@ -393,7 +393,8 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   options)` → `UCRichDocument` through the same parser and cascade
   (`quoteLevel`, `resolveImage`, `baseFontSizePx`, `keepFonts`,
   `keepColors`, and for a paste `preAsCodeBlock`, `skipWordListLabels`);
-  `dir="rtl"` makes right-to-left paragraphs. `UCRichDocument::FromHTML`
+  `dir="rtl"` makes right-to-left paragraphs, and Word's list paragraphs
+  (`mso-list`) list items, their typed labels the markers. `UCRichDocument::FromHTML`
   (a rich paste) reads through it; `UCRichDocument::ToHTML` is the writer.
 
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
@@ -579,6 +580,30 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     (`OS/MacOS/UltraCanvasMacOSAlias.mm`); elsewhere the resolver reports
     false rather than guessing.
   See `Docs/UltraCanvas/UltraCanvasMacBundle.md`.
+
+- **UltraCanvasCompoundFile** (`UltraCanvasCompoundFile.h`) — read-only OLE2
+  compound files ([MS-CFB]), the container of the legacy Office formats
+  (`.doc`, `.xls`, `.ppt`, `.msg`). In `core/UltraCanvasCompoundFile.cpp`;
+  every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
+  `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
+  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
+  `.doc` importer and the `.xls` reader.
+  See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
+  workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
+  tables and Excel 2003 XML files saved under the name, read into a UI-free
+  model (`XlsWorkbook` → `XlsSheet` → `XlsCell`, `XlsCellFormat`, `XlsFont`,
+  `XlsDefinedName`). Formulas are translated into the spreadsheet engine's
+  syntax and every formula cell keeps Excel's cached result. In
+  `core/UltraCanvasSpreadsheetXls.cpp`; `UltraCanvasSpreadsheet::LoadXLS`
+  (`core/UltraCanvasSpreadsheetXlsIO.cpp`, called by `LoadFromFile`) builds a
+  sheet from it, and the file display previews from it. Public surface:
+  `DetectXlsFileKind`, `ReadXlsWorkbook(path, out, error, XlsReadOptions)`,
+  `ReadXlsWorkbookFromMemory`, `XlsCellText`, `XlsErrorText` /
+  `XlsErrorType`, and `ExcelNumberFormatCategory` (shared with the `.xlsx`
+  loader). Read only: there is no `.xls` writer.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetXls.md`.
 
 - **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons the
   other two desktops keep their applications' faces in, read without either
@@ -999,7 +1024,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
   BlendFrom/CropCopy/Clone/ResizeCanvas/Flip*/Rotate*/ResampleBilinear`,
   `CompositeOnto` (premultiplied ARGB32), `ToPixelFX/FromPixelFX`
-  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths.
+  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths,
+  `RasterReplacePixel` the replace-with-alpha one.
 - **UCRasterSelection** — coverage mask: `SelectAll/SelectNone/Invert/
   SetRectangle/SetEllipse/SetPolygon/SetMask` with `RasterSelectionMode`
   (Replace/Add/Subtract/Intersect), `Feather/Grow/Shrink/Translate`,
@@ -1018,7 +1044,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
   ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour`. No libvips needed.
+  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,

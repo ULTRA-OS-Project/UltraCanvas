@@ -1,3 +1,15 @@
+#### 2026-10-09 *1.69.0*
+- **Excel 97-2003 workbooks (`.xls`) show their contents.** A `.xls` file's
+  thumbnail is now a small grid of its first sheet's cells, as `.xlsx` and
+  `.ods` files already had, instead of the bare type icon, and selecting one
+  opens it in the detail pane as a spreadsheet - with its sheets, values,
+  formulas, merged cells and formatting. Excel 5.0/95 files work too, and so
+  do the HTML tables, Excel 2003 XML files, renamed `.xlsx` files and text
+  exports that other programs save with the `.xls` extension. `.xlsx` files
+  now open in the detail pane as well: they had a thumbnail but no detail
+  view. Framework changes - see
+  `Docs/UltraCanvas/changelog.d/xls-workbook-reader.md`.
+
 #### 2026-10-08 *1.68.1*
 - **The folder tree follows the window's size.** The tree is kept to the
   room the file display leaves it (and the preview pane, while it is up) as

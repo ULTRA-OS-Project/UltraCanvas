@@ -1,14 +1,35 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
-// Last Modified: 2026-09-29
+// Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth
+// Last Modified: 2026-10-09
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasDebug.h"
 #include <algorithm>
+#include <cmath>
 
 namespace UltraCanvas {
+
+    namespace {
+        // A header cell's title starts and ends this far inside the cell, and
+        // the sort triangle's strip is the triangle plus this gap
+        // (RenderHeader draws them, MeasureHeaderWidth counts them).
+        constexpr int kHeaderInset   = 4;
+        constexpr int kSortStripGap  = 6;
+
+        // `text` on one line in `font`, in whole pixels rounded up, so a
+        // column that width shows all of it.
+        int TextLineWidth(IRenderContext* ctx, const std::string& text, const FontStyle& font) {
+            if (!ctx || text.empty()) return 0;
+            auto layout = ctx->CreateTextLayout(text, false);
+            if (!layout) return 0;
+            layout->SetFontStyle(font);
+            layout->SetWrap(TextWrap::WrapNone);
+            return static_cast<int>(std::ceil(layout->GetLayoutWidth()));
+        }
+    } // namespace
 
     // ===== CONSTRUCTOR =====
 
@@ -616,13 +637,14 @@ namespace UltraCanvas {
             // direction triangle - after the title for left/centre-aligned
             // columns, before it for right-aligned ones, so the title keeps
             // its edge and the two never overlap.
-            Rect2Dd titleRect(colX + 4, headerRect.y, colW - 8, headerRect.height);
+            Rect2Dd titleRect(colX + kHeaderInset, headerRect.y, colW - 2 * kHeaderInset, headerRect.height);
             if (col == sortColumn && viewStyle.sortIndicatorSize > 0) {
-                int strip = viewStyle.sortIndicatorSize + 6;
-                if (strip < colW - 8) {
-                    Rect2Di stripRect(colX + colW - 4 - strip, headerRect.y, strip, headerRect.height);
+                int strip = viewStyle.sortIndicatorSize + kSortStripGap;
+                if (strip < colW - 2 * kHeaderInset) {
+                    Rect2Di stripRect(colX + colW - kHeaderInset - strip, headerRect.y, strip,
+                                      headerRect.height);
                     if (colDef.alignment == TextAlignment::Right) {
-                        stripRect.x = colX + 4;
+                        stripRect.x = colX + kHeaderInset;
                         titleRect.x += strip;
                     }
                     titleRect.width -= strip;
@@ -645,6 +667,40 @@ namespace UltraCanvas {
         // Bottom border of header
         ctx->SetStrokePaint(viewStyle.gridLineColor);
         ctx->DrawLine(headerRect.BottomLeft(), headerRect.BottomRight());
+    }
+
+    int UltraCanvasListView::MeasureHeaderWidth(IRenderContext* ctx, int column) const {
+        if (!ctx || !model || column < 0 || column >= model->GetColumnCount()) return 0;
+        FontStyle font;
+        font.fontSize = viewStyle.headerFontSize;
+        const int title = TextLineWidth(ctx, model->GetColumnDef(column).title, font);
+        const int strip = viewStyle.sortIndicatorSize > 0 ? viewStyle.sortIndicatorSize + kSortStripGap : 0;
+        return 2 * kHeaderInset + title + strip;
+    }
+
+    int UltraCanvasListView::MeasureColumnTextWidth(IRenderContext* ctx, int column,
+                                                    const FontStyle& font) const {
+        if (!ctx || !model || column < 0 || column >= model->GetColumnCount()) return 0;
+        // The font as a key: the remembered widths hold for it alone.
+        const std::string fontKey = font.fontFamily + "|" +
+            std::to_string(std::lround(font.fontSize * 100.0)) + "|" +
+            std::to_string(static_cast<int>(font.fontWeight)) + "|" +
+            std::to_string(static_cast<int>(font.fontSlant));
+        if (fontKey != textWidthFont) {
+            textWidths.clear();
+            textWidthFont = fontKey;
+        }
+        int widest = 0;
+        const int rows = model->GetRowCount();
+        for (int row = 0; row < rows; ++row) {
+            const std::string text =
+                GetStringValue(model->GetData(ListIndex{row, column}, ListDataRole::DisplayRole));
+            if (text.empty()) continue;
+            auto it = textWidths.find(text);
+            if (it == textWidths.end()) it = textWidths.emplace(text, TextLineWidth(ctx, text, font)).first;
+            widest = std::max(widest, it->second);
+        }
+        return widest;
     }
 
     // The sort direction as geometry rather than a text glyph: a filled

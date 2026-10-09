@@ -13,6 +13,30 @@ preselected to the platform it runs on. Another platform can be picked to
 read that platform's way in; only the detected one can be checked and
 installed.
 
+## Getting it
+
+UltraCanvasStart has to reach a computer that has nothing yet, so building it
+from source is not the way in. Every release of the framework carries it on
+its own, built for each platform, beside the SDK archives it downloads:
+
+```
+https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/UltraCanvasStart-<OS>-<version>-<arch>.<ext>
+```
+
+| Platform | Archive | Inside |
+|---|---|---|
+| Linux | `UltraCanvasStart-Linux-<version>-<x86_64\|arm64>.tar.gz` | `UltraCanvasStart` (the launcher), `bin/`, `lib/` with the libraries it loads, `share/media` |
+| Windows | `UltraCanvasStart-Windows-<version>-<x86_64\|arm64>.zip` | `UltraCanvasStart.exe` with its DLLs, `cacert.pem`, `Resources/media`, the `uc-diagnose` launchers |
+| macOS | `UltraCanvasStart-MacOS-<version>-<x86_64\|arm64>.dmg` | `UltraCanvasStart.app` with its own `Frameworks/`, signed and notarized |
+
+`<version>` is the framework's, the same as the SDK's and the release tag's.
+The archives are cut out of the suite packages by
+`scripts/package-ultracanvasstart.sh` (Linux and Windows) and
+`package-macos.sh --start-app` (macOS) on every CI leg; the script runs the
+packaged application before it is done, so an archive that does not start is
+a red check, not a download. The Windows executable is not Authenticode
+signed, so SmartScreen asks once.
+
 ## Pages
 
 | Page | What it does |
