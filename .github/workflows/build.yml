@@ -1014,8 +1014,17 @@ jobs:
           mkdir -p "$SDK_NAME/examples"
           cp -R Tests/PackageConsumer "$SDK_NAME/examples/PackageConsumer"
           mkdir -p sdk-dist
+          # Linux packs with xz: the SDK is the shared core and its libraries,
+          # which xz packs about 28% smaller than gzip (the UltraCanvasStart
+          # package, the same kind of tree, went from 100 MB to 70 MB), and
+          # -T0 keeps the compression to seconds. The Download button in
+          # UltraCanvasStart unpacks with `tar -xf`, which reads xz on every
+          # platform (StartSdk.cpp names the extension per platform). macOS
+          # stays gzip for now.
           if [ "${{ runner.os }}" = "Windows" ]; then
             zip -qr "sdk-dist/$SDK_NAME.zip" "$SDK_NAME"
+          elif [ "${{ runner.os }}" = "Linux" ]; then
+            XZ_OPT="-T0" tar cJf "sdk-dist/$SDK_NAME.tar.xz" "$SDK_NAME"
           else
             tar czf "sdk-dist/$SDK_NAME.tar.gz" "$SDK_NAME"
           fi
