@@ -1,3 +1,10 @@
+#### 2026-10-08 *0.9.212*
+- **AGENTS.md rule 7 names both spellings of the Claude Code Remote tool.**
+  It said to call `set_session_title` on "the claude-code-remote MCP server".
+  Some builds register that server as `mcp__Claude_Code_Remote__…`, so a
+  session could take the tool for missing. The rule now gives both names.
+  The chat-title hook accepts both since #731.
+
 #### 2026-10-08 *0.9.211*
 - **HTML as text a person reads: `HTML::ExtractPlainText(html,
   PlainTextLayout::Lines)`.** `ExtractPlainText` put a whole page on one

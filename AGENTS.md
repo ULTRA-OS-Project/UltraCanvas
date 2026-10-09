@@ -833,7 +833,9 @@ For assistants:
    a pull request, rename the session so its title starts with the number:
    `#<n> <current title>` — e.g. `#412 UltraMail: wrap long subjects in the
    list`. In a Claude Code Remote session call `set_session_title` (the
-   claude-code-remote MCP server) right after `create_pull_request` returns;
+   Claude Code Remote MCP server, which builds name either
+   `mcp__claude-code-remote__…` or `mcp__Claude_Code_Remote__…` — the same
+   tool) right after `create_pull_request` returns;
    where no such tool exists, tell the user the number to add instead. One
    number per chat: when a later PR replaces a merged or closed one (rule 2),
    swap the old number for the new one rather than stacking them, and never
