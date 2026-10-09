@@ -1,7 +1,7 @@
 # The UltraCanvas SDK
 
-**Version:** 1.0.0
-**Last Modified:** 2026-10-03
+**Version:** 1.1.0
+**Last Modified:** 2026-10-08
 **Author:** UltraCanvas Framework
 
 The SDK is the framework **already built and installed**, zipped up: the
@@ -12,7 +12,8 @@ that UltraCanvasStart can set a machine up by unpacking one folder instead of
 running a forty-minute build.
 
 CI produces it on every pull request and every push to `main`, one per
-platform leg, as a workflow artifact:
+platform leg, as a workflow artifact, and every release build of `main`
+attaches the same six archives to a GitHub release:
 
 | Artifact | Contents |
 |---|---|
@@ -23,8 +24,24 @@ platform leg, as a workflow artifact:
 Each is the result of `cmake --install build --prefix <sdk>` for that leg,
 plus a copy of this page, the licenses and the `PackageConsumer` example. The
 version in the name is the framework's, from the first line of
-`Docs/UltraCanvas/CHANGELOG.md`. Artifacts are kept for seven days; a release
-copy is a matter of attaching the same file to a GitHub release.
+`Docs/UltraCanvas/CHANGELOG.md`.
+
+**Where to get one.** Each version of `main` has a GitHub release tagged
+`v<version>` (the `publish-sdk` job of `.github/workflows/build.yml` creates
+it from the release build that `changelog-fold.yml` dispatches, with the
+version's changelog section as its notes), and the archives are its assets at
+a fixed address:
+
+```
+https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/<archive>
+https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/UltraCanvas-SDK-Windows-0.9.211-x86_64.zip
+```
+
+That is what UltraCanvasStart's Project page fetches with its *Download*
+button, for the platform and architecture it runs on and the version it was
+built from. The workflow artifacts (seven days, a signed-in browser) remain
+for pull-request builds, and for the minutes between a merge and the end of
+its release build.
 
 ## Layout
 
@@ -101,10 +118,17 @@ matter. The public headers include `<cairo/cairo.h>`, `<glib.h>` and
 glib, tinyxml2 and libvips through pkg-config:
 
 - **Windows and macOS SDKs carry them**, in `deps/`: `scripts/sdk-bundle-deps.sh`
-  copies the headers, import libraries or dylibs, static archives, `.pc` and
-  CMake config files of every package in the pkg-config closure of those
-  modules (plus fmt, libcurl and zlib where the build used the system ones),
-  and on Windows the DLLs the core needs at run time. The `.pc` files are
+  follows the pkg-config closure of those modules (plus fontconfig, fmt,
+  libcurl and zlib where the build used the system ones). A package the
+  closure reaches through `Requires` - one a consumer includes and links -
+  comes whole: headers, import libraries or dylibs, `.pc` and CMake config
+  files. A package reached only through `Requires.private` contributes its
+  `.pc` files alone, because pkg-config refuses a module whose private
+  requirement it cannot find, while nothing of such a package is included or
+  linked by a shared build. A static archive is left out where the same
+  library exists as a DLL or dylib beside it. The DLLs the core needs at run
+  time are walked from its import table on Windows, private packages'
+  included, so `deps/bin` runs the result. The `.pc` files are
   relocatable (`prefix=${pcfiledir}/../..`), and `UltraCanvasConfig.cmake`
   puts `deps/` first on `CMAKE_PREFIX_PATH`, which is all FindPkgConfig and
   `find_dependency()` need. A consumer therefore builds with no MSYS2 or

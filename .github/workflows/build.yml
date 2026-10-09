@@ -1401,6 +1401,73 @@ jobs:
           path: dist/UltraCanvas-Linux-${{ env.VERSION }}-${{ matrix.arch_label }}.tar.gz
           retention-days: 7
 
+  # ===== THE SDKS AS RELEASE ASSETS =====
+  # Workflow artifacts last seven days and need a signed-in browser. Each
+  # release build of main - the dispatch changelog-fold.yml sends for its
+  # version commit, or a direct push - also attaches the six SDK archives to
+  # a GitHub release tagged v<version>, where a fixed URL serves them to
+  # anyone: https://github.com/<repo>/releases/download/v<version>/<archive>.
+  # UltraCanvasStart's Project page downloads the one for its platform from
+  # there (Apps/UltraCanvasStart/engine/StartSdk.cpp names the URL). The
+  # release is created with the version's changelog section as its notes; a
+  # re-run of the same version replaces the assets and keeps the release.
+  publish-sdk:
+    name: Publish the SDKs as release assets
+    needs: build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+
+      # The version the build legs used, read the same way, and that
+      # version's section of the changelog as the release notes.
+      - name: The version and its changelog section
+        id: version
+        run: |
+          set -eu
+          VERSION=$(sed -nE '1s/^#### [0-9-]+ \*([0-9]+\.[0-9]+\.[0-9]+)\*.*/\1/p' Docs/UltraCanvas/CHANGELOG.md)
+          [ -n "$VERSION" ] || { echo "::error::no version on the first line of Docs/UltraCanvas/CHANGELOG.md"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          {
+            echo "UltraCanvas $VERSION - the framework built and installed for each platform, with the"
+            echo "CMake package and, on Windows and macOS, the dependency development files"
+            echo "(Docs/UltraCanvasSDK.md). Unpack one and point CMAKE_PREFIX_PATH at it."
+            echo
+            echo "## Changes"
+            echo
+            awk 'NR == 1 { next } /^#### / { exit } { print }' Docs/UltraCanvas/CHANGELOG.md
+          } > release-notes.md
+
+      - name: Download the SDK artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: UltraCanvas-SDK-*
+          path: sdk-release
+          merge-multiple: true
+
+      - name: Create the release and attach the SDKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET: ${{ inputs.sha || github.sha }}
+        run: |
+          set -eu
+          ls -la sdk-release
+          count=$(ls sdk-release | wc -l)
+          [ "$count" -eq 6 ] || echo "::warning::$count SDK archives instead of 6"
+          tag="v$VERSION"
+          if ! gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            gh release create "$tag" --repo "${{ github.repository }}" --target "$TARGET" \
+              --title "UltraCanvas $VERSION" --notes-file release-notes.md
+          fi
+          gh release upload "$tag" sdk-release/* --repo "${{ github.repository }}" --clobber
+          echo "https://github.com/${{ github.repository }}/releases/tag/$tag"
+
   # ===== ANDROID BACKEND CHECK =====
   # Separate job, not a matrix row (investigation §5): there is no
   # cross-compiled dependency sysroot yet, so a full Android build is not

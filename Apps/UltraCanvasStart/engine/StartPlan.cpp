@@ -112,8 +112,10 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         download.kind = StepKind::Download;
         download.title = "Get the UltraCanvas SDK " + SdkArtifactName(target, version, arch);
         download.description = "The framework prebuilt for " + PlatformName(target) + " " + arch +
-                               ": download the artifact from " + SdkDownloadPage() +
-                               " (or the release asset of the same name) and unpack it next to the project";
+                               ": " + SdkReleaseAssetUrl(target, version, arch) +
+                               " - the Project page's Download button fetches and unpacks it; "
+                               "while that release is still building, the archive of the same name "
+                               "is a workflow artifact at " + SdkDownloadPage();
         plan.steps.push_back(download);
     }
     if (choices.cloneFramework || !choices.useSdk) {
