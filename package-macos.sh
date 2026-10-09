@@ -787,31 +787,55 @@ notarize_bundle() {
         /usr/bin/ditto -c -k --keepParent "$app_bundle" "$zip_path"
     fi
 
-    echo "  Submitting to Apple notary service (this may take a few minutes)..."
-    # Tee to a temp file so we keep live progress output AND can parse the result
-    xcrun notarytool submit "$submit_path" \
-        --apple-id "$APPLE_ID" \
-        --team-id "$APPLE_TEAM_ID" \
-        --password "$APPLE_APP_PASSWORD" \
-        --wait 2>&1 | tee "$submit_log"
-
+    # Submit, and wait for Apple's verdict. The runner's network dropped out
+    # of that wait twice on 2026-10-09 ("The Internet connection appears to
+    # be offline"), once in the suite's image and once in UltraCanvasStart's,
+    # each time after the upload had succeeded and while Apple was still
+    # processing - and each time it cost the whole leg and its release. So
+    # the wait is resumed rather than failed: the submission id is kept from
+    # the submit, and while the status is not final the wait is taken up
+    # again on that id, up to NOTARY_WAIT_ATTEMPTS times (default 6) with a
+    # pause between, which asks Apple nothing new. Only a submit that gave
+    # no id at all - the upload itself failed - is submitted a second time.
+    local submission_id="" status="" attempt
+    local notary=(--apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD")
+    for attempt in 1 2; do
+        echo "  Submitting to Apple notary service (this may take a few minutes)..."
+        # Tee to a temp file so we keep live progress output AND can parse
+        # the result; a failed wait must not end the run here (set -e).
+        xcrun notarytool submit "$submit_path" "${notary[@]}" --wait 2>&1 | tee "$submit_log" || true
+        submission_id=$(awk '/^  id:/ {print $2; exit}' "$submit_log")
+        status=$(awk '/^  status:/ {print $2}' "$submit_log" | tail -n 1)
+        [ -n "$submission_id" ] && break
+        echo "  No submission id received, so the upload itself failed; submitting again in 30 s"
+        sleep 30
+    done
     [ -n "$zip_path" ] && rm -f "$zip_path"
+    if [ -z "$submission_id" ]; then
+        echo "  ERROR: the notary service took no submission"
+        rm -f "$submit_log"
+        exit 1
+    fi
 
-    # Parse the submission ID and final status from the captured output
-    local submission_id status
-    submission_id=$(awk '/^  id:/ {print $2; exit}' "$submit_log")
-    status=$(awk '/^  status:/ {print $2}' "$submit_log" | tail -n 1)
+    attempt=0
+    while [ "$status" != "Accepted" ] && [ "$status" != "Invalid" ] && [ "$status" != "Rejected" ]; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -gt "${NOTARY_WAIT_ATTEMPTS:-6}" ]; then
+            echo "  ERROR: no final status for submission $submission_id after $((attempt - 1)) resumed waits (last: '${status:-none}')"
+            rm -f "$submit_log"
+            exit 1
+        fi
+        echo "  The wait on submission $submission_id ended without a final status ('${status:-none}'); resuming it in 30 s ($attempt of ${NOTARY_WAIT_ATTEMPTS:-6})"
+        sleep 30
+        xcrun notarytool wait "$submission_id" "${notary[@]}" --timeout 30m 2>&1 | tee "$submit_log" || true
+        status=$(awk '/^  status:/ {print $2}' "$submit_log" | tail -n 1)
+    done
     rm -f "$submit_log"
 
     if [ "$status" != "Accepted" ]; then
         echo "  ERROR: Notarization status is '$status' (expected 'Accepted')"
-        if [ -n "$submission_id" ]; then
-            echo "  Fetching notarization log for submission $submission_id..."
-            xcrun notarytool log "$submission_id" \
-                --apple-id "$APPLE_ID" \
-                --team-id "$APPLE_TEAM_ID" \
-                --password "$APPLE_APP_PASSWORD" || true
-        fi
+        echo "  Fetching notarization log for submission $submission_id..."
+        xcrun notarytool log "$submission_id" "${notary[@]}" || true
         exit 1
     fi
 
