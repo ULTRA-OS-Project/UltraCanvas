@@ -81,6 +81,11 @@ private:
     // The straight "replace what is open with this file" path; OpenFile()
     // sends vector artwork through the import dialog first.
     bool LoadIntoWindow(const std::string& path);
+    // Opens a further editor window holding `doc`, with `note` in its status
+    // bar, and leaves this window's image alone. False (with the error shown
+    // over this window) when no window could be opened.
+    bool OpenInNewWindow(std::shared_ptr<UCRasterDocument> doc, const std::string& title,
+                         const std::string& note);
 
     // ----- import: dropped files and vector artwork -----
     // Files dropped on the canvas: asks once what to do with them, then does

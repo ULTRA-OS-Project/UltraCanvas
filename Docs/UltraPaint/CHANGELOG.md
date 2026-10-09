@@ -1,3 +1,12 @@
+#### 2026-10-09 *0.2.13*
+- **Paste as New Image opens a new window.** It replaced the image in the
+  window it was chosen in - after asking to discard the unsaved changes
+  when there were any - so a picture could only be pasted as a new image by
+  giving up the one being worked on. Like File > New Window, it now opens a
+  window of its own holding the pasted picture (or the copied image file,
+  with its layers), unsaved and untitled, and leaves the open image where it
+  was. Nothing is discarded, so it no longer asks.
+
 #### 2026-10-09 *0.2.12*
 - **The Fill tool can make an area transparent.** Filling with a colour
   whose alpha is 0 did nothing at all: the fill only ever painted over the

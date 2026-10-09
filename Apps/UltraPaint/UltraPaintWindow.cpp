@@ -914,17 +914,9 @@ void UltraPaintWindow::ApplyImport(const std::string& path, const UltraPaintImpo
         case UltraPaintImportResult::Action::Merge:
             MergeDocument(incoming, path, result.scaleToFit);
             break;
-        case UltraPaintImportResult::Action::NewWindow: {
-            auto editor = OpenWindow({});
-            if (!editor) {
-                UltraCanvasDialogManager::ShowError("Could not open another UltraPaint window",
-                                                    "New Window", nullptr, window.get());
-                return;
-            }
-            editor->SetDocument(incoming, FileNameOf(path));
-            if (editor->statusHint) editor->statusHint->SetText("Opened " + FileNameOf(path));
+        case UltraPaintImportResult::Action::NewWindow:
+            OpenInNewWindow(incoming, FileNameOf(path), "Opened " + FileNameOf(path));
             break;
-        }
         case UltraPaintImportResult::Action::Open:
             SetDocument(incoming, FileNameOf(path));
             if (statusHint) statusHint->SetText("Opened " + FileNameOf(path));
@@ -1219,6 +1211,19 @@ void UltraPaintWindow::CmdNewWindow() {
         UltraCanvasDialogManager::ShowError("Could not open another UltraPaint window",
                                             "New Window", nullptr, window.get());
     }
+}
+
+bool UltraPaintWindow::OpenInNewWindow(std::shared_ptr<UCRasterDocument> doc, const std::string& title,
+                                       const std::string& note) {
+    auto editor = OpenWindow({});
+    if (!editor) {
+        UltraCanvasDialogManager::ShowError("Could not open another UltraPaint window",
+                                            "New Window", nullptr, window.get());
+        return false;
+    }
+    editor->SetDocument(std::move(doc), title);
+    if (editor->statusHint) editor->statusHint->SetText(note);
+    return true;
 }
 
 // Everything this build will take in the Open / Import dialogs: the bitmap
@@ -1549,26 +1554,24 @@ std::shared_ptr<UCRasterLayer> UltraPaintWindow::LastCopiedImage(std::string& wh
 #endif
 }
 
+// A new image gets a window of its own, as File > New Window does: the image
+// open here stays where it is, unsaved changes and all, so nothing has to be
+// discarded to paste.
 void UltraPaintWindow::CmdPasteAsNew() {
     PasteSource source = ReadPasteSource();
-    std::shared_ptr<UCRasterDocument> fromFile;
     if (!source.file.empty()) {
         // The file's own layers come along, but not its path: this is a new,
         // unsaved image, so Save asks where to put it instead of writing
         // over the file that was copied.
-        fromFile = LoadDocument(source.file, UltraPaintImportResult{});
+        auto fromFile = LoadDocument(source.file, UltraPaintImportResult{});
         if (!fromFile) return;   // LoadDocument said why
         fromFile->SetFilePath("");
         fromFile->ClearHistory();
         fromFile->SetModified(true);
-    }
-    auto img = source.image;
-    if (fromFile) {
-        auto go = [this, fromFile]() { SetDocument(fromFile, "Untitled"); };
-        if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
-        else go();
+        OpenInNewWindow(fromFile, "Untitled", "Pasted " + FileNameOf(source.file) + " as a new image");
         return;
     }
+    auto img = source.image;
     if (!img || !img->IsValid()) {
         OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) { PasteAsNewImage(std::move(last)); });
         return;
@@ -1578,16 +1581,13 @@ void UltraPaintWindow::CmdPasteAsNew() {
 
 void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img) {
     if (!img || !img->IsValid()) return;
-    auto go = [this, img]() {
-        auto doc = std::make_shared<UCRasterDocument>(img->GetWidth(), img->GetHeight(), RasterPixel(0, 0, 0, 0));
-        doc->GetLayer(0)->CopyFrom(*img, 0, 0);
-        doc->InvalidateComposite();
-        doc->ClearHistory();
-        doc->SetModified(true);
-        SetDocument(doc, "Untitled");
-    };
-    if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
-    else go();
+    auto doc = std::make_shared<UCRasterDocument>(img->GetWidth(), img->GetHeight(), RasterPixel(0, 0, 0, 0));
+    doc->GetLayer(0)->CopyFrom(*img, 0, 0);
+    doc->InvalidateComposite();
+    doc->ClearHistory();
+    doc->SetModified(true);
+    OpenInNewWindow(doc, "Untitled", "Pasted a new " + std::to_string(img->GetWidth()) + " x " +
+                                     std::to_string(img->GetHeight()) + " pixel image");
 }
 
 // ===========================================================================

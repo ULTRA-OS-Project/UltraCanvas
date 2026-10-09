@@ -72,7 +72,8 @@ transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
   (merge into this image or open a new window), Save, Save As, Export with
   Options (the framework's format dialog), Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
-  as New Image, Paste Last Copied Image (Ctrl+Alt+V), Delete, Fill with
+  as New Image (in a new window; the open image stays as it is), Paste Last
+  Copied Image (Ctrl+Alt+V), Delete, Fill with
   Foreground / Background. When Paste finds no picture on the clipboard -
   text was copied after it - it offers the newest image of the clipboard
   history UltraDesktop keeps, saying when it was copied; Paste Last Copied
