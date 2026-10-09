@@ -15,11 +15,13 @@
 // Last Modified: 2026-10-02
 // Author: UltraCanvas Framework / ULTRA OS
 
+#include "ChatStore.h"
 #include "ClaudeChatSession.h"
 #include "ui/UltraClaudeWindow.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 
 #include <condition_variable>
@@ -55,6 +57,7 @@ void PrintUsage(const char* programName) {
         "      --permission-mode <mode>\n"
         "                        default, acceptEdits, plan or bypassPermissions\n"
         "  --claude <path>       The claude program to run (default: claude on PATH)\n"
+        "  --list-chats          Print the chats the window remembers and exit\n"
         "  --version             Print the version and exit\n"
         "  --help                This text\n"
         "\n"
@@ -125,6 +128,19 @@ int RunPrint(const std::string& prompt, const ClaudeChatOptions& options) {
 
 } // namespace
 
+// --list-chats: the chats the window's list shows, newest first.
+int RunListChats() {
+    ChatStore store(ChatStore::DefaultFolder());
+    std::string error;
+    if (!store.Load(error)) { std::fprintf(stderr, "%s\n", error.c_str()); return EXIT_FAILURE; }
+    std::printf("%s\n", UltraCanvas::PathToUtf8(ChatStore::DefaultFolder()).c_str());
+    for (const ChatRecord& chat : store.Chats()) {
+        std::printf("%s  %-40s  %s  session=%s\n", chat.id.c_str(), chat.title.c_str(),
+                    chat.folder.c_str(), chat.sessionId.empty() ? "-" : chat.sessionId.c_str());
+    }
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char** argv) {
     std::string printPrompt;
     bool print = false;
@@ -154,6 +170,8 @@ int main(int argc, char** argv) {
             options.workingDirectory = next("--cwd");
         } else if (std::strcmp(arg, "--permission-mode") == 0) {
             options.permissionMode = next("--permission-mode");
+        } else if (std::strcmp(arg, "--list-chats") == 0) {
+            return RunListChats();
         } else if (std::strcmp(arg, "--claude") == 0) {
             options.executable = next("--claude");
         } else {

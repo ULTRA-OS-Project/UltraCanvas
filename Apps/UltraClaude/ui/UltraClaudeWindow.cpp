@@ -15,6 +15,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasListView.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
@@ -50,6 +51,8 @@ namespace {
     constexpr float kTranscriptFontSize = 11.0f;
     constexpr int   kControlHeight = 28;
     constexpr int   kPromptHeight  = 72;   // about three lines of the message box
+    constexpr int   kSidebarWidth  = 240;
+    const Color kSidebarBackground = Color(244, 242, 237, 255);
 
     const Color kPageBackground  = Color(250, 249, 246, 255);
     const Color kTextColor       = Color(40, 40, 44, 255);
@@ -198,7 +201,8 @@ namespace {
 } // namespace
 
 UltraClaudeWindow::UltraClaudeWindow(std::string version, std::string executable)
-    : version_(std::move(version)), executable_(std::move(executable)) {}
+    : version_(std::move(version)), executable_(std::move(executable)),
+      chats_(ChatStore::DefaultFolder()) {}
 
 UltraClaudeWindow::~UltraClaudeWindow() {
     // The reader threads post into this object: end them, and wait for
@@ -216,7 +220,7 @@ bool UltraClaudeWindow::Create() {
     WindowConfig wc;
     // Every app shows its version in its main window title (AGENTS.md).
     wc.title = "UltraClaude " + version_;
-    wc.width = 920;
+    wc.width = 1120;
     wc.height = 700;
     wc.resizable = true;
     window_ = CreateWindow(wc);
@@ -229,6 +233,7 @@ bool UltraClaudeWindow::Create() {
     window_->AddChild(BuildChatView());
     window_->onWindowClosed = [this]() { if (onClosed) onClosed(); };
 
+    LoadChats();
     ShowSignInPage();
     CheckAuthStatus();
     return true;
@@ -353,11 +358,59 @@ std::shared_ptr<UltraCanvasContainer> UltraClaudeWindow::BuildSignInPage() {
     return signInPage_;
 }
 
+std::shared_ptr<UltraCanvasContainer> UltraClaudeWindow::BuildChatSidebar() {
+    auto sidebar = std::make_shared<UltraCanvasContainer>("uc-chats");
+    sidebar->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    sidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    sidebar->size.width = CSSLayout::Dimension::Px(kSidebarWidth);
+    sidebar->SetPadding(8, 8, 8, 8);
+    sidebar->SetBorderRight(1, kRuleColor);
+    sidebar->SetBackgroundColor(kSidebarBackground);
+
+    auto head = std::make_shared<UltraCanvasContainer>("uc-chats-head");
+    head->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    head->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    auto title = MakeLabel("uc-chats-title", "Chats", 11.0f);
+    title->SetFontWeight(FontWeight::Bold);
+    title->layoutItem.SetFlexGrow(1);
+    head->AddChild(title);
+    auto newChat = MakeButton("uc-new-chat", "New chat", 84, /*primary=*/true);
+    newChat->SetOnClick([this]() { NewChat(); });
+    head->AddChild(newChat);
+    sidebar->AddChild(head);
+
+    chatModel_ = std::make_shared<UltraCanvasSimpleListModel>();
+    chatList_ = std::make_shared<UltraCanvasListView>("uc-chat-list", 0, 0, kSidebarWidth - 16, 200);
+    chatList_->SetModel(chatModel_);
+    chatList_->SetRowHeight(28);
+    chatList_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    chatList_->onSelectionChanged = [this](const std::vector<int>& rows) {
+        if (fillingChatList_ || rows.empty()) return;
+        const auto& list = chats_.Chats();
+        if (rows.front() >= 0 && rows.front() < static_cast<int>(list.size()))
+            OpenChat(list[static_cast<size_t>(rows.front())].id);
+    };
+    sidebar->AddChild(chatList_);
+
+    deleteChat_ = MakeButton("uc-delete-chat", "Delete chat", kSidebarWidth - 16);
+    deleteChat_->SetOnClick([this]() { DeleteCurrentChat(); });
+    deleteChat_->SetDisabled(true);
+    sidebar->AddChild(deleteChat_);
+    return sidebar;
+}
+
 std::shared_ptr<UltraCanvasContainer> UltraClaudeWindow::BuildChatView() {
+    // The chat list on the left, the conversation on the right.
     chatView_ = std::make_shared<UltraCanvasContainer>("uc-chat");
-    chatView_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    chatView_->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     chatView_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    chatView_->AddChild(BuildChatSidebar());
+
+    auto main = std::make_shared<UltraCanvasContainer>("uc-chat-main");
+    main->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    main->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    chatView_->AddChild(main);
 
     // ----- toolbar -----
     auto bar = std::make_shared<UltraCanvasContainer>("uc-chat-bar");
@@ -380,17 +433,14 @@ std::shared_ptr<UltraCanvasContainer> UltraClaudeWindow::BuildChatView() {
     folder_->SetFontSize(kTextFontSize);
     folder_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     bar->AddChild(folder_);
-    auto browse = MakeButton("uc-folder-browse", "\xE2\x80\xA6", 30);
-    browse->SetOnClick([this]() { BrowseFolder(); });
-    bar->AddChild(browse);
+    browse_ = MakeButton("uc-folder-browse", "\xE2\x80\xA6", 30);
+    browse_->SetOnClick([this]() { BrowseFolder(); });
+    bar->AddChild(browse_);
 
-    auto newChat = MakeButton("uc-new-chat", "New chat", 84);
-    newChat->SetOnClick([this]() { NewChat(); });
-    bar->AddChild(newChat);
     auto logOut = MakeButton("uc-log-out", "Log out", 72);
     logOut->SetOnClick([this]() { LogOut(); });
     bar->AddChild(logOut);
-    chatView_->AddChild(bar);
+    main->AddChild(bar);
 
     // ----- transcript -----
     transcript_ = std::make_shared<UltraCanvasTextArea>("uc-transcript", 0, 0, 400, 300);
@@ -402,7 +452,7 @@ std::shared_ptr<UltraCanvasContainer> UltraClaudeWindow::BuildChatView() {
     transcript_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     transcript_->onMarkdownLinkClick = [](const std::string& url) { OpenURL(url); };
-    chatView_->AddChild(transcript_);
+    main->AddChild(transcript_);
 
     // ----- prompt -----
     auto inputRow = std::make_shared<UltraCanvasContainer>("uc-input-row");
@@ -433,11 +483,11 @@ std::shared_ptr<UltraCanvasContainer> UltraClaudeWindow::BuildChatView() {
     send_ = MakeButton("uc-send", "Send", 80, /*primary=*/true);
     send_->SetOnClick([this]() { if (busy_) StopAnswer(); else SendCurrentPrompt(); });
     inputRow->AddChild(send_);
-    chatView_->AddChild(inputRow);
+    main->AddChild(inputRow);
 
     status_ = MakeLabel("uc-status", "", 9.0f, kMutedTextColor);
     status_->SetMargin(0, 12, 6, 12);
-    chatView_->AddChild(status_);
+    main->AddChild(status_);
     return chatView_;
 }
 
@@ -668,7 +718,9 @@ void UltraClaudeWindow::SetBusy(bool busy) {
     send_->SetText(busy ? "Stop" : "Send");
     model_->SetDisabled(busy);
     permissions_->SetDisabled(busy);
-    folder_->SetDisabled(busy);
+    folder_->SetDisabled(busy || folderLocked_);
+    browse_->SetDisabled(busy || folderLocked_);
+    deleteChat_->SetDisabled(busy || currentChatId_.empty());
 }
 
 void UltraClaudeWindow::AppendTranscript(const std::string& markdown) {
@@ -699,11 +751,29 @@ void UltraClaudeWindow::SendCurrentPrompt() {
     const std::string text = prompt_->GetText();
     if (text.find_first_not_of(" \t\r\n") == std::string::npos) return;
 
-    const ClaudeChatOptions options = CurrentOptions();
+    ClaudeChatOptions options = CurrentOptions();
+    if (const ChatRecord* chat = chats_.Find(currentChatId_)) {
+        // An existing chat resumes in its own folder (the CLI keeps sessions
+        // per folder); model and permission mode follow the toolbar.
+        options.workingDirectory = chat->folder;
+    }
     if (!options.workingDirectory.empty() &&
         !std::filesystem::is_directory(PathFromUtf8(options.workingDirectory))) {
         SetStatus("The folder does not exist: " + options.workingDirectory);
         return;
+    }
+
+    if (currentChatId_.empty()) {
+        // The first prompt makes the chat, titled by that prompt.
+        const ChatRecord& chat = chats_.Create(ChatStore::TitleFromPrompt(text),
+                                               options.workingDirectory,
+                                               options.model, options.permissionMode);
+        currentChatId_ = chat.id;
+        SetFolderLocked(true);
+        RefreshChatList();
+    } else if (ChatRecord* chat = chats_.Find(currentChatId_)) {
+        chat->model = options.model;
+        chat->permissionMode = options.permissionMode;
     }
 
     if (!transcript_->GetText().empty()) AppendTranscript("\n---\n\n");
@@ -733,11 +803,102 @@ void UltraClaudeWindow::StopAnswer() {
 
 void UltraClaudeWindow::NewChat() {
     if (busy_) return;
+    currentChatId_.clear();
     session_.Reset();
     transcript_->SetText("");
     trailingBreaks_ = 0;
+    SetFolderLocked(false);
+    RefreshChatList();
     SetStatus("New conversation.");
     prompt_->SetFocus(true);
+}
+
+void UltraClaudeWindow::DeleteCurrentChat() {
+    if (busy_ || currentChatId_.empty()) return;
+    chats_.Remove(currentChatId_);
+    std::string error;
+    if (!chats_.Save(error)) SetStatus(error);
+    NewChat();
+    SetStatus("Chat deleted.");
+}
+
+// ================================================================ chat list
+
+void UltraClaudeWindow::LoadChats() {
+    std::string error;
+    if (!chats_.Load(error)) SetStatus(error);
+    RefreshChatList();
+}
+
+void UltraClaudeWindow::RefreshChatList() {
+    if (!chatModel_ || !chatList_) return;
+    fillingChatList_ = true;
+    chatModel_->Clear();
+    int currentRow = -1;
+    const auto& list = chats_.Chats();
+    for (size_t i = 0; i < list.size(); ++i) {
+        const ChatRecord& chat = list[i];
+        chatModel_->AddItem(ListItem(chat.title, "", chat.folder));
+        if (chat.id == currentChatId_) currentRow = static_cast<int>(i);
+    }
+    if (IListSelection* selection = chatList_->GetSelection()) {
+        selection->Clear();
+        if (currentRow >= 0) selection->Select(currentRow);
+    }
+    chatList_->RequestRedraw();
+    fillingChatList_ = false;
+    if (deleteChat_) deleteChat_->SetDisabled(busy_ || currentChatId_.empty());
+}
+
+void UltraClaudeWindow::OpenChat(const std::string& chatId) {
+    if (chatId == currentChatId_) return;
+    if (busy_) {
+        // The answer belongs to the chat that asked: switch once it is in.
+        RefreshChatList();
+        SetStatus("Claude is still answering - wait for it, or Stop it, before switching chats.");
+        return;
+    }
+    const ChatRecord* chat = chats_.Find(chatId);
+    if (!chat) return;
+    currentChatId_ = chat->id;
+    session_.SetSessionId(chat->sessionId);
+
+    const std::string transcript = chats_.LoadTranscript(chat->id);
+    transcript_->SetText(transcript);
+    transcript_->MoveCursorToEnd();
+    trailingBreaks_ = 0;
+    for (size_t i = transcript.size(); i > 0 && transcript[i - 1] == '\n'; --i) ++trailingBreaks_;
+
+    folder_->SetText(chat->folder);
+    SetFolderLocked(true);
+    for (size_t i = 0; i < std::size(kModels); ++i)
+        if (chat->model == kModels[i].value) model_->SetSelectedIndex(static_cast<int>(i), false);
+    for (size_t i = 0; i < std::size(kPermissionModes); ++i)
+        if (chat->permissionMode == kPermissionModes[i].value)
+            permissions_->SetSelectedIndex(static_cast<int>(i), false);
+
+    RefreshChatList();
+    SetStatus(chat->sessionId.empty() ? "This chat has no Claude session yet."
+                                      : "Continuing \"" + chat->title + "\".");
+    prompt_->SetFocus(true);
+}
+
+void UltraClaudeWindow::SaveCurrentChat() {
+    if (currentChatId_.empty()) return;
+    std::string error;
+    bool saved = chats_.SaveTranscript(currentChatId_, transcript_->GetText(), error);
+    if (saved) {
+        chats_.Touch(currentChatId_);
+        saved = chats_.Save(error);
+    }
+    if (!saved) SetStatus("The chat could not be saved: " + error);
+    RefreshChatList();
+}
+
+void UltraClaudeWindow::SetFolderLocked(bool locked) {
+    folderLocked_ = locked;
+    folder_->SetDisabled(busy_ || locked);
+    browse_->SetDisabled(busy_ || locked);
 }
 
 void UltraClaudeWindow::BrowseFolder() {
@@ -755,6 +916,14 @@ void UltraClaudeWindow::BrowseFolder() {
 void UltraClaudeWindow::ApplyEvent(const ClaudeStreamEvent& e) {
     switch (e.kind) {
         case ClaudeEventKind::SessionStarted:
+            // The id to resume next time; a resumed session may come back
+            // under a new one, so the chat follows whatever the CLI reports.
+            if (ChatRecord* chat = chats_.Find(currentChatId_);
+                chat && !e.sessionId.empty() && chat->sessionId != e.sessionId) {
+                chat->sessionId = e.sessionId;
+                std::string error;
+                if (!chats_.Save(error)) SetStatus(error);
+            }
             if (!e.model.empty()) SetStatus("Claude is thinking\xE2\x80\xA6  (" + e.model + ")");
             break;
 
@@ -819,6 +988,7 @@ void UltraClaudeWindow::ApplyEvent(const ClaudeStreamEvent& e) {
                     CheckAuthStatus();
                 }
             }
+            SaveCurrentChat();
             prompt_->SetFocus(true);
             break;
 
@@ -827,6 +997,7 @@ void UltraClaudeWindow::ApplyEvent(const ClaudeStreamEvent& e) {
             SetBusy(false);
             AppendBlock(Quote("*" + e.text + "*"));
             SetStatus(e.text);
+            SaveCurrentChat();
             break;
     }
 }

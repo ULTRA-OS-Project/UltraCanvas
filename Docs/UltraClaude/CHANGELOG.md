@@ -1,3 +1,20 @@
+#### 2026-10-08 *0.3.0*
+- **A list of chats.** A sidebar on the left of the chat view lists every
+  chat UltraClaude remembers, newest first, with *New chat* above it (moved
+  from the toolbar) and *Delete chat* below. The first prompt of a new chat
+  adds it, titled by that prompt's first line; every finished turn saves the
+  transcript and moves the chat to the top. Picking a chat shows its
+  transcript again and resumes its Claude Code session (`--resume`) in its own
+  folder, with its model and permission mode; the session id follows whatever
+  the CLI reports, so a resume that comes back under a new id is followed too.
+  A chat's folder is locked once the chat exists, because the CLI keeps its
+  sessions per folder. Switching waits until Claude has finished answering.
+  - The list is kept in `chats.json` and each transcript in
+    `transcripts/<chat>.md`, in the UltraCanvas settings folder under
+    `UltraClaude` (`engine/ChatStore`). Both are written to a temporary file
+    and renamed into place, and only ids UltraClaude made name a file.
+  - `--list-chats` prints the list from the command line.
+
 #### 2026-10-04 *0.2.0*
 - **The message box takes several lines.** It is an `UltraCanvasTextArea`
   now: Enter sends, Shift+Enter starts a new line, and a long message wraps
