@@ -1,3 +1,26 @@
+#### 2026-10-09 *0.9.229*
+- **A dropped connection no longer loses a macOS release.** The runner's
+  network dropped out of `notarytool submit --wait` twice on 2026-10-09
+  ("The Internet connection appears to be offline"), once in the suite's
+  image (0.9.223) and once in UltraCanvasStart's (0.9.225), each time after
+  the upload had succeeded and while Apple was still processing, and each
+  time it ended the leg and its release. `package-macos.sh` now keeps the
+  submission id and resumes the wait on it (`notarytool wait`, up to six
+  times with a pause between) until the status is final; only a submit that
+  produced no id at all is submitted again.
+- **The Linux UltraCanvasStart archive is xz, and the size of a standalone
+  package is measured.** `scripts/package-ultracanvasstart.sh` packs the
+  Linux package with xz instead of gzip: the same tree went from 49 MB to
+  35 MB, since it is mostly shared libraries and the core, which xz packs
+  well. `Docs/UltraCanvas/StandaloneSizeInvestigation.md` records what the
+  packages weigh and why: the shared core (61 MB on Linux), ICU's data
+  reached through Ubuntu's libxml2 (29 MB), libvips' delegates and GTK, and
+  the modules an application could do without at 14% of the whole, so an
+  on-demand module core would cut the package by about 15%, while a static
+  link of the one application halves it. `package-macos.sh` now says in the
+  log which load command it could not rewrite (a library without header
+  padding), instead of swallowing the error.
+
 #### 2026-10-09 *0.9.228*
 - **A block that starts with an empty line keeps it when written out.**
   `UCRichDocument::ConcatenateRunText` skipped the line break of a block's
