@@ -1428,11 +1428,19 @@ jobs:
       # version's section of the changelog as the release notes.
       - name: The version and its changelog section
         id: version
+        env:
+          TARGET: ${{ inputs.sha || github.sha }}
         run: |
           set -eu
-          VERSION=$(sed -nE '1s/^#### [0-9-]+ \*([0-9]+\.[0-9]+\.[0-9]+)\*.*/\1/p' Docs/UltraCanvas/CHANGELOG.md)
-          [ -n "$VERSION" ] || { echo "::error::no version on the first line of Docs/UltraCanvas/CHANGELOG.md"; exit 1; }
+          changelog=Docs/UltraCanvas/CHANGELOG.md
+          VERSION=$(sed -nE '1s/^#### [0-9-]+ \*([0-9]+\.[0-9]+\.[0-9]+)\*.*/\1/p' "$changelog")
+          [ -n "$VERSION" ] || { echo "::error::no version on the first line of $changelog"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # The version's section: everything between its header and the next.
+          awk 'NR == 1 { next } /^#### / { exit } { print }' "$changelog" > section.md
+          if ! grep -q '[^[:space:]]' section.md; then
+            echo "::warning::the $VERSION section of $changelog is empty - the release notes point at the commits instead"
+          fi
           {
             echo "UltraCanvas $VERSION - the framework built and installed for each platform, with the"
             echo "CMake package and, on Windows and macOS, the dependency development files"
@@ -1440,8 +1448,23 @@ jobs:
             echo
             echo "## Changes"
             echo
-            awk 'NR == 1 { next } /^#### / { exit } { print }' Docs/UltraCanvas/CHANGELOG.md
+            if grep -q '[^[:space:]]' section.md; then
+              cat section.md
+            else
+              # A header with nothing under it (a hand-cut version, say): the
+              # notes say so and point at the commits rather than ending on an
+              # empty heading.
+              previous=$(sed -nE 's/^#### [0-9-]+ \*([0-9]+\.[0-9]+\.[0-9]+)\*.*/\1/p' "$changelog" | sed -n 2p)
+              echo "The $VERSION section of \`$changelog\` has no entries. The changes are the commits"
+              if [ -n "$previous" ]; then
+                echo "between $previous and this release's commit, $TARGET:"
+              else
+                echo "up to this release's commit, $TARGET:"
+              fi
+              echo "https://github.com/${{ github.repository }}/commits/$TARGET"
+            fi
           } > release-notes.md
+          echo "::group::release-notes.md"; cat release-notes.md; echo "::endgroup::"
 
       - name: Download the SDK artifacts
         uses: actions/download-artifact@v6
