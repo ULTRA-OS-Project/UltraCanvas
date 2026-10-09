@@ -1,7 +1,11 @@
 // include/UltraCanvasSpreadsheetFormula.h
 // Formula parser and evaluation engine (OpenFormula compatible)
-// Version: 1.0.0
-// Last Modified: 2026-01-09
+// Version: 1.1.0
+// Last Modified: 2026-10-09
+// V1.1.0: error literals (#N/A, #DIV/0!, ...) tokenize instead of stalling the
+//   tokenizer on their '#'; a number becomes text as a spreadsheet writes it
+//   (12.5, not 12.500000); FormulaEvaluator::GetCallArguments gives a
+//   function the order and the shape of its arguments.
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -158,7 +162,10 @@ struct FormulaValue {
     
     std::string GetText() const {
         if (auto* v = std::get_if<std::string>(&value)) return *v;
-        if (auto* n = std::get_if<double>(&value)) return std::to_string(*n);
+        // As a spreadsheet writes a number into text (=A1&"", CONCATENATE):
+        // up to 15 significant digits, no trailing zeros, '.' whatever the
+        // locale - 12.5, not std::to_string's locale-dependent 12.500000.
+        if (auto* n = std::get_if<double>(&value)) return FormatFloatClassic(*n, 15);
         if (auto* b = std::get_if<bool>(&value)) return *b ? "TRUE" : "FALSE";
         if (auto* e = std::get_if<CellErrorType>(&value)) return CellErrorToString(*e);
         return "";
@@ -227,6 +234,9 @@ private:
     FormulaToken ReadOperator();
     FormulaToken ReadCellReference(const std::string& prefix = "");
     FormulaToken ReadQuotedSheetReference();
+    // An error literal (#N/A, #DIV/0!, #VALUE!, ...). A '#' that starts none
+    // is consumed as #NAME?, so the tokenizer always moves on.
+    FormulaToken ReadErrorLiteral();
     
     bool IsAlpha(char c) const { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_'; }
     bool IsDigit(char c) const { return c >= '0' && c <= '9'; }
@@ -439,11 +449,26 @@ private:
     void RegisterLookupFunctions();
     void RegisterInformationFunctions();
     void RegisterFinancialFunctions();
+    // The Excel-compatible set (UltraCanvasSpreadsheetFormulaFunctions.cpp):
+    // lookups, conditional aggregation, rounding, statistics, character-wise
+    // text functions, dates, IS* and the newer logical functions.
+    void RegisterExcelFunctions();
 };
 
 // ============================================================================
 // FORMULA EVALUATOR
 // ============================================================================
+
+// One argument of the function call being evaluated, in the order written.
+// A function's implementation receives its value arguments and its range
+// arguments in two separate lists, and each range flattened; a function that
+// needs the order, or a range's rows and columns (VLOOKUP, SUMIF, INDEX),
+// reads them here through FormulaEvaluator::GetCallArguments().
+struct FunctionCallArgument {
+    bool isRange = false;
+    size_t index = 0;     // into the value list or the range list
+    CellRange range;      // the range itself, when isRange
+};
 
 class FormulaEvaluator {
 private:
@@ -462,6 +487,14 @@ public:
     // Set context
     void SetSpreadsheet(UltraCanvasSpreadsheet* spreadsheet) { spreadsheet_ = spreadsheet; }
     void SetCurrentSheet(SpreadsheetSheet* sheet) { currentSheet_ = sheet; }
+    SpreadsheetSheet* GetCurrentSheet() const { return currentSheet_; }
+
+    // Called when a reference reaches a formula cell whose result is not
+    // current (its formula is dirty), so that cell is calculated before it is
+    // read - whatever order the cells are visited in. The engine installs it;
+    // without one a dirty cell is read as it stands.
+    using FormulaCellResolver = std::function<void(SpreadsheetCell*, SpreadsheetSheet*)>;
+    void SetFormulaCellResolver(FormulaCellResolver resolver) { resolveFormulaCell_ = std::move(resolver); }
     
     // Evaluate formula
     FormulaValue Evaluate(const SpreadsheetFormula& formula);
@@ -478,8 +511,15 @@ public:
     
     // Get named range
     CellRange GetNamedRange(const std::string& name) const;
+
+    // The arguments of the function call whose implementation is running,
+    // in the order written (empty outside a call).
+    const std::vector<FunctionCallArgument>& GetCallArguments() const { return callArguments_; }
     
 private:
+    std::vector<FunctionCallArgument> callArguments_;
+    FormulaCellResolver resolveFormulaCell_;
+
     FormulaValue EvaluateLiteral(const FormulaNode* node);
     FormulaValue EvaluateCellRef(const FormulaNode* node);
     FormulaValue EvaluateRangeRef(const FormulaNode* node);
@@ -512,6 +552,13 @@ private:
     
     // Dirty cells that need recalculation
     std::unordered_set<std::string> dirtyCells_;
+
+    // The cells being calculated right now, outermost first: a formula that
+    // reaches one of them again is circular and reads its current value.
+    std::unordered_set<const SpreadsheetCell*> evaluating_;
+    // A chain of references went deeper than one nested calculation follows;
+    // RecalculateAll then makes another pass.
+    bool nestingLimitReached_ = false;
     
     // Calculation mode
     bool autoCalculate_ = true;
@@ -772,6 +819,31 @@ inline FormulaToken FormulaTokenizer::ReadQuotedSheetReference() {
     return FormulaToken::CellReference(CellAddress::FromString(startStr), startPos);
 }
 
+inline FormulaToken FormulaTokenizer::ReadErrorLiteral() {
+    const int startPos = static_cast<int>(pos_);
+    static const CellErrorType kErrors[] = {
+        CellErrorType::GettingData, CellErrorType::DivisionByZero, CellErrorType::ValueError,
+        CellErrorType::ReferenceError, CellErrorType::NameError, CellErrorType::NumError,
+        CellErrorType::NullError, CellErrorType::NAError, CellErrorType::Spill,
+        CellErrorType::Connect, CellErrorType::Blocked, CellErrorType::Calc};
+    for (CellErrorType error : kErrors) {
+        const std::string text = CellErrorToString(error);
+        if (pos_ + text.size() > formula_.size()) continue;
+        bool same = true;
+        for (size_t i = 0; i < text.size() && same; ++i) {
+            same = std::toupper(static_cast<unsigned char>(formula_[pos_ + i])) ==
+                   static_cast<unsigned char>(text[i]);
+        }
+        if (same) {
+            pos_ += text.size();
+            return FormulaToken::Error(error, startPos);
+        }
+    }
+    ++pos_;   // a lone '#' or an unknown error name
+    while (pos_ < formula_.size() && (IsAlphaNum(Peek()) || Peek() == '/')) ++pos_;
+    return FormulaToken::Error(CellErrorType::NameError, startPos);
+}
+
 inline std::vector<FormulaToken> FormulaTokenizer::Tokenize() {
     std::vector<FormulaToken> tokens;
     
@@ -783,6 +855,9 @@ inline std::vector<FormulaToken> FormulaTokenizer::Tokenize() {
     while (pos_ < formula_.size()) {
         SkipWhitespace();
         if (pos_ >= formula_.size()) break;
+        // Every pass consumes at least one character (see the end of the
+        // loop): a reader that stopped without moving would spin forever.
+        const size_t passStart = pos_;
         
         char c = Peek();
         int startPos = static_cast<int>(pos_);
@@ -797,7 +872,10 @@ inline std::vector<FormulaToken> FormulaTokenizer::Tokenize() {
             // Single-quoted, sheet-qualified reference: 'Sheet Name'.A1
             tokens.push_back(ReadQuotedSheetReference());
         }
-        else if (IsAlpha(c) || c == '$' || c == '#') {
+        else if (c == '#') {
+            tokens.push_back(ReadErrorLiteral());
+        }
+        else if (IsAlpha(c) || c == '$') {
             tokens.push_back(ReadIdentifier());
         }
         else if (c == '(') {
@@ -837,6 +915,7 @@ inline std::vector<FormulaToken> FormulaTokenizer::Tokenize() {
         else {
             ++pos_;  // Skip unknown character
         }
+        if (pos_ == passStart) ++pos_;
     }
     
     tokens.push_back(FormulaToken(FormulaTokenType::EndOfFormula, "", static_cast<int>(pos_)));
@@ -980,6 +1059,13 @@ inline bool SpreadsheetFormula::DependsOnRange(const CellRange& range) const {
 
 inline SpreadsheetFormulaEngine::SpreadsheetFormulaEngine() {
     evaluator_ = std::make_unique<FormulaEvaluator>(functionLibrary_);
+    // A reference to a formula cell not yet calculated calculates it first,
+    // in its own sheet's context, and then carries on in the caller's.
+    evaluator_->SetFormulaCellResolver([this](SpreadsheetCell* cell, SpreadsheetSheet* sheet) {
+        SpreadsheetSheet* caller = evaluator_->GetCurrentSheet();
+        EvaluateCell(cell, sheet);
+        evaluator_->SetCurrentSheet(caller);
+    });
 }
 
 inline SpreadsheetFormulaEngine::~SpreadsheetFormulaEngine() = default;

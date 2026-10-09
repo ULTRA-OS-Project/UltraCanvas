@@ -3636,6 +3636,30 @@ message(STATUS "    Test registered: FilerVolumeSpaceTest")
 
 message(STATUS "")
 
+# ===== SPREADSHEET FORMULA ENGINE TEST =====
+# References to formula cells (same and other sheets, missing sheets), number
+# to text, error literals in the tokenizer, Excel's Sheet!A1 syntax through an
+# .xlsx round trip, and the Excel-compatible function library. Needs the full
+# library (the spreadsheet element and its formula engine).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SpreadsheetFormulaEngineTest...")
+    add_executable(SpreadsheetFormulaEngineTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetFormulaEngineTest.cpp
+    )
+    target_include_directories(SpreadsheetFormulaEngineTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SpreadsheetFormulaEngineTest PRIVATE cxx_std_20)
+    target_link_libraries(SpreadsheetFormulaEngineTest PRIVATE UltraCanvas)
+    set_target_properties(SpreadsheetFormulaEngineTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SpreadsheetFormulaEngineTest COMMAND SpreadsheetFormulaEngineTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(SpreadsheetFormulaEngineTest PROPERTIES TIMEOUT 120)
+    message(STATUS "    Test registered: SpreadsheetFormulaEngineTest")
+else()
+    message(STATUS "  SpreadsheetFormulaEngineTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILER FORMAT LIST TEST =====
 # The list of files behind Display > Thumbnails and Display > Detail view has
 # to hold every format the FileLoader inventory reports for this build, filed
