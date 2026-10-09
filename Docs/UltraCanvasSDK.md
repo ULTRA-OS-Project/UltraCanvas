@@ -40,7 +40,7 @@ https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/Ultra
 That is what UltraCanvasStart's Project page fetches with its *Download*
 button, for the platform and architecture it runs on and the version it was
 built from. UltraCanvasStart itself is on the same release, on its own, as
-`UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.gz` on Linux, a `.zip` on
+`UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.xz` on Linux, a `.zip` on
 Windows, a signed and notarized `.dmg` on macOS): the application, the
 libraries it loads and nothing else, for a computer that has neither the
 toolchain nor a clone yet (`Apps/UltraCanvasStart/README.md`). The workflow

@@ -564,9 +564,16 @@ fix_install_names() {
         dep_basename=$(basename "$dep")
 
         if [ -f "$frameworks_dir/$dep_basename" ]; then
+            # A library built without header padding (mupdf, croco) has room
+            # for a few longer load commands and then none; the reference
+            # then stays as it was, @rpath/<name>, and the run path each
+            # executable carries resolves it (build_app_bundle). Said in the
+            # log rather than swallowed: on 2026-10-09 eight such references
+            # went unnoticed until a bundle built from the suite checked them.
             install_name_tool -change "$dep" \
                 "$fw_ref/$dep_basename" \
-                "$binary" 2>/dev/null || true
+                "$binary" 2>/dev/null \
+                || echo "  $(basename "$binary") keeps $dep (install_name_tool could not lengthen it; the run path resolves it)"
         fi
     done
 }
