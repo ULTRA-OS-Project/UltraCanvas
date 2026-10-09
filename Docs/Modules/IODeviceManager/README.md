@@ -139,6 +139,14 @@ comma-separated list of base URLs:
 ULTRACANVAS_ESCL_SCANNERS=http://192.168.1.50/eSCL ./MyApp
 ```
 
+Every backend that serves a category is searched. To search only some - to
+leave out SANE, which probes every port it knows of, where only network
+scanners are used - name them in `ULTRACANVAS_DEVICE_BACKENDS`:
+
+```sh
+ULTRACANVAS_DEVICE_BACKENDS=eSCL,IPP ./MyApp
+```
+
 ### Network Printers
 
 IPP Everywhere, AirPrint and Mopria printers need no driver: they are found
