@@ -584,7 +584,31 @@ jobs:
           # and MuPDF's USE_SYSTEM_* builds.
           scripts/ci-apt.sh install libjbig2dec0-dev libmujs-dev libgumbo-dev libopenjp2-7-dev libjpeg-dev
           MUPDF_VER=1.23.10
-          curl -fsSL "https://mupdf.com/downloads/archive/mupdf-${MUPDF_VER}-source.tar.gz" | tar xz
+          # The source archive comes from mupdf.com alone (the GitHub mirror
+          # carries no release tarball with the third-party sources), and on
+          # 2026-10-09 one connection to it timed out after 135 s and failed
+          # the leg before a line was compiled. So the download gets what the
+          # apt step has: a short connect timeout, a stall watchdog (under
+          # 1 byte/s for 120 s ends the transfer), curl's own retries on any
+          # error, and three attempts on top with a growing pause. The
+          # archive is downloaded to a file and unpacked afterwards, so a
+          # truncated transfer never reaches tar.
+          MUPDF_TAR="mupdf-${MUPDF_VER}-source.tar.gz"
+          for attempt in 1 2 3; do
+            rm -f "$MUPDF_TAR"
+            if curl -fsSL --connect-timeout 20 --speed-time 120 --speed-limit 1 \
+                    --retry 3 --retry-all-errors --retry-delay 10 \
+                    -o "$MUPDF_TAR" "https://mupdf.com/downloads/archive/$MUPDF_TAR"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::could not download $MUPDF_TAR from mupdf.com in 3 attempts"
+              exit 1
+            fi
+            echo "download of $MUPDF_TAR failed (attempt $attempt of 3); retrying in $((attempt * 20)) s"
+            sleep $((attempt * 20))
+          done
+          tar xzf "$MUPDF_TAR"
           make -C "mupdf-${MUPDF_VER}-source" -j"$(nproc)" \
             HAVE_X11=no HAVE_GLUT=no \
             USE_SYSTEM_FREETYPE=yes USE_SYSTEM_HARFBUZZ=yes USE_SYSTEM_LIBJPEG=yes USE_SYSTEM_OPENJPEG=yes \
@@ -1295,6 +1319,16 @@ jobs:
         if: runner.os == 'Windows'
         run: ./package-win.sh --no-sign
 
+      # UltraCanvasStart on its own: the setup application has to reach a
+      # computer that has nothing yet, so it ships as one small archive beside
+      # the suite, cut out of the suite package just made with exactly the
+      # libraries it loads (scripts/package-ultracanvasstart.sh; the script
+      # runs the packaged application before it is done). On macOS
+      # package-macos.sh --start-app does it, where the signing is.
+      - name: Package UltraCanvasStart on its own (Linux, Windows)
+        if: runner.os != 'macOS'
+        run: scripts/package-ultracanvasstart.sh
+
       # What the package weighs, and where the weight is: the core library
       # (one shared copy of the framework and the modules folded into it), the
       # application executables in total and each one. In the job summary
@@ -1395,7 +1429,7 @@ jobs:
       # so a PR still proves package-macos.sh runs end to end.
       - name: Package (macOS, unsigned - pull requests and manual runs)
         if: runner.os == 'macOS' && env.RELEASE_BUILD != 'true'
-        run: ./package-macos.sh --no-sign --dmg
+        run: ./package-macos.sh --no-sign --dmg --start-app
 
       - name: Package (macOS, signed and notarized - push to main)
         if: runner.os == 'macOS' && env.RELEASE_BUILD == 'true'
@@ -1404,7 +1438,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: ./package-macos.sh --notarize --dmg
+        run: ./package-macos.sh --notarize --dmg --start-app
 
       # Unconditional on macOS, and `|| true` inside: on a run that never
       # imported a certificate there is no keychain to delete, and this must
@@ -1450,18 +1484,36 @@ jobs:
           path: dist/UltraCanvas-Linux-${{ env.VERSION }}-${{ matrix.arch_label }}.tar.gz
           retention-days: 7
 
-  # ===== THE SDKS AS RELEASE ASSETS =====
+      # The archive is already compressed (tar.gz, zip, or the LZMA image),
+      # so no compression here. The macOS image of a pull request is signed
+      # ad hoc and says so in its name, as the suite's does.
+      - name: Upload UltraCanvasStart on its own
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvasStart-${{ runner.os == 'macOS' && 'MacOS' || runner.os }}-${{ env.VERSION }}-${{ matrix.arch_label }}${{ runner.os == 'macOS' && env.RELEASE_BUILD != 'true' && '-unsigned' || '' }}
+          path: |
+            dist-start/*.tar.gz
+            dist-start/*.zip
+            dist-start/*.dmg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  # ===== THE SDKS AND ULTRACANVASSTART AS RELEASE ASSETS =====
   # Workflow artifacts last seven days and need a signed-in browser. Each
   # release build of main - the dispatch changelog-fold.yml sends for its
-  # version commit, or a direct push - also attaches the six SDK archives to
-  # a GitHub release tagged v<version>, where a fixed URL serves them to
-  # anyone: https://github.com/<repo>/releases/download/v<version>/<archive>.
-  # UltraCanvasStart's Project page downloads the one for its platform from
-  # there (Apps/UltraCanvasStart/engine/StartSdk.cpp names the URL). The
-  # release is created with the version's changelog section as its notes; a
-  # re-run of the same version replaces the assets and keeps the release.
+  # version commit, or a direct push - also attaches the six SDK archives
+  # and the six UltraCanvasStart archives to a GitHub release tagged
+  # v<version>, where a fixed URL serves them to anyone:
+  # https://github.com/<repo>/releases/download/v<version>/<archive>.
+  # UltraCanvasStart's Project page downloads the SDK for its platform from
+  # there (Apps/UltraCanvasStart/engine/StartSdk.cpp names the URL), and
+  # UltraCanvasStart itself is what a computer with nothing on it yet
+  # downloads first (Docs/GettingStarted.md). The release is created with
+  # the version's changelog section as its notes; a re-run of the same
+  # version replaces the assets and keeps the release.
   publish-sdk:
-    name: Publish the SDKs as release assets
+    name: Publish the SDKs and UltraCanvasStart as release assets
     needs: build
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true)
     runs-on: ubuntu-latest
@@ -1491,9 +1543,15 @@ jobs:
             echo "::warning::the $VERSION section of $changelog is empty - the release notes point at the commits instead"
           fi
           {
-            echo "UltraCanvas $VERSION - the framework built and installed for each platform, with the"
-            echo "CMake package and, on Windows and macOS, the dependency development files"
-            echo "(Docs/UltraCanvasSDK.md). Unpack one and point CMAKE_PREFIX_PATH at it."
+            echo "UltraCanvas $VERSION."
+            echo
+            echo "- **UltraCanvasStart-<OS>-$VERSION-<arch>**: the setup application on its own, for a"
+            echo "  computer that has nothing yet. It checks and installs the development packages,"
+            echo "  downloads the SDK below, writes a project skeleton and prepares the first prompt"
+            echo "  for an AI assistant (Apps/UltraCanvasStart/README.md)."
+            echo "- **UltraCanvas-SDK-<OS>-$VERSION-<arch>**: the framework built and installed for each"
+            echo "  platform, with the CMake package and, on Windows and macOS, the dependency"
+            echo "  development files (Docs/UltraCanvasSDK.md). Unpack one and point CMAKE_PREFIX_PATH at it."
             echo
             echo "## Changes"
             echo
@@ -1522,7 +1580,14 @@ jobs:
           path: sdk-release
           merge-multiple: true
 
-      - name: Create the release and attach the SDKs
+      - name: Download the UltraCanvasStart artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: UltraCanvasStart-*
+          path: sdk-release
+          merge-multiple: true
+
+      - name: Create the release and attach the SDKs and UltraCanvasStart
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -1530,8 +1595,10 @@ jobs:
         run: |
           set -eu
           ls -la sdk-release
-          count=$(ls sdk-release | wc -l)
+          count=$(ls sdk-release | grep -c '^UltraCanvas-SDK-' || true)
           [ "$count" -eq 6 ] || echo "::warning::$count SDK archives instead of 6"
+          count=$(ls sdk-release | grep -c '^UltraCanvasStart-' || true)
+          [ "$count" -eq 6 ] || echo "::warning::$count UltraCanvasStart archives instead of 6"
           tag="v$VERSION"
           if ! gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
             gh release create "$tag" --repo "${{ github.repository }}" --target "$TARGET" \
