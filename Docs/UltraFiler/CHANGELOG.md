@@ -19,6 +19,17 @@
   start, whether or not they were opened again. They are now shown from the
   cache and checked with the server when they are opened; only subfolders
   that are not cached at all are read ahead.
+- **The connection log button moved into the folder display.** It was a
+  clipboard icon at the right of the status bar, shown whenever any remote
+  drive was configured - over local folders too. It is now a round button
+  with the network symbol in the bottom-left corner of the folder display,
+  shown only while that display is on an FTP / FTPS / SFTP drive; in the
+  split view each display has its own. It sits above the display's info bar
+  and hidden-items strip and follows them as they come and go
+  (`UltraCanvasFilerWidget::GetBottomStripsHeight`, see the framework
+  changelog). Failures not looked at yet turn it red and show as a count on
+  its corner (`UltraCanvasBadge`). The error on the status line and the
+  failure alert now point to it there.
 #### 2026-10-08 *1.68.1*
 - **The folder tree follows the window's size.** The tree is kept to the
   room the file display leaves it (and the preview pane, while it is up) as
