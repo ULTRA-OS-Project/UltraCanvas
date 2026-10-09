@@ -36,7 +36,10 @@ before adding cross-module code.
   **Consult the matching doc before writing code that uses a component —
   do not guess APIs from other frameworks.**
 - `Docs/Modules/<Name>/README.md` — sibling-module docs (UltraAI, UltraNet,
-  UltraDatabase, FileLoader, VirtualFS, OCR, PDF, QRCode, …).
+  UltraDatabase, FileLoader, VirtualFS, OCR, PDF, QRCode, …). The UltraAI,
+  UltraNet and VirtualFS ones are mirrors of `<Name>/README.md`: edit the
+  module's copy and run `python3 scripts/generate_llms_txt.py`; CI fails when
+  a mirror is stale (`MIRRORED_READMES` in the script lists them).
 - `Docs/CSSLayout.md`, `Docs/Dependencies.md` — layout engine and
   third-party dependency policy.
 - `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable

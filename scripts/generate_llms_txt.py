@@ -11,11 +11,29 @@ Deterministic output (stable ordering) so CI can diff against the committed
 files. Standard library only.
 """
 
+import os
 import re
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Module READMEs that live with their code and are mirrored into the docs
+# tree, where the corpus and the Docs/Modules convention expect them. The
+# module copy is the one to edit; this script rewrites the mirror (relative
+# links adjusted to the new location) and CI fails when the mirror is stale,
+# exactly as for llms.txt. Before this, each pair was edited by hand and
+# drifted apart: the UltraAI copies disagreed on the adapters, UltraNet's
+# module copy fell two weeks behind the docs copy, and VirtualFS's two copies
+# each had a section the other lacked.
+MIRRORED_READMES = {
+    "UltraAI/README.md":   "Docs/Modules/UltraAI/README.md",
+    "UltraNet/README.md":  "Docs/Modules/UltraNet/README.md",
+    "VirtualFS/README.md": "Docs/Modules/VirtualFS/README.md",
+}
+MIRROR_NOTICE = ("<!-- Generated from {source} by scripts/generate_llms_txt.py; "
+                 "edit that file, then rerun the script. -->")
+LINK_RE = re.compile(r"\]\(([^)\s]+)\)")
 RAW_BASE = "https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main"
 
 # Files excluded from both outputs: changelogs are long and low-value for
@@ -83,7 +101,7 @@ def extract_description(text: str, limit: int = 220) -> str:
             continue
         if in_metadata:
             continue
-        if s.startswith(("#", "```", "|", "!", "---", ">")):
+        if s.startswith(("#", "```", "|", "!", "---", ">", "<!--")):
             if para:
                 break
             continue
@@ -129,7 +147,33 @@ def collect() -> dict[str, list[Path]]:
     return sections
 
 
+def relocate_links(text: str, source: Path, target: Path) -> str:
+    """Rewrite the relative links of `source` so they resolve from `target`."""
+    def fix(m: re.Match) -> str:
+        href = m.group(1)
+        if "://" in href or href.startswith(("#", "/", "mailto:")):
+            return m.group(0)
+        path, _, anchor = href.partition("#")
+        resolved = (source.parent / path).resolve()
+        rel = os.path.relpath(resolved, target.parent.resolve()).replace(os.sep, "/")
+        return "](" + rel + ("#" + anchor if anchor else "") + ")"
+    return LINK_RE.sub(fix, text)
+
+
+def sync_mirrors() -> None:
+    for src, dst in MIRRORED_READMES.items():
+        source = REPO_ROOT / src
+        target = REPO_ROOT / dst
+        text = source.read_text(encoding="utf-8")
+        mirrored = (MIRROR_NOTICE.format(source=src) + "\n" +
+                    relocate_links(text, source, target))
+        if not target.exists() or target.read_text(encoding="utf-8") != mirrored:
+            target.write_text(mirrored, encoding="utf-8")
+            print(f"{dst}: regenerated from {src}")
+
+
 def main() -> int:
+    sync_mirrors()
     sections = collect()
 
     index = ["# UltraCanvas", "", f"> {SUMMARY}", ""]
