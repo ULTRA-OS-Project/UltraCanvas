@@ -18,10 +18,16 @@
 //    whole title and the sort triangle) and MeasureColumnTextWidth (the
 //    widest text of the column's rows, now - not the widest ever seen).
 //    UltraMail's Date column is fitted with them; it was a fixed 88 px.
+//  - A model outliving its view. The callbacks the view put on the model
+//    pointed back at it, so a change after the view was destroyed called into
+//    freed memory. They now do nothing once the view is gone - without being
+//    taken off the model, which would cut off a sort/filter proxy chained on
+//    after the view. OnModelChanged tells a subclass of every change instead.
 // No window and no display: the view is sized with SetBounds, and text is
 // measured on an offscreen render context.
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListModel.h"
+#include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasRenderContext.h"
 
 #include <cmath>
@@ -250,6 +256,38 @@ static void TestColumnFitMeasurements() {
     CHECK_EQ(view->MeasureColumnTextWidth(ctx.get(), 1, body), 0);
 }
 
+// A view that counts the changes it is told of, in a counter it does not own.
+class CountingView : public UltraCanvasListView {
+public:
+    CountingView(std::shared_ptr<int> counter) : UltraCanvasListView("list"), changes(std::move(counter)) {}
+protected:
+    void OnModelChanged() override { ++*changes; }
+private:
+    std::shared_ptr<int> changes;
+};
+
+static void TestModelOutlivesView() {
+    auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
+    model->SetColumns({ ListColumnDef("Subject", 200) });
+    auto changes = std::make_shared<int>(0);
+    auto view = std::make_shared<CountingView>(changes);
+    view->SetModel(model);
+    model->SetItems({ MultiColumnListItem({ "a" }), MultiColumnListItem({ "b" }) });
+    model->InsertItem(0, MultiColumnListItem({ "c" }));
+    model->RemoveItem(0);
+    model->SetData(ListIndex{ 0, 0 }, ListDataRole::DisplayRole, std::string("a2"));
+    CHECK_EQ(*changes, 4);   // replaced, inserted, removed, changed
+
+    // A proxy chained on after the view keeps a copy of the view's callbacks.
+    auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(model);
+    CHECK_EQ(proxy->GetRowCount(), 2);
+    view.reset();            // the view goes; the model and the proxy stay
+    model->AddItem(MultiColumnListItem({ "d" }));
+    model->SetItems({ MultiColumnListItem({ "e" }) });
+    CHECK_EQ(*changes, 4);   // nothing reached the destroyed view
+    CHECK_EQ(proxy->GetRowCount(), 1);   // and the proxy still follows its source
+}
+
 int main() {
     TestFirstRowBeforeLayout();
     TestLaterRowBeforeLayout();
@@ -259,6 +297,7 @@ int main() {
     TestMultiSelectionShift();
     TestKeyboardFollowsSelectionSetInCode();
     TestColumnFitMeasurements();
+    TestModelOutlivesView();
     if (failures) {
         std::cerr << "ListViewScrollTest: " << failures << " failure(s)\n";
         return 1;
