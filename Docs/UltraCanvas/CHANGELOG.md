@@ -1,3 +1,27 @@
+#### 2026-10-09 *0.9.225*
+- **CI: the MuPDF source download on Linux is retried.** The Linux install
+  step fetched the archive from mupdf.com with one `curl | tar`, so on
+  2026-10-09 one connection that timed out after 135 s failed the leg before
+  a line was compiled. The download now has what the apt step has: a short
+  connect timeout, a stall watchdog, curl's own retries and three attempts
+  with a growing pause, and it goes to a file that is unpacked afterwards,
+  so a truncated transfer never reaches tar.
+- **UltraCanvasStart is a release asset of its own, for each platform.** The
+  setup application sets a computer up for UltraCanvas development, so it
+  has to reach a computer that has neither the toolchain nor a clone - and
+  until now it was only in the suite packages, one of twenty applications in
+  a download of several hundred megabytes, and not in the Linux and macOS
+  suites at all. Every CI leg now cuts it out of the suite package it just
+  made with exactly the libraries it loads: `scripts/package-ultracanvasstart.sh`
+  on Linux (the closure `ldd` resolves inside the bundle's `lib/`) and Windows
+  (the DLLs its import table reaches, with `cacert.pem` for the SDK download),
+  `package-macos.sh --start-app` on macOS (a bundle with its own `Frameworks/`,
+  signed and notarized in a submission of its own). Each script runs the
+  packaged application before it is done. The release build of `main`
+  attaches the six `UltraCanvasStart-<OS>-<version>-<arch>` archives to the
+  release beside the six SDKs; `Docs/GettingStarted.md` opens with the
+  download. The Linux and macOS suites carry UltraCanvasStart too now.
+
 #### 2026-10-09 *0.9.224*
 - **A formula reading another formula cell gets its result, typed.** The
   engine handed a formula cell on as its display text, so `='Data'.B5` of a
