@@ -81,7 +81,8 @@ before adding cross-module code.
   supplying a ten-line Traits type, not a matcher. What the module lacks is
   added to it, so the next caller finds it. `scripts/check_html_reuse.py`
   enforces this in CI (`html-reuse.yml`); `scripts/html_reuse_baseline.txt`
-  lists the sites that predate the rule and only shrinks. A site that must
+  listed the sites that predated the rule; it has been empty since
+  2026-10-08 and stays so. A site that must
   stay says why with `// html-reuse-exempt: <why>`. Doc:
   `Docs/UltraCanvas/UltraCanvasHTMLReader.md`.
 - **Application bootstrap:** apps are built around `UltraCanvasApplication`

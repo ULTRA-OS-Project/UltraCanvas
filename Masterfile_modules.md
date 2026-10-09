@@ -392,7 +392,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
   options)` → `UCRichDocument` through the same parser and cascade
   (`quoteLevel`, `resolveImage`, `baseFontSizePx`, `keepFonts`,
-  `keepColors`). `UCRichDocument::ToHTML` is the writer.
+  `keepColors`, and for a paste `preAsCodeBlock`, `skipWordListLabels`);
+  `dir="rtl"` makes right-to-left paragraphs. `UCRichDocument::FromHTML`
+  (a rich paste) reads through it; `UCRichDocument::ToHTML` is the writer.
 
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
   cross-platform "Open with" service: which applications the OS registers

@@ -1740,12 +1740,16 @@ static void TestHtmlImport() {
         link = link || (r.text == "link" && r.linkTarget == "https://example.com");
     }
     CHECK(bold && italic && red && link);
+    // The page's style sheet applies, as in the browser it was copied from.
+    CHECK(!para.runs.empty() && para.runs[0].color == "#FF0000");
     CHECK(doc.blocks[2].type == RichBlockType::ListItem && !doc.blocks[2].orderedList && doc.blocks[2].listLevel == 0);
     CHECK(doc.blocks[4].type == RichBlockType::ListItem && doc.blocks[4].listLevel == 1
           && UCRichDocument::ConcatenateRunText(doc.blocks[4].runs) == "nested");
     CHECK(doc.blocks[5].type == RichBlockType::ListItem && doc.blocks[5].orderedList
           && UCRichDocument::ConcatenateRunText(doc.blocks[5].runs) == "numbered");
-    CHECK(doc.blocks[6].type == RichBlockType::BlockQuote);
+    // A quote is a quote level, which keeps a quoted list or heading what it is.
+    CHECK(doc.blocks[6].type == RichBlockType::Paragraph && doc.blocks[6].quoteLevel == 1
+          && UCRichDocument::ConcatenateRunText(doc.blocks[6].runs) == "quoted");
     CHECK(doc.blocks[7].type == RichBlockType::CodeBlock
           && UCRichDocument::ConcatenateRunText(doc.blocks[7].runs) == "line one\nline two");
     const RichDocBlock& table = doc.blocks[8];
@@ -1768,14 +1772,22 @@ static void TestHtmlImport() {
               && word.blocks[0].runs.back().fontFamily == "Arial");
     }
 
-    // A picture inlined as a data: URI, and our own HTML read back.
-    const std::string png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+    // A picture inlined as a data: URI (4 x 3 px: a 1 x 1 one is a tracking
+    // pixel, left out), and our own HTML read back.
+    const std::string png = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAAEElEQVR42mM4IScHRww4OQD1xwwx7+oCFgAAAABJRU5ErkJggg==";
     UCRichDocument pictured = UCRichDocument::FromHTML("<p>see <img src=\"data:image/png;base64," + png + "\" alt=\"dot\" width=\"40\"></p>");
     CHECK(pictured.media.size() == 1 && pictured.blocks.size() == 1);
     if (!pictured.blocks.empty()) {
         const auto& runs = pictured.blocks[0].runs;
         CHECK(runs.size() == 2 && runs[1].IsInlineImage() && runs[1].imageAltText == "dot" && runs[1].imageWidthPt == 30.0f);
     }
+    // A picture the clipboard only links to is its alt text.
+    UCRichDocument linked = UCRichDocument::FromHTML("<p><img src=\"https://example.com/logo.png\" alt=\"Logo\"> text</p>");
+    CHECK(linked.media.empty() && linked.blocks.size() == 1
+          && UCRichDocument::ConcatenateRunText(linked.blocks[0].runs) == "[Logo] text");
+    // Right to left: dir on the paragraph or on an element around it.
+    UCRichDocument rtl = UCRichDocument::FromHTML("<div dir=\"rtl\"><p>right</p><h2>heading</h2></div><p>left</p>");
+    CHECK(rtl.blocks.size() == 3 && rtl.blocks[0].rightToLeft && rtl.blocks[1].rightToLeft && !rtl.blocks[2].rightToLeft);
     UCRichDocument ours = UCRichDocument::FromMarkdown("# Title\n\nA **bold** word and *italics*.\n\n- one\n- two\n");
     UCRichDocument back = UCRichDocument::FromHTML(ours.ToHTML());
     CHECK_EQ(back.ToMarkdown(), ours.ToMarkdown());

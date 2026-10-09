@@ -95,8 +95,9 @@
 // GetThumbnailCacheStats also counts the thumbnails still waiting, being
 // made and given up on. A thumbnail job running past 20 s gets another
 // worker started beside it, so one stuck file cannot stop every thumbnail.
-// Version: 1.37.0
-// Last Modified: 2026-10-03
+// TextPreviewLines gives the lines a document's preview page shows.
+// Version: 1.38.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -955,6 +956,14 @@ namespace UltraCanvas {
         // for the same size.
         static std::vector<Rect2Di> FolderPreviewCardRects(const Rect2Di& rect,
                                                            size_t count);
+        // The lines a document's preview page shows: the start of its text,
+        // a line per paragraph (an .html file as a browser lays it out), at
+        // most a page of them; `tabular` when they are rows with tab-separated
+        // cells (CSV, a spreadsheet). False when this build cannot read the
+        // format - the entry then keeps its type glyph. Public so it can be
+        // tested.
+        static bool TextPreviewLines(const std::string& path,
+                                     std::vector<std::string>& lines, bool& tabular);
 
         // Show the "Open Path" context-menu item as the menu's first entry
         // (useful when the widget displays a search result rather than a plain
