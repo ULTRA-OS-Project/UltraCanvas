@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.18.0 - the Date column is as wide as its widest date plus 6 px, and
+//                   never narrower than its header's caption and sort triangle
 // Version: 0.17.0 - Always trust / Block this sender / Block everything from the
 //                   domain in both menus; RescanSender (off the UI thread)
 // Version: 0.16.0 - the reading pane's sender menu: copy the address, the
@@ -74,7 +76,8 @@ namespace {
 constexpr int kFromWidth    = 160;
 constexpr int kBadgeWidth   = 26;   // the sender badge column, left of Subject
 constexpr int kSubjectMin   = 140;
-constexpr int kDateWidth    = 88;
+constexpr int kDateWidth    = 88;   // until the dates are measured (FitDateColumn)
+constexpr int kDateColumn   = 3;
 constexpr int kRowHeight    = 22;
 constexpr int kHeaderHeight = 22;
 constexpr int kSplitterGap  = 8;   // the page shows through between the cards
@@ -162,6 +165,36 @@ public:
     explicit MessageListView(const std::string& id) : UltraCanvasListView(id) {}
 
     std::shared_ptr<UltraCanvasMultiColumnListModel> model;
+    // The dates' font and the gap the delegate leaves before them: the Date
+    // column is the widest date plus that gap (FitDateColumn).
+    float dateFontSize = 9.0f;
+    int   dateTextGap  = 6;
+
+    // Chained onto the model's signals after SetModel connected the view's own
+    // (as UltraCanvasListSortFilterProxy chains them): any change of the rows
+    // has the Date column measured again at the next paint.
+    void WatchModel() {
+        if (!model) return;
+        auto dataChanged = model->onDataChanged;
+        model->onDataChanged = [this, dataChanged]() {
+            dateWidthStale = true;
+            if (dataChanged) dataChanged();
+        };
+        for (auto* slot : { &model->onRowChanged, &model->onRowInserted, &model->onRowRemoved }) {
+            auto previous = *slot;
+            *slot = [this, previous](int row) {
+                dateWidthStale = true;
+                if (previous) previous(row);
+            };
+        }
+    }
+
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+        // Measured where a render context is certain, before the rows are
+        // painted at the new widths.
+        if (dateWidthStale && ctx) FitDateColumn(ctx);
+        UltraCanvasListView::Render(ctx, dirtyRect);
+    }
 
     void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override {
         UltraCanvasListView::Arrange(finalRect, ctx);
@@ -173,16 +206,36 @@ public:
     }
 
 private:
+    bool dateWidthStale = true;
+    int  dateWidth = kDateWidth;
+
+    // The Date column: its widest date plus the gap before it - in bold, as
+    // unread mail shows it, so marking a message read or unread never moves
+    // the column - and at least what its header needs for the caption and the
+    // sort triangle, measured as the caption reads in any language. The
+    // month names come from strftime, so they are measured too, not assumed.
+    void FitDateColumn(IRenderContext* ctx) {
+        dateWidthStale = false;
+        if (!model || model->GetColumnCount() <= kDateColumn) return;
+        FontStyle bold;
+        bold.fontSize = dateFontSize;
+        bold.fontWeight = FontWeight::Bold;
+        const int dates = MeasureColumnTextWidth(ctx, kDateColumn, bold);
+        dateWidth = std::max(dates > 0 ? dates + dateTextGap : 0, MeasureHeaderWidth(ctx, kDateColumn));
+        FitColumns();
+    }
+
     void FitColumns() {
         if (!model || model->GetColumnCount() < 4) return;
         if (ColumnsUserAdjusted()) return;   // once dragged, keep the user's widths
         const int w = static_cast<int>(GetWidth());
         if (w <= 0) return;
+        if (GetColumnWidth(kDateColumn) != dateWidth) SetColumnWidth(kDateColumn, dateWidth);
         // Subject fills the width left by From/badge/Date (their effective
         // widths), leaving room for the vertical scrollbar. Uses the per-view
         // override so it composes with interactive resize instead of rewriting
         // the model.
-        int subj = w - GetColumnWidth(0) - GetColumnWidth(1) - GetColumnWidth(3) - 20;
+        int subj = w - GetColumnWidth(0) - GetColumnWidth(1) - GetColumnWidth(kDateColumn) - 20;
         if (subj < kSubjectMin) subj = kSubjectMin;
         if (GetColumnWidth(2) == subj) return;   // no change: no churn
         SetColumnWidth(2, subj);
@@ -205,6 +258,9 @@ public:
     int   boldFromColumn = 2;
     // The subject column, which ends in a paperclip for mail with attachments.
     int   subjectColumn = 2;
+    // The date column, fitted to its text plus the gap before it
+    // (MessageListView::FitDateColumn): no padding after the text.
+    int   dateColumn = kDateColumn;
     std::string clipIcon;
     // Asked for the icon a painted badge lacks: only rows on screen are
     // painted, so only their senders' icons are fetched.
@@ -243,7 +299,7 @@ public:
         if (text.empty()) return;
 
         const int textX  = option.columnX + textPadding;
-        int availW = option.columnWidth - textPadding * 2;
+        int availW = option.columnWidth - textPadding * (column == dateColumn ? 1 : 2);
         if (availW <= 0) return;
 
         const bool haveState = states && row >= 0 && row < static_cast<int>(states->size());
@@ -406,6 +462,9 @@ void MailView::BuildListBox() {
     d->wantIcon    = [this](const std::string& key) { if (iconRequester_) iconRequester_(key); };
     delegate_ = d;
     list_->SetDelegate(delegate_);
+    lv->dateFontSize = d->fontSize;
+    lv->dateTextGap  = d->textPadding;
+    lv->WatchModel();
 
     list_->onSelectionChanged = [this](const std::vector<int>& rows) {
         // A selection set by code is shown (or not) by the code that set it.

@@ -22,6 +22,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSeparator.h"
 #include "UltraCanvasSplitPane.h"
+#include "UltraCanvasUtils.h"          // OpenURL
 
 #include <algorithm>
 #include <cstring>
@@ -672,9 +673,28 @@ void UltraCleanerWindow::StartScan() {
                           " location(s) could not be read — a run with more "
                           "rights would see more.";
             }
+            const std::string blocked = BlockedAccessAdvice(report_);
+            if (!blocked.empty()) status += "  " + blocked;
             SetStatus(status);
+            OfferBlockedAccessSettings(blocked);
         });
     }).detach();
+}
+
+void UltraCleanerWindow::OfferBlockedAccessSettings(const std::string& advice) {
+    const std::string url = BlockedAccessSettingsUrl();
+    if (advice.empty() || url.empty() || blockedAccessOffered_) return;
+    blockedAccessOffered_ = true;
+
+    // Only macOS has a page to open (BlockedAccessSettingsUrl), so the
+    // question can name it.
+    UltraCanvasDialogManager::ShowConfirmation(
+        advice + "\n\nOpen Full Disk Access in System Settings now?",
+        "Some caches are out of reach",
+        [url](bool confirmed) {
+            if (confirmed) OpenURL(url);
+        },
+        window_.get());
 }
 
 void UltraCleanerWindow::StopWork() {

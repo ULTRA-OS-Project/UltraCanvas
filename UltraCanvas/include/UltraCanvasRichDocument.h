@@ -4,9 +4,9 @@
 // Markdown/HTML/plain-text serializers consume it, so no format is ever
 // coupled directly to a UI element. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md.
 // The model is deliberately UI-free: only std types, no framework headers.
-// FromHTML reads through the HTMLReader's importer.
+// FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
-// Version: 1.3.2
+// Version: 1.3.3
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
@@ -745,7 +745,8 @@ public:
     // pictures inlined as data: URIs (one only linked to becomes its alt
     // text), and character formatting from tags and CSS (bold, italic,
     // underline, strike-through, sub/superscript, colour, highlight, font,
-    // size). Word's typed-out list labels are left out and a no-break space
+    // size). Word's list paragraphs are list items (their typed labels the
+    // markers; a numbered heading's number is left out) and a no-break space
     // is a space. Anything else (scripts, forms, unknown markup) is skipped,
     // its text kept.
     static UCRichDocument FromHTML(const std::string& html);

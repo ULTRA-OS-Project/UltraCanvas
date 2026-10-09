@@ -142,6 +142,47 @@ struct ListViewStyle {
 };
 ```
 
+### Column widths
+
+```cpp
+void SetColumnWidth(int column, int width);   // this view only; the model keeps ListColumnDef::width
+int  GetColumnWidth(int column) const;        // the effective width
+bool ColumnsUserAdjusted() const;             // the user dragged a border: stop fitting
+
+// What fitting a column to its content takes, measured on the context the
+// view is painted on:
+int MeasureHeaderWidth(IRenderContext* ctx, int column) const;   // whole title + sort triangle
+int MeasureColumnTextWidth(IRenderContext* ctx, int column, const FontStyle& font) const;
+```
+
+`MeasureHeaderWidth` is the narrowest width at which the column's header shows
+its whole title in `headerFontSize`, with room for the sort triangle whether or
+not the column is the sorted one - so a fitted column keeps its width when the
+order changes, and a translated title is measured as it reads.
+`MeasureColumnTextWidth` is the widest `DisplayRole` text of the column's rows
+in `font`, without a delegate's padding; each distinct text is measured once
+and remembered, so a column of thousands of dates costs a few hundred
+measurements. UltraMail fits its Date column this way: the widest date in bold
+plus the 6 px its delegate leaves before the text, and at least the header.
+
+```cpp
+// A Date column (column 3) as wide as its widest date plus a 6 px gap, never
+// narrower than its header - measured where a render context is at hand.
+class DateFittedList : public UltraCanvasListView {
+public:
+    using UltraCanvasListView::UltraCanvasListView;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+        if (ctx && !ColumnsUserAdjusted()) {
+            FontStyle font;
+            font.fontSize = 10;
+            const int dates = MeasureColumnTextWidth(ctx, 3, font);
+            SetColumnWidth(3, std::max(dates + 6, MeasureHeaderWidth(ctx, 3)));
+        }
+        UltraCanvasListView::Render(ctx, dirtyRect);
+    }
+};
+```
+
 ### Scrolling
 
 ```cpp

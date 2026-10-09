@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.20.0 - the newline right after <pre> / <listing> / <textarea>
 // Version: 1.19.0 - foreign content: inline <svg> / <math> keep their vocabulary's case
 // Version: 1.18.0 - the selector matcher on a tree that is not the DOM (an SVG-shaped one)
 // Version: 1.17.0 - the !important cascade: inline !important beats a style
@@ -98,6 +99,25 @@ static void TestParserBasics() {
         CHECK(b != nullptr);
         if (b) CHECK_EQ(b->TextContent(), std::string("bold"));
     }
+}
+
+// The newline right after <pre> / <listing> / <textarea> is not content, as
+// in HTML's tree builder; a second one, or one after a child's start tag, is.
+static void TestParserPreNewline() {
+    Parser parser;
+    auto preText = [&](const std::string& html, const char* tag = "pre") {
+        Document doc = parser.Parse(html);
+        Node* element = doc.root ? doc.root->FindFirst(tag) : nullptr;
+        return element ? element->TextContent() : std::string("<no element>");
+    };
+    CHECK_EQ(preText("<pre>\nline one\nline two</pre>"), std::string("line one\nline two"));
+    CHECK_EQ(preText("<pre>\r\nline</pre>"), std::string("line"));
+    CHECK_EQ(preText("<pre>\n\nafter a blank line</pre>"), std::string("\nafter a blank line"));
+    CHECK_EQ(preText("<pre>no newline</pre>"), std::string("no newline"));
+    CHECK_EQ(preText("<pre><code>\nkept</code></pre>"), std::string("\nkept"));
+    CHECK_EQ(preText("<listing>\nlisted</listing>", "listing"), std::string("listed"));
+    CHECK_EQ(preText("<textarea>\ntyped</textarea>", "textarea"), std::string("typed"));
+    CHECK_EQ(preText("<div>\nkept</div>", "div"), std::string("\nkept"));
 }
 
 static void TestParserFragmentAndRecovery() {
@@ -1399,6 +1419,7 @@ int main() {
     TestSelectorMatchingOnForeignTree();
     TestParserBasics();
     TestParserFragmentAndRecovery();
+    TestParserPreNewline();
     TestParserXhtmlAndEntities();
     TestParserUnquotedAttributes();
     TestParserForeignContent();

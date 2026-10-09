@@ -1768,6 +1768,8 @@ static void TestHtmlImport() {
     CHECK(word.blocks.size() == 1);
     if (!word.blocks.empty()) {
         CHECK_EQ(UCRichDocument::ConcatenateRunText(word.blocks[0].runs), std::string("Word item"));
+        // Word's list paragraph is a list item, its typed "1." the marker.
+        CHECK(word.blocks[0].type == RichBlockType::ListItem && word.blocks[0].orderedList);
         CHECK(!word.blocks[0].runs.empty() && word.blocks[0].runs.back().fontSizePt == 14.0f
               && word.blocks[0].runs.back().fontFamily == "Arial");
     }
@@ -1815,6 +1817,13 @@ static void TestLeadingLineBreak() {
     UCRichDocument back = UCRichDocument::FromMarkdown(doc.ToMarkdown());
     CHECK(!back.blocks.empty() && back.blocks[0].type == RichBlockType::CodeBlock
           && UCRichDocumentEditor::RunsText(back.blocks[0].runs) == "\nint a;\nreturn a;");
+
+    // A <pre> that starts with a blank line (HTML drops only the newline right
+    // after the tag) keeps that line through the importer and back out.
+    UCRichDocument fromHtml = UCRichDocument::FromHTML("<pre>\n\nint a;\nreturn a;</pre>");
+    CHECK(!fromHtml.blocks.empty() && fromHtml.blocks[0].type == RichBlockType::CodeBlock
+          && UCRichDocumentEditor::RunsText(fromHtml.blocks[0].runs) == "\nint a;\nreturn a;");
+    CHECK(fromHtml.ToHTML().find("<pre><code>\nint a;\nreturn a;</code></pre>") != std::string::npos);
 
     // A table cell's copied text is the text the cell shows.
     RichDocBlock table;

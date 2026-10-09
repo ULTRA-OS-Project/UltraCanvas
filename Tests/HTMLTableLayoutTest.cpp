@@ -9,6 +9,11 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.18.0 - LinkedIn's mail: a height-only <img> takes the picture's
+//                  shape, width and height keep theirs when shrunk, the picture
+//                  is stretched only into the author's shape; a width="50%"
+//                  cell's row fits its content; height="100%" in a cell
+//                  without a height is auto
 // Version: 1.17.0 - the hovered link is reported (onLinkHovered)
 // Version: 1.16.0 - merged with main's 1.2.0-1.3.0
 // Version: 1.15.0 - letter-spacing
@@ -34,7 +39,7 @@
 //                  width is shrink-to-fit; a list marker starts the item's
 //                  first block; vertical-align: top on side-by-side boxes
 // Version: 1.1.0 - background pictures, margin: auto, @media width
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -1424,6 +1429,154 @@ void TestInlineBoxTop() {
     CheckNear(shortCol->rect.y, tallCol->rect.y, "both columns start at the top");
 }
 
+// LinkedIn's "network conversations" mail (2026-10). Every <img> is the
+// 40x20 test picture.
+//  - The header icons are <img height="25"> alone, in an inline-block link
+//    in a right-aligned cell: as wide as the picture's shape makes them,
+//    and never stretched. They took the picture's own width (a 2x icon:
+//    twice the width it is shown at), and object-fit: fill stretched them.
+//  - The logo, <img width="101" height="37"> in an 84px link, keeps its
+//    shape when the link narrows it, instead of keeping its height.
+//  - The footer's picture is width:100% in a width="50%" cell. The row was
+//    measured with the cell's content at half the cell's width (the cell's
+//    own 50% taken again), so the row was half the picture's height and the
+//    picture hung out over the text below.
+//  - The cell beside it holds a table with height:100%: with no height set
+//    on the cell it is auto, so its rows stay together.
+void TestLinkedInMailPictures() {
+    std::printf("LinkedIn mail: icon and logo shapes, picture in a 50%% cell\n");
+    struct Built {
+        std::shared_ptr<Host> host;
+        std::shared_ptr<UltraCanvasContainer> root;
+        std::vector<Placed> all;
+        const Placed* First(const char* prefix) const {
+            for (const auto& p : all)
+                if (p.element->GetIdentifier().rfind(prefix, 0) == 0) return &p;
+            return nullptr;
+        }
+    };
+    auto build = [](const std::string& html, float width) {
+        Built b;
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        opts.resourceLoader = [](const std::string&) { return BackgroundPicture40x20(); };
+        HTML::ElementBuilder builder;
+        b.host = std::make_shared<Host>();
+        b.host->Adopt(CreateRenderContext(Size2Di(static_cast<int>(width), 600), nullptr));
+        b.root = builder.Build(html, opts).root;
+        if (!b.root) return b;
+        b.root->size.width = CSSLayout::Dimension::Px(width);
+        b.host->AddChild(b.root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = width;
+        ctx.viewportHeight = 600;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, width },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        b.root->Measure(mc, ctx);
+        b.root->Arrange(Rect2Df{ 0, 0, width, b.root->measured.measuredHeight }, ctx);
+        Collect(b.root.get(), 0, 0, b.all);
+        return b;
+    };
+    auto fitOf = [](const Placed* p) {
+        auto* img = p ? dynamic_cast<UltraCanvasImageElement*>(p->element) : nullptr;
+        return img ? img->GetFitMode() : ImageFitMode::NoScale;
+    };
+
+    // The header icon: 10px high, so 20 wide - not the picture's 40.
+    Built icon = build(
+        "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='left'>logo</td>"
+        "<td align='right'><table width='auto' cellspacing='0' cellpadding='0'><tr>"
+        "<td style='padding-left:4px;padding-right:4px'>"
+        "<a href='https://x.example' style='display:inline-block;height:10px'>"
+        "<img src='p.png' height='10' style='height:10px'></a></td></tr></table></td></tr></table>", 400.f);
+    const Placed* img = icon.First("html_img_");
+    Check(img != nullptr, "header icon built");
+    if (img) {
+        CheckNear(img->rect.width, 20.f, "height alone: the width follows the picture's shape");
+        CheckNear(img->rect.height, 10.f, "the height given");
+        Check(fitOf(img) == ImageFitMode::Contain, "drawn in its own shape, not stretched");
+        CheckNear(img->rect.x + img->rect.width, 396.f, "at the right edge, before the cell's padding");
+    }
+    // Taller than the picture: the width grows with it.
+    Built tall = build("<p><img src='p.png' style='height:30px'></p>", 400.f);
+    img = tall.First("html_img_");
+    if (img) {
+        CheckNear(img->rect.width, 60.f, "height: 30px - 60 wide");
+        CheckNear(img->rect.height, 30.f, "and 30 high");
+    }
+
+    // The logo: 100x50 given, the link 84 wide.
+    Built logo = build(
+        "<a href='https://x.example' style='display:inline-block;width:84px'>"
+        "<img src='p.png' width='100' height='50' style='height:50px;width:100px'></a>", 400.f);
+    img = logo.First("html_img_");
+    Check(img != nullptr, "logo built");
+    if (img) {
+        CheckNear(img->rect.width, 84.f, "narrowed to its link");
+        CheckNear(img->rect.height, 42.f, "its height in proportion, not kept at 50");
+    }
+    // A box of the author's own shape is stretched into, as CSS does - and
+    // shrinks in that shape.
+    Built shaped = build("<div style='width:50px'><img src='p.png' width='100' height='20'></div>", 400.f);
+    img = shaped.First("html_img_");
+    if (img) {
+        Check(fitOf(img) == ImageFitMode::Fill, "width and height of another shape: stretched");
+        CheckNear(img->rect.width, 50.f, "narrowed");
+        CheckNear(img->rect.height, 10.f, "in the 5:1 box's shape");
+    }
+
+    // The footer: the picture's row is as tall as the picture, and the text
+    // after the table starts below it.
+    Built footer = build(
+        "<table width='100%' cellspacing='0' cellpadding='0'><tr>"
+        "<td style='padding-left:24px'><table width='100%' height='100%' style='height:100%'>"
+        "<tr><td>Install</td></tr><tr><td>Stay updated</td></tr></table></td>"
+        "<td width='50%' style='width:50%'><img src='p.png' style='display:block;width:100%'></td>"
+        "</tr></table><p>This email was intended</p>", 400.f);
+    img = footer.First("html_img_");
+    const Placed* below = LabelWith(footer.all, "This email was intended");
+    Check(img != nullptr && below != nullptr, "footer built");
+    if (img && below) {
+        CheckNear(img->rect.width, 200.f, "width:100% of the 50% cell");
+        CheckNear(img->rect.height, 100.f, "in proportion");
+        Check(below->rect.y >= img->rect.y + img->rect.height - 0.5f,
+              "the text below the table starts below the picture");
+    }
+    const Placed* install = LabelWith(footer.all, "Install");
+    const Placed* stay = LabelWith(footer.all, "Stay updated");
+    if (install && stay) {
+        Check(stay->rect.y - install->rect.y < 25.f,
+              "height:100% in a cell without a height: the rows stay together");
+        Check(install->rect.y > 20.f, "and the cell centres them beside the picture");
+    }
+    // A cell that sets a height is what such a percentage is a share of.
+    Built setHeight = build(
+        "<table width='100%' cellspacing='0' cellpadding='0'><tr>"
+        "<td height='100'><table width='100%' height='100%'>"
+        "<tr><td>Install</td></tr><tr><td>Stay updated</td></tr></table></td>"
+        "<td width='50%'>x</td></tr></table>", 400.f);
+    install = LabelWith(setHeight.all, "Install");
+    stay = LabelWith(setHeight.all, "Stay updated");
+    if (install && stay)
+        Check(stay->rect.y - install->rect.y > 35.f, "a cell with a height: the table fills it");
+
+    // Text in a width="50%" cell wraps at the cell's width, so its row is
+    // as tall as the text - not as tall as the text at half that width.
+    Built text = build(
+        "<table width='100%' cellspacing='0' cellpadding='0'><tr><td>x</td>"
+        "<td width='50%'>Some text that is long enough to wrap onto a second line "
+        "in a cell two hundred pixels wide</td></tr></table>", 400.f);
+    const Placed* words = LabelWith(text.all, "Some text");
+    std::vector<Placed> cells;
+    for (const auto& p : text.all)
+        if (p.element->GetIdentifier().rfind("html_td_", 0) == 0) cells.push_back(p);
+    if (words && cells.size() == 2) {
+        CheckNear(cells[1].rect.width, 200.f, "the 50% cell");
+        CheckNear(words->rect.width, 200.f, "its text as wide as the cell");
+        CheckNear(cells[1].rect.height, words->rect.height, "the row as tall as the text", 1.5f);
+    }
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("HTMLTableLayoutTest");
     TestSharedColumns();
@@ -1450,6 +1603,7 @@ int main() {
     TestShrinkToFitTable();
     TestMarkerInBlock();
     TestInlineBoxTop();
+    TestLinkedInMailPictures();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

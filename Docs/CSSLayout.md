@@ -294,6 +294,16 @@ records on each child as `percentHeightBase` (so `Pct(50)` inside a box of
 `Px(200)` is 100, and 50% of that inside it 50). With neither, as in CSS, a
 percentage height is auto and a percentage limit limits nothing.
 
+An `Exact` constraint on **one** axis is normally only a fill hint: a block
+offers its children its content width that way, and a child's own `size.width`
+(`Pct(50)`, `Px(120)`) still wins. A parent that decides a child's width itself
+says so with `widthSetByParent = true` on the child; an `Exact` width from it is
+then the child's used width, exactly as an `Exact` on both axes always is. The
+table engine sets it on its cells: a cell's own px / % width has already gone
+into its column, and the row's height is measured with the cell's content at
+the column's width - not at a cell of `width="50%"` taking its 50% a second
+time (`Tests/HTMLTableLayoutTest.cpp`, *LinkedIn mail*).
+
 A `Dimension` can carry pixels on top of its value, CSS's `calc(50% - 20px)`:
 `Dimension::PctPlus(50, -20)`, or any `Dimension` with `offsetPx` set. The
 offset is added when the value resolves (px, %, vw / vh, em / rem); a percentage

@@ -1242,8 +1242,9 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
 
 UCRichDocument UCRichDocument::FromHTML(const std::string& html) {
     // A paste reads through the HTMLReader's importer, the one HTML reader of
-    // the framework: <pre> is a code block, and the list labels Word types
-    // out are left out.
+    // the framework: <pre> is a code block, and the number Word types out in
+    // front of a numbered heading is left out (its list paragraphs are list
+    // items anyway, their labels the markers).
     HTMLRichImportOptions options;
     options.preAsCodeBlock = true;
     options.skipWordListLabels = true;
