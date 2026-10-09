@@ -7,6 +7,8 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
+// Version: 1.2.1 - RunsText is UCRichDocument::ConcatenateRunText (one definition of
+//                  the text positions index into)
 // Version: 1.2.0
 // Author: UltraCanvas Framework
 
@@ -152,12 +154,7 @@ int UCRichDocumentEditor::SnapToCharStart(const std::string& text, int byteOffse
 // ===== RUN PLUMBING =====
 
 std::string UCRichDocumentEditor::RunsText(const std::vector<RichTextRun>& runs) {
-    std::string out;
-    for (const auto& run : runs) {
-        if (run.lineBreakBefore) out += '\n';
-        out += run.text;
-    }
-    return out;
+    return UCRichDocument::ConcatenateRunText(runs);
 }
 
 int UCRichDocumentEditor::SplitRunAt(std::vector<RichTextRun>& runs, int byteOffset) {

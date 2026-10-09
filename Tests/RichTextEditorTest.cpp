@@ -1793,6 +1793,45 @@ static void TestHtmlImport() {
     CHECK_EQ(back.ToMarkdown(), ours.ToMarkdown());
 }
 
+static void TestLeadingLineBreak() {
+    std::cout << "\n--- A block that starts with an empty line ---\n";
+    // A code block whose first line is empty: its first run carries the break.
+    RichDocBlock code;
+    code.type = RichBlockType::CodeBlock;
+    RichTextRun first;
+    first.text = "int a;";
+    first.lineBreakBefore = true;
+    RichTextRun second;
+    second.text = "return a;";
+    second.lineBreakBefore = true;
+    code.runs = {first, second};
+    // The serializers read the text the editor's positions index into.
+    CHECK_EQ(UCRichDocument::ConcatenateRunText(code.runs), std::string("\nint a;\nreturn a;"));
+    CHECK_EQ(UCRichDocument::ConcatenateRunText(code.runs), UCRichDocumentEditor::RunsText(code.runs));
+    UCRichDocument doc;
+    doc.blocks.push_back(code);
+    CHECK(doc.ToHTML().find("<pre><code>\nint a;\nreturn a;</code></pre>") != std::string::npos);
+    CHECK(doc.ToMarkdown().find("```\n\nint a;\nreturn a;\n```") != std::string::npos);
+    UCRichDocument back = UCRichDocument::FromMarkdown(doc.ToMarkdown());
+    CHECK(!back.blocks.empty() && back.blocks[0].type == RichBlockType::CodeBlock
+          && UCRichDocumentEditor::RunsText(back.blocks[0].runs) == "\nint a;\nreturn a;");
+
+    // A table cell's copied text is the text the cell shows.
+    RichDocBlock table;
+    table.type = RichBlockType::Table;
+    table.tableRows.emplace_back();
+    table.tableRows[0].cells.resize(2);
+    table.tableRows[0].cells[0].runs = {first};
+    RichTextRun plain;
+    plain.text = "b";
+    table.tableRows[0].cells[1].runs = {plain};
+    auto withTable = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("before\n\nafter\n"));
+    withTable->blocks.insert(withTable->blocks.begin() + 1, table);
+    UCRichDocumentEditor ed(withTable);
+    ed.SelectAll();
+    CHECK_EQ(ed.RangeToPlainText(ed.GetSelectionRange()), std::string("before\n\nint a;\tb\n\nafter"));
+}
+
 static void TestNamedStyles() {
     std::cout << "\n--- Named styles ---\n";
     UCRichDocumentEditor ed(MakeDocument({"Chapter one", "Body text here", "More body"}));
@@ -1907,6 +1946,7 @@ int main() {
     TestTrackedChanges();
     TestSections();
     TestHtmlImport();
+    TestLeadingLineBreak();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";
