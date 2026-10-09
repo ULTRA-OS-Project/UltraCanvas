@@ -1,3 +1,11 @@
+#### 2026-10-09 *0.4.6*
+- **New app icon.** The trash can keeps its red @ and gains ribs down its side
+  (`media/appicon/EmailCleaner.svg`, the uploaded artwork).
+  `media/appicon/EmailCleaner.png` is re-rendered from it at 256 px through
+  librsvg, padded to a square on a transparent background as before. The
+  window and taskbar icon, the Windows `.exe` icon and the `hicolor` theme
+  icons are all made from this pair, so every one of them changes with it.
+
 #### 2026-10-08 *0.4.5*
 - **Rules match HTML mail through the framework's HTML reader.**
   EmailCleaner's own tag stripper knew eleven entities; the rest - `&eacute;`,

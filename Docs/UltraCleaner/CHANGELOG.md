@@ -1,3 +1,12 @@
+#### 2026-10-09 *0.61*
+- **New app icon.** The trash can is filled with a white-to-green gradient,
+  with ribs down its side and the red cross drawn straight on it in place of
+  the green disc (`media/appicon/UltraCleaner.svg`, the uploaded artwork).
+  `media/appicon/UltraCleaner.png` is re-rendered from it at 256 px through
+  librsvg, padded to a square on a transparent background as before. The
+  window and taskbar icon, the Windows `.exe` icon and the `hicolor` theme
+  icons are all made from this pair, so every one of them changes with it.
+
 #### 2026-10-08 *0.60*
 - **The sandboxed-cache rule says when macOS keeps it out, and how to let it
   in.** From macOS 27 the system refuses every other developer's app
