@@ -1,6 +1,7 @@
-- **The Word document module builds with the current MSYS2 toolchain
-  again.** `UltraCanvasWordFormatInternal.h` used `std::strtof` without
-  including `<cstdlib>`, and the libc++ MSYS2's CLANG64 ships since
-  2026-10-09 no longer brings it in through `<string>`: a Windows leg with a
-  cold compiler cache stopped in `UltraCanvasOdtFormat.cpp` with "no member
-  named 'strtof' in namespace 'std'". The header includes `<cstdlib>` now.
+- **The tree builds with the current MSYS2 toolchain again.** The libc++
+  MSYS2's CLANG64 ships since 2026-10-09 no longer brings `<cstdlib>` in
+  through `<string>`, and a Windows leg with a cold compiler cache stopped
+  on the first file that relied on it: `UltraCanvasWordFormatInternal.h`
+  ("no member named 'strtof' in namespace 'std'"), then the vendored
+  MicroTeX's `string_utils.h` (`strtod`, `strtol`). Both include
+  `<cstdlib>` now.
