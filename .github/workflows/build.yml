@@ -421,15 +421,64 @@ jobs:
             vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-
             vcpkg-${{ matrix.os }}-
 
+      # vcpkg's asset cache: the source archives and tools its ports download,
+      # each kept under its SHA-512 and looked for there before the library's
+      # own site. A library the binary cache above lacks is then built from
+      # a source already here, so an outage of its home site cannot fail the
+      # build (download.gnome.org did not resolve on 2026-10-08, and glib's
+      # rebuild turned macos-15-intel red). One cache for both macOS legs,
+      # keyed by what decides the sources - the manifest, its overlay ports
+      # and the vcpkg commit in the script. No older key is restored: a
+      # manifest change downloads its sources afresh, so archives no build
+      # uses any more do not pile up.
+      - name: Restore vcpkg asset cache (macOS)
+        if: runner.os == 'macOS'
+        id: vcpkg-assets
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ github.workspace }}/.vcpkg/asset-cache
+          key: vcpkg-assets-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}
+
+      # Missing that cache, download every source the manifest needs - those
+      # of the libraries the binary cache restores too, which the build never
+      # fetches - without building anything. Best effort: an outage now must
+      # not fail a build that may download nothing; only a complete fetch is
+      # saved, so a failed one is tried again by the next run.
+      - name: Download the bundled libraries' sources (macOS)
+        if: runner.os == 'macOS' && steps.vcpkg-assets.outputs.cache-hit != 'true'
+        id: vcpkg-fetch
+        continue-on-error: true
+        timeout-minutes: 30
+        env:
+          VCPKG_BINARY_SOURCES: clear
+          X_VCPKG_ASSET_SOURCES: clear;x-azurl,file://${{ github.workspace }}/.vcpkg/asset-cache/,,readwrite
+          UC_VCPKG_ONLY_DOWNLOADS: "1"
+          UC_VCPKG_KEEP_GOING: "1"
+        run: |
+          mkdir -p .vcpkg/asset-cache
+          scripts/macos-deps.sh
+          echo "Sources in the asset cache: $(find .vcpkg/asset-cache -type f | wc -l) files, $(du -sh .vcpkg/asset-cache | cut -f1)"
+
+      - name: Save vcpkg asset cache (macOS)
+        if: runner.os == 'macOS' && steps.vcpkg-fetch.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ github.workspace }}/.vcpkg/asset-cache
+          key: ${{ steps.vcpkg-assets.outputs.cache-primary-key }}
+
       - name: Build the bundled libraries for macOS ${{ env.MACOSX_DEPLOYMENT_TARGET }} (macOS)
         if: runner.os == 'macOS'
         id: macos-deps
         env:
           VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg/binary-cache,readwrite
+          # Sources from the asset cache first (read only: what it lacks is
+          # downloaded as before, and saved by the fetch step of a run whose
+          # cache misses).
+          X_VCPKG_ASSET_SOURCES: clear;x-azurl,file://${{ github.workspace }}/.vcpkg/asset-cache/,,read
           # Report every port that fails in one run, not just the first.
           UC_VCPKG_KEEP_GOING: "1"
         run: |
-          mkdir -p .vcpkg/binary-cache
+          mkdir -p .vcpkg/binary-cache .vcpkg/asset-cache
           cached_before=$(find .vcpkg/binary-cache -type f | wc -l)
           prefix=$(scripts/macos-deps.sh)
           cached_after=$(find .vcpkg/binary-cache -type f | wc -l)

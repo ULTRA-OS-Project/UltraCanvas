@@ -393,7 +393,8 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   options)` → `UCRichDocument` through the same parser and cascade
   (`quoteLevel`, `resolveImage`, `baseFontSizePx`, `keepFonts`,
   `keepColors`, and for a paste `preAsCodeBlock`, `skipWordListLabels`);
-  `dir="rtl"` makes right-to-left paragraphs. `UCRichDocument::FromHTML`
+  `dir="rtl"` makes right-to-left paragraphs, and Word's list paragraphs
+  (`mso-list`) list items, their typed labels the markers. `UCRichDocument::FromHTML`
   (a rich paste) reads through it; `UCRichDocument::ToHTML` is the writer.
 
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the

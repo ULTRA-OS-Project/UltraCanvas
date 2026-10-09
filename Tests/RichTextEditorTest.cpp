@@ -1768,6 +1768,8 @@ static void TestHtmlImport() {
     CHECK(word.blocks.size() == 1);
     if (!word.blocks.empty()) {
         CHECK_EQ(UCRichDocument::ConcatenateRunText(word.blocks[0].runs), std::string("Word item"));
+        // Word's list paragraph is a list item, its typed "1." the marker.
+        CHECK(word.blocks[0].type == RichBlockType::ListItem && word.blocks[0].orderedList);
         CHECK(!word.blocks[0].runs.empty() && word.blocks[0].runs.back().fontSizePt == 14.0f
               && word.blocks[0].runs.back().fontFamily == "Arial");
     }

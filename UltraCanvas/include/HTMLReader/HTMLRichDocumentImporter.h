@@ -7,6 +7,10 @@
 // same cascade the reader renders with, <style> blocks and presentational
 // attributes included - and maps what the model can hold:
 //   * paragraphs, headings, lists (ordered, nested, start numbers), rules;
+//     Word's list paragraphs (<p style="mso-list:l0 level1 lfo1"> with the
+//     label typed out in front, as Word copies and Outlook sends a list) as
+//     list items - the label decides bullet or number, the number format
+//     and where the count starts;
 //   * bold / italic / underline / strike / sub / sup / code, links, text and
 //     highlight colours, font families and sizes;
 //   * alignment, left indents, and the space between paragraphs (collapsed
@@ -22,6 +26,8 @@
 // its text kept. UCRichDocument::FromHTML - a rich paste - reads through it
 // too, with preAsCodeBlock and skipWordListLabels on.
 //
+// Version: 1.2.0 - Word's list paragraphs are list items; a <pre>'s blank lines
+//                  are kept (only the newline right after <pre> is not content)
 // Version: 1.1.0 - dir="rtl" paragraphs; preAsCodeBlock and skipWordListLabels
 //                  (a paste: UCRichDocument::FromHTML reads through the importer)
 // Version: 1.0.0
@@ -64,9 +70,10 @@ struct HTMLRichImportOptions {
     // monospaced lines - right for a mail, whose <pre> is mostly a quoted
     // plain-text message (Thunderbird's moz-quote-pre), not code.
     bool preAsCodeBlock = false;
-    // Leaves out the list labels Word types out in its HTML - the "1." or
-    // bullet in a <span style="mso-list:Ignore"> before each item. A browser
-    // shows them, so a mail keeps them; a paste from Word drops them.
+    // Leaves out a list label Word types out (a <span style="mso-list:Ignore">)
+    // where no list item takes it as its marker - the "1." of a numbered
+    // heading. A browser shows it, so a mail keeps it; a paste from Word
+    // drops it. A list paragraph's label is always its item's marker.
     bool skipWordListLabels = false;
 };
 

@@ -63,7 +63,10 @@ Everything but the importer lives in `namespace UltraCanvas::HTML`.
 `HTML::Parser::Parse` reads HTML or XHTML the way documents are actually
 written: unclosed `<p>` and `<li>`, void elements, self-closing XHTML
 syntax, comments, CDATA, a doctype, entities, and the raw-text bodies of
-`<style>` and `<script>`. It never fails; `Errors()` lists what it had to
+`<style>` and `<script>`. As HTML's tree builder does, it drops the one
+newline right after a `<pre>`, `<listing>` or `<textarea>` start tag, so
+content that starts on the next source line has no empty first line; a
+second newline is a blank line. It never fails; `Errors()` lists what it had to
 repair. The result is an `HTML::Document` whose `root` is always an `<html>`
 with a body, even for a fragment, so `Body()` is always there.
 
@@ -329,18 +332,29 @@ read HTML through the same parser and cascade and produce a `UCRichDocument`
 for `UltraCanvasRichTextEdit`: paragraphs, headings, lists, rules, the
 inline formats, links, colours, fonts and sizes, alignment and indents,
 `<blockquote>` as quote level, right-to-left paragraphs (`dir="rtl"` on the
-element or one around it), pictures (`data:` URIs decoded, others through
+element or one around it), Word's list paragraphs as list items, pictures (`data:` URIs decoded, others through
 `options.resolveImage`, else their alt text in brackets; a 1-2 px tracking
 pixel left out), and tables, with the one-column scaffolding tables of mail
 layouts unwrapped into the flow. See `UltraCanvasRichTextEdit.md` for the
 document model and `Tests/HTMLRichImportTest.cpp` for what is covered.
 
+Word writes a list as paragraphs, not `<ul>` / `<ol>` - on the clipboard and
+in every mail Outlook sends: `<p class=MsoListParagraph style="mso-list:l0
+level1 lfo1">`, with the label it shows typed out in front, inside a
+`<span style="mso-list:Ignore">`. Such a paragraph becomes a list item at
+that level, and its label its marker rather than text: a number, letter or
+Roman numeral (`1.`, `a)`, `(iv)`) makes a numbered item in that format, and
+gives it its own number only where the model's count would differ - a list
+starting at 4, or one Word carries on past a paragraph between; a bullet in
+Word's symbol fonts becomes the model's (`o` in Courier New a circle, `§` in
+Wingdings a square). A numbered heading stays a heading, its number text.
+
 Two options are for a paste rather than a mail, and are off by default:
 `preAsCodeBlock` makes a `<pre>` a code block (a mail's `<pre>` is mostly a
 quoted plain-text message, so there it stays monospaced lines of a
-paragraph), and `skipWordListLabels` leaves out the "1." or bullet Word types
-out in a `mso-list:Ignore` span before each list item (a browser shows them,
-so a mail keeps them). `UCRichDocument::FromHTML` - the editor's paste from
+paragraph), and `skipWordListLabels` leaves out a label Word types out in a
+`mso-list:Ignore` span where no list item takes it - the "1." of a numbered
+heading (a browser shows it, so a mail keeps it). `UCRichDocument::FromHTML` - the editor's paste from
 another application - is the importer with both on, and a no-break space
 turned into a space.
 
