@@ -1,3 +1,19 @@
+#### 2026-10-09 *0.10.28*
+- **Yahoo accounts can sign in with an app password again.** The browser
+  sign-in only works once Yahoo grants UltraMail's OAuth client Mail access,
+  which Yahoo now does per app through a commercial application, not in the
+  developer console. Until then Yahoo users had no way in, because the
+  password field was hidden for Yahoo. It is back. The wizard asks for an app
+  password first (Account security > Generate app password), and the browser
+  sign-in stays available by leaving it empty. The server settings page has
+  the password field for Yahoo too (`ProviderAcceptsPassword`). Test:
+  `test_oauth.cpp`.
+- **A password typed on the server settings page replaces a browser
+  sign-in.** The account kept using its stored OAuth tokens, which take
+  precedence over a password, so switching an account from the browser
+  sign-in to an app password had no effect. Saving a new password now removes
+  the tokens.
+
 #### 2026-10-04 *0.10.27*
 - **Yahoo sign-in checked against Thunderbird's.** Thunderbird signs in to
   Yahoo with the same endpoints, PKCE (S256) and IMAP/SMTP servers as

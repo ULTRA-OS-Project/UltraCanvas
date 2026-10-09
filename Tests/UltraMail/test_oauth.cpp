@@ -78,8 +78,11 @@ TEST(app_password_needed_at_yahoo_icloud_and_oauth_providers) {
     // password row, and the settings page offers "Sign in with Google" instead.
     REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@gmail.com")));
     REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@googlemail.com")));
-    // Yahoo deprecated app passwords: OAuth-only, no typed password.
-    REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@yahoo.com")));
+    // Yahoo: the browser sign-in or an app password - the fallback while the
+    // Yahoo client has no Mail API access.
+    REQUIRE(ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@yahoo.com")));
+    REQUIRE(ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@yahoo.de")));
+    REQUIRE(ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@yahoo.com")));
     REQUIRE(ProviderAcceptsPassword(DiscoveryResult{}));
 }
 

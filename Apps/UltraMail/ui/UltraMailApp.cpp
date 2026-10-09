@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.19 - a password typed on the server settings page drops stored
+//                   OAuth tokens, so the account switches to it
 // Version: 0.9.18 - Settings > Display > Links: a link's address in the status line or
 //                   as a tooltip (ApplyLinkDisplay)
 // Version: 0.9.17 - the status line lists a message's links (summary, every link in
@@ -2953,8 +2955,13 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
                                "The account settings could not be saved.", DetailLine(up));
                     return;
                 }
-                // A typed password replaces the stored one (the vault is open).
-                if (!r.newPassword.empty()) vault_.Store(account.accountId, r.newPassword);
+                // A typed password replaces the stored one (the vault is open)
+                // and switches the account to it: stored OAuth tokens would
+                // otherwise go on being used ahead of the password.
+                if (!r.newPassword.empty()) {
+                    vault_.Store(account.accountId, r.newPassword);
+                    if (!r.reauth) vault_.RemoveOAuthTokens(account.accountId);
+                }
                 Refresh();
                 StartBackgroundSync();
                 // The "Sign in with <provider>" button flags a re-auth: run the

@@ -20,6 +20,7 @@
 //     baked-in default, which is the escape hatch for rotation. The lookup
 //     itself is the framework's (UltraNet's OAuth2 app registry, shared with
 //     UltraCloud); OAuthApps is UltraMail's profile of it.
+// Version: 0.5.0 - Yahoo takes an app password again, beside the browser sign-in
 // Version: 0.4.0 - ExtractOAuthCode, OAuthUsesPastedCode (https redirects pasted back)
 // Version: 0.3.0 - OAuthApps is a profile of UltraNet's shared app registry
 // Author: UltraCanvas Framework / ULTRA OS
@@ -99,14 +100,15 @@ std::string OAuthProviderDisplayName(const std::string& providerId);
 // True when the provider rejects the normal account password over IMAP/SMTP
 // and a password sign-in needs an *app password* generated in the account's
 // security settings: iCloud (which offers no OAuth2 to mail apps), and the
-// OAuth2 providers when a password is typed instead of signing in. (Yahoo also
-// rejects the normal password, but is caught by the OAuth2 flag above now that
-// it offers OAuth2 — it no longer takes app passwords at all.)
+// OAuth2 providers when a password is typed instead of signing in, Yahoo
+// among them.
 bool ProviderNeedsAppPassword(const DiscoveryResult& discovery);
 
 // False when the provider takes no password of any kind over IMAP/SMTP any
 // more and only the browser sign-in works: Microsoft (Outlook.com and
-// Microsoft 365 retired basic authentication). True for everyone else.
+// Microsoft 365 retired basic authentication) and Google. True for everyone
+// else, Yahoo included: its browser sign-in needs Mail API access Yahoo grants
+// per app, so an app password is the fallback while that is not in place.
 bool ProviderAcceptsPassword(const DiscoveryResult& discovery);
 
 // Endpoints, scopes and consent parameters for a provider + app registration.

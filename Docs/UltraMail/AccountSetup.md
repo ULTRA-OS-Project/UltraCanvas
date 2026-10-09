@@ -35,7 +35,7 @@ The three ways in:
 | Sign-in | What you type in the wizard | Providers |
 |---|---|---|
 | **Browser sign-in (OAuth2)** | Password left **empty** | Gmail, Outlook / Microsoft 365, Yahoo |
-| **App password** | A password generated in the provider's security settings | iCloud  |
+| **App password** | A password generated in the provider's security settings | Yahoo, iCloud |
 | **Account password** | Your normal password | GMX, WEB.DE, mailbox.org, Posteo |
 
 Whatever you type or obtain goes into UltraMail's **credential vault**, never
@@ -90,11 +90,19 @@ in UltraMail's provider table yet (see [section 5](#5-other-providers)).
 |---|---|
 | Incoming | `imap.mail.yahoo.com`, port 993, TLS |
 | Outgoing | `smtp.mail.yahoo.com`, port 465, TLS |
-| Sign-in | **Browser sign-in with Yahoo** (no password) |
+| Sign-in | **App password**, or the browser sign-in with Yahoo |
 
-Yahoo has deprecated app passwords and now requires a browser OAuth sign-in.
-Leave the password field empty; UltraMail opens Yahoo's consent page in your
-browser. Because Yahoo does not redirect back to a desktop app, its page shows a
+**App password (recommended for now).** In your Yahoo account open
+**Account security > Generate app password**, name it "UltraMail", and type the
+password Yahoo shows into the wizard's password field. Your normal Yahoo
+password does not work in mail programs. Some Yahoo accounts no longer offer
+app passwords; those can only use the browser sign-in.
+
+**Browser sign-in.** It only works once Yahoo has granted UltraMail's OAuth
+client access to Mail, which Yahoo does per app (see
+[section 3](#3-oauth-clients-for-the-browser-sign-in)); until then Yahoo
+signs you in but its mail servers reject the login. Leave the password field
+empty; UltraMail opens Yahoo's consent page in your browser. Because Yahoo does not redirect back to a desktop app, its page shows a
 short **authorization code** after you approve — copy it and paste it into the
 dialog UltraMail shows, and the sign-in completes. If the browser instead lands
 on a page that cannot be reached (an address starting `https://127.0.0.1`),
@@ -191,6 +199,12 @@ cannot serve, so UltraMail uses Yahoo's **out-of-band** flow — after consent
 Yahoo shows a code the user pastes into the app. There is no redirect URI to
 register; the Yahoo app just needs API permission for Mail, and you supply its
 **Client ID (Consumer Key)** only (public client, no secret).
+
+Yahoo does not offer the Mail permission in its developer console any more:
+apply for commercial IMAP/SMTP access with the Developer Access form at
+<https://senders.yahooinc.com/developer/developer-access/> (questions:
+mail-api@yahooinc.com). Until it is granted, Yahoo users sign in with an app
+password.
 
 Thunderbird registers its Yahoo client with the redirect `https://127.0.0.1`
 and the scopes `mail-w ycal-w sdct-w` instead. A Yahoo app registered that way

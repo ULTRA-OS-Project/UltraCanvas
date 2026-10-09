@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailOAuth.cpp
+// Version: 0.5.0 - Yahoo takes an app password again, beside the browser sign-in
 // Version: 0.4.0 - ExtractOAuthCode, OAuthUsesPastedCode (https redirects pasted back)
 // Version: 0.3.0 - OAuthApps is a profile of UltraNet's shared OAuth2 app registry
 // Author: UltraCanvas Framework / ULTRA OS
@@ -131,9 +132,11 @@ bool ProviderNeedsAppPassword(const DiscoveryResult& discovery) {
 
 bool ProviderAcceptsPassword(const DiscoveryResult& discovery) {
     auto provider = OAuthProviderFor(discovery);
-    // Yahoo deprecated app passwords: browser OAuth sign-in is the only way in,
-    // as with Microsoft and Google.
-    return provider != "microsoft" && provider != "google" && provider != "yahoo";
+    // Yahoo takes both: the browser sign-in, or an app password (Account
+    // security > Generate app password). The app password is the fallback
+    // while the baked-in Yahoo client lacks Mail API access, which Yahoo
+    // grants per app, not in the developer console.
+    return provider != "microsoft" && provider != "google";
 }
 
 UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthApp& app,
