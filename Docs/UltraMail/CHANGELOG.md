@@ -1,3 +1,42 @@
+#### 2026-10-09 *0.10.46*
+- **Add and delete folders from the folder tree.** A right-click on a row of
+  the tree offers *Add folder…* and *Delete folder…*.
+  - *Add folder…* asks for the name. On a folder, the new one goes inside
+    it. On the account row or its inbox, it goes at the top of the account,
+    or below `INBOX` on a server that keeps every folder there
+    (Courier-style `INBOX.Drafts`). Any letter can be used: the name goes to
+    the server in IMAP's modified UTF-7, so "Bücher" arrives as
+    `B&APw-cher`. A name holding the server's separator, `*`, `%` or a
+    control character, or one a folder there already has, is refused with
+    the reason, and the box opens again with what was typed. The new folder
+    is in the tree as soon as the server has made it.
+  - *Delete folder…* asks first ("…and all the mail in it from the server?
+    This cannot be undone."), then deletes the folder on the server and
+    drops it here with its mail and downloaded bodies. It is greyed, with
+    the reason as its tooltip, for the inbox, a folder with a role (Sent,
+    Drafts, Trash, Junk, Archive) and a folder with folders inside it. If
+    the folder was on screen, the inbox is shown instead.
+  - `SyncEngine::CreateFolder` / `DeleteFolder`, and `NewFolderName` /
+    `CanDeleteFolder` in `UltraMailFolderNames`. They run on IMAP `CREATE` /
+    `DELETE` from the IMAP plug-in (framework changelog, "Mailbox plug-ins
+    can make and delete folders").
+- **Settings > Display > Treeview: the current account, or all.** *Show
+  current email account* lists only the account chosen in the account bar,
+  and a click on another tile shows that one's folders. *Show all email
+  accounts*, the default, lists every account, one below the other, as
+  before (`folder_tree_content` in `preferences.ini`).
+- **Drag the account tiles into another order.** With several accounts, a
+  tile of the account bar dragged sideways moves past the others, as a
+  toolbar button does. The tiles are now the items of an `UltraCanvasToolbar`
+  with item reordering on. The order is kept (`account_order` in
+  `preferences.ini`), and the folder tree lists the accounts in it. An
+  account added later comes after the others. A click still selects the
+  account, and a drag never starts before the pointer has moved 6 px.
+- Tests: `test_foldernames.cpp`, `test_syncengine.cpp`, `test_preferences.cpp`,
+  `AccountBarClickTest.cpp` (a tile dragged past the next one), and the new
+  `FolderTreeTest.cpp` (the menu's entries, and the tree with the current
+  account only), which runs under Xvfb like the account bar's.
+
 #### 2026-10-09 *0.10.45*
 - **Yahoo accounts can sign in with an app password again.** The browser
   sign-in only works once Yahoo grants UltraMail's OAuth client Mail access,
