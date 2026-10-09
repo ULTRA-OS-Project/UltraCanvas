@@ -48,25 +48,13 @@ target_link_libraries(UltraSocialEngine PUBLIC UltraDatabase)
 target_link_libraries(UltraSocialEngine PUBLIC UltraVault)
 
 # UltraCanvasJSON lives in the UltraCanvas core library; UltraNet supplies
-# HTTP/OAuth2/sockets. With a SHARED core, UltraNet is absorbed into (and
-# exported by) libultracanvas — link that alone and take UltraNet's headers
-# via its interface, mirroring UltraMailEngine's link logic.
-set(_uc_core_shared FALSE)
+# HTTP/OAuth2/sockets through its home, which is the shared core that
+# absorbed it or the archive under a static core ("MODULE HOMES" in
+# UltraCanvas/CMakeLists.txt). The module before the core: GNU ld resolves
+# left to right, and under a static core both are archives.
+target_link_libraries(UltraSocialEngine PUBLIC UltraNet)
 if(TARGET ${ULTRACANVAS_LIBRARY})
-    get_target_property(_uc_core_type ${ULTRACANVAS_LIBRARY} TYPE)
-    if(_uc_core_type STREQUAL "SHARED_LIBRARY")
-        set(_uc_core_shared TRUE)
-    endif()
-endif()
-if(_uc_core_shared)
     target_link_libraries(UltraSocialEngine PUBLIC ${ULTRACANVAS_LIBRARY})
-    target_include_directories(UltraSocialEngine PUBLIC
-        $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
-else()
-    target_link_libraries(UltraSocialEngine PUBLIC UltraNet)
-    if(TARGET ${ULTRACANVAS_LIBRARY})
-        target_link_libraries(UltraSocialEngine PUBLIC ${ULTRACANVAS_LIBRARY})
-    endif()
 endif()
 # DataFormats/UltraCanvasJSON.h include root.
 target_include_directories(UltraSocialEngine PUBLIC

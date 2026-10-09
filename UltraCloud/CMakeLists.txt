@@ -50,31 +50,16 @@ endif()
 target_compile_definitions(UltraCloud PUBLIC ULTRACLOUD_USE_ULTRAVAULT=1)
 target_link_libraries(UltraCloud PUBLIC UltraVault)
 
-# UltraNet (HTTP, URL and Base64 helpers) and UltraCanvasJSON: with a STATIC
-# UltraCanvas we link the UltraNet archive directly and consumers add the core
-# library; with a SHARED UltraCanvas both are exported by libultracanvas, so
-# link that instead (same reasoning as Apps/UltraMail/CMakeLists.txt).
+# UltraNet (HTTP, URL and Base64 helpers) through its home - the shared core
+# that absorbed it, or the archive under a static core ("MODULE HOMES" in
+# UltraCanvas/CMakeLists.txt) - and UltraCanvasJSON from the core library,
+# which follows UltraNet and UltraCloud on every consumer's link line; naming
+# it here makes CMake repeat it after libultracloud.a even when the consumer
+# already linked it earlier.
 if(TARGET UltraNet)
-    set(_uc_core_shared FALSE)
+    target_link_libraries(UltraCloud PUBLIC UltraNet)
     if(TARGET ${ULTRACANVAS_LIBRARY})
-        get_target_property(_uc_core_type ${ULTRACANVAS_LIBRARY} TYPE)
-        if(_uc_core_type STREQUAL "SHARED_LIBRARY")
-            set(_uc_core_shared TRUE)
-        endif()
-    endif()
-    if(_uc_core_shared)
         target_link_libraries(UltraCloud PUBLIC ${ULTRACANVAS_LIBRARY})
-        target_include_directories(UltraCloud PUBLIC
-            $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
-    else()
-        # The core library follows UltraNet and UltraCloud on every consumer's
-        # link line (UltraCanvasJSON lives there); naming it here makes CMake
-        # repeat it after libultracloud.a even when the consumer already
-        # linked it earlier.
-        target_link_libraries(UltraCloud PUBLIC UltraNet)
-        if(TARGET ${ULTRACANVAS_LIBRARY})
-            target_link_libraries(UltraCloud PUBLIC ${ULTRACANVAS_LIBRARY})
-        endif()
     endif()
 endif()
 
