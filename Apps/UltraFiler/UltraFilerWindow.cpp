@@ -1486,6 +1486,9 @@ void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target
 }
 
 void UltraFilerWindow::ApplySettings() {
+    // Display > Tab style. The strip does not exist yet on the call during
+    // start-up; BuildTabbedContainer applies the style itself then.
+    ApplyTabStripStyle();
     if (preview) {
         preview->SetTransparentBackground(settings.previewCheckeredBackground
                 ? TransparentImageBackground::Checkered
@@ -4601,7 +4604,6 @@ void UltraFilerWindow::BuildTabbedContainer() {
     tabbedContainer->SetTabHeight(kTabStripHeight);
     tabbedContainer->SetTabMinWidth(90);
     tabbedContainer->SetCloseMode(TabCloseMode::Closable);
-    tabbedContainer->tabBarColor = Color(249, 249, 251, 255);
     tabbedContainer->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -4617,11 +4619,12 @@ void UltraFilerWindow::BuildTabbedContainer() {
     // Tabs. The current folder is what it always was and stays the default.
     tabbedContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
     tabbedContainer->SetShowNewTabButton(true);
-    // Idle it is just the "+" on the strip; the rounded square only shows
-    // while the mouse is over it, a gap clear of the last tab's outline.
-    tabbedContainer->SetNewTabButtonShape(NewTabButtonShape::RoundedSquare);
+    // Idle it is just the "+" on the strip; its shape and hover colour only
+    // show while the mouse is over it, a gap clear of the last tab's outline,
+    // and follow the tab style (ApplyTabStripStyle).
     tabbedContainer->SetNewButtonColor(Colors::Transparent);
-    tabbedContainer->newTabButtonHoverColor = Color(228, 228, 232, 255);
+    // Settings > Display > Tab style, loaded before the strip was built.
+    ApplyTabStripStyle();
     tabbedContainer->onNewTabRequest = [this]() {
         std::string path;
         if (!settings.newTabOpensHome && filer) path = filer->GetPath();
@@ -4655,6 +4658,69 @@ void UltraFilerWindow::BuildTabbedContainer() {
         tabStates.erase(tabStates.begin() + from);
         tabStates.insert(tabStates.begin() + to, std::move(st));
     };
+}
+
+void UltraFilerWindow::ApplyTabStripStyle() {
+    if (!tabbedContainer) return;
+    UltraCanvasTabbedContainer& t = *tabbedContainer;
+    const Color ink(30, 37, 46, 255);
+    const Color mutedInk(84, 96, 112, 255);
+    const Color accent(96, 146, 224, 255);
+    switch (settings.tabStripStyle) {
+        case FilerTabStripStyle::Modern:
+            // Capsules floating in a blue-grey strip: the open tab white with
+            // the accent outline, the others text only until hovered.
+            t.SetTabStyle(TabStyle::Pill);
+            t.SetPillInset(2, 3);                          // a 24px capsule in the 30px strip
+            t.SetTabBarColor(Color(229, 234, 241, 255));
+            t.SetActiveTabBackgroundColor(Colors::White);
+            t.SetActiveTabBorderColor(accent);
+            t.SetActiveTabTextColor(ink);
+            t.SetInactiveTabBackgroundColor(Colors::Transparent);
+            t.SetInactiveTabTextColor(mutedInk);
+            t.SetHoveredTabBackgroundColor(Color(255, 255, 255, 140));
+            t.SetCloseButtonColor(mutedInk);
+            t.SetCloseButtonHoverColor(ink);
+            t.SetNewTabButtonShape(NewTabButtonShape::Circle);
+            t.newTabButtonHoverColor = Color(255, 255, 255, 140);
+            t.newTabButtonIconColor = mutedInk;
+            break;
+        case FilerTabStripStyle::SimpleModern:
+            // Flat tabs on the light strip, the open one white with the
+            // accent line under it.
+            t.SetTabStyle(TabStyle::Modern);
+            t.SetTabBarColor(Color(249, 249, 251, 255));
+            t.SetActiveTabBackgroundColor(Colors::White);
+            t.SetActiveTabIndicatorColor(accent);
+            t.SetActiveTabTextColor(ink);
+            t.SetInactiveTabBackgroundColor(Colors::Transparent);
+            t.SetInactiveTabTextColor(mutedInk);
+            t.SetHoveredTabBackgroundColor(Color(236, 237, 241, 255));
+            t.SetCloseButtonColor(mutedInk);
+            t.SetCloseButtonHoverColor(ink);
+            t.SetNewTabButtonShape(NewTabButtonShape::RoundedSquare);
+            t.newTabButtonHoverColor = Color(228, 228, 232, 255);
+            t.newTabButtonIconColor = mutedInk;
+            break;
+        case FilerTabStripStyle::Classic:
+        default:
+            // The strip as every release before 1.71.0 drew it: the
+            // framework's rounded tabs in its default colours.
+            t.SetTabStyle(TabStyle::Rounded);
+            t.SetTabBarColor(Color(249, 249, 251, 255));
+            t.SetActiveTabBackgroundColor(Colors::White);
+            t.SetActiveTabTextColor(Colors::Black);
+            t.SetInactiveTabBackgroundColor(Color(236, 236, 236, 255));
+            t.SetInactiveTabTextColor(Color(80, 80, 80, 255));
+            t.SetHoveredTabBackgroundColor(Color(240, 240, 255, 255));
+            t.SetCloseButtonColor(Color(120, 120, 120, 255));
+            t.SetCloseButtonHoverColor(Color(200, 50, 50, 255));
+            t.SetNewTabButtonShape(NewTabButtonShape::RoundedSquare);
+            t.newTabButtonHoverColor = Color(228, 228, 232, 255);
+            t.newTabButtonIconColor = Color(100, 100, 100, 255);
+            break;
+    }
+    t.InvalidateTabbar();
 }
 
 void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {

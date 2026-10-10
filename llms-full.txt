@@ -57298,6 +57298,8 @@ void SetCloseButtonColor(const Color& c);
 void SetActiveTabCloseButtonColor(const Color& c);  // Transparent (default) = closeButtonColor
 void SetCloseButtonHoverColor(const Color& c);
 void SetCloseButtonStrokeWidth(float width);         // Default: 1
+void SetActiveTabIndicatorColor(const Color& c);     // TabStyle::Modern; default Color(33, 150, 243)
+void SetActiveTabIndicatorThickness(int px);         // TabStyle::Modern; default 2
 ```
 
 #### Pill Style (TabStyle::Pill only)
@@ -57475,6 +57477,8 @@ Color tabBorderColor = Colors::Gray;
 Color activeTabBorderColor = Color(96, 146, 224);      // TabStyle::Pill: the open pill's outline
 Color inactiveTabBorderColor = Colors::Transparent;    // TabStyle::Pill: the other pills' outline
 Color hoveredTabBorderColor = Colors::Transparent;     // TabStyle::Pill: the hovered pill's outline
+Color activeTabIndicatorColor = Color(33, 150, 243);   // TabStyle::Modern: the line under the open tab
+int activeTabIndicatorThickness = 2;                   // TabStyle::Modern: that line's thickness
 Color activeTabColor = Color(255, 255, 255);
 Color activeTabTextColor = Colors::Black;
 Color inactiveTabColor = Color(236, 236, 236);
