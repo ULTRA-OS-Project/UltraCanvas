@@ -16,3 +16,11 @@
   - Works without FFmpeg too; only rendering needs the engine.
   - `videofx`: `--save-project FILE` on any edit command, `videofx project`
     (summary and missing media) and `videofx render` (render a project).
+- **VideoFX is a shared library.** It is built as `libVideoFX.so`,
+  `libVideoFX.dylib` or `libVideoFX.dll` instead of a static archive. It is
+  not part of the UltraCanvas core, so FFmpeg is loaded only by applications
+  that do video, and they share one copy. The soname carries the minor
+  version (`libVideoFX.so.0.7`) while VideoFX is 0.x. On Windows every symbol
+  is exported, as in the core, and the DLL goes to `bin/` beside `videofx.exe`.
+  `-DVIDEOFX_BUILD_SHARED=OFF` keeps a static build (the default on Android).
+  The Linux package leaves the library out until an app links it.

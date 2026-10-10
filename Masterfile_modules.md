@@ -2008,7 +2008,10 @@ target `VideoFX`, header `<VideoFX/VideoFX.h>`, `namespace VideoFX`; see
 core (`UltraCanvasVideoPlayer`, `UltraCanvasVideoRecorder`,
 `UltraCanvasVideoThumbnail`, on the platform media frameworks). VideoFX is
 headless and has no UltraCanvas UI dependency; applications call it from a
-worker thread or through `VideoFXExportJob`.
+worker thread or through `VideoFXExportJob`. It is a shared library of its
+own (`libVideoFX.so` / `.dylib` / `.dll`, `VIDEOFX_BUILD_SHARED`, default ON
+except on Android), not absorbed into the UltraCanvas core, so FFmpeg is
+loaded only by applications that do video.
 
 Like UltraNet and VirtualFS it encapsulates an open-source engine (FFmpeg:
 libavformat, libavcodec, libavfilter, libswscale) behind its own types; no

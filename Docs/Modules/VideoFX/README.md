@@ -762,6 +762,16 @@ call returns `VideoFXResult::NotAvailable` — applications need no `#ifdef`.
 | Windows (MSYS2) | `pacman -S mingw-w64-clang-x86_64-ffmpeg` |
 
 Link `VideoFX::VideoFX`. FFmpeg stays a private dependency of the library.
+
+VideoFX is a **shared library of its own**: `libVideoFX.so` on Linux,
+`libVideoFX.dylib` on macOS and `libVideoFX.dll` / `VideoFX.dll` on Windows,
+next to `videofx` and `VideoFXTest` in `bin/`. It is not built into the
+UltraCanvas core, so an application that does no video never loads it or
+FFmpeg, and every application that does shares one copy. While VideoFX is
+0.x, every minor version may change the binary interface, so the minor
+version is part of the library's name (`libVideoFX.so.0.7`).
+`-DVIDEOFX_BUILD_SHARED=OFF` builds a static library instead (the default
+on Android).
 The test suite is `Tests/VideoFXTest.cpp` (`VideoFXTest` under ctest); it
 generates its own clips, so it needs no media files.
 
