@@ -1,3 +1,11 @@
+#### 2026-10-10 *0.1.2*
+- **The More button at the top right shows its three dots on Windows.** It
+  was the character "⋯", which the bundled Ubuntu font does not have, so
+  it was left to whatever fallback font the system offered - and on Windows
+  it drew as a box of hex digits. It is an icon now, drawn like the
+  Settings button beside it. The edit dialog's *Case* button had the same
+  fault with its "▾" arrow, and now uses the framework's menu chevron.
+
 #### 2026-10-07 *0.1.1*
 - **One UltraClipboard at a time.** Starting it while it is already open -
   from the desktop's quick panel (F2 or Ctrl+E on an entry, *Open
