@@ -2,13 +2,15 @@
 // The render context's compositing and geometry API on an offscreen
 // surface: blend modes, groups with opacity, masks, geometric hit testing,
 // stroke extents, transform readback, conic / mesh / pixmap patterns,
-// pattern placement and text outlines. Every check samples pixels back
+// pattern placement, text outlines, and putting one surface on another
+// (copied, or blended over at an opacity). Every check samples pixels back
 // from the surface, so it needs no display.
 //
 // Usage: RenderContextTest
 // Exit code is the number of failed checks.
+// Version: 1.1.0 - CompositeToSurfaceWithOpacity
 // Version: 1.0.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRenderContext.h"
@@ -215,6 +217,44 @@ int main() {
         c.ctx->FillRectangle(Rect2Dd(5.5, 0, 5, 20));
         Rgba edge = c.Sample(5, 10);
         Check(edge.a == 0 || edge.a == 255, "AntialiasMode::NoAntialias leaves no partial edge pixel");
+    }
+
+    // ===== Putting a surface on another =====
+    // A source opaque blue on its left half and clear on its right, put on
+    // a green destination: blended over at half opacity, the blue is mixed
+    // half way with the green and the clear half leaves the green alone.
+    {
+        Canvas src(40, 20);
+        src.ctx->SetFillPaint(Color(0, 0, 255, 255));
+        src.ctx->FillRectangle(Rect2Dd(0, 0, 20, 20));
+        Canvas green(40, 20);
+        green.ctx->SetFillPaint(Color(0, 160, 0, 255));
+        green.ctx->FillRectangle(Rect2Dd(0, 0, 40, 20));
+        UCPixmap dest;
+        dest.Init(40, 20);
+        auto pixel = [&dest](int x, int y) {
+            dest.MarkDirty();
+            dest.Flush();
+            const uint32_t p = dest.GetPixel(x, y);
+            return Rgba{static_cast<int>((p >> 16) & 0xFF), static_cast<int>((p >> 8) & 0xFF),
+                        static_cast<int>(p & 0xFF), static_cast<int>((p >> 24) & 0xFF)};
+        };
+        green.ctx->FlushToSurface(dest.GetSurface(), Point2Dd(0, 0));
+        src.ctx->CompositeToSurfaceWithOpacity(dest.GetSurface(), Point2Dd(0, 0), 0.5);
+        Rgba mixed = pixel(10, 10), kept = pixel(30, 10);
+        Check(Near(mixed.g, 80, 2) && Near(mixed.b, 128, 2) && mixed.a == 255,
+              "CompositeToSurfaceWithOpacity(0.5) mixes an opaque pixel half way");
+        Check(kept.g == 160 && kept.b == 0 && kept.a == 255,
+              "and leaves the destination under a clear pixel as it was");
+
+        green.ctx->FlushToSurface(dest.GetSurface(), Point2Dd(0, 0));
+        src.ctx->CompositeToSurfaceWithOpacity(dest.GetSurface(), Point2Dd(0, 0), 1.0);
+        Rgba over = pixel(10, 10), under = pixel(30, 10);
+        Check(over.b == 255 && over.g == 0, "at opacity 1 an opaque pixel is put on as it is");
+        Check(under.g == 160 && under.a == 255, "and a clear one still shows the destination");
+
+        src.ctx->FlushToSurface(dest.GetSurface(), Point2Dd(0, 0));
+        Check(pixel(30, 10).a == 0, "FlushToSurface copies the clear pixels too");
     }
 
     // ===== Text outlines =====

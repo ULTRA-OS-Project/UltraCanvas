@@ -1,11 +1,13 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.5.0 - popups composite with their alpha over the window, and a popup's
+//                  drop shadow (GetPopupShadow) is painted beneath it
 // Version: 2.4.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 2.4.0 - popup opacity (SetPopupOpacity): a popup composited over what lies
 //                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -108,9 +110,15 @@ namespace UltraCanvas {
         PopupElementSettings settings;
         UltraCanvasDirtyRectManager dirtyRectManager;
         // How opaque the popup is composited onto the window, 0..1 (see
-        // UltraCanvasWindowBase::SetPopupOpacity). 1, the default, copies the
-        // popup's surface over the window as it always has.
+        // UltraCanvasWindowBase::SetPopupOpacity). 1, the default, puts the
+        // popup's surface over the window as it is; its transparent pixels
+        // (rounded corners) show the window beneath at any opacity.
         float opacity = 1.0f;
+        // The popup's drop shadow, drawn once into its own surface and
+        // composited under the popup until its size or the shadow changes.
+        std::shared_ptr<IRenderContext> shadowSurface;
+        PopupShadow shadowDrawn;
+        Size2Di shadowDrawnFor;
     };
 
     struct FilterFunction {
@@ -541,6 +549,10 @@ namespace UltraCanvas {
         void HandleMoveEvent(int x, int y);
 
         // ===== PROTECTED HELPER METHODS =====
+        // Puts the drop shadow `pe`'s popup asks for (GetPopupShadow) on the
+        // native surface under the popup at `popupPos`, at its opacity.
+        void CompositePopupShadow(PopupElement& pe, const Point2Dd& popupPos);
+
         virtual void RenderWindowBackground(IRenderContext* ctx) {
             (void)ctx;
             // Default implementation - clear to background color

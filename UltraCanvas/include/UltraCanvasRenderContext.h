@@ -1,12 +1,14 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
+// Version: 2.9.0 - CompositeToSurfaceWithOpacity: an alpha-blended composite at an
+//                  opacity (popups with rounded corners and a drop shadow fade in with it)
 // Version: 2.8.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 2.8.0 - GetLineBoxHeight: a line of a font's height in fractional pixels
 //                  (GetTextLineHeight cuts it to whole ones), cached per font
 // Version: 2.7.0 - FlushToSurfaceWithOpacity: a flush mixed with the destination
 //                  (the window fades popups in with it)
 // Version: 2.6.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -231,6 +233,18 @@ namespace UltraCanvas {
         // fallback is a plain flush, which is correct for fully opaque surfaces.
         virtual void CompositeToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) {
             FlushToSurface(flushToSurface, pos);
+        }
+
+        // CompositeToSurface at an opacity: the surface is blended OVER the
+        // destination with its alpha scaled by `opacity`, so pixels it leaves
+        // transparent (a rounded corner, a shadow's fringe) keep what is
+        // beneath at every step of a fade, where FlushToSurfaceWithOpacity
+        // would mix them towards transparent. At 1 it is CompositeToSurface,
+        // at 0 the destination is left alone. The base fallback ignores the
+        // opacity rather than not drawing at all.
+        virtual void CompositeToSurfaceWithOpacity(NativeSurfacePtr flushToSurface, const Point2Dd& pos,
+                                                   double opacity) {
+            if (opacity > 0.0) CompositeToSurface(flushToSurface, pos);
         }
 
         // Copy only `region` (in this surface's coordinates) onto

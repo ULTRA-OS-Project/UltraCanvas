@@ -293,6 +293,27 @@ ctx->StrokePathPreserve();
 ctx->ClearPath();
 ```
 
+## Putting a surface on another
+
+```cpp
+void FlushToSurface(NativeSurfacePtr target, const Point2Dd& pos);
+void FlushToSurfaceWithOpacity(NativeSurfacePtr target, const Point2Dd& pos, double opacity);
+void CompositeToSurface(NativeSurfacePtr target, const Point2Dd& pos);
+void CompositeToSurfaceWithOpacity(NativeSurfacePtr target, const Point2Dd& pos, double opacity);
+```
+
+A context's surface goes onto another surface (a window's, a pixmap's) in
+one of two ways. `FlushToSurface` copies it: every pixel, transparent ones
+included, replaces what is there. `CompositeToSurface` blends it over: a
+transparent pixel leaves the destination as it was, a translucent one is
+mixed with it. Each has an `opacity` form for fading: the copy mixes each
+destination pixel towards the source's (`FlushToSurfaceWithOpacity`, which
+fades transparent pixels in as transparent), the blend scales the source's
+alpha (`CompositeToSurfaceWithOpacity`, which leaves the destination under
+transparent pixels alone at every step). A window puts its popups on with
+`CompositeToSurfaceWithOpacity`, so a popup with rounded corners - a menu -
+shows the window behind its corners while it fades in and after.
+
 ## Tests
 
 `Tests/RenderContextTest.cpp` (CTest `RenderContextTest`) exercises every

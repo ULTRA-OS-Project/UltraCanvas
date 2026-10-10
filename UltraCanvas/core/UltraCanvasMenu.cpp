@@ -1,5 +1,9 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.12.0 - a current-desktop look for popups and submenus: a rounded panel
+//                  with a soft drop shadow (painted by the window), inner padding,
+//                  rounded highlights inset from the panel's edges, full-width
+//                  hairline separators; separators no longer take the hover highlight
 // Version: 1.11.0 - the opening fade takes in the whole panel (background, border,
 //                  shadow, entries): the menu steps its popup's opacity on the
 //                  window instead of painting only its entries as a group
@@ -7,7 +11,7 @@
 //                  progress was computed and never drawn); activating an item
 //                  without an application no longer dereferences a null one
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -128,32 +132,33 @@ namespace UltraCanvas {
                 ApplyAnimationOpacity();
             }
 
-            // Shadow draws intentionally outside bounds — must be before clip is set
-            if (style.showShadow &&
-                (menuType == MenuType::PopupMenu || menuType == MenuType::SubmenuMenu)) {
-                RenderShadow(ctx);
+            Rect2Di bounds = GetLocalBounds();
+            const int bw = std::max(0, style.borderWidth);
+            const double radius = std::max(0, style.borderRadius);
+
+            // A popup has a surface of its own, which the window blends over
+            // its content: the panel's rounded corners stay transparent, and
+            // what is repainted is cleared first so the corners' antialiased
+            // edges do not build up. The shadow under the panel is the
+            // window's (GetPopupShadow).
+            if (IsPopupElement()) {
+                ctx->Clear(Colors::Transparent);
             }
 
-            Rect2Di bounds = GetLocalBounds();
-
-            // FIX 1: Ensure background is painted with fully opaque solid color
-            // so no underlying window content bleeds through the menu body or border.
+            // The panel: background and border, opaque, so nothing of the
+            // window shows through inside its outline.
             ctx->DrawFilledRectangle(bounds, style.backgroundColor,
-                                     style.borderWidth, style.borderColor);
+                                     static_cast<float>(bw), style.borderColor,
+                                     static_cast<float>(radius));
 
-            // FIX 2: Clip all item rendering strictly to the inner popup bounds.
-            // This prevents item text (especially the title/first row) from
-            // rendering outside the menu rectangle and showing gray fringe
-            // artifacts or overlapping the background window content.
-            // We inset by borderWidth on all sides so the border stroke itself
-            // is not clipped away.
+            // Entries, and the scrollbar of an overflowing menu, are clipped
+            // to the inside of the border, rounded as the panel is: rows
+            // scrolled half out of view and the scrollbar's ends stay inside
+            // the corners.
             ctx->PushState();
-            int bw = static_cast<int>(style.borderWidth);
-            int sbWidth = needsScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
-            ctx->ClipRect(Rect2Dd(bw,
-                                  bw,
-                                  finalBounds.width - bw * 2 - sbWidth,
-                                  finalBounds.height - bw * 2));
+            const double innerRadius = std::max(0.0, radius - bw);
+            ctx->ClipRoundedRectangle(Rect2Dd(bw, bw, finalBounds.width - bw * 2, finalBounds.height - bw * 2),
+                                      innerRadius, innerRadius, innerRadius, innerRadius);
 
             for (int i = 0; i < static_cast<int>(items.size()); ++i) {
                 if (items[i].visible) {
@@ -161,17 +166,16 @@ namespace UltraCanvas {
                 }
             }
 
-            ctx->PopState();  // releases the clip region
-
             // Render scrollbar for overflow menus (bounds stored in menu-local space;
-            // translate ctx so the scrollbar can draw from (0,0) as per element-local convention)
+            // translate ctx so the scrollbar can draw from (0,0) as per element-local convention).
+            // It runs between the panel's top and bottom padding, clear of the corners.
             if (needsScrollbar && menuScrollbar) {
                 int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
                 menuScrollbar->SetBounds(Rect2Di(
                         finalBounds.width - scrollbarWidth - bw,
-                        bw,
+                        bw + style.paddingTop,
                         scrollbarWidth,
-                        finalBounds.height - bw * 2));
+                        finalBounds.height - bw * 2 - style.paddingTop - style.paddingBottom));
                 menuScrollbar->SetScrollPosition(scrollOffsetPixels);
                 ctx->PushState();
                 auto sbB = menuScrollbar->GetBounds();
@@ -179,6 +183,8 @@ namespace UltraCanvas {
                 menuScrollbar->Render(ctx, dirtyRect);
                 ctx->PopState();
             }
+
+            ctx->PopState();  // releases the clip region
         }
     }
 
@@ -378,16 +384,16 @@ namespace UltraCanvas {
     }
 
     int UltraCanvasMenu::GetItemY(int index) const {
-        int y = style.paddingTop;
+        // A menubar's items are all at the top; a vertical menu's rows start
+        // below its border and top padding. Before scrolling.
+        if (orientation == MenuOrientation::Horizontal) {
+            return 0;
+        }
+        int y = GetContentTop();
 
         for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
             if (!items[i].visible) continue;
-
-            if (items[i].type == MenuItemType::Separator) {
-                y += style.separatorHeight;
-            } else {
-                y += style.itemHeight;
-            }
+            y += GetRowHeight(items[i]);
         }
 
         return y;
@@ -476,7 +482,8 @@ namespace UltraCanvas {
 
             int maxLabelWidth = 0;
             int maxShortcutWidth = 0;
-            int totalHeight = 0;
+            // The panel: border and padding above the first row and below the last.
+            int totalHeight = 2 * style.borderWidth + style.paddingTop + style.paddingBottom;
 
             // First pass: scan all items to determine column requirements
             for (const auto &item: items) {
@@ -504,17 +511,14 @@ namespace UltraCanvas {
                 }
 
                 // Calculate height
-                if (item.type == MenuItemType::Separator) {
-                    totalHeight += style.separatorHeight;
-                } else {
-                    totalHeight += style.itemHeight;
-                }
+                totalHeight += GetRowHeight(item);
             }
 
             // ============================================================
             // Calculate total width from columns
             // ============================================================
-            int totalWidth = 0;
+            // The panel's border and the rows' inset, both sides.
+            int totalWidth = 2 * (style.borderWidth + style.itemInset);
 
             // Left padding
             totalWidth += style.paddingLeft;
@@ -570,10 +574,19 @@ namespace UltraCanvas {
         if (!item.visible) return;
         Rect2Di itemBounds = GetItemBounds(index);
 
-        // Draw item background
+        // Draw item background: a rounded highlight filling the row, which a
+        // vertical menu already insets from the panel's edges (GetItemBounds).
+        // A menubar's is inset from the bar's top and bottom instead.
         Color bgColor = GetItemBackgroundColor(index, item);
         if (bgColor.a > 0) {
-            ctx->DrawFilledRectangle(itemBounds, bgColor);
+            Rect2Di highlight = itemBounds;
+            if (orientation == MenuOrientation::Horizontal) {
+                const int inset = std::min(3, std::max(0, (highlight.height - 16) / 4));
+                highlight.y += inset;
+                highlight.height -= 2 * inset;
+            }
+            ctx->DrawFilledRectangle(highlight, bgColor, 0, Colors::Transparent,
+                                     static_cast<float>(std::max(0, style.itemCornerRadius)));
         }
 
         // Handle separator
@@ -694,20 +707,22 @@ namespace UltraCanvas {
             rect.width = CalculateItemWidth(items[index]) + style.paddingLeft + style.paddingRight;
             rect.height = style.itemHeight;
         } else {
-            int currentY = -scrollOffsetPixels;
+            // Rows start below the border and top padding, are inset from
+            // both sides of the panel, and stop short of the scrollbar.
+            int currentY = GetContentTop() - scrollOffsetPixels;
 
             for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
                 if (items[i].visible) {
-                    currentY += (items[i].type == MenuItemType::Separator) ?
-                                style.separatorHeight : style.itemHeight;
+                    currentY += GetRowHeight(items[i]);
                 }
             }
 
-            rect.x = 0;
+            const int side = style.borderWidth + style.itemInset;
+            const int scrollbarWidth = needsScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
+            rect.x = side;
             rect.y = currentY;
-            rect.width = GetWidth();
-            rect.height = (items[index].type == MenuItemType::Separator) ?
-                            style.separatorHeight : style.itemHeight;
+            rect.width = std::max(0, static_cast<int>(GetWidth()) - 2 * side - scrollbarWidth);
+            rect.height = GetRowHeight(items[index]);
         }
 
         return rect;
@@ -767,12 +782,15 @@ namespace UltraCanvas {
         Point2Di submenuPos;
 
         if (orientation == MenuOrientation::Vertical) {
-            // Position to the right of the item
+            // To the right of the item, its first row level with the item
+            // (as scrolled): the submenu's panel starts its border and top
+            // padding above it.
             submenuPos.x = GetXInWindow() + GetWidth();
-            submenuPos.y = GetYInWindow() + GetItemY(itemIndex) - style.paddingTop;
+            submenuPos.y = GetYInWindow() + GetItemBounds(itemIndex).y -
+                           (submenu.style.borderWidth + submenu.style.paddingTop);
         } else {
-            // Position below the item
-            submenuPos.x = GetXInWindow() + GetItemX(itemIndex);
+            // Below the item, the panel's edge under the item's highlight
+            submenuPos.x = GetXInWindow() + GetItemBounds(itemIndex).x;
             submenuPos.y = GetYInWindow() + GetHeight();
         }
 
@@ -818,13 +836,15 @@ namespace UltraCanvas {
     void UltraCanvasMenu::RenderSeparator(const Rect2Di &bounds, IRenderContext *ctx) {
         // bounds is element-local (see GetItemBounds); rendering happens in the
         // ctx translated to element origin, so use bounds, not finalBounds.
+        // A hairline across the whole panel, inside its border - past the
+        // rows' inset, as Windows 11 draws it - filled on one pixel row
+        // rather than stroked, so it stays sharp.
         int centerY = bounds.y + bounds.height / 2;
-        int startX = bounds.x + style.paddingLeft;
-        int endX = bounds.x + bounds.width - style.paddingRight;
+        int startX = bounds.x - style.itemInset;
+        int endX = bounds.x + bounds.width + style.itemInset;
 
-        ctx->SetStrokePaint(style.separatorColor);
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(Point2Dd(startX, centerY), Point2Dd(endX, centerY));
+        ctx->DrawFilledRectangle(Rect2Dd(startX, centerY, std::max(0, endX - startX), 1),
+                                 style.separatorColor, 0, Colors::Transparent);
     }
 
     void UltraCanvasMenu::RenderHeader(const MenuItemData &item, const Rect2Di &bounds, IRenderContext *ctx) {
@@ -848,12 +868,15 @@ namespace UltraCanvas {
                 ? style.radioShape == MenuRadioShape::Round
                 : style.checkboxShape == MenuCheckboxShape::Round;
 
+        // Outlined in the muted secondary colour, not the panel's border
+        // colour: that is a faint hairline, too light to read as a box.
+        const Color outline = item.enabled ? style.shortcutColor : style.disabledTextColor;
         if (round) {
             ctx->DrawFilledCircle(center, static_cast<float>(size / 2.0),
-                                  Colors::Transparent, style.borderColor, 1.0f);
+                                  Colors::Transparent, outline, 1.0f);
         } else {
             Rect2Dd checkRect(position.x, position.y, size, size);
-            ctx->DrawFilledRectangle(checkRect, Colors::Transparent, 1, style.borderColor);
+            ctx->DrawFilledRectangle(checkRect, Colors::Transparent, 1, outline, 2.0f);
         }
 
         if (item.checked) {
@@ -912,12 +935,14 @@ namespace UltraCanvas {
     }
 
 
-    void UltraCanvasMenu::RenderShadow(IRenderContext *ctx) {
-        // Draw in element-local coordinates (ctx is translated to element origin)
-        Rect2Di bounds = GetLocalBounds();
-        ctx->SetStrokePaint(style.shadowColor);
-        ctx->DrawRectangle(Rect2Dd(style.shadowOffset.x, style.shadowOffset.y, finalBounds.width,
-                           finalBounds.height));
+    PopupShadow UltraCanvasMenu::GetPopupShadow() const {
+        PopupShadow shadow;
+        if (!style.showShadow || menuType == MenuType::Menubar) return shadow;
+        shadow.color = style.shadowColor;
+        shadow.blur = std::max(0, style.shadowBlur);
+        shadow.offset = style.shadowOffset;
+        shadow.cornerRadius = static_cast<float>(std::max(0, style.borderRadius));
+        return shadow;
     }
 
     int UltraCanvasMenu::GetItemUnderPointer(const UCEvent & ev) const {
@@ -947,14 +972,15 @@ namespace UltraCanvas {
                 currentX += itemWidth;
             }
         } else {
-            // For vertical menus, iterate through items by Y position
-            int currentY = bnds.y - scrollOffsetPixels;
+            // For vertical menus, iterate through items by Y position. The
+            // panel's padding above the first row and below the last is no
+            // item's; the inset beside a row is that row's.
+            int currentY = bnds.y + GetContentTop() - scrollOffsetPixels;
 
             for (int i = 0; i < static_cast<int>(items.size()); ++i) {
                 if (!items[i].visible) continue;
 
-                int itemHeight = items[i].type == MenuItemType::Separator ?
-                                 style.separatorHeight : style.itemHeight;
+                int itemHeight = GetRowHeight(items[i]);
 
                 if (ev.pointerWindow.y >= currentY && ev.pointerWindow.y < currentY + itemHeight) {
                     return i;
@@ -1292,7 +1318,8 @@ namespace UltraCanvas {
     }
 
     Color UltraCanvasMenu::GetItemBackgroundColor(int index, const MenuItemData &item) const {
-        if (!item.enabled || item.type == MenuItemType::Header) return Colors::Transparent;
+        if (!item.enabled || item.type == MenuItemType::Header ||
+            item.type == MenuItemType::Separator) return Colors::Transparent;
 
         if (index == activeIndex) {
             return style.hoverColor;
@@ -1365,6 +1392,10 @@ namespace UltraCanvas {
             }
 
             finalBounds.height = clampedMenuHeight;
+            // The scrollbar runs beside the rows, not over their shortcuts:
+            // the panel widens by it (ClampMenuToWindowHorizontal, next,
+            // keeps it on the window).
+            finalBounds.width += style.scrollbarStyle.trackSize;
 
             if (!menuScrollbar) CreateMenuScrollbar();
             menuScrollbar->SetContentSize(totalContentHeight);
@@ -1392,27 +1423,23 @@ namespace UltraCanvas {
     void UltraCanvasMenu::EnsureActiveItemVisible() {
         if (!needsScrollbar || activeIndex < 0) return;
 
-        // Calculate the Y position of the keyboard item relative to content start
-        int itemY = 0;
-        for (int i = 0; i < activeIndex && i < static_cast<int>(items.size()); ++i) {
-            if (!items[i].visible) continue;
-            itemY += (items[i].type == MenuItemType::Separator) ?
-                     style.separatorHeight : style.itemHeight;
-        }
-
-        int itemHeight = (items[activeIndex].type == MenuItemType::Separator) ?
-                         style.separatorHeight : style.itemHeight;
+        // The keyboard item's top in the panel before scrolling, and the
+        // band of the panel rows are seen in: inside the border and padding.
+        int itemY = GetItemY(activeIndex);
+        int itemHeight = GetRowHeight(items[activeIndex]);
+        const int viewTop = GetContentTop();
+        const int viewBottom = clampedMenuHeight - style.borderWidth - style.paddingBottom;
 
         // Scroll up if item is above visible area
         // Revealing the focused item has to be true at once (the keyboard is
         // already on it), so it positions the list directly.
         scrollAnim.Cancel();
-        if (itemY < scrollOffsetPixels) {
-            scrollOffsetPixels = itemY;
+        if (itemY - scrollOffsetPixels < viewTop) {
+            scrollOffsetPixels = itemY - viewTop;
         }
             // Scroll down if item is below visible area
-        else if (itemY + itemHeight > scrollOffsetPixels + clampedMenuHeight) {
-            scrollOffsetPixels = itemY + itemHeight - clampedMenuHeight;
+        else if (itemY + itemHeight - scrollOffsetPixels > viewBottom) {
+            scrollOffsetPixels = itemY + itemHeight - viewBottom;
         }
 
         int maxScroll = std::max(0, totalContentHeight - clampedMenuHeight);
