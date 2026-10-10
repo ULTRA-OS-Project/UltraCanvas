@@ -17,6 +17,8 @@
 // The checks and the install run a package manager and block on it, so they
 // run on a worker thread; results come back through a queue a UI timer
 // drains, the pattern UltraCleaner and UltraSocial use.
+// Version: 0.3.0 - the assistant is a choice (Claude Code, Codex, Copilot, Gemini,
+//                  other); segmented controls pick it and the platform
 // Version: 0.2.0 - UltraMail's look: theme header, cards, Markdown views with
 //                  links and highlighted commands, a structured System page,
 //                  ShowPage for --page
@@ -32,7 +34,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
-#include "UltraCanvasRadio.h"
+#include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
@@ -60,9 +62,11 @@ public:
     // "project", "ai" or "report" (--page, for screenshots and support).
     // False for a name that is no page.
     bool ShowPage(const std::string& name);
-    // Selects the platform the guide is for, as the Platform page's radios
-    // do (--for in window mode).
+    // Selects the platform the guide is for, as the Platform page's picker
+    // does (--for in window mode).
     void PreselectPlatform(Platform platform);
+    // Selects the assistant, as the AI page's picker does (--assistant).
+    void PreselectAssistant(Assistant assistant);
 
 private:
     // ===== CONSTRUCTION =====
@@ -79,6 +83,7 @@ private:
 
     // ===== ACTIONS =====
     void SelectPlatform(Platform platform);
+    void SelectAssistant(Assistant assistant);
     void StartChecks();
     void StartInstall();
     void ChooseProjectFolder();
@@ -108,8 +113,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel_;
 
     // Platform page
-    UltraCanvas::UltraCanvasRadioGroup platformGroup_;
-    std::map<Platform, std::shared_ptr<UltraCanvas::UltraCanvasRadio>> platformRadios_;
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> platformPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> platformGuide_;
 
     // Choices page
@@ -135,6 +139,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> projectPreview_;
 
     // AI page
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> assistantPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> aiView_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> promptText_;
 

@@ -1,4 +1,19 @@
 #### 2026-10-10 *0.2.0*
+- **The assistant is a choice: Claude Code, Codex, Copilot, Gemini or
+  another.** The repository is written for any of them (`AGENTS.md` is the
+  vendor-neutral file, `llms-full.txt` the corpus), so the AI page offers
+  the choice and shows that assistant's setup: whether its command-line
+  tool was found (`claude`, `codex`, `copilot`, `gemini`), how to install
+  and sign in, one action per line, how it picks up the repository's
+  guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions
+  and the corpus for a chat), and the no-local-compiler workflow in its
+  shape. The project gets the file that assistant reads, the first prompt
+  names it, the plan and the report say which one, and `--assistant <ai>`
+  chooses it on the command line. The System page lists every assistant
+  found.
+- **Segmented controls choose the platform and the assistant**, in the
+  application's colours: the accent for the chosen segment, white for the
+  others, a hairline border.
 - **The window looks like UltraMail's.** A theme header (`ui/UltraCanvasStartTheme.h`,
   UltraMail's colours, type sizes and metrics) styles every page: a
   near-white page with white cards, one filled accent button per page and

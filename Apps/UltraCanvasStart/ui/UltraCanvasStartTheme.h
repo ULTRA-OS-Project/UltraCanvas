@@ -12,6 +12,7 @@
 // links that open in the browser (the pages' prose), a console (command
 // output and generated files), a key/value row, a link label and a status
 // badge for the System page.
+// Version: 0.2.0 - StyleSegmented, MakeSegmented (the platform and assistant pickers)
 // Version: 0.1.1 - the Markdown views' links are not underlined
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -23,6 +24,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"
@@ -454,6 +456,41 @@ inline void Grow(const ElementPtr& element, float grow = 1.0f) {
     if (!element) return;
     element->layoutItem.SetFlexGrow(grow).SetFlexShrink(1)
                        .SetFlexBasis(UltraCanvas::CSSLayout::Dimension::Px(0));
+}
+
+// Segmented controls (Linux | macOS | Windows; Claude Code | Codex | ...):
+// the accent for the chosen segment, white for the others, hairline
+// borders, body-size text - UltraMail's StyleSegmented with this theme's
+// values.
+inline void StyleSegmented(const std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl>& sc) {
+    if (!sc) return;
+    auto style = sc->GetStyle();
+    style.fontSize          = kSizeBody;
+    style.selectedColor     = kAccent;
+    style.selectedTextColor = UltraCanvas::Colors::White;
+    style.hoverColor        = kAccentSoft;
+    style.normalColor       = kCardBackground;
+    style.normalTextColor   = kTextPrimary;
+    style.hoverTextColor    = kTextPrimary;
+    style.borderColor       = kCardBorder;
+    style.separatorColor    = kCardBorder;
+    style.cornerRadius      = kControlRadius;
+    style.paddingVertical   = 3;
+    sc->SetStyle(style);
+}
+
+// A single-choice segmented control with `labels`, `selected` chosen,
+// every segment the same width.
+inline std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl>
+MakeSegmented(const std::string& id, const std::vector<std::string>& labels, int selected, float width) {
+    auto control = UltraCanvas::CreateSegmentedControl(id, 0, 0, width, kControlHeight);
+    StyleSegmented(control);
+    for (const auto& label : labels) control->AddSegment(label);
+    control->SetWidthMode(UltraCanvas::SegmentWidthMode::Equal);
+    control->SetSelectedIndex(selected);
+    control->SetElementSize(UltraCanvas::Size2Df(width, kControlHeight));
+    control->layoutItem.SetFlexShrink(0);
+    return control;
 }
 
 inline void StyleCheckbox(const std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>& box) {

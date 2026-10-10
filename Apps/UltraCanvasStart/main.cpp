@@ -2,12 +2,13 @@
 // UltraCanvasStart — sets a computer up for writing UltraCanvas applications.
 // It finds out what the machine has, installs the development packages that
 // are missing, points at the prebuilt SDK, writes a project skeleton and
-// explains how to work with Claude Code on it, locally or through GitHub.
+// explains how to work with an AI assistant on it, locally or through GitHub.
 //
 // Without arguments it opens the window, on the platform page preselected to
 // the platform it runs on - the same choice Docs/GettingStarted.md offers,
 // so a programmer can read another platform's instructions too. With --check
 // or --plan it runs headless, which is what CI uses to smoke-test it.
+// Version: 0.1.2 - --assistant <ai> chooses the assistant
 // Version: 0.1.1 - --page <name> opens the window on a page
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraCanvasStartWindow.h"
@@ -66,6 +67,8 @@ void PrintUsage(const char* programName) {
         "                    and the framework core\n"
         "  --page <name>     Open the window on a page: platform, system, choices,\n"
         "                    install, project, ai or report\n"
+        "  --assistant <ai>  claude, codex, copilot, gemini or other: the assistant\n"
+        "                    the plan and the project are for (default claude)\n"
         "  -v, --version     Show version information\n"
         "  -h, --help        Show this message\n"
         "\n"
@@ -131,6 +134,12 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
             page = argv[++i];
+        } else if (arg == "--assistant") {
+            if (i + 1 >= argc || !UltraCanvasStart::AssistantFromName(argv[i + 1], choices.assistant)) {
+                std::printf("--assistant needs claude, codex, copilot, gemini or other\n");
+                return EXIT_FAILURE;
+            }
+            ++i;
         } else if (arg == "--for") {
             if (i + 1 >= argc) {
                 std::printf("--for needs linux, macos or windows\n");
@@ -180,6 +189,9 @@ int main(int argc, char* argv[]) {
         }
         if (choices.platform != UltraCanvasStart::Platform::Unknown) {
             window.PreselectPlatform(choices.platform);
+        }
+        if (choices.assistant != UltraCanvasStart::Assistant::ClaudeCode) {
+            window.PreselectAssistant(choices.assistant);
         }
         if (!page.empty() && !window.ShowPage(page)) {
             std::printf("unknown page: %s\n", page.c_str());

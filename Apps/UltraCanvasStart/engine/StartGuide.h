@@ -5,6 +5,7 @@
 // matters, and so the terminal modes can print the same text plain
 // (PlainText). Every numbered step is one action: a reader does it, then
 // reads the next line.
+// Version: 0.1.1 - AiGuide per assistant
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -29,10 +30,11 @@ std::string PlatformGuide(Platform platform, const std::string& version,
 // `checks` gives a one-line hint.
 std::string ChecksMarkdown(const std::vector<CheckResult>& checks);
 
-// The assistant page: whether Claude Code is installed and how to install
-// it, how the assistant works on an UltraCanvas application, and the
-// checklist for a programmer without a compiler.
-std::string AiGuide(const AiStatus& ai, Platform platform);
+// The assistant page for `assistant`: whether it is installed and how to
+// install it, how it picks up the repository's guidance, how an assistant
+// works on an UltraCanvas application, and the checklist for a programmer
+// without a compiler.
+std::string AiGuide(const AiStatus& ai, Platform platform, Assistant assistant);
 
 // Markdown reduced to plain text for the report and the terminal: `code`
 // loses its backticks, **bold** its stars, [text](url) becomes "text (url)",

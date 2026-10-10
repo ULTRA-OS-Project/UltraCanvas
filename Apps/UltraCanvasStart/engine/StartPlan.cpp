@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
+// Version: 0.1.2 - the plan and the report name the chosen assistant
 // Version: 0.1.1 - notes are one action each, in Markdown; the report prints them plain
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartPlan.h"
@@ -133,7 +134,7 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         scaffold.kind = StepKind::Scaffold;
         scaffold.title = "Create the " + IdentifierFrom(choices.appName) + " project";
         scaffold.description = "CMakeLists.txt, main.cpp, CMakePresets.json, README.md" +
-                               std::string(choices.useAi ? " and CLAUDE.md" : "") + " in " +
+                               std::string(choices.useAi ? " and " + AssistantInstructionFile(choices.assistant) : "") + " in " +
                                (choices.projectFolder.empty() ? std::string("the chosen folder")
                                                               : choices.projectFolder);
         plan.steps.push_back(scaffold);
@@ -143,8 +144,11 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
     if (choices.useAi) {
         PlanStep ai;
         ai.kind = StepKind::Manual;
-        ai.title = choices.cloudOnly ? "Connect Claude Code to the repository on GitHub"
-                                     : "Install Claude Code and open the project with it";
+        const std::string name = AssistantName(choices.assistant);
+        ai.title = choices.cloudOnly ? "Connect " + name + " to the repository on GitHub"
+                                     : (choices.assistant == Assistant::Other
+                                            ? "Point the assistant at the project"
+                                            : "Install " + name + " and open the project with it");
         ai.description = choices.cloudOnly
             ? "No compiler here: GitHub Actions builds. Follow Docs/GettingStarted-Cloud.md; "
               "the AI page has the checklist."
@@ -191,7 +195,9 @@ std::string RenderReport(const Plan& plan) {
     out += "\n";
     out += std::string("  Framework: ") + (plan.choices.useSdk ? "prebuilt SDK" : "built from source") +
            (plan.choices.cloneFramework ? ", repository cloned" : "") + "\n";
-    out += std::string("  AI assistant: ") + (plan.choices.useAi ? (plan.choices.cloudOnly ? "Claude Code via GitHub, no local compiler" : "Claude Code locally") : "no") + "\n";
+    out += std::string("  AI assistant: ") + (plan.choices.useAi
+               ? AssistantName(plan.choices.assistant) + (plan.choices.cloudOnly ? " via GitHub, no local compiler" : " locally")
+               : "no") + "\n";
     out += "  Application: " + plan.choices.appName +
            (plan.choices.projectFolder.empty() ? "" : " in " + plan.choices.projectFolder) + "\n\n";
 

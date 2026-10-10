@@ -1,10 +1,12 @@
 // Tests/UltraCanvasStart/test_guide.cpp
 // The Markdown the pages show: one action per numbered step, links that
 // open, the SDK named for real, and the plain-text reduction the report uses.
+// Version: 0.1.1 - the assistant choice
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
+#include "StartAi.h"
 #include "StartGuide.h"
 #include "StartPlan.h"
 
@@ -70,12 +72,45 @@ TEST(ChecksMarkdown_marks_each_result) {
 
 TEST(AiGuide_says_how_to_install_or_where_it_is) {
     AiStatus missing;
-    const std::string install = AiGuide(missing, Platform::Windows);
+    const std::string install = AiGuide(missing, Platform::Windows, Assistant::ClaudeCode);
     REQUIRE(install.find("`irm https://claude.ai/install.ps1 | iex`") != std::string::npos);
     REQUIRE(install.find("https://github.com/apps/claude/installations/select_target") != std::string::npos);
     AiStatus found;
-    found.claudeInstalled = true; found.claudeVersion = "2.0.1"; found.claudePath = "/usr/local/bin/claude";
-    REQUIRE(AiGuide(found, Platform::Linux).find("installed (2.0.1) at `/usr/local/bin/claude`") != std::string::npos);
+    found.assistants[Assistant::ClaudeCode] = { true, "2.0.1", "/usr/local/bin/claude" };
+    REQUIRE(AiGuide(found, Platform::Linux, Assistant::ClaudeCode).find("installed (2.0.1) at `/usr/local/bin/claude`") != std::string::npos);
+}
+
+TEST(AiGuide_covers_every_assistant) {
+    AiStatus none;
+    const std::string codex = AiGuide(none, Platform::Linux, Assistant::Codex);
+    REQUIRE(codex.find("`npm install -g @openai/codex`") != std::string::npos);
+    REQUIRE(codex.find("reads `AGENTS.md`") != std::string::npos);
+    const std::string copilot = AiGuide(none, Platform::MacOS, Assistant::Copilot);
+    REQUIRE(copilot.find("`npm install -g @github/copilot`") != std::string::npos);
+    const std::string gemini = AiGuide(none, Platform::Windows, Assistant::Gemini);
+    REQUIRE(gemini.find("`npm install -g @google/gemini-cli`") != std::string::npos);
+    REQUIRE(gemini.find("`GEMINI.md`") != std::string::npos);
+    const std::string other = AiGuide(none, Platform::Linux, Assistant::Other);
+    REQUIRE(other.find("llms-full.txt") != std::string::npos);
+    REQUIRE(other.find("was not found") == std::string::npos);
+    // Every install step is one action.
+    for (auto assistant : { Assistant::ClaudeCode, Assistant::Codex, Assistant::Copilot, Assistant::Gemini }) {
+        for (const auto& step : AssistantInstallInstructions(assistant, Platform::Linux)) {
+            REQUIRE(step.find(". ") == std::string::npos);
+        }
+    }
+}
+
+TEST(Assistant_names_files_and_cli_words) {
+    REQUIRE_EQ(AssistantInstructionFile(Assistant::ClaudeCode), std::string("CLAUDE.md"));
+    REQUIRE_EQ(AssistantInstructionFile(Assistant::Codex), std::string("AGENTS.md"));
+    REQUIRE_EQ(AssistantInstructionFile(Assistant::Gemini), std::string("GEMINI.md"));
+    REQUIRE_EQ(AssistantInstructionFile(Assistant::Other), std::string("AGENTS.md"));
+    Assistant a = Assistant::ClaudeCode;
+    REQUIRE(AssistantFromName("copilot", a));
+    REQUIRE(a == Assistant::Copilot);
+    REQUIRE(!AssistantFromName("hal", a));
+    REQUIRE_EQ(AssistantName(Assistant::Codex), std::string("Codex"));
 }
 
 TEST(PlainText_strips_the_markdown) {

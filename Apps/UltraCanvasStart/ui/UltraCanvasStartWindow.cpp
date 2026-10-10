@@ -1,4 +1,6 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
+// Version: 0.3.0 - the assistant is a choice (Claude Code, Codex, Copilot, Gemini,
+//                  other); segmented controls pick it and the platform
 // Version: 0.2.0 - UltraMail's look: theme header, cards, Markdown views with
 //                  links and highlighted commands, a structured System page,
 //                  ShowPage for --page
@@ -56,6 +58,21 @@ std::string Join(const std::vector<std::string>& lines, const char* bullet = "")
     std::string out;
     for (const auto& line : lines) out += bullet + line + "\n";
     return out;
+}
+
+// The pickers' segments, in order.
+const Platform kPlatforms[] = { Platform::Linux, Platform::MacOS, Platform::Windows };
+const Assistant kAssistants[] = { Assistant::ClaudeCode, Assistant::Codex, Assistant::Copilot,
+                                  Assistant::Gemini, Assistant::Other };
+
+int PlatformIndex(Platform platform) {
+    for (int i = 0; i < 3; ++i) if (kPlatforms[i] == platform) return i;
+    return 0;
+}
+
+int AssistantIndex(Assistant assistant) {
+    for (int i = 0; i < 5; ++i) if (kAssistants[i] == assistant) return i;
+    return 0;
 }
 
 // The architecture the instructions name: the machine's for its own
@@ -177,10 +194,13 @@ bool UltraCanvasStartWindow::ShowPage(const std::string& name) {
 }
 
 void UltraCanvasStartWindow::PreselectPlatform(Platform platform) {
-    const auto radio = platformRadios_.find(platform);
-    if (radio == platformRadios_.end()) return;
-    platformGroup_.SelectButton(radio->second);
+    if (platformPicker_) platformPicker_->SetSelectedIndex(PlatformIndex(platform));
     SelectPlatform(platform);
+}
+
+void UltraCanvasStartWindow::PreselectAssistant(Assistant assistant) {
+    if (assistantPicker_) assistantPicker_->SetSelectedIndex(AssistantIndex(assistant));
+    SelectAssistant(assistant);
 }
 
 void UltraCanvasStartWindow::LayoutForSize(float width, float height) {
@@ -231,22 +251,13 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildPlatformPage(
         "Preselected to the one detected here. Pick another to read how a different "
         "operating system is set up; only the detected one can be checked and installed.", 32));
     auto row = Theme::MakeRow("ucsPlatformRow");
-    for (auto platform : { Platform::Linux, Platform::MacOS, Platform::Windows }) {
-        auto radio = UltraCanvasRadio::Create("ucsPlatform" + PlatformName(platform), 0, 0,
-                                              PlatformName(platform), platform == profile_.platform);
-        radio->SetElementSize(Size2Df(120, Theme::kControlHeight));
-        platformGroup_.AddRadioButton(radio);
-        if (platform == profile_.platform) platformGroup_.SelectButton(radio);
-        platformRadios_[platform] = radio;
-        row->AddChild(radio);
-    }
-    // The radios live inside the window that owns this object; a raw capture
+    platformPicker_ = Theme::MakeSegmented("ucsPlatformPicker",
+        { PlatformName(Platform::Linux), PlatformName(Platform::MacOS), PlatformName(Platform::Windows) },
+        PlatformIndex(profile_.platform), 330);
+    // The picker lives inside the window that owns this object; a raw capture
     // of `this` is the convention (AGENTS.md: no shared_ptr in a callback).
-    platformGroup_.onSelectionChanged = [this](std::shared_ptr<UltraCanvasRadio> selected) {
-        for (const auto& [platform, radio] : platformRadios_) {
-            if (radio == selected) { SelectPlatform(platform); break; }
-        }
-    };
+    platformPicker_->onSegmentSelected = [this](int index) { SelectPlatform(kPlatforms[index]); };
+    row->AddChild(platformPicker_);
     choose->AddChild(row);
     page->AddChild(choose);
 
@@ -308,16 +319,23 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildSystemPage() 
 
     // ----- the tools -----
     {
-        auto row = Theme::MakeKeyRow("ucsSysClaude", "Claude Code");
-        row->AddChild(Theme::MakeStatusBadge("ucsSysClaudeBadge", ai_.claudeInstalled,
-                                             ai_.claudeInstalled ? "installed" : "not found"));
-        if (ai_.claudeInstalled) {
-            row->AddChild(Theme::MakeValue("ucsSysClaudePath",
-                                           (ai_.claudeVersion.empty() ? "" : ai_.claudeVersion + "  ") + ai_.claudePath));
-        } else {
-            row->AddChild(Theme::MakeValue("ucsSysClaudeHint", "the AI page says how to install it",
-                                           Theme::kTextSecondary));
+        auto row = Theme::MakeKeyRow("ucsSysAssistants", "AI assistants");
+        bool any = false;
+        for (auto assistant : kAssistants) {
+            const AssistantStatus* status = ai_.Status(assistant);
+            if (!status || !status->installed) continue;
+            any = true;
+            row->AddChild(Theme::MakeStatusBadge("ucsSysAssistant" + AssistantName(assistant), true,
+                                                 AssistantName(assistant) +
+                                                 (status->version.empty() ? "" : " " + status->version)));
         }
+        if (!any) {
+            row->AddChild(Theme::MakeStatusBadge("ucsSysAssistantNone", false, "none found"));
+        }
+        row->AddChild(Theme::MakeValue("ucsSysAssistantHint",
+                                       any ? (ai_.claudeInstalled ? ai_.claudePath : std::string())
+                                           : "the AI page says how to install one",
+                                       any ? Theme::kTextPrimary : Theme::kTextSecondary));
         computer->AddChild(row);
     }
     {
@@ -410,7 +428,8 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildChoicesPage()
 
     auto assistant = Theme::MakeCard("ucsAssistantCard", "The assistant");
     aiBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsUseAi", 0, 0, 800, Theme::kRowHeight,
-        "I work with Claude Code (writes CLAUDE.md into the project, prepares the first prompt)",
+        "I work with an AI assistant (the AI page says which; its instruction file goes into the project, "
+        "the first prompt is prepared)",
         choices_.useAi);
     cloudBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsCloud", 0, 0, 800, Theme::kRowHeight,
         "...through GitHub only, with no compiler on this machine (Docs/GettingStarted-Cloud.md)",
@@ -534,7 +553,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildProjectPage()
     create->onClick = [this]() { CreateProject(); };
     actionRow->AddChild(create);
     auto hint = Theme::MakeText("ucsProjectHint",
-        "Writes CMakeLists.txt, main.cpp, CMakePresets.json, README.md and CLAUDE.md. Preview below.",
+        "Writes CMakeLists.txt, main.cpp, CMakePresets.json, README.md and the assistant's instruction file. Preview below.",
         Theme::kSizeBody, Theme::kTextSecondary);
     hint->layoutItem.SetFlexGrow(1);
     actionRow->AddChild(hint);
@@ -553,9 +572,23 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildProjectPage()
 std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildAiPage() {
     auto page = NewPage("ucsAiPage");
 
-    auto guide = Theme::MakeCard("ucsAiCard", "Working with Claude Code");
+    auto guide = Theme::MakeCard("ucsAiCard", "Working with an AI assistant");
+    auto pickRow = Theme::MakeRow("ucsAssistantRow");
+    auto pickLabel = Theme::MakeText("ucsAssistantLabel", "Which one?", Theme::kSizeBody, Theme::kTextSecondary);
+    pickLabel->SetElementSize(Size2Df(70, Theme::kControlHeight));
+    pickLabel->layoutItem.SetFlexShrink(0);
+    pickRow->AddChild(pickLabel);
+    std::vector<std::string> names;
+    for (auto assistant : kAssistants) {
+        names.push_back(assistant == Assistant::Other ? "Other" : AssistantName(assistant));
+    }
+    assistantPicker_ = Theme::MakeSegmented("ucsAssistantPicker", names,
+                                            AssistantIndex(choices_.assistant), 540);
+    assistantPicker_->onSegmentSelected = [this](int index) { SelectAssistant(kAssistants[index]); };
+    pickRow->AddChild(assistantPicker_);
+    guide->AddChild(pickRow);
     aiView_ = Theme::MakeMarkdownView("ucsAiView", 220);
-    aiView_->SetText(AiGuide(ai_, profile_.platform), false);
+    aiView_->SetText(AiGuide(ai_, profile_.platform, choices_.assistant), false);
     Theme::Grow(aiView_);
     guide->AddChild(aiView_);
     Theme::GrowCard(guide, 3.0f);
@@ -567,7 +600,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildAiPage() {
     copy->onClick = [this]() { CopyPrompt(); };
     row->AddChild(copy);
     auto hint = Theme::MakeText("ucsPromptHint",
-        "Open the project folder with Claude Code and paste this as the first message.",
+        "Open the project folder with the assistant and paste this as the first message.",
         Theme::kSizeBody, Theme::kTextSecondary);
     hint->layoutItem.SetFlexGrow(1);
     row->AddChild(hint);
@@ -615,6 +648,12 @@ void UltraCanvasStartWindow::SelectPlatform(Platform platform) {
     SetStatus(local ? "Instructions for this computer."
                     : "Reading " + PlatformName(platform) + " instructions; checks and installs only run for " +
                       PlatformName(profile_.platform) + ".");
+    RefreshPlan();
+}
+
+void UltraCanvasStartWindow::SelectAssistant(Assistant assistant) {
+    choices_.assistant = assistant;
+    if (aiView_) aiView_->SetText(AiGuide(ai_, profile_.platform, assistant), false);
     RefreshPlan();
 }
 
@@ -792,6 +831,7 @@ void UltraCanvasStartWindow::CreateProject() {
     options.useSdk = choices_.useSdk;
     options.sdkPrefix = sdkPrefixInput_ ? sdkPrefixInput_->GetText() : "";
     options.withAiNotes = choices_.useAi;
+    options.assistant = choices_.assistant;
     const ProjectResult result = ScaffoldProject(options);
     if (!result.ok) {
         UltraCanvasDialogManager::ShowError(result.error, "The project was not created", nullptr, window_.get());
@@ -804,7 +844,8 @@ void UltraCanvasStartWindow::CreateProject() {
     if (options.useSdk && options.sdkPrefix.empty()) {
         next += "\nThe SDK prefix is empty: unpack the SDK and set CMAKE_PREFIX_PATH in CMakePresets.json.\n";
     }
-    if (choices_.useAi) next += "\nThen open the folder with Claude Code; the AI page has the first prompt.\n";
+    if (choices_.useAi) next += "\nThen open the folder with " + AssistantName(choices_.assistant) +
+                                "; the AI page has the first prompt.\n";
     UltraCanvasDialogManager::ShowInformation(next, "Project created", nullptr, window_.get());
     SetStatus("Project created in " + options.folder);
 }
@@ -876,6 +917,7 @@ void UltraCanvasStartWindow::RefreshPlan() {
         options.useSdk = choices_.useSdk;
         options.sdkPrefix = sdkPrefixInput_ ? sdkPrefixInput_->GetText() : "";
         options.withAiNotes = choices_.useAi;
+        options.assistant = choices_.assistant;
         projectPreview_->SetText("--- CMakeLists.txt\n" + ProjectCMakeLists(options) +
                                  "\n--- CMakePresets.json\n" + ProjectPresets(options) +
                                  "\n--- main.cpp\n" + ProjectMainCpp(options));

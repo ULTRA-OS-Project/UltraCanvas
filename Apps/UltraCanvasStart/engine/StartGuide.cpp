@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.1.1 - AiGuide per assistant
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartGuide.h"
@@ -115,54 +116,60 @@ std::string ChecksMarkdown(const std::vector<CheckResult>& checks) {
     return out;
 }
 
-std::string AiGuide(const AiStatus& ai, Platform platform) {
-    std::string out = "### Claude Code\n\n";
-    if (ai.claudeInstalled) {
-        out += "Claude Code is installed" + (ai.claudeVersion.empty() ? "" : " (" + ai.claudeVersion + ")") +
-               " at " + Code(ai.claudePath) + ".\n";
+std::string AiGuide(const AiStatus& ai, Platform platform, Assistant assistant) {
+    const std::string name = AssistantName(assistant);
+    std::string out = "### " + (assistant == Assistant::Other ? std::string("Another assistant") : name) + "\n\n";
+    if (assistant == Assistant::Other) {
+        out += "Cursor, Windsurf, ChatGPT, a Claude.ai Project, a Gemini Gem: any assistant that can read "
+               "a file works, because the repository carries its own instructions.\n";
+    } else if (const AssistantStatus* status = ai.Status(assistant); status && status->installed) {
+        out += name + " is installed" + (status->version.empty() ? "" : " (" + status->version + ")") +
+               " at " + Code(status->path) + ".\n";
     } else {
-        out += "Claude Code was not found on this computer. To install it:\n\n";
-        switch (platform) {
-            case Platform::Windows:
-                out += "1. Open PowerShell.\n";
-                out += "2. Run " + Code("irm https://claude.ai/install.ps1 | iex") +
-                       " (or, with Node.js, " + Code("npm install -g @anthropic-ai/claude-code") + ").\n";
-                out += "3. Open a terminal and run " + Code("claude") + "; it signs you in on first start.\n";
-                break;
-            case Platform::MacOS:
-                out += "1. Open Terminal.\n";
-                out += "2. Run " + Code("curl -fsSL https://claude.ai/install.sh | bash") +
-                       " (or, with Node.js, " + Code("npm install -g @anthropic-ai/claude-code") + ").\n";
-                out += "3. Run " + Code("claude") + "; it signs you in on first start.\n";
-                break;
-            default:
-                out += "1. Open a terminal.\n";
-                out += "2. Run " + Code("curl -fsSL https://claude.ai/install.sh | bash") + ".\n";
-                out += "3. Run " + Code("claude") + "; it signs you in on first start.\n";
-                break;
+        out += name + " was not found on this computer. To install it:\n\n";
+        int n = 0;
+        for (const auto& step : AssistantInstallInstructions(assistant, platform)) {
+            out += std::to_string(++n) + ". " + step + "\n";
         }
     }
-    out += "\n### How the assistant works on an UltraCanvas application\n\n";
-    out += "1. It reads " + Code("CLAUDE.md") + ", which points at the framework's " + Code("AGENTS.md") +
-           " and the element catalogue.\n";
+    out += "\n### How it reads the repository's guidance\n\n";
+    for (const auto& note : AssistantGuidanceNotes(assistant)) out += "- " + note + "\n";
+
+    out += "\n### How an assistant works on an UltraCanvas application\n\n";
+    out += "1. It reads " + Code(AssistantInstructionFile(assistant)) + " in the project, which points at the framework's " +
+           Code("AGENTS.md") + " and the element catalogue.\n";
     out += "2. Ask for **one bounded change per session**; name the elements and the docs to read.\n";
     out += "3. It builds and runs the check scripts before it reports back.\n";
     out += "4. Read the " + Code("## Delivery") + " block at the end of every reply.\n";
     out += "5. Every change gets a changelog entry; the version comes from the changelog.\n";
+
     out += "\n### Without a compiler on this machine\n\n";
     out += "The pull request is the compiler (" +
            Link("Docs/GettingStarted-Cloud.md", std::string(kRepository) + "/blob/main/Docs/GettingStarted-Cloud.md") +
-           "):\n\n";
-    out += "1. Install the Claude GitHub App on the repository: " +
-           Link("github.com/apps/claude", "https://github.com/apps/claude/installations/select_target") + ".\n";
-    out += "2. Connect GitHub in the Claude app's settings, under *Connectors*.\n";
-    out += "3. Start a Claude Code session on the repository; it reads " + Code("CLAUDE.md") + " and " +
-           Code("AGENTS.md") + " itself.\n";
-    out += "4. First session: the skeleton, a changelog entry, the checks run, pushed, a draft pull request open.\n";
-    out += "5. Ask the assistant to watch the pull request and fix CI; a branch with no pull request builds nothing.\n";
-    out += "6. Download the workflow artifact for your platform to run the application.\n";
-    out += "7. Read the " + Code("## Delivery") + " block at the end of every reply; nothing stays uncommitted.\n";
-    out += "8. Merge with the pull request title as the commit message, only after the session said it was done.\n";
+           ")";
+    if (assistant == Assistant::ClaudeCode) {
+        out += ":\n\n";
+        out += "1. Install the Claude GitHub App on the repository: " +
+               Link("github.com/apps/claude", "https://github.com/apps/claude/installations/select_target") + ".\n";
+        out += "2. Connect GitHub in the Claude app's settings, under *Connectors*.\n";
+        out += "3. Start a Claude Code session on the repository; it reads " + Code("CLAUDE.md") + " and " +
+               Code("AGENTS.md") + " itself.\n";
+        out += "4. First session: the skeleton, a changelog entry, the checks run, pushed, a draft pull request open.\n";
+        out += "5. Ask the assistant to watch the pull request and fix CI; a branch with no pull request builds nothing.\n";
+        out += "6. Download the workflow artifact for your platform to run the application.\n";
+        out += "7. Read the " + Code("## Delivery") + " block at the end of every reply; nothing stays uncommitted.\n";
+        out += "8. Merge with the pull request title as the commit message, only after the session said it was done.\n";
+    } else {
+        out += ", written for Claude Code. The shape is the same with " + name +
+               (assistant == Assistant::Copilot ? "'s coding agent on GitHub"
+                : assistant == Assistant::Codex ? "'s cloud tasks"
+                : assistant == Assistant::Gemini ? " and GitHub Actions" : " and GitHub Actions") +
+               ":\n\n";
+        out += "1. The assistant works on a branch and opens a draft pull request; CI builds it.\n";
+        out += "2. Ask it to watch the pull request and fix what CI reports; a branch with no pull request builds nothing.\n";
+        out += "3. Download the workflow artifact for your platform to run the application.\n";
+        out += "4. Merge with the pull request title as the commit message, only after the work is done.\n";
+    }
     return out;
 }
 
