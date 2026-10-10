@@ -1,7 +1,9 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
+// Version: 1.7.0 - drop-downs open anchored to their crumb: above it when there is no
+//                  room below, never over it
 // Version: 1.6.1
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
@@ -1606,13 +1608,10 @@ namespace UltraCanvas {
         activePopupMenu->SetMenuType(MenuType::PopupMenu);
         for (auto& mi : menuItems) activePopupMenu->AddItem(mi);
 
-        Point2Di winPos(GetXInWindow() + slot.rect.x,
-                        GetYInWindow() + slot.rect.y + slot.rect.height + 1);
-
         PopupElementSettings settings;
         settings.popupOwner = weak_from_this();
         activeDropdownItem = slot.itemIndex;
-        activePopupMenu->OpenMenu(winPos, *win, settings);
+        activePopupMenu->OpenMenuAnchored(SlotRectInWindow(slot), *win, settings, 1);
     }
 
     void UltraCanvasBreadcrumb::OpenOverflowMenu(int slotIdx) {
@@ -1661,13 +1660,10 @@ namespace UltraCanvas {
             }));
         }
 
-        Point2Di winPos(GetXInWindow() + slot.rect.x,
-                        GetYInWindow() + slot.rect.y + slot.rect.height + 1);
-
         PopupElementSettings settings;
         settings.popupOwner = weak_from_this();
         activeDropdownItem = kOverflowDropdown;
-        activePopupMenu->OpenMenu(winPos, *win, settings);
+        activePopupMenu->OpenMenuAnchored(SlotRectInWindow(slot), *win, settings, 1);
 
         if (onOverflowOpened) onOverflowOpened();
     }

@@ -1,5 +1,10 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.13.0 - OpenMenuAnchored (below a widget, or above it when there is no
+//                  room below); menubar drop-downs flip above their item; symbolic
+//                  icons painted in the entry's text colour (MenuStyle::iconTint);
+//                  CloseAllSubmenus no longer walks childMenus while closing a
+//                  child erases it from them
 // Version: 1.12.0 - a current-desktop look for popups and submenus: a rounded panel
 //                  with a soft drop shadow (painted by the window), inner padding,
 //                  rounded highlights inset from the panel's edges, full-width
@@ -14,6 +19,7 @@
 // Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
+#include <algorithm>
 #include <vector>
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasUIElement.h"
@@ -40,6 +46,44 @@ namespace UltraCanvas {
             ev.userDataPtr = &item;
             app->PushEvent(ev);
         }
+
+        // An icon drawn in one shade of grey - a line glyph such as those in
+        // media/icons/menu, what GTK calls a symbolic icon - as it is
+        // rasterised for `rect`. Every pixel solid enough to judge must be
+        // grey (no colour) and of the one shade: an icon in black and white -
+        // a half-filled disc - keeps its two tones, which painting it in one
+        // colour would lose. Antialiased edges, too faint to judge, are
+        // skipped; an icon with no ink at all is not symbolic.
+        bool IsSymbolicIcon(UCImage& icon, const Rect2Dd& rect, IRenderContext* ctx) {
+            auto pixmap = icon.GetPixmap(static_cast<int>(rect.width), static_cast<int>(rect.height),
+                                         ImageFitMode::Contain, ctx->GetDeviceScale());
+            if (!pixmap) return false;
+            const uint32_t* pixels = pixmap->GetPixelData();
+            if (!pixels) return false;
+            const int count = pixmap->GetRawWidth() * pixmap->GetRawHeight();
+            constexpr int kFaint = 48;        // alpha below which a pixel is an edge
+            constexpr int kGreySpread = 24;   // channel spread a grey pixel may have
+            constexpr int kShadeSpread = 80;  // lightness spread one shade may have
+            int darkest = 255, lightest = 0;
+            bool inked = false;
+            for (int i = 0; i < count; ++i) {
+                const uint32_t p = pixels[i];
+                const int a = static_cast<int>(p >> 24);
+                if (a < kFaint) continue;
+                // Premultiplied: scale back to the colour before comparing.
+                const int r = static_cast<int>((p >> 16) & 0xFF) * 255 / a;
+                const int g = static_cast<int>((p >> 8) & 0xFF) * 255 / a;
+                const int b = static_cast<int>(p & 0xFF) * 255 / a;
+                const int hi = std::max({r, g, b});
+                const int lo = std::min({r, g, b});
+                if (hi - lo > kGreySpread) return false;
+                darkest = std::min(darkest, lo);
+                lightest = std::max(lightest, hi);
+                if (lightest - darkest > kShadeSpread) return false;
+                inked = true;
+            }
+            return inked;
+        }
     }
 
     void SetDefaultMenuCheckboxShape(MenuCheckboxShape shape) {
@@ -52,29 +96,50 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::OpenMenu(const Point2Di &pos, UltraCanvasWindowBase &win,
                                    const PopupElementSettings &popupSettings) {
-        if (!IsVisible() || !isPopup) {
-            menuPopupSettings = popupSettings;
+        if (IsVisible() && isPopup) return;
+        // A point is an anchor of no size: below it, or ending at it.
+        anchorRect = Rect2Di(pos.x, pos.y, 0, 0);
+        anchorGap = 0;
+        anchorAlign = MenuAnchorAlign::Left;
+        ShowPopupAt(pos, win, popupSettings);
+    }
 
-            win.OpenPopup(pos, *this, menuPopupSettings);
+    void UltraCanvasMenu::OpenMenuAnchored(const Rect2Di &anchor, UltraCanvasWindowBase &win,
+                                           const PopupElementSettings &popupSettings, int gap,
+                                           MenuAnchorAlign align) {
+        if (IsVisible() && isPopup) return;
+        anchorRect = anchor;
+        anchorGap = std::max(0, gap);
+        anchorAlign = align;
+        // Below the anchor to begin with; Arrange() moves it above the anchor
+        // (ClampMenuToWindow) and lines its right edge up (ClampMenuToWindow-
+        // Horizontal) once the menu knows its size.
+        ShowPopupAt(Point2Di(anchor.x, anchor.y + anchor.height + anchorGap), win, popupSettings);
+    }
 
-            if (style.enableAnimations) {
-                StartAnimation();
-            }
+    void UltraCanvasMenu::ShowPopupAt(const Point2Di &pos, UltraCanvasWindowBase &win,
+                                      const PopupElementSettings &popupSettings) {
+        menuPopupSettings = popupSettings;
 
-            activeIndex = -1;
-            InvalidateLayout();
-            scrollAnim.Cancel();   // a menu opens at the top, at once
-            scrollOffsetPixels = 0;
-            needsScrollbar = false;
+        win.OpenPopup(pos, *this, menuPopupSettings);
 
-            if (onMenuOpened) onMenuOpened();
-
-            // Force immediate redraw with z-order update
-            RequestRedraw();
-
-            debugOutput << "Menu '" << GetIdentifier()
-                        << "' shown with Z=" << GetZOrder() << std::endl;
+        if (style.enableAnimations) {
+            StartAnimation();
         }
+
+        activeIndex = -1;
+        InvalidateLayout();
+        scrollAnim.Cancel();   // a menu opens at the top, at once
+        scrollOffsetPixels = 0;
+        needsScrollbar = false;
+
+        if (onMenuOpened) onMenuOpened();
+
+        // Force immediate redraw with z-order update
+        RequestRedraw();
+
+        debugOutput << "Menu '" << GetIdentifier()
+                    << "' shown with Z=" << GetZOrder() << std::endl;
     }
 
     void UltraCanvasMenu::CloseMenu() {
@@ -312,11 +377,19 @@ namespace UltraCanvas {
             activeSubmenu->AddItem(subItem);
         }
 
-        // Position submenu
-        Point2Di pos = GetPositionSubmenu(*activeSubmenu, itemIndex);
-
-        // Show submenu
-        activeSubmenu->OpenMenu(pos, *parentWindow, menuPopupSettings);
+        if (orientation == MenuOrientation::Horizontal) {
+            // A menubar's drop-down hangs below its item, the panel's edge
+            // under the item's highlight - or, for a bar at the foot of the
+            // window, stands above it - and never covers the bar.
+            const Rect2Di item = GetItemBounds(itemIndex);
+            const Rect2Di anchor(static_cast<int>(GetXInWindow()) + item.x,
+                                 static_cast<int>(GetYInWindow()),
+                                 item.width, static_cast<int>(GetHeight()));
+            activeSubmenu->OpenMenuAnchored(anchor, *parentWindow, menuPopupSettings, 0);
+        } else {
+            activeSubmenu->OpenMenu(GetPositionSubmenu(*activeSubmenu, itemIndex),
+                                    *parentWindow, menuPopupSettings);
+        }
         childMenus.push_back(activeSubmenu);
     }
 
@@ -338,14 +411,20 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::CloseAllSubmenus() {
-        for (auto &child: childMenus) {
+        // Taken out of the members first: closing a child runs its
+        // OnPopupClosed, which erases it from this menu's childMenus and
+        // resets activeSubmenu - while this loop walked childMenus, which
+        // invalidated the loop and freed the child inside its own
+        // CloseMenu(). The local list keeps every child alive until it is
+        // closed.
+        std::vector<std::shared_ptr<UltraCanvasMenu>> children;
+        children.swap(childMenus);
+        activeSubmenu.reset();
+        for (auto &child: children) {
             if (child) {
                 child->CloseMenu();
-//                child->CloseAllSubmenus();
             }
         }
-        childMenus.clear();
-        activeSubmenu.reset();
     }
 
     void UltraCanvasMenu::CloseMenutree() {
@@ -626,21 +705,22 @@ namespace UltraCanvas {
             currentX += style.iconSize + style.iconSpacing;
         }
 
+        // The label's colour: hovered, normal or greyed out. A symbolic
+        // icon is painted in it too (MenuStyle::iconTint).
+        const Color textColor = item.enabled ?
+                                (index == activeIndex ? style.hoverTextColor : style.textColor) :
+                                style.disabledTextColor;
+
         // Render icon (from an in-memory image if provided, else the file
-        // path). A disabled item's icon is faded with its label, as a
-        // disabled button's is.
+        // path; "-" reserves the column and draws nothing).
         if (hasIcon) {
             int iconY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
-            if (!item.enabled) {
-                ctx->PushState();
-                ctx->SetAlpha(0.35f);
+            std::shared_ptr<UCImage> icon = item.iconImage;
+            if (!icon && item.iconPath != "-") icon = UCImage::Get(item.iconPath);
+            if (icon) {
+                RenderIcon(*icon, item, Rect2Dd(currentX, iconY, style.iconSize, style.iconSize),
+                           textColor, ctx);
             }
-            if (item.iconImage) {
-                ctx->DrawImage(*item.iconImage, Rect2Dd(currentX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
-            } else if (item.iconPath != "-") {
-                RenderIcon(item.iconPath, Point2Di(currentX, iconY), ctx);
-            }
-            if (!item.enabled) ctx->PopState();
         }
         if (hasIcon || (vertical && leadingColumns.icon)) {
             currentX += style.iconSize + style.iconSpacing;
@@ -648,9 +728,6 @@ namespace UltraCanvas {
 
         // Render text
         if (!item.label.empty()) {
-            Color textColor = item.enabled ?
-                              (index == activeIndex ? style.hoverTextColor : style.textColor) :
-                              style.disabledTextColor;
 
             // Compute the horizontal space available for the label, so the
             // text layout can ellipsize correctly when the menu is width-clamped.
@@ -779,20 +856,14 @@ namespace UltraCanvas {
     }
 
     Point2Di UltraCanvasMenu::GetPositionSubmenu(const UltraCanvasMenu &submenu, int itemIndex) {
+        // A vertical menu's submenu (a menubar's drop-downs are anchored to
+        // their item instead, see OpenSubmenu): to the right of the item, its
+        // first row level with the item (as scrolled) - the submenu's panel
+        // starts its border and top padding above it.
         Point2Di submenuPos;
-
-        if (orientation == MenuOrientation::Vertical) {
-            // To the right of the item, its first row level with the item
-            // (as scrolled): the submenu's panel starts its border and top
-            // padding above it.
-            submenuPos.x = GetXInWindow() + GetWidth();
-            submenuPos.y = GetYInWindow() + GetItemBounds(itemIndex).y -
-                           (submenu.style.borderWidth + submenu.style.paddingTop);
-        } else {
-            // Below the item, the panel's edge under the item's highlight
-            submenuPos.x = GetXInWindow() + GetItemBounds(itemIndex).x;
-            submenuPos.y = GetYInWindow() + GetHeight();
-        }
+        submenuPos.x = GetXInWindow() + GetWidth();
+        submenuPos.y = GetYInWindow() + GetItemBounds(itemIndex).y -
+                       (submenu.style.borderWidth + submenu.style.paddingTop);
 
         // Adjust for window boundaries
         auto win = GetWindow();
@@ -815,11 +886,7 @@ namespace UltraCanvas {
 
             // Horizontal: flip to left side if overflows right edge
             if (submenuPos.x + submenuWidth > windowWidth) {
-                if (orientation == MenuOrientation::Vertical) {
-                    submenuPos.x = GetXInWindow() - submenuWidth;
-                } else {
-                    submenuPos.x = windowWidth - submenuWidth;
-                }
+                submenuPos.x = GetXInWindow() - submenuWidth;
                 if (submenuPos.x < 0) submenuPos.x = 0;
             }
 
@@ -929,9 +996,24 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMenu::RenderIcon(const std::string &iconPath, const Point2Di &position, IRenderContext *ctx) {
-        // Would implement icon rendering based on file type
-        ctx->DrawImage(iconPath, Rect2Dd(position.x, position.y, style.iconSize, style.iconSize), ImageFitMode::Contain);
+    void UltraCanvasMenu::RenderIcon(UCImage &icon, const MenuItemData &item, const Rect2Dd &rect,
+                                     const Color &textColor, IRenderContext *ctx) {
+        // A symbolic icon takes the label's colour, as text does: light on a
+        // dark menu, greyed with a disabled label.
+        const bool tint = style.iconTint == MenuIconTint::AllIcons ||
+                          (style.iconTint == MenuIconTint::Symbolic && IsSymbolicIcon(icon, rect, ctx));
+        if (tint) {
+            ctx->DrawMask(textColor, icon, rect, ImageFitMode::Contain);
+            return;
+        }
+        // In its own colours; a disabled item's icon is faded with its
+        // label, as a disabled button's is.
+        if (!item.enabled) {
+            ctx->PushState();
+            ctx->SetAlpha(0.35f);
+        }
+        ctx->DrawImage(icon, rect, ImageFitMode::Contain);
+        if (!item.enabled) ctx->PopState();
     }
 
 
@@ -1363,13 +1445,17 @@ namespace UltraCanvas {
         if (!win) return;
 
         int windowHeight = win->GetHeight();
+        // The menu was placed below its anchor (OpenMenu's point, or the
+        // widget OpenMenuAnchored was given). Opened above, it ends anchorGap
+        // above the anchor's top, so it never covers the anchor.
         int menuY = (int)finalBounds.y;
+        int aboveBottom = menuY - (anchorRect.height + 2 * anchorGap);
         int fullHeight = (int)finalBounds.height;
 
         totalContentHeight = fullHeight;
 
         int spaceBelow = windowHeight - menuY;
-        int spaceAbove = menuY;
+        int spaceAbove = std::max(0, aboveBottom);
 
         const int minMenuHeight = style.itemHeight * 3;
 
@@ -1378,7 +1464,7 @@ namespace UltraCanvas {
             clampedMenuHeight = fullHeight;
         } else if (fullHeight <= spaceAbove) {
             // Flip above
-            finalBounds.y = menuY - fullHeight;
+            finalBounds.y = aboveBottom - fullHeight;
             needsScrollbar = false;
             clampedMenuHeight = fullHeight;
         } else {
@@ -1388,7 +1474,7 @@ namespace UltraCanvas {
             needsScrollbar = true;
 
             if (spaceAbove > spaceBelow) {
-                finalBounds.y = menuY - clampedMenuHeight;
+                finalBounds.y = aboveBottom - clampedMenuHeight;
             }
 
             finalBounds.height = clampedMenuHeight;
@@ -1412,6 +1498,13 @@ namespace UltraCanvas {
         int windowWidth = win->GetWidth();
         int menuX = (int)finalBounds.x;
         int menuWidth = (int)finalBounds.width;
+
+        // Anchored by its right edge: the menu was placed at the anchor's
+        // left edge before it knew its width.
+        if (anchorAlign == MenuAnchorAlign::Right) {
+            menuX += anchorRect.width - menuWidth;
+            finalBounds.x = std::max(0, menuX);
+        }
 
         if (menuX + menuWidth > windowWidth) {
             int newX = windowWidth - menuWidth;

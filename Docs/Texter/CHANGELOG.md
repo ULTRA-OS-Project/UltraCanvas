@@ -1,3 +1,13 @@
+#### 2026-10-10 *1.62*
+- **Menus opened from buttons stay clear of them.** The Recent files menu of
+  the toolbar and the search bar's settings and history menus open with the
+  framework's `OpenMenuAnchored` (framework changelog:
+  `menu-anchors-symbolic-icons`): below their button, or above it when there
+  is no room below - a search bar at the foot of the window no longer opens
+  its menus over itself. The menus' line icons (zoom, theme and the rest)
+  are painted in the entry's text colour, so they are light in the dark
+  theme instead of black on dark grey.
+
 #### 2026-10-10 *1.61*
 - **Menus in the dark theme keep their separators and outline.** The
   framework's menus took on the current desktop look (framework changelog:

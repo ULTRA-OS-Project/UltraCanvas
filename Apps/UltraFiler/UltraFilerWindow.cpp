@@ -61,6 +61,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
+//                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
 // Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
@@ -2234,10 +2236,8 @@ void UltraFilerWindow::ShowNewEntryMenu() {
                     t.label, [this, copy]() { CreateNewDocumentCommand(copy); }));
         }
     }
-    newEntryMenu->OpenMenu(
-            Point2Di(newButton->GetXInWindow(),
-                     newButton->GetYInWindow() + (int)newButton->GetHeight() + 1),
-            *window, PopupElementSettings());
+    newEntryMenu->OpenMenuAnchored(newButton->GetBoundsInWindow(), *window,
+                                   PopupElementSettings(), 1);
 }
 
 // ===== REMOTE DRIVES =====
@@ -2281,10 +2281,8 @@ void UltraFilerWindow::ShowAddDriveMenu() {
     addDriveMenu->AddItem(cloudItem);
     addDriveMenu->AddItem(MenuItemData::Separator());
     addDriveMenu->AddItem(ramItem);
-    addDriveMenu->OpenMenu(
-            Point2Di(addDriveButton->GetXInWindow(),
-                     addDriveButton->GetYInWindow() + (int)addDriveButton->GetHeight() + 1),
-            *window, PopupElementSettings());
+    addDriveMenu->OpenMenuAnchored(addDriveButton->GetBoundsInWindow(), *window,
+                                   PopupElementSettings(), 1);
 }
 
 void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {

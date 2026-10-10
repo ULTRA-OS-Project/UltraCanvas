@@ -1,7 +1,8 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
+// Version: 1.7.0 - drop-downs open anchored to their crumb (SlotRectInWindow)
 // Version: 1.6.1
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -479,6 +480,12 @@ namespace UltraCanvas {
 
         void OpenDropdownForSlot(int slotIdx);
         void OpenOverflowMenu(int slotIdx);
+        // A slot's box in window coordinates: what its drop-down is anchored to.
+        Rect2Di SlotRectInWindow(const ItemSlot& slot) {
+            return Rect2Di(static_cast<int>(GetXInWindow()) + slot.rect.x,
+                           static_cast<int>(GetYInWindow()) + slot.rect.y,
+                           slot.rect.width, slot.rect.height);
+        }
 
         void HandleClickOnSlot(int slotIdx, bool onDropdown);
         void NotifyPathChanged();

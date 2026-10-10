@@ -1,5 +1,9 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.14.0 - OpenMenuAnchored: a menu opens below a widget, or above it when it
+//                  does not fit below, without the caller sizing it; menubar drop-downs
+//                  flip above their item; MenuStyle::iconTint paints symbolic (grey)
+//                  icons in the entry's text colour, so they follow the theme
 // Version: 1.13.0 - a current-desktop look for popups and submenus (Windows 11, macOS,
 //                  GNOME): rounded panel with a soft drop shadow, inner padding, rounded
 //                  highlights inset from the edges, neutral hover, muted shortcuts;
@@ -172,6 +176,29 @@ namespace UltraCanvas {
         Round       // a circle, the outline a Round Radio item gets
     };
 
+    // How an entry's icon is coloured (MenuStyle::iconTint).
+    enum class MenuIconTint {
+        // Icons drawn in one shade of grey - line glyphs such as the menu
+        // icons in media/icons/menu, which GTK calls "symbolic" - are painted
+        // in the entry's text colour, so they follow the theme, the hover and
+        // the disabled state as the label does: light on a dark menu, where
+        // their own black vanished. A coloured icon (an application's), or
+        // one in black and white, keeps its colours. The default.
+        Symbolic,
+        // Every icon in its own colours (the earlier behaviour).
+        Original,
+        // Every icon painted in the text colour, coloured ones too.
+        // (Not "Always": X11's X.h defines that name as a macro.)
+        AllIcons
+    };
+
+    // Which edges of a menu opened with OpenMenuAnchored line up with the
+    // anchor's.
+    enum class MenuAnchorAlign {
+        Left,       // the menu's left edge under the anchor's left edge (the default)
+        Right       // the menu's right edge under the anchor's right edge
+    };
+
     // ===== APPLICATION-WIDE CHECKBOX SHAPE =====
     // The checkboxShape every MenuStyle starts with. An application that wants
     // one look in every menu it shows sets it once at start-up, and it reaches
@@ -224,6 +251,7 @@ namespace UltraCanvas {
         int maxWidth = 0;       // Maximum menu width (0 = no maximum, items ellipsize when exceeded)
         MenuRadioShape radioShape = MenuRadioShape::Round;   // Outline of a Radio item's indicator
         MenuCheckboxShape checkboxShape = GetDefaultMenuCheckboxShape();   // Outline of a Checkbox item's indicator
+        MenuIconTint iconTint = MenuIconTint::Symbolic;   // How entry icons are coloured
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
@@ -270,6 +298,14 @@ namespace UltraCanvas {
         int selectedIndex = -1;
 
         PopupElementSettings menuPopupSettings;
+
+        // What the open menu was placed against, in window coordinates: the
+        // widget OpenMenuAnchored was given, or the point OpenMenu was (a
+        // rectangle of no size). The menu opens anchorGap below it, or ends
+        // anchorGap above it when it fits there and not below.
+        Rect2Di anchorRect;
+        int anchorGap = 0;
+        MenuAnchorAlign anchorAlign = MenuAnchorAlign::Left;
 
         // Submenu management
         std::shared_ptr<UltraCanvasMenu> activeSubmenu;
@@ -368,7 +404,22 @@ namespace UltraCanvas {
 
         MenuItemData* GetItem(int index);
 
+        // Opens the menu with its top-left corner at `pos` (window
+        // coordinates) - where a context menu goes, at the pointer. When it
+        // does not fit below `pos` it ends there instead, above it.
         void OpenMenu(const Point2Di& pos, UltraCanvasWindowBase& window, const PopupElementSettings& settings);
+
+        // Opens the menu for a widget - a button, a chip, a field - whose
+        // bounds in the window are `anchor`: `gap` pixels below it, or, when
+        // it does not fit below and does above, ending `gap` pixels above it,
+        // so it never covers the widget (as GTK's popovers and Windows'
+        // TrackPopupMenuEx with an exclude rectangle place theirs). The menu
+        // measures itself: the caller does not size it. `align` picks which
+        // edges line up; a menu wider than the room to the window's right
+        // edge is moved left to fit, as any menu is.
+        void OpenMenuAnchored(const Rect2Di& anchor, UltraCanvasWindowBase& window,
+                              const PopupElementSettings& settings, int gap = 2,
+                              MenuAnchorAlign align = MenuAnchorAlign::Left);
         void CloseMenu();
 
         // Embedded mode: for composite components (e.g. AutoComplete) that
@@ -431,6 +482,8 @@ namespace UltraCanvas {
 
         // ===== POSITIONING =====
         Point2Di GetPositionSubmenu(const UltraCanvasMenu& submenu, int itemIndex);
+        // Opens the popup at `pos`, its anchor already recorded.
+        void ShowPopupAt(const Point2Di& pos, UltraCanvasWindowBase& window, const PopupElementSettings& settings);
 
         // ===== RENDERING HELPERS =====
         void RenderItem(int index, const MenuItemData& item, IRenderContext* ctx);
@@ -438,7 +491,10 @@ namespace UltraCanvas {
         void RenderHeader(const MenuItemData& item, const Rect2Di& bounds, IRenderContext* ctx);
         void RenderCheckbox(const MenuItemData& item, const Point2Di& position, IRenderContext* ctx);
         void RenderSubmenuArrow(const Point2Di& position, IRenderContext* ctx);
-        void RenderIcon(const std::string& iconPath, const Point2Di& position, IRenderContext* ctx);
+        // An entry's icon in `rect`, tinted with `textColor` when the style's
+        // iconTint says so (see MenuIconTint).
+        void RenderIcon(UCImage& icon, const MenuItemData& item, const Rect2Dd& rect,
+                        const Color& textColor, IRenderContext* ctx);
         // Top of the first row of a vertical menu, before scrolling: the
         // panel's border and its top padding.
         int GetContentTop() const { return style.borderWidth + style.paddingTop; }

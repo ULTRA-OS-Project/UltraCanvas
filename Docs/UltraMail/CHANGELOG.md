@@ -1,3 +1,15 @@
+#### 2026-10-10 *0.10.49*
+- **An attachment's menu no longer covers the chip.** At the foot of the
+  window a click on an attachment chip opens its Open / Save As menu above
+  the chip. The chip worked out where from a menu height of two rows, which
+  left out the menu's panel padding and border, so the menu came down over
+  the top of the chip - where the second click of a double-click landed on
+  *Open*. The chip now hands its bounds to the framework's new
+  `OpenMenuAnchored` (framework changelog: `menu-anchors-symbolic-icons`),
+  which measures the menu and ends it just above the chip; the preview's
+  More menu opens the same way. The menus' line icons also follow the theme
+  now: painted in the entry's text colour, light on a dark menu.
+
 #### 2026-10-10 *0.10.48*
 - **Attachment chips show the paperclip.** The chips under a message showed a
   type emoji (a page for a PDF, a picture for an image), which a font without
