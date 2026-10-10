@@ -11,6 +11,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasClipboardHistory.h"
 #include "UltraCanvasClipboardHistoryView.h"
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
@@ -109,7 +110,13 @@ void ShowEditDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHistory& 
     trim->SetTooltip("Remove spaces at the ends of lines and empty lines at the ends");
     trim->SetOnClick([text]() { text->SetText(EditClipboardText(text->GetText(), ClipboardTextEdit::Trim)); });
     tools->AddChild(trim);
-    auto caseButton = ToolButton("cbe.case", "Aa  Case \xE2\x96\xBE", 108);
+    // The chevron is an icon, not a "▾" glyph: the UI font (Ubuntu) has
+    // none, and the fallback font left it as a missing-glyph box on Windows.
+    auto caseButton = ToolButton("cbe.case", "Aa  Case", 108);
+    caseButton->SetIcon(GetResourcesDir() + "media/icons/dropdown.svg");
+    caseButton->SetIconSize(10, 7);
+    caseButton->SetIconPosition(ButtonIconPosition::Right);
+    caseButton->SetUseIconAsMask(true);
     caseButton->SetOnClick([state, text, dialogWindow, button = caseButton.get()]() {
         state->caseMenu = std::make_shared<UltraCanvasMenu>("cbe.caseMenu", 0, 0, 180, 0);
         state->caseMenu->SetMenuType(MenuType::PopupMenu);
