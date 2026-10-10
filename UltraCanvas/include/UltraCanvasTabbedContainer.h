@@ -183,7 +183,7 @@ namespace UltraCanvas {
         Color tabContentBorderColor = Colors::Gray;
         // Outlines of the pills (TabStyle::Pill only); the other styles
         // outline every tab with tabBorderColor.
-        Color activeTabBorderColor = Color(184, 156, 255);
+        Color activeTabBorderColor = Color(96, 146, 224);
         Color inactiveTabBorderColor = Colors::Transparent;
         Color hoveredTabBorderColor = Colors::Transparent;
         Color activeTabTextColor = Colors::Black;

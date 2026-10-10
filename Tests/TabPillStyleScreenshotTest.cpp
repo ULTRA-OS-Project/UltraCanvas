@@ -158,40 +158,40 @@ int main() {
     if (!window) SKIP_ALL("window could not be created");
     window->Show();
 
-    const Color lavender(184, 156, 255);
-    const Color violet(124, 92, 255);
-    const Color ink(36, 41, 46);
-    const Color mutedInk(92, 85, 109);
+    const Color blue(96, 146, 224);
+    const Color teal(34, 150, 130);
+    const Color ink(30, 37, 46);
+    const Color mutedInk(84, 96, 112);
 
     const Variant variants[] = {
-        // 1. The reference: a white capsule with a lavender outline on a tinted bar;
+        // 1. The reference: a white capsule with a blue outline on a blue-grey bar;
         //    the other tabs are text only until hovered.
-        {"1. Outlined pill on a tinted bar", Color(234, 228, 247),
-         Colors::White, lavender, ink,
+        {"1. Outlined pill on a tinted bar", Color(229, 234, 241),
+         Colors::White, blue, ink,
          Colors::Transparent, mutedInk,
          Color(255, 255, 255, 140), Colors::Transparent,
-         mutedInk, Colors::White, Color(214, 208, 230), 0.0f, true},
-        // 2. A pale accent fill inside the accent outline, on a near-white bar.
-        {"2. Tinted pill with accent outline", Color(250, 250, 252),
-         Color(241, 238, 255), violet, Color(40, 30, 80),
-         Colors::Transparent, Color(90, 90, 100),
-         Color(238, 238, 243), Colors::Transparent,
-         Color(110, 110, 125), Colors::White, Color(228, 228, 234), 0.0f, false},
-        // 3. The open tab in solid accent with white text; the others as grey pills.
+         mutedInk, Colors::White, Color(205, 212, 222), 0.0f, true},
+        // 2. A pale teal fill inside a teal outline, on a near-white bar.
+        {"2. Tinted pill with accent outline", Color(250, 251, 252),
+         Color(228, 244, 240), teal, Color(20, 60, 55),
+         Colors::Transparent, Color(90, 96, 104),
+         Color(238, 240, 243), Colors::Transparent,
+         Color(110, 116, 125), Colors::White, Color(226, 229, 234), 0.0f, false},
+        // 3. The open tab in solid blue with white text; the others as grey pills.
         {"3. Solid accent pill", Color(245, 246, 248),
-         violet, Colors::Transparent, Colors::White,
-         Color(226, 228, 234), Color(60, 60, 70),
-         Color(212, 214, 222), Colors::Transparent,
-         Color(150, 150, 165), Colors::White, Color(226, 228, 234), 0.0f, false},
+         Color(41, 112, 196), Colors::Transparent, Colors::White,
+         Color(226, 229, 234), Color(60, 64, 72),
+         Color(212, 216, 224), Colors::Transparent,
+         Color(150, 155, 165), Colors::White, Color(226, 229, 234), 0.0f, false},
         // 4. Neutral chips: squarer corners, a grey outline instead of an accent.
         {"4. Neutral chips (corner radius 6)", Color(252, 252, 253),
          Colors::White, Color(205, 205, 214), ink,
          Color(240, 241, 244), Color(90, 90, 100),
          Color(232, 233, 237), Colors::Transparent,
          Color(120, 120, 130), Colors::White, Color(228, 228, 232), 6.0f, false},
-        // 5. The same outline on a dark bar.
+        // 5. The same outline, brighter, on a dark bar.
         {"5. Dark bar", Color(30, 30, 36),
-         Color(46, 46, 58), lavender, Color(240, 240, 245),
+         Color(46, 46, 58), Color(120, 170, 240), Color(240, 240, 245),
          Colors::Transparent, Color(170, 170, 185),
          Color(255, 255, 255, 24), Colors::Transparent,
          Color(170, 170, 185), Color(24, 24, 30), Color(60, 60, 72), 0.0f, false},

@@ -238,21 +238,21 @@ namespace UltraCanvas {
         pillTabs->SetPillInset(2, 4);
         pillTabs->SetCloseMode(TabCloseMode::Closable);
         pillTabs->fontSize = 12;
-        pillTabs->SetTabBarColor(Color(234, 228, 247));
+        pillTabs->SetTabBarColor(Color(229, 234, 241));
         pillTabs->SetActiveTabBackgroundColor(Colors::White);
-        pillTabs->SetActiveTabBorderColor(Color(184, 156, 255));
-        pillTabs->SetActiveTabTextColor(Color(36, 41, 46));
+        pillTabs->SetActiveTabBorderColor(Color(96, 146, 224));
+        pillTabs->SetActiveTabTextColor(Color(30, 37, 46));
         pillTabs->SetInactiveTabBackgroundColor(Colors::Transparent);
-        pillTabs->SetInactiveTabTextColor(Color(92, 85, 109));
+        pillTabs->SetInactiveTabTextColor(Color(84, 96, 112));
         pillTabs->SetHoveredTabBackgroundColor(Color(255, 255, 255, 140));
-        pillTabs->closeButtonColor = Color(92, 85, 109);
-        pillTabs->closeButtonHoverColor = Color(36, 41, 46);
-        pillTabs->tabContentBorderColor = Color(214, 208, 230);
+        pillTabs->closeButtonColor = Color(84, 96, 112);
+        pillTabs->closeButtonHoverColor = Color(30, 37, 46);
+        pillTabs->tabContentBorderColor = Color(205, 212, 222);
         pillTabs->SetShowNewTabButton(true);
         pillTabs->SetNewTabButtonShape(NewTabButtonShape::Circle);
         pillTabs->newTabButtonColor = Colors::Transparent;
         pillTabs->newTabButtonHoverColor = Color(255, 255, 255, 140);
-        pillTabs->newTabButtonIconColor = Color(92, 85, 109);
+        pillTabs->newTabButtonIconColor = Color(84, 96, 112);
 
         pillTabs->AddTab("Inbox", CreateSampleTabContent("Pill1",
                                                          "Pill Style Features:\n\n"

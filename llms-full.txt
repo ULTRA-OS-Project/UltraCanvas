@@ -57303,7 +57303,7 @@ void SetPillBorderWidth(float width);              // Default: 1
 float GetPillBorderWidth() const;
 void SetPillCornerRadius(float radius);            // Default: 0 = full capsule; > 0 = rounded chip
 float GetPillCornerRadius() const;
-void SetActiveTabBorderColor(const Color& c);      // Default: Color(184, 156, 255)
+void SetActiveTabBorderColor(const Color& c);      // Default: Color(96, 146, 224)
 Color GetActiveTabBorderColor() const;
 void SetInactiveTabBorderColor(const Color& c);    // Default: transparent
 Color GetInactiveTabBorderColor() const;
@@ -57466,7 +57466,7 @@ std::function<int(const TabTransferData& data, int insertionIndex)> onTabDragIn;
 ```cpp
 Color tabBarColor = Colors::Transparent;
 Color tabBorderColor = Colors::Gray;
-Color activeTabBorderColor = Color(184, 156, 255);     // TabStyle::Pill: the open pill's outline
+Color activeTabBorderColor = Color(96, 146, 224);      // TabStyle::Pill: the open pill's outline
 Color inactiveTabBorderColor = Colors::Transparent;    // TabStyle::Pill: the other pills' outline
 Color hoveredTabBorderColor = Colors::Transparent;     // TabStyle::Pill: the hovered pill's outline
 Color activeTabColor = Color(255, 255, 255);
@@ -57618,22 +57618,22 @@ tabs->SetPillInset(2, 4);                                   // a 28px capsule in
 tabs->SetCloseMode(TabCloseMode::Closable);
 tabs->fontSize = 12;
 
-tabs->SetTabBarColor(Color(234, 228, 247));                 // lavender strip
+tabs->SetTabBarColor(Color(229, 234, 241));                 // blue-grey strip
 tabs->SetActiveTabBackgroundColor(Colors::White);
-tabs->SetActiveTabBorderColor(Color(184, 156, 255));        // the accent outline
-tabs->SetActiveTabTextColor(Color(36, 41, 46));
+tabs->SetActiveTabBorderColor(Color(96, 146, 224));         // the accent outline
+tabs->SetActiveTabTextColor(Color(30, 37, 46));
 tabs->SetInactiveTabBackgroundColor(Colors::Transparent);   // unselected: text only
-tabs->SetInactiveTabTextColor(Color(92, 85, 109));
+tabs->SetInactiveTabTextColor(Color(84, 96, 112));
 tabs->SetHoveredTabBackgroundColor(Color(255, 255, 255, 140));
-tabs->closeButtonColor = Color(92, 85, 109);
-tabs->closeButtonHoverColor = Color(36, 41, 46);
-tabs->tabContentBorderColor = Color(214, 208, 230);         // hairline under the bar
+tabs->closeButtonColor = Color(84, 96, 112);
+tabs->closeButtonHoverColor = Color(30, 37, 46);
+tabs->tabContentBorderColor = Color(205, 212, 222);         // hairline under the bar
 
 tabs->SetShowNewTabButton(true);                            // a "+" in the bar's colour
 tabs->SetNewTabButtonShape(NewTabButtonShape::Circle);
 tabs->newTabButtonColor = Colors::Transparent;
 tabs->newTabButtonHoverColor = Color(255, 255, 255, 140);
-tabs->newTabButtonIconColor = Color(92, 85, 109);
+tabs->newTabButtonIconColor = Color(84, 96, 112);
 
 tabs->AddTab("Inbox", MakePage());
 tabs->SetTabIcon(0, "icons/home-icon.png");
@@ -57642,30 +57642,30 @@ tabs->SetTabIcon(1, "icons/settings.png");
 ```
 
 **2. Tinted pill with accent outline** - a near-white bar, the open pill
-filled with a pale shade of the accent.
+filled with a pale shade of a teal accent.
 
 ```cpp
-tabs->SetTabBarColor(Color(250, 250, 252));
-tabs->SetActiveTabBackgroundColor(Color(241, 238, 255));
-tabs->SetActiveTabBorderColor(Color(124, 92, 255));
-tabs->SetActiveTabTextColor(Color(40, 30, 80));
+tabs->SetTabBarColor(Color(250, 251, 252));
+tabs->SetActiveTabBackgroundColor(Color(228, 244, 240));
+tabs->SetActiveTabBorderColor(Color(34, 150, 130));
+tabs->SetActiveTabTextColor(Color(20, 60, 55));
 tabs->SetInactiveTabBackgroundColor(Colors::Transparent);
-tabs->SetInactiveTabTextColor(Color(90, 90, 100));
-tabs->SetHoveredTabBackgroundColor(Color(238, 238, 243));
+tabs->SetInactiveTabTextColor(Color(90, 96, 104));
+tabs->SetHoveredTabBackgroundColor(Color(238, 240, 243));
 ```
 
-**3. Solid accent pill** - the open tab in the accent colour with white text,
-the others as grey pills.
+**3. Solid accent pill** - the open tab in solid blue with white text, the
+others as grey pills.
 
 ```cpp
 tabs->SetTabBarColor(Color(245, 246, 248));
-tabs->SetActiveTabBackgroundColor(Color(124, 92, 255));
+tabs->SetActiveTabBackgroundColor(Color(41, 112, 196));
 tabs->SetActiveTabBorderColor(Colors::Transparent);
 tabs->SetActiveTabTextColor(Colors::White);
-tabs->SetInactiveTabBackgroundColor(Color(226, 228, 234));
-tabs->SetInactiveTabTextColor(Color(60, 60, 70));
-tabs->SetHoveredTabBackgroundColor(Color(212, 214, 222));
-tabs->closeButtonColor = Color(150, 150, 165);
+tabs->SetInactiveTabBackgroundColor(Color(226, 229, 234));
+tabs->SetInactiveTabTextColor(Color(60, 64, 72));
+tabs->SetHoveredTabBackgroundColor(Color(212, 216, 224));
+tabs->closeButtonColor = Color(150, 155, 165);
 ```
 
 **4. Neutral chips** - squarer corners and a grey outline instead of an
@@ -57681,13 +57681,13 @@ tabs->SetInactiveTabTextColor(Color(90, 90, 100));
 tabs->SetHoveredTabBackgroundColor(Color(232, 233, 237));
 ```
 
-**5. Dark bar** - the same outline on a dark strip; the hover is a faint
-white wash.
+**5. Dark bar** - the same outline, a shade brighter, on a dark strip; the
+hover is a faint white wash.
 
 ```cpp
 tabs->SetTabBarColor(Color(30, 30, 36));
 tabs->SetActiveTabBackgroundColor(Color(46, 46, 58));
-tabs->SetActiveTabBorderColor(Color(184, 156, 255));
+tabs->SetActiveTabBorderColor(Color(120, 170, 240));
 tabs->SetActiveTabTextColor(Color(240, 240, 245));
 tabs->SetInactiveTabBackgroundColor(Colors::Transparent);
 tabs->SetInactiveTabTextColor(Color(170, 170, 185));

@@ -1,7 +1,7 @@
 - **`TabStyle::Pill` - a modern capsule tab for `UltraCanvasTabbedContainer`.**
   Every tab is a capsule floating in its slot of the tab bar: the open tab
   is filled with `activeTabColor` and outlined with the new
-  `activeTabBorderColor` (lavender by default), an inactive one is filled
+  `activeTabBorderColor` (a mid blue by default), an inactive one is filled
   with `inactiveTabColor` (transparent for a text-only tab) and outlined with
   `inactiveTabBorderColor`, a hovered one with `hoveredTabColor` /
   `hoveredTabBorderColor`. The page below gets a hairline in
