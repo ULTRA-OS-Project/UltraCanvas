@@ -1,6 +1,6 @@
 # The UltraCanvas SDK
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Last Modified:** 2026-10-09
 **Author:** UltraCanvas Framework
 
@@ -22,7 +22,8 @@ attaches the same six archives to a GitHub release:
 | `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64, with the MSYS2 packages' development files and DLLs in `deps/` |
 
 Each is the result of `cmake --install build --prefix <sdk>` for that leg,
-plus a copy of this page, the licenses and the `PackageConsumer` example. The
+plus a copy of this page, the licenses and the `PackageConsumer` example,
+as a `.tar.xz` on Linux, a `.tar.gz` on macOS and a `.zip` on Windows. The
 version in the name is the framework's, from the first line of
 `Docs/UltraCanvas/CHANGELOG.md`.
 
@@ -72,7 +73,7 @@ UltraCanvas-SDK-<platform>-<version>-<arch>/
 ## Using it
 
 ```bash
-tar xzf UltraCanvas-SDK-Linux-0.9.142-x86_64.tar.gz   # unzip on Windows
+tar xf UltraCanvas-SDK-Linux-0.9.142-x86_64.tar.xz   # .tar.gz on macOS, unzip on Windows
 cmake -S MyApp -B build -DCMAKE_PREFIX_PATH=$PWD/UltraCanvas-SDK-Linux-0.9.142-x86_64
 cmake --build build
 ```
