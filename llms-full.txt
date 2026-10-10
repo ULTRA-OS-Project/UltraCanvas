@@ -57292,6 +57292,10 @@ void SetActiveTabTextColor(const Color& c);
 void SetInactiveTabBackgroundColor(const Color& c);
 void SetInactiveTabTextColor(const Color& c);
 void SetHoveredTabBackgroundColor(const Color& c);
+void SetCloseButtonColor(const Color& c);
+void SetActiveTabCloseButtonColor(const Color& c);  // Transparent (default) = closeButtonColor
+void SetCloseButtonHoverColor(const Color& c);
+void SetCloseButtonStrokeWidth(float width);         // Default: 1
 ```
 
 #### Pill Style (TabStyle::Pill only)
@@ -57477,6 +57481,7 @@ Color hoveredTabColor = Color(240, 240, 255);
 Color disabledTabColor = Color(200, 200, 200);
 Color disabledTabTextColor = Color(150, 150, 150);
 Color closeButtonColor = Color(120, 120, 120);
+Color activeTabCloseButtonColor = Colors::Transparent;  // the open tab's X; transparent = closeButtonColor
 Color closeButtonHoverColor = Color(200, 50, 50);
 Color contentAreaColor = Color(255, 255, 255);
 ```
@@ -57487,6 +57492,7 @@ int tabSpacing = 0;              // Space between tabs
 int tabPadding = 12;             // Internal tab padding
 int closeButtonSize = 16;        // Close button dimensions
 int closeButtonMargin = 4;       // Close button spacing
+float closeButtonStrokeWidth = 1.0f;  // Weight of the X, the same on every tab
 bool allowTabReordering = false; // Enable drag-and-drop
 bool enableTabScrolling = true;  // Enable scroll buttons
 ```
@@ -57665,7 +57671,8 @@ tabs->SetActiveTabTextColor(Colors::White);
 tabs->SetInactiveTabBackgroundColor(Color(226, 229, 234));
 tabs->SetInactiveTabTextColor(Color(60, 64, 72));
 tabs->SetHoveredTabBackgroundColor(Color(212, 216, 224));
-tabs->closeButtonColor = Color(150, 155, 165);
+tabs->SetCloseButtonColor(Color(110, 116, 125));
+tabs->SetActiveTabCloseButtonColor(Color(225, 236, 250));   // a pale X on the blue pill
 ```
 
 **4. Neutral chips** - squarer corners and a grey outline instead of an

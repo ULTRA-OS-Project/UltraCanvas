@@ -1,5 +1,6 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
+// Version: 2.7.0 - a truncated title fills its width, one X weight, the open tab's own X colour
 // Version: 2.6.0 - TabStyle::Pill, capsule tabs floating in the bar
 // Version: 2.5.0 - a tab list to screen readers, named after the open tab
 // Last Modified: 2026-10-10
@@ -190,7 +191,11 @@ namespace UltraCanvas {
         Color inactiveTabTextColor = Color(80, 80, 80);
         Color disabledTabTextColor = Color(150, 150, 150);
         Color closeButtonColor = Color(120, 120, 120);
+        // The X of the open tab, when it needs a colour of its own (white on
+        // a solid accent pill); transparent means closeButtonColor.
+        Color activeTabCloseButtonColor = Colors::Transparent;
         Color closeButtonHoverColor = Color(200, 50, 50);
+        float closeButtonStrokeWidth = 1.0f;
         Color contentAreaColor = Color(255, 255, 255);
         Color badgeTextColor = Colors::White;
         Color tabSeparatorColor = Color(200, 200, 200);
@@ -341,6 +346,12 @@ namespace UltraCanvas {
         void SetActiveTabTextColor(const Color& c) { activeTabTextColor = c; }
         void SetTabBarColor(const Color& c) { tabBarColor = c; RequestRedraw(); }
         void SetNewButtonColor(const Color& c) { newTabButtonColor = c; }
+        void SetCloseButtonColor(const Color& c) { closeButtonColor = c; RequestRedraw(); }
+        void SetActiveTabCloseButtonColor(const Color& c) { activeTabCloseButtonColor = c; RequestRedraw(); }
+        Color GetActiveTabCloseButtonColor() const { return activeTabCloseButtonColor; }
+        void SetCloseButtonHoverColor(const Color& c) { closeButtonHoverColor = c; RequestRedraw(); }
+        void SetCloseButtonStrokeWidth(float width) { closeButtonStrokeWidth = std::max(0.5f, width); RequestRedraw(); }
+        float GetCloseButtonStrokeWidth() const { return closeButtonStrokeWidth; }
 
         // ===== PILL STYLE CONFIGURATION (TabStyle::Pill) =====
         void SetPillInset(int horizontal, int vertical) {

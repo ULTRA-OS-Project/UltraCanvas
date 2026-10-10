@@ -90,7 +90,7 @@ struct Variant {
     Color activeFill, activeBorder, activeText;
     Color inactiveFill, inactiveText;
     Color hoverFill, hoverBorder;
-    Color closeButton;
+    Color closeButton, activeCloseButton;
     Color content, contentDivider;
     float chipRadius;   // 0 = capsule
     bool newTabButton;
@@ -114,8 +114,9 @@ std::shared_ptr<UltraCanvasTabbedContainer> MakeBar(const std::string& id, int x
     tabs->SetInactiveTabTextColor(v.inactiveText);
     tabs->SetHoveredTabBackgroundColor(v.hoverFill);
     tabs->SetHoveredTabBorderColor(v.hoverBorder);
-    tabs->closeButtonColor = v.closeButton;
-    tabs->closeButtonHoverColor = v.activeText;
+    tabs->SetCloseButtonColor(v.closeButton);
+    tabs->SetActiveTabCloseButtonColor(v.activeCloseButton);
+    tabs->SetCloseButtonHoverColor(v.activeText);
     tabs->contentAreaColor = v.content;
     tabs->tabContentBorderColor = v.contentDivider;
     tabs->newTabButtonColor = Colors::Transparent;
@@ -170,31 +171,31 @@ int main() {
          Colors::White, blue, ink,
          Colors::Transparent, mutedInk,
          Color(255, 255, 255, 140), Colors::Transparent,
-         mutedInk, Colors::White, Color(205, 212, 222), 0.0f, true},
+         mutedInk, Colors::Transparent, Colors::White, Color(205, 212, 222), 0.0f, true},
         // 2. A pale teal fill inside a teal outline, on a near-white bar.
         {"2. Tinted pill with accent outline", Color(250, 251, 252),
          Color(228, 244, 240), teal, Color(20, 60, 55),
          Colors::Transparent, Color(90, 96, 104),
          Color(238, 240, 243), Colors::Transparent,
-         Color(110, 116, 125), Colors::White, Color(226, 229, 234), 0.0f, false},
+         Color(110, 116, 125), Colors::Transparent, Colors::White, Color(226, 229, 234), 0.0f, false},
         // 3. The open tab in solid blue with white text; the others as grey pills.
         {"3. Solid accent pill", Color(245, 246, 248),
          Color(41, 112, 196), Colors::Transparent, Colors::White,
          Color(226, 229, 234), Color(60, 64, 72),
          Color(212, 216, 224), Colors::Transparent,
-         Color(150, 155, 165), Colors::White, Color(226, 229, 234), 0.0f, false},
+         Color(110, 116, 125), Color(225, 236, 250), Colors::White, Color(226, 229, 234), 0.0f, false},
         // 4. Neutral chips: squarer corners, a grey outline instead of an accent.
         {"4. Neutral chips (corner radius 6)", Color(252, 252, 253),
          Colors::White, Color(205, 205, 214), ink,
          Color(240, 241, 244), Color(90, 90, 100),
          Color(232, 233, 237), Colors::Transparent,
-         Color(120, 120, 130), Colors::White, Color(228, 228, 232), 6.0f, false},
+         Color(120, 120, 130), Colors::Transparent, Colors::White, Color(228, 228, 232), 6.0f, false},
         // 5. The same outline, brighter, on a dark bar.
         {"5. Dark bar", Color(30, 30, 36),
          Color(46, 46, 58), Color(120, 170, 240), Color(240, 240, 245),
          Colors::Transparent, Color(170, 170, 185),
          Color(255, 255, 255, 24), Colors::Transparent,
-         Color(170, 170, 185), Color(24, 24, 30), Color(60, 60, 72), 0.0f, false},
+         Color(170, 170, 185), Colors::Transparent, Color(24, 24, 30), Color(60, 60, 72), 0.0f, false},
     };
 
     std::vector<std::shared_ptr<UltraCanvasUIElement>> elements;

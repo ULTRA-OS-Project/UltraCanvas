@@ -1,5 +1,6 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
+// Version: 2.7.0 - a truncated title fills its width, one X weight, the open tab's own X colour
 // Version: 2.6.0 - TabStyle::Pill: capsules floating in the bar, the open one outlined
 // Version: 2.4.0 - a tab switch is announced to screen readers as a new name
 // Version: 2.2.0 - Arrange takes its box without a block-layout pass over the tab
@@ -724,14 +725,18 @@ namespace UltraCanvas {
         Rect2Di closeBounds = GetCloseButtonBounds(index);
         if (closeBounds.width <= 0) return;
 
-        Color buttonColor = (index == hoveredCloseButtonIndex) ? closeButtonHoverColor : closeButtonColor;
+        // The open tab's X may have a colour of its own (white on a solid
+        // accent pill, say); transparent means the common one.
+        Color buttonColor = closeButtonColor;
+        if (index == activeTabIndex && activeTabCloseButtonColor.a > 0) buttonColor = activeTabCloseButtonColor;
+        if (index == hoveredCloseButtonIndex) buttonColor = closeButtonHoverColor;
 
         Point2Di center(closeBounds.x + closeBounds.width / 2, closeBounds.y + closeBounds.height / 2);
 
         int halfSize = closeButtonSize / 4;
-        // Active tab gets thin X, inactive gets bold X (inverted for visual hierarchy)
-        bool isActiveTab = (index == activeTabIndex);
-        ctx->SetStrokeWidth(isActiveTab ? 1.0f : 2.0f);
+        // One weight of X on every tab (closeButtonStrokeWidth); until
+        // 2.7.0 an inactive tab drew a 2px X against the active tab's 1px.
+        ctx->SetStrokeWidth(closeButtonStrokeWidth);
         ctx->SetLineCap(LineCap::Round);
         ctx->SetStrokePaint(buttonColor);
         ctx->DrawLine(Point2Dd(center.x - halfSize, center.y - halfSize),
@@ -1375,9 +1380,15 @@ namespace UltraCanvas {
             return text;
         }
 
+        // Take whole UTF-8 characters off the end until the text and its
+        // ellipsis fit the width given - all of it, so the title runs up to
+        // the close button (or the padding) instead of stopping short.
         std::string truncated = text;
-        while (textSize.width > maxWidth - 20 && truncated.length() > 1) {
-            truncated.pop_back();
+        textSize = ctx->GetTextLineDimensions(truncated + "...");
+        while (textSize.width > maxWidth && !truncated.empty()) {
+            size_t cut = truncated.size() - 1;
+            while (cut > 0 && (static_cast<unsigned char>(truncated[cut]) & 0xC0) == 0x80) --cut;
+            truncated.erase(cut);
             textSize = ctx->GetTextLineDimensions(truncated + "...");
         }
 
