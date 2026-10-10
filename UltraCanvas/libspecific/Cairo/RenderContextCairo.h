@@ -1,8 +1,9 @@
 // libspecific/Cairo/RenderContextCairo.h
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.3.0 - CompositeToSurfaceWithOpacity (an OVER composite at an opacity)
 // Version: 1.2.0 - FlushToSurfaceWithOpacity (a flush mixed with the destination)
 // Version: 1.1.0 - blend modes, groups, masks, hit testing, conic / mesh / pixmap patterns, text outlines
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 //
 
@@ -110,6 +111,8 @@ namespace UltraCanvas {
         void FlushToSurfaceWithOpacity(NativeSurfacePtr flushToSurface, const Point2Dd& pos,
                                        double opacity) override;
         void CompositeToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) override;
+        void CompositeToSurfaceWithOpacity(NativeSurfacePtr flushToSurface, const Point2Dd& pos,
+                                           double opacity) override;
         void FlushRegionToSurface(NativeSurfacePtr flushToSurface,
                                   const Rect2Dd& region, const Point2Dd& destPos) override;
         float GetDeviceScale() const override {

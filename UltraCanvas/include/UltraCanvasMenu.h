@@ -1,10 +1,14 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.13.0 - a current-desktop look for popups and submenus (Windows 11, macOS,
+//                  GNOME): rounded panel with a soft drop shadow, inner padding, rounded
+//                  highlights inset from the edges, neutral hover, muted shortcuts;
+//                  MenuStyle::itemInset / itemCornerRadius
 // Version: 1.12.0 - a menu to screen readers
 // Version: 1.10.0 - enableAnimations fades the entries in when a popup opens; the
 //                  MenuItemData::Input() declarations, never defined, are gone
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -179,34 +183,43 @@ namespace UltraCanvas {
     MenuCheckboxShape GetDefaultMenuCheckboxShape();
 
     struct MenuStyle {
-        // Colors
-        Color backgroundColor = Color(248, 248, 248);
-        Color borderColor = Color(200, 200, 200);
-        Color hoverColor = Color(230, 240, 255);
-        Color hoverTextColor = Color(0, 0, 0, 255);
-        Color pressedColor = Color(210, 230, 255);
+        // Colors. Highlights and lines may be translucent: they are drawn
+        // over the menu's own background, so a translucent black hover reads
+        // as a darker shade of whatever background a menu is given.
+        Color backgroundColor = Color(249, 249, 249);
+        Color borderColor = Color(0, 0, 0, 36);
+        Color hoverColor = Color(0, 0, 0, 15);
+        Color hoverTextColor = Color(26, 26, 26);
+        Color pressedColor = Color(0, 0, 0, 10);
         Color selectedColor = Color(25, 118, 210, 50);
-        Color separatorColor = Color(220, 220, 220);
-        Color textColor = Colors::Black;
-        Color shortcutColor = Color(100, 100, 100, 255);
-        Color disabledTextColor = Color(150, 150, 150);
-        Color headerTextColor = Color(100, 100, 100);
+        Color separatorColor = Color(0, 0, 0, 24);
+        Color textColor = Color(26, 26, 26);
+        Color shortcutColor = Color(110, 110, 110);
+        Color disabledTextColor = Color(160, 160, 160);
+        Color headerTextColor = Color(110, 110, 110);
 
         // Typography
         FontStyle font;
 
-        // Dimensions
+        // Dimensions. A popup or submenu is a panel: borderWidth, then
+        // paddingTop / paddingBottom above the first and below the last row,
+        // and itemInset on both sides of every row. A row's highlight fills
+        // the row, rounded by itemCornerRadius, and its contents start
+        // paddingLeft inside it and end paddingRight before its right end.
+        // A menubar has no panel padding or inset: its items run edge to edge.
         int itemHeight = 28;
         int iconSize = 16;
-        int paddingLeft = 4;
-        int paddingRight = 4;
+        int paddingLeft = 10;
+        int paddingRight = 12;
         int paddingTop = 4;
         int paddingBottom = 4;
-        int iconSpacing = 6;
-        int shortcutSpacing = 20;
-        int separatorHeight = 8;
+        int itemInset = 4;          // Gap between the panel's border and a row's highlight
+        int itemCornerRadius = 4;   // Rounding of a row's highlight
+        int iconSpacing = 10;
+        int shortcutSpacing = 24;
+        int separatorHeight = 9;
         int borderWidth = 1;
-        int borderRadius = 4;
+        int borderRadius = 8;       // Rounding of the popup / submenu panel
         int minWidth = 0;       // Minimum menu width (0 = no minimum)
         int maxWidth = 0;       // Maximum menu width (0 = no maximum, items ellipsize when exceeded)
         MenuRadioShape radioShape = MenuRadioShape::Round;   // Outline of a Radio item's indicator
@@ -222,11 +235,16 @@ namespace UltraCanvas {
         bool enableAnimations = false;
         float animationDuration = 0.15f;
 
-        // Shadow
+        // Shadow: a soft drop shadow under a popup or submenu, painted by the
+        // window outside the menu's bounds (see PopupShadow). shadowColor is
+        // its colour where fully overlapped; it fades out over shadowBlur
+        // pixels centred on the panel's outline (half of it past the edge, as
+        // a CSS box-shadow's blur) and is moved by shadowOffset - down, so
+        // the panel reads as lifted towards the light. A menubar has none.
         bool showShadow = true;
-        Color shadowColor = Color(0, 0, 0, 100);
-        Point2Di shadowOffset = Point2Di(1, 1);
-        int shadowBlur = 4;
+        Color shadowColor = Color(0, 0, 0, 64);
+        Point2Di shadowOffset = Point2Di(0, 6);
+        int shadowBlur = 18;
 
         // Scrollbar (for overflow menus)
         ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Default());
@@ -376,6 +394,10 @@ namespace UltraCanvas {
 
         bool ContainsInWindow(const Point2Df& point) override;
 
+        // The style's soft drop shadow, for a popup or submenu with
+        // showShadow; none for a menubar.
+        PopupShadow GetPopupShadow() const override;
+
     protected:
         void OnPopupClosed(ClosePopupReason reason) override;
 
@@ -417,7 +439,13 @@ namespace UltraCanvas {
         void RenderCheckbox(const MenuItemData& item, const Point2Di& position, IRenderContext* ctx);
         void RenderSubmenuArrow(const Point2Di& position, IRenderContext* ctx);
         void RenderIcon(const std::string& iconPath, const Point2Di& position, IRenderContext* ctx);
-        void RenderShadow(IRenderContext* ctx);
+        // Top of the first row of a vertical menu, before scrolling: the
+        // panel's border and its top padding.
+        int GetContentTop() const { return style.borderWidth + style.paddingTop; }
+        // Height of a row: separators have their own.
+        int GetRowHeight(const MenuItemData& item) const {
+            return item.type == MenuItemType::Separator ? style.separatorHeight : style.itemHeight;
+        }
 
         // ===== UTILITY METHODS =====
         Color GetItemBackgroundColor(int index, const MenuItemData& item) const;
@@ -555,38 +583,50 @@ namespace UltraCanvas {
     };
 
 // ===== STYLE FACTORY IMPLEMENTATIONS =====
+    // The look current desktops share for context and drop-down menus -
+    // Windows 11 (WinUI MenuFlyout), macOS and GNOME (libadwaita popover
+    // menus): a rounded panel lifted off the window by a soft shadow, a thin
+    // low-contrast border, a few pixels of padding inside it, rows whose
+    // highlight is a rounded rectangle inset from the panel's edges in a
+    // neutral shade, shortcuts in a muted secondary colour and separators as
+    // faint hairlines. Sizes follow Windows 11's mouse metrics (8 px panel
+    // radius, 4 px padding and inset, 4 px highlight radius).
     inline MenuStyle MenuStyle::Default() {
         MenuStyle style;
-        style.backgroundColor = Color(248, 248, 248, 255);
-        style.borderColor = Color(200, 200, 200, 255);
-        style.textColor = Color(0, 0, 0, 255);
-        style.hoverColor = Color(225, 240, 255, 255);
-        style.hoverTextColor = Color(0, 0, 0, 255);
-        style.pressedColor = Color(200, 220, 240, 255);
-        style.disabledTextColor = Color(150, 150, 150, 255);
-        style.shortcutColor = Color(100, 100, 100, 255);
-        style.separatorColor = Color(220, 220, 220, 255);
-        style.headerTextColor = Color(100, 100, 100, 255);
+        style.backgroundColor = Color(249, 249, 249, 255);
+        style.borderColor = Color(0, 0, 0, 36);
+        style.textColor = Color(26, 26, 26, 255);
+        style.hoverColor = Color(0, 0, 0, 15);
+        style.hoverTextColor = Color(26, 26, 26, 255);
+        style.pressedColor = Color(0, 0, 0, 10);
+        style.disabledTextColor = Color(160, 160, 160, 255);
+        style.shortcutColor = Color(110, 110, 110, 255);
+        style.separatorColor = Color(0, 0, 0, 24);
+        style.headerTextColor = Color(110, 110, 110, 255);
 
-        // FIXED: Proper default height for menu items
-        style.itemHeight = 24;  // Reduced from whatever was causing 44px
+        style.itemHeight = 28;
         style.paddingTop = 4;
         style.paddingBottom = 4;
-        style.paddingLeft = 8;
-        style.paddingRight = 8;
+        style.paddingLeft = 10;
+        style.paddingRight = 12;
+        style.itemInset = 4;
+        style.itemCornerRadius = 4;
 
         style.iconSize = 16;
-        style.iconSpacing = 6;
-        style.shortcutSpacing = 20;
+        style.iconSpacing = 10;
+        style.shortcutSpacing = 24;
         // The separator row holds a 1px line centred in it, so it needs a few
         // pixels of its own: at separatorHeight = 1 the line sits flush against
         // the neighbouring items and reads as a hairline rather than a divider.
-        style.separatorHeight = 7;
+        style.separatorHeight = 9;
         style.borderWidth = 1;
-        style.borderRadius = 0;
+        style.borderRadius = 8;
         style.font.fontSize = 11.0f;
 
-        style.showShadow = false;
+        style.showShadow = true;
+        style.shadowColor = Color(0, 0, 0, 64);
+        style.shadowOffset = Point2Di(0, 6);
+        style.shadowBlur = 18;
         style.enableAnimations = false;
         style.animationDuration = 0.2f;
 
@@ -597,29 +637,32 @@ namespace UltraCanvas {
         // Built on Default() so the themes differ in colour only: starting from a
         // bare MenuStyle gave the dark menu its own item height, padding, corner
         // radius, shadow and separator height, and the same menu changed shape
-        // when it changed theme.
+        // when it changed theme. A light hairline outlines the panel, which a
+        // dark border would lose against a dark window.
         MenuStyle style = Default();
-        style.backgroundColor = Color(45, 45, 45, 255);
-        style.borderColor = Color(70, 70, 70, 255);
+        style.backgroundColor = Color(44, 44, 44, 255);
+        style.borderColor = Color(255, 255, 255, 28);
         style.textColor = Colors::White;
         style.hoverTextColor = Colors::White;
-        style.hoverColor = Color(85, 85, 85, 255);
-        style.pressedColor = Color(110, 110, 110, 255);
+        style.hoverColor = Color(255, 255, 255, 22);
+        style.pressedColor = Color(255, 255, 255, 14);
         style.disabledTextColor = Color(120, 120, 120, 255);
-        style.shortcutColor = Color(170, 170, 170, 255);
-        style.separatorColor = Color(90, 90, 90, 255);
-        style.headerTextColor = Color(180, 180, 180, 255);
+        style.shortcutColor = Color(190, 190, 190, 255);
+        style.separatorColor = Color(255, 255, 255, 26);
+        style.headerTextColor = Color(190, 190, 190, 255);
+        style.shadowColor = Color(0, 0, 0, 110);
         return style;
     }
 
     inline MenuStyle MenuStyle::Flat() {
+        // No panel decoration - no border, square corners, no shadow - on
+        // white; the rows keep Default()'s rounded, inset highlight.
         MenuStyle style = Default();
         style.backgroundColor = Colors::White;
         style.borderWidth = 0;
         style.borderRadius = 0;
         style.showShadow = false;
-        style.textColor = Colors::Black;
-        style.hoverColor = Color(240, 240, 240, 255);
+        style.hoverColor = Color(0, 0, 0, 12);
         return style;
     }
 

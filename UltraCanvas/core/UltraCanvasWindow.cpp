@@ -1,10 +1,12 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.5.0 - popups are blended over the window with their alpha (rounded corners
+//                  show what is beneath) and a popup's drop shadow is painted under it
 // Version: 1.4.1 - IsWindowFocused() without an application is false, not a crash
 // Version: 1.4.0 - popups composite at their opacity (SetPopupOpacity), mixed with
 //                  the window content beneath, so a popup can fade as a whole
 // Version: 1.3.3 - PerformClose() closes transient child windows so no orphaned modal survives its parent
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -22,6 +24,48 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+    namespace {
+        // What a popup paints on the window: its bounds and, around them,
+        // the drop shadow the window draws under it.
+        Rect2Df PopupPaintedBounds(const UltraCanvasUIElement& popup) {
+            Rect2Df r = popup.GetBoundsInWindow();
+            const PopupShadow shadow = popup.GetPopupShadow();
+            if (!shadow.IsVisible()) return r;
+            const float left = static_cast<float>(shadow.MarginLeft());
+            const float top = static_cast<float>(shadow.MarginTop());
+            return Rect2Df(r.x - left, r.y - top,
+                           r.width + left + static_cast<float>(shadow.MarginRight()),
+                           r.height + top + static_cast<float>(shadow.MarginBottom()));
+        }
+
+        // A soft shadow of `outline` into `ctx`, fading over `blur` pixels
+        // centred on the outline (see PopupShadow). There is no blur
+        // primitive in IRenderContext, so a Gaussian falloff is approximated
+        // by stacking translucent rounded rectangles, from blur / 2 inside
+        // the outline out to blur / 2 past it, one pixel apart, with the
+        // per-layer alpha chosen so the fully overlapped core reaches the
+        // shadow colour's alpha. At the outline half the layers overlap.
+        void DrawSoftShadow(IRenderContext& ctx, const Rect2Dd& outline, const PopupShadow& shadow) {
+            if (shadow.blur <= 0) {
+                ctx.DrawFilledRectangle(outline, shadow.color, 0, Colors::Transparent, shadow.cornerRadius);
+                return;
+            }
+            const int layers = shadow.blur;
+            const double half = layers / 2;
+            const float coreAlpha = shadow.color.a / 255.0f;
+            const float layerAlpha = 1.0f - std::pow(1.0f - coreAlpha, 1.0f / static_cast<float>(layers));
+            Color layerColor = shadow.color;
+            layerColor.a = static_cast<uint8_t>(std::clamp(layerAlpha * 255.0f + 0.5f, 1.0f, 255.0f));
+            for (int i = layers; i >= 1; --i) {
+                const double grow = i - half;
+                Rect2Dd layer(outline.x - grow, outline.y - grow, outline.width + 2 * grow, outline.height + 2 * grow);
+                if (layer.width <= 0 || layer.height <= 0) continue;
+                const double radius = std::max(0.0, static_cast<double>(shadow.cornerRadius) + grow);
+                ctx.DrawFilledRectangle(layer, layerColor, 0, Colors::Transparent, static_cast<float>(radius));
+            }
+        }
+    }
+
     UltraCanvasWindowBase::UltraCanvasWindowBase()
             : UltraCanvasContainer("Window", 0, 0, 0, 0) {
         // Configure container for window behavior
@@ -431,8 +475,10 @@ namespace UltraCanvas {
         renderContext = CreateRenderContext(Size2Di(config_.width, config_.height), nativeSurface);
 
         // Drop popup contexts so the UpdateAndRender() popup loop lazily rebuilds
-        // them against the new nativeSurface; re-seed their dirty rects.
+        // them against the new nativeSurface; re-seed their dirty rects. Their
+        // shadows are drawn again at the new scale on the next composite.
         for (auto& pe : popupElements) {
+            pe.shadowSurface.reset();
             if (pe.element) {
                 pe.element->renderContext.reset();
                 Size2Di ps = pe.element->GetSize();
@@ -731,7 +777,7 @@ namespace UltraCanvas {
                         continue;
                     }
                     if (!p->IsVisible()) continue;
-                    if (p->GetBoundsInWindow().Intersects(caretRect)) {
+                    if (PopupPaintedBounds(*p).Intersects(caretRect)) {
                         caretCovered = true;
                         break;
                     }
@@ -759,15 +805,16 @@ namespace UltraCanvas {
                     if (!p || !p->IsVisible() || !p->renderContext) continue;
                     auto pos = p->GetPositionInWindow();
                     // The window content and the popups below are already on
-                    // the surface: a popup below full opacity is mixed with
-                    // them, which is what lets one fade in as a whole.
-                    if (pe.opacity >= 1.0f) {
-                        p->renderContext->FlushToSurface(nativeSurface,
-                                                         {(float)pos.x, (float)pos.y});
-                    } else if (pe.opacity > 0.0f) {
-                        p->renderContext->FlushToSurfaceWithOpacity(nativeSurface,
-                                                                    {(float)pos.x, (float)pos.y},
-                                                                    pe.opacity);
+                    // the surface. The popup is blended over them with its
+                    // alpha, so the pixels it leaves transparent - rounded
+                    // corners - show them, and below full opacity it is mixed
+                    // with them, which is what lets one fade in as a whole.
+                    // Its drop shadow goes down first, at the same opacity.
+                    if (pe.opacity > 0.0f) {
+                        CompositePopupShadow(pe, Point2Dd(pos.x, pos.y));
+                        p->renderContext->CompositeToSurfaceWithOpacity(nativeSurface,
+                                                                        {(float)pos.x, (float)pos.y},
+                                                                        pe.opacity);
                     }
                     // ...or directly above the popup hosting it, so popups
                     // opened later still cover the caret.
@@ -867,6 +914,35 @@ namespace UltraCanvas {
         dragOverlayRenderer = nullptr;
         dragOverlayOwner = nullptr;
         dragOverlayRect = Rect2Di(0, 0, 0, 0);
+    }
+
+    void UltraCanvasWindowBase::CompositePopupShadow(PopupElement& pe, const Point2Dd& popupPos) {
+        const PopupShadow shadow = pe.element->GetPopupShadow();
+        if (!shadow.IsVisible()) {
+            pe.shadowSurface.reset();
+            return;
+        }
+        const Size2Di size = pe.element->GetSize();
+        if (size.width <= 0 || size.height <= 0) return;
+
+        const int left = shadow.MarginLeft();
+        const int top = shadow.MarginTop();
+        if (!pe.shadowSurface || pe.shadowDrawn != shadow || pe.shadowDrawnFor != size) {
+            pe.shadowSurface = CreateRenderContext(
+                    Size2Di(size.width + left + shadow.MarginRight(),
+                            size.height + top + shadow.MarginBottom()),
+                    nativeSurface);
+            if (!pe.shadowSurface) return;
+            pe.shadowSurface->Clear(Colors::Transparent);
+            DrawSoftShadow(*pe.shadowSurface,
+                           Rect2Dd(left + shadow.offset.x, top + shadow.offset.y, size.width, size.height),
+                           shadow);
+            pe.shadowDrawn = shadow;
+            pe.shadowDrawnFor = size;
+        }
+        pe.shadowSurface->CompositeToSurfaceWithOpacity(nativeSurface,
+                                                        {popupPos.x - left, popupPos.y - top},
+                                                        pe.opacity);
     }
 
     void UltraCanvasWindowBase::AddPopupDirtyRect(UltraCanvasUIElement* popup,

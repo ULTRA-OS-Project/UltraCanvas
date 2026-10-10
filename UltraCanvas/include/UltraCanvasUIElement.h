@@ -5,11 +5,12 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
+// Version: 4.4.0 - GetPopupShadow: a soft drop shadow the window paints under a popup
 // Version: 4.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 4.3.0 - accessible name/description overrides, toggle state, range value, value text and default action
 // Version: 4.2.0 - ArrangeOwnBox: take a box without laying the children out
 // Version: 4.1.0 - SetBorderRadius: rounded corners without a border
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -90,6 +91,33 @@ namespace UltraCanvas {
         bool closeByEscapeKey = true;
         bool closeByClickOutside = true;
         std::weak_ptr<UltraCanvasUIElement> popupOwner;
+    };
+
+    // A soft drop shadow under a popup (see UltraCanvasUIElement::
+    // GetPopupShadow). The window paints it outside the popup's own surface,
+    // beneath it, so the popup keeps its bounds and the shadow catches no
+    // clicks. Its shape is the popup's outline - a rounded rectangle of
+    // `cornerRadius` - moved by `offset`; `blur` is the width of the fade
+    // from `color` to nothing, centred on that outline as a CSS box-shadow's
+    // blur is, so the shadow reaches blur / 2 past it at half strength.
+    struct PopupShadow {
+        Color color = Colors::Transparent;   // alpha 0: no shadow
+        int blur = 0;
+        Point2Di offset = Point2Di(0, 0);
+        float cornerRadius = 0.0f;
+
+        bool IsVisible() const { return color.a > 0; }
+        bool operator==(const PopupShadow& o) const {
+            return color == o.color && blur == o.blur && offset == o.offset &&
+                   cornerRadius == o.cornerRadius;
+        }
+        bool operator!=(const PopupShadow& o) const { return !(*this == o); }
+        // How far the shadow reaches past the popup's bounds on each side.
+        int Reach() const { return (std::max(0, blur) + 1) / 2; }
+        int MarginLeft() const { return IsVisible() ? std::max(0, Reach() - offset.x) : 0; }
+        int MarginTop() const { return IsVisible() ? std::max(0, Reach() - offset.y) : 0; }
+        int MarginRight() const { return IsVisible() ? std::max(0, Reach() + offset.x) : 0; }
+        int MarginBottom() const { return IsVisible() ? std::max(0, Reach() + offset.y) : 0; }
     };
 
     enum class ClosePopupReason {
@@ -246,6 +274,12 @@ namespace UltraCanvas {
         // their own surface and composited above the window content, so the
         // compositor uses this to work out what stacks above what.
         bool IsPopupElement() const { return isPopup; }
+
+        // The drop shadow the window paints under this element while it is
+        // open as a popup. None by default; a menu returns its style's.
+        // Popups are composited over the window with their alpha, so a popup
+        // that leaves its corners transparent shows them rounded.
+        virtual PopupShadow GetPopupShadow() const { return PopupShadow(); }
 
         virtual Point2Df GetPositionInWindow() const;
         Rect2Df GetBoundsInWindow() const {
