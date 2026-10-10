@@ -873,6 +873,29 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TAG INPUT GROW TEST =====
+# A tag field grows to fit its chips inside a flex layout (the layout pass
+# used to put its first height back, cutting off every row after the first),
+# and what follows it moves down. Opens a window, so it skips itself without
+# a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TagInputGrowTest...")
+    add_executable(TagInputGrowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TagInputGrowTest.cpp
+    )
+    target_include_directories(TagInputGrowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TagInputGrowTest PRIVATE cxx_std_20)
+    target_link_libraries(TagInputGrowTest PRIVATE UltraCanvas)
+    set_target_properties(TagInputGrowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TagInputGrowTest COMMAND TagInputGrowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TagInputGrowTest")
+else()
+    message(STATUS "  TagInputGrowTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== ELEMENT PRESS TAKEN TEST =====
 # An element takes the presses it acts on (a press it reported as untaken
 # climbed to its parents, which could act on it again); the arc diagram

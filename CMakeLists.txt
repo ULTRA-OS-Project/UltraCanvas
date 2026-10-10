@@ -152,6 +152,19 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #set(CMAKE_CXX_EXTENSIONS OFF)
 
+# libc++ 23 (LLVM 23, which MSYS2's CLANG64/CLANGARM64 ship since 2026-10-09)
+# dropped most of its transitive includes: <string> no longer brings in
+# <algorithm>, <cstdlib>, <iterator>, <optional> and more, so a file that
+# used std::strtof or std::sort with only <string> included stops compiling.
+# The toolchain's own escape hatch restores the old behaviour until the tree
+# includes what it uses; it is ignored by libstdc++ and by older libc++, and
+# libc++ 24 removes it, so every file this bridge still covers has to be
+# fixed before then (build with -U_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23
+# against libc++ 23 to list them). The library target exports the same
+# definition (UltraCanvas/CMakeLists.txt) so an SDK consumer's build of the
+# public headers gets it too.
+add_compile_definitions(_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23)
+
 # Build type defaults to Release
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)

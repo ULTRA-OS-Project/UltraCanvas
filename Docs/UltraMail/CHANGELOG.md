@@ -1,3 +1,19 @@
+#### 2026-10-09 *0.10.46*
+- **Settings > Warnings > Trusted & blocked shows every entry.** A list
+  with more addresses than one row holds hid the rest: the field wrapped
+  them onto a second row but stayed one row tall, so the third blocked
+  address could not be seen or removed. The field grows to fit now - a fix
+  in the framework's tag field (`UltraCanvasTagInput`), which also shows
+  every trusted website and sender on *Privacy > Images*.
+- **A settings page taller than the window scrolls.** With the lists
+  growing, a long list of trusted websites and senders pushed the notes off
+  the foot of *Privacy > Images* with no way to reach them. Every page now
+  shows a vertical scrollbar when it needs one, as UltraFiler's long pages
+  do; a page that fits looks as before.
+- **The page's name fits the settings tree.** "Trusted and blocked senders"
+  was cut off to "Trusted and blocked se..."; the tree says *Trusted &
+  blocked*, and the page keeps its full title.
+
 #### 2026-10-09 *0.10.45*
 - **Yahoo accounts can sign in with an app password again.** The browser
   sign-in only works once Yahoo grants UltraMail's OAuth client Mail access,
