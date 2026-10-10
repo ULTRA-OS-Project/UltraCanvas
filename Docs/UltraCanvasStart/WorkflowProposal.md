@@ -1,11 +1,11 @@
 # UltraCanvasStart: a stepper instead of tabs — Proposal
 
-**Status:** Proposal, not implemented. UltraCanvasStart 0.2.0 keeps the
-seven tabs and restyles them; this document is the next change, for the
-author to accept, alter or decline.
+**Status:** Implemented in UltraCanvasStart 0.3.0, as written below, with
+the three open questions decided as §5 records. Kept as the design note for
+the window (`ui/UltraCanvasStartWindow.cpp`).
 **Scope:** `Apps/UltraCanvasStart/ui/`. The engine (`engine/`) stays as it
 is: it already produces the plan as steps.
-**Last Modified:** 2026-10-10
+**Last Modified:** 2026-10-10 (implemented)
 
 ## 1. What the tabs hide
 
@@ -103,16 +103,17 @@ About three hundred lines move and a hundred are new, all in
 unchanged. One session's work, with the screenshots of each step as the
 check (`xvfb-run` and `--step`, as 0.2.0's screenshots were made).
 
-## 5. Open questions
+## 5. Open questions, decided in 0.3.0
 
-1. **Should step 3 block Next while something is missing?** The proposal
-   says no (*Continue anyway* with the error marker), because a programmer
-   who installs by hand must be able to go on. Blocking would be simpler to
-   explain.
+1. **Should step 3 block Next while something is missing?** No: Next goes
+   on, and the step keeps the error marker until the checks pass, because a
+   programmer who installs by hand must be able to go on. The status line
+   says that Next goes on anyway.
 2. **Should the SDK download start by itself** when *prebuilt SDK* is the
-   choice and the folder is known, or stay a button? A button, in the
-   proposal: it writes a hundred megabytes somewhere.
-3. **Does the Report deserve a step?** The proposal makes it a dialog. If
-   the report is how most people hand a problem to the assistant, a sixth
-   step *Hand over* with the report and the first prompt side by side would
-   say so.
+   choice? No, it stays a button (*Download and unpack...*): it writes a
+   hundred megabytes somewhere, so the reader picks the folder. The step
+   carries the marker while the SDK is chosen and no prefix is set.
+3. **Does the Report deserve a step?** No: it is a dialog from the header
+   at any time, and the Done page (step 5 after the project is written)
+   carries *Copy the report* next to the first prompt, which is where a
+   hand-over happens.

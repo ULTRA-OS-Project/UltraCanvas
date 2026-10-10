@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.1.2 - the guide names the steps, not the pages
 // Version: 0.1.1 - AiGuide per assistant
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -29,7 +30,7 @@ std::string SdkLine(Platform platform, const std::string& version, const std::st
     const std::string archive = SdkArchiveName(platform, version, architecture);
     return "unpack the prebuilt SDK " + Link(archive, SdkReleaseAssetUrl(platform, version, architecture)) +
            (remark.empty() ? "" : " (" + remark + ")") +
-           " - the Project page's *Download...* fetches and unpacks it - or";
+           " - the Framework step's *Download and unpack...* fetches it - or";
 }
 
 } // namespace
@@ -42,7 +43,7 @@ std::string PlatformGuide(Platform platform, const std::string& version,
             out += "### Linux\n\n";
             out += "1. Install the development packages with your distribution's package manager "
                    "(" + Code("apt") + ", " + Code("dnf") + ", " + Code("pacman") + " or " + Code("zypper") +
-                   "); the Install page lists the exact names and installs them for you.\n";
+                   "); the Tools step lists the exact names and installs them for you.\n";
             out += "2. Make sure a C++20 compiler is installed: " + Code("clang") + " 14 or newer, or " +
                    Code("gcc") + " 11 or newer.\n";
             out += "3. Get the framework, one of:\n";
@@ -59,7 +60,7 @@ std::string PlatformGuide(Platform platform, const std::string& version,
             out += "2. Install Homebrew from " + Link("https://brew.sh", "https://brew.sh") + ".\n";
             out += "3. Install the libraries: " +
                    Code("brew install cmake pkg-config cairo pango harfbuzz vips glib freetype tinyxml2") +
-                   " (the Install page lists the optional ones and installs them for you).\n";
+                   " (the Tools step lists the optional ones and installs them for you).\n";
             out += "4. Get the framework, one of:\n";
             out += "   - " + SdkLine(platform, version, architecture,
                                      Code("arm64") + " for Apple silicon, " + Code("x86_64") + " for Intel") + "\n";
@@ -72,7 +73,7 @@ std::string PlatformGuide(Platform platform, const std::string& version,
             out += "2. Open the **MSYS2 CLANG64** shell (**CLANGARM64** on an ARM machine).\n";
             out += "3. Update MSYS2: " + Code("pacman -Syu") + " (close and reopen the shell if it asks you to).\n";
             out += "4. Install the packages: " + Code("pacman -S mingw-w64-clang-x86_64-clang mingw-w64-clang-x86_64-cmake") +
-                   " and the rest of the list (the Install page lists them all, and *Install what is missing* runs the command).\n";
+                   " and the rest of the list (the Tools step lists them all, and *Install what is missing* runs the command).\n";
             out += "5. Get the framework, one of:\n";
             out += "   - " + SdkLine(platform, version, architecture,
                                      "the core is " + Code("bin/libUltraCanvas.dll")) + "\n";

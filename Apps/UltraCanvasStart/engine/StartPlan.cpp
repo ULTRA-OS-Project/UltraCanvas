@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
+// Version: 0.1.3 - the steps, not the pages, in the plan's wording
 // Version: 0.1.2 - the plan and the report name the chosen assistant
 // Version: 0.1.1 - notes are one action each, in Markdown; the report prints them plain
 // Author: UltraCanvas Framework / ULTRA OS
@@ -117,7 +118,7 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         download.title = "Get the UltraCanvas SDK " + SdkArtifactName(target, version, arch);
         download.description = "The framework prebuilt for " + PlatformName(target) + " " + arch +
                                ": " + SdkReleaseAssetUrl(target, version, arch) +
-                               " - the Project page's Download button fetches and unpacks it; "
+                               " - the Framework step's Download and unpack button fetches it; "
                                "while that release is still building, the archive of the same name "
                                "is a workflow artifact at " + SdkDownloadPage();
         plan.steps.push_back(download);
@@ -151,8 +152,8 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
                                             : "Install " + name + " and open the project with it");
         ai.description = choices.cloudOnly
             ? "No compiler here: GitHub Actions builds. Follow Docs/GettingStarted-Cloud.md; "
-              "the AI page has the checklist."
-            : "The AI page has the install command and the first prompt to give it.";
+              "the Features step has the checklist."
+            : "The Features step has the install command; the Done page has the first prompt to give it.";
         plan.steps.push_back(ai);
     }
     return plan;

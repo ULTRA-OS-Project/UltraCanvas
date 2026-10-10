@@ -4,10 +4,11 @@
 // are missing, points at the prebuilt SDK, writes a project skeleton and
 // explains how to work with an AI assistant on it, locally or through GitHub.
 //
-// Without arguments it opens the window, on the platform page preselected to
-// the platform it runs on - the same choice Docs/GettingStarted.md offers,
-// so a programmer can read another platform's instructions too. With --check
+// Without arguments it opens the window on step 1, what was found, with the
+// guide for any platform under it - the same choice Docs/GettingStarted.md
+// offers, so a programmer can read another platform's instructions too. With --check
 // or --plan it runs headless, which is what CI uses to smoke-test it.
+// Version: 0.2.0 - --step <n>; --page maps the old names to steps
 // Version: 0.1.2 - --assistant <ai> chooses the assistant
 // Version: 0.1.1 - --page <name> opens the window on a page
 // Author: UltraCanvas Framework / ULTRA OS
@@ -65,8 +66,11 @@ void PrintUsage(const char* programName) {
         "                    (in the window: preselect that platform's guide)\n"
         "  --all             Check every feature group, not only the toolchain\n"
         "                    and the framework core\n"
-        "  --page <name>     Open the window on a page: platform, system, choices,\n"
-        "                    install, project, ai or report\n"
+        "  --step <n>        Open the window on step 1 to 5 (your computer, features,\n"
+        "                    tools, framework, project)\n"
+        "  --page <name>     The page names before 0.3.0 (platform, system, choices,\n"
+        "                    install, project, ai) mapped to their step; guide and\n"
+        "                    report open those dialogs\n"
         "  --assistant <ai>  claude, codex, copilot, gemini or other: the assistant\n"
         "                    the plan and the project are for (default claude)\n"
         "  -v, --version     Show version information\n"
@@ -103,6 +107,7 @@ int main(int argc, char* argv[]) {
     bool headlessCheck = false;
     bool headlessPlan = false;
     std::string page;
+    int step = 0;
     UltraCanvasStart::Choices choices;
 
     for (int i = 1; i < argc; ++i) {
@@ -128,6 +133,12 @@ int main(int argc, char* argv[]) {
                                 UltraCanvasStart::DependencyGroup::Net }) {
                 choices.Set(group, true);
             }
+        } else if (arg == "--step") {
+            if (i + 1 >= argc || (step = std::atoi(argv[i + 1])) < 1 || step > 5) {
+                std::printf("--step needs a number from 1 to 5\n");
+                return EXIT_FAILURE;
+            }
+            ++i;
         } else if (arg == "--page") {
             if (i + 1 >= argc) {
                 std::printf("--page needs platform, system, choices, install, project, ai or report\n");
@@ -193,11 +204,13 @@ int main(int argc, char* argv[]) {
         if (choices.assistant != UltraCanvasStart::Assistant::ClaudeCode) {
             window.PreselectAssistant(choices.assistant);
         }
+        window.Show();
+        // After Show(): "guide" and "report" open dialogs over the window.
         if (!page.empty() && !window.ShowPage(page)) {
             std::printf("unknown page: %s\n", page.c_str());
             return EXIT_FAILURE;
         }
-        window.Show();
+        if (step > 0) window.ShowStep(step);
         app.Run();
     } catch (const std::exception& e) {
         debugOutput << "Unhandled exception: " << e.what() << std::endl;

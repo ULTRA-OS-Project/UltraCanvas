@@ -1,3 +1,22 @@
+#### 2026-10-10 *0.3.0*
+- **A stepper instead of tabs** (`Docs/UltraCanvasStart/WorkflowProposal.md`,
+  implemented). Five steps in the order the work happens, with Back and
+  Next below the pane: **Your computer** (what was found, and the guide for
+  any platform under it), **Features** (what the application needs, which
+  assistant and how to install it), **Tools** (the checks run on entering;
+  *Install what is missing*; going on with something missing is allowed and
+  the step keeps the error marker until the checks pass), **Framework** (the
+  prebuilt SDK, with *Download and unpack...* and *Find...*, or a clone built
+  from source, with the clone command; the step carries the marker while
+  the SDK is chosen and no prefix is set), **Project** (name, folder,
+  *Create the project*; then the Done page with what was written, the three
+  build commands, the first prompt for the assistant and *Copy the
+  report*). The Guide and the Report are dialogs from the header, at any
+  time, so neither is a step. The status band says which step it is and
+  what Next does.
+- **`--step <n>` opens the window on a step**; the old `--page` names map to
+  their steps, and `--page guide` / `--page report` open the dialogs.
+
 #### 2026-10-10 *0.2.0*
 - **The assistant is a choice: Claude Code, Codex, Copilot, Gemini or
   another.** The repository is written for any of them (`AGENTS.md` is the

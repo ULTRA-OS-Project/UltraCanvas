@@ -11,7 +11,7 @@
 // helpers that are UltraCanvasStart's own: a read-only Markdown view with
 // links that open in the browser (the pages' prose), a console (command
 // output and generated files), a key/value row, a link label and a status
-// badge for the System page.
+// badge for the key/value cards (step 1, step 4).
 // Version: 0.2.0 - StyleSegmented, MakeSegmented (the platform and assistant pickers)
 // Version: 0.1.1 - the Markdown views' links are not underlined
 // Version: 0.1.0
@@ -329,7 +329,7 @@ MakeRow(const std::string& id, float height = kControlHeight + 4.0f) {
     return row;
 }
 
-// One key/value line of the System page: the key in the secondary grey on a
+// One key/value line of a card: the key in the secondary grey on a
 // fixed column, then the value elements the caller adds (a text, a link, a
 // badge). Returns the row; the caller appends the value.
 inline std::shared_ptr<UltraCanvas::UltraCanvasContainer>
