@@ -11,7 +11,12 @@ told apart:
   a declaration whose type is taken from the doc (`auto label =
   std::make_shared<UltraCanvasLabel>(...)` elsewhere in it) or guessed from
   the name; a name that can't be typed is listed as context, not as an
-  error. A framework class's member defined out of line (`void
+  error. Such a name is a local of the snippet's statements, or a member
+  when a `[this]` lambda uses it, as it would be in the application. A
+  name before `<` that C++20 takes for a template's (`globalIdx <
+  static_cast<int>(n)`, where clang reports "expected '>'" and not the
+  name) is found from the line of that error. A framework class's member
+  defined out of line (`void
   UltraCanvasUIElement::Render(...) {`) is compiled in the class's
   namespace, and a line that is only a macro call without `;`
   (`ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)`) at file scope.
@@ -73,6 +78,9 @@ A baseline entry is the doc and the message, without the line, so editing
 elsewhere in a doc does not disturb it. The file only shrinks: fix a doc's
 findings and rewrite it, never add to it to let a new one through.
 """
+# Version: 1.4.0 - a name the checker declares is a member when a [this]
+#                 lambda uses it; a name clang misreads as a template's
+#                 (`name <`) is declared from the parse error that follows
 # Version: 1.3.1 - --all covers the design documents too; their findings
 #                 are baselined until their APIs exist
 # Version: 1.3.0 - a member of a header class defined out of line goes in
@@ -88,7 +96,7 @@ findings and rewrite it, never add to it to let a new one through.
 #                 what the doc's own headers and doc-check comment declare;
 #                 `Name (` with a space is prose, not a call
 # Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
-# Last Modified: 2026-10-08
+# Last Modified: 2026-10-10
 # Author: UltraCanvas Framework
 
 import argparse
@@ -400,6 +408,7 @@ class Block:
         self.index = 0
         self.context = {}
         self.bad_context = set()
+        self.members = set()        # context names a [this] lambda uses: members, not locals
         self.uses = set()           # using __dc_bK::X; for a type an earlier block defined
 
     def last(self):
@@ -1042,11 +1051,21 @@ class Doc:
                     out.append('#line %d "%s"' % (b.first + i, self.rel))
                     out.extend(b.lines[i:j + 1])
             if any(kind == "stmt" for kind, i, j in code):
+                # A context name is a local of the statements, unless a
+                # [this] lambda uses it: then it is what it would be in the
+                # application, a member.
                 out.append(self.gen(None))
-                out.append("struct __Run { auto __run() {")
+                out.append("struct __Run {")
                 for name, t in sorted(b.context.items()):
-                    out.append(self.gen(("context", b.index, name)))
-                    out.append("%s& %s = *static_cast<%s*>(nullptr);" % (t, name, t))
+                    if name in b.members:
+                        out.append(self.gen(("context", b.index, name)))
+                        out.append("%s& %s = *static_cast<%s*>(nullptr);" % (t, name, t))
+                out.append(self.gen(None))
+                out.append("auto __run() {")
+                for name, t in sorted(b.context.items()):
+                    if name not in b.members:
+                        out.append(self.gen(("context", b.index, name)))
+                        out.append("%s& %s = *static_cast<%s*>(nullptr);" % (t, name, t))
                 for kind, i, j in b.chunks:
                     if kind == "stmt" or (kind, i, j) in pp:
                         out.append('#line %d "%s"' % (b.first + i, self.rel))
@@ -1081,6 +1100,22 @@ class Doc:
         if not qs:
             return None
         return sorted(qs, key=lambda q: q.count("::"))[0].rsplit("::", 1)[0]
+
+    @staticmethod
+    def misread_names(b, line):
+        """The names compared with `<` on a line with an error and the three
+        before it, in the same chunk. C++20 reads an undeclared name before
+        `<` as a template's (`globalIdx < static_cast<int>(n)`), so clang
+        reports the parse error that follows ("expected '>'") and never the
+        name: these are the names it may have meant."""
+        for kind, i, j in b.chunks:
+            if kind == "pp" or not b.first + i <= line <= b.first + j:
+                continue
+            k = line - b.first
+            text = "\n".join(b.clean[max(i, k - 3):k + 1])
+            names = re.findall(r"(?<![\w.:>~])([A-Za-z_]\w*)\s*<(?![<=])", text)
+            return list(dict.fromkeys(n for n in names if n not in KEYWORDS and not n.endswith("_cast")))
+        return []
 
     def check_examples(self):
         declared = context_types("\n".join("\n".join(b.clean) for b in self.blocks), self.index)
@@ -1133,19 +1168,31 @@ class Doc:
                         grew.add(b.index)
                         changed = True
                     continue
-                m = re.match(r"use of undeclared identifier '(\w+)'", msg)
-                if not m or f != self.rel:
-                    continue
-                name = m.group(1)
-                if not (name[0].islower() or name[0] == "_"):
+                if f != self.rel:
                     continue
                 b = next((b for b in self.blocks if b.first <= line <= b.last()), None)
-                if b is None or name in b.context or name in b.bad_context:
+                if b is None:
                     continue
-                t = guess_type(name, declared, main, self.index)
-                if t:
-                    b.context[name] = t
-                    changed = True
+                m = re.match(r"variable '(\w+)' cannot be implicitly captured in a lambda", msg)
+                if m:
+                    if m.group(1) in b.context and m.group(1) not in b.members:
+                        b.members.add(m.group(1))
+                        changed = True
+                    continue
+                m = re.match(r"use of undeclared identifier '(\w+)'", msg)
+                if m:
+                    names = [m.group(1)]
+                else:
+                    names = [n for n in self.misread_names(b, line) if n in declared]
+                for name in names:
+                    if not (name[0].islower() or name[0] == "_"):
+                        continue
+                    if name in b.context or name in b.bad_context:
+                        continue
+                    t = guess_type(name, declared, main, self.index)
+                    if t:
+                        b.context[name] = t
+                        changed = True
             # A name fails on two generated lines, and clang may suggest the
             # other block's type on one of them only: a block that got a
             # `using` in this pass is compiled again before a name of it is
