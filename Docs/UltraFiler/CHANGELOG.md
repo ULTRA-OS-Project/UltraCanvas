@@ -1,3 +1,22 @@
+#### 2026-10-10 *1.71.1*
+- **Split view: files dropped on a folder of the other pane go into that
+  folder.** Dragged from one pane and released on a folder of the other,
+  files were copied into the folder that pane showed instead - out of sight
+  among its other files, without a question, so it looked as if nothing had
+  happened. They now go into the folder under the pointer, and onto the
+  pane's empty space into the folder it shows. While they are over the other
+  pane it frames the folder they would land in, or the whole pane when that
+  is its own folder. A drop across the split is a move, like a drop on a
+  folder of the same pane: Ctrl copies, Shift moves, Settings > Handling >
+  Drag & Drop sets what a plain drop does, and it asks first under Handling >
+  File operations - moves ask by default, with Move, Copy and Cancel. A drop
+  on the folder tree now shows the row it would land on while the files are
+  still being dragged. Files dropped from another program onto a folder in a
+  pane go into that folder too (still copied). Framework change - see
+  `Docs/UltraCanvas/changelog.d/filer-drop-on-other-display.md`.
+  If an earlier drop seemed to do nothing, look in the folder the target pane
+  showed: the files were copied there.
+
 #### 2026-10-10 *1.71.0*
 - **Settings > Display > Tab style: Modern, Simple modern or Classic.** The
   window's tab strip can now draw its tabs as capsules floating in a

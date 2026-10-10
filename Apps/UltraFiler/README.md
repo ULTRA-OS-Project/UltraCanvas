@@ -60,8 +60,14 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   navigation row, the command bar, the search field, the status bar and the
   preview pane act on, exactly as they act on the active tab; clicking a tab
   makes the left-hand pane active again, and the Computer page always opens
-  in the left-hand pane. Files drag and drop between the two displays like
-  between any two displays of the window. The right-hand display's folder
+  in the left-hand pane. **Files drag and drop between the two displays**:
+  released on a folder of the other display they go into that folder, and
+  on its empty space into the folder it shows. While they are over it, the
+  other display frames the folder they would land in (the whole display for
+  its own folder). It is a move, as a drop on a folder of the same display
+  is - Ctrl copies, Shift moves, and Settings > Handling > Drag & Drop sets
+  the plain drop - and it asks first under the same confirmation (Handling >
+  File operations; moves ask by default). The right-hand display's folder
   and the switch itself are saved with the settings (`view.split`,
   `view.split.second.folder`), so the next start opens the pair as it was
   left. Pressing the button again brings the tree pane back as wide as it

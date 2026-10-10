@@ -4814,12 +4814,15 @@ namespace UltraCanvas {
         }
 
         // Inside the widget the folder under the cursor is the drop target;
-        // outside it there is none to highlight.
+        // outside it there is none to highlight here - the element under the
+        // cursor is told about the drag instead, and shows its own target.
         auto lb = GetLocalBounds();
         Rect2Di local(static_cast<int>(lb.x), static_cast<int>(lb.y),
                       static_cast<int>(lb.width), static_cast<int>(lb.height));
-        int folder = local.Contains(localPoint) ? DragDropFolderAt(localPoint) : -1;
+        const bool inWidget = local.Contains(localPoint);
+        int folder = inWidget ? DragDropFolderAt(localPoint) : -1;
         if (folder != dragDropFolderIndex) dragDropFolderIndex = folder;
+        UpdateDragHoverElement(windowPoint, inWidget);
         UpdateDragOverlay(localPoint);
         RequestRedraw();
     }
@@ -4835,14 +4838,37 @@ namespace UltraCanvas {
         std::string destDir = (folder >= 0 && folder < static_cast<int>(entries.size()))
                 ? entries[folder].path : std::string();
         Point2Di windowPoint = ToWindowPoint(localPoint);
+        const bool overWindow = !inWidget && IsInsideWindow(windowPoint);
+        // Another file display under the release (the other pane of a split
+        // view) is found before the drag state goes. Held weakly: ending the
+        // gesture tells it the drag left, and nothing here may outlive it.
+        std::weak_ptr<UltraCanvasUIElement> otherDisplay;
+        if (overWindow) {
+            if (UltraCanvasFilerWidget* other = OtherDisplayAt(windowPoint))
+                otherDisplay = other->weak_from_this();
+        }
         EndDragGesture();
         RequestRedraw();
         if (!paths.empty()) {
             if (!destDir.empty()) {
                 DropPathsInto(paths, destDir, copy);
-            } else if (!inWidget && IsInsideWindow(windowPoint)) {
-                // Released over another element of this window (a second filer
-                // pane, a folder tree, ...): offer it the files the same way an
+            } else if (auto other = otherDisplay.lock()) {
+                // Released over another file display of this window: the files
+                // go into the folder under the cursor there, or the folder it
+                // shows - moved or copied as a drop on a folder here would be,
+                // and asked about under the same confirmation. A Drop event
+                // could say neither where nor which verb, and used to copy
+                // everything into the shown folder.
+                auto* display = static_cast<UltraCanvasFilerWidget*>(other.get());
+                const Point2Df there = display->MapToLocal(
+                        Point2Df(static_cast<float>(windowPoint.x),
+                                 static_cast<float>(windowPoint.y)));
+                display->DropOnOtherDisplay(paths,
+                        Point2Di(static_cast<int>(there.x), static_cast<int>(there.y)),
+                        copy);
+            } else if (overWindow) {
+                // Released over another element of this window (a folder
+                // tree, a preview, ...): offer it the files the same way an
                 // external drop would.
                 DeliverInWindowDrop(windowPoint, paths);
             }
@@ -4858,6 +4884,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::EndDragGesture() {
+        // Whatever the drag was over outside this widget stops showing a
+        // drop target: the drag is over, dropped or not.
+        LeaveDragHoverElement();
         if (dragMouseCaptured) {
             if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
             dragMouseCaptured = false;
@@ -4967,14 +4996,129 @@ namespace UltraCanvas {
         app->PushEvent(drop);
     }
 
+    void UltraCanvasFilerWidget::SendDragEvent(UltraCanvasUIElement* element,
+                                               UCEventType type,
+                                               const Point2Di& windowPoint) {
+        auto* win = GetWindow();
+        auto* app = UltraCanvasApplication::GetInstance();
+        // An element that has left this window meanwhile is told nothing.
+        if (!element || !win || !app || element->GetWindow() != win) return;
+        UCEvent e;
+        e.type = type;
+        e.targetWindow = win->GetWindowWeakPtr();
+        e.nativeWindowHandle = win->GetNativeHandle();
+        e.pointerWindow = windowPoint;
+        e.pointer = windowPoint;
+        e.droppedFiles = dragPaths;
+        e.dragMimeType = "text/uri-list";
+        // Inline, like the release that ends the drag in the same widget: the
+        // element shows its target under the cursor on this very move.
+        app->HandleEventWithBubbling(element, e);
+    }
+
+    void UltraCanvasFilerWidget::UpdateDragHoverElement(const Point2Di& windowPoint,
+                                                        bool overThisWidget) {
+        UltraCanvasUIElement* hit = nullptr;
+        auto* win = GetWindow();
+        if (!overThisWidget && win && IsInsideWindow(windowPoint)) {
+            hit = win->FindElementAtPoint(Point2Df(static_cast<float>(windowPoint.x),
+                                                   static_cast<float>(windowPoint.y)),
+                                          true);
+            // This widget's own elements (the rename field, the filter's
+            // buttons) are this widget, and the window itself is no target.
+            for (UltraCanvasUIElement* e = hit; e; e = e->GetParentContainer()) {
+                if (e == this) { hit = nullptr; break; }
+            }
+            if (hit == win) hit = nullptr;
+        }
+        if (dragHoverElement.lock().get() != hit) {
+            LeaveDragHoverElement();
+            if (hit) {
+                dragHoverElement = hit->weak_from_this();
+                SendDragEvent(hit, UCEventType::DragEnter, windowPoint);
+            }
+        }
+        if (hit) SendDragEvent(hit, UCEventType::DragOver, windowPoint);
+    }
+
+    void UltraCanvasFilerWidget::LeaveDragHoverElement() {
+        std::shared_ptr<UltraCanvasUIElement> previous = dragHoverElement.lock();
+        dragHoverElement.reset();
+        if (previous) SendDragEvent(previous.get(), UCEventType::DragLeave, ToWindowPoint(dragPos));
+    }
+
+    UltraCanvasFilerWidget* UltraCanvasFilerWidget::OtherDisplayAt(
+            const Point2Di& windowPoint) const {
+        auto* win = GetWindow();
+        if (!win) return nullptr;
+        UltraCanvasUIElement* hit = win->FindElementAtPoint(
+                Point2Df(static_cast<float>(windowPoint.x), static_cast<float>(windowPoint.y)),
+                true);
+        // The element under the cursor, or the display it is part of (the
+        // display's own rename field, filter button, ...).
+        for (UltraCanvasUIElement* e = hit; e; e = e->GetParentContainer()) {
+            if (e == this) return nullptr;
+            if (auto* display = dynamic_cast<UltraCanvasFilerWidget*>(e)) {
+                if (display->IsDisabled() || !display->IsVisible()) return nullptr;
+                return display;
+            }
+        }
+        return nullptr;
+    }
+
+    void UltraCanvasFilerWidget::UpdateIncomingDrop(const Point2Di& localPoint,
+                                                    const std::vector<std::string>& dragged) {
+        const int folder = DropFolderAt(localPoint, dragged);
+        if (incomingDropActive && folder == incomingDropFolderIndex) return;
+        incomingDropActive = true;
+        incomingDropFolderIndex = folder;
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::ClearIncomingDrop() {
+        if (!incomingDropActive) return;
+        incomingDropActive = false;
+        incomingDropFolderIndex = -1;
+        RequestRedraw();
+    }
+
+    std::string UltraCanvasFilerWidget::GetIncomingDropFolder() const {
+        if (!incomingDropActive) return std::string();
+        if (incomingDropFolderIndex >= 0 &&
+            incomingDropFolderIndex < static_cast<int>(entries.size()))
+            return entries[static_cast<size_t>(incomingDropFolderIndex)].path;
+        return currentPath;
+    }
+
+    std::string UltraCanvasFilerWidget::IncomingDropFolderAt(
+            const Point2Di& localPoint, const std::vector<std::string>& dragged) const {
+        const int folder = DropFolderAt(localPoint, dragged);
+        if (folder >= 0) return entries[static_cast<size_t>(folder)].path;
+        return currentPath;
+    }
+
+    void UltraCanvasFilerWidget::DropOnOtherDisplay(const std::vector<std::string>& paths,
+                                                    const Point2Di& localPoint, bool copy) {
+        ClearIncomingDrop();
+        // The compress dialog is modal over this display: a drop is no more
+        // its business than a click is.
+        if (compressDlg.active || paths.empty()) return;
+        AcceptDroppedFiles(paths, IncomingDropFolderAt(localPoint, paths), copy);
+    }
+
     int UltraCanvasFilerWidget::DragDropFolderAt(const Point2Di& localPoint) const {
+        return DropFolderAt(localPoint, dragPaths);
+    }
+
+    int UltraCanvasFilerWidget::DropFolderAt(const Point2Di& localPoint,
+                                             const std::vector<std::string>& dragged) const {
         if (IsInInfoBar(localPoint)) return -1;
         int idx = ItemAt(ToContentPoint(localPoint));
         if (idx < 0 || idx >= static_cast<int>(entries.size())) return -1;
         if (!entries[idx].isDirectory) return -1;
         // A folder cannot be dropped on itself.
-        if (std::find(dragPaths.begin(), dragPaths.end(), entries[idx].path)
-            != dragPaths.end()) {
+        if (std::find(dragged.begin(), dragged.end(), entries[idx].path)
+            != dragged.end()) {
             return -1;
         }
         return idx;
@@ -4988,8 +5132,10 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasFilerWidget::UploadDroppedFiles(const std::vector<std::string>& paths) {
+    void UltraCanvasFilerWidget::UploadDroppedFiles(const std::vector<std::string>& paths,
+                                                    const std::string& destDir) {
         if (paths.empty()) return;
+        const std::string folder = destDir.empty() ? currentPath : destDir;
         if (!remoteUpload) {
             ReportError("Cannot upload to this drive.");
             return;
@@ -4998,7 +5144,7 @@ namespace UltraCanvas {
         // not; with nothing accepted that is the whole answer, with some
         // accepted it is the part worth saying while the rest goes up.
         std::string error;
-        const bool any = remoteUpload(currentPath, paths, error);
+        const bool any = remoteUpload(folder, paths, error);
         if (!any) ReportError(error.empty() ? "Cannot upload to this drive." : error);
         else if (!error.empty()) ReportError(error);
     }
@@ -5228,15 +5374,19 @@ namespace UltraCanvas {
                 });
     }
 
-    void UltraCanvasFilerWidget::AcceptDroppedFiles(const std::vector<std::string>& paths) {
+    void UltraCanvasFilerWidget::AcceptDroppedFiles(const std::vector<std::string>& paths,
+                                                    const std::string& destDir,
+                                                    bool copy) {
         if (paths.empty()) return;
+        const std::string dest = destDir.empty() ? currentPath : destDir;
+        if (dest.empty()) return;   // a page of tiles that shows no folder
         // A remote folder has no local disk to copy onto: the files go up.
-        if (ShowingRemoteFolder()) {
-            UploadDroppedFiles(paths);
+        if (isRemotePath && isRemotePath(dest)) {
+            UploadDroppedFiles(paths, dest);
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(UltraCanvas::PathFromUtf8(currentPath), ec)) return;
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(dest), ec)) return;
 
         // The reverse of the upload above: entries dropped here that live
         // on a drive come DOWN into this folder, and the local paste below
@@ -5249,35 +5399,15 @@ namespace UltraCanvas {
             if (isRemotePath && isRemotePath(p)) remoteSources.push_back(p);
             else                                 localSources.push_back(p);
         }
-        if (!remoteSources.empty()) DownloadDroppedFiles(remoteSources, currentPath);
+        if (!remoteSources.empty()) DownloadDroppedFiles(remoteSources, dest);
         if (localSources.empty()) return;
 
-        // Skip files already in this folder and the folder itself; the rest
-        // goes through the paste machinery, so a taken name raises the
-        // conflict dialog and the folder-into-itself guard applies there.
-        fs::path canonicalHere = fs::weakly_canonical(PathFromUtf8(currentPath), ec);
-        std::vector<std::string> sources;
-        for (const std::string& src : localSources) {
-            ec.clear();
-            fs::path canonicalFrom = fs::weakly_canonical(PathFromUtf8(src), ec);
-            if (canonicalFrom == canonicalHere) continue;
-            if (canonicalFrom.parent_path() == canonicalHere) continue;
-            sources.push_back(src);
-        }
-        if (sources.empty()) return;
-
-        const std::string dest = currentPath;
-        auto perform = [this, sources, dest](bool copy) {
-            StartPaste(dest, std::vector<std::string>(sources), /*cut=*/!copy, nullptr);
-        };
-        // Files handed over by another program (or another pane of this
-        // window) are copied, so only a confirmation that covers copies asks
-        // about them - and that question offers Move beside Copy, like every
-        // other.
-        if (DropNeedsConfirmation(/*copy=*/true))
-            ConfirmTransfer(sources, dest, /*copyRequested=*/true, perform);
-        else
-            perform(true);
+        // The rest goes the way a drop on a folder of this display goes:
+        // entries already in the folder are skipped, the question is asked
+        // when the drop confirmation covers this verb (and offers the other
+        // one beside it), a taken name raises the conflict dialog, and the
+        // folder is re-read and reported once the paste is done.
+        DropPathsInto(localSources, dest, copy);
     }
 
     std::string UltraCanvasFilerWidget::UniquePathIn(
@@ -10231,7 +10361,8 @@ namespace UltraCanvas {
         DrawSelectionInfoBar(ctx, bounds);
         // Drop-folder highlight above the whole view (including chrome); the
         // badge travels on the window overlay so it survives the widget border.
-        if (draggingItems) DrawDragFeedback(ctx, bounds);
+        // A drag from elsewhere over this view is framed the same way.
+        if (draggingItems || incomingDropActive) DrawDragFeedback(ctx, bounds);
         // Rubber-band rectangle of a running drag selection.
         if (marqueeActive) DrawMarquee(ctx);
         ctx->PopState();
@@ -10239,10 +10370,12 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::DrawDragFeedback(IRenderContext* ctx,
                                                   const Rect2Di& bounds) {
-        // The folder the drop would land in, framed like a selected item.
-        if (dragDropFolderIndex >= 0) {
+        // The folder the drop would land in, framed like a selected item: for
+        // this view's own drag, or for one from elsewhere passing over it.
+        const int folder = draggingItems ? dragDropFolderIndex : incomingDropFolderIndex;
+        if (folder >= 0) {
             for (const ItemLayout& it : items) {
-                if (static_cast<int>(it.entryIndex) != dragDropFolderIndex) continue;
+                if (static_cast<int>(it.entryIndex) != folder) continue;
                 Rect2Di r(it.rect.x - scrollOffsetX, it.rect.y - scrollOffsetY,
                           it.rect.width, it.rect.height);
                 Color fillc = style.selectionColor; fillc.a = 130;
@@ -10253,6 +10386,15 @@ namespace UltraCanvas {
                 ctx->DrawRoundedRectangle(Rect2Dd(r), 6);
                 break;
             }
+        } else if (incomingDropActive && !draggingItems) {
+            // From elsewhere, over no folder: the drop lands in the folder this
+            // view shows, so the view itself is framed - the files' new home
+            // is visible before the button goes up, not guessed afterwards.
+            Rect2Dd frame(bounds.x + 1.5, bounds.y + 1.5,
+                          std::max(0, bounds.width - 3), std::max(0, bounds.height - 3));
+            ctx->SetStrokePaint(style.selectionBorderColor);
+            ctx->SetStrokeWidth(2.5f);
+            ctx->DrawRoundedRectangle(frame, 6);
         }
 
         // The badge that follows the cursor is NOT drawn here: it has to stay
@@ -15305,6 +15447,9 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseLeave: {
                 pointerInside = false;   // nothing to re-derive a hover at
+                // The pointer is the mouse's again: a drag from another
+                // program whose DragLeave went to another element is over.
+                ClearIncomingDrop();
                 if (hoveredIndex != -1) { hoveredIndex = -1; RequestRedraw(); }
                 if (hoveredSplitter != -1 && draggingSplitter < 0) {
                     hoveredSplitter = -1;
@@ -15338,6 +15483,7 @@ namespace UltraCanvas {
             }
             case UCEventType::MouseMove: {
                 Point2Di local(event.pointer.x, event.pointer.y);
+                ClearIncomingDrop();   // as on MouseLeave
                 // Remembered for RefreshHoverState(): scrolling and relayouts
                 // move files under the pointer with no move event to read.
                 RememberPointer(event);
@@ -15810,11 +15956,30 @@ namespace UltraCanvas {
                 }
                 return false;
             }
+            case UCEventType::DragEnter:
+            case UCEventType::DragOver: {
+                // A drag from elsewhere - another program, or another element
+                // of this window - is over the display: frame the folder under
+                // the pointer that a drop would land in, or, over empty space,
+                // the display itself, whose folder it would land in then.
+                UpdateIncomingDrop(Point2Di(event.pointer.x, event.pointer.y),
+                                   event.droppedFiles);
+                return true;
+            }
+            case UCEventType::DragLeave:
+                ClearIncomingDrop();
+                return true;
             case UCEventType::Drop: {
                 // Files dragged in from other applications / windows are
-                // copied into the shown folder.
+                // copied into the folder under the pointer, or the shown
+                // folder. (Another file display of this window hands its
+                // files over directly instead - DropOnOtherDisplay - so that
+                // they are moved when that is what the gesture means.)
+                const Point2Di local(event.pointer.x, event.pointer.y);
+                const std::string dest = IncomingDropFolderAt(local, event.droppedFiles);
+                ClearIncomingDrop();
                 if (event.droppedFiles.empty()) return false;
-                AcceptDroppedFiles(event.droppedFiles);
+                AcceptDroppedFiles(event.droppedFiles, dest, /*copy=*/true);
                 return true;
             }
             default:
