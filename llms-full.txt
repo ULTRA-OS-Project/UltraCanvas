@@ -31337,6 +31337,15 @@ differently; any other box is the picture's shape, and the picture is fitted
 keeping its proportions. A percentage height inside a table cell is a share
 of the cell's set height, and auto when the cell sets none.
 
+Table cells ignore `min-height` and `max-height`, as browsers do (CSS 2.1
+leaves them undefined there): the spacer cell many mailers use -
+`<td height="32" style="font-size:1px; line-height:1px; max-height:1px">` -
+is as tall as its `height` says. A cell made `display: block` is a block,
+and keeps them. A line is as tall as the tallest `line-height` of the inline
+boxes on it, and at least the block's own: a `<span style="line-height:40px">`
+in a cell that sets none is a 40px line. Text where nothing sets a
+`line-height` keeps the font's own line spacing.
+
 The built tree has its own scrollbars disabled on purpose: host it in a
 container that scrolls (see `UltraCanvasEBookViewer.cpp` and UltraMail's
 `MessagePreview::RenderBody` for the two hosts that exist). A reusable
