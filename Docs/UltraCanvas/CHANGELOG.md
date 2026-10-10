@@ -1,3 +1,53 @@
+#### 2026-10-10 *0.9.237*
+- **The tree includes the standard headers it uses, and the LLVM 23 bridge
+  is gone.** The build defined `_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23` so
+  that files relying on libc++ bringing in a header through `<string>` kept
+  compiling on MSYS2's LLVM 23 toolchain; libc++ 24 removes that bridge. Every
+  C++ file was compiled against the libc++ 23.1.3 headers (clang 22 frontend)
+  with the bridge off - the 1318 the Linux build compiles, the Windows-only
+  sources against the MinGW headers, the tests and plug-ins this
+  configuration skips - once with and once without it. Five relied on it and
+  include what they use now: `EmailCleanerTypes.cpp`, `UltraFIBUCli.cpp` and
+  `UltraWinSetup/main.cpp` (`<cstdlib>` for `std::atoi`/`atol`/`atoll`),
+  AnchorPoint's `RawSocketTransport.cpp` (`<cerrno>`) and
+  `UltraCanvasTimeline.h` (`<functional>`); the Windows notification
+  listener includes `<cstdio>` for its `std::snprintf`. The definition is
+  removed from the build and from the exported library target, so the
+  Windows legs reject a file that relies on a transitive include as soon as
+  it is written. Not checked here: the macOS, Android and WebAssembly
+  platform sources and the opt-in llama.cpp adapter, whose toolchains are
+  not libc++ 23.
+- **A tag field made without a height starts as tall as one row of chips.**
+  `CreateTagInput` gave it 36 px, but one row needs 40 at the default style
+  (the 28 px chip and 6 px of padding above and below), so every such field
+  grew by 4 px on its first frame - a visible jump of whatever sat below it
+  on a settings page. With no height given (the default now, `h = -1`) the
+  field starts at `OneRowHeight()`, in the layout's `size.height` too, and
+  `Tests/TagInputGrowTest.cpp` checks that the first frame keeps it. A
+  height passed explicitly is used as before.
+
+#### 2026-10-10 *0.9.236*
+- **Mailbox plug-ins can make and delete folders.**
+  `IMailboxProtocolPlugin::CreateFolder` and `DeleteFolder` take a
+  folder's full name in its wire form, with the server's separator between
+  its levels. The IMAP plug-in sends `CREATE` and `DELETE`, on a kept
+  session when one is open and on a connection of its own otherwise. Before
+  `DELETE`, a kept session that has that mailbox open opens INBOX
+  (read-only) instead, so the server is not asked to delete the mailbox in
+  use. `DeleteFolder` refuses INBOX itself (`AccessDenied`). Both methods
+  are added at the end of the interface, and their defaults report "not
+  implemented", so existing plug-ins and test fakes still build unchanged.
+  `CreateMailboxCommand` / `DeleteMailboxCommand` in `ImapParse.h` quote the
+  name and leave out a line break, which would end the command early.
+  Tests: `test_imap_mailbox.cpp`.
+- **`UltraNet_ImapUtf7Encode`: a typed mailbox name for the wire.** This is
+  the counterpart of `UltraNet_ImapUtf7Decode`: UTF-8 in, IMAP's modified
+  UTF-7 out (RFC 3501 5.1.3). Printable ASCII passes through, `&` becomes
+  `&-`, and each run of other characters, surrogate pairs included, becomes
+  one `&…-` shift ("Bücher" -> `B&APw-cher`). A byte that is not UTF-8 is
+  taken as U+FFFD, so the result is always a valid name, and
+  `UltraNet_ImapUtf7Decode` reads back every name it writes.
+
 #### 2026-10-10 *0.9.235*
 - **The Linux CI legs fall back to MuPDF's GitHub mirror when mupdf.com
   does not answer.** The install step builds MuPDF 1.23.10 from the release

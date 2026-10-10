@@ -1891,10 +1891,6 @@ endif()
 if(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
 endif()
-# libc++ 23 dropped its transitive includes (see the top-level CMakeLists.txt).
-# PUBLIC so a consumer that builds against the installed package compiles the
-# public headers the way this tree does, with the LLVM 23 bridge on.
-target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC _LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23)
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)
 if(TARGET VirtualFS)

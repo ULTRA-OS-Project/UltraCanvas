@@ -2,6 +2,7 @@
 // The app-wide preferences behind the Settings window: the remote-image
 // policy, trusted websites (domain matching) and the reading options survive
 // a save and a load, and an old file keeps the defaults.
+// Version: 0.4.0 - folder_tree_content, account_order
 // Version: 0.3.0 - trusted_senders, blocked_senders
 // Version: 0.2.0 - link_display (status bar / tooltip)
 // Version: 0.1.0
@@ -65,6 +66,8 @@ TEST(preferences_round_trip) {
     out.scamWarnings.cryptoCaution = false;
     out.senderLists.trusted = { "friend@example.org" };
     out.senderLists.blocked = { "offers@shop.example", "@junk.example" };
+    out.folderTreeContent = FolderTreeContent::CurrentAccount;
+    out.accountOrder = { "work", "erika", "club" };
     REQUIRE(out.Save(path));
 
     Preferences in;
@@ -88,6 +91,8 @@ TEST(preferences_round_trip) {
     REQUIRE(in.listSort == out.listSort);
     REQUIRE_EQ(in.checkMailEverySec, 40);
     REQUIRE(!in.notifyNewMail);
+    REQUIRE(in.folderTreeContent == FolderTreeContent::CurrentAccount);
+    REQUIRE(in.accountOrder == out.accountOrder);
     std::remove(path.c_str());
 }
 
@@ -111,6 +116,8 @@ TEST(preferences_old_file_keeps_defaults) {
     REQUIRE(in.listSort == MessageSort{});                        // newest first
     REQUIRE_EQ(in.checkMailEverySec, 300);                        // every 5 minutes
     REQUIRE(in.notifyNewMail);                                    // on until switched off
+    REQUIRE(in.folderTreeContent == FolderTreeContent::AllAccounts);
+    REQUIRE(in.accountOrder.empty());                             // the store's order
     std::remove(path.c_str());
 }
 
@@ -168,5 +175,41 @@ TEST(preferences_check_mail_interval_choices) {
     Preferences bad;
     REQUIRE(bad.Load(path));
     REQUIRE_EQ(bad.checkMailEverySec, 300);                      // keeps the default
+    std::remove(path.c_str());
+}
+
+// The account tiles dragged into another order: the accounts follow it, and
+// one the order does not name (added since) comes after, in the order it came.
+TEST(preferences_order_accounts_by_the_dragged_order) {
+    auto make = [](std::initializer_list<const char*> ids) {
+        std::vector<Account> accounts;
+        for (const char* id : ids) { Account a; a.accountId = id; accounts.push_back(a); }
+        return accounts;
+    };
+    auto ids = [](const std::vector<Account>& accounts) {
+        std::vector<std::string> out;
+        for (const auto& a : accounts) out.push_back(a.accountId);
+        return out;
+    };
+    Preferences prefs;
+    std::vector<Account> accounts = make({"club", "erika", "new", "work"});
+    prefs.OrderAccounts(accounts);   // no order yet: as they came
+    REQUIRE(ids(accounts) == (std::vector<std::string>{"club", "erika", "new", "work"}));
+
+    prefs.accountOrder = {"work", "gone", "erika", "club"};
+    prefs.OrderAccounts(accounts);
+    REQUIRE(ids(accounts) == (std::vector<std::string>{"work", "erika", "club", "new"}));
+
+    // Read from a hand-edited file: spaces and repeats do not matter.
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "ultramail_prefs_order.ini").string();
+    {
+        std::ofstream f(UltraCanvas::PathFromUtf8(path));
+        f << "account_order =  work ,erika,, work\nfolder_tree_content = current\n";
+    }
+    Preferences in;
+    REQUIRE(in.Load(path));
+    REQUIRE(in.accountOrder == (std::vector<std::string>{"work", "erika"}));
+    REQUIRE(in.folderTreeContent == FolderTreeContent::CurrentAccount);
     std::remove(path.c_str());
 }
