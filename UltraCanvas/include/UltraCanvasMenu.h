@@ -1,10 +1,11 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.13.0 - MenuStyle::tintIcons: icons drawn in the label's colour (on in Dark())
 // Version: 1.12.0 - a menu to screen readers
 // Version: 1.10.0 - enableAnimations fades the entries in when a popup opens; the
 //                  MenuItemData::Input() declarations, never defined, are gone
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -203,6 +204,10 @@ namespace UltraCanvas {
         int paddingTop = 4;
         int paddingBottom = 4;
         int iconSpacing = 6;
+        // Icons drawn in the label's colour, as masks: a flat, single-colour
+        // icon then follows the style (light on a dark menu), the highlighted
+        // row and a disabled item. Off, an icon keeps its own colours.
+        bool tintIcons = false;
         int shortcutSpacing = 20;
         int separatorHeight = 8;
         int borderWidth = 1;
@@ -609,6 +614,8 @@ namespace UltraCanvas {
         style.shortcutColor = Color(170, 170, 170, 255);
         style.separatorColor = Color(90, 90, 90, 255);
         style.headerTextColor = Color(180, 180, 180, 255);
+        // A flat icon drawn for a light menu would vanish on this one.
+        style.tintIcons = true;
         return style;
     }
 

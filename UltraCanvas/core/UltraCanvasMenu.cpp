@@ -1,5 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.12.0 - MenuStyle::tintIcons draws an item's icon as a mask in its
+//                  label's colour
 // Version: 1.11.0 - the opening fade takes in the whole panel (background, border,
 //                  shadow, entries): the menu steps its popup's opacity on the
 //                  window instead of painting only its entries as a group
@@ -7,7 +9,7 @@
 //                  progress was computed and never drawn); activating an item
 //                  without an application no longer dereferences a null one
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -615,8 +617,18 @@ namespace UltraCanvas {
 
         // Render icon (from an in-memory image if provided, else the file
         // path). A disabled item's icon is faded with its label, as a
-        // disabled button's is.
-        if (hasIcon) {
+        // disabled button's is - or, tinted, takes the label's grey.
+        if (hasIcon && style.tintIcons) {
+            int iconY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
+            std::shared_ptr<UCImage> image = item.iconImage;
+            if (!image && item.iconPath != "-") image = UCImage::Get(item.iconPath);
+            if (image) {
+                const Color tint = item.enabled ? (index == activeIndex ? style.hoverTextColor : style.textColor)
+                                                : style.disabledTextColor;
+                ctx->DrawMask(tint, *image, Rect2Dd(currentX, iconY, style.iconSize, style.iconSize),
+                              ImageFitMode::Contain);
+            }
+        } else if (hasIcon) {
             int iconY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
             if (!item.enabled) {
                 ctx->PushState();

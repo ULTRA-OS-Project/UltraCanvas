@@ -39053,6 +39053,7 @@ struct MenuStyle {
     int paddingTop;          // Top padding
     int paddingBottom;       // Bottom padding
     int iconSpacing;         // Space between icon and text
+    bool tintIcons;          // Draw icons in the label's colour, as masks (default false; on in Dark())
     int shortcutSpacing;     // Space before shortcut text
     int separatorHeight;     // Height of a separator row; the 1px line is centred in it
     int borderWidth;         // Border thickness
@@ -39291,16 +39292,19 @@ menuBar->AddItem(MenuItemData::Submenu("Edit", {
 auto contextMenu = std::make_shared<UltraCanvasMenu>("ContextMenu", 0, 0, 200, 0);
 contextMenu->SetMenuType(MenuType::PopupMenu);
 
-// Add items with shortcuts
-contextMenu->AddItem(MenuItemData::ActionWithShortcut("📋 Copy", "Ctrl+C", []() {
+// Add items with shortcuts and icons. The icons are flat ones of
+// media/icons/menu/, not emoji in the label: an emoji draws only where a
+// colour emoji font is installed, and shows as a box of hex digits elsewhere.
+const std::string icons = GetResourcesDir() + "media/icons/menu/";
+contextMenu->AddItem(MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", icons + "copy.svg", []() {
     std::cerr << "Copy action executed" << std::endl;
 }));
 
-contextMenu->AddItem(MenuItemData::ActionWithShortcut("✂️ Cut", "Ctrl+X", []() {
+contextMenu->AddItem(MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", icons + "cut.svg", []() {
     std::cerr << "Cut action executed" << std::endl;
 }));
 
-contextMenu->AddItem(MenuItemData::ActionWithShortcut("📄 Paste", "Ctrl+V", []() {
+contextMenu->AddItem(MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", icons + "paste.svg", []() {
     std::cerr << "Paste action executed" << std::endl;
 }));
 
@@ -39416,6 +39420,19 @@ menu->AddItem(hidden);
 The icon of a disabled item is drawn faded (35 % opacity), with its label
 greyed. A menubar (horizontal menu) lays each item out on its own and has no
 columns.
+
+`MenuStyle::tintIcons` draws every icon as a mask in its label's colour
+instead: a flat, single-colour icon - the set in `media/icons/menu/` - then
+reads on a dark menu, and takes the highlighted row's text colour and a
+disabled item's grey. `MenuStyle::Dark()` turns it on; the other presets
+draw an icon in its own colours, so a coloured icon stays coloured.
+
+```cpp
+auto tinted = std::make_shared<UltraCanvasMenu>("Tinted", 0, 0, 200, 0);
+MenuStyle style = MenuStyle::Default();
+style.tintIcons = true;
+tinted->SetStyle(style);
+```
 
 ### Custom Styling
 
