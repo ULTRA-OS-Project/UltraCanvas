@@ -9,7 +9,12 @@ on another.
 
 Windows applications built from this repository are linked as **GUI-subsystem**
 executables (`set_target_properties(... WIN32_EXECUTABLE TRUE)` in
-`CMakeLists.txt`). A GUI-subsystem process is not given a console, so:
+`CMakeLists.txt`). The exceptions are the apps whose command-line modes print
+into the prompt they were typed at (DeviceExplorer, UltraCleaner,
+UltraNetMonitor and a few more, listed there): they stay console programs, and
+started by a double-click they close the console Windows opened for them as
+their window comes up (`ReleaseOwnConsole()`), so what follows applies to them
+too. A GUI-subsystem process is not given a console, so:
 
 - `std::cerr`, `printf` and the framework's `debugOutput` have nowhere to write;
 - an unhandled exception kills the process without printing anything;
@@ -713,6 +718,7 @@ Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
 #include "../OS/MSWindows/UltraCanvasWindowsDiagnostics.h"   // from UltraCanvas/include
 
 bool        AttachParentConsole();
+bool        ReleaseOwnConsole();     // closes a console only this process is attached to, unless debugOutput is on
 std::string GetWindowsVersionString();
 void        LogWindowsStartupBanner(const std::string& appName);
 void        InstallWindowsCrashReporter(const std::string& appName);   // the filter, the log line and the minidump
