@@ -1,3 +1,17 @@
+#### 2026-10-10 *1.71.0*
+- **Settings > Display > Tab style: Modern, Simple modern or Classic.** The
+  window's tab strip can now draw its tabs as capsules floating in a
+  blue-grey strip - the open tab white with a blue outline, the others
+  plain text until the pointer is over them - which is *Modern* and the
+  default from this release; as flat tabs with a blue line under the open
+  one, *Simple modern*; or as the rounded tabs joined to the page that every
+  release before this one drew, *Classic*. The choice shows at once on the
+  open window and is kept in `display.tabs.style`. The tabs behave the same
+  under all three: click to switch, the X or a middle click to close, drag
+  to reorder, and the + at the end opens another tab. Built on the
+  framework's new `TabStyle::Pill` and the `TabStyle::Modern` indicator
+  colour (see the framework changelog).
+
 #### 2026-10-10 *1.70.1*
 - **Thumbnails follow a file's new content.** A picture edited and saved over
   (in an image editor, by a script, or by a camera upload overwriting it) kept

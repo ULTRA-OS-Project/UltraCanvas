@@ -1,5 +1,6 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
+// Version: 2.9.0 - the Modern style's indicator line has a colour and a thickness of its own
 // Version: 2.8.0 - drag reorder on vertical bars, auto-scroll at the strip's ends, a pill ghost
 // Version: 2.7.0 - a truncated title fills its width, one X weight, the open tab's own X colour
 // Version: 2.6.0 - TabStyle::Pill: capsules floating in the bar, the open one outlined
@@ -2271,8 +2272,8 @@ namespace UltraCanvas {
 
                 // Draw indicator for active tab based on position
                 if (index == activeTabIndex) {
-                    int indicatorHeight = 2;
-                    Color indicatorColor = Color(33, 150, 243); // Material Blue
+                    int indicatorHeight = activeTabIndicatorThickness;
+                    Color indicatorColor = activeTabIndicatorColor;
                     Rect2Di indicatorRect;
 
                     switch (tabPosition) {

@@ -106,6 +106,7 @@ namespace {
     // Page ids double as tree node ids.
     constexpr const char* kPageDisplay = "display";
     constexpr const char* kPageTreeview = "display/treeview";
+    constexpr const char* kPageTabStyle = "display/tab-style";
     constexpr const char* kPageHomeFolder = "display/home";
     constexpr const char* kPageFiles = "display/files";
     constexpr const char* kPageIgnoredFiles = "display/ignored-files";
@@ -193,6 +194,9 @@ namespace {
         std::vector<std::pair<FilerFileIconStyle,
                               std::shared_ptr<UltraCanvasRadio>>> fileIconRadios;
         UltraCanvasRadioGroup                fileIconGroup;
+        std::vector<std::pair<FilerTabStripStyle,
+                              std::shared_ptr<UltraCanvasRadio>>> tabStyleRadios;
+        UltraCanvasRadioGroup                tabStyleGroup;
 
         // Display > Thumbnails / Display > Detail view: the kind checkboxes
         // and the per-format ones of each page, kept so the two "Everything
@@ -1278,6 +1282,59 @@ namespace {
         if (!UltraCanvasFilerWidget::AreHostFileIconsAvailable())
             return FilerFileIconStyle::Simple;
         return d->settings->fileIconStyle;
+    }
+
+    // ===== DISPLAY > TAB STYLE =====
+
+    std::string TabStripStyleDescription(FilerTabStripStyle style) {
+        switch (style) {
+            case FilerTabStripStyle::SimpleModern:
+                return "Simple modern - flat tabs, with a blue line under the "
+                       "open one";
+            case FilerTabStripStyle::Classic:
+                return "Classic - rounded tabs joined to the page below, as "
+                       "UltraFiler drew them before 1.71.0";
+            default:
+                return "Modern - each tab a capsule floating in the strip: the "
+                       "open one white with a blue outline, the others plain "
+                       "text until the pointer is over them";
+        }
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildTabStylePage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-tab-style", "Tab style",
+                "How the window's tab strip draws its tabs:");
+
+        d->tabStyleRadios.clear();
+        for (FilerTabStripStyle style : {FilerTabStripStyle::Modern,
+                                         FilerTabStripStyle::SimpleModern,
+                                         FilerTabStripStyle::Classic}) {
+            std::string id = std::string("ufl-set-tab-style-") +
+                    (style == FilerTabStripStyle::Modern ? "modern" :
+                     style == FilerTabStripStyle::SimpleModern ? "simple-modern" : "classic");
+            auto radio = MakeChoice(id, TabStripStyleDescription(style),
+                                    d->settings && d->settings->tabStripStyle == style);
+            d->tabStyleGroup.AddRadioButton(radio);
+            d->tabStyleRadios.emplace_back(style, radio);
+            parts.body->AddChild(radio);
+        }
+        d->tabStyleGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            for (const auto& [style, radio] : d->tabStyleRadios) {
+                if (radio != selected) continue;
+                d->settings->tabStripStyle = style;
+                ApplyAndSave(d);
+                return;
+            }
+        };
+
+        AddNote(parts, "ufl-set-tab-style-note1",
+                "The change shows at once on the open window's tab strip. "
+                "Whichever style is chosen, the tabs behave the same: click "
+                "to switch, the X or a middle click to close, drag to reorder, "
+                "and the + at the end opens another tab.");
+        return parts.page;
     }
 
     std::shared_ptr<UltraCanvasContainer> BuildFileIconsPage(DialogState* d) {
@@ -2514,6 +2571,7 @@ namespace {
 
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
+        AddTreeNode(d, kPageDisplay, kPageTabStyle, "Tab style");
         AddTreeNode(d, kPageDisplay, kPageHomeFolder, "Home folder");
         AddTreeNode(d, kPageDisplay, kPageFiles, "Files");
         AddTreeNode(d, kPageDisplay, kPageIgnoredFiles, "Ignored files");
@@ -2550,6 +2608,7 @@ namespace {
 
         // ----- pages -----
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
+        AddPage(d, kPageTabStyle, BuildTabStylePage(d));
         AddPage(d, kPageHomeFolder, BuildHomeFolderPage(d));
         AddPage(d, kPageFiles, BuildFilesPage(d));
         AddPage(d, kPageIgnoredFiles, BuildIgnoredFilesPage(d));
@@ -2699,6 +2758,8 @@ namespace {
             if (badge == d->settings->extensionBadge) d->extensionBadgeGroup.SelectButton(radio);
         for (const auto& [style, radio] : d->fileIconRadios)
             if (style == ShownFileIconStyle(d)) d->fileIconGroup.SelectButton(radio);
+        for (const auto& [style, radio] : d->tabStyleRadios)
+            if (style == d->settings->tabStripStyle) d->tabStyleGroup.SelectButton(radio);
         d->syncing = false;
         if (d->window) d->window->RequestRedraw();
     }
