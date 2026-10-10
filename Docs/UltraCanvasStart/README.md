@@ -1,9 +1,10 @@
+<!-- Generated from Apps/UltraCanvasStart/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # UltraCanvasStart
 
 ## Overview
 
 UltraCanvasStart sets a computer up for writing UltraCanvas applications. It
-is the application form of [`Docs/GettingStarted.md`](../../Docs/GettingStarted.md):
+is the application form of [`Docs/GettingStarted.md`](../GettingStarted.md):
 instead of reading the per-platform steps and typing them, the programmer
 opens UltraCanvasStart, answers a few questions and lets it check, install
 and write.
@@ -41,7 +42,7 @@ The archives are not small - the Linux one unpacks to about 220 MB - because
 the application loads the framework's shared core, and the core links
 everything the framework can do. What that weight is made of, and what would
 and would not reduce it, is measured in
-[`Docs/UltraCanvas/StandaloneSizeInvestigation.md`](../../Docs/UltraCanvas/StandaloneSizeInvestigation.md).
+[`Docs/UltraCanvas/StandaloneSizeInvestigation.md`](../UltraCanvas/StandaloneSizeInvestigation.md).
 
 ## Pages
 
@@ -51,7 +52,7 @@ page, one accent button per page. The pages' prose comes from the engine as
 Markdown (`engine/StartGuide`) and is shown in read-only Markdown views, so
 every address is a link that opens in the browser, everything typed stands
 out as `code`, and each numbered step is one action.
-[`Docs/UltraCanvasStart/WorkflowProposal.md`](../../Docs/UltraCanvasStart/WorkflowProposal.md)
+[`Docs/UltraCanvasStart/WorkflowProposal.md`](WorkflowProposal.md)
 proposes replacing the tabs with a five-step stepper.
 
 | Page | What it does |
@@ -61,7 +62,7 @@ proposes replacing the tabs with a five-step stepper.
 | **Choices** | Which feature groups are needed (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options), whether to use the prebuilt SDK or build from source, whether to clone the repository, and whether the programmer works with an AI assistant, locally or through GitHub alone. |
 | **Install** | Checks every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need and lists each with a mark, the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* or *everything installed*. *Install what is missing* (enabled only while something is) runs the package manager, after a confirmation that shows the exact command: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree. The output is shown in a console and the checks run again. |
 | **Project** | Application name, project folder, SDK prefix (*Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder; *Download...* fetches this version's SDK for this platform from its GitHub release into a folder you pick, unpacks it there and fills the prefix in). *Create the project* writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and, for AI users, `CLAUDE.md`. The files are previewed on the page. |
-| **AI** | Which assistant: Claude Code, Codex, Copilot, Gemini or another, in a segmented control. For the chosen one: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../../Docs/GettingStarted-Cloud.md), and the first prompt to give it, ready to copy. The project gets the file that assistant reads. |
+| **AI** | Which assistant: Claude Code, Codex, Copilot, Gemini or another, in a segmented control. For the chosen one: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../GettingStarted-Cloud.md), and the first prompt to give it, ready to copy. The project gets the file that assistant reads. |
 | **Report** | The system, the checks, the plan and the notes as text, for the clipboard. |
 
 ## Command line

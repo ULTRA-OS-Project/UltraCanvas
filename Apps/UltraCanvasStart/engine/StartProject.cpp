@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartProject.cpp
+// Version: 0.1.1 - the instruction file is the chosen assistant's
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartProject.h"
@@ -121,10 +122,10 @@ std::string ProjectPresets(const ProjectOptions& options) {
     return text;
 }
 
-std::string ProjectClaudeMd(const ProjectOptions& options) {
+std::string ProjectAssistantMd(const ProjectOptions& options) {
     const std::string app = IdentifierFrom(options.appName);
     std::string text;
-    text += "# CLAUDE.md\n\n";
+    text += "# " + AssistantInstructionFile(options.assistant) + "\n\n";
     text += app + " is an UltraCanvas application. The framework's conventions apply here:\n\n";
     text += "- Read the framework's `AGENTS.md` and `Docs/GettingStarted.md` first";
     if (options.useSdk) {
@@ -144,6 +145,12 @@ std::string ProjectClaudeMd(const ProjectOptions& options) {
             "  a `shared_ptr`.\n";
     text += "- Build: `cmake --preset default && cmake --build --preset default`.\n";
     return text;
+}
+
+std::string ProjectClaudeMd(const ProjectOptions& options) {
+    ProjectOptions claude = options;
+    claude.assistant = Assistant::ClaudeCode;
+    return ProjectAssistantMd(claude);
 }
 
 std::string ProjectReadme(const ProjectOptions& options) {
@@ -186,7 +193,8 @@ ProjectResult ScaffoldProject(const ProjectOptions& options, bool overwrite) {
         { "CMakePresets.json", ProjectPresets(options) },
         { "README.md",         ProjectReadme(options) },
     };
-    if (options.withAiNotes) files.push_back({ "CLAUDE.md", ProjectClaudeMd(options) });
+    const std::string instructionFile = AssistantInstructionFile(options.assistant);
+    if (options.withAiNotes) files.push_back({ instructionFile.c_str(), ProjectAssistantMd(options) });
 
     for (const auto& file : files) {
         const fs::path path = folder / file.name;

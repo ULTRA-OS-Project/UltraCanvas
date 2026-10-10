@@ -1,15 +1,22 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
+// Version: 0.3.0 - the assistant is a choice (Claude Code, Codex, Copilot, Gemini,
+//                  other); segmented controls pick it and the platform
+// Version: 0.2.0 - UltraMail's look: theme header, cards, Markdown views with
+//                  links and highlighted commands, a structured System page,
+//                  ShowPage for --page
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCanvasStartWindow.h"
 
 #include "StartChecks.h"
+#include "StartGuide.h"
 #include "StartPackages.h"
 #include "StartPlan.h"
 #include "StartProject.h"
 #include "StartRunner.h"
 #include "StartSdk.h"
 #include "StartSystem.h"
+#include "UltraCanvasStartTheme.h"
 
 #ifndef ULTRACANVASSTART_VERSION
 #error "ULTRACANVASSTART_VERSION is not defined: build through CMake, which reads it from Docs/UltraCanvasStart/CHANGELOG.md"
@@ -30,8 +37,7 @@ namespace {
 
 constexpr float kWindowWidth  = 980.0f;
 constexpr float kWindowHeight = 720.0f;
-constexpr float kPagePadding  = 12.0f;
-constexpr float kSectionGap   = 8.0f;
+constexpr float kSideMargin   = Theme::kPagePadding;
 
 // Tab order, as added in Initialize.
 constexpr int kPlatformTab = 0;
@@ -54,40 +60,25 @@ std::string Join(const std::vector<std::string>& lines, const char* bullet = "")
     return out;
 }
 
-// The per-platform instructions of Docs/GettingStarted.md step 1, in brief,
-// for the platform page: enough to read another OS's way in without leaving
-// the app. The guide itself is the full text.
-std::string PlatformSummary(Platform platform) {
-    switch (platform) {
-        case Platform::Linux:
-            return "Linux\n\n"
-                   "1. Install the development packages with the distribution's package manager "
-                   "(apt, dnf, pacman or zypper; the Install page lists the exact names).\n"
-                   "2. A C++20 compiler: clang 14+ or GCC 11+.\n"
-                   "3. Either unpack the prebuilt SDK (UltraCanvas-SDK-Linux-<version>-<arch>.tar.gz) "
-                   "or clone the repository and build it with CMake.\n"
-                   "4. Run an application with LD_LIBRARY_PATH pointing at the SDK's lib/, or let "
-                   "package-linux.sh bundle the libraries next to the executable.\n";
-        case Platform::MacOS:
-            return "macOS\n\n"
-                   "1. xcode-select --install for the compiler and git.\n"
-                   "2. Homebrew (https://brew.sh), then the formulae the Install page lists: "
-                   "cmake pkg-config cairo pango harfbuzz vips glib freetype tinyxml2 and the optional ones.\n"
-                   "3. Either unpack the prebuilt SDK (UltraCanvas-SDK-MacOS-<version>-<arch>.tar.gz; "
-                   "arm64 for Apple silicon, x86_64 for Intel) or clone and build with CMake.\n"
-                   "4. package-macos.sh makes the application bundle.\n";
-        case Platform::Windows:
-            return "Windows\n\n"
-                   "1. Install MSYS2 (https://www.msys2.org) and open its CLANG64 shell "
-                   "(CLANGARM64 on an ARM machine). Run pacman -Syu first.\n"
-                   "2. pacman -S the mingw-w64-clang-x86_64-* packages the Install page lists "
-                   "(clang, cmake, ninja, pkgconf, cairo, pango, ...).\n"
-                   "3. Either unpack the prebuilt SDK (UltraCanvas-SDK-Windows-<version>-<arch>.zip; "
-                   "the core is bin/libUltraCanvas.dll) or clone and run build-win.cmd.\n"
-                   "4. package-win.sh makes the standalone zip with every DLL next to the exe.\n";
-        default:
-            return "Choose the platform the instructions are for.";
-    }
+// The pickers' segments, in order.
+const Platform kPlatforms[] = { Platform::Linux, Platform::MacOS, Platform::Windows };
+const Assistant kAssistants[] = { Assistant::ClaudeCode, Assistant::Codex, Assistant::Copilot,
+                                  Assistant::Gemini, Assistant::Other };
+
+int PlatformIndex(Platform platform) {
+    for (int i = 0; i < 3; ++i) if (kPlatforms[i] == platform) return i;
+    return 0;
+}
+
+int AssistantIndex(Assistant assistant) {
+    for (int i = 0; i < 5; ++i) if (kAssistants[i] == assistant) return i;
+    return 0;
+}
+
+// The architecture the instructions name: the machine's for its own
+// platform, x86_64 for another one.
+std::string GuideArchitecture(const SystemProfile& profile, Platform target) {
+    return target == profile.platform && !profile.architecture.empty() ? profile.architecture : "x86_64";
 }
 
 } // namespace
@@ -110,18 +101,46 @@ bool UltraCanvasStartWindow::Initialize() {
     config.height = static_cast<int>(kWindowHeight);
     config.minWidth  = 760;
     config.minHeight = 520;
+    config.backgroundColor = Theme::kPageBackground;
     window_ = CreateWindow(config);
     if (!window_) return false;
 
-    auto title = CreateLabel("ucsTitle", 16, 10, 260, 26, "UltraCanvasStart");
-    title->SetFontSize(18);
-    window_->AddChild(title);
-    window_->AddChild(CreateLabel(
-        "ucsSubtitle", 200, 14, 700, 22,
-        std::string(ULTRACANVASSTART_VERSION) + " · sets this computer up for UltraCanvas development · " +
-        PlatformName(profile_.platform) + " " + profile_.architecture + " detected"));
+    // ----- the header band: name, version, what was detected -----
+    header_ = CreateContainer("ucsHeader", 0, 0, kWindowWidth, Theme::kHeaderHeight);
+    header_->layout.SetFlexRow().SetFlexGap(Theme::kGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    header_->SetPadding(0, Theme::kPagePadding + 6.0f);
+    ContainerStyle plain;
+    plain.autoShowScrollbars = false;
+    header_->SetContainerStyle(plain);
+    auto title = Theme::MakeText("ucsTitle", "UltraCanvasStart", Theme::kSizeTitle,
+                                 Theme::kTextPrimary, FontWeight::Bold);
+    title->layoutItem.SetFlexShrink(0);
+    header_->AddChild(title);
+    auto version = Theme::MakeText("ucsVersion", ULTRACANVASSTART_VERSION, Theme::kSizeBody, Theme::kTextMuted);
+    version->layoutItem.SetFlexShrink(0);
+    header_->AddChild(version);
+    header_->AddChild(Theme::MakeText("ucsSubtitle",
+        "sets this computer up for UltraCanvas development  \xC2\xB7  " +
+        PlatformName(profile_.platform) + " " + profile_.architecture + " detected",
+        Theme::kSizeBody, Theme::kTextSecondary));
+    window_->AddChild(header_);
 
-    tabs_ = CreateTabbedContainer("ucsTabs", 8, 44, kWindowWidth - 16, kWindowHeight - 100);
+    // ----- the pages -----
+    tabs_ = CreateTabbedContainer("ucsTabs", kSideMargin, Theme::kHeaderHeight,
+                                  kWindowWidth - 2 * kSideMargin,
+                                  kWindowHeight - Theme::kHeaderHeight - Theme::kStatusHeight - kSideMargin);
+    tabs_->SetTabStyle(TabStyle::Modern);
+    tabs_->SetTabHeight(30);
+    tabs_->fontSize = static_cast<int>(Theme::kSizeBody + 1);
+    tabs_->SetActiveTabBackgroundColor(Theme::kCardBackground);
+    tabs_->SetInactiveTabBackgroundColor(Theme::kPageBackground);
+    tabs_->SetInactiveTabTextColor(Theme::kTextSecondary);
+    tabs_->activeTabTextColor = Theme::kTextPrimary;
+    tabs_->hoveredTabColor = Theme::kRowHover;
+    tabs_->tabBorderColor = Theme::kCardBorder;
+    tabs_->tabContentBorderColor = Theme::kCardBorder;
+    tabs_->contentAreaColor = Theme::kPageBackground;
     tabs_->AddTab("Platform", BuildPlatformPage());
     tabs_->AddTab("System",   BuildSystemPage());
     tabs_->AddTab("Choices",  BuildChoicesPage());
@@ -133,8 +152,16 @@ bool UltraCanvasStartWindow::Initialize() {
     tabs_->SetActiveTab(kPlatformTab);
     window_->AddChild(tabs_);
 
-    statusLabel_ = CreateLabel("ucsStatus", 16, kWindowHeight - 30, kWindowWidth - 32, 22, "");
-    window_->AddChild(statusLabel_);
+    // ----- the status band -----
+    statusBand_ = CreateContainer("ucsStatusBand", 0, kWindowHeight - Theme::kStatusHeight,
+                                  kWindowWidth, Theme::kStatusHeight);
+    statusBand_->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    statusBand_->SetPadding(0, Theme::kPagePadding + 6.0f);
+    statusBand_->SetContainerStyle(plain);
+    statusLabel_ = Theme::MakeText("ucsStatus", "", Theme::kSizeBody, Theme::kTextSecondary);
+    statusLabel_->layoutItem.SetFlexGrow(1);
+    statusBand_->AddChild(statusLabel_);
+    window_->AddChild(statusBand_);
 
     LayoutForSize(kWindowWidth, kWindowHeight);
     window_->onWindowResize = [this](int width, int height) {
@@ -145,8 +172,6 @@ bool UltraCanvasStartWindow::Initialize() {
         uiTimer_ = app->StartTimer(100, /*periodic=*/true, [this](TimerId) { DrainUiQueue(); });
     }
 
-    RefreshSystemText();
-    RefreshAiText();
     RefreshPlan();
     SetStatus("Choose the platform the instructions are for, then look at the System and Choices pages.");
     return true;
@@ -156,19 +181,42 @@ void UltraCanvasStartWindow::Show() {
     if (window_) window_->Show();
 }
 
+bool UltraCanvasStartWindow::ShowPage(const std::string& name) {
+    static const std::map<std::string, int> kPages = {
+        { "platform", kPlatformTab }, { "system", kSystemTab }, { "choices", kChoicesTab },
+        { "install", kInstallTab }, { "project", kProjectTab }, { "ai", kAiTab }, { "report", kReportTab }
+    };
+    const auto found = kPages.find(name);
+    if (found == kPages.end() || !tabs_) return false;
+    tabs_->SetActiveTab(found->second);
+    OnTabEntered(found->second);
+    return true;
+}
+
+void UltraCanvasStartWindow::PreselectPlatform(Platform platform) {
+    if (platformPicker_) platformPicker_->SetSelectedIndex(PlatformIndex(platform));
+    SelectPlatform(platform);
+}
+
+void UltraCanvasStartWindow::PreselectAssistant(Assistant assistant) {
+    if (assistantPicker_) assistantPicker_->SetSelectedIndex(AssistantIndex(assistant));
+    SelectAssistant(assistant);
+}
+
 void UltraCanvasStartWindow::LayoutForSize(float width, float height) {
     if (!tabs_) return;
-    constexpr float kSideMargin = 8.0f;
-    constexpr float kTabsTop    = 44.0f;
-    constexpr float kStatusBand = 30.0f;
     const float tabsWidth  = std::max(320.0f, width - 2 * kSideMargin);
-    const float tabsHeight = std::max(240.0f, height - kTabsTop - kStatusBand - kSideMargin);
-    tabs_->SetElementAbsolutePosition(Point2Df(kSideMargin, kTabsTop));
+    const float tabsHeight = std::max(240.0f, height - Theme::kHeaderHeight - Theme::kStatusHeight - kSideMargin);
+    if (header_) {
+        header_->SetElementAbsolutePosition(Point2Df(0, 0));
+        header_->SetElementSize(Size2Df(width, Theme::kHeaderHeight));
+    }
+    tabs_->SetElementAbsolutePosition(Point2Df(kSideMargin, Theme::kHeaderHeight));
     tabs_->SetElementSize(Size2Df(tabsWidth, tabsHeight));
     tabs_->InvalidateLayout();
-    if (statusLabel_) {
-        statusLabel_->SetElementAbsolutePosition(Point2Df(16.0f, height - kStatusBand + 4.0f));
-        statusLabel_->SetElementSize(Size2Df(std::max(200.0f, width - 32.0f), 22.0f));
+    if (statusBand_) {
+        statusBand_->SetElementAbsolutePosition(Point2Df(0, height - Theme::kStatusHeight));
+        statusBand_->SetElementSize(Size2Df(width, Theme::kStatusHeight));
     }
     if (window_) window_->AddDirtyRectangle(
         Rect2Di(0, 0, static_cast<int>(width), static_cast<int>(height)));
@@ -181,9 +229,10 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::NewPage(const std:
     // measures the active page (see UltraCleaner's rule page for why).
     auto page = CreateContainer(id, 0, 0, 0, 0);
     page->layout.SetFlexColumn()
-                .SetFlexGap(kSectionGap)
+                .SetFlexGap(Theme::kGap)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    page->SetPadding(kPagePadding);
+    page->SetPadding(Theme::kPagePadding);
+    page->SetBackgroundColor(Theme::kPageBackground);
     page->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
     ContainerStyle plain;
     plain.autoShowScrollbars = false;
@@ -191,121 +240,206 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::NewPage(const std:
     return page;
 }
 
-std::shared_ptr<UltraCanvasLabel> UltraCanvasStartWindow::Heading(const std::string& id,
-                                                                  const std::string& text) {
-    auto label = CreateLabel(id, 0, 0, 600, 26, text);
-    label->SetFontSize(15);
-    label->layoutItem.SetFlexShrink(0);
-    return label;
-}
-
-std::shared_ptr<UltraCanvasTextArea> UltraCanvasStartWindow::ReadOnlyText(const std::string& id,
-                                                                          float height) {
-    auto area = std::make_shared<UltraCanvasTextArea>(id, 0, 0, 600, height);
-    area->SetReadOnly(true);
-    area->SetWordWrap(true);
-    area->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(height));
-    area->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    return area;
-}
-
-std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::ButtonRow(const std::string& id) {
-    auto row = CreateContainer(id, 0, 0, 0, 0);
-    row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    row->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(36));
-    row->layoutItem.SetFlexShrink(0);
-    ContainerStyle plain;
-    plain.autoShowScrollbars = false;
-    row->SetContainerStyle(plain);
-    return row;
-}
-
 // ===== PAGES ================================================================
 
 std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildPlatformPage() {
     auto page = NewPage("ucsPlatformPage");
-    page->AddChild(Heading("ucsPlatformHeading", "Which platform are the instructions for?"));
-    page->AddChild(CreateLabel("ucsPlatformHint", 0, 0, 800, 22,
+
+    auto choose = Theme::MakeCard("ucsPlatformCard");
+    choose->AddChild(Theme::MakeHeading("ucsPlatformHeading", "Which platform are the instructions for?"));
+    choose->AddChild(Theme::MakeHint("ucsPlatformHint",
         "Preselected to the one detected here. Pick another to read how a different "
-        "operating system is set up; only the detected one can be checked and installed."));
-
-    auto row = ButtonRow("ucsPlatformRow");
-    for (auto platform : { Platform::Linux, Platform::MacOS, Platform::Windows }) {
-        auto radio = UltraCanvasRadio::Create("ucsPlatform" + PlatformName(platform), 0, 0,
-                                              PlatformName(platform), platform == profile_.platform);
-        radio->SetElementSize(Size2Df(140, 26));
-        platformGroup_.AddRadioButton(radio);
-        if (platform == profile_.platform) platformGroup_.SelectButton(radio);
-        platformRadios_[platform] = radio;
-        row->AddChild(radio);
-    }
-    // The radios live inside the window that owns this object; a raw capture
+        "operating system is set up; only the detected one can be checked and installed.", 32));
+    auto row = Theme::MakeRow("ucsPlatformRow");
+    platformPicker_ = Theme::MakeSegmented("ucsPlatformPicker",
+        { PlatformName(Platform::Linux), PlatformName(Platform::MacOS), PlatformName(Platform::Windows) },
+        PlatformIndex(profile_.platform), 330);
+    // The picker lives inside the window that owns this object; a raw capture
     // of `this` is the convention (AGENTS.md: no shared_ptr in a callback).
-    platformGroup_.onSelectionChanged = [this](std::shared_ptr<UltraCanvasRadio> selected) {
-        for (const auto& [platform, radio] : platformRadios_) {
-            if (radio == selected) { SelectPlatform(platform); break; }
-        }
-    };
-    page->AddChild(row);
+    platformPicker_->onSegmentSelected = [this](int index) { SelectPlatform(kPlatforms[index]); };
+    row->AddChild(platformPicker_);
+    choose->AddChild(row);
+    page->AddChild(choose);
 
-    platformNotes_ = ReadOnlyText("ucsPlatformNotes", 420);
-    platformNotes_->SetText(PlatformSummary(profile_.platform));
-    page->AddChild(platformNotes_);
-    platformNotes_->layoutItem.SetFlexGrow(1);
-    platformNotes_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    auto guide = Theme::MakeCard("ucsGuideCard");
+    platformGuide_ = Theme::MakeMarkdownView("ucsPlatformGuide", 400);
+    platformGuide_->SetText(PlatformGuide(profile_.platform, FrameworkVersion(),
+                                          GuideArchitecture(profile_, profile_.platform)), false);
+    Theme::Grow(platformGuide_);
+    guide->AddChild(platformGuide_);
+    Theme::GrowCard(guide);
+    page->AddChild(guide);
     return page;
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildSystemPage() {
     auto page = NewPage("ucsSystemPage");
-    page->AddChild(Heading("ucsSystemHeading", "This computer"));
-    systemText_ = ReadOnlyText("ucsSystemText", 460);
-    page->AddChild(systemText_);
-    systemText_->layoutItem.SetFlexGrow(1);
-    systemText_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    const std::string version = FrameworkVersion();
+    const std::string archive = SdkArchiveName(profile_.platform, version, profile_.architecture);
+    const std::string assetUrl = SdkReleaseAssetUrl(profile_.platform, version, profile_.architecture);
+
+    // ----- the computer -----
+    auto computer = Theme::MakeCard("ucsComputerCard", "This computer");
+    Theme::AddKeyValue(computer, "ucsSysPlatform", "Platform", PlatformName(profile_.platform));
+    Theme::AddKeyValue(computer, "ucsSysOs", "Operating system",
+                       profile_.osName + (profile_.osVersion.empty() ? "" : " " + profile_.osVersion));
+    Theme::AddKeyValue(computer, "ucsSysArch", "Architecture", profile_.architecture);
+    if (!profile_.distributionId.empty()) {
+        Theme::AddKeyValue(computer, "ucsSysDistro", "Distribution",
+                           profile_.distributionId +
+                           (profile_.distributionLike.empty() ? "" : " (like " + profile_.distributionLike + ")"));
+    }
+    {
+        auto row = Theme::MakeKeyRow("ucsSysManager", "Package manager");
+        const bool found = !profile_.packageManagerPath.empty();
+        row->AddChild(Theme::MakeStatusBadge("ucsSysManagerBadge", found,
+                                             found ? PackageManagerName(profile_.packageManager) : "none on PATH"));
+        row->AddChild(Theme::MakeValue("ucsSysManagerPath",
+                                       found ? profile_.packageManagerPath
+                                             : (profile_.packageManager == PackageManager::None
+                                                    ? "no apt, dnf, pacman, zypper or brew was found"
+                                                    : PackageManagerName(profile_.packageManager) + " was not found on PATH"),
+                                       found ? Theme::kTextPrimary : Theme::kTextSecondary));
+        computer->AddChild(row);
+    }
+    if (profile_.platform == Platform::Windows) {
+        auto row = Theme::MakeKeyRow("ucsSysMsys", "MSYS2");
+        const bool found = !profile_.msysPrefix.empty();
+        row->AddChild(Theme::MakeStatusBadge("ucsSysMsysBadge", found));
+        if (found) {
+            row->AddChild(Theme::MakeValue("ucsSysMsysPath", profile_.msysPrefix));
+        } else {
+            row->AddChild(Theme::MakeLink("ucsSysMsysLink", "install it from https://www.msys2.org",
+                                          "https://www.msys2.org"));
+        }
+        computer->AddChild(row);
+        if (!profile_.msystem.empty()) Theme::AddKeyValue(computer, "ucsSysMsystem", "MSYSTEM", profile_.msystem);
+    }
+    Theme::AddKeyValue(computer, "ucsSysHome", "Home", profile_.homeDirectory);
+
+    // ----- the tools -----
+    {
+        auto row = Theme::MakeKeyRow("ucsSysAssistants", "AI assistants");
+        bool any = false;
+        for (auto assistant : kAssistants) {
+            const AssistantStatus* status = ai_.Status(assistant);
+            if (!status || !status->installed) continue;
+            any = true;
+            row->AddChild(Theme::MakeStatusBadge("ucsSysAssistant" + AssistantName(assistant), true,
+                                                 AssistantName(assistant) +
+                                                 (status->version.empty() ? "" : " " + status->version)));
+        }
+        if (!any) {
+            row->AddChild(Theme::MakeStatusBadge("ucsSysAssistantNone", false, "none found"));
+        }
+        row->AddChild(Theme::MakeValue("ucsSysAssistantHint",
+                                       any ? (ai_.claudeInstalled ? ai_.claudePath : std::string())
+                                           : "the AI page says how to install one",
+                                       any ? Theme::kTextPrimary : Theme::kTextSecondary));
+        computer->AddChild(row);
+    }
+    {
+        auto row = Theme::MakeKeyRow("ucsSysGit", "git");
+        row->AddChild(Theme::MakeStatusBadge("ucsSysGitBadge", ai_.gitInstalled,
+                                             ai_.gitInstalled ? "installed" : "not found"));
+        computer->AddChild(row);
+    }
+    page->AddChild(computer);
+
+    // ----- the framework -----
+    auto framework = Theme::MakeCard("ucsFrameworkCard", "The framework");
+    Theme::AddKeyValue(framework, "ucsSysVersion", "UltraCanvas", version +
+                       "  (this build of UltraCanvasStart, and the SDK that matches it)");
+    {
+        auto row = Theme::MakeKeyRow("ucsSysSdk", "Matching SDK");
+        row->AddChild(Theme::MakeCodeLine("ucsSysSdkName", archive, { archive }));
+        framework->AddChild(row);
+    }
+    {
+        auto row = Theme::MakeKeyRow("ucsSysRelease", "Download");
+        row->AddChild(Theme::MakeLink("ucsSysReleaseLink", assetUrl, assetUrl));
+        framework->AddChild(row);
+    }
+    {
+        auto row = Theme::MakeKeyRow("ucsSysReleasePage", "Release page");
+        row->AddChild(Theme::MakeLink("ucsSysReleasePageLink", SdkReleasePage(version), SdkReleasePage(version)));
+        framework->AddChild(row);
+    }
+    {
+        // The fallback while a release build is still running.
+        auto row = Theme::MakeKeyRow("ucsSysArtifacts", "Still building?");
+        row->AddChild(Theme::MakeLink("ucsSysArtifactsLink",
+                                      "the same archive is a workflow artifact on the Actions page",
+                                      SdkDownloadPage()));
+        framework->AddChild(row);
+    }
+    Theme::AddKeyValue(framework, "ucsSysFetch", "In this app",
+                       "the Project page's Download... button fetches the archive and unpacks it");
+    page->AddChild(framework);
+
+    // ----- the notes -----
+    const auto notes = PlatformNotes(profile_, profile_.platform);
+    if (!notes.empty()) {
+        auto card = Theme::MakeCard("ucsNotesCard", "Notes");
+        std::string markdown;
+        for (const auto& note : notes) markdown += "- " + Linkify(note) + "\n";
+        auto view = Theme::MakeMarkdownView("ucsNotesView", 90);
+        view->SetText(markdown, false);
+        Theme::Grow(view);
+        card->AddChild(view);
+        Theme::GrowCard(card);
+        page->AddChild(card);
+    }
     return page;
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildChoicesPage() {
     auto page = NewPage("ucsChoicesPage");
-    page->AddChild(Heading("ucsChoicesHeading", "What do you need?"));
-    page->AddChild(CreateLabel("ucsChoicesHint", 0, 0, 800, 22,
-        "Features decide which development packages are checked and installed. "
-        "The toolchain and the framework core are always needed."));
 
+    auto features = Theme::MakeCard("ucsFeaturesCard", "What do you need?");
+    features->AddChild(Theme::MakeHint("ucsChoicesHint",
+        "Features decide which development packages are checked and installed. "
+        "The toolchain and the framework core are always needed.", 20));
     for (auto group : kGroups) {
         const bool mandatory = group == DependencyGroup::Toolchain || group == DependencyGroup::Core;
         auto box = UltraCanvasCheckbox::CreateCheckbox(
-            "ucsGroup" + DependencyGroupTitle(group), 0, 0, 800, 24,
-            DependencyGroupTitle(group) + " - " + DependencyGroupDescription(group),
+            "ucsGroup" + DependencyGroupTitle(group), 0, 0, 800, Theme::kRowHeight,
+            DependencyGroupTitle(group) + "  -  " + DependencyGroupDescription(group),
             choices_.Has(group));
+        Theme::StyleCheckbox(box);
         if (mandatory) box->SetDisabled(true);
         box->layoutItem.SetFlexShrink(0);
         box->onStateChanged = [this](CheckedState, CheckedState) { ReadChoicesFromPage(); RefreshPlan(); };
         groupBoxes_[group] = box;
-        page->AddChild(box);
+        features->AddChild(box);
     }
+    page->AddChild(features);
 
-    page->AddChild(Heading("ucsFrameworkHeading", "The framework"));
-    sdkBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsUseSdk", 0, 0, 800, 24,
+    auto framework = Theme::MakeCard("ucsFrameworkChoiceCard", "The framework");
+    sdkBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsUseSdk", 0, 0, 800, Theme::kRowHeight,
         "Use the prebuilt SDK (no framework build; find_package(UltraCanvas) against the unpacked archive)",
         choices_.useSdk);
-    cloneBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsClone", 0, 0, 800, 24,
+    cloneBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsClone", 0, 0, 800, Theme::kRowHeight,
         "Clone the UltraCanvas repository next to the project (to read the docs and build from source)",
         choices_.cloneFramework);
-    page->AddChild(sdkBox_);
-    page->AddChild(cloneBox_);
+    framework->AddChild(sdkBox_);
+    framework->AddChild(cloneBox_);
+    page->AddChild(framework);
 
-    page->AddChild(Heading("ucsAiHeading", "The assistant"));
-    aiBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsUseAi", 0, 0, 800, 24,
-        "I work with Claude Code (writes CLAUDE.md into the project, prepares the first prompt)",
+    auto assistant = Theme::MakeCard("ucsAssistantCard", "The assistant");
+    aiBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsUseAi", 0, 0, 800, Theme::kRowHeight,
+        "I work with an AI assistant (the AI page says which; its instruction file goes into the project, "
+        "the first prompt is prepared)",
         choices_.useAi);
-    cloudBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsCloud", 0, 0, 800, 24,
+    cloudBox_ = UltraCanvasCheckbox::CreateCheckbox("ucsCloud", 0, 0, 800, Theme::kRowHeight,
         "...through GitHub only, with no compiler on this machine (Docs/GettingStarted-Cloud.md)",
         choices_.cloudOnly);
-    page->AddChild(aiBox_);
-    page->AddChild(cloudBox_);
+    assistant->AddChild(aiBox_);
+    assistant->AddChild(cloudBox_);
+    page->AddChild(assistant);
+
     for (auto& box : { sdkBox_, cloneBox_, aiBox_, cloudBox_ }) {
+        Theme::StyleCheckbox(box);
         box->layoutItem.SetFlexShrink(0);
         box->onStateChanged = [this](CheckedState, CheckedState) { ReadChoicesFromPage(); RefreshPlan(); };
     }
@@ -314,63 +448,82 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildChoicesPage()
 
 std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildInstallPage() {
     auto page = NewPage("ucsInstallPage");
-    page->AddChild(Heading("ucsInstallHeading", "Tools and libraries"));
 
-    auto row = ButtonRow("ucsInstallRow");
-    checkButton_ = CreateButton("ucsCheck", 0, 0, 150, 30, "Check again");
-    checkButton_->onClick = [this]() { StartChecks(); };
-    installButton_ = CreateButton("ucsInstall", 0, 0, 170, 30, "Install what is missing");
+    auto checks = Theme::MakeCard("ucsChecksCard", "Tools and libraries");
+    auto row = Theme::MakeRow("ucsInstallRow");
+    installButton_ = Theme::MakeButton("ucsInstall", "Install what is missing", true, 170);
     installButton_->onClick = [this]() { StartInstall(); };
-    installSummary_ = CreateLabel("ucsInstallSummary", 0, 0, 500, 22, "Not checked yet.");
-    row->AddChild(checkButton_);
+    checkButton_ = Theme::MakeButton("ucsCheck", "Check again", false, 110);
+    checkButton_->onClick = [this]() { StartChecks(); };
+    installBadge_ = Theme::MakeStatusBadge("ucsInstallBadge", false, "not checked yet");
+    installBadge_->SetVariant(BadgeVariant::Neutral);
+    installSummary_ = Theme::MakeText("ucsInstallSummary", "", Theme::kSizeBody, Theme::kTextSecondary);
+    installSummary_->layoutItem.SetFlexGrow(1);
     row->AddChild(installButton_);
+    row->AddChild(checkButton_);
+    row->AddChild(installBadge_);
     row->AddChild(installSummary_);
-    page->AddChild(row);
+    checks->AddChild(row);
 
-    checksText_ = ReadOnlyText("ucsChecksText", 260);
-    checksText_->SetText("Press \"Check again\" to look for the tools and libraries the chosen features need.");
-    page->AddChild(checksText_);
-    checksText_->layoutItem.SetFlexGrow(2);
-    checksText_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    checksView_ = Theme::MakeMarkdownView("ucsChecksView", 260);
+    checksView_->SetText(ChecksMarkdown({}), false);
+    Theme::Grow(checksView_);
+    checks->AddChild(checksView_);
+    Theme::GrowCard(checks, 2.0f);
+    page->AddChild(checks);
 
-    page->AddChild(Heading("ucsOutputHeading", "Install output"));
-    installOutput_ = ReadOnlyText("ucsInstallOutput", 160);
-    page->AddChild(installOutput_);
-    installOutput_->layoutItem.SetFlexGrow(1);
-    installOutput_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    auto output = Theme::MakeCard("ucsOutputCard", "Install output");
+    installOutput_ = Theme::MakeConsole("ucsInstallOutput", 160);
+    installOutput_->SetPlaceholder("The package manager's output appears here.");
+    Theme::Grow(installOutput_);
+    output->AddChild(installOutput_);
+    Theme::GrowCard(output, 1.0f);
+    page->AddChild(output);
     return page;
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildProjectPage() {
     auto page = NewPage("ucsProjectPage");
-    page->AddChild(Heading("ucsProjectHeading", "A new application"));
 
-    auto nameRow = ButtonRow("ucsNameRow");
-    nameRow->AddChild(CreateLabel("ucsNameLabel", 0, 0, 120, 22, "Application name"));
-    appNameInput_ = CreateTextInput("ucsAppName", 0, 0, 240, 28);
+    auto form = Theme::MakeCard("ucsProjectCard", "A new application");
+    auto labelFor = [](const std::string& id, const std::string& text) {
+        auto label = Theme::MakeText(id, text, Theme::kSizeBody, Theme::kTextSecondary);
+        label->SetElementSize(Size2Df(110, Theme::kControlHeight));
+        label->layoutItem.SetFlexShrink(0);
+        return label;
+    };
+
+    auto nameRow = Theme::MakeRow("ucsNameRow");
+    nameRow->AddChild(labelFor("ucsNameLabel", "Application name"));
+    appNameInput_ = CreateTextInput("ucsAppName", 0, 0, 240, Theme::kControlHeight);
+    Theme::StyleInput(appNameInput_);
     appNameInput_->SetText(choices_.appName);
     nameRow->AddChild(appNameInput_);
-    page->AddChild(nameRow);
+    form->AddChild(nameRow);
 
-    auto folderRow = ButtonRow("ucsFolderRow");
-    folderRow->AddChild(CreateLabel("ucsFolderLabel", 0, 0, 120, 22, "Project folder"));
-    folderInput_ = CreateTextInput("ucsFolder", 0, 0, 480, 28);
+    auto folderRow = Theme::MakeRow("ucsFolderRow");
+    folderRow->AddChild(labelFor("ucsFolderLabel", "Project folder"));
+    folderInput_ = CreateTextInput("ucsFolder", 0, 0, 480, Theme::kControlHeight);
+    Theme::StyleInput(folderInput_);
     folderInput_->SetPlaceholder("an empty folder for the application");
+    folderInput_->layoutItem.SetFlexGrow(1);
     if (!profile_.homeDirectory.empty()) {
         folderInput_->SetText(profile_.homeDirectory + "/" + choices_.appName);
     }
     folderRow->AddChild(folderInput_);
-    auto browse = CreateButton("ucsBrowse", 0, 0, 100, 28, "Choose...");
+    auto browse = Theme::MakeButton("ucsBrowse", "Choose...", false, 90);
     browse->onClick = [this]() { ChooseProjectFolder(); };
     folderRow->AddChild(browse);
-    page->AddChild(folderRow);
+    form->AddChild(folderRow);
 
-    auto sdkRow = ButtonRow("ucsSdkRow");
-    sdkRow->AddChild(CreateLabel("ucsSdkLabel", 0, 0, 120, 22, "SDK prefix"));
-    sdkPrefixInput_ = CreateTextInput("ucsSdkPrefix", 0, 0, 480, 28);
+    auto sdkRow = Theme::MakeRow("ucsSdkRow");
+    sdkRow->AddChild(labelFor("ucsSdkLabel", "SDK prefix"));
+    sdkPrefixInput_ = CreateTextInput("ucsSdkPrefix", 0, 0, 480, Theme::kControlHeight);
+    Theme::StyleInput(sdkPrefixInput_);
     sdkPrefixInput_->SetPlaceholder("the unpacked UltraCanvas-SDK-... folder (CMAKE_PREFIX_PATH)");
+    sdkPrefixInput_->layoutItem.SetFlexGrow(1);
     sdkRow->AddChild(sdkPrefixInput_);
-    auto findSdk = CreateButton("ucsFindSdk", 0, 0, 100, 28, "Find...");
+    auto findSdk = Theme::MakeButton("ucsFindSdk", "Find...", false, 90);
     findSdk->onClick = [this]() {
         const std::string chosen = UltraCanvasNativeDialogs::SelectFolder(
             "Where is the unpacked SDK?", profile_.homeDirectory, window_.get());
@@ -390,63 +543,94 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildProjectPage()
         RefreshPlan();
     };
     sdkRow->AddChild(findSdk);
-    downloadButton_ = CreateButton("ucsDownloadSdk", 0, 0, 110, 28, "Download...");
+    downloadButton_ = Theme::MakeButton("ucsDownloadSdk", "Download...", false, 100);
     downloadButton_->onClick = [this]() { DownloadAndUnpackSdk(); };
     sdkRow->AddChild(downloadButton_);
-    page->AddChild(sdkRow);
+    form->AddChild(sdkRow);
 
-    auto actionRow = ButtonRow("ucsProjectActions");
-    auto create = CreateButton("ucsCreate", 0, 0, 160, 30, "Create the project");
+    auto actionRow = Theme::MakeRow("ucsProjectActions");
+    auto create = Theme::MakeButton("ucsCreate", "Create the project", true, 150);
     create->onClick = [this]() { CreateProject(); };
     actionRow->AddChild(create);
-    actionRow->AddChild(CreateLabel("ucsProjectHint", 0, 0, 600, 22,
-        "Writes CMakeLists.txt, main.cpp, CMakePresets.json, README.md and CLAUDE.md. Preview below."));
-    page->AddChild(actionRow);
+    auto hint = Theme::MakeText("ucsProjectHint",
+        "Writes CMakeLists.txt, main.cpp, CMakePresets.json, README.md and the assistant's instruction file. Preview below.",
+        Theme::kSizeBody, Theme::kTextSecondary);
+    hint->layoutItem.SetFlexGrow(1);
+    actionRow->AddChild(hint);
+    form->AddChild(actionRow);
+    page->AddChild(form);
 
-    projectPreview_ = ReadOnlyText("ucsProjectPreview", 300);
-    page->AddChild(projectPreview_);
-    projectPreview_->layoutItem.SetFlexGrow(1);
-    projectPreview_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    auto preview = Theme::MakeCard("ucsPreviewCard", "The files");
+    projectPreview_ = Theme::MakeConsole("ucsProjectPreview", 300, /*dark=*/false);
+    Theme::Grow(projectPreview_);
+    preview->AddChild(projectPreview_);
+    Theme::GrowCard(preview);
+    page->AddChild(preview);
     return page;
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildAiPage() {
     auto page = NewPage("ucsAiPage");
-    page->AddChild(Heading("ucsAiPageHeading", "Working with Claude Code"));
-    aiText_ = ReadOnlyText("ucsAiText", 220);
-    page->AddChild(aiText_);
-    aiText_->layoutItem.SetFlexGrow(1);
-    aiText_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-    auto row = ButtonRow("ucsPromptRow");
-    auto copy = CreateButton("ucsCopyPrompt", 0, 0, 170, 30, "Copy the first prompt");
+    auto guide = Theme::MakeCard("ucsAiCard", "Working with an AI assistant");
+    auto pickRow = Theme::MakeRow("ucsAssistantRow");
+    auto pickLabel = Theme::MakeText("ucsAssistantLabel", "Which one?", Theme::kSizeBody, Theme::kTextSecondary);
+    pickLabel->SetElementSize(Size2Df(70, Theme::kControlHeight));
+    pickLabel->layoutItem.SetFlexShrink(0);
+    pickRow->AddChild(pickLabel);
+    std::vector<std::string> names;
+    for (auto assistant : kAssistants) {
+        names.push_back(assistant == Assistant::Other ? "Other" : AssistantName(assistant));
+    }
+    assistantPicker_ = Theme::MakeSegmented("ucsAssistantPicker", names,
+                                            AssistantIndex(choices_.assistant), 540);
+    assistantPicker_->onSegmentSelected = [this](int index) { SelectAssistant(kAssistants[index]); };
+    pickRow->AddChild(assistantPicker_);
+    guide->AddChild(pickRow);
+    aiView_ = Theme::MakeMarkdownView("ucsAiView", 220);
+    aiView_->SetText(AiGuide(ai_, profile_.platform, choices_.assistant), false);
+    Theme::Grow(aiView_);
+    guide->AddChild(aiView_);
+    Theme::GrowCard(guide, 3.0f);
+    page->AddChild(guide);
+
+    auto prompt = Theme::MakeCard("ucsPromptCard", "The first prompt");
+    auto row = Theme::MakeRow("ucsPromptRow");
+    auto copy = Theme::MakeButton("ucsCopyPrompt", "Copy the first prompt", true, 160);
     copy->onClick = [this]() { CopyPrompt(); };
     row->AddChild(copy);
-    row->AddChild(CreateLabel("ucsPromptHint", 0, 0, 600, 22,
-        "Open the project folder with Claude Code and paste this as the first message."));
-    page->AddChild(row);
-
-    promptText_ = ReadOnlyText("ucsPromptText", 200);
-    page->AddChild(promptText_);
-    promptText_->layoutItem.SetFlexGrow(1);
-    promptText_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    auto hint = Theme::MakeText("ucsPromptHint",
+        "Open the project folder with the assistant and paste this as the first message.",
+        Theme::kSizeBody, Theme::kTextSecondary);
+    hint->layoutItem.SetFlexGrow(1);
+    row->AddChild(hint);
+    prompt->AddChild(row);
+    promptText_ = Theme::MakeConsole("ucsPromptText", 120, /*dark=*/false);
+    Theme::Grow(promptText_);
+    prompt->AddChild(promptText_);
+    Theme::GrowCard(prompt, 2.0f);
+    page->AddChild(prompt);
     return page;
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildReportPage() {
     auto page = NewPage("ucsReportPage");
-    auto row = ButtonRow("ucsReportRow");
-    auto copy = CreateButton("ucsCopyReport", 0, 0, 150, 30, "Copy the report");
+    auto card = Theme::MakeCard("ucsReportCard", "The report");
+    auto row = Theme::MakeRow("ucsReportRow");
+    auto copy = Theme::MakeButton("ucsCopyReport", "Copy the report", true, 130);
     copy->onClick = [this]() { CopyReport(); };
     row->AddChild(copy);
-    row->AddChild(CreateLabel("ucsReportHint", 0, 0, 700, 22,
-        "The system, the checks, the plan and the notes as text - for a colleague, an issue or the assistant."));
-    page->AddChild(row);
-
-    reportText_ = ReadOnlyText("ucsReportText", 500);
-    page->AddChild(reportText_);
-    reportText_->layoutItem.SetFlexGrow(1);
-    reportText_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    auto hint = Theme::MakeText("ucsReportHint",
+        "The system, the checks, the plan and the notes as text - for a colleague, an issue or the assistant.",
+        Theme::kSizeBody, Theme::kTextSecondary);
+    hint->layoutItem.SetFlexGrow(1);
+    row->AddChild(hint);
+    card->AddChild(row);
+    reportText_ = Theme::MakeConsole("ucsReportText", 500, /*dark=*/false);
+    Theme::Grow(reportText_);
+    card->AddChild(reportText_);
+    Theme::GrowCard(card);
+    page->AddChild(card);
     return page;
 }
 
@@ -454,13 +638,22 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildReportPage() 
 
 void UltraCanvasStartWindow::SelectPlatform(Platform platform) {
     choices_.platform = platform;
-    if (platformNotes_) platformNotes_->SetText(PlatformSummary(platform));
+    if (platformGuide_) {
+        platformGuide_->SetText(PlatformGuide(platform, FrameworkVersion(),
+                                              GuideArchitecture(profile_, platform)), false);
+    }
     const bool local = platform == profile_.platform;
     if (checkButton_) checkButton_->SetDisabled(!local);
     if (installButton_) installButton_->SetDisabled(!local);
     SetStatus(local ? "Instructions for this computer."
                     : "Reading " + PlatformName(platform) + " instructions; checks and installs only run for " +
                       PlatformName(profile_.platform) + ".");
+    RefreshPlan();
+}
+
+void UltraCanvasStartWindow::SelectAssistant(Assistant assistant) {
+    choices_.assistant = assistant;
+    if (aiView_) aiView_->SetText(AiGuide(ai_, profile_.platform, assistant), false);
     RefreshPlan();
 }
 
@@ -638,6 +831,7 @@ void UltraCanvasStartWindow::CreateProject() {
     options.useSdk = choices_.useSdk;
     options.sdkPrefix = sdkPrefixInput_ ? sdkPrefixInput_->GetText() : "";
     options.withAiNotes = choices_.useAi;
+    options.assistant = choices_.assistant;
     const ProjectResult result = ScaffoldProject(options);
     if (!result.ok) {
         UltraCanvasDialogManager::ShowError(result.error, "The project was not created", nullptr, window_.get());
@@ -650,7 +844,8 @@ void UltraCanvasStartWindow::CreateProject() {
     if (options.useSdk && options.sdkPrefix.empty()) {
         next += "\nThe SDK prefix is empty: unpack the SDK and set CMAKE_PREFIX_PATH in CMakePresets.json.\n";
     }
-    if (choices_.useAi) next += "\nThen open the folder with Claude Code; the AI page has the first prompt.\n";
+    if (choices_.useAi) next += "\nThen open the folder with " + AssistantName(choices_.assistant) +
+                                "; the AI page has the first prompt.\n";
     UltraCanvasDialogManager::ShowInformation(next, "Project created", nullptr, window_.get());
     SetStatus("Project created in " + options.folder);
 }
@@ -680,68 +875,33 @@ void UltraCanvasStartWindow::ReadChoicesFromPage() {
     if (folderInput_) choices_.projectFolder = folderInput_->GetText();
 }
 
-void UltraCanvasStartWindow::RefreshSystemText() {
-    if (!systemText_) return;
-    std::string text;
-    text += "Platform:         " + PlatformName(profile_.platform) + "\n";
-    text += "Operating system: " + profile_.osName + (profile_.osVersion.empty() ? "" : " " + profile_.osVersion) + "\n";
-    text += "Architecture:     " + profile_.architecture + "\n";
-    if (!profile_.distributionId.empty()) {
-        text += "Distribution:     " + profile_.distributionId +
-                (profile_.distributionLike.empty() ? "" : " (like " + profile_.distributionLike + ")") + "\n";
-    }
-    text += "Package manager:  " + PackageManagerName(profile_.packageManager) +
-            (profile_.packageManagerPath.empty() ? "  (not found on PATH)" : "  " + profile_.packageManagerPath) + "\n";
-    if (profile_.platform == Platform::Windows) {
-        text += "MSYS2:            " + (profile_.msysPrefix.empty() ? std::string("not found - install it from https://www.msys2.org")
-                                                                    : profile_.msysPrefix) + "\n";
-        if (!profile_.msystem.empty()) text += "MSYSTEM:          " + profile_.msystem + "\n";
-    }
-    text += "Home:             " + profile_.homeDirectory + "\n";
-    text += "\nFramework:        UltraCanvas " + FrameworkVersion() + "\n";
-    text += "Matching SDK:     " + SdkArchiveName(profile_.platform, FrameworkVersion(), profile_.architecture) + "\n";
-    text += "                  " + SdkReleaseAssetUrl(profile_.platform, FrameworkVersion(), profile_.architecture) + "\n";
-    text += "                  (the Project page's Download button fetches it; the workflow artifacts are at\n";
-    text += "                  " + SdkDownloadPage() + ")\n";
-    text += "\nClaude Code:      " + (ai_.claudeInstalled ? "installed" + (ai_.claudeVersion.empty() ? "" : ", " + ai_.claudeVersion) +
-                                                            " (" + ai_.claudePath + ")" : std::string("not found")) + "\n";
-    text += "git:              " + std::string(ai_.gitInstalled ? "installed" : "not found") + "\n";
-    const auto notes = PlatformNotes(profile_, profile_.platform);
-    if (!notes.empty()) text += "\nNotes\n" + Join(notes, "  * ");
-    systemText_->SetText(text);
-}
-
 void UltraCanvasStartWindow::RefreshChecksText() {
-    if (!checksText_) return;
-    if (checks_.empty()) {
-        checksText_->SetText("Nothing checked yet.");
-        return;
-    }
-    std::string text;
-    DependencyGroup current = DependencyGroup::Toolchain;
-    bool first = true;
+    if (!checksView_) return;
+    checksView_->SetText(ChecksMarkdown(checks_), false);
     size_t missing = 0;
     for (const auto& c : checks_) {
-        if (first || c.group != current) {
-            if (!first) text += "\n";
-            text += DependencyGroupTitle(c.group) + "\n";
-            current = c.group;
-            first = false;
-        }
-        const bool ok = c.present && c.versionOk;
-        if (c.checked && !ok) ++missing;
-        const char* mark = !c.checked ? "  ?  " : (ok ? "  +  " : "  -  ");
-        std::string line = std::string(mark) + c.title;
-        if (!c.version.empty()) line += "  " + c.version;
-        if (!ok || !c.checked) line += "  (" + c.detail + ")";
-        if (!c.packageName.empty() && (!ok)) line += "  ->  " + c.packageName;
-        text += line + "\n";
+        if (c.checked && !(c.present && c.versionOk)) ++missing;
     }
-    checksText_->SetText(text);
+    if (installBadge_) {
+        if (checks_.empty()) {
+            installBadge_->SetText("not checked yet");
+            installBadge_->SetVariant(BadgeVariant::Neutral);
+        } else if (missing == 0) {
+            installBadge_->SetText("everything installed");
+            installBadge_->SetVariant(BadgeVariant::Successful);
+        } else {
+            installBadge_->SetText(std::to_string(missing) + " missing");
+            installBadge_->SetVariant(BadgeVariant::Warning);
+        }
+    }
+    if (installButton_) installButton_->SetDisabled(checks_.empty() || missing == 0 || working_);
     if (installSummary_) {
-        installSummary_->SetText(missing == 0 ? "Everything is installed."
-                                              : std::to_string(missing) + " missing" +
-                                                (profile_.packageManagerPath.empty() ? ", and no package manager was found" : ""));
+        installSummary_->SetText(
+            checks_.empty() ? ""
+            : missing == 0 ? "Everything the chosen features need is installed."
+            : profile_.packageManagerPath.empty()
+                ? "No package manager was found to install them with."
+                : "Install what is missing runs " + PackageManagerName(profile_.packageManager) + " for them.");
     }
 }
 
@@ -757,6 +917,7 @@ void UltraCanvasStartWindow::RefreshPlan() {
         options.useSdk = choices_.useSdk;
         options.sdkPrefix = sdkPrefixInput_ ? sdkPrefixInput_->GetText() : "";
         options.withAiNotes = choices_.useAi;
+        options.assistant = choices_.assistant;
         projectPreview_->SetText("--- CMakeLists.txt\n" + ProjectCMakeLists(options) +
                                  "\n--- CMakePresets.json\n" + ProjectPresets(options) +
                                  "\n--- main.cpp\n" + ProjectMainCpp(options));
@@ -765,29 +926,11 @@ void UltraCanvasStartWindow::RefreshPlan() {
     if (cloudBox_) cloudBox_->SetDisabled(!choices_.useAi);
 }
 
-void UltraCanvasStartWindow::RefreshAiText() {
-    if (!aiText_) return;
-    std::string text;
-    if (ai_.claudeInstalled) {
-        text += "Claude Code is installed" + (ai_.claudeVersion.empty() ? "" : " (" + ai_.claudeVersion + ")") +
-                " at " + ai_.claudePath + ".\n\n";
-    } else {
-        text += "Claude Code was not found on this computer. To install it:\n" +
-                Join(ClaudeInstallInstructions(profile_.platform), "  ") + "\n";
-    }
-    text += "How the assistant works on an UltraCanvas application (Docs/GettingStarted.md):\n"
-            "  1. It reads CLAUDE.md, which points at the framework's AGENTS.md and the element catalogue.\n"
-            "  2. One bounded change per session; name the elements and the docs to read.\n"
-            "  3. It builds and runs the check scripts before it reports back; read the ## Delivery block.\n"
-            "  4. Every change gets a changelog entry; the version comes from the changelog.\n\n";
-    text += "Without a compiler on this machine (Docs/GettingStarted-Cloud.md), the pull request is the compiler:\n" +
-            Join(CloudChecklist(), "  - ");
-    aiText_->SetText(text);
-}
-
 void UltraCanvasStartWindow::SetBusy(bool busy) {
     if (checkButton_) checkButton_->SetDisabled(busy);
-    if (installButton_) installButton_->SetDisabled(busy);
+    // The install button is for what the checks found missing; nothing to
+    // install keeps it off (RefreshChecksText decides).
+    if (installButton_) installButton_->SetDisabled(busy || checks_.empty() || plan_.MissingCount() == 0);
     if (downloadButton_) downloadButton_->SetDisabled(busy);
 }
 
