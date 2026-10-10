@@ -15,10 +15,10 @@ segments.
 > frames, the segment timeline with 26 effects, speed, joins, 30 transitions
 > between segments, text and image overlays, still images with smooth pan and
 > zoom ("Ken Burns"), one-call slideshows, background music that dips under
-> speech, GIF and audio-only output, lossless cut, the background job and the
+> speech, project files, GIF and audio-only output, lossless cut, the background job and the
 > `videofx` command-line tool work today, on FFmpeg 4.4 to 8.x.
-> Picture-in-picture, keyframes, several free audio tracks and project files
-> are planned (see *Roadmap*).
+> Picture-in-picture, keyframes and several free audio tracks are planned
+> (see *Roadmap*).
 
 ---
 
@@ -588,6 +588,104 @@ And one that is not:
 
 ---
 
+## Project files
+
+A whole edit can be saved as one small JSON file, a `.vfxproj`. It holds the
+timeline (or a slideshow's photos and options), the music and the export
+settings. It refers to media by path and holds no media itself, so it stays
+a few kilobytes and an app can save it on every change.
+
+```cpp
+VideoFXProject project = VideoFXProject::FromSlideshow(photos, options, VideoFXExportSettings::WebMP4(1080));
+project.title = "Summer trip";
+project.outputPath = "trip.mp4";
+VideoFX_SaveProject(project, "Trip/trip.vfxproj");
+
+// later, perhaps on another machine
+VideoFXProject loaded;
+std::vector<std::string> missing;
+if (VideoFX_LoadProject("Trip/trip.vfxproj", loaded, &missing) == VideoFXResult::Ok) {
+    if (!missing.empty()) AskUserToFind(missing);   // the project still loaded
+    VideoFX_RenderProject(loaded);                   // to loaded.outputPath
+}
+```
+
+`VideoFXProject::FromTimeline(segments, settings)` makes a timeline project;
+`VideoFX_RenderProject` renders either kind, with `VideoFX_Export` or
+`VideoFX_CreateSlideshow`.
+
+The file looks like this (shortened):
+
+```json
+{
+  "format": "VideoFX project",
+  "version": 1,
+  "kind": "slideshow",
+  "title": "Summer trip",
+  "output": "trip.mp4",
+  "settings": {
+    "container": "auto",
+    "width": 1920,
+    "height": 1080,
+    "music": { "path": "music/song.mp3", "volume": 0.8, "duckingLevel": 0.3 }
+  },
+  "slideshow": {
+    "images": ["photos/a.jpg", "photos/b.jpg"],
+    "options": {
+      "secondsPerImage": 4.0,
+      "transition": { "type": "crossfade", "duration": 1.0 },
+      "captions": ["Arrival", ""],
+      "keepFacesInView": true
+    }
+  }
+}
+```
+
+The rules:
+
+- **Paths.** Media inside the project's folder are stored relative to it,
+  with `/` between folders on every system. Media elsewhere are stored
+  absolute. So a folder holding the project and its media can be moved or
+  copied as a whole, and moving the project file alone still finds media
+  stored elsewhere. Loaded paths come back absolute. Paths are UTF-8.
+- **Missing media.** `VideoFX_LoadProject` still loads a project whose
+  clips, photos, songs, LUTs, overlay images or fonts have gone. It lists
+  them in `missingMedia`, so the app can offer to find them.
+- **Versions.** `"version"` is the format version (`kVideoFXProjectFormatVersion`,
+  now 1). A file from a newer VideoFX is refused with `InvalidArgument`
+  rather than half-read. Keys the reader does not know are ignored, and a
+  key that is not there keeps its default, so older files keep loading.
+- **Every field is written**, defaults included, so a later change of a
+  default does not change how an old project renders.
+- **Errors name the place**, for example
+  `segments[2].transitionIn.type: unknown value "spin"`.
+- **Saving is atomic.** The file is written beside the old one and moved
+  over it only when it is complete, so a crash or a full disk never leaves
+  half a project behind.
+- **Not saved.** Media given only as pixels in memory
+  (`VideoFXSegment::FromImageFrame`, `VideoFXOverlay::ImageFromFrame`) are
+  refused with `InvalidArgument`, because a file cannot point to them. The
+  function `VideoFXSlideshowOptions::findKeepInView` is not saved either.
+
+`VideoFX_ProjectToJson` and `VideoFX_ProjectFromJson` give the same text
+without a file, for an app that keeps projects in a database or an undo
+history. Their `baseDirectory` says what relative paths are relative to.
+Project files work in the build without FFmpeg too: only rendering needs the
+engine.
+
+From the command line, any edit command saves a project instead of rendering
+when given `--save-project`. `videofx project` shows what a project holds and
+which media are missing; `videofx render` renders it:
+
+```
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --save-project trip.vfxproj
+videofx project trip.vfxproj            # summary; exit status 1 if media are missing
+videofx render trip.vfxproj             # to the output it was saved with
+videofx render trip.vfxproj draft.mp4   # somewhere else
+```
+
+---
+
 ## Running it from a UI
 
 Every call blocks until the file is written. In an application, run it on a
@@ -643,6 +741,9 @@ videofx faces family.jpg                                 # the faces the detecto
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --save-project trip.vfxproj
+videofx project trip.vfxproj                             # what it holds, missing media
+videofx render trip.vfxproj                              # render a saved project
 ```
 
 ---
@@ -661,6 +762,16 @@ call returns `VideoFXResult::NotAvailable` — applications need no `#ifdef`.
 | Windows (MSYS2) | `pacman -S mingw-w64-clang-x86_64-ffmpeg` |
 
 Link `VideoFX::VideoFX`. FFmpeg stays a private dependency of the library.
+
+VideoFX is a **shared library of its own**: `libVideoFX.so` on Linux,
+`libVideoFX.dylib` on macOS and `libVideoFX.dll` / `VideoFX.dll` on Windows,
+next to `videofx` and `VideoFXTest` in `bin/`. It is not built into the
+UltraCanvas core, so an application that does no video never loads it or
+FFmpeg, and every application that does shares one copy. While VideoFX is
+0.x, every minor version may change the binary interface, so the minor
+version is part of the library's name (`libVideoFX.so.0.7`).
+`-DVIDEOFX_BUILD_SHARED=OFF` builds a static library instead (the default
+on Android).
 The test suite is `Tests/VideoFXTest.cpp` (`VideoFXTest` under ctest); it
 generates its own clips, so it needs no media files.
 
@@ -679,7 +790,8 @@ generates its own clips, so it needs no media files.
 | 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
-| 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
+| 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
+| 4 | Proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |
 
 *VideoFX — part of the UltraCanvas framework.*

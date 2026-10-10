@@ -5,6 +5,8 @@
 //   videofx info <file>
 //   videofx beats <file>                 tempo and beat times of its sound
 //   videofx faces <image>                frontal faces in a photo, as fractions of it
+//   videofx render <project.vfxproj> [out]   render a saved project (to its own output by default)
+//   videofx project <project.vfxproj>    what a project holds, and which of its media are missing
 //   videofx frame <file> <seconds> <out.png|out.jpg> [maxWidth maxHeight]
 //   videofx transcode <in> <out> [options]
 //   videofx trim <in> <out> <start> <end> [--lossless] [options]
@@ -36,6 +38,7 @@
 //          --keep N:X,Y,W,H              slideshow: keep this region of image N (1 = the first) in
 //                                        shot - a face; fractions of the image; repeatable
 //          --no-faces                    slideshow: do not look for faces to keep in shot
+//          --save-project FILE           write the edit as a project file instead of rendering it
 // transitions: crossfade dissolve fadeblack fadewhite wipeleft wiperight
 //          wipeup wipedown slideleft slideright slideup slidedown smoothleft
 //          smoothright smoothup smoothdown circleopen circleclose circlecrop
@@ -47,8 +50,8 @@
 //          temperature=v grayscale sepia invert blur=r sharpen=v denoise=v
 //          vignette=v rotate90 rotate180 rotate270 rotate=deg hflip vflip
 //          crop=x:y:w:h fadein=s fadeout=s volume=g normalize[=lufs] lut=path
-// Version: 0.6.0
-// Last Modified: 2026-10-07
+// Version: 0.7.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include <VideoFX/VideoFX.h>
@@ -95,6 +98,8 @@ int Usage() {
         "usage: videofx info <file>\n"
         "       videofx beats <file>\n"
         "       videofx faces <image>\n"
+        "       videofx render <project.vfxproj> [out]\n"
+        "       videofx project <project.vfxproj>\n"
         "       videofx frame <file> <seconds> <out.png|out.jpg> [maxWidth maxHeight]\n"
         "       videofx transcode <in> <out> [options]\n"
         "       videofx trim <in> <out> <start> <end> [--lossless] [options]\n"
@@ -107,6 +112,7 @@ int Usage() {
         "         --music FILE [--music FILE2 ...] [--music-crossfade S]\n"
         "         [--music-volume V] [--music-start S] [--duck LEVEL] [--no-loop] [--fit-music]\n"
         "         [--beat-sync] [--beats-per-image N] [--keep N:X,Y,W,H]... [--no-faces]\n"
+        "         --save-project FILE   (write the edit as a project instead of rendering it)\n"
         "         [--duck-preset speech|outdoor|loud]\n"
         "         [--duck-threshold DB] [--duck-attack S] [--duck-hold S] [--duck-release S]\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
@@ -154,6 +160,7 @@ struct Options {
     bool transitionGiven = false;
     std::vector<VideoFXOverlay> overlays;
     VideoFXSlideshowOptions slideshow;
+    std::string saveProject;            // --save-project: write the project, do not render
 };
 
 bool ParseMotion(const std::string& s, VideoFXImageMotion& m) {
@@ -282,6 +289,7 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--fit-music") o.slideshow.matchMusicLength = true;
         else if (a == "--beat-sync") o.slideshow.beatSync = true;
         else if (a == "--no-faces") o.slideshow.keepFacesInView = false;
+        else if (a == "--save-project" && next(v)) o.saveProject = v;
         else if (a == "--keep" && next(v)) { if (!ParseKeep(v, o.slideshow.keepInView)) return false; }
         else if (a == "--beats-per-image" && next(v)) o.slideshow.beatsPerImage = static_cast<int>(NumberOr(v, -1.0));
         else if (a == "--fit" && next(v)) {
@@ -420,6 +428,37 @@ int Faces(const std::string& path) {
     return 0;
 }
 
+// Render, or with --save-project write the project for later
+int RunOrSave(VideoFXProject project, const std::string& output, const Options& o) {
+    project.outputPath = output;
+    if (o.saveProject.empty()) return Report(VideoFX_RenderProject(project, output, Progress));
+    VideoFXResult r = VideoFX_SaveProject(project, o.saveProject);
+    if (r == VideoFXResult::Ok) std::cout << "videofx: wrote " << o.saveProject << " - render it with videofx render\n";
+    return Report(r);
+}
+
+int ShowProject(const std::string& path) {
+    VideoFXProject p;
+    std::vector<std::string> missing;
+    VideoFXResult r = VideoFX_LoadProject(path, p, &missing);
+    if (r != VideoFXResult::Ok) return Report(r);
+    std::cout.imbue(std::locale::classic());
+    std::cout << path << (p.title.empty() ? "" : ": " + p.title) << "\n  "
+              << (p.kind == VideoFXProjectKind::Slideshow ? std::to_string(p.images.size()) + " photos (slideshow)"
+                                                          : std::to_string(p.segments.size()) + " segments")
+              << "\n  output: " << (p.outputPath.empty() ? std::string("(none set)") : p.outputPath) << "\n";
+    const VideoFXMusic& music = p.kind == VideoFXProjectKind::Slideshow && p.slideshow.music.IsSet()
+                                    ? p.slideshow.music : p.settings.music;
+    if (music.IsSet()) std::cout << "  music:  " << music.Songs().size() << " song(s)\n";
+    if (missing.empty()) {
+        std::cout << "  all media present\n";
+        return 0;
+    }
+    std::cout << "  missing (" << missing.size() << "):\n";
+    for (const std::string& m : missing) std::cout << "    " << m << "\n";
+    return 1;
+}
+
 int Info(const std::string& path) {
     VideoFXMediaInfo info;
     VideoFXResult r = VideoFX_Probe(path, info);
@@ -468,6 +507,15 @@ int main(int argc, char** argv) {
     if (cmd == "info" && args.size() == 1) return Info(args[0]);
     if (cmd == "beats" && args.size() == 1) return Beats(args[0]);
     if (cmd == "faces" && args.size() == 1) return Faces(args[0]);
+    if (cmd == "project" && args.size() == 1) return ShowProject(args[0]);
+    if (cmd == "render" && (args.size() == 1 || args.size() == 2)) {
+        VideoFXProject p;
+        std::vector<std::string> missing;
+        VideoFXResult r = VideoFX_LoadProject(args[0], p, &missing);
+        if (r != VideoFXResult::Ok) return Report(r);
+        for (const std::string& m : missing) std::cerr << "videofx: missing media: " << m << "\n";
+        return Report(VideoFX_RenderProject(p, args.size() == 2 ? args[1] : std::string(), Progress));
+    }
 
     if (cmd == "frame" && (args.size() == 3 || args.size() == 5)) {
         VideoFXFrame frame;
@@ -481,7 +529,7 @@ int main(int argc, char** argv) {
     if (cmd == "transcode" && args.size() == 2) {
         VideoFXSegment s = VideoFXSegment::FromFile(args[0]);
         Decorate(s, options, true);
-        return Report(VideoFX_Export({s}, args[1], settings, Progress));
+        return RunOrSave(VideoFXProject::FromTimeline({s}, settings), args[1], options);
     }
 
     if (cmd == "trim" && args.size() == 4) {
@@ -489,7 +537,7 @@ int main(int argc, char** argv) {
         if (options.lossless) return Report(VideoFX_TrimLossless(args[0], args[1], start, end, Progress));
         VideoFXSegment s = VideoFXSegment::FromFile(args[0], start, end);
         Decorate(s, options, true);
-        return Report(VideoFX_Export({s}, args[1], settings, Progress));
+        return RunOrSave(VideoFXProject::FromTimeline({s}, settings), args[1], options);
     }
 
     if (cmd == "concat" && args.size() >= 3) {
@@ -498,7 +546,7 @@ int main(int argc, char** argv) {
             segments.push_back(VideoFXSegment::FromFile(args[i]));
             Decorate(segments.back(), options, i == 1);
         }
-        return Report(VideoFX_Export(segments, args[0], settings, Progress));
+        return RunOrSave(VideoFXProject::FromTimeline(segments, settings), args[0], options);
     }
 
     if (cmd == "effects" && args.size() >= 3) {
@@ -512,13 +560,13 @@ int main(int argc, char** argv) {
             }
             s.effects.push_back(e);
         }
-        return Report(VideoFX_Export({s}, args[1], settings, Progress));
+        return RunOrSave(VideoFXProject::FromTimeline({s}, settings), args[1], options);
     }
 
     if (cmd == "slideshow" && args.size() >= 2) {
         std::vector<std::string> images(args.begin() + 1, args.end());
         if (options.transitionGiven) options.slideshow.transition = options.transition;
-        return Report(VideoFX_CreateSlideshow(images, args[0], options.slideshow, settings, Progress));
+        return RunOrSave(VideoFXProject::FromSlideshow(images, options.slideshow, settings), args[0], options);
     }
 
     if (cmd == "testclip" && (args.size() == 2 || args.size() == 5)) {

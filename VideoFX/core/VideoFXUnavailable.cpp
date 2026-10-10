@@ -1,12 +1,13 @@
 // VideoFX/core/VideoFXUnavailable.cpp
 // Built instead of the FFmpeg sources when FFmpeg is not found: the API links,
 // VideoFX_IsAvailable() says false, and every operation returns NotAvailable.
-// Version: 0.6.0
-// Last Modified: 2026-10-07
+// Version: 0.7.0
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
 #include "VideoFXFaces.h"
+#include "VideoFXProject.h"
 
 namespace VideoFX {
 
@@ -18,13 +19,18 @@ namespace VideoFX {
 
 namespace {
     const char* kReason = "VideoFX was built without FFmpeg";
+    thread_local std::string projectError;          // project files work here too, and say why they failed
+    VideoFXResult ProjectResult(VideoFXResult r, const std::string& error) {
+        projectError = r == VideoFXResult::Ok ? std::string() : error;
+        return r;
+    }
     VideoFXResult Unavailable() { return VideoFXResult::NotAvailable; }
 }
 
 std::string VideoFX_GetVersion() { return VIDEOFX_VERSION_STRING; }
 std::string VideoFX_GetBackendVersion() { return "unavailable"; }
 bool VideoFX_IsAvailable() { return false; }
-std::string VideoFX_GetLastError() { return kReason; }
+std::string VideoFX_GetLastError() { return projectError.empty() ? kReason : projectError; }
 bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec) { return false; }
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec) { return false; }
 bool VideoFX_IsTextOverlayAvailable() { return false; }
@@ -76,6 +82,29 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>&, const std
     return Unavailable();
 }
 VideoFXResult VideoFX_DetectBeats(const std::string&, VideoFXBeatInfo&) { return Unavailable(); }
+
+// Project files: pure C++, they load and save without FFmpeg; rendering does not
+VideoFXResult VideoFX_SaveProject(const VideoFXProject& project, const std::string& path) {
+    std::string error;
+    return ProjectResult(Internal::SaveProjectFile(project, path, error), error);
+}
+VideoFXResult VideoFX_LoadProject(const std::string& path, VideoFXProject& project,
+                                  std::vector<std::string>* missingMedia) {
+    std::string error;
+    return ProjectResult(Internal::LoadProjectFile(path, project, missingMedia, error), error);
+}
+VideoFXResult VideoFX_ProjectToJson(const VideoFXProject& project, std::string& json, const std::string& base) {
+    std::string error;
+    return ProjectResult(Internal::ProjectToJsonText(project, base, json, error), error);
+}
+VideoFXResult VideoFX_ProjectFromJson(const std::string& json, VideoFXProject& project, const std::string& base) {
+    std::string error;
+    return ProjectResult(Internal::ProjectFromJsonText(json, base, project, error), error);
+}
+VideoFXResult VideoFX_RenderProject(const VideoFXProject&, const std::string&, const VideoFXProgressCallback&) {
+    projectError.clear();
+    return Unavailable();
+}
 
 // Pure C++: works without FFmpeg as well
 VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFXRect>& faces) {
