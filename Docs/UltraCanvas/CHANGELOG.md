@@ -1,3 +1,24 @@
+#### 2026-10-10 *0.9.235*
+- **The Linux CI legs fall back to MuPDF's GitHub mirror when mupdf.com
+  does not answer.** The install step builds MuPDF 1.23.10 from the release
+  archive on mupdf.com, and on 2026-10-09 that host timed out through all
+  three download attempts, seven minutes of retries, and failed the leg
+  before a line of UltraCanvas was compiled. When the download fails, the
+  step now clones the same release tag from `github.com/ArtifexSoftware/mupdf`
+  with the third-party submodules the build compiles, and makes it the same
+  way.
+- **The tree builds with the current MSYS2 toolchain again.** MSYS2's
+  CLANG64 and CLANGARM64 moved to LLVM 23 on 2026-10-09, and its libc++
+  dropped most of its transitive includes: `<string>` no longer brings in
+  `<algorithm>`, `<cstdlib>`, `<iterator>` or `<optional>`. A Windows leg with
+  a cold compiler cache stopped on the first file that relied on that
+  (`UltraCanvasWordFormatInternal.h`, "no member named 'strtof' in namespace
+  'std'"), then on the vendored MicroTeX's `string_utils.h`. Those two and
+  `UltraFIBUCli.cpp` (`std::sort`) include what they use now, and the build
+  defines libc++'s own bridge `_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23`,
+  exported to SDK consumers through the CMake package, until every file does;
+  libc++ 24 removes the bridge.
+
 #### 2026-10-10 *0.9.234*
 - **The Linux SDK archives are xz.** The SDK is the shared core and its
   libraries, which xz packs about 28% smaller than gzip (the UltraCanvasStart
