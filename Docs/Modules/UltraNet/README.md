@@ -1,3 +1,4 @@
+<!-- Generated from UltraNet/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
 # UltraNet
 
 **Unified network communication layer for ULTRA OS.**
@@ -36,10 +37,13 @@ libcurl was built against on each platform:
 | Linux    | OpenSSL         | `libcurl4-openssl-dev` |
 | Windows  | Schannel        | None — Win32 native crypto |
 | macOS    | SecureTransport | None — Apple's system libcurl |
-| ULTRA OS | tbd             | Selected by the ULTRA OS build |
+| ULTRA OS | OpenSSL         | The Linux build: the desktop tier is Linux-based and ships libcurl built against OpenSSL in its image; the Android (mobile) tier builds UltraNet from the same Linux TLS sources with curl, OpenSSL and c-ares in the sysroot |
 
 UltraNet never calls TLS-library APIs directly, so swapping the backend
-is purely a libcurl build option.
+is purely a libcurl build option. There is no separate ULTRA OS platform
+backend (`UltraCanvas/OS/` holds Linux, Android, BSD, Windows, macOS and
+WASM), so ULTRA OS inherits the Linux row above; a native backend remains
+planned (see the status table below).
 
 ---
 
@@ -55,7 +59,7 @@ is purely a libcurl build option.
 | Transport | TCP, UDP | `UltraNet/UltraNetSocket.h` |
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
-| Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
+| Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
@@ -348,7 +352,32 @@ What a failure says, whether or not anyone reads the log:
 - A listing tries MLSD, then LIST, then NLST only when the server refused the
   command; a failure to connect, sign in, set up TLS or the data connection, or
   a timeout, is reported once rather than three times, and an empty folder is
-  listed with one request.
+  listed with one request - also when the server lists nothing but the
+  folder's own `.` / `..` (MLSD `cdir` / `pdir`, or `ls -la` style LIST),
+  which is never taken for an entry, whatever name a `cdir` carries. A server
+  that does not know MLSD (500 / 502 / 504) is remembered for the life of the
+  process and listed with LIST from then on; a 550 refuses the folder, not
+  the command, and is not taken as that.
+
+Connections are kept open between calls. Each thread's calls share a libcurl
+connection pool, so the next call on the same thread to the same server, as
+the same user with the same TLS settings, takes up the connection the last one
+left open - no connect, no login; the second pass of a listing that fell back
+from MLSD runs on it too. The log says *Using the open connection to host -
+already logged in*. A worker listing folder after folder therefore logs in
+once. libcurl drops a connection idle for two minutes and one the server has
+closed; `UltraNet_FtpCloseIdleConnections()` closes the calling thread's open
+connections now (each is sent QUIT), and a thread's are closed when it ends,
+every thread's by `UltraNet_Shutdown`. A caller whose work comes in bursts
+closes them when it falls idle: before libcurl 8.10 the QUIT of a connection
+whose network has since gone away waits up to two minutes for its reply.
+(One pool per thread: libcurl does not support sharing connections between
+threads that transfer at the same time.) A change - delete, rename, create or
+remove a folder - is the exception on FTP: it always logs in on a connection
+of its own and closes it, because libcurl sends those commands before it
+changes folder, and they name the entry from the folder a login lands in; on
+a kept connection that a listing left in a subfolder they would name another
+file.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.

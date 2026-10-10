@@ -1,5 +1,7 @@
 # UltraCanvas Split Pane Documentation
 
+<!-- doc-check: void SaveLayout(const std::vector<double>& weights); void Log(const std::string& line); -->
+
 ## Overview
 
 **UltraCanvasSplitPane** is a container that divides its content area into *N*

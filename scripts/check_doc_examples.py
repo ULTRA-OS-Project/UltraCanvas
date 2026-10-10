@@ -11,7 +11,15 @@ told apart:
   a declaration whose type is taken from the doc (`auto label =
   std::make_shared<UltraCanvasLabel>(...)` elsewhere in it) or guessed from
   the name; a name that can't be typed is listed as context, not as an
-  error.
+  error. Such a name is a local of the snippet's statements, or a member
+  when a `[this]` lambda uses it, as it would be in the application. A
+  name before `<` that C++20 takes for a template's (`globalIdx <
+  static_cast<int>(n)`, where clang reports "expected '>'" and not the
+  name) is found from the line of that error. A framework class's member
+  defined out of line (`void
+  UltraCanvasUIElement::Render(...) {`) is compiled in the class's
+  namespace, and a line that is only a macro call without `;`
+  (`ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)`) at file scope.
 * API listings - declarations copied from a class
   (`void SetText(const std::string& text);`). Each must be a member of a
   class the doc uses, or a free function (in the namespace the listing is
@@ -23,9 +31,11 @@ told apart:
   class outline, where X is a type of the headers: its fields and
   enumerators must exist in the real X, and its functions with their
   signatures.
-* prose - a `Name(` in backticks must be a function of some header, of a
-  header the doc includes, or of the doc's doc-check comment. A name with
-  a space before its parenthesis (`Strong (9)`) is a word, not a call.
+* prose - a `Name(` in backticks must be a function of some framework
+  header (public, plugin, backend, platform or dialog), of a header the doc
+  includes, or of the doc's doc-check comment. A name with a space before
+  its parenthesis (`Strong (9)`) is a word, not a call; an OS or library
+  function is written without the `(`.
 
 A doc can declare what its snippets assume and the checker can't guess, in
 an HTML comment (not rendered):
@@ -53,7 +63,32 @@ builds a precompiled header of all public headers in --work (about 1 min).
     python3 scripts/check_doc_examples.py --show-context  # also untyped names
 
 Exit status 1 when a doc has findings.
+
+CI (.github/workflows/doc-examples.yml) checks every doc - all of
+Docs/UltraCanvas/*.md but the changelog - and fails only on findings that
+are not in scripts/doc_examples_baseline.txt. The component docs all pass;
+the design documents (a name with Proposal, Plan or Investigation in it)
+describe APIs not written yet, so their code is listed there until the API
+exists, and an entry that stops being found says the doc has caught up:
+
+    python3 scripts/check_doc_examples.py --all --strict
+    python3 scripts/check_doc_examples.py --all --update-baseline   # after fixing some
+
+A baseline entry is the doc and the message, without the line, so editing
+elsewhere in a doc does not disturb it. The file only shrinks: fix a doc's
+findings and rewrite it, never add to it to let a new one through.
 """
+# Version: 1.4.0 - a name the checker declares is a member when a [this]
+#                 lambda uses it; a name clang misreads as a template's
+#                 (`name <`) is declared from the parse error that follows
+# Version: 1.3.1 - --all covers the design documents too; their findings
+#                 are baselined until their APIs exist
+# Version: 1.3.0 - a member of a header class defined out of line goes in
+#                 its namespace; a file-scope macro line is a definition; a
+#                 listing may be in a top-level namespace the headers define;
+#                 prose may name any framework header's function;
+#                 `auto x = UltraCanvas::CreateX(...)` is typed
+# Version: 1.2.0 - --all, --strict and the baseline, for CI
 # Version: 1.1.1 - a copied type is checked against every type of its name, judged by
 #                  the best match (BlendMode is three enums)
 # Version: 1.1.0 - a snippet's #if blocks and #defines are kept in place, a
@@ -61,10 +96,11 @@ Exit status 1 when a doc has findings.
 #                 what the doc's own headers and doc-check comment declare;
 #                 `Name (` with a space is prose, not a call
 # Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
-# Last Modified: 2026-10-08
+# Last Modified: 2026-10-10
 # Author: UltraCanvas Framework
 
 import argparse
+import collections
 import concurrent.futures
 import hashlib
 import os
@@ -296,6 +332,18 @@ class HeaderIndex:
             self._scan(path, text)
         blob = "\n".join(self.text.values())
         self.functions = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", blob))
+        # Prose may name a function of any framework header, not only the
+        # public ones the types come from: a backend's
+        # (libspecific/Cairo/ImageCairo.h, which UltraCanvasImage.h
+        # includes), a platform's (OS/MSWindows/...), a dialog's (dialogs/).
+        for p in (ROOT / "UltraCanvas").rglob("*.h"):
+            if p in self.text or "third_party" in p.parts:
+                continue
+            try:
+                extra = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            self.functions |= set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", extra))
         self.types = set(self.qualified)
         self.types |= set(re.findall(r"\busing\s+([A-Za-z_]\w*)\s*=", blob))
         self.types |= set(re.findall(r"\btypedef\b[^;]*\b([A-Za-z_]\w*)\s*;", blob))
@@ -360,6 +408,7 @@ class Block:
         self.index = 0
         self.context = {}
         self.bad_context = set()
+        self.members = set()        # context names a [this] lambda uses: members, not locals
         self.uses = set()           # using __dc_bK::X; for a type an earlier block defined
 
     def last(self):
@@ -450,6 +499,12 @@ def chunk_block(clean):
                 j += 1
             chunks.append(("pp", i, j))
             i = j + 1
+            continue
+        # `ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)`: a macro written at file
+        # scope, with no ';' (a statement always has one), defines something.
+        if re.match(r"^[A-Z][A-Z0-9_]{2,}\s*\(.*\)$", code) and code.count("(") == code.count(")"):
+            chunks.append(("def", i, i))
+            i += 1
             continue
         depth_brace = depth_paren = 0
         kind = None
@@ -660,7 +715,7 @@ def context_types(text, index):
         types.setdefault(m.group(1), "std::shared_ptr<%s>" % m.group(2))
     for m in re.finditer(r"\bstd::shared_ptr<\s*([\w:]+)\s*>\s*&?\s*(\w+)\s*[;=({,)]", text):
         types.setdefault(m.group(2), "std::shared_ptr<%s>" % m.group(1))
-    for m in re.finditer(r"\bauto\s+(\w+)\s*=\s*(Create\w+)\s*\(", text):
+    for m in re.finditer(r"\bauto\s+(\w+)\s*=\s*(?:UltraCanvas::)?(Create\w+)\s*\(", text):
         t = index.factories.get(m.group(2))
         if t:
             types.setdefault(m.group(1), "std::shared_ptr<%s>" % t)
@@ -884,8 +939,13 @@ class Doc:
                 continue
             listing = listing_of(s, self.index.qualified)
             if listing and listing[0]:
+                # The namespace the listing is written in, inside UltraCanvas
+                # unless the headers have it at the top (PixelFX::Colour).
+                written = "::".join(ns)
+                inside = "::".join(["UltraCanvas"] + [n for n in ns if n != "UltraCanvas"])
+                top = written and inside not in self.index.namespaces and written in self.index.namespaces
                 for d in listing[0] + listing[1]:
-                    d["ns"] = "::".join(["UltraCanvas"] + list(ns))
+                    d["ns"] = written if top else inside
                 self.listing(b, line, s, listing, None)
 
     def type_copy(self, b, i, j, text):
@@ -981,16 +1041,31 @@ class Doc:
                 out.append(self.gen(("context", b.index, name)))
                 out.append("extern %s %s;" % (t, name))
             pp = self.pp_in_place(b)
+            outside = []
             for kind, i, j in b.chunks:
                 if kind == "def" or (kind, i, j) in pp:
+                    ns = self.framework_member_namespace(b, i, j) if kind == "def" else None
+                    if ns:
+                        outside.append((ns, i, j))
+                        continue
                     out.append('#line %d "%s"' % (b.first + i, self.rel))
                     out.extend(b.lines[i:j + 1])
             if any(kind == "stmt" for kind, i, j in code):
+                # A context name is a local of the statements, unless a
+                # [this] lambda uses it: then it is what it would be in the
+                # application, a member.
                 out.append(self.gen(None))
-                out.append("struct __Run { auto __run() {")
+                out.append("struct __Run {")
                 for name, t in sorted(b.context.items()):
-                    out.append(self.gen(("context", b.index, name)))
-                    out.append("%s& %s = *static_cast<%s*>(nullptr);" % (t, name, t))
+                    if name in b.members:
+                        out.append(self.gen(("context", b.index, name)))
+                        out.append("%s& %s = *static_cast<%s*>(nullptr);" % (t, name, t))
+                out.append(self.gen(None))
+                out.append("auto __run() {")
+                for name, t in sorted(b.context.items()):
+                    if name not in b.members:
+                        out.append(self.gen(("context", b.index, name)))
+                        out.append("%s& %s = *static_cast<%s*>(nullptr);" % (t, name, t))
                 for kind, i, j in b.chunks:
                     if kind == "stmt" or (kind, i, j) in pp:
                         out.append('#line %d "%s"' % (b.first + i, self.rel))
@@ -999,7 +1074,48 @@ class Doc:
                 out.append("} };")
             out.append(self.gen(None))
             out.append("}")
+            for ns, i, j in outside:
+                out.append(self.gen(None))
+                out.append("namespace %s {" % ns)
+                out.append('#line %d "%s"' % (b.first + i, self.rel))
+                out.extend(b.lines[i:j + 1])
+                out.append(self.gen(None))
+                out.append("}")
         return "\n".join(out) + "\n"
+
+    def framework_member_namespace(self, b, i, j):
+        """The namespace of the header class whose member a definition
+        defines out of line (`void UltraCanvasUIElement::Render(...) {`), or
+        None. Such a definition shows the framework's own code; it cannot be
+        written inside the block's namespace, only in the class's. A class
+        the doc defines itself stays where it is."""
+        head = "\n".join(b.clean[i:j + 1]).split("{")[0].strip()
+        m = re.match(r"^[^()]*?\b(\w+)::~?\w+\s*\(", head)
+        if not m:
+            return None
+        owner = m.group(1)
+        if re.search(r"\b(class|struct)\s+%s\b" % re.escape(owner), self.text):
+            return None
+        qs = [q for q in self.index.qualified.get(owner, ()) if q.startswith("UltraCanvas::")]
+        if not qs:
+            return None
+        return sorted(qs, key=lambda q: q.count("::"))[0].rsplit("::", 1)[0]
+
+    @staticmethod
+    def misread_names(b, line):
+        """The names compared with `<` on a line with an error and the three
+        before it, in the same chunk. C++20 reads an undeclared name before
+        `<` as a template's (`globalIdx < static_cast<int>(n)`), so clang
+        reports the parse error that follows ("expected '>'") and never the
+        name: these are the names it may have meant."""
+        for kind, i, j in b.chunks:
+            if kind == "pp" or not b.first + i <= line <= b.first + j:
+                continue
+            k = line - b.first
+            text = "\n".join(b.clean[max(i, k - 3):k + 1])
+            names = re.findall(r"(?<![\w.:>~])([A-Za-z_]\w*)\s*<(?![<=])", text)
+            return list(dict.fromkeys(n for n in names if n not in KEYWORDS and not n.endswith("_cast")))
+        return []
 
     def check_examples(self):
         declared = context_types("\n".join("\n".join(b.clean) for b in self.blocks), self.index)
@@ -1052,19 +1168,31 @@ class Doc:
                         grew.add(b.index)
                         changed = True
                     continue
-                m = re.match(r"use of undeclared identifier '(\w+)'", msg)
-                if not m or f != self.rel:
-                    continue
-                name = m.group(1)
-                if not (name[0].islower() or name[0] == "_"):
+                if f != self.rel:
                     continue
                 b = next((b for b in self.blocks if b.first <= line <= b.last()), None)
-                if b is None or name in b.context or name in b.bad_context:
+                if b is None:
                     continue
-                t = guess_type(name, declared, main, self.index)
-                if t:
-                    b.context[name] = t
-                    changed = True
+                m = re.match(r"variable '(\w+)' cannot be implicitly captured in a lambda", msg)
+                if m:
+                    if m.group(1) in b.context and m.group(1) not in b.members:
+                        b.members.add(m.group(1))
+                        changed = True
+                    continue
+                m = re.match(r"use of undeclared identifier '(\w+)'", msg)
+                if m:
+                    names = [m.group(1)]
+                else:
+                    names = [n for n in self.misread_names(b, line) if n in declared]
+                for name in names:
+                    if not (name[0].islower() or name[0] == "_"):
+                        continue
+                    if name in b.context or name in b.bad_context:
+                        continue
+                    t = guess_type(name, declared, main, self.index)
+                    if t:
+                        b.context[name] = t
+                        changed = True
             # A name fails on two generated lines, and clang may suggest the
             # other block's type on one of them only: a block that got a
             # `using` in this pass is compiled again before a name of it is
@@ -1349,6 +1477,54 @@ class Doc:
                         self.add(i, "prose names `%s(`, which no header declares" % name)
 
 
+BASELINE = ROOT / "scripts" / "doc_examples_baseline.txt"
+# A design document: a Proposal, Plan or Investigation describes an API that
+# is not written yet, so its code cannot compile until it is.
+DESIGN_DOC = re.compile(r"Proposal|Plan|Investigation")
+BASELINE_HEADER = """\
+# Findings of scripts/check_doc_examples.py --all that the CI check
+# (.github/workflows/doc-examples.yml) lets through, so it can block *new*
+# ones. Each line is <doc>::<message>; a message that occurs twice in a doc
+# is listed twice.
+#
+# Every component doc passes: all the findings the check started with were
+# fixed by 2026-10-08, and a component doc must not reappear here - fix the
+# doc, or declare what its snippets assume in a <!-- doc-check: ... -->
+# comment.
+#
+# What is listed is the design documents (a name with Proposal, Plan or
+# Investigation in it): their code is of APIs not written yet, so it cannot
+# compile until it is. The entries are the record of what each proposal
+# still waits for. When an API is written, its entries stop being found and
+# the strict run says so; rewrite the file then, and the doc has caught up:
+#     python3 scripts/check_doc_examples.py --all --update-baseline
+"""
+
+
+def component_docs():
+    """Every doc --all checks: Docs/UltraCanvas/*.md but the changelog. The
+    design documents are in, with their findings baselined; the changelog
+    is a record of what shipped, not a description of an API."""
+    return sorted(p for p in (ROOT / "Docs" / "UltraCanvas").glob("*.md")
+                  if p.name != "CHANGELOG.md")
+
+
+def finding_key(doc, message):
+    rel = Path(doc)
+    if rel.is_absolute() and ROOT in rel.parents:
+        rel = rel.relative_to(ROOT)
+    return "%s::%s" % (rel.as_posix(), message.replace(str(ROOT) + os.sep, ""))
+
+
+def load_baseline(path):
+    keys = collections.Counter()
+    if path.exists():
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            if raw.strip() and not raw.lstrip().startswith("#"):
+                keys[raw.strip()] += 1
+    return keys
+
+
 def check_doc(path, args, index, flags, pch):
     try:
         return Doc(path, index, args, flags, pch).check()
@@ -1366,8 +1542,21 @@ def main():
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
     parser.add_argument("--show-context", action="store_true",
                         help="also list the names a doc's snippets use without declaring")
+    parser.add_argument("--all", action="store_true",
+                        help="every component doc, not only the Examples docs (what CI checks)")
+    parser.add_argument("--strict", action="store_true",
+                        help="fail only on findings not in the baseline (CI gate)")
+    parser.add_argument("--baseline", type=Path, default=BASELINE,
+                        help="findings that predate the CI check")
+    parser.add_argument("--update-baseline", action="store_true",
+                        help="rewrite the baseline from the docs checked and exit")
     args = parser.parse_args()
-    docs = args.docs or sorted((ROOT / "Docs" / "UltraCanvas").glob("*Examples*.md"))
+    if args.docs:
+        docs = args.docs
+    elif args.all:
+        docs = component_docs()
+    else:
+        docs = sorted((ROOT / "Docs" / "UltraCanvas").glob("*Examples*.md"))
     docs = [d.resolve() for d in docs]
     args.work.mkdir(parents=True, exist_ok=True)
 
@@ -1375,9 +1564,18 @@ def main():
     pch = build_pch(args.work, "umbrella", flags, args.clang)
     index = HeaderIndex()
 
-    total = 0
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         results = list(pool.map(lambda d: check_doc(d, args, index, flags, pch), docs))
+
+    if args.update_baseline:
+        keys = sorted(finding_key(r["doc"], msg) for r in results for _, msg in r["findings"])
+        args.baseline.write_text(BASELINE_HEADER + "".join(k + "\n" for k in keys), encoding="utf-8")
+        print("check_doc_examples: wrote %d entries to %s" % (len(keys), args.baseline.relative_to(ROOT)))
+        return 0
+    if args.strict:
+        return report_against_baseline(results, load_baseline(args.baseline))
+
+    total = 0
     for r in results:
         total += len(r["findings"])
         status = "ok" if not r["findings"] else "%d finding(s)" % len(r["findings"])
@@ -1391,6 +1589,40 @@ def main():
                 "%s@%s" % (k, ",".join(map(str, v[:3]))) for k, v in sorted(r["context"].items())))
     print("%d doc(s), %d finding(s)" % (len(results), total))
     return 1 if total else 0
+
+
+def report_against_baseline(results, baseline):
+    """CI: print and fail on the findings beyond the baseline; name the
+    baseline entries no longer found, so the file can shrink."""
+    left = collections.Counter(baseline)
+    fresh = []
+    known = 0
+    for r in results:
+        for line, msg in r["findings"]:
+            key = finding_key(r["doc"], msg)
+            if left[key] > 0:
+                left[key] -= 1
+                known += 1
+            else:
+                fresh.append((r["doc"], line, msg))
+    checked = {finding_key(r["doc"], "") for r in results}
+    gone = sorted(k for k, n in left.items() if n > 0 and k.split("::", 1)[0] + "::" in checked)
+    for doc, line, msg in fresh:
+        print("%s:%d: %s" % (doc, line, msg) if line else "%s: %s" % (doc, msg))
+    if gone:
+        print("\n%d baseline entr%s no longer found - fixed, so remove %s "
+              "(--all --update-baseline):" % (len(gone), "y is" if len(gone) == 1 else "ies are",
+                                                "it" if len(gone) == 1 else "them"))
+        for key in gone:
+            print("  " + key)
+    if fresh:
+        print("\n%d new finding(s) in %d doc(s). Fix the snippet, or declare what it assumes in a "
+              "<!-- doc-check: ... --> comment (see the top of scripts/check_doc_examples.py)."
+              % (len(fresh), len(results)))
+        return 1
+    print("check_doc_examples: no new findings (%d doc(s); %d baselined finding(s) still to fix - "
+          "see %s)." % (len(results), known, BASELINE.name))
+    return 0
 
 
 if __name__ == "__main__":

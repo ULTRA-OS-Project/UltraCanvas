@@ -4,6 +4,11 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.13.0 - folderTreeContent (Settings > Display > Treeview) and
+//                   accountOrder (account tiles dragged into another order)
+// Version: 0.12.0 - senderLists: trusted and blocked senders
+// Version: 0.11.0 - scamWarnings: which kinds of spam/scam warning are given
+//                   (Settings > Spam/scam warnings)
 // Version: 0.10.0 - notifyNewMail: a notification on screen when new mail arrives
 //                   (Settings > Display > Notifications)
 // Version: 0.9.0 - fetchSiteIcons (the website icon of a sender that is no
@@ -21,6 +26,8 @@
 #pragma once
 
 #include "UltraMailMessageSort.h"
+#include "UltraMailThreatScan.h"
+#include "UltraMailTypes.h"
 
 #include <set>
 #include <string>
@@ -41,6 +48,12 @@ enum class RemoteImagePolicy {
 enum class FolderTreeWidthMode {
     FitToText,   // as wide as its longest row needs, plus 10 px
     FixedWidth   // folderTreeWidth pixels
+};
+
+// Which mail accounts the folder tree on the left lists.
+enum class FolderTreeContent {
+    CurrentAccount,   // only the account chosen in the account bar
+    AllAccounts       // every account, one below the other
 };
 
 // Where the address behind a link in a message is shown.
@@ -95,6 +108,17 @@ struct Preferences {
     FolderTreeWidthMode folderTreeWidthMode = FolderTreeWidthMode::FitToText;
     int                 folderTreeWidth     = kFolderTreeDefaultWidth;
 
+    // Settings > Display > Treeview: the folder tree lists every account, or
+    // only the one chosen in the account bar.
+    FolderTreeContent folderTreeContent = FolderTreeContent::AllAccounts;
+
+    // The accounts' order in the account bar and the folder tree, as the
+    // reader dragged the account tiles: account ids, first to last. Accounts
+    // it does not name (added since) follow, in the order they came.
+    std::vector<std::string> accountOrder;
+    // `accounts` put in accountOrder.
+    void OrderAccounts(std::vector<Account>& accounts) const;
+
     // Settings > Display > Links: where a link's address is shown.
     LinkDisplay linkDisplay = LinkDisplay::StatusBar;
     // Settings > Reading > Waiting for reply: which unanswered mail sent to
@@ -126,6 +150,16 @@ struct Preferences {
     // the desktop's notification server - names the sender and subject (or
     // counts the messages), and a click on it opens the mail.
     bool notifyNewMail = true;
+
+    // Settings > Spam/scam warnings: which kinds of warning the content scan
+    // gives - phishing, romance scams, advance-fee letters, letters in an
+    // agency's name, crypto scams, the caution on any crypto mail, dangerous
+    // attachments, the server's spam verdict. All on.
+    ThreatScanOptions scamWarnings;
+    // The sender menu's "Always trust this sender" and "Block this sender"
+    // (Settings > Warnings > Trusted & blocked): addresses, lower
+    // case, and "@example.com" for a blocked domain.
+    SenderLists senderLists;
 
     // "anthropic.com" from "https://www.Anthropic.com/x", "@anthropic.com" or
     // "*.anthropic.com"; empty when nothing like a domain is left.

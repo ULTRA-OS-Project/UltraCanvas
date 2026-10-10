@@ -149,6 +149,17 @@ How it behaves:
 behind this and can be called directly when an app *does* want to keep poster
 files on disk — see its own docs.
 
+### Pictures saved over
+
+A photo edited and saved over while the album shows it is drawn as it is now,
+within a couple of seconds and without the app doing anything. Each paint
+hands the paths of the pictures it drew to an
+[`UltraCanvasImageFileWatch`](UltraCanvasImageFileWatch.md), whose worker
+thread checks those files every 1.5 s; a changed one is dropped from the
+shared image cache and the album relayouts (the new picture may have another
+shape) and repaints. Nothing touches the disk on the paint path for it, and
+only the tiles on screen are checked.
+
 ### Configuration
 
 ```cpp

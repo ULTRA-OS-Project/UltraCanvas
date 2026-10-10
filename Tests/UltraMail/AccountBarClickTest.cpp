@@ -1,5 +1,6 @@
 // Tests/UltraMail/AccountBarClickTest.cpp
-// A click anywhere on an account tile selects that account.
+// A click anywhere on an account tile selects that account, and a tile
+// dragged sideways takes another place in the row.
 //
 // The window handed a click to the innermost element under the pointer and to
 // no other. The tile's name, avatar and counters are elements of their own,
@@ -10,10 +11,14 @@
 // dispatch, as the backend delivers it, at the centre of every part of the
 // tile.
 //
+// The tiles are the items of a toolbar with item reordering on: a press and
+// a drag past the next tile moves the tile there and reports the accounts'
+// new order; a click without a drag reports none.
+//
 // Opens a real window, so it runs under Xvfb (xvfb-run -a) and skips itself
 // without a DISPLAY.
-// Version: 1.0.0
-// Last Modified: 2026-10-07
+// Version: 1.1.0 - the tiles dragged into another order
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraCanvasApplication.h"
@@ -67,6 +72,29 @@ void Click(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>
     app.DispatchEvent(up);
 }
 
+// A left press at `from`, the pointer moved to `to` in steps, and a release
+// there - a drag, as the backend delivers one.
+void Drag(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>& window,
+          const Point2Di& from, const Point2Di& to) {
+    UCEvent e;
+    e.type = UCEventType::MouseDown;
+    e.button = UCMouseButton::Left;
+    e.targetWindow = window;
+    e.nativeWindowHandle = window->GetNativeHandle();
+    e.pointerWindow = from;
+    e.pointer = from;
+    app.DispatchEvent(e);
+    e.type = UCEventType::MouseMove;
+    for (int step = 1; step <= 10; ++step) {
+        const Point2Di at(from.x + (to.x - from.x) * step / 10, from.y + (to.y - from.y) * step / 10);
+        e.pointerWindow = at;
+        e.pointer = at;
+        app.DispatchEvent(e);
+    }
+    e.type = UCEventType::MouseUp;
+    app.DispatchEvent(e);
+}
+
 Point2Di CentreOf(const UltraCanvasUIElement& element) {
     const Rect2Df b = element.GetBoundsInWindow();
     return Point2Di(static_cast<int>(b.x + b.width / 2), static_cast<int>(b.y + b.height / 2));
@@ -112,6 +140,12 @@ int main() {
 
     std::string selected;
     bar.onSelectAccount = [&selected](const std::string& id) { selected = id; };
+    std::vector<std::string> reordered;
+    int reorderCalls = 0;
+    bar.onReorderAccounts = [&](const std::vector<std::string>& ids) {
+        reordered = ids;
+        ++reorderCalls;
+    };
 
     std::vector<Account> accounts(2);
     accounts[0].accountId = "info-example-com";
@@ -129,7 +163,10 @@ int main() {
         window->UpdateAndRender();
     }
 
-    const auto tiles = root->GetChildren();
+    TEST("the tiles sit in a row that reorders them",
+         bar.TileRow() && bar.TileRow()->IsItemReorderingEnabled());
+    if (!bar.TileRow()) return 1;
+    const auto tiles = bar.TileRow()->GetItems();
     TEST("two accounts make two tiles", tiles.size() == 2);
     if (tiles.size() != 2) return 1;
     TEST("the tiles were laid out",
@@ -157,6 +194,30 @@ int main() {
     // no longer take the pointer.
     const auto& tip = tiles[1]->GetTooltipContent();
     TEST("the tile's tooltip names the counters", tip && tip->blocks.size() == 4);
+    TEST("clicks move no tile", reorderCalls == 0);
+
+    // The first tile dragged past the middle of the second: it is second now,
+    // and the new order is reported once.
+    const Rect2Df second = tiles[1]->GetBoundsInWindow();
+    Drag(app, window, CentreOf(*tiles[0]),
+         Point2Di(static_cast<int>(second.x + second.width * 0.75f),
+                  static_cast<int>(second.y + second.height / 2)));
+    for (int frame = 0; frame < 2; ++frame) {
+        page->RequestRedraw();
+        window->UpdateAndRender();
+    }
+    TEST("a drag reports the new order once", reorderCalls == 1);
+    TEST("the dragged account is second in it",
+         reordered == (std::vector<std::string>{accounts[1].accountId, accounts[0].accountId}));
+    const auto after = bar.TileRow()->GetItems();
+    TEST("the tiles are in that order",
+         after.size() == 2 && after[0] == tiles[1] && after[1] == tiles[0]);
+
+    // A click still selects, after the drag as before it.
+    selected.clear();
+    Click(app, window, CentreOf(*tiles[0]));
+    TEST("a click on the moved tile selects its account", selected == accounts[0].accountId);
+    TEST("and moves nothing", reorderCalls == 1);
 
     std::cerr << std::endl << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;

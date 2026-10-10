@@ -350,9 +350,12 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `styleSheetLinks`. Helpers without a DOM: `DecodeEntities` (every HTML 4
   entity and numeric references), `ExtractPlainText(html, layout)` (tags
   gone, `<script>`/`<style>` bodies dropped, entities decoded; one line by
-  default, `PlainTextLayout::Lines` keeps the text's line structure -
-  paragraphs, `<br>`, table rows and cells, list items, `<pre>` - and leaves
-  out hidden content).
+  default - whitespace and no-break spaces collapsed, an inline element such
+  as `<b>` keeping a word whole, a block separating words -
+  `PlainTextLayout::Lines` keeps the text's line structure - paragraphs,
+  `<br>`, table rows and cells, list items, `<pre>` - and leaves out hidden
+  content; `ExtractPlainText(const Node&)` the single line for a parsed
+  element).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
   (rules with specificity and source order, `@media` against
   `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),
@@ -389,7 +392,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
   options)` → `UCRichDocument` through the same parser and cascade
   (`quoteLevel`, `resolveImage`, `baseFontSizePx`, `keepFonts`,
-  `keepColors`). `UCRichDocument::ToHTML` is the writer.
+  `keepColors`, and for a paste `preAsCodeBlock`, `skipWordListLabels`);
+  `dir="rtl"` makes right-to-left paragraphs, and Word's list paragraphs
+  (`mso-list`) list items, their typed labels the markers. `UCRichDocument::FromHTML`
+  (a rich paste) reads through it; `UCRichDocument::ToHTML` is the writer.
 
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
   cross-platform "Open with" service: which applications the OS registers
@@ -528,8 +534,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   safe on background threads. Public surface:
   - `IsDesktopEntryPath` — recognition by extension, before a file is opened.
   - `ReadDesktopEntry` — `UCDesktopEntry` (Type, localized Name / GenericName
-    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Terminal /
-    NoDisplay / Hidden) plus `program`, the executable it resolves to on this
+    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Categories,
+    StartupWMClass, Terminal / NoDisplay / Hidden) plus `program`, the
+    executable it resolves to on this
     machine. False for a file with no `[Desktop Entry]` group, so a file that
     merely ends in `.desktop` is never mistaken for one.
   - `FindDesktopIconFile` — an icon *name* resolved to an image file through
@@ -573,6 +580,30 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     (`OS/MacOS/UltraCanvasMacOSAlias.mm`); elsewhere the resolver reports
     false rather than guessing.
   See `Docs/UltraCanvas/UltraCanvasMacBundle.md`.
+
+- **UltraCanvasCompoundFile** (`UltraCanvasCompoundFile.h`) — read-only OLE2
+  compound files ([MS-CFB]), the container of the legacy Office formats
+  (`.doc`, `.xls`, `.ppt`, `.msg`). In `core/UltraCanvasCompoundFile.cpp`;
+  every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
+  `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
+  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
+  `.doc` importer and the `.xls` reader.
+  See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
+  workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
+  tables and Excel 2003 XML files saved under the name, read into a UI-free
+  model (`XlsWorkbook` → `XlsSheet` → `XlsCell`, `XlsCellFormat`, `XlsFont`,
+  `XlsDefinedName`). Formulas are translated into the spreadsheet engine's
+  syntax and every formula cell keeps Excel's cached result. In
+  `core/UltraCanvasSpreadsheetXls.cpp`; `UltraCanvasSpreadsheet::LoadXLS`
+  (`core/UltraCanvasSpreadsheetXlsIO.cpp`, called by `LoadFromFile`) builds a
+  sheet from it, and the file display previews from it. Public surface:
+  `DetectXlsFileKind`, `ReadXlsWorkbook(path, out, error, XlsReadOptions)`,
+  `ReadXlsWorkbookFromMemory`, `XlsCellText`, `XlsErrorText` /
+  `XlsErrorType`, and `ExcelNumberFormatCategory` (shared with the `.xlsx`
+  loader). Read only: there is no `.xls` writer.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetXls.md`.
 
 - **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons the
   other two desktops keep their applications' faces in, read without either
@@ -716,8 +747,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
-    icons resolved), `LaunchApplication`, `LaunchProgram` / `FindProgram`
-    (next to this executable first, then `PATH`).
+    icons resolved), `MatchApplication` (a window's entry, by
+    `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
+    `FindProgram` (next to this executable first, then `PATH`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -756,7 +788,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
     / Delete hit-tested with `ActionAt`.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
-    `FoldForClipboardSearch`, `DescribeClipboardEntry`.
+    `FoldForClipboardSearch`, `DescribeClipboardEntry`,
+    `PreferredClipboardKinds` (what a program takes when pasted into, from
+    its desktop entry's categories and MIME types).
   See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
 
 - **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
@@ -990,7 +1024,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
   BlendFrom/CropCopy/Clone/ResizeCanvas/Flip*/Rotate*/ResampleBilinear`,
   `CompositeOnto` (premultiplied ARGB32), `ToPixelFX/FromPixelFX`
-  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths.
+  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths,
+  `RasterReplacePixel` the replace-with-alpha one.
 - **UCRasterSelection** — coverage mask: `SelectAll/SelectNone/Invert/
   SetRectangle/SetEllipse/SetPolygon/SetMask` with `RasterSelectionMode`
   (Replace/Add/Subtract/Intersect), `Feather/Grow/Shrink/Translate`,
@@ -1009,7 +1044,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
   ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour`. No libvips needed.
+  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
@@ -1190,7 +1226,8 @@ future.
   `UltraNet_FtpRemoveDirectory`; the session log of every call
   (`UltraNetFtpOptions::onLog`, `UltraNet_SetThreadFtpLog`:
   `UltraNetFtpLogLine` steps, commands with the password masked, replies with
-  their codes, the error with libcurl's number)
+  their codes, the error with libcurl's number); connections kept open
+  between calls on one thread, closed by `UltraNet_FtpCloseIdleConnections`
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
   `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,

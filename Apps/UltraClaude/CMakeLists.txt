@@ -16,9 +16,12 @@ endif()
 
 add_executable(UltraClaude
     main.cpp
+    engine/ChatStore.cpp
+    engine/RepoStatus.cpp
     engine/ClaudeChatSession.cpp
     engine/ClaudeCliProcess.cpp
     engine/ClaudeStreamParser.cpp
+    ui/ChatListView.cpp
     ui/UltraClaudeWindow.cpp
 )
 

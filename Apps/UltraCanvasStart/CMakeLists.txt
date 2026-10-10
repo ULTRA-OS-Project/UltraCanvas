@@ -12,7 +12,7 @@
 #                           so the CLI modes and the test suite use it headless.
 #   UltraCanvasStart        the GUI application on top of it.
 #
-# Version: 0.1.0
+# Version: 0.1.1 - StartGuide (the pages' prose as Markdown)
 # Author: UltraCanvas Framework / ULTRA OS
 
 if(NOT ULTRACANVAS_LIBRARY)
@@ -29,6 +29,7 @@ add_library(UltraCanvasStartEngine STATIC
     engine/StartSdk.cpp
     engine/StartProject.cpp
     engine/StartAi.cpp
+    engine/StartGuide.cpp
     engine/StartRunner.cpp
 )
 set_target_properties(UltraCanvasStartEngine PROPERTIES
@@ -40,17 +41,11 @@ target_include_directories(UltraCanvasStartEngine PUBLIC
 target_include_directories(UltraCanvasStartEngine PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
 target_link_libraries(UltraCanvasStartEngine PUBLIC ${ULTRACANVAS_LIBRARY})
 
-# The SDK download needs UltraNet. With a SHARED core UltraNet is absorbed
-# into libultracanvas and only its headers are needed; with a static core the
-# target is linked itself (the same logic UltraSocialEngine uses).
+# The SDK download needs UltraNet: its home, which is the shared core that
+# absorbed it or the archive under a static core ("MODULE HOMES" in
+# UltraCanvas/CMakeLists.txt).
 if(TARGET UltraNet)
-    get_target_property(_ucstart_core_type ${ULTRACANVAS_LIBRARY} TYPE)
-    if(_ucstart_core_type STREQUAL "SHARED_LIBRARY")
-        target_include_directories(UltraCanvasStartEngine PRIVATE
-            $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
-    else()
-        target_link_libraries(UltraCanvasStartEngine PUBLIC UltraNet)
-    endif()
+    target_link_libraries(UltraCanvasStartEngine PUBLIC UltraNet)
     target_compile_definitions(UltraCanvasStartEngine PRIVATE ULTRACANVASSTART_HAS_NET=1)
     message(STATUS "  [✓] UltraCanvasStart engine - ENABLED, with SDK download (UltraNet)")
 else()

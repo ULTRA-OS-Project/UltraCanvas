@@ -50,8 +50,22 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.38.1 - a picture saved over gets a new thumbnail: the workers ask
+//                  the image cache with UCImage::GetFresh, and the disk cache
+//                  keeps a thumbnail only against the file as it was before
+//                  the decode (ThumbnailDiskCache::Store's madeFrom)
+// Version: 1.38.0 - an .xls file previews as a cell grid like .xlsx and .ods: the
+//                  first rows of its first sheet, read by the .xls reader
+//                  (UltraCanvasSpreadsheetXls.h) - or, for the HTML, XML, ZIP or
+//                  text that travels under the name, by the matching reader
+// Version: 1.37.0 - an .html file's preview is the page as a browser lays it out
+//                  (HTML::ExtractPlainText, PlainTextLayout::Lines): a line per
+//                  paragraph, hidden text left out; TextPreviewLines (public)
+// Version: 1.36.1 - the text preview decodes entities through the HTMLReader module
+//                  (HTML::DecodeEntities): every named and numeric reference, where
+//                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -63,6 +77,7 @@
 #endif
 
 #include "UltraCanvasFilerWidget.h"
+#include "HTMLReader/HTMLDocument.h"   // HTML::DecodeEntities (the text preview)
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
@@ -76,6 +91,8 @@
 #include "UltraCanvasShellLink.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasSpreadsheetXls.h"   // the .xls preview
+#include "UltraCanvasCSVImport.h"         // CSVDecodeToUtf8 - an .xls that is UTF-16 text
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir - the context menu's icons
 #include "UltraCanvasTrash.h"
@@ -932,7 +949,6 @@ namespace UltraCanvas {
         // Kindle book's tile is its cover instead - EBookCoverReadable below.)
         bool TextPreviewReadable(const std::string& ext) {
             static const std::set<std::string> containersWithoutReader = {
-                "xls",      // OLE2 workbook (the reader covers xlsx / ods)
                 "epub", "fb2.zip",   // ZIP e-book containers
                 "mobi", "prc", "azw", "azw3",   // Mobipocket record files
             };
@@ -1222,6 +1238,9 @@ namespace UltraCanvas {
         constexpr size_t kPreviewMaxColumns = 8;     // spreadsheet cells per row
         constexpr size_t kPreviewLineChars  = 160;
         constexpr size_t kPreviewReadBytes  = 128 * 1024;
+        // A binary .xls is read whole for its preview; beyond this it keeps
+        // its type glyph.
+        constexpr uintmax_t kXlsPreviewMaxBytes = 32ull * 1024 * 1024;
 
         // First bytes of a file, stopping at a NUL (binary files preview as
         // nothing rather than as mojibake).
@@ -1284,33 +1303,10 @@ namespace UltraCanvas {
             }
         }
 
-        // The five predefined XML / HTML entities plus numeric references —
-        // everything else is left as written, which is harmless in a preview.
-        std::string DecodeEntities(const std::string& in) {
-            std::string out;
-            out.reserve(in.size());
-            for (size_t i = 0; i < in.size(); ++i) {
-                if (in[i] != '&') { out.push_back(in[i]); continue; }
-                size_t end = in.find(';', i + 1);
-                if (end == std::string::npos || end - i > 10) { out.push_back('&'); continue; }
-                const std::string name = in.substr(i + 1, end - i - 1);
-                if      (name == "amp")  out.push_back('&');
-                else if (name == "lt")   out.push_back('<');
-                else if (name == "gt")   out.push_back('>');
-                else if (name == "quot") out.push_back('"');
-                else if (name == "apos") out.push_back('\'');
-                else if (name == "nbsp") out.push_back(' ');
-                else if (!name.empty() && name[0] == '#') out.push_back(' ');
-                else { out.push_back('&'); continue; }
-                i = end;
-            }
-            return out;
-        }
-
-        // Text of a markup document with the tags removed. `breakTags` names
-        // the elements that end a preview line (paragraphs, headings, rows);
-        // everything else is treated as inline. `<script>` / `<style>` bodies
-        // are dropped so an HTML preview shows the page, not its code.
+        // Text of a spreadsheet's XML (a cell, a shared string) with the tags
+        // removed. `breakTags` names the elements that end a preview line
+        // (an ODS cell's text:p); everything else is treated as inline. HTML
+        // is not read here: it goes through HTML::ExtractPlainText.
         void MarkupToPreviewLines(const std::string& markup,
                                   const std::vector<std::string>& breakTags,
                                   std::vector<std::string>& lines) {
@@ -1333,18 +1329,12 @@ namespace UltraCanvas {
                 std::string name = tag.substr(0, tag.find_first_of(" \t\r\n/"));
                 std::transform(name.begin(), name.end(), name.begin(),
                                [](unsigned char c) { return std::tolower(c); });
-                if (!closing && (name == "script" || name == "style")) {
-                    const std::string closeTag = "</" + name;
-                    size_t skip = markup.find(closeTag, i);
-                    i = (skip == std::string::npos) ? markup.size() : skip;
-                    continue;
-                }
-                if (isBreakTag(name) || name == "br") {
-                    AppendPreviewLine(lines, DecodeEntities(current));
+                if (isBreakTag(name)) {
+                    AppendPreviewLine(lines, HTML::DecodeEntities(current));
                     current.clear();
                 }
             }
-            AppendPreviewLine(lines, DecodeEntities(current));
+            AppendPreviewLine(lines, HTML::DecodeEntities(current));
         }
 
         // RTF: drop the control words, the groups the reader is meant to skip
@@ -1484,6 +1474,30 @@ namespace UltraCanvas {
             }
         }
 
+        // Legacy Excel workbook: the first rows of its first sheet, each row's
+        // cells at their own columns (a gap stays a gap). Numbers are shown as
+        // stored, as the .xlsx preview shows them.
+        void XlsToPreviewLines(const XlsSheet& sheet, std::vector<std::string>& lines) {
+            std::map<int, std::vector<std::string>> rows;
+            for (const XlsCell& cell : sheet.cells) {
+                if (cell.col < 0 || static_cast<size_t>(cell.col) >= kPreviewMaxColumns) continue;
+                std::string text = XlsCellText(cell);
+                if (text.empty()) continue;
+                std::vector<std::string>& row = rows[cell.row];
+                if (row.size() <= static_cast<size_t>(cell.col)) row.resize(cell.col + 1);
+                row[static_cast<size_t>(cell.col)] = std::move(text);
+            }
+            for (const auto& entry : rows) {
+                if (lines.size() >= kPreviewMaxLines) break;
+                std::string joined;
+                for (size_t i = 0; i < entry.second.size(); ++i) {
+                    if (i) joined.push_back('\t');
+                    joined += entry.second[i];
+                }
+                AppendPreviewLine(lines, joined, true);
+            }
+        }
+
         // CSV / TSV: the separator becomes a tab so the drawing code lays the
         // values out as cells. Quoted fields keep their separators.
         void DelimitedToPreviewLines(const std::string& text, char separator,
@@ -1561,6 +1575,68 @@ namespace UltraCanvas {
                                         ext == "tsv" ? '\t' : ',', lines);
                 return true;
             }
+            if (ext == "xls") {
+                // What the name holds decides the reader: a real binary
+                // workbook, or the HTML, Excel 2003 XML, renamed .xlsx or
+                // delimited text that applications also save as .xls.
+                const XlsFileKind kind = DetectXlsFileKind(path);
+                if (kind == XlsFileKind::Missing || kind == XlsFileKind::Unknown) return false;
+                tabular = true;
+                if (kind == XlsFileKind::Text) {
+                    std::string head = ReadFileHead(path, kPreviewReadBytes);
+                    const bool utf16 = head.size() >= 2 &&
+                                       ((static_cast<unsigned char>(head[0]) == 0xFF &&
+                                         static_cast<unsigned char>(head[1]) == 0xFE) ||
+                                        (static_cast<unsigned char>(head[0]) == 0xFE &&
+                                         static_cast<unsigned char>(head[1]) == 0xFF));
+                    if (utf16) {
+                        // UTF-16 (Excel's "Unicode Text"): its NULs end the
+                        // head at once, so read and decode it raw.
+                        std::string raw(kPreviewReadBytes, '\0');
+                        if (std::FILE* f = OpenFileUtf8(path, "rb")) {
+                            raw.resize(std::fread(raw.data(), 1, raw.size(), f));
+                            std::fclose(f);
+                        } else {
+                            raw.clear();
+                        }
+                        const bool bigEndian = raw.size() >= 2 &&
+                                               static_cast<unsigned char>(raw[0]) == 0xFE;
+                        head = CSVDecodeToUtf8(raw, bigEndian ? CSVImportOptions::Encoding::UTF16BE
+                                                              : CSVImportOptions::Encoding::UTF16LE);
+                    }
+                    const std::string firstLine = head.substr(0, head.find('\n'));
+                    const auto count = [&](char c) {
+                        return std::count(firstLine.begin(), firstLine.end(), c);
+                    };
+                    const char separator = count('\t') ? '\t'
+                                         : count(';') > count(',') ? ';' : ',';
+                    DelimitedToPreviewLines(head, separator, lines);
+                    return true;
+                }
+                if (kind == XlsFileKind::OpenXml) {
+                    UCZipPackageReader zip;
+                    if (!zip.Open(path)) return false;
+                    XlsxToPreviewLines(zip, lines);
+                    return true;
+                }
+                // A binary workbook is read whole - its first sheet follows
+                // the workbook's string table and formats - so a very large
+                // one keeps its glyph rather than stall a preview worker.
+                std::error_code sizeError;
+                const auto size = fs::file_size(PathFromUtf8(path), sizeError);
+                if (sizeError || size > kXlsPreviewMaxBytes) return false;
+                XlsReadOptions options;
+                options.maxSheets = 1;
+                options.maxRows = static_cast<int>(kPreviewMaxLines) * 4;
+                options.maxColumns = static_cast<int>(kPreviewMaxColumns);
+                options.translateFormulas = false;
+                XlsWorkbook workbook;
+                std::string error;
+                if (!ReadXlsWorkbook(path, workbook, error, options) || workbook.sheets.empty())
+                    return false;
+                XlsToPreviewLines(workbook.sheets.front(), lines);
+                return true;
+            }
             if (ext == "ods" || ext == "xlsx") {
                 UCZipPackageReader zip;
                 if (!zip.Open(path)) return false;
@@ -1579,9 +1655,12 @@ namespace UltraCanvas {
                 return true;
             }
             if (ext == "html" || ext == "htm") {
-                MarkupToPreviewLines(ReadFileHead(path, kPreviewReadBytes),
-                                     {"p", "div", "li", "tr", "h1", "h2", "h3",
-                                      "h4", "h5", "h6", "title"}, lines);
+                // The page as a browser lays it out: a line per paragraph,
+                // list item or table row, its cells a tab apart, the head,
+                // scripts and hidden text left out.
+                SplitPreviewLines(HTML::ExtractPlainText(ReadFileHead(path, kPreviewReadBytes),
+                                                         HTML::PlainTextLayout::Lines),
+                                  lines);
                 return true;
             }
             if (ext == "rtf") {
@@ -11237,6 +11316,13 @@ namespace UltraCanvas {
         return previews;
     }
 
+    bool UltraCanvasFilerWidget::TextPreviewLines(const std::string& path,
+                                                  std::vector<std::string>& lines,
+                                                  bool& tabular) {
+        lines.clear();
+        return ExtractTextPreview(path, lines, tabular);
+    }
+
     std::vector<Rect2Di> UltraCanvasFilerWidget::FolderPreviewCardRects(
             const Rect2Di& rect, size_t count) {
         // The cards stand in the folder like photos in a wallet: their upper
@@ -11712,9 +11798,13 @@ namespace UltraCanvas {
                 continue;
             }
 
-            // The expensive part — outside the lock. UCImage::Get and
+            // The expensive part — outside the lock. UCImage::GetFresh and
             // GetPixmap populate the shared mutex-guarded caches, so later
             // synchronous users (e.g. the media viewer) get free cache hits.
+            // GetFresh rather than Get: the shared cache is keyed by path, so
+            // a picture saved over since it was first drawn came back from it
+            // as it was - after every rescan, and into the disk cache below
+            // under the new file's stamp, so on every run after as well.
             // Which producer runs is decided by the file itself, not by the
             // entry: the request may name an entry's explicit thumbnail image
             // rather than the entry's own file.
@@ -11722,6 +11812,18 @@ namespace UltraCanvas {
             // Failed below and the tile keeps its glyph.
             std::shared_ptr<UCPixmap> pm;
             const bool nativeIcon = NativeFileIconAvailable(req.path);
+            // The file as it is before anything reads it. A thumbnail goes to
+            // the disk cache only against this stamp, and only while the file
+            // still matches it: one drawn from content the file no longer
+            // holds is not kept (see ThumbnailDiskCache::Store). Taken here,
+            // on the worker - it is a stat, and the paint path never touches
+            // the filesystem.
+            ThumbnailDiskCache::SourceStamp madeFrom;
+            if (!nativeIcon && ThumbnailDiskCache::IsEnabled()) {
+                RunGuarded("thumbnail source stamp", req.path, [&]() {
+                    madeFrom = ThumbnailDiskCache::StampSource(req.path);
+                });
+            }
 
             // The thumbnail this machine already made, on an earlier run.
             // Asked before anything is decoded, because that is the whole
@@ -11802,7 +11904,7 @@ namespace UltraCanvas {
                     // the preview bitmap the document carries.
                     const std::string ext = LowerExtension(req.path);
                     if (ImagePipelineLoadsExtension(ext)) {
-                        auto img = UCImage::Get(req.path);
+                        auto img = UCImage::GetFresh(req.path);
                         if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
                             pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
                     }
@@ -11829,7 +11931,7 @@ namespace UltraCanvas {
                     break;
                 }
                 default: {
-                    auto img = UCImage::Get(req.path);
+                    auto img = UCImage::GetFresh(req.path);
                     if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
                         pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
                     }
@@ -11864,7 +11966,8 @@ namespace UltraCanvas {
             // cost the user a re-decode, never a missing thumbnail.
             if (blob && !diskBlob && !nativeIcon) {
                 RunGuarded("thumbnail disk cache write", req.path, [&]() {
-                    ThumbnailDiskCache::Store(DiskCacheRequestFor(req), *blob);
+                    ThumbnailDiskCache::Store(DiskCacheRequestFor(req), *blob,
+                                              madeFrom);
                 });
             }
 
@@ -13344,8 +13447,9 @@ namespace UltraCanvas {
                     if (!ProbeImageDimensions(media.path, w, h)) {
                         // Unknown container (AVIF, HEIC, ...): ask the shared
                         // image cache — same call the thumbnail workers make,
-                        // so a later tile decode is a free cache hit.
-                        auto img = UCImage::Get(media.path);
+                        // so a later tile decode is a free cache hit, and a
+                        // picture saved over is measured as it is now.
+                        auto img = UCImage::GetFresh(media.path);
                         if (img) { w = img->GetWidth(); h = img->GetHeight(); }
                     }
                     if (w > 0 && h > 0)
@@ -15619,14 +15723,17 @@ namespace UltraCanvas {
                 if (renamingIndex >= 0) return true;
 
                 if (event.ctrl) {
+                    // Letter keys arrive as UCKeys::A..Z on every backend
+                    // (the Linux one upper-cases the keysym); a lowercase
+                    // 'a' is not a key code and could never match.
                     switch (event.virtualKey) {
-                        case 'a': case 'A': SelectAll(); return true;
-                        case 'c': case 'C': CopySelection(); return true;
-                        case 'x': case 'X': CutSelection(); return true;
-                        case 'v': case 'V': Paste(); return true;
-                        case 'd': case 'D': DuplicateSelection(); return true;
-                        case 'f': case 'F': CreateNewFolder(); return true;
-                        case 'p': case 'P':
+                        case UCKeys::A: SelectAll(); return true;
+                        case UCKeys::C: CopySelection(); return true;
+                        case UCKeys::X: CutSelection(); return true;
+                        case UCKeys::V: Paste(); return true;
+                        case UCKeys::D: DuplicateSelection(); return true;
+                        case UCKeys::F: CreateNewFolder(); return true;
+                        case UCKeys::P:
                             if (onPrint) onPrint(SelectionOrAll());
                             return true;
                         default: break;

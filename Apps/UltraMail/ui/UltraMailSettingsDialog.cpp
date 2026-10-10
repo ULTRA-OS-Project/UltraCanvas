@@ -13,13 +13,21 @@
 // by themselves - plus the lists of trusted websites and senders) and
 // Privacy > Sender icons (whether the known senders' icons are downloaded),
 // Display > Links (a link's address in the status bar or in a tooltip) and
-// Display > Notifications (a notification on screen when new mail arrives).
+// Display > Notifications (a notification on screen when new mail arrives),
+// Display > Treeview (the folder tree lists the current account or all) and
+// Warnings > Spam/scam warnings (which kinds of warning the content scan gives)
+// and Warnings > Trusted & blocked (the sender menu's lists).
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.10.0 - Display > Treeview: the current account or all accounts
+// Version: 1.9.1 - the tree names the page "Trusted & blocked": the whole title
+//                  did not fit the tree; a page taller than the window scrolls
+// Version: 1.9.0 - Warnings > Trusted and blocked senders
+// Version: 1.8.0 - Warnings > Spam/scam warnings: one switch per kind of warning
 // Version: 1.7.0 - Display > Notifications: new mail on screen, or not
 // Version: 1.6.0 - Privacy > Sender icons: the website icons of other senders
 // Version: 1.5.0 - Mail > New mail: how often new mail is checked (a dropdown,
@@ -30,7 +38,7 @@
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -95,6 +103,10 @@ namespace {
     constexpr const char* kPageDisplay     = "display";
     constexpr const char* kPageLinks       = "display/links";
     constexpr const char* kPageNotify      = "display/notifications";
+    constexpr const char* kPageTreeview    = "display/treeview";
+    constexpr const char* kPageWarnings    = "warnings";
+    constexpr const char* kPageScamWarnings = "warnings/spam-scam";
+    constexpr const char* kPageSenderLists  = "warnings/senders";
     constexpr const char* kPageStart       = "start";
 
     // The text sizes offered on Reading > Messages, in CSS px.
@@ -171,6 +183,19 @@ namespace {
         // Display > Notifications
         std::shared_ptr<UltraCanvasCheckbox> notifyBox;
 
+        // Display > Treeview
+        std::shared_ptr<UltraCanvasRadio> treeCurrentRadio;
+        std::shared_ptr<UltraCanvasRadio> treeAllRadio;
+        UltraCanvasRadioGroup             treeContentGroup;
+
+        // Warnings > Spam/scam warnings: one box per kind, with the option it sets
+        std::vector<std::pair<bool ThreatScanOptions::*,
+                              std::shared_ptr<UltraCanvasCheckbox>>> warningBoxes;
+
+        // Warnings > Trusted & blocked
+        std::shared_ptr<UltraCanvasTagInput> trustedSendersInput;
+        std::shared_ptr<UltraCanvasTagInput> blockedSendersInput;
+
         Preferences*          prefs = nullptr;
         std::function<void()> onChanged;
     };
@@ -225,6 +250,18 @@ namespace {
         parts.page->layout.SetFlexColumn().SetFlexGap(0)
                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         parts.page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+        // A page taller than the window scrolls: the lists of trusted
+        // websites and senders grow a row at a time, and without this the
+        // notes were pushed off the foot of the page with no way to reach
+        // them. Containers scroll only when asked; a page that fits shows no
+        // scrollbar. Vertically only - the vertical bar narrows the viewport,
+        // which would otherwise make a horizontal overflow of its own width.
+        {
+            ContainerStyle cs;
+            cs.autoShowScrollbars = true;
+            cs.autoShowHorizontalScrollbar = false;
+            parts.page->SetContainerStyle(cs);
+        }
         auto titleLabel = MakeLabel(id + "-title", title, kTitleFontSize);
         titleLabel->SetFontWeight(FontWeight::Bold);
         parts.page->AddChild(titleLabel);
@@ -340,6 +377,9 @@ namespace {
     std::vector<std::string> SenderTags(const Preferences& p) {
         return { p.remoteImageSenders.begin(), p.remoteImageSenders.end() };
     }
+    std::vector<std::string> ListTags(const std::set<std::string>& list) {
+        return { list.begin(), list.end() };
+    }
 
     void SyncControls(DialogState* d) {
         if (!d || !d->prefs) return;
@@ -379,6 +419,16 @@ namespace {
             d->linksGroup.SelectButton(p.linkDisplay == LinkDisplay::Tooltip
                                        ? d->linksTooltipRadio : d->linksStatusRadio);
         if (d->notifyBox) d->notifyBox->SetChecked(p.notifyNewMail);
+        if (d->treeAllRadio)
+            d->treeContentGroup.SelectButton(
+                p.folderTreeContent == FolderTreeContent::CurrentAccount ? d->treeCurrentRadio
+                                                                         : d->treeAllRadio);
+        for (const auto& [option, box] : d->warningBoxes)
+            if (box) box->SetChecked(p.scamWarnings.*option);
+        if (d->trustedSendersInput)
+            d->trustedSendersInput->SetTags(ListTags(p.senderLists.trusted));
+        if (d->blockedSendersInput)
+            d->blockedSendersInput->SetTags(ListTags(p.senderLists.blocked));
         d->syncing = false;
         if (d->window) d->window->RequestRedraw();
     }
@@ -824,6 +874,50 @@ namespace {
         return parts.page;
     }
 
+    // ===== DISPLAY > TREEVIEW =====
+    std::shared_ptr<UltraCanvasContainer> BuildTreeviewPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-treeview", "Treeview",
+                "Treeview content:");
+
+        const bool current = d->prefs->folderTreeContent == FolderTreeContent::CurrentAccount;
+        d->treeCurrentRadio = MakeChoice("um-set-tree-current",
+                "Show current email account", current);
+        d->treeAllRadio = MakeChoice("um-set-tree-all",
+                "Show all email accounts", !current);
+        d->treeContentGroup.AddRadioButton(d->treeCurrentRadio);
+        d->treeContentGroup.AddRadioButton(d->treeAllRadio);
+        d->treeContentGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            d->prefs->folderTreeContent = selected == d->treeCurrentRadio
+                                          ? FolderTreeContent::CurrentAccount
+                                          : FolderTreeContent::AllAccounts;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->treeCurrentRadio);
+        parts.body->AddChild(d->treeAllRadio);
+
+        d->resets[kPageTreeview] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->folderTreeContent = FolderTreeContent::AllAccounts;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-treeview-note1",
+                "With the current account only, the folder tree on the left lists "
+                "the folders of the account chosen in the account bar, and a click "
+                "on another account there shows that one's folders instead.");
+        AddNote(parts, "um-set-treeview-note2",
+                "With all accounts, every account is listed with its folders, one "
+                "below the other, in the order of the account bar - drag an "
+                "account there to move it.");
+        AddNote(parts, "um-set-treeview-note3",
+                "A right-click on a folder in the tree adds a folder inside it or "
+                "deletes it; on an account or its inbox, it adds a folder at the "
+                "top of the account.");
+        return parts.page;
+    }
+
     // ===== DISPLAY > NOTIFICATIONS =====
     std::shared_ptr<UltraCanvasContainer> BuildNotificationsPage(DialogState* d) {
         PageParts parts = MakePage("um-set-page-notify", "Notifications",
@@ -860,6 +954,134 @@ namespace {
         return parts.page;
     }
 
+    // ===== WARNINGS > SPAM/SCAM WARNINGS =====
+    std::shared_ptr<UltraCanvasContainer> BuildScamWarningsPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-scams", "Spam/scam warnings",
+                "Warn about a message when it looks like:");
+
+        struct Kind { const char* id; const char* text; bool ThreatScanOptions::* option; };
+        static const Kind kinds[] = {
+            { "um-set-warn-phishing",
+              "Phishing - links or a sender that pretend to be someone else",
+              &ThreatScanOptions::phishing },
+            { "um-set-warn-romance",
+              "A romance scam - a love letter from a stranger",
+              &ThreatScanOptions::romance },
+            { "um-set-warn-advance-fee",
+              "An advance-fee letter - millions waiting for a small fee",
+              &ThreatScanOptions::advanceFee },
+            { "um-set-warn-government",
+              "A letter in the name of the FBI, Interpol, the IMF ...",
+              &ThreatScanOptions::government },
+            { "um-set-warn-crypto-scams",
+              "A cryptocurrency scam - a recovery phrase, a wallet to pay into",
+              &ThreatScanOptions::cryptoScams },
+            { "um-set-warn-crypto-caution",
+              "Any mail about cryptocurrency (a word of caution)",
+              &ThreatScanOptions::cryptoCaution },
+            { "um-set-warn-attachments",
+              "A dangerous attachment - a program, or one dressed as a document",
+              &ThreatScanOptions::attachments },
+            { "um-set-warn-spam-flag",
+              "Spam, as the mail server marked it",
+              &ThreatScanOptions::spamFlag },
+        };
+        d->warningBoxes.clear();
+        for (const Kind& kind : kinds) {
+            bool ThreatScanOptions::* option = kind.option;
+            auto box = MakeCheckbox(kind.id, kind.text, d->prefs->scamWarnings.*option,
+                    [d, option](bool on) {
+                if (!d->prefs) return;
+                d->prefs->scamWarnings.*option = on;
+                ApplyAndSave(d);
+            });
+            d->warningBoxes.emplace_back(option, box);
+            parts.body->AddChild(box);
+        }
+
+        d->resets[kPageScamWarnings] = PageReset{ "Warn about all", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->scamWarnings = ThreatScanOptions{};
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-scams-note1",
+                "A warning is the badge's red or orange frame beside the subject, "
+                "the reasons in its tooltip and the strip above the message. A kind "
+                "switched off is not looked for: its messages are labelled as if "
+                "the check did not exist.");
+        AddNote(parts, "um-set-scams-note2",
+                "Mail already checked is checked again with the new choice - the "
+                "open message at once, the others in the background with each "
+                "mail check.");
+        AddNote(parts, "um-set-scams-note3",
+                "Nothing is ever hidden, moved or deleted either way: UltraMail "
+                "only labels mail, and you decide.");
+        return parts.page;
+    }
+
+    // ===== WARNINGS > TRUSTED AND BLOCKED SENDERS =====
+    std::shared_ptr<UltraCanvasContainer> BuildSenderListsPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-senders", "Trusted and blocked senders",
+                "The senders you trust, and those whose mail is spam to you:");
+
+        // One field per list. What is typed is kept as an address (or, on the
+        // blocked list, a domain) and shown that way; an address put on one
+        // list leaves the other.
+        auto field = [d, &parts](const std::string& id, const std::string& caption,
+                                 const std::string& placeholder, bool blockList) {
+            AddBodyCaption(parts, id + "-caption", caption);
+            auto input = MakeTagField(id, placeholder);
+            SenderLists& lists = d->prefs->senderLists;
+            input->SetTags(ListTags(blockList ? lists.blocked : lists.trusted));
+            input->onTagsChanged = [d, blockList](const std::vector<std::string>& tags) {
+                if (d->syncing || !d->prefs) return;
+                SenderLists& lists = d->prefs->senderLists;
+                std::set<std::string>& list  = blockList ? lists.blocked : lists.trusted;
+                std::set<std::string>& other = blockList ? lists.trusted : lists.blocked;
+                std::set<std::string> entries;
+                bool otherChanged = false;
+                for (const auto& tag : tags) {
+                    const std::string entry = SenderLists::Entry(tag, blockList);
+                    if (entry.empty()) continue;
+                    entries.insert(entry);
+                    if (!list.count(entry) && other.erase(entry)) otherChanged = true;
+                }
+                list = entries;
+                // Both fields shown as kept: this one's tags tidied, the other
+                // without an address that moved over.
+                if (otherChanged || ListTags(entries) != tags) SyncControls(d);
+                ApplyAndSave(d);
+            };
+            parts.body->AddChild(input);
+            return input;
+        };
+        d->trustedSendersInput = field("um-set-trusted-senders",
+                "Always trust - type an address and press Enter:",
+                "e.g. friend@example.com", false);
+        d->blockedSendersInput = field("um-set-blocked-senders",
+                "Blocked - an address, or a domain for everyone there:",
+                "e.g. offers@example.com or example.com", true);
+
+        AddNote(parts, "um-set-senders-note1",
+                "A trusted sender's mail gets no guessed warnings - no romance or "
+                "advance-fee letter, no crypto caution, no spam markers - and its "
+                "pictures load like a contact's. What catches a lie still counts: a "
+                "link that hides where it goes, a forged sender address, a program "
+                "dressed as a document.");
+        AddNote(parts, "um-set-senders-note2",
+                "A blocked sender's mail is marked as spam: the orange frame and the "
+                "strip above the message. A blocked domain blocks its subdomains too. "
+                "Nothing is moved or deleted - \"Mark as spam\" moves a message to "
+                "the junk folder.");
+        AddNote(parts, "um-set-senders-note3",
+                "Right-click a sender - in the list or above the message - to trust "
+                "or block them, or the whole domain; the same menu undoes it. Their "
+                "mail is checked again at once.");
+        return parts.page;
+    }
+
     // ===== START PAGE =====
     std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
         PageParts parts = MakePage("um-set-page-start", "Settings",
@@ -876,8 +1098,14 @@ namespace {
                 "by themselves), and whether the known senders' icons are fetched.");
         AddNote(parts, "um-set-start-note3",
                 "Display - whether a link's address is shown in the status bar or "
-                "as a tooltip, and whether new mail shows a notification on the "
-                "screen.");
+                "as a tooltip, whether new mail shows a notification on the "
+                "screen, and whether the folder tree lists the current account "
+                "or all of them.");
+        AddNote(parts, "um-set-start-note5",
+                "Warnings - which kinds of spam and scam UltraMail warns about: "
+                "phishing, romance scams, advance-fee letters, letters in an "
+                "agency's name, cryptocurrency, dangerous attachments - and the "
+                "senders you trust or block.");
         AddNote(parts, "um-set-start-note4",
                 "An account's servers, sign-in and name are in its own Account "
                 "Settings. Every change here applies straight away and is saved; "
@@ -973,6 +1201,12 @@ namespace {
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
         AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
+        AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
+        AddTreeNode(d, "settings", kPageWarnings, "Warnings");
+        AddTreeNode(d, kPageWarnings, kPageScamWarnings, "Spam/scam warnings");
+        // The page's title is "Trusted and blocked senders"; the tree has
+        // room for less.
+        AddTreeNode(d, kPageWarnings, kPageSenderLists, "Trusted & blocked");
         // After the nodes: hiding the root promotes the sections to the top.
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
@@ -992,6 +1226,9 @@ namespace {
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
         AddPage(d, kPageLinks, BuildLinksPage(d));
         AddPage(d, kPageNotify, BuildNotificationsPage(d));
+        AddPage(d, kPageTreeview, BuildTreeviewPage(d));
+        AddPage(d, kPageScamWarnings, BuildScamWarningsPage(d));
+        AddPage(d, kPageSenderLists, BuildSenderListsPage(d));
         AddPage(d, kPageStart, BuildStartPage());
         d->window->AddChild(content);
 

@@ -443,7 +443,9 @@ Rect2Di DrawPolygon(UCRasterLayer& layer, const UCRasterSelection* sel,
 
 Rect2Di StampMask(UCRasterLayer& layer, const UCRasterSelection* sel,
                   const uint8_t* mask, int mw, int mh, int ox, int oy,
-                  const RasterPixel& colour, float opacity, RasterBlendMode blend) {
+                  const RasterPixel& colour, float opacity, RasterBlendMode blend,
+                  FillCompositing compositing) {
+    const bool replace = compositing == FillCompositing::Replace;
     if (!mask || mw <= 0 || mh <= 0) return Rect2Di(0, 0, 0, 0);
     const Rect2Di bbox = layer.ClipRect(Rect2Di(ox, oy, mw, mh));
     if (bbox.width <= 0) return bbox;
@@ -454,7 +456,9 @@ Rect2Di StampMask(UCRasterLayer& layer, const UCRasterSelection* sel,
             const float cov = (m[x - ox] / 255.0f) * opacity * (SelCoverage(sel, x, y) / 255.0f);
             if (cov <= 0.0f) continue;
             uint8_t* d = row + static_cast<size_t>(x) * 4;
-            const RasterPixel out = RasterBlendPixel(colour, RasterPixel(d[0], d[1], d[2], d[3]), cov, blend);
+            const RasterPixel base(d[0], d[1], d[2], d[3]);
+            const RasterPixel out = replace ? RasterReplacePixel(colour, base, cov)
+                                            : RasterBlendPixel(colour, base, cov, blend);
             d[0] = out.r; d[1] = out.g; d[2] = out.b; d[3] = out.a;
         }
     }
@@ -525,7 +529,8 @@ namespace {
 
 Rect2Di FloodFill(UCRasterLayer& layer, const UCRasterSelection* sel, int x, int y,
                   const RasterPixel& colour, int tolerance, bool contiguous,
-                  const UCRasterLayer* sampleLayer, RasterBlendMode blend, float opacity) {
+                  const UCRasterLayer* sampleLayer, RasterBlendMode blend, float opacity,
+                  FillCompositing compositing) {
     const UCRasterLayer& sample = (sampleLayer && sampleLayer->GetWidth() == layer.GetWidth() &&
                                    sampleLayer->GetHeight() == layer.GetHeight()) ? *sampleLayer : layer;
     Rect2Di bounds;
@@ -535,7 +540,7 @@ Rect2Di FloodFill(UCRasterLayer& layer, const UCRasterSelection* sel, int x, int
     // against soft edges: a pixel adjacent to the region gets partial
     // coverage from the fraction of its 4-neighbours that are inside.
     return StampMask(layer, sel, region.data(), layer.GetWidth(), layer.GetHeight(), 0, 0,
-                     colour, opacity, blend).Intersection(bounds);
+                     colour, opacity, blend, compositing).Intersection(bounds);
 }
 
 std::vector<uint8_t> MagicWandMask(const UCRasterLayer& sample, int x, int y, int tolerance, bool contiguous) {

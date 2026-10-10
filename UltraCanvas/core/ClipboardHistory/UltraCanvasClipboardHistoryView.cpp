@@ -72,9 +72,24 @@ const std::string& IconsDir(const std::string& configured) {
 } // namespace
 
 // ===== MODEL =====
-void ClipboardHistoryListModel::SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections) {
+void ClipboardHistoryListModel::SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections,
+                                           const LeadSection& lead) {
     rows.clear();
     entryCount = entries.size();
+    const size_t leading = lead.title.empty() ? 0 : std::min(lead.count, entries.size());
+    if (leading > 0) {
+        ClipboardHistoryRow header;
+        header.header = true;
+        header.headerText = lead.title;
+        header.headerCount = static_cast<int>(leading);
+        rows.push_back(std::move(header));
+        for (size_t i = 0; i < leading; ++i) {
+            ClipboardHistoryRow row;
+            row.entry = std::move(entries[i]);
+            rows.push_back(std::move(row));
+        }
+        entries.erase(entries.begin(), entries.begin() + static_cast<std::ptrdiff_t>(leading));
+    }
     if (sections == Sections::Flat) {
         for (auto& entry : entries) {
             ClipboardHistoryRow row;

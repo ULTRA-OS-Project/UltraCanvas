@@ -106,4 +106,15 @@ TEST(FirstPrompt_names_the_app_and_the_workflow) {
     REQUIRE(local.find("pull request") == std::string::npos);
     REQUIRE(!CloudChecklist().empty());
     REQUIRE(!ClaudeInstallInstructions(Platform::Windows).empty());
+    choices.assistant = Assistant::Codex;
+    REQUIRE(FirstPrompt(choices).rfind("Read AGENTS.md, then", 0) == 0);
+}
+
+TEST(Scaffold_writes_the_chosen_assistants_file) {
+    ProjectOptions options;
+    options.assistant = Assistant::Gemini;
+    const std::string text = ProjectAssistantMd(options);
+    REQUIRE(text.rfind("# GEMINI.md", 0) == 0);
+    REQUIRE(text.find("AGENTS.md") != std::string::npos);
+    REQUIRE(ProjectClaudeMd(options).rfind("# CLAUDE.md", 0) == 0);
 }

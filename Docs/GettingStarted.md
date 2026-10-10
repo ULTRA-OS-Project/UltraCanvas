@@ -1,7 +1,7 @@
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.1
-**Last Modified:** 2026-10-08
+**Version:** 1.0.3
+**Last Modified:** 2026-10-10
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -13,11 +13,19 @@ and the hooks), but every step names what to do with another assistant too.
 **Choose your platform as you read.** Every step that differs by operating
 system offers one collapsed section per OS: Linux, macOS and Windows. Open the
 one you work on; open another to see what a colleague on that platform does.
-UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), presents
-the same choice on its first page, preselected to the machine it runs on, and
-then checks and installs the packages below, names the matching SDK, writes
-the project skeleton of step 3 and prepares the first prompt for the
-assistant. `UltraCanvasStart --check` does the checking in a terminal.
+UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), offers
+the same choice under its first step, preselected to the machine it runs on,
+and then walks through the rest: it checks and installs the packages below,
+downloads the matching SDK, writes the project skeleton of step 3 and
+prepares the first prompt for the assistant. `UltraCanvasStart --check` does the checking in a terminal.
+
+**On a computer with nothing yet, start with UltraCanvasStart.** Every
+release of the framework carries it on its own, built for each platform:
+`UltraCanvasStart-<OS>-<version>-<arch>` under
+`https://github.com/ULTRA-OS-Project/UltraCanvas/releases` (a `.tar.xz` on
+Linux, a `.zip` on Windows, a signed `.dmg` on macOS). Unpack it, start it,
+and it does steps 1 to 3 below; the steps stay here for reading what it does
+and for doing it by hand.
 
 If you have no compiler at all and work through an AI assistant and GitHub
 only, read [`GettingStarted-Cloud.md`](GettingStarted-Cloud.md) alongside
@@ -236,7 +244,7 @@ Two layouts are supported.
 | Layout | When | How it links |
 |---|---|---|
 | **In-tree**, `Apps/<Name>/` | The app belongs to the ULTRA OS family or you want the six-platform CI to build it | One `option(BUILD_<NAME>)` + `add_subdirectory(Apps/<Name>)` block in the root `CMakeLists.txt`, after the framework; link `${ULTRACANVAS_LIBRARY}` |
-| **Out-of-tree**, your own repo | A product that merely depends on the framework | Download the SDK artifact CI builds for your platform ([`UltraCanvasSDK.md`](UltraCanvasSDK.md)), or install the framework yourself once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
+| **Out-of-tree**, your own repo | A product that merely depends on the framework | Download the SDK for your platform from the release of the current version (`https://github.com/ULTRA-OS-Project/UltraCanvas/releases`, or UltraCanvasStart's *Download* button; [`UltraCanvasSDK.md`](UltraCanvasSDK.md)), or install the framework yourself once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
 
 Both routes are validated on every pull request: CI builds the in-tree
 applications, and it installs the framework into a scratch prefix and builds

@@ -61,6 +61,9 @@ public:
 
     // Forgets the conversation: the next prompt starts a new one.
     void Reset();
+    // Continues an earlier conversation: the next prompt resumes this CLI
+    // session id (empty: as Reset). Ignored while a prompt is running.
+    void SetSessionId(const std::string& sessionId);
     std::string GetSessionId() const;
 
     // The command line SendPrompt runs (argv[0] first).

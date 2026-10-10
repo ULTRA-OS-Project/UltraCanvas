@@ -75,6 +75,33 @@ TEST(ftp_mlsd_rejects_dot_entries) {
     CHECK(!ParseMlsdLine("type=pdir; ..", e));
 }
 
+// A server may name the listed folder by its path rather than ".": it is
+// still the folder itself, not a subfolder called "/pub".
+TEST(ftp_mlsd_the_listed_folder_is_not_an_entry_whatever_its_name) {
+    UltraNetFtpEntry e;
+    CHECK(!ParseMlsdLine("type=cdir;modify=20240103120000;perm=el; /pub", e));
+    CHECK(!ParseMlsdLine("Type=PDir;modify=20240103120000; /", e));
+    CHECK(ParseMlsdLine("type=dir;modify=20240103120000; cdir", e));
+    REQUIRE_EQ(e.name, std::string{"cdir"});
+}
+
+TEST(ftp_self_and_parent_lines_are_recognised) {
+    using ultranet_internal::ftp::IsMlsdSelfOrParentLine;
+    using ultranet_internal::ftp::IsUnixSelfOrParentLine;
+    CHECK(IsMlsdSelfOrParentLine("type=cdir;modify=20240103120000; ."));
+    CHECK(IsMlsdSelfOrParentLine("modify=20240103120000;type=pdir; .."));
+    CHECK(IsMlsdSelfOrParentLine("type=cdir; /home/erika"));
+    CHECK(IsMlsdSelfOrParentLine("type=dir; ."));
+    CHECK(!IsMlsdSelfOrParentLine("type=dir; photos"));
+    CHECK(!IsMlsdSelfOrParentLine("type=cdirectory; photos"));   // a whole fact only
+    CHECK(!IsMlsdSelfOrParentLine("drwxr-xr-x 2 a b 4096 Jan 3 2024 ."));   // not MLSD
+    CHECK(IsUnixSelfOrParentLine("drwxr-xr-x  2 erika users 4096 Jan  3  2024 ."));
+    CHECK(IsUnixSelfOrParentLine("drwxr-xr-x 14 erika users 4096 Dec 15 12:00 .."));
+    CHECK(!IsUnixSelfOrParentLine("drwxr-xr-x 2 erika users 4096 Jan  3  2024 photos"));
+    CHECK(!IsUnixSelfOrParentLine("drwxr-xr-x 2 erika users 4096 Jan  3  2024 .. and more"));
+    CHECK(!IsUnixSelfOrParentLine("-rw-r--r-- 1 erika users 5 Jan  3  2024 ."));
+}
+
 // ===== UNIX ls -l =====
 
 TEST(ftp_unix_parses_file_line) {

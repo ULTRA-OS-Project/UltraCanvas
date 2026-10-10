@@ -6,13 +6,17 @@
 // text via shared strings, booleans, errors, dates/times/percentages/
 // currency mapped through number formats), formulas, merged cells, column
 // widths/row heights and the same CellStyle subset (font, solid fill,
-// borders, alignment, wrap).
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// borders, alignment, wrap). Number formats are classified by
+// ExcelNumberFormatCategory (UltraCanvasSpreadsheetXls.h), shared with the
+// .xls reader.
+// Version: 1.0.1
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpreadsheet.h"
+#include "UltraCanvasSpreadsheetXls.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasSpreadsheetExcelFormula.h"   // Excel's Sheet!A1 <-> 'Sheet'.A1
 
 #include "tinyxml2.h"
 
@@ -99,54 +103,6 @@ std::string ColumnLetters(int col) {
 
 std::string CellRef(int row, int col) {
     return ColumnLetters(col) + std::to_string(row + 1);
-}
-
-// ===== NUMBER FORMAT CLASSIFICATION =====
-
-// Deduces the value category from a numFmt id or format code. Excel stores
-// dates/times/percentages as plain numbers — only the format reveals them.
-NumberFormatCategory CategoryForNumFmt(int numFmtId, const std::string& formatCode) {
-    if ((numFmtId >= 14 && numFmtId <= 17)) return NumberFormatCategory::Date;
-    if (numFmtId == 22) return NumberFormatCategory::DateTime;
-    if (numFmtId >= 18 && numFmtId <= 21) return NumberFormatCategory::Time;
-    if (numFmtId >= 45 && numFmtId <= 47) return NumberFormatCategory::Time;
-    if (numFmtId == 9 || numFmtId == 10) return NumberFormatCategory::Percentage;
-    if (numFmtId == 11 || numFmtId == 48) return NumberFormatCategory::Scientific;
-    if (numFmtId == 49) return NumberFormatCategory::Text;
-    if ((numFmtId >= 5 && numFmtId <= 8) || numFmtId == 42 || numFmtId == 44) {
-        return NumberFormatCategory::Currency;
-    }
-    if (numFmtId >= 1 && numFmtId <= 4) return NumberFormatCategory::Number;
-    if (numFmtId >= 37 && numFmtId <= 40) return NumberFormatCategory::Number;
-
-    if (!formatCode.empty()) {
-        // Custom code: strip quoted literals, then look for telltale tokens.
-        std::string code;
-        bool inQuote = false;
-        for (char c : formatCode) {
-            if (c == '"') inQuote = !inQuote;
-            else if (!inQuote) code.push_back(static_cast<char>(std::tolower(
-                static_cast<unsigned char>(c))));
-        }
-        if (code.find('%') != std::string::npos) return NumberFormatCategory::Percentage;
-        if (formatCode.find("[$") != std::string::npos
-            || formatCode.find_first_of("$\xE2\xC2") != std::string::npos) {
-            // "[$..]" locale currency, '$', or a UTF-8 currency symbol lead byte
-            if (code.find('0') != std::string::npos) return NumberFormatCategory::Currency;
-        }
-        bool hasDate = code.find('y') != std::string::npos
-                       || code.find('d') != std::string::npos;
-        bool hasTime = code.find('h') != std::string::npos
-                       || code.find('s') != std::string::npos;
-        if (hasDate && hasTime) return NumberFormatCategory::DateTime;
-        if (hasDate) return NumberFormatCategory::Date;
-        if (hasTime) return NumberFormatCategory::Time;
-        if (code.find('e') != std::string::npos
-            && code.find('0') != std::string::npos) return NumberFormatCategory::Scientific;
-        if (code.find('0') != std::string::npos
-            || code.find('#') != std::string::npos) return NumberFormatCategory::Number;
-    }
-    return NumberFormatCategory::General;
 }
 
 const char* BorderStyleName(BorderStyle style) {
@@ -408,7 +364,7 @@ private:
             std::string formatCode;
             auto custom = customFormats.find(numFmtId);
             if (custom != customFormats.end()) formatCode = custom->second;
-            NumberFormatCategory category = CategoryForNumFmt(numFmtId, formatCode);
+            NumberFormatCategory category = ExcelNumberFormatCategory(numFmtId, formatCode);
             style.numberFormat.category = category;
             if (!formatCode.empty()) style.numberFormat.formatCode = formatCode;
             cellStyles_.push_back(style);
@@ -523,7 +479,8 @@ private:
 
         bool hasFormula = false;
         if (f && f->GetText()) {
-            std::string formula = f->GetText();
+            // Excel's Data!B5 is the engine's 'Data'.B5 (and _xlfn.IFS its IFS).
+            std::string formula = ExcelFormulaToNative(f->GetText());
             if (!formula.empty() && formula[0] != '=') formula = "=" + formula;
             cell->SetFormula(formula);
             hasFormula = true;
@@ -849,7 +806,8 @@ private:
 
         std::string formula;
         if (cell.HasFormula()) {
-            formula = cell.GetFormulaText();
+            // Back into Excel's syntax: 'Data'.B5 is Data!B5 to Excel.
+            formula = NativeFormulaToExcel(cell.GetFormulaText());
             if (!formula.empty() && formula[0] == '=') formula = formula.substr(1);
         }
 

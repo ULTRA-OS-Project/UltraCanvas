@@ -78,7 +78,7 @@ tool and a missing plugin should stop it running.
 |---|---|---|
 | `Image` | JPEG, PNG, GIF (animated), WebP, TIFF, HEIC/HEIF, AVIF, JXL, BMP, TGA, PSD, EXR, SVG/SVGZ, … | `UltraCanvasMediaSurface` (image pipeline; SVG via librsvg) |
 | `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
-| `Sheet` | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
+| `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
@@ -161,8 +161,9 @@ colours directly under the picture: an
 swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
 clicking the checkerboard goes back to the transparency pattern. Files without
 transparency never show the strip, so it costs no space where it would mean
-nothing — that check is `UCImage::HasTransparency()`, which ignores the fully
-opaque alpha channel a PNG export routinely carries.
+nothing — that check is `UCImage::HasTransparency` (the Cairo image,
+`libspecific/Cairo/ImageCairo.h`), which ignores the fully opaque alpha
+channel a PNG export routinely carries.
 
 ```cpp
 viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
@@ -320,13 +321,29 @@ viewer->SetVideoPreviewMode(VideoPreviewMode::PreviewClip);  // few seconds mute
 viewer->SetVideoPreviewMode(VideoPreviewMode::Still);        // paused first frame
 viewer->SetVideoPreviewClipSeconds(5.0f);                    // PreviewClip length
 viewer->StopPlayback();   // for hosts that hide/detach the viewer
+bool busy = viewer->IsPlayingMedia();   // a video or sound playing right now
 ```
+
+`IsPlayingMedia()` is true while the shown file is a video or a sound that is
+playing (the muted `PreviewClip` too), and false once it is paused, stopped or
+has ended. A host that reopens a file which changed on disk asks it first:
+reopening restarts playback from the beginning. UltraFiler's preview pane
+reopens a changed video only once its file has stopped changing and it is not
+playing.
 
 `PreviewClip` is silent end to end: the mute is decided before the source is
 opened (so the engine builds a muted session rather than muting one already
 wired for sound), and the clip stays muted while it sits paused at the end of
 the preview. The sound returns when the viewer resumes playback itself — press
 play on the transport bar and the clip continues audibly.
+
+## A file saved over
+
+Images are read with `UCImage::GetFresh()`, which checks the shared image
+cache against the file: a picture saved over since it was last shown opens as
+it is now, not as the cache remembered it. The viewer does not watch the file
+it shows; a host that wants it followed reopens it when the file changes, as
+UltraFiler's preview pane does after a rescan finds the selected file changed.
 
 ## Embedding as a preview pane
 

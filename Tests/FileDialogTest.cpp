@@ -20,10 +20,16 @@
 // The name now takes the chosen type's extension (ApplySaveExtension) before
 // the "Replace it?" question.
 //
+// FileDialogConfig::validateNames and addToRecent were declared and never
+// read: a name the file system cannot hold reached the caller's write, and a
+// dialog made without UltraCanvasFileLoader added nothing to the recent
+// files. The dialog now refuses such a name (InvalidFileNameReason) and adds
+// what it accepts to the recent files itself.
+//
 // The naming rule is checked on its own and always runs; the dialog itself
 // is read back from the composited pixels, so that part runs under Xvfb and
 // skips - rather than fails - without a display.
-// Version: 1.2.0
+// Version: 1.4.0
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
@@ -31,6 +37,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
@@ -40,11 +47,16 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
+
+#if defined(__linux__)
+#include <glib.h>   // drives GTK's recent-files store, which saves on the main loop
+#endif
 
 using namespace UltraCanvas;
 
@@ -115,7 +127,31 @@ void RedirectSettingsFolder(const std::filesystem::path& root) {
     setenv("HOME", path.c_str(), 1);
 #else
     setenv("XDG_CONFIG_HOME", path.c_str(), 1);
+    // GTK's recent files (recently-used.xbel), where an accepted file goes.
+    setenv("XDG_DATA_HOME", path.c_str(), 1);
 #endif
+}
+
+// Whether GTK's recent files hold `path` - after running the main loop
+// until the store has been written (it is added and saved asynchronously).
+// Linux only; elsewhere the answer is not looked for.
+bool InRecentFiles(const std::filesystem::path& dataHome, const std::string& path) {
+#if defined(__linux__)
+    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
+    if (!uri) return false;
+    const std::string wanted = uri;
+    g_free(uri);
+    for (int pass = 0; pass < 300; ++pass) {   // up to about 3 s
+        while (g_main_context_iteration(nullptr, FALSE)) {}
+        std::ifstream in(dataHome / "recently-used.xbel");
+        const std::string xbel((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (xbel.find(wanted) != std::string::npos) return true;
+        g_usleep(10000);
+    }
+#else
+    (void)dataHome; (void)path;
+#endif
+    return false;
 }
 
 // The window as a binary PPM, for a human to look at.
@@ -157,7 +193,8 @@ struct SaveRun {
 };
 
 SaveRun ShowSave(const std::string& folder, const std::string& defaultName, int selectedType = 0,
-                 const std::string& defaultExtension = "") {
+                 const std::string& defaultExtension = "",
+                 const std::function<void(FileDialogConfig&)>& adjust = nullptr) {
     FileDialogConfig config;
     config.title = "Save test";
     config.dialogType = FileDialogType::Save;
@@ -166,6 +203,8 @@ SaveRun ShowSave(const std::string& folder, const std::string& defaultName, int 
     config.defaultExtension = defaultExtension;
     config.filters = ImageTypes();
     config.selectedFilterIndex = selectedType;
+    config.addToRecent = false;   // the recent-files case turns it on itself
+    if (adjust) adjust(config);
     SaveRun run;
     run.dialog = UltraCanvasDialogManager::CreateFileDialog(config);
     auto accepted = run.accepted;
@@ -209,6 +248,45 @@ int main() {
         TEST("A JPEG name finds the JPEG type", FindFilterForName("holiday.JPEG", types) == 1);
         TEST("A name of no offered type finds none", FindFilterForName("notes.txt", types) == -1);
         TEST("The all-files type is never the one found", FindFilterForName("notes", types) == -1);
+    }
+
+    std::cerr << "\n--- Default extension ---" << std::endl;
+    TEST("A bare name takes the default", ApplyDefaultExtension("photo", "png") == "photo.png");
+    TEST("... dotted or not", ApplyDefaultExtension("photo", ".png") == "photo.png");
+    TEST("... without its trailing dot", ApplyDefaultExtension("photo.", "png") == "photo.png");
+    TEST("A name with an extension keeps it", ApplyDefaultExtension("notes.txt", "png") == "notes.txt");
+    TEST("A dot-file is a bare name", ApplyDefaultExtension(".profile", "png") == ".profile.png");
+    TEST("Only the last component counts",
+         ApplyDefaultExtension("/home/me/my.pictures/photo", "png") == "/home/me/my.pictures/photo.png");
+    TEST("No default changes nothing", ApplyDefaultExtension("photo", "") == "photo");
+
+    std::cerr << "\n--- File names ---" << std::endl;
+    {
+        auto refused = [](const std::string& name, FileNameRules rules) {
+            return !InvalidFileNameReason(name, rules).empty();
+        };
+        const auto win = FileNameRules::Windows;
+        const auto posix = FileNameRules::Posix;
+        TEST("An ordinary name is a file name everywhere",
+             !refused("Report v1.2.png", win) && !refused("Report v1.2.png", posix));
+        TEST("So is one in Thai with an emoji", !refused("รายงาน 📷.png", win) && !refused("รายงาน 📷.png", posix));
+        TEST("Empty, \".\" and \"..\" are not", refused("", posix) && refused(".", posix) && refused("..", win));
+        TEST("A control character is refused everywhere", refused("a\tb", posix) && refused("a\tb", win));
+        TEST("\"a:b\" is a name on POSIX, not on Windows", !refused("a:b", posix) && refused("a:b", win));
+        TEST("... as are < > \" | ? * on Windows",
+             refused("a<b", win) && refused("a>b", win) && refused("a\"b", win) &&
+             refused("a|b", win) && refused("a?b", win) && refused("a*b", win));
+        TEST("Windows refuses a trailing dot or space", refused("photo.", win) && refused("photo ", win));
+        TEST("... and the device names, with any extension",
+             refused("CON", win) && refused("con.txt", win) && refused("Lpt1.png", win) &&
+             refused("NUL .txt", win) && !refused("CONSOLE.txt", win) && !refused("COM0", win));
+        TEST("... which POSIX allows", !refused("CON", posix) && !refused("photo.", posix));
+        TEST("The reason names the character", InvalidFileNameReason("a:b", win) == "contains \":\"");
+        const std::string long255(255, 'a'), long256(256, 'a');
+        TEST("255 bytes fit on POSIX, 256 do not", !refused(long255, posix) && refused(long256, posix));
+        std::string thai;   // 100 Thai letters: 300 bytes, 100 UTF-16 units
+        for (int i = 0; i < 100; ++i) thai += "ก";
+        TEST("Windows counts characters, POSIX bytes", !refused(thai, win) && refused(thai, posix));
     }
 
     std::cerr << "\n--- Icon buttons ---" << std::endl;
@@ -367,6 +445,59 @@ int main() {
         run = ShowSave(folder, "untitled", 1, "png");
         PressEnter(run, "photo");
         TEST("... nor one the chosen type gave one", *run.accepted == expect("photo.jpg"));
+
+        // A name the file system cannot hold is refused, with the dialog left
+        // open on it; validateNames off lets it through to the caller.
+        const std::string tooLong(300, 'x');
+        run = ShowSave(folder, "untitled");
+        PressEnter(run, tooLong);
+        TEST("A name too long for a file is refused", run.accepted->empty() && run.dialog->IsWindowVisible());
+        for (const auto& open : UltraCanvasDialogManager::GetActiveDialogs()) {
+            if (open && open != dialog) open->CloseDialog(DialogResult::Cancel);
+        }
+        run = ShowSave(folder, "untitled", 0, "",
+                       [](FileDialogConfig& c) { c.validateNames = false; });
+        PressEnter(run, tooLong);
+        TEST("... unless validateNames is off", *run.accepted == expect((tooLong + ".png").c_str()));
+
+#if defined(__linux__)
+        // What a Save accepts goes on the recent files when addToRecent is
+        // on (as UltraCanvasFileLoader sets it), and not when it is off.
+        run = ShowSave(folder, "untitled", 0, "",
+                       [](FileDialogConfig& c) { c.addToRecent = true; });
+        PressEnter(run, "remembered");
+        TEST("addToRecent puts the saved file on the recent files",
+             InRecentFiles(scratch / "config", expect("remembered.png")));
+        run = ShowSave(folder, "untitled");
+        PressEnter(run, "forgotten");
+        TEST("... and leaves it off when it is off",
+             !InRecentFiles(scratch / "config", expect("forgotten.png")));
+#endif
+
+        // Through UltraCanvasFileLoader: FileDialogOptions::defaultExtension
+        // reaches the framework dialog.
+        {
+            UltraCanvasDialogManager::SetUseNativeDialogs(false);
+            auto saved = std::make_shared<std::string>();
+            FileDialogOptions opts;
+            opts.SetTitle("Loader save").SetInitialDirectory(folder)
+                .AddFilter("All files", std::string("*"))
+                .SetDefaultExtension("png").SetRegisterAsRecent(false);
+            UltraCanvasFileLoader::SaveFileDialog(opts, [saved](DialogResult r, const std::string& path) {
+                if (r == DialogResult::OK) *saved = path;
+            });
+            const auto open = UltraCanvasDialogManager::GetActiveDialogs();
+            auto* shown = open.empty() ? nullptr : dynamic_cast<UltraCanvasFileDialog*>(open.back().get());
+            auto* field = shown ? dynamic_cast<UltraCanvasTextInput*>(shown->FindChildById("FileDialogName"))
+                                : nullptr;
+            TEST("UltraCanvasFileLoader shows the framework Save dialog", field != nullptr);
+            if (field && field->onEnterPressed) {
+                field->SetText("loader");
+                field->onEnterPressed("loader");
+            }
+            TEST("... which gives a bare name FileDialogOptions' default extension",
+                 *saved == expect("loader.png"));
+        }
 
         run = ShowSave(folder, "holiday.jpg");
         TEST("The dialog opens on the type of the name it suggests",

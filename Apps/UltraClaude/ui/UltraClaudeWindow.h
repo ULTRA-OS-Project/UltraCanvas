@@ -27,10 +27,26 @@
 //
 // Chat view:
 //
-//   | Model [Default v]  Permissions [Ask v]  Folder [....] [...]  [New chat] [Log out] |
-//   | transcript (markdown, read-only, follows the reply)                                |
+//   | Chats      [New chat] | Model [Default v]  Permissions [Ask v]  Folder [....] [...] [Log out] |
+//   | > Fix the build       | transcript (markdown, read-only, follows the reply)                    |
+//   |   Explain parser.cpp  |                                                                        |
+//   | [Delete chat]         |                                                                        |
 //   | [ Message Claude... (several lines; Enter sends, Shift+Enter breaks) ] [Send]      |
 //   | status line                                                                        |
+//
+//   The list on the left is every chat UltraClaude remembers (ChatStore),
+//   newest first. The first prompt of a new chat adds it, titled by that
+//   prompt; every finished turn saves the transcript and moves the chat to
+//   the top. Picking a chat shows its transcript again and resumes its CLI
+//   session, in its own folder - the CLI keeps sessions per folder, so a
+//   chat's folder is fixed once the chat exists. Switching waits until
+//   Claude has finished answering.
+//
+//   Each row carries a badge with the lines its folder holds that the
+//   repository's default branch does not (RepoStatus) - committed,
+//   uncommitted and untracked, as the closing line counts them. Folders are
+//   measured on one background thread when the list loads, when a chat is
+//   opened and after every turn; chats in one folder share its count.
 //
 //   Each prompt runs the CLI through ClaudeChatSession. Its events arrive on
 //   the process's reader thread; they are queued and applied on the UI thread
@@ -41,14 +57,21 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "ChatListView.h"
+#include "ChatStore.h"
 #include "ClaudeChatSession.h"
+#include "RepoStatus.h"
 
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasWindow.h"   // UltraCanvasWindow is a per-platform typedef
 
+#include <condition_variable>
+#include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -58,6 +81,7 @@ namespace UltraCanvas {
     class UltraCanvasContainer;
     class UltraCanvasDropdown;
     class UltraCanvasLabel;
+    class UltraCanvasListView;
     class UltraCanvasTextArea;
     class UltraCanvasTextInput;
 }
@@ -102,6 +126,36 @@ private:
     void SendCurrentPrompt();
     void StopAnswer();
     void NewChat();
+    void DeleteCurrentChat();
+
+    // ----- chat list -----
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildChatSidebar();
+    void LoadChats();
+    // Rebuilds the list from the store and selects the current chat.
+    void RefreshChatList();
+    void OpenChat(const std::string& chatId);
+    // Writes the current chat's transcript and the store, and moves the chat
+    // to the top.
+    void SaveCurrentChat();
+    // A chat that exists keeps its folder: the field and Browse are locked.
+    void SetFolderLocked(bool locked);
+
+    // ----- lines-not-PRed badges -----
+    // Queues the folder for measuring (once while one is pending).
+    void MeasureFolder(const std::string& folder);
+    void ApplyMeasurement(const std::string& folder, const RepoLines& lines);
+    ChatBadge BadgeFor(const std::string& folder) const;
+    void StartMeasureThread();
+
+    // Shared with the measuring thread, which may outlive the window: a git
+    // fetch can take seconds, and closing the window must not wait for it.
+    struct MeasureQueue {
+        std::mutex mutex;
+        std::condition_variable wake;
+        std::deque<std::string> folders;
+        std::vector<std::pair<std::string, RepoLines>> results;
+        bool stop = false;
+    };
     void BrowseFolder();
     void SetBusy(bool busy);
     void SetStatus(const std::string& text);
@@ -149,7 +203,23 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> prompt_;   // several lines
     std::shared_ptr<UltraCanvas::UltraCanvasButton> send_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> browse_;
     bool busy_ = false;
+    bool folderLocked_ = false;
+
+    // chat list
+    ChatStore chats_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> chatList_;
+    std::shared_ptr<ChatListModel> chatModel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> deleteChat_;
+    std::string currentChatId_;        // empty: a new chat, not in the list yet
+    bool fillingChatList_ = false;     // the list is being rebuilt, not clicked
+
+    // badges
+    std::shared_ptr<MeasureQueue> measure_ = std::make_shared<MeasureQueue>();
+    bool measureThreadStarted_ = false;
+    std::map<std::string, RepoLines> measured_;   // by folder
+    std::set<std::string> measuring_;             // folders queued or in progress
     bool claudeSectionOpen_ = false;   // "**Claude**" written for this turn
     size_t toolCalls_ = 0;             // tool calls in this turn
     size_t trailingBreaks_ = 0;        // line breaks the transcript ends with

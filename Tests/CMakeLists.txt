@@ -193,14 +193,9 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     target_include_directories(UltraWebGuestTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
     target_compile_features(UltraWebGuestTest PRIVATE cxx_std_20)
-    # As the app links them; a shared core already carries UltraNet.
-    get_target_property(_uw_core_type UltraCanvas TYPE)
-    if(_uw_core_type STREQUAL "SHARED_LIBRARY")
-        target_include_directories(UltraWebGuestTest PRIVATE $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
-        target_link_libraries(UltraWebGuestTest PRIVATE WasmHost UltraCanvas)
-    else()
-        target_link_libraries(UltraWebGuestTest PRIVATE WasmHost UltraNet UltraCanvas)
-    endif()
+    # As the app links them: UltraNet through its home, which is the shared
+    # core itself or the archive under a static core.
+    target_link_libraries(UltraWebGuestTest PRIVATE WasmHost UltraNet UltraCanvas)
     set_target_properties(UltraWebGuestTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
@@ -878,6 +873,29 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TAG INPUT GROW TEST =====
+# A tag field grows to fit its chips inside a flex layout (the layout pass
+# used to put its first height back, cutting off every row after the first),
+# and what follows it moves down. Opens a window, so it skips itself without
+# a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TagInputGrowTest...")
+    add_executable(TagInputGrowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TagInputGrowTest.cpp
+    )
+    target_include_directories(TagInputGrowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TagInputGrowTest PRIVATE cxx_std_20)
+    target_link_libraries(TagInputGrowTest PRIVATE UltraCanvas)
+    set_target_properties(TagInputGrowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TagInputGrowTest COMMAND TagInputGrowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TagInputGrowTest")
+else()
+    message(STATUS "  TagInputGrowTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== ELEMENT PRESS TAKEN TEST =====
 # An element takes the presses it acts on (a press it reported as untaken
 # climbed to its parents, which could act on it again); the arc diagram
@@ -1038,8 +1056,9 @@ endif()
 # ===== HTMLREADER CORE OBJECTS =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent: std C++
 # plus Trim() from UltraCanvasTextUtils.cpp, which is platform-free too. The
-# tests that need it (HTMLReaderTest, EBookEngineTest, HTMLRichImportTest)
-# link these objects instead of each listing the sources again, so the files
+# tests that need it (HTMLReaderTest, EBookEngineTest, HTMLRichImportTest, and
+# the ones that compile UCRichDocument, whose FromHTML reads through the
+# importer) link these objects instead of each listing the sources again, so the files
 # compile once and a new HTMLReader source is added in one place.
 add_library(HTMLReaderTestCore OBJECT
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
@@ -1159,14 +1178,17 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasCompoundFile.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         # UCWordDocumentIO dispatches .tex to the LaTeX document reader
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp
         ${ULTRACANVAS_SRC_DIR}/third_party/miniz/miniz.c
-        # Trim() lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
-        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasTextUtils.cpp
+        # UCRichDocument::FromHTML reads through the HTMLReader's importer;
+        # HTMLReaderTestCore brings the parser, the cascade and Trim().
+        ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
     )
+    target_link_libraries(WordFormatsTest PRIVATE HTMLReaderTestCore)
     target_include_directories(WordFormatsTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
         # the module's internal helpers (symbol-font mapping) are tested too
@@ -1227,8 +1249,11 @@ add_executable(RichTextEditorTest
     ${CMAKE_CURRENT_SOURCE_DIR}/RichTextEditorTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocumentEditor.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocument.cpp
-    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasTextUtils.cpp
+    # A rich paste (UCRichDocument::FromHTML) reads through the HTMLReader's
+    # importer, on the HTMLReaderTestCore objects.
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
 )
+target_link_libraries(RichTextEditorTest PRIVATE HTMLReaderTestCore)
 target_include_directories(RichTextEditorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(RichTextEditorTest PRIVATE cxx_std_20)
 set_target_properties(RichTextEditorTest PROPERTIES
@@ -1276,11 +1301,14 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasCompoundFile.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
-        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasTextUtils.cpp
+        # UCRichDocument::FromHTML reads through the HTMLReader's importer.
+        ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
     )
+    target_link_libraries(LaTeXDocumentTest PRIVATE HTMLReaderTestCore)
     target_include_directories(LaTeXDocumentTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
         ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
@@ -3626,6 +3654,30 @@ message(STATUS "    Test registered: FilerVolumeSpaceTest")
 
 message(STATUS "")
 
+# ===== SPREADSHEET FORMULA ENGINE TEST =====
+# References to formula cells (same and other sheets, missing sheets), number
+# to text, error literals in the tokenizer, Excel's Sheet!A1 syntax through an
+# .xlsx round trip, and the Excel-compatible function library. Needs the full
+# library (the spreadsheet element and its formula engine).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SpreadsheetFormulaEngineTest...")
+    add_executable(SpreadsheetFormulaEngineTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetFormulaEngineTest.cpp
+    )
+    target_include_directories(SpreadsheetFormulaEngineTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SpreadsheetFormulaEngineTest PRIVATE cxx_std_20)
+    target_link_libraries(SpreadsheetFormulaEngineTest PRIVATE UltraCanvas)
+    set_target_properties(SpreadsheetFormulaEngineTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SpreadsheetFormulaEngineTest COMMAND SpreadsheetFormulaEngineTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(SpreadsheetFormulaEngineTest PROPERTIES TIMEOUT 120)
+    message(STATUS "    Test registered: SpreadsheetFormulaEngineTest")
+else()
+    message(STATUS "  SpreadsheetFormulaEngineTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILER FORMAT LIST TEST =====
 # The list of files behind Display > Thumbnails and Display > Detail view has
 # to hold every format the FileLoader inventory reports for this build, filed
@@ -3650,6 +3702,33 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: SpreadsheetOdsFileTest")
 else()
     message(STATUS "  SpreadsheetOdsFileTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== SPREADSHEET XLS FILE TEST =====
+# Legacy Excel workbooks (.xls): the OLE2 compound-file reader, the .xls
+# reader's model for BIFF8, BIFF5, an HTML table and Excel 2003 XML under the
+# name, LoadFromFile and the engine recalculating the translated formulas,
+# what is refused, and UltraFiler's preview page and detail pane. Needs the
+# full library (the spreadsheet element, the file display, the media viewer).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SpreadsheetXlsFileTest...")
+    add_executable(SpreadsheetXlsFileTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetXlsFileTest.cpp
+    )
+    target_include_directories(SpreadsheetXlsFileTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SpreadsheetXlsFileTest PRIVATE cxx_std_20)
+    target_link_libraries(SpreadsheetXlsFileTest PRIVATE UltraCanvas)
+    target_compile_definitions(SpreadsheetXlsFileTest PRIVATE
+        XLSTEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(SpreadsheetXlsFileTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SpreadsheetXlsFileTest COMMAND SpreadsheetXlsFileTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SpreadsheetXlsFileTest")
+else()
+    message(STATUS "  SpreadsheetXlsFileTest skipped (UltraCanvas target not present)")
 endif()
 
 # open but cannot list is one whose thumbnail nobody can switch on.
@@ -3812,6 +3891,50 @@ else()
     message(STATUS "  TextAreaDetachedTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== CLIPBOARD TARGETS TEST =====
+# Every format another program offers is seen: the X11 backend read a
+# TARGETS list (format 32, C longs) at 4 bytes an item and saw half of it.
+# Skips without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    message(STATUS "  Building ClipboardTargetsTest...")
+    add_executable(ClipboardTargetsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardTargetsTest.cpp
+    )
+    target_include_directories(ClipboardTargetsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ClipboardTargetsTest PRIVATE cxx_std_20)
+    target_link_libraries(ClipboardTargetsTest PRIVATE UltraCanvas)
+    set_target_properties(ClipboardTargetsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ClipboardTargetsTest COMMAND ClipboardTargetsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ClipboardTargetsTest")
+else()
+    message(STATUS "  ClipboardTargetsTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
+# ===== CLIPBOARD INCR TEST =====
+# A copy too large for one X request travels in pieces (ICCCM INCR), both
+# ways; checked against xclip as well when it is installed. Skips without
+# DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    message(STATUS "  Building ClipboardIncrTest...")
+    add_executable(ClipboardIncrTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardIncrTest.cpp
+    )
+    target_include_directories(ClipboardIncrTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ClipboardIncrTest PRIVATE cxx_std_20)
+    target_link_libraries(ClipboardIncrTest PRIVATE UltraCanvas)
+    set_target_properties(ClipboardIncrTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ClipboardIncrTest COMMAND ClipboardIncrTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ClipboardIncrTest")
+else()
+    message(STATUS "  ClipboardIncrTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
 # ===== DIALOG ESCAPE TEST =====
 # Escape cancels a custom dialog from any field, the multi-line text area
 # included (it used to swallow the key). Skips without DISPLAY.
@@ -3897,6 +4020,50 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: ImageUndecodableTest")
 else()
     message(STATUS "  ImageUndecodableTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMAGE CACHE FRESHNESS TEST =====
+# A picture saved over is read again by UCImage::GetFresh - its new size and
+# its new pixels - instead of being served from the path-keyed image cache or
+# libvips' operation cache as it was. What UltraFiler's thumbnails depend on.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageCacheFreshnessTest...")
+    add_executable(ImageCacheFreshnessTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageCacheFreshnessTest.cpp
+    )
+    target_include_directories(ImageCacheFreshnessTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageCacheFreshnessTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageCacheFreshnessTest PRIVATE UltraCanvas)
+    set_target_properties(ImageCacheFreshnessTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageCacheFreshnessTest COMMAND ImageCacheFreshnessTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageCacheFreshnessTest")
+else()
+    message(STATUS "  ImageCacheFreshnessTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMAGE FILE WATCH DISPLAY TEST =====
+# An album and a slideshow repaint a picture saved over by themselves
+# (UltraCanvasImageFileWatch), read back from a real window. Skips without a
+# DISPLAY; run it under xvfb-run.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageFileWatchDisplayTest...")
+    add_executable(ImageFileWatchDisplayTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageFileWatchDisplayTest.cpp
+    )
+    target_include_directories(ImageFileWatchDisplayTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageFileWatchDisplayTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageFileWatchDisplayTest PRIVATE UltraCanvas)
+    set_target_properties(ImageFileWatchDisplayTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageFileWatchDisplayTest COMMAND ImageFileWatchDisplayTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageFileWatchDisplayTest")
+else()
+    message(STATUS "  ImageFileWatchDisplayTest skipped (UltraCanvas target not present)")
 endif()
 
 message(STATUS "")
@@ -4473,6 +4640,12 @@ if(TARGET UltraCanvas AND UNIX)
     message(STATUS "    Test registered: IODevicePrinterIPPLiveTest")
 endif()
 
+# ===== eSCL SCANNING OVER HTTPS, AGAINST A RUNNING SCANNER =====
+# Defined in DeviceTlsTests.cmake, which the top level also includes on its
+# own (ULTRACANVAS_BUILD_DEVICE_TLS_TESTS) where BUILD_TESTS is off - the
+# macOS and Windows rows.
+include(${CMAKE_CURRENT_SOURCE_DIR}/DeviceTlsTests.cmake)
+
 # ===== VECTOR RASTERIZER TEST =====
 # UltraCanvasVectorRaster: a vector file's natural size, and rasterizing it
 # into a raster layer at a chosen pixel size (the path a bitmap editor takes
@@ -4878,4 +5051,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MediaViewerToolsTest")
 else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TAB PILL STYLE SCREENSHOT TEST =====
+# TabStyle::Pill read back from composited pixels: a one-pixel accent outline
+# round the open capsule, none round an inactive tab. It is also the
+# screenshot fixture for the style (ULTRACANVAS_SCREENSHOT_DIR=<dir> writes
+# tab-pill-variants.ppm, five colourways). Skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TabPillStyleScreenshotTest...")
+    add_executable(TabPillStyleScreenshotTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TabPillStyleScreenshotTest.cpp
+    )
+    target_include_directories(TabPillStyleScreenshotTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TabPillStyleScreenshotTest PRIVATE cxx_std_20)
+    target_compile_definitions(TabPillStyleScreenshotTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(TabPillStyleScreenshotTest PRIVATE UltraCanvas)
+    set_target_properties(TabPillStyleScreenshotTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TabPillStyleScreenshotTest COMMAND TabPillStyleScreenshotTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TabPillStyleScreenshotTest")
+else()
+    message(STATUS "  TabPillStyleScreenshotTest skipped (UltraCanvas target not present)")
 endif()

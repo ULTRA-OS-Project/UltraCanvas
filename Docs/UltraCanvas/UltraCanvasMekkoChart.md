@@ -1,5 +1,7 @@
 # UltraCanvasMekkoChart
 
+<!-- doc-check: std::string MyMoneyFormat(double v); -->
+
 Comprehensive Mekko (Marimekko / mosaic) chart element for UltraCanvas
 (`include/Plugins/Charts/UltraCanvasMekkoChart.h`,
 `Plugins/Charts/UltraCanvasMekkoChart.cpp`).

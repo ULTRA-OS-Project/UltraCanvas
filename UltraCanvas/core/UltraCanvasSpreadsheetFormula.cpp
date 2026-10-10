@@ -1,7 +1,9 @@
 // core/UltraCanvasSpreadsheetFormula.cpp
 // Formula engine implementation - parser, evaluator, and function library.
-// Version: 1.0.0
-// Last Modified: 2026-05-30
+// The Excel-compatible functions added in 1.1.0 live in
+// UltraCanvasSpreadsheetFormulaFunctions.cpp.
+// Version: 1.1.0
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 //
 // NOTE: The tokenizer, FormulaNode factories, FormulaValue/FormulaToken
@@ -392,6 +394,7 @@ FormulaFunctionLibrary::FormulaFunctionLibrary() {
     RegisterLookupFunctions();
     RegisterInformationFunctions();
     RegisterFinancialFunctions();
+    RegisterExcelFunctions();
 }
 
 void FormulaFunctionLibrary::RegisterFunction(const FunctionDefinition& def) {
@@ -763,46 +766,6 @@ void FormulaFunctionLibrary::RegisterTextFunctions() {
             return FormulaValue::Text(result);
         }, "Concatenate text", "Text"});
 
-    RegisterFunction({"LEN", {{"text", FunctionArgType::Value}}, 1, 1, false,
-        [](const std::vector<FormulaValue>& args, const std::vector<std::vector<FormulaValue>>&,
-           FormulaEvaluator*) -> FormulaValue {
-            if (args.empty()) return FormulaValue::Error(CellErrorType::ValueError);
-            return FormulaValue::Number(static_cast<double>(args[0].GetText().length()));
-        }, "Text length", "Text"});
-
-    RegisterFunction({"LEFT", {{"text", FunctionArgType::Value}, {"num", FunctionArgType::Value, true}}, 1, 2, false,
-        [](const std::vector<FormulaValue>& args, const std::vector<std::vector<FormulaValue>>&,
-           FormulaEvaluator*) -> FormulaValue {
-            if (args.empty()) return FormulaValue::Error(CellErrorType::ValueError);
-            std::string text = args[0].GetText();
-            int num = args.size() > 1 ? static_cast<int>(args[1].ToNumber()) : 1;
-            if (num < 0) return FormulaValue::Error(CellErrorType::ValueError);
-            return FormulaValue::Text(text.substr(0, num));
-        }, "Left characters", "Text"});
-
-    RegisterFunction({"RIGHT", {{"text", FunctionArgType::Value}, {"num", FunctionArgType::Value, true}}, 1, 2, false,
-        [](const std::vector<FormulaValue>& args, const std::vector<std::vector<FormulaValue>>&,
-           FormulaEvaluator*) -> FormulaValue {
-            if (args.empty()) return FormulaValue::Error(CellErrorType::ValueError);
-            std::string text = args[0].GetText();
-            int num = args.size() > 1 ? static_cast<int>(args[1].ToNumber()) : 1;
-            if (num < 0) return FormulaValue::Error(CellErrorType::ValueError);
-            if (num >= static_cast<int>(text.length())) return FormulaValue::Text(text);
-            return FormulaValue::Text(text.substr(text.length() - num));
-        }, "Right characters", "Text"});
-
-    RegisterFunction({"MID", {{"text", FunctionArgType::Value}, {"start", FunctionArgType::Value}, {"num", FunctionArgType::Value}}, 3, 3, false,
-        [](const std::vector<FormulaValue>& args, const std::vector<std::vector<FormulaValue>>&,
-           FormulaEvaluator*) -> FormulaValue {
-            if (args.size() < 3) return FormulaValue::Error(CellErrorType::ValueError);
-            std::string text = args[0].GetText();
-            int start = static_cast<int>(args[1].ToNumber()) - 1;
-            int num = static_cast<int>(args[2].ToNumber());
-            if (start < 0 || num < 0) return FormulaValue::Error(CellErrorType::ValueError);
-            if (start >= static_cast<int>(text.length())) return FormulaValue::Text("");
-            return FormulaValue::Text(text.substr(start, num));
-        }, "Middle characters", "Text"});
-
     RegisterFunction({"UPPER", {{"text", FunctionArgType::Value}}, 1, 1, false,
         [](const std::vector<FormulaValue>& args, const std::vector<std::vector<FormulaValue>>&,
            FormulaEvaluator*) -> FormulaValue {
@@ -932,28 +895,8 @@ void FormulaFunctionLibrary::RegisterDateTimeFunctions() {
 }
 
 void FormulaFunctionLibrary::RegisterLookupFunctions() {
-    RegisterFunction({"INDEX", {{"array", FunctionArgType::Range}, {"row", FunctionArgType::Value}, {"col", FunctionArgType::Value, true}}, 2, 3, false,
-        [](const std::vector<FormulaValue>& args, const std::vector<std::vector<FormulaValue>>& ranges,
-           FormulaEvaluator*) -> FormulaValue {
-            if (args.empty() || ranges.empty()) return FormulaValue::Error(CellErrorType::ValueError);
-            int row = static_cast<int>(args[0].ToNumber()) - 1;
-            if (row < 0 || row >= static_cast<int>(ranges[0].size())) return FormulaValue::Error(CellErrorType::ReferenceError);
-            return ranges[0][row];
-        }, "Value at index", "Lookup"});
-
-    RegisterFunction({"MATCH", {{"value", FunctionArgType::Value}, {"array", FunctionArgType::Range}, {"type", FunctionArgType::Value, true}}, 2, 3, false,
-        [](const std::vector<FormulaValue>& args, const std::vector<std::vector<FormulaValue>>& ranges,
-           FormulaEvaluator*) -> FormulaValue {
-            if (args.empty() || ranges.empty()) return FormulaValue::Error(CellErrorType::ValueError);
-            const FormulaValue& lookup = args[0];
-            for (size_t i = 0; i < ranges[0].size(); ++i) {
-                if ((lookup.IsNumber() && ranges[0][i].IsNumber() && lookup.GetNumber() == ranges[0][i].GetNumber()) ||
-                    (lookup.GetText() == ranges[0][i].GetText())) {
-                    return FormulaValue::Number(static_cast<double>(i + 1));
-                }
-            }
-            return FormulaValue::Error(CellErrorType::NAError);
-        }, "Find position", "Lookup"});
+    // INDEX, MATCH, VLOOKUP and the other lookups need a range's rows and
+    // columns: RegisterExcelFunctions (UltraCanvasSpreadsheetFormulaFunctions.cpp).
 }
 
 void FormulaFunctionLibrary::RegisterInformationFunctions() {
@@ -1094,22 +1037,41 @@ FormulaValue FormulaEvaluator::EvaluateFunction(const FormulaNode* node) {
 
     std::vector<FormulaValue> args;
     std::vector<std::vector<FormulaValue>> rangeArgs;
+    std::vector<FunctionCallArgument> order;
 
     for (const auto& child : node->children) {
+        FunctionCallArgument a;
         if (child->nodeType == FormulaNodeType::RangeRef) {
+            a.isRange = true;
+            a.index = rangeArgs.size();
+            a.range = child->rangeRef;
             rangeArgs.push_back(FlattenRange(child->rangeRef));
+        } else if (child->nodeType == FormulaNodeType::NamedRef &&
+                   GetNamedRange(child->namedRef).IsValid()) {
+            a.isRange = true;
+            a.index = rangeArgs.size();
+            a.range = GetNamedRange(child->namedRef);
+            rangeArgs.push_back(FlattenRange(a.range));
         } else if (child->nodeType == FormulaNodeType::NamedRef) {
-            CellRange range = GetNamedRange(child->namedRef);
-            if (range.IsValid()) {
-                rangeArgs.push_back(FlattenRange(range));
-            } else {
-                args.push_back(FormulaValue::Error(CellErrorType::NameError));
-            }
+            a.index = args.size();
+            args.push_back(FormulaValue::Error(CellErrorType::NameError));
         } else {
+            a.index = args.size();
             args.push_back(Evaluate(child.get()));
         }
+        order.push_back(std::move(a));
     }
 
+    // The arguments are evaluated (nested calls included) before this call's
+    // order is published, and the outer call's is restored afterwards - also
+    // when the implementation throws.
+    struct Publish {
+        std::vector<FunctionCallArgument>& slot;
+        std::vector<FunctionCallArgument>& saved;
+        Publish(std::vector<FunctionCallArgument>& s, std::vector<FunctionCallArgument>& o)
+            : slot(s), saved(o) { std::swap(slot, saved); }
+        ~Publish() { std::swap(slot, saved); }
+    } publish(callArguments_, order);
     return func->implementation(args, rangeArgs, this);
 }
 
@@ -1165,15 +1127,38 @@ FormulaValue FormulaEvaluator::Compare(const FormulaValue& left, const FormulaVa
 FormulaValue FormulaEvaluator::GetCellValue(const CellAddress& addr) const {
     // Resolve the sheet: an explicit sheet name on the address takes priority,
     // otherwise use the current sheet context.
-    const SpreadsheetSheet* sheet = currentSheet_;
+    // A sheet that does not exist is #REF!, as in Excel - not the current
+    // sheet's cell of the same address.
+    SpreadsheetSheet* sheet = currentSheet_;
     if (!addr.sheetName.empty() && spreadsheet_) {
-        const SpreadsheetSheet* named = spreadsheet_->GetSheetByName(addr.sheetName);
-        if (named) sheet = named;
+        SpreadsheetSheet* named = spreadsheet_->GetSheetByName(addr.sheetName);
+        if (!named) return FormulaValue::Error(CellErrorType::ReferenceError);
+        sheet = named;
     }
     if (!sheet) return FormulaValue::Empty();
 
-    const SpreadsheetCell* cell = sheet->GetCellIfExists(addr.row, addr.col);
+    SpreadsheetCell* cell = sheet->GetCellIfExists(addr.row, addr.col);
+    // A formula cell not calculated yet in this pass is calculated now, so
+    // a reference to a later cell (a total above its rows, an earlier sheet
+    // reading a later one) does not read a stale or empty result.
+    if (cell && cell->GetValueType() == CellValueType::Formula && cell->IsFormulaDirty() &&
+        resolveFormulaCell_) {
+        resolveFormulaCell_(cell, sheet);
+    }
     if (!cell || cell->IsEmpty()) return FormulaValue::Empty();
+    // A formula cell is worth its result, with the result's own type: a
+    // number stays a number - it was handed on as its display text, so =B5
+    // of a formula cell held "1008.75" and SUM over formula cells left them
+    // out.
+    if (cell->GetValueType() == CellValueType::Formula) {
+        const CellValueVariant& result = cell->GetRawValue();
+        if (auto* n = std::get_if<double>(&result)) return FormulaValue::Number(*n);
+        if (auto* b = std::get_if<bool>(&result)) return FormulaValue::Boolean(*b);
+        if (auto* e = std::get_if<CellErrorType>(&result)) return FormulaValue::Error(*e);
+        if (auto* c = std::get_if<CurrencyValue>(&result)) return FormulaValue::Number(c->amount);
+        if (auto* t = std::get_if<std::string>(&result)) return FormulaValue::Text(*t);
+        return FormulaValue::Empty();
+    }
     if (cell->HasError()) return FormulaValue::Error(cell->GetError());
     if (cell->IsNumeric()) return FormulaValue::Number(cell->GetNumber());
     if (cell->GetValueType() == CellValueType::Boolean) return FormulaValue::Boolean(cell->GetBoolean());
@@ -1186,7 +1171,8 @@ std::vector<std::vector<FormulaValue>> FormulaEvaluator::GetRangeValues(const Ce
     const SpreadsheetSheet* sheet = currentSheet_;
     if (!range.start.sheetName.empty() && spreadsheet_) {
         const SpreadsheetSheet* named = spreadsheet_->GetSheetByName(range.start.sheetName);
-        if (named) sheet = named;
+        if (!named) return {{FormulaValue::Error(CellErrorType::ReferenceError)}};
+        sheet = named;
     }
     if (!sheet) return result;
 
@@ -1231,6 +1217,22 @@ CellRange FormulaEvaluator::GetNamedRange(const std::string& name) const {
 
 FormulaValue SpreadsheetFormulaEngine::EvaluateCell(SpreadsheetCell* cell, SpreadsheetSheet* sheet) {
     if (!cell || !cell->HasFormula()) return FormulaValue::Empty();
+
+    // A cell reached again while it is being calculated is circular; and a
+    // chain of references deeper than this is calculated by the outer pass
+    // rather than by an ever deeper stack.
+    constexpr size_t kMaxNestedCells = 200;
+    if (evaluating_.count(cell)) return FormulaValue::Empty();
+    if (evaluating_.size() >= kMaxNestedCells) {
+        nestingLimitReached_ = true;
+        return FormulaValue::Empty();
+    }
+    evaluating_.insert(cell);
+    struct Leave {
+        std::unordered_set<const SpreadsheetCell*>& set;
+        const SpreadsheetCell* cell;
+        ~Leave() { set.erase(cell); }
+    } leave{evaluating_, cell};
 
     evaluator_->SetSpreadsheet(spreadsheet_);
     evaluator_->SetCurrentSheet(sheet);
@@ -1292,16 +1294,29 @@ void SpreadsheetFormulaEngine::Recalculate() {
 void SpreadsheetFormulaEngine::RecalculateAll() {
     if (!spreadsheet_) return;
 
-    for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
-        auto* sheet = spreadsheet_->GetSheet(s);
-        if (!sheet) continue;
-
-        sheet->ForEachCell([this, sheet](int /*row*/, int /*col*/, SpreadsheetCell& cell) {
-            if (cell.HasFormula()) {
-                cell.MarkFormulaDirty();
-                EvaluateCell(&cell, sheet);
-            }
-        });
+    // Every formula is marked first, so a reference to one further on finds it
+    // dirty and calculates it on the spot (FormulaEvaluator::GetCellValue);
+    // the cells it reached are clean by the time the walk gets to them. A
+    // chain deeper than one nested calculation follows (EvaluateCell) gets
+    // another pass, each reaching further, rather than an ever deeper stack.
+    constexpr int kMaxPasses = 16;
+    for (int pass = 0; pass < kMaxPasses; ++pass) {
+        nestingLimitReached_ = false;
+        for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
+            auto* sheet = spreadsheet_->GetSheet(s);
+            if (!sheet) continue;
+            sheet->ForEachCell([](int /*row*/, int /*col*/, SpreadsheetCell& cell) {
+                if (cell.HasFormula()) cell.MarkFormulaDirty();
+            });
+        }
+        for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
+            auto* sheet = spreadsheet_->GetSheet(s);
+            if (!sheet) continue;
+            sheet->ForEachCell([this, sheet](int /*row*/, int /*col*/, SpreadsheetCell& cell) {
+                if (cell.HasFormula() && cell.IsFormulaDirty()) EvaluateCell(&cell, sheet);
+            });
+        }
+        if (!nestingLimitReached_) break;
     }
 
     dirtyCells_.clear();

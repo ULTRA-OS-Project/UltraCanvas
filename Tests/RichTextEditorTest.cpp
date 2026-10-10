@@ -1740,12 +1740,16 @@ static void TestHtmlImport() {
         link = link || (r.text == "link" && r.linkTarget == "https://example.com");
     }
     CHECK(bold && italic && red && link);
+    // The page's style sheet applies, as in the browser it was copied from.
+    CHECK(!para.runs.empty() && para.runs[0].color == "#FF0000");
     CHECK(doc.blocks[2].type == RichBlockType::ListItem && !doc.blocks[2].orderedList && doc.blocks[2].listLevel == 0);
     CHECK(doc.blocks[4].type == RichBlockType::ListItem && doc.blocks[4].listLevel == 1
           && UCRichDocument::ConcatenateRunText(doc.blocks[4].runs) == "nested");
     CHECK(doc.blocks[5].type == RichBlockType::ListItem && doc.blocks[5].orderedList
           && UCRichDocument::ConcatenateRunText(doc.blocks[5].runs) == "numbered");
-    CHECK(doc.blocks[6].type == RichBlockType::BlockQuote);
+    // A quote is a quote level, which keeps a quoted list or heading what it is.
+    CHECK(doc.blocks[6].type == RichBlockType::Paragraph && doc.blocks[6].quoteLevel == 1
+          && UCRichDocument::ConcatenateRunText(doc.blocks[6].runs) == "quoted");
     CHECK(doc.blocks[7].type == RichBlockType::CodeBlock
           && UCRichDocument::ConcatenateRunText(doc.blocks[7].runs) == "line one\nline two");
     const RichDocBlock& table = doc.blocks[8];
@@ -1764,21 +1768,77 @@ static void TestHtmlImport() {
     CHECK(word.blocks.size() == 1);
     if (!word.blocks.empty()) {
         CHECK_EQ(UCRichDocument::ConcatenateRunText(word.blocks[0].runs), std::string("Word item"));
+        // Word's list paragraph is a list item, its typed "1." the marker.
+        CHECK(word.blocks[0].type == RichBlockType::ListItem && word.blocks[0].orderedList);
         CHECK(!word.blocks[0].runs.empty() && word.blocks[0].runs.back().fontSizePt == 14.0f
               && word.blocks[0].runs.back().fontFamily == "Arial");
     }
 
-    // A picture inlined as a data: URI, and our own HTML read back.
-    const std::string png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+    // A picture inlined as a data: URI (4 x 3 px: a 1 x 1 one is a tracking
+    // pixel, left out), and our own HTML read back.
+    const std::string png = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAAEElEQVR42mM4IScHRww4OQD1xwwx7+oCFgAAAABJRU5ErkJggg==";
     UCRichDocument pictured = UCRichDocument::FromHTML("<p>see <img src=\"data:image/png;base64," + png + "\" alt=\"dot\" width=\"40\"></p>");
     CHECK(pictured.media.size() == 1 && pictured.blocks.size() == 1);
     if (!pictured.blocks.empty()) {
         const auto& runs = pictured.blocks[0].runs;
         CHECK(runs.size() == 2 && runs[1].IsInlineImage() && runs[1].imageAltText == "dot" && runs[1].imageWidthPt == 30.0f);
     }
+    // A picture the clipboard only links to is its alt text.
+    UCRichDocument linked = UCRichDocument::FromHTML("<p><img src=\"https://example.com/logo.png\" alt=\"Logo\"> text</p>");
+    CHECK(linked.media.empty() && linked.blocks.size() == 1
+          && UCRichDocument::ConcatenateRunText(linked.blocks[0].runs) == "[Logo] text");
+    // Right to left: dir on the paragraph or on an element around it.
+    UCRichDocument rtl = UCRichDocument::FromHTML("<div dir=\"rtl\"><p>right</p><h2>heading</h2></div><p>left</p>");
+    CHECK(rtl.blocks.size() == 3 && rtl.blocks[0].rightToLeft && rtl.blocks[1].rightToLeft && !rtl.blocks[2].rightToLeft);
     UCRichDocument ours = UCRichDocument::FromMarkdown("# Title\n\nA **bold** word and *italics*.\n\n- one\n- two\n");
     UCRichDocument back = UCRichDocument::FromHTML(ours.ToHTML());
     CHECK_EQ(back.ToMarkdown(), ours.ToMarkdown());
+}
+
+static void TestLeadingLineBreak() {
+    std::cout << "\n--- A block that starts with an empty line ---\n";
+    // A code block whose first line is empty: its first run carries the break.
+    RichDocBlock code;
+    code.type = RichBlockType::CodeBlock;
+    RichTextRun first;
+    first.text = "int a;";
+    first.lineBreakBefore = true;
+    RichTextRun second;
+    second.text = "return a;";
+    second.lineBreakBefore = true;
+    code.runs = {first, second};
+    // The serializers read the text the editor's positions index into.
+    CHECK_EQ(UCRichDocument::ConcatenateRunText(code.runs), std::string("\nint a;\nreturn a;"));
+    CHECK_EQ(UCRichDocument::ConcatenateRunText(code.runs), UCRichDocumentEditor::RunsText(code.runs));
+    UCRichDocument doc;
+    doc.blocks.push_back(code);
+    CHECK(doc.ToHTML().find("<pre><code>\nint a;\nreturn a;</code></pre>") != std::string::npos);
+    CHECK(doc.ToMarkdown().find("```\n\nint a;\nreturn a;\n```") != std::string::npos);
+    UCRichDocument back = UCRichDocument::FromMarkdown(doc.ToMarkdown());
+    CHECK(!back.blocks.empty() && back.blocks[0].type == RichBlockType::CodeBlock
+          && UCRichDocumentEditor::RunsText(back.blocks[0].runs) == "\nint a;\nreturn a;");
+
+    // A <pre> that starts with a blank line (HTML drops only the newline right
+    // after the tag) keeps that line through the importer and back out.
+    UCRichDocument fromHtml = UCRichDocument::FromHTML("<pre>\n\nint a;\nreturn a;</pre>");
+    CHECK(!fromHtml.blocks.empty() && fromHtml.blocks[0].type == RichBlockType::CodeBlock
+          && UCRichDocumentEditor::RunsText(fromHtml.blocks[0].runs) == "\nint a;\nreturn a;");
+    CHECK(fromHtml.ToHTML().find("<pre><code>\nint a;\nreturn a;</code></pre>") != std::string::npos);
+
+    // A table cell's copied text is the text the cell shows.
+    RichDocBlock table;
+    table.type = RichBlockType::Table;
+    table.tableRows.emplace_back();
+    table.tableRows[0].cells.resize(2);
+    table.tableRows[0].cells[0].runs = {first};
+    RichTextRun plain;
+    plain.text = "b";
+    table.tableRows[0].cells[1].runs = {plain};
+    auto withTable = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("before\n\nafter\n"));
+    withTable->blocks.insert(withTable->blocks.begin() + 1, table);
+    UCRichDocumentEditor ed(withTable);
+    ed.SelectAll();
+    CHECK_EQ(ed.RangeToPlainText(ed.GetSelectionRange()), std::string("before\n\nint a;\tb\n\nafter"));
 }
 
 static void TestNamedStyles() {
@@ -1895,6 +1955,7 @@ int main() {
     TestTrackedChanges();
     TestSections();
     TestHtmlImport();
+    TestLeadingLineBreak();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

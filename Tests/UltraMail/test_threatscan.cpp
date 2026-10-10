@@ -6,6 +6,9 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
+// Version: 0.7.0 - romance scams (the letters of one reader's inbox), the
+//                  "abandoned baggage" advance-fee letter, answers asked for at
+//                  another address, cryptocurrency
 // Version: 0.6.0 - mail authentication: Authentication-Results parsing, DKIM /
 //                  DMARC alignment, the topmost header, genuine mail with
 //                  tracking links, forged and look-alike senders still caught
@@ -18,9 +21,11 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
+#include "UltraMailSenderBrands.h"
 #include "UltraMailThreatScan.h"
 
 #include <string>
+#include <vector>
 
 using namespace UltraMail;
 
@@ -52,9 +57,43 @@ TEST(extracts_anchor_targets_and_their_text) {
     const auto links = ExtractLinks(html, true);
     REQUIRE_EQ(links.size(), (size_t)3);
     REQUIRE_EQ(links[0].host, std::string("example.com"));
-    REQUIRE_EQ(links[0].text, std::string("Click  here"));
+    REQUIRE_EQ(links[0].text, std::string("Click here"));   // as the reader sees it
     REQUIRE_EQ(links[1].host, std::string("other.test"));
     REQUIRE_EQ(links[2].host, std::string("forms.test"));
+}
+
+// A link's text is read as it shows: formatting inside a word does not split
+// it, so an address dressed up with <b> is still the address it claims to be,
+// and every entity is decoded.
+TEST(anchor_text_reads_as_it_shows) {
+    const auto links = ExtractLinks(
+        "<a href=\"https://evil.test/x\">www.pay<b>pal</b>.com</a>"
+        "<a href=\"https://example.com/\">Caf&eacute;&nbsp;&#8211;&nbsp;Men&uuml;</a>", true);
+    REQUIRE_EQ(links.size(), (size_t)2);
+    REQUIRE_EQ(links[0].text, std::string("www.paypal.com"));
+    REQUIRE_EQ(links[1].text, std::string("Caf\xC3\xA9 \xE2\x80\x93 Men\xC3\xBC"));
+}
+
+// The links come from the parsed page: a link written inside an HTML comment
+// or a script is not one the reader can click, an <area> and a <form> are,
+// and a mail's "button" (a table inside the link) reads as its words.
+TEST(links_come_from_the_parsed_page) {
+    const auto links = ExtractLinks(
+        "<!-- <a href=\"https://hidden.test/\">old</a> -->"
+        "<script>var s = '<a href=\"https://script.test/\">x</a>';</script>"
+        "<A HREF='https://upper.test/a?x=1&amp;y=2'>Upper</A>"
+        "<map><area shape=rect href=\"https://area.test/\"></map>"
+        "<a href=\"https://button.test/\"><table><tr><td>Pay</td><td>now</td></tr></table></a>"
+        "<a name=\"anchor-only\">no target</a>"
+        "<form method=post action=\"https://form.test/post\"></form>", true);
+    REQUIRE_EQ(links.size(), (size_t)4);
+    REQUIRE_EQ(links[0].host, std::string("upper.test"));
+    REQUIRE_EQ(links[0].href, std::string("https://upper.test/a?x=1&y=2"));
+    REQUIRE_EQ(links[0].text, std::string("Upper"));
+    REQUIRE_EQ(links[1].host, std::string("area.test"));
+    REQUIRE_EQ(links[2].host, std::string("button.test"));
+    REQUIRE_EQ(links[2].text, std::string("Pay now"));
+    REQUIRE_EQ(links[3].host, std::string("form.test"));
 }
 
 TEST(extracts_bare_urls_from_plain_text) {
@@ -82,6 +121,17 @@ TEST(a_link_that_lies_about_its_target_is_a_scam) {
     REQUIRE(HasFinding(r, "link-target-mismatch"));
     REQUIRE(r.level == ThreatLevel::Scam);
     REQUIRE(!r.Summary().empty());
+}
+
+// The same lie with the address dressed up in formatting: the old tag
+// stripper read "www.pay<b>pal</b>.com" as "www.pay pal .com", which names no
+// site, and the link passed.
+TEST(a_lying_link_text_split_by_formatting_is_still_a_scam) {
+    ScanInput in = Html("service@secure-billing.example",
+        "<a href=\"http://203.0.113.9/login\">www.pay<b>pal</b>.<span>com</span></a>");
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(HasFinding(r, "link-target-mismatch"));
+    REQUIRE(r.level == ThreatLevel::Scam);
 }
 
 TEST(a_sender_claiming_a_brand_it_does_not_own_is_flagged) {
@@ -392,6 +442,30 @@ TEST(image_hosts_are_read_from_src_and_background) {
         "<img src=\"https://a.example/x.png\"><td background='http://b.example/y.jpg'>"
         "<div style=\"background:url(https://c.example/z.png)\"><img src=\"cid:part1\">");
     REQUIRE(hosts.size() == 3);
+    REQUIRE_EQ(hosts[0], std::string("a.example"));
+    REQUIRE_EQ(hosts[1], std::string("b.example"));
+    REQUIRE_EQ(hosts[2], std::string("c.example"));
+}
+
+TEST(image_hosts_come_from_the_pages_css_as_it_applies) {
+    // A <style> rule that dresses an element in a picture counts; a url() of a
+    // font, of a rule that matches nothing, or in a comment, a script or the
+    // text does not.
+    const auto hosts = ExtractImageHosts(
+        "<html><head><style>"
+        "@font-face { font-family: Brand; src: url(https://fonts.example/brand.woff2); }"
+        ".hero { background-image: url('https://brand.example/hero.jpg'); }"
+        ".unused { background: url(https://nowhere.example/x.png); }"
+        "</style></head><body>"
+        "<div class=\"hero\">Welcome</div>"
+        "<!-- <img src=\"https://comment.example/a.png\"> -->"
+        "<script>var s = 'src=\"https://script.example/b.png\"';</script>"
+        "<p>Paste src=https://text.example/c.png into the box.</p>"
+        "<input type=\"image\" src=\"https://button.example/go.png\">"
+        "</body></html>");
+    REQUIRE(hosts.size() == 2);
+    REQUIRE_EQ(hosts[0], std::string("brand.example"));
+    REQUIRE_EQ(hosts[1], std::string("button.example"));
 }
 
 TEST(plain_link_at_finds_the_url_under_a_position) {
@@ -662,4 +736,685 @@ TEST(a_signed_message_is_recognised_but_not_vouched_for) {
         "Content-Type: application/pkcs7-mime; smime-type=signed-data\r\n\r\n"),
         std::string("S/MIME"));
     REQUIRE(MessageSignatureKind("Content-Type: text/plain\r\n\r\nhi").empty());
+}
+
+// ---------------------------------------------------------------------------
+// Romance scams - the letters below are real ones, sent to one reader
+// between 2011 and 2019, as they arrived (names and addresses as sent).
+// ---------------------------------------------------------------------------
+namespace {
+
+ScanInput Letter(const std::string& from, const std::string& subject,
+                 const std::string& body, std::vector<std::string> attachments = {}) {
+    ScanInput in;
+    in.fromAddr = from;
+    in.subject  = subject;
+    in.body     = body;
+    in.attachmentNames = std::move(attachments);
+    return in;
+}
+
+bool IsRomanceScam(const ScanInput& in) {
+    const ThreatReport r = ScanMessage(in);
+    return HasFinding(r, "romance-scam") && r.level == ThreatLevel::Scam;
+}
+
+} // namespace
+
+TEST(romance_horoscope_nurse_from_russia_is_a_scam) {
+    const ScanInput in = Letter("anna.k.tova@gmail.com", "Where are you my dear?",
+        "Good day, my friend! This morning in the horoscope for a laugh read the forecast "
+        "for today.\nThere I was promised a romantic acquaintance, which will be of great "
+        "importance for me for a long time to come. Well, I guess it's fate, not otherwise. "
+        "But somehow that's all no one comes to me first, in the Elevator of charming "
+        "strangers is not, on the foot no one comes, which hour no one asked.\nWell, I'm a "
+        "pushy girl. In short, I go to a Dating site, and find a profile of a person who "
+        "believes in love.\nWell, maybe in horoscopes not only nonsense write, suddenly I "
+        "have a chance?:)) Well and here...I write to You ,what else..?\nAnd now a little "
+        "bit about me. Small (164),thin (size 40), modest in appearance, but very "
+        "temperamental inside.\nMy name is Anna, I'm 31 years old, I work as a nurse, "
+        "divorced. I live in Russia. I'll send you two pictures.I hope you like them. "
+        "\"I shall await your earliest response.\"",
+        { "IMG_942.jpg" });
+    REQUIRE(IsRomanceScam(in));
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(r.Has("romance-scam"));
+    REQUIRE(r.Summary().find("IMG_942.jpg") != std::string::npos);
+    REQUIRE(r.Summary().find("free mailbox (gmail.com)") != std::string::npos);
+}
+
+TEST(romance_are_you_the_real_deal_is_a_scam) {
+    REQUIRE(IsRomanceScam(Letter("Delroy Kneeskern <delroyknkl2w@hotmail.com>", "Hello",
+        "Hello there I am attracted regarding your posting.\n Are you really the real "
+        "deal? I'm just sick of researching untrue humans here.\nI won't be offering you "
+        "to any sort of web websites that require you to signup with your bank card.\n"
+        "You happen to be genuine then answer back to me and I will send you my personal "
+        "details so we could possibly get it started. Waiting fo u",
+        { "ggaqptbrwkq.jpg" })));
+}
+
+TEST(romance_screen_name_guilt_trip_is_caught) {
+    const std::string body =
+        "Bonjour...\nWow, it is so good to see you again\nDon't upset Shui98 or make her "
+        "bored.. Please reply as soon as possible!";
+    // The text alone is worth a second look ...
+    const ThreatReport bare = ScanMessage(Letter("", "", body));
+    REQUIRE(bare.Has("romance-scam"));
+    REQUIRE(bare.level >= ThreatLevel::Suspicious);
+    // ... and with the photo, from a free mailbox, it is the scam itself.
+    REQUIRE(IsRomanceScam(Letter("shui98@gmail.com", "Hi", body, { "me.jpg" })));
+}
+
+TEST(romance_marina_from_the_site_is_a_scam) {
+    REQUIRE(IsRomanceScam(Letter("Marishka <marishklana@gmail.com>",
+        "Marina interkontakt site",
+        "Hi my new friend Stefan !\n\nHow are you? It is nice to find you here among the "
+        "millions of men...\nMarina is writing to you))) I am on the site in search of "
+        "real love\nand my future husband! Hopefully, you look for the same and that is\n"
+        "why I suggest to get to know each other better! What do you think?\nHonesty, "
+        "trust and kindness are the main features of my character so\ndo not hesitate to "
+        "write me at    marishklana@gmail.com    .\nI am sure lucky star is on our "
+        "side)))\n\n\nLooking forward to your soonest reply with  your life story and\n"
+        "photos! And please no playing fool!!! Just serious intentions!\n\n\n\nTruly "
+        "yours,\nMarina",
+        { "me smile.jpg" })));
+}
+
+TEST(romance_yana_from_a_lookalike_domain_is_a_scam) {
+    REQUIRE(IsRomanceScam(Letter(
+        "Yana <redesignedb@uncollatednessi.faceebookinbox.biz>", "How is it going?",
+        "good Day! how are you?everything is good?\nMy name is Yana or simple Yanya. I am "
+        "single lady and look for love.. So this is a reason why I am conatcting you:) I "
+        "have information that you are single too and look for true love and "
+        "relationships. Does it true?\nWill tell you little about me now: My age is 30 "
+        "years,I live in Russia,and I am health care worker. Single never married and "
+        "have no kids. I am optimistic person and have many different hobbies and "
+        "interests. My main dream is to find right man. So thats some information about "
+        "me. I will be happy if you will reply me and tell more about you and your life. "
+        "Hope to find your email soon. bye.",
+        { "62ji.jpg" })));
+}
+
+TEST(romance_thread_asking_for_laptop_money_is_a_scam) {
+    // The latest answer of a long thread, its quotes below it as they arrive.
+    REQUIRE(IsRomanceScam(Letter("anita sam <anitasanton1000@gmail.com>",
+        "Re: this is anita from tg",
+        "I was in Odessa because I wanted to attend a friend wedding and I went back and I "
+        "am taking care of my old mother\nI am in Luhansk state right now\nThis is where am "
+        "from and yes am a hot girl but am not an escort or a prostitute but I respect "
+        "myself so much\nI can't sell my body for money only because my state is not "
+        "good!!\nPlease understand me\nI am for real and I am serious\nI am honest to you "
+        "too\nHope to hear from you soon\n\n"
+        "> I am for real and everything about me on the site is real about me\n"
+        "> I sent you my scan passport and that is me and that is the real me\n"
+        "> I want to fixed myself with a cheap laptop and understand me and such money "
+        "is big for webcam ... please I don't like when some one play with my feelings\n"
+        "> Thank you so much my dear and also for being there for me ... Kisssssss\n"
+        "> send me the money let me get a new laptop and a cheap laptop and we see each "
+        "other on Skype\n")));
+}
+
+TEST(romance_rent_and_escort_review_is_a_scam) {
+    REQUIRE(IsRomanceScam(Letter("", "",
+        "I am 19 years young, attractive and brunette. During my time in school, I was on "
+        "the cheerleading team. I have to pay my rent payment in less than a week. I can "
+        "to provide you with whatever you want and the only thing I want is some "
+        "assistance with paying my housing obligations. I guarantee to give your desires "
+        "in any way possible. I am unable to answer any explicit questions, but one of my "
+        "clients posted a review for me and put it online.\n\nI assure you are not going "
+        "to need to create an account or do a significant typing, except when you dial my "
+        "phone number into your phone. The only thing you are required to do is go to "
+        "female escorts button and look through my review. ... if you look through my "
+        "pictures you will see that I am definitely worth it.\n\nwww.smashallnight.us")));
+}
+
+TEST(romance_hookup_verification_site_is_a_scam) {
+    REQUIRE(IsRomanceScam(Letter("\"Jennifer Smith\" <jennifersth790@hotmail.com>",
+        "Re: want to f.....",
+        "heyyy again,\nyou sound pretty cool and i\xE2\x80\x99m definitely interested in "
+        "meeting up with you.... i was busy today and just come back home.so,it would be "
+        "awesome to talk now and fix a good time to meet... i really just want to fuck if "
+        "you know what i mean.. :).. to get my number just go "
+        "http://doxydaters.com/members/hot/jen87/ and login there .. my number will be "
+        "right on the first page.. they never charge you or anything, they just verify to "
+        "make sure you don't have a criminal history like you aren\xE2\x80\x99t a rapist "
+        "or anything, you know a girl can never be too careful..btw,I lost my cell phone "
+        "today,so call to my home phone instead of cell phone...waiting for your call.",
+        { "Attachment.jpg" })));
+}
+
+TEST(romance_destiny_letter_from_i_ua_is_a_scam) {
+    REQUIRE(IsRomanceScam(Letter("Ira <Elixir_of_Love@i.ua>", "Ira",
+        "Sunny & Cheerful Greetings to you,My Dear Stefan,\n\nI  sincerely believe that "
+        "true happiness is destiny and when\na chance meeting makes your heart beat faster "
+        "then I believe\nthat  you've  found  a  union  that  is  worth nurturing and\n"
+        "exploring  to  make  it unique and everlasting... I have an\nabundant  of  love  "
+        "to  share  and  give to you. I'm drawn to you,it is fate or a cosmic force;it\nis "
+        " strong and yet loving,calling us to be together ... Join me dear,and\nlet's "
+        "start our journey together!!!\n\nRegards,Yours Only Elixir,<<Ira>>.",
+        { "Elixir.jpg", "your little Kitty;).jpg" })));
+}
+
+TEST(romance_lawyer_in_tokyo_is_a_scam) {
+    REQUIRE(IsRomanceScam(Letter("\"Michael Kidman-Bengoshi\" <mikl231@live.com>",
+        "Hi!Im live in Tokyo,are you still looking for friend?Are you ok in earthquake?",
+        "Hi!\nHow are you?\nWe emailed each other a long time ago!\nMada tomodachi "
+        "sagashiteimasuka?Are you ok in earthquake?\nI am Michael\nI just came back to "
+        "Tokyo from business trip to New-York and London!\nI am emailing you my 2 photos!\n"
+        "Are you still using- info@filipinokisses.com?\nGive me your new email addresses!\n"
+        "Im lawyer!\nI work and live in Tokyo!\nI am looking for friend to go for "
+        "dinner,tea together,movies ...\nI have blue eyes,light brown hair,people say that "
+        "handome\nI always do my best to be kind,sincere,goodhearted,yasashi and "
+        "gentleman!\nMy dream is serious relationship and marriage in future,I believe in "
+        "true love ... In addition I am rich-that can be helpful-I will pay for marriage "
+        "and buy house,take care of everything!\nLets meet,have tea or dinner together 1st "
+        "...\nEmail me!\nGive me your email addresses-your keitai and computer email "
+        "addresses!\nSee you,\nBye\nMichael Ford",
+        { "0002052fDwt.jpg", "000B052fDwt.jpg" })));
+}
+
+TEST(romance_photo_in_a_raw_message_counts) {
+    const std::string raw =
+        "From: Anna <anna.k.tova@gmail.com>\r\n"
+        "Subject: Where are you my dear?\r\n"
+        "MIME-Version: 1.0\r\n"
+        "Content-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n"
+        "--b1\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
+        "I go to a Dating site and find a profile of a person who believes in love. "
+        "My name is Anna, I'm 31 years old.\r\n"
+        "--b1\r\nContent-Type: image/jpeg; name=\"IMG_942.jpg\"\r\n"
+        "Content-Disposition: attachment; filename=\"IMG_942.jpg\"\r\n"
+        "Content-Transfer-Encoding: base64\r\n\r\n/9j/4AAQSkZJRg==\r\n"
+        "--b1--\r\n";
+    const ThreatReport r = ScanRawMessage(raw);
+    REQUIRE(r.Has("romance-scam"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(HasFindingCode(r.Codes(), "romance-scam"));
+}
+
+TEST(a_partners_holiday_photos_are_not_a_romance_scam) {
+    // Pet names, photos and "write back" - but nothing only a stranger writes.
+    const ThreatReport r = ScanMessage(Letter("erika.example@gmail.com", "Our holiday",
+        "Hi my dear, here are the photos from our week in Spain, I hope you like them. "
+        "Write back soon! Kisses",
+        { "beach.jpg", "dinner.jpg", "sunset.jpg" }));
+    REQUIRE(!r.Has("romance-scam"));
+    REQUIRE(r.level == ThreatLevel::Clean);
+}
+
+TEST(a_job_application_with_a_photo_is_not_a_romance_scam) {
+    const ThreatReport r = ScanMessage(Letter("anna.applicant@gmail.com",
+        "Application for the position of nurse",
+        "Dear Sir or Madam, I saw your job posting. My name is Anna, I'm 31 years old and "
+        "I work as a nurse; I am attracted to your clinic's caring atmosphere. Please find "
+        "attached my CV and my photo. I await your earliest response.",
+        { "Anna_CV.pdf", "photo.jpg" }));
+    REQUIRE(!r.Has("romance-scam"));
+}
+
+TEST(a_reply_to_a_classified_ad_is_not_a_romance_scam) {
+    const ThreatReport r = ScanMessage(Letter("john.buyer@gmail.com", "Your sofa",
+        "Hello, I saw your ad for the sofa. My name is John. Is it still available? "
+        "Please reply, I can pick it up on Saturday."));
+    REQUIRE(!r.Has("romance-scam"));
+}
+
+TEST(a_dating_newsletter_is_not_a_romance_scam) {
+    ScanInput in = Letter("news@datingtips.example", "Find true love this autumn",
+        "Looking for love? Update your profile with your photos - members with photos get "
+        "more messages. Write back to us any time.");
+    in.listUnsubscribe = "<mailto:unsubscribe@datingtips.example>";
+    REQUIRE(!ScanMessage(in).Has("romance-scam"));
+}
+
+// ---------------------------------------------------------------------------
+// The "abandoned baggage" advance-fee letter, and answers asked for elsewhere
+// ---------------------------------------------------------------------------
+TEST(abandoned_baggage_advance_fee_is_a_scam) {
+    const ThreatReport r = ScanMessage(Letter("Harrisburg Airport <info@airport-claims.example>",
+        "Baggage & Laugages dispute",
+        "Good day to you.\nI am Mr Lee. Byrne ,in-charge for or lost abandoned baggage,and "
+        "laugages here in the Harrisburg International Airport service Pennsylvania USA. "
+        "Due to a vital research here in our office,we found a baggage that contains the "
+        "amount of $7.5 million united state dollars. This baggage has been here in our "
+        "custody without no claim of any individual since two years now ... I am seriously "
+        "looking for a trust worthy person with a kinder-ed heart of God ... you shall "
+        "receive 50% out of the amount as your own share ... if you are willing to be "
+        "honest and God fearing so that we can both handle this deal in one mind.\n"
+        "Please find my contact email address for us to proceed : ( l.byrne96@yahoo.com ).\n"
+        "Thank you for receiving my private email message.\nStay Blessed."));
+    REQUIRE(r.Has("advance-fee-fraud"));
+    REQUIRE(r.Has("reply-elsewhere"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(the_senders_own_address_in_the_body_is_not_reply_elsewhere) {
+    REQUIRE(!ScanMessage(Letter("Marishka <marishklana@gmail.com>", "Hi",
+        "do not hesitate to write me at marishklana@gmail.com .")).Has("reply-elsewhere"));
+    REQUIRE(!ScanMessage(Letter("anna@shop.example", "Order",
+        "Questions? Contact me at support@shop.example.")).Has("reply-elsewhere"));
+}
+
+// ---------------------------------------------------------------------------
+// Cryptocurrency
+// ---------------------------------------------------------------------------
+TEST(any_crypto_mail_gets_the_crypto_caution) {
+    const ThreatReport r = ScanMessage(Letter("news@example.test", "Markets",
+        "The bitcoin price rose by four percent today."));
+    REQUIRE(r.Has("crypto-content"));
+    REQUIRE(r.level == ThreatLevel::Clean);   // a word of caution, not a verdict
+    REQUIRE(!ScanMessage(Letter("news@example.test", "Security update",
+        "UltraCrypt now uses cryptography from libsodium.")).Has("crypto-content"));
+}
+
+TEST(a_proven_exchange_is_cautioned_but_not_flagged) {
+    ScanInput in = Letter("Coinbase <no-reply@coinbase.com>", "Your weekly summary",
+        "Your balance: 0.5 BTC. Coinbase will never ask for your recovery phrase.");
+    in.authResults = "mx.example.net; dkim=pass header.d=coinbase.com; "
+                     "dmarc=pass header.from=coinbase.com";
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(r.Has("crypto-content"));
+    REQUIRE(!r.Has("crypto-investment-lure"));
+    REQUIRE(!r.Has("crypto-wallet-secret"));
+    REQUIRE(r.level == ThreatLevel::Clean);
+}
+
+TEST(asking_for_a_recovery_phrase_is_a_scam) {
+    const ThreatReport r = ScanMessage(Letter("security@metamask-support.example",
+        "Wallet suspended",
+        "Your MetaMask wallet has been suspended. Please verify your 12-word recovery "
+        "phrase to reactivate it."));
+    REQUIRE(r.Has("crypto-wallet-secret"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    // Telling the reader never to share it is the opposite.
+    REQUIRE(!ScanMessage(Letter("help@wallet.example", "Tip",
+        "Keep your seed phrase offline. Never enter your seed phrase on a website."))
+        .Has("crypto-wallet-secret"));
+}
+
+TEST(a_bitcoin_address_to_pay_into_is_a_scam) {
+    const ThreatReport r = ScanMessage(Letter("hacker@mailbox.example", "Your device",
+        "I recorded you through your camera. Pay 1500 USD in Bitcoin to this address: "
+        "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh within 48 hours."));
+    REQUIRE(r.Has("crypto-payment-demand"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(ScanMessage(Letter("x@mailbox.example", "Invoice",
+        "Send the BTC to 1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2 today."))
+        .Has("crypto-payment-demand"));
+    // A long number or a word is not an address.
+    REQUIRE(!ScanMessage(Letter("x@shop.example", "Bitcoin accepted",
+        "We accept bitcoin. Order 1234567890123456789012345678 ships today."))
+        .Has("crypto-payment-demand"));
+}
+
+TEST(promised_crypto_profit_is_a_scam) {
+    const ThreatReport r = ScanMessage(Letter("anna.invest@gmail.com", "My secret",
+        "My uncle showed me this trading platform: I make 30% daily returns trading "
+        "bitcoin, guaranteed profit, no risk."));
+    REQUIRE(r.Has("crypto-investment-lure"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(the_fbi_atm_card_letter_is_a_scam) {
+    const ThreatReport r = ScanMessage(Letter("FBI <director@fbi-atm-center.example>",
+        "Attention Beneficiary",
+        "Federal Bureau of Investigation\nAttention Beneficiary,\nNOTE: If you received "
+        "this message in your SPAM / BULK folder ... its a legitimate email.\nWe the Federal "
+        "Bureau of Investigation (FBI) recover some huge amount of money from Fraudsters "
+        "... in conjunction with the International Monitory Funds (IMF) ... to share the "
+        "huge amount of money among those that have been scam ... your name and address "
+        "where selected randomly as one of the Scam Victims.\nThe National Central Bureau "
+        "of Interpol enhanced by the United Nations ... Contract Sum, Lottery/Gambling, "
+        "Inheritance and the likes. ... your payment totaling $2,900,000.00(Two Million "
+        "Nine Hundred Thousand Dollars). will be released to you via a custom pin based "
+        "ATM card ... contact the ATM Card Center via email for their requirement to "
+        "proceed and procure your Approval of Payment Warrant ... which will cost you $250 "
+        "Usd only ... including taxes, custom paper and clearance duty\n\nDr. Lord Ruben\n"
+        "ATM Card Center Director\nPrivate Email: lordbenn@foxmail.com\n"));
+    REQUIRE(r.Has("advance-fee-fraud"));
+    REQUIRE(r.Has("reply-elsewhere"));
+    REQUIRE(r.Has("government-impersonation"));   // "FBI" in the name and the domain
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+TEST(everyday_words_near_crypto_and_romance_stay_quiet) {
+    // Apple's AirDrop is not a crypto airdrop.
+    REQUIRE(!ScanMessage(Letter("tips@apple.example", "Share faster",
+        "Use AirDrop to share your photos with friends nearby.")).Has("crypto-content"));
+    // A form's "Sex:" field is not an offer.
+    REQUIRE(!ScanMessage(Letter("clinic.reception@gmail.com", "Your appointment",
+        "My name is Dr. Weber. Please bring the form: Name, Sex, Date of birth. "
+        "Write back if the time does not suit you."))
+        .Has("romance-scam"));
+    // A reset link's token is not a wallet address.
+    REQUIRE(!ScanMessage(Letter("noreply@bitcoin-news.example", "Reset",
+        "Reset your bitcoin news password: https://bitcoin-news.example/reset?token="
+        "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2")).Has("crypto-payment-demand"));
+}
+
+TEST(the_next_of_kin_attorney_letter_is_a_scam) {
+    const ThreatReport r = ScanMessage(Letter("Foga Bama <fogabama.esq@mailbox.example>",
+        "Dear Friend",
+        "Dear Friend,\n\nI am Foga Bama, personal attorney to Mr. John W. Froling ... On "
+        "the 21st of October, 2007, my client, his wife and their only daughter, were "
+        "involved in a car accident ... all occupants of the vehicle lost their lives. ... "
+        "he left behind the sum of Ten million United States of American dollars (US$10 "
+        "million) in a Bank. ... The Bank has issued me a notice to provide the next of kin "
+        "or have his account confiscated ... unserviceable and dormant accounts. ... I seek "
+        "your consent to present you as the next of kin to the deceased since you have the "
+        "same last (surname) name. ... I wish to use part of my share to donate to "
+        "charitable organisations and churches. ... we shall then discuss the sharing ratio "
+        "and modalities for transfer.\n\nYour brother and friend,\nMr. Foga Bama, Esq."));
+    REQUIRE(r.Has("advance-fee-fraud"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+}
+
+// ---------------------------------------------------------------------------
+// Sender domains dressed up as a brand's
+// ---------------------------------------------------------------------------
+namespace {
+std::string Imitated(const std::string& domain) {
+    const DomainLookalike l = BrandImitatedByDomain(domain);
+    return l.brand ? l.brand->id : std::string();
+}
+} // namespace
+
+TEST(lookalike_sender_domains_are_recognised) {
+    // Yana's letter: Facebook with a doubled "e", padded with "inbox".
+    const DomainLookalike yana = BrandImitatedByDomain("uncollatednessi.faceebookinbox.biz");
+    REQUIRE(yana.brand != nullptr);
+    REQUIRE_EQ(yana.brand->id, std::string("facebook"));
+    REQUIRE(yana.kind == LookalikeKind::Misspelt);
+    REQUIRE_EQ(yana.worn, std::string("faceebook"));
+
+    REQUIRE_EQ(Imitated("paypal-secure-login.com"), std::string("paypal"));
+    REQUIRE(BrandImitatedByDomain("paypal-secure-login.com").kind == LookalikeKind::Name);
+    REQUIRE_EQ(Imitated("appleidverify.com"), std::string("apple"));
+    REQUIRE_EQ(Imitated("amaz0n-billing.com"), std::string("amazon"));
+    REQUIRE_EQ(Imitated("paypa1.com"), std::string("paypal"));
+    REQUIRE_EQ(Imitated("rnicrosoft-account.net"), std::string("microsoft"));
+    REQUIRE_EQ(Imitated("faceboook.com"), std::string("facebook"));
+    REQUIRE_EQ(Imitated("mail.linkedln-notify.com"), std::string("linkedin"));
+    REQUIRE_EQ(Imitated("instagrarn.top"), std::string("instagram"));
+    const DomainLookalike own = BrandImitatedByDomain("paypal.com.account-check.ru");
+    REQUIRE(own.kind == LookalikeKind::OwnDomain);
+    REQUIRE_EQ(own.worn, std::string("paypal.com"));
+}
+
+TEST(ordinary_domains_with_a_brand_word_are_not_lookalikes) {
+    for (const char* d : { "zoomcare.com", "cdn.discordapp.com", "redditmail.com",
+                           "myhermes.de", "dropboxmail.com", "spotify-news.example",
+                           "netflix-online.example", "applewood-estates.com",
+                           "amazonas-reisen.de", "pineapple-shop.example",
+                           "hermes.uni-example.de", "telecom-services.example", "interact.example",
+                           "canvas-studio.example", "goggles-shop.example", "revolt.example",
+                           "paypal.xyz", "gmail.com", "facebookmail.com", "mail.paypal.de",
+                           "amazonses.com", "paypal-community.com", "metamask.io" })
+        REQUIRE_EQ(Imitated(d), std::string());
+}
+
+TEST(a_lookalike_sender_is_a_scam) {
+    const ThreatReport r = ScanMessage(Letter("Yana <redesignedb@uncollatednessi.faceebookinbox.biz>",
+        "How is it going?", "Hello, how are you?"));
+    REQUIRE(r.Has("sender-domain-lookalike"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(r.Summary().find("faceebook") != std::string::npos);
+    REQUIRE(r.Summary().find("Facebook") != std::string::npos);
+    REQUIRE(!ScanMessage(Letter("Facebook <notification@facebookmail.com>", "New login",
+        "A new login to your account.")).Has("sender-domain-lookalike"));
+}
+
+// ---------------------------------------------------------------------------
+// Government agencies and international organisations
+// ---------------------------------------------------------------------------
+TEST(an_agency_in_the_senders_name_from_elsewhere_is_a_scam) {
+    ScanInput in = Letter("interpol.police@gmail.com", "Notice", "Please contact us.");
+    in.fromName = "INTERPOL Police Department";
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(r.Has("government-impersonation"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(r.Summary().find("Interpol") != std::string::npos);
+}
+
+TEST(a_letter_in_an_agencys_name_about_your_money_is_flagged) {
+    const ThreatReport r = ScanMessage(Letter("payments.office@yahoo.com", "Your compensation",
+        "We the International Monetary Fund have approved your compensation payment as a "
+        "scam victim. Contact this office."));
+    REQUIRE(r.Has("government-impersonation"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+}
+
+TEST(real_agencies_and_news_about_them_are_not_impersonation) {
+    for (const char* from : { "alerts@ic3.gov", "news@fbi.gov", "press@interpol.int",
+                              "media@imf.org", "info@bka.de", "kontakt@bundespolizei.bund.de",
+                              "noreply@hmrc.gov.uk", "office@justice.gouv.fr" }) {
+        ScanInput in = Letter(from, "Your case number",
+            "Dear beneficiary, the FBI and Interpol hereby inform you about your case.");
+        REQUIRE(!ScanMessage(in).Has("government-impersonation"));
+    }
+    // A news item mentions the FBI without writing in its name.
+    REQUIRE(!ScanMessage(Letter("friend@gmail.com", "Did you see this?",
+        "The FBI director said today that romance scams cost a billion dollars."))
+        .Has("government-impersonation"));
+    // A newsletter from a domain of its own may write about anyone.
+    ScanInput news = Letter("digest@news.example", "FBI warns of romance scams",
+        "The FBI hereby warns: never send money to someone you met online.");
+    news.listUnsubscribe = "<mailto:unsubscribe@news.example>";
+    REQUIRE(!ScanMessage(news).Has("government-impersonation"));
+    // "Cia." is a company, not the CIA.
+    ScanInput company = Letter("vendas@souza.example", "Pedido", "Obrigado pelo pedido.");
+    company.fromName = "Souza & Cia";
+    REQUIRE(!ScanMessage(company).Has("government-impersonation"));
+}
+
+// ---------------------------------------------------------------------------
+// Settings > Spam/scam warnings
+// ---------------------------------------------------------------------------
+TEST(a_kind_of_warning_switched_off_is_not_reported) {
+    ScanInput in = Letter("anna.k.tova@gmail.com", "Where are you my dear?",
+        "I go to a Dating site and find a profile of a person who believes in love. My "
+        "name is Anna, I'm 31 years old. I hope you like my photos. Write back!",
+        { "IMG_942.jpg" });
+    REQUIRE(ScanMessage(in).Has("romance-scam"));
+    in.options.romance = false;
+    const ThreatReport off = ScanMessage(in);
+    REQUIRE(!off.Has("romance-scam"));
+    REQUIRE(off.level == ThreatLevel::Clean);         // its points went with it
+    REQUIRE_EQ(off.score, 0);
+
+    ScanInput crypto = Letter("news@example.test", "Markets", "Bitcoin rose today.");
+    crypto.options.cryptoCaution = false;
+    REQUIRE(!ScanMessage(crypto).Has("crypto-content"));
+    crypto.options = ThreatScanOptions{};
+    crypto.options.phishing = false;                  // another kind: no effect here
+    REQUIRE(ScanMessage(crypto).Has("crypto-content"));
+}
+
+TEST(every_finding_belongs_to_a_switch) {
+    ThreatScanOptions none;
+    none.phishing = none.romance = none.advanceFee = none.government = false;
+    none.cryptoScams = none.cryptoCaution = none.attachments = none.spamFlag = false;
+    for (const char* code : { "spam-flag", "auth-failure", "brand-impersonation",
+                              "sender-domain-lookalike", "borrowed-brand-pictures",
+                              "link-userinfo", "link-ip-host", "link-punycode",
+                              "link-nonascii-host", "link-shortener", "link-target-mismatch",
+                              "link-brand-mismatch", "link-brand-lookalike",
+                              "link-domain-lookalike",
+                              "insecure-login-link", "many-foreign-domains",
+                              "credential-request", "advance-fee-fraud", "reply-to-mismatch",
+                              "reply-elsewhere", "attachment-disguised-executable",
+                              "attachment-executable", "attachment-double-extension",
+                              "romance-scam", "government-impersonation", "crypto-content",
+                              "crypto-wallet-secret", "crypto-payment-demand",
+                              "crypto-investment-lure" }) {
+        REQUIRE(!FindingEnabled(none, code));
+        REQUIRE(FindingEnabled(ThreatScanOptions{}, code));
+    }
+}
+
+TEST(the_process_wide_options_reach_raw_scans) {
+    const std::string raw =
+        "From: news@example.test\r\nSubject: Markets\r\n"
+        "Content-Type: text/plain\r\n\r\nBitcoin rose today.\r\n";
+    REQUIRE(ScanRawMessage(raw).Has("crypto-content"));
+    ThreatScanOptions quiet;
+    quiet.cryptoCaution = false;
+    SetThreatScanOptions(quiet);
+    const bool reported = ScanRawMessage(raw).Has("crypto-content");
+    SetThreatScanOptions(ThreatScanOptions{});       // back for the other tests
+    REQUIRE(!reported);
+    REQUIRE(GetThreatScanOptions() == ThreatScanOptions{});
+}
+
+// ---------------------------------------------------------------------------
+// Look-alike letters of another script, and look-alike link targets
+// ---------------------------------------------------------------------------
+TEST(punycode_labels_are_decoded) {
+    // "pаypal" with a Cyrillic "а" (U+0430), as it travels: xn--pypal-4ve.
+    REQUIRE_EQ(DomainToUnicode("xn--pypal-4ve.com"), std::string("p\xD0\xB0ypal.com"));
+    REQUIRE_EQ(DomainToUnicode("mail.xn--mnchen-3ya.de"), std::string("mail.m\xC3\xBCnchen.de"));
+    REQUIRE_EQ(DomainToUnicode("example.com"), std::string("example.com"));
+    REQUIRE_EQ(DomainToUnicode("xn--$$$.com"), std::string("xn--$$$.com"));   // kept as written
+}
+
+TEST(a_brand_in_lookalike_letters_is_a_homograph) {
+    // A brand's own domain in Cyrillic letters, as punycode and as text.
+    const DomainLookalike paypal = BrandImitatedByDomain("xn--pypal-4ve.com");
+    REQUIRE(paypal.brand != nullptr);
+    REQUIRE_EQ(paypal.brand->id, std::string("paypal"));
+    REQUIRE(paypal.kind == LookalikeKind::Homograph);
+    REQUIRE_EQ(paypal.letters, std::string("Cyrillic"));
+    REQUIRE_EQ(paypal.unicode, std::string("p\xD0\xB0ypal.com"));
+    REQUIRE_EQ(Imitated("\xD0\xB0pple.com"), std::string("apple"));          // "аpple.com"
+    REQUIRE_EQ(Imitated("xn--pple-43d.com"), std::string("apple"));
+    REQUIRE_EQ(Imitated("xn--facebok-fjg.net"), std::string("facebook"));      // "faceboоk" + "net"
+    // The bare name under another suffix, in foreign letters, is a claim too.
+    REQUIRE(BrandImitatedByDomain("p\xD0\xB0ypal.xyz").kind == LookalikeKind::Homograph);
+    // Greek and accented letters.
+    REQUIRE_EQ(Imitated("\xCE\xBFpenai.com"), std::string("openai"));       // Greek omicron
+    REQUIRE_EQ(BrandImitatedByDomain("\xCE\xBFpenai.com").letters, std::string("Greek"));
+    REQUIRE_EQ(Imitated("amaz\xC3\xB6n-login.com"), std::string("amazon")); // "amazön"
+    // Real words in other scripts are not imitations.
+    for (const char* d : { "xn--mnchen-3ya.de", "m\xC3\xBCnchen.de", "xn--80adxhks.xn--p1ai",
+                           "\xE6\x9D\xB1\xE4\xBA\xAC.jp", "b\xC3\xBC" "cher.de" })
+        REQUIRE_EQ(Imitated(d), std::string());
+    // Nor is a mailbox provider's name, which is no brand.
+    REQUIRE_EQ(Imitated("gm\xD0\xB0il.com"), std::string());
+}
+
+TEST(a_homograph_sender_is_a_scam) {
+    const ThreatReport r = ScanMessage(Letter("PayPal <service@xn--pypal-4ve.com>",
+        "Your account", "Please confirm your details."));
+    REQUIRE(r.Has("sender-domain-lookalike"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(r.Summary().find("Cyrillic") != std::string::npos);
+    REQUIRE(r.Summary().find("p\xD0\xB0ypal.com") != std::string::npos);
+}
+
+TEST(a_link_to_a_lookalike_domain_is_flagged) {
+    const ThreatReport r = ScanMessage(Html("news@club.example",
+        "<p>Your friend tagged you.</p>"
+        "<a href=\"https://faceebook-login.com/photo\">See the photo</a>"));
+    REQUIRE(r.Has("link-domain-lookalike"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(r.Summary().find("See the photo") != std::string::npos);
+    REQUIRE(r.Summary().find("faceebook-login.com") != std::string::npos);
+    REQUIRE(ScanMessage(Html("news@club.example",
+        "<a href=\"https://xn--pypal-4ve.com/\">Pay</a>")).Has("link-domain-lookalike"));
+    REQUIRE(ScanMessage(Html("news@club.example",
+        "<a href=\"https://paypal-secure-login.com/\">Log in</a>")).Has("link-domain-lookalike"));
+}
+
+TEST(links_to_brands_and_ordinary_sites_are_not_lookalikes) {
+    const ThreatReport r = ScanMessage(Html("news@club.example",
+        "<a href=\"https://www.facebook.com/club\">Facebook</a>"
+        "<a href=\"https://cdn.discordapp.com/x.png\">Discord</a>"
+        "<a href=\"https://www.zoomcare.com/\">Book a visit</a>"
+        "<a href=\"https://applewood-estates.com/\">Homes</a>"
+        "<a href=\"https://www.redditmail.com/x\">Digest</a>"
+        "<a href=\"https://www.m\xC3\xBCnchen.de/\">M\xC3\xBCnchen</a>"));
+    REQUIRE(!r.Has("link-domain-lookalike"));
+}
+
+// ---------------------------------------------------------------------------
+// The reader's own lists: trusted and blocked senders
+// ---------------------------------------------------------------------------
+TEST(sender_lists_match_addresses_and_domains) {
+    SenderLists lists;
+    lists.trusted = { "erika@example.org" };
+    lists.blocked = { "spam@mailbox.example", "@junk.example" };
+    REQUIRE(lists.Trusts("Erika <ERIKA@Example.org>"));
+    REQUIRE(!lists.Trusts("other@example.org"));
+    REQUIRE_EQ(lists.BlockedBy("spam@mailbox.example"), std::string("spam@mailbox.example"));
+    REQUIRE_EQ(lists.BlockedBy("a@junk.example"), std::string("@junk.example"));
+    REQUIRE_EQ(lists.BlockedBy("b@mail.junk.example"), std::string("@junk.example"));   // below it
+    REQUIRE_EQ(lists.BlockedBy("c@notjunk.example"), std::string());               // not a suffix
+    REQUIRE_EQ(lists.BlockedBy("other@mailbox.example"), std::string());
+    REQUIRE_EQ(SenderLists::Normalize(" Name <A@B.Example> "), std::string("a@b.example"));
+}
+
+TEST(sender_list_entries_are_addresses_or_blocked_domains) {
+    REQUIRE_EQ(SenderLists::Entry(" Friend@Example.org ", false), std::string("friend@example.org"));
+    REQUIRE_EQ(SenderLists::Entry("example.org", true), std::string("@example.org"));
+    REQUIRE_EQ(SenderLists::Entry("@Example.org", true), std::string("@example.org"));
+    REQUIRE_EQ(SenderLists::Entry("@example.org", false), std::string());   // trust is per address
+    REQUIRE_EQ(SenderLists::Entry("example.org", false), std::string());
+    REQUIRE_EQ(SenderLists::Entry("nobody@localhost", true), std::string());
+    REQUIRE_EQ(SenderLists::Entry("a@b@example.org", true), std::string());
+    REQUIRE_EQ(SenderLists::Entry("two words@example.org", true), std::string());
+}
+
+TEST(a_blocked_senders_mail_is_marked_as_spam) {
+    ScanInput in = Letter("friendly@shop.example", "Hello", "An ordinary message.");
+    in.senderBlockedBy = "friendly@shop.example";
+    ThreatReport r = ScanMessage(in);
+    REQUIRE(r.Has("blocked-sender"));
+    REQUIRE(r.level == ThreatLevel::Suspicious);
+    REQUIRE(r.Summary().find("You blocked friendly@shop.example") != std::string::npos);
+    in.senderBlockedBy = "@shop.example";
+    REQUIRE(ScanMessage(in).Summary().find("everything from shop.example") != std::string::npos);
+}
+
+TEST(a_trusted_sender_keeps_only_the_warnings_that_catch_a_lie) {
+    // A friend's letter that happens to read like a romance scam: trusted, clean.
+    ScanInput letter = Letter("anna.k.tova@gmail.com", "Where are you my dear?",
+        "I go to a Dating site and find a profile of a person who believes in love. My "
+        "name is Anna, I'm 31 years old. I hope you like my photos. Write back!",
+        { "IMG_942.jpg" });
+    REQUIRE(ScanMessage(letter).Has("romance-scam"));
+    letter.senderTrusted = true;
+    const ThreatReport trusted = ScanMessage(letter);
+    REQUIRE(!trusted.Has("romance-scam"));
+    REQUIRE(trusted.level == ThreatLevel::Clean);
+    // A link that lies, and a forged From address, still count.
+    ScanInput lie = Html("erika@example.org",
+        "<a href=\"http://203.0.113.9/login\">www.paypal.com</a>");
+    lie.authResults = "mx.example.net; dmarc=fail header.from=example.org";
+    lie.senderTrusted = true;
+    const ThreatReport r = ScanMessage(lie);
+    REQUIRE(r.Has("link-target-mismatch"));
+    REQUIRE(r.Has("auth-failure"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    REQUIRE(FindingKeptForTrustedSender("crypto-wallet-secret"));
+    REQUIRE(!FindingKeptForTrustedSender("crypto-content"));
+    REQUIRE(!FindingKeptForTrustedSender("advance-fee-fraud"));
+}
+
+TEST(raw_scans_read_the_process_wide_sender_lists) {
+    const std::string raw =
+        "From: Shop <deals@shop.example>\r\nSubject: Offer\r\n"
+        "Content-Type: text/plain\r\n\r\nBitcoin rose today.\r\n";
+    REQUIRE(!ScanRawMessage(raw).Has("blocked-sender"));
+    SenderLists lists;
+    lists.blocked = { "@shop.example" };
+    SetSenderLists(lists);
+    const ThreatReport blocked = ScanRawMessage(raw);
+    lists.blocked.clear();
+    lists.trusted = { "deals@shop.example" };
+    SetSenderLists(lists);
+    const ThreatReport trusted = ScanRawMessage(raw);
+    SetSenderLists(SenderLists{});                      // back for the other tests
+    REQUIRE(blocked.Has("blocked-sender"));
+    REQUIRE(!trusted.Has("crypto-content"));            // the caution is a guessed kind
+    REQUIRE(GetSenderLists() == SenderLists{});
 }

@@ -53,9 +53,11 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # UltraClipboard shows the clipboard history UltraDesktop records, and
 # records it itself while it is open on another desktop.
 # UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
+# UltraCanvasStart, the setup application, is in the bundle like every app;
+# scripts/package-ultracanvasstart.sh cuts it out of the bundle on its own.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraWeb)
+      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.

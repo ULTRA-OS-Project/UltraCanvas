@@ -1,4 +1,13 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.18.0 - the Date column is as wide as its widest date plus 6 px, and
+//                   never narrower than its header's caption and sort triangle;
+//                   re-measured from UltraCanvasListView::OnModelChanged
+// Version: 0.17.0 - Always trust / Block this sender / Block everything from the
+//                   domain in both menus; RescanSender (off the UI thread)
+// Version: 0.16.0 - the reading pane's sender menu: copy the address, the
+//                   sender's mail, the address book, spam (SenderMenuItems)
+// Version: 0.15.0 - RecheckShownMessage: the message on screen scanned again when
+//                   the scam warnings change
 // Version: 0.14.2 - ShowPendingPreviewNow: the selected message in the window's
 //                  first frame at start
 // Version: 0.14.1 - the folder tree, the list's rebuild and the reading pane in
@@ -32,9 +41,12 @@
 #include "UltraMailTheme.h"
 #include "UltraMailSenderBrands.h"
 #include "UltraMailFolderNames.h"
+#include "UltraMailSyncEngine.h"   // CachedBodyPath
 #include "UltraMailTrace.h"
 #include "UltraCanvasApplication.h"   // PostToUIThread
+#include "UltraCanvasClipboard.h"     // SetClipboardText
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
@@ -49,6 +61,9 @@
 #include <ctime>
 #include <optional>
 #include <set>
+#include <iterator>
+#include <thread>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -62,7 +77,8 @@ namespace {
 constexpr int kFromWidth    = 160;
 constexpr int kBadgeWidth   = 26;   // the sender badge column, left of Subject
 constexpr int kSubjectMin   = 140;
-constexpr int kDateWidth    = 88;
+constexpr int kDateWidth    = 88;   // until the dates are measured (FitDateColumn)
+constexpr int kDateColumn   = 3;
 constexpr int kRowHeight    = 22;
 constexpr int kHeaderHeight = 22;
 constexpr int kSplitterGap  = 8;   // the page shows through between the cards
@@ -150,27 +166,64 @@ public:
     explicit MessageListView(const std::string& id) : UltraCanvasListView(id) {}
 
     std::shared_ptr<UltraCanvasMultiColumnListModel> model;
+    // The dates' font and the gap the delegate leaves before them: the Date
+    // column is the widest date plus that gap (FitDateColumn).
+    float dateFontSize = 9.0f;
+    int   dateTextGap  = 6;
+
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+        // Measured where a render context is certain, before the rows are
+        // painted at the new widths.
+        if (dateWidthStale && ctx) FitDateColumn(ctx);
+        UltraCanvasListView::Render(ctx, dirtyRect);
+    }
 
     void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override {
         UltraCanvasListView::Arrange(finalRect, ctx);
         FitColumns();
     }
+
     void SetBounds(const Rect2Df& bounds) override {
         UltraCanvasListView::SetBounds(bounds);
         FitColumns();
     }
 
+protected:
+    // Any change of the rows has the Date column measured again at the next
+    // paint.
+    void OnModelChanged() override { dateWidthStale = true; }
+
 private:
+    bool dateWidthStale = true;
+    int  dateWidth = kDateWidth;
+
+    // The Date column: its widest date plus the gap before it - in bold, as
+    // unread mail shows it, so marking a message read or unread never moves
+    // the column - and at least what its header needs for the caption and the
+    // sort triangle, measured as the caption reads in any language. The
+    // month names come from strftime, so they are measured too, not assumed.
+    void FitDateColumn(IRenderContext* ctx) {
+        dateWidthStale = false;
+        if (!model || model->GetColumnCount() <= kDateColumn) return;
+        FontStyle bold;
+        bold.fontSize = dateFontSize;
+        bold.fontWeight = FontWeight::Bold;
+        const int dates = MeasureColumnTextWidth(ctx, kDateColumn, bold);
+        dateWidth = std::max(dates > 0 ? dates + dateTextGap : 0, MeasureHeaderWidth(ctx, kDateColumn));
+        FitColumns();
+    }
+
     void FitColumns() {
         if (!model || model->GetColumnCount() < 4) return;
         if (ColumnsUserAdjusted()) return;   // once dragged, keep the user's widths
         const int w = static_cast<int>(GetWidth());
         if (w <= 0) return;
+        if (GetColumnWidth(kDateColumn) != dateWidth) SetColumnWidth(kDateColumn, dateWidth);
         // Subject fills the width left by From/badge/Date (their effective
         // widths), leaving room for the vertical scrollbar. Uses the per-view
         // override so it composes with interactive resize instead of rewriting
         // the model.
-        int subj = w - GetColumnWidth(0) - GetColumnWidth(1) - GetColumnWidth(3) - 20;
+        int subj = w - GetColumnWidth(0) - GetColumnWidth(1) - GetColumnWidth(kDateColumn) - 20;
         if (subj < kSubjectMin) subj = kSubjectMin;
         if (GetColumnWidth(2) == subj) return;   // no change: no churn
         SetColumnWidth(2, subj);
@@ -193,6 +246,9 @@ public:
     int   boldFromColumn = 2;
     // The subject column, which ends in a paperclip for mail with attachments.
     int   subjectColumn = 2;
+    // The date column, fitted to its text plus the gap before it
+    // (MessageListView::FitDateColumn): no padding after the text.
+    int   dateColumn = kDateColumn;
     std::string clipIcon;
     // Asked for the icon a painted badge lacks: only rows on screen are
     // painted, so only their senders' icons are fetched.
@@ -231,7 +287,7 @@ public:
         if (text.empty()) return;
 
         const int textX  = option.columnX + textPadding;
-        int availW = option.columnWidth - textPadding * 2;
+        int availW = option.columnWidth - textPadding * (column == dateColumn ? 1 : 2);
         if (availW <= 0) return;
 
         const bool haveState = states && row >= 0 && row < static_cast<int>(states->size());
@@ -326,6 +382,9 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
         if (acct != curAccount_ && onSelectAccount) onSelectAccount(acct);
         ShowFolder(acct, folder);
     };
+    folderTree_->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) {
+        ShowFolderMenu(node, event);
+    };
     // A fitted tree follows the rows on show.
     folderTree_->onNodeExpanded  = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
     folderTree_->onNodeCollapsed = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
@@ -394,6 +453,8 @@ void MailView::BuildListBox() {
     d->wantIcon    = [this](const std::string& key) { if (iconRequester_) iconRequester_(key); };
     delegate_ = d;
     list_->SetDelegate(delegate_);
+    lv->dateFontSize = d->fontSize;
+    lv->dateTextGap  = d->textPadding;
 
     list_->onSelectionChanged = [this](const std::vector<int>& rows) {
         // A selection set by code is shown (or not) by the code that set it.
@@ -489,6 +550,8 @@ void MailView::BuildMessageBox() {
     preview_.onAlwaysAllowRemoteImages = [this](const std::string& addr) {
         if (onAlwaysAllowRemoteImages) onAlwaysAllowRemoteImages(addr);
     };
+    // Right-click on the sender in the reading pane: the sender's own menu.
+    preview_.senderMenuItems = [this](const MessageEnvelope& m) { return SenderMenuItems(m); };
     preview_.onSecurityScanned = [this](const MessageEnvelope& m, const MessageSecurity& s) {
         RefreshRowBadge(m, s);
     };
@@ -729,37 +792,153 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
     // The sender and the address book.
     if (!m.fromAddr.empty()) {
         rowMenu_->AddItem(MenuItemData::Separator());
-        std::vector<MenuItemData> places;
-        for (ContactSection s : { ContactSection::Family, ContactSection::Friends,
-                                  ContactSection::Work, ContactSection::Leisure,
-                                  ContactSection::Services, ContactSection::Other }) {
-            ContactPlace place; place.section = s;
-            places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
-                if (onAddToContactGroup) onAddToContactGroup(m, place);
-            }));
-        }
-        const std::vector<GroupCount> groups = contactGroups ? contactGroups()
-                                                             : std::vector<GroupCount>{};
-        if (!groups.empty()) places.push_back(MenuItemData::Separator());
-        for (const auto& g : groups) {
-            ContactPlace place; place.isGroup = true; place.group = g.name;
-            places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
-                if (onAddToContactGroup) onAddToContactGroup(m, place);
-            }));
-        }
-        rowMenu_->AddItem(MenuItemData::Submenu("Add to contact group", places));
-        if (contacts_.Contains(m.fromAddr)) {
-            rowMenu_->AddItem(MenuItemData::Action("Edit contact", [this, m]() {
-                if (onEditContact) onEditContact(m);
-            }));
-        } else {
-            rowMenu_->AddItem(MenuItemData::Action("Add to contacts", [this, m]() {
-                if (onAddContact) onAddContact(m);
-            }));
-        }
+        for (auto& item : AddressBookItems(m)) rowMenu_->AddItem(item);
+        const auto listItems = SenderListItems(m);
+        if (!listItems.empty()) rowMenu_->AddItem(MenuItemData::Separator());
+        for (auto& item : listItems) rowMenu_->AddItem(item);
     }
     PopupElementSettings settings;
     rowMenu_->OpenMenu(event.pointerWindow, *window, settings);
+}
+
+std::vector<MenuItemData> MailView::AddressBookItems(const MessageEnvelope& m) {
+    std::vector<MenuItemData> items;
+    if (m.fromAddr.empty()) return items;
+    std::vector<MenuItemData> places;
+    for (ContactSection s : { ContactSection::Family, ContactSection::Friends,
+                              ContactSection::Work, ContactSection::Leisure,
+                              ContactSection::Services, ContactSection::Other }) {
+        ContactPlace place; place.section = s;
+        places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
+            if (onAddToContactGroup) onAddToContactGroup(m, place);
+        }));
+    }
+    const std::vector<GroupCount> groups = contactGroups ? contactGroups()
+                                                         : std::vector<GroupCount>{};
+    if (!groups.empty()) places.push_back(MenuItemData::Separator());
+    for (const auto& g : groups) {
+        ContactPlace place; place.isGroup = true; place.group = g.name;
+        places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
+            if (onAddToContactGroup) onAddToContactGroup(m, place);
+        }));
+    }
+    items.push_back(MenuItemData::Submenu("Add to contact group", places));
+    if (contacts_.Contains(m.fromAddr)) {
+        items.push_back(MenuItemData::Action("Edit contact", [this, m]() {
+            if (onEditContact) onEditContact(m);
+        }));
+    } else {
+        items.push_back(MenuItemData::Action("Add to contacts", [this, m]() {
+            if (onAddContact) onAddContact(m);
+        }));
+    }
+    return items;
+}
+
+std::vector<MenuItemData> MailView::SenderListItems(const MessageEnvelope& m) {
+    std::vector<MenuItemData> items;
+    const std::string address = SenderLists::Normalize(m.fromAddr);
+    if (address.find('@') == std::string::npos || !onSenderListChange) return items;
+    const SenderLists lists = senderLists ? senderLists() : SenderLists{};
+    auto change = [this](std::string entry, bool blockList, bool add) {
+        return [this, entry, blockList, add]() {
+            if (onSenderListChange) onSenderListChange(entry, blockList, add);
+        };
+    };
+    // Trust: fewer warnings for this address - only what catches a lie.
+    items.push_back(lists.Trusts(address)
+        ? MenuItemData::Action("Stop trusting this sender", change(address, false, false))
+        : MenuItemData::Action("Always trust this sender", change(address, false, true)));
+    // Block: the address, or the whole domain unless it is a mailbox provider
+    // (blocking gmail.com would block everyone who writes from it).
+    const std::string blockedBy = lists.BlockedBy(address);
+    if (blockedBy == address) {
+        items.push_back(MenuItemData::Action("Unblock this sender", change(address, true, false)));
+    } else if (!blockedBy.empty()) {
+        items.push_back(MenuItemData::Action("Unblock everything from " + blockedBy.substr(1),
+                                             change(blockedBy, true, false)));
+    } else {
+        items.push_back(MenuItemData::Action("Block this sender", change(address, true, true)));
+        const std::string domain = RegistrableDomain(DomainOfAddress(address));
+        if (!domain.empty() && !IsPersonalMailboxDomain(domain))
+            items.push_back(MenuItemData::Action("Block everything from " + domain,
+                                                 change("@" + domain, true, true)));
+    }
+    return items;
+}
+
+void MailView::RescanSender(const std::string& entry) {
+    if (!store_ || mailDir_.empty() || entry.empty()) return;
+    SenderLists match;
+    match.blocked.insert(entry);
+    std::vector<MessageEnvelope> mail;
+    for (const auto& m : messages_)
+        if (!match.BlockedBy(m.fromAddr).empty() && mail.size() < 300) mail.push_back(m);
+    if (mail.empty()) return;
+    const uint64_t token = ++rescanToken_;
+    // Read and scan off the UI thread; the verdicts are stored and shown on it.
+    std::thread([this, mail, token, dir = mailDir_]() {
+        auto reports = std::make_shared<std::vector<std::pair<MessageEnvelope, ThreatReport>>>();
+        for (const auto& m : mail) {
+            std::ifstream in(PathFromUtf8(CachedBodyPath(dir, m.accountId, m.folder, m.uid)),
+                             std::ios::binary);
+            if (!in) continue;
+            const std::string raw((std::istreambuf_iterator<char>(in)),
+                                  std::istreambuf_iterator<char>());
+            if (!raw.empty()) reports->emplace_back(m, ScanRawMessage(raw));
+        }
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, reports, token]() {
+            if (token != rescanToken_ || !store_) return;   // a newer rescan took over
+            for (const auto& [m, report] : *reports) {
+                MessageSecurity sec;
+                store_->GetSecurity(m.accountId, m.folder, m.uid, sec);
+                sec.level  = report.level;
+                sec.score  = report.score;
+                sec.bulk   = report.bulk;
+                sec.reason = report.Summary();
+                sec.verifiedDomain = report.verifiedDomain;
+                sec.verifiedBy     = report.verifiedBy;
+                sec.findings       = report.Codes();
+                sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
+                store_->SetSecurity(m.accountId, m.folder, m.uid, sec);
+                RefreshRowBadge(m, sec);
+            }
+            RecheckShownMessage();
+        });
+    }).detach();
+}
+
+std::vector<MenuItemData> MailView::SenderMenuItems(const MessageEnvelope& m) {
+    std::vector<MenuItemData> items;
+    if (m.fromAddr.empty()) return items;
+    const std::string address = m.fromAddr;
+    items.push_back(MenuItemData::Action("Copy address", [address]() {
+        SetClipboardText(address);
+    }));
+    const bool showingSender = filter_.kind == MessageFilterKind::SameSender &&
+                               filter_.sender == m.fromAddr;
+    items.push_back(showingSender
+        ? MenuItemData::Action("Show all messages", [this]() { SetFilter({}); })
+        : MenuItemData::Action("Show only mail from this sender", [this, address]() {
+              SetFilter({MessageFilterKind::SameSender, address});
+          }));
+    items.push_back(MenuItemData::Separator());
+    for (auto& item : AddressBookItems(m)) items.push_back(item);
+    items.push_back(MenuItemData::Separator());
+    for (auto& item : SenderListItems(m)) items.push_back(item);
+    // Spam: out of the junk mailbox, or back to the inbox from it.
+    if (curFolderIsJunk_) {
+        items.push_back(MenuItemData::Action("Not spam", [this, m]() {
+            if (onNotJunk) onNotJunk(m);
+        }));
+    } else {
+        items.push_back(MenuItemData::Action("Mark as spam", [this, m]() {
+            if (onJunk) onJunk(m);
+        }));
+    }
+    return items;
 }
 
 void MailView::SetIconCache(const SenderIconCache* cache) {
@@ -841,6 +1020,9 @@ void MailView::RebuildFolderTree() {
     folderTree_->SetRootNode(rootData);
 
     for (const auto& account : accounts_) {
+        // Settings > Display > Treeview: the account on screen only.
+        if (treeCurrentAccountOnly_ && !curAccount_.empty() && account.accountId != curAccount_)
+            continue;
         const std::string accId  = account.accountId;
         const std::string accNode = kAccountNodePrefix + accId;
         TreeNodeData accData(accNode, account.email.empty() ? account.displayName
@@ -928,6 +1110,66 @@ void MailView::SelectFolderNode(const std::string& accountId, const std::string&
     suppressTreeCallback_ = false;
 }
 
+void MailView::SetTreeCurrentAccountOnly(bool currentOnly) {
+    if (treeCurrentAccountOnly_ == currentOnly) return;
+    treeCurrentAccountOnly_ = currentOnly;
+    RebuildFolderTree();
+}
+
+std::vector<MenuItemData> MailView::FolderMenuItems(const std::string& nodeId) {
+    std::vector<MenuItemData> items;
+    const auto it = folderNodeId_.find(nodeId);
+    if (it == folderNodeId_.end()) return items;
+    const std::string accountId = it->second.first;
+    const bool accountRow = nodeId == kAccountNodePrefix + accountId;
+    const std::string folder = it->second.second;
+    // The account row and its inbox add at the top of the account.
+    const bool top = accountRow || folder == "INBOX";
+
+    std::vector<Folder> folders;
+    if (store_) store_->ListFolders(accountId, folders);
+    std::string why = "The inbox cannot be deleted.";
+    bool deletable = false;
+    if (!top) {
+        why = "The folder is not in the list yet.";
+        for (const auto& f : folders)
+            if (f.name == folder) { deletable = CanDeleteFolder(f, folders, &why); break; }
+    }
+
+    // What the menu is about: the account, or the folder as it reads.
+    std::string title = FolderDisplayPath(folder, DelimiterOf(accountId, folder));
+    if (accountRow) {
+        for (const auto& a : accounts_)
+            if (a.accountId == accountId) title = a.email.empty() ? a.displayName : a.email;
+    }
+    items.push_back(MenuItemData::Header(title));
+    items.push_back(MenuItemData::Separator());
+    const std::string parent = top ? std::string() : folder;
+    items.push_back(MenuItemData::Action("Add folder…", [this, accountId, parent]() {
+        if (onAddFolder) onAddFolder(accountId, parent);
+    }));
+    MenuItemData remove = MenuItemData::Action("Delete folder…", [this, accountId, folder]() {
+        if (onDeleteFolder) onDeleteFolder(accountId, folder);
+    });
+    remove.enabled = deletable;
+    if (!deletable) remove.tooltip = why;
+    items.push_back(remove);
+    return items;
+}
+
+void MailView::ShowFolderMenu(TreeNode* node, const UCEvent& event) {
+    if (!folderTree_ || !node) return;
+    UltraCanvasWindowBase* window = folderTree_->GetWindow();
+    if (!window) return;
+    std::vector<MenuItemData> items = FolderMenuItems(node->data.nodeId);
+    if (items.empty()) return;
+    treeMenu_ = std::make_shared<UltraCanvasMenu>("folderTree.ctx", 0, 0, 200, 0);
+    treeMenu_->SetMenuType(MenuType::PopupMenu);
+    for (auto& item : items) treeMenu_->AddItem(item);
+    PopupElementSettings settings;
+    treeMenu_->OpenMenu(event.pointerWindow, *window, settings);
+}
+
 void MailView::ShowAccount(const std::string& accountId) {
     const bool sameAccount = (accountId == curAccount_);
     curAccount_ = accountId;
@@ -957,9 +1199,12 @@ std::string MailView::DelimiterOf(const std::string& accountId, const std::strin
 
 void MailView::ShowFolder(const std::string& accountId, const std::string& folder) {
     if (accountId != curAccount_ || folder != curFolder_) filter_ = MessageFilter{};
+    const bool otherAccount = accountId != curAccount_;
     curAccount_ = accountId;
     curFolder_  = folder;
-    SelectFolderNode(accountId, folder);
+    // A tree of the current account only shows the other one's folders now.
+    if (otherAccount && treeCurrentAccountOnly_) RebuildFolderTree();
+    else SelectFolderNode(accountId, folder);
     // A user folder switch: in the reading pane the auto-shown top message is
     // being read, so mark it read (Gmail/Thunderbird style).
     RebuildList(/*markTopRead=*/true);
@@ -968,6 +1213,14 @@ void MailView::ShowFolder(const std::string& accountId, const std::string& folde
 
 void MailView::Reload() {
     RebuildList();
+}
+
+void MailView::RecheckShownMessage() {
+    for (const auto& m : messages_) {
+        if (m.uid != selectedUid_ || m.folder != selectedFolder_) continue;
+        if (preview_.Shows(m.accountId, m.folder, m.uid)) preview_.Show(m);
+        return;
+    }
 }
 
 bool MailView::OpenMessage(const std::string& accountId, const std::string& folder, int64_t uid) {

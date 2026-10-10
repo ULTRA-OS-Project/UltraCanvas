@@ -1,5 +1,7 @@
 # UltraCanvasHostFileIcons — the icons the host desktop draws
 
+<!-- doc-check: std::string path; bool isDirectory; -->
+
 `UltraCanvasHostFileIcons.h` answers one question: **what does the system this
 application is running on draw for a file of this kind?** The picture Explorer
 puts on a `.txt`, the one Finder puts on a `.pdf`, the one the Linux icon theme

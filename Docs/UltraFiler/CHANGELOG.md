@@ -1,3 +1,104 @@
+#### 2026-10-10 *1.71.0*
+- **Settings > Display > Tab style: Modern, Simple modern or Classic.** The
+  window's tab strip can now draw its tabs as capsules floating in a
+  blue-grey strip - the open tab white with a blue outline, the others
+  plain text until the pointer is over them - which is *Modern* and the
+  default from this release; as flat tabs with a blue line under the open
+  one, *Simple modern*; or as the rounded tabs joined to the page that every
+  release before this one drew, *Classic*. The choice shows at once on the
+  open window and is kept in `display.tabs.style`. The tabs behave the same
+  under all three: click to switch, the X or a middle click to close, drag
+  to reorder, and the + at the end opens another tab. Built on the
+  framework's new `TabStyle::Pill` and the `TabStyle::Modern` indicator
+  colour (see the framework changelog).
+
+#### 2026-10-10 *1.70.1*
+- **Thumbnails follow a file's new content.** A picture edited and saved over
+  (in an image editor, by a script, or by a camera upload overwriting it) kept
+  its old thumbnail: the folder was rescanned when the save landed, but the
+  thumbnail was made again from a copy of the picture still held in memory,
+  and that old thumbnail was then kept on disk under the new file's date, so
+  it came back on every later start too. The thumbnail is now made from the
+  file as it is after the save, and a thumbnail is only kept on disk when the
+  file did not change while it was being made. Thumbnails kept by earlier
+  versions are made again once, so pictures already showing an old thumbnail
+  are corrected on the first look. A picture caught while it was still being
+  written, and so failed to show at first, gets its thumbnail once the write
+  finishes, instead of keeping the type icon. The dimensions shown for a
+  changed picture are its new ones. Framework changes - see
+  `Docs/UltraCanvas/changelog.d/image-cache-freshness.md`.
+- **The preview pane follows a file that changes while it is selected.** A
+  picture, document or text file edited and saved by another program while
+  UltraFiler shows it in the preview pane is shown again as it is now, a
+  moment after the save - it used to keep the version it was opened with until
+  something else was selected and it was selected again. A file that keeps
+  changing (a log being written, a download in progress) is shown again at
+  most every 2 seconds, and the last change is always shown. A video or sound
+  is shown again only once its file has stopped changing for 2 seconds and it
+  is not playing - reopening one starts it from the beginning, so a video that
+  is still downloading is not restarted while it grows, and one being watched
+  is left alone until it is paused or ends. Reopening shows the file from the
+  top and at its fitted size, as selecting it does.
+
+#### 2026-10-09 *1.70.0*
+- **FTP drives log in once per burst, not once per folder.** Opening a
+  folder on an FTP drive and reading its subfolders ahead used to connect
+  and log in for every one of them - twice on a server without MLSD, such
+  as vsftpd: once to be refused MLSD, once more for LIST. The connection log
+  of opening `/` on a vsftpd server with four subfolders showed ten logins
+  and 36 seconds. The drive worker now keeps the connection open between
+  its jobs (UltraNet keeps it; see the framework changelog), and a server
+  that refused MLSD is listed with LIST from then on, so the same five
+  listings are one login and one MLSD. The connection log says *Using the
+  open connection to ... - already logged in* where it used to show a new
+  login. A delete, rename or new folder still logs in on a connection of its
+  own, which is what keeps it acting on the entry that was chosen. The
+  worker closes the connection once the drive has been quiet for 15 seconds
+  (`kRemoteConnectionIdleClose`), while the server has only just answered:
+  closing sends QUIT and waits for the reply, which a network that has gone
+  away since never sends.
+- **Folders remembered from the last run are no longer read ahead.** A
+  folder's subfolders that `remote-listings.cache` still held were fetched
+  again in the background every time their parent was opened, on every
+  start, whether or not they were opened again. They are now shown from the
+  cache and checked with the server when they are opened; only subfolders
+  that are not cached at all are read ahead.
+- **The connection log button moved into the folder display.** It was a
+  clipboard icon at the right of the status bar, shown whenever any remote
+  drive was configured - over local folders too. It is now a round button
+  with the network symbol in the bottom-left corner of the folder display,
+  shown only while that display is on an FTP / FTPS / SFTP drive; in the
+  split view each display has its own. It sits above the display's info bar
+  and hidden-items strip and follows them as they come and go
+  (`UltraCanvasFilerWidget::GetBottomStripsHeight`, see the framework
+  changelog). Failures not looked at yet turn it red and show as a count on
+  its corner (`UltraCanvasBadge`). The error on the status line and the
+  failure alert now point to it there.
+
+#### 2026-10-09 *1.69.0*
+- **Excel 97-2003 workbooks (`.xls`) show their contents.** A `.xls` file's
+  thumbnail is now a small grid of its first sheet's cells, as `.xlsx` and
+  `.ods` files already had, instead of the bare type icon, and selecting one
+  opens it in the detail pane as a spreadsheet - with its sheets, values,
+  formulas, merged cells and formatting. Excel 5.0/95 files work too, and so
+  do the HTML tables, Excel 2003 XML files, renamed `.xlsx` files and text
+  exports that other programs save with the `.xls` extension. `.xlsx` files
+  now open in the detail pane as well: they had a thumbnail but no detail
+  view. Framework changes - see
+  `Docs/UltraCanvas/changelog.d/xls-workbook-reader.md`.
+
+#### 2026-10-08 *1.68.1*
+- **The folder tree follows the window's size.** The tree is kept to the
+  room the file display leaves it (and the preview pane, while it is up) as
+  the window is resized, not only when its rows change: making the window
+  narrower narrows a tree that would otherwise squeeze the file display
+  below its minimum width, and making it wider again gives the tree back the
+  width it asked for - its fitted width under *Auto*, the set width under
+  *Fixed width*. In 1.68.0 a tree held back by a narrow window stayed that
+  narrow until a branch was next opened or closed. A divider dragged since
+  the last fit keeps its width, as far as the window allows. Resizing measures
+  nothing: the width the tree last asked for is simply placed again.
+
 #### 2026-10-07 *1.68.0*
 - **The folder tree fits its names.** The tree on the left is now as wide as
   the rows it shows, plus 10 px - the same as UltraMail's folder list - instead

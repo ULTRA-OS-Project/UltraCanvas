@@ -30,8 +30,12 @@ TEST(SdkArtifactName_matches_the_workflow) {
                std::string("UltraCanvas-SDK-MacOS-0.9.147-arm64.tar.gz"));
     REQUIRE_EQ(SdkArchiveName(Platform::Windows, "0.9.147", "x86_64"),
                std::string("UltraCanvas-SDK-Windows-0.9.147-x86_64.zip"));
+    REQUIRE_EQ(SdkArchiveName(Platform::Linux, "0.9.147", "x86_64"),
+               std::string("UltraCanvas-SDK-Linux-0.9.147-x86_64.tar.xz"));
     REQUIRE(SdkReleaseAssetUrl(Platform::Linux, "1.0.0", "arm64").find(
-        "/releases/download/v1.0.0/UltraCanvas-SDK-Linux-1.0.0-arm64.tar.gz") != std::string::npos);
+        "/releases/download/v1.0.0/UltraCanvas-SDK-Linux-1.0.0-arm64.tar.xz") != std::string::npos);
+    REQUIRE_EQ(SdkReleasePage("0.9.211"),
+               std::string("https://github.com/ULTRA-OS-Project/UltraCanvas/releases/tag/v0.9.211"));
     REQUIRE(!FrameworkVersion().empty());
 }
 

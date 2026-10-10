@@ -1,3 +1,40 @@
+#### 2026-10-09 *0.4.0*
+- **Each chat shows the lines not yet PRed.** A badge on the right of every
+  row in the chat list counts the lines the chat's folder holds that its
+  repository's default branch does not - committed, uncommitted and
+  untracked, the number this repository's closing line uses
+  (`git fetch`, `git diff --numstat` against the merge base with
+  `origin/main` - or whatever `origin/HEAD` names - plus the lines of the
+  untracked files). In the accent colour while there is work not in the
+  default branch, grey `0` once everything is in; no badge for a folder that
+  is no git repository, `…` while counting, `?` when git could not answer.
+  The row's tooltip says what the number means and against which branch.
+  - Folders are counted on one background thread when the list loads, when
+    a chat is opened and after every turn; chats in one folder share the
+    count. Git runs with its prompts off and network timeouts, so a remote
+    that wants a password or does not answer costs seconds, never a hang,
+    and the count then uses the default branch as last fetched. Closing the
+    window does not wait for a running fetch.
+  - `engine/RepoStatus` measures, `ui/ChatListView` is the list's model and
+    delegate. `--count-lines [<folder>]` prints the badge's number.
+
+#### 2026-10-08 *0.3.0*
+- **A list of chats.** A sidebar on the left of the chat view lists every
+  chat UltraClaude remembers, newest first, with *New chat* above it (moved
+  from the toolbar) and *Delete chat* below. The first prompt of a new chat
+  adds it, titled by that prompt's first line; every finished turn saves the
+  transcript and moves the chat to the top. Picking a chat shows its
+  transcript again and resumes its Claude Code session (`--resume`) in its own
+  folder, with its model and permission mode; the session id follows whatever
+  the CLI reports, so a resume that comes back under a new id is followed too.
+  A chat's folder is locked once the chat exists, because the CLI keeps its
+  sessions per folder. Switching waits until Claude has finished answering.
+  - The list is kept in `chats.json` and each transcript in
+    `transcripts/<chat>.md`, in the UltraCanvas settings folder under
+    `UltraClaude` (`engine/ChatStore`). Both are written to a temporary file
+    and renamed into place, and only ids UltraClaude made name a file.
+  - `--list-chats` prints the list from the command line.
+
 #### 2026-10-04 *0.2.0*
 - **The message box takes several lines.** It is an `UltraCanvasTextArea`
   now: Enter sends, Shift+Enter starts a new line, and a long message wraps

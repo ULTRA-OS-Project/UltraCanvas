@@ -36,7 +36,10 @@ before adding cross-module code.
   **Consult the matching doc before writing code that uses a component —
   do not guess APIs from other frameworks.**
 - `Docs/Modules/<Name>/README.md` — sibling-module docs (UltraAI, UltraNet,
-  UltraDatabase, FileLoader, VirtualFS, OCR, PDF, QRCode, …).
+  UltraDatabase, FileLoader, VirtualFS, OCR, PDF, QRCode, …). The UltraAI,
+  UltraNet and VirtualFS ones are mirrors of `<Name>/README.md`: edit the
+  module's copy and run `python3 scripts/generate_llms_txt.py`; CI fails when
+  a mirror is stale (`MIRRORED_READMES` in the script lists them).
 - `Docs/CSSLayout.md`, `Docs/Dependencies.md` — layout engine and
   third-party dependency policy.
 - `llms.txt` / `llms-full.txt` (repo root, generated) — machine-readable
@@ -78,7 +81,8 @@ before adding cross-module code.
   supplying a ten-line Traits type, not a matcher. What the module lacks is
   added to it, so the next caller finds it. `scripts/check_html_reuse.py`
   enforces this in CI (`html-reuse.yml`); `scripts/html_reuse_baseline.txt`
-  lists the sites that predate the rule and only shrinks. A site that must
+  listed the sites that predated the rule; it has been empty since
+  2026-10-08 and stays so. A site that must
   stay says why with `// html-reuse-exempt: <why>`. Doc:
   `Docs/UltraCanvas/UltraCanvasHTMLReader.md`.
 - **Application bootstrap:** apps are built around `UltraCanvasApplication`
@@ -373,12 +377,15 @@ executables carried the whole framework, and on Linux and Windows an app that
 linked a module archive next to the shared core got a second copy of that
 module - two registries, two connection tables. The rules:
 
-- **Link a module by its public name** - `UltraDatabase`, `UltraVault`,
-  `UltraCrypt`, `UltraMessage`, `NetworkMonitor` - never by its archive
-  (`uc-database`, `uc-vault`, …). The public name is an INTERFACE target that
-  resolves to the shared core, or to the archive under a static core, and
-  carries the module's headers and switches either way. Only
-  `UltraCanvas/CMakeLists.txt` and the other archives name an archive.
+- **Link a module by its public name** - `UltraNet`, `UltraWin`,
+  `UltraDatabase`, `UltraVault`, `UltraCrypt`, `UltraMessage`,
+  `NetworkMonitor` - never by its archive (`uc-net`, `uc-database`, …). The
+  public name is an INTERFACE target that resolves to the shared core, or to
+  the archive under a static core, and carries the module's headers and
+  switches either way. Only `UltraCanvas/CMakeLists.txt` and the other
+  archives name an archive - and the one exception, a test that must put the
+  archive in a rescanned link group with a *static* core
+  (`Tests/UltraNet/CMakeLists.txt` says why), names it only on that branch.
 - **A new UI-free module follows the pattern**: `add_library(uc-<name> STATIC …)`,
   dependencies on other modules by *their* archive names,
   `_ultracanvas_module_home(<Name> uc-<name>)`, and its archive added to the
@@ -387,7 +394,9 @@ module - two registries, two connection tables. The rules:
   UltraMessageCenter) is not absorbed; it links the core and the homes it needs.
 - **Do not link a module archive and the core on one line**, and do not add a
   `_uc_core_shared` conditional of your own: that was the workaround for
-  UltraNet and UltraWin before the homes existed.
+  UltraNet and UltraWin before they had homes, and every one of them is gone
+  (UltraMail, UltraSocial, UltraCanvasStart, UltraWeb, UltraCloud and the
+  tests simply link `UltraNet` now).
 
 ### Packaging a new app for macOS
 
@@ -616,7 +625,18 @@ number anywhere else, and never introduce a new literal copy of one:
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
    it compiles the doc's C++ against the headers and reports each function,
    field or signature the headers don't have (Linux, clang++). All
-   `*Examples.md` docs pass it.
+   `*Examples.md` docs pass it. CI runs it over every doc under
+   `Docs/UltraCanvas/` but the changelog (`--all --strict`,
+   `doc-examples.yml`) whenever a doc or a public header changes, and fails
+   on any finding a component doc has. The design documents (a Proposal,
+   Plan or Investigation) describe APIs not written yet, so their findings
+   are listed in `scripts/doc_examples_baseline.txt` until the API exists;
+   a component doc must never be added there.
+   Changing a header can therefore fail a doc you did not touch: fix that
+   doc in the same change. A name a snippet takes from the application - a
+   `window`, a callback the reader writes, a version macro - is declared in
+   a `<!-- doc-check: ... -->` comment with its real type, never a framework
+   API that does not exist.
 4. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and

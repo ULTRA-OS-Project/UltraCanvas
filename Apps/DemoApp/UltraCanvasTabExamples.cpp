@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasComprehensiveTabDemo.cpp
 // Comprehensive demonstration of all tabbed container features
+// Version: 1.1.0 - the five Pill colourways
 // Version: 1.0.1
-// Last Modified: 2026-05-01
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -35,8 +36,10 @@ namespace UltraCanvas {
 
 // ===== MAIN COMPREHENSIVE TAB DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTabExamples() {
-        // Main container with scrolling
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("ComprehensiveTabDemo", 0, 0, 1020, 3000);
+        // The page root. Its height is provisional: the real one is set from
+        // yOffset once every example has been placed, so an added example
+        // cannot run off the bottom of the page.
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("ComprehensiveTabDemo", 0, 0, 1020, 1000);
         //mainContainer->EnableVerticalScrolling(true);
 //        mainContainer->SetBackgroundColor(Color(245, 245, 245));
 
@@ -223,6 +226,122 @@ namespace UltraCanvas {
         roundedTabs->SetActiveTab(0);
         mainContainer->AddChild(roundedTabs);
         yOffset += 230;
+
+        // --- Pill Style: five colourways ---
+        // The same style throughout; only colours and insets differ. They
+        // match the five in Docs/UltraCanvas/UltraCanvasTabExamples.md and
+        // Tests/TabPillStyleScreenshotTest.cpp.
+        struct PillColourway {
+            const char* name;
+            Color bar;
+            Color activeFill, activeBorder, activeText, activeClose;
+            Color inactiveFill, inactiveText;
+            Color hoverFill;
+            Color closeButton;
+            Color content, contentDivider;
+            float chipRadius;      // 0 = full capsule
+            bool newTabButton;
+        };
+        const PillColourway pillColourways[] = {
+            {"Pill Style 1 - outlined pill on a tinted bar (unselected tabs are text only)",
+             Color(229, 234, 241),
+             Colors::White, Color(96, 146, 224), Color(30, 37, 46), Colors::Transparent,
+             Colors::Transparent, Color(84, 96, 112),
+             Color(255, 255, 255, 140),
+             Color(84, 96, 112), Colors::White, Color(205, 212, 222), 0.0f, true},
+            {"Pill Style 2 - tinted pill with a teal outline",
+             Color(250, 251, 252),
+             Color(228, 244, 240), Color(34, 150, 130), Color(20, 60, 55), Colors::Transparent,
+             Colors::Transparent, Color(90, 96, 104),
+             Color(238, 240, 243),
+             Color(110, 116, 125), Colors::White, Color(226, 229, 234), 0.0f, false},
+            {"Pill Style 3 - solid accent pill, grey pills for the others",
+             Color(245, 246, 248),
+             Color(41, 112, 196), Colors::Transparent, Colors::White, Color(225, 236, 250),
+             Color(226, 229, 234), Color(60, 64, 72),
+             Color(212, 216, 224),
+             Color(110, 116, 125), Colors::White, Color(226, 229, 234), 0.0f, false},
+            {"Pill Style 4 - neutral chips (corner radius 6)",
+             Color(252, 252, 253),
+             Colors::White, Color(205, 205, 214), Color(30, 37, 46), Colors::Transparent,
+             Color(240, 241, 244), Color(90, 90, 100),
+             Color(232, 233, 237),
+             Color(120, 120, 130), Colors::White, Color(228, 228, 232), 6.0f, false},
+            {"Pill Style 5 - dark bar",
+             Color(30, 30, 36),
+             Color(46, 46, 58), Color(120, 170, 240), Color(240, 240, 245), Colors::Transparent,
+             Colors::Transparent, Color(170, 170, 185),
+             Color(255, 255, 255, 24),
+             Color(170, 170, 185), Color(24, 24, 30), Color(60, 60, 72), 0.0f, false},
+        };
+
+        int pillIndex = 0;
+        for (const PillColourway& cw : pillColourways) {
+            const std::string suffix = std::to_string(++pillIndex);
+            const bool first = (pillIndex == 1);
+
+            auto pillLabel = std::make_shared<UltraCanvasLabel>("PillLabel" + suffix, 40, yOffset, 700, 20);
+            pillLabel->SetText(cw.name);
+            pillLabel->SetFontSize(11);
+            pillLabel->SetFontWeight(FontWeight::Bold);
+            mainContainer->AddChild(pillLabel);
+            yOffset += 25;
+
+            // The first colourway gets a full page; the others only need
+            // their tab bar and a line of content.
+            const int height = first ? 220 : 110;
+            auto pillTabs = std::make_shared<UltraCanvasTabbedContainer>("PillTabs" + suffix, 40, yOffset, 800, height);
+            pillTabs->SetTabStyle(TabStyle::Pill);
+            pillTabs->SetTabHeight(36);
+            pillTabs->SetPillInset(2, 4);
+            pillTabs->SetPillCornerRadius(cw.chipRadius);
+            pillTabs->SetCloseMode(TabCloseMode::Closable);
+            pillTabs->SetTabMaxWidth(220);
+            pillTabs->fontSize = 12;
+            pillTabs->SetTabBarColor(cw.bar);
+            pillTabs->SetActiveTabBackgroundColor(cw.activeFill);
+            pillTabs->SetActiveTabBorderColor(cw.activeBorder);
+            pillTabs->SetActiveTabTextColor(cw.activeText);
+            pillTabs->SetActiveTabCloseButtonColor(cw.activeClose);
+            pillTabs->SetInactiveTabBackgroundColor(cw.inactiveFill);
+            pillTabs->SetInactiveTabTextColor(cw.inactiveText);
+            pillTabs->SetHoveredTabBackgroundColor(cw.hoverFill);
+            pillTabs->SetCloseButtonColor(cw.closeButton);
+            pillTabs->SetCloseButtonHoverColor(cw.activeText);
+            pillTabs->contentAreaColor = cw.content;
+            pillTabs->tabContentBorderColor = cw.contentDivider;
+            pillTabs->SetShowNewTabButton(cw.newTabButton);
+            pillTabs->SetNewTabButtonShape(NewTabButtonShape::Circle);
+            pillTabs->newTabButtonColor = Colors::Transparent;
+            pillTabs->newTabButtonHoverColor = cw.hoverFill;
+            pillTabs->newTabButtonIconColor = cw.inactiveText;
+
+            const Color pageText = (cw.content.r < 128) ? Color(220, 220, 228) : Colors::Black;
+            auto page = [&](const std::string& id, const std::string& text) {
+                auto content = CreateSampleTabContent(id, text, cw.content, 550, first ? 180 : 70);
+                if (auto label = std::dynamic_pointer_cast<UltraCanvasLabel>(content->GetChildren().front()))
+                    label->SetTextColor(pageText);
+                return content;
+            };
+            pillTabs->AddTab("Inbox", page("Pill" + suffix + "a", first ?
+                                                         "Pill Style Features:\n\n"
+                                                         "• Each tab is a capsule inset in the tab bar\n"
+                                                         "• The open tab is filled and outlined in its own colours\n"
+                                                         "• Unselected tabs are plain text, or quiet pills, until hovered\n"
+                                                         "• Colours and insets give the five colourways on this page\n"
+                                                         "• The page keeps a hairline, not a frame" :
+                                                         "Colourway " + suffix + ": the same TabStyle::Pill, other colours."));
+            pillTabs->AddTab("UltraMail: Add/Delete account", page("Pill" + suffix + "b",
+                                                         "A long title is truncated inside its capsule."));
+            pillTabs->AddTab("Drafts", page("Pill" + suffix + "c",
+                                                         "Hover a tab to see its capsule fade in."));
+            pillTabs->SetTabIcon(0, NormalizePath(GetResourcesDir() + "media/icons/home-icon.png"));
+            pillTabs->SetTabIcon(1, NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
+            pillTabs->SetTabIcon(2, NormalizePath(GetResourcesDir() + "media/icons/document.png"));
+            pillTabs->SetActiveTab(first ? 0 : 1);
+            mainContainer->AddChild(pillTabs);
+            yOffset += height + 10;
+        }
 
         // ========================================
         // SECTION 2: TAB FEATURES (Icons, Badges, Close Buttons)
@@ -612,8 +731,10 @@ namespace UltraCanvas {
         mainContainer->AddChild(footer);
         yOffset += 50;
 
-        // Set main container content height for scrolling
-//        mainContainer->SetHeight(yOffset);
+        // The page is as tall as what was placed on it. SetElementSize sets
+        // the CSS pixel height the layout reads back; SetHeight would only
+        // move finalBounds, which the next Arrange overwrites.
+        mainContainer->SetElementSize(Size2Df(1020.0f, static_cast<float>(yOffset)));
 
         return mainContainer;
     }

@@ -73,8 +73,12 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.22.0
-// Last Modified: 2026-10-04
+// The preview pane follows a previewed file that changes on disk: a rescan
+// that finds it changed reopens it, at most every couple of seconds - a video
+// or sound only once its file has settled and it is not playing
+// (ReloadChangedPreview).
+// Version: 1.25.0
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -82,12 +86,14 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasFilerWidget.h"
+#include "UltraCanvasFileStamp.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasMediaViewerWindow.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasBadge.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
@@ -111,6 +117,7 @@
 #include "UltraFilerVolumeSpace.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -140,6 +147,13 @@ private:
     struct FilerTabState {
         std::shared_ptr<UltraCanvasFilerWidget> filer;
         std::shared_ptr<UltraCanvasContainer>   page;  // tab content wrapper
+        // The round "network" button floating in the display's bottom-left
+        // corner that opens the connection log, and the count of failures
+        // the log window has not shown yet riding on its corner. Both are on
+        // show only while this display is on an FTP drive
+        // (UpdateConnectionLogButton).
+        std::shared_ptr<UltraCanvasButton>      connectionLogButton;
+        std::shared_ptr<UltraCanvasBadge>       connectionLogBadge;
         std::vector<std::string> history;      // visited folders
         size_t historyIndex = 0;               // current position in `history`
         bool navigatingHistory = false;        // Back/Forward in flight - don't push
@@ -158,6 +172,11 @@ private:
     std::shared_ptr<UltraCanvasContainer> BuildCommandBar();
     void BuildFolderTree();
     void BuildTabbedContainer();
+    // Settings > Display > Tab style: dress the tab strip in the chosen
+    // style. Every field a style sets, all three set, so switching leaves
+    // nothing of the previous one behind. Called when the strip is built and
+    // from ApplySettings.
+    void ApplyTabStripStyle();
     void BuildSplitLayout();
     // The parts the split view adds to the split (see SetSplitViewVisible):
     // the header row over the left-hand display, and the right-hand pane
@@ -343,10 +362,17 @@ private:
     // Empty while the drives are idle, which is when the status line goes back
     // to describing the folder in front of the user.
     std::string DescribeRemoteActivity() const;
-    // The connection log button at the right of the status bar: shown once
-    // there is a remote drive (or anything logged), and red with the number
-    // of failed connections the log window has not shown yet.
+    // The connection log buttons, one in the bottom-left corner of each
+    // folder display: shown while that display is on an FTP drive, and red,
+    // with the number of failed connections the log window has not shown yet
+    // on a badge, when there are any. The first form brings every display's
+    // button up to date; the second one display's.
     void UpdateConnectionLogButton();
+    void UpdateConnectionLogButton(FilerTabState* display);
+    // Whether `path` is a folder on an FTP / FTPS / SFTP drive - the drives
+    // whose every connection step the log records. Cloud drives (Nextcloud,
+    // Dropbox, ...) are not, and neither is anything local.
+    bool IsFtpDrivePath(const std::string& path) const;
     // Opens the connection log window, or brings it to the front with the
     // log as it is now.
     void OpenConnectionLog();
@@ -385,6 +411,17 @@ private:
     // measures the text with the window's render context: before there is
     // one it tries once more on the next turn of the event loop (allowRetry).
     void ApplyTreeWidth(bool allowRetry = true);
+    // Puts `width` on the tree - in its pane, docked, or kept for when it
+    // comes back - kept to what the window leaves it (ApplyTreeWidth's
+    // second half, shared with FitTreeToRoom).
+    void PlaceTreeWidth(int width);
+    // The window was resized, so the room beside the tree changed: the width
+    // the tree last asked for is placed again - narrower when the file
+    // display would otherwise drop below its minimum, and back to full width
+    // when a window made wider again has the room. Nothing is measured: the
+    // rows did not change. A divider the user dragged since the last fit
+    // stands, as far as the window allows.
+    void FitTreeToRoom();
     // The tree's rows changed - added, removed, shown, hidden, opened or
     // closed: a fitted tree is fitted again once the current event is done,
     // so a burst of changes (a folder's subfolders arriving one by one, a
@@ -751,6 +788,31 @@ private:
     // the selected file is kept scrolled into view when the pane narrows the
     // folder display.
     void UpdatePreviewPane();
+    // Opens `path` in the media viewer for the preview pane and remembers the
+    // file as it was when opened (size and modification time, stamped before
+    // the viewer reads it) for ReloadChangedPreview. `asCopy`: a remote file's
+    // local copy, shown on its own rather than browsed in its folder.
+    void OpenPreviewFile(const std::string& path, bool asCopy);
+    // The previewed file changed on disk since the pane opened it - a rescan
+    // found it with another size or modification time, which is how a picture
+    // saved over in an editor shows up: reopen it, so the pane shows what the
+    // file holds now rather than what it held when it was selected. Two rules
+    // keep a file that goes on changing from churning the pane:
+    //   - it is reopened at most once every kPreviewReloadIntervalMs. A log
+    //     being written or a download in progress changes many times a
+    //     second; the pane catches up every couple of seconds, and a timer
+    //     applies the last change, so the final content is always shown;
+    //   - a video or sound is reopened only once its file has stopped
+    //     changing for kPreviewReloadIntervalMs and it is not playing
+    //     (UltraCanvasMediaViewer::IsPlayingMedia): reopening starts it from
+    //     the beginning, so a video still downloading is not restarted while
+    //     it grows, and one being watched is left alone until it is paused
+    //     or ends.
+    // A file that cannot be examined any more (deleted, moved) is left to the
+    // rescan's own selection handling rather than reopened into an error.
+    void ReloadChangedPreview();
+    void ArmPreviewReloadTimer(unsigned int delayMs);
+    void CancelPreviewReloadTimer();
     // Whether a file on a remote drive is previewed: pictures, vector
     // drawings and 3D models only, because showing one means downloading
     // it first. A video or a document there is opened, not previewed.
@@ -932,8 +994,6 @@ private:
     // which is the framework's progress bar. Short enough that the gauge
     // drops its caption and value line and is simply the bar.
     std::shared_ptr<UltraCanvasGaugeDiagramElement> statusProgress;
-    // Opens the connection log window; see UpdateConnectionLogButton.
-    std::shared_ptr<UltraCanvasButton>          statusLogButton;
     // The log window while it is open; it owns itself (deleteOnClose).
     std::weak_ptr<UltraFilerConnectionLogWindow> connectionLogWindow;
     TimerId connectionLogRefreshTimer = InvalidTimerId;
@@ -986,6 +1046,15 @@ private:
     int treePaneWidth = UltraFilerSettings::kDefaultTreeWidth;
     // A ScheduleTreeFit is waiting for its turn of the event loop.
     bool treeFitPosted = false;
+    // The width the tree last asked for, before the window's room was taken
+    // into account: fitted or fixed, within the tree's limits. 0 until it
+    // has asked (a fitted tree before its first measurement). FitTreeToRoom
+    // places it again when the window is resized.
+    int  treeWantedWidth = 0;
+    // A FitTreeToRoom is waiting for its turn of the event loop: the split
+    // reports its new width from the middle of a layout pass, and an
+    // interactive resize reports many.
+    bool treeRoomFitPosted = false;
     // The Display > Treeview width last applied, so ApplySettings re-applies
     // it only when it moved - an unrelated setting must not undo a divider
     // the user dragged. 0 never matches: the first call always applies.
@@ -1105,6 +1174,19 @@ private:
     TimerId folderPreviewDelayTimer = InvalidTimerId;
     std::string pendingFolderPreviewPath;
     std::string folderPreviewReadyPath;
+    // The file the preview pane last opened in the media viewer, as it was
+    // then (its size and modification time, UltraCanvasFileStamp.h), and
+    // when; the timer applies a change the throttle or a playing video held
+    // back (see ReloadChangedPreview).
+    std::string previewOpenedPath;
+    bool previewOpenedAsCopy = false;
+    FileStamp previewOpenedStamp;
+    std::chrono::steady_clock::time_point previewOpenedAt{};
+    // A video or sound waits for its file to settle: the version last seen,
+    // and since when it has been that version.
+    FileStamp previewChangeStamp;
+    std::chrono::steady_clock::time_point previewChangeSeenAt{};
+    TimerId previewReloadTimer = InvalidTimerId;
     bool historyShown = false;             // History view replaces the split
     bool favoritesShown = false;           // Favorites view replaces the split
     bool computerShown = false;            // Computer page replaces the tab content

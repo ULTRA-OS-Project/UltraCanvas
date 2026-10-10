@@ -41,7 +41,11 @@ d.create      = [](const std::string& id, int x, int y, int w, int h) {
 };
 // Optional capabilities:
 d.textKeywords   = {"kanban"};                  // dispatch for CreateFromText
-d.createFromText = ...;                         // Mermaid-style text loader
+d.createFromText = [](const std::string& id, int x, int y, int w, int h,
+                      const std::string& text, std::string* error) {   // Mermaid-style text loader
+    return std::static_pointer_cast<UltraCanvasUIElement>(
+        CreateKanbanBoardFromText(id, x, y, w, h, text, KanbanDesign::Professional, error));
+};
 d.propertyKeys   = {"columns", "wipLimit"};     // IConfigurableElement keys
 UltraCanvasElementRegistry::Register(d);
 ```

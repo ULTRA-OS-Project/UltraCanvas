@@ -152,6 +152,15 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Every file includes the standard headers it uses. libc++ 23 (LLVM 23, which
+# MSYS2's CLANG64/CLANGARM64 ship since 2026-10-09) dropped most of its
+# transitive includes - <string> no longer brings in <algorithm>, <cstdlib>,
+# <iterator>, <optional> and more - and libc++ 24 removes the bridge that
+# restored them (_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23), so the tree does
+# not define it: the Windows legs, which build with libc++ 23, reject a file
+# that relies on a transitive include the day it is written, instead of the
+# day LLVM 24 arrives.
+
 # Build type defaults to Release
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
@@ -980,6 +989,18 @@ if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
+# ===== DEVICE TLS TESTS WITHOUT THE FULL SUITE =====
+# IODeviceScannerESCLLiveTest alone, for builds that leave BUILD_TESTS off
+# (the macOS and Windows CI rows): trusting a device's self-signed certificate
+# on first use rests on libcurl's public-key pinning and certificate capture,
+# which each TLS library implements apart - OpenSSL on Linux, Apple's TLS on
+# macOS, Schannel on Windows - so it is a test on every one of them.
+option(ULTRACANVAS_BUILD_DEVICE_TLS_TESTS "Build the device TLS tests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_DEVICE_TLS_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/DeviceTlsTests.cmake)
+endif()
+
 # ===== VAULT TESTS WITHOUT THE FULL SUITE =====
 # UltraVaultTests alone, for builds that leave BUILD_TESTS off (the Windows CI
 # row): the device-key vault in a Thai-and-emoji folder is only a test where a
@@ -1063,6 +1084,10 @@ if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)
     add_executable(ultramsg Apps/UltraMessageCli/main.cpp)
     target_compile_features(ultramsg PRIVATE cxx_std_20)
     target_link_libraries(ultramsg PRIVATE UltraMessage)
+    # A command-line tool has no window to set an icon on; on Windows the
+    # .exe carries media/appicon/UltraMsg.png (the render of UltraMsg.svg).
+    ultracanvas_embed_app_icon(ultramsg
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraMsg.png")
 endif()
 
 # ===== ULTRADATABASE TESTS =====
@@ -1450,6 +1475,13 @@ if (BUILD_ULTRAPAINT_APP)
     target_link_libraries(UltraPaint PRIVATE
             ${ULTRACANVAS_LIBRARY}
     )
+
+    # Paste with nothing on the clipboard offers the newest image of the
+    # clipboard history UltraDesktop keeps; Edit > Paste Last Copied Image.
+    if(TARGET UltraClipboardHistory)
+        target_link_libraries(UltraPaint PRIVATE UltraClipboardHistory)
+        target_compile_definitions(UltraPaint PRIVATE ULTRAPAINT_HAVE_CLIPBOARD_HISTORY=1)
+    endif()
 
     # The 3D model formats. Core reads STL by itself; OBJ, PLY, COLLADA, FBX,
     # X3D, Alembic, MilkShape, .blend and STEP arrive with this plugin, and

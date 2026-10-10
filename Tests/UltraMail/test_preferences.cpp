@@ -2,6 +2,8 @@
 // The app-wide preferences behind the Settings window: the remote-image
 // policy, trusted websites (domain matching) and the reading options survive
 // a save and a load, and an old file keeps the defaults.
+// Version: 0.4.0 - folder_tree_content, account_order
+// Version: 0.3.0 - trusted_senders, blocked_senders
 // Version: 0.2.0 - link_display (status bar / tooltip)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -13,6 +15,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string>
 #include <vector>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
@@ -59,6 +62,12 @@ TEST(preferences_round_trip) {
     out.listSort.ascending = true;
     out.checkMailEverySec = 40;
     out.notifyNewMail = false;
+    out.scamWarnings.romance = false;
+    out.scamWarnings.cryptoCaution = false;
+    out.senderLists.trusted = { "friend@example.org" };
+    out.senderLists.blocked = { "offers@shop.example", "@junk.example" };
+    out.folderTreeContent = FolderTreeContent::CurrentAccount;
+    out.accountOrder = { "work", "erika", "club" };
     REQUIRE(out.Save(path));
 
     Preferences in;
@@ -71,11 +80,19 @@ TEST(preferences_round_trip) {
     REQUIRE(!in.showHtml);
     REQUIRE_EQ(in.messageTextSize, 16);
     REQUIRE(in.linkDisplay == LinkDisplay::Tooltip);
+    REQUIRE(!in.scamWarnings.romance);
+    REQUIRE(!in.scamWarnings.cryptoCaution);
+    REQUIRE(in.scamWarnings.phishing);          // the others stay on
+    REQUIRE(in.scamWarnings.advanceFee);
+    REQUIRE(in.scamWarnings == out.scamWarnings);
+    REQUIRE(in.senderLists == out.senderLists);
     REQUIRE_EQ(in.needsAnswerMaxAgeDays, 30);
     REQUIRE(!in.needsAnswerOnlyWrittenTo);
     REQUIRE(in.listSort == out.listSort);
     REQUIRE_EQ(in.checkMailEverySec, 40);
     REQUIRE(!in.notifyNewMail);
+    REQUIRE(in.folderTreeContent == FolderTreeContent::CurrentAccount);
+    REQUIRE(in.accountOrder == out.accountOrder);
     std::remove(path.c_str());
 }
 
@@ -99,6 +116,26 @@ TEST(preferences_old_file_keeps_defaults) {
     REQUIRE(in.listSort == MessageSort{});                        // newest first
     REQUIRE_EQ(in.checkMailEverySec, 300);                        // every 5 minutes
     REQUIRE(in.notifyNewMail);                                    // on until switched off
+    REQUIRE(in.folderTreeContent == FolderTreeContent::AllAccounts);
+    REQUIRE(in.accountOrder.empty());                             // the store's order
+    std::remove(path.c_str());
+}
+
+// The sender lists edited by hand: kept as the sender menu would write them,
+// and what is no address (or, on the blocked list, no domain) dropped.
+TEST(preferences_sender_lists_from_a_hand_edited_file) {
+    const std::string path = UltraCanvas::PathToUtf8(
+        std::filesystem::temp_directory_path() / "ultramail_prefs_lists.ini");
+    {
+        std::ofstream f(UltraCanvas::PathFromUtf8(path));
+        f << "trusted_senders = Friend@Example.org, @x.example,\n"
+             "blocked_senders = junk.example, Spam <SPAM@X.Example>, nonsense\n";
+    }
+    Preferences in;
+    REQUIRE(in.Load(path));
+    REQUIRE(in.senderLists.trusted == std::set<std::string>{ "friend@example.org" });
+    REQUIRE(in.senderLists.blocked ==
+            (std::set<std::string>{ "@junk.example", "spam@x.example" }));
     std::remove(path.c_str());
 }
 
@@ -138,5 +175,41 @@ TEST(preferences_check_mail_interval_choices) {
     Preferences bad;
     REQUIRE(bad.Load(path));
     REQUIRE_EQ(bad.checkMailEverySec, 300);                      // keeps the default
+    std::remove(path.c_str());
+}
+
+// The account tiles dragged into another order: the accounts follow it, and
+// one the order does not name (added since) comes after, in the order it came.
+TEST(preferences_order_accounts_by_the_dragged_order) {
+    auto make = [](std::initializer_list<const char*> ids) {
+        std::vector<Account> accounts;
+        for (const char* id : ids) { Account a; a.accountId = id; accounts.push_back(a); }
+        return accounts;
+    };
+    auto ids = [](const std::vector<Account>& accounts) {
+        std::vector<std::string> out;
+        for (const auto& a : accounts) out.push_back(a.accountId);
+        return out;
+    };
+    Preferences prefs;
+    std::vector<Account> accounts = make({"club", "erika", "new", "work"});
+    prefs.OrderAccounts(accounts);   // no order yet: as they came
+    REQUIRE(ids(accounts) == (std::vector<std::string>{"club", "erika", "new", "work"}));
+
+    prefs.accountOrder = {"work", "gone", "erika", "club"};
+    prefs.OrderAccounts(accounts);
+    REQUIRE(ids(accounts) == (std::vector<std::string>{"work", "erika", "club", "new"}));
+
+    // Read from a hand-edited file: spaces and repeats do not matter.
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "ultramail_prefs_order.ini").string();
+    {
+        std::ofstream f(UltraCanvas::PathFromUtf8(path));
+        f << "account_order =  work ,erika,, work\nfolder_tree_content = current\n";
+    }
+    Preferences in;
+    REQUIRE(in.Load(path));
+    REQUIRE(in.accountOrder == (std::vector<std::string>{"work", "erika"}));
+    REQUIRE(in.folderTreeContent == FolderTreeContent::CurrentAccount);
     std::remove(path.c_str());
 }
