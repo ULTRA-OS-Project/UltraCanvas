@@ -3,7 +3,8 @@
 UltraMail is the mail application of the ULTRA OS application family
 (UltraTexter, UltraFiler, ULTRA Store, …). It is a full desktop e-mail
 client built entirely on UltraCanvas for the UI and on the **UltraNet**
-module (SMTP/IMAP/POP3 protocol plugins, DNS, HTTP) for all networking.
+module (SMTP and IMAP protocol plug-ins, HTTP, the OAuth2 client) for all
+networking.
 
 Two goals drive every design decision in this document:
 
@@ -17,19 +18,25 @@ Two goals drive every design decision in this document:
    presented in a classic, instantly familiar three-pane layout with no
    configuration required to be productive.
 
-> **Status (2026-07):** concept/design document. Nothing of UltraMail is
-> implemented yet. UltraNet already ships working `smtp`, `imap` and
-> `pop3` plugins (`UltraCanvas/Plugins/UltraNet/{smtp,imap,pop3}/`)
-> implementing `IMailProtocolPlugin` (`SendMail`, `FetchMessages`);
-> section 6 lists the extensions UltraMail needs from them.
+> **Status (2026-10):** this is the design document UltraMail was built
+> from (written 2026-07, before any of it existed). Section 1 describes the
+> shipped behaviour; sections 2–7 are the original design, annotated with
+> *Shipped* notes where the implementation settled on something else (the
+> Toolbox of 2.1 became the account bar of 3.0, the server-settings dialog
+> of 2.2 is IMAP only, the protocol API of section 6 differs in detail).
+> What UltraMail does today is in [`Apps/UltraMail/README.md`](../../Apps/UltraMail/README.md)
+> and, release by release, in [`CHANGELOG.md`](CHANGELOG.md); where the two
+> disagree with this document, they are right.
 
 ---
 
 ## 1. Design principles
 
-- **Zero-knowledge setup.** The user knows their address and password;
-  UltraMail figures out the rest (section 2.2). Manual server settings
-  exist but are an *expert fallback*, never the first screen.
+- **Zero-knowledge setup.** The user knows their address and password -
+  or, at Gmail, Outlook and Yahoo, only the address, and signs in on the
+  provider's page in the browser; UltraMail figures out the rest
+  (section 2.2, `AccountSetup.md`). Manual server settings exist but are an
+  *expert fallback*, never the first screen.
 - **Safe defaults.** TLS verification on, minimum TLS 1.2 (UltraNet's
   defaults); remote images in HTML mail load by themselves only from
   trusted senders - the address book, senders allowed with "Always from …",
@@ -44,9 +51,14 @@ Two goals drive every design decision in this document:
   functions, `Config` structs, `onXxx` callbacks, the Texter
   manager-class app composition style. One codebase, all platforms.
 - **UltraNet-only networking.** UltraMail never opens a socket itself.
-  Everything goes through UltraNet: mail plugins for SMTP/IMAP/POP3,
-  `UltraNet_DnsResolveAsync` for autodiscovery, `UltraNet_HttpRequestAsync`
-  for autoconfig lookup, LDAP/WebDAV plugins later for address books.
+  Everything goes through UltraNet: the `imap` and `smtp` plug-ins for the
+  mail itself (there is no POP3 in UltraMail), `UltraNet_HttpGet` on a
+  worker thread for the autoconfig lookup and the sender icons, UltraNet's
+  OAuth2 client for the browser sign-ins, and the UltraCloud module (on
+  UltraNet's HTTP and WebDAV) for "Attach cloud link". The DNS probing of
+  2.2 step 3 is not implemented: a domain with no preset and no autoconfig
+  document goes to the manual-settings page. LDAP / CardDAV address books
+  remain a later phase (section 7).
 
 ## 2. First-run experience
 
