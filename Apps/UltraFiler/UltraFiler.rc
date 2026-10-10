@@ -15,13 +15,8 @@
 
 // ===== VERSION INFORMATION =====
 VS_VERSION_INFO VERSIONINFO
-<<<<<<< HEAD
     FILEVERSION     1,71,0,0
     PRODUCTVERSION  1,71,0,0
-=======
-    FILEVERSION     1,71,0,0
-    PRODUCTVERSION  1,71,0,0
->>>>>>> origin/main
     FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
 #ifdef _DEBUG
     FILEFLAGS       VS_FF_DEBUG
@@ -39,20 +34,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "ULTRA OS Development GmbH\0"
             VALUE "FileDescription",  "UltraFiler - Cross-Platform File Manager\0"
-<<<<<<< HEAD
             VALUE "FileVersion",      "1.71.0\0"
-=======
-            VALUE "FileVersion",      "1.71.0\0"
->>>>>>> origin/main
             VALUE "InternalName",     "UltraFiler\0"
             VALUE "LegalCopyright",   "Copyright (C) 2026 ULTRA OS Development GmbH\0"
             VALUE "OriginalFilename", "UltraFiler.exe\0"
             VALUE "ProductName",      "UltraFiler\0"
-<<<<<<< HEAD
             VALUE "ProductVersion",   "1.71.0\0"
-=======
-            VALUE "ProductVersion",   "1.71.0\0"
->>>>>>> origin/main
             VALUE "Comments",         "Part of the ULTRA OS ecosystem - ultracanvas.dev\0"
         END
     END

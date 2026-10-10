@@ -8,11 +8,7 @@
 
     <!-- ===== IDENTITY ===== -->
     <assemblyIdentity
-<<<<<<< HEAD
         version="1.71.0.0"
-=======
-        version="1.71.0.0"
->>>>>>> origin/main
         processorArchitecture="*"
         name="ULTRAOSDevelopment.UltraFiler"
         type="win32"
