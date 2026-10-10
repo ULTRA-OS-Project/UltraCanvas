@@ -8,7 +8,7 @@
 // the platform it runs on - the same choice Docs/GettingStarted.md offers,
 // so a programmer can read another platform's instructions too. With --check
 // or --plan it runs headless, which is what CI uses to smoke-test it.
-// Version: 0.1.0
+// Version: 0.1.1 - --page <name> opens the window on a page
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraCanvasStartWindow.h"
 
@@ -61,8 +61,11 @@ void PrintUsage(const char* programName) {
         "                    the chosen features need, and print the report\n"
         "  --plan            Like --check, and also print the install plan\n"
         "  --for <os>        Plan for linux, macos or windows instead of this one\n"
+        "                    (in the window: preselect that platform's guide)\n"
         "  --all             Check every feature group, not only the toolchain\n"
         "                    and the framework core\n"
+        "  --page <name>     Open the window on a page: platform, system, choices,\n"
+        "                    install, project, ai or report\n"
         "  -v, --version     Show version information\n"
         "  -h, --help        Show this message\n"
         "\n"
@@ -96,6 +99,7 @@ int RunHeadless(bool withPlan, const UltraCanvasStart::Choices& choicesIn) {
 int main(int argc, char* argv[]) {
     bool headlessCheck = false;
     bool headlessPlan = false;
+    std::string page;
     UltraCanvasStart::Choices choices;
 
     for (int i = 1; i < argc; ++i) {
@@ -121,6 +125,12 @@ int main(int argc, char* argv[]) {
                                 UltraCanvasStart::DependencyGroup::Net }) {
                 choices.Set(group, true);
             }
+        } else if (arg == "--page") {
+            if (i + 1 >= argc) {
+                std::printf("--page needs platform, system, choices, install, project, ai or report\n");
+                return EXIT_FAILURE;
+            }
+            page = argv[++i];
         } else if (arg == "--for") {
             if (i + 1 >= argc) {
                 std::printf("--for needs linux, macos or windows\n");
@@ -166,6 +176,13 @@ int main(int argc, char* argv[]) {
         UltraCanvasStart::UltraCanvasStartWindow window;
         if (!window.Initialize()) {
             debugOutput << "Failed to create the UltraCanvasStart window" << std::endl;
+            return EXIT_FAILURE;
+        }
+        if (choices.platform != UltraCanvasStart::Platform::Unknown) {
+            window.PreselectPlatform(choices.platform);
+        }
+        if (!page.empty() && !window.ShowPage(page)) {
+            std::printf("unknown page: %s\n", page.c_str());
             return EXIT_FAILURE;
         }
         window.Show();

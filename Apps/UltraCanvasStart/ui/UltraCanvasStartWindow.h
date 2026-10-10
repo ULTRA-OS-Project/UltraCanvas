@@ -5,11 +5,21 @@
 // checks and the install step), Project (the skeleton), AI (Claude Code) and
 // Report (the whole plan as text, for the clipboard). Nothing is painted by
 // hand: every page is assembled from catalogue elements and laid out with the
-// CSS flex layout, as the other applications do.
+// CSS flex layout, as the other applications do, and styled through
+// UltraCanvasStartTheme.h (UltraMail's values: a near-white page, white
+// cards, one accent button per page).
+//
+// The pages' prose comes from the engine as Markdown (StartGuide) and is
+// shown in read-only Markdown views: links open in the browser, commands
+// stand out, one action per step. The System page is key/value rows with
+// status badges and links.
 //
 // The checks and the install run a package manager and block on it, so they
 // run on a worker thread; results come back through a queue a UI timer
 // drains, the pattern UltraCleaner and UltraSocial use.
+// Version: 0.2.0 - UltraMail's look: theme header, cards, Markdown views with
+//                  links and highlighted commands, a structured System page,
+//                  ShowPage for --page
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -17,6 +27,7 @@
 #include "StartAi.h"
 #include "StartTypes.h"
 
+#include "UltraCanvasBadge.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
@@ -45,15 +56,18 @@ public:
     bool Initialize();
     void Show();
 
+    // Opens the page named "platform", "system", "choices", "install",
+    // "project", "ai" or "report" (--page, for screenshots and support).
+    // False for a name that is no page.
+    bool ShowPage(const std::string& name);
+    // Selects the platform the guide is for, as the Platform page's radios
+    // do (--for in window mode).
+    void PreselectPlatform(Platform platform);
+
 private:
     // ===== CONSTRUCTION =====
     void LayoutForSize(float width, float height);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> NewPage(const std::string& id);
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel> Heading(const std::string& id,
-                                                           const std::string& text);
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> ReadOnlyText(const std::string& id,
-                                                                   float height);
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> ButtonRow(const std::string& id);
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildPlatformPage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSystemPage();
@@ -78,10 +92,8 @@ private:
 
     // ===== VIEW UPDATES =====
     void ReadChoicesFromPage();
-    void RefreshSystemText();
     void RefreshChecksText();
     void RefreshPlan();
-    void RefreshAiText();
     void SetBusy(bool busy);
     void SetStatus(const std::string& text);
 
@@ -90,16 +102,15 @@ private:
     void DrainUiQueue();
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> header_;
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> statusBand_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel_;
 
     // Platform page
     UltraCanvas::UltraCanvasRadioGroup platformGroup_;
     std::map<Platform, std::shared_ptr<UltraCanvas::UltraCanvasRadio>> platformRadios_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> platformNotes_;
-
-    // System page
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> systemText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> platformGuide_;
 
     // Choices page
     std::map<DependencyGroup, std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>> groupBoxes_;
@@ -109,11 +120,12 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> cloudBox_;
 
     // Install page
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> checksText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> checksView_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> installOutput_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> checkButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> installButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> downloadButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBadge> installBadge_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> installSummary_;
 
     // Project page
@@ -123,7 +135,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> projectPreview_;
 
     // AI page
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> aiText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> aiView_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> promptText_;
 
     // Report page

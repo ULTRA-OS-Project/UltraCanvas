@@ -1,8 +1,9 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
-// Version: 0.1.0
+// Version: 0.1.1 - notes are one action each, in Markdown; the report prints them plain
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartPlan.h"
 
+#include "StartGuide.h"
 #include "StartPackages.h"
 #include "StartProject.h"
 #include "StartSdk.h"
@@ -27,32 +28,34 @@ PackageManager DefaultManagerFor(Platform platform) {
 } // namespace
 
 std::vector<std::string> PlatformNotes(const SystemProfile& profile, Platform target) {
+    // One action or one fact per note, in Markdown: commands in backticks,
+    // addresses bare (the pages link them, the report prints them plain).
     std::vector<std::string> notes;
     const bool local = target == profile.platform;
     switch (target) {
         case Platform::MacOS:
-            notes.push_back("Install the Xcode command line tools first: xcode-select --install");
+            notes.push_back("Install the Xcode command line tools first: `xcode-select --install`");
             if (!local || profile.packageManagerPath.empty()) {
-                notes.push_back("Homebrew installs the libraries: https://brew.sh (one command in Terminal)");
+                notes.push_back("Homebrew installs the libraries: one command in Terminal from https://brew.sh");
             }
-            notes.push_back("Build with cmake -G Xcode or the default generator; package with package-macos.sh");
+            notes.push_back("Build with `cmake -G Xcode` or the default generator");
+            notes.push_back("Package with `package-macos.sh`");
             break;
         case Platform::Windows:
-            notes.push_back("The build runs inside MSYS2 (https://www.msys2.org), in the CLANG64 shell "
-                            "(CLANGARM64 on an ARM machine), not in Visual Studio");
+            notes.push_back("The build runs inside MSYS2, in the **CLANG64** shell (**CLANGARM64** on an ARM machine), not in Visual Studio");
             if (local && profile.msysPrefix.empty()) {
-                notes.push_back("MSYS2 was not found; install it to C:\\msys64, open the CLANG64 shell, "
-                                "run pacman -Syu and start UltraCanvasStart again");
+                notes.push_back("MSYS2 was not found: install it from https://www.msys2.org to `C:\\msys64`");
+                notes.push_back("Then open the CLANG64 shell and run `pacman -Syu`");
+                notes.push_back("Then start UltraCanvasStart again");
             }
-            notes.push_back("build-win.cmd at the repository root configures and builds; "
-                            "package-win.sh makes the standalone zip");
+            notes.push_back("`build-win.cmd` at the repository root configures and builds");
+            notes.push_back("`package-win.sh` makes the standalone zip");
             break;
         case Platform::Linux:
             if (local && profile.packageManager == PackageManager::None) {
-                notes.push_back("No apt, dnf, pacman or zypper was found; install the packages "
-                                "named below with your distribution's tool");
+                notes.push_back("No apt, dnf, pacman or zypper was found: install the packages named below with your distribution's tool");
             }
-            notes.push_back("A C++20 compiler: clang 14+ or GCC 11+. CI builds with clang.");
+            notes.push_back("A C++20 compiler: `clang` 14 or newer, or `gcc` 11 or newer (CI builds with clang)");
             break;
         default:
             break;
@@ -219,7 +222,7 @@ std::string RenderReport(const Plan& plan) {
     }
     if (!plan.notes.empty()) {
         out += "\nNotes\n";
-        for (const auto& note : plan.notes) out += "  * " + note + "\n";
+        for (const auto& note : plan.notes) out += "  * " + PlainText(note) + "\n";
     }
     return out;
 }

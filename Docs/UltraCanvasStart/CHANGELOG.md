@@ -1,3 +1,42 @@
+#### 2026-10-10 *0.2.0*
+- **The window looks like UltraMail's.** A theme header (`ui/UltraCanvasStartTheme.h`,
+  UltraMail's colours, type sizes and metrics) styles every page: a
+  near-white page with white cards, one filled accent button per page and
+  quiet secondary buttons, a header band with the name, version and what
+  was detected, and a status band below the pages.
+- **Links open, commands stand out, important things are bold.** The pages'
+  prose is Markdown now (`engine/StartGuide`: the per-platform way in, the
+  checks, the assistant page), shown in read-only Markdown views: every
+  address is a link that opens in the browser, everything typed is `code` on
+  a tinted chip, and what matters is bold. The System page's addresses are
+  links too, and its paths can be selected and copied.
+- **One action per instruction line.** The platform guides are numbered
+  lists where each step is one thing to do; alternatives (the prebuilt SDK
+  or a clone) are sub-bullets of their step. The guide names the SDK
+  archive for the real version and architecture and links it to its
+  release. The platform notes follow the same rule, and the report prints
+  them plain. A test enforces it.
+- **A structured System page.** Key/value rows in cards: *This computer*
+  (platform, OS, architecture, distribution, the package manager with a
+  found/not-found badge and its path, MSYS2 with a link to install it when
+  missing, home, Claude Code with its version and path, git) and *The
+  framework* (the version, the matching SDK archive, its download address,
+  the release page, the workflow artifacts while a release is still
+  building, and how this application fetches it), then the notes.
+- **The Install page says where it stands.** A badge next to the buttons
+  (*not checked yet*, *N missing*, *everything installed*); *Install what is
+  missing* is enabled only while something is; the checks are a list with a
+  mark, the version and the package to install; the package manager's
+  output goes to a dark console.
+- **`--page <name>` opens the window on a page** (platform, system, choices,
+  install, project, ai, report) and `--for <os>` preselects that platform's
+  guide in the window too, for screenshots and support.
+- **A proposal for a stepper instead of tabs:**
+  `Docs/UltraCanvasStart/WorkflowProposal.md` says what the tabs hide
+  about the order of things and lays out the five-step flow that would
+  replace Choices, Install and the SDK download on the Project page. Not
+  implemented in this version.
+
 #### 2026-10-09 *0.1.3*
 - **The Linux SDK it downloads is a `.tar.xz`.** CI packs the Linux SDK
   with xz now, about 28% smaller than the gzip it was, so the Project page's

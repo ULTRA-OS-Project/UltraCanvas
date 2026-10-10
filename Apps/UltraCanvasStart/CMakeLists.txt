@@ -12,7 +12,7 @@
 #                           so the CLI modes and the test suite use it headless.
 #   UltraCanvasStart        the GUI application on top of it.
 #
-# Version: 0.1.0
+# Version: 0.1.1 - StartGuide (the pages' prose as Markdown)
 # Author: UltraCanvas Framework / ULTRA OS
 
 if(NOT ULTRACANVAS_LIBRARY)
@@ -29,6 +29,7 @@ add_library(UltraCanvasStartEngine STATIC
     engine/StartSdk.cpp
     engine/StartProject.cpp
     engine/StartAi.cpp
+    engine/StartGuide.cpp
     engine/StartRunner.cpp
 )
 set_target_properties(UltraCanvasStartEngine PROPERTIES
