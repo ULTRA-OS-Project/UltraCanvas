@@ -1,4 +1,27 @@
-#### 2026-10-10 *1.71.1*
+#### 2026-10-10 *1.72.0*
+- **Split view: a layout of its own.**
+  - **The navigation row's path bar is hidden** while the split view is on:
+    each pane has a path bar of its own, and the one above only repeated
+    whichever was active. It comes back with the single display.
+  - **The preview pane sits under the right-hand pane's path bar**, beside
+    that display, with a splitter of its own - it used to stand beside the
+    pane headers as a third column from the top of the split.
+  - **The two displays are equal halves.** They are put back to the same
+    width when the split view opens, when the preview pane opens or closes,
+    when the tree docks or leaves and when the window is resized; the
+    splitter between them can still be dragged in between. With the preview
+    up, the left-hand pane is as wide as the right-hand display beside it.
+    Before, the preview took its width from the two displays in proportion,
+    so a difference between them - left by docking the tree, or by a drag -
+    stayed until the splitter was dragged back.
+  - **A docked tree fits into its pane.** It used to widen its pane at the
+    other display's expense; it now narrows to the room its pane leaves
+    beside the display's minimum, and the other pane keeps its half.
+  - **The tree buttons show plainly when the tree is docked.** Their pressed
+    look was a pale blue barely different from the active pane's tinted
+    header, and it turned grey while the pointer was still on the button
+    after the click. It is a clear blue now, under the pointer too - so are
+    the navigation row's toggles (split view, History, Favorites, Preview).
 - **Split view: files dropped on a folder of the other pane go into that
   folder.** Dragged from one pane and released on a folder of the other,
   files were copied into the folder that pane showed instead - out of sight

@@ -49,13 +49,21 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   clock) shows **two folder displays side by side** in place of the folder
   tree and the single display: the active tab's display on the left and a
   second display on the right, which has a Back / Forward history of its own
-  and is in no tab. The two share the width the tree and the display had,
-  with a draggable splitter between them. Each pane carries a **header row**
-  of a folder-tree button and the pane's own breadcrumb, which navigates that
-  pane. The **tree button** docks the folder tree down the left of that
-  display, under its header, and takes it away again (also **Esc**); there is
-  one tree, so pressing the other pane's button moves it over. A docked tree
-  follows and navigates the display it sits beside. **The display clicked
+  and is in no tab. The two displays are **equal halves**: they are put back
+  to the same width when the split view opens, when the preview pane opens
+  or closes, when the tree docks or leaves and when the window is resized,
+  and the splitter between them can still be dragged in between. Each pane
+  carries a **header row** of a folder-tree button and the pane's own path
+  bar, which navigates that pane - so the navigation row's path bar is
+  hidden while the split view is on. The **preview pane** sits under the
+  right-hand pane's path bar, beside that display, with a splitter of its
+  own; the two displays stay equal beside it. The **tree button** docks the
+  folder tree down the left of that display, under its header, and takes it
+  away again (also **Esc**); the button is highlighted while the tree is
+  docked there. There is one tree, so pressing the other pane's button moves
+  it over. A docked tree fits into its pane - the display beside it narrows,
+  the other pane keeps its half - and follows and navigates the display it
+  sits beside. **The display clicked
   last is the active one** — its header is tinted — and it is what the
   navigation row, the command bar, the search field, the status bar and the
   preview pane act on, exactly as they act on the active tab; clicking a tab
