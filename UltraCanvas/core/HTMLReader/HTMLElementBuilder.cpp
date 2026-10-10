@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.26.0 - a table cell ignores min-height / max-height (mail's spacer
+//                  cells, max-height:1px, kept their height); an inline
+//                  element's line-height sets its line's height
 // Version: 1.25.0 - <img> with a height and no width is as wide as the picture's
 //                   shape makes it (it took the picture's own width, and fill
 //                   stretched it); with a width and a height it keeps that
@@ -94,6 +97,11 @@ namespace UltraCanvas {
 namespace HTML {
 
 namespace {
+
+// line-height: normal, as a factor of the font size - what browsers use for
+// the common sans faces, where a run's line height has to be reckoned before
+// the text is shaped.
+constexpr float kNormalLineHeight = 1.2f;
 
 Color ToColor(const CssColor& c) { return Color(c.r, c.g, c.b, c.a); }
 
@@ -978,6 +986,8 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     runPlain.clear();
     runLinks.clear();
     runImages.clear();
+    runLineHeightPx = 0.f;
+    runLineHeightSet = false;
     if (!markerPrefix.empty()) {
         markup += EscapeMarkup(markerPrefix);
         runPlain += markerPrefix;
@@ -1060,8 +1070,21 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
                  "\">" + markup + "</span>";
     }
 
+    // The line's height, where the run's text sets one: the tallest of its
+    // inline boxes', and at least the block's own (its strut) - Stripe's
+    // receipt puts "Receipt from ..." (line-height 20px) and the amount
+    // (36px text on 40px lines) in cells of their own, and both were laid
+    // out at the font's height, the amount touching the line above it.
+    float runLineHeight = 0.f;
+    if (runLineHeightSet) {
+        const float strut = blockStyle.lineHeightSet
+                ? (blockStyle.lineHeightPx ? *blockStyle.lineHeightPx
+                                           : blockStyle.lineHeight * blockStyle.fontSizePx)
+                : kNormalLineHeight * blockStyle.fontSizePx;
+        runLineHeight = std::max(strut, runLineHeightPx);
+    }
     auto label = std::make_shared<UltraCanvasLabel>(MakeId("text"));
-    ConfigureLabel(*label, blockStyle, runNoWrap);
+    ConfigureLabel(*label, blockStyle, runNoWrap, runLineHeight);
     label->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
     label->size.width = CSSLayout::Dimension::Pct(100.f);
     label->SetTextIsMarkup(true);
@@ -1115,6 +1138,9 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
     // runPlain mirrors the text the layout will render (markup stripped,
     // entities decoded); link byte ranges are recorded against it.
     if (node.type == NodeType::Text) {
+        for (unsigned char c : node.text) {
+            if (!std::isspace(c)) { NoteRunLineHeight(runStyle); break; }
+        }
         std::string plain = preserveWhitespace
             ? node.text : CollapseWhitespace(node.text, runPlain);
         out += EscapeMarkup(plain);
@@ -1572,6 +1598,19 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
             rule.currentColor = false;
             boxStyle.SetAllBorders(rule);
         }
+        // min-height and max-height do not apply to a table cell (CSS 2.1
+        // §10.7 leaves them undefined; browsers ignore both). Stripe's - and
+        // many mailers' - spacer cell is <td height="32" style="font-size:1px;
+        // line-height:1px; max-height:1px">: honoured, every such gap in a
+        // receipt collapsed to 1px and the text was packed together. A cell
+        // made a block (display:block, mail columns on a phone) is a block,
+        // and keeps them.
+        if (cellStyle.display == DisplayMode::TableCell) {
+            boxStyle.minHeightPx.reset();
+            boxStyle.minHeightPercent.reset();
+            boxStyle.maxHeightPx.reset();
+            boxStyle.maxHeightPercent.reset();
+        }
         CellEntry entry{ cellBox, static_cast<int>(r), c, rowSpan, colSpan, boxStyle };
         if (style.borderCollapse) {
             // Settled with the neighbours' once every cell is placed.
@@ -1926,14 +1965,27 @@ float ElementBuilder::SpaceWidth(const ComputedStyle& style) {
     return width;
 }
 
+void ElementBuilder::NoteRunLineHeight(const ComputedStyle& style) {
+    const float height = style.lineHeightSet
+            ? (style.lineHeightPx ? *style.lineHeightPx : style.lineHeight * style.fontSizePx)
+            : kNormalLineHeight * style.fontSizePx;
+    runLineHeightPx = std::max(runLineHeightPx, height);
+    if (style.lineHeightSet) runLineHeightSet = true;
+}
+
 void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
-                                    bool noWrap) {
+                                    bool noWrap, float runLineHeightPx) {
     LabelStyle labelStyle;
     labelStyle.fontStyle = FontOf(style);
-    // line-height as set: px, or a factor of this text's font size.
-    if (style.lineHeightSet) {
+    // line-height as set: px, or a factor of this text's font size - or the
+    // inline run's, where its text sets one (BuildInlineRun).
+    if (runLineHeightPx > 0.f) {
+        labelStyle.lineHeightPx = runLineHeightPx;
+    } else if (style.lineHeightSet) {
         labelStyle.lineHeightPx = style.lineHeightPx ? *style.lineHeightPx
                                                      : style.lineHeight * style.fontSizePx;
+    }
+    if (runLineHeightPx > 0.f || style.lineHeightSet) {
         // line-height: 0 (spacer cells) is next to nothing, not "the font's".
         labelStyle.lineHeightPx = std::max(labelStyle.lineHeightPx, 0.01f);
     }

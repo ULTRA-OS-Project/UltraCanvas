@@ -9,6 +9,9 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.19.0 - a cell ignores min-height / max-height (Stripe's spacer
+//                  cells); an inline element's line-height sets its line's
+//                  height
 // Version: 1.18.0 - LinkedIn's mail: a height-only <img> takes the picture's
 //                  shape, width and height keep theirs when shrunk, the picture
 //                  is stretched only into the author's shape; a width="50%"
@@ -39,7 +42,7 @@
 //                  width is shrink-to-fit; a list marker starts the item's
 //                  first block; vertical-align: top on side-by-side boxes
 // Version: 1.1.0 - background pictures, margin: auto, @media width
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -978,14 +981,53 @@ void TestMailTables() {
         CheckNear(c0->rect.height, 150.f, "a cell's height: 50% of the table");
         CheckNear(c1->rect.height, 150.f, "the other row takes the rest");
     } else Check(false, "two rows");
+    // min-height and max-height do nothing on a table cell (CSS 2.1 §10.7
+    // leaves them undefined; Chromium and Firefox ignore them): the rows share
+    // the table's height as if they were not there.
     b = build("<table style='height:300px' cellpadding='0' cellspacing='0'>"
               "<tr><td style='min-height:80%'>g</td></tr><tr><td>h</td></tr></table>");
     c0 = nth(b, "html_td_", 0);
-    if (c0) CheckNear(c0->rect.height, 240.f, "a cell's min-height: 80%");
+    if (c0) CheckNear(c0->rect.height, 150.f, "a cell's min-height: 80% is ignored");
     b = build("<table style='height:300px' cellpadding='0' cellspacing='0'>"
               "<tr><td style='max-height:10%;height:200px'>i</td></tr><tr><td>j</td></tr></table>");
     c0 = nth(b, "html_td_", 0);
-    if (c0) CheckNear(c0->rect.height, 30.f, "a cell's max-height: 10%");
+    if (c0) CheckNear(c0->rect.height, 200.f, "a cell's max-height: 10% is ignored");
+    // Stripe's spacer cell (every receipt and invoice it mails): as tall as
+    // its height says. Honouring max-height:1px collapsed every gap of the
+    // mail to 1px.
+    b = build("<table cellpadding='0' cellspacing='0' width='100%'><tr>"
+              "<td height='32' style='border:0;margin:0;padding:0;font-size:1px;line-height:1px;"
+              "max-height:1px;mso-line-height-rule:exactly'><div>&nbsp;</div></td></tr></table>");
+    c0 = nth(b, "html_td_", 0);
+    if (c0) CheckNear(c0->rect.height, 32.f, "a spacer cell with max-height:1px keeps its 32px");
+    else Check(false, "spacer cell");
+    // A cell made a block (mail columns stacked on a phone) is a block, and
+    // keeps its max-height.
+    b = build("<table cellpadding='0' cellspacing='0' width='100%'><tr>"
+              "<td style='display:block;height:40px;max-height:10px;overflow:hidden'>k</td></tr></table>");
+    c0 = nth(b, "html_td_", 0);
+    if (c0) CheckNear(c0->rect.height, 10.f, "a display:block cell keeps its max-height");
+    else Check(false, "block cell");
+
+    // An inline element's line-height sets its line's height (the line is as
+    // tall as its tallest inline box): Stripe's amount, 36px text on 40px
+    // lines, and the 14px caption above it on 20px lines - both in cells
+    // that set no line-height of their own.
+    b = build("<table cellpadding='0' cellspacing='0' width='100%'>"
+              "<tr><td><span style='font-size:14px;line-height:20px'>Receipt from</span></td></tr>"
+              "<tr><td><span style='font-size:36px;line-height:40px;font-weight:600'>amount</span></td></tr>"
+              "<tr><td><span style='font-size:14px'>plain</span></td></tr></table>");
+    lab = LabelWith(b.all, "Receipt from");
+    if (lab) CheckNear(lab->rect.height, 20.f, "a span's line-height:20px is its line's height");
+    else Check(false, "caption label");
+    lab = LabelWith(b.all, "amount");
+    if (lab) CheckNear(lab->rect.height, 40.f, "36px text on line-height:40px: a 40px line");
+    else Check(false, "amount label");
+    // Text that sets no line-height keeps the font's own spacing.
+    lab = LabelWith(b.all, "plain");
+    if (lab) Check(lab->rect.height > 14.f && lab->rect.height < 20.f,
+                   "a span without line-height keeps the font's line spacing");
+    else Check(false, "plain label");
     b = build("<table cellpadding='0' cellspacing='0'><tr><td style='height:200px'>"
               "<div style='height:50%'>a</div></td></tr></table>");
     d = nth(b, "html_div_", 0);
