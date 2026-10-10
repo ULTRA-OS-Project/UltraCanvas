@@ -17,7 +17,9 @@ The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in 
 - **Tab Styles:** Classic, Modern, Flat, Rounded, Custom
 - **Overflow Management:** Automatic dropdown when tabs exceed available space
 - **Search Functionality:** Real-time filtering of tabs in dropdown
-- **Tab Reordering:** Drag-and-drop tab repositioning (off by default)
+- **Tab Reordering:** Drag-and-drop tab repositioning (off by default); works
+  along the bar's axis on every `TabPosition`, and a pointer held at either
+  end of the strip carries the tab on past the visible range
 - **Drag Out / Drag In:** Tabs can be dragged out of the bar and transferred between containers
 - **Close Buttons:** Configurable close button behavior
 - **Keyboard Navigation:** Arrow keys, shortcuts, and search input
@@ -425,7 +427,34 @@ int closeButtonMargin = 4;       // Close button spacing
 float closeButtonStrokeWidth = 1.0f;  // Weight of the X, the same on every tab
 bool allowTabReordering = false; // Enable drag-and-drop
 bool enableTabScrolling = true;  // Enable scroll buttons
+int dragAutoScrollZone = 24;     // Pixels at either end of the strip that carry a dragged tab on
+unsigned int dragAutoScrollIntervalMs = 250;  // One place per interval while the pointer stays there
 ```
+
+### Dragging a tab to another place
+
+```cpp
+tabs->SetAllowTabReordering(true);          // or tabs->allowTabReordering = true
+tabs->onTabReorder = [](int from, int to) {
+    std::cerr << "Tab " << from << " is now at " << to << std::endl;
+};
+tabs->SetDragAutoScrollZone(32);            // Default: 24px
+tabs->SetDragAutoScrollInterval(200);       // Default: 250ms
+```
+
+Press a tab and move more than 5px to start the drag; a translucent ghost of
+the tab (the capsule itself in `TabStyle::Pill`) follows the pointer, and an
+insertion line marks the tab it would land on. The tabs swap as soon as the
+pointer passes the centre of a neighbour - its horizontal centre on a `Top`
+or `Bottom` bar, its vertical centre on a `Left` or `Right` one - so the
+order updates while you drag and `onTabReorder` fires on every swap. The
+active, hovered and right-clicked indices follow the tabs they name. When
+the strip is scrolled, holding the pointer within `dragAutoScrollZone` of
+either end (or past it) carries the tab one place in that direction every
+`dragAutoScrollIntervalMs` and scrolls the strip to keep it in view, until
+it reaches the end or the pointer moves back. `ReorderTabs(from, to)` moves a
+tab without a drag. Dragging out of the bar altogether is a separate feature:
+see `SetAllowTabDragOut()`, `onTabDragOut` and `AcceptTabTransfer()`.
 
 ## Factory Functions
 

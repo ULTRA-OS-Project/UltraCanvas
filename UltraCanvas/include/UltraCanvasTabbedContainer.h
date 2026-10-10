@@ -1,5 +1,6 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
+// Version: 2.8.0 - drag reorder on vertical bars, auto-scroll at the strip's ends, a pill ghost
 // Version: 2.7.0 - a truncated title fills its width, one X weight, the open tab's own X colour
 // Version: 2.6.0 - TabStyle::Pill, capsule tabs floating in the bar
 // Version: 2.5.0 - a tab list to screen readers, named after the open tab
@@ -15,6 +16,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasImageAnimation.h"
+#include "UltraCanvasTimer.h"
 #include "UltraCanvasUtils.h"
 #include <string>
 #include <vector>
@@ -274,6 +276,17 @@ namespace UltraCanvas {
         Color dragInsertionColor = Color(0, 120, 215, 230);   // Blue insertion indicator
         Color dragGhostBorderColor = Color(0, 120, 215, 120); // Ghost tab border
 
+        // ===== DRAG AUTO-SCROLL =====
+        // While a tab is dragged into the last dragAutoScrollZone pixels at
+        // either end of the strip (or past it), it is carried one place
+        // towards that end every dragAutoScrollIntervalMs and the strip
+        // scrolls to keep it in view, so a tab reaches a place beyond the
+        // visible range in one drag with the pointer held still.
+        int dragAutoScrollZone = 24;
+        unsigned int dragAutoScrollIntervalMs = 250;
+        int dragAutoScrollDirection = 0;                      // -1, 0 or +1 during a drag
+        TimerId dragAutoScrollTimer = InvalidTimerId;
+
         // ===== TAB CONTEXT MENU =====
         std::shared_ptr<UltraCanvasMenu> tabContextMenu;
         int contextMenuTabIndex = -1;  // Index of the tab that was right-clicked
@@ -303,6 +316,7 @@ namespace UltraCanvas {
         std::function<int(const TabTransferData& data, int insertionIndex)> onTabDragIn;
 
         UltraCanvasTabbedContainer(const std::string& elementId, float posX, float posY, float w, float h);
+        ~UltraCanvasTabbedContainer() override;
 
         UltraCanvasTabbedContainer(const std::string& elementId, float w, float h)
             : UltraCanvasTabbedContainer(elementId, -1, -1, w, h) {}
@@ -522,6 +536,31 @@ namespace UltraCanvas {
         /// Enable/disable drag-out support
         void SetAllowTabDragOut(bool allow) { allowTabDragOut = allow; }
         bool GetAllowTabDragOut() const { return allowTabDragOut; }
+
+        /// Enable/disable reordering by dragging a tab along the bar
+        void SetAllowTabReordering(bool allow) { allowTabReordering = allow; }
+        bool GetAllowTabReordering() const { return allowTabReordering; }
+        void SetDragAutoScrollZone(int pixels) { dragAutoScrollZone = std::max(0, pixels); }
+        int GetDragAutoScrollZone() const { return dragAutoScrollZone; }
+        void SetDragAutoScrollInterval(unsigned int milliseconds) { dragAutoScrollIntervalMs = std::max(16u, milliseconds); }
+        unsigned int GetDragAutoScrollInterval() const { return dragAutoScrollIntervalMs; }
+
+        bool IsVerticalTabBar() const { return tabPosition == TabPosition::Left || tabPosition == TabPosition::Right; }
+
+        // ===== DRAG REORDER STEPS (public so a test can drive a drag without a window) =====
+        /// Swap the dragged tab with the tab under (x, y) once the pointer has
+        /// passed that tab's centre along the bar's axis; otherwise mark it as
+        /// the insertion target.
+        void UpdateDragReorder(int x, int y);
+        /// Start, keep or stop the auto-scroll timer for a pointer at (x, y).
+        void UpdateDragAutoScroll(int x, int y);
+        /// One auto-scroll step: carry the dragged tab one place in
+        /// dragAutoScrollDirection and scroll the strip to keep it in view.
+        void DragAutoScrollTick();
+        void StopDragAutoScroll();
+        /// The next tab shown in the bar from `from` in `direction` (+1 / -1),
+        /// skipping hidden tabs; -1 at the end.
+        int NextVisibleTab(int from, int direction) const;
 
         /// Accept an external tab transfer into this container at the given position.
         /// If onTabDragIn callback is set, it is called first and can reject by returning -1.

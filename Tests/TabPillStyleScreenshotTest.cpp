@@ -7,8 +7,9 @@
 // ULTRACANVAS_SCREENSHOT_DIR to a directory and it writes the window there as
 // tab-pill-variants.ppm, five tab bars in five colourways (an outlined pill
 // on a tinted bar, a tinted pill, a solid accent pill, neutral chips, a dark
-// bar), each with an open, a plain and a hovered tab, for a human to look at
-// after `convert tab-pill-variants.ppm pills.png`.
+// bar), each with an open, a plain and a hovered tab - the last one caught
+// mid-drag, with the capsule ghost and the insertion line - for a human to
+// look at after `convert tab-pill-variants.ppm pills.png`.
 //
 // Runs headless under Xvfb and skips - rather than fails - without a display.
 // With GDK_SCALE set the pixel checks stand down, as they are written for
@@ -218,6 +219,21 @@ int main() {
     for (auto& e : elements) window->AddChild(e);
 
     DisplayTest::ActivateWindow(app, window);
+    DisplayTest::Frame(window, elements);   // lay the bars out, so tab bounds can be read
+
+    // The last bar is caught mid-drag: its first tab is being carried over
+    // the third, so the capsule ghost and the insertion line are in the
+    // picture too.
+    {
+        auto& dragged = bars.back();
+        dragged->SetAllowTabReordering(true);
+        dragged->draggingTabIndex = 0;
+        dragged->isDraggingTab = true;
+        dragged->dragInsertionIndex = 2;
+        Rect2Di third = dragged->GetTabBounds(2);
+        dragged->dragCurrentPosition = Point2Di(third.x + third.width / 3, third.y + third.height / 2);
+    }
+
     for (int frame = 0; frame < 3; ++frame) DisplayTest::Frame(window, elements);
 
     if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {

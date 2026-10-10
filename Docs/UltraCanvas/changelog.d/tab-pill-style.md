@@ -23,3 +23,17 @@
   shows a pale X while the other tabs keep a grey one.
   `SetCloseButtonColor()`, `SetCloseButtonHoverColor()` and the two new
   setters join the colour setters.
+- **Dragging a tab to another place works on every tab position and past
+  the visible range.** The swap compared the pointer's x with the target's
+  horizontal centre whatever the `TabPosition`, so reordering on a `Left` or
+  `Right` bar, where the tabs are stacked, hardly ever happened; it follows
+  the bar's axis now, as does the drag-out threshold and the insertion line,
+  which is drawn at last (it had no caller). A pointer held within
+  `dragAutoScrollZone` (24px) of either end of a scrolled strip carries the
+  tab one place in that direction every `dragAutoScrollIntervalMs` (250) and
+  scrolls to keep it in view, so a tab reaches any place in one drag. The
+  hovered tab, its close button and the right-clicked tab follow a reorder
+  like the active tab did, instead of pointing at the wrong tab until the
+  next mouse move. The drag ghost of a `TabStyle::Pill` tab is the capsule
+  itself. `SetAllowTabReordering()` joins `SetAllowTabDragOut()`.
+  `Tests/MenuAndTabBehaviourTest.cpp` drives the drag steps headless.
