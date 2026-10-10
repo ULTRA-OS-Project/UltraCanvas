@@ -12,6 +12,7 @@
 // links that open in the browser (the pages' prose), a console (command
 // output and generated files), a key/value row, a link label and a status
 // badge for the System page.
+// Version: 0.1.1 - the Markdown views' links are not underlined
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -410,6 +411,10 @@ MakeMarkdownView(const std::string& id, float height) {
     md.codeBlockTextColor = kTextPrimary;
     md.linkColor = kAccent;
     md.linkHoverColor = kAccentHover;
+    // The links here are archive names and addresses full of hyphens and
+    // underscores, which an underline runs through; the accent colour and
+    // the hand cursor mark them.
+    md.linkUnderline = false;
     md.bulletColor = kTextSecondary;
     view->onMarkdownLinkClick = [](const std::string& url) { UltraCanvas::OpenURL(url); };
     view->SetElementSize(UltraCanvas::CSSLayout::Dimension::Auto(), UltraCanvas::CSSLayout::Dimension::Px(height));

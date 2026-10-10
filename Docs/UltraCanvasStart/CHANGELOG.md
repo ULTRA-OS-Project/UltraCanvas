@@ -28,6 +28,13 @@
   missing* is enabled only while something is; the checks are a list with a
   mark, the version and the package to install; the package manager's
   output goes to a dark console.
+- **The Markdown views' links are not underlined.** An underline runs
+  through the hyphens and underscores of an archive name or an address; the
+  accent colour and the hand cursor mark the links instead (the renderer
+  honours `linkUnderline` now, framework changelog `markdown-link-underline`).
+- **The application's docs reach the LLM corpus.** `Docs/UltraCanvasStart/`
+  is indexed by `scripts/generate_llms_txt.py`, with the application's README
+  mirrored into it as the module READMEs are.
 - **`--page <name>` opens the window on a page** (platform, system, choices,
   install, project, ai, report) and `--for <os>` preselects that platform's
   guide in the window too, for screenshots and support.
