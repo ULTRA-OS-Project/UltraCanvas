@@ -25622,8 +25622,10 @@ Drops run through the same machinery as Paste, so a name that already exists the
 raises the [conflict dialog](#name-conflicts) and a failing entry the retry
 dialog; a folder cannot be dropped into itself, and a drop anywhere but on a
 folder simply ends the drag. Escape abandons the drag without moving anything.
-Files dropped **into** the view from other widgets or applications are copied
-the same way, conflict dialog included.
+Files dropped **into** the view from other applications are copied the same
+way, conflict dialog included — into the folder under the pointer, or, over
+empty space, into the folder the view shows (see
+[Drops from elsewhere](#drops-from-elsewhere)).
 
 A drag is the one file operation that can be started by accident — a press that
 wandered a few pixels — and it is carried out before it is noticed, so the drop
@@ -25645,9 +25647,12 @@ into "Archive"?` with *From*, *Into* and *Size* as its facts and the entries
 listed under them — and it offers **both verbs as buttons**: the one the
 gesture asked for is the coloured default, the other sits beside it, so a drop
 made with the wrong modifier is put right here instead of by a second drag;
-Cancel abandons the drop. Nothing is touched until it is answered. Files
-arriving from another program (or another pane of the same window) are copies,
-so only a mode that covers copies asks about those. A move asked for by **Cut
+Cancel abandons the drop. Nothing is touched until it is answered. The view
+the files land in asks, under its own mode. Files arriving from another
+program are copies, so only a mode that covers copies asks about those; files
+dragged across from another file display of the same window are moved or
+copied as a drop on a folder of their own display would be, and asked about
+accordingly. A move asked for by **Cut
 and Paste** — Ctrl+X, Ctrl+V, or `PasteFilesInto()` with `cut` — asks the same
 question when the mode covers moves: it changes where the files live just the
 same. A Ctrl+V copy is deliberate and never asks. With dialogs disabled the drop
@@ -25656,11 +25661,26 @@ is carried out rather than lost.
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
 [drag overlay](#drag-overlay) for that, because an element cannot paint outside
-its own bounds — and releasing over another element offers it the files as a
-`Drop` event, exactly like a drop arriving from another application. That is
-how a file reaches a second Filer pane, a folder tree or any other drop-aware
-widget of the same window; a release over something that does not take the drop
-just ends the drag.
+its own bounds. The element under the cursor is told about the drag the way a
+drag from another application tells it: `DragEnter` when the cursor reaches
+it, `DragOver` on every move (both carrying the dragged paths in
+`droppedFiles`) and `DragLeave` when the cursor moves on or the drag ends —
+so a folder tree highlights the row a drop would land on. Releasing over an
+element offers it the files as a `Drop` event, exactly like a drop arriving
+from another application; that is how a file reaches a folder tree or any
+other drop-aware widget of the same window. A release over something that does
+not take the drop just ends the drag.
+
+**Another file display of the same window** — the second pane of a split view
+— takes the files where they were released: into the folder under the cursor,
+or, over its empty space, into the folder it shows. It is the same gesture as a
+drop on a folder of the display the drag started in, so it follows the same
+rule: a **move** by default (`SetDropOnFolderCopies(true)`: a copy), **Ctrl**
+copies, **Shift** moves, and the drop confirmation of the display the files
+land in asks first when it covers that verb. While the drag is over it, that
+display frames the folder the files would land in — the folder's entry, or the
+whole display when it is its own folder — exactly as a drag from another
+application is framed (see [Drops from elsewhere](#drops-from-elsewhere)).
 
 **Leaving the window** hands the same set over to the native OS drag (XDND on
 Linux, OLE `DoDragDrop` on Windows), so it can be dropped on any other
@@ -25672,6 +25692,27 @@ Shift to suggest a move on Linux, Ctrl/Shift on Windows) and Escape cancels.
 On a platform with no native drag implementation (currently macOS) the
 window-wide drag simply keeps running instead of being dropped, so the gesture
 is never lost — it just cannot reach another application there.
+
+### Drops from elsewhere
+
+A drag that started outside the view — in another application, or in another
+element of the window — shows where it would land while it is over the view:
+the folder under the pointer is framed like the drop target of the view's own
+drag, and over empty space the whole view is framed, because the drop then
+lands in the folder it shows. A folder that is one of the dragged entries is
+never the target. `GetIncomingDropFolder()` says which folder that is right
+now, and is empty while no such drag is over the view:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel; -->
+```cpp
+// A host's status line, while files are dragged over the display.
+std::string into = filer->GetIncomingDropFolder();
+if (!into.empty()) statusLabel->SetText("Drop to put the files into " + into);
+```
+
+A drop on a folder of a **remote** drive goes through `remoteUpload` with that
+folder, and a drive's entries dropped on a local folder through
+`remoteDownload`, exactly as a drop on the folder the view shows does.
 
 ### Drag overlay
 

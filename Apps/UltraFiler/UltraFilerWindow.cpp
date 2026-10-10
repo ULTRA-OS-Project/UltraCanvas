@@ -61,7 +61,7 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
-// Version: 1.29.0
+// Version: 1.30.0
 // Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
@@ -748,10 +748,14 @@ namespace {
     // Mark / unmark a toggle-style tool button (the Preview switch).
     void StyleToggleButton(UltraCanvasButton* b, bool active) {
         if (!b) return;
-        b->SetColors(active ? Color(208, 228, 250, 255) : Color(249, 249, 251, 255),
-                     Color(233, 238, 244, 255));
+        // On: a clear blue that stays blue under the pointer - the pressed
+        // look must survive the hover right after the click that turned it
+        // on, and stand out on the tinted header of the active split-view
+        // pane (224, 236, 250), which the lighter blue it used to be did not.
+        b->SetColors(active ? Color(184, 212, 246, 255) : Color(249, 249, 251, 255),
+                     active ? Color(170, 202, 242, 255) : Color(233, 238, 244, 255));
         b->SetBorder(active ? 1.0f : 0.0f,
-                     active ? Color(60, 140, 220, 255) : Color(0, 0, 0, 0));
+                     active ? Color(40, 120, 210, 255) : Color(0, 0, 0, 0));
     }
 
     BreadcrumbStyle MakePathBreadcrumbStyle() {
@@ -2139,6 +2143,12 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
     row->AddChild(breadcrumb);
+    // In the split view the path bar is hidden - each pane has its own - and
+    // this takes its room, so the gear stays at the far right.
+    navPathSpacer = MakeLayoutBox("ufl-nav-path-spacer");
+    navPathSpacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    navPathSpacer->SetVisible(false);
+    row->AddChild(navPathSpacer);
 
     // The gear at the far right opens the settings window.
     auto settingsButton = MakeToolButton("ufl-settings", "", "settings.svg", 30,
@@ -3978,23 +3988,27 @@ void UltraFilerWindow::PlaceTreeWidth(int width) {
     } else if (treeDockShown && folderTree) {
         // Docked beside a display in the split view: the pane keeps its
         // width and the display beside the tree takes the difference, down
-        // to the display's own minimum.
+        // to the display's own minimum. On the right, the pane is the part
+        // beside the preview (rightDisplayPane).
         UltraCanvasContainer* pane = treeDockSide == SplitSide::Right
-                ? rightPane.get() : filerPane.get();
-        const int paneW = pane ? static_cast<int>(pane->GetWidth()) : 0;
-        if (paneW > 0)
-            width = std::max(UltraFilerSettings::kMinTreeWidth,
-                             std::min(width, paneW - kSplitPaneMinWidth));
-        if (width == treePaneWidth) return;
-        treePaneWidth = width;
-        folderTree->layoutItem.SetFlexBasis(
-                CSSLayout::Dimension::Px(static_cast<float>(width)));
-        folderTree->InvalidateLayout();
-        ApplySplitPaneMinSizes();
+                ? rightDisplayPane.get() : filerPane.get();
+        SetDockedTreeWidth(width, pane ? static_cast<int>(pane->GetWidth()) : 0);
     } else {
         // Out of the split view, hidden: the width it comes back with.
         treePaneWidth = width;
     }
+}
+
+void UltraFilerWindow::SetDockedTreeWidth(int width, int paneWidth) {
+    if (!treeDockShown || !folderTree) return;
+    if (paneWidth > 0)
+        width = std::max(UltraFilerSettings::kMinTreeWidth,
+                         std::min(width, paneWidth - kSplitPaneMinWidth));
+    if (width == treePaneWidth) return;
+    treePaneWidth = width;
+    folderTree->layoutItem.SetFlexBasis(
+            CSSLayout::Dimension::Px(static_cast<float>(width)));
+    folderTree->InvalidateLayout();
 }
 
 void UltraFilerWindow::FitTreeToRoom() {
@@ -5154,7 +5168,8 @@ void UltraFilerWindow::BuildSplitLayout() {
 
     auto splitPane = std::make_shared<UltraFilerSplitPane>("ufl-split",
                                                            SplitOrientation::Horizontal);
-    // A resized window changes the room beside the tree: keep the tree to it.
+    // A resized window changes the room beside the tree: keep the tree to it,
+    // and the split view's two displays to equal halves of it.
     splitPane->onWidthChanged = [this](int) {
         if (treeRoomFitPosted) return;
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
@@ -5165,6 +5180,7 @@ void UltraFilerWindow::BuildSplitLayout() {
             if (!alive->load()) return;   // window destroyed meanwhile
             treeRoomFitPosted = false;
             FitTreeToRoom();
+            BalanceSplitPanes();
         });
     };
     split = splitPane;
@@ -6763,13 +6779,27 @@ void UltraFilerWindow::UpdatePreviewPane() {
         folderPreviewReadyPath.clear();
     }
     if (wantFolder || !mediaPath.empty()) {
-        if (!previewShown) {
+        if (!previewShown && splitViewShown && rightSplit) {
+            // The split view: under the right-hand pane's path bar, beside
+            // its display. That pane grows by the preview's width and the two
+            // displays stay equal (BalanceSplitPanes).
+            previewShown = true;
+            previewShowsFolder = wantFolder;
+            previewPane = rightSplit->AddPane(1.0);
+            rightSplit->SetPaneMinSize(rightSplit->PaneCount() - 1, kPreviewMinWidth);
+            previewPane->layout.SetFlexColumn()
+                               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            if (wantFolder) AttachFolderPreview();
+            else            previewPane->AddChild(preview);
+            ApplySplitPaneMinSizes();
+            BalanceSplitPanes();
+            if (filer) filer->EnsureSelectionVisible();
+        } else if (!previewShown) {
             // Pane sizing is weight-proportional, so plain AddPane would
             // shrink every pane — visibly moving the tree | filer splitter.
             // Capture the arranged widths first and hand the preview its
-            // width from the folder display beside it only - the last pane
-            // (the tab's display, or the split view's right-hand one); the
-            // tree, and the other display, keep their positions.
+            // width from the folder display beside it only; the tree keeps
+            // its position.
             std::vector<int> sizes;
             bool arranged = true;
             for (size_t i = 0; i < split->PaneCount(); ++i) {
@@ -6790,9 +6820,9 @@ void UltraFilerWindow::UpdatePreviewPane() {
             if (arranged && !sizes.empty()) {
                 // The new split line takes its thickness from the donors
                 // too, so the sizes sum to exactly the available axis. The
-                // donors are the weighted panes - the one display, or the
-                // split view's two, each giving in proportion to its width;
-                // the tree pane is fixed and keeps what it has.
+                // donors are the weighted panes - the display - each giving
+                // in proportion to its width; the tree pane is fixed and
+                // keeps what it has.
                 const int line = split->EffectiveSplitterThickness();
                 std::vector<size_t> donors;
                 int donorSum = 0, donorMin = 0;
@@ -6845,50 +6875,67 @@ void UltraFilerWindow::UpdatePreviewPane() {
         }
     } else if (previewShown) {
         // Nothing to preview - give the folder display the whole width.
-        previewShown = false;
-        std::vector<int> sizes;
-        bool arranged = true;
+        ClosePreviewPane();
+    }
+}
+
+void UltraFilerWindow::ClosePreviewPane() {
+    if (!previewShown || !previewPane) return;
+    previewShown = false;
+    const bool inRightPane = rightSplit && rightSplit->GetPaneIndex(previewPane.get()) >= 0;
+    std::vector<int> sizes;
+    bool arranged = !inRightPane;
+    if (!inRightPane) {
         for (size_t i = 0; i + 1 < split->PaneCount(); ++i) {
             const int w = static_cast<int>(split->GetPane(i)->GetWidth());
             if (w <= 0) arranged = false;
             sizes.push_back(w);
         }
-        const int prevW  = static_cast<int>(previewPane->GetWidth());
-        if (prevW > 0) previewPaneWidth = prevW;   // restored on reopen
-        if (previewShowsFolder) {
-            DetachFolderPreview();
-            previewShowsFolder = false;
-        } else {
-            // Let go of the file, not just of the playback: a document engine
-            // that still holds the previewed file open blocks moving, renaming
-            // or deleting it (on Windows an open handle refuses the rename
-            // outright).
-            preview->CloseFile();
-            previewPane->RemoveChild(preview);
-        }
-        split->RemovePane(previewPane.get());
+    }
+    const int prevW  = static_cast<int>(previewPane->GetWidth());
+    if (prevW > 0) previewPaneWidth = prevW;   // restored on reopen
+    if (previewShowsFolder) {
+        DetachFolderPreview();
+        previewShowsFolder = false;
+    } else {
+        // Let go of the file, not just of the playback: a document engine
+        // that still holds the previewed file open blocks moving, renaming
+        // or deleting it (on Windows an open handle refuses the rename
+        // outright).
+        preview->CloseFile();
+        previewPane->RemoveChild(preview);
+    }
+    if (inRightPane) {
+        // Under the right-hand path bar: that pane gives the width back and
+        // the two displays are put back to halves.
+        rightSplit->RemovePane(previewPane.get());
         previewPane.reset();
-        // Return the preview's width (and its split line) to the displays it
-        // came from, in proportion, keeping the tree pane where the user put
-        // it.
-        if (arranged && !sizes.empty() && prevW > 0) {
-            const int line = split->EffectiveSplitterThickness();
-            std::vector<size_t> takers;
-            for (size_t i = 0; i < sizes.size(); ++i)
-                if (split->GetPaneFixedSize(i) == 0) takers.push_back(i);
-            if (takers.empty()) takers.push_back(sizes.size() - 1);
-            TakeFromPanes(sizes, takers, -(line + prevW));
-            split->SetPaneSizes(sizes);
-        }
+        ApplySplitPaneMinSizes();
+        BalanceSplitPanes();
+        return;
+    }
+    split->RemovePane(previewPane.get());
+    previewPane.reset();
+    // Return the preview's width (and its split line) to the displays it
+    // came from, in proportion, keeping the tree pane where the user put
+    // it.
+    if (arranged && !sizes.empty() && prevW > 0) {
+        const int line = split->EffectiveSplitterThickness();
+        std::vector<size_t> takers;
+        for (size_t i = 0; i < sizes.size(); ++i)
+            if (split->GetPaneFixedSize(i) == 0) takers.push_back(i);
+        if (takers.empty()) takers.push_back(sizes.size() - 1);
+        TakeFromPanes(sizes, takers, -(line + prevW));
+        split->SetPaneSizes(sizes);
     }
 }
 
 int UltraFilerWindow::FolderPaneMinWidth(const UltraCanvasContainer* pane) const {
     if (!splitViewShown) return kFilerMinWidth;
     int min = kSplitPaneMinWidth;
-    if (treeDockShown &&
-        pane == (treeDockSide == SplitSide::Right ? rightPane.get() : filerPane.get()))
-        min += treePaneWidth;
+    const bool rightSide = pane == rightPane.get() || pane == rightDisplayPane.get();
+    if (treeDockShown && (treeDockSide == SplitSide::Right ? rightSide : pane == filerPane.get()))
+        min += UltraFilerSettings::kMinTreeWidth;   // it narrows to fit the pane
     return min;
 }
 
@@ -6963,7 +7010,19 @@ void UltraFilerWindow::BuildSplitViewPanes() {
     rightPaneHeader = makeHeader("right", SplitSide::Right, rightTreeButton, rightPaneBreadcrumb);
     rightPaneBody = makeBody("right");
     rightPaneBox->AddChild(rightPaneHeader);
-    rightPaneBox->AddChild(rightPaneBody);
+    // Under the header, a split of its own: the body, and - while it is up -
+    // the preview pane beside it, so the preview sits under this pane's path
+    // bar instead of beside the header.
+    rightSplit = std::make_shared<UltraCanvasSplitPane>("ufl-pane-split-right",
+                                                        SplitOrientation::Horizontal);
+    rightSplit->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    rightDisplayPane = rightSplit->AddPane(1.0);
+    rightSplit->SetPaneMinSize(0, kSplitPaneMinWidth);
+    rightDisplayPane->layout.SetFlexColumn()
+                            .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    rightDisplayPane->AddChild(rightPaneBody);
+    rightPaneBox->AddChild(rightSplit);
 
     // The second display: everything a tab's display is, in no tab. Its
     // folder is set when the split view first shows it.
@@ -6976,8 +7035,13 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
     // The split has to be on screen for the change to mean anything - and
     // showing a second folder is showing a folder.
     ShowBrowsingView();
-    // The sizes as they are, before the panes change: what the two displays
-    // share out between them, or what the tree pane gets back.
+    // The preview pane changes homes with the split view (a pane of the
+    // window's split, or under the right-hand path bar): it is taken down
+    // here and UpdatePreviewPane, at the end, puts it up again where it now
+    // belongs.
+    if (previewShown) ClosePreviewPane();
+    // The sizes as they are, before the panes change: what the tree pane
+    // gets back when the split view goes off.
     std::vector<int> sizes;
     bool arranged = true;
     for (size_t i = 0; i < split->PaneCount(); ++i) {
@@ -6998,7 +7062,6 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             const int treeW = static_cast<int>(treePane->GetWidth());
             if (treeW > 0) treePaneWidth = treeW;
             treeDockShown = false;
-            treeDockTakenFromOther = treeDockTakenFromRest = 0;
             folderTree->SetVisible(false);
             leftPaneBody->AddChild(folderTree);
             split->RemovePane(treePane.get());
@@ -7006,31 +7069,24 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         }
         const int leftIndex = split->GetPaneIndex(filerPane.get());
         split->SetPaneMinSize(static_cast<size_t>(leftIndex), kSplitPaneMinWidth);
-        // The right-hand pane joins right after the left one - before the
-        // preview pane, when that is up.
+        // The right-hand pane joins right after the left one.
         rightPane = split->InsertPane(static_cast<size_t>(leftIndex) + 1, 1.0);
         split->SetPaneMinSize(static_cast<size_t>(leftIndex) + 1, kSplitPaneMinWidth);
         rightPane->layout.SetFlexColumn()
                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         rightPane->AddChild(rightPaneBox);
         leftPaneHeader->SetVisible(true);
+        // Each pane has a path bar of its own now; the navigation row's,
+        // which only ever said where the active one is, gives way.
+        if (breadcrumb) breadcrumb->SetVisible(false);
+        if (navPathSpacer) navPathSpacer->SetVisible(true);
 
-        // The two displays share what the tree pane and the folder pane
-        // had (the tree's split line went, the new one came: a wash).
-        if (arranged && sizes.size() > static_cast<size_t>(folderIndex)) {
-            std::vector<int> next;
-            int shared = sizes[folderIndex];
-            if (folderIndex > 0) shared += sizes[folderIndex - 1];
-            const int left = shared / 2;
-            for (int i = 0; i < folderIndex - 1; ++i) next.push_back(sizes[i]);
-            next.push_back(left);
-            next.push_back(shared - left);
-            for (size_t i = folderIndex + 1; i < sizes.size(); ++i) next.push_back(sizes[i]);
-            split->SetPaneSizes(next);
-        } else {
-            split->SetPaneWeight(static_cast<size_t>(leftIndex), 1.0);
-            split->SetPaneWeight(static_cast<size_t>(leftIndex) + 1, 1.0);
-        }
+        // The two displays share the width equally - as weights until the
+        // split has been laid out, in pixels from then on.
+        split->SetPaneWeight(static_cast<size_t>(leftIndex), 1.0);
+        split->SetPaneWeight(static_cast<size_t>(leftIndex) + 1, 1.0);
+        ApplySplitPaneMinSizes();
+        BalanceSplitPanes();
 
         // The right-hand display opens where it was last, or, the first
         // time, on the folder the active display shows.
@@ -7050,10 +7106,11 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         // re-homed below), the right-hand pane leaves, and the tree pane
         // comes back in front.
         treeDockShown = false;
-        treeDockTakenFromOther = treeDockTakenFromRest = 0;
         // The left-hand display is the active one again.
         ActivateSplitSide(SplitSide::Left);
         leftPaneHeader->SetVisible(false);
+        if (breadcrumb) breadcrumb->SetVisible(true);
+        if (navPathSpacer) navPathSpacer->SetVisible(false);
         int rightW = 0;
         if (rightPane) {
             rightW = static_cast<int>(rightPane->GetWidth());
@@ -7137,71 +7194,9 @@ void UltraFilerWindow::ActivateSplitSide(SplitSide side) {
 
 void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
     if (!splitViewShown || !folderTree || !leftPaneBody || !rightPaneBody) return;
-    // The two displays' widths before the change. The tree's width moves
-    // between them with the tree: the pane it docks into grows by it at the
-    // other display's expense, and an undocked tree gives that width back
-    // to the display it was taken from - rather than leaving the pane the
-    // tree left as wide as it was, with the display beside it squeezed.
-    std::vector<int> sizes;
-    bool arranged = split && rightPane && filerPane;
-    if (arranged) {
-        for (size_t i = 0; i < split->PaneCount(); ++i) {
-            const int w = static_cast<int>(split->GetPane(i)->GetWidth());
-            if (w <= 0) arranged = false;
-            sizes.push_back(w);
-        }
-    }
-    const int leftIndex  = arranged ? split->GetPaneIndex(filerPane.get()) : -1;
-    const int rightIndex = arranged ? split->GetPaneIndex(rightPane.get()) : -1;
-    if (leftIndex < 0 || rightIndex < 0) arranged = false;
-    auto paneOf = [&](SplitSide s) { return s == SplitSide::Right ? rightIndex : leftIndex; };
-    auto otherOf = [](SplitSide s) { return s == SplitSide::Right ? SplitSide::Left : SplitSide::Right; };
-    // The panes that are neither display: the preview pane, when it is up.
-    std::vector<size_t> rest;
-    if (arranged) {
-        for (size_t i = 0; i < sizes.size(); ++i)
-            if (static_cast<int>(i) != leftIndex && static_cast<int>(i) != rightIndex)
-                rest.push_back(i);
-    }
-    if (arranged) {
-        const bool wasDocked = treeDockShown;
-        const SplitSide wasSide = treeDockSide;
-        if (wasDocked && (!visible || side != wasSide)) {
-            // The tree leaves its pane: what docking took goes back where it
-            // came from, as far as the pane can give it (it keeps its own
-            // minimum), and what the preview pane gave but cannot take back
-            // - it has gone meanwhile - goes to the other display.
-            const int from = paneOf(wasSide);
-            const int to = paneOf(otherOf(wasSide));
-            int give = std::min(treeDockTakenFromOther + treeDockTakenFromRest,
-                                sizes[from] - kSplitPaneMinWidth);
-            int toRest = rest.empty() ? 0 : std::min(treeDockTakenFromRest, give);
-            if (toRest > 0) TakeFromPanes(sizes, rest, -toRest);
-            sizes[from] -= give;
-            sizes[to] += give - toRest;
-            treeDockTakenFromOther = treeDockTakenFromRest = 0;
-        }
-        if (visible && !(wasDocked && side == wasSide)) {
-            // The tree's width comes out of the other display first, and
-            // when that display cannot spare it all, out of the preview
-            // pane - which takes its own width from the displays, so it is
-            // the one to give here rather than leave the docked display a
-            // sliver beside the tree.
-            const int to = paneOf(side);
-            const int from = paneOf(otherOf(side));
-            int want = treePaneWidth;
-            const int fromOther = std::clamp(sizes[from] - kSplitPaneMinWidth, 0, want);
-            want -= fromOther;
-            int restSpare = 0;
-            for (size_t i : rest) restSpare += std::max(0, sizes[i] - kPreviewMinWidth);
-            const int fromRest = std::min(want, restSpare);
-            if (fromRest > 0) TakeFromPanes(sizes, rest, fromRest);
-            sizes[from] -= fromOther;
-            sizes[to] += fromOther + fromRest;
-            treeDockTakenFromOther = fromOther;
-            treeDockTakenFromRest = fromRest;
-        }
-    }
+    // The tree is part of the pane it docks into: the pane keeps its half
+    // of the width and the display beside the tree narrows, so docking it
+    // moves no divider (BalanceSplitPanes below keeps the halves equal).
     if (visible) {
         // Into the body row of that pane, in front of its display: the tree
         // has a width of its own and the display takes the rest.
@@ -7234,7 +7229,7 @@ void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
         treeDockShown = false;
     }
     ApplySplitPaneMinSizes();
-    if (arranged) split->SetPaneSizes(sizes);
+    BalanceSplitPanes();
     StyleSplitHeaders();
 }
 
@@ -7246,11 +7241,66 @@ void UltraFilerWindow::ApplySplitPaneMinSizes() {
     const int leftIndex  = split->GetPaneIndex(filerPane.get());
     const int rightIndex = split->GetPaneIndex(rightPane.get());
     if (leftIndex < 0 || rightIndex < 0) return;
-    const int treeExtra = treeDockShown ? treePaneWidth : 0;
+    // A docked tree narrows to fit its pane (SetDockedTreeWidth), so the pane
+    // needs only the tree's own minimum beside its display's.
+    const int treeExtra = treeDockShown ? UltraFilerSettings::kMinTreeWidth : 0;
+    const int rightDisplayMin = kSplitPaneMinWidth +
+            (treeDockShown && treeDockSide == SplitSide::Right ? treeExtra : 0);
+    // The preview under the right-hand path bar is part of that pane too.
+    const int previewExtra = PreviewInRightPane()
+            ? rightSplit->EffectiveSplitterThickness() + kPreviewMinWidth : 0;
     split->SetPaneMinSize(static_cast<size_t>(leftIndex), kSplitPaneMinWidth +
             (treeDockShown && treeDockSide == SplitSide::Left ? treeExtra : 0));
-    split->SetPaneMinSize(static_cast<size_t>(rightIndex), kSplitPaneMinWidth +
-            (treeDockShown && treeDockSide == SplitSide::Right ? treeExtra : 0));
+    split->SetPaneMinSize(static_cast<size_t>(rightIndex), rightDisplayMin + previewExtra);
+    if (rightSplit && rightDisplayPane) {
+        const int displayIndex = rightSplit->GetPaneIndex(rightDisplayPane.get());
+        if (displayIndex >= 0)
+            rightSplit->SetPaneMinSize(static_cast<size_t>(displayIndex), rightDisplayMin);
+    }
+}
+
+bool UltraFilerWindow::PreviewInRightPane() const {
+    return previewShown && previewPane && rightSplit &&
+           rightSplit->GetPaneIndex(previewPane.get()) >= 0;
+}
+
+void UltraFilerWindow::BalanceSplitPanes() {
+    if (!splitViewShown || !split || !filerPane || !rightPane) return;
+    const int leftIndex  = split->GetPaneIndex(filerPane.get());
+    const int rightIndex = split->GetPaneIndex(rightPane.get());
+    if (leftIndex < 0 || rightIndex < 0 || split->PaneCount() != 2) return;
+    // Not laid out yet: the split's first width change balances it.
+    const int axis = static_cast<int>(split->GetWidth());
+    if (axis <= 0) return;
+    const int room = axis - split->EffectiveSplitterThickness();
+    // What the right-hand pane holds beside its display: the preview, at the
+    // width it was dragged to (or last had), within what leaves both
+    // displays their minimum.
+    int beside = 0;
+    if (PreviewInRightPane()) {
+        const int previewIndex = rightSplit->GetPaneIndex(previewPane.get());
+        const int line = rightSplit->EffectiveSplitterThickness();
+        int previewW = rightSplit->GetPaneFixedSize(static_cast<size_t>(previewIndex));
+        if (previewW <= 0) previewW = previewPaneWidth;
+        if (previewW <= 0) previewW = static_cast<int>(std::lround(room * 1.4 / 4.1));
+        const int displayMin = std::max(FolderPaneMinWidth(filerPane.get()),
+                                        FolderPaneMinWidth(rightPane.get()));
+        previewW = std::min(previewW, room - line - 2 * displayMin);
+        previewW = std::max(previewW, kPreviewMinWidth);
+        // Fixed: dragging the divider between the panes moves the right-hand
+        // display's edge, and the preview keeps its width.
+        rightSplit->SetPaneFixedSize(static_cast<size_t>(previewIndex), previewW);
+        beside = line + previewW;
+    }
+    const int left = std::max(0, (room - beside) / 2);
+    // The docked tree fits into its half: the left pane, or the right-hand
+    // display beside the preview - both `left` wide.
+    if (treeDockShown)
+        SetDockedTreeWidth(treeWantedWidth > 0 ? treeWantedWidth : treePaneWidth, left);
+    std::vector<int> sizes(2);
+    sizes[static_cast<size_t>(leftIndex)] = left;
+    sizes[static_cast<size_t>(rightIndex)] = room - left;
+    split->SetPaneSizes(sizes);
 }
 
 bool UltraFilerWindow::TreeFollowsActiveDisplay() const {
