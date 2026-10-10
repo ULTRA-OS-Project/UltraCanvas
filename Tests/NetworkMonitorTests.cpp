@@ -992,13 +992,9 @@ static void TestDnsProxy() {
     options.upstreamPort = upstream.port;
     auto proxy = NetworkMonitor_CreateDnsProxySource(options);
     std::atomic<int> observations{0};
-    std::string lastName;
-    std::mutex nameMutex;
     const NetworkMonitorResult started = proxy->Start([&](const DnsObservation& o) {
-        ++observations;
-        std::lock_guard<std::mutex> lock(nameMutex);
-        lastName = o.queryName;
         NetworkMonitor_ObserveName(o);
+        ++observations;
     });
     CHECK(started, ("the proxy starts: " + started.message).c_str());
     if (!started) return;
