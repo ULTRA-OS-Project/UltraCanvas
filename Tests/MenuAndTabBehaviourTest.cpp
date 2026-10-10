@@ -539,6 +539,39 @@ void TabReorderChecks(HeadlessWindow& win) {
     strip->StopDragAutoScroll();
     strip->draggingTabIndex = -1;
     TEST("stopping clears the direction", strip->dragAutoScrollDirection == 0);
+
+    // ---- A whole drag through the events, with no application behind the window ----
+    auto drag = std::make_shared<UltraCanvasTabbedContainer>("drag", 0, 0, 600, 200);
+    win.AddChild(drag);
+    drag->SetAllowTabReordering(true);
+    for (int i = 0; i < 3; ++i) drag->AddTab("Tab " + std::to_string(i));
+    drag->Arrange(Rect2Df(0, 0, 600, 200), lctx);
+    int reorders = 0;
+    drag->onTabReorder = [&reorders](int, int) { ++reorders; };
+    auto mouse = [](UCEventType type, int x, int y) {
+        UCEvent e;
+        e.type = type;
+        e.button = UCMouseButton::Left;
+        e.pointer = Point2Di(x, y);
+        e.pointerWindow = Point2Di(x, y);
+        e.pointerGlobal = Point2Di(x, y);
+        return e;
+    };
+    Rect2Di first = drag->GetTabBounds(0);
+    Rect2Di last = drag->GetTabBounds(2);
+    const int row = first.y + first.height / 2;
+    drag->OnEvent(mouse(UCEventType::MouseDown, first.x + first.width / 2, row));
+    TEST("pressing a tab activates it and arms the drag", drag->GetActiveTab() == 0 && drag->draggingTabIndex == 0 && !drag->isDraggingTab);
+    drag->OnEvent(mouse(UCEventType::MouseMove, first.x + first.width / 2 + 3, row));
+    TEST("a move within the threshold is not a drag", !drag->isDraggingTab);
+    drag->OnEvent(mouse(UCEventType::MouseMove, first.x + first.width / 2 + 12, row));
+    TEST("a move past the threshold is", drag->isDraggingTab);
+    drag->OnEvent(mouse(UCEventType::MouseMove, last.x + last.width - 3, row));
+    TEST("carried past the last tab's centre, the tab lands at the end",
+         drag->GetTabTitle(2) == "Tab 0" && drag->draggingTabIndex == 2 && drag->GetActiveTab() == 2 && reorders == 1);
+    drag->OnEvent(mouse(UCEventType::MouseUp, last.x + last.width - 3, row));
+    TEST("releasing ends the drag", !drag->isDraggingTab && drag->draggingTabIndex == -1 && drag->dragAutoScrollDirection == 0);
+    TEST("the order stays", drag->GetTabTitle(0) == "Tab 1" && drag->GetTabTitle(1) == "Tab 2" && drag->GetTabTitle(2) == "Tab 0");
 }
 
 void TextAreaChecks() {

@@ -36,8 +36,10 @@ namespace UltraCanvas {
 
 // ===== MAIN COMPREHENSIVE TAB DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTabExamples() {
-        // Main container with scrolling
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("ComprehensiveTabDemo", 0, 0, 1020, 3600);
+        // The page root. Its height is provisional: the real one is set from
+        // yOffset once every example has been placed, so an added example
+        // cannot run off the bottom of the page.
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("ComprehensiveTabDemo", 0, 0, 1020, 1000);
         //mainContainer->EnableVerticalScrolling(true);
 //        mainContainer->SetBackgroundColor(Color(245, 245, 245));
 
@@ -729,8 +731,10 @@ namespace UltraCanvas {
         mainContainer->AddChild(footer);
         yOffset += 50;
 
-        // Set main container content height for scrolling
-//        mainContainer->SetHeight(yOffset);
+        // The page is as tall as what was placed on it. SetElementSize sets
+        // the CSS pixel height the layout reads back; SetHeight would only
+        // move finalBounds, which the next Arrange overwrites.
+        mainContainer->SetElementSize(Size2Df(1020.0f, static_cast<float>(yOffset)));
 
         return mainContainer;
     }

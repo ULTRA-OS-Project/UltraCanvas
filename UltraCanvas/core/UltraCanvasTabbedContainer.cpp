@@ -1116,7 +1116,9 @@ namespace UltraCanvas {
                 dragStartPosition = Point2Di(x, y);
                 dragGlobalAnchor = Point2Di(event.pointerGlobal.x, event.pointerGlobal.y);
                 isDraggingTab = false;
-                UltraCanvasApplication::GetInstance()->CaptureMouse(this);
+                // A headless host (a test) has no application to capture for;
+                // the drag then simply follows the events it is sent.
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
             }
 
             SetActiveTab(clickedTab);

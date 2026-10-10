@@ -36,4 +36,8 @@
   like the active tab did, instead of pointing at the wrong tab until the
   next mouse move. The drag ghost of a `TabStyle::Pill` tab is the capsule
   itself. `SetAllowTabReordering()` joins `SetAllowTabDragOut()`.
-  `Tests/MenuAndTabBehaviourTest.cpp` drives the drag steps headless.
+  A press on a tab no longer dereferences the application instance without
+  a check, so a host with no application (a headless test) can drive a whole
+  drag through the events; `Tests/MenuAndTabBehaviourTest.cpp` does, and
+  drives the single steps as well. The DemoApp tab page is as tall as what
+  is placed on it instead of a fixed literal.
