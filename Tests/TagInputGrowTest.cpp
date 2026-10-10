@@ -8,12 +8,15 @@
 // off: UltraMail's Settings showed two of three blocked addresses, the third
 // invisible. These tests put the field in a flex column between two labels,
 // as a settings page does, and check that it grows, that what follows it
-// moves down, and that it shrinks again.
+// moves down, and that it shrinks again. A field made without a height
+// starts as tall as one row of chips, so it does not grow on its first frame.
 //
 // Runs headless under Xvfb. Skips - rather than fails - when there is no
 // display, so it stays usable on a bare CI machine.
+// Version: 1.1.0 - the field starts at one row's height (OneRowHeight), and
+//                  keeps it on its first frame
 // Version: 1.0.0
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -90,7 +93,7 @@ int main() {
     page->layout.SetFlexColumn().SetFlexGap(8);
     window->AddChild(page);
     auto above = MakeLabel("above", "Blocked:");
-    auto tags  = CreateTagInput("tags", -1, -1, 300);   // 36 px high, as made
+    auto tags  = CreateTagInput("tags", -1, -1, 300);   // no height: one row's
     tags->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     tags->size.width = CSSLayout::Dimension::Px(300);
     auto below = MakeLabel("below", "Next setting");
@@ -99,11 +102,25 @@ int main() {
     page->AddChild(below);
     const std::vector<std::shared_ptr<UltraCanvasUIElement>> all = { page, above, tags, below };
 
+    // ===== AS MADE =====
+    std::cerr << "\n--- As made, before and after its first frame ---" << std::endl;
+    const float made = tags->GetHeight();
+    std::cerr << "   made: " << made << " px (one row: " << tags->OneRowHeight() << " px)"
+              << std::endl;
+    TEST("A field made without a height starts as tall as one row of chips",
+         made > 0.0f && std::abs(made - tags->OneRowHeight()) <= 0.5f);
+    TEST("... in the layout too (size.height)",
+         tags->size.height.unit == CSSLayout::DimensionUnit::Pixels &&
+         std::abs(tags->size.height.value - made) <= 0.5f);
+
     tags->SetTags({ "one@example.com" });
+    DisplayTest::Frame(window, all);   // one frame: where the jump used to be
+    TEST("One chip: the first frame keeps that height (no jump)",
+         std::abs(tags->GetHeight() - made) <= 0.5f);
     Frames(window, all);
     const float oneRow = tags->GetHeight();
     std::cerr << "   one row: " << oneRow << " px" << std::endl;
-    TEST("One chip fits the field as it was made", oneRow > 0.0f && oneRow <= 40.0f);
+    TEST("One chip fits the field as it was made", std::abs(oneRow - made) <= 0.5f);
 
     // ===== MORE CHIPS THAN ONE ROW HOLDS =====
     std::cerr << "\n--- Chips on three rows ---" << std::endl;
