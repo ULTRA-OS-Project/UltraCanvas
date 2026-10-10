@@ -4044,6 +4044,28 @@ else()
     message(STATUS "  ImageCacheFreshnessTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== IMAGE FILE WATCH DISPLAY TEST =====
+# An album and a slideshow repaint a picture saved over by themselves
+# (UltraCanvasImageFileWatch), read back from a real window. Skips without a
+# DISPLAY; run it under xvfb-run.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageFileWatchDisplayTest...")
+    add_executable(ImageFileWatchDisplayTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageFileWatchDisplayTest.cpp
+    )
+    target_include_directories(ImageFileWatchDisplayTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageFileWatchDisplayTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageFileWatchDisplayTest PRIVATE UltraCanvas)
+    set_target_properties(ImageFileWatchDisplayTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageFileWatchDisplayTest COMMAND ImageFileWatchDisplayTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageFileWatchDisplayTest")
+else()
+    message(STATUS "  ImageFileWatchDisplayTest skipped (UltraCanvas target not present)")
+endif()
+
 message(STATUS "")
 
 # ===== FILER FOLDER PREVIEW / NAME ENCODING / HOST ICONS / SHORTCUT TESTS =====

@@ -195,18 +195,7 @@ namespace {
 SourceStamp StampSource(const std::string& path) {
     // Unreadable is an invalid stamp, which Load() treats as a miss and
     // Store() refuses: an unreadable source is never a stale hit.
-    SourceStamp stamp;
-    if (path.empty()) return stamp;
-    std::error_code ec;
-    const fs::path file = PathFromUtf8(path);
-    const auto bytes = fs::file_size(file, ec);
-    if (ec) return stamp;
-    const auto written = fs::last_write_time(file, ec);
-    if (ec) return stamp;
-    stamp.size = static_cast<uint64_t>(bytes);
-    stamp.time = static_cast<int64_t>(written.time_since_epoch().count());
-    stamp.valid = true;
-    return stamp;
+    return StampFile(path);
 }
 
 bool IsEnabled() { return g_enabled.load(); }

@@ -1,8 +1,9 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.4.0 - GetFresh reads a file saved over again; RemoveFromCache releases
-//                  libvips' cached operations too; pixmap keys carry the source stamp
-// Last Modified: 2026-10-09
+// Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
+//                  drops it; RemoveFromCache releases libvips' cached operations
+//                  too; pixmap keys carry the source stamp
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -10,6 +11,7 @@
 #include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
 #include "UltraCanvasCoderModuleRepair.h"
+#include "UltraCanvasFileStamp.h"
 // The bundled QOI file-format codec (always compiled) - see
 // SavePixmapAsQoiFile at the bottom of this file.
 #include "qoi.h"
@@ -26,7 +28,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <mutex>
@@ -65,23 +66,6 @@ namespace UltraCanvas {
     UCCache<UCPixmapCairo, UCPixmapCairoCacheEntry> g_PixmapsCache(0);
 #endif
     UCCache<UCImageRaster, UCImageRasterCacheEntry> g_ImagesCache(50 * 1024 * 1024);
-
-    namespace {
-        // Size and modification time of the file at `path` - what decides
-        // whether an image read from it earlier still shows what it holds.
-        // False when the file cannot be examined (gone, no permission).
-        bool StampImageFile(const std::string& path, uint64_t& size, int64_t& time) {
-            std::error_code ec;
-            const std::filesystem::path file = PathFromUtf8(path);
-            const auto bytes = std::filesystem::file_size(file, ec);
-            if (ec) return false;
-            const auto written = std::filesystem::last_write_time(file, ec);
-            if (ec) return false;
-            size = static_cast<uint64_t>(bytes);
-            time = static_cast<int64_t>(written.time_since_epoch().count());
-            return true;
-        }
-    }
 
 
     UCPixmapCairo::UCPixmapCairo(cairo_surface_t *surf) {
@@ -231,23 +215,29 @@ namespace UltraCanvas {
         return im;
     }
 
+    bool UCImageRaster::SourceChangedOnDisk() const {
+        return StampFile(fileName) != source;
+    }
+
     std::shared_ptr<UCImageRaster> UCImageRaster::GetFresh(const std::string &imagePath) {
         if (std::shared_ptr<UCImageRaster> cached = g_ImagesCache.GetFromCache(imagePath)) {
-            uint64_t size = 0;
-            int64_t time = 0;
-            const bool stamped = StampImageFile(imagePath, size, time);
-            const bool unchanged =
-                    stamped == cached->sourceStamped &&
-                    (!stamped || (size == cached->sourceSize &&
-                                  time == cached->sourceTime));
             // A cached decode failure is an answer about the moment it was
             // made, not about the file: a picture caught half-written, or
             // held open by the program saving it, fails once and decodes a
             // moment later. Get() would keep answering with the failure.
-            if (unchanged && cached->IsValid()) return cached;
-            RemoveFromCache(imagePath);
+            if (!cached->IsValid() || cached->SourceChangedOnDisk())
+                RemoveFromCache(imagePath);
+            else
+                return cached;
         }
         return Get(imagePath);
+    }
+
+    bool UCImageRaster::RemoveFromCacheIfChanged(const std::string &imagePath) {
+        std::shared_ptr<UCImageRaster> cached = g_ImagesCache.GetFromCache(imagePath);
+        if (!cached || !cached->SourceChangedOnDisk()) return false;
+        RemoveFromCache(imagePath);
+        return true;
     }
 
     void UCImageRaster::RemoveFromCache(const std::string &path) {
@@ -347,8 +337,7 @@ namespace UltraCanvas {
         auto result = std::make_shared<UCImageRaster>(imagePath);
         // Before the file is read, so a write racing the read leaves the
         // stamp behind the content and GetFresh() reads the file again.
-        result->sourceStamped = StampImageFile(imagePath, result->sourceSize,
-                                               result->sourceTime);
+        result->source = StampFile(imagePath);
 #ifdef HAS_LIBRSVG
         // SVG parse-once path: take the dimensions from the retained parsed
         // document instead of a vips header read (which parses the XML too).
@@ -637,8 +626,8 @@ namespace UltraCanvas {
         char tail[160];
         snprintf(tail, sizeof(tail), "?w:%dh:%dc:%dr:%gs:%llut:%lld",
                  w, h, static_cast<int>(fitMode), static_cast<double>(scale),
-                 static_cast<unsigned long long>(sourceSize),
-                 static_cast<long long>(sourceTime));
+                 static_cast<unsigned long long>(source.size),
+                 static_cast<long long>(source.time));
         return fileName + tail;
     }
 

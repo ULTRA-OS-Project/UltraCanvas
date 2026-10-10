@@ -321,13 +321,29 @@ viewer->SetVideoPreviewMode(VideoPreviewMode::PreviewClip);  // few seconds mute
 viewer->SetVideoPreviewMode(VideoPreviewMode::Still);        // paused first frame
 viewer->SetVideoPreviewClipSeconds(5.0f);                    // PreviewClip length
 viewer->StopPlayback();   // for hosts that hide/detach the viewer
+bool busy = viewer->IsPlayingMedia();   // a video or sound playing right now
 ```
+
+`IsPlayingMedia()` is true while the shown file is a video or a sound that is
+playing (the muted `PreviewClip` too), and false once it is paused, stopped or
+has ended. A host that reopens a file which changed on disk asks it first:
+reopening restarts playback from the beginning. UltraFiler's preview pane
+reopens a changed video only once its file has stopped changing and it is not
+playing.
 
 `PreviewClip` is silent end to end: the mute is decided before the source is
 opened (so the engine builds a muted session rather than muting one already
 wired for sound), and the clip stays muted while it sits paused at the end of
 the preview. The sound returns when the viewer resumes playback itself — press
 play on the transport bar and the clip continues audibly.
+
+## A file saved over
+
+Images are read with `UCImage::GetFresh()`, which checks the shared image
+cache against the file: a picture saved over since it was last shown opens as
+it is now, not as the cache remembered it. The viewer does not watch the file
+it shows; a host that wants it followed reopens it when the file changes, as
+UltraFiler's preview pane does after a rescan finds the selected file changed.
 
 ## Embedding as a preview pane
 

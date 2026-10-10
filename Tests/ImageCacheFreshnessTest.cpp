@@ -16,12 +16,18 @@
 //   - Get() afterwards serves the fresh image, not the old one.
 //   - RemoveFromCache() followed by Get() reads the new header, which needs
 //     libvips' own operation cache released too.
-// Version: 1.0.0
-// Last Modified: 2026-10-09
+//   - RemoveFromCacheIfChanged() drops a changed file and reads nothing, and
+//     UltraCanvasImageFileWatch's worker does that for a file that is no
+//     longer the version a view drew, so a paint path that only calls Get()
+//     draws the new picture.
+// Version: 1.1.0
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasImageFileWatch.h"
+#include "UltraCanvasFileStamp.h"
 
 #include <chrono>
 #include <cstdint>
@@ -29,6 +35,8 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <thread>
+#include <vector>
 
 using namespace UltraCanvas;
 
@@ -128,6 +136,55 @@ int main() {
          reread && reread->GetWidth() == 80);
     TEST("and the new pixels",
          reread && Near(LevelOf(reread->GetPixmap(16, 8, ImageFitMode::Fill)), 120));
+
+    std::cerr << "\n--- RemoveFromCacheIfChanged: the check without the reload ---" << std::endl;
+    TEST("An unchanged file is left alone",
+         !UCImage::RemoveFromCacheIfChanged(path) && UCImage::Get(path) == reread);
+    TEST("The fourth version is written", WritePicture(file, 50, 90));
+    TEST("A changed file is dropped", UCImage::RemoveFromCacheIfChanged(path));
+    TEST("and nothing was read in its place: a second call has nothing cached",
+         !UCImage::RemoveFromCacheIfChanged(path));
+    auto fourth = UCImage::Get(path);
+    TEST("the next Get() reads the file as it is now",
+         fourth && fourth != reread && fourth->GetWidth() == 50);
+
+    std::cerr << "\n--- UltraCanvasImageFileWatch: checked on its worker ---" << std::endl;
+    {
+        // No application runs here, so onChanged is never posted; what the
+        // worker did shows in the image cache.
+        UltraCanvasImageFileWatch watch([]() {}, 100);
+        // What a paint path hands over: the path and the version it drew.
+        // Drawn twice in one frame (and once with nothing to show), kept once.
+        watch.SetDrawnImages({{path, FileStamp{}},
+                              {path, fourth->GetSourceStamp()},
+                              {std::string(), FileStamp{}}});
+        const auto watched = watch.GetDrawnImages();
+        TEST("A path drawn twice is watched once, against the version drawn last",
+             watched.size() == 1 && watched[0].path == path &&
+             watched[0].version == fourth->GetSourceStamp());
+        TEST("The version an image was read from is the file as it is",
+             fourth->GetSourceStamp() == StampFile(path));
+        TEST("The fifth version is written", WritePicture(file, 70, 160));
+        std::shared_ptr<UCImage> seen = fourth;
+        for (int i = 0; i < 40 && seen == fourth; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            // Get() is what a paint path calls: it reads again only once the
+            // worker has dropped the old copy.
+            seen = UCImage::Get(path);
+        }
+        TEST("The worker drops the copy of a file saved over",
+             seen && seen != fourth && seen->GetWidth() == 70);
+        TEST("and the next paint draws the new pixels",
+             seen && Near(LevelOf(seen->GetPixmap(16, 8, ImageFitMode::Fill)), 160));
+        // The repaint hands the new version over; nothing more is dropped.
+        watch.SetDrawnImages({{path, seen->GetSourceStamp()}});
+        std::this_thread::sleep_for(std::chrono::milliseconds(350));
+        TEST("A file that is the version drawn is not dropped again",
+             UCImage::Get(path) == seen);
+        watch.SetDrawnImages({});
+        TEST("An empty list watches nothing", watch.GetDrawnImages().empty());
+    }
+    TEST("Destroying the watch joins its worker", true);
 
     UCImage::RemoveFromCache(path);
     std::error_code ec;

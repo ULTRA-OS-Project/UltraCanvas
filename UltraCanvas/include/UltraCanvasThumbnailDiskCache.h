@@ -56,6 +56,7 @@
 #pragma once
 
 #include "UltraCanvasDiskCache.h"
+#include "UltraCanvasFileStamp.h"
 
 #include <cstdint>
 #include <string>
@@ -125,14 +126,10 @@ namespace UltraCanvas {
         std::vector<uint8_t> Load(const Request& request);
 
         // The size and modification time of a source file: what an entry
-        // records, and what decides whether it is still true. `valid` is
-        // false when the file cannot be examined.
-        struct SourceStamp {
-            uint64_t size = 0;
-            int64_t  time = 0;
-            bool     valid = false;
-            bool operator==(const SourceStamp&) const = default;
-        };
+        // records, and what decides whether it is still true (see
+        // UltraCanvasFileStamp.h). `valid` is false when the file cannot be
+        // examined.
+        using SourceStamp = FileStamp;
         SourceStamp StampSource(const std::string& path);
 
         // Store `blob` for `request`. `madeFrom` is the source as it was

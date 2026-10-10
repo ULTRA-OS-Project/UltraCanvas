@@ -10,11 +10,21 @@
   versions are made again once, so pictures already showing an old thumbnail
   are corrected on the first look. A picture caught while it was still being
   written, and so failed to show at first, gets its thumbnail once the write
-  finishes, instead of keeping the type icon. Selecting a changed picture
-  again opens it in the detail pane as it is now (a picture that stays
-  selected while it changes still shows the version it was opened with), and
-  the dimensions shown for it are its new ones. Framework changes - see
+  finishes, instead of keeping the type icon. The dimensions shown for a
+  changed picture are its new ones. Framework changes - see
   `Docs/UltraCanvas/changelog.d/image-cache-freshness.md`.
+- **The preview pane follows a file that changes while it is selected.** A
+  picture, document or text file edited and saved by another program while
+  UltraFiler shows it in the preview pane is shown again as it is now, a
+  moment after the save - it used to keep the version it was opened with until
+  something else was selected and it was selected again. A file that keeps
+  changing (a log being written, a download in progress) is shown again at
+  most every 2 seconds, and the last change is always shown. A video or sound
+  is shown again only once its file has stopped changing for 2 seconds and it
+  is not playing - reopening one starts it from the beginning, so a video that
+  is still downloading is not restarted while it grows, and one being watched
+  is left alone until it is paused or ends. Reopening shows the file from the
+  top and at its fitted size, as selecting it does.
 
 #### 2026-10-09 *1.70.0*
 - **FTP drives log in once per burst, not once per folder.** Opening a

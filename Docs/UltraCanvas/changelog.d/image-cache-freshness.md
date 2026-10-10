@@ -34,3 +34,36 @@
   before the decode (new `ThumbnailDiskCache::StampSource`) and stores
   nothing when the file no longer matches it. `kRendererGeneration` is 3, so
   every entry an earlier build may have recorded this way is made again once.
+- **`UltraCanvasAlbum` and `UltraCanvasSlideshow` show a picture saved over as
+  it is now.** Both paint with `UCImage::Get()`, which never looks at the
+  disk, so an edited photo kept its old picture for the life of the widget.
+  New `UltraCanvasImageFileWatch` (`UltraCanvasImageFileWatch.h`): a view
+  hands it the paths each paint drew - no I/O on the paint path, just a
+  compare-and-swap of the list - and a worker thread checks those files every
+  1.5 s; when one changed its cached copy is dropped and the view's callback
+  runs on the UI thread. The album relayouts and repaints, the slideshow
+  repaints. Only what is on screen is checked, the worker starts with the
+  first picture drawn, and a file that fails to decode is not read again on
+  every pass. Each watch judges a change against its own record of the
+  files, so two views showing one picture both repaint - the first to drop
+  the cached copy no longer takes the change away from the other.
+  - New `UltraCanvasFileStamp.h` (header-only): `FileStamp` and
+    `StampFile(path)`, a file's size and modification time. The image cache,
+    the thumbnail disk cache (`ThumbnailDiskCache::SourceStamp` is now an
+    alias of it), the watch and UltraFiler's preview pane had each grown a
+    copy of these lines.
+  - New `UCImage::RemoveFromCacheIfChanged(path)`: the check `GetFresh()`
+    makes, without the reload - true when a cached copy was dropped because
+    its file changed. Unlike `GetFresh()` it leaves a cached decode failure
+    alone, so a background check that repeats does not decode a broken file
+    over and over.
+- **`UltraCanvasMediaViewer::IsPlayingMedia()`**: whether a shown video or
+  sound is playing (the muted PreviewClip too). For a host deciding whether it
+  may reopen the shown file, which restarts playback - UltraFiler's preview
+  pane uses it to leave a playing video alone when the file changes.
+- **The Filer's Ctrl shortcuts no longer warn at build time.** The Ctrl+A / C
+  / X / V / D / F / P switch listed lowercase character literals beside the
+  `UCKeys` letters; no backend delivers a lowercase key code (the Linux one
+  upper-cases the keysym), so those cases were dead and clang reported each
+  as "case value not in enumerated type". They are `UCKeys::A` and so on now,
+  as in the text widgets. No change in behaviour.

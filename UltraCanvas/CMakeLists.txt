@@ -559,6 +559,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # Thumbnails that survive the process that made them, so a
         # folder costs its decode once rather than once per launch.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasThumbnailDiskCache.cpp
+        # Pictures a view keeps drawing (album, slideshow) follow a file
+        # saved over: checked on a worker, never on the paint path.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageFileWatch.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp

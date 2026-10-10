@@ -8,6 +8,7 @@
 #define IMAGECAIRO_H
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasFileStamp.h"
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
 #endif
@@ -137,9 +138,10 @@ namespace UltraCanvas {
         // come from a file (LoadFromMemory) or whose file could not be
         // examined. Written by Load() before the raster is shared, read-only
         // after.
-        uint64_t sourceSize = 0;
-        int64_t  sourceTime = 0;
-        bool     sourceStamped = false;
+        FileStamp source;
+        // The file now differs from the stamp above (changed, gone, or back
+        // after being gone). One stat; never call it on a paint path.
+        bool SourceChangedOnDisk() const;
 
         bool LoadFileToMemory(const std::string &imagePath);
 
@@ -173,6 +175,21 @@ namespace UltraCanvas {
         // read again. Costs one stat of the file, so it does not belong in a
         // paint path; call it where the file is about to be read anyway.
         static std::shared_ptr<UCImageRaster> GetFresh(const std::string &path);
+        // The check GetFresh() makes, without the reload: when the cache holds
+        // `path` and the file has changed since it was read, everything cached
+        // for it is dropped (RemoveFromCache) and true is returned, so the
+        // next Get() reads the file as it is now. Nothing cached, or the file
+        // unchanged: false, and nothing is read. A cached decode failure is
+        // left alone, unlike GetFresh(): this is for a background check that
+        // runs again and again (UltraCanvasImageFileWatch), and dropping a
+        // broken file each time would decode it again on every pass.
+        static bool RemoveFromCacheIfChanged(const std::string &path);
+        // The version of its file this image was read from: size and
+        // modification time, taken before the read (invalid for an image
+        // loaded from memory, or whose file could not be examined). No I/O -
+        // a paint path hands it to UltraCanvasImageFileWatch so the watch
+        // knows which version the view is showing.
+        FileStamp GetSourceStamp() const { return source; }
         // Evict every cached artifact for `path`: the loaded raster, all of its
         // derived pixmaps (every requested size/fit/scale), for SVG sources
         // the parsed document, and libvips' own cached operations, which are

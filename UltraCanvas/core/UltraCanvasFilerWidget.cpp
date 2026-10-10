@@ -15723,14 +15723,17 @@ namespace UltraCanvas {
                 if (renamingIndex >= 0) return true;
 
                 if (event.ctrl) {
+                    // Letter keys arrive as UCKeys::A..Z on every backend
+                    // (the Linux one upper-cases the keysym); a lowercase
+                    // 'a' is not a key code and could never match.
                     switch (event.virtualKey) {
-                        case 'a': case 'A': SelectAll(); return true;
-                        case 'c': case 'C': CopySelection(); return true;
-                        case 'x': case 'X': CutSelection(); return true;
-                        case 'v': case 'V': Paste(); return true;
-                        case 'd': case 'D': DuplicateSelection(); return true;
-                        case 'f': case 'F': CreateNewFolder(); return true;
-                        case 'p': case 'P':
+                        case UCKeys::A: SelectAll(); return true;
+                        case UCKeys::C: CopySelection(); return true;
+                        case UCKeys::X: CutSelection(); return true;
+                        case UCKeys::V: Paste(); return true;
+                        case UCKeys::D: DuplicateSelection(); return true;
+                        case UCKeys::F: CreateNewFolder(); return true;
+                        case UCKeys::P:
                             if (onPrint) onPrint(SelectionOrAll());
                             return true;
                         default: break;

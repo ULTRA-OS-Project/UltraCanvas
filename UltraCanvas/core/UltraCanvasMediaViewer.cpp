@@ -1,8 +1,10 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.7.2
-// Last Modified: 2026-10-09
+// Version: 1.8.0
+// Last Modified: 2026-10-10
+// V1.8.0: IsPlayingMedia; images are read with UCImage::GetFresh, so a
+//   picture saved over since it was last shown opens as it is now.
 // V1.7.1: Save image as offers a name it can write - an SVG's stem as a PNG
 //   instead of "<name>.svg", which libvips has no writer for - gives a typed
 //   name without a written format ".png", and reports a failed save in a
@@ -3143,6 +3145,22 @@ void UltraCanvasMediaViewer::StopPlayback() {
 #ifdef ULTRACANVAS_ENABLE_AUDIO
     if (audioPlayer) static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get())->Stop();
 #endif
+}
+
+bool UltraCanvasMediaViewer::IsPlayingMedia() const {
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    if (activeKind == MediaKind::Video && videoPlayer) {
+        auto player = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get())->GetPlayer();
+        if (player && player->IsPlaying()) return true;
+    }
+#endif
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+    if (activeKind == MediaKind::Audio && audioPlayer) {
+        auto player = static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get())->GetPlayer();
+        if (player && player->IsPlaying()) return true;
+    }
+#endif
+    return false;
 }
 
 // ===== EVENTS =====
