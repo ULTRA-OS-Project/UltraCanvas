@@ -13,7 +13,9 @@
 //
 // The panes' prose comes from the engine as Markdown (StartGuide) and is
 // shown in read-only Markdown views: links open in the browser, commands
-// stand out, one action per step.
+// stand out, one action per step. The Tools step lists the checks as rows
+// instead, a switch on each showing whether that tool is there, under a
+// line saying what Install will do.
 //
 // The checks and the install run a package manager and block on it, so they
 // run on a worker thread; results come back through a queue a UI timer
@@ -126,7 +128,9 @@ private:
 
     // ===== VIEW UPDATES =====
     void ReadChoicesFromPanes();
-    void RefreshChecksText();
+    void RefreshCheckRows();
+    void RefreshInstallPreview();      // from the plan; RefreshPlan calls it
+    bool CanInstall() const;           // something missing, and a package manager here to install it
     void RefreshFrameworkStep();
     void RefreshPlan();
     void SetBusy(bool busy);
@@ -160,12 +164,13 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> aiView_;
 
     // Step 3: tools
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> checksView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> checksList_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> installOutput_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> checkButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> installButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasBadge> installBadge_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> installSummary_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> installCommand_;
 
     // Step 4: the framework
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> wayPicker_;
