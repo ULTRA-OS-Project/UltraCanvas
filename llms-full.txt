@@ -79585,6 +79585,1550 @@ runs — application list, launcher, settings and Stickerboard work — but the
 running-apps group stays empty and the Task Manager says so.
 
 ==============================================================================
+FILE: Docs/UltraMail/AccountSetup.md
+==============================================================================
+
+# UltraMail — signing in to your email provider
+
+How to add an account for each email provider UltraMail knows, what each
+provider expects (a password, an *app password*, or a browser sign-in), and
+what has to be set up once on the provider's side and on the machine.
+
+Companion documents: [`Concept.md`](Concept.md) (the design),
+[`CHANGELOG.md`](CHANGELOG.md), and the developer notes in
+[`Apps/UltraMail/README.md`](../../Apps/UltraMail/README.md).
+
+## 1. Adding an account, in general
+
+1. Click **Add account** (or **Add email account** on the start page).
+2. Enter your name, your address and — depending on the provider — a password,
+   an app password, or nothing. The hint under the password field tells you
+   which, as soon as the address is typed.
+3. **Continue.** UltraMail looks the address up in its provider table
+   (section 2). For any other domain it asks the provider — the domain's own
+   autoconfig document, then the Thunderbird provider database — while a
+   "Looking up server settings" dialog waits (Cancel gives up). If nothing
+   is published, the **server settings page** opens, prefilled with the
+   conventional host names, and you enter the servers from your provider's
+   help page (section 5). Either way UltraMail shows the incoming (IMAP)
+   and outgoing (SMTP) servers it will use, and stores them with the account.
+4. The first time, UltraMail asks you to **choose a master password**. It
+   encrypts your account passwords and sign-ins on disk and is never stored
+   itself — if you forget it, you enter your account passwords again.
+5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page; come
+   back to UltraMail when it says you are done.
+6. The inbox is fetched right away. Later, every account is synced every
+   five minutes - or as often as *Settings > Mail > New mail* says, from every
+   20 seconds to every 10 minutes - and **Update** (the download icon) fetches
+   the account on screen now.
+
+The three ways in:
+
+| Sign-in | What you type in the wizard | Providers |
+|---|---|---|
+| **Browser sign-in (OAuth2)** | Password left **empty** | Gmail, Outlook / Microsoft 365, Yahoo |
+| **App password** | A password generated in the provider's security settings | Yahoo, iCloud |
+| **Account password** | Your normal password | GMX, WEB.DE, mailbox.org, Posteo |
+
+Whatever you type or obtain goes into UltraMail's **credential vault**, never
+into a configuration file.
+
+## 2. Provider by provider
+
+The servers below are what UltraMail configures automatically; you do not
+type them. Every connection uses TLS.
+
+### Gmail (`gmail.com`, `googlemail.com`)
+
+| | |
+|---|---|
+| Incoming | `imap.gmail.com`, port 993, TLS |
+| Outgoing | `smtp.gmail.com`, port 465, TLS |
+| Sign-in | **Browser sign-in with Google only** (no password field) |
+
+Google rejects the normal account password in mail programs, and UltraMail
+signs in to Gmail through the browser only: the wizard shows no password
+field for a Gmail address. UltraMail opens Google's consent page in your
+browser with your address preselected; allow UltraMail to read and send your
+mail. Released builds ship with a Google OAuth client already configured, so
+there is nothing to set up. A build packaged without one says so in the
+wizard's hint and cannot add a Gmail account until one is configured — see
+[section 3](#3-oauth-clients-for-the-browser-sign-in) for packagers.
+
+### Outlook.com, Hotmail, Live, Microsoft 365 (`outlook.com`, `hotmail.com`, `live.com`, `msn.com`, `office365.com`)
+
+| | |
+|---|---|
+| Incoming | `outlook.office365.com`, port 993, TLS |
+| Outgoing | `smtp.office365.com`, port 587, STARTTLS |
+| Sign-in | **Browser sign-in with Microsoft only** (leave the password empty) |
+
+Microsoft has retired password sign-in ("basic authentication") for IMAP and
+SMTP on personal Outlook.com accounts and in Microsoft 365, and app passwords
+are gone with it. Leave the password field empty; UltraMail opens Microsoft's
+sign-in page in your browser. Released builds ship with a Microsoft OAuth client
+already configured, so there is nothing to set up (packagers: see
+[section 3](#3-oauth-clients-for-the-browser-sign-in)).
+
+For a **Microsoft 365 work or school** mailbox the tenant administrator must
+leave **IMAP** and **Authenticated SMTP** enabled for the mailbox (Exchange
+admin center → the mailbox → *Email apps*); otherwise the sign-in succeeds
+but the mail session is refused. Addresses on a company's own domain are not
+in UltraMail's provider table yet (see [section 5](#5-other-providers)).
+
+### Yahoo Mail (`yahoo.com`, `yahoo.de`, `ymail.com`, `rocketmail.com`, Yahoo's country domains)
+
+| | |
+|---|---|
+| Incoming | `imap.mail.yahoo.com`, port 993, TLS |
+| Outgoing | `smtp.mail.yahoo.com`, port 465, TLS |
+| Sign-in | **App password**, or the browser sign-in with Yahoo |
+
+**App password (recommended for now).** In your Yahoo account open
+**Account security > Generate app password**, name it "UltraMail", and type the
+password Yahoo shows into the wizard's password field. Your normal Yahoo
+password does not work in mail programs. Some Yahoo accounts no longer offer
+app passwords; those can only use the browser sign-in.
+
+**Browser sign-in.** It only works once Yahoo has granted UltraMail's OAuth
+client access to Mail, which Yahoo does per app (see
+[section 3](#3-oauth-clients-for-the-browser-sign-in)); until then Yahoo
+signs you in but its mail servers reject the login. Leave the password field
+empty; UltraMail opens Yahoo's consent page in your browser. Because Yahoo does not redirect back to a desktop app, its page shows a
+short **authorization code** after you approve — copy it and paste it into the
+dialog UltraMail shows, and the sign-in completes. If the browser instead lands
+on a page that cannot be reached (an address starting `https://127.0.0.1`),
+copy that whole address from the address bar and paste it; UltraMail takes the
+code from it. Released builds ship with a
+Yahoo OAuth client already configured, so there is nothing to set up (if your
+build was packaged without one, see
+[section 3](#3-oauth-clients-for-the-browser-sign-in)).
+
+### iCloud Mail (`icloud.com`, `me.com`, `mac.com`)
+
+| | |
+|---|---|
+| Incoming | `imap.mail.me.com`, port 993, TLS |
+| Outgoing | `smtp.mail.me.com`, port 587, STARTTLS |
+| Sign-in | **App-specific password** |
+
+Apple requires an app-specific password for third-party mail programs, and
+the Apple ID must have two-factor authentication on. Sign in at
+`account.apple.com` (formerly `appleid.apple.com`), open *Sign-In and
+Security → App-Specific Passwords*, generate one named UltraMail, and type it
+into the wizard. iCloud Mail itself must be enabled for the Apple ID.
+
+The wizard carries these steps itself: under the sign-in fields, *How to set
+up an iCloud mail account* has a **Show info** button that opens them in an
+info area (offered for iCloud addresses and for addresses at a domain UltraMail
+does not know, which is what an own domain on iCloud+ looks like).
+
+**An own domain on iCloud+.** Type your own address in the wizard. UltraMail
+finds no settings published for the domain and opens the server settings page;
+enter `imap.mail.me.com` (993, SSL/TLS) and `smtp.mail.me.com` (587,
+STARTTLS), and as the **username your @icloud.com address**, not the address
+on your own domain. The password is the app-specific password.
+
+**If the sign-in still fails:** changing the Apple Account password revokes
+every app-specific password, so create a new one; check that iCloud Mail is
+turned on; with an own domain, check that the username is the @icloud.com
+address. Apple also accepts just the part before the @ as the incoming
+username, but its outgoing server wants the full address, and UltraMail uses
+one username for both - so keep the full address.
+
+### GMX (`gmx.net`, `gmx.de`, `gmx.com`)
+
+| | |
+|---|---|
+| Incoming | `imap.gmx.net`, port 993, TLS |
+| Outgoing | `mail.gmx.net`, port 587, STARTTLS |
+| Sign-in | **Account password** |
+
+GMX has to be told that a mail program may fetch mail: in the GMX web
+mailer open *E-Mail → Einstellungen → POP3/IMAP Abruf* and enable
+*POP3 und IMAP Zugriff erlauben*. Then the normal account password works.
+(If you use GMX's two-factor authentication, generate an *Anwendungspasswort*
+under *Sicherheitsoptionen* and use that instead.)
+
+### WEB.DE (`web.de`)
+
+| | |
+|---|---|
+| Incoming | `imap.web.de`, port 993, TLS |
+| Outgoing | `smtp.web.de`, port 587, STARTTLS |
+| Sign-in | **Account password** |
+
+Same as GMX (same operator): enable *POP3/IMAP* under *E-Mail →
+Einstellungen → POP3/IMAP Abruf* first; with two-factor authentication on,
+use an application password from the security settings.
+
+### mailbox.org (`mailbox.org`)
+
+| | |
+|---|---|
+| Incoming | `imap.mailbox.org`, port 993, TLS |
+| Outgoing | `smtp.mailbox.org`, port 465, TLS |
+| Sign-in | **Account password** |
+
+The normal password works. If you have enabled two-factor authentication,
+mailbox.org lets you set a separate password for mail programs under
+*Settings → Security*; use that one in UltraMail.
+
+### Posteo (`posteo.de`, `posteo.net`)
+
+| | |
+|---|---|
+| Incoming | `posteo.de`, port 993, TLS |
+| Outgoing | `posteo.de`, port 465, TLS |
+| Sign-in | **Account password** |
+
+The normal password works. Posteo's optional two-factor authentication
+protects the webmail sign-in only; mail programs keep using the account
+password.
+
+## 3. OAuth clients for the browser sign-in — for people building or packaging UltraMail
+
+**If you are just using UltraMail, skip this section.** Released builds ship with
+a Google, a Microsoft and a Yahoo OAuth client already baked in, so the browser
+sign-in works with nothing to configure. This section is for whoever builds or
+packages UltraMail.
+
+The browser sign-in for Gmail, Outlook and Yahoo runs as an OAuth *client* that
+the provider must know. Register one per provider once (below), then bake it into
+the build so end users never touch a config file.
+
+A desktop OAuth client's credentials are **not confidential** — Google itself
+treats a desktop client's secret as non-secret, and Microsoft's and Yahoo's
+desktop clients have no secret at all. The sign-in's safety comes from PKCE + the
+loopback redirect (or Yahoo's out-of-band code) + the user's own consent, not
+from hiding the id/secret. So baking them into the binary is the norm
+(Thunderbird, Evolution, K-9 all do it).
+
+Yahoo is a special case: it forces https redirect URIs, which a loopback listener
+cannot serve, so UltraMail uses Yahoo's **out-of-band** flow — after consent
+Yahoo shows a code the user pastes into the app. There is no redirect URI to
+register; the Yahoo app just needs API permission for Mail, and you supply its
+**Client ID (Consumer Key)** only (public client, no secret).
+
+Yahoo does not offer the Mail permission in its developer console any more:
+apply for commercial IMAP/SMTP access with the Developer Access form at
+<https://senders.yahooinc.com/developer/developer-access/> (questions:
+mail-api@yahooinc.com). Until it is granted, Yahoo users sign in with an app
+password.
+
+Thunderbird registers its Yahoo client with the redirect `https://127.0.0.1`
+and the scopes `mail-w ycal-w sdct-w` instead. A Yahoo app registered that way
+works too: set `redirect_uri = https://127.0.0.1` for it, and UltraMail takes
+the same paste-back route, with the user pasting the address the browser lands
+on. Whichever redirect is used, the app must hold the **Mail** permission:
+without it Yahoo issues a token that IMAP and SMTP reject.
+
+### Baking the client into the build
+
+Register the clients (below), then supply them at **configure time** one of two
+ways:
+
+- **Local file (easiest).** Copy [`cmake/oauth.local.cmake.example`](../../cmake/oauth.local.cmake.example)
+  to `cmake/oauth.local.cmake` (that name is gitignored), fill in the ids/secret,
+  and reconfigure. `Apps/UltraMail/CMakeLists.txt` picks it up automatically.
+- **CMake `-D` (for CI).** Pass them on the configure line from your CI secrets:
+
+  ```sh
+  cmake -S . -B build \
+      -DULTRAMAIL_GOOGLE_CLIENT_ID="1234567890-abc.apps.googleusercontent.com" \
+      -DULTRAMAIL_GOOGLE_CLIENT_SECRET="GOCSPX-…" \
+      -DULTRAMAIL_YAHOO_CLIENT_ID="dj0yJmk9…" \
+      -DULTRAMAIL_MICROSOFT_CLIENT_ID="00000000-1111-2222-3333-444444444444"
+  ```
+
+The values are XOR-obfuscated in the binary by default (so a plain `strings`
+does not surface them; `-DULTRAMAIL_OAUTH_OBFUSCATE=OFF` stores them verbatim).
+A build configured with none of these bakes in nothing and behaves as before.
+Obfuscation uses a small Python helper (`scripts/generate_oauth_defaults.py`) at
+configure time; a build with no credentials, or with obfuscation off, needs no
+Python.
+
+### Overriding a baked-in client at runtime
+
+The baked-in client is the **lowest-priority** source, so a user or admin can
+point an existing build at a different client without a rebuild — useful for
+rotation or a private registration. In decreasing priority: `OAuthApps::Set()`
+(in code) > the environment > `oauth.ini` in the data folder > the baked-in
+client. Drop an `oauth.ini` in:
+
+| Platform | Data folder |
+|---|---|
+| Linux | `~/.local/share/UltraMail/` (or `$XDG_DATA_HOME/UltraMail/`) |
+| Windows | `%APPDATA%\UltraMail\` |
+
+```ini
+[google]
+client_id     = 1234567890-abc.apps.googleusercontent.com
+client_secret = GOCSPX-…
+
+[microsoft]
+client_id     = 00000000-1111-2222-3333-444444444444
+
+[yahoo]
+client_id     = dj0yJmk9…
+```
+
+The environment works too: `ULTRAMAIL_GOOGLE_CLIENT_ID`,
+`ULTRAMAIL_GOOGLE_CLIENT_SECRET`, `ULTRAMAIL_MICROSOFT_CLIENT_ID`,
+`ULTRAMAIL_YAHOO_CLIENT_ID` (an optional `…_REDIRECT_URI` overrides the
+provider's default), as do the shared names `ULTRANET_OAUTH_GOOGLE_CLIENT_ID` /
+`ULTRANET_OAUTH_MICROSOFT_CLIENT_ID`. When no client is configured by any of
+these, the wizard says so.
+
+The lookup is the framework's — UltraNet's OAuth2 app registry
+(`UltraNet/UltraNetOAuth2Apps.h`), one per process — and UltraMail's
+`OAuthApps` is its profile. The same registry serves UltraCloud's "Attach
+cloud link…" sign-ins: a Google client configured for Gmail by any of the
+means above is also the client Google Drive signs in with, and the Microsoft
+one serves OneDrive, as long as the registration's consent screen carries
+those scopes as well (the Google Cloud and Entra steps below; add the Drive
+and `Files.ReadWrite` scopes there if you want that).
+
+### ⚠️ Google verification is required before Gmail works for the public
+
+Registering and baking in a Google client is **not enough** to let arbitrary
+users sign in to Gmail. The `https://mail.google.com/` scope is a Google
+*restricted* scope. While your OAuth consent screen is in **Testing** it serves
+only the addresses you add under *Test users* (max 100), and Google revokes
+those users' refresh tokens after **7 days** (the "*The sign-in has expired*"
+row in [section 6](#6-when-it-does-not-work)). To lift both limits you must
+**publish** the consent screen and pass Google's **security assessment (CASA)** —
+an annual, paid review through a Google-approved assessor. Until then, Gmail
+browser sign-in is usable for testing only; the app-password path (section 2)
+has no such limit. Microsoft has no equivalent restricted-scope review —
+publisher verification only removes the "unverified app" banner.
+
+### Google
+
+1. In the [Google Cloud console](https://console.cloud.google.com/) create a
+   project and open *APIs & Services → OAuth consent screen*. Choose
+   *External*. While the app stays in *Testing*, add every address that will
+   sign in under *Test users* — the `https://mail.google.com/` scope is
+   restricted, so an unverified app serves only its test users.
+2. *APIs & Services → Credentials → Create credentials → OAuth client ID*,
+   application type **Desktop app**. Copy the client id and the client
+   secret into `oauth.ini`.
+3. No redirect URI needs registering: desktop clients accept any loopback
+   port. UltraMail uses `http://127.0.0.1:<port>/callback`.
+
+### Microsoft
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com/) open
+   *Identity → Applications → App registrations → New registration*.
+   Supported account types: **Accounts in any organizational directory and
+   personal Microsoft accounts** (covers outlook.com / hotmail.com as well as
+   Microsoft 365 tenants).
+2. Under *Authentication* add the platform **Mobile and desktop
+   applications** with the redirect URI `http://127.0.0.1`, and switch
+   **Allow public client flows** on. No client secret is needed.
+3. Under *API permissions* add the *delegated* permissions
+   `IMAP.AccessAsUser.All` and `SMTP.Send` from *Office 365 Exchange Online*
+   (found under *APIs my organization uses*), plus `offline_access`.
+4. Copy the *Application (client) ID* into `oauth.ini`. UltraMail redirects
+   to `http://127.0.0.1:<port>/`; Microsoft ignores the port of a loopback
+   URI.
+
+### Yahoo
+
+1. In the [Yahoo Developer console](https://developer.yahoo.com/apps/) create
+   an app. Under **API Permissions** grant **Mail** (read/write). Yahoo derives
+   the token's access from these app permissions, not from an OAuth scope
+   parameter — UltraMail sends no `scope` (Yahoo returns `invalid_scope` for
+   one), so the Mail permission here is what makes IMAP/SMTP work.
+2. Yahoo forces https redirect URIs, which a desktop loopback listener cannot
+   serve, so UltraMail uses the **out-of-band** flow: set the redirect/callback
+   to `oob` (or leave a placeholder — UltraMail sends `redirect_uri=oob` and
+   Yahoo returns the code on-screen). No local port is involved.
+3. Copy the **Client ID (Consumer Key)** (it looks like `dj0yJmk9…`) into
+   `oauth.ini` as `[yahoo] client_id`. Yahoo is used as a **public client**, so
+   the Consumer Secret is not needed.
+
+### What happens during the sign-in
+
+UltraMail generates a one-time PKCE challenge, opens the provider's consent
+page in the system browser (never in an embedded view) with your address as
+the login hint, listens on an ephemeral loopback port for the redirect, and
+exchanges the code for an access token and a refresh token. Both go into the
+credential vault. **Yahoo is the exception:** it cannot redirect to a loopback
+port, so instead of listening, UltraMail shows a dialog and you paste the code
+Yahoo displays after consent; the exchange then proceeds the same way. Each IMAP
+or SMTP session then authenticates with XOAUTH2; an expired access token is
+refreshed through the provider before the session starts. Cancelling the "Sign
+in with …" dialog abandons the attempt; add the account again to retry.
+
+## 4. On the machine
+
+- **Master password.** Asked for once per session, the first time a stored
+  password or sign-in is needed (adding an account, Update, sending). Nothing
+  syncs in the background while the vault is still locked; UltraMail says so
+  once, and Update asks for the password.
+- **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
+  (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
+  (the encrypted vault) and `oauth.ini` live in the data folder named above.
+- **IMAP / SMTP plug-ins.** Mail is fetched and sent through UltraNet's
+  `ultranet_imap` and `ultranet_smtp` plug-ins. UltraMail looks for them in
+  `Plugins/UltraNet` next to the executable (or up to two levels above it,
+  then in the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides. If they
+  are missing, Update and the first sync of a new account say so and name the
+  folder that was searched.
+- **Changing the sign-in of an account.** Add the account again with the
+  same address: the existing entry is updated, and whatever you provide this
+  time (a password, an app password, or the browser sign-in) replaces what
+  the vault held. An account has exactly one sign-in method.
+
+## 5. Other providers: autoconfig and manual settings
+
+Addresses outside the table — a company domain, a hosting provider, a
+university — go through two more steps.
+
+**Autoconfig lookup.** UltraMail fetches, in this order, the domain's own
+`https://autoconfig.<domain>/mail/config-v1.1.xml`, its
+`https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, and the
+Thunderbird provider database (`autoconfig.thunderbird.net`). All three
+requests name the domain only - the address itself is never sent; a
+per-user value in the published settings is a placeholder (`%EMAILADDRESS%`)
+that UltraMail fills in on the machine. Most hosting
+providers and many organisations publish one of these; the first hit gives
+the servers, ports, security and the username pattern, and the wizard
+reports "settings found for <domain>". The lookup runs off the UI thread
+behind a wait dialog and takes a few seconds at most.
+
+**Manual settings page.** When nothing is published, the page opens with
+*Incoming (IMAP)* and *Outgoing (SMTP)* rows — host, port, security
+(SSL/TLS, STARTTLS, None) — and the *Username*, prefilled with
+`imap.<domain>` 993 SSL/TLS, `smtp.<domain>` 587 STARTTLS and the full
+address. Correct them from your provider's "mail program settings" or
+"IMAP/SMTP" help page and **Save**. Save first **checks the sign-in**: UltraMail opens
+one IMAP session to the incoming server with the entered servers and the
+password (or the stored sign-in of an existing account), which proves the
+host, the port, the security mode and the credentials in one go. While it
+runs the page says "Checking the sign-in at …"; on success the page closes,
+the account is added with those servers, the password goes into the vault,
+and the first sync starts. A failed check shows the reason in place (wrong
+password, host not found, connection refused, certificate problem) and
+offers **Save anyway** for a server that is down right now. The outgoing
+(SMTP) server is not checked — the plug-in has no sign-in-only operation —
+so a wrong SMTP entry shows up on the first send. The page also validates
+in place (a host must be given, ports are 1–65535).
+
+**Authentication method.** Under the server rows, *Sign-in (IMAP)* and
+*Sign-in (SMTP)* choose how each server is signed in to — the same choice
+Thunderbird calls the authentication method:
+
+| Choice | What UltraMail sends |
+|---|---|
+| Automatic | Whatever the server offers, strongest first (the default, and what every account created before this setting keeps) |
+| Normal password | IMAP `LOGIN`; SMTP `AUTH PLAIN` / `AUTH LOGIN` |
+| Encrypted password | `AUTH CRAM-MD5` / `DIGEST-MD5` (POP3: `APOP`); the password never crosses the wire |
+| OAuth2 | `AUTH XOAUTH2` / `OAUTHBEARER` with the browser sign-in's token |
+| Kerberos / GSSAPI | `AUTH GSSAPI` with the system's Kerberos ticket |
+| NTLM | `AUTH NTLM` |
+| No authentication | Nothing (outgoing server only: a relay that trusts your network) |
+
+Gmail, Outlook/Hotmail/Live and Yahoo are set to **OAuth2** by the provider
+table; an autoconfig document sets the method it lists first (OAuth2 only
+when nothing else is listed, since the browser sign-in exists for those three
+providers alone); everything else starts on **Automatic**. Pick a specific
+method when Automatic tries one the account cannot use — a server that
+advertises Kerberos or NTLM next to the password, for example. OAuth2 needs
+the browser sign-in: set on an account that signs in with a password, the
+check fails with "OAuth2 is set as the authentication method, but there is no
+OAuth2 sign-in for this account".
+
+The settings are **stored on the account**, so later syncs and sends never
+look them up again. The page also opens by itself when Update finds an
+account without known servers — for example one that was added before
+this version for a domain outside the table — and adding the same address
+again keeps the servers it already has.
+
+Sign-in for these accounts is the account password, unless the provider
+says otherwise in its help page (some require an app password when
+two-factor authentication is on). The browser sign-in is available only for
+Gmail, Outlook and Yahoo.
+
+## 6. When it does not work
+
+| UltraMail says | What to do |
+|---|---|
+| *New mail could not be fetched … authentication failed* | iCloud: you typed the account password; use an app-specific password (section 2). Gmail, Outlook and Yahoo take no password: open the account's Settings and use *Sign in with …*. |
+| *No OAuth client is configured for Google / Microsoft* | This build was packaged without a baked-in OAuth client. Rebuild with one (section 3) or drop an `oauth.ini` in the data folder. |
+| *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
+| *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
+| *Server settings for …* opens on Update | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
+| *The sign-in at … did not succeed* on the settings page | The host, port, security or password is wrong, or the server is unreachable. Correct the page and Save again; *Save anyway* keeps the entry for a server that is only down right now. |
+| The pill at the right of the status line says *Offline* or *Failed* | The selected account's last contact with its mail server did not succeed. Hover the pill: it names the server, when it was last reached, the reason, and what to do. *Offline* (amber) means the server could not be reached at all — usually the network; *Failed* (red) means it answered but refused, usually the sign-in. |
+| Any failure | The alert shows **Connection details** under the reason (on the settings page: the **Details** button): UltraMail and UltraNet versions, server and address, TLS mode, sign-in method, libcurl and TLS library versions, trusted roots, system. Copy that block into a bug report. |
+| *… security certificate is not valid …* with a reason in brackets | The reason is the TLS library's own: *unable to get local issuer certificate* (the server sends an incomplete chain, or a program such as a virus scanner intercepts the connection with its own certificate), *certificate has expired*, *self-signed certificate*, or *no alternative certificate subject name matches* (the certificate is for another host name — use the host it names). On Windows the reasons start with *schannel:* — *the certificate or certificate chain is based on an untrusted root* means Windows itself does not trust the server's root (a self-signed or company certificate: install its root in Windows' *Trusted Root Certification Authorities*); builds from before 2026-09-28 also said it for Let's Encrypt servers, because they checked against the bundled `cacert.pem` instead of Windows' own certificate store. |
+| *… sign-in was rejected* with the right password | The server may not accept the method *Automatic* picked. Set *Sign-in (IMAP)* / *Sign-in (SMTP)* to *Normal password* (or what the provider's help page names) and Save again. |
+| *New mail could not be fetched … host not found / connection refused* | A server name or port on the settings page is wrong. Add the account again with the same address and correct the page. A background sync, or opening a folder, raises this only after the account has been unreachable for ten minutes, so a computer that has just started, or a laptop between two networks, does not: the status line shows the reason meanwhile and the account is retried every minute. Update reports it at once. |
+| *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days). Add the account again to sign in anew. |
+| *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |
+| *Your mail account passwords are locked* | Enter the master password — Update, sending, or adding an account asks for it. |
+
+==============================================================================
+FILE: Docs/UltraMail/Concept.md
+==============================================================================
+
+# UltraMail — Application Concept and Design
+
+UltraMail is the mail application of the ULTRA OS application family
+(UltraTexter, UltraFiler, ULTRA Store, …). It is a full desktop e-mail
+client built entirely on UltraCanvas for the UI and on the **UltraNet**
+module (SMTP/IMAP/POP3 protocol plugins, DNS, HTTP) for all networking.
+
+Two goals drive every design decision in this document:
+
+1. **Easy to set up.** A new user should get from "empty program" to
+   "reading their inbox" by entering nothing more than their e-mail
+   address and password. Everything else — server names, ports, TLS
+   modes — is discovered automatically.
+2. **Easy to use.** The everyday feature set of a comfortable mail
+   client (read, write, reply, forward, attachments, folders, search,
+   multiple accounts, signatures, address suggestions, notifications)
+   presented in a classic, instantly familiar three-pane layout with no
+   configuration required to be productive.
+
+> **Status (2026-07):** concept/design document. Nothing of UltraMail is
+> implemented yet. UltraNet already ships working `smtp`, `imap` and
+> `pop3` plugins (`UltraCanvas/Plugins/UltraNet/{smtp,imap,pop3}/`)
+> implementing `IMailProtocolPlugin` (`SendMail`, `FetchMessages`);
+> section 6 lists the extensions UltraMail needs from them.
+
+---
+
+## 1. Design principles
+
+- **Zero-knowledge setup.** The user knows their address and password;
+  UltraMail figures out the rest (section 2.2). Manual server settings
+  exist but are an *expert fallback*, never the first screen.
+- **Safe defaults.** TLS verification on, minimum TLS 1.2 (UltraNet's
+  defaults); remote images in HTML mail load by themselves only from
+  trusted senders - the address book, senders allowed with "Always from …",
+  trusted websites - and a bar asks for everyone else (Settings → Privacy →
+  Images: *trusted*, the default, *never* or *always*); the sender-icon
+  downloads off until the user turns them on; credentials in an encrypted
+  vault file (section 5), with the OS keychains planned as backends.
+- **Local-first.** Mail is synchronized into a local store; reading,
+  searching and composing work offline. The network is a background
+  activity, never something the UI waits for.
+- **UltraCanvas-native.** Only framework widgets and patterns: factory
+  functions, `Config` structs, `onXxx` callbacks, the Texter
+  manager-class app composition style. One codebase, all platforms.
+- **UltraNet-only networking.** UltraMail never opens a socket itself.
+  Everything goes through UltraNet: mail plugins for SMTP/IMAP/POP3,
+  `UltraNet_DnsResolveAsync` for autodiscovery, `UltraNet_HttpRequestAsync`
+  for autoconfig lookup, LDAP/WebDAV plugins later for address books.
+
+## 2. First-run experience
+
+### 2.1 The start page and the Toolbox
+
+**On first use — no account configured yet — UltraMail shows nothing but
+a start page: the logo, the app title and one "Add email account"
+button.** No status bar, no tiles, no hint text; the button is the only
+thing to do, so it is the only thing on screen.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  UltraMail                                          _ □ ✕ │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│                        ┌───────┐                         │
+│                        │  ✉    │   (logo)                │
+│                        └───────┘                         │
+│                        UltraMail                         │
+│                                                          │
+│               ┌──────────────────────────┐               │
+│               │ ✉  Add email account     │               │
+│               └──────────────────────────┘               │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+Clicking the button starts the account setup wizard (2.2). As soon as
+the first account exists the start page is replaced by the **Toolbox** —
+a start screen showing a grid of large square tiles, one per configured
+e-mail account, in the visual language planned for the ULTRA OS
+launcher — with the account info-tile bar (2.3) above it.
+
+In the Toolbox each account gets its own square tile (provider glyph,
+address, unread-count badge) and an "Add email account" tile sits at the
+end of the grid — it is always present, so adding a second account is
+the same gesture as adding the first. Opening an account tile enters the
+main mail window (section 3); the Toolbox stays reachable via a home
+button in the main toolbar.
+
+With a single configured account UltraMail skips the Toolbox on
+subsequent launches and opens the mail window directly (the behaviour
+is a settings option: *Start on: Toolbox / Last account*).
+
+Implementation: the start page (`UltraMailStartPage`) is a flex-column
+`UltraCanvasContainer` centring an `UltraCanvasImageElement` (the app
+icon, `media/appicon/UltraMail.png`), an `UltraCanvasLabel` and a
+primary-style `UltraCanvasButton`; the app shows it while the account
+list is empty and the account view otherwise. The Toolbox is a plain
+`UltraCanvasContainer` with a grid of `CreateIconButton(...)` tiles (or
+a `UltraCanvasToolbar` in `Docked` style with large icons); badges use
+the toolbar's built-in `badgeText` support.
+
+### 2.2 Account setup wizard
+
+One small modal dialog (`UltraCanvasModalDialog`), three steps, most
+users only ever see step 1:
+
+**Step 1 — identity.**
+```
+  Your name       [ Erika Example              ]   (prefilled from OS user)
+  Email address   [ erika@example.com          ]   CreateEmailInput
+  Password        [ ••••••••••                 ]   CreatePasswordInput
+                                    [ Cancel ] [ Continue ]
+```
+
+**Step 2 — automatic discovery** (progress screen, usually 1–3 s).
+The discovery pipeline runs in the engine thread and tries, in order:
+
+1. **Provider presets** — a small built-in table of the most common
+   providers (Gmail, Outlook/Office365, Yahoo, iCloud, GMX, web.de,
+   mail.ru, Posteo, mailbox.org, …) keyed by address domain. Instant.
+2. **Autoconfig lookup** — `UltraNet_HttpRequestAsync` to
+   `https://autoconfig.<domain>/mail/config-v1.1.xml` and the Mozilla
+   ISPDB (`https://autoconfig.thunderbird.net/v1.1/<domain>`). Covers
+   most hosted domains.
+3. **DNS probing** — `UltraNet_DnsResolveAsync` for SRV records
+   (`_imaps._tcp.<domain>`, `_submission._tcp.<domain>`, RFC 6186) and
+   MX as a hint for the mail host.
+4. **Educated guessing** — try `imap.<domain>`/`mail.<domain>` on 993
+   and `smtp.<domain>`/`mail.<domain>` on 465/587 with the mail plugins,
+   accepting the first combination whose TLS handshake and login
+   succeed.
+
+The wizard then verifies the discovered settings with one real IMAP
+login and one SMTP authentication (no message is sent). On success:
+
+**Step 3 — done.** "Your account is ready." The wizard closes, the
+account tile appears, and a first synchronization of the inbox starts
+immediately in the background.
+
+If discovery or verification fails, the wizard drops into the
+**manual settings** page (incoming server/port/TLS/IMAP-or-POP3,
+outgoing server/port/TLS, username) with everything it *did* find
+prefilled — the user corrects one field instead of typing seven.
+*(Shipped in 0.9.0 as `UltraMailServerSettingsDialog` — IMAP only, no
+POP3 yet; since 0.9.1 Save checks the IMAP sign-in first (`LoginCheck`).
+The page is also the fallback when the autoconfig lookup finds nothing,
+and Reload opens it for an account without known servers.)*
+
+### 2.3 What the user never has to do
+
+No port numbers, no "SSL vs STARTTLS" choice, no separate username
+field (defaults to the address), no folder mapping (Sent/Drafts/Trash
+detected via IMAP SPECIAL-USE with name-based fallback), no manual
+"test settings" button — verification is part of the flow.
+
+## 3. Main window
+
+Once an account exists the main window is one screen — no separate
+reading window, no Toolbox grid — laid out from UltraCanvas elements:
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│ [✉ New email  ] ┌──────────────────────────────────────────────┐   │
+│ [⟳ Reload email] │  G   testmail@   12 New today  36 Unread     │   │ ← account bar
+│ [Contacts     ] │                   5 Waiting for reply         │   │   (3.0)
+│ [Add account  ] └──────────────────────────────────────────────┘   │
+├──────────────────────────────────┬─────────────────────────────────┤
+│ ┌ Inbox — 6 messages, 5 unread ┐ │ ┌ Message ───────────────────┐ │
+│ │ From         Subject    Date │ │ │ Budget review this afternoon│ │
+│ │ ● Carol Boss Budget …  Sep 03│ │ │ From: Carol Boss <carol@…>  │ │
+│ │ ● ULTRA Store Your in… Sep 03│ │ │ To: erika@example.com       │ │ ← split pane
+│ │   Max Weber  Lunch on… Jan 14│ │ │ Date: Sep 03, 2026 16:02    │ │
+│ │                              │ │ │ [↩ Reply]                   │ │
+│ │                              │ │ │ Hi Erika, …                 │ │
+│ └──────────────────────────────┘ │ └─────────────────────────────┘ │
+└──────────────────────────────────┴─────────────────────────────────┘
+```
+
+- **Actions column** (left): `New email` (composer for the selected
+  account), `Reload email` (syncs every account now — the label reads
+  "Reloading…" while a sync is in flight — then re-reads the store),
+  `Contacts`, `Add account`. Plain `UltraCanvasButton`s with icons.
+- **Account bar** (3.0) to the right of the actions.
+- **Inbox** group box: the selected account's inbox as an
+  `UltraCanvasColumnsTreeView` (From · Subject · Date, newest first; a
+  `●` in front of an unread sender, `↩` in front of one waiting for a
+  reply; the caption carries the message and unread counts). Selecting a
+  row shows it on the right.
+- **Message** group box: the `MessagePreview` — subject, from, to, date,
+  a Reply button, the body (HTML rendered through HTMLReader / CSSLayout,
+  plain text in a read-only text area) and the attachment strip, shown
+  only when the message has attachments. The HTML body sits in a page as
+  wide as the visible pane (less the vertical scrollbar), so a message's
+  percentage widths are taken from what the reader sees.
+- Both boxes sit in an `UltraCanvasSplitPane`; the whole account view is
+  a flex column sized to the window, so it follows a resize.
+
+### 3.0 Account bar
+
+The strip at the top of the main window summarises the accounts. Its
+shape depends on how many there are:
+
+**One account — a summary strip** (the design's first image): the
+provider's initial (first letter of the address's domain, upper-case and
+bold — `G` for gmail.com), the account name (the local part of the
+address; the full address is the tooltip), and three counters, each an
+`UltraCanvasBadge` with a caption:
+
+| Counter | Colour | Meaning |
+|---|---|---|
+| **New today** | blue | unread inbox messages dated today (local midnight onwards) |
+| **Unread** | lime | unread inbox messages from before today |
+| **Waiting for reply** | orange | messages addressed to the user that have no reply yet (the engine's needs-answer state) |
+
+**Several accounts — a row of square tiles** (the design's second
+image): each tile carries the same initial, name and three badges (the
+captions move into the tile's tooltip, under the full address). Clicking
+anywhere on a tile - its name and badges included - selects the account:
+the tile gets the selection-blue frame and the Inbox / Message boxes below
+switch to that account. The tile is one target for the pointer: its content
+is marked non-interactive (`ClickSurface::PassPointerThroughContent`), so a
+click lands on the tile and the hover shows the tile's tooltip wherever the
+pointer is on it.
+
+The counts come from `LocalStore::GetAccountStatus`, one query for all
+accounts (`unreadToday` / `unreadOlder` / `needsAnswer`), refreshed
+after every sync and every action that changes flags.
+
+### 3.1 Compose window
+
+A separate window (`CreateWindow`) per draft, Texter-style:
+
+- **To/Cc/Bcc** rows using `CreateEmailInput` with autocomplete fed by
+  the collected-addresses book (3.2); recipients render as removable
+  chips; Cc/Bcc rows hidden until requested.
+- **Body** — `UltraCanvasTextArea` in `MarkdownHybrid` mode: the user
+  writes comfortable rich text (bold, lists, links, quoting) and
+  UltraMail sends `multipart/alternative` with a generated HTML part
+  (via the existing Markdown→HTML serializer of `UCRichDocument`) plus
+  the plain-text source. A "plain text only" toggle is one click.
+- **Attachments** — "Attach file…" (file dialog; drag & drop later) and
+  "Attach cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
+  account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
+  shown as a chip strip with sizes and a total-size warning.
+- **Signatures** — per account, in *Account Settings > Signature*: none,
+  plain text (below a `-- ` line) or HTML, designed in a WYSIWYG editor
+  (`UltraCanvasRichTextEdit`: character formatting, font, size, colour,
+  alignment, lists, links, pictures, a rule) or written as HTML source. Put
+  below the line the message is written on and above any quote, in new mail
+  and - unless switched off - in replies and forwards; an HTML signature makes
+  the message a formatted one. *(Implemented in UltraMail 0.10.11.)*
+- **Formatting** — a *Plain text | Formatted* switch on every message, and in
+  formatted mode the same toolbar as the signature editor (character
+  formatting, font, size, colour, alignment, lists, a rule, links, pictures).
+  *(Implemented in UltraMail 0.10.12.)*
+- **Drafts** — autosaved to the local store every few seconds and on
+  close; **Send** puts the message into the **Outbox** queue, which the
+  engine flushes when online (so send never blocks and survives
+  restarts); optional "undo send" delay of 0–30 s.
+  *(Implemented in UltraMail 0.10.14: Send queues the message in the local
+  outbox and closes the compose window; the send runs in the background, a
+  copy waits in the account's Drafts folder until the message has gone out,
+  a message not sent is reported with Retry and is tried again by itself -
+  after 1, 2, 5 and 10 minutes, then every 30, and at once when the
+  connection is back. Autosave and undo-send are still to come. Since
+  0.10.19 a sent message is filed in the Sent folder - except on servers
+  that do that themselves (Gmail, Outlook.com / Microsoft 365) - and the
+  **Outbox window** (toolbar *Outbox (N)*, shown while messages wait) lists
+  the waiting messages with why they have not gone out, and offers *Send
+  now*, *Edit…* (correct and send again; the old version is held meanwhile
+  and replaced) and *Delete* (with its Drafts copy, expunged; when the
+  server cannot be reached, by a later pass). Both wait for a running send
+  instead of refusing.)*
+
+### 3.2 Everyday comfort features (v1.0)
+
+- Reply / reply-all / forward with proper quoting and subject prefixes
+- Mark read/unread, star/flag, move to folder (drag & drop onto tree)
+- Junk folder support; delete-to-Trash with empty-trash command
+- Fast local search (from/subject/body) over the message index
+- Collected address book: every address the user writes to or receives
+  from is remembered for autocomplete (explicit contacts app and
+  LDAP/CardDAV integration come later, see roadmap)
+- Multiple accounts + unified inbox
+- New-mail notifications (window badge + system notification) and
+  unread badges on the Toolbox tiles. *Built:* the system notification -
+  posted through UltraMessage and drawn by the desktop's own notification
+  service, a click opens the mail (Settings > Display > Notifications)
+- Keyboard shortcuts (N new, R reply, Del delete, Ctrl+Enter send, …)
+- Dark/light theme following the framework theme, HiDPI-ready
+
+## 4. Architecture
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ UltraMail UI (UI thread)                                   │
+│  Toolbox · MailWindow (3-pane) · ComposeWindow · Wizard    │
+│  UltraCanvas widgets, HTMLReader for message rendering     │
+├────────────────────────────────────────────────────────────┤
+│ UltraMail Engine (worker thread(s))                        │
+│  AccountManager      accounts, settings, credentials       │
+│  AutoDiscovery       presets → autoconfig → DNS → probing  │
+│  SyncEngine          per-account folder/message sync, IDLE │
+│  LocalStore          .eml files + UltraDatabase index/meta │
+│  MimeCodec           MIME parse/build, encodings, HTML/text│
+│  Outbox              persistent send queue, retries        │
+├──────────────────────────────┬─────────────────────────────┤
+│ UltraNet                     │ UltraDatabase               │
+│  IMailProtocolPlugin: smtp · │  local SQLite connection    │
+│  imap · pop3 (libcurl)       │  per account: index, flags, │
+│  UltraNet_Dns* (SRV/MX)      │  needs-answer, search, meta │
+│  UltraNet_Http* (autoconfig) │  UltraDb_Query/Exec/Migrate │
+│  TLS on by default           │  parameterized, transactional│
+└──────────────────────────────┴─────────────────────────────┘
+```
+
+**Threading.** All protocol work runs on engine worker threads (one
+sync worker per account, one shared discovery/outbox worker). Results
+are marshalled to the UI with
+`UltraCanvasApplication::PostToUIThread(fn)` — the same pattern UltraNet
+prescribes for its async callbacks, which fire on its worker thread.
+The UI never blocks on the network.
+
+**Engine ↔ UltraNet.** The engine resolves plugins through the
+registry: `UltraNet_GetPlugin("imaps")` /
+`UltraNet_GetPlugin("smtps")`, then calls the `IMailProtocolPlugin`
+interface with `UltraNetMailOptions` (credentials, `serverUrl`,
+TLS mode, timeouts) exactly as defined in
+`UltraCanvas/include/UltraNet/UltraNetPlugins.h`. Error handling
+follows the framework convention: every operation returns an
+`UltraNetResult`; the UI presents `result.message` with a retry option
+and maps common codes (`AuthenticationFailed`,
+`TlsCertificateInvalid`, `HostNotFound`) to friendly texts.
+
+**Local store.** One directory per account under the user data dir
+(via VirtualFS):
+
+```
+~/.local/share/UltraMail/           (per-platform user-data dir)
+  accounts.json                     account list & settings (no secrets)
+  <account-id>/
+    folders.json                    folder tree, UIDVALIDITY, sync state
+    <folder>/cur/<uid>.eml          raw RFC 5322 messages (Maildir-like)
+    index.db                        flat message index: envelope fields,
+                                    flags (incl. \Answered), needs-answer
+                                    bit, threading refs, search tokens
+  status.json                       per-account rollups: unread & needs-
+                                    answer counts driving the account bar
+  outbox/                           queued outgoing messages
+```
+
+Raw `.eml` files keep the store transparent, portable and crash-safe;
+the compact index makes list rendering and search fast without loading
+message bodies. The index, flags, needs-answer bits, threading data,
+search tokens and per-account status rollups all live in a per-account
+**UltraDatabase** connection (a local SQLite database, `driver =
+"sqlite"`), registered by name (`"mail-<account-id>"`) and queried
+through the `UltraDb_*` API — see `Docs/Modules/UltraDatabase/README.md`.
+This gives UltraMail parameterized queries, transactional sync updates
+and fast indexed search for free, and means a power user could later
+point the store at a networked engine without changing UltraMail's
+query code. The raw messages stay as `.eml` files on disk; only the
+index/metadata lives in the database.
+
+**Credentials** go into UltraMail's vault: the framework's
+`UltraVault::DeviceKeyVault` (`Docs/Modules/UltraVault/README.md`) with
+UltraMail's profile — an encrypted file (`ultramail.vault`, Argon2id +
+XChaCha20-Poly1305 via UltraCrypt) unlocked without a prompt by an owner-only
+`device.key` beside it, the posture of Thunderbird with no Primary Password.
+`UltraMailCredentialVault.h` only names that profile. The OS keychains
+(libsecret, Windows Credential Manager, macOS Keychain) are planned as
+UltraVault backends behind the same surface, not as a seam of UltraMail's
+own. The account config never contains passwords.
+
+## 5. Application skeleton and file layout
+
+Follows the Texter pattern (app manager class owning windows, config
+structs, `onXxx` callbacks):
+
+```
+Apps/UltraMail/
+  main.cpp                        app init, splash, Toolbox vs. mail window
+  UltraMailApp.{h,cpp}            manager class (accounts, windows, engine)
+  ui/
+    UltraMailToolbox.{h,cpp}      square-tile start screen (2.1)
+    UltraMailWindow.{h,cpp}       3-pane main window (3)
+    UltraMailComposer.{h,cpp}     compose window (3.1)
+    UltraMailAccountWizard.{h,cpp}setup wizard (2.2)
+    UltraMailSettings.{h,cpp}     settings dialog
+  engine/
+    UltraMailAccountManager.{h,cpp}
+    UltraMailAutoDiscovery.{h,cpp}
+    UltraMailSyncEngine.{h,cpp}
+    UltraMailLocalStore.{h,cpp}
+    UltraMailMimeCodec.{h,cpp}
+    UltraMailOutbox.{h,cpp}
+    UltraMailCredentialVault.{h,cpp}
+  CMakeLists.txt                  links UltraCanvas + UltraNet (+ mail plugins)
+media/appicon/UltraMail.png       app icon (used by SetDefaultWindowIcon)
+Docs/UltraMail/Concept.md         this document
+Docs/UltraMail/CHANGELOG.md       once implementation starts
+```
+
+## 6. Required UltraNet extensions (gap analysis)
+
+> **Implemented (2026-07):** the `IMailboxProtocolPlugin` extension below
+> is now in UltraNet — `UltraCanvas/include/UltraNet/UltraNetPlugins.h`
+> defines the interface plus `UltraNetMailFolder` / `UltraNetMailEnvelope`
+> / `UltraNetMailboxStatus` / `UltraNetMailFlags`, and the IMAP plug-in
+> (`Plugins/UltraNet/imap/`) implements all of it over libcurl
+> (`LIST`, `STATUS`, `UID SEARCH`/`FETCH`/`STORE`/`MOVE`, `APPEND`), with
+> **XOAUTH2** bearer auth for Gmail/Microsoft. Wire parsing is factored
+> into a pure header (`ImapParse.h`) and unit-tested in
+> `Tests/UltraNet/test_imap_mailbox.cpp`. The signatures below are the
+> original proposal; the shipped API takes the server URL + folder as
+> separate arguments and adds `GetMailboxStatus` (poll-based change
+> detection) in place of a push `IdleStart` (IDLE remains a future
+> optimisation).
+
+The pre-existing mail plugins were deliberately minimal (~300 lines each):
+`SmtpPlugin` sends a complete message, `ImapPlugin.FetchMessages` does
+`SEARCH ALL` + `FETCH BODY[]` of the N most recent UIDs into
+`UltraNetMailMessage` structs, `Pop3Plugin` similarly. That is enough
+for the wizard's login verification and a first read-only inbox, but a
+real client needs more — so the mail plugin surface was extended with a
+second interface (keeping `IMailProtocolPlugin` intact for
+compatibility):
+
+```cpp
+// UltraNetPlugins.h — proposed
+class IMailboxProtocolPlugin : public IMailProtocolPlugin {
+public:
+    virtual UltraNetResult ListFolders(std::vector<UltraNetMailFolder>& out,
+                                       const UltraNetMailOptions&) = 0;      // LIST + SPECIAL-USE
+    virtual UltraNetResult FetchEnvelopes(const std::string& folder,
+                                          uint32_t sinceUid,
+                                          std::vector<UltraNetMailEnvelope>& out,
+                                          const UltraNetMailOptions&) = 0;   // headers/flags only
+    virtual UltraNetResult FetchMessage(const std::string& folder, uint32_t uid,
+                                        std::string& outRaw,
+                                        const UltraNetMailOptions&) = 0;     // full RFC 5322 body
+    virtual UltraNetResult StoreFlags(const std::string& folder, uint32_t uid,
+                                      const std::string& flags, bool set,
+                                      const UltraNetMailOptions&) = 0;       // \Seen \Flagged \Deleted
+    virtual UltraNetResult MoveMessage(const std::string& srcFolder, uint32_t uid,
+                                       const std::string& dstFolder,
+                                       const UltraNetMailOptions&) = 0;
+    virtual UltraNetResult AppendMessage(const std::string& folder,
+                                         const std::string& raw,
+                                         const UltraNetMailOptions&) = 0;    // Sent/Drafts upload
+    virtual UltraNetHandle IdleStart(const std::string& folder,
+                                     std::function<void()> onChange,
+                                     const UltraNetMailOptions&) = 0;        // IMAP IDLE push
+    virtual UltraNetResult IdleStop(UltraNetHandle) = 0;
+};
+```
+
+All of this maps onto libcurl custom IMAP commands the same way the
+current plugin implements `SEARCH`/`FETCH`, so it stays within the
+established implementation approach. Additional gaps to close:
+
+- **MIME handling** — `FetchMessages` currently returns raw bodies;
+  full MIME parsing/building (multipart, encodings, inline images,
+  attachments) lives in UltraMail's `MimeCodec` so the plugins stay
+  thin transport.
+- **OAuth2 / XOAUTH2** — required for Gmail and Microsoft accounts.
+  `UltraNetCredentials` carries a bearer-token field (libcurl supports
+  `CURLOPT_XOAUTH2_BEARER`, honoured by the IMAP and SMTP plug-ins). The
+  browser-based token flow is UltraNet's OAuth2 client (`UltraNetOAuth2.h`:
+  PKCE, loopback redirect listener, code exchange, refresh); UltraMail's
+  `UltraMailOAuth` adds the provider table, the app registration and the
+  token set in the vault. *Shipped for Gmail (0.8.0) and Outlook /
+  Microsoft 365 (0.8.1).*
+- **Cancellation/progress** for long fetches — reuse the existing
+  `UltraNet_CancelRequest`/transfer-callback pattern.
+
+POP3 accounts are supported as leave-on-server single-folder accounts
+(Inbox only, sent mail stored locally); IMAP is the recommended and
+default path.
+
+## 7. Implementation roadmap
+
+| Phase | Deliverable |
+|---|---|
+| **1 — Walking skeleton** | App skeleton, Toolbox with the single "Add email account" tile, setup wizard with discovery pipeline, credential vault; verify login; read-only inbox using existing `FetchMessages`; plain-text preview; SMTP send with a minimal composer. *Usable end-to-end.* |
+| **2 — Real mail client** | `IMailboxProtocolPlugin` in UltraNet (folders, envelopes, flags incl. `\Answered`, move, append, IDLE); SyncEngine + LocalStore with offline cache; account info bar (3.0) with unread + needs-answer counts and one-click triage; folder tree, flags, delete/junk/move; MimeCodec; HTML rendering with remote-image blocking; attachments both directions. |
+| **3 — Comfort** | Unified inbox, local search, drafts/outbox/undo-send, signatures, address autocomplete, notifications and badges, settings dialog, keyboard shortcuts, conversation view. |
+| **4 — Ecosystem** | OAuth2 (Gmail/Microsoft), address book app integration (LDAP via UltraNet's `IDirectoryProtocolPlugin`, CardDAV), filter rules, PGP/S-MIME signing & encryption, calendar-invite (.ics) preview, mobile-profile export for ULTRA OS on Android. |
+
+Phases 1–2 are the minimum for a public preview; phase 3 completes the
+"comfortable mail sending and managing" goal of this concept.
+
+## 8. Open questions
+
+1. Should the Toolbox tile grid become a reusable UltraCanvas component
+   (`UltraCanvasTileGrid`)? Other ULTRA OS apps (and the future OS
+   launcher itself) will want the same square-icon visual language.
+2. ~~Message index backend: flat files vs SQLite?~~ **Resolved:** the
+   index/metadata uses a per-account SQLite connection via the new
+   **UltraDatabase** module (`Docs/Modules/UltraDatabase/README.md`);
+   raw messages stay as `.eml` files. `LocalStore` wraps the `UltraDb_*`
+   calls so the engine choice stays swappable.
+3. Conversation threading in v1.0 message list or v1.x?
+4. ~~Does the ISPDB lookup need a privacy switch (it reveals the user's
+   mail domain to Mozilla's service)?~~ **Resolved (0.10.48):** the lookups
+   send the domain only, never the address (the `?emailaddress=` parameter
+   was dropped; placeholders are filled in locally), and the wizard's Cancel
+   plus the manual-settings page are the opt-out. The data flow is disclosed
+   in `Docs/Legal/Privacy/UltraMail.md` §5.1.
+
+## See Also
+
+- `Docs/Modules/UltraNet/README.md` — UltraNet module overview
+- `UltraCanvas/include/UltraNet/UltraNetPlugins.h` — `IMailProtocolPlugin`,
+  `UltraNetMailMessage`, `UltraNetMailOptions`
+- `UltraCanvas/Plugins/UltraNet/{smtp,imap,pop3}/` — existing mail plugins
+- `Apps/Texter/` — reference application structure
+- `Docs/Modules/UltraDatabase/README.md` — local index/metadata store
+- `Docs/Modules/ULTRA-OS/README.md` — ULTRA OS ecosystem vision
+
+==============================================================================
+FILE: Docs/UltraMail/SenderBadges.md
+==============================================================================
+
+# UltraMail — sender badges, the icon cache and the phishing scan
+
+Every row of UltraMail's message list carries a small square immediately left
+of the subject, and the reading pane shows the same square beside the sender.
+It answers the question a reader asks before anything else — *who is this
+from, and can I trust it?* — with three things at once: the service's own icon
+where the sender belongs to one, the sender's initial where it does not, and a
+frame whose colour is the verdict.
+
+Companion documents: [`Concept.md`](Concept.md) (the design),
+[`AccountSetup.md`](AccountSetup.md), [`CHANGELOG.md`](CHANGELOG.md), and the
+developer notes in [`Apps/UltraMail/README.md`](../../Apps/UltraMail/README.md).
+
+## 1. What the colours mean
+
+| Badge | Meaning | Where it comes from |
+|---|---|---|
+| **Filled green** | Known contact | The address is in the address book under Family, Friends or Leisure |
+| **Filled blue** | Business contact | The address is in the address book under Work, Services or Other — **or** it belongs to a service in the known-sender registry |
+| **Black outline** | New sender | Never seen in the address book |
+| **Dark blue outline** | Likely advertisement | Bulk/marketing markers (`List-Unsubscribe`, `Precedence: bulk`, `Auto-Submitted`) |
+| **Orange outline** | Likely spam | Server-side spam markers, the junk folder, or a content scan that did not add up |
+| **Red outline** | Likely scam | Phishing markers — above all, links that lie about where they go — or the pattern of a known scam: a romance scam, an advance-fee letter, a cryptocurrency scam |
+
+Two rules decide which one wins:
+
+* **Known beats guessed.** An address in the address book is a contact even
+  when the message is bulk mail.
+* **Danger beats known.** A message whose links lie is called a scam even when
+  the sender is in the address book — an address book entry says who an
+  address belongs to, not that *this* message really came from them.
+* **Bulk mail is still bulk mail.** A campaign newsletter from Kickstarter is
+  an advertisement (dark blue), not a business contact: the dark-blue badge
+  exists to say "this is marketing", and a known sender does not change that.
+  A *transactional* message from the same service — a pledge receipt, an order
+  confirmation — carries no bulk markers and reads blue.
+
+The badge is never the only place a verdict is said: hovering it shows the
+class, the service, the reason and the scan's findings in words, and a
+suspicious or scam message also carries a warning strip above its body in the
+reading pane. When the scan's verdict is suspicious or worse and a button (or,
+failing that, a bare link) leads off the sender's domain, the strip is titled
+*"Warning: This is likely a phishing² email!"*, quotes both domains —
+`Mismatch of domains` / `Sender domain: …` / `Button domain: …` — and explains
+the footnote: phishing emails try to get your credentials to hack your
+accounts on other websites (`FindDomainMismatch` in the scan). A message the
+scan reads as a **romance scam** is titled *"Warning: This is likely a romance
+scam² email!"* instead ("may be" when the verdict is only suspicious), even
+when it also links elsewhere, and its footnote says what a romance scam is and
+that a reverse image search often finds the photo under another name; a
+**cryptocurrency scam** (a recovery phrase asked for, a wallet address to pay
+into, promised profit) gets its own title and footnote the same way. **Any
+message about cryptocurrency** that is not otherwise flagged — a newsletter, an
+exchange's own mail — still gets an orange *"Caution: this message is about
+cryptocurrency"* strip: a crypto payment cannot be called back, no genuine
+service asks for a recovery phrase, no genuine investment guarantees a
+profit. The strip knows which scam it is from the finding codes stored with
+the verdict (`MessageSecurity::findings`). Nothing is ever hidden, moved or
+deleted — UltraMail labels, the reader decides.
+
+## 2. The known-sender registry
+
+`Apps/UltraMail/engine/UltraMailSenderBrands.{h,cpp}` holds the lookups and
+`UltraMailSenderBrandTable.cpp` the curated table: about 400 services, with 600
+of their own domains. They are the services whose mail an inbox actually
+carries **and** the brands phishing mail most often dresses up as, because the
+content scan (section 5) asks the same table "this mail says it is Coinbase -
+is it from Coinbase?". Each entry has an id, a display name, the site's own
+favicon URL, a brand colour and a category:
+
+| Category | Examples (see the table for all) |
+|---|---|
+| Bank or broker (81) | Chase, Bank of America, Wells Fargo, Citi, American Express, Barclays, HSBC, Lloyds, NatWest, Santander, Revolut, Monzo, Deutsche Bank, Commerzbank, Sparkasse, ING, DKB, N26, comdirect, Postbank, UBS, PostFinance, ABN AMRO, Rabobank, BNP Paribas, BBVA, Nordea, RBC, Commonwealth Bank, HDFC, Itaú, Nubank, Robinhood, eToro … |
+| Payment service (26) | PayPal, Stripe, Venmo, Zelle, Cash App, Wise, Western Union, MoneyGram, Klarna, Afterpay, Visa, Mastercard, Interac, TWINT, Alipay, paysafecard … |
+| Crypto exchange or wallet (26) | Coinbase, Binance, Kraken, Crypto.com, Gemini, Bitstamp, KuCoin, OKX, Bybit, Bitpanda, Bitvavo, Blockchain.com, MetaMask, Ledger, Trezor, Trust Wallet, Exodus, Phantom, OpenSea … |
+| Online shop (42) | Amazon, eBay, Etsy, Walmart, Target, Best Buy, Costco, AliExpress, Temu, SHEIN, Zalando, OTTO, Vinted, Kleinanzeigen, MediaMarkt, Lidl, Aldi, Tesco, IKEA, Shopify, DoorDash, Deliveroo, Lieferando … |
+| Parcel carrier (26) | DHL, UPS, FedEx, USPS, Royal Mail, Evri/Hermes, DPD, GLS, Deutsche Post, InPost, PostNL, Colissimo, Swiss Post, Österreichische Post, PostNord, Poste Italiane, Correos, Canada Post, Australia Post … |
+| Social network (24) | Facebook, Instagram, LinkedIn, X, Reddit, TikTok, Snapchat, Pinterest, Tumblr, Mastodon, Bluesky, XING, Tinder, Bumble, Hinge, Match, Grindr … |
+| Messaging service (7) | WhatsApp, Telegram, Signal, Slack, Discord, WeChat, Viber |
+| Cloud, hosting or file service (26) | Dropbox, WeTransfer, Box, MEGA, Cloudflare, DigitalOcean, Hetzner, IONOS, STRATO, OVHcloud, Hostinger, Bluehost, WordPress.com, Wix, Squarespace … |
+| Domain registrar (14) | GoDaddy, Namecheap, Network Solutions, Name.com, Porkbun, Gandi, INWX, united-domains, DENIC, Nominet, ICANN, Verisign … |
+| Online service (21) | Google, Apple, Microsoft, GitHub, Claude, OpenAI, Zoom, DocuSign, Adobe, Atlassian, Salesforce, Okta, Webex, Intuit, Xero, Canva … |
+| Government agency (18) | IRS, SSA, USCIS, FBI, HMRC, DVLA, TV Licensing, Canada Revenue Agency, ATO, myGov, ELSTER, BZSt, Rundfunkbeitrag, impots.gouv.fr, ANTAI, Ameli … |
+| Telecom provider (21) | Verizon, AT&T, T-Mobile, Xfinity, Telekom, Vodafone, 1&1, O2, BT, Swisscom, Telstra, KPN, Proximus … |
+| Gaming service (10) | Steam, Epic Games, PlayStation, Nintendo, Roblox, Riot Games, Blizzard, EA, Ubisoft, Minecraft |
+| Security software (13) | Norton, McAfee, Avast, Kaspersky, Bitdefender, Malwarebytes, ESET, LastPass, 1Password, Bitwarden, NordVPN, ExpressVPN … |
+| Media, travel, crowdfunding, creator support | Netflix, Spotify, Disney+, Max, DAZN; Booking.com, Airbnb, Expedia, Uber, Ryanair, Lufthansa, Deutsche Bahn; Kickstarter, GoFundMe; Patreon, Ko-fi … |
+
+The category is what the badge tooltip names ("Kickstarter (Crowdfunding
+platform)") and what a collected contact's note records. The **Payments**
+filter takes banks and crypto exchanges as well as payment services.
+
+### What may go into the table
+
+A domain in the table is *trusted*: its mail gets the brand's name and icon
+and the blue business-contact badge. So the entries follow rules that are
+stricter than "the brand probably owns this":
+
+* **Only the brand's own domains**, and country domains listed one by one
+  (`lidl.de`, `amazon.co.uk`, `dhl.de`, …). No entry is trusted
+  under "any `amazon.*`": that would hand a squatted `amazon.xyz` the badge
+  too, and the consistency test refuses it.
+* **A name that is an ordinary word is claimed through keywords only**
+  (`NameClaim::KeywordsOnly`). "Chase", "Target", "Visa", "Discover",
+  "Steam", "Signal", "Booking", "UPS" would otherwise turn every visa
+  application, hotel confirmation or "follow-ups" into an impersonation
+  finding; they are claimed by "chase bank", "target.com", "verified by
+  visa", "steam support", "booking.com", "ups.com" instead.
+* **No keyword is a mailbox provider's name**, and an address at a mailbox
+  provider inside a display name claims nothing: a friend whose display name
+  is just `jane@outlook.com` is not posing as Microsoft. An address at any
+  other domain still counts — `"service@paypal.com" <x@evil.example>` is
+  exactly the claim to catch.
+* **Brands whose genuine mail comes from hundreds of regional domains are
+  recognised but not claimed.** Each Sparkasse mails from its own
+  `sparkasse-<region>.de`; claiming "Sparkasse" would flag the real ones.
+* **Providers that are also mailbox domains are left out** (Orange, SFR, Sky,
+  Virgin Media, Rogers): their addresses are people.
+* **Government service suffixes are not one party.** `RegistrableDomain()`
+  knows `gov.in`, `gouv.fr`, `gc.ca` and the three-level `service.gov.uk`, so
+  `tax.service.gov.uk` is HMRC and `vehicle-tax.service.gov.uk` is not.
+
+`registry_is_consistent` in `Tests/UltraMail/test_senderidentity.cpp` checks
+the table: unique ids, every domain owned by one brand and resolving back to
+it, no public suffix as a domain, lowercase keywords, no mailbox-provider
+keyword.
+
+Two rules hold it together, and both exist because the table is also what the
+phishing scan reasons about:
+
+* **A brand is matched on the registrable domain only** — never on a display
+  name, never on a label anywhere in the host. `amazon.secure-login.ru` is not
+  Amazon and must not be handed Amazon's icon. `RegistrableDomain()` reduces a
+  host to `example.co.uk` / `example.com` using a small two-level public-suffix
+  list.
+* **A mailbox provider is not a brand.** Mail from `gmail.com`, `icloud.com` or
+  `gmx.net` is personal mail that happens to be carried by Google, Apple or
+  GMX, so those domains resolve to no brand at all — only a Google *service*
+  domain (`google.com`, `youtube.com`, `accounts.google.com`) is Google. This
+  is what keeps a friend's Gmail out of the "known service" category.
+
+## 3. The sender-icon cache
+
+`UltraMailSenderIconCache` owns one folder — `<dataDir>/cache/sender-icons` —
+holding two kinds of icon, each under a key:
+
+* **A registry service's icon**, from the URL in the brand table, named after
+  the brand id with the extension sniffed from the downloaded bytes
+  (`facebook.png`, `apple.ico`, …). Key: the brand id.
+* **A website's icon**, for a sender that is no known service: the home page
+  of the registrable domain it writes from (`https://example.com/`, then
+  `https://www.example.com/`) is read for its `<link rel="icon">` — a size a
+  badge can use first, then the home-screen icon, an icon of no stated size,
+  SVG, tiny ones — and `/favicon.ico` is the fallback (`FindSiteIconUrls`).
+  Filed under `sites/example.com.png`. Key: `site:example.com` (`SiteIconKey`).
+
+How it is filled:
+
+* **Lazily, in the background.** The message list's item delegate asks for an
+  icon (`SenderBadge::iconKey`, `SenderIconCache::Request`) when it paints a
+  row whose badge has none cached, and the reading pane when it shows such a
+  sender; up to three loader threads of the cache's own fetch them and the
+  app is told of each icon stored (`SetReadyHandler`), whereupon the waiting
+  rows and the pane show it. Neither the sync nor the window waits for a
+  download, and only senders actually on screen are fetched. (Until 0.10.32
+  the sync worker fetched a registry icon as each new header arrived, holding
+  the sync for the round trip.)
+* **Website icons only for mail that passed the scan.** A website icon is
+  asked for only when the message has been scanned and is clean or an
+  advertisement, is not in the junk folder, and its domain is not a mailbox
+  provider (a friend's Gmail address is not Google's mail). Reading a site's
+  home page tells the sender's web server that someone looked — not which
+  message — which is why it is a setting of its own and never done for spam,
+  scams or the junk folder.
+* **No icon on a spam or scam badge.** An icon is drawn without the badge's
+  frame, and on a dangerous message the frame is the warning: a forged
+  `paypal.com` address must not wear PayPal's logo.
+* **The fetch is injected.** The engine has no network dependency of its own:
+  `SetFetcher()` takes the HTTPS GET for an icon (the app supplies one built
+  on `UltraNet_HttpGet`, TLS verified, 10 s timeout, 512 KB cap),
+  `SetPageFetcher()` the one for a home page (256 KB, and a page cut off there
+  is still read: its head comes first); the test suite supplies fakes, and a
+  build that sets none downloads nothing.
+* **A miss is remembered** in a `.missing` marker and not retried for a week,
+  nor a second time in one session, so an offline machine does not spend its
+  time on the same failures.
+* **Bytes that are not an image are rejected** (a captive portal's HTML login
+  page, an error page), and a file the image loader cannot decode falls back to
+  the monogram rather than leaving an empty square.
+
+No icon is a normal state, not an error: the badge then shows the sender's
+initial in the brand's own colour. **Settings → Privacy → Sender icons** has
+both switches: *Download the icons of known senders* (`fetch_sender_icons` in
+`preferences.ini`; off, nothing at all is downloaded) and *Show other senders'
+website icons* (`fetch_site_icons`); icons already in the folder keep being
+shown. **Both are off by default** (since 0.10.48): every download tells a
+third party's web server the reader's IP address, so a fresh install contacts
+nobody but the reader's own mail server until the reader turns a download on.
+The declaration at `Docs/Legal/Privacy/UltraMail.md` describes both.
+
+## 4. The registry as a source of business contacts
+
+A service the user hears from is a business relationship: the crowdfunding
+platform a project was backed on, the shop an order came from, the
+creator-support service a membership runs through. The registry is therefore
+used twice:
+
+* **In the badge.** A registry sender that is not (yet) in the address book
+  reads as a **business contact** — blue — rather than as an unknown sender,
+  with the tooltip naming the service and what kind of service it is.
+* **In the address book.** `ContactCollector::CollectSender()` — which the app
+  runs over each synced folder — files a registry sender under **Services**,
+  carrying the service's name as the contact's `organization` and a note
+  saying what it is and that UltraMail added it. A robot display name is
+  replaced by the service's own name only when the header carries none
+  ("Kickstarter" beats an empty From name). Everything else still lands in
+  Other, exactly as before, and a personal mailbox address never counts as a
+  service however large its provider.
+
+One rule guards it: **an existing contact is never modified or reclassified.**
+An address the user has filed under Friends themselves stays there, whatever
+the registry says.
+
+## 5. The content scan
+
+`UltraMailThreatScan.{h,cpp}` reads a message the way a suspicious reader
+would and returns a level (`Clean`, `Advertisement`, `Suspicious`, `Scam`), a
+score and the reasons, in the words the tooltip and the warning strip show.
+It runs **once per message, where the body is cached during sync**, and the
+verdict is stored in the `message_security` table — its own table, so that an
+envelope upsert (which happens on every header sync, long before a body
+exists) can never reset a scan that has already run. A verdict made by older
+rules (`kThreatRulesRevision`) is made again: by the sync, a batch of up to
+300 cached bodies per folder sync (`SyncEngine::RescanStaleVerdicts`), and
+when the message is opened.
+
+Links are pulled out of both HTML (`<a href>`, `<area href>`, `<form action>`,
+with their anchor text) and plain-text bodies (bare URLs). The pictures the
+borrowed-brand-pictures rule compares with them come from the parsed page as
+well (`ExtractImageHosts`): `<img src>`, `background` attributes and the
+background images the page's CSS gives an element, through the HTMLReader's
+cascade. The rules, with their weights:
+
+| Finding | Weight | What it catches |
+|---|---|---|
+| `link-target-mismatch` | 50 | A link reads `www.paypal.com` and goes to `203.0.113.9` |
+| `link-userinfo` | 45 | `http://paypal.com@203.0.113.9/` — everything before the `@` is decoration |
+| `attachment-disguised-executable` | 55 | `Invoice_2026.pdf.exe` |
+| `brand-impersonation` | 40 / 55 | The display name or subject claims a brand the From domain does not own (55 when sent from a free mailbox) |
+| `link-brand-lookalike` | 40 | `apple-id-verify.delivery-update.example` |
+| `attachment-executable` | 40 | A plain `.exe` / `.jar` / `.js` attachment |
+| `link-ip-host` | 35 | A link straight to a numeric address |
+| `auth-failure` | 30 | The receiving server's `Authentication-Results` reports `dmarc=fail` — or, with no DMARC result, an SPF or DKIM failure while nothing passed for the From domain |
+| `sender-domain-lookalike` | 45 / 50 | The From domain is dressed up as a brand's — see *Look-alike sender domains* below. 45 for the name padded with phishing words, 50 for a misspelt name or a brand's own domain in front of a foreign one |
+| `link-domain-lookalike` | 40 / 50 | A link goes to a domain dressed up as a brand's — the same check as `sender-domain-lookalike`, once per host, not for the sender's own domain |
+| `government-impersonation` | 45 / 30 | A government agency or international organisation (FBI, Interpol, IMF, UN …) claimed from an address that is not a government one: 45 in the sender's name or domain, 30 in the subject or text when it addresses the reader about money, a case or an arrest |
+| `romance-scam` | 22 / 35 / 50 | A stranger's love letter — see *Romance scams* below. 50 with five signs or more, 35 with four, 22 with three |
+| `crypto-wallet-secret` | 50 | A sentence asking for a wallet's recovery (seed) phrase or private key — "verify your 12-word recovery phrase" — and not one warning never to give it |
+| `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate / money nobody claimed ("abandoned baggage"), taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential", "your own share", "God fearing", an "ATM card" from the FBI) — 50 when two of those appear |
+| `crypto-payment-demand` | 40 | A crypto wallet address in the text (Bitcoin `bc1…`/`1…`/`3…`, Ethereum `0x…`, TRON `T…`) — blackmail and fake invoices; not from a proven exchange, not a token inside a link |
+| `crypto-investment-lure` | 35 | Crypto plus promised profit: "guaranteed returns", "30% daily", a "trading platform", "withdraw your balance"; not from a proven exchange |
+| `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
+| `attachment-double-extension` | 25 | `invoice.pdf.zip` |
+| `link-punycode`, `link-nonascii-host` | 25 | Hosts drawn to look like familiar names |
+| `insecure-login-link` | 20 | A sign-in link over plain `http://` |
+| `link-brand-mismatch` | 20 | A button labelled with a brand that goes somewhere else |
+| `reply-to-mismatch` | 15 | Replies would go to a different domain than the sender's |
+| `reply-elsewhere` | 15 | The text asks for answers at another free mailbox than the one it came from ("my contact email for us to proceed: x@yahoo.com") |
+| `crypto-content` | 10 (0 from a proven exchange) | Any mention of cryptocurrency (bitcoin, BTC, USDT, a wallet, a seed phrase …): alone it changes no verdict, but the reading pane shows its caution strip |
+| `link-shortener` | 12 | The destination cannot be seen |
+| `many-foreign-domains` | 8 | Five or more link domains, none the sender's |
+| `spam-flag` | 40 | The receiving server already said so |
+| `blocked-sender` | 30 | The reader blocked the sender, or their domain — see *Trusted and blocked senders* below |
+| *(verified sender)* | −10 | DMARC passed for the From domain, or a DKIM signature of it verified: the From address is genuinely theirs |
+
+45 and above is **Scam**, 22 and above is **Suspicious**; below that, a message
+with bulk markers is an **Advertisement** and everything else is **Clean**.
+
+### Romance scams
+
+A romance scam starts as a love letter from a stranger: a pet name, talk of
+fate, a short self-introduction (name, age, divorced, a nurse in Russia), how
+they came to write ("I saw your profile", "it is destiny"), a photo or two,
+and a push to answer — often at a private address, or on a site that "only
+verifies" with a bank card. Later mails of the same thread add assurances ("I
+am for real", a "scan passport") and the request: a ticket, a visa, the rent,
+a laptop for the webcam, Western Union, crypto. No one phrase gives it away,
+so `romance-scam` counts **kinds of signs**, each kind once:
+
+| Kind | For example |
+|---|---|
+| Pet names | "my dear", "honey", "kisses", "truly yours" |
+| Love or attraction | "true love", "future husband", "I am attracted", "drawn to you" |
+| An offer of sex or a meeting | "meeting up", "escorts", "your desires" |
+| A self-introduction | "my name is", "I'm 31 years old", "divorced", "I live in Russia", "Im lawyer", "I have blue eyes" |
+| How they came to write | "your profile", "dating site", "destiny", "are you real?", "among the millions", "are you still looking for friend?" |
+| A site to sign up on or be "verified" at | "get my number … login there", "they never charge", "criminal history" |
+| Guilt or pressure | "don't upset Shui98 or make her bored" (a screen name speaking of herself), "no playing fool" |
+| A pretended acquaintance | "so good to see you again", "we emailed each other a long time ago", "did you get my …" |
+| Assurances of being real | "I am for real", "honest to you", "scan passport" |
+| Photos, a push to write back | "two pictures", "hope you like them"; "write me at", "await your earliest response" |
+| A request for money | "send me the money", "Western Union", "pay my rent", "a cheap laptop", any crypto |
+| A hardship or far-away story | "my old mother", "Luhansk", "oil rig", "deployed" |
+
+Two more signs count: **a photo** — an attached picture, or one shown in the
+body — which these letters nearly always carry, and a sender at a **free
+mailbox** (gmail.com, hotmail.com, i.ua, ukr.net, mail.ru …).
+
+The rule fires only when the letter has both **something romantic** (pet
+names, love, sex, or a guilt trip) and **something only a stranger writes**
+(an introduction, how they "found" you, a site to sign up on, assurances of
+being real, or a guilt trip). A partner's "my dear, here are the photos,
+write back" has the first and not the second, and stays clean. It never
+fires for a proven brand's mail (a dating service writing about matches), a
+newsletter from a domain of its own, a job application ("job posting", "my
+CV") or a mail over 60 000 characters. Three signs make the message
+suspicious, five a scam. The tests are real letters one reader received
+between 2011 and 2019 (`Tests/UltraMail/test_threatscan.cpp`).
+
+### Cryptocurrency
+
+Any message that mentions cryptocurrency gets `crypto-content`: 10 points
+(none from a proven registry exchange), which alone changes no verdict but
+puts the caution strip above the body. Three patterns are scams outright and
+weigh accordingly — a request for a wallet's recovery phrase
+(`crypto-wallet-secret`), a wallet address to pay into
+(`crypto-payment-demand`: the "I recorded you through your camera" blackmail,
+fake invoices) and promised profit (`crypto-investment-lure`: the
+"investment platform" a new online acquaintance recommends). A romance letter
+that turns to crypto counts it as its request for money.
+
+### Look-alike sender domains
+
+`BrandImitatedByDomain` (`UltraMailSenderBrands`) reads a domain the way a
+hurried eye does — the From domain (`sender-domain-lookalike`) and every
+link's host (`link-domain-lookalike`). It flags a domain that is none of a
+brand's own in four ways:
+
+* **The name padded with phishing words** — the brand's name or keyword
+  plus only words such as secure, login, verify, account, support, inbox,
+  billing, update, service, id: `paypal-secure-login.com`,
+  `appleidverify.com`. A name beside any other word is a business of its
+  own (`applewood-estates.com`, `amazonas-reisen.de`,
+  `paypal-community.com`) or the brand's own second domain (`redditmail.com`,
+  `cdn.discordapp.com`, `zoomcare.com` is a clinic), and the bare name under
+  another suffix (`paypal.xyz`) is left unclaimed, as the brand table leaves
+  it.
+* **The name misspelt** — look-alike characters (`0` for o, `1` or `i` for
+  l, `3` e, `4` a, `5` s, `7` t, `rn` m, `vv` w: `amaz0n`, `paypa1`,
+  `rnicrosoft`), a doubled letter (`paypall`, `faceebook`), or — for names of
+  eight letters or more only, so that `telecom` is not Telekom and
+  `interact` not Interac — one letter added, dropped, changed or swapped
+  (`facebok`). Padded or bare: `faceebookinbox.biz`, `faceboook.com`.
+* **A brand's own domain in front of a foreign one** —
+  `paypal.com.account-check.ru`.
+* **The name in letters of another script** — `pаypal.com` with a Cyrillic
+  "а", which travels as `xn--pypal-4ve.com`. Punycode labels are decoded
+  (`DomainToUnicode`, RFC 3492) and every Cyrillic, Greek, accented or
+  full-width letter that looks like a Latin one is read as that letter; a
+  domain whose reading is a brand's own domain, or its name bare or padded
+  with any word, was written to deceive. A domain with a letter that has no
+  Latin look-alike (`москва.рф`, `東京.jp`) is no imitation, nor is one that
+  reads as an ordinary word (`münchen.de`) or as a mailbox provider.
+
+A misspelt or foreign-lettered name may be padded with ordinary words too
+(mail, app, online, my, shop …: `faceboookmail.com`), since no brand
+misspells itself.
+
+Each label is read on its own, so `uncollatednessi.faceebookinbox.biz`
+finds Facebook in its second; a bare name as a host label is no claim
+(`hermes.uni-example.de` is a server called Hermes). Personal mailbox domains
+and every brand's own domains are never flagged.
+
+### Letters in an agency's name
+
+The "compensation for scam victims", "your ATM card" and "warrant for your
+arrest" letters write in the name of an agency or an international
+organisation. `government-impersonation` knows about twenty of them — the
+FBI, Interpol, the IMF, the United Nations, the World Bank, Europol, the CIA,
+Homeland Security, the Department of Justice, the US Treasury, the Federal
+Reserve, the Secret Service, the IRS, the European Central Bank and
+Commission, the BKA, the Bundespolizei, Scotland Yard, the National Crime
+Agency, the Central Bank of Nigeria, ECOWAS — and flags a message that
+claims one but was sent from an address that is not a government one: in
+the sender's name or domain it is a claim on its own; in the subject or the
+text it counts when it addresses the reader about money, a case or an
+arrest ("beneficiary", "your payment", "compensation", "ATM card", "arrest
+warrant", "this office", "we the …"), so a news item about the FBI does not.
+A government address — `.gov`, `.mil`, `.int`, a country's `gov.xx` /
+`gob.xx` / `gouv.xx` / `govt.xx` / `go.xx`, `bund.de`, `admin.ch`, `gv.at`,
+`gc.ca`, `europa.eu`, `police.uk` — or an agency's own domain (`imf.org`,
+`un.org`, `worldbank.org`, `bka.de`) never is, and neither is a newsletter
+from a domain of its own. Where the brand table already reported the claim
+(the IRS, HMRC) it is not said twice.
+
+### Switching warnings off
+
+*Settings > Warnings > Spam/scam warnings* has one switch per kind
+(`ThreatScanOptions`, `warn_*` in `preferences.ini`), all on:
+
+| Switch | Findings |
+|---|---|
+| Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
+| Romance scams | `romance-scam` |
+| Advance-fee letters | `advance-fee-fraud`, `reply-elsewhere` |
+| Letters in an agency's name | `government-impersonation` |
+| Cryptocurrency scams | `crypto-wallet-secret`, `crypto-payment-demand`, `crypto-investment-lure` |
+| Any mail about cryptocurrency | `crypto-content` (the caution strip) |
+| Dangerous attachments | `attachment-*` |
+| Spam, as the server marked it | `spam-flag` |
+
+A kind switched off is not reported: its findings are dropped and add
+nothing to the score, so a message is labelled as if those rules did not
+exist. Changing a switch marks every stored verdict stale
+(`LocalStore::MarkVerdictsStale`): the open message is scanned again at once,
+and the rest are re-scanned by the mail check a batch at a time, the first
+check starting straight away.
+
+### Trusted and blocked senders
+
+A right-click on a sender — on a row of the message list, or on the name or
+badge above the message — offers the reader's own verdict next to the address
+book and spam items:
+
+| Menu item | Effect |
+|---|---|
+| **Always trust this sender** | The address goes on the trusted list; *Stop trusting this sender* takes it off |
+| **Block this sender** | The address goes on the blocked list; *Unblock this sender* takes it off |
+| **Block everything from example.com** | `@example.com` goes on the blocked list — the registrable domain, so `mail.example.com` too. Not offered for a mailbox provider (gmail.com, outlook.com …): that would block everyone who writes from it. *Unblock everything from example.com* takes it off |
+
+The lists are `SenderLists` (`UltraMailThreatScan.h`), kept in
+`preferences.ini` as `trusted_senders` and `blocked_senders`
+(comma-separated) and editable in *Settings > Warnings > Trusted & blocked*
+(the page *Trusted and blocked senders*), where a domain can also be typed (`example.com` is kept as
+`@example.com`). An address is on one list or the other: trusting a blocked
+address unblocks it, and blocking a trusted one stops trusting it. A trusted
+address under a blocked domain stays trusted — the exception to the block.
+
+* **Blocked:** the scan adds `blocked-sender` (30, so at least
+  **Suspicious**): the orange frame, and the strip above the message says
+  *"You blocked this sender"* with how to undo it. The mail stays where it
+  is — UltraMail labels, it does not move or delete; *Mark as spam* moves a
+  message to the junk folder.
+* **Trusted:** only the findings that catch a lie or a forgery still count
+  (`FindingKeptForTrustedSender`): `auth-failure` (someone forging the
+  trusted address), the lying-link rules (`link-target-mismatch`,
+  `link-userinfo`, `link-ip-host`, `link-punycode`, `link-nonascii-host`,
+  `link-brand-mismatch`, `link-brand-lookalike`, `link-domain-lookalike`),
+  `attachment-disguised-executable` and `crypto-wallet-secret`. The guessed
+  kinds — a romance or advance-fee letter, the crypto caution, spam markers,
+  a brand's name in a domain — are the reader's call, and they made it. A
+  trusted sender's pictures on the web also load like a contact's
+  (*Privacy > Images*, "only from trusted senders").
+
+A change marks the stored verdicts of that sender (or domain) stale
+(`LocalStore::MarkSenderVerdictsStale`). Their mail in the list on screen is
+scanned again at once, off the UI thread (`MailView::RescanSender`, up to 300
+cached bodies), with the open message; the rest follows with the mail check.
+
+### Mail authentication
+
+The receiving server checks the sending domain's own records when a message
+arrives and writes what it found into an `Authentication-Results` header
+(RFC 8601): **DKIM** (a signature by the domain over the message), **SPF**
+(whether the delivering server is one the envelope sender's domain allows) and
+**DMARC** (whether the From domain's own policy was met by an aligned DKIM or
+SPF pass). The scan reads the **topmost** such header only — the one the
+user's own server prepended; one further down may have been written by anyone,
+the sender included (`TopHeaderValue`, `ParseAuthenticationResults`).
+
+A sender is **verified** when DMARC passed for the From domain, or a DKIM
+signature by the From address's registrable domain verified — a mail
+service's own signature (`sendgrid.net`) proves nothing about the From
+address (`VerifiedSenderDomain`). Verified is not the same as harmless: a
+fraudster can sign for a domain of their own. So a verified sender keeps
+every rule that catches a lie, and loses only the ones that misfire on
+genuine mail:
+
+* `link-target-mismatch` when the text names the sender's own, verified site
+  and the link goes through its mail service's click tracker;
+* `reply-to-mismatch` (replies to a help desk on another domain) and
+  `many-foreign-domains`;
+* for a verified **registry brand** (the From domain is the brand's own, e.g.
+  `paypal.com` proven by DKIM), also `credential-request` and
+  `link-brand-mismatch` — the bank asking to update account details is the
+  bank.
+
+A look-alike domain that signs its own mail (`paypa1-alerts.example`) still
+trips `link-target-mismatch`, `brand-impersonation` and `credential-request`.
+The verified domain and how it was proven are stored with the verdict
+(`message_security.verified_domain` / `verified_by`, schema 10) and named in
+the badge's and the sender's tooltips ("✓ Verified sender: paypal.com (DKIM
+signature and DMARC)").
+
+The reading pane shows the checks beside the sender as small bordered labels
+— **[DMARC] [DKIM] [SPF]**, green when passed, red when failed, grey with no
+verdict — each with a tooltip saying what was checked, for which domain, what
+that proves and which server checked it (`DescribeAuthentication`). A message
+the server recorded no checks for shows a grey **[Not checked]**; that is not
+a warning. A message signed by its author shows **[S/MIME]** or **[OpenPGP]**
+in grey: the signature is detected (`MessageSignatureKind`) but not yet
+verified, so it counts for nothing.
+
+The scan is deliberately asymmetric — a false "suspicious" costs the reader a
+second look, a missed phishing mail can cost them their account — but it is
+also deliberately quiet about ordinary mail: a personal message, a tracking
+link on the sender's own domain and a genuine brand newsletter all come out
+clean, and each of those is a test in
+`Tests/UltraMail/test_threatscan.cpp`.
+
+## 6. Where the code lives
+
+| Piece | File |
+|---|---|
+| Brand registry, domain helpers | `Apps/UltraMail/engine/UltraMailSenderBrands.{h,cpp}`; the table in `UltraMailSenderBrandTable.{h,cpp}` |
+| Icon cache | `Apps/UltraMail/engine/UltraMailSenderIconCache.{h,cpp}` |
+| Content scan | `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}` |
+| Classification (address book + brand + verdict) | `Apps/UltraMail/engine/UltraMailSenderTrust.{h,cpp}` |
+| Collecting a sender into the address book | `Apps/UltraMail/engine/UltraMailContactCollector.{h,cpp}` |
+| Stored verdicts (`message_security`, schema 4; verified sender, schema 10; finding codes, schema 11) | `Apps/UltraMail/engine/UltraMailLocalStore.{h,cpp}` |
+| Scan at download time | `Apps/UltraMail/engine/UltraMailSyncEngine.cpp` (`WriteBody`) |
+| The badge itself (painting + element) | `Apps/UltraMail/ui/UltraMailSenderBadge.{h,cpp}` |
+| Badge column in the message list | `Apps/UltraMail/ui/UltraMailMailView.cpp` |
+| Badge + warning strip in the reading pane | `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` |
+| Colours | `Apps/UltraMail/ui/UltraMailTheme.h` (`kTrust*`) |
+| The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
+| Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
+| Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
+
+==============================================================================
 FILE: Docs/Legal/Privacy/README.md
 ==============================================================================
 

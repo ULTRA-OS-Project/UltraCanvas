@@ -31,8 +31,12 @@ Two goals drive every design decision in this document:
   UltraMail figures out the rest (section 2.2). Manual server settings
   exist but are an *expert fallback*, never the first screen.
 - **Safe defaults.** TLS verification on, minimum TLS 1.2 (UltraNet's
-  defaults), remote images in HTML mail blocked until the user allows
-  them, credentials in the OS keychain.
+  defaults); remote images in HTML mail load by themselves only from
+  trusted senders - the address book, senders allowed with "Always from …",
+  trusted websites - and a bar asks for everyone else (Settings → Privacy →
+  Images: *trusted*, the default, *never* or *always*); the sender-icon
+  downloads off until the user turns them on; credentials in an encrypted
+  vault file (section 5), with the OS keychains planned as backends.
 - **Local-first.** Mail is synchronized into a local store; reading,
   searching and composing work offline. The network is a background
   activity, never something the UI waits for.
