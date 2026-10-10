@@ -57138,9 +57138,18 @@ enum class TabStyle {
     Modern,   // Contemporary flat design
     Flat,     // Minimal borders
     Rounded,  // Rounded corners
+    Pill,     // Capsules floating in the bar: the open tab outlined, the others plain
     Custom    // User-defined styling
 };
 ```
+
+`Pill` is the browser-chip look: every tab is a capsule inset in its slot of
+the tab bar, the open one filled with `activeTabColor` and outlined with
+`activeTabBorderColor`, an inactive one filled with `inactiveTabColor` (make it
+transparent for a text-only tab) and outlined with `inactiveTabBorderColor`, a
+hovered one with `hoveredTabColor` / `hoveredTabBorderColor`. The page below
+gets no frame, only a hairline in `tabContentBorderColor` on the bar's side.
+See [Pill Style](#pill-style-tabstylepill) for the colourways.
 
 ### TabCloseMode
 Controls close button behavior.
@@ -57277,6 +57286,30 @@ void SetTabMaxWidth(int w);                // Default: 200
 void SetTabPosition(TabPosition position); // Default: Top
 void SetTabStyle(TabStyle style);          // Default: Rounded
 void SetCloseMode(TabCloseMode mode);      // Default: NoClose
+void SetTabBarColor(const Color& c);
+void SetActiveTabBackgroundColor(const Color& c);
+void SetActiveTabTextColor(const Color& c);
+void SetInactiveTabBackgroundColor(const Color& c);
+void SetInactiveTabTextColor(const Color& c);
+void SetHoveredTabBackgroundColor(const Color& c);
+```
+
+#### Pill Style (TabStyle::Pill only)
+```cpp
+void SetPillInset(int horizontal, int vertical);   // Default: 2, 4 - the capsule inside its slot
+int GetPillInsetX() const;
+int GetPillInsetY() const;
+void SetPillBorderWidth(float width);              // Default: 1
+float GetPillBorderWidth() const;
+void SetPillCornerRadius(float radius);            // Default: 0 = full capsule; > 0 = rounded chip
+float GetPillCornerRadius() const;
+void SetActiveTabBorderColor(const Color& c);      // Default: Color(184, 156, 255)
+Color GetActiveTabBorderColor() const;
+void SetInactiveTabBorderColor(const Color& c);    // Default: transparent
+Color GetInactiveTabBorderColor() const;
+void SetHoveredTabBorderColor(const Color& c);     // Default: transparent
+Color GetHoveredTabBorderColor() const;
+Rect2Di GetPillBounds(int index);                  // The capsule drawn for a tab, in local coordinates
 ```
 
 #### Overflow Dropdown
@@ -57433,6 +57466,9 @@ std::function<int(const TabTransferData& data, int insertionIndex)> onTabDragIn;
 ```cpp
 Color tabBarColor = Colors::Transparent;
 Color tabBorderColor = Colors::Gray;
+Color activeTabBorderColor = Color(184, 156, 255);     // TabStyle::Pill: the open pill's outline
+Color inactiveTabBorderColor = Colors::Transparent;    // TabStyle::Pill: the other pills' outline
+Color hoveredTabBorderColor = Colors::Transparent;     // TabStyle::Pill: the hovered pill's outline
 Color activeTabColor = Color(255, 255, 255);
 Color activeTabTextColor = Colors::Black;
 Color inactiveTabColor = Color(236, 236, 236);
@@ -57561,6 +57597,114 @@ nestedTabs->AddTab("Option 2", option2Panel);
 mainTabs->AddTab("Advanced", nestedTabs);
 ```
 
+### Pill Style (TabStyle::Pill)
+
+The tab bar of a mail client or a browser: the open page is a white capsule
+with a thin accent outline, the other pages are plain text until the pointer
+hovers them, and the whole strip sits on a tinted bar. Everything about the
+look is a colour or an inset, so the same style gives several colourways; the
+test `Tests/TabPillStyleScreenshotTest.cpp` renders the five below side by
+side (`ULTRACANVAS_SCREENSHOT_DIR=<dir> xvfb-run -a ./build/bin/TabPillStyleScreenshotTest`).
+
+**1. Outlined pill on a tinted bar** - the reference look. The unselected tab
+is nothing but icon and text; hovering it fades in a translucent white
+capsule.
+
+```cpp
+auto tabs = CreateTabbedContainer("mail", 0, 0, 800, 600);
+tabs->SetTabStyle(TabStyle::Pill);
+tabs->SetTabHeight(36);
+tabs->SetPillInset(2, 4);                                   // a 28px capsule in a 36px bar
+tabs->SetCloseMode(TabCloseMode::Closable);
+tabs->fontSize = 12;
+
+tabs->SetTabBarColor(Color(234, 228, 247));                 // lavender strip
+tabs->SetActiveTabBackgroundColor(Colors::White);
+tabs->SetActiveTabBorderColor(Color(184, 156, 255));        // the accent outline
+tabs->SetActiveTabTextColor(Color(36, 41, 46));
+tabs->SetInactiveTabBackgroundColor(Colors::Transparent);   // unselected: text only
+tabs->SetInactiveTabTextColor(Color(92, 85, 109));
+tabs->SetHoveredTabBackgroundColor(Color(255, 255, 255, 140));
+tabs->closeButtonColor = Color(92, 85, 109);
+tabs->closeButtonHoverColor = Color(36, 41, 46);
+tabs->tabContentBorderColor = Color(214, 208, 230);         // hairline under the bar
+
+tabs->SetShowNewTabButton(true);                            // a "+" in the bar's colour
+tabs->SetNewTabButtonShape(NewTabButtonShape::Circle);
+tabs->newTabButtonColor = Colors::Transparent;
+tabs->newTabButtonHoverColor = Color(255, 255, 255, 140);
+tabs->newTabButtonIconColor = Color(92, 85, 109);
+
+tabs->AddTab("Inbox", MakePage());
+tabs->SetTabIcon(0, "icons/home-icon.png");
+tabs->AddTab("UltraMail: Add/Delete account", MakePage());
+tabs->SetTabIcon(1, "icons/settings.png");
+```
+
+**2. Tinted pill with accent outline** - a near-white bar, the open pill
+filled with a pale shade of the accent.
+
+```cpp
+tabs->SetTabBarColor(Color(250, 250, 252));
+tabs->SetActiveTabBackgroundColor(Color(241, 238, 255));
+tabs->SetActiveTabBorderColor(Color(124, 92, 255));
+tabs->SetActiveTabTextColor(Color(40, 30, 80));
+tabs->SetInactiveTabBackgroundColor(Colors::Transparent);
+tabs->SetInactiveTabTextColor(Color(90, 90, 100));
+tabs->SetHoveredTabBackgroundColor(Color(238, 238, 243));
+```
+
+**3. Solid accent pill** - the open tab in the accent colour with white text,
+the others as grey pills.
+
+```cpp
+tabs->SetTabBarColor(Color(245, 246, 248));
+tabs->SetActiveTabBackgroundColor(Color(124, 92, 255));
+tabs->SetActiveTabBorderColor(Colors::Transparent);
+tabs->SetActiveTabTextColor(Colors::White);
+tabs->SetInactiveTabBackgroundColor(Color(226, 228, 234));
+tabs->SetInactiveTabTextColor(Color(60, 60, 70));
+tabs->SetHoveredTabBackgroundColor(Color(212, 214, 222));
+tabs->closeButtonColor = Color(150, 150, 165);
+```
+
+**4. Neutral chips** - squarer corners and a grey outline instead of an
+accent; the unselected tabs are light grey chips.
+
+```cpp
+tabs->SetPillCornerRadius(6.0f);
+tabs->SetTabBarColor(Color(252, 252, 253));
+tabs->SetActiveTabBackgroundColor(Colors::White);
+tabs->SetActiveTabBorderColor(Color(205, 205, 214));
+tabs->SetInactiveTabBackgroundColor(Color(240, 241, 244));
+tabs->SetInactiveTabTextColor(Color(90, 90, 100));
+tabs->SetHoveredTabBackgroundColor(Color(232, 233, 237));
+```
+
+**5. Dark bar** - the same outline on a dark strip; the hover is a faint
+white wash.
+
+```cpp
+tabs->SetTabBarColor(Color(30, 30, 36));
+tabs->SetActiveTabBackgroundColor(Color(46, 46, 58));
+tabs->SetActiveTabBorderColor(Color(184, 156, 255));
+tabs->SetActiveTabTextColor(Color(240, 240, 245));
+tabs->SetInactiveTabBackgroundColor(Colors::Transparent);
+tabs->SetInactiveTabTextColor(Color(170, 170, 185));
+tabs->SetHoveredTabBackgroundColor(Color(255, 255, 255, 24));
+tabs->closeButtonColor = Color(170, 170, 185);
+tabs->contentAreaColor = Color(24, 24, 30);
+tabs->tabContentBorderColor = Color(60, 60, 72);
+```
+
+Geometry: the slot a tab occupies is still `GetTabBounds()` and is the whole
+hit area, so a click in the gap between two pills lands on the nearer one;
+`GetPillBounds()` is the capsule actually drawn. `tabPadding`, the icon and
+the close button are measured from the slot edge as in every other style, so
+the icon sits `tabPadding - pillInsetX` pixels inside the capsule. For wider
+gaps between pills use `tabSpacing`, for a shorter capsule a larger vertical
+inset. `TabPosition::Left` / `Right` stack the same capsules vertically.
+
 ## Keyboard Shortcuts
 
 | Key Combination | Action |
@@ -57608,6 +57752,8 @@ The component renders in multiple layers:
 5. **Close Buttons** - Positioned at right edge of tabs
 6. **Overflow Dropdown** - Rendered when tabs exceed space
 7. **Content Area** - Active tab's content rendered below/beside tabs
+   (framed, except in `Flat` - no frame - and `Pill` - a hairline on the
+   bar's side only)
 
 ## Performance Considerations
 

@@ -224,6 +224,57 @@ namespace UltraCanvas {
         mainContainer->AddChild(roundedTabs);
         yOffset += 230;
 
+        // --- Pill Style ---
+        auto pillLabel = std::make_shared<UltraCanvasLabel>("PillLabel", 40, yOffset, 400, 20);
+        pillLabel->SetText("Pill Style (capsules floating in the bar, the open one outlined)");
+        pillLabel->SetFontSize(11);
+        pillLabel->SetFontWeight(FontWeight::Bold);
+        mainContainer->AddChild(pillLabel);
+        yOffset += 25;
+
+        auto pillTabs = std::make_shared<UltraCanvasTabbedContainer>("PillTabs", 40, yOffset, 800, 220);
+        pillTabs->SetTabStyle(TabStyle::Pill);
+        pillTabs->SetTabHeight(36);
+        pillTabs->SetPillInset(2, 4);
+        pillTabs->SetCloseMode(TabCloseMode::Closable);
+        pillTabs->fontSize = 12;
+        pillTabs->SetTabBarColor(Color(234, 228, 247));
+        pillTabs->SetActiveTabBackgroundColor(Colors::White);
+        pillTabs->SetActiveTabBorderColor(Color(184, 156, 255));
+        pillTabs->SetActiveTabTextColor(Color(36, 41, 46));
+        pillTabs->SetInactiveTabBackgroundColor(Colors::Transparent);
+        pillTabs->SetInactiveTabTextColor(Color(92, 85, 109));
+        pillTabs->SetHoveredTabBackgroundColor(Color(255, 255, 255, 140));
+        pillTabs->closeButtonColor = Color(92, 85, 109);
+        pillTabs->closeButtonHoverColor = Color(36, 41, 46);
+        pillTabs->tabContentBorderColor = Color(214, 208, 230);
+        pillTabs->SetShowNewTabButton(true);
+        pillTabs->SetNewTabButtonShape(NewTabButtonShape::Circle);
+        pillTabs->newTabButtonColor = Colors::Transparent;
+        pillTabs->newTabButtonHoverColor = Color(255, 255, 255, 140);
+        pillTabs->newTabButtonIconColor = Color(92, 85, 109);
+
+        pillTabs->AddTab("Inbox", CreateSampleTabContent("Pill1",
+                                                         "Pill Style Features:\n\n"
+                                                         "• Each tab is a capsule inset in the tab bar\n"
+                                                         "• The open tab is white with an accent outline\n"
+                                                         "• Unselected tabs are plain text until hovered\n"
+                                                         "• Colours and insets give several colourways\n"
+                                                         "• The page keeps a hairline, not a frame",
+                                                         Color(255, 255, 255)));
+        pillTabs->AddTab("UltraMail: Add/Delete account", CreateSampleTabContent("Pill2",
+                                                         "A long title is truncated inside its capsule.",
+                                                         Color(255, 255, 255)));
+        pillTabs->AddTab("Drafts", CreateSampleTabContent("Pill3",
+                                                         "Hover a tab to see the translucent capsule fade in.",
+                                                         Color(255, 255, 255)));
+        pillTabs->SetTabIcon(0, NormalizePath(GetResourcesDir() + "media/icons/home-icon.png"));
+        pillTabs->SetTabIcon(1, NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
+        pillTabs->SetTabIcon(2, NormalizePath(GetResourcesDir() + "media/icons/document.png"));
+        pillTabs->SetActiveTab(0);
+        mainContainer->AddChild(pillTabs);
+        yOffset += 230;
+
         // ========================================
         // SECTION 2: TAB FEATURES (Icons, Badges, Close Buttons)
         // ========================================

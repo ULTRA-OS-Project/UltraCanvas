@@ -1,8 +1,8 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
+// Version: 2.6.0 - TabStyle::Pill, capsule tabs floating in the bar
 // Version: 2.5.0 - a tab list to screen readers, named after the open tab
-// Version: 2.3.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -38,6 +38,7 @@ namespace UltraCanvas {
         Modern,         // Flat with subtle borders
         Flat,           // Minimal style, no borders
         Rounded,        // Browser-style rounded tops
+        Pill,           // Capsules floating in the bar: the open tab outlined, the others plain
         Custom          // User-defined rendering
     };
 
@@ -152,6 +153,26 @@ namespace UltraCanvas {
         int closeButtonMargin = 4;
         bool showTabSeparators = false;
 
+        // ===== PILL STYLE =====
+        // TabStyle::Pill draws each tab as a capsule floating inside its slot
+        // of the tab bar, the way a browser or mail client shows its open
+        // pages as chips. The open tab is filled with activeTabColor and
+        // outlined with activeTabBorderColor; an inactive tab is filled with
+        // inactiveTabColor (set it transparent for a text-only tab) and
+        // outlined with inactiveTabBorderColor; a hovered one with
+        // hoveredTabColor and hoveredTabBorderColor. The capsule is inset
+        // from the slot by pillInsetY above and below and pillInsetX at each
+        // side, so neighbouring pills keep a gap even with tabSpacing 0, and
+        // a click in that gap still lands on the tab. The whole slot stays
+        // the hit area; icon, text and close button are laid out in it as in
+        // every other style, so tabPadding is measured from the slot edge.
+        int pillInsetX = 2;
+        int pillInsetY = 4;
+        float pillBorderWidth = 1.0f;
+        // 0 = a full capsule (half the pill's height); > 0 = a chip with
+        // corners of that radius.
+        float pillCornerRadius = 0.0f;
+
         // ===== COLORS =====
         Color tabBarColor = Colors::Transparent;
         Color activeTabColor = Color(255, 255, 255);
@@ -160,6 +181,11 @@ namespace UltraCanvas {
         Color disabledTabColor = Color(200, 200, 200);
         Color tabBorderColor = Colors::Gray;
         Color tabContentBorderColor = Colors::Gray;
+        // Outlines of the pills (TabStyle::Pill only); the other styles
+        // outline every tab with tabBorderColor.
+        Color activeTabBorderColor = Color(184, 156, 255);
+        Color inactiveTabBorderColor = Colors::Transparent;
+        Color hoveredTabBorderColor = Colors::Transparent;
         Color activeTabTextColor = Colors::Black;
         Color inactiveTabTextColor = Color(80, 80, 80);
         Color disabledTabTextColor = Color(150, 150, 150);
@@ -310,8 +336,34 @@ namespace UltraCanvas {
         float GetNewTabButtonCornerRadius() const { return newTabButtonCornerRadius; }
         void SetInactiveTabBackgroundColor(const Color& c) { inactiveTabColor = c; }
         void SetActiveTabBackgroundColor(const Color& c) { activeTabColor = c; }
+        void SetHoveredTabBackgroundColor(const Color& c) { hoveredTabColor = c; }
         void SetInactiveTabTextColor(const Color& c) { inactiveTabTextColor = c; }
+        void SetActiveTabTextColor(const Color& c) { activeTabTextColor = c; }
+        void SetTabBarColor(const Color& c) { tabBarColor = c; RequestRedraw(); }
         void SetNewButtonColor(const Color& c) { newTabButtonColor = c; }
+
+        // ===== PILL STYLE CONFIGURATION (TabStyle::Pill) =====
+        void SetPillInset(int horizontal, int vertical) {
+            pillInsetX = std::max(0, horizontal);
+            pillInsetY = std::max(0, vertical);
+            InvalidateTabbar();
+        }
+        int GetPillInsetX() const { return pillInsetX; }
+        int GetPillInsetY() const { return pillInsetY; }
+        void SetPillBorderWidth(float width) { pillBorderWidth = std::max(0.0f, width); InvalidateTabbar(); }
+        float GetPillBorderWidth() const { return pillBorderWidth; }
+        // 0 keeps the full capsule; a positive radius makes a rounded chip.
+        void SetPillCornerRadius(float radius) { pillCornerRadius = std::max(0.0f, radius); InvalidateTabbar(); }
+        float GetPillCornerRadius() const { return pillCornerRadius; }
+        void SetActiveTabBorderColor(const Color& c) { activeTabBorderColor = c; RequestRedraw(); }
+        Color GetActiveTabBorderColor() const { return activeTabBorderColor; }
+        void SetInactiveTabBorderColor(const Color& c) { inactiveTabBorderColor = c; RequestRedraw(); }
+        Color GetInactiveTabBorderColor() const { return inactiveTabBorderColor; }
+        void SetHoveredTabBorderColor(const Color& c) { hoveredTabBorderColor = c; RequestRedraw(); }
+        Color GetHoveredTabBorderColor() const { return hoveredTabBorderColor; }
+        // The capsule drawn for a tab in TabStyle::Pill: its slot (GetTabBounds)
+        // inset by pillInsetX / pillInsetY. Empty for a tab that is not shown.
+        Rect2Di GetPillBounds(int index);
 
         // ===== OVERFLOW DROPDOWN CONFIGURATION =====
         void SetOverflowDropdownPosition(OverflowDropdownPosition position);

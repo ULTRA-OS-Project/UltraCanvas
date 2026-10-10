@@ -5008,3 +5008,28 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== TAB PILL STYLE SCREENSHOT TEST =====
+# TabStyle::Pill read back from composited pixels: a one-pixel accent outline
+# round the open capsule, none round an inactive tab. It is also the
+# screenshot fixture for the style (ULTRACANVAS_SCREENSHOT_DIR=<dir> writes
+# tab-pill-variants.ppm, five colourways). Skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TabPillStyleScreenshotTest...")
+    add_executable(TabPillStyleScreenshotTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TabPillStyleScreenshotTest.cpp
+    )
+    target_include_directories(TabPillStyleScreenshotTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TabPillStyleScreenshotTest PRIVATE cxx_std_20)
+    target_compile_definitions(TabPillStyleScreenshotTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(TabPillStyleScreenshotTest PRIVATE UltraCanvas)
+    set_target_properties(TabPillStyleScreenshotTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TabPillStyleScreenshotTest COMMAND TabPillStyleScreenshotTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TabPillStyleScreenshotTest")
+else()
+    message(STATUS "  TabPillStyleScreenshotTest skipped (UltraCanvas target not present)")
+endif()

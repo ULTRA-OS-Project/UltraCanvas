@@ -1,10 +1,11 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
+// Version: 2.6.0 - TabStyle::Pill: capsules floating in the bar, the open one outlined
 // Version: 2.4.0 - a tab switch is announced to screen readers as a new name
 // Version: 2.2.0 - Arrange takes its box without a block-layout pass over the tab
 //                 contents, which reset the active page's scroll position on a resize
 // Version: 2.1.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -846,12 +847,38 @@ namespace UltraCanvas {
 
         ctx->PushState();
         Rect2Di contentBounds = GetContentAreaBounds();
-        if (tabStyle != TabStyle::Flat) {
-            if (tabStyle == TabStyle::Modern) {
-                ctx->DrawFilledRectangle(contentBounds, contentAreaColor, 1.0, tabContentBorderColor);
-            } else {
-                ctx->DrawFilledRectangle(contentBounds, contentAreaColor, 1.0, tabContentBorderColor);
+        if (tabStyle == TabStyle::Pill) {
+            // The pills float above the page, so the page gets no frame -
+            // just a hairline on the side the tab bar is on, snapped to the
+            // pixel centre so it is one pixel wide. tabContentBorderColor
+            // transparent leaves even that out.
+            ctx->DrawFilledRectangle(contentBounds, contentAreaColor);
+            if (tabContentBorderColor.a > 0 && contentBounds.width > 0 && contentBounds.height > 0) {
+                Point2Dd from, to;
+                switch (tabPosition) {
+                    case TabPosition::Top:
+                        from = Point2Dd(contentBounds.x, contentBounds.y + 0.5);
+                        to = Point2Dd(contentBounds.x + contentBounds.width, contentBounds.y + 0.5);
+                        break;
+                    case TabPosition::Bottom:
+                        from = Point2Dd(contentBounds.x, contentBounds.y + contentBounds.height - 0.5);
+                        to = Point2Dd(contentBounds.x + contentBounds.width, contentBounds.y + contentBounds.height - 0.5);
+                        break;
+                    case TabPosition::Left:
+                        from = Point2Dd(contentBounds.x + 0.5, contentBounds.y);
+                        to = Point2Dd(contentBounds.x + 0.5, contentBounds.y + contentBounds.height);
+                        break;
+                    case TabPosition::Right:
+                        from = Point2Dd(contentBounds.x + contentBounds.width - 0.5, contentBounds.y);
+                        to = Point2Dd(contentBounds.x + contentBounds.width - 0.5, contentBounds.y + contentBounds.height);
+                        break;
+                }
+                ctx->SetStrokePaint(tabContentBorderColor);
+                ctx->SetStrokeWidth(1.0f);
+                ctx->DrawLine(from, to);
             }
+        } else if (tabStyle != TabStyle::Flat) {
+            ctx->DrawFilledRectangle(contentBounds, contentAreaColor, 1.0, tabContentBorderColor);
         } else {
             ctx->DrawFilledRectangle(contentBounds, contentAreaColor);
         }
@@ -1879,6 +1906,15 @@ namespace UltraCanvas {
         }
     }
 
+    Rect2Di UltraCanvasTabbedContainer::GetPillBounds(int index) {
+        Rect2Di slot = GetTabBounds(index);
+        if (slot.width <= 0 || slot.height <= 0) return Rect2Di(0, 0, 0, 0);
+        int insetX = std::min(pillInsetX, std::max(0, (slot.width - 1) / 2));
+        int insetY = std::min(pillInsetY, std::max(0, (slot.height - 1) / 2));
+        return Rect2Di(slot.x + insetX, slot.y + insetY,
+                       slot.width - 2 * insetX, slot.height - 2 * insetY);
+    }
+
     Rect2Di UltraCanvasTabbedContainer::GetTabAreaBounds() {
         // Compute the reduced tab strip (the space left for the tabs themselves
         // after the overflow/scroll/new-tab controls) on a LOCAL COPY. This must
@@ -2073,6 +2109,36 @@ namespace UltraCanvas {
                 break;
             }
 
+            case TabStyle::Pill: {
+                // Pill style: a capsule floating inside the slot. The fill
+                // and the outline follow the tab's state; a transparent
+                // colour simply leaves that part out, so an inactive tab can
+                // be nothing but its text until it is hovered.
+                Rect2Di pill = GetPillBounds(index);
+                if (pill.width <= 0 || pill.height <= 0) break;
+
+                Color borderColor = inactiveTabBorderColor;
+                if (!tab->enabled) {
+                    borderColor = Colors::Transparent;
+                } else if (index == activeTabIndex) {
+                    borderColor = activeTabBorderColor;
+                } else if (index == hoveredTabIndex) {
+                    borderColor = hoveredTabBorderColor;
+                }
+
+                // A capsule unless a chip radius was asked for; either way no
+                // larger than half the shorter side, or the arcs would cross.
+                float maxRadius = std::min(pill.width, pill.height) / 2.0f;
+                float radius = (pillCornerRadius > 0.0f) ? std::min(pillCornerRadius, maxRadius) : maxRadius;
+
+                // DrawFilledRectangle strokes inside the rectangle and snaps
+                // the stroke to the pixel grid, so a 1px outline is one crisp
+                // pixel wide on the straight runs and matches the arcs.
+                ctx->DrawFilledRectangle(Rect2Dd(pill.x, pill.y, pill.width, pill.height),
+                                         bgColor, pillBorderWidth, borderColor, radius);
+                break;
+            }
+
             case TabStyle::Classic: {
                 // Classic style: 3D raised effect with shadows
                 ctx->DrawFilledRectangle(tabBounds, bgColor, 1.0, tabBorderColor);
@@ -2145,7 +2211,10 @@ namespace UltraCanvas {
                 break;
         }
 
-        if (index == activeTabIndex && tabStyle != TabStyle::Modern) {
+        // The thick line in the tab's own colour hides the content border
+        // under the open tab, joining tab and page. A pill floats above the
+        // page and joins nothing; Modern draws its indicator instead.
+        if (index == activeTabIndex && tabStyle != TabStyle::Modern && tabStyle != TabStyle::Pill) {
             switch (tabPosition) {
                 case TabPosition::Top:
                     ctx->SetStrokePaint(activeTabColor);
