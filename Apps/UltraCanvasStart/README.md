@@ -43,26 +43,29 @@ everything the framework can do. What that weight is made of, and what would
 and would not reduce it, is measured in
 [`Docs/UltraCanvas/StandaloneSizeInvestigation.md`](../../Docs/UltraCanvas/StandaloneSizeInvestigation.md).
 
-## Pages
+## Steps
 
-The window is styled like UltraMail's (`ui/UltraCanvasStartTheme.h` carries
-UltraMail's colours, type sizes and metrics): white cards on a near-white
-page, one accent button per page. The pages' prose comes from the engine as
-Markdown (`engine/StartGuide`) and is shown in read-only Markdown views, so
-every address is a link that opens in the browser, everything typed stands
-out as `code`, and each numbered step is one action.
-[`Docs/UltraCanvasStart/WorkflowProposal.md`](../../Docs/UltraCanvasStart/WorkflowProposal.md)
-proposes replacing the tabs with a five-step stepper.
+The window is a stepper (`Docs/UltraCanvasStart/WorkflowProposal.md`): five
+steps in the order the work happens, Back and Next below the pane, and the
+Guide and the Report as dialogs from the header at any time. It is styled
+like UltraMail (`ui/UltraCanvasStartTheme.h` carries UltraMail's colours,
+type sizes and metrics): white cards on a near-white page, one accent
+button per step. The prose comes from the engine as Markdown
+(`engine/StartGuide`) and is shown in read-only Markdown views, so every
+address is a link that opens in the browser, everything typed stands out
+as `code`, and each numbered step of a guide is one action.
 
-| Page | What it does |
-|---|---|
-| **Platform** | Linux, macOS or Windows in a segmented control; the detected one is preselected. The page shows that platform's way in as a numbered guide, with the SDK archive named for this version and linked to its release. |
-| **System** | What was detected, as key/value rows: OS, architecture, distribution, the package manager (a found / not-found badge and its path), the MSYS2 root on Windows (a link to install it when missing), home, Claude Code and git; the framework version, the matching SDK archive, its download address, the release page and the workflow artifacts; the platform notes. Paths can be selected and copied. |
-| **Choices** | Which feature groups are needed (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options), whether to use the prebuilt SDK or build from source, whether to clone the repository, and whether the programmer works with an AI assistant, locally or through GitHub alone. |
-| **Install** | Checks every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need and lists each with a mark, the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* or *everything installed*. *Install what is missing* (enabled only while something is) runs the package manager, after a confirmation that shows the exact command: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree. The output is shown in a console and the checks run again. |
-| **Project** | Application name, project folder, SDK prefix (*Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder; *Download...* fetches this version's SDK for this platform from its GitHub release into a folder you pick, unpacks it there and fills the prefix in). *Create the project* writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and, for AI users, `CLAUDE.md`. The files are previewed on the page. |
-| **AI** | Which assistant: Claude Code, Codex, Copilot, Gemini or another, in a segmented control. For the chosen one: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../../Docs/GettingStarted-Cloud.md), and the first prompt to give it, ready to copy. The project gets the file that assistant reads. |
-| **Report** | The system, the checks, the plan and the notes as text, for the clipboard. |
+| Step | What it shows | What it decides |
+|---|---|---|
+| **1 Your computer** | What was detected, as key/value rows: OS, architecture, distribution, the package manager (a found / not-found badge and its path), the MSYS2 root on Windows (a link to install it when missing), home, the AI assistants found, git, the framework version. Under it the guide: Linux, macOS or Windows in a segmented control, preselected to the detected one, and that platform's way in as a numbered guide with the SDK archive named for this version and linked to its release. | Nothing; it is where the reader starts. |
+| **2 Features** | The feature groups (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options). The assistant: Claude Code, Codex, Copilot, Gemini or another in a segmented control; whether its instruction file goes into the project and the first prompt is prepared; whether the work goes through GitHub alone. For the chosen assistant: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, and the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../../Docs/GettingStarted-Cloud.md). | Which packages step 3 checks; which file the project gets. |
+| **3 Tools** | The checks run on entering: every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need, each with a mark, the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* or *everything installed*. *Install what is missing* (enabled only while something is) runs the package manager after a confirmation that shows the exact command: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree. The output is shown in a console and the checks run again. Next goes on even with something missing; the step keeps the error marker until the checks pass. | Whether the toolchain and libraries are there. |
+| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its download address, the release page, the workflow artifacts while a release is still building; *Download and unpack...* fetches the archive from the release into a folder you pick, unpacks it and fills the prefix in; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
+| **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then the **Done** page: what was written, the three build commands, the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | The application. |
+
+**Guide** (header): the way in for any platform, the same guide as step 1,
+in a dialog. **Report** (header): the system, the checks, the plan and the
+notes as text, with *Copy*.
 
 ## Command line
 
@@ -71,7 +74,8 @@ UltraCanvasStart --check            # detect, check, print the report; exit 2 if
 UltraCanvasStart --plan             # ...and the install plan
 UltraCanvasStart --plan --for macos # the plan for another platform
 UltraCanvasStart --check --all      # every feature group
-UltraCanvasStart --page install     # open the window on a page (for screenshots and support)
+UltraCanvasStart --step 3           # open the window on a step (for screenshots and support)
+UltraCanvasStart --page report      # ...or open the Report (or Guide) dialog; the old page names map to steps
 UltraCanvasStart --for windows      # ...with that platform's guide preselected
 UltraCanvasStart --plan --assistant codex   # the plan and the project for another assistant
 UltraCanvasStart --version
