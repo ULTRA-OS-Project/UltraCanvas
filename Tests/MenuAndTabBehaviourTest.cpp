@@ -454,6 +454,126 @@ void TabChecks(HeadlessWindow& win) {
     TEST("a container outside any window takes search off", loose && !loose->IsDropdownSearchEnabled());
 }
 
+// Dragging a tab to another place: the swap follows the bar's axis, every
+// index that names a tab follows the tab, and a pointer held at either end of
+// the strip carries the tab on past the visible range. The steps a drag is
+// made of are driven directly: there is no application here to deliver the
+// mouse events or run the auto-scroll timer.
+void TabReorderChecks(HeadlessWindow& win) {
+    CSSLayout::LayoutContext lctx;
+
+    // ---- A vertical bar swaps on y, not x ----
+    auto side = std::make_shared<UltraCanvasTabbedContainer>("side", 0, 0, 300, 400);
+    win.AddChild(side);
+    side->SetTabPosition(TabPosition::Left);
+    side->SetTabHeight(30);
+    side->SetAllowTabReordering(true);
+    for (int i = 0; i < 4; ++i) side->AddTab("Tab " + std::to_string(i));
+    side->Arrange(Rect2Df(0, 0, 300, 400), lctx);
+    side->SetActiveTab(0);
+    side->draggingTabIndex = 0;
+    side->isDraggingTab = true;
+    Rect2Di below = side->GetTabBounds(1);
+    TEST("left bar: the tabs are stacked", below.y >= 30 && below.width > 0);
+    side->UpdateDragReorder(below.x + 5, below.y + 3);
+    TEST("over the upper half of the next tab nothing moves yet",
+         side->GetTabTitle(0) == "Tab 0" && side->dragInsertionIndex == 1);
+    side->UpdateDragReorder(below.x + 5, below.y + below.height - 3);
+    TEST("past its centre the dragged tab takes its place",
+         side->GetTabTitle(1) == "Tab 0" && side->GetTabTitle(0) == "Tab 1" && side->draggingTabIndex == 1);
+    TEST("and stays the active tab", side->GetActiveTab() == 1);
+    side->isDraggingTab = false;
+    side->draggingTabIndex = -1;
+
+    // ---- Indices follow the tabs they name ----
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("reorder", 0, 0, 600, 200);
+    win.AddChild(tabs);
+    for (int i = 0; i < 5; ++i) tabs->AddTab("Tab " + std::to_string(i));
+    tabs->Arrange(Rect2Df(0, 0, 600, 200), lctx);
+    tabs->SetActiveTab(1);
+    tabs->hoveredTabIndex = 3;
+    tabs->hoveredCloseButtonIndex = 3;
+    tabs->ReorderTabs(0, 4);
+    TEST("moving the first tab to the end shifts the hovered tab down with it",
+         tabs->hoveredTabIndex == 2 && tabs->hoveredCloseButtonIndex == 2 && tabs->GetTabTitle(2) == "Tab 3");
+    TEST("and the active tab", tabs->GetActiveTab() == 0 && tabs->GetTabTitle(0) == "Tab 1");
+    tabs->hoveredTabIndex = 1;
+    tabs->ReorderTabs(1, 3);
+    TEST("moving the hovered tab itself moves the hover with it",
+         tabs->hoveredTabIndex == 3 && tabs->GetTabTitle(3) == "Tab 2");
+    tabs->hoveredTabIndex = -1;
+    tabs->hoveredCloseButtonIndex = -1;
+
+    // ---- A pointer at the strip's end carries the tab past the visible range ----
+    auto strip = std::make_shared<UltraCanvasTabbedContainer>("strip", 0, 0, 260, 200);
+    win.AddChild(strip);
+    strip->SetTabMinWidth(100);
+    strip->SetTabMaxWidth(100);
+    strip->SetAllowTabReordering(true);
+    for (int i = 0; i < 6; ++i) strip->AddTab("Tab " + std::to_string(i));
+    strip->Arrange(Rect2Df(0, 0, 260, 200), lctx);
+    strip->SetActiveTab(0);
+    TEST("the strip shows fewer tabs than it holds", strip->maxVisibleTabs > 0 && strip->maxVisibleTabs < 6);
+    strip->draggingTabIndex = 0;
+    strip->isDraggingTab = true;
+    Rect2Di area = strip->GetTabAreaBounds();
+    strip->UpdateDragAutoScroll(area.x + area.width / 2, area.y + 5);
+    TEST("a pointer in the middle of the strip arms nothing", strip->dragAutoScrollDirection == 0);
+    strip->UpdateDragAutoScroll(area.x + area.width - 2, area.y + 5);
+    TEST("a pointer at the right end arms the auto-scroll forwards", strip->dragAutoScrollDirection == 1);
+    for (int tick = 0; tick < 10; ++tick) strip->DragAutoScrollTick();
+    TEST("the ticks carry the tab to the end",
+         strip->GetTabTitle(5) == "Tab 0" && strip->draggingTabIndex == 5 && strip->GetActiveTab() == 5);
+    TEST("and scroll the strip to keep it in view",
+         strip->tabScrollOffset <= 5 && 5 < strip->tabScrollOffset + strip->maxVisibleTabs);
+    TEST("at the end the auto-scroll stands down", strip->dragAutoScrollDirection == 0);
+    strip->UpdateDragAutoScroll(area.x + area.width - 2, area.y + 5);
+    TEST("and is not re-armed with nowhere to go", strip->dragAutoScrollDirection == 0);
+    strip->UpdateDragAutoScroll(area.x + 2, area.y + 5);
+    TEST("a pointer at the left end arms it backwards", strip->dragAutoScrollDirection == -1);
+    strip->DragAutoScrollTick();
+    TEST("one tick carries the tab back one place and shows it",
+         strip->GetTabTitle(4) == "Tab 0" && strip->draggingTabIndex == 4 &&
+         strip->tabScrollOffset <= 4 && 4 < strip->tabScrollOffset + strip->maxVisibleTabs);
+    strip->isDraggingTab = false;
+    strip->StopDragAutoScroll();
+    strip->draggingTabIndex = -1;
+    TEST("stopping clears the direction", strip->dragAutoScrollDirection == 0);
+
+    // ---- A whole drag through the events, with no application behind the window ----
+    auto drag = std::make_shared<UltraCanvasTabbedContainer>("drag", 0, 0, 600, 200);
+    win.AddChild(drag);
+    drag->SetAllowTabReordering(true);
+    for (int i = 0; i < 3; ++i) drag->AddTab("Tab " + std::to_string(i));
+    drag->Arrange(Rect2Df(0, 0, 600, 200), lctx);
+    int reorders = 0;
+    drag->onTabReorder = [&reorders](int, int) { ++reorders; };
+    auto mouse = [](UCEventType type, int x, int y) {
+        UCEvent e;
+        e.type = type;
+        e.button = UCMouseButton::Left;
+        e.pointer = Point2Di(x, y);
+        e.pointerWindow = Point2Di(x, y);
+        e.pointerGlobal = Point2Di(x, y);
+        return e;
+    };
+    Rect2Di first = drag->GetTabBounds(0);
+    Rect2Di last = drag->GetTabBounds(2);
+    const int row = first.y + first.height / 2;
+    drag->OnEvent(mouse(UCEventType::MouseDown, first.x + first.width / 2, row));
+    TEST("pressing a tab activates it and arms the drag", drag->GetActiveTab() == 0 && drag->draggingTabIndex == 0 && !drag->isDraggingTab);
+    drag->OnEvent(mouse(UCEventType::MouseMove, first.x + first.width / 2 + 3, row));
+    TEST("a move within the threshold is not a drag", !drag->isDraggingTab);
+    drag->OnEvent(mouse(UCEventType::MouseMove, first.x + first.width / 2 + 12, row));
+    TEST("a move past the threshold is", drag->isDraggingTab);
+    drag->OnEvent(mouse(UCEventType::MouseMove, last.x + last.width - 3, row));
+    TEST("carried past the last tab's centre, the tab lands at the end",
+         drag->GetTabTitle(2) == "Tab 0" && drag->draggingTabIndex == 2 && drag->GetActiveTab() == 2 && reorders == 1);
+    drag->OnEvent(mouse(UCEventType::MouseUp, last.x + last.width - 3, row));
+    TEST("releasing ends the drag", !drag->isDraggingTab && drag->draggingTabIndex == -1 && drag->dragAutoScrollDirection == 0);
+    TEST("the order stays", drag->GetTabTitle(0) == "Tab 1" && drag->GetTabTitle(1) == "Tab 2" && drag->GetTabTitle(2) == "Tab 0");
+}
+
 void TextAreaChecks() {
     // ---- 5. SetCursorPosition(pos, true) extends the selection ----
     auto area = std::make_shared<UltraCanvasTextArea>("area", 0, 0, 300, 200);
@@ -485,6 +605,7 @@ int main() {
     MenuChecks(*win);
     PopupOpacityChecks();
     TabChecks(*win);
+    TabReorderChecks(*win);
     TextAreaChecks();
 
     std::cerr << "\nMenuAndTabBehaviourTest: " << testCount << " checks, " << failCount << " failures" << std::endl;

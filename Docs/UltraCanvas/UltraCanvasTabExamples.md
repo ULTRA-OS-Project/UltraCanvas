@@ -17,7 +17,9 @@ The **UltraCanvasTabbedContainer** is an advanced tabbed interface component in 
 - **Tab Styles:** Classic, Modern, Flat, Rounded, Custom
 - **Overflow Management:** Automatic dropdown when tabs exceed available space
 - **Search Functionality:** Real-time filtering of tabs in dropdown
-- **Tab Reordering:** Drag-and-drop tab repositioning (off by default)
+- **Tab Reordering:** Drag-and-drop tab repositioning (off by default); works
+  along the bar's axis on every `TabPosition`, and a pointer held at either
+  end of the strip carries the tab on past the visible range
 - **Drag Out / Drag In:** Tabs can be dragged out of the bar and transferred between containers
 - **Close Buttons:** Configurable close button behavior
 - **Keyboard Navigation:** Arrow keys, shortcuts, and search input
@@ -68,9 +70,18 @@ enum class TabStyle {
     Modern,   // Contemporary flat design
     Flat,     // Minimal borders
     Rounded,  // Rounded corners
+    Pill,     // Capsules floating in the bar: the open tab outlined, the others plain
     Custom    // User-defined styling
 };
 ```
+
+`Pill` is the browser-chip look: every tab is a capsule inset in its slot of
+the tab bar, the open one filled with `activeTabColor` and outlined with
+`activeTabBorderColor`, an inactive one filled with `inactiveTabColor` (make it
+transparent for a text-only tab) and outlined with `inactiveTabBorderColor`, a
+hovered one with `hoveredTabColor` / `hoveredTabBorderColor`. The page below
+gets no frame, only a hairline in `tabContentBorderColor` on the bar's side.
+See [Pill Style](#pill-style-tabstylepill) for the colourways.
 
 ### TabCloseMode
 Controls close button behavior.
@@ -207,6 +218,34 @@ void SetTabMaxWidth(int w);                // Default: 200
 void SetTabPosition(TabPosition position); // Default: Top
 void SetTabStyle(TabStyle style);          // Default: Rounded
 void SetCloseMode(TabCloseMode mode);      // Default: NoClose
+void SetTabBarColor(const Color& c);
+void SetActiveTabBackgroundColor(const Color& c);
+void SetActiveTabTextColor(const Color& c);
+void SetInactiveTabBackgroundColor(const Color& c);
+void SetInactiveTabTextColor(const Color& c);
+void SetHoveredTabBackgroundColor(const Color& c);
+void SetCloseButtonColor(const Color& c);
+void SetActiveTabCloseButtonColor(const Color& c);  // Transparent (default) = closeButtonColor
+void SetCloseButtonHoverColor(const Color& c);
+void SetCloseButtonStrokeWidth(float width);         // Default: 1
+```
+
+#### Pill Style (TabStyle::Pill only)
+```cpp
+void SetPillInset(int horizontal, int vertical);   // Default: 2, 4 - the capsule inside its slot
+int GetPillInsetX() const;
+int GetPillInsetY() const;
+void SetPillBorderWidth(float width);              // Default: 1
+float GetPillBorderWidth() const;
+void SetPillCornerRadius(float radius);            // Default: 0 = full capsule; > 0 = rounded chip
+float GetPillCornerRadius() const;
+void SetActiveTabBorderColor(const Color& c);      // Default: Color(96, 146, 224)
+Color GetActiveTabBorderColor() const;
+void SetInactiveTabBorderColor(const Color& c);    // Default: transparent
+Color GetInactiveTabBorderColor() const;
+void SetHoveredTabBorderColor(const Color& c);     // Default: transparent
+Color GetHoveredTabBorderColor() const;
+Rect2Di GetPillBounds(int index);                  // The capsule drawn for a tab, in local coordinates
 ```
 
 #### Overflow Dropdown
@@ -363,6 +402,9 @@ std::function<int(const TabTransferData& data, int insertionIndex)> onTabDragIn;
 ```cpp
 Color tabBarColor = Colors::Transparent;
 Color tabBorderColor = Colors::Gray;
+Color activeTabBorderColor = Color(96, 146, 224);      // TabStyle::Pill: the open pill's outline
+Color inactiveTabBorderColor = Colors::Transparent;    // TabStyle::Pill: the other pills' outline
+Color hoveredTabBorderColor = Colors::Transparent;     // TabStyle::Pill: the hovered pill's outline
 Color activeTabColor = Color(255, 255, 255);
 Color activeTabTextColor = Colors::Black;
 Color inactiveTabColor = Color(236, 236, 236);
@@ -371,6 +413,7 @@ Color hoveredTabColor = Color(240, 240, 255);
 Color disabledTabColor = Color(200, 200, 200);
 Color disabledTabTextColor = Color(150, 150, 150);
 Color closeButtonColor = Color(120, 120, 120);
+Color activeTabCloseButtonColor = Colors::Transparent;  // the open tab's X; transparent = closeButtonColor
 Color closeButtonHoverColor = Color(200, 50, 50);
 Color contentAreaColor = Color(255, 255, 255);
 ```
@@ -381,9 +424,37 @@ int tabSpacing = 0;              // Space between tabs
 int tabPadding = 12;             // Internal tab padding
 int closeButtonSize = 16;        // Close button dimensions
 int closeButtonMargin = 4;       // Close button spacing
+float closeButtonStrokeWidth = 1.0f;  // Weight of the X, the same on every tab
 bool allowTabReordering = false; // Enable drag-and-drop
 bool enableTabScrolling = true;  // Enable scroll buttons
+int dragAutoScrollZone = 24;     // Pixels at either end of the strip that carry a dragged tab on
+unsigned int dragAutoScrollIntervalMs = 250;  // One place per interval while the pointer stays there
 ```
+
+### Dragging a tab to another place
+
+```cpp
+tabs->SetAllowTabReordering(true);          // or tabs->allowTabReordering = true
+tabs->onTabReorder = [](int from, int to) {
+    std::cerr << "Tab " << from << " is now at " << to << std::endl;
+};
+tabs->SetDragAutoScrollZone(32);            // Default: 24px
+tabs->SetDragAutoScrollInterval(200);       // Default: 250ms
+```
+
+Press a tab and move more than 5px to start the drag; a translucent ghost of
+the tab (the capsule itself in `TabStyle::Pill`) follows the pointer, and an
+insertion line marks the tab it would land on. The tabs swap as soon as the
+pointer passes the centre of a neighbour - its horizontal centre on a `Top`
+or `Bottom` bar, its vertical centre on a `Left` or `Right` one - so the
+order updates while you drag and `onTabReorder` fires on every swap. The
+active, hovered and right-clicked indices follow the tabs they name. When
+the strip is scrolled, holding the pointer within `dragAutoScrollZone` of
+either end (or past it) carries the tab one place in that direction every
+`dragAutoScrollIntervalMs` and scrolls the strip to keep it in view, until
+it reaches the end or the pointer moves back. `ReorderTabs(from, to)` moves a
+tab without a drag. Dragging out of the bar altogether is a separate feature:
+see `SetAllowTabDragOut()`, `onTabDragOut` and `AcceptTabTransfer()`.
 
 ## Factory Functions
 
@@ -491,6 +562,115 @@ nestedTabs->AddTab("Option 2", option2Panel);
 mainTabs->AddTab("Advanced", nestedTabs);
 ```
 
+### Pill Style (TabStyle::Pill)
+
+The tab bar of a mail client or a browser: the open page is a white capsule
+with a thin accent outline, the other pages are plain text until the pointer
+hovers them, and the whole strip sits on a tinted bar. Everything about the
+look is a colour or an inset, so the same style gives several colourways; the
+test `Tests/TabPillStyleScreenshotTest.cpp` renders the five below side by
+side (`ULTRACANVAS_SCREENSHOT_DIR=<dir> xvfb-run -a ./build/bin/TabPillStyleScreenshotTest`).
+
+**1. Outlined pill on a tinted bar** - the reference look. The unselected tab
+is nothing but icon and text; hovering it fades in a translucent white
+capsule.
+
+```cpp
+auto tabs = CreateTabbedContainer("mail", 0, 0, 800, 600);
+tabs->SetTabStyle(TabStyle::Pill);
+tabs->SetTabHeight(36);
+tabs->SetPillInset(2, 4);                                   // a 28px capsule in a 36px bar
+tabs->SetCloseMode(TabCloseMode::Closable);
+tabs->fontSize = 12;
+
+tabs->SetTabBarColor(Color(229, 234, 241));                 // blue-grey strip
+tabs->SetActiveTabBackgroundColor(Colors::White);
+tabs->SetActiveTabBorderColor(Color(96, 146, 224));         // the accent outline
+tabs->SetActiveTabTextColor(Color(30, 37, 46));
+tabs->SetInactiveTabBackgroundColor(Colors::Transparent);   // unselected: text only
+tabs->SetInactiveTabTextColor(Color(84, 96, 112));
+tabs->SetHoveredTabBackgroundColor(Color(255, 255, 255, 140));
+tabs->closeButtonColor = Color(84, 96, 112);
+tabs->closeButtonHoverColor = Color(30, 37, 46);
+tabs->tabContentBorderColor = Color(205, 212, 222);         // hairline under the bar
+
+tabs->SetShowNewTabButton(true);                            // a "+" in the bar's colour
+tabs->SetNewTabButtonShape(NewTabButtonShape::Circle);
+tabs->newTabButtonColor = Colors::Transparent;
+tabs->newTabButtonHoverColor = Color(255, 255, 255, 140);
+tabs->newTabButtonIconColor = Color(84, 96, 112);
+
+tabs->AddTab("Inbox", MakePage());
+tabs->SetTabIcon(0, "icons/home-icon.png");
+tabs->AddTab("UltraMail: Add/Delete account", MakePage());
+tabs->SetTabIcon(1, "icons/settings.png");
+```
+
+**2. Tinted pill with accent outline** - a near-white bar, the open pill
+filled with a pale shade of a teal accent.
+
+```cpp
+tabs->SetTabBarColor(Color(250, 251, 252));
+tabs->SetActiveTabBackgroundColor(Color(228, 244, 240));
+tabs->SetActiveTabBorderColor(Color(34, 150, 130));
+tabs->SetActiveTabTextColor(Color(20, 60, 55));
+tabs->SetInactiveTabBackgroundColor(Colors::Transparent);
+tabs->SetInactiveTabTextColor(Color(90, 96, 104));
+tabs->SetHoveredTabBackgroundColor(Color(238, 240, 243));
+```
+
+**3. Solid accent pill** - the open tab in solid blue with white text, the
+others as grey pills.
+
+```cpp
+tabs->SetTabBarColor(Color(245, 246, 248));
+tabs->SetActiveTabBackgroundColor(Color(41, 112, 196));
+tabs->SetActiveTabBorderColor(Colors::Transparent);
+tabs->SetActiveTabTextColor(Colors::White);
+tabs->SetInactiveTabBackgroundColor(Color(226, 229, 234));
+tabs->SetInactiveTabTextColor(Color(60, 64, 72));
+tabs->SetHoveredTabBackgroundColor(Color(212, 216, 224));
+tabs->SetCloseButtonColor(Color(110, 116, 125));
+tabs->SetActiveTabCloseButtonColor(Color(225, 236, 250));   // a pale X on the blue pill
+```
+
+**4. Neutral chips** - squarer corners and a grey outline instead of an
+accent; the unselected tabs are light grey chips.
+
+```cpp
+tabs->SetPillCornerRadius(6.0f);
+tabs->SetTabBarColor(Color(252, 252, 253));
+tabs->SetActiveTabBackgroundColor(Colors::White);
+tabs->SetActiveTabBorderColor(Color(205, 205, 214));
+tabs->SetInactiveTabBackgroundColor(Color(240, 241, 244));
+tabs->SetInactiveTabTextColor(Color(90, 90, 100));
+tabs->SetHoveredTabBackgroundColor(Color(232, 233, 237));
+```
+
+**5. Dark bar** - the same outline, a shade brighter, on a dark strip; the
+hover is a faint white wash.
+
+```cpp
+tabs->SetTabBarColor(Color(30, 30, 36));
+tabs->SetActiveTabBackgroundColor(Color(46, 46, 58));
+tabs->SetActiveTabBorderColor(Color(120, 170, 240));
+tabs->SetActiveTabTextColor(Color(240, 240, 245));
+tabs->SetInactiveTabBackgroundColor(Colors::Transparent);
+tabs->SetInactiveTabTextColor(Color(170, 170, 185));
+tabs->SetHoveredTabBackgroundColor(Color(255, 255, 255, 24));
+tabs->closeButtonColor = Color(170, 170, 185);
+tabs->contentAreaColor = Color(24, 24, 30);
+tabs->tabContentBorderColor = Color(60, 60, 72);
+```
+
+Geometry: the slot a tab occupies is still `GetTabBounds()` and is the whole
+hit area, so a click in the gap between two pills lands on the nearer one;
+`GetPillBounds()` is the capsule actually drawn. `tabPadding`, the icon and
+the close button are measured from the slot edge as in every other style, so
+the icon sits `tabPadding - pillInsetX` pixels inside the capsule. For wider
+gaps between pills use `tabSpacing`, for a shorter capsule a larger vertical
+inset. `TabPosition::Left` / `Right` stack the same capsules vertically.
+
 ## Keyboard Shortcuts
 
 | Key Combination | Action |
@@ -538,6 +718,8 @@ The component renders in multiple layers:
 5. **Close Buttons** - Positioned at right edge of tabs
 6. **Overflow Dropdown** - Rendered when tabs exceed space
 7. **Content Area** - Active tab's content rendered below/beside tabs
+   (framed, except in `Flat` - no frame - and `Pill` - a hairline on the
+   bar's side only)
 
 ## Performance Considerations
 
