@@ -175,10 +175,11 @@ private:
     std::shared_ptr<UltraCanvasContainer> BuildCommandBar();
     void BuildFolderTree();
     void BuildTabbedContainer();
-    // Settings > Display > Tab style: dress the tab strip in the chosen
-    // style. Every field a style sets, all three set, so switching leaves
-    // nothing of the previous one behind. Called when the strip is built and
-    // from ApplySettings.
+    // Settings > Display > Tab style: dress every tab strip the window shows
+    // (its own, the History and Favorites views', the open Connection log
+    // window's) in the chosen style - ApplyFilerTabStripStyle in
+    // UltraFilerTabStripStyle.h. Called when the strip is built and from
+    // ApplySettings.
     void ApplyTabStripStyle();
     void BuildSplitLayout();
     // The parts the split view adds to the split (see SetSplitViewVisible):
