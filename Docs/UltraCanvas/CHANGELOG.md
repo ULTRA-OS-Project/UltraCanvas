@@ -1,3 +1,31 @@
+#### 2026-10-10 *0.9.237*
+- **The tree includes the standard headers it uses, and the LLVM 23 bridge
+  is gone.** The build defined `_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23` so
+  that files relying on libc++ bringing in a header through `<string>` kept
+  compiling on MSYS2's LLVM 23 toolchain; libc++ 24 removes that bridge. Every
+  C++ file was compiled against the libc++ 23.1.3 headers (clang 22 frontend)
+  with the bridge off - the 1318 the Linux build compiles, the Windows-only
+  sources against the MinGW headers, the tests and plug-ins this
+  configuration skips - once with and once without it. Five relied on it and
+  include what they use now: `EmailCleanerTypes.cpp`, `UltraFIBUCli.cpp` and
+  `UltraWinSetup/main.cpp` (`<cstdlib>` for `std::atoi`/`atol`/`atoll`),
+  AnchorPoint's `RawSocketTransport.cpp` (`<cerrno>`) and
+  `UltraCanvasTimeline.h` (`<functional>`); the Windows notification
+  listener includes `<cstdio>` for its `std::snprintf`. The definition is
+  removed from the build and from the exported library target, so the
+  Windows legs reject a file that relies on a transitive include as soon as
+  it is written. Not checked here: the macOS, Android and WebAssembly
+  platform sources and the opt-in llama.cpp adapter, whose toolchains are
+  not libc++ 23.
+- **A tag field made without a height starts as tall as one row of chips.**
+  `CreateTagInput` gave it 36 px, but one row needs 40 at the default style
+  (the 28 px chip and 6 px of padding above and below), so every such field
+  grew by 4 px on its first frame - a visible jump of whatever sat below it
+  on a settings page. With no height given (the default now, `h = -1`) the
+  field starts at `OneRowHeight()`, in the layout's `size.height` too, and
+  `Tests/TagInputGrowTest.cpp` checks that the first frame keeps it. A
+  height passed explicitly is used as before.
+
 #### 2026-10-10 *0.9.236*
 - **Mailbox plug-ins can make and delete folders.**
   `IMailboxProtocolPlugin::CreateFolder` and `DeleteFolder` take a
