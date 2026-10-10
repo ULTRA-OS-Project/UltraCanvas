@@ -8,13 +8,15 @@
 //
 //   * UltraCanvasTagInput — a token field: type text and press Enter (or comma)
 //                           to add a removable chip; Backspace on an empty field
-//                           removes the last chip. Chips wrap across rows.
+//                           removes the last chip. Chips wrap across rows and
+//                           the field grows to fit them, in a layout too.
 //
 // Both are self-rendered (no child widgets) and follow the standard element
 // conventions.
 //
+// Version: 1.0.2 - TagInput: autoHeight grows the field inside a layout
 // Version: 1.0.1
-// Last Modified: 2026-07-10
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
 

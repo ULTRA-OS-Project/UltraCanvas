@@ -1492,7 +1492,7 @@ jobs:
         with:
           name: UltraCanvasStart-${{ runner.os == 'macOS' && 'MacOS' || runner.os }}-${{ env.VERSION }}-${{ matrix.arch_label }}${{ runner.os == 'macOS' && env.RELEASE_BUILD != 'true' && '-unsigned' || '' }}
           path: |
-            dist-start/*.tar.gz
+            dist-start/*.tar.xz
             dist-start/*.zip
             dist-start/*.dmg
           if-no-files-found: error

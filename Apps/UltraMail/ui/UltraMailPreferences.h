@@ -157,7 +157,7 @@ struct Preferences {
     // attachments, the server's spam verdict. All on.
     ThreatScanOptions scamWarnings;
     // The sender menu's "Always trust this sender" and "Block this sender"
-    // (Settings > Warnings > Trusted and blocked senders): addresses, lower
+    // (Settings > Warnings > Trusted & blocked): addresses, lower
     // case, and "@example.com" for a blocked domain.
     SenderLists senderLists;
 

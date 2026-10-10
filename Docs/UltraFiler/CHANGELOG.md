@@ -1,3 +1,38 @@
+#### 2026-10-09 *1.70.0*
+- **FTP drives log in once per burst, not once per folder.** Opening a
+  folder on an FTP drive and reading its subfolders ahead used to connect
+  and log in for every one of them - twice on a server without MLSD, such
+  as vsftpd: once to be refused MLSD, once more for LIST. The connection log
+  of opening `/` on a vsftpd server with four subfolders showed ten logins
+  and 36 seconds. The drive worker now keeps the connection open between
+  its jobs (UltraNet keeps it; see the framework changelog), and a server
+  that refused MLSD is listed with LIST from then on, so the same five
+  listings are one login and one MLSD. The connection log says *Using the
+  open connection to ... - already logged in* where it used to show a new
+  login. A delete, rename or new folder still logs in on a connection of its
+  own, which is what keeps it acting on the entry that was chosen. The
+  worker closes the connection once the drive has been quiet for 15 seconds
+  (`kRemoteConnectionIdleClose`), while the server has only just answered:
+  closing sends QUIT and waits for the reply, which a network that has gone
+  away since never sends.
+- **Folders remembered from the last run are no longer read ahead.** A
+  folder's subfolders that `remote-listings.cache` still held were fetched
+  again in the background every time their parent was opened, on every
+  start, whether or not they were opened again. They are now shown from the
+  cache and checked with the server when they are opened; only subfolders
+  that are not cached at all are read ahead.
+- **The connection log button moved into the folder display.** It was a
+  clipboard icon at the right of the status bar, shown whenever any remote
+  drive was configured - over local folders too. It is now a round button
+  with the network symbol in the bottom-left corner of the folder display,
+  shown only while that display is on an FTP / FTPS / SFTP drive; in the
+  split view each display has its own. It sits above the display's info bar
+  and hidden-items strip and follows them as they come and go
+  (`UltraCanvasFilerWidget::GetBottomStripsHeight`, see the framework
+  changelog). Failures not looked at yet turn it red and show as a count on
+  its corner (`UltraCanvasBadge`). The error on the status line and the
+  failure alert now point to it there.
+
 #### 2026-10-09 *1.69.0*
 - **Excel 97-2003 workbooks (`.xls`) show their contents.** A `.xls` file's
   thumbnail is now a small grid of its first sheet's cells, as `.xlsx` and

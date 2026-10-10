@@ -1,6 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
 // Version: 0.18.0 - the Date column is as wide as its widest date plus 6 px, and
-//                   never narrower than its header's caption and sort triangle
+//                   never narrower than its header's caption and sort triangle;
+//                   re-measured from UltraCanvasListView::OnModelChanged
 // Version: 0.17.0 - Always trust / Block this sender / Block everything from the
 //                   domain in both menus; RescanSender (off the UI thread)
 // Version: 0.16.0 - the reading pane's sender menu: copy the address, the
@@ -170,25 +171,6 @@ public:
     float dateFontSize = 9.0f;
     int   dateTextGap  = 6;
 
-    // Chained onto the model's signals after SetModel connected the view's own
-    // (as UltraCanvasListSortFilterProxy chains them): any change of the rows
-    // has the Date column measured again at the next paint.
-    void WatchModel() {
-        if (!model) return;
-        auto dataChanged = model->onDataChanged;
-        model->onDataChanged = [this, dataChanged]() {
-            dateWidthStale = true;
-            if (dataChanged) dataChanged();
-        };
-        for (auto* slot : { &model->onRowChanged, &model->onRowInserted, &model->onRowRemoved }) {
-            auto previous = *slot;
-            *slot = [this, previous](int row) {
-                dateWidthStale = true;
-                if (previous) previous(row);
-            };
-        }
-    }
-
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
         // Measured where a render context is certain, before the rows are
         // painted at the new widths.
@@ -200,10 +182,16 @@ public:
         UltraCanvasListView::Arrange(finalRect, ctx);
         FitColumns();
     }
+
     void SetBounds(const Rect2Df& bounds) override {
         UltraCanvasListView::SetBounds(bounds);
         FitColumns();
     }
+
+protected:
+    // Any change of the rows has the Date column measured again at the next
+    // paint.
+    void OnModelChanged() override { dateWidthStale = true; }
 
 private:
     bool dateWidthStale = true;
@@ -467,7 +455,6 @@ void MailView::BuildListBox() {
     list_->SetDelegate(delegate_);
     lv->dateFontSize = d->fontSize;
     lv->dateTextGap  = d->textPadding;
-    lv->WatchModel();
 
     list_->onSelectionChanged = [this](const std::vector<int>& rows) {
         // A selection set by code is shown (or not) by the code that set it.

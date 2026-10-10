@@ -1,5 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Version: 1.2.0 - model callbacks inert once the view is destroyed; OnModelChanged
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth
 // Last Modified: 2026-10-09
 #include "UltraCanvasListView.h"
@@ -1204,18 +1205,26 @@ namespace UltraCanvas {
 
     void UltraCanvasListView::ConnectModelSignals() {
         if (!model) return;
-        model->onDataChanged = [this]() {
+        // Each callback first asks whether the view still exists (see
+        // signalToken): the model, or a proxy's copy, may call it later.
+        std::weak_ptr<char> alive = signalToken;
+        model->onDataChanged = [this, alive]() {
+            if (alive.expired()) return;
             InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
+            OnModelChanged();
         };
-        model->onRowChanged = [this](int /*row*/) {
+        model->onRowChanged = [this, alive](int /*row*/) {
+            if (alive.expired()) return;
             // A row's content may change its variable height.
             InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
+            OnModelChanged();
         };
-        model->onRowInserted = [this](int row) {
+        model->onRowInserted = [this, alive](int row) {
+            if (alive.expired()) return;
             // The rows from `row` on moved down one: the selection, the
             // keyboard focus and the hover stay on the items they were on.
             if (selection) selection->ShiftRows(row, 1);
@@ -1224,8 +1233,10 @@ namespace UltraCanvas {
             InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
+            OnModelChanged();
         };
-        model->onRowRemoved = [this](int row) {
+        model->onRowRemoved = [this, alive](int row) {
+            if (alive.expired()) return;
             // The removed row leaves the selection (notified); the rows below
             // it moved up one, and the selection moves with them.
             if (selection) selection->ShiftRows(row, -1);
@@ -1236,6 +1247,7 @@ namespace UltraCanvas {
             InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
+            OnModelChanged();
         };
     }
 

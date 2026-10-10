@@ -25,7 +25,7 @@ https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/Ult
 
 | Platform | Archive | Inside |
 |---|---|---|
-| Linux | `UltraCanvasStart-Linux-<version>-<x86_64\|arm64>.tar.gz` | `UltraCanvasStart` (the launcher), `bin/`, `lib/` with the libraries it loads, `share/media` |
+| Linux | `UltraCanvasStart-Linux-<version>-<x86_64\|arm64>.tar.xz` | `UltraCanvasStart` (the launcher), `bin/`, `lib/` with the libraries it loads, `share/media` |
 | Windows | `UltraCanvasStart-Windows-<version>-<x86_64\|arm64>.zip` | `UltraCanvasStart.exe` with its DLLs, `cacert.pem`, `Resources/media`, the `uc-diagnose` launchers |
 | macOS | `UltraCanvasStart-MacOS-<version>-<x86_64\|arm64>.dmg` | `UltraCanvasStart.app` with its own `Frameworks/`, signed and notarized |
 
@@ -36,6 +36,12 @@ The archives are cut out of the suite packages by
 packaged application before it is done, so an archive that does not start is
 a red check, not a download. The Windows executable is not Authenticode
 signed, so SmartScreen asks once.
+
+The archives are not small - the Linux one unpacks to about 220 MB - because
+the application loads the framework's shared core, and the core links
+everything the framework can do. What that weight is made of, and what would
+and would not reduce it, is measured in
+[`Docs/UltraCanvas/StandaloneSizeInvestigation.md`](../../Docs/UltraCanvas/StandaloneSizeInvestigation.md).
 
 ## Pages
 

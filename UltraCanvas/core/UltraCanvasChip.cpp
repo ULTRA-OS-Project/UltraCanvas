@@ -1,7 +1,8 @@
 // core/UltraCanvasChip.cpp
 // Platform-independent chip and tag-input implementation.
+// Version: 1.0.2 - TagInput grows inside a layout: its height in the layout too
 // Version: 1.0.1
-// Last Modified: 2026-07-10
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasChip.h"
@@ -375,9 +376,14 @@ namespace UltraCanvas {
                           Point2Dd(caretX, inputRect.y + inputRect.height - 4));
         }
 
-        // Grow to fit wrapped rows.
+        // Grow to fit wrapped rows - in the layout too: a field in a flex
+        // container is given size.height at the next layout pass (36 px from
+        // CreateTagInput), which would put the clipped height straight back.
         if (autoHeight && std::abs(contentHeight - b.height) > 0.5f) {
+            size.height = CSSLayout::Dimension::Px(contentHeight);
             SetHeight(contentHeight);
+            InvalidateLayout();
+            RequestRedraw();
         }
     }
 

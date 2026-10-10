@@ -1088,6 +1088,10 @@ if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)
     add_executable(ultramsg Apps/UltraMessageCli/main.cpp)
     target_compile_features(ultramsg PRIVATE cxx_std_20)
     target_link_libraries(ultramsg PRIVATE UltraMessage)
+    # A command-line tool has no window to set an icon on; on Windows the
+    # .exe carries media/appicon/UltraMsg.png (the render of UltraMsg.svg).
+    ultracanvas_embed_app_icon(ultramsg
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraMsg.png")
 endif()
 
 # ===== ULTRADATABASE TESTS =====
