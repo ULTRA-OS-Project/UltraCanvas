@@ -49,8 +49,11 @@ EXCLUDE_PATTERNS = ("Proposal", "Plan", "DesignVariants")
 # sibling directories (Research, Video, VideoScripts) hold material that is
 # not developer documentation, and sweeping them in would dilute the corpus.
 # Add a directory here when its contents are meant for the LLM-facing docs.
+# Docs/Legal holds the privacy declarations: they describe each product's
+# data flows from its source, which is exactly what an assistant asked "what
+# does UltraMail send, and to whom?" should find, so they are indexed.
 APP_DOC_DIRS = ("UltraAuthenticator", "UltraPassword", "UltraClipboard", "UltraPaint", "ArtCreator", "DeviceExplorer",
-                "UltraDesktop")
+                "UltraDesktop", "Legal")
 
 SUMMARY = (
     "UltraCanvas is a modular cross-platform C++20 UI and rendering framework "

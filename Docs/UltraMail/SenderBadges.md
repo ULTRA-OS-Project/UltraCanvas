@@ -193,7 +193,10 @@ initial in the brand's own colour. **Settings → Privacy → Sender icons** has
 both switches: *Download the icons of known senders* (`fetch_sender_icons` in
 `preferences.ini`; off, nothing at all is downloaded) and *Show other senders'
 website icons* (`fetch_site_icons`); icons already in the folder keep being
-shown.
+shown. **Both are off by default** (since 0.10.48): every download tells a
+third party's web server the reader's IP address, so a fresh install contacts
+nobody but the reader's own mail server until the reader turns a download on.
+The declaration at `Docs/Legal/Privacy/UltraMail.md` describes both.
 
 ## 4. The registry as a source of business contacts
 

@@ -130,19 +130,21 @@ Reihenfolge:
 
 1. `https://autoconfig.<Ihre Domain>/mail/config-v1.1.xml` und
    `https://<Ihre Domain>/.well-known/autoconfig/mail/config-v1.1.xml` — die
-   Server Ihres eigenen Anbieters. **Diese Anfragen enthalten Ihre
-   vollständige E-Mail-Adresse**, wie es der Autoconfig-Standard vorsieht,
-   damit ein Anbieter mit benutzerspezifischen Einstellungen antworten kann.
+   Server Ihres eigenen Anbieters.
 2. `https://autoconfig.thunderbird.net/v1.1/<Ihre Domain>` — die
    Thunderbird-Anbieterdatenbank, betrieben von der MZLA Technologies
-   Corporation (Mozilla). **Diese Anfrage enthält nur die Domain Ihrer
-   Adresse**, nicht die Adresse selbst. Für die Anfrage gilt die
-   Datenschutzerklärung von Mozilla.
+   Corporation (Mozilla). Für die Anfrage gilt die Datenschutzerklärung von
+   Mozilla.
+
+   **Alle diese Anfragen enthalten nur die Domain Ihrer Adresse**
+   (`example.com`), nie die Adresse selbst. Das Autoconfig-Format erlaubt
+   einem Programm, die vollständige Adresse mitzusenden; UltraMail tut das
+   nicht.
 3. DNS-Abfragen (SRV- und MX-Einträge Ihrer Domain) über den Resolver Ihres
    Systems sowie Verbindungsversuche zu den üblichen Servernamen und Ports.
 
-**Übermittelte Daten:** Ihre E-Mail-Adresse (Schritt 1) bzw. deren Domain
-(Schritte 2 und 3), Ihre IP-Adresse. **Zweck:** das Konto einzurichten, ohne
+**Übermittelte Daten:** die Domain Ihrer E-Mail-Adresse und Ihre
+IP-Adresse. **Zweck:** das Konto einzurichten, ohne
 Sie nach Servereinstellungen zu fragen. **Rechtsgrundlage:** Art. 6 Abs. 1
 lit. b und f DSGVO; die Abfrage erfolgt einmalig bei der Einrichtung.
 **Einstellung:** keine, aber Sie können die Abfrage abbrechen und die
@@ -208,18 +210,19 @@ alle anderen ein Monogramm. Dabei kommen zwei optionale Downloads vor:
   Phishing-Prüfung von UltraMail bestanden haben, und nie für den
   Junk-Ordner.
 
-Beide Downloads sind **standardmäßig eingeschaltet** und lassen sich unter
-*Settings → Privacy → Sender icons* (Einstellungen → Datenschutz → Absender-Symbole) getrennt abschalten (*Download the icons of known senders* — Symbole
-bekannter Absender herunterladen; *Show other senders' website icons* —
-Website-Symbole anderer Absender anzeigen). Ist der erste Schalter aus, wird für Abzeichen gar nichts
-heruntergeladen. Bereits heruntergeladene Symbole werden weiter angezeigt, bis
+Beide Downloads sind **standardmäßig ausgeschaltet**: Eine neue
+Installation kontaktiert niemanden außer Ihrem E-Mail-Anbieter, bis Sie sie
+unter *Settings → Privacy → Sender icons* (Einstellungen → Datenschutz →
+Absender-Symbole) getrennt einschalten (*Download the icons of known
+senders* — Symbole bekannter Absender herunterladen; *Show other senders'
+website icons* — Website-Symbole anderer Absender anzeigen). Ist der erste
+Schalter aus, wird für Abzeichen gar nichts heruntergeladen. Bereits heruntergeladene Symbole werden weiter angezeigt, bis
 Sie den Cache-Ordner löschen.
 
 **Übermittelte Daten:** Ihre IP-Adresse und eine Anfrage nach dem Symbol oder
 der Startseite. **Empfänger:** die Betreiber der jeweiligen Websites.
-**Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO (erkennbare Absender und eine
-sichtbare Warnung vor nachgeahmten Marken), mit dem Recht auf Widerspruch
-durch Ausschalten des Schalters. **Einstellung:** *Settings → Privacy →
+**Rechtsgrundlage:** Ihre Einwilligung, erteilt durch Einschalten des
+Schalters und widerrufen durch Ausschalten (Art. 6 Abs. 1 lit. a DSGVO). **Einstellung:** *Settings → Privacy →
 Sender icons*.
 
 ### 5.5 Spam- und Phishing-Prüfung

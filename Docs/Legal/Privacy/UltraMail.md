@@ -118,18 +118,19 @@ nobody. For any other domain it asks, in this order:
 
 1. `https://autoconfig.<your domain>/mail/config-v1.1.xml` and
    `https://<your domain>/.well-known/autoconfig/mail/config-v1.1.xml` —
-   your own provider's servers. **These requests carry your full e-mail
-   address**, as the autoconfig standard specifies, so that a provider can
-   answer with per-user settings.
+   your own provider's servers.
 2. `https://autoconfig.thunderbird.net/v1.1/<your domain>` — the Thunderbird
    provider database operated by MZLA Technologies Corporation (Mozilla).
-   **This request carries the domain of your address only**, not the address
-   itself. Mozilla's privacy policy applies to the request.
+   Mozilla's privacy policy applies to the request.
+
+   **All of these requests carry the domain of your address only**
+   (`example.com`), never the address itself. The autoconfig format allows a
+   client to send the full address; UltraMail does not.
 3. DNS lookups (SRV and MX records of your domain) through your system's
    resolver, and connection attempts to the usual server names and ports.
 
-**Data transmitted:** your e-mail address (step 1) or its domain (steps 2 and
-3), your IP address. **Purpose:** to configure the account without asking you
+**Data transmitted:** the domain of your e-mail address and your IP
+address. **Purpose:** to configure the account without asking you
 for server settings. **Legal basis:** Art. 6(1)(b) and (f) GDPR; the lookup
 is a one-off during setup. **Setting:** none, but you can cancel the lookup
 and enter server settings by hand; the lookup is then not made.
@@ -187,17 +188,17 @@ else a monogram. Two optional downloads are involved:
   This is done at most once a week per domain, only for mail that passed
   UltraMail's spam and phishing scan, and never for the junk folder.
 
-Both downloads are **on by default** and can be switched off separately in
-*Settings → Privacy → Sender icons* (*Download the icons of known senders*,
-*Show other senders' website icons*). With the first switch off, nothing at
-all is downloaded for badges. Icons already downloaded keep being shown until
-you delete the cache folder.
+Both downloads are **off by default**: a fresh installation contacts nobody
+but your mail provider until you turn them on in *Settings → Privacy → Sender
+icons* (*Download the icons of known senders*, *Show other senders' website
+icons*), separately. With the first switch off, nothing at all is downloaded
+for badges. Icons already downloaded keep being shown until you delete the
+cache folder.
 
 **Data transmitted:** your IP address and a request for the icon or home
 page. **Recipients:** the operators of the respective websites.
-**Legal basis:** Art. 6(1)(f) GDPR (recognisable senders and a visual warning
-against brand impersonation), with the right to object by turning the switch
-off. **Setting:** *Settings → Privacy → Sender icons*.
+**Legal basis:** your consent, given by turning the switch on and withdrawn
+by turning it off (Art. 6(1)(a) GDPR). **Setting:** *Settings → Privacy → Sender icons*.
 
 ### 5.5 Spam and phishing scan
 

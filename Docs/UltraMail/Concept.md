@@ -498,9 +498,12 @@ Phases 1–2 are the minimum for a public preview; phase 3 completes the
    raw messages stay as `.eml` files. `LocalStore` wraps the `UltraDb_*`
    calls so the engine choice stays swappable.
 3. Conversation threading in v1.0 message list or v1.x?
-4. Does the ISPDB lookup need a privacy switch (it reveals the user's
-   mail domain to Mozilla's service)? Suggested default: on, with an
-   opt-out in the wizard's "manual settings" page.
+4. ~~Does the ISPDB lookup need a privacy switch (it reveals the user's
+   mail domain to Mozilla's service)?~~ **Resolved (0.10.48):** the lookups
+   send the domain only, never the address (the `?emailaddress=` parameter
+   was dropped; placeholders are filled in locally), and the wizard's Cancel
+   plus the manual-settings page are the opt-out. The data flow is disclosed
+   in `Docs/Legal/Privacy/UltraMail.md` §5.1.
 
 ## See Also
 

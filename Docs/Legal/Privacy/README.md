@@ -33,7 +33,9 @@ every statement in it is true of both.
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change
-goes into both in the same commit.
+goes into both in the same commit. The folder is indexed into `llms.txt`
+(`APP_DOC_DIRS` in `scripts/generate_llms_txt.py`), so an assistant asked
+what a product sends, and to whom, finds the declaration.
 
 ## Writing one
 

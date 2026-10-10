@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailDiscovery.cpp
+// Version: 0.6.0 - the autoconfig requests carry the domain only, not the
+//                  reader's e-mail address
 // Version: 0.5.0 - ICloudSetupGuide, OffersICloudSetupGuide
 // Version: 0.4.0 - IncomingMailboxChanged
 // Version: 0.3.0 - ServerNameProblem
@@ -357,9 +359,15 @@ DiscoveryResult AutoDiscovery::Discover(const std::string& email) {
 
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
 
+    // The requests name the domain only. The autoconfig format allows an
+    // `?emailaddress=` parameter, which Thunderbird sends, but a server does
+    // not need it: a per-user value in the document is a placeholder
+    // (%EMAILADDRESS%, %EMAILLOCALPART%) that ParseAutoconfig fills in here.
+    // Sending the address would hand the reader's full address to the
+    // domain's web server at setup; the domain it already knows.
     const std::vector<std::string> urls = {
-        "https://autoconfig." + domain + "/mail/config-v1.1.xml?emailaddress=" + email,
-        "https://" + domain + "/.well-known/autoconfig/mail/config-v1.1.xml?emailaddress=" + email,
+        "https://autoconfig." + domain + "/mail/config-v1.1.xml",
+        "https://" + domain + "/.well-known/autoconfig/mail/config-v1.1.xml",
         "https://autoconfig.thunderbird.net/v1.1/" + domain,
     };
     for (const auto& url : urls) {

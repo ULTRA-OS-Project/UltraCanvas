@@ -79583,3 +79583,755 @@ The window list, the virtual desktops, the screenshot and the device markers
 need the module's X11 backend (Linux, the BSDs). Elsewhere the desktop still
 runs — application list, launcher, settings and Stickerboard work — but the
 running-apps group stays empty and the Task Manager says so.
+
+==============================================================================
+FILE: Docs/Legal/Privacy/README.md
+==============================================================================
+
+# Privacy declarations
+
+The privacy declarations ULTRA OS Development GmbH publishes at
+www.ultraos.eu, one per product or service, kept here next to the code they
+describe so that a change to a data flow and the change to its declaration
+land in the same pull request.
+
+## One declaration per product or service
+
+A single declaration for everything cannot be accurate: a desktop application
+processes data on the user's device and the company sees none of it, a hosted
+service processes it on the company's servers and the company is the
+controller, and an app store listing asks for a policy URL that describes
+that one app. So:
+
+| Kind | What it covers | Controller | Example |
+|---|---|---|---|
+| Desktop application | What the app stores on the device, which servers it contacts and why, the settings that turn each contact off | The user, for the local processing; the operators of the contacted servers for theirs. The company is not a controller unless the app talks to a company server | `UltraMail.md` |
+| Hosted service | The data the company's servers receive and keep, retention, processors (hosting, e-mail delivery), transfers outside the EU | ULTRA OS Development GmbH | a future ULTRA OS cloud or account service |
+| App store listing | Points at the application's declaration; the store itself (Apple, Microsoft, Google, Flathub) has its own policy for the download and payment | the store, for the download | the store listing's privacy-policy URL |
+| The website | Cookies, server logs, contact forms, embedded content, analytics if any | ULTRA OS Development GmbH | the site's own `Datenschutzerklärung`, not kept here |
+
+Each application whose data flows differ gets its own file. Two applications
+that contact nobody but the user's own servers may share one file only when
+every statement in it is true of both.
+
+## Files
+
+| File | Product | Status |
+|---|---|---|
+| `UltraMail.md` | UltraMail, English | draft 1.0, needs the bracketed items and legal review |
+| `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.0, same |
+| `Template.md` | The section skeleton for the next product | — |
+
+The English and German versions of one product say the same thing; a change
+goes into both in the same commit. The folder is indexed into `llms.txt`
+(`APP_DOC_DIRS` in `scripts/generate_llms_txt.py`), so an assistant asked
+what a product sends, and to whom, finds the declaration.
+
+## Writing one
+
+1. Start from `Template.md`.
+2. Read the application's source, not only its documentation: list every
+   host it connects to (`grep -rEo 'https?://[^"]+'` over the app, plus the
+   protocol plug-ins it loads), every file it writes, and every setting that
+   governs a connection. The declaration names each host, what the request
+   carries (an e-mail address, a domain, only an IP address), who operates it,
+   the purpose, the legal basis and the setting.
+3. Say plainly what the application does *not* do (telemetry, accounts,
+   update checks, advertising) when that is true; it is what readers look for.
+4. Leave anything you cannot verify in square brackets rather than guessing,
+   and keep the "draft for legal review" line until a lawyer has signed off.
+5. Write the German version too for a product sold or offered in Germany.
+
+## Keeping them true
+
+A pull request that adds or changes a network connection, a stored file or a
+privacy setting in an application updates that application's declaration in
+the same change, and bumps its version and date at the top. The reviewer
+checks both.
+
+## Publishing
+
+The website shows the current text; the repository keeps the history. Convert
+with `pandoc Docs/Legal/Privacy/UltraMail.md -o UltraMail.html` or paste the
+Markdown into the site's editor. Fill the bracketed items first; a published
+declaration with `[…]` in it is worse than none.
+
+Store listings (Microsoft Store, Mac App Store, Google Play, Flathub) and the
+Google OAuth consent screen each ask for a privacy-policy URL: give them the
+URL of the product's page on www.ultraos.eu, not the repository file, so the
+link survives a rename here.
+
+==============================================================================
+FILE: Docs/Legal/Privacy/Template.md
+==============================================================================
+
+# Privacy declaration — [Product]
+
+**Version 0.1 (draft for legal review) · [date]**
+
+[One paragraph: what the product is, which platforms, where this declaration
+is published, and what it does not cover (the website, other products).]
+
+## 1. Who is responsible
+
+ULTRA OS Development GmbH
+An den Klippen 23
+57462 Olpe
+Germany
+
+E-mail: [privacy@ultraos.eu]
+Managing director(s): […]
+Commercial register: […]
+
+## 2. The short version
+
+[Four to six bullets: where the data lives (device or our servers), whom the
+product talks to, what it does not do (telemetry, accounts, advertising,
+update checks), and that each server contact is listed below with its
+setting.]
+
+## 3. What [Product] stores [on your device | on our servers]
+
+[A table: data, what it is, where (file or system), and for a hosted service
+how long it is kept.]
+
+### 3.1 How sensitive data is protected
+
+### 3.2 Who can read this data
+
+### 3.3 Our role
+
+[Desktop application: the processing happens on the user's device, the company
+is not the controller (Art. 4(7) GDPR). Hosted service: the company is the
+controller; name the processors and any transfer outside the EU with its
+safeguard.]
+
+## 4. Data [Product] sends to [the servers the product exists to talk to]
+
+[Recipient, data, encryption, legal basis, setting.]
+
+## 5. Other servers [Product] contacts, and why
+
+[One subsection per host or feature: what triggers the request, what it
+carries, who receives it, the purpose, the legal basis (Art. 6(1)(a) consent,
+(b) contract, (f) legitimate interest), and the setting that turns it off or
+"none".]
+
+## 6. What we do not do
+
+## 7. Your rights
+
+[Art. 15–21 and 77 GDPR; the supervisory authority is the Landesbeauftragte
+für Datenschutz und Informationsfreiheit Nordrhein-Westfalen, Kavalleriestraße
+2–4, 40213 Düsseldorf. Say how the rights are exercised: in the application
+for local data, by writing to us for data we hold.]
+
+## 8. Children
+
+## 9. Changes to this declaration
+
+==============================================================================
+FILE: Docs/Legal/Privacy/UltraMail.de.md
+==============================================================================
+
+# Datenschutzerklärung — UltraMail
+
+**Version 1.0 (Entwurf zur rechtlichen Prüfung) · 10. Oktober 2026**
+
+Diese Erklärung beschreibt, welche personenbezogenen Daten die Anwendung
+**UltraMail** verarbeitet, wo diese Verarbeitung stattfindet, welche Dritten
+sie zu welchem Zweck kontaktiert und welche Rechte Sie nach der
+Datenschutz-Grundverordnung (DSGVO) haben. Sie wird unter www.ultraos.eu
+veröffentlicht und gilt für UltraMail unter Linux, Windows, macOS und
+ULTRA OS. Sie gilt nicht für die Website selbst, für andere
+ULTRA-OS-Anwendungen oder für Online-Dienste von ULTRA OS; diese haben jeweils
+eine eigene Erklärung.
+
+> **Prüfstatus.** Dieser Text wurde aus dem Quellcode und der Dokumentation
+> von UltraMail erstellt. Die Angaben in eckigen Klammern (`[…]`) sind
+> auszufüllen, und der gesamte Text ist vor der Veröffentlichung anwaltlich zu
+> prüfen.
+
+## 1. Verantwortlicher
+
+ULTRA OS Development GmbH
+An den Klippen 23
+57462 Olpe
+Deutschland
+
+E-Mail: [privacy@ultraos.eu]
+Geschäftsführung: […]
+Handelsregister: […]
+
+Ein Datenschutzbeauftragter ist nicht bestellt, da keine Pflicht zur
+Bestellung besteht [in der rechtlichen Prüfung bestätigen].
+
+## 2. Das Wichtigste in Kürze
+
+- UltraMail ist ein E-Mail-Programm, das **auf Ihrem eigenen Rechner** läuft.
+  Ihre Konten, Passwörter, Nachrichten, Anhänge und Kontakte werden auf Ihrem
+  Gerät gespeichert und nirgendwo sonst.
+- UltraMail verbindet sich mit den **Servern Ihres E-Mail-Anbieters**, um
+  Ihre Post abzurufen und zu versenden. Dafür ist ein E-Mail-Programm da.
+- UltraMail hat **kein Benutzerkonto bei uns**, sendet uns **keine
+  Nutzungsstatistiken, Absturzberichte oder Telemetrie**, enthält **keine
+  Werbung** und führt **keine Update-Prüfung** durch, die unsere Server
+  kontaktieren würde. Die ULTRA OS Development GmbH erhält, speichert oder
+  sieht über UltraMail keine Ihrer Daten.
+- UltraMail kontaktiert für bestimmte Funktionen eine kleine Zahl **anderer
+  Server** (Ermittlung der Servereinstellungen Ihres Anbieters, Anmeldung bei
+  Gmail, Outlook oder Yahoo, Herunterladen von Absender-Symbolen, Laden von
+  Bildern in HTML-Mails, Anhängen eines Cloud-Links). Jeder ist in Abschnitt 5
+  aufgeführt, zusammen mit der Einstellung, die ihn abschaltet, wo es eine
+  gibt.
+- UltraMail ist quelloffene Software. Jeder kann diese Aussagen am Quellcode
+  nachprüfen.
+
+## 3. Was UltraMail auf Ihrem Gerät speichert
+
+Alles Folgende liegt im Datenordner von UltraMail auf Ihrem Rechner:
+`~/.local/share/UltraMail/` unter Linux und macOS (bzw.
+`$XDG_DATA_HOME/UltraMail/`, wenn diese Variable gesetzt ist),
+`%APPDATA%\UltraMail\` unter Windows.
+
+| Daten | Was es ist | Wo |
+|---|---|---|
+| Kontoeinstellungen | Ihr Name, Ihre E-Mail-Adresse, Servernamen, Ports und Verschlüsselungseinstellungen Ihres Anbieters, Ihre Signatur, das Abrufintervall | `mail.db` |
+| Zugangsdaten | Ihr Kontopasswort, App-Passwort oder die OAuth2-Token aus der Anmeldung im Browser | `vault/ultramail.vault`, verschlüsselt (siehe 3.1) |
+| Nachrichten | Die Kopfzeilen der Nachrichten in Ihren Ordnern (der Index) und der vollständige Inhalt (Text, HTML, Anhänge) der von UltraMail abgerufenen Nachrichten als `.eml`-Dateien | `mail.db`, `mail/<Konto>/` |
+| Anhänge | Anhänge, die Sie öffnen, werden in einen Ordner ausgepackt; bei jedem Start werden die seit einer Woche nicht geöffneten entfernt, dann die ältesten, bis der Ordner unter 256 MB liegt | `attachments/` |
+| Postausgang | Von Ihnen geschriebene und gesendete Nachrichten, bis der Server sie angenommen hat; Entwürfe | `outbox.db` |
+| Kontakte | Ihr Adressbuch: Namen, E-Mail-Adressen, Telefonnummern, Organisationen und Notizen, die Sie eingeben, sowie die aus Ihrer eigenen Post abgeleiteten Angaben „wartet auf Antwort“ und „angeschrieben“ | `contacts.db` |
+| Absender-Symbole | Symbole der Dienste und Websites, die Ihnen schreiben (siehe 5.4) | `cache/sender-icons/` |
+| Einstellungen | Ihre Einstellungen, darunter welche Absender Bilder aus dem Netz laden dürfen und welchen Websites Sie vertrauen | `preferences.ini` |
+| Cloud-Speicherkonten | Die Cloud-Speicherkonten, die Sie für „Cloud-Link anhängen“ hinzufügen (siehe 5.6) | `cloud.db` |
+| OAuth-Client-Registrierung | Falls Sie einen eigenen OAuth-Client bei Google oder Microsoft registrieren: dessen Client-ID und Secret | `oauth.ini` |
+| Zeitprotokoll | Ein Protokoll, was UltraMail gerade tut und wie lange jeder Schritt dauert, zur Leistungsdiagnose. Es nennt Konten, Ordner und Zeiten, keine Nachrichteninhalte. Es wird bei jedem Start geleert und verlässt Ihr Gerät nie. `ULTRAMAIL_TRACE=0` schaltet es ab | `trace.log` |
+
+### 3.1 Wie Zugangsdaten geschützt sind
+
+Passwörter und Anmelde-Token werden nie in die Kontoeinstellungen
+geschrieben. Sie liegen in einer verschlüsselten Tresordatei (Schlüssel
+abgeleitet mit Argon2id, Inhalt verschlüsselt mit XChaCha20-Poly1305). Der
+Tresor wird entweder mit einem von Ihnen gewählten Master-Passwort entsperrt,
+das nie gespeichert wird, oder mit einer Geräteschlüsseldatei, die nur Ihr
+Benutzerkonto auf dem Rechner lesen kann. Wenn Sie das Master-Passwort
+vergessen, kann niemand, auch wir nicht, die gespeicherten Passwörter
+wiederherstellen; Sie geben sie erneut ein.
+
+### 3.2 Wer diese Daten lesen kann
+
+Nur Sie und jeder, der Zugriff auf Ihr Benutzerkonto auf dem Rechner oder auf
+dessen Sicherungen hat. UltraMail lädt den Datenordner nirgendwohin hoch,
+synchronisiert oder kopiert ihn nicht. Das Entfernen eines Kontos in UltraMail
+löscht dessen Nachrichten und Zugangsdaten; das Löschen des Datenordners
+entfernt alles, was UltraMail kennt.
+
+### 3.3 Unsere Rolle
+
+Da diese Verarbeitung auf Ihrem Gerät, unter Ihrer Kontrolle und zu Ihren
+eigenen Zwecken stattfindet, ist die ULTRA OS Development GmbH für diese
+Daten **nicht Verantwortlicher** im Sinne von Art. 4 Nr. 7 DSGVO. Wir
+beschreiben sie hier der Transparenz halber und weil die Plattformen und
+Stores, über die UltraMail verbreitet wird, eine Datenschutzerklärung
+verlangen.
+
+## 4. Daten, die UltraMail an Ihren E-Mail-Anbieter sendet
+
+Um seine Aufgabe zu erfüllen, verbindet sich UltraMail mit den Servern des von
+Ihnen eingerichteten E-Mail-Anbieters und übermittelt:
+
+- Ihre Zugangsdaten (Passwort, App-Passwort oder OAuth2-Token) zur Anmeldung;
+- die Nachrichten, die Sie senden, mit Empfängern, Betreff, Text und Anhängen;
+- Anfragen nach Ihren Ordnern, Nachrichtenkopfzeilen, Nachrichteninhalten und
+  Markierungen (gelesen, beantwortet, gelöscht) sowie die Änderungen, die Sie
+  daran vornehmen.
+
+**Empfänger:** Ihr E-Mail-Anbieter als eigener Verantwortlicher. Für den
+Umgang mit Ihrer Post gilt dessen Datenschutzerklärung. **Verschlüsselung:**
+UltraMail verwendet standardmäßig für jede Verbindung TLS und prüft das
+Zertifikat des Servers. **Rechtsgrundlage:** Dies ist der Dienst, den Sie mit
+dem Hinzufügen des Kontos anfordern (Art. 6 Abs. 1 lit. b DSGVO).
+**Einstellung:** keine; ohne diese Verbindung kann UltraMail nicht arbeiten.
+
+## 5. Weitere Server, die UltraMail kontaktiert, und warum
+
+### 5.1 Ermittlung der Servereinstellungen Ihres Anbieters (Kontoeinrichtung)
+
+Beim Hinzufügen eines Kontos ermittelt UltraMail die Servereinstellungen aus
+Ihrer Adresse. Für die häufigsten Anbieter (Gmail, Outlook, Yahoo, iCloud,
+GMX, web.de, mailbox.org, Posteo und andere) nutzt es eine eingebaute Tabelle
+und kontaktiert niemanden. Für jede andere Domain fragt es in dieser
+Reihenfolge:
+
+1. `https://autoconfig.<Ihre Domain>/mail/config-v1.1.xml` und
+   `https://<Ihre Domain>/.well-known/autoconfig/mail/config-v1.1.xml` — die
+   Server Ihres eigenen Anbieters.
+2. `https://autoconfig.thunderbird.net/v1.1/<Ihre Domain>` — die
+   Thunderbird-Anbieterdatenbank, betrieben von der MZLA Technologies
+   Corporation (Mozilla). Für die Anfrage gilt die Datenschutzerklärung von
+   Mozilla.
+
+   **Alle diese Anfragen enthalten nur die Domain Ihrer Adresse**
+   (`example.com`), nie die Adresse selbst. Das Autoconfig-Format erlaubt
+   einem Programm, die vollständige Adresse mitzusenden; UltraMail tut das
+   nicht.
+3. DNS-Abfragen (SRV- und MX-Einträge Ihrer Domain) über den Resolver Ihres
+   Systems sowie Verbindungsversuche zu den üblichen Servernamen und Ports.
+
+**Übermittelte Daten:** die Domain Ihrer E-Mail-Adresse und Ihre
+IP-Adresse. **Zweck:** das Konto einzurichten, ohne
+Sie nach Servereinstellungen zu fragen. **Rechtsgrundlage:** Art. 6 Abs. 1
+lit. b und f DSGVO; die Abfrage erfolgt einmalig bei der Einrichtung.
+**Einstellung:** keine, aber Sie können die Abfrage abbrechen und die
+Servereinstellungen von Hand eingeben; die Abfrage unterbleibt dann.
+
+### 5.2 Anmeldung bei Google, Microsoft oder Yahoo (OAuth2)
+
+Gmail-, Outlook-/Microsoft-365- und Yahoo-Konten melden sich über die
+Einwilligungsseite des Anbieters in Ihrem Webbrowser an (OAuth2 Authorization
+Code mit PKCE). UltraMail öffnet die Seite, Sie melden sich beim Anbieter an,
+und der Anbieter übergibt UltraMail ein Token, das im Tresor gespeichert und
+für IMAP und SMTP verwendet wird. Ihr Anbieter-Passwort sieht UltraMail nie.
+
+**Übermittelte Daten:** die von Ihnen eingegebene E-Mail-Adresse (als
+Anmeldehinweis) und alles, was Sie auf der Seite des Anbieters eingeben, nur
+an den Anbieter. **Empfänger:** Google LLC, Microsoft Corporation oder Yahoo
+(Oath Holdings Inc.) als eigene Verantwortliche nach ihren eigenen
+Datenschutzerklärungen. **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO; der
+Anbieter verlangt dieses Verfahren. **Einstellung:** Wo der Anbieter ein
+App-Passwort anbietet, können Sie stattdessen dieses verwenden; dann findet
+keine Anmeldung im Browser statt.
+
+### 5.3 Bilder in HTML-Mails („externe Bilder“)
+
+Eine Nachricht kann auf Bilder verweisen, die auf dem Webserver des Absenders
+liegen. Das Laden eines solchen Bildes verrät diesem Server, dass und wann die
+Nachricht geöffnet wurde, und Ihre IP-Adresse; Werbe-Mails nutzen das, um
+Öffnungen nachzuverfolgen. UltraMail lädt externe Bilder von unbekannten
+Absendern deshalb **standardmäßig nicht**. Die Voreinstellung
+(*Settings → Privacy → Images*, Einstellungen → Datenschutz → Bilder) ist *nur vertrauenswürdige
+Absender*: Bilder laden automatisch nur von Personen in Ihrem Adressbuch, von
+Absendern, die Sie mit „Immer von …“ erlaubt haben, und von Websites, die Sie
+als vertrauenswürdig eingetragen haben. Bei allen anderen fragt eine Leiste im
+Lesebereich jedes Mal nach. Sie können die Einstellung auf *nie* oder *immer*
+ändern; auch *immer* lässt Junk und verdächtige Mails aus.
+
+**Übermittelte Daten:** Ihre IP-Adresse und die Adresse des Bildes an den
+Server, der das Bild bereitstellt, in dem Moment, in dem Sie (oder die
+Einstellung) es laden. **Empfänger:** der Absender oder dessen
+Hosting-Anbieter. **Rechtsgrundlage:** Ihre Entscheidung (Art. 6 Abs. 1
+lit. a DSGVO). **Einstellung:** *Settings → Privacy → Images*.
+
+### 5.4 Absender-Symbole
+
+Neben jedem Absender zeigt UltraMail ein Abzeichen: für etwa 400 bekannte
+Dienste (Banken, Shops, Paketdienste, soziale Netzwerke …) deren Symbol, für
+alle anderen ein Monogramm. Dabei kommen zwei optionale Downloads vor:
+
+- **Symbole bekannter Dienste.** Wenn ein bekannter Dienst zum ersten Mal in
+  Ihrem Posteingang erscheint, lädt UltraMail dessen Symbol (Favicon) einmal
+  von der Website des Dienstes selbst herunter — zum Beispiel
+  `https://www.paypal.com/favicon.ico`. Der Webserver des Dienstes erfährt
+  Ihre IP-Adresse und dass eine Installation von UltraMail sein Symbol
+  angefordert hat. Er erfährt **nicht**, welche Nachricht Sie erhalten haben
+  oder wie Ihre E-Mail-Adresse lautet. Das Symbol wird danach im Cache
+  behalten.
+- **Website-Symbole anderer Absender.** Für einen Absender, der kein
+  bekannter Dienst ist, kann UltraMail die Startseite der Domain, von der er
+  schreibt, lesen, um das Symbol der Website zu finden. Der Webserver des
+  Absenders erfährt, dass jemand mit Ihrer IP-Adresse seine Startseite
+  aufgerufen hat, nicht aber welche Nachricht oder wer Sie sind. Das geschieht
+  höchstens einmal pro Woche und Domain, nur für Mails, die die Spam- und
+  Phishing-Prüfung von UltraMail bestanden haben, und nie für den
+  Junk-Ordner.
+
+Beide Downloads sind **standardmäßig ausgeschaltet**: Eine neue
+Installation kontaktiert niemanden außer Ihrem E-Mail-Anbieter, bis Sie sie
+unter *Settings → Privacy → Sender icons* (Einstellungen → Datenschutz →
+Absender-Symbole) getrennt einschalten (*Download the icons of known
+senders* — Symbole bekannter Absender herunterladen; *Show other senders'
+website icons* — Website-Symbole anderer Absender anzeigen). Ist der erste
+Schalter aus, wird für Abzeichen gar nichts heruntergeladen. Bereits heruntergeladene Symbole werden weiter angezeigt, bis
+Sie den Cache-Ordner löschen.
+
+**Übermittelte Daten:** Ihre IP-Adresse und eine Anfrage nach dem Symbol oder
+der Startseite. **Empfänger:** die Betreiber der jeweiligen Websites.
+**Rechtsgrundlage:** Ihre Einwilligung, erteilt durch Einschalten des
+Schalters und widerrufen durch Ausschalten (Art. 6 Abs. 1 lit. a DSGVO). **Einstellung:** *Settings → Privacy →
+Sender icons*.
+
+### 5.5 Spam- und Phishing-Prüfung
+
+UltraMail bewertet jede eingehende Nachricht auf Anzeichen von Spam und
+Phishing (gefälschte Absenderdomains, Aufforderungen zur Eingabe von
+Zugangsdaten, von Ihrem eigenen Mailserver gemeldete fehlgeschlagene
+DKIM-/SPF-/DMARC-Prüfungen und andere) und zeigt ein Warnabzeichen. **Diese
+Prüfung läuft vollständig auf Ihrem Gerät.** Kein Nachrichteninhalt, keine
+Adresse und kein Link wird an uns oder an einen Reputationsdienst gesendet.
+
+### 5.6 Einen Cloud-Link anhängen
+
+„Cloud-Link anhängen…“ im Editor lädt eine Datei in ein Cloud-Speicherkonto
+von Ihnen hoch (Nextcloud / ownCloud, ein WebDAV-Server, Dropbox, OneDrive
+oder Google Drive) und fügt den Freigabelink in die Nachricht ein. Das
+geschieht nur, wenn Sie die Funktion verwenden. Die Datei und Ihre
+Zugangsdaten für diesen Dienst gehen an den von Ihnen gewählten Dienst nach
+dessen eigener Datenschutzerklärung. Dropbox, OneDrive und Google Drive melden
+sich wie in 5.2 beschrieben über den Browser an.
+
+### 5.7 Links, die Sie anklicken
+
+Ein Link in einer Nachricht öffnet sich in Ihrem Webbrowser. Ab dann gelten
+die Datenschutzerklärungen des Browsers und der verlinkten Website. UltraMail
+prüft Links nicht gegen einen Online-Dienst.
+
+### 5.8 Benachrichtigungen und der Desktop-Feed
+
+Unter ULTRA OS meldet UltraMail neue Post über eine lokale Schnittstelle
+(UltraMessage) an den Benachrichtigungsdienst und die Nachrichtenzentrale des
+Desktops. Das bleibt auf Ihrem Gerät.
+
+### 5.9 Rechtschreibprüfung
+
+Die Rechtschreibprüfung im Editor verwendet auf Ihrem Rechner installierte
+Wörterbücher (Hunspell oder die Rechtschreibprüfung des Systems). Nichts, was
+Sie tippen, wird irgendwohin gesendet.
+
+## 6. Was wir nicht tun
+
+UltraMail
+
+- legt kein Benutzerkonto bei der ULTRA OS Development GmbH an und verlangt
+  keines;
+- sendet keine Nutzungsstatistiken, Analysen, Absturzberichte oder
+  Diagnosedaten an uns oder andere;
+- prüft nicht auf Updates, indem es unsere Server kontaktiert;
+- zeigt keine Werbung und enthält keine Werbe- oder Tracking-SDKs Dritter;
+- liest Ihre Nachrichten zu keinem anderen Zweck als sie Ihnen anzuzeigen,
+  sie für die Suche und die lokale Spam-Prüfung zu indizieren und für die
+  lokale Funktion „wartet auf Antwort“;
+- gibt Ihre Daten nicht weiter, verkauft sie nicht und legt sie nicht
+  anderweitig offen.
+
+Da keine Daten bei uns ankommen, speichern wir keine personenbezogenen Daten
+über Nutzer von UltraMail und können Sie anhand Ihrer Nutzung der Anwendung
+nicht identifizieren.
+
+## 7. Ihre Rechte
+
+Nach der DSGVO haben Sie das Recht auf Auskunft (Art. 15), Berichtigung
+(Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18),
+Datenübertragbarkeit (Art. 20) und Widerspruch (Art. 21) sowie das Recht auf
+Beschwerde bei einer Aufsichtsbehörde (Art. 77). Die für uns zuständige
+Behörde ist die Landesbeauftragte für Datenschutz und Informationsfreiheit
+Nordrhein-Westfalen, Kavalleriestraße 2–4, 40213 Düsseldorf.
+
+Da UltraMail Ihre Daten nur auf Ihrem eigenen Gerät speichert, üben Sie diese
+Rechte unmittelbar in der Anwendung aus: Sie können alles selbst lesen,
+berichtigen, exportieren (Ihre Nachrichten sind gewöhnliche `.eml`-Dateien)
+und löschen. Für Daten, die Ihr E-Mail-Anbieter, Google, Microsoft, Yahoo,
+Mozilla oder die Betreiber der in Abschnitt 5 genannten Websites halten,
+wenden Sie sich bitte an diese; sie sind für diese Verarbeitung die
+Verantwortlichen.
+
+Bei Fragen zu dieser Erklärung schreiben Sie an [privacy@ultraos.eu].
+
+## 8. Kinder
+
+UltraMail ist ein allgemeines E-Mail-Programm und richtet sich nicht an
+Kinder. Da es keine Daten für uns erhebt, findet keine Altersprüfung statt.
+
+## 9. Änderungen dieser Erklärung
+
+Wir aktualisieren diese Erklärung, wann immer sich die Datenflüsse von
+UltraMail ändern, etwa wenn eine Funktion hinzukommt, die einen Server
+kontaktiert. Version und Datum am Anfang kennzeichnen den aktuellen Text;
+frühere Fassungen sind im Quellcode-Repository des Projekts verfügbar.
+
+==============================================================================
+FILE: Docs/Legal/Privacy/UltraMail.md
+==============================================================================
+
+# Privacy declaration — UltraMail
+
+**Version 1.0 (draft for legal review) · 10 October 2026**
+
+This declaration explains what personal data the **UltraMail** application
+processes, where that processing happens, which third parties it contacts and
+why, and what rights you have under the General Data Protection Regulation
+(GDPR). It is published at www.ultraos.eu and covers UltraMail on Linux,
+Windows, macOS and ULTRA OS. It does not cover the website itself, other
+ULTRA OS applications, or any ULTRA OS online service; each of those has a
+declaration of its own.
+
+> **Review status.** This text was drafted from UltraMail's source code and
+> documentation. The items in square brackets (`[…]`) must be filled in, and
+> the whole text must be reviewed by a lawyer before it is published.
+
+## 1. Who is responsible
+
+ULTRA OS Development GmbH
+An den Klippen 23
+57462 Olpe
+Germany
+
+E-mail: [privacy@ultraos.eu]
+Managing director(s): […]
+Commercial register: […]
+
+The company has not appointed a data protection officer, because it is not
+required to [confirm with legal review].
+
+## 2. The short version
+
+- UltraMail is a mail program that runs **on your own computer**. Your
+  accounts, passwords, messages, attachments and contacts are stored on your
+  device and nowhere else.
+- UltraMail talks to **your e-mail provider's servers** to fetch and send your
+  mail. That is what a mail program is for.
+- UltraMail has **no account with us**, sends us **no usage statistics, crash
+  reports or telemetry**, contains **no advertising** and performs **no update
+  check** that would contact our servers. ULTRA OS Development GmbH does not
+  receive, store or see any of your data through UltraMail.
+- UltraMail contacts a small number of **other servers** for specific features
+  (finding your provider's server settings, signing in to Gmail, Outlook or
+  Yahoo, downloading sender icons, loading pictures in HTML mail, attaching a
+  cloud link). Each is listed in section 5, together with the setting that
+  turns it off where one exists.
+- UltraMail is open-source software. Anyone can verify these statements
+  against the source code.
+
+## 3. What UltraMail stores on your device
+
+All of the following is stored in UltraMail's data folder on your computer:
+`~/.local/share/UltraMail/` on Linux and macOS (or `$XDG_DATA_HOME/UltraMail/`
+when that variable is set), `%APPDATA%\UltraMail\` on Windows.
+
+| Data | What it is | Where |
+|---|---|---|
+| Account settings | Your name, e-mail address, the server names, ports and encryption settings of your provider, your signature, the sync interval | `mail.db` |
+| Credentials | Your account password, app password or the OAuth2 tokens obtained when you sign in through the browser | `vault/ultramail.vault`, encrypted (see 3.1) |
+| Messages | The headers of the messages in your folders (the index), and the full content (text, HTML, attachments) of those UltraMail has fetched, as `.eml` files | `mail.db`, `mail/<account>/` |
+| Attachments | Attachments you open are extracted into a folder; at every start those not opened for a week are removed, then the oldest until the folder is under 256 MB | `attachments/` |
+| Outbox | Messages you have written and sent, until the server has accepted them; drafts | `outbox.db` |
+| Contacts | Your address book: names, e-mail addresses, phone numbers, organisations and notes you enter, plus the "needs an answer" and "written to" information derived from your own mail | `contacts.db` |
+| Sender icons | Icons of the services and websites that write to you (see 5.4) | `cache/sender-icons/` |
+| Preferences | Your settings, including which senders may load remote pictures and which websites you trust | `preferences.ini` |
+| Cloud storage accounts | The cloud storage accounts you add for "Attach cloud link" (see 5.6) | `cloud.db` |
+| OAuth client registration | If you register your own OAuth client with Google or Microsoft: its client id and secret | `oauth.ini` |
+| Timing trace | A log of what UltraMail is doing and how long each step takes, for performance diagnosis. It names accounts and folders and timings, not message contents. It is emptied at every start and never leaves your device. `ULTRAMAIL_TRACE=0` turns it off | `trace.log` |
+
+### 3.1 How credentials are protected
+
+Passwords and sign-in tokens are never written into the account settings.
+They are kept in an encrypted vault file (key derived with Argon2id, content
+encrypted with XChaCha20-Poly1305). The vault is unlocked either by a master
+password you choose, which is never stored, or by a device key file that only
+your user account on the computer can read. If you forget the master password,
+no one, including us, can recover the stored passwords; you enter them again.
+
+### 3.2 Who can read this data
+
+Only you, and anyone who has access to your user account on the computer or to
+its backups. UltraMail does not upload, synchronise or copy the data folder
+anywhere. Deleting an account in UltraMail deletes its messages and
+credentials; deleting the data folder removes everything UltraMail knows.
+
+### 3.3 Our role
+
+Because this processing happens on your device, under your control and for
+your own purposes, ULTRA OS Development GmbH is **not the controller** of this
+data within the meaning of Art. 4(7) GDPR. We describe it here for
+transparency, and because the platforms and stores through which UltraMail is
+distributed require a privacy declaration.
+
+## 4. Data UltraMail sends to your e-mail provider
+
+To do its job, UltraMail connects to the servers of the e-mail provider you
+configure and transmits:
+
+- your credentials (password, app password or OAuth2 token) to sign in;
+- the messages you send, with their recipients, subject, text and attachments;
+- requests for your folders, message headers, message bodies and flags
+  (read, answered, deleted), and the changes you make to them.
+
+**Recipient:** your e-mail provider, as its own controller. Its privacy policy
+applies to what it does with your mail. **Encryption:** UltraMail uses TLS for
+every connection by default and verifies the server's certificate.
+**Legal basis:** this is the service you ask for when you add the account
+(Art. 6(1)(b) GDPR). **Setting:** none; without it UltraMail cannot work.
+
+## 5. Other servers UltraMail contacts, and why
+
+### 5.1 Finding your provider's server settings (account setup)
+
+When you add an account, UltraMail works out the server settings from your
+address. For the most common providers (Gmail, Outlook, Yahoo, iCloud, GMX,
+web.de, mailbox.org, Posteo and others) it uses a built-in table and contacts
+nobody. For any other domain it asks, in this order:
+
+1. `https://autoconfig.<your domain>/mail/config-v1.1.xml` and
+   `https://<your domain>/.well-known/autoconfig/mail/config-v1.1.xml` —
+   your own provider's servers.
+2. `https://autoconfig.thunderbird.net/v1.1/<your domain>` — the Thunderbird
+   provider database operated by MZLA Technologies Corporation (Mozilla).
+   Mozilla's privacy policy applies to the request.
+
+   **All of these requests carry the domain of your address only**
+   (`example.com`), never the address itself. The autoconfig format allows a
+   client to send the full address; UltraMail does not.
+3. DNS lookups (SRV and MX records of your domain) through your system's
+   resolver, and connection attempts to the usual server names and ports.
+
+**Data transmitted:** the domain of your e-mail address and your IP
+address. **Purpose:** to configure the account without asking you
+for server settings. **Legal basis:** Art. 6(1)(b) and (f) GDPR; the lookup
+is a one-off during setup. **Setting:** none, but you can cancel the lookup
+and enter server settings by hand; the lookup is then not made.
+
+### 5.2 Signing in with Google, Microsoft or Yahoo (OAuth2)
+
+Gmail, Outlook / Microsoft 365 and Yahoo accounts sign in through the
+provider's own consent page in your web browser (OAuth2 authorization code
+with PKCE). UltraMail opens the page, you sign in with the provider, and the
+provider hands UltraMail a token that it stores in the vault and uses for IMAP
+and SMTP. Your provider password is never seen by UltraMail.
+
+**Data transmitted:** the e-mail address you typed (as a sign-in hint), and
+whatever you enter on the provider's page, to the provider only.
+**Recipients:** Google LLC, Microsoft Corporation or Yahoo (Oath Holdings
+Inc.), as their own controllers under their own privacy policies.
+**Legal basis:** Art. 6(1)(b) GDPR; the provider requires this method.
+**Setting:** you can use an app password instead where the provider offers
+one; then no browser sign-in takes place.
+
+### 5.3 Pictures in HTML mail ("remote images")
+
+A message may reference pictures hosted on the sender's web server. Loading
+such a picture tells that server that, and when, the message was opened, and
+reveals your IP address; marketing mail uses this to track opens. UltraMail
+therefore does **not load remote pictures by default** from unknown senders.
+The default policy (*Settings → Privacy → Images*) is *trusted senders only*:
+pictures load automatically only from people in your address book, from
+senders you have allowed with "Always from …", and from websites you have
+listed as trusted. For anyone else a bar in the reading pane asks each time.
+You can switch the policy to *never* or to *always*; even *always* skips junk
+and suspicious mail.
+
+**Data transmitted:** your IP address and the picture's URL to the server
+hosting the picture, at the moment you (or the policy) load it.
+**Recipient:** the sender or its hosting provider. **Legal basis:** your
+choice (Art. 6(1)(a) GDPR). **Setting:** *Settings → Privacy → Images*.
+
+### 5.4 Sender icons
+
+Next to each sender UltraMail shows a badge: for about 400 well-known services
+(banks, shops, parcel carriers, social networks …) their icon, for everyone
+else a monogram. Two optional downloads are involved:
+
+- **Icons of known services.** The first time a known service appears in your
+  inbox, UltraMail downloads its icon (favicon) once from that service's own
+  website — for example `https://www.paypal.com/favicon.ico`. The service's
+  web server learns your IP address and that a copy of UltraMail requested its
+  icon. It does **not** learn which message you received or your e-mail
+  address. The icon is then kept in the cache.
+- **Website icons of other senders.** For a sender that is not a known
+  service, UltraMail may read the home page of the domain it writes from to
+  find the site's icon. The sender's web server learns that someone at your IP
+  address looked at its home page, though not which message or who you are.
+  This is done at most once a week per domain, only for mail that passed
+  UltraMail's spam and phishing scan, and never for the junk folder.
+
+Both downloads are **off by default**: a fresh installation contacts nobody
+but your mail provider until you turn them on in *Settings → Privacy → Sender
+icons* (*Download the icons of known senders*, *Show other senders' website
+icons*), separately. With the first switch off, nothing at all is downloaded
+for badges. Icons already downloaded keep being shown until you delete the
+cache folder.
+
+**Data transmitted:** your IP address and a request for the icon or home
+page. **Recipients:** the operators of the respective websites.
+**Legal basis:** your consent, given by turning the switch on and withdrawn
+by turning it off (Art. 6(1)(a) GDPR). **Setting:** *Settings → Privacy → Sender icons*.
+
+### 5.5 Spam and phishing scan
+
+UltraMail scores every incoming message for spam and phishing signs (forged
+sender domains, requests for credentials, failed DKIM / SPF / DMARC results
+reported by your own mail server, and others) and shows a warning badge.
+**This scan runs entirely on your device.** No message content, address or
+link is sent to us or to any reputation service.
+
+### 5.6 Attaching a cloud link
+
+The composer's "Attach cloud link…" uploads a file to a cloud storage account
+of yours (Nextcloud / ownCloud, a WebDAV server, Dropbox, OneDrive or Google
+Drive) and inserts the share link into the message. This happens only when you
+use the feature. The file and your credentials for that service go to the
+service you chose, under its own privacy policy. Dropbox, OneDrive and Google
+Drive sign in through the browser as described in 5.2.
+
+### 5.7 Links you click
+
+A link in a message opens in your web browser. From then on the browser's and
+the linked site's privacy policies apply. UltraMail does not check links
+against any online service.
+
+### 5.8 Notifications and the desktop feed
+
+On ULTRA OS, UltraMail reports new mail to the desktop's notification server
+and message centre over a local interface (UltraMessage). This stays on your
+device.
+
+### 5.9 Spell checking
+
+Spell checking in the composer uses dictionaries installed on your computer
+(Hunspell or the system spell checker). Nothing you type is sent anywhere.
+
+## 6. What we do not do
+
+UltraMail does not:
+
+- create or require an account with ULTRA OS Development GmbH;
+- send usage statistics, analytics, crash reports or diagnostic data to us or
+  anyone else;
+- check for updates by contacting our servers;
+- show advertising or contain third-party advertising or tracking SDKs;
+- read your messages for any purpose other than showing them to you,
+  indexing them for search and the local spam scan, and the local "needs an
+  answer" feature;
+- share, sell or otherwise disclose any of your data.
+
+Because no data reaches us, we hold no personal data about UltraMail users and
+cannot identify you from your use of the application.
+
+## 7. Your rights
+
+Under the GDPR you have the rights of access (Art. 15), rectification
+(Art. 16), erasure (Art. 17), restriction of processing (Art. 18), data
+portability (Art. 20) and objection (Art. 21), and the right to lodge a
+complaint with a supervisory authority (Art. 77). The authority responsible
+for us is the Landesbeauftragte für Datenschutz und Informationsfreiheit
+Nordrhein-Westfalen, Kavalleriestraße 2–4, 40213 Düsseldorf, Germany.
+
+Because UltraMail stores your data only on your own device, you exercise these
+rights directly in the application: you can read, correct, export (your
+messages are standard `.eml` files) and delete everything yourself. For data
+held by your e-mail provider, Google, Microsoft, Yahoo, Mozilla or the
+operators of the websites named in section 5, please contact them; they are
+the controllers for that processing.
+
+For any question about this declaration, write to [privacy@ultraos.eu].
+
+## 8. Children
+
+UltraMail is a general-purpose mail program and is not directed at children.
+Since it collects no data for us, no age verification takes place.
+
+## 9. Changes to this declaration
+
+We update this declaration whenever UltraMail's data flows change, for example
+when a feature that contacts a server is added. The version and date at the
+top identify the current text; earlier versions are available in the project's
+source repository.

@@ -23,6 +23,8 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.11.0 - Privacy > Sender icons: both downloads are off by default,
+//                   and "Restore default" turns them off
 // Version: 1.10.0 - Display > Treeview: the current account or all accounts
 // Version: 1.9.1 - the tree names the page "Trusted & blocked": the whole title
 //                  did not fit the tree; a page taller than the window scrolls
@@ -806,8 +808,8 @@ namespace {
 
         d->resets[kPageSenderIcons] = PageReset{ "Restore default", 140, [d]() {
             if (!d->prefs) return;
-            d->prefs->fetchSenderIcons = true;
-            d->prefs->fetchSiteIcons   = true;
+            d->prefs->fetchSenderIcons = false;
+            d->prefs->fetchSiteIcons   = false;
             SyncControls(d);
             ApplyAndSave(d);
         } };
