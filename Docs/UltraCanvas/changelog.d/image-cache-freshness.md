@@ -61,9 +61,11 @@
   sound is playing (the muted PreviewClip too). For a host deciding whether it
   may reopen the shown file, which restarts playback - UltraFiler's preview
   pane uses it to leave a playing video alone when the file changes.
-- **The Filer's Ctrl shortcuts no longer warn at build time.** The Ctrl+A / C
-  / X / V / D / F / P switch listed lowercase character literals beside the
-  `UCKeys` letters; no backend delivers a lowercase key code (the Linux one
-  upper-cases the keysym), so those cases were dead and clang reported each
-  as "case value not in enumerated type". They are `UCKeys::A` and so on now,
-  as in the text widgets. No change in behaviour.
+- **The Filer's and the Gource tree's letter shortcuts no longer warn at
+  build time.** The Filer's Ctrl+A / C / X / V / D / F / P switch and
+  `UltraCanvasGourceTree`'s F / Ctrl+E / Ctrl+Shift+C listed lowercase
+  character literals beside the `UCKeys` letters; no backend delivers a
+  lowercase key code (the Linux one upper-cases the keysym), so those cases
+  were dead and clang reported each as "case value not in enumerated type" -
+  ten warnings in all. They are `UCKeys::A` and so on now, as in the text
+  widgets. No change in behaviour.
