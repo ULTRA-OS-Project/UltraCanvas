@@ -15,13 +15,15 @@
 // Display > Links (a link's address in the status bar or in a tooltip) and
 // Display > Notifications (a notification on screen when new mail arrives) and
 // Warnings > Spam/scam warnings (which kinds of warning the content scan gives)
-// and Warnings > Trusted and blocked senders (the sender menu's lists).
+// and Warnings > Trusted & blocked (the sender menu's lists).
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.9.1 - the tree names the page "Trusted & blocked": the whole title
+//                  did not fit the tree; a page taller than the window scrolls
 // Version: 1.9.0 - Warnings > Trusted and blocked senders
 // Version: 1.8.0 - Warnings > Spam/scam warnings: one switch per kind of warning
 // Version: 1.7.0 - Display > Notifications: new mail on screen, or not
@@ -182,7 +184,7 @@ namespace {
         std::vector<std::pair<bool ThreatScanOptions::*,
                               std::shared_ptr<UltraCanvasCheckbox>>> warningBoxes;
 
-        // Warnings > Trusted and blocked senders
+        // Warnings > Trusted & blocked
         std::shared_ptr<UltraCanvasTagInput> trustedSendersInput;
         std::shared_ptr<UltraCanvasTagInput> blockedSendersInput;
 
@@ -240,6 +242,18 @@ namespace {
         parts.page->layout.SetFlexColumn().SetFlexGap(0)
                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         parts.page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+        // A page taller than the window scrolls: the lists of trusted
+        // websites and senders grow a row at a time, and without this the
+        // notes were pushed off the foot of the page with no way to reach
+        // them. Containers scroll only when asked; a page that fits shows no
+        // scrollbar. Vertically only - the vertical bar narrows the viewport,
+        // which would otherwise make a horizontal overflow of its own width.
+        {
+            ContainerStyle cs;
+            cs.autoShowScrollbars = true;
+            cs.autoShowHorizontalScrollbar = false;
+            parts.page->SetContainerStyle(cs);
+        }
         auto titleLabel = MakeLabel(id + "-title", title, kTitleFontSize);
         titleLabel->SetFontWeight(FontWeight::Bold);
         parts.page->AddChild(titleLabel);
@@ -1132,7 +1146,9 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
         AddTreeNode(d, "settings", kPageWarnings, "Warnings");
         AddTreeNode(d, kPageWarnings, kPageScamWarnings, "Spam/scam warnings");
-        AddTreeNode(d, kPageWarnings, kPageSenderLists, "Trusted and blocked senders");
+        // The page's title is "Trusted and blocked senders"; the tree has
+        // room for less.
+        AddTreeNode(d, kPageWarnings, kPageSenderLists, "Trusted & blocked");
         // After the nodes: hiding the root promotes the sections to the top.
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);

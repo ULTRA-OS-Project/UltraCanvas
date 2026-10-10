@@ -11,7 +11,7 @@
 # This script takes the suite package and extracts the one application with
 # exactly the libraries and resources it loads:
 #
-#   Linux    dist/UltraCanvas-Linux-<v>-<arch>/   ->  dist-start/UltraCanvasStart-Linux-<v>-<arch>.tar.gz
+#   Linux    dist/UltraCanvas-Linux-<v>-<arch>/   ->  dist-start/UltraCanvasStart-Linux-<v>-<arch>.tar.xz
 #            bin/UltraCanvasStart and its launcher, lib/ (the closure ldd
 #            resolves inside the suite's lib/), share/media (fonts, icons)
 #   Windows  dist/  (package-win.sh)              ->  dist-start/UltraCanvasStart-Windows-<v>-<arch>.zip
@@ -35,7 +35,7 @@
 #   ARCH=<label>   the architecture label in the name (default as the suite
 #                  packagers derive it: x86_64 or arm64)
 #
-# Version: 1.0.0
+# Version: 1.1.0 - the Linux archive is xz
 # Author: UltraCanvas Framework / ULTRA OS
 set -euo pipefail
 
@@ -184,8 +184,12 @@ WRAP
     copy_media_subset "$SOURCE/share/media" "$PKG/share/media"
     write_readme "./$APP"
 
-    ARCHIVE="$OUTPUT/$PKGNAME.tar.gz"
-    tar -C "$OUTPUT" -czf "$ARCHIVE" "$PKGNAME"
+    # xz, not gzip: the package is mostly shared libraries, which xz packs
+    # 28% smaller (35 MB against 49 MB for the same tree on 2026-10-09), and
+    # the archive is a download for a computer with nothing yet. -T0 uses
+    # every core; single-threaded the compression took a minute.
+    ARCHIVE="$OUTPUT/$PKGNAME.tar.xz"
+    XZ_OPT="-T0" tar -C "$OUTPUT" -cJf "$ARCHIVE" "$PKGNAME"
     RUN=("$PKG/$APP")
 
 else

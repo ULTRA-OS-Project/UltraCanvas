@@ -1,3 +1,10 @@
+#### 2026-10-09 *0.1.3*
+- **The Linux SDK it downloads is a `.tar.xz`.** CI packs the Linux SDK
+  with xz now, about 28% smaller than the gzip it was, so the Project page's
+  *Download...* and the plan's SDK step name `UltraCanvas-SDK-Linux-<version>-<arch>.tar.xz`;
+  macOS keeps `.tar.gz` and Windows `.zip`. The unpack step reads the archive
+  by its contents, as before.
+
 #### 2026-10-08 *0.1.2*
 - **The Project page downloads the SDK.** Every release build of `main` now
   attaches the six SDK archives to the GitHub release `v<version>`, so

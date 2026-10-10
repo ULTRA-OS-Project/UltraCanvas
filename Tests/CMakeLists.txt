@@ -193,14 +193,9 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     target_include_directories(UltraWebGuestTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
     target_compile_features(UltraWebGuestTest PRIVATE cxx_std_20)
-    # As the app links them; a shared core already carries UltraNet.
-    get_target_property(_uw_core_type UltraCanvas TYPE)
-    if(_uw_core_type STREQUAL "SHARED_LIBRARY")
-        target_include_directories(UltraWebGuestTest PRIVATE $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
-        target_link_libraries(UltraWebGuestTest PRIVATE WasmHost UltraCanvas)
-    else()
-        target_link_libraries(UltraWebGuestTest PRIVATE WasmHost UltraNet UltraCanvas)
-    endif()
+    # As the app links them: UltraNet through its home, which is the shared
+    # core itself or the archive under a static core.
+    target_link_libraries(UltraWebGuestTest PRIVATE WasmHost UltraNet UltraCanvas)
     set_target_properties(UltraWebGuestTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
@@ -876,6 +871,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: CaretStackingTest")
 else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TAG INPUT GROW TEST =====
+# A tag field grows to fit its chips inside a flex layout (the layout pass
+# used to put its first height back, cutting off every row after the first),
+# and what follows it moves down. Opens a window, so it skips itself without
+# a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TagInputGrowTest...")
+    add_executable(TagInputGrowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TagInputGrowTest.cpp
+    )
+    target_include_directories(TagInputGrowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TagInputGrowTest PRIVATE cxx_std_20)
+    target_link_libraries(TagInputGrowTest PRIVATE UltraCanvas)
+    set_target_properties(TagInputGrowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TagInputGrowTest COMMAND TagInputGrowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TagInputGrowTest")
+else()
+    message(STATUS "  TagInputGrowTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== ELEMENT PRESS TAKEN TEST =====

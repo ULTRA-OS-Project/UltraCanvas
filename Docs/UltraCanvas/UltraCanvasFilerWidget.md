@@ -1032,6 +1032,20 @@ painting its tile when the Length / Dimensions dataset fields are enabled —
 never opens the file on the UI thread; the detail appears with the next
 posted repaint, typically within a frame or two.
 
+The info bar and the hidden-items notice above it take the bottom of the
+display, and both come and go - with the folder, with what it hides, with
+Display > Info-Bar - without a callback. A host that floats an element over
+the display's bottom corner keeps clear of them with
+`GetBottomStripsHeight()` (pixels, 0 while neither is up), asked each time it
+places the element:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; std::shared_ptr<UltraCanvas::UltraCanvasButton> cornerButton; -->
+```cpp
+const Rect2Df area = filer->GetBounds();
+const float y = area.y + area.height - filer->GetBottomStripsHeight() - 10 - 30;
+cornerButton->SetBounds(area.x + 10, y, 30, 30);   // 10 px from the corner, above the strips
+```
+
 ## Files in use
 
 `SetShowLockState(bool)` (default **on**) marks files another program is

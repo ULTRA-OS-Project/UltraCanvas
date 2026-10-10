@@ -1,3 +1,219 @@
+#### 2026-10-10 *0.9.235*
+- **The Linux CI legs fall back to MuPDF's GitHub mirror when mupdf.com
+  does not answer.** The install step builds MuPDF 1.23.10 from the release
+  archive on mupdf.com, and on 2026-10-09 that host timed out through all
+  three download attempts, seven minutes of retries, and failed the leg
+  before a line of UltraCanvas was compiled. When the download fails, the
+  step now clones the same release tag from `github.com/ArtifexSoftware/mupdf`
+  with the third-party submodules the build compiles, and makes it the same
+  way.
+- **The tree builds with the current MSYS2 toolchain again.** MSYS2's
+  CLANG64 and CLANGARM64 moved to LLVM 23 on 2026-10-09, and its libc++
+  dropped most of its transitive includes: `<string>` no longer brings in
+  `<algorithm>`, `<cstdlib>`, `<iterator>` or `<optional>`. A Windows leg with
+  a cold compiler cache stopped on the first file that relied on that
+  (`UltraCanvasWordFormatInternal.h`, "no member named 'strtof' in namespace
+  'std'"), then on the vendored MicroTeX's `string_utils.h`. Those two and
+  `UltraFIBUCli.cpp` (`std::sort`) include what they use now, and the build
+  defines libc++'s own bridge `_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23`,
+  exported to SDK consumers through the CMake package, until every file does;
+  libc++ 24 removes the bridge.
+
+#### 2026-10-10 *0.9.234*
+- **The Linux SDK archives are xz.** The SDK is the shared core and its
+  libraries, which xz packs about 28% smaller than gzip (the UltraCanvasStart
+  package, the same kind of tree, went from 100 MB to 70 MB), so the Linux
+  legs pack `UltraCanvas-SDK-Linux-<version>-<arch>.tar.xz` instead of a
+  `.tar.gz`; macOS keeps `.tar.gz` and Windows `.zip`. UltraCanvasStart 0.1.3
+  names the new extension, and its unpack step read the archive by its
+  contents already. `Docs/UltraCanvasSDK.md` 1.3.0 says which archive each
+  platform gets.
+
+#### 2026-10-10 *0.9.233*
+- **A tag field grows in a layout, too.** `UltraCanvasTagInput` wraps its
+  chips onto more rows and was meant to grow to fit them (`autoHeight`, on by
+  default), but it only changed its bounds while painting. In a flex
+  container the next layout pass set them back from `size.height` - 36 px
+  from `CreateTagInput` - so the rows past the first were cut off and their
+  entries could not be seen. The growth now sets `size.height` and asks for a
+  new layout, and the field shrinks the same way when chips are removed. A
+  one-row field takes the height its row needs (40 px at the default style,
+  where it kept the 36 px it was made with). `Tests/TagInputGrowTest.cpp`
+  puts a field between two labels in a flex column and checks that it grows,
+  moves the label below it down, and shrinks back. Seen in UltraMail's *Settings > Warnings > Trusted & blocked*
+  (a third blocked address was invisible) and *Privacy > Images*, and
+  UltraFiler's own ignore patterns (UltraMail 0.10.46).
+- **The tree builds with the current MSYS2 toolchain again.** MSYS2's
+  CLANG64 and CLANGARM64 moved to LLVM 23 on 2026-10-09, and its libc++
+  dropped most of its transitive includes: `<string>` no longer brings in
+  `<algorithm>`, `<cstdlib>`, `<iterator>` or `<optional>`. A Windows leg with
+  a cold compiler cache stopped on the first file that relied on that
+  (`UltraCanvasWordFormatInternal.h`, "no member named 'strtof' in namespace
+  'std'"), then on the vendored MicroTeX's `string_utils.h`. Those two and
+  `UltraFIBUCli.cpp` (`std::sort`) include what they use now, and the build
+  defines libc++'s own bridge `_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23`,
+  exported to SDK consumers through the CMake package, until every file does;
+  libc++ 24 removes the bridge.
+
+#### 2026-10-09 *0.9.232*
+- **UltraNet and UltraWin are module homes like the others, and the net tests
+  carry no second UltraNet.** The two modules the shared core had folded in
+  since they existed kept their archives under the public names, so every
+  consumer special-cased the core's type (`_uc_core_shared` in UltraMail,
+  UltraSocial, UltraCanvasStart, UltraWeb and UltraCloud) and the test
+  binaries that linked the archive beside the shared core took the module
+  from the archive: UltraNetTests held 130 `UltraNet_*` functions of its own
+  and UltraNetApiStatus 111, a second copy of the module and its global state
+  next to the core's. The archives are `uc-net` and `uc-win` now, `UltraNet`
+  and `UltraWin` are INTERFACE homes that resolve to the core or, under a
+  static core, to the archive, and every consumer links the name; the
+  conditionals are gone. The one place an archive is still named is the
+  rescanned link group a *static* core needs for the mutual
+  UltraNet/UltraCanvas references (`Tests/UltraNet`, `Tests/UltraSocial`).
+
+#### 2026-10-09 *0.9.231*
+- **`ultramsg` has an icon.** The uploaded UltraMsg logo is
+  `media/appicon/UltraMsg.svg` now (it arrived as `UltraMsg logo.svg`; an
+  icon name with a space cannot be looked up in an icon theme), and
+  `media/appicon/UltraMsg.png` is its 256 px render through librsvg, as for
+  the other applications. The UltraMessage command line has no window, so
+  the one place it shows is the Windows `ultramsg.exe`, which embeds it
+  (`ultracanvas_embed_app_icon`).
+
+#### 2026-10-09 *0.9.230*
+- **A list model that outlives its view no longer calls into it.**
+  `UltraCanvasListView` puts its callbacks on the model it shows, and they
+  pointed back at the view; nothing took them off when the view was
+  destroyed, so a model the application kept and changed afterwards called
+  into freed memory. They now hold a weak handle to the view and do nothing
+  once it is gone. They are made harmless rather than removed from the model:
+  a `UltraCanvasListSortFilterProxy` chained on after the view keeps a copy of
+  them, and removing them would have cut the proxy off from its source.
+  - `OnModelChanged()` (protected, virtual): called after the view has taken
+    in each change its model signals. A subclass that keeps something derived
+    from the rows overrides it instead of wrapping the model's callbacks,
+    which would outlive it the same way - UltraMail's message list does so
+    for its fitted Date column.
+  - `ListViewScrollTest` destroys a view while its model and a proxy on it
+    live on: the model's later changes reach the proxy and not the view
+    (with the old callbacks the test aborts, "pure virtual method called").
+
+#### 2026-10-09 *0.9.229*
+- **A dropped connection no longer loses a macOS release.** The runner's
+  network dropped out of `notarytool submit --wait` twice on 2026-10-09
+  ("The Internet connection appears to be offline"), once in the suite's
+  image (0.9.223) and once in UltraCanvasStart's (0.9.225), each time after
+  the upload had succeeded and while Apple was still processing, and each
+  time it ended the leg and its release. `package-macos.sh` now keeps the
+  submission id and resumes the wait on it (`notarytool wait`, up to six
+  times with a pause between) until the status is final; only a submit that
+  produced no id at all is submitted again.
+- **The Linux UltraCanvasStart archive is xz, and the size of a standalone
+  package is measured.** `scripts/package-ultracanvasstart.sh` packs the
+  Linux package with xz instead of gzip: the same tree went from 49 MB to
+  35 MB, since it is mostly shared libraries and the core, which xz packs
+  well. `Docs/UltraCanvas/StandaloneSizeInvestigation.md` records what the
+  packages weigh and why: the shared core (61 MB on Linux), ICU's data
+  reached through Ubuntu's libxml2 (29 MB), libvips' delegates and GTK, and
+  the modules an application could do without at 14% of the whole, so an
+  on-demand module core would cut the package by about 15%, while a static
+  link of the one application halves it. `package-macos.sh` now says in the
+  log which load command it could not rewrite (a library without header
+  padding), instead of swallowing the error.
+
+#### 2026-10-09 *0.9.228*
+- **A block that starts with an empty line keeps it when written out.**
+  `UCRichDocument::ConcatenateRunText` skipped the line break of a block's
+  first run, while the editor - which shows that line and counts its `\n` in
+  every position (`UCRichDocumentEditor::RunsText`) - did not. A code block
+  whose first line is empty therefore lost that line in HTML and Markdown
+  and in the ODT and DOCX writers, and a table cell starting with an empty
+  line was copied as plain text without it. The function now counts every
+  run's line break, so the serializers read the text the editor shows;
+  `RunsText` is the same function.
+
+#### 2026-10-09 *0.9.227*
+- **`UltraCanvasFilerWidget::GetBottomStripsHeight()`** says how much of the
+  display's bottom edge its own strips take - the selection info bar and the
+  hidden-items notice above it - so a host that floats an element over the
+  display's bottom corner keeps clear of them. Both strips come and go (with
+  the folder, with what it hides, with Display > Info-Bar) without a
+  callback, so the host asks each time it places the element. UltraFiler's
+  connection log button, which now floats in the display's bottom-left
+  corner, is the first user; documented in `UltraCanvasFilerWidget.md`.
+- **UltraNet FTP keeps a connection open for the next call, and stops asking
+  a server for MLSD once it has refused it.** Every FTP call used to make its
+  own libcurl handle and close the connection with it, so browsing a server
+  was a full connect and login per folder - and on a server without MLSD
+  (vsftpd answers "500 Unknown command."), two per folder: one to be refused
+  MLSD, one more to ask with LIST. A UltraFiler session opening one folder
+  and reading four subfolders ahead logged in ten times. Now each thread's
+  calls share a libcurl connection pool (`UltraNetFtp.cpp`,
+  `ThreadConnections`), so a call to the same server and user takes up the
+  connection the last one left open: the LIST fallback runs on the
+  connection MLSD was refused on, and the next folder starts at CWD. A
+  server that answers MLSD with 500 / 502 / 504 is remembered for the life
+  of the process and listed with LIST straight away; a 550 (the folder
+  refused, not the command) is not taken as that. The same five listings
+  against vsftpd 3.0.5 are one login, one MLSD and five LISTs.
+  - Changes are the exception: on FTP, `UltraNet_FtpDelete`, `FtpRename`,
+    `FtpCreateDirectory` and `FtpRemoveDirectory` still log in on a
+    connection of their own and close it. libcurl sends their commands
+    (DELE, RNFR / RNTO, MKD, RMD) before it changes folder, and they name
+    the entry from the folder a login lands in; on a kept connection that a
+    listing left in /photos/, "DELE photos/a.txt" named
+    /photos/photos/a.txt. SFTP's commands carry the full path and may use a
+    kept connection.
+  - New `UltraNet_FtpCloseIdleConnections()` closes the calling thread's
+    open connections; a thread's are also closed when it ends, and every
+    thread's by `UltraNet_Shutdown`. One pool per thread because libcurl
+    does not support sharing connections between threads that transfer at
+    the same time.
+  - The session log says so: *Using the open connection to host - already
+    logged in* instead of resolving and logging in, and *Connection kept
+    open for the next request* for libcurl's "left intact". "Resolving
+    address of" is now held back until libcurl says what it does first.
+  - Tests: `test_ftp_log.cpp` counts logins and MLSD requests against the
+    scripted loopback server (three listings, one login, one MLSD; a 550
+    refusal leaves MLSD on; a close logs in afresh; a delete after a
+    listing in a subfolder names the right file, on a login of its own) and
+    checks the reuse wording of libcurl 8.21 and earlier. The scripted
+    server now keeps each connection's folder and serves connections side
+    by side. `UltraNetApiStatus` probes the new
+    function, against a real server when `ULTRANET_PROBE_FTP_URL` is set.
+- **UltraNet sessions no longer share one connection pool between threads.**
+  A session (`UltraNetCookies.h`) kept its connections in its libcurl share
+  (`CURL_LOCK_DATA_CONNECT`), which libcurl documents as not supported
+  between threads that transfer at the same time - and a session's requests
+  may come from several. The share now holds only what libcurl does support
+  sharing that way: the cookies, the DNS cache and the TLS sessions. The
+  connections live in the session's easy handles: a request takes an idle
+  handle for itself and gives it back with its connection still open, so
+  requests one after another still share one connection, and requests at
+  the same time each use their own. Up to 8 idle handles are kept; a session
+  created with `reuseConnections = false` closes each one after its request.
+  - A cookie jar (`persistCookies`) is written after every request; it used
+    to be written when the request's handle was destroyed, which a pooled
+    handle is not.
+  - `UltraNet_DestroySession` no longer frees the share while a request on
+    another thread is still using it: the session is closed when its last
+    request returns. `UltraNet_Shutdown` closes every session still open,
+    and a session never closed is left alone at exit rather than calling
+    into libcurl from a static destructor.
+  - Tests: `test_session.cpp` runs a keep-alive HTTP/1.1 server on loopback
+    that counts connections - five requests in a row are one connection;
+    forty requests from four threads at once all get their answer and the
+    cookie another request was given, on no more connections than requests
+    in flight; `reuseConnections = false` connects every time.
+- **An FTP folder holding nothing but its own entries is listed once.** Many
+  servers send the folder's own "." and ".." (MLSD `cdir` / `pdir`, or LIST
+  in `ls -la` style) before its entries. A folder with nothing else in it
+  read as a listing that could not be parsed, and was asked for again with
+  LIST - and on LIST, again with NLST. Both formats now take such a listing
+  for the empty folder it is. An MLSD `cdir` named by the folder's path
+  (`type=cdir; /pub`) is no longer listed as a subfolder called "/pub".
+  Tests in `test_ftp_parser.cpp` and `test_ftp_log.cpp`.
+
 #### 2026-10-09 *0.9.226*
 - **A raster fill can replace pixels, alpha included, instead of painting
   over them.** `RasterPaint::FloodFill` and `StampMask` only composited
