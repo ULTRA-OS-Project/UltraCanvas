@@ -1,3 +1,196 @@
+#### 2026-10-10 *0.9.240*
+- **The doc-example check reads two more kinds of correct C++.** Both
+  failed only because of how `scripts/check_doc_examples.py` supplies the
+  names a snippet takes from its application (a `textArea`, a `window`, a
+  variable in a `<!-- doc-check: ... -->` comment). The docs had to work
+  around them; now they need not.
+  - **A `[this]` lambda may use such a name.** The checker declared it as a
+    local of the snippet's statements, so `[this] { textArea->CutSelection(); }`
+    failed with "cannot be implicitly captured". When clang says so, the name
+    is now declared as a member, as it would be in the application.
+    `[name]` still captures a local, and a `[]` lambda that uses the name
+    is still reported.
+  - **A name before `<` is declared.** C++20 reads an undeclared name before
+    `<` as a template's, so for `globalIdx < static_cast<int>(n)` clang
+    reported "expected '>'" and never named `globalIdx`, and the doc-check
+    variable was never supplied. The checker now looks for the names
+    compared with `<` on the line of such an error and the three before it,
+    and supplies those the doc declares.
+- **`TabStyle::Pill` - a modern capsule tab for `UltraCanvasTabbedContainer`.**
+  Every tab is a capsule floating in its slot of the tab bar: the open tab
+  is filled with `activeTabColor` and outlined with the new
+  `activeTabBorderColor` (a mid blue by default), an inactive one is filled
+  with `inactiveTabColor` (transparent for a text-only tab) and outlined with
+  `inactiveTabBorderColor`, a hovered one with `hoveredTabColor` /
+  `hoveredTabBorderColor`. The page below gets a hairline in
+  `tabContentBorderColor` on the bar's side instead of a frame.
+  `SetPillInset()`, `SetPillBorderWidth()` and `SetPillCornerRadius()`
+  (0 = capsule, otherwise a rounded chip) shape it; `GetPillBounds()` is the
+  capsule drawn. `SetTabBarColor()`, `SetHoveredTabBackgroundColor()` and
+  `SetActiveTabTextColor()` join the colour setters.
+  `Tests/TabPillStyleScreenshotTest.cpp` checks the one-pixel outline on
+  composited pixels and writes five colourways as a screenshot;
+  `Docs/UltraCanvas/UltraCanvasTabExamples.md` *Pill Style* lists them.
+- **Tab titles, close buttons.** A truncated tab title now runs up to the
+  close button: `GetTruncatedTabText` stopped 20px short of the width it was
+  given, leaving a gap before the X in every style, and it cut UTF-8 titles
+  byte by byte; it takes whole characters off now. The close X has one
+  weight on every tab (`closeButtonStrokeWidth`, default 1px) instead of 2px
+  on inactive tabs and 1px on the open one, and the open tab's X can have a
+  colour of its own (`activeTabCloseButtonColor`), so a solid accent pill
+  shows a pale X while the other tabs keep a grey one.
+  `SetCloseButtonColor()`, `SetCloseButtonHoverColor()` and the two new
+  setters join the colour setters.
+- **Dragging a tab to another place works on every tab position and past
+  the visible range.** The swap compared the pointer's x with the target's
+  horizontal centre whatever the `TabPosition`, so reordering on a `Left` or
+  `Right` bar, where the tabs are stacked, hardly ever happened; it follows
+  the bar's axis now, as does the drag-out threshold and the insertion line,
+  which is drawn at last (it had no caller). A pointer held within
+  `dragAutoScrollZone` (24px) of either end of a scrolled strip carries the
+  tab one place in that direction every `dragAutoScrollIntervalMs` (250) and
+  scrolls to keep it in view, so a tab reaches any place in one drag. The
+  hovered tab, its close button and the right-clicked tab follow a reorder
+  like the active tab did, instead of pointing at the wrong tab until the
+  next mouse move. The drag ghost of a `TabStyle::Pill` tab is the capsule
+  itself. `SetAllowTabReordering()` joins `SetAllowTabDragOut()`.
+  A press on a tab no longer dereferences the application instance without
+  a check, so a host with no application (a headless test) can drive a whole
+  drag through the events; `Tests/MenuAndTabBehaviourTest.cpp` does, and
+  drives the single steps as well. The DemoApp tab page is as tall as what
+  is placed on it instead of a fixed literal.
+
+#### 2026-10-10 *0.9.239*
+- **A picture saved over is shown as it is now, not as it was.** The image
+  cache `UCImage::Get()` is keyed by the path and never looked at the file
+  again, and libvips' own operation cache under it is keyed by the file name,
+  so a picture edited and saved over kept answering with its old content:
+  the Filer rescanned the folder when the save landed, made the thumbnail
+  again and got the old picture back.
+  - New `UCImage::GetFresh(path)`: `Get()` for a caller that must see the
+    file as it is now. Every image read from a file records the file's size
+    and modification time, taken before the read; `GetFresh()` compares them
+    with the file and, when it has changed - or the cached copy failed to
+    decode, as a file caught half-written does - drops everything cached for
+    the path and reads it again. One stat per call, so it is for thumbnail
+    workers and viewers opening a file, not for paint paths; `Get()` is
+    unchanged.
+  - `UCImage::RemoveFromCache(path)` now also releases libvips' cached
+    operations. Without that, the next load of a file saved over was handed
+    the old file's header - its old width and height - so
+    `UltraCanvasImageElement::LoadFromFile(path, true)` read a changed file
+    at its old size.
+  - A cached pixmap's key carries the source file's size and modification
+    time, so a pixmap of a file's previous content that outlived its raster
+    (the two are evicted on separate budgets) is never served for the file
+    as it is now. The key is no longer printed into a 300-byte buffer, which
+    cut long paths short and let two files deep in one folder share pixmaps.
+  - The Filer's thumbnail workers, its dimensions probe and the media viewer
+    read images with `GetFresh()`.
+- **The thumbnail disk cache no longer keeps a thumbnail of a file's old
+  content as the answer for its new content.** `ThumbnailDiskCache::Store`
+  stamped an entry with the source's size and modification time when it was
+  written, after the decode - so a thumbnail made from the old content (the
+  image cache above, or a save landing mid-decode) was recorded as valid for
+  the new file, and every later run showed the old picture until the file
+  changed again. `Store(request, blob, madeFrom)` now takes the stamp taken
+  before the decode (new `ThumbnailDiskCache::StampSource`) and stores
+  nothing when the file no longer matches it. `kRendererGeneration` is 3, so
+  every entry an earlier build may have recorded this way is made again once.
+- **`UltraCanvasAlbum` and `UltraCanvasSlideshow` show a picture saved over as
+  it is now.** Both paint with `UCImage::Get()`, which never looks at the
+  disk, so an edited photo kept its old picture for the life of the widget.
+  New `UltraCanvasImageFileWatch` (`UltraCanvasImageFileWatch.h`): a view
+  hands it the paths each paint drew - no I/O on the paint path, just a
+  compare-and-swap of the list - and a worker thread checks those files every
+  1.5 s; when one changed its cached copy is dropped and the view's callback
+  runs on the UI thread. The album relayouts and repaints, the slideshow
+  repaints. Only what is on screen is checked, the worker starts with the
+  first picture drawn, and a file that fails to decode is not read again on
+  every pass. Each watch judges a change against its own record of the
+  files, so two views showing one picture both repaint - the first to drop
+  the cached copy no longer takes the change away from the other.
+  - New `UltraCanvasFileStamp.h` (header-only): `FileStamp` and
+    `StampFile(path)`, a file's size and modification time. The image cache,
+    the thumbnail disk cache (`ThumbnailDiskCache::SourceStamp` is now an
+    alias of it), the watch and UltraFiler's preview pane had each grown a
+    copy of these lines.
+  - New `UCImage::RemoveFromCacheIfChanged(path)`: the check `GetFresh()`
+    makes, without the reload - true when a cached copy was dropped because
+    its file changed. Unlike `GetFresh()` it leaves a cached decode failure
+    alone, so a background check that repeats does not decode a broken file
+    over and over.
+- **`UltraCanvasMediaViewer::IsPlayingMedia()`**: whether a shown video or
+  sound is playing (the muted PreviewClip too). For a host deciding whether it
+  may reopen the shown file, which restarts playback - UltraFiler's preview
+  pane uses it to leave a playing video alone when the file changes.
+- **The Filer's and the Gource tree's letter shortcuts no longer warn at
+  build time.** The Filer's Ctrl+A / C / X / V / D / F / P switch and
+  `UltraCanvasGourceTree`'s F / Ctrl+E / Ctrl+Shift+C listed lowercase
+  character literals beside the `UCKeys` letters; no backend delivers a
+  lowercase key code (the Linux one upper-cases the keysym), so those cases
+  were dead and clang reported each as "case value not in enumerated type" -
+  ten warnings in all. They are `UCKeys::A` and so on now, as in the text
+  widgets. No change in behaviour.
+
+#### 2026-10-10 *0.9.238*
+- **A Markdown view's links can go without the underline.**
+  `MarkdownHybridStyle::linkUnderline` existed but the renderer underlined
+  every link regardless; it is honoured now, so a view whose links are file
+  names and addresses full of hyphens and underscores (UltraCanvasStart's
+  guides) can mark them with the link colour and the hand cursor alone. The
+  default stays underlined.
+
+#### 2026-10-10 *0.9.237*
+- **The tree includes the standard headers it uses, and the LLVM 23 bridge
+  is gone.** The build defined `_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23` so
+  that files relying on libc++ bringing in a header through `<string>` kept
+  compiling on MSYS2's LLVM 23 toolchain; libc++ 24 removes that bridge. Every
+  C++ file was compiled against the libc++ 23.1.3 headers (clang 22 frontend)
+  with the bridge off - the 1318 the Linux build compiles, the Windows-only
+  sources against the MinGW headers, the tests and plug-ins this
+  configuration skips - once with and once without it. Five relied on it and
+  include what they use now: `EmailCleanerTypes.cpp`, `UltraFIBUCli.cpp` and
+  `UltraWinSetup/main.cpp` (`<cstdlib>` for `std::atoi`/`atol`/`atoll`),
+  AnchorPoint's `RawSocketTransport.cpp` (`<cerrno>`) and
+  `UltraCanvasTimeline.h` (`<functional>`); the Windows notification
+  listener includes `<cstdio>` for its `std::snprintf`. The definition is
+  removed from the build and from the exported library target, so the
+  Windows legs reject a file that relies on a transitive include as soon as
+  it is written. Not checked here: the macOS, Android and WebAssembly
+  platform sources and the opt-in llama.cpp adapter, whose toolchains are
+  not libc++ 23.
+- **A tag field made without a height starts as tall as one row of chips.**
+  `CreateTagInput` gave it 36 px, but one row needs 40 at the default style
+  (the 28 px chip and 6 px of padding above and below), so every such field
+  grew by 4 px on its first frame - a visible jump of whatever sat below it
+  on a settings page. With no height given (the default now, `h = -1`) the
+  field starts at `OneRowHeight()`, in the layout's `size.height` too, and
+  `Tests/TagInputGrowTest.cpp` checks that the first frame keeps it. A
+  height passed explicitly is used as before.
+
+#### 2026-10-10 *0.9.236*
+- **Mailbox plug-ins can make and delete folders.**
+  `IMailboxProtocolPlugin::CreateFolder` and `DeleteFolder` take a
+  folder's full name in its wire form, with the server's separator between
+  its levels. The IMAP plug-in sends `CREATE` and `DELETE`, on a kept
+  session when one is open and on a connection of its own otherwise. Before
+  `DELETE`, a kept session that has that mailbox open opens INBOX
+  (read-only) instead, so the server is not asked to delete the mailbox in
+  use. `DeleteFolder` refuses INBOX itself (`AccessDenied`). Both methods
+  are added at the end of the interface, and their defaults report "not
+  implemented", so existing plug-ins and test fakes still build unchanged.
+  `CreateMailboxCommand` / `DeleteMailboxCommand` in `ImapParse.h` quote the
+  name and leave out a line break, which would end the command early.
+  Tests: `test_imap_mailbox.cpp`.
+- **`UltraNet_ImapUtf7Encode`: a typed mailbox name for the wire.** This is
+  the counterpart of `UltraNet_ImapUtf7Decode`: UTF-8 in, IMAP's modified
+  UTF-7 out (RFC 3501 5.1.3). Printable ASCII passes through, `&` becomes
+  `&-`, and each run of other characters, surrogate pairs included, becomes
+  one `&…-` shift ("Bücher" -> `B&APw-cher`). A byte that is not UTF-8 is
+  taken as U+FFFD, so the result is always a valid name, and
+  `UltraNet_ImapUtf7Decode` reads back every name it writes.
+
 #### 2026-10-10 *0.9.235*
 - **The Linux CI legs fall back to MuPDF's GitHub mirror when mupdf.com
   does not answer.** The install step builds MuPDF 1.23.10 from the release

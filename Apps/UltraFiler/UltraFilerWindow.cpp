@@ -59,8 +59,10 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.28.0
-// Last Modified: 2026-10-09
+// A previewed file that changes on disk is reopened in the preview pane
+// (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.29.0
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -243,6 +245,12 @@ namespace {
     // rename-click delay, this must exceed the platform double-click
     // interval.
     constexpr unsigned int kFolderPreviewClickDelayMs = 500;
+
+    // Least time between two reopenings of a previewed file that keeps
+    // changing on disk (see ReloadChangedPreview): a growing log or a
+    // download is shown again every couple of seconds, not on every write.
+    // Also how often a change held back by a playing video is looked at again.
+    constexpr unsigned int kPreviewReloadIntervalMs = 2000;
 
     // The round button that floats over the left edge of the detail pane
     // while that pane shows a folder, and moves the folder into the folder
@@ -906,6 +914,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     volumeMonitor.Stop();
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
     CancelFolderPreviewTimer(); // its callback captures `this`
+    CancelPreviewReloadTimer(); // and so does this one's
     StopSubfolderSearch();
     ReapSearchWorkers(true);    // now the search threads are waited for
     exportWindows.clear();      // each joins the walk building its text
@@ -6549,6 +6558,86 @@ void UltraFilerWindow::CancelFolderPreviewTimer() {
     folderPreviewDelayTimer = InvalidTimerId;
 }
 
+void UltraFilerWindow::OpenPreviewFile(const std::string& path, bool asCopy) {
+    CancelPreviewReloadTimer();
+    // Stamped before the viewer reads the file, so a save that lands while
+    // it opens is a change the next rescan reopens for, not one it misses.
+    previewOpenedPath = path;
+    previewOpenedAsCopy = asCopy;
+    previewOpenedStamp = StampFile(path);
+    previewOpenedAt = std::chrono::steady_clock::now();
+    previewChangeStamp = FileStamp{};
+    if (asCopy) preview->SetFiles({path});
+    else        preview->OpenFile(path);
+}
+
+void UltraFilerWindow::ReloadChangedPreview() {
+    // The pane moved on - to another file, to a folder, or folded away -
+    // and has nothing of this file left to bring up to date.
+    if (!preview || previewOpenedPath.empty() || !previewShown ||
+        previewShowsFolder || preview->GetCurrentPath() != previewOpenedPath) {
+        CancelPreviewReloadTimer();
+        return;
+    }
+    const FileStamp now = StampFile(previewOpenedPath);
+    // Unchanged (or changed back), or gone: nothing to reopen. A file that
+    // was deleted or moved is the rescan's to handle - it moves or clears the
+    // selection - and reopening it would only show an error in the pane.
+    if (!now.valid || now == previewOpenedStamp) {
+        CancelPreviewReloadTimer();
+        return;
+    }
+    // A video or sound is reopened only once its file has settled and it is
+    // not playing. Reopening one starts it from the beginning - playing,
+    // under the default Autoplay - so reopening a video that is still
+    // downloading would restart it on every pause; one being watched is left
+    // alone until it is paused or ends. The timer looks again meanwhile.
+    const MediaKind kind = UltraCanvasMediaViewer::ClassifyFile(previewOpenedPath);
+    if (kind == MediaKind::Video || kind == MediaKind::Audio) {
+        const auto clock = std::chrono::steady_clock::now();
+        if (now != previewChangeStamp) {
+            previewChangeStamp = now;          // still being written
+            previewChangeSeenAt = clock;
+        }
+        const bool settled = clock - previewChangeSeenAt >=
+                             std::chrono::milliseconds(kPreviewReloadIntervalMs);
+        if (!settled || preview->IsPlayingMedia()) {
+            ArmPreviewReloadTimer(kPreviewReloadIntervalMs);
+            return;
+        }
+        OpenPreviewFile(previewOpenedPath, previewOpenedAsCopy);
+        return;
+    }
+    // A file written continuously is reopened at most once per interval;
+    // the timer applies whatever the last write left.
+    const auto sinceOpened = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - previewOpenedAt).count();
+    if (sinceOpened < static_cast<long long>(kPreviewReloadIntervalMs)) {
+        ArmPreviewReloadTimer(static_cast<unsigned int>(
+                kPreviewReloadIntervalMs - sinceOpened));
+        return;
+    }
+    OpenPreviewFile(previewOpenedPath, previewOpenedAsCopy);
+}
+
+void UltraFilerWindow::ArmPreviewReloadTimer(unsigned int delayMs) {
+    if (previewReloadTimer != InvalidTimerId) return;   // one is already due
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    previewReloadTimer = app->StartTimer(std::max(delayMs, 50u), false,
+            [this](TimerId) {
+        previewReloadTimer = InvalidTimerId;
+        ReloadChangedPreview();
+    });
+}
+
+void UltraFilerWindow::CancelPreviewReloadTimer() {
+    if (previewReloadTimer == InvalidTimerId) return;
+    if (auto* app = UltraCanvasApplication::GetInstance())
+        app->StopTimer(previewReloadTimer);
+    previewReloadTimer = InvalidTimerId;
+}
+
 void UltraFilerWindow::AttachFolderPreview() {
     if (!previewPane || !folderPreview) return;
     previewPane->AddChild(folderPreview);
@@ -6749,10 +6838,10 @@ void UltraFilerWindow::UpdatePreviewPane() {
             if (folderPreview->GetPath() != folderPath)
                 folderPreview->SetPath(folderPath);
         } else {
-            if (preview->GetCurrentPath() != mediaPath) {
-                if (mediaIsRemoteCopy) preview->SetFiles({mediaPath});
-                else                   preview->OpenFile(mediaPath);
-            }
+            if (preview->GetCurrentPath() != mediaPath)
+                OpenPreviewFile(mediaPath, mediaIsRemoteCopy);
+            else
+                ReloadChangedPreview();   // same file - changed since?
         }
     } else if (previewShown) {
         // Nothing to preview - give the folder display the whole width.

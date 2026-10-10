@@ -11,7 +11,7 @@
 #endif
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
-#include <UltraNet/UltraNetMime.h>   // UltraNet_ImapUtf7Decode
+#include <UltraNet/UltraNetMime.h>   // UltraNet_ImapUtf7Decode / Encode
 
 // Pure parsers live in the plug-in's header — include it directly.
 #include "../../UltraCanvas/Plugins/UltraNet/imap/ImapParse.h"
@@ -153,6 +153,37 @@ TEST(imap_modified_utf7_decode) {
 
     // Malformed (unterminated shift) is returned unchanged — never worse than raw.
     REQUIRE_EQ(UltraNet_ImapUtf7Decode("&AOk"), std::string("&AOk"));
+}
+
+TEST(imap_modified_utf7_encode) {
+    // Printable ASCII passes through; '&' is "&-".
+    REQUIRE_EQ(UltraNet_ImapUtf7Encode("INBOX.Work 2026"), std::string("INBOX.Work 2026"));
+    REQUIRE_EQ(UltraNet_ImapUtf7Encode("R&D"), std::string("R&-D"));
+
+    // A run of other characters is one shift of modified BASE64 (RFC 3501 5.1.3).
+    REQUIRE_EQ(UltraNet_ImapUtf7Encode("B\xC3\xBC" "cher"), std::string("B&APw-cher"));   // Bücher
+    REQUIRE_EQ(UltraNet_ImapUtf7Encode("\xE2\x82\xAC"), std::string("&IKw-"));          // €
+    REQUIRE_EQ(UltraNet_ImapUtf7Encode("\xE5\x8F\xB0\xE5\x8C\x97"),                   // 台北
+               std::string("&U,BTFw-"));
+    // Outside the BMP: a surrogate pair in the one shift.
+    REQUIRE_EQ(UltraNet_ImapUtf7Encode("\xF0\x9F\x93\xA7"), std::string("&2D3c5w-"));  // 📧
+
+    // A byte that is not UTF-8 becomes U+FFFD, never a broken name.
+    REQUIRE_EQ(UltraNet_ImapUtf7Encode("a\xFF" "b"), std::string("a&,,0-b"));
+
+    // Decode reads back every name Encode writes.
+    for (const std::string name : {std::string("Entw\xC3\xBC" "rfe & Notizen"),
+                                   std::string("\xD0\x90\xD1\x80\xD1\x85\xD0\xB8\xD0\xB2"),
+                                   std::string("Mail \xF0\x9F\x93\xA7 2026")})
+        REQUIRE_EQ(UltraNet_ImapUtf7Decode(UltraNet_ImapUtf7Encode(name)), name);
+}
+
+TEST(imap_create_and_delete_quote_the_mailbox) {
+    REQUIRE_EQ(CreateMailboxCommand("INBOX.Projects"), std::string("CREATE \"INBOX.Projects\""));
+    REQUIRE_EQ(DeleteMailboxCommand("Old Mail"), std::string("DELETE \"Old Mail\""));
+    REQUIRE_EQ(CreateMailboxCommand("a\"b\\c"), std::string("CREATE \"a\\\"b\\\\c\""));
+    // A line break would end the command early: it is left out.
+    REQUIRE_EQ(DeleteMailboxCommand("x\r\nA1 LOGOUT"), std::string("DELETE \"xA1 LOGOUT\""));
 }
 
 TEST(imap_detect_role_name_fallback) {

@@ -3755,8 +3755,8 @@ FILE: Docs/GettingStarted.md
 
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.2
-**Last Modified:** 2026-10-09
+**Version:** 1.0.3
+**Last Modified:** 2026-10-10
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -3768,11 +3768,11 @@ and the hooks), but every step names what to do with another assistant too.
 **Choose your platform as you read.** Every step that differs by operating
 system offers one collapsed section per OS: Linux, macOS and Windows. Open the
 one you work on; open another to see what a colleague on that platform does.
-UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), presents
-the same choice on its first page, preselected to the machine it runs on, and
-then checks and installs the packages below, downloads the matching SDK,
-writes the project skeleton of step 3 and prepares the first prompt for the
-assistant. `UltraCanvasStart --check` does the checking in a terminal.
+UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), offers
+the same choice under its first step, preselected to the machine it runs on,
+and then walks through the rest: it checks and installs the packages below,
+downloads the matching SDK, writes the project skeleton of step 3 and
+prepares the first prompt for the assistant. `UltraCanvasStart --check` does the checking in a terminal.
 
 **On a computer with nothing yet, start with UltraCanvasStart.** Every
 release of the framework carries it on its own, built for each platform:
@@ -4424,8 +4424,8 @@ FILE: Docs/UltraCanvasSDK.md
 
 # The UltraCanvas SDK
 
-**Version:** 1.3.0
-**Last Modified:** 2026-10-09
+**Version:** 1.3.1
+**Last Modified:** 2026-10-10
 **Author:** UltraCanvas Framework
 
 The SDK is the framework **already built and installed**, zipped up: the
@@ -4462,8 +4462,8 @@ https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/<ar
 https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/UltraCanvas-SDK-Windows-0.9.211-x86_64.zip
 ```
 
-That is what UltraCanvasStart's Project page fetches with its *Download*
-button, for the platform and architecture it runs on and the version it was
+That is what UltraCanvasStart's Framework step fetches with *Download and
+unpack...*, for the platform and architecture it runs on and the version it was
 built from. UltraCanvasStart itself is on the same release, on its own, as
 `UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.xz` on Linux, a `.zip` on
 Windows, a signed and notarized `.dmg` on macOS): the application, the
@@ -7949,6 +7949,17 @@ How it behaves:
 `UltraCanvasVideoThumbnail` (`include/UltraCanvasVideoThumbnail.h`) is the engine
 behind this and can be called directly when an app *does* want to keep poster
 files on disk — see its own docs.
+
+### Pictures saved over
+
+A photo edited and saved over while the album shows it is drawn as it is now,
+within a couple of seconds and without the app doing anything. Each paint
+hands the paths of the pictures it drew to an
+[`UltraCanvasImageFileWatch`](UltraCanvasImageFileWatch.md), whose worker
+thread checks those files every 1.5 s; a changed one is dropped from the
+shared image cache and the album relayouts (the new picture may have another
+shape) and repaints. Nothing touches the disk on the paint path for it, and
+only the tiles on screen are checked.
 
 ### Configuration
 
@@ -15419,6 +15430,9 @@ size it yourself).
 - ✅ Chips **wrap across multiple rows**; the field **auto-grows** its height,
   in a flex layout too (the growth sets its `size.height` and re-runs the
   layout, so the `CreateTagInput` height is only where it starts)
+- ✅ Made **without a height** (`CreateTagInput(id, x, y, w)`), the field starts
+  as tall as one row of chips (`OneRowHeight()`: chip height plus the padding
+  above and below, 40 px by default), so it does not jump on its first frame
 - ✅ **Max-tag** limit and optional **no-duplicates**
 - ✅ Custom **validator** to accept/reject candidate tags
 - ✅ Placeholder text; `onTagsChanged` / `onTagAdded` / `onTagRemoved`
@@ -15448,6 +15462,7 @@ void SetPlaceholder(const std::string&);
 void SetAllowDuplicates(bool);
 void SetMaxTags(int);                   // 0 = unlimited
 void SetAutoHeight(bool);               // grow to fit rows, in a layout too (default true)
+float OneRowHeight() const;             // the height with one row of chips (the default)
 const std::string& GetInputText() const;
 
 std::function<void(const std::vector<std::string>&)> onTagsChanged;
@@ -24117,6 +24132,18 @@ entry records its source's size and modification time, and a mismatch is a
 miss — the entry is deleted and the tile decodes the file as it now is. So
 editing a picture shows the edit.
 
+"Made from" means the file as it was **before** the thumbnail was drawn. The
+worker stamps the source ahead of the decode (`ThumbnailDiskCache::StampSource`)
+and hands that stamp to `ThumbnailDiskCache::Store`, which stores nothing when
+the file no longer matches it. Before 2026-10-09 the entry was stamped
+when it was written, so a thumbnail of the old content — a save landing
+mid-decode, or the shared image cache serving the picture as it was before the
+save — was recorded as the valid answer for the new file, and every later run
+showed the old picture. The decode itself reads images with
+`UCImage::GetFresh()`, which checks the shared cache against the file and reads
+a file that changed since it was cached again; plain `UCImage::Get()` never
+looks at the disk.
+
 **The renderer that drew it counts too.** Every entry also records the
 renderer generation of the build that wrote it
 (`ThumbnailDiskCache::kRendererGeneration`), and an entry of another
@@ -32159,6 +32186,100 @@ memory — section table, three-level resource tree, a group icon naming its
 transparency.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasImageFileWatch.md
+==============================================================================
+
+# UltraCanvasImageFileWatch
+
+Keeps the pictures a view keeps drawing in step with their files, without
+touching the disk on the paint path.
+
+```cpp
+#include "UltraCanvasImageFileWatch.h"
+
+class PhotoWall : public UltraCanvasUIElement {
+public:
+    using UltraCanvasUIElement::UltraCanvasUIElement;
+
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+        UltraCanvasUIElement::Render(ctx, dirtyRect);
+        std::vector<UltraCanvasImageFileWatch::DrawnImage> drawn;
+        for (const std::string& path : photos) {
+            auto img = UCImage::Get(path);         // cheap: never looks at the disk
+            if (img) ctx->DrawImage(*img, Rect2Dd(0, 0, 200, 150), ImageFitMode::Cover);
+            // The version drawn: recorded in the image when it was read.
+            drawn.push_back({path, img ? img->GetSourceStamp() : FileStamp{}});
+        }
+        watch.SetDrawnImages(std::move(drawn));    // no I/O here either
+    }
+
+    std::vector<std::string> photos;
+
+private:
+    // Runs on the UI thread after a drawn file was saved over and its cached
+    // copy dropped. Raw `this` is safe: the watch never calls it once
+    // destroyed, and it is destroyed with the element.
+    UltraCanvasImageFileWatch watch{[this]() { RequestRedraw(); }};
+};
+```
+
+## Why it exists
+
+A paint path asks the shared image cache for its pictures with
+`UCImage::Get()`, which is keyed by the path and never checks the file — that
+is what makes it cheap enough for every tile of every frame. The price is that
+a picture saved over keeps being drawn as it was. Checking from the paint path
+is no answer: a stat per tile per frame is real cost on a local disk, and on a
+network share it can hold the UI for as long as the server takes to answer.
+
+So the view hands the watch what it drew at the end of each paint: each
+picture's path and the version of the file it was read from
+(`UCImage::GetSourceStamp()` — the file's size and modification time, recorded
+in the image when it was read, so handing it over costs nothing). A worker
+thread looks at those files every interval (1.5 s by default). A file that is
+no longer the version drawn is dropped from the cache with
+`UCImage::RemoveFromCacheIfChanged()` — the raster, its pixmaps, libvips'
+cached operations — and the watch calls its callback on the UI thread. The
+view repaints, `Get()` misses and reads the file as it is now, and the next
+paint hands the new version over.
+
+## Behaviour
+
+- **Only what was drawn last is watched.** The cost follows what is on screen,
+  not how many pictures the view holds, and the list stays watched while the
+  view is idle: a picture saved over while nothing repaints is still noticed.
+- **`SetDrawnImages` is cheap.** It sorts the list, keeps one entry per path
+  (the version drawn last) and drops empty paths, and compares it with the
+  last one — unchanged lists, the common case, stop there. No file is opened.
+- **No thread until there is something to watch.** The worker starts with the
+  first non-empty list, so a view that never draws a picture costs nothing.
+- **Every view showing the picture hears of it.** Each watch compares the
+  file with the version its own view drew (`UltraCanvasFileStamp.h`), not with
+  the cache, so an album and a slideshow showing one photo both repaint — the
+  first to drop the cached copy does not take the change away from the other,
+  even when the file was saved over before either watch first looked.
+- **Told once.** A change is reported once per new version of the file; a
+  view that does not repaint (hidden) is not asked again every interval.
+- **A picture that could not be drawn is watched too.** Hand it over with an
+  invalid `FileStamp{}`; a file that appears or is fixed is a change.
+- **A broken file is not read again and again.** `RemoveFromCacheIfChanged`
+  only drops a file that changed; a picture that failed to decode stays failed
+  until its file changes.
+- **Teardown.** The destructor stops and joins the worker, and a callback
+  already queued on the UI thread is dropped, not delivered.
+
+| Call | Does |
+|---|---|
+| `UltraCanvasImageFileWatch(onChanged, intervalMs = 1500)` | `onChanged` runs on the UI thread after a watched file changed; intervals below 100 ms are raised to it |
+| `SetDrawnImages(images)` | What the view drew this frame: `{path, version}` per picture, the version from `UCImage::GetSourceStamp()`; replaces the previous list, empty watches nothing |
+| `GetDrawnImages()` | What is being watched now (sorted by path, one per path) |
+
+`UltraCanvasAlbum` and `UltraCanvasSlideshow` use it. The Filer has a folder
+watch of its own and reads its thumbnails with `UCImage::GetFresh()`, which
+makes the same check and reloads in one call — right for a worker that is
+about to read the file anyway, wrong for a paint path.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md
 ==============================================================================
 
@@ -38146,13 +38267,29 @@ viewer->SetVideoPreviewMode(VideoPreviewMode::PreviewClip);  // few seconds mute
 viewer->SetVideoPreviewMode(VideoPreviewMode::Still);        // paused first frame
 viewer->SetVideoPreviewClipSeconds(5.0f);                    // PreviewClip length
 viewer->StopPlayback();   // for hosts that hide/detach the viewer
+bool busy = viewer->IsPlayingMedia();   // a video or sound playing right now
 ```
+
+`IsPlayingMedia()` is true while the shown file is a video or a sound that is
+playing (the muted `PreviewClip` too), and false once it is paused, stopped or
+has ended. A host that reopens a file which changed on disk asks it first:
+reopening restarts playback from the beginning. UltraFiler's preview pane
+reopens a changed video only once its file has stopped changing and it is not
+playing.
 
 `PreviewClip` is silent end to end: the mute is decided before the source is
 opened (so the engine builds a muted session rather than muting one already
 wired for sound), and the clip stays muted while it sits paused at the end of
 the preview. The sound returns when the viewer resumes playback itself — press
 play on the transport bar and the clip continues audibly.
+
+## A file saved over
+
+Images are read with `UCImage::GetFresh()`, which checks the shared image
+cache against the file: a picture saved over since it was last shown opens as
+it is now, not as the cache remembered it. The viewer does not watch the file
+it shows; a host that wants it followed reopens it when the file changes, as
+UltraFiler's preview pane does after a rescan finds the selected file changed.
 
 ## Embedding as a preview pane
 
@@ -50102,8 +50239,10 @@ viewer->Show(path, UltraCanvasApplication::GetInstance()->GetFocusedWindow());
 
 The file is parsed once and the parsed document is cached by path
 (`UCSvgDocument::Get`), so zooming, HiDPI and relayout only pay for the
-vector render. `UCImageRaster::ClearCache` / `UCSvgDocument::RemoveFromCache`
-drop a document when the file changed on disk. CSS inside the file - a
+vector render. `UCImage::GetFresh(path)` reads a file that changed on disk
+since it was cached again (`UCImage::Get` never checks), and
+`UCImage::RemoveFromCache(path)` drops the raster, its pixmaps and the parsed
+document by hand. CSS inside the file - a
 `<style>` block, `class=""` attributes - is applied by librsvg.
 
 `Apps/DemoApp/UltraCanvasSVGExamples.cpp` is the demo page: one tile per
@@ -53468,6 +53607,13 @@ void ClearSlides();
 size_t GetSlideCount() const;
 const std::vector<SlideshowSlide>& GetSlides() const;
 ```
+
+A picture saved over while the slideshow shows it - the slide, a slide in a
+transition, a thumbnail indicator - is drawn as it is now within a couple of
+seconds: the paths each paint drew go to an
+[`UltraCanvasImageFileWatch`](UltraCanvasImageFileWatch.md), which checks the
+files on a worker thread and repaints the slideshow when one changed. Nothing
+touches the disk on the paint path for it.
 
 ### Playback Control
 
@@ -57850,8 +57996,8 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 
 **Header:** `UltraCanvasTextArea.h`  
 **Implementation:** `UltraCanvasTextArea.cpp`  
-**Version:** 2.0.1  
-**Last Modified:** 2026-10-07  
+**Version:** 2.0.2  
+**Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework  
 
 <!-- doc-check: void SendChatText(); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
@@ -58680,6 +58826,21 @@ machinery so the edit is undoable and raises `onTextChanged` like a typed one:
 
 ```cpp
 bool ReplaceTextRange(size_t startByte, size_t byteLength, const std::string& replacement);
+```
+
+## Links in Markdown mode
+
+A `[text](url)` link is drawn in `MarkdownHybridStyle::linkColor`, underlined
+while `linkUnderline` is true (the default), with the hand cursor over it; a
+click reaches `onMarkdownLinkClick` with the address. A view whose links are
+file names and addresses full of hyphens and underscores reads better with
+the colour alone:
+
+```cpp
+auto& md = area->GetMarkdownStyleMutable();
+md.linkColor = Color(37, 99, 235);
+md.linkUnderline = false;
+area->onMarkdownLinkClick = [](const std::string& url) { OpenURL(url); };
 ```
 
 ## Math in Markdown mode
@@ -79765,3 +79926,130 @@ The window list, the virtual desktops, the screenshot and the device markers
 need the module's X11 backend (Linux, the BSDs). Elsewhere the desktop still
 runs — application list, launcher, settings and Stickerboard work — but the
 running-apps group stays empty and the Task Manager says so.
+
+==============================================================================
+FILE: Docs/UltraCanvasStart/README.md
+==============================================================================
+
+<!-- Generated from Apps/UltraCanvasStart/README.md by scripts/generate_llms_txt.py; edit that file, then rerun the script. -->
+# UltraCanvasStart
+
+## Overview
+
+UltraCanvasStart sets a computer up for writing UltraCanvas applications. It
+is the application form of [`Docs/GettingStarted.md`](../GettingStarted.md):
+instead of reading the per-platform steps and typing them, the programmer
+opens UltraCanvasStart, answers a few questions and lets it check, install
+and write.
+
+Its first page is the same platform selector the guide opens with,
+preselected to the platform it runs on. Another platform can be picked to
+read that platform's way in; only the detected one can be checked and
+installed.
+
+## Getting it
+
+UltraCanvasStart has to reach a computer that has nothing yet, so building it
+from source is not the way in. Every release of the framework carries it on
+its own, built for each platform, beside the SDK archives it downloads:
+
+```
+https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/UltraCanvasStart-<OS>-<version>-<arch>.<ext>
+```
+
+| Platform | Archive | Inside |
+|---|---|---|
+| Linux | `UltraCanvasStart-Linux-<version>-<x86_64\|arm64>.tar.xz` | `UltraCanvasStart` (the launcher), `bin/`, `lib/` with the libraries it loads, `share/media` |
+| Windows | `UltraCanvasStart-Windows-<version>-<x86_64\|arm64>.zip` | `UltraCanvasStart.exe` with its DLLs, `cacert.pem`, `Resources/media`, the `uc-diagnose` launchers |
+| macOS | `UltraCanvasStart-MacOS-<version>-<x86_64\|arm64>.dmg` | `UltraCanvasStart.app` with its own `Frameworks/`, signed and notarized |
+
+`<version>` is the framework's, the same as the SDK's and the release tag's.
+The archives are cut out of the suite packages by
+`scripts/package-ultracanvasstart.sh` (Linux and Windows) and
+`package-macos.sh --start-app` (macOS) on every CI leg; the script runs the
+packaged application before it is done, so an archive that does not start is
+a red check, not a download. The Windows executable is not Authenticode
+signed, so SmartScreen asks once.
+
+The archives are not small - the Linux one unpacks to about 220 MB - because
+the application loads the framework's shared core, and the core links
+everything the framework can do. What that weight is made of, and what would
+and would not reduce it, is measured in
+[`Docs/UltraCanvas/StandaloneSizeInvestigation.md`](../UltraCanvas/StandaloneSizeInvestigation.md).
+
+## Steps
+
+The window is a stepper (`Docs/UltraCanvasStart/WorkflowProposal.md`): five
+steps in the order the work happens, Back and Next below the pane, and the
+Guide and the Report as dialogs from the header at any time. It is styled
+like UltraMail (`ui/UltraCanvasStartTheme.h` carries UltraMail's colours,
+type sizes and metrics): white cards on a near-white page, one accent
+button per step. The prose comes from the engine as Markdown
+(`engine/StartGuide`) and is shown in read-only Markdown views, so every
+address is a link that opens in the browser, everything typed stands out
+as `code`, and each numbered step of a guide is one action.
+
+| Step | What it shows | What it decides |
+|---|---|---|
+| **1 Your computer** | What was detected, as key/value rows: OS, architecture, distribution, the package manager (a found / not-found badge and its path), the MSYS2 root on Windows (a link to install it when missing), home, the AI assistants found, git, the framework version. Under it the guide: Linux, macOS or Windows in a segmented control, preselected to the detected one, and that platform's way in as a numbered guide with the SDK archive named for this version and linked to its release. | Nothing; it is where the reader starts. |
+| **2 Features** | The feature groups (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options). The assistant: Claude Code, Codex, Copilot, Gemini or another in a segmented control; whether its instruction file goes into the project and the first prompt is prepared; whether the work goes through GitHub alone. For the chosen assistant: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, and the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../GettingStarted-Cloud.md). | Which packages step 3 checks; which file the project gets. |
+| **3 Tools** | The checks run on entering: every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need, each with a mark, the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* or *everything installed*. *Install what is missing* (enabled only while something is) runs the package manager after a confirmation that shows the exact command: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree. The output is shown in a console and the checks run again. Next goes on even with something missing; the step keeps the error marker until the checks pass. | Whether the toolchain and libraries are there. |
+| **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its download address, the release page, the workflow artifacts while a release is still building; *Download and unpack...* fetches the archive from the release into a folder you pick, unpacks it and fills the prefix in; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
+| **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then the **Done** page: what was written, the three build commands, the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | The application. |
+
+**Guide** (header): the way in for any platform, the same guide as step 1,
+in a dialog. **Report** (header): the system, the checks, the plan and the
+notes as text, with *Copy*.
+
+## Command line
+
+```
+UltraCanvasStart --check            # detect, check, print the report; exit 2 if something is missing
+UltraCanvasStart --plan             # ...and the install plan
+UltraCanvasStart --plan --for macos # the plan for another platform
+UltraCanvasStart --check --all      # every feature group
+UltraCanvasStart --step 3           # open the window on a step (for screenshots and support)
+UltraCanvasStart --page report      # ...or open the Report (or Guide) dialog; the old page names map to steps
+UltraCanvasStart --for windows      # ...with that platform's guide preselected
+UltraCanvasStart --plan --assistant codex   # the plan and the project for another assistant
+UltraCanvasStart --version
+```
+
+`--check` and `--plan` open no window, so they work over ssh and in CI, which
+runs `--check` on every platform leg.
+
+## Engine
+
+`UltraCanvasStartEngine` (namespace `UltraCanvasStart`, `engine/`) is a
+static library the GUI, the CLI modes and the tests share:
+
+| Module | Contents |
+|---|---|
+| `StartTypes` | `Platform`, `PackageManager`, `SystemProfile`, `Dependency`, `CheckResult`, `Assistant`, `Choices`, `PlanStep`, `Plan`; `CompareVersions`, `ExtractVersion` |
+| `StartSystem` | `DetectSystem` (hardware snapshot, os-release, MSYS2 root), `ParseOsRelease`, `PackageManagerForDistribution`, `FindProgram` |
+| `StartPackages` | the dependency table with the package per manager (apt, dnf, pacman, zypper, Homebrew, MSYS2), `InstallStep`, MSYS2 architecture prefixes |
+| `StartChecks` | `CheckTool`, `CheckPkgConfigModule`, `RunChecks` |
+| `StartPlan` | `BuildPlan`, `RenderReport`, `PlatformNotes`, `DisplayCommand` |
+| `StartSdk` | artifact names matching the CI workflow, download page and release URL, `DownloadSdk` (UltraNet, when built), `UnpackStep`, `FindSdkPrefix` |
+| `StartProject` | the scaffold files and `ScaffoldProject`, `CloneStep` |
+| `StartAi` | `DetectAi` (claude, codex, copilot, gemini), `AssistantInstallInstructions`, `AssistantGuidanceNotes`, `FirstPrompt`, `CloudChecklist` |
+| `StartGuide` | the pages' prose as Markdown: `PlatformGuide` (one action per step, the SDK named and linked), `ChecksMarkdown`, `AiGuide`; `PlainText` for the report, `Linkify` |
+| `StartRunner` | `RunStep` through `RunProcessCaptured`, with pkexec/sudo for elevated steps |
+
+Every program runs through `RunProcessCaptured` with an argument list; no
+shell ever sees a string. The dependency table mirrors step 1 of
+`Docs/GettingStarted.md` and the CI install steps: change those together.
+
+## Tests
+
+`Tests/UltraCanvasStart` (`-DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON`,
+target `UltraCanvasStartEngineTests`): os-release parsing, version
+comparison, the table, the install command, SDK names, the plan, the
+scaffold over a temporary folder with a non-ASCII name, and the guides (one
+action per numbered step, the SDK named for real, the report plain).
+
+## Versioning
+
+The version is the first line of `Docs/UltraCanvasStart/CHANGELOG.md`, read by
+`cmake/UltraCanvasVersion.cmake` into `ULTRACANVASSTART_VERSION`. Every change
+to the application gets a new entry there.

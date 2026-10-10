@@ -1,8 +1,10 @@
 // Plugins/Diagrams/UltraCanvasGourceTree.cpp
 // Gource-style radial tree diagram for storage/filesystem visualization
+// Version: 1.0.3 - the F / Ctrl+E / Ctrl+Shift+C shortcuts match UCKeys letters
+//                  (the lowercase cases beside them were dead and warned)
 // Version: 1.0.2 - a press on empty space (deselect) is the tree's
 // Version: 1.0.1
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasGourceTree.h"
@@ -1704,8 +1706,10 @@ bool UltraCanvasGourceTree::HandleKeyDown(const UCEvent& event) {
             }
             break;
             
-        case 'F':
-        case 'f':
+        // Letter keys arrive as UCKeys::A..Z on every backend (the Linux one
+        // upper-cases the keysym); a lowercase 'f' is not a key code and
+        // could never match.
+        case UCKeys::F:
             ZoomToFit();
             return true;
             
@@ -1727,16 +1731,14 @@ bool UltraCanvasGourceTree::HandleKeyDown(const UCEvent& event) {
             ClearSelection();
             return true;
             
-        case 'E':
-        case 'e':
+        case UCKeys::E:
             if (event.ctrl) {
                 ExpandAll();
                 return true;
             }
             break;
             
-        case 'C':
-        case 'c':
+        case UCKeys::C:
             if (event.ctrl && event.shift) {
                 CollapseAll();
                 return true;

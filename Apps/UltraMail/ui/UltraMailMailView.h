@@ -4,6 +4,8 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.17.0 - the folder tree's right-click menu (onAddFolder,
+//                  onDeleteFolder) and SetTreeCurrentAccountOnly
 // Version: 0.16.0 - trusted and blocked senders in both menus (SenderListItems,
 //                  senderLists, onSenderListChange), RescanSender
 // Version: 0.15.0 - the reading pane's sender menu (SenderMenuItems), sharing the
@@ -157,6 +159,10 @@ public:
     // resizes it until the next change here (or, fitted, the next refit).
     void SetFolderTreeWidth(bool fitToText, int fixedPx);
 
+    // Settings > Display > Treeview: the folder tree lists only the account
+    // on screen (true) or every account. Rebuilds the tree.
+    void SetTreeCurrentAccountOnly(bool currentOnly);
+
     // The list's order. Clicking a column header changes it (the same header
     // again turns it round) and raises onSortChanged, so the app can remember
     // it; SetSort applies a remembered one. Newest first by default.
@@ -233,6 +239,18 @@ public:
     // A folder was opened from the tree: the app may lazily sync it if it has
     // never been fetched (only the inbox is synced up front).
     std::function<void(const std::string& accountId, const std::string& folder)> onOpenFolder;
+    // The folder tree's right-click menu. Add folder: a new folder below
+    // `parent` (a folder's full name), or at the top of the account when
+    // `parent` is empty - the menu of the account row or its inbox. Delete
+    // folder: `folder` and the mail in it (the menu offers it only where
+    // CanDeleteFolder allows). The app asks for the name, or for a yes.
+    std::function<void(const std::string& accountId, const std::string& parent)> onAddFolder;
+    std::function<void(const std::string& accountId, const std::string& folder)> onDeleteFolder;
+    // The entries of that menu for the tree row `nodeId`: a header naming the
+    // account or folder, Add folder…, and Delete folder… (greyed, with the
+    // reason as its tooltip, where the folder cannot be deleted). Empty for a
+    // row that is no account or folder.
+    std::vector<UltraCanvas::MenuItemData> FolderMenuItems(const std::string& nodeId);
 
 private:
     // Layout ----------------------------------------------------------------
@@ -250,6 +268,11 @@ private:
     // tries once more on the next turn of the event loop (allowRetry).
     void ApplyFolderTreeWidth(bool allowRetry = true);
     void SelectFolderNode(const std::string& accountId, const std::string& folder);
+    // The right-click menu of a tree row (onAddFolder, onDeleteFolder); kept
+    // alive while it is open.
+    void ShowFolderMenu(UltraCanvas::TreeNode* node, const UltraCanvas::UCEvent& event);
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> treeMenu_;
+    bool treeCurrentAccountOnly_ = false;
 
     // Message list ----------------------------------------------------------
     // `markTopRead` marks the auto-selected top message read (a reading-pane

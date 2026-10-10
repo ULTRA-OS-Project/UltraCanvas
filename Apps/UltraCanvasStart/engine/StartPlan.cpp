@@ -1,8 +1,11 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
-// Version: 0.1.0
+// Version: 0.1.3 - the steps, not the pages, in the plan's wording
+// Version: 0.1.2 - the plan and the report name the chosen assistant
+// Version: 0.1.1 - notes are one action each, in Markdown; the report prints them plain
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartPlan.h"
 
+#include "StartGuide.h"
 #include "StartPackages.h"
 #include "StartProject.h"
 #include "StartSdk.h"
@@ -27,32 +30,34 @@ PackageManager DefaultManagerFor(Platform platform) {
 } // namespace
 
 std::vector<std::string> PlatformNotes(const SystemProfile& profile, Platform target) {
+    // One action or one fact per note, in Markdown: commands in backticks,
+    // addresses bare (the pages link them, the report prints them plain).
     std::vector<std::string> notes;
     const bool local = target == profile.platform;
     switch (target) {
         case Platform::MacOS:
-            notes.push_back("Install the Xcode command line tools first: xcode-select --install");
+            notes.push_back("Install the Xcode command line tools first: `xcode-select --install`");
             if (!local || profile.packageManagerPath.empty()) {
-                notes.push_back("Homebrew installs the libraries: https://brew.sh (one command in Terminal)");
+                notes.push_back("Homebrew installs the libraries: one command in Terminal from https://brew.sh");
             }
-            notes.push_back("Build with cmake -G Xcode or the default generator; package with package-macos.sh");
+            notes.push_back("Build with `cmake -G Xcode` or the default generator");
+            notes.push_back("Package with `package-macos.sh`");
             break;
         case Platform::Windows:
-            notes.push_back("The build runs inside MSYS2 (https://www.msys2.org), in the CLANG64 shell "
-                            "(CLANGARM64 on an ARM machine), not in Visual Studio");
+            notes.push_back("The build runs inside MSYS2, in the **CLANG64** shell (**CLANGARM64** on an ARM machine), not in Visual Studio");
             if (local && profile.msysPrefix.empty()) {
-                notes.push_back("MSYS2 was not found; install it to C:\\msys64, open the CLANG64 shell, "
-                                "run pacman -Syu and start UltraCanvasStart again");
+                notes.push_back("MSYS2 was not found: install it from https://www.msys2.org to `C:\\msys64`");
+                notes.push_back("Then open the CLANG64 shell and run `pacman -Syu`");
+                notes.push_back("Then start UltraCanvasStart again");
             }
-            notes.push_back("build-win.cmd at the repository root configures and builds; "
-                            "package-win.sh makes the standalone zip");
+            notes.push_back("`build-win.cmd` at the repository root configures and builds");
+            notes.push_back("`package-win.sh` makes the standalone zip");
             break;
         case Platform::Linux:
             if (local && profile.packageManager == PackageManager::None) {
-                notes.push_back("No apt, dnf, pacman or zypper was found; install the packages "
-                                "named below with your distribution's tool");
+                notes.push_back("No apt, dnf, pacman or zypper was found: install the packages named below with your distribution's tool");
             }
-            notes.push_back("A C++20 compiler: clang 14+ or GCC 11+. CI builds with clang.");
+            notes.push_back("A C++20 compiler: `clang` 14 or newer, or `gcc` 11 or newer (CI builds with clang)");
             break;
         default:
             break;
@@ -113,7 +118,7 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         download.title = "Get the UltraCanvas SDK " + SdkArtifactName(target, version, arch);
         download.description = "The framework prebuilt for " + PlatformName(target) + " " + arch +
                                ": " + SdkReleaseAssetUrl(target, version, arch) +
-                               " - the Project page's Download button fetches and unpacks it; "
+                               " - the Framework step's Download and unpack button fetches it; "
                                "while that release is still building, the archive of the same name "
                                "is a workflow artifact at " + SdkDownloadPage();
         plan.steps.push_back(download);
@@ -130,7 +135,7 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         scaffold.kind = StepKind::Scaffold;
         scaffold.title = "Create the " + IdentifierFrom(choices.appName) + " project";
         scaffold.description = "CMakeLists.txt, main.cpp, CMakePresets.json, README.md" +
-                               std::string(choices.useAi ? " and CLAUDE.md" : "") + " in " +
+                               std::string(choices.useAi ? " and " + AssistantInstructionFile(choices.assistant) : "") + " in " +
                                (choices.projectFolder.empty() ? std::string("the chosen folder")
                                                               : choices.projectFolder);
         plan.steps.push_back(scaffold);
@@ -140,12 +145,15 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
     if (choices.useAi) {
         PlanStep ai;
         ai.kind = StepKind::Manual;
-        ai.title = choices.cloudOnly ? "Connect Claude Code to the repository on GitHub"
-                                     : "Install Claude Code and open the project with it";
+        const std::string name = AssistantName(choices.assistant);
+        ai.title = choices.cloudOnly ? "Connect " + name + " to the repository on GitHub"
+                                     : (choices.assistant == Assistant::Other
+                                            ? "Point the assistant at the project"
+                                            : "Install " + name + " and open the project with it");
         ai.description = choices.cloudOnly
             ? "No compiler here: GitHub Actions builds. Follow Docs/GettingStarted-Cloud.md; "
-              "the AI page has the checklist."
-            : "The AI page has the install command and the first prompt to give it.";
+              "the Features step has the checklist."
+            : "The Features step has the install command; the Done page has the first prompt to give it.";
         plan.steps.push_back(ai);
     }
     return plan;
@@ -188,7 +196,9 @@ std::string RenderReport(const Plan& plan) {
     out += "\n";
     out += std::string("  Framework: ") + (plan.choices.useSdk ? "prebuilt SDK" : "built from source") +
            (plan.choices.cloneFramework ? ", repository cloned" : "") + "\n";
-    out += std::string("  AI assistant: ") + (plan.choices.useAi ? (plan.choices.cloudOnly ? "Claude Code via GitHub, no local compiler" : "Claude Code locally") : "no") + "\n";
+    out += std::string("  AI assistant: ") + (plan.choices.useAi
+               ? AssistantName(plan.choices.assistant) + (plan.choices.cloudOnly ? " via GitHub, no local compiler" : " locally")
+               : "no") + "\n";
     out += "  Application: " + plan.choices.appName +
            (plan.choices.projectFolder.empty() ? "" : " in " + plan.choices.projectFolder) + "\n\n";
 
@@ -219,7 +229,7 @@ std::string RenderReport(const Plan& plan) {
     }
     if (!plan.notes.empty()) {
         out += "\nNotes\n";
-        for (const auto& note : plan.notes) out += "  * " + note + "\n";
+        for (const auto& note : plan.notes) out += "  * " + PlainText(note) + "\n";
     }
     return out;
 }

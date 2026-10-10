@@ -1,7 +1,7 @@
 # The UltraCanvas SDK
 
-**Version:** 1.3.0
-**Last Modified:** 2026-10-09
+**Version:** 1.3.1
+**Last Modified:** 2026-10-10
 **Author:** UltraCanvas Framework
 
 The SDK is the framework **already built and installed**, zipped up: the
@@ -38,8 +38,8 @@ https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/<ar
 https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/UltraCanvas-SDK-Windows-0.9.211-x86_64.zip
 ```
 
-That is what UltraCanvasStart's Project page fetches with its *Download*
-button, for the platform and architecture it runs on and the version it was
+That is what UltraCanvasStart's Framework step fetches with *Download and
+unpack...*, for the platform and architecture it runs on and the version it was
 built from. UltraCanvasStart itself is on the same release, on its own, as
 `UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.xz` on Linux, a `.zip` on
 Windows, a signed and notarized `.dmg` on macOS): the application, the

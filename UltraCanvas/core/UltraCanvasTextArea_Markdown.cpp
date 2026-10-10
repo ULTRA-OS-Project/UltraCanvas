@@ -1,6 +1,7 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
+// Version: 2.7.1 - MarkdownHybridStyle::linkUnderline is honoured (links were always underlined)
 // Version: 2.7.0
 // Last Modified: 2026-06-18
 // Author: UltraCanvas Framework
@@ -1006,9 +1007,14 @@ namespace UltraCanvas {
                     fg->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(fg));
                     if (run.kind != InlineRun::Footnote) {
-                        auto u = TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle);
-                        u->SetRange(run.startByte, run.endByte);
-                        layout->InsertAttribute(std::move(u));
+                        // markdownStyle.linkUnderline: a view whose links are
+                        // file names full of hyphens and underscores reads
+                        // better with the colour alone.
+                        if (markdownStyle.linkUnderline) {
+                            auto u = TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle);
+                            u->SetRange(run.startByte, run.endByte);
+                            layout->InsertAttribute(std::move(u));
+                        }
                     } else {
                         int lh = computedLineHeight > 0
                                  ? computedLineHeight

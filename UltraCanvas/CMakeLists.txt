@@ -559,6 +559,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # Thumbnails that survive the process that made them, so a
         # folder costs its decode once rather than once per launch.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasThumbnailDiskCache.cpp
+        # Pictures a view keeps drawing (album, slideshow) follow a file
+        # saved over: checked on a worker, never on the paint path.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageFileWatch.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
@@ -1888,10 +1891,6 @@ endif()
 if(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
 endif()
-# libc++ 23 dropped its transitive includes (see the top-level CMakeLists.txt).
-# PUBLIC so a consumer that builds against the installed package compiles the
-# public headers the way this tree does, with the LLVM 23 bridge on.
-target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC _LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23)
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)
 if(TARGET VirtualFS)
