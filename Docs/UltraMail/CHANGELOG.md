@@ -1,3 +1,22 @@
+#### 2026-10-10 *0.10.48*
+- **Attachment chips show the paperclip.** The chips under a message showed a
+  type emoji (a page for a PDF, a picture for an image), which a font without
+  colour emoji - the usual case on Linux and Windows - drew as a box of
+  lines. They now show the paperclip the message list marks mail with
+  attachments with.
+- **One click on an attachment opens its menu.** A click on a chip opens
+  *Open* and *Save As…* under it - above it, at the foot of the window -
+  and a second click closes the menu again. A double-click still opens the
+  attachment straight away, and a right-click opens the same menu at the
+  pointer.
+- **HTML mail keeps the spacing its sender gave it.** Receipts and invoices
+  from Stripe (Anthropic's, among many others) lost every gap they make with
+  spacer cells - above the header, inside the cards, between the rows - and
+  their amount touched the line above it, so the text looked too large for
+  the mail. The sizes were right; the space around them was missing. The
+  mail is now laid out as a browser lays it out. Framework change - see
+  `Docs/UltraCanvas/changelog.d/html-mail-spacer-cells.md`.
+
 #### 2026-10-09 *0.10.47*
 - **Add and delete folders from the folder tree.** A right-click on a row of
   the tree offers *Add folder…* and *Delete folder…*.
