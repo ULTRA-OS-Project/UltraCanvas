@@ -362,11 +362,15 @@ int main() {
     if (!scaled) {
         Rect2Df mb = menu->GetBoundsInWindow();
         Color menuBg = menuStyle.backgroundColor;
-        const int rowTop = static_cast<int>(mb.y) + menuStyle.paddingTop;
-        Rect2Di indicatorArea(static_cast<int>(mb.x) + menuStyle.paddingLeft - 1, rowTop,
+        // The first row: below the panel's border and top padding, its
+        // contents paddingLeft inside the row, which is inset from the border.
+        const int rowTop = static_cast<int>(mb.y) + menuStyle.borderWidth + menuStyle.paddingTop;
+        const int rowLeft = static_cast<int>(mb.x) + menuStyle.borderWidth + menuStyle.itemInset;
+        const int rowWidth = static_cast<int>(mb.width) - 2 * (menuStyle.borderWidth + menuStyle.itemInset);
+        Rect2Di indicatorArea(rowLeft + menuStyle.paddingLeft - 1, rowTop,
                               menuStyle.iconSize + 2, menuStyle.itemHeight);
         Rect2Di menuLabelArea(indicatorArea.x + indicatorArea.width + menuStyle.iconSpacing, rowTop,
-                              static_cast<int>(mb.width) - indicatorArea.width - menuStyle.paddingLeft - menuStyle.paddingRight, menuStyle.itemHeight);
+                              rowWidth - indicatorArea.width - menuStyle.paddingLeft - menuStyle.paddingRight, menuStyle.itemHeight);
         Extent indicator = DrawnExtent(window, indicatorArea, menuBg);
         Extent menuLabel = InkExtent(window, menuLabelArea, menuStyle.textColor, menuBg);
         std::cerr << "   radio rows " << indicator.top << ".." << indicator.bottom

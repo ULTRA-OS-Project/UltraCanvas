@@ -1,3 +1,12 @@
+#### 2026-10-10 *1.61*
+- **Menus in the dark theme keep their separators and outline.** The
+  framework's menus took on the current desktop look (framework changelog:
+  `modern-menus`), whose hairlines are translucent black - invisible on the
+  dark theme's menubar and its drop-downs, which only had their background,
+  text and hover recoloured. The theme switch now also takes the outline,
+  separator, shortcut, disabled-entry and shadow colours from the matching
+  `MenuStyle` (`Dark()` or `Default()`).
+
 #### 2026-10-05 *1.60*
 - **Settings, autosave and comments work in a Windows profile named in any
   script.** The configuration folder (`config.ini`, the recent files, the

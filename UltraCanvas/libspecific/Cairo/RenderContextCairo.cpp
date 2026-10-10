@@ -1,5 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.0.15 - CompositeToSurfaceWithOpacity: the OVER composite painted at an
+//                  alpha, so transparent pixels keep the destination through a fade
 // Version: 1.0.14 - FlushToSurfaceWithOpacity: the flush's SOURCE copy painted at an
 //                  alpha, which cairo applies as a mix with the destination
 // Version: 1.0.13 - borders drawn as filled wedges of the border ring: sides meet on
@@ -9,7 +11,7 @@
 //                  or solid on its own (a dashed side took the previous colour and
 //                  passed its dash on to the sides after it)
 // Version: 1.0.11 - A non-invertible matrix is refused instead of killing the context
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -2210,6 +2212,34 @@ namespace UltraCanvas {
         cairo_set_source_surface(toCtx, surface, 0, 0);
         cairo_set_operator(toCtx, CAIRO_OPERATOR_OVER);
         cairo_paint(toCtx);
+        cairo_surface_flush(static_cast<cairo_surface_t *>(flushToSurface));
+        cairo_destroy(toCtx);
+    }
+
+    void RenderContextCairo::CompositeToSurfaceWithOpacity(NativeSurfacePtr flushToSurface, const Point2Dd& pos,
+                                                           double opacity) {
+        if (opacity >= 1.0) {
+            CompositeToSurface(flushToSurface, pos);
+            return;
+        }
+        if (!(opacity > 0.0)) return;
+        cairo_t *toCtx = cairo_create(static_cast<cairo_surface_t *>(flushToSurface));
+        if (!toCtx) {
+            debugOutput << "RenderContextCairo::CompositeToSurfaceWithOpacity can't create context for flushToSurface" << std::endl;
+            return;
+        }
+        cairo_surface_flush(surface);
+        if (pos.x != 0 || pos.y != 0) {
+            cairo_translate(toCtx, pos.x, pos.y);
+        }
+        cairo_rectangle(toCtx, 0, 0, surfaceSize.width, surfaceSize.height);
+        cairo_clip(toCtx);
+        cairo_set_source_surface(toCtx, surface, 0, 0);
+        // OVER at an alpha: an opaque pixel is mixed with the destination by
+        // `opacity`, exactly as FlushToSurfaceWithOpacity mixes it, and a
+        // transparent one leaves the destination as it is.
+        cairo_set_operator(toCtx, CAIRO_OPERATOR_OVER);
+        cairo_paint_with_alpha(toCtx, opacity);
         cairo_surface_flush(static_cast<cairo_surface_t *>(flushToSurface));
         cairo_destroy(toCtx);
     }
