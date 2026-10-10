@@ -8,6 +8,7 @@
 // AnchorPoint::IConnection / IListener interface.
 #include "Transport.h"
 
+#include <cerrno>    // errno
 #include <cstring>
 
 #ifdef _WIN32
