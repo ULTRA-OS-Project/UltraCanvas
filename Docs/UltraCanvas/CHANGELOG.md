@@ -1,3 +1,10 @@
+#### 2026-10-10 *0.9.241*
+- **The `TabStyle::Modern` indicator line is a setting.** The line under
+  (beside) the open tab was Material blue, two pixels, in the code;
+  `activeTabIndicatorColor` and `activeTabIndicatorThickness`, with their
+  setters, let an application match it to its own accent - UltraFiler's
+  *Simple modern* tab style does.
+
 #### 2026-10-10 *0.9.240*
 - **The doc-example check reads two more kinds of correct C++.** Both
   failed only because of how `scripts/check_doc_examples.py` supplies the
