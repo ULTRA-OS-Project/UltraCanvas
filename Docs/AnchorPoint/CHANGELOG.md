@@ -1,3 +1,10 @@
+#### 2026-10-10 *0.2.3*
+- **Windows: no empty console window beside AnchorPoint's.** The GUI was a
+  console program, so a double-click opened a console window that nothing
+  was ever written to. A Release build is now a GUI-subsystem program
+  (`cmake/UltraCanvasWindowsGuiApp.cmake`); the headless `anchorpoint` stays
+  a console program.
+
 #### 2026-09-28 *0.2.2*
 - **The version is in the window title** — `AnchorPoint 0.2.2` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

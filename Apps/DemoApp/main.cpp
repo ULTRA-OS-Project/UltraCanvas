@@ -1,5 +1,5 @@
 // UltraCanvas Framework Demonstration Program Entry Point
-// Version: 1.0.1 - --no-about; --component starts without the About window
+// Version: 1.0.2 - --help prints to stdout, a bad argument to stderr
 // Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
@@ -201,19 +201,19 @@ int main(int argc, char* argv[]) {
             } else if (arg == "--no-about") {
                 showAbout = false;
             } else if (arg == "--help" || arg == "-h") {
-                debugOutput << "UltraCanvas Demo Application" << std::endl;
-                debugOutput << "Usage: " << argv[0] << " [options]" << std::endl;
-                debugOutput << "Options:" << std::endl;
-                debugOutput << "  -v, --verbose     Enable verbose output" << std::endl;
-                debugOutput << "  -t, --test        Run in test mode" << std::endl;
-                debugOutput << "  -c, --component   Start with specific component selected" << std::endl;
-                debugOutput << "                    (implies --no-about)" << std::endl;
-                debugOutput << "      --no-about    Start without the \"About UltraCanvas\" window" << std::endl;
-                debugOutput << "  -h, --help        Show this help message" << std::endl;
+                std::cout << "UltraCanvas Demo Application" << std::endl;
+                std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
+                std::cout << "Options:" << std::endl;
+                std::cout << "  -v, --verbose     Enable verbose output" << std::endl;
+                std::cout << "  -t, --test        Run in test mode" << std::endl;
+                std::cout << "  -c, --component   Start with specific component selected" << std::endl;
+                std::cout << "                    (implies --no-about)" << std::endl;
+                std::cout << "      --no-about    Start without the \"About UltraCanvas\" window" << std::endl;
+                std::cout << "  -h, --help        Show this help message" << std::endl;
                 return 0;
             } else {
-                debugOutput << "Unknown argument: " << arg << std::endl;
-                debugOutput << "Use --help for usage information" << std::endl;
+                std::cerr << "Unknown argument: " << arg << std::endl;
+                std::cerr << "Use --help for usage information" << std::endl;
             }
         }
 

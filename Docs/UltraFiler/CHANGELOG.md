@@ -1,3 +1,12 @@
+#### 2026-10-10 *1.72.1*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraFiler --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
+
 #### 2026-10-10 *1.72.0*
 - **Split view: a layout of its own.**
   - **The navigation row's path bar is hidden** while the split view is on:

@@ -192,6 +192,11 @@ if(ANCHORPOINT_BUILD_GUI)
         set_target_properties(AnchorPoint PROPERTIES
                 OUTPUT_NAME "AnchorPoint"
                 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        # Windows Release builds open no console window beside AnchorPoint's
+        # (cmake/UltraCanvasWindowsGuiApp.cmake). The headless `anchorpoint`
+        # stays a console program.
+        include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWindowsGuiApp.cmake")
+        ultracanvas_windows_gui_app(AnchorPoint)
         install(TARGETS AnchorPoint RUNTIME DESTINATION bin)
         message(STATUS "AnchorPoint ${PROJECT_VERSION}: building core + CLI + GUI (${ANCHORPOINT_PLATFORM}).")
     endif()

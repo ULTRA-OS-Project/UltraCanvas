@@ -2,12 +2,13 @@
 // UltraFiler - file manager application built on the UltraCanvas framework:
 // folder tree (UltraCanvasTreeView) + folder content (UltraCanvasFilerWidget)
 // + media preview (UltraCanvasMediaViewer) in a Windows Explorer style window.
-// Version: 0.12.0
-// Last Modified: 2026-10-06
+// Version: 0.12.1
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
 #include <exception>
+#include <iostream>
 #include <memory>
 #include <string>
 
@@ -58,17 +59,17 @@ static void SignalHandler(int signal) {
 #endif
 
 static void PrintUsage(const char* programName) {
-    debugOutput << "UltraFiler - File Manager powered by UltraCanvas Framework" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Usage: " << programName << " [options] [folder]" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Options:" << std::endl;
-    debugOutput << "  -h, --help        Show this help message" << std::endl;
-    debugOutput << "  -v, --version     Show version information" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Examples:" << std::endl;
-    debugOutput << "  " << programName << "                  # Open the home folder" << std::endl;
-    debugOutput << "  " << programName << " /home/user/Docs  # Open a specific folder" << std::endl;
+    std::cout << "UltraFiler - File Manager powered by UltraCanvas Framework" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Usage: " << programName << " [options] [folder]" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  -h, --help        Show this help message" << std::endl;
+    std::cout << "  -v, --version     Show version information" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Examples:" << std::endl;
+    std::cout << "  " << programName << "                  # Open the home folder" << std::endl;
+    std::cout << "  " << programName << " /home/user/Docs  # Open a specific folder" << std::endl;
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
@@ -90,14 +91,14 @@ int main(int argc, char* argv[]) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
         } else if (arg == "--version" || arg == "-v") {
-            debugOutput << "UltraFiler version " ULTRAFILER_VERSION << std::endl;
-            debugOutput << "UltraCanvas Framework" << std::endl;
+            std::cout << "UltraFiler version " ULTRAFILER_VERSION << std::endl;
+            std::cout << "UltraCanvas Framework" << std::endl;
             return EXIT_SUCCESS;
         } else if (arg[0] != '-') {
             folderToOpen = arg;
         } else {
-            debugOutput << "Unknown argument: " << arg << std::endl;
-            debugOutput << "Use --help for usage information" << std::endl;
+            std::cerr << "Unknown argument: " << arg << std::endl;
+            std::cerr << "Use --help for usage information" << std::endl;
             return EXIT_FAILURE;
         }
     }

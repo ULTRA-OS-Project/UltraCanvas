@@ -1,7 +1,7 @@
 // Apps/UltraTexter/main.cpp
 // UltraTexter - Standalone Text Editor Application with Multi-Window Support
-// Version: 2.0.2
-// Last Modified: 2026-05-01
+// Version: 2.0.3
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include <iostream>
@@ -247,21 +247,21 @@ void ShutdownSystem() {
 
 // ===== PRINT USAGE =====
 void PrintUsage(const char* programName) {
-    debugOutput << "UltraTexter - Text Editor powered by UltraCanvas Framework" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Usage: " << programName << " [options] [file]" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Options:" << std::endl;
-    debugOutput << "  -h, --help        Show this help message" << std::endl;
-    debugOutput << "  -v, --version     Show version information" << std::endl;
-    debugOutput << "  -d, --dark        Start with dark theme" << std::endl;
-    debugOutput << "  -l, --lang LANG   Set syntax highlighting language" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Examples:" << std::endl;
-    debugOutput << "  " << programName << "                    # Start with empty document" << std::endl;
-    debugOutput << "  " << programName << " myfile.cpp         # Open myfile.cpp" << std::endl;
-    debugOutput << "  " << programName << " -d myfile.py       # Open with dark theme" << std::endl;
-    debugOutput << "  " << programName << " -l Python script   # Open 'script' with Python highlighting" << std::endl;
+    std::cout << "UltraTexter - Text Editor powered by UltraCanvas Framework" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Usage: " << programName << " [options] [file]" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  -h, --help        Show this help message" << std::endl;
+    std::cout << "  -v, --version     Show version information" << std::endl;
+    std::cout << "  -d, --dark        Start with dark theme" << std::endl;
+    std::cout << "  -l, --lang LANG   Set syntax highlighting language" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Examples:" << std::endl;
+    std::cout << "  " << programName << "                    # Start with empty document" << std::endl;
+    std::cout << "  " << programName << " myfile.cpp         # Open myfile.cpp" << std::endl;
+    std::cout << "  " << programName << " -d myfile.py       # Open with dark theme" << std::endl;
+    std::cout << "  " << programName << " -l Python script   # Open 'script' with Python highlighting" << std::endl;
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
@@ -280,8 +280,8 @@ int main(int argc, char* argv[]) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
         } else if (arg == "--version" || arg == "-v") {
-            debugOutput << "UltraTexter version " ULTRATEXTER_VERSION << std::endl;
-            debugOutput << "UltraCanvas Framework" << std::endl;
+            std::cout << "UltraTexter version " ULTRATEXTER_VERSION << std::endl;
+            std::cout << "UltraCanvas Framework" << std::endl;
             return EXIT_SUCCESS;
         } else if (arg == "--dark" || arg == "-d") {
             useDarkTheme = true;
@@ -289,15 +289,15 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 language = argv[++i];
             } else {
-                debugOutput << "Error: --lang requires a language name" << std::endl;
+                std::cerr << "Error: --lang requires a language name" << std::endl;
                 return EXIT_FAILURE;
             }
         } else if (arg[0] != '-') {
             // Assume it's a file path
             fileToOpen = arg;
         } else {
-            debugOutput << "Unknown argument: " << arg << std::endl;
-            debugOutput << "Use --help for usage information" << std::endl;
+            std::cerr << "Unknown argument: " << arg << std::endl;
+            std::cerr << "Use --help for usage information" << std::endl;
             return EXIT_FAILURE;
         }
     }

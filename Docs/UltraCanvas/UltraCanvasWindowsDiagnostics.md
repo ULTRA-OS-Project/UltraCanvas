@@ -726,6 +726,14 @@ void        ReportWindowsStartupFailure(const std::string& stage, const std::str
 std::string DescribeWin32Error(unsigned long error);
 ```
 
+`InitializeNative()` attaches as the window opens, which is after `main()`
+has printed `--help`, `--version` or a bad argument. A target made a GUI
+program with `ultracanvas_windows_gui_app()` (`cmake/UltraCanvasWindowsGuiApp.cmake`)
+therefore also gets `OS/MSWindows/AppEntry/UltraCanvasWindowsAttachConsole.cpp`
+compiled in, which calls `AttachParentConsole()` before `main()`. It is part of
+the executable, not of the core: a DLL's static initialisers run under the
+loader lock.
+
 An application embedding the framework in its own `WinMain` gets all of this by
 calling `UltraCanvasApplication::Initialize()` as usual; nothing extra is
 required.

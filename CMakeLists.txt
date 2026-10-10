@@ -327,6 +327,7 @@ option(ULTRACANVAS_USE_VIDEOFX "Build the VideoFX video editing / conversion mod
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
 include(cmake/UltraCanvasWinManifest.cmake)
+include(cmake/UltraCanvasWindowsGuiApp.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
@@ -2135,8 +2136,10 @@ endif()
 # Hide console window on Windows Release builds
 # Every app whose command line only opens the window (--help and --version
 # aside) is a GUI-subsystem program there, so no empty console opens beside
-# it. MinGW's startup code enters main() either way; no WinMain is needed.
-# UltraMail sets this in its own CMakeLists.txt.
+# it; ultracanvas_windows_gui_app() (cmake/UltraCanvasWindowsGuiApp.cmake)
+# also attaches it to the prompt's console before main(), so --help and
+# --version still print. UltraMail calls it in its own CMakeLists.txt, as do
+# the standalone UltraTexter and AnchorPoint builds.
 #
 # Left as console programs, because their command-line modes print into the
 # prompt they were typed at, and a GUI-subsystem program cannot make that
@@ -2152,7 +2155,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
             UltraClipboard UltraAuthenticator UltraPassword)
         if(TARGET ${_uc_gui_app})
-            set_target_properties(${_uc_gui_app} PROPERTIES WIN32_EXECUTABLE TRUE)
+            ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()
     endforeach()
     unset(_uc_gui_app)
