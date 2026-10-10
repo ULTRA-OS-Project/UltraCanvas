@@ -73,8 +73,12 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.24.0
-// Last Modified: 2026-10-09
+// The preview pane follows a previewed file that changes on disk: a rescan
+// that finds it changed reopens it, at most every couple of seconds - a video
+// or sound only once its file has settled and it is not playing
+// (ReloadChangedPreview).
+// Version: 1.25.0
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -82,6 +86,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasFilerWidget.h"
+#include "UltraCanvasFileStamp.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasMediaViewerWindow.h"
 #include "UltraCanvasSplitPane.h"
@@ -112,6 +117,7 @@
 #include "UltraFilerVolumeSpace.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -777,6 +783,31 @@ private:
     // the selected file is kept scrolled into view when the pane narrows the
     // folder display.
     void UpdatePreviewPane();
+    // Opens `path` in the media viewer for the preview pane and remembers the
+    // file as it was when opened (size and modification time, stamped before
+    // the viewer reads it) for ReloadChangedPreview. `asCopy`: a remote file's
+    // local copy, shown on its own rather than browsed in its folder.
+    void OpenPreviewFile(const std::string& path, bool asCopy);
+    // The previewed file changed on disk since the pane opened it - a rescan
+    // found it with another size or modification time, which is how a picture
+    // saved over in an editor shows up: reopen it, so the pane shows what the
+    // file holds now rather than what it held when it was selected. Two rules
+    // keep a file that goes on changing from churning the pane:
+    //   - it is reopened at most once every kPreviewReloadIntervalMs. A log
+    //     being written or a download in progress changes many times a
+    //     second; the pane catches up every couple of seconds, and a timer
+    //     applies the last change, so the final content is always shown;
+    //   - a video or sound is reopened only once its file has stopped
+    //     changing for kPreviewReloadIntervalMs and it is not playing
+    //     (UltraCanvasMediaViewer::IsPlayingMedia): reopening starts it from
+    //     the beginning, so a video still downloading is not restarted while
+    //     it grows, and one being watched is left alone until it is paused
+    //     or ends.
+    // A file that cannot be examined any more (deleted, moved) is left to the
+    // rescan's own selection handling rather than reopened into an error.
+    void ReloadChangedPreview();
+    void ArmPreviewReloadTimer(unsigned int delayMs);
+    void CancelPreviewReloadTimer();
     // Whether a file on a remote drive is previewed: pictures, vector
     // drawings and 3D models only, because showing one means downloading
     // it first. A video or a document there is opened, not previewed.
@@ -1138,6 +1169,19 @@ private:
     TimerId folderPreviewDelayTimer = InvalidTimerId;
     std::string pendingFolderPreviewPath;
     std::string folderPreviewReadyPath;
+    // The file the preview pane last opened in the media viewer, as it was
+    // then (its size and modification time, UltraCanvasFileStamp.h), and
+    // when; the timer applies a change the throttle or a playing video held
+    // back (see ReloadChangedPreview).
+    std::string previewOpenedPath;
+    bool previewOpenedAsCopy = false;
+    FileStamp previewOpenedStamp;
+    std::chrono::steady_clock::time_point previewOpenedAt{};
+    // A video or sound waits for its file to settle: the version last seen,
+    // and since when it has been that version.
+    FileStamp previewChangeStamp;
+    std::chrono::steady_clock::time_point previewChangeSeenAt{};
+    TimerId previewReloadTimer = InvalidTimerId;
     bool historyShown = false;             // History view replaces the split
     bool favoritesShown = false;           // Favorites view replaces the split
     bool computerShown = false;            // Computer page replaces the tab content

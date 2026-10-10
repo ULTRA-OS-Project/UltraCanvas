@@ -4022,6 +4022,50 @@ else()
     message(STATUS "  ImageUndecodableTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== IMAGE CACHE FRESHNESS TEST =====
+# A picture saved over is read again by UCImage::GetFresh - its new size and
+# its new pixels - instead of being served from the path-keyed image cache or
+# libvips' operation cache as it was. What UltraFiler's thumbnails depend on.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageCacheFreshnessTest...")
+    add_executable(ImageCacheFreshnessTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageCacheFreshnessTest.cpp
+    )
+    target_include_directories(ImageCacheFreshnessTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageCacheFreshnessTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageCacheFreshnessTest PRIVATE UltraCanvas)
+    set_target_properties(ImageCacheFreshnessTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageCacheFreshnessTest COMMAND ImageCacheFreshnessTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageCacheFreshnessTest")
+else()
+    message(STATUS "  ImageCacheFreshnessTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMAGE FILE WATCH DISPLAY TEST =====
+# An album and a slideshow repaint a picture saved over by themselves
+# (UltraCanvasImageFileWatch), read back from a real window. Skips without a
+# DISPLAY; run it under xvfb-run.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageFileWatchDisplayTest...")
+    add_executable(ImageFileWatchDisplayTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageFileWatchDisplayTest.cpp
+    )
+    target_include_directories(ImageFileWatchDisplayTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageFileWatchDisplayTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageFileWatchDisplayTest PRIVATE UltraCanvas)
+    set_target_properties(ImageFileWatchDisplayTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageFileWatchDisplayTest COMMAND ImageFileWatchDisplayTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageFileWatchDisplayTest")
+else()
+    message(STATUS "  ImageFileWatchDisplayTest skipped (UltraCanvas target not present)")
+endif()
+
 message(STATUS "")
 
 # ===== FILER FOLDER PREVIEW / NAME ENCODING / HOST ICONS / SHORTCUT TESTS =====

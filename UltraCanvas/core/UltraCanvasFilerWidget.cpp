@@ -50,6 +50,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.38.1 - a picture saved over gets a new thumbnail: the workers ask
+//                  the image cache with UCImage::GetFresh, and the disk cache
+//                  keeps a thumbnail only against the file as it was before
+//                  the decode (ThumbnailDiskCache::Store's madeFrom)
 // Version: 1.38.0 - an .xls file previews as a cell grid like .xlsx and .ods: the
 //                  first rows of its first sheet, read by the .xls reader
 //                  (UltraCanvasSpreadsheetXls.h) - or, for the HTML, XML, ZIP or
@@ -61,7 +65,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -11794,9 +11798,13 @@ namespace UltraCanvas {
                 continue;
             }
 
-            // The expensive part — outside the lock. UCImage::Get and
+            // The expensive part — outside the lock. UCImage::GetFresh and
             // GetPixmap populate the shared mutex-guarded caches, so later
             // synchronous users (e.g. the media viewer) get free cache hits.
+            // GetFresh rather than Get: the shared cache is keyed by path, so
+            // a picture saved over since it was first drawn came back from it
+            // as it was - after every rescan, and into the disk cache below
+            // under the new file's stamp, so on every run after as well.
             // Which producer runs is decided by the file itself, not by the
             // entry: the request may name an entry's explicit thumbnail image
             // rather than the entry's own file.
@@ -11804,6 +11812,18 @@ namespace UltraCanvas {
             // Failed below and the tile keeps its glyph.
             std::shared_ptr<UCPixmap> pm;
             const bool nativeIcon = NativeFileIconAvailable(req.path);
+            // The file as it is before anything reads it. A thumbnail goes to
+            // the disk cache only against this stamp, and only while the file
+            // still matches it: one drawn from content the file no longer
+            // holds is not kept (see ThumbnailDiskCache::Store). Taken here,
+            // on the worker - it is a stat, and the paint path never touches
+            // the filesystem.
+            ThumbnailDiskCache::SourceStamp madeFrom;
+            if (!nativeIcon && ThumbnailDiskCache::IsEnabled()) {
+                RunGuarded("thumbnail source stamp", req.path, [&]() {
+                    madeFrom = ThumbnailDiskCache::StampSource(req.path);
+                });
+            }
 
             // The thumbnail this machine already made, on an earlier run.
             // Asked before anything is decoded, because that is the whole
@@ -11884,7 +11904,7 @@ namespace UltraCanvas {
                     // the preview bitmap the document carries.
                     const std::string ext = LowerExtension(req.path);
                     if (ImagePipelineLoadsExtension(ext)) {
-                        auto img = UCImage::Get(req.path);
+                        auto img = UCImage::GetFresh(req.path);
                         if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
                             pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
                     }
@@ -11911,7 +11931,7 @@ namespace UltraCanvas {
                     break;
                 }
                 default: {
-                    auto img = UCImage::Get(req.path);
+                    auto img = UCImage::GetFresh(req.path);
                     if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
                         pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
                     }
@@ -11946,7 +11966,8 @@ namespace UltraCanvas {
             // cost the user a re-decode, never a missing thumbnail.
             if (blob && !diskBlob && !nativeIcon) {
                 RunGuarded("thumbnail disk cache write", req.path, [&]() {
-                    ThumbnailDiskCache::Store(DiskCacheRequestFor(req), *blob);
+                    ThumbnailDiskCache::Store(DiskCacheRequestFor(req), *blob,
+                                              madeFrom);
                 });
             }
 
@@ -13426,8 +13447,9 @@ namespace UltraCanvas {
                     if (!ProbeImageDimensions(media.path, w, h)) {
                         // Unknown container (AVIF, HEIC, ...): ask the shared
                         // image cache — same call the thumbnail workers make,
-                        // so a later tile decode is a free cache hit.
-                        auto img = UCImage::Get(media.path);
+                        // so a later tile decode is a free cache hit, and a
+                        // picture saved over is measured as it is now.
+                        auto img = UCImage::GetFresh(media.path);
                         if (img) { w = img->GetWidth(); h = img->GetHeight(); }
                     }
                     if (w > 0 && h > 0)
@@ -15701,14 +15723,17 @@ namespace UltraCanvas {
                 if (renamingIndex >= 0) return true;
 
                 if (event.ctrl) {
+                    // Letter keys arrive as UCKeys::A..Z on every backend
+                    // (the Linux one upper-cases the keysym); a lowercase
+                    // 'a' is not a key code and could never match.
                     switch (event.virtualKey) {
-                        case 'a': case 'A': SelectAll(); return true;
-                        case 'c': case 'C': CopySelection(); return true;
-                        case 'x': case 'X': CutSelection(); return true;
-                        case 'v': case 'V': Paste(); return true;
-                        case 'd': case 'D': DuplicateSelection(); return true;
-                        case 'f': case 'F': CreateNewFolder(); return true;
-                        case 'p': case 'P':
+                        case UCKeys::A: SelectAll(); return true;
+                        case UCKeys::C: CopySelection(); return true;
+                        case UCKeys::X: CutSelection(); return true;
+                        case UCKeys::V: Paste(); return true;
+                        case UCKeys::D: DuplicateSelection(); return true;
+                        case UCKeys::F: CreateNewFolder(); return true;
+                        case UCKeys::P:
                             if (onPrint) onPrint(SelectionOrAll());
                             return true;
                         default: break;
