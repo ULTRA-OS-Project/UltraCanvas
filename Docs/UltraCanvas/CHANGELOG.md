@@ -1,3 +1,29 @@
+#### 2026-10-10 *0.9.233*
+- **A tag field grows in a layout, too.** `UltraCanvasTagInput` wraps its
+  chips onto more rows and was meant to grow to fit them (`autoHeight`, on by
+  default), but it only changed its bounds while painting. In a flex
+  container the next layout pass set them back from `size.height` - 36 px
+  from `CreateTagInput` - so the rows past the first were cut off and their
+  entries could not be seen. The growth now sets `size.height` and asks for a
+  new layout, and the field shrinks the same way when chips are removed. A
+  one-row field takes the height its row needs (40 px at the default style,
+  where it kept the 36 px it was made with). `Tests/TagInputGrowTest.cpp`
+  puts a field between two labels in a flex column and checks that it grows,
+  moves the label below it down, and shrinks back. Seen in UltraMail's *Settings > Warnings > Trusted & blocked*
+  (a third blocked address was invisible) and *Privacy > Images*, and
+  UltraFiler's own ignore patterns (UltraMail 0.10.46).
+- **The tree builds with the current MSYS2 toolchain again.** MSYS2's
+  CLANG64 and CLANGARM64 moved to LLVM 23 on 2026-10-09, and its libc++
+  dropped most of its transitive includes: `<string>` no longer brings in
+  `<algorithm>`, `<cstdlib>`, `<iterator>` or `<optional>`. A Windows leg with
+  a cold compiler cache stopped on the first file that relied on that
+  (`UltraCanvasWordFormatInternal.h`, "no member named 'strtof' in namespace
+  'std'"), then on the vendored MicroTeX's `string_utils.h`. Those two and
+  `UltraFIBUCli.cpp` (`std::sort`) include what they use now, and the build
+  defines libc++'s own bridge `_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23`,
+  exported to SDK consumers through the CMake package, until every file does;
+  libc++ 24 removes the bridge.
+
 #### 2026-10-09 *0.9.232*
 - **UltraNet and UltraWin are module homes like the others, and the net tests
   carry no second UltraNet.** The two modules the shared core had folded in
