@@ -4,6 +4,7 @@
 // building. Pure C++ / STL — no libcurl or platform dependency; other
 // charsets than UTF-8 and Latin-1 go through iconv where the build has it
 // (ULTRANET_HAS_ICONV).
+// Version: 0.4.0 - UltraNet_ImapUtf7Encode (a typed mailbox name for the wire)
 // Version: 0.3.1 - MimeBuild takes a Message-ID passed among the extra headers
 // Version: 0.3.0 - HTML messages with a text alternative and cid: pictures
 //                  (multipart/alternative + related)
@@ -998,6 +999,71 @@ std::string UltraNet_ImapUtf7Decode(const std::string& mUtf7) {
             return mUtf7;   // malformed: never show worse than the raw name
         i = dash + 1;
     }
+    return out;
+}
+
+std::string UltraNet_ImapUtf7Encode(const std::string& utf8) {
+    static const char kModBase64[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,";
+    std::string out;
+    out.reserve(utf8.size() + 8);
+    std::vector<uint16_t> run;   // the UTF-16 units of a run of non-ASCII
+    auto flush = [&]() {
+        if (run.empty()) return;
+        out.push_back('&');
+        uint32_t acc = 0;
+        int bits = 0;
+        for (uint16_t u : run) {
+            acc = (acc << 16) | u;
+            bits += 16;
+            while (bits >= 6) {
+                bits -= 6;
+                out.push_back(kModBase64[(acc >> bits) & 0x3F]);
+            }
+        }
+        if (bits > 0) out.push_back(kModBase64[(acc << (6 - bits)) & 0x3F]);
+        out.push_back('-');
+        run.clear();
+    };
+    for (std::size_t i = 0; i < utf8.size(); ) {
+        const unsigned char c = static_cast<unsigned char>(utf8[i]);
+        if (c >= 0x20 && c <= 0x7E) {
+            flush();
+            if (c == '&') out += "&-";
+            else out.push_back(static_cast<char>(c));
+            ++i;
+            continue;
+        }
+        // One UTF-8 sequence -> a code point (U+FFFD for anything malformed).
+        uint32_t cp = 0xFFFD;
+        std::size_t len = 1;
+        if (c >= 0xC2 && c <= 0xDF) len = 2;
+        else if (c >= 0xE0 && c <= 0xEF) len = 3;
+        else if (c >= 0xF0 && c <= 0xF4) len = 4;
+        if (len > 1 && i + len <= utf8.size()) {
+            uint32_t v = c & (0xFF >> (len + 1));
+            bool ok = true;
+            for (std::size_t k = 1; k < len; ++k) {
+                const unsigned char cc = static_cast<unsigned char>(utf8[i + k]);
+                if ((cc & 0xC0) != 0x80) { ok = false; break; }
+                v = (v << 6) | (cc & 0x3F);
+            }
+            const uint32_t minimum = len == 2 ? 0x80 : len == 3 ? 0x800 : 0x10000;
+            if (ok && v >= minimum && v <= 0x10FFFF && (v < 0xD800 || v > 0xDFFF)) cp = v;
+            else len = 1;
+        } else {
+            len = 1;
+        }
+        if (cp >= 0x10000) {
+            cp -= 0x10000;
+            run.push_back(static_cast<uint16_t>(0xD800 + (cp >> 10)));
+            run.push_back(static_cast<uint16_t>(0xDC00 + (cp & 0x3FF)));
+        } else {
+            run.push_back(static_cast<uint16_t>(cp));
+        }
+        i += len;
+    }
+    flush();
     return out;
 }
 

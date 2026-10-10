@@ -9,6 +9,7 @@
 // per-account worker and marshals results to the UI. Because it depends only on
 // the IMailboxProtocolPlugin interface, it is fully testable with a fake
 // mailbox — no live server required.
+// Version: 0.5.0 - CreateFolder / DeleteFolder
 // Version: 0.4.0 - RescanStaleVerdicts (verdicts of older rules scanned again)
 // Version: 0.3.0 - SyncFolders: the server's separator kept, folders it no
 //                  longer lists dropped
@@ -230,6 +231,17 @@ public:
                             int64_t uid, const std::string& dstFolder,
                             const std::string& serverUrl,
                             const UltraNetMailOptions& options);
+
+    // Make `folder` on the server (CREATE; its full name in wire form, see
+    // NewFolderName) and read the folder list again, so it enters the tree.
+    SyncOutcome CreateFolder(const std::string& accountId, const std::string& folder,
+                             const std::string& serverUrl, const UltraNetMailOptions& options);
+
+    // Delete `folder` and the mail in it on the server (DELETE), then drop it
+    // here - its messages and cached bodies with it - and read the folder list
+    // again. Never INBOX.
+    SyncOutcome DeleteFolder(const std::string& accountId, const std::string& folder,
+                             const std::string& serverUrl, const UltraNetMailOptions& options);
 
 private:
     // An envelope from the server as the store keeps it (decoded headers,

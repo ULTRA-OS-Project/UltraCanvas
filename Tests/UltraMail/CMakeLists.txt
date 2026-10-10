@@ -82,6 +82,29 @@ if(ULTRACANVAS_LIBRARY)
     add_test(NAME UltraMailAccountBar COMMAND UltraMailAccountBarTest)
 endif()
 
+# The folder tree's right-click menu (Add folder, Delete folder) and its
+# content setting (the current account or all): the mail view on an in-memory
+# store in a real window, so it runs under Xvfb and skips itself without a
+# DISPLAY. Linked like the UltraMail app: the engine before the core.
+if(ULTRACANVAS_LIBRARY)
+    add_executable(UltraMailFolderTreeTest
+        FolderTreeTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailMailView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailSenderBadge.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
+    )
+    target_compile_features(UltraMailFolderTreeTest PRIVATE cxx_std_20)
+    target_include_directories(UltraMailFolderTreeTest PRIVATE
+                               ${ULTRACANVAS_INCLUDE_DIRS}
+                               ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui)
+    target_link_libraries(UltraMailFolderTreeTest PRIVATE UltraMailEngine ${ULTRACANVAS_LIBRARY})
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraMailFolderTreeTest PRIVATE fmt::fmt)
+    endif()
+    add_test(NAME UltraMailFolderTree COMMAND UltraMailFolderTreeTest)
+endif()
+
 # The message pane's body reaches the pane's bottom: an attachment strip with
 # nothing in it takes no room. Shows real .eml messages in a window, so it
 # runs under Xvfb and skips itself without a DISPLAY. Linked like the UltraMail
