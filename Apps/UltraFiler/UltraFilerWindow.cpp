@@ -66,6 +66,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
+#include "UltraFilerTabStripStyle.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasModalDialog.h"
@@ -4684,66 +4685,14 @@ void UltraFilerWindow::BuildTabbedContainer() {
 }
 
 void UltraFilerWindow::ApplyTabStripStyle() {
-    if (!tabbedContainer) return;
-    UltraCanvasTabbedContainer& t = *tabbedContainer;
-    const Color ink(30, 37, 46, 255);
-    const Color mutedInk(84, 96, 112, 255);
-    const Color accent(96, 146, 224, 255);
-    switch (settings.tabStripStyle) {
-        case FilerTabStripStyle::Modern:
-            // Capsules floating in a blue-grey strip: the open tab white with
-            // the accent outline, the others text only until hovered.
-            t.SetTabStyle(TabStyle::Pill);
-            t.SetPillInset(2, 3);                          // a 24px capsule in the 30px strip
-            t.SetTabBarColor(Color(229, 234, 241, 255));
-            t.SetActiveTabBackgroundColor(Colors::White);
-            t.SetActiveTabBorderColor(accent);
-            t.SetActiveTabTextColor(ink);
-            t.SetInactiveTabBackgroundColor(Colors::Transparent);
-            t.SetInactiveTabTextColor(mutedInk);
-            t.SetHoveredTabBackgroundColor(Color(255, 255, 255, 140));
-            t.SetCloseButtonColor(mutedInk);
-            t.SetCloseButtonHoverColor(ink);
-            t.SetNewTabButtonShape(NewTabButtonShape::Circle);
-            t.newTabButtonHoverColor = Color(255, 255, 255, 140);
-            t.newTabButtonIconColor = mutedInk;
-            break;
-        case FilerTabStripStyle::SimpleModern:
-            // Flat tabs on the light strip, the open one white with the
-            // accent line under it.
-            t.SetTabStyle(TabStyle::Modern);
-            t.SetTabBarColor(Color(249, 249, 251, 255));
-            t.SetActiveTabBackgroundColor(Colors::White);
-            t.SetActiveTabIndicatorColor(accent);
-            t.SetActiveTabTextColor(ink);
-            t.SetInactiveTabBackgroundColor(Colors::Transparent);
-            t.SetInactiveTabTextColor(mutedInk);
-            t.SetHoveredTabBackgroundColor(Color(236, 237, 241, 255));
-            t.SetCloseButtonColor(mutedInk);
-            t.SetCloseButtonHoverColor(ink);
-            t.SetNewTabButtonShape(NewTabButtonShape::RoundedSquare);
-            t.newTabButtonHoverColor = Color(228, 228, 232, 255);
-            t.newTabButtonIconColor = mutedInk;
-            break;
-        case FilerTabStripStyle::Classic:
-        default:
-            // The strip as every release before 1.71.0 drew it: the
-            // framework's rounded tabs in its default colours.
-            t.SetTabStyle(TabStyle::Rounded);
-            t.SetTabBarColor(Color(249, 249, 251, 255));
-            t.SetActiveTabBackgroundColor(Colors::White);
-            t.SetActiveTabTextColor(Colors::Black);
-            t.SetInactiveTabBackgroundColor(Color(236, 236, 236, 255));
-            t.SetInactiveTabTextColor(Color(80, 80, 80, 255));
-            t.SetHoveredTabBackgroundColor(Color(240, 240, 255, 255));
-            t.SetCloseButtonColor(Color(120, 120, 120, 255));
-            t.SetCloseButtonHoverColor(Color(200, 50, 50, 255));
-            t.SetNewTabButtonShape(NewTabButtonShape::RoundedSquare);
-            t.newTabButtonHoverColor = Color(228, 228, 232, 255);
-            t.newTabButtonIconColor = Color(100, 100, 100, 255);
-            break;
-    }
-    t.InvalidateTabbar();
+    // Every strip the window shows, and the Connection log window's when it
+    // is open; a view built later (History, Favorites) applies the style as
+    // it is built.
+    for (UltraCanvasTabbedContainer* tabs :
+         {tabbedContainer.get(), historyTabs.get(), favoritesTabs.get()})
+        if (tabs) ApplyFilerTabStripStyle(*tabs, settings.tabStripStyle);
+    if (auto logWindow = connectionLogWindow.lock())
+        logWindow->SetTabStripStyle(settings.tabStripStyle);
 }
 
 void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
@@ -5246,6 +5195,7 @@ void UltraFilerWindow::BuildHistoryView() {
     historyTabs->SetCloseMode(TabCloseMode::NoClose);
     historyTabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    ApplyFilerTabStripStyle(*historyTabs, settings.tabStripStyle);   // Display > Tab style
     historyTabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) {
         UpdateStatusBar();
         SyncCommandBarToVisibleDisplay();   // each page has its own view
@@ -5506,6 +5456,7 @@ void UltraFilerWindow::BuildFavoritesView() {
     favoritesTabs->SetCloseMode(TabCloseMode::NoClose);
     favoritesTabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    ApplyFilerTabStripStyle(*favoritesTabs, settings.tabStripStyle);   // Display > Tab style
     favoritesTabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) {
         UpdateStatusBar();
         SyncCommandBarToVisibleDisplay();   // each page has its own view
@@ -6372,6 +6323,7 @@ void UltraFilerWindow::OpenConnectionLog() {
         logWindow->RaiseAndFocus();
     } else {
         logWindow = ShowConnectionLogWindow(sessions, window.get());
+        logWindow->SetTabStripStyle(settings.tabStripStyle);   // Display > Tab style
         // Raw `this`: the main window outlives the log window's callback -
         // its destructor clears it before going.
         logWindow->onClear = [this]() {

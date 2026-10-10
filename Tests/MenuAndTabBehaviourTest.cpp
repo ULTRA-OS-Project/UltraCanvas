@@ -9,8 +9,13 @@
 //    background, border, shadow and entries, not only the entries - by
 //    stepping its popup opacity on the window.
 //  - UltraCanvasWindowBase::SetPopupOpacity: below 1 the window mixes a popup
-//    with the content beneath it; at 1, the default, the popup is copied onto
-//    the window bit for bit as before.
+//    with the content beneath it; at 1, the default, the popup is blended over
+//    the window with its alpha - its opaque pixels as they are, its
+//    transparent ones (a rounded corner) showing the content.
+//  - The popup menu's panel (MenuStyle::Default): rounded corners that show
+//    the window, a soft drop shadow the window paints outside the menu's
+//    bounds, a hover highlight inset from the panel's edges, padding above
+//    the first row that hovers nothing, and separators across the panel.
 //  - Escape closes an open menu through the popup system (the application
 //    closes the topmost popup when its closeByEscapeKey is set). That was
 //    already so; the check here keeps the menu registered that way.
@@ -31,9 +36,10 @@
 // the menu is drawn into an offscreen surface read back pixel by pixel. The
 // fade is read off a second stand-in whose "screen" is an offscreen surface,
 // so UpdateAndRender() composites onto it exactly as onto a real window.
+// Version: 1.3.0 - popups blend over the window; the menu's rounded, shadowed panel
 // Version: 1.2.0 - the whole popup fades, composited by the window at its opacity
 // Version: 1.1.0 - activating an item with no application
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMenu.h"
@@ -319,7 +325,7 @@ void PopupOpacityChecks() {
     const Rect2Di whole(0, 0, ScreenWindow::kWidth, ScreenWindow::kHeight);
     TEST("the stand-in's screen shows its content", win.MaxDifferenceFromContent(whole) == 0);
 
-    // ---- A popup opened with default settings is copied onto the window as before ----
+    // ---- A popup opened with default settings is blended over the window ----
     auto swatch = std::make_shared<Swatch>();
     win.OpenPopup(Point2Di(40, 50), *swatch, PopupElementSettings());
     win.Frame();
@@ -336,9 +342,23 @@ void PopupOpacityChecks() {
                 ownPixels.push_back(*reinterpret_cast<const uint32_t*>(data + y * stride + x * 4));
     }
     TEST("a popup opens at opacity 1", win.GetPopupOpacity(*swatch) == 1.0f);
-    TEST("at the default opacity its pixels are copied as they are, transparent ones too",
+    // Its opaque third is its own, its transparent third the content, and the
+    // half-transparent red between is mixed with the content.
+    const Rect2Di opaqueThird(at.x, at.y, 30, 30);
+    std::vector<uint32_t> ownOpaque;
+    for (int y = 0; y < 30 && !ownPixels.empty(); ++y)
+        for (int x = 0; x < 30; ++x) ownOpaque.push_back(ownPixels[y * 90 + x]);
+    const uint32_t halfRed = win.Pixels(Rect2Di(at.x + 45, at.y + 15, 1, 1))[0];
+    auto close = [](int v, int want) { return std::abs(v - want) <= 2; };
+    TEST("at the default opacity its opaque pixels are put on the window as they are",
          at.x == 40 && at.y == 50 && at.width == 90 && at.height == 30 &&
-         !ownPixels.empty() && win.Pixels(at) == ownPixels);
+         !ownOpaque.empty() && win.Pixels(opaqueThird) == ownOpaque);
+    TEST("its transparent pixels leave the content showing",
+         win.MaxDifferenceFromContent(Rect2Di(at.x + 60, at.y, 30, 30)) == 0);
+    TEST("its half-transparent ones are blended over the content",
+         close((halfRed >> 16) & 0xFF, 128 + 30 * 127 / 255) && close((halfRed >> 8) & 0xFF, 160 * 127 / 255) &&
+         close(halfRed & 0xFF, 60 * 127 / 255));
+    const std::vector<uint32_t> atOne = win.Pixels(at);
 
     // ---- Below 1 it is mixed with the content beneath ----
     TEST("SetPopupOpacity takes an open popup", win.SetPopupOpacity(*swatch, 0.0f));
@@ -356,7 +376,7 @@ void PopupOpacityChecks() {
 
     win.SetPopupOpacity(*swatch, 1.0f);
     win.Frame();
-    TEST("back at 1 it is the plain copy again", win.Pixels(at) == ownPixels);
+    TEST("back at 1 it is the full blend again", win.Pixels(at) == atOne);
 
     Swatch loose;
     TEST("an element that is not an open popup has no opacity to set", !win.SetPopupOpacity(loose, 0.5f) &&
@@ -406,6 +426,78 @@ void PopupOpacityChecks() {
     std::cerr << "  (fade: opacity at open " << opacityAtOpen << ", largest difference from the content "
               << differenceAtOpen << ")" << std::endl;
     fading->CloseMenu();
+}
+
+// The default menu's panel on a window: rounded corners, a soft shadow outside
+// its bounds, a hover highlight inset from its edges, top padding that hovers
+// nothing, and a separator across the panel.
+void MenuPanelChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to composite onto", false);
+        return;
+    }
+    win.Frame();
+
+    const MenuStyle style = MenuStyle::Default();
+    auto menu = std::make_shared<UltraCanvasMenu>("panel-look", 160, 0);
+    menu->SetMenuType(MenuType::PopupMenu);
+    menu->SetStyle(style);
+    menu->AddItem(MenuItemData::Action("Open", [] {}));
+    menu->AddItem(MenuItemData::Separator());
+    menu->AddItem(MenuItemData::Action("Save As...", [] {}));
+    menu->OpenMenu(Point2Di(100, 60), win, PopupElementSettings());
+    win.Frame();
+
+    const Rect2Di b = WindowBounds(*menu);
+    auto px = [&win](int x, int y) { return win.Pixels(Rect2Di(x, y, 1, 1))[0]; };
+    auto green = [](uint32_t p) { return static_cast<int>((p >> 8) & 0xFF); };
+    const int bgGreen = style.backgroundColor.g;
+    const int rowsTop = b.y + style.borderWidth + style.paddingTop;
+    const int firstRowMiddle = rowsTop + style.itemHeight / 2;
+    const int panelHeight = 2 * (style.borderWidth + style.paddingTop) + 2 * style.itemHeight + style.separatorHeight;
+
+    TEST("the menu's bounds are its panel: border, padding and rows, no room for a shadow",
+         b.x == 100 && b.y == 60 && b.height == panelHeight);
+    TEST("its corner is rounded off: the corner pixel is the window beneath, not the panel",
+         green(px(b.x, b.y)) <= win.content.g);
+    TEST("inside, the padding above the first row is the panel's background",
+         std::abs(green(px(b.x + b.width / 2, b.y + 2)) - bgGreen) <= 1);
+    const uint32_t underPanel = px(b.x + b.width / 2, b.y + b.height + 3);
+    TEST("a soft shadow lies just below the panel, outside its bounds",
+         green(underPanel) < win.content.g - 8 && green(underPanel) > 40);
+    TEST("and fades out: well below the panel is the plain content",
+         win.MaxDifferenceFromContent(Rect2Di(b.x, b.y + b.height + 30, b.width, 4)) == 0);
+
+    // Hover the first row through its label.
+    UCEvent move;
+    move.type = UCEventType::MouseMove;
+    move.pointerWindow = Point2Di(b.x + b.width / 2, firstRowMiddle);
+    move.pointer = Point2Di(b.width / 2, firstRowMiddle - b.y);
+    menu->OnEvent(move);
+    win.Frame();
+    const int inset = style.borderWidth + style.itemInset;
+    TEST("a hovered row's highlight starts after the inset: the gutter keeps the background",
+         std::abs(green(px(b.x + inset - 2, firstRowMiddle)) - bgGreen) <= 1);
+    TEST("and inside the inset it is a shade darker than the background",
+         green(px(b.x + inset + 2, firstRowMiddle)) < bgGreen - 8);
+
+    // The padding above the first row is no row's: the highlight goes.
+    move.pointerWindow = Point2Di(b.x + b.width / 2, b.y + 2);
+    move.pointer = Point2Di(b.width / 2, 2);
+    menu->OnEvent(move);
+    win.Frame();
+    TEST("the panel's top padding hovers nothing",
+         std::abs(green(px(b.x + inset + 2, firstRowMiddle)) - bgGreen) <= 1);
+
+    const int separatorLine = rowsTop + style.itemHeight + style.separatorHeight / 2;
+    TEST("a separator runs across the panel, past the rows' inset",
+         green(px(b.x + inset - 2, separatorLine)) < bgGreen - 8 &&
+         std::abs(green(px(b.x + inset - 2, separatorLine - 2)) - bgGreen) <= 1);
+    menu->CloseMenu();
+    win.Frame();
+    TEST("closing the menu takes its shadow with it",
+         win.MaxDifferenceFromContent(Rect2Di(b.x - 20, b.y - 20, b.width + 40, b.height + 40)) == 0);
 }
 
 void TabChecks(HeadlessWindow& win) {
@@ -604,6 +696,7 @@ int main() {
     auto win = std::make_shared<HeadlessWindow>();
     MenuChecks(*win);
     PopupOpacityChecks();
+    MenuPanelChecks();
     TabChecks(*win);
     TabReorderChecks(*win);
     TextAreaChecks();

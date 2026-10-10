@@ -1,3 +1,11 @@
+#### 2026-10-10 *1.72.1*
+- **Display > Tab style reaches every tab strip.** 1.71.0 dressed only the
+  window's own strip; the three tabs of the History and Favorites views and
+  the two of the Connection log window kept the rounded tabs whatever was
+  chosen. All of them follow the setting now, at once when it changes, with
+  the Modern capsule 24px tall in the 28px Connection log strip as in the
+  30px window strip.
+
 #### 2026-10-10 *1.72.0*
 - **Split view: a layout of its own.**
   - **The navigation row's path bar is hidden** while the split view is on:

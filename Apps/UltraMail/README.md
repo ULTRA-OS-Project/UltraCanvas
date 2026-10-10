@@ -155,8 +155,9 @@ Apps/UltraMail/
                                   copyable (header and body, right-click Copy /
                                   Select All), a copy button on a one-time code
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
-    UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
-                                  (Open / Save As…) opens content in UltraCanvasMediaViewer
+    UltraMailAttachmentStrip.{h,cpp} attachment chips (paperclip, name, size); a click
+                                  opens the Open / Save As… menu, a double-click
+                                  opens content in UltraCanvasMediaViewer
     UltraMailOutboxView.{h,cpp}   the Outbox window (toolbar "Outbox (N)"): the
                                   waiting messages (To · Subject · From · Tries
                                   · Status) with Send now, Edit… and Delete
@@ -237,8 +238,11 @@ follows it.
 
 **Attachments:** a message's MIME parts are decoded by `MimeCodec` (over
 `UltraNet_MimeParse`); the attachment strip under the message body shows one
-chip per part. Double-clicking a chip — or the right-click **Open** — writes
-the bytes to the cache and opens them in **`UltraCanvasMediaViewer`** (images,
+chip per part: the paperclip, the file name and its size. A click on a chip
+opens its menu (**Open**, **Save As…**) under the chip - above it at the foot
+of the window - and a second click closes it again; a right-click opens the
+same menu at the pointer. Double-clicking a chip — or **Open** — writes the
+bytes to the cache and opens them in **`UltraCanvasMediaViewer`** (images,
 PDF, text, audio/video, …). Try it: run with `ULTRAMAIL_DEMO_MAIL=1`, which
 seeds a demo inbox (two messages dated today, one with an attachment) so the
 whole main window can be exercised without a live sync.

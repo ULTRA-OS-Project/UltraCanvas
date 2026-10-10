@@ -123,6 +123,14 @@ private:
     std::vector<LabelTextLink> runLinks;
     // Images flowing in the current run, at U+FFFC placeholders of runPlain.
     std::vector<LabelInlineImage> runImages;
+    // The tallest line-height of the run's text - CSS makes a line as tall as
+    // the tallest inline box on it, so <span style="line-height:40px"> in a
+    // cell is a 40px line - and whether any of that text sets one. A run
+    // where none does keeps the font's own line spacing.
+    float runLineHeightPx = 0.f;
+    bool runLineHeightSet = false;
+    // Notes the line-height `style` gives a piece of visible text of the run.
+    void NoteRunLineHeight(const ComputedStyle& style);
 
     // The width of a space in a style's font, in px - the gap between two
     // images a space apart. Measured on a small offscreen context made on
@@ -200,8 +208,10 @@ private:
     // The border sides and radius of a style (ApplyBoxStyle calls it; a
     // collapsed table's cells call it once their shared edges are settled).
     void ApplyBorders(UltraCanvasUIElement& target, const ComputedStyle& style);
+    // `runLineHeightPx` > 0: the line height of an inline run whose text
+    // sets its own (BuildInlineRun), in place of the block's.
     void ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
-                        bool noWrap = false);
+                        bool noWrap = false, float runLineHeightPx = 0.f);
     // background-image: the first url() layer that loads, drawn under the
     // box's content (an out-of-flow image element filling it), fitted by that
     // layer's background-size, placed by its background-position and tiled
