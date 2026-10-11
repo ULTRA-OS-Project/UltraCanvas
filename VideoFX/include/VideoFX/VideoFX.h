@@ -1,7 +1,7 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.9.0
+// Version: 0.10.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once

@@ -109,6 +109,8 @@ private:
     void DeleteSelection();
     void AddMarker();
     void AddTitle(const std::string& styleKey, double at);
+    void AddOverlay(const std::string& path, double at);     // a file over the picture, on V2
+    void ChooseOverlay(double at);                           // ... from a file dialog
     void RequestBeats();               // detect the first song's beats on the worker, once per song
     void ShowTimelineMenu(const std::string& trackId, double seconds, const std::string& clipId, int x, int y);
     void ShowBinMenu(size_t index, int x, int y);

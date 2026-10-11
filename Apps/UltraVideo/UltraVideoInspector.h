@@ -35,9 +35,9 @@ public:
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> Build(const Palette& palette);
     void ApplyPalette(const Palette& palette);
 
-    // Show the document: `segment` is the selected clip's segment and
-    // `title` the selected title span, -1 for none
-    void Show(const Document& document, int segment, int title = -1);
+    // Show the document: `segment` is the selected clip's segment, `title`
+    // the selected title span and `overlay` the selected overlay clip, -1 for none
+    void Show(const Document& document, int segment, int title = -1, int overlay = -1);
     void ShowClipTab();
     void ShowAudioTab();
 
@@ -86,6 +86,12 @@ private:
     std::shared_ptr<Label> titleSizeValue, titleFadeInValue, titleFadeOutValue;
     std::shared_ptr<Switch> titleShadow, titleBox;
     std::shared_ptr<TimecodeField> titleLength;
+    // an overlay clip (V2)
+    std::shared_ptr<Container> overlayRows;
+    std::shared_ptr<TimecodeField> overlayLength;
+    std::shared_ptr<Dropdown> overlayAnchor;
+    std::shared_ptr<Slider> overlaySize, overlayOpacity, overlayFadeIn, overlayFadeOut;
+    std::shared_ptr<Label> overlaySizeValue, overlayOpacityValue, overlayFadeInValue, overlayFadeOutValue;
 
     // Audio
     std::shared_ptr<Label> songs;
@@ -101,6 +107,7 @@ private:
 
     int segment = -1;
     int title = -1;
+    int overlay = -1;
     double documentFrameRate = 25.0;
     bool updating = false;
 };

@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXProbe.cpp
 // Media inspection: VideoFX_Probe, frame and thumbnail extraction, saving a
 // frame as PNG / JPEG.
-// Version: 0.9.0
+// Version: 0.10.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
@@ -97,6 +97,7 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
         if (av_seek_frame(v.fmt.get(), v.stream, target, AVSEEK_FLAG_BACKWARD) < 0)
             av_seek_frame(v.fmt.get(), -1, 0, AVSEEK_FLAG_BACKWARD);   // unseekable: from the start
         avcodec_flush_buffers(v.dec.get());
+        v.spent = false;
     }
 
     v.fresh = false;
@@ -111,7 +112,8 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
             int err = av_read_frame(v.fmt.get(), pkt.get());
             if (err < 0) {
                 draining = true;    // the decoder is spent after this: the next call seeks
-                avcodec_send_packet(v.dec.get(), nullptr);
+                if (!v.spent) avcodec_send_packet(v.dec.get(), nullptr);
+                v.spent = true;
             } else {
                 if (pkt->stream_index == v.stream) avcodec_send_packet(v.dec.get(), pkt.get());
                 av_packet_unref(pkt.get());
@@ -138,6 +140,34 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
             }
         }
         if (draining && !haveFrame) return Fail(VideoFXResult::DecodeError, "No frame at the requested time");
+    }
+}
+
+VideoFXResult DecodeNextFrame(OpenVideo& v, AVFrame* out, double& frameTime, bool& endOfStream) {
+    endOfStream = false;
+    if (v.still) { endOfStream = true; return VideoFXResult::Ok; }   // a still has the one frame
+    PacketPtr pkt = MakePacket();
+    while (true) {
+        int err = avcodec_receive_frame(v.dec.get(), out);
+        if (err >= 0) {
+            const int64_t ts = out->best_effort_timestamp;
+            frameTime = ts == AV_NOPTS_VALUE ? (v.lastTime < 0.0 ? 0.0 : v.lastTime) : ToSeconds(ts - v.startTs, v.tb);
+            v.lastTime = frameTime;
+            v.fresh = false;
+            return VideoFXResult::Ok;
+        }
+        if (err == AVERROR_EOF) { endOfStream = true; return VideoFXResult::Ok; }
+        if (err != AVERROR(EAGAIN)) return Fail(VideoFXResult::DecodeError, "Decoding failed", err);
+        if (v.spent) { endOfStream = true; return VideoFXResult::Ok; }
+        err = av_read_frame(v.fmt.get(), pkt.get());
+        if (err < 0) {
+            avcodec_send_packet(v.dec.get(), nullptr);
+            v.spent = true;
+            continue;
+        }
+        if (pkt->stream_index == v.stream) avcodec_send_packet(v.dec.get(), pkt.get());
+        av_packet_unref(pkt.get());
+        v.fresh = false;
     }
 }
 

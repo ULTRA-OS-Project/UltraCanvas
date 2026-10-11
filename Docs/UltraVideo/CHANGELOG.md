@@ -42,6 +42,14 @@
     reorder by dragging, `Del` to remove a song - and in the *Audio* tab,
     which opens when a song is selected. *Beat marks* in the toolbar asks
     the engine for the first song's beats and draws them across the lanes.
+  - The overlay-video lane: *V2 Overlay video* over the main track, a free
+    lane of other files' pictures - a video as picture-in-picture without
+    its sound (VideoFX 0.10.0's video overlay), a picture as a logo - added
+    from the lane's menu, a bin tile's *Over the picture* or a drop on the
+    lane; moved, trimmed (the left edge moves into the file), split and
+    deleted like a clip; the inspector sets length, place, size, opacity
+    and fades. Cut into one overlay per main-track clip it crosses when
+    the engine renders, like a title; the viewer shows it while editing.
   - The story wizard: *Make a story* in the app bar (`Ctrl+Shift+N`), three
     steps in a modal - pictures and clips in order with the seconds per
     photo, a song or none with fit-to-song, beat sync and the ducking
@@ -62,7 +70,6 @@
   - Export: a preset (web MP4 at 1080p, 720p or 4K, WebM, GIF, ProRes,
     MP3), the output file, the whole project or the work area; the job
     runs in the background with a progress dialog and can be cancelled.
-  - Not yet: the overlay-video lane, effect presets, drag from the bin
-    onto the timeline, playback with sound (the draft render), and the
-    theme-role mapping (the app colours its elements from the design's
-    tokens directly).
+  - Not yet: effect presets, drag from the bin onto the timeline, playback
+    with sound (the draft render), and the theme-role mapping (the app
+    colours its elements from the design's tokens directly).

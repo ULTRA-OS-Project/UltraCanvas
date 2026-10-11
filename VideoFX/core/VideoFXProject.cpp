@@ -10,7 +10,7 @@
 //     "title": "...", "output": "out.mp4", "settings": {...},
 //     "segments": [ {...}, ... ] }                       a timeline, or
 //     "slideshow": { "images": [...], "options": {...} } a slideshow
-// Version: 0.7.0
+// Version: 0.8.0
 // Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
@@ -92,7 +92,7 @@ constexpr std::pair<VideoFXTransitionType, const char*> kTransitions[] = {
     {VideoFXTransitionType::SqueezeVertical, "squeezeVertical"}};
 
 constexpr std::pair<VideoFXOverlayKind, const char*> kOverlayKinds[] = {
-    {VideoFXOverlayKind::Text, "text"}, {VideoFXOverlayKind::Image, "image"}};
+    {VideoFXOverlayKind::Text, "text"}, {VideoFXOverlayKind::Image, "image"}, {VideoFXOverlayKind::Video, "video"}};
 
 constexpr std::pair<VideoFXAnchor, const char*> kAnchors[] = {
     {VideoFXAnchor::TopLeft, "topLeft"}, {VideoFXAnchor::Top, "top"}, {VideoFXAnchor::TopRight, "topRight"},
@@ -286,6 +286,7 @@ Json OverlayOut(const VideoFXOverlay& o, const Paths& paths) {
                 {"textColor", ColourOut(o.textColor)}, {"shadow", o.shadow}, {"box", o.box},
                 {"boxColor", ColourOut(o.boxColor)}, {"boxOpacity", o.boxOpacity},
                 {"image", paths.Out(o.imagePath)}, {"imageHeight", o.imageHeight},
+                {"video", paths.Out(o.videoPath)}, {"videoStart", o.videoStart},
                 {"anchor", NameOf(MakeNames(kAnchors, "anchor"), o.anchor)}, {"margin", o.margin},
                 {"x", o.x}, {"y", o.y}, {"opacity", o.opacity},
                 {"start", o.start}, {"end", o.end}, {"fadeIn", o.fadeIn}, {"fadeOut", o.fadeOut}};
@@ -393,6 +394,8 @@ VideoFXOverlay OverlayIn(const Json& j, const Paths& paths, const std::string& a
     Get(j, "boxOpacity", o.boxOpacity, at);
     GetPath(j, "image", o.imagePath, paths, at);
     Get(j, "imageHeight", o.imageHeight, at);
+    GetPath(j, "video", o.videoPath, paths, at);
+    Get(j, "videoStart", o.videoStart, at);
     Get(j, "anchor", o.anchor, MakeNames(kAnchors, "anchor"), at);
     Get(j, "margin", o.margin, at); Get(j, "x", o.x, at); Get(j, "y", o.y, at); Get(j, "opacity", o.opacity, at);
     Get(j, "start", o.start, at); Get(j, "end", o.end, at);
@@ -520,6 +523,7 @@ std::vector<std::string> ProjectMedia(const VideoFXProject& p) {
                 if (e.type == VideoFXEffectType::LUT) add(e.path);
             for (const VideoFXOverlay& o : s.overlays) {
                 if (o.kind == VideoFXOverlayKind::Image) add(o.imagePath);
+                if (o.kind == VideoFXOverlayKind::Video) add(o.videoPath);
                 add(o.fontPath);
             }
         }

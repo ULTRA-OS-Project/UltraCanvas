@@ -121,7 +121,7 @@ FFmpeg is missing (`Docs/Modules/VideoFX/README.md`). As of 0.8.0 it has:
 | Timeline | `VideoFXSegment`: a file range, a still image, a colour card or a test pattern, with `start`/`end`, `speed` 0.25–4, `mute`, an ordered effect list, overlays, `transitionIn`, image motion, image fit, regions to keep in view | The main track's clips and everything on them |
 | Effects | 26 typed effects: colour, geometry, blur, LUT, fades, volume, loudness | The inspector's *Effects* list, the "Warm film" preset |
 | Transitions | 30 types, 0.04–5 s, picture via `xfade`, sound cross-faded | The transition badge |
-| Overlays | Text and image overlays per segment, anchored on the output frame, with start, end, fades, opacity, box, shadow, font | The title lane |
+| Overlays | Text, image and video overlays per segment, anchored on the output frame, with start, end, fades, opacity, box, shadow, font; a video overlay plays another file's picture from a second into it (0.10.0) | The title lane, the overlay-video lane |
 | Photos | Ken Burns motion with sub-pixel resampling, EXIF orientation, blurred-background fit, faces kept in shot by the built-in detector | Still-image clips, the story mode |
 | Music | One bed track with a playlist, crossfades, loop, fades, ducking with three presets; beat detection; slideshows cut on the beat | The music lane, beat marks, the story mode |
 | Export | Presets (web MP4, WebM, GIF, ProRes, audio-only), codec availability queries, `VideoFXExportJob` with progress and cancel, lossless cut | The export dialog and its progress |
@@ -236,7 +236,7 @@ match. `VideoFXWaveform` was written that way on purpose.
 | **V1 main track** | Magnetic: clips reorder, gaps close, `Del` ripples | `std::vector<VideoFXSegment>` in order | One clip = one segment. Position on the timeline is *derived*: the sum of the earlier clips' durations less the transition overlaps. The element is told the derived positions and draws them; it never lets a main-track clip be dropped at a free time. |
 | **Transitions on V1** | A badge on a cut with a length | `segment.transitionIn` on the later segment | Direct. The maximum the element shows is the engine's: the shorter neighbour's length, capped at 5 s. |
 | **T1 titles** | Free lane of spans with a text or logo | `segment.overlays`, timed in segment seconds | A span is cut at every segment boundary it crosses into one overlay per segment, with the same text and anchor and the fades only on the outer ends. The user sees one span; the engine gets several overlays. Invisible, and lossless on the way back because the app's document keeps the span. |
-| **V2 overlay video** | Free lane of video clips | Not rendered yet (picture-in-picture is planned) | Present in the model; the app hides the lane until the engine renders it (§8.3). |
+| **V2 overlay video** | Free lane of video (or picture) clips | `VideoFXOverlayKind::Video` / `Image` on `segment.overlays`, timed in segment seconds, `videoStart` for the file's second (§8.3, done in 0.10.0) | Cut at every segment boundary like a title span, each piece's `videoStart` advanced by where the piece begins; the app's document keeps the span (`OverlaySpan`: file, start, length, `sourceIn`, fades, look). |
 | **A1 music** | One bar: song or playlist, fades, crossfades, ducking | `settings.music` | Direct. Volume, fades, ducking preset and the playlist are the bar's inspector. |
 | **A2… free audio** | Free lane of audio clips | Not rendered yet | In the model; hidden in the app until §8.4. |
 | **Markers, beats, work area** | On the ruler | Beats from `VideoFX_DetectBeats`; markers and the range are the app's | The work area becomes the export's trim: the app exports only the segments inside it, trimming the first and last. |
@@ -812,7 +812,7 @@ adds the segment logic over it.
 |---|---|---|---|
 | 8.1 | **Waveforms**: `VideoFX_ExtractWaveform` | The music bar, clip waveforms | **Done** in 0.8.0 |
 | 8.2 | **Render a frame**: `VideoFXPreview` (`Open` once, `RenderFrame(seconds, frame, maxW, maxH)` per position) and the one-call `VideoFX_RenderFrame` — the output frame at a timeline time with the segment's effects and overlays and, inside an overlap, the transition; music ignored. `VideoFX_PlanSlideshow` gives a slideshow's segments for the same | The viewer while scrubbing (§5.5 level 2) | **Done** in 0.9.0 |
-| 8.3 | **Picture-in-picture**: a segment-level list of overlay *video* clips with position, size, opacity and a time range, composed over the output frame | The overlay video lane | Roadmap stage 3; a week |
+| 8.3 | **Picture-in-picture**: a segment-level list of overlay *video* clips with position, size, opacity and a time range, composed over the output frame | The overlay video lane | **Done** in 0.10.0 (`VideoFXOverlayKind::Video`, in the export and the preview) |
 | 8.4 | **Free audio tracks**: sound effects and voice-over placed at timeline times, mixed before the music | A2 and up | Roadmap stage 3; days |
 | 8.5 | **Draft render preset**: `VideoFXExportSettings::Draft(height)`, fast preset, low bit rate, for the playback proxy (§5.5 level 3) | Play | An hour |
 | 8.6 | **Export a range**: `start`/`end` on `VideoFX_Export` so the work area exports without the app trimming segments itself | Export dialog's *work area* choice | Small |
@@ -896,7 +896,7 @@ and sound types for *Open with*. All of it is in place (§14).
 | 1 | `UltraCanvasVideoTimeline` and `UltraCanvasTimecodeField`: model, operations, rendering of ruler, main track, clips with filmstrips, transitions, playhead, zoom, selection, keyboard, drop, context menu hook; docs, catalogue rows, DemoApp page, model tests | Framework release |
 | 2 | `VideoFX_RenderFrame` (8.2, **done** in 0.9.0), the draft preset (8.5), export range (8.6) | VideoFX 0.9.0 |
 | 3 | `Apps/UltraVideo` 0.1.0: window, media bin, viewer with scrubbing, inspector (clip, audio, project), timeline wired through the mapping, undo, `.ultravideo`, export dialog (**built**, §14) | First app release |
-| 4 | Title lane and music lane (**built**, §14: spans, fades, song boundaries, beats) in the element; markers, work area, snapping, ripple built in phase 1; the story wizard (**built**) | App 0.2.0 |
+| 4 | Title lane and music lane (**built**, §14: spans, fades, song boundaries, beats) in the element; markers, work area, snapping, ripple built in phase 1; the story wizard (**built**); the overlay-video lane (**built**, on VideoFX 0.10.0) | App 0.2.0 |
 | 5 | Picture-in-picture (8.3) and free audio tracks (8.4) in the engine; the overlay and free audio lanes switched on | VideoFX 0.10, app 0.3 |
 | 6 | Keyframes in the engine and keyframe markers on clips; proxy media; hardware encoder choice | Later |
 
@@ -1027,6 +1027,21 @@ that writing it showed:
   onto `settings.music`; selecting a song opens the *Audio* tab. Beat marks
   come from `VideoFX_DetectBeats` on the first song, run on the worker when
   the toggle is first switched on. Songs are not split or copied.
+- **The overlay-video lane** (§5.3, §8.3): the engine first - VideoFX
+  0.10.0's `VideoFXOverlayKind::Video` plays another file's picture over a
+  segment, placed, sized and faded like an image overlay, from `videoStart`
+  seconds into the file, silent; the exporter runs a second decoder beside
+  the segment's own and feeds the overlay's frames to the graph just ahead
+  of the picture under them, the preview feeds the one frame it shows.
+  Then the app: `OverlaySpan` in the document (file, start, length,
+  `sourceIn`, fades, look), cut into one overlay per segment it crosses as
+  titles are, with each piece's `videoStart` advanced by where the piece
+  begins; the `V2` lane in the model as a free `Video` track whose clips
+  carry their source, so the element's filmstrips, source limits and left
+  trims (which move into the file) work unchanged; added from the lane's
+  menu, a bin tile's action or a drop; the inspector's place, size, opacity
+  and fades. A picture on the lane becomes an image overlay: a logo. The
+  lane is no longer hidden; the table of §5.3 names the mapping.
 - **The story wizard** (§5.9, §6.11): `UltraVideoStory` shows the three
   steps of §6.11 as a flat tabbed container in a modal, with the chosen
   files as a reorderable album. It departs from §6.11 in one way: *Make

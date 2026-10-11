@@ -283,6 +283,29 @@ TimelineModel BuildTimelineModel(const Document& doc) {
                      [](const TimelineClip& a, const TimelineClip& b) { return a.start < b.start; });
     model.tracks.push_back(titleTrack);
 
+    // The overlay-video lane: free clips of other files' pictures over the main track
+    TimelineTrack overlayTrack;
+    overlayTrack.id = kOverlayTrackId;
+    overlayTrack.kind = TimelineTrackKind::Video;
+    overlayTrack.name = "Overlay video";
+    overlayTrack.magnetic = false;
+    for (const OverlaySpan& v : doc.overlays) {
+        TimelineClip clip;
+        clip.id = v.id;
+        clip.kind = v.IsStill() ? TimelineClipKind::Image : TimelineClipKind::Video;
+        clip.name = v.Name();
+        clip.source = v.path;
+        clip.start = v.start;
+        clip.duration = std::max(0.04, v.duration);
+        clip.sourceIn = v.sourceIn;
+        const MediaItem* m = doc.FindMedia(v.path);
+        clip.sourceLength = m && !v.IsStill() ? m->duration : 0.0;
+        overlayTrack.clips.push_back(clip);
+    }
+    std::stable_sort(overlayTrack.clips.begin(), overlayTrack.clips.end(),
+                     [](const TimelineClip& a, const TimelineClip& b) { return a.start < b.start; });
+    model.tracks.push_back(overlayTrack);
+
     TimelineTrack main;
     main.id = kMainTrackId;
     main.kind = TimelineTrackKind::MainVideo;
@@ -454,6 +477,64 @@ bool ApplyChange(Document& doc, const TimelineChange& c) {
                     if (clip.id != c.before[0].id) { copy.start = clip.start; copy.duration = std::max(0.04, clip.duration); }
                 }
                 doc.titles.push_back(copy);
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+    if (c.trackId == kOverlayTrackId) {
+        // A free lane like the titles', whose clips also carry where in the file they begin
+        switch (c.kind) {
+            case TimelineChangeKind::Move:
+            case TimelineChangeKind::Trim: {
+                for (const TimelineClip& clip : c.after) {
+                    const int index = doc.OverlayIndex(clip.id);
+                    if (index < 0) return false;
+                    OverlaySpan& v = doc.overlays[static_cast<size_t>(index)];
+                    v.start = std::max(0.0, clip.start);
+                    v.duration = std::max(0.04, clip.duration);
+                    v.sourceIn = std::max(0.0, clip.sourceIn);
+                }
+                return !c.after.empty();
+            }
+            case TimelineChangeKind::Split: {
+                if (c.before.size() != 1 || c.after.size() != 2) return false;
+                const int index = doc.OverlayIndex(c.before[0].id);
+                if (index < 0) return false;
+                OverlaySpan right = doc.overlays[static_cast<size_t>(index)];
+                OverlaySpan& left = doc.overlays[static_cast<size_t>(index)];
+                left.start = c.after[0].start;
+                left.duration = std::max(0.04, c.after[0].duration);
+                left.fadeOut = 0.0;
+                right.id = doc.NewOverlayId();
+                right.start = c.after[1].start;
+                right.duration = std::max(0.04, c.after[1].duration);
+                right.sourceIn = std::max(0.0, c.after[1].sourceIn);
+                right.fadeIn = 0.0;
+                doc.overlays.push_back(right);
+                return true;
+            }
+            case TimelineChangeKind::Delete: {
+                size_t removed = 0;
+                for (const TimelineClip& clip : c.before) {
+                    const int index = doc.OverlayIndex(clip.id);
+                    if (index < 0) continue;
+                    doc.overlays.erase(doc.overlays.begin() + index);
+                    ++removed;
+                }
+                return removed > 0;
+            }
+            case TimelineChangeKind::Duplicate: {
+                if (c.before.size() != 1) return false;
+                const int index = doc.OverlayIndex(c.before[0].id);
+                if (index < 0) return false;
+                OverlaySpan copy = doc.overlays[static_cast<size_t>(index)];
+                copy.id = doc.NewOverlayId();
+                for (const TimelineClip& clip : c.after) {
+                    if (clip.id != c.before[0].id) { copy.start = clip.start; copy.duration = std::max(0.04, clip.duration); }
+                }
+                doc.overlays.push_back(copy);
                 return true;
             }
             default:

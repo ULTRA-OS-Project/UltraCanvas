@@ -48,8 +48,9 @@ with the draft render in a later release.
 
 ### The timeline
 
-The `UltraCanvasVideoTimeline` element with three lanes: **T1 Titles**, a
-free lane of title spans over the picture; **V1 Main track**, magnetic -
+The `UltraCanvasVideoTimeline` element with four lanes: **T1 Titles**, a
+free lane of title spans over the picture; **V2 Overlay video**, a free
+lane of files shown over the picture; **V1 Main track**, magnetic -
 clips follow each other, gaps close; and **A1 Music**, which shows the
 songs and is edited from the inspector. Drag a clip to reorder,
 drag an edge to trim, drag a transition's edge for its length, drop files
@@ -69,6 +70,20 @@ the export - the span becomes a text overlay on every clip it crosses,
 with the fades only at the span's own ends, so a title runs across a cut
 without a seam. The project file keeps the spans and writes the overlays
 beside them for `videofx render`.
+
+### Overlay video
+
+The **V2 Overlay video** lane puts another file's picture over the main
+track: a video as picture-in-picture, without its sound, or a picture as a
+logo. Right-click the lane for *Put a file over the picture here…* and the
+bin's files, use *Over the picture* on a bin tile (at the playhead), or
+drop files on the lane. An overlay clip is moved, trimmed, split and
+deleted like any clip; trimming its left edge moves into the file, and a
+video clip cannot be stretched past the file's end. The inspector sets its
+length, place (nine positions), size as a share of the frame's height,
+opacity and fades. The viewer shows it while editing, and like a title it
+is cut into one overlay per main-track clip it crosses when the engine
+renders, so it runs across a cut.
 
 ### Music
 
@@ -162,8 +177,8 @@ the engine).
 
 ## Not yet
 
-The overlay-video lane, effect presets, playback with sound, drag from the
-bin onto the timeline, and the mapping
+Effect presets, playback with sound, drag from the bin onto the timeline,
+and the mapping
 of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.

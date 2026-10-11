@@ -2,7 +2,7 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.8.0
+// Version: 0.10.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
@@ -214,12 +214,16 @@ struct VideoFXTransition {
 };
 
 // ============================================================================
-// OVERLAYS (text and images on top of a segment)
+// OVERLAYS (text, images and video on top of a segment)
 // ============================================================================
 // Placed on the OUTPUT frame, so a title sits in the same spot whatever the
 // source's size. Sizes and margins are fractions of the output height, which
 // keeps a layout the same at 480p and 4K.
-enum class VideoFXOverlayKind { Text, Image };
+enum class VideoFXOverlayKind {
+    Text,
+    Image,
+    Video                           // picture-in-picture: another file's picture, silent
+};
 
 enum class VideoFXAnchor {
     TopLeft, Top, TopRight,
@@ -244,7 +248,15 @@ struct VideoFXOverlay {
     // ---- image ----
     std::string imagePath;          // PNG (alpha kept) / JPEG / anything FFmpeg decodes
     VideoFXFrame image;             // or pixels in memory - used when valid
-    double imageHeight = 0.0;       // fraction of output height, 0 = the image's own pixel size
+    double imageHeight = 0.0;       // image or video: fraction of output height, 0 = its own pixel size
+
+    // ---- video (picture-in-picture) ----
+    // The file's picture plays from `videoStart` seconds into it while the
+    // overlay is shown, at its own speed, upright (rotation applied), without
+    // its sound; when the file ends first its last frame holds. Sized by
+    // `imageHeight` and placed like an image.
+    std::string videoPath;
+    double videoStart = 0.0;        // seconds into the file where it begins
 
     // ---- placement ----
     VideoFXAnchor anchor = VideoFXAnchor::Bottom;
@@ -264,6 +276,8 @@ struct VideoFXOverlay {
                                 double heightFraction = 0.12);
     static VideoFXOverlay ImageFromFrame(const VideoFXFrame& frame, VideoFXAnchor anchor = VideoFXAnchor::TopRight,
                                          double heightFraction = 0.12);
+    static VideoFXOverlay Video(const std::string& path, VideoFXAnchor anchor = VideoFXAnchor::TopRight,
+                                double heightFraction = 0.3, double videoStart = 0.0);
 };
 
 // ============================================================================

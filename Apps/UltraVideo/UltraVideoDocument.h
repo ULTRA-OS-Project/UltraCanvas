@@ -66,6 +66,25 @@ struct TitleSpan {
     std::string Name() const;       // the first line of the text
 };
 
+// A clip on the overlay-video lane (proposal §5.3, §8.3): another file's
+// picture over the main track - picture-in-picture, or a logo when the file
+// is a still. Like a title span it is cut into one overlay per segment it
+// crosses when the engine renders; `look` carries the place, size, opacity.
+struct OverlaySpan {
+    std::string id;                 // the element's key ("o1")
+    std::string path;               // the file, UTF-8, absolute
+    double start = 0.0;             // seconds on the timeline
+    double duration = 4.0;
+    double sourceIn = 0.0;          // seconds into the file where it begins (a video)
+    double fadeIn = 0.0;            // seconds, at the span's own ends
+    double fadeOut = 0.0;
+    VideoFX::VideoFXOverlay look;   // anchor, margin, imageHeight (the size), opacity
+
+    double End() const { return start + duration; }
+    std::string Name() const;       // the file name
+    bool IsStill() const;           // a picture rather than a video
+};
+
 // The title styles the bin offers (opening title, lower third, caption)
 struct TitleStyle {
     const char* key;
@@ -84,12 +103,14 @@ public:
     VideoFX::VideoFXProject project;        // segments, settings (with the music), title
     std::vector<std::string> clipIds;       // one per segment, in order: the element's keys
     std::vector<TitleSpan> titles;          // the title lane, in any order
+    std::vector<OverlaySpan> overlays;      // the overlay-video lane, in any order
     std::vector<MediaItem> media;           // the bin
     std::vector<UltraCanvas::TimelineMarker> markers;
     ViewState view;
     std::string path;                       // the .ultravideo file; "" until saved
     int nextClipId = 1;
     int nextTitleId = 1;
+    int nextOverlayId = 1;
 
     std::string Name() const;               // the title, else the file's stem, else "Untitled"
     std::string Describe() const;           // "1920 x 1080 · 25 fps"
@@ -100,15 +121,22 @@ public:
 
     std::string NewClipId();
     std::string NewTitleId();
+    std::string NewOverlayId();
     // Where the segments sit on the timeline: the start of each, derived as
     // the element derives them (transition overlaps subtracted)
     std::vector<double> SegmentStarts() const;
-    // The segments as the engine should get them: the title spans cut into
-    // one text overlay per segment they cross, fades on the outer ends only
+    // The segments as the engine should get them: the title and overlay
+    // spans cut into one overlay per segment they cross (text, or the file's
+    // picture from the right second into it), fades on the outer ends only
     std::vector<VideoFX::VideoFXSegment> SegmentsForEngine() const;
     // A new title at a time, from a style; returns its index
     int AddTitle(const std::string& styleKey, double at, const std::string& text = "");
     int TitleIndex(const std::string& id) const;   // -1 when absent
+    // A file over the picture at a time: a video for its length, a still for
+    // the design's four seconds; imported into the bin first when it is not
+    // there. Returns its index, -1 when the file is sound or unreadable.
+    int AddOverlay(const std::string& path, double at);
+    int OverlayIndex(const std::string& id) const;
     // Timeline seconds of a segment: a file's range over its speed, a still's seconds
     double SegmentSeconds(size_t index) const;
     const MediaItem* FindMedia(const std::string& path) const;

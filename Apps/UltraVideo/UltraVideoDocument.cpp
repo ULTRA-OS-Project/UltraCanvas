@@ -79,6 +79,32 @@ JSONValue MarkerToJson(const TimelineMarker& m) {
 
 } // namespace
 
+std::string OverlaySpan::Name() const {
+    const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+    return name.empty() ? "Overlay" : name;
+}
+
+bool OverlaySpan::IsStill() const { return Document::KindOfPath(path) == MediaKind::Image; }
+
+namespace {
+// The first free place on a lane of spans at or after `at`: spans never
+// overlap on a lane, so one asked for over another goes after it
+template <class Span>
+double FreePlace(const std::vector<Span>& spans, double at, double duration) {
+    bool moved = true;
+    while (moved) {
+        moved = false;
+        for (const Span& other : spans) {
+            if (at < other.End() && other.start < at + duration) {
+                at = other.End();
+                moved = true;
+            }
+        }
+    }
+    return at;
+}
+}
+
 std::string TitleSpan::Name() const {
     const std::string::size_type nl = look.text.find('\n');
     const std::string first = nl == std::string::npos ? look.text : look.text.substr(0, nl);
@@ -202,6 +228,10 @@ std::string Document::NewClipId() {
     return "c" + std::to_string(nextClipId++);
 }
 
+std::string Document::NewOverlayId() {
+    return "o" + std::to_string(nextOverlayId++);
+}
+
 std::string Document::NewTitleId() {
     return "t" + std::to_string(nextTitleId++);
 }
@@ -223,11 +253,35 @@ std::vector<double> Document::SegmentStarts() const {
 
 std::vector<VideoFXSegment> Document::SegmentsForEngine() const {
     std::vector<VideoFXSegment> segments = project.segments;
-    if (titles.empty()) return segments;
+    if (titles.empty() && overlays.empty()) return segments;
     const std::vector<double> starts = SegmentStarts();
     for (size_t i = 0; i < segments.size(); ++i) {
         const double s = starts[i];
         const double e = s + SegmentSeconds(i);
+        // The overlay lane lies under the titles: its pieces go first
+        for (const OverlaySpan& v : overlays) {
+            if (v.path.empty()) continue;
+            const double a = std::max(s, v.start);
+            const double b = std::min(e, v.End());
+            if (b - a < 0.04) continue;
+            VideoFXOverlay o = v.look;
+            if (v.IsStill()) {
+                o.kind = VideoFXOverlayKind::Image;
+                o.imagePath = v.path;
+                o.videoPath.clear();
+            } else {
+                o.kind = VideoFXOverlayKind::Video;
+                o.videoPath = v.path;
+                o.videoStart = v.sourceIn + (a - v.start);
+                o.imagePath.clear();
+            }
+            o.start = a - s;
+            o.end = b - s;
+            if (o.end >= SegmentSeconds(i) - 1e-6) o.end = 0.0;
+            o.fadeIn = a <= v.start + 1e-6 ? std::min(v.fadeIn, b - a) : 0.0;
+            o.fadeOut = b >= v.End() - 1e-6 ? std::min(v.fadeOut, b - a) : 0.0;
+            segments[i].overlays.push_back(o);
+        }
         for (const TitleSpan& t : titles) {
             if (t.look.text.empty()) continue;
             const double a = std::max(s, t.start);
@@ -261,20 +315,32 @@ int Document::AddTitle(const std::string& styleKey, double at, const std::string
     // sits on the last seconds
     const double length = Length();
     if (length > 0.0 && at + 0.04 >= length) at = length - span.duration;
-    span.start = std::max(0.0, at);
     // Not over another title: the lane holds one span at a time
-    bool moved = true;
-    while (moved) {
-        moved = false;
-        for (const TitleSpan& other : titles) {
-            if (span.start < other.End() && other.start < span.End()) {
-                span.start = other.End();
-                moved = true;
-            }
-        }
-    }
+    span.start = FreePlace(titles, std::max(0.0, at), span.duration);
     titles.push_back(span);
     return static_cast<int>(titles.size()) - 1;
+}
+
+int Document::AddOverlay(const std::string& path, double at) {
+    const MediaItem* m = FindMedia(path);
+    if (!m) m = &Import(path);
+    if (!m->error.empty() || m->kind == MediaKind::Audio || m->kind == MediaKind::Unknown) return -1;
+    OverlaySpan span;
+    span.id = NewOverlayId();
+    span.path = m->path;
+    span.duration = m->kind == MediaKind::Video && m->duration > 0.04 ? m->duration : 4.0;
+    span.look = VideoFXOverlay::Video(m->path, VideoFXAnchor::BottomRight, 0.3);
+    span.look.margin = 0.04;
+    const double length = Length();
+    if (length > 0.0 && at + 0.04 >= length) at = length - span.duration;
+    span.start = FreePlace(overlays, std::max(0.0, at), span.duration);
+    overlays.push_back(span);
+    return static_cast<int>(overlays.size()) - 1;
+}
+
+int Document::OverlayIndex(const std::string& id) const {
+    for (size_t i = 0; i < overlays.size(); ++i) if (overlays[i].id == id) return static_cast<int>(i);
+    return -1;
 }
 
 int Document::TitleIndex(const std::string& id) const {
@@ -328,6 +394,7 @@ MediaItem& Document::Import(const std::string& p) {
 
 bool Document::MediaInUse(const std::string& p) const {
     for (const VideoFXSegment& s : project.segments) if (s.path == p) return true;
+    for (const OverlaySpan& v : overlays) if (v.path == p) return true;
     for (const std::string& song : project.settings.music.Songs()) if (song == p) return true;
     return false;
 }
@@ -425,6 +492,26 @@ bool Document::Save(const std::string& toPath, std::string& error) {
     }
     root.Set("titles", spans);
     root.Set("nextTitleId", nextTitleId);
+    JSONValue pips = JSONValue::MakeArray();
+    for (const OverlaySpan& v : overlays) {
+        JSONValue o = JSONValue::MakeObject();
+        o.Set("id", v.id);
+        o.Set("path", Relative(v.path, base));
+        o.Set("start", v.start);
+        o.Set("duration", v.duration);
+        o.Set("sourceIn", v.sourceIn);
+        o.Set("fadeIn", v.fadeIn);
+        o.Set("fadeOut", v.fadeOut);
+        o.Set("anchor", static_cast<int>(v.look.anchor));
+        o.Set("margin", v.look.margin);
+        o.Set("x", v.look.x);
+        o.Set("y", v.look.y);
+        o.Set("size", v.look.imageHeight);
+        o.Set("opacity", v.look.opacity);
+        pips.Append(o);
+    }
+    root.Set("overlays", pips);
+    root.Set("nextOverlayId", nextOverlayId);
     JSONValue bin = JSONValue::MakeArray();
     for (const MediaItem& m : media) {
         JSONValue o = JSONValue::MakeObject();
@@ -550,6 +637,37 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
         loaded.nextTitleId = static_cast<int>(root.Get("nextTitleId").GetInteger(static_cast<int64_t>(loaded.titles.size()) + 1));
     }
 
+    // The same for the overlay lane: the spans are written back as the
+    // engine's picture overlays, which go again here
+    if (root.Contains("overlays")) {
+        for (VideoFXSegment& seg : loaded.project.segments) {
+            seg.overlays.erase(std::remove_if(seg.overlays.begin(), seg.overlays.end(), [](const VideoFXOverlay& o) {
+                                   return o.kind == VideoFXOverlayKind::Video || o.kind == VideoFXOverlayKind::Image; }),
+                               seg.overlays.end());
+        }
+        const JSONValue& pips = root.Get("overlays");
+        for (size_t i = 0; i < pips.GetSize(); ++i) {
+            const JSONValue& o = pips.At(i);
+            OverlaySpan v;
+            v.id = o.Get("id").GetString();
+            v.path = Absolute(o.Get("path").GetString(), base);
+            v.start = o.Get("start").GetNumber();
+            v.duration = std::max(0.04, o.Get("duration").GetNumber(4.0));
+            v.sourceIn = std::max(0.0, o.Get("sourceIn").GetNumber(0.0));
+            v.fadeIn = o.Get("fadeIn").GetNumber(0.0);
+            v.fadeOut = o.Get("fadeOut").GetNumber(0.0);
+            v.look = VideoFXOverlay::Video(v.path, static_cast<VideoFXAnchor>(std::clamp<int64_t>(o.Get("anchor").GetInteger(8), 0, 9)),
+                                           o.Get("size").GetNumber(0.3));
+            v.look.margin = o.Get("margin").GetNumber(0.04);
+            v.look.x = o.Get("x").GetNumber(0.0);
+            v.look.y = o.Get("y").GetNumber(0.0);
+            v.look.opacity = o.Get("opacity").GetNumber(1.0);
+            if (v.id.empty() || v.path.empty()) continue;
+            loaded.overlays.push_back(v);
+        }
+        loaded.nextOverlayId = static_cast<int>(root.Get("nextOverlayId").GetInteger(static_cast<int64_t>(loaded.overlays.size()) + 1));
+    }
+
     const JSONValue& bin = root.Get("media");
     for (size_t i = 0; i < bin.GetSize(); ++i) {
         const std::string p = Absolute(bin.At(i).Get("path").GetString(), base);
@@ -568,15 +686,15 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
         loaded.Import(p);
     }
     // Media the project uses that the bin forgot
-    for (const VideoFXSegment& s : loaded.project.segments) {
-        if (s.kind == VideoFXSourceKind::File || s.kind == VideoFXSourceKind::Image) {
-            if (!s.path.empty() && !loaded.FindMedia(s.path)) {
-                std::error_code ec;
-                if (fs::exists(PathFromUtf8(s.path), ec)) loaded.Import(s.path);
-                else if (missing) missing->push_back(s.path);
-            }
-        }
-    }
+    auto known = [&](const std::string& p) {
+        if (p.empty() || loaded.FindMedia(p)) return;
+        std::error_code ec;
+        if (fs::exists(PathFromUtf8(p), ec)) loaded.Import(p);
+        else if (missing) missing->push_back(p);
+    };
+    for (const VideoFXSegment& s : loaded.project.segments)
+        if (s.kind == VideoFXSourceKind::File || s.kind == VideoFXSourceKind::Image) known(s.path);
+    for (const OverlaySpan& v : loaded.overlays) known(v.path);
     const JSONValue& marks = root.Get("markers");
     for (size_t i = 0; i < marks.GetSize(); ++i) {
         const JSONValue& m = marks.At(i);

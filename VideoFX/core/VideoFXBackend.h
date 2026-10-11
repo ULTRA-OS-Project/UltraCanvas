@@ -6,7 +6,7 @@
 // channel-layout API (AVChannelLayout, FFmpeg 5.1), the stream side-data move
 // (codecpar->coded_side_data, 6.1) and the supported-config query (7.1) are
 // wrapped here so the pipeline code does not care which one it runs on.
-// Version: 0.9.0
+// Version: 0.10.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
@@ -134,6 +134,7 @@ struct OpenVideo {
     bool fresh = true;            // nothing read since the file was opened
     bool still = false;           // a single image (image2 / *_pipe demuxers)
     double lastTime = -1.0;       // time of the last frame decoded, -1 = none (a seek is needed)
+    bool spent = false;           // the decoder has been flushed: a seek is needed before more frames
 };
 
 VideoFXResult OpenVideoStream(const std::string& path, OpenVideo& v);
@@ -142,6 +143,10 @@ VideoFXResult OpenVideoStream(const std::string& path, OpenVideo& v);
 // which is what scrubbing forward wants); `frameTime` receives the frame's
 // own time
 VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& frameTime);
+// The frame after the last one decoded, in stream order, without seeking;
+// `endOfStream` is set (with Ok) when the file has no more. For a video
+// overlay, which plays on from where DecodeFrameAt put it.
+VideoFXResult DecodeNextFrame(OpenVideo& v, AVFrame* out, double& frameTime, bool& endOfStream);
 // The stream's rotation, or for a still without one its EXIF orientation
 int DisplayRotation(const OpenVideo& v, const AVFrame* frame);
 // Convert a decoded frame to upright RGBA no larger than maxWidth x maxHeight (0 = no limit)

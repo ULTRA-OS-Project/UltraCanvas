@@ -414,6 +414,65 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
                 [](TitleSpan& t, double v) { t.fadeOut = v; }, [](double v) { return Seconds(v); });
     clipFields->AddChild(titleRows);
 
+    // ---- an overlay clip: where and how big over the picture ----
+    overlayRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.overlay", 0, 0, kPageWidth, 220);
+    overlayRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    overlayRows->layoutItem.SetFlexShrink(0);
+    overlayLength = CreateTimecodeField("uv.insp.overlayLength", 0, 0, 120, ctl);
+    overlayLength->onCommit = [this](long long frames) {
+        const int index = overlay;
+        const double seconds = std::max(0.04, frames / documentFrameRate);
+        Edit("Set overlay length", [index, seconds](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.overlays.size()) d.overlays[static_cast<size_t>(index)].duration = seconds;
+        });
+    };
+    timecodes.push_back(overlayLength);
+    Row(overlayRows, "uv.insp.row.overlayLength", "Length", overlayLength);
+    overlayAnchor = CreateDropdown("uv.insp.overlayAnchor", 0, 0, kFieldWidth, ctl);
+    for (const char* l : kAnchorLabels) overlayAnchor->AddItem(l);
+    overlayAnchor->onSelectionChanged = [this](int i, const DropdownItem&) {
+        const int index = overlay;
+        const VideoFXAnchor anchor = kAnchors[std::clamp(i, 0, 8)];
+        Edit("Place overlay", [index, anchor](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.overlays.size()) d.overlays[static_cast<size_t>(index)].look.anchor = anchor;
+        });
+    };
+    dropdowns.push_back(overlayAnchor);
+    Row(overlayRows, "uv.insp.row.overlayAnchor", "Place", overlayAnchor);
+    auto overlaySlider = [&](const std::string& id, float lo, float hi, float step, std::shared_ptr<Slider>& out,
+                             std::shared_ptr<Label>& value, const std::string& caption, const std::string& label,
+                             std::function<void(OverlaySpan&, double)> apply, std::function<std::string(double)> format) {
+        out = CreateSlider(id, 0, 0, 110, ctl);
+        out->SetRange(lo, hi);
+        out->SetStep(step);
+        out->SetValueDisplay(SliderValueDisplay::NoDisplay);
+        auto row = Row(overlayRows, id + ".row", caption, out);
+        value = CreateLabel(id + ".value", 0, 0, 50, ctl, "");
+        value->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
+        captions.push_back(value);
+        row->AddChild(value);
+        sliders.push_back(out);
+        Label* valuePtr = value.get();
+        out->onValueChanged = [this, valuePtr, label, apply, format](float v) {
+            valuePtr->SetText(format(v));
+            const int index = overlay;
+            const double d = v;
+            Edit(label, [index, apply, d](Document& doc) {
+                if (index >= 0 && static_cast<size_t>(index) < doc.overlays.size()) apply(doc.overlays[static_cast<size_t>(index)], d);
+            });
+        };
+    };
+    auto percent = [](double v) { return std::to_string(static_cast<int>(std::lround(v * 100))) + " %"; };
+    overlaySlider("uv.insp.overlaySize", 0.1f, 1.0f, 0.05f, overlaySize, overlaySizeValue, "Size", "Size overlay",
+                  [](OverlaySpan& v, double s) { v.look.imageHeight = s; }, percent);
+    overlaySlider("uv.insp.overlayOpacity", 0.1f, 1.0f, 0.05f, overlayOpacity, overlayOpacityValue, "Opacity", "Set overlay opacity",
+                  [](OverlaySpan& v, double o) { v.look.opacity = o; }, percent);
+    overlaySlider("uv.insp.overlayFadeIn", 0.0f, 5.0f, 0.1f, overlayFadeIn, overlayFadeInValue, "Fade in", "Set overlay fade in",
+                  [](OverlaySpan& v, double s) { v.fadeIn = s; }, [](double v) { return Seconds(v); });
+    overlaySlider("uv.insp.overlayFadeOut", 0.0f, 5.0f, 0.1f, overlayFadeOut, overlayFadeOutValue, "Fade out", "Set overlay fade out",
+                  [](OverlaySpan& v, double s) { v.fadeOut = s; }, [](double v) { return Seconds(v); });
+    clipFields->AddChild(overlayRows);
+
     transitionRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.transition", 0, 0, kPageWidth, 100);
     transitionRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     transitionRows->layoutItem.SetFlexShrink(0);
@@ -643,19 +702,54 @@ void Inspector::ShowAudioTab() {
     if (tabs) tabs->SetActiveTab(1);
 }
 
-void Inspector::Show(const Document& doc, int index, int titleIndex) {
+void Inspector::Show(const Document& doc, int index, int titleIndex, int overlayIndex) {
     updating = true;
     segment = index;
     title = titleIndex;
+    overlay = overlayIndex;
     documentFrameRate = doc.FrameRate();
     for (auto& t : timecodes) t->SetFrameRate(documentFrameRate);
 
     // ---- Clip ----
     const bool hasClip = index >= 0 && static_cast<size_t>(index) < doc.project.segments.size();
     const bool hasTitle = !hasClip && titleIndex >= 0 && static_cast<size_t>(titleIndex) < doc.titles.size();
-    clipEmpty->SetVisible(!hasClip && !hasTitle);
-    clipFields->SetVisible(hasClip || hasTitle);
+    const bool hasOverlay = !hasClip && !hasTitle && overlayIndex >= 0 && static_cast<size_t>(overlayIndex) < doc.overlays.size();
+    clipEmpty->SetVisible(!hasClip && !hasTitle && !hasOverlay);
+    clipFields->SetVisible(hasClip || hasTitle || hasOverlay);
     titleRows->SetVisible(hasTitle);
+    overlayRows->SetVisible(hasOverlay);
+    if (hasOverlay) {
+        const OverlaySpan& v = doc.overlays[static_cast<size_t>(overlayIndex)];
+        clipName->SetText(v.Name());
+        const MediaItem* media = doc.FindMedia(v.path);
+        std::string kind = v.IsStill() ? "Picture over the picture" : "Video over the picture, silent";
+        if (media && media->width > 0) {
+            std::ostringstream o;
+            o.imbue(std::locale::classic());
+            o << kind << " \xC2\xB7 " << media->width << " \xC3\x97 " << media->height;
+            kind = o.str();
+        }
+        clipKind->SetText(kind);
+        fileRows->SetVisible(false);
+        stillRow->SetVisible(false);
+        imageRows->SetVisible(false);
+        transitionRows->SetVisible(false);
+        mute->SetVisible(false);
+        clipDuration->SetText(Seconds(v.duration) + " on the timeline, from " + TimelineTimecode(v.start, documentFrameRate) +
+                              (v.IsStill() || v.sourceIn <= 0.0 ? "" : ", the file from " + Seconds(v.sourceIn)));
+        overlayLength->SetMaximumFrames(0);
+        overlayLength->SetSeconds(v.duration);
+        overlayAnchor->SetSelectedIndex(IndexIn(kAnchors, v.look.anchor), false);
+        const double size = v.look.imageHeight > 0.0 ? v.look.imageHeight : 1.0;
+        overlaySize->SetValue(static_cast<float>(size));
+        overlaySizeValue->SetText(std::to_string(static_cast<int>(std::lround(size * 100))) + " %");
+        overlayOpacity->SetValue(static_cast<float>(v.look.opacity));
+        overlayOpacityValue->SetText(std::to_string(static_cast<int>(std::lround(v.look.opacity * 100))) + " %");
+        overlayFadeIn->SetValue(static_cast<float>(v.fadeIn));
+        overlayFadeInValue->SetText(Seconds(v.fadeIn));
+        overlayFadeOut->SetValue(static_cast<float>(v.fadeOut));
+        overlayFadeOutValue->SetText(Seconds(v.fadeOut));
+    }
     if (hasTitle) {
         const TitleSpan& t = doc.titles[static_cast<size_t>(titleIndex)];
         clipName->SetText(t.Name());

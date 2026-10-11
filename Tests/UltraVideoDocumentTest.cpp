@@ -321,7 +321,7 @@ int main() {
         const TimelineTrack* lane = tm.FindTrack(kTitleTrackId);
         CHECK(lane && lane->kind == TimelineTrackKind::Title && !lane->IsMagnetic() && lane->clips.size() == 2, "a free title lane with both spans");
         CHECK(lane && lane->clips[0].kind == TimelineClipKind::Title && lane->clips[0].name == "Summer trip" && Near(lane->clips[0].start, 1.0, 1e-9), "as title clips at their times");
-        CHECK(tm.tracks.size() == 3 && tm.tracks[0].id == kTitleTrackId, "the title lane sits above the main track");
+        CHECK(tm.tracks.size() == 4 && tm.tracks[0].id == kTitleTrackId && tm.tracks[1].id == kOverlayTrackId && tm.tracks[2].id == kMainTrackId, "the title and overlay lanes sit above the main track");
 
         TimelineChange moveT;
         moveT.kind = TimelineChangeKind::Move;
@@ -378,6 +378,84 @@ int main() {
         CHECK(back.nextTitleId == td.nextTitleId && back.SegmentsForEngine()[1].overlays.size() == td.SegmentsForEngine()[1].overlays.size(), "and derive the same again");
     }
 
+    std::printf("\n-- the overlay-video lane --\n");
+    {
+        Document od;
+        od.Import(clip);
+        od.AppendMedia(*od.FindMedia(clip));          // 0..3 s
+        od.AppendMedia(*od.FindMedia(clip));          // 3..6 s
+        od.project.segments[1].transitionIn = VideoFXTransition::Crossfade(1.0);   // the second starts at 2 s
+        const double clipSeconds = od.SegmentSeconds(0);
+        CHECK(od.AddOverlay(song, 0.0) == -1 && od.overlays.empty(), "sound cannot go over the picture");
+        const int first = od.AddOverlay(clip, 1.0);
+        CHECK(first == 0 && od.overlays.size() == 1 && od.overlays[0].id == "o1" && od.overlays[0].path == clip, "a video over the picture, with an id");
+        CHECK(Near(od.overlays[0].start, 1.0, 1e-9) && Near(od.overlays[0].duration, clipSeconds, 1e-9) && od.overlays[0].sourceIn == 0.0, "for the file's length, from its start");
+        CHECK(od.overlays[0].look.anchor == VideoFXAnchor::BottomRight && Near(od.overlays[0].look.imageHeight, 0.3, 1e-9) && !od.overlays[0].IsStill(), "bottom right, a third high");
+        CHECK(od.overlays[0].Name() == "pattern.mkv" && od.OverlayIndex("o1") == 0 && od.OverlayIndex("c1") == -1 && od.TitleIndex("o1") == -1, "named by its file, found by id, not a title");
+        CHECK(od.MediaInUse(clip) && !od.RemoveMedia(clip), "an overlay keeps its file in the bin");
+        const int logo = od.AddOverlay(photo, 1.5);
+        CHECK(logo == 1 && Near(od.overlays[1].start, od.overlays[0].End(), 1e-9) && Near(od.overlays[1].duration, 4.0, 1e-9) && od.overlays[1].IsStill(), "a picture goes after the first, for four seconds");
+        od.overlays[1].start = 0.0;
+        od.overlays[1].duration = 1.0;
+
+        const std::vector<double> starts = od.SegmentStarts();
+        std::vector<VideoFXSegment> engine = od.SegmentsForEngine();
+        CHECK(od.project.segments[0].overlays.empty() && engine.size() == 2, "the document's segments stay clean");
+        CHECK(engine[0].overlays.size() == 2 && engine[0].overlays[0].kind == VideoFXOverlayKind::Video && engine[0].overlays[0].videoPath == clip, "the first segment: the video overlay from 1 s");
+        CHECK(Near(engine[0].overlays[0].start, 1.0, 1e-9) && engine[0].overlays[0].end == 0.0 && engine[0].overlays[0].videoStart == 0.0, "to the segment's end, the file from 0");
+        CHECK(engine[0].overlays[1].kind == VideoFXOverlayKind::Image && engine[0].overlays[1].imagePath == photo && Near(engine[0].overlays[1].end, 1.0, 1e-9), "the picture as an image overlay in its window");
+        CHECK(engine[1].overlays.size() == 1 && Near(engine[1].overlays[0].videoStart, starts[1] - 1.0, 1e-9) && engine[1].overlays[0].start == 0.0, "the second segment: the same file, from the second its piece begins at");
+
+        TimelineModel om = BuildTimelineModel(od);
+        const TimelineTrack* lane = om.FindTrack(kOverlayTrackId);
+        CHECK(lane && lane->kind == TimelineTrackKind::Video && !lane->IsMagnetic() && lane->clips.size() == 2, "a free video lane with both overlays");
+        CHECK(lane && lane->clips[1].id == "o1" && lane->clips[1].kind == TimelineClipKind::Video && lane->clips[1].source == clip && Near(lane->clips[1].sourceLength, clipSeconds, 1e-9), "a video clip with its source, so it trims to the file's length");
+        CHECK(lane && lane->clips[0].id == "o2" && lane->clips[0].kind == TimelineClipKind::Image && lane->clips[0].name == "photo.png", "the picture as an image clip");
+
+        TimelineTrack ot = *lane;
+        double applied = 0.0;
+        CHECK(TimelineTrimClip(ot, "o1", true, 1.5, 25.0, &applied), "the model trims the overlay's left edge");
+        TimelineChange trimO;
+        trimO.kind = TimelineChangeKind::Trim;
+        trimO.trackId = kOverlayTrackId;
+        trimO.before = {*lane->FindClip("o1")};
+        trimO.after = {*ot.FindClip("o1")};
+        const double into = applied - 1.0;   // the trim snapped to the frame grid; so far into the file now
+        CHECK(ApplyChange(od, trimO) && Near(od.overlays[0].start, applied, 1e-9) && Near(od.overlays[0].sourceIn, into, 1e-9), "a left trim moves into the file too");
+        TimelineChange moveO = trimO;
+        moveO.kind = TimelineChangeKind::Move;
+        moveO.after[0].start = 2.0;
+        CHECK(ApplyChange(od, moveO) && Near(od.overlays[0].start, 2.0, 1e-9) && Near(od.overlays[0].sourceIn, into, 1e-9), "a move keeps the file's second");
+        om = BuildTimelineModel(od);
+        lane = om.FindTrack(kOverlayTrackId);
+        ot = *lane;
+        CHECK(TimelineSplitClip(ot, "o1", 3.0, 25.0, "o1:2"), "the model splits an overlay");
+        TimelineChange splitO;
+        splitO.kind = TimelineChangeKind::Split;
+        splitO.trackId = kOverlayTrackId;
+        splitO.before = {*lane->FindClip("o1")};
+        splitO.after = {*ot.FindClip("o1"), *ot.FindClip("o1:2")};
+        CHECK(ApplyChange(od, splitO) && od.overlays.size() == 3 && Near(od.overlays[0].duration, 1.0, 1e-9) && od.overlays[2].id == "o3", "a split makes two overlays");
+        CHECK(Near(od.overlays[2].start, 3.0, 1e-9) && Near(od.overlays[2].sourceIn, into + 1.0, 1e-9) && od.overlays[2].path == clip, "the right one goes on in the file where the cut was");
+        TimelineChange delO;
+        delO.kind = TimelineChangeKind::Delete;
+        delO.trackId = kOverlayTrackId;
+        delO.before = {*ot.FindClip("o1:2")};
+        delO.before[0].id = "o3";
+        CHECK(ApplyChange(od, delO) && od.overlays.size() == 2, "an overlay deletes");
+        CHECK(DescribeChange(delO) == "Delete clip", "named for the history");
+
+        const std::string ofile = TempPath("overlays.ultravideo");
+        std::string oerror;
+        CHECK(od.Save(ofile, oerror), ("save with overlays: " + oerror).c_str());
+        Document back;
+        CHECK(Document::Load(ofile, back, oerror, nullptr), ("load with overlays: " + oerror).c_str());
+        CHECK(back.overlays.size() == 2 && back.overlays[0].path == clip && Near(back.overlays[0].sourceIn, into, 1e-9) && Near(back.overlays[0].start, 2.0, 1e-9), "the spans come back with their file and second");
+        CHECK(back.overlays[0].look.anchor == VideoFXAnchor::BottomRight && Near(back.overlays[0].look.imageHeight, 0.3, 1e-9) && back.overlays[1].path == photo, "place and size too, and the picture");
+        CHECK(back.project.segments[0].overlays.empty() && back.project.segments[1].overlays.empty(), "the derived overlays are dropped on load");
+        CHECK(back.nextOverlayId == od.nextOverlayId && back.SegmentsForEngine()[0].overlays.size() == od.SegmentsForEngine()[0].overlays.size(), "and derive the same again");
+    }
+
     std::printf("\n-- the story wizard --\n");
     {
         const std::string beach = TempPath("media/at_the-beach.png");
@@ -414,7 +492,7 @@ int main() {
         CHECK(!textOverlays, "the engine's caption overlays are not kept twice");
         CHECK(story.project.settings.music.Songs() == std::vector<std::string>{song} && story.media.size() == 4 && story.FindMedia(song), "the music set and everything in the bin");
         const TimelineModel storyModel = BuildTimelineModel(story);
-        CHECK(storyModel.tracks.size() == 3 && storyModel.tracks[0].clips.size() == 3 && storyModel.tracks[1].clips.size() == 3, "a timeline with the captions and the clips");
+        CHECK(storyModel.tracks.size() == 4 && storyModel.tracks[0].clips.size() == 3 && storyModel.tracks[2].clips.size() == 3, "a timeline with the captions and the clips");
 
         StoryChoice plain;
         plain.files = {clip};

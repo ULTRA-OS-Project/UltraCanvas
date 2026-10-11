@@ -2031,8 +2031,8 @@ time: without it the same API links from a stub whose calls return
 
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
-(picture via xfade, sound cross-faded), text and image overlays on the output
-frame, still images with sub-pixel pan and zoom (keeping faces in shot -
+(picture via xfade, sound cross-faded), text, image and video overlays
+(picture-in-picture) on the output frame, still images with sub-pixel pan and zoom (keeping faces in shot -
 given, or found by the built-in detector) and one-call slideshows,
 background music (fades, looping, ducking under the segments' own sound,
 song lists crossfading into each other), beat detection and slideshows

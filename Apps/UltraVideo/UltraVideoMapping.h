@@ -19,6 +19,7 @@
 namespace UltraVideo {
 
 constexpr const char* kTitleTrackId = "T1";
+constexpr const char* kOverlayTrackId = "V2";   // the overlay-video lane, free, over the main track
 constexpr const char* kMainTrackId = "V1";
 constexpr const char* kMusicTrackId = "A1";
 
@@ -37,7 +38,8 @@ bool RemoveSong(Document& document, size_t index);
 // A short name for what a change did, for the undo history
 std::string DescribeChange(const UltraCanvas::TimelineChange& change);
 
-// The segment of a clip id, or -1 (a title's id gives -1: see Document::TitleIndex)
+// The segment of a clip id, or -1 (a title's or an overlay's id gives -1:
+// see Document::TitleIndex and Document::OverlayIndex)
 int SegmentOfClip(const Document& document, const std::string& clipId);
 
 // What a clip is called in the band and the inspector

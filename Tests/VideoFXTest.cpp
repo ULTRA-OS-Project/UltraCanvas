@@ -232,6 +232,21 @@ static void TestTransitionAndOverlayText() {
     bad.end = 2.0;
     CHECK(!ValidateOverlay(bad, 5.0, error), "end before start refused");
     CHECK(!ValidateOverlay(VideoFXOverlay::Image(""), 5.0, error), "image without a picture refused");
+    CHECK(!ValidateOverlay(VideoFXOverlay::Video(""), 5.0, error), "video without a file refused");
+    VideoFXOverlay pip = VideoFXOverlay::Video("cam.mp4", VideoFXAnchor::BottomRight, 0.25, 1.5);
+    CHECK(ValidateOverlay(pip, 5.0, error) && pip.kind == VideoFXOverlayKind::Video && Near(pip.videoStart, 1.5, 1e-12),
+          "a video overlay with its start");
+    pip.start = 1.0;
+    pip.end = 3.0;
+    pip.fadeIn = 0.5;
+    pip.opacity = 0.8;
+    BuildVideoOverlayFilters(pip, 640, 360, 90, 5.0, chain, ov);
+    CHECK(chain == "format=rgba,setsar=1,colorchannelmixer=aa=0.8,fade=t=in:st=1:d=0.5:alpha=1",
+          "video chain: no scale at the fed height, opacity, a fade on the stream's own clock");
+    CHECK(ov.find("eof_action=repeat") != std::string::npos && ov.find("enable=between(t\\,1\\,3)") != std::string::npos,
+          "the last frame holds; shown in its window");
+    BuildVideoOverlayFilters(pip, 640, 360, 200, 5.0, chain, ov);
+    CHECK(chain.find("scale=-1:90") != std::string::npos, "scaled when fed at another height");
 }
 
 static VideoFXFrame SolidFrame(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) {
@@ -698,7 +713,9 @@ static VideoFXProject RichTimeline(const std::string& dir) {
     title.start = 0.5; title.end = 4.0; title.fadeIn = 0.3; title.fadeOut = 0.6;
     VideoFXOverlay logo = VideoFXOverlay::Image(dir + "/logo.png", VideoFXAnchor::TopRight, 0.15);
     logo.margin = 0.03;
-    clip.overlays = {title, logo};
+    VideoFXOverlay pip = VideoFXOverlay::Video(dir + "/clips/cam.mp4", VideoFXAnchor::BottomLeft, 0.3, 1.5);
+    pip.start = 2.0; pip.end = 6.0; pip.fadeOut = 0.4;
+    clip.overlays = {title, logo, pip};
     VideoFXSegment photo = VideoFXSegment::FromImage(dir + "/photos/a.jpg", 4.5,
                                                      VideoFXImageMotion::Custom(1.1, 0.2, 0.3, 1.6, 0.7, 0.8));
     photo.motion.easeInOut = false;
@@ -781,9 +798,14 @@ static void TestProjectFiles() {
               Near(c.speed, 1.5, 1e-12) && c.mute, "the clip: path back absolute, range, speed, mute");
         CHECK(c.effects.size() == 4 && c.effects[1].type == VideoFXEffectType::Crop && c.effects[1].width == 640 &&
               c.effects[2].path == dir + "/looks/warm.cube", "effects: a crop's rectangle, a LUT's file");
-        CHECK(c.overlays.size() == 2 && c.overlays[0].text == rich.segments[0].overlays[0].text &&
+        CHECK(c.overlays.size() == 3 && c.overlays[0].text == rich.segments[0].overlays[0].text &&
               c.overlays[0].textColor == 0x12AB9F && c.overlays[0].fontPath == "/fonts/Brand.ttf" &&
               c.overlays[1].imagePath == dir + "/logo.png", "overlays: text, colour, font, image");
+        CHECK(c.overlays.size() == 3 && c.overlays[2].kind == VideoFXOverlayKind::Video &&
+              c.overlays[2].videoPath == dir + "/clips/cam.mp4" && Near(c.overlays[2].videoStart, 1.5, 1e-12) &&
+              Near(c.overlays[2].imageHeight, 0.3, 1e-12) && Near(c.overlays[2].end, 6.0, 1e-12),
+              "a video overlay: its file (relative in the text), start, size, window");
+        CHECK(json.find("\"video\": \"clips/cam.mp4\"") != std::string::npos, "the overlay's file stored relative to the project");
         const VideoFXSegment& ph = loaded.segments[1];
         CHECK(ph.kind == VideoFXSourceKind::Image && ph.motion.style == VideoFXMotionStyle::Custom &&
               Near(ph.motion.endZoom, 1.6, 1e-12) && !ph.motion.easeInOut &&
@@ -1259,6 +1281,76 @@ static void TestTransitionsAndOverlays(const VideoFXExportSettings& base) {
     VideoFX_ExtractFrame(fadeOut, 0.0, f);
     PixelAt(f, f.width - 5, f.height - 5, pr, pg, pb);
     CHECK(pg < 40, "fully faded out at the start");
+
+    // ---- picture-in-picture: a video overlay on a card, a photo and a file ----
+    {
+        const std::string greenFile = TempPath("pip-green.mkv"), redFile = TempPath("pip-red.mkv");
+        CHECK_OK(VideoFX_Export({VideoFXSegment::SolidColor(0x00FF00, 3.0)}, greenFile, s), "a green clip to lay over");
+        CHECK_OK(VideoFX_Export({VideoFXSegment::SolidColor(0xFF0000, 1.0)}, redFile, s), "a red clip, 1 s");
+        VideoFXOverlay pip = VideoFXOverlay::Video(greenFile, VideoFXAnchor::TopLeft, 0.25);   // 40 x 30 px
+        pip.margin = 0.0;
+        pip.start = 0.5;
+        VideoFXSegment blueCard = VideoFXSegment::SolidColor(0x0000FF, 2.0);
+        blueCard.overlays = {pip};
+        const std::string onCard = TempPath("pip-card.mkv");
+        CHECK_OK(VideoFX_Export({blueCard}, onCard, s), "video overlay on a card");
+        CHECK_OK(VideoFX_Probe(onCard, info), "probe it");
+        CHECK(Near(info.duration, 2.0, 0.1), "the card's own length, not the overlay file's");
+        VideoFX_ExtractFrame(onCard, 0.2, f);
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pb > 200 && pg < 60, "before its start: the card");
+        VideoFX_ExtractFrame(onCard, 1.5, f);
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pg > 200 && pb < 60, "then the overlay's picture, top left, a quarter high");
+        PixelAt(f, 45, 10, pr, pg, pb);
+        CHECK(pb > 200 && pg < 60, "and nothing beyond its 40 px");
+        PixelAt(f, 100, 100, pr, pg, pb);
+        CHECK(pb > 200 && pg < 60, "the rest of the frame untouched");
+
+        VideoFXSegment photo = VideoFXSegment::FromImageFrame(SolidFrame(160, 120, 0, 0, 255), 2.0);
+        photo.motion = VideoFXImageMotion::Make(VideoFXMotionStyle::Still);
+        photo.overlays = {pip};
+        const std::string onPhoto = TempPath("pip-photo.mkv");
+        CHECK_OK(VideoFX_Export({photo}, onPhoto, s), "video overlay on a photo");
+        VideoFX_ExtractFrame(onPhoto, 1.5, f);
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pg > 200 && pb < 60, "over the photo too");
+
+        // on a file, from 0.5 s into a 1 s clip: it runs out after 0.5 s and its last frame holds
+        VideoFXOverlay late = VideoFXOverlay::Video(redFile, VideoFXAnchor::BottomRight, 0.5, 0.5);
+        late.margin = 0.0;
+        VideoFXSegment onFile = VideoFXSegment::FromFile(greenFile, 0.0, 2.0);
+        onFile.overlays = {late};
+        const std::string fileOut = TempPath("pip-file.mkv");
+        CHECK_OK(VideoFX_Export({onFile}, fileOut, s), "video overlay on a file");
+        VideoFX_ExtractFrame(fileOut, 0.2, f);
+        PixelAt(f, f.width - 5, f.height - 5, pr, pg, pb);
+        CHECK(pr > 200 && pg < 60, "the red clip from its half-second, bottom right");
+        PixelAt(f, 5, 5, pr, pg, pb);
+        CHECK(pg > 200 && pr < 60, "the green file behind it");
+        VideoFX_ExtractFrame(fileOut, 1.8, f);
+        PixelAt(f, f.width - 5, f.height - 5, pr, pg, pb);
+        CHECK(pr > 200 && pg < 60, "long after the clip ran out: its last frame holds");
+
+        VideoFXOverlay faded = pip;
+        faded.start = 0.0;
+        faded.end = 1.0;
+        faded.fadeIn = 1.0;
+        blueCard.overlays = {faded};
+        const std::string fadeOut = TempPath("pip-fade.mkv");
+        CHECK_OK(VideoFX_Export({blueCard}, fadeOut, s), "video overlay fading in");
+        VideoFX_ExtractFrame(fadeOut, 0.12, f);
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pg < 100 && pb > 150, "barely there at the start of the fade");
+        VideoFX_ExtractFrame(fadeOut, 1.5, f);
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pb > 200 && pg < 60, "gone after its end");
+
+        VideoFXOverlay missing = VideoFXOverlay::Video(TempPath("nowhere.mkv"));
+        blueCard.overlays = {missing};
+        CHECK(VideoFX_Export({blueCard}, TempPath("pip-missing.mkv"), s) != VideoFXResult::Ok &&
+              VideoFX_GetLastError().find("nowhere.mkv") != std::string::npos, "a missing overlay file fails before anything is written");
+    }
 
     // ---- text ----
     if (VideoFX_IsTextOverlayAvailable()) {
@@ -1891,7 +1983,16 @@ static void TestPreview(const VideoFXExportSettings& base) {
     VideoFXSegment file = VideoFXSegment::FromFile(clip, 0.0, 2.0);
     file.transitionIn = VideoFXTransition::Crossfade(0.5);
     VideoFXSegment blue = VideoFXSegment::SolidColor(0x0000FF, 1.0);
-    blue.overlays = {VideoFXOverlay::Text("Preview", VideoFXAnchor::Bottom, 0.1)};
+    const std::string redClip = TempPath("preview-red.mkv");
+    {
+        VideoFXExportSettings small = base;
+        small.width = 160; small.height = 120; small.frameRate = 25.0;
+        CHECK_OK(VideoFX_Export({VideoFXSegment::SolidColor(0xFF0000, 1.0)}, redClip, small), "a red clip for picture-in-picture");
+    }
+    VideoFXOverlay pip = VideoFXOverlay::Video(redClip, VideoFXAnchor::TopLeft, 0.5);   // 160 x 120 of the 320 x 240
+    pip.margin = 0.0;
+    pip.start = 0.25;
+    blue.overlays = {VideoFXOverlay::Text("Preview", VideoFXAnchor::Bottom, 0.1), pip};
     VideoFXSegment photo = VideoFXSegment::FromImageFrame(SolidFrame(320, 240, 0, 255, 0), 1.0);
     photo.effects = {VideoFXEffect::FadeIn(0.5)};
     const std::vector<VideoFXSegment> timeline = {red, file, blue, photo};
@@ -1961,6 +2062,19 @@ static void TestPreview(const VideoFXExportSettings& base) {
             if (pr > 180 && pg > 180) ++whiteish;
         }
     CHECK(whiteish > 50, "the text is drawn along the bottom");
+    {
+        int pr, pg, pb;
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pb > 200 && pr < 40, "at 0.1 s into the card the video overlay has not started");
+        CHECK_OK(preview.RenderFrame(3.0, f), "render the card with the overlay showing");
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pr > 200 && pb < 40, "the red clip in the top left");
+        PixelAt(f, 200, 200, pr, pg, pb);
+        CHECK(pb > 200 && pr < 40, "the card around it");
+        CHECK_OK(preview.RenderFrame(3.2, f), "render a little later");
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pr > 200 && pb < 40, "still there, decoded onward");
+    }
 
     CHECK_OK(preview.RenderFrame(3.5, f), "render the photo at its first frame");
     CentreColour(f, r, g, b);

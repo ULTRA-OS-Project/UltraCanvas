@@ -257,6 +257,17 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
             if (row < rows.size() && rows[row] < document_.media.size()) AddMediaToTimeline(document_.media[rows[row]].path);
         };
         album->AddAction(add);
+        if (!music) {
+            AlbumAction over;
+            over.id = "overlay";
+            over.label = "Over the picture (V2)";
+            over.iconPath = IconPath("image");
+            over.onTrigger = [this](size_t row) {
+                if (row < binRows_.size() && binRows_[row] < document_.media.size())
+                    AddOverlay(document_.media[binRows_[row]].path, document_.view.playhead);
+            };
+            album->AddAction(over);
+        }
         AlbumAction remove;
         remove.id = "remove";
         remove.label = "Remove from the bin";
@@ -513,7 +524,15 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
         document_.view.rangeOut = out;
         RefreshTimeline();
     };
-    timeline_->onFilesDropped = [this](const std::vector<std::string>& files, const std::string&, double seconds) {
+    timeline_->onFilesDropped = [this](const std::vector<std::string>& files, const std::string& trackId, double seconds) {
+        if (trackId == kOverlayTrackId) {
+            double at = seconds;
+            for (const std::string& f : files) {
+                AddOverlay(f, at);
+                if (const OverlaySpan* v = document_.overlays.empty() ? nullptr : &document_.overlays.back()) at = v->End();
+            }
+            return;
+        }
         ImportFiles(files, seconds);
     };
     timeline_->onContextMenuRequested = [this](const std::string& trackId, double seconds, const std::string& clipId, int x, int y) {
@@ -753,7 +772,8 @@ void UltraVideoWindow::RefreshTimeline() {
 }
 
 void UltraVideoWindow::RefreshInspector() {
-    inspector_.Show(document_, SegmentOfClip(document_, selectedClip_), document_.TitleIndex(selectedClip_));
+    inspector_.Show(document_, SegmentOfClip(document_, selectedClip_), document_.TitleIndex(selectedClip_),
+                    document_.OverlayIndex(selectedClip_));
 }
 
 void UltraVideoWindow::RefreshPreview() {
@@ -1051,6 +1071,7 @@ void UltraVideoWindow::SplitAtPlayhead() {
     const TimelineTrack* main = model.FindTrack(kMainTrackId);
     if (!main) return;
     if (document_.TitleIndex(selectedClip_) >= 0) main = model.FindTrack(kTitleTrackId);   // a selected title splits instead
+    if (document_.OverlayIndex(selectedClip_) >= 0) main = model.FindTrack(kOverlayTrackId);   // or overlay
     if (!main) return;
     std::string target = selectedClip_;
     if (target.empty() || !main->FindClip(target)) {
@@ -1072,7 +1093,8 @@ void UltraVideoWindow::SplitAtPlayhead() {
     change.before = {*clip};
     change.after = {*track.FindClip(target), *track.FindClip(target + ":2")};
     change.at = at;
-    Edit(main->id == kTitleTrackId ? "Split title" : "Split clip", [&change](Document& d) { ApplyChange(d, change); });
+    Edit(main->id == kTitleTrackId ? "Split title" : main->id == kOverlayTrackId ? "Split overlay" : "Split clip",
+         [&change](Document& d) { ApplyChange(d, change); });
 }
 
 void UltraVideoWindow::DeleteSelection() {
@@ -1098,6 +1120,11 @@ void UltraVideoWindow::DeleteSelection() {
                 d.titles.erase(d.titles.begin() + titleIndex);
                 continue;
             }
+            const int overlayIndex = d.OverlayIndex(id);
+            if (overlayIndex >= 0) {
+                d.overlays.erase(d.overlays.begin() + overlayIndex);
+                continue;
+            }
             const int index = SegmentOfClip(d, id);
             if (index < 0) continue;
             d.project.segments.erase(d.project.segments.begin() + index);
@@ -1121,6 +1148,39 @@ void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
         inspector_.ShowClipTab();
         Message("A title at the playhead: set its text in the inspector.");
     }
+}
+
+void UltraVideoWindow::AddOverlay(const std::string& path, double at) {
+    if (document_.project.segments.empty()) {
+        Message("Put a clip on the main track first: an overlay sits over the picture.");
+        return;
+    }
+    std::string id;
+    Edit("Add overlay", [path, at, &id](Document& d) {
+        const int index = d.AddOverlay(path, at);
+        if (index >= 0) id = d.overlays[static_cast<size_t>(index)].id;
+    });
+    if (id.empty()) {
+        Message("That file cannot go over the picture: it has no picture of its own.");
+        return;
+    }
+    selectedClip_ = id;
+    if (timeline_) timeline_->SetSelection({id});
+    RefreshInspector();
+    inspector_.ShowClipTab();
+    Message("Over the picture, bottom right: place and size it in the inspector.");
+}
+
+void UltraVideoWindow::ChooseOverlay(double at) {
+    FileDialogOptions opts;
+    opts.SetTitle("A file over the picture").SetParentWindow(window_.get());
+    std::vector<std::string> exts;
+    for (const std::string& e : MediaExtensions())
+        if (Document::KindOfPath("x." + e) != MediaKind::Audio) exts.push_back(e);
+    opts.AddFilter("Video and pictures", exts);
+    UltraCanvasFileLoader::OpenFileDialog(opts, [this, at](DialogResult result, const std::string& path) {
+        if (result == DialogResult::OK && !path.empty()) AddOverlay(path, at);
+    });
 }
 
 void UltraVideoWindow::RequestBeats() {
@@ -1161,7 +1221,36 @@ void UltraVideoWindow::ShowTimelineMenu(const std::string& trackId, double secon
     menu_->SetMenuType(MenuType::PopupMenu);
     const int index = SegmentOfClip(document_, clipId);
     const int titleIndex = document_.TitleIndex(clipId);
-    if (trackId == kTitleTrackId && titleIndex >= 0) {
+    const int overlayIndex = document_.OverlayIndex(clipId);
+    if (trackId == kOverlayTrackId && overlayIndex >= 0) {
+        menu_->AddItem(MenuItemData::Header(document_.overlays[static_cast<size_t>(overlayIndex)].Name()));
+        menu_->AddItem(MenuItemData::Action("Place, size and fades\xE2\x80\xA6", [this, clipId]() {
+            selectedClip_ = clipId;
+            RefreshInspector();
+            inspector_.ShowClipTab();
+        }));
+        menu_->AddItem(MenuItemData::ActionWithShortcut("Split at the playhead", "S", [this, clipId]() {
+            selectedClip_ = clipId;
+            SplitAtPlayhead();
+        }));
+        menu_->AddItem(MenuItemData::Separator());
+        menu_->AddItem(MenuItemData::ActionWithShortcut("Delete", "Del", [this, clipId]() {
+            selectedClip_ = clipId;
+            if (timeline_) timeline_->SetSelection({clipId});
+            DeleteSelection();
+        }));
+    } else if (trackId == kOverlayTrackId) {
+        menu_->AddItem(MenuItemData::Header("Overlay video"));
+        menu_->AddItem(MenuItemData::Action("Put a file over the picture here\xE2\x80\xA6", [this, seconds]() { ChooseOverlay(seconds); }));
+        size_t offered = 0;
+        for (const MediaItem& m : document_.media) {
+            if (!m.error.empty() || m.kind == MediaKind::Audio || m.kind == MediaKind::Unknown) continue;
+            if (offered++ == 0) menu_->AddItem(MenuItemData::Separator());
+            if (offered > 8) break;
+            const std::string path = m.path;
+            menu_->AddItem(MenuItemData::Action(m.name + " here", [this, path, seconds]() { AddOverlay(path, seconds); }));
+        }
+    } else if (trackId == kTitleTrackId && titleIndex >= 0) {
         menu_->AddItem(MenuItemData::Header(document_.titles[static_cast<size_t>(titleIndex)].Name()));
         menu_->AddItem(MenuItemData::Action("Edit the text\xE2\x80\xA6", [this, clipId]() {
             selectedClip_ = clipId;
@@ -1334,6 +1423,16 @@ void UltraVideoWindow::StartExport(const ExportChoice& choice) {
             titles.push_back(t);
         }
         exported.titles = titles;
+        std::vector<OverlaySpan> pips;
+        for (OverlaySpan v : document_.overlays) {
+            const double a = std::max(v.start, rangeIn), b = std::min(v.End(), rangeOut);
+            if (b - a < 0.04) continue;
+            v.sourceIn += a - v.start;
+            v.start = a - rangeIn;
+            v.duration = b - a;
+            pips.push_back(v);
+        }
+        exported.overlays = pips;
     }
     std::vector<VideoFXSegment> segments = exported.SegmentsForEngine();
     if (segments.empty()) {

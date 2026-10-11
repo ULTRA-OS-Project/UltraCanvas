@@ -13,7 +13,8 @@ segments.
 
 > **Status: stages 1 and 2 implemented, plus photos and music.** Probe,
 > frames, the segment timeline with 26 effects, speed, joins, 30 transitions
-> between segments, text and image overlays, still images with smooth pan and
+> between segments, text, image and video overlays (picture-in-picture),
+> still images with smooth pan and
 > zoom ("Ken Burns"), one-call slideshows, background music that dips under
 > speech, project files, waveforms for timelines and players, a preview
 > that renders any frame of a timeline without an export, GIF and
@@ -551,12 +552,12 @@ VideoFX_Export({ a, b, c }, "joined.mp4");   // length: a + b + c - 1.5 s
 
 ---
 
-## Overlays: titles and logos
+## Overlays: titles, logos and picture-in-picture
 
-`VideoFXSegment::overlays` draws text and images over a segment, after its
-effects, on the **output** frame — a title sits in the same place whatever
-the source's size. Sizes and margins are fractions of the output height, so
-a layout looks the same at 480p and 4K.
+`VideoFXSegment::overlays` draws text, images and other videos over a
+segment, after its effects, on the **output** frame — a title sits in the
+same place whatever the source's size. Sizes and margins are fractions of
+the output height, so a layout looks the same at 480p and 4K.
 
 ```cpp
 VideoFXSegment clip = VideoFXSegment::FromFile("talk.mp4");
@@ -571,7 +572,11 @@ title.fadeOut = 0.5;
 VideoFXOverlay logo = VideoFXOverlay::Image("logo.png", VideoFXAnchor::TopRight, 0.10);
 logo.opacity = 0.8;
 
-clip.overlays = { title, logo };
+VideoFXOverlay cam = VideoFXOverlay::Video("speaker.mp4", VideoFXAnchor::BottomRight, 0.3, 12.0);
+cam.start = 5.0;                     // shown from 5 s into the segment
+cam.fadeIn = 0.5;                    // playing speaker.mp4 from its 12 s on
+
+clip.overlays = { title, logo, cam };
 ```
 
 | Field | Meaning |
@@ -581,6 +586,7 @@ clip.overlays = { title, logo };
 | `fadeIn`, `fadeOut`, `opacity` | Seconds; 0..1 |
 | **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = the default font (below) |
 | **Image:** `imagePath` or `image`, `imageHeight` | A PNG keeps its transparency; `image` takes RGBA pixels from memory (for example a picture UltraCanvas rendered); `imageHeight` 0 = its own pixel size |
+| **Video:** `videoPath`, `videoStart`, `imageHeight` | Picture-in-picture: the file's picture plays from `videoStart` seconds into it from the overlay's `start` on, at its own speed, upright, without its sound; when the file ends before the overlay does its last frame holds. `imageHeight` sizes it like an image (0 = the file's own pixels). `VideoFXOverlay::Video` makes one from a path, anchor, height and start second. The file is checked when the export is planned, so a missing one fails before anything is written. |
 
 Text is taken literally — `:`, quotes, `%` and backslashes need no escaping.
 
@@ -872,7 +878,8 @@ generates its own clips, so it needs no media files.
 | 3c | Beat detection; slideshows changing on the beat | **Done** |
 | 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
-| 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
+| 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
+| 3 | Keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
 | 4c | Preview: any frame of a timeline rendered as the export would make it, without an export (`VideoFXPreview`); a slideshow's plan as segments | **Done** |

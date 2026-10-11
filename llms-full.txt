@@ -2210,8 +2210,8 @@ time: without it the same API links from a stub whose calls return
 
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
-(picture via xfade, sound cross-faded), text and image overlays on the output
-frame, still images with sub-pixel pan and zoom (keeping faces in shot -
+(picture via xfade, sound cross-faded), text, image and video overlays
+(picture-in-picture) on the output frame, still images with sub-pixel pan and zoom (keeping faces in shot -
 given, or found by the built-in detector) and one-call slideshows,
 background music (fades, looping, ducking under the segments' own sound,
 song lists crossfading into each other), beat detection and slideshows
@@ -78084,7 +78084,8 @@ segments.
 
 > **Status: stages 1 and 2 implemented, plus photos and music.** Probe,
 > frames, the segment timeline with 26 effects, speed, joins, 30 transitions
-> between segments, text and image overlays, still images with smooth pan and
+> between segments, text, image and video overlays (picture-in-picture),
+> still images with smooth pan and
 > zoom ("Ken Burns"), one-call slideshows, background music that dips under
 > speech, project files, waveforms for timelines and players, a preview
 > that renders any frame of a timeline without an export, GIF and
@@ -78622,12 +78623,12 @@ VideoFX_Export({ a, b, c }, "joined.mp4");   // length: a + b + c - 1.5 s
 
 ---
 
-## Overlays: titles and logos
+## Overlays: titles, logos and picture-in-picture
 
-`VideoFXSegment::overlays` draws text and images over a segment, after its
-effects, on the **output** frame — a title sits in the same place whatever
-the source's size. Sizes and margins are fractions of the output height, so
-a layout looks the same at 480p and 4K.
+`VideoFXSegment::overlays` draws text, images and other videos over a
+segment, after its effects, on the **output** frame — a title sits in the
+same place whatever the source's size. Sizes and margins are fractions of
+the output height, so a layout looks the same at 480p and 4K.
 
 ```cpp
 VideoFXSegment clip = VideoFXSegment::FromFile("talk.mp4");
@@ -78642,7 +78643,11 @@ title.fadeOut = 0.5;
 VideoFXOverlay logo = VideoFXOverlay::Image("logo.png", VideoFXAnchor::TopRight, 0.10);
 logo.opacity = 0.8;
 
-clip.overlays = { title, logo };
+VideoFXOverlay cam = VideoFXOverlay::Video("speaker.mp4", VideoFXAnchor::BottomRight, 0.3, 12.0);
+cam.start = 5.0;                     // shown from 5 s into the segment
+cam.fadeIn = 0.5;                    // playing speaker.mp4 from its 12 s on
+
+clip.overlays = { title, logo, cam };
 ```
 
 | Field | Meaning |
@@ -78652,6 +78657,7 @@ clip.overlays = { title, logo };
 | `fadeIn`, `fadeOut`, `opacity` | Seconds; 0..1 |
 | **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = the default font (below) |
 | **Image:** `imagePath` or `image`, `imageHeight` | A PNG keeps its transparency; `image` takes RGBA pixels from memory (for example a picture UltraCanvas rendered); `imageHeight` 0 = its own pixel size |
+| **Video:** `videoPath`, `videoStart`, `imageHeight` | Picture-in-picture: the file's picture plays from `videoStart` seconds into it from the overlay's `start` on, at its own speed, upright, without its sound; when the file ends before the overlay does its last frame holds. `imageHeight` sizes it like an image (0 = the file's own pixels). `VideoFXOverlay::Video` makes one from a path, anchor, height and start second. The file is checked when the export is planned, so a missing one fails before anything is written. |
 
 Text is taken literally — `:`, quotes, `%` and backslashes need no escaping.
 
@@ -78943,7 +78949,8 @@ generates its own clips, so it needs no media files.
 | 3c | Beat detection; slideshows changing on the beat | **Done** |
 | 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
-| 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
+| 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
+| 3 | Keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
 | 4c | Preview: any frame of a timeline rendered as the export would make it, without an export (`VideoFXPreview`); a slideshow's plan as segments | **Done** |
@@ -78958,7 +78965,7 @@ FILE: Docs/Modules/VideoFX/intro.md
 
 # VideoFX
 
-The video editing and conversion engine. Probe any media file, pull frames and filmstrips, and build a timeline of clips — each trimmed, sped up or slowed down, colour-graded, faded, cropped or rotated — that is joined, with crossfades, wipes and slides between clips and titles and logos on top, and encoded to MP4, WebM, MOV, MKV, an animated GIF or an audio file, with picture and sound kept in sync across every join. FFmpeg does the work behind VideoFX's own API, so no codec library leaks into application code; exports run on a background job with progress and cancel. Stages 1 and 2 are implemented; picture-in-picture, keyframes and multi-track mixing are next.
+The video editing and conversion engine. Probe any media file, pull frames and filmstrips, and build a timeline of clips — each trimmed, sped up or slowed down, colour-graded, faded, cropped or rotated — that is joined, with crossfades, wipes and slides between clips and titles, logos and picture-in-picture on top, and encoded to MP4, WebM, MOV, MKV, an animated GIF or an audio file, with picture and sound kept in sync across every join. FFmpeg does the work behind VideoFX's own API, so no codec library leaks into application code; exports run on a background job with progress and cancel. Stages 1 to 3f are implemented; keyframes and multi-track mixing are next.
 
 ==============================================================================
 FILE: Docs/Modules/VirtualFS/README.md
@@ -82723,8 +82730,9 @@ with the draft render in a later release.
 
 ### The timeline
 
-The `UltraCanvasVideoTimeline` element with three lanes: **T1 Titles**, a
-free lane of title spans over the picture; **V1 Main track**, magnetic -
+The `UltraCanvasVideoTimeline` element with four lanes: **T1 Titles**, a
+free lane of title spans over the picture; **V2 Overlay video**, a free
+lane of files shown over the picture; **V1 Main track**, magnetic -
 clips follow each other, gaps close; and **A1 Music**, which shows the
 songs and is edited from the inspector. Drag a clip to reorder,
 drag an edge to trim, drag a transition's edge for its length, drop files
@@ -82744,6 +82752,20 @@ the export - the span becomes a text overlay on every clip it crosses,
 with the fades only at the span's own ends, so a title runs across a cut
 without a seam. The project file keeps the spans and writes the overlays
 beside them for `videofx render`.
+
+### Overlay video
+
+The **V2 Overlay video** lane puts another file's picture over the main
+track: a video as picture-in-picture, without its sound, or a picture as a
+logo. Right-click the lane for *Put a file over the picture here…* and the
+bin's files, use *Over the picture* on a bin tile (at the playhead), or
+drop files on the lane. An overlay clip is moved, trimmed, split and
+deleted like any clip; trimming its left edge moves into the file, and a
+video clip cannot be stretched past the file's end. The inspector sets its
+length, place (nine positions), size as a share of the frame's height,
+opacity and fades. The viewer shows it while editing, and like a title it
+is cut into one overlay per main-track clip it crosses when the engine
+renders, so it runs across a cut.
 
 ### Music
 
@@ -82837,8 +82859,8 @@ the engine).
 
 ## Not yet
 
-The overlay-video lane, effect presets, playback with sound, drag from the
-bin onto the timeline, and the mapping
+Effect presets, playback with sound, drag from the bin onto the timeline,
+and the mapping
 of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.
