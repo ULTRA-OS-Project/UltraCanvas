@@ -1,4 +1,6 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
+// Version: 0.3.1 - the Tools step: a row per check with a switch for whether
+//                  it is there, and what Install will do above them
 // Version: 0.3.0 - the stepper: five steps, Back / Next, the Guide and the
 //                  Report as dialogs (the workflow proposal, implemented)
 // Version: 0.2.0 - UltraMail's look: theme header, cards, Markdown views
@@ -25,6 +27,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasSwitch.h"
 
 #include <algorithm>
 
@@ -486,26 +489,43 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildToolsStep() {
     checkButton_->onClick = [this]() { StartChecks(); };
     installBadge_ = Theme::MakeStatusBadge("ucsInstallBadge", false, "not checked yet");
     installBadge_->SetVariant(BadgeVariant::Neutral);
-    installSummary_ = Theme::MakeText("ucsInstallSummary", "", Theme::kSizeBody, Theme::kTextSecondary);
-    installSummary_->layoutItem.SetFlexGrow(1);
     row->AddChild(installButton_);
     row->AddChild(checkButton_);
     row->AddChild(installBadge_);
-    row->AddChild(installSummary_);
     checks->AddChild(row);
-    checksView_ = Theme::MakeMarkdownView("ucsChecksView", 260);
-    checksView_->SetText(ChecksMarkdown({}), false);
-    Theme::Grow(checksView_);
-    checks->AddChild(checksView_);
-    Theme::GrowCard(checks, 2.0f);
+    // What Install will do: a sentence, then the command it runs
+    // (RefreshInstallPreview), each as tall as its wrapped lines.
+    installSummary_ = Theme::MakeHint("ucsInstallSummary", InstallPreview(plan_));
+    installSummary_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    checks->AddChild(installSummary_);
+    installCommand_ = Theme::MakeHint("ucsInstallCommand", "");
+    installCommand_->SetFont("monospace", Theme::kSizeBody);
+    installCommand_->SetTextColor(Theme::kCodeText);
+    installCommand_->SetWrap(TextWrap::WrapWordChar);   // a long package manager path breaks too
+    installCommand_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    installCommand_->SetVisible(false);
+    checks->AddChild(installCommand_);
+    // One row per check (RefreshCheckRows), scrolling down only: a row too long
+    // for the card is cut, not given a horizontal bar.
+    checksList_ = CreateContainer("ucsChecksList", 0, 0, 0, 260);
+    ContainerStyle listStyle = checksList_->GetContainerStyle();
+    listStyle.autoShowScrollbars = true;
+    listStyle.autoShowHorizontalScrollbar = false;
+    listStyle.scrollbarStyle.trackSize = Theme::kScrollbarWidth;
+    listStyle.scrollbarStyle.thumbCornerRadius = Theme::kScrollbarWidth / 2;
+    listStyle.scrollbarStyle.trackCornerRadius = Theme::kScrollbarWidth / 2;
+    checksList_->SetContainerStyle(listStyle);
+    checksList_->layout.SetFlexColumn().SetFlexGap(2).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    Theme::Grow(checksList_);
+    checks->AddChild(checksList_);
+    Theme::GrowCard(checks, 1.0f);
     pane->AddChild(checks);
 
+    // A few lines: the list above gets the room, the console scrolls.
     auto output = Theme::MakeCard("ucsOutputCard", "Install output");
-    installOutput_ = Theme::MakeConsole("ucsInstallOutput", 160);
+    installOutput_ = Theme::MakeConsole("ucsInstallOutput", 56);
     installOutput_->SetPlaceholder("The package manager's output appears here.");
-    Theme::Grow(installOutput_);
     output->AddChild(installOutput_);
-    Theme::GrowCard(output, 1.0f);
     pane->AddChild(output);
     return pane;
 }
@@ -790,12 +810,13 @@ void UltraCanvasStartWindow::StartChecks() {
             checks_ = results;
             working_ = false;
             SetBusy(false);
-            RefreshChecksText();
+            RefreshCheckRows();
             RefreshPlan();
             const size_t missing = plan_.MissingCount();
             if (stepper_) stepper_->SetStepError(static_cast<int>(Step::Tools), missing > 0);
             SetStatus(missing == 0 ? "Everything the chosen features need is installed. Next goes on to the framework."
-                                   : std::to_string(missing) + " missing; \"Install what is missing\" runs the package manager.");
+                      : CanInstall() ? std::to_string(missing) + " missing; \"Install what is missing\" runs the package manager."
+                                     : std::to_string(missing) + " missing; no package manager was found to install them with.");
         });
     });
 }
@@ -1089,13 +1110,40 @@ void UltraCanvasStartWindow::ReadChoicesFromPanes() {
     if (folderInput_) choices_.projectFolder = folderInput_->GetText();
 }
 
-void UltraCanvasStartWindow::RefreshChecksText() {
-    if (!checksView_) return;
-    checksView_->SetText(ChecksMarkdown(checks_), false);
+void UltraCanvasStartWindow::RefreshCheckRows() {
+    if (!checksList_) return;
+    checksList_->ClearChildren();
     size_t missing = 0;
-    for (const auto& c : checks_) {
-        if (c.checked && !(c.present && c.versionOk)) ++missing;
+    DependencyGroup current = DependencyGroup::Toolchain;
+    for (size_t i = 0; i < checks_.size(); ++i) {
+        const CheckResult& c = checks_[i];
+        const std::string id = "ucsCheck" + std::to_string(i);
+        if (i == 0 || c.group != current) {
+            checksList_->AddChild(Theme::MakeLine(id + ".group", DependencyGroupTitle(c.group), 24,
+                                                  Theme::kSizeBody + 1.0f, Theme::kTextPrimary,
+                                                  FontWeight::Bold));
+            current = c.group;
+        }
+        const bool there = c.checked && c.present && c.versionOk;
+        if (c.checked && !there) ++missing;
+        auto row = Theme::MakeRow(id, Theme::kRowHeight + 2.0f);
+        auto indicator = Theme::MakeIndicatorSwitch(id + ".switch", there);
+        indicator->SetAccessibleName(c.title + (there ? ": installed" : c.checked ? ": missing" : ": not checked"));
+        row->AddChild(indicator);
+        const std::string detail = CheckDetail(c);
+        const Color detailColor = (c.checked && !there) ? Theme::kWarnText : Theme::kTextSecondary;
+        auto text = Theme::MakeText(id + ".text", "", Theme::kSizeBody);
+        text->SetTextIsMarkup(true);
+        text->SetText("<b>" + Theme::EscapeMarkup(c.title) + "</b>" +
+                      (detail.empty() ? std::string()
+                                      : "   <span foreground=\"" + detailColor.ToHexString() + "\">" +
+                                            Theme::EscapeMarkup(detail) + "</span>"));
+        text->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        row->AddChild(text);
+        checksList_->AddChild(row);
     }
+    checksList_->InvalidateLayout();
+    checksList_->RequestRedraw();
     if (installBadge_) {
         if (checks_.empty()) {
             installBadge_->SetText("not checked yet");
@@ -1108,16 +1156,27 @@ void UltraCanvasStartWindow::RefreshChecksText() {
             installBadge_->SetVariant(BadgeVariant::Warning);
         }
     }
-    if (installButton_) installButton_->SetDisabled(checks_.empty() || missing == 0 || working_);
-    if (installSummary_) {
-        installSummary_->SetText(
-            checks_.empty() ? ""
-            : missing == 0 ? "Everything the chosen features need is installed."
-            : profile_.packageManagerPath.empty()
-                ? "No package manager was found to install them with; Next goes on anyway."
-                : "Install what is missing runs " + PackageManagerName(profile_.packageManager) +
-                  " for them; Next goes on anyway.");
+}
+
+bool UltraCanvasStartWindow::CanInstall() const {
+    if (plan_.MissingCount() == 0 || profile_.packageManagerPath.empty()) return false;
+    for (const auto& step : plan_.steps) {
+        if (step.kind == StepKind::Install && !step.argv.empty()) return true;
     }
+    return false;
+}
+
+void UltraCanvasStartWindow::RefreshInstallPreview() {
+    if (!installSummary_) return;
+    // The sentence, then the command on a line of its own in the code colour.
+    const std::string preview = InstallPreview(plan_);
+    const size_t newline = preview.find('\n');
+    installSummary_->SetText(preview.substr(0, newline));
+    if (installCommand_) {
+        installCommand_->SetText(newline == std::string::npos ? std::string() : preview.substr(newline + 1));
+        installCommand_->SetVisible(newline != std::string::npos);
+    }
+    if (installButton_) installButton_->SetDisabled(working_ || !CanInstall());
 }
 
 void UltraCanvasStartWindow::RefreshFrameworkStep() {
@@ -1182,13 +1241,14 @@ void UltraCanvasStartWindow::RefreshPlan() {
     }
     if (promptText_) promptText_->SetText(FirstPrompt(choices_));
     if (cloudBox_) cloudBox_->SetDisabled(!choices_.useAi);
+    RefreshInstallPreview();
 }
 
 void UltraCanvasStartWindow::SetBusy(bool busy) {
     if (checkButton_) checkButton_->SetDisabled(busy);
-    // The install button is for what the checks found missing; nothing to
-    // install keeps it off (RefreshChecksText decides).
-    if (installButton_) installButton_->SetDisabled(busy || checks_.empty() || plan_.MissingCount() == 0);
+    // The install button is for what the checks found missing and a package
+    // manager here can install; otherwise it stays off (CanInstall).
+    if (installButton_) installButton_->SetDisabled(busy || !CanInstall());
     if (downloadButton_) downloadButton_->SetDisabled(busy);
     if (findButton_) findButton_->SetDisabled(busy);
     if (createButton_) createButton_->SetDisabled(busy);

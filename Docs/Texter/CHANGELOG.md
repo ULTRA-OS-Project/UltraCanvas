@@ -1,4 +1,4 @@
-#### 2026-10-10 *1.61*
+#### 2026-10-11 *1.62*
 - **`--help` and `--version` print again.** Both wrote to the framework's
   debug log, which a Release build keeps off, so `UltraTexter --help` printed
   nothing at all - on Linux and macOS as much as on Windows. They now write
@@ -10,6 +10,15 @@
   window on Windows either.** Its `UltraTexter.exe` was a console program in
   every build; a Release build is now a GUI program, like the editor the
   root build makes.
+
+#### 2026-10-10 *1.61*
+- **Menus in the dark theme keep their separators and outline.** The
+  framework's menus took on the current desktop look (framework changelog:
+  `modern-menus`), whose hairlines are translucent black - invisible on the
+  dark theme's menubar and its drop-downs, which only had their background,
+  text and hover recoloured. The theme switch now also takes the outline,
+  separator, shortcut, disabled-entry and shadow colours from the matching
+  `MenuStyle` (`Dark()` or `Default()`).
 
 #### 2026-10-05 *1.60*
 - **Settings, autosave and comments work in a Windows profile named in any

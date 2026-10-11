@@ -1,4 +1,4 @@
-#### 2026-10-10 *1.72.1*
+#### 2026-10-11 *1.72.2*
 - **`--help` and `--version` print again.** Both wrote to the framework's
   debug log, which a Release build keeps off, so `UltraFiler --help` printed
   nothing at all - on Linux and macOS as much as on Windows. They now write
@@ -6,6 +6,14 @@
   text reaches the prompt as well: the framework attaches a GUI program to
   the prompt's console before `main()` now (framework changelog, pending
   entry `windows-gui-apps-print-help`).
+
+#### 2026-10-10 *1.72.1*
+- **Display > Tab style reaches every tab strip.** 1.71.0 dressed only the
+  window's own strip; the three tabs of the History and Favorites views and
+  the two of the Connection log window kept the rounded tabs whatever was
+  chosen. All of them follow the setting now, at once when it changes, with
+  the Modern capsule 24px tall in the 28px Connection log strip as in the
+  30px window strip.
 
 #### 2026-10-10 *1.72.0*
 - **Split view: a layout of its own.**

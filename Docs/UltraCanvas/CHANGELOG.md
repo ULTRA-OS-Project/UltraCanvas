@@ -1,3 +1,100 @@
+#### 2026-10-11 *0.9.247*
+- **`MenuStyle::tintIcons`: a menu's icons drawn in the label's colour.**
+  On, each item's icon is drawn as a mask in its label's colour - the text
+  colour, the highlighted row's, a disabled item's grey - so one flat,
+  single-colour icon reads on a light menu and a dark one. `MenuStyle::Dark()`
+  turns it on, since an icon drawn for a light menu vanishes on it; the other
+  presets still draw an icon in its own colours.
+- **The DemoApp's menus show flat icons instead of emoji.** Every entry of the
+  Menus page (the context menu, File / Edit / View / Help, the dark and flat
+  menus, the list's right-click menu) and the Button page's split-button menu
+  wrote an emoji into its label - 📋 ✂️ 💾 🔍 🌙 and the rest - which draws only
+  where a colour emoji font is installed; with the bundled fonts alone, as on
+  Windows here, each was a box of hex digits. They now carry icons of
+  `media/icons/menu/`, the set UltraFiler's menus use, and the split buttons'
+  "▼" arrows are the dropdown icon.
+- **Nineteen new icons in `media/icons/menu/`**, drawn like the rest of the set
+  (24 px grid, 2 px rounded strokes): save, recent, exit, undo, redo, search,
+  replace, format, toolbar, status-bar, sidebar, book, tutorial, moon, sun,
+  palette, phone, tablet and monitor.
+- `Docs/UltraCanvas/UltraCanvasMenuExamples.md` documents `tintIcons`, and its
+  context-menu example uses icons instead of emoji labels.
+- **The stepper's completed steps show their check mark on Windows.**
+  `UltraCanvasStepper` wrote the mark as the character "✓", which the
+  bundled Ubuntu UI font does not have, so it was left to a fallback font -
+  and on Windows it drew as a box of hex digits (UltraCanvasStart's step
+  header). The check is now a stroked path in the marker's glyph colour, as
+  `UltraCanvasCheckbox` draws its own, so it no longer depends on any font.
+
+#### 2026-10-10 *0.9.246*
+- **Popup menus and submenus look the way current desktops draw them.**
+  Windows 11 (WinUI's `MenuFlyout`), macOS and GNOME (libadwaita's popover
+  menus) agree on a rounded panel lifted off the window by a soft shadow,
+  padding inside it, rows whose highlight is a rounded rectangle inset from
+  the panel's sides in a neutral shade, muted shortcuts and faint hairline
+  separators; `MenuStyle::Default()` now draws exactly that, on Windows 11's
+  mouse metrics: an 8 px panel radius, 4 px padding and inset, a 4 px
+  highlight radius, 28 px rows, a translucent black hover that darkens any
+  background, and a shadow fading over 18 px, 6 px down. A small menu - an
+  attachment's Open / Save As - no longer reads as a square grey box with a
+  full-width blue bar. `Dark()` and `Flat()` follow (`Dark()` with a light
+  hairline outline); a menubar keeps its edge-to-edge items with a rounded
+  highlight.
+  - New `MenuStyle::itemInset` (gap between the border and a row's
+    highlight) and `itemCornerRadius` (the highlight's rounding);
+    `paddingTop` / `paddingBottom`, which a vertical menu ignored, are the
+    panel's padding above the first row and below the last, and
+    `borderRadius` rounds the panel (it was never drawn).
+  - Separators run across the whole panel and are filled on one pixel row,
+    so they stay sharp; they no longer take the hover highlight. Checkbox
+    outlines use the muted secondary colour instead of the faint border.
+  - A submenu opens with its first row level with the item it came from,
+    scrolled or not, and a menubar's drop-down lines up with the item's
+    highlight. An overflowing menu widens by its scrollbar instead of
+    covering the rows' shortcuts.
+- **Popups can have rounded corners and a drop shadow.** The window used to
+  copy a popup's surface over its content, transparent pixels and all; it
+  now blends it over with its alpha, so a popup's transparent corners show
+  the window beneath (at any `SetPopupOpacity`), and paints the soft shadow a
+  popup asks for through the new virtual
+  `UltraCanvasUIElement::GetPopupShadow()` (a `PopupShadow`: colour, blur,
+  offset, corner radius) beneath it, outside the popup's own surface - the
+  popup keeps its bounds and the shadow takes no clicks. The menu answers it
+  from its style; its old "shadow", a 1 px outline drawn inside its own
+  surface, is gone. New
+  `IRenderContext::CompositeToSurfaceWithOpacity()` (an OVER composite at an
+  opacity) does the blending; `RenderContextTest` checks it, and the
+  render-context page describes the four ways a surface goes onto another.
+- `MenuAndTabBehaviourTest` checks the panel on a composited window: corners
+  that show the window, a shadow outside the bounds that fades out and goes
+  with the menu, a highlight inset from the panel's edges, top padding that
+  hovers nothing, and a separator across the panel; its popup-opacity checks
+  expect the blend. `TextMetricsScreenshotTest` measures the menu's first row
+  where it now is.
+
+#### 2026-10-10 *0.9.245*
+- **HTML mail keeps its spacing: table cells ignore `min-height` and
+  `max-height`.** Stripe - and with it the receipts and invoices of every
+  service that bills through it - spaces its mail with cells like
+  `<td height="32" style="font-size:1px; line-height:1px; max-height:1px">`.
+  Browsers ignore `max-height` on a table cell (CSS 2.1 leaves it undefined
+  there); `HTML::ElementBuilder` applied it, so every such gap shrank to 1px:
+  a receipt lost the space above its header and inside its cards, and its
+  text sat packed together - which read as text drawn too large, although the
+  sizes were right. A cell now ignores both limits, as Chromium and Firefox
+  do; a cell made `display: block` (mail columns stacked on a phone) is a
+  block and keeps them. `HTMLTableLayoutTest` expected the opposite for a
+  percentage `min-height` / `max-height` on a cell and now expects what a
+  browser lays out.
+- **An inline element's `line-height` sets its line's height.** A line was
+  as tall as the block's `line-height`, or the font's, and an inline
+  element's own was dropped: Stripe's amount - 36px text on 40px lines - and
+  the 14px caption above it on 20px lines, each in a cell that sets none,
+  were laid out at the fonts' heights, the amount touching the caption. A
+  line is now as tall as the tallest `line-height` of the inline boxes on
+  it, and at least the block's own; text where nothing sets a `line-height`
+  keeps the font's own line spacing, as before.
+
 #### 2026-10-10 *0.9.244*
 - **Files dragged to another file display of the same window land where they
   are released.** A drag that leaves an `UltraCanvasFilerWidget` keeps going
