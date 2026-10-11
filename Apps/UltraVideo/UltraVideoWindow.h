@@ -104,6 +104,15 @@ private:
     void RequestFrame();
     void TogglePlay();
     void StopPlayback();
+    // Playback with sound: a draft render of the whole timeline
+    // (VideoFXExportSettings::Draft) in a temporary file, played by the
+    // viewer's player element; rendered on the first Play after an edit,
+    // frame by frame until it is ready
+    void RenderDraft();
+    void PollDraft();
+    void StartDraftPlayback();
+    void InvalidateDraft();
+    void RemoveDraftFile(const std::string& path);
     void StepFrames(long long frames);
     void Tick();
 
@@ -171,6 +180,17 @@ private:
     double playFrom_ = 0.0;
     double lastRequested_ = -1.0;
     bool frameWanted_ = false;
+    unsigned documentRevision_ = 1;    // bumped by every edit; a draft is for one revision
+    std::unique_ptr<VideoFX::VideoFXExportJob> draftJob_;
+    std::string draftPending_;         // the file the job writes
+    std::string draftPath_;            // the finished draft, "" when none
+    unsigned draftRevision_ = 0;       // the revision draftPath_ (or the job) renders
+    bool draftPlaying_ = false;        // the player carries the playhead
+    bool draftStarting_ = false;       // loaded, waiting for the player to be ready
+    int draftStartTicks_ = 0;          // ticks waited for the player so far
+    bool draftUnavailable_ = false;    // the player could not open a draft: no more are rendered
+    int draftFiles_ = 0;
+    void SweepOldDrafts();             // drafts of earlier runs left in the temp folder
     int messageTicks_ = 0;
     std::string selectedClip_;
     std::string binDrag_;              // the file being dragged from the bin, "" when none

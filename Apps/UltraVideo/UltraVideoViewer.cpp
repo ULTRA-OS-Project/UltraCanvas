@@ -142,6 +142,18 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     panel->AddChild(surface);
 
+    // The draft's player, shown in the surface's place while it plays; the
+    // transport below is the app's, so the element's own controls stay off
+    player = std::make_shared<UltraCanvasVideoPlayerElement>("uv.viewer.player", 0, 0, 640, 360);
+    player->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
+        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    VideoPlayerStyle playerStyle = player->GetStyle();
+    playerStyle.showControls = false;
+    playerStyle.autoHideControls = false;
+    player->SetStyle(playerStyle);
+    player->SetVisible(false);
+    panel->AddChild(player);
+
     // The transport
     transport = std::make_shared<UltraCanvasToolbar>("uv.transport", 0, 0, 100, static_cast<int>(Tokens::ToolbarH));
     transport->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(Tokens::ToolbarH))
@@ -180,7 +192,11 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
     volume->SetRange(0.0f, 1.0f);
     volume->SetValue(1.0f);
     volume->SetValueDisplay(SliderValueDisplay::NoDisplay);
-    volume->onValueChanged = [this](float v) { if (onVolumeChanged) onVolumeChanged(v); };
+    volume->onValueChanged = [this](float v) {
+        volumeLevel = v;
+        if (player && player->GetPlayer()) player->GetPlayer()->SetVolume(v);
+        if (onVolumeChanged) onVolumeChanged(v);
+    };
     volume->layoutItem.SetFlexShrink(0);
     transport->AddChild(volume);
     transport->AddSpacer(static_cast<int>(Tokens::Space2));
@@ -195,6 +211,11 @@ void Viewer::ApplyPalette(const Palette& p) {
     panel->SetBackgroundColor(ToColor(p.Bg000));
     top->SetBackgroundColor(ToColor(p.Bg100));
     surface->SetColors(ToColor(p.Bg000), ToColor(p.LineStrong), ToColor(p.Line));
+    if (player) {
+        VideoPlayerStyle playerStyle = player->GetStyle();
+        playerStyle.backgroundColor = ToColor(p.Bg000);
+        player->SetStyle(playerStyle);
+    }
     ToolbarAppearance appearance;
     appearance.style = ToolbarStyle::Flat;
     appearance.backgroundColor = ToColor(p.Bg100);
@@ -259,6 +280,40 @@ void Viewer::SetPlaying(bool on) {
     if (!play) return;
     play->SetIcon(IconPath(on ? "pause" : "play"));
     play->SetTooltip(on ? "Pause  Space" : "Play  Space");
+}
+
+bool Viewer::ShowDraft(const std::string& path) {
+    if (!player || !surface) return false;
+    if (!player->LoadFromFile(path)) {
+        player->Unload();
+        return false;
+    }
+    if (player->GetPlayer()) player->GetPlayer()->SetVolume(volumeLevel);
+    surface->SetVisible(false);
+    player->SetVisible(true);
+    draftShown = true;
+    return true;
+}
+
+void Viewer::HideDraft() {
+    if (!draftShown) return;
+    draftShown = false;
+    if (player) {
+        player->Unload();
+        player->SetVisible(false);
+    }
+    if (surface) surface->SetVisible(true);
+}
+
+VideoPlaybackState Viewer::DraftState() const {
+    return player && player->GetPlayer() ? player->GetPlayer()->GetState() : VideoPlaybackState::Idle;
+}
+
+void Viewer::DraftPlay() { if (player) player->Play(); }
+void Viewer::DraftPause() { if (player) player->Pause(); }
+void Viewer::DraftSeek(double seconds) { if (player) player->Seek(std::max(0.0, seconds)); }
+double Viewer::DraftPosition() const {
+    return player && player->GetPlayer() ? player->GetPlayer()->GetPosition() : 0.0;
 }
 
 int Viewer::SurfaceWidth() const {

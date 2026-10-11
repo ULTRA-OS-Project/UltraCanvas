@@ -525,6 +525,10 @@ struct VideoFXExportSettings {
 
     // Presets for common targets
     static VideoFXExportSettings WebMP4(int height = 1080);     // H.264 + AAC, 1080p default
+    // A quick low-resolution MP4 for playback while editing: the fastest
+    // H.264 preset, a low quality, a small AAC. Seconds to render, not
+    // minutes; never the file to deliver.
+    static VideoFXExportSettings Draft(int height = 360);
     static VideoFXExportSettings WebM(int height = 720);        // VP9 + Opus
     static VideoFXExportSettings AnimatedGif(int width = 480, double fps = 12.0);
     static VideoFXExportSettings MasterProRes();                // ProRes 422 + PCM in MOV

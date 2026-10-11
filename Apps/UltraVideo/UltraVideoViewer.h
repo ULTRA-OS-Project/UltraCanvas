@@ -21,6 +21,7 @@
 #include "UltraCanvasTimecodeField.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasVideoPlayerElement.h"
 #include "VideoFX/VideoFX.h"
 
 #include <functional>
@@ -70,6 +71,19 @@ public:
     int SurfaceWidth() const;
     int SurfaceHeight() const;
 
+    // Playback with sound: the draft render plays in the framework's player
+    // element in the surface's place (proposal §5.5 level 3). The window
+    // drives it and polls its position; the player's own callbacks fire off
+    // the UI thread and are not used.
+    bool ShowDraft(const std::string& path);         // false when the player cannot open it
+    void HideDraft();                                // back to the frame surface
+    bool DraftShown() const { return draftShown; }
+    UltraCanvas::VideoPlaybackState DraftState() const;
+    void DraftPlay();
+    void DraftPause();
+    void DraftSeek(double seconds);
+    double DraftPosition() const;
+
     std::function<void()> onToStart;
     std::function<void()> onStepBack;
     std::function<void()> onPlayPause;
@@ -82,6 +96,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> top;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> fit;
     std::shared_ptr<FrameSurface> surface;
+    std::shared_ptr<UltraCanvas::UltraCanvasVideoPlayerElement> player;
+    bool draftShown = false;
+    float volumeLevel = 1.0f;
     std::shared_ptr<UltraCanvas::UltraCanvasToolbar> transport;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> toStart, stepBack, play, stepForward, toEnd;
     std::shared_ptr<UltraCanvas::UltraCanvasTimecodeField> readout;

@@ -157,6 +157,14 @@ VideoFXExportSettings VideoFXExportSettings::WebMP4(int height) {
     return s;
 }
 
+VideoFXExportSettings VideoFXExportSettings::Draft(int height) {
+    VideoFXExportSettings s = WebMP4(height);
+    s.encoderPreset = "ultrafast";
+    s.quality = 30;
+    s.audioBitRate = 96000;
+    return s;
+}
+
 VideoFXExportSettings VideoFXExportSettings::WebM(int height) {
     VideoFXExportSettings s;
     s.container = VideoFXContainer::WebM;

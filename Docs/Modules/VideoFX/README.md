@@ -638,7 +638,10 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `sampleRate`, `channels` | first audio source / stereo | Mono only when every source is mono |
 
 Presets: `WebMP4(height)`, `WebM(height)`, `AnimatedGif(width, fps)`,
-`MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`.
+`MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`, and the draft
+preset `VideoFXExportSettings::Draft` - a 360p MP4 with the fastest H.264
+preset, a low quality and a small AAC, for playing a timeline back with
+sound while it is edited: seconds to render, never the file to deliver.
 
 Which encoders exist depends on the FFmpeg build — ask before offering a
 choice in the UI:

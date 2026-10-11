@@ -42,6 +42,17 @@
     reorder by dragging, `Del` to remove a song - and in the *Audio* tab,
     which opens when a song is selected. *Beat marks* in the toolbar asks
     the engine for the first song's beats and draws them across the lanes.
+  - The design's token files: `screens/tokens/tokens.json` as the source
+    of truth, `scripts/generate_ultravideo_tokens.py` writing
+    `UltraVideoTokens.h` and the live pages' `tokens.css` from it, and
+    `screens/fonts/fonts.css`, so the design pages render as designed.
+  - Playback with sound: the first Play after an edit renders a draft of
+    the timeline in the background (`VideoFXExportSettings::Draft`, 360p,
+    with the music and the clips' sound) into a temporary file and plays
+    frame by frame until it is ready; then the viewer's player element
+    plays the draft with sound and the playhead follows it. An edit
+    discards the draft. Without a sound device or player it stays frame by
+    frame and says so.
   - Drag from the bin: a tile dragged out of the album (`UltraCanvasAlbum`
     1.9.0's `onItemDraggedOut`) follows the pointer to the timeline as the
     element's own file drop - the insertion marker, the nearest cut on the
@@ -77,6 +88,5 @@
   - Export: a preset (web MP4 at 1080p, 720p or 4K, WebM, GIF, ProRes,
     MP3), the output file, the whole project or the work area; the job
     runs in the background with a progress dialog and can be cancelled.
-  - Not yet: effect presets, playback with sound (the draft render), and
-    the theme-role mapping (the app colours its elements from the design's
-    tokens directly).
+  - Not yet: effect presets, and the theme-role mapping (the app colours
+    its elements from the design's tokens directly).

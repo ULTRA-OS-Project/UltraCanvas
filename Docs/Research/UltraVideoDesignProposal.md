@@ -49,7 +49,7 @@ the spacing and the interaction rules they share.
 | [`UltraVideoTokens.h`](../../Apps/UltraVideo/UltraVideoTokens.h) | The tokens as C++: both palettes (dark and light, 41 roles each), shadows, spacing, radii, geometry, opacities, durations and the eight text styles, generated from the design's `tokens.json` (§5.8) |
 | [`Icons/`](../../Apps/UltraVideo/Icons/) | The 46 interface icons the screens use, one path each on a 16 px grid (§5.8) |
 | [`screens/components/`](../../Apps/UltraVideo/screens/components/) | `index.d.ts`, the design's neutral timeline model as TypeScript types; `bundle.js`, the reference renderer that draws that model as HTML and SVG (a visual specification, not production code); `bundle.css`, its stylesheet (§7.1) |
-| [`screens/components/pages/`](../../Apps/UltraVideo/screens/components/pages/) | The live pages, one per component plus `Cover.html` and an `index.html` that frames them all with a theme toggle. They draw through the renderer and expect `screens/tokens/tokens.css` (the tokens as CSS custom properties) and `screens/fonts/fonts.css`, which are not in the tree yet, so they render without colours until those two files arrive |
+| [`screens/components/pages/`](../../Apps/UltraVideo/screens/components/pages/) | The live pages, one per component plus `Cover.html` and an `index.html` that frames them all with a theme toggle. They draw through the renderer with `screens/tokens/tokens.css` (the tokens as CSS custom properties, generated from `screens/tokens/tokens.json`) and `screens/fonts/fonts.css` (IBM Plex from Google Fonts, the framework's Ubuntu as the offline fallback) |
 
 ---
 
@@ -278,7 +278,9 @@ Three levels, in the order they are built:
    of the work area, started after an edit settles for half a second and
    cancelled by the next edit. Until it is ready, Play scrubs level 2 at a
    reduced rate. A proxy render in the engine (its roadmap's stage 4) would
-   make this cheap; the app does not wait for it.
+   make this cheap; the app does not wait for it. *Built (§14), with one
+   change: the draft is rendered on the first Play after an edit rather
+   than half a second after it, so an idle editor renders nothing.*
 
 ### 5.6 The project file
 
@@ -317,7 +319,9 @@ tints) and says to map every one onto the UltraCanvas theme and hard-code
 nothing in the element. So:
 
 - The tokens exist as code: `Apps/UltraVideo/UltraVideoTokens.h`, generated
-  from the design's `tokens.json`, holds a `Palette` struct with 41 colour
+  from the design's `tokens.json` (`Apps/UltraVideo/screens/tokens/`, by
+  `scripts/generate_ultravideo_tokens.py`, which also writes the pages'
+  `tokens.css`), holds a `Palette` struct with 41 colour
   roles filled twice (`Dark`, `Light`), the shadows, the spacing and radius
   scale, the geometry (`AppbarH` 40, `ToolbarH` 36, `ControlH` 28, `RulerH`
   28, `TrackHeaderW` 200, the track heights, `ClipBandH` 16, `HandleW` 8,
@@ -814,7 +818,7 @@ adds the segment logic over it.
 | 8.2 | **Render a frame**: `VideoFXPreview` (`Open` once, `RenderFrame(seconds, frame, maxW, maxH)` per position) and the one-call `VideoFX_RenderFrame` — the output frame at a timeline time with the segment's effects and overlays and, inside an overlap, the transition; music ignored. `VideoFX_PlanSlideshow` gives a slideshow's segments for the same | The viewer while scrubbing (§5.5 level 2) | **Done** in 0.9.0 |
 | 8.3 | **Picture-in-picture**: a segment-level list of overlay *video* clips with position, size, opacity and a time range, composed over the output frame | The overlay video lane | **Done** in 0.10.0 (`VideoFXOverlayKind::Video`, in the export and the preview) |
 | 8.4 | **Free audio tracks**: sound effects and voice-over placed at timeline times, mixed before the music | A2 and up | Roadmap stage 3; days |
-| 8.5 | **Draft render preset**: `VideoFXExportSettings::Draft(height)`, fast preset, low bit rate, for the playback proxy (§5.5 level 3) | Play | An hour |
+| 8.5 | **Draft render preset**: `VideoFXExportSettings::Draft(height)`, fast preset, low bit rate, for the playback proxy (§5.5 level 3) | Play | **Done** in 0.10.0 |
 | 8.6 | **Export a range**: `start`/`end` on `VideoFX_Export` so the work area exports without the app trimming segments itself | Export dialog's *work area* choice | Small |
 
 None of these change existing calls. 8.2 is the only one the first
@@ -1042,6 +1046,25 @@ that writing it showed:
   menu, a bin tile's action or a drop; the inspector's place, size, opacity
   and fades. A picture on the lane becomes an image overlay: a logo. The
   lane is no longer hidden; the table of §5.3 names the mapping.
+- **The design's token files** (§5.8): `screens/tokens/tokens.json` is now
+  in the tree as the source of truth, reconstructed from the generated
+  header with every description kept, and
+  `scripts/generate_ultravideo_tokens.py` writes both `UltraVideoTokens.h`
+  (byte for byte what was there) and the live pages' `tokens.css` (dark on
+  the root, light under `data-theme="light"`, every variable the renderer's
+  stylesheet reads); `screens/fonts/fonts.css` loads IBM Plex from Google
+  Fonts with the framework's Ubuntu fonts as the offline fallback, so the
+  pages render as designed.
+- **Playback with sound** (§5.5 level 3, §8.5): `VideoFXExportSettings::Draft`
+  in the engine, and in the app a draft job per edit: the first Play after
+  an edit starts it (whole timeline, music and the clips' sound, a
+  temporary file) and plays frame by frame until it is done, then the
+  viewer swaps its frame surface for `UltraCanvasVideoPlayerElement` with
+  the draft, seeks to the playhead and plays; the window polls the player's
+  position each tick (its callbacks fire off the UI thread) and moves the
+  playhead, and Stop puts the frame surface back at the second the sound
+  stopped. An edit invalidates the draft and falls back to frames at the
+  same second. No sound device or player: frames, with a message.
 - **Drag from the bin** (§6.2): the framework has no drag source API, and
   the album's own drag is a reorder; `UltraCanvasAlbum` 1.9.0 gained
   `onItemDraggedOut`, which fires once when a tile crosses the album's

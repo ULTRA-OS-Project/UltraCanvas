@@ -233,6 +233,9 @@ static void TestTransitionAndOverlayText() {
     CHECK(!ValidateOverlay(bad, 5.0, error), "end before start refused");
     CHECK(!ValidateOverlay(VideoFXOverlay::Image(""), 5.0, error), "image without a picture refused");
     CHECK(!ValidateOverlay(VideoFXOverlay::Video(""), 5.0, error), "video without a file refused");
+    const VideoFXExportSettings draft = VideoFXExportSettings::Draft();
+    CHECK(draft.container == VideoFXContainer::MP4 && draft.videoCodec == VideoFXVideoCodec::H264 && draft.height == 360 &&
+          draft.encoderPreset == "ultrafast" && draft.quality == 30 && draft.audioBitRate == 96000, "the draft preset: a quick small MP4");
     VideoFXOverlay pip = VideoFXOverlay::Video("cam.mp4", VideoFXAnchor::BottomRight, 0.25, 1.5);
     CHECK(ValidateOverlay(pip, 5.0, error) && pip.kind == VideoFXOverlayKind::Video && Near(pip.videoStart, 1.5, 1e-12),
           "a video overlay with its start");

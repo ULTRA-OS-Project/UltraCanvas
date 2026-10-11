@@ -78716,7 +78716,10 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `sampleRate`, `channels` | first audio source / stereo | Mono only when every source is mono |
 
 Presets: `WebMP4(height)`, `WebM(height)`, `AnimatedGif(width, fps)`,
-`MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`.
+`MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`, and the draft
+preset `VideoFXExportSettings::Draft` - a 360p MP4 with the fastest H.264
+preset, a low quality and a small AAC, for playing a timeline back with
+sound while it is edited: seconds to render, never the file to deliver.
 
 Which encoders exist depends on the FFmpeg build — ask before offering a
 choice in the UI:
@@ -82739,6 +82742,15 @@ the project's length, and the volume. Play moves the playhead in real time
 and shows the frames the engine renders for it; playback with sound comes
 with the draft render in a later release.
 
+**Playing with sound.** Play (`Space`) runs the timeline from the playhead.
+The first Play after an edit also renders a *draft* of the whole timeline
+in the background - a small, quick MP4 with the music and the clips' own
+sound (`VideoFXExportSettings::Draft`) - and plays frame by frame until it
+is ready; from then on Play runs the draft in the framework's player with
+sound, and the playhead follows it. An edit throws the draft away and the
+next Play renders a new one. Where no sound device or player is available
+playback stays frame by frame and the status line says so.
+
 ### The timeline
 
 The `UltraCanvasVideoTimeline` element with four lanes: **T1 Titles**, a
@@ -82871,7 +82883,7 @@ the engine).
 
 ## Not yet
 
-Effect presets, playback with sound, and the mapping
+Effect presets, and the mapping
 of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.

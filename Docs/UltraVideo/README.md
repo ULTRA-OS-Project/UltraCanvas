@@ -50,6 +50,15 @@ the project's length, and the volume. Play moves the playhead in real time
 and shows the frames the engine renders for it; playback with sound comes
 with the draft render in a later release.
 
+**Playing with sound.** Play (`Space`) runs the timeline from the playhead.
+The first Play after an edit also renders a *draft* of the whole timeline
+in the background - a small, quick MP4 with the music and the clips' own
+sound (`VideoFXExportSettings::Draft`) - and plays frame by frame until it
+is ready; from then on Play runs the draft in the framework's player with
+sound, and the playhead follows it. An edit throws the draft away and the
+next Play renders a new one. Where no sound device or player is available
+playback stays frame by frame and the status line says so.
+
 ### The timeline
 
 The `UltraCanvasVideoTimeline` element with four lanes: **T1 Titles**, a
@@ -182,7 +191,7 @@ the engine).
 
 ## Not yet
 
-Effect presets, playback with sound, and the mapping
+Effect presets, and the mapping
 of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.

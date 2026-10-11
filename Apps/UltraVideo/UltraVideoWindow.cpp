@@ -62,6 +62,10 @@ UltraVideoWindow::UltraVideoWindow(UltraCanvasApplication& app) : app_(app) {}
 UltraVideoWindow::~UltraVideoWindow() {
     if (timer_) app_.StopTimer(timer_);
     if (job_) job_->Cancel();
+    if (draftJob_) draftJob_->Cancel();
+    viewer_.HideDraft();
+    RemoveDraftFile(draftPath_);
+    RemoveDraftFile(draftPending_);
 }
 
 // ============================================================================
@@ -156,6 +160,7 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
     };
 
     ApplyPalette();
+    SweepOldDrafts();
 
     // What the command line brought
     if (paths.size() == 1 && IsProjectFile(paths.front())) {
@@ -675,12 +680,14 @@ void UltraVideoWindow::Edit(const std::string& label, const std::function<void(D
     Document before = document_;
     edit(document_);
     history_.Push(label, before, document_);
+    InvalidateDraft();
     RefreshAll();
 }
 
 void UltraVideoWindow::SetDocument(Document document) {
     StopPlayback();
     document_ = std::move(document);
+    InvalidateDraft();
     dark_ = document_.view.dark;
     palette_ = &PaletteFor(dark_);
     history_.Clear();
@@ -1053,6 +1060,10 @@ void UltraVideoWindow::TogglePlay() {
     playStarted_ = std::chrono::steady_clock::now();
     viewer_.SetPlaying(true);
     if (timeline_) timeline_->SetFollowPlayhead(true);
+    // With sound when the draft of this very edit is ready; else frame by
+    // frame while it renders, and over to the draft the moment it is
+    if (!draftPath_.empty() && draftRevision_ == documentRevision_) StartDraftPlayback();
+    else RenderDraft();
 }
 
 void UltraVideoWindow::StopPlayback() {
@@ -1060,11 +1071,164 @@ void UltraVideoWindow::StopPlayback() {
     playing_ = false;
     viewer_.SetPlaying(false);
     if (timeline_) timeline_->SetFollowPlayhead(false);
+    if (draftPlaying_ || draftStarting_) {
+        const double at = draftPlaying_ ? viewer_.DraftPosition() : document_.view.playhead;
+        viewer_.DraftPause();
+        viewer_.HideDraft();
+        draftPlaying_ = false;
+        draftStarting_ = false;
+        SetPlayhead(at, false);        // the surface shows the frame the sound stopped at
+    }
+}
+
+void UltraVideoWindow::RenderDraft() {
+    if (draftUnavailable_) return;
+    if (draftJob_ && draftJob_->IsRunning()) return;
+    if (!draftPath_.empty() && draftRevision_ == documentRevision_) return;
+    std::vector<VideoFXSegment> segments = document_.SegmentsForEngine();
+    if (segments.empty()) return;
+    VideoFXExportSettings settings = VideoFXExportSettings::Draft(360);
+    settings.music = document_.project.settings.music;
+    settings.fitMode = document_.project.settings.fitMode;
+    settings.frameRate = document_.FrameRate();
+    std::error_code ec;
+    const fs::path dir = fs::temp_directory_path(ec);
+    if (ec) {
+        Message("No place for a draft render: playing frame by frame, without sound.");
+        return;
+    }
+    const std::string name = "ultravideo-draft-" + std::to_string(static_cast<long long>(std::chrono::steady_clock::now().time_since_epoch().count() % 1000000)) +
+                             "-" + std::to_string(++draftFiles_) + ".mp4";
+    RemoveDraftFile(draftPending_);
+    draftPending_ = PathToUtf8(dir / PathFromUtf8(name));
+    draftJob_ = std::make_unique<VideoFXExportJob>();
+    draftRevision_ = documentRevision_;
+    if (!draftJob_->Start(segments, draftPending_, settings)) {
+        Message("The draft render could not start (" + draftJob_->GetError() + "): playing without sound.");
+        draftJob_.reset();
+        draftPending_.clear();
+        return;
+    }
+    Message("Rendering a draft for playback with sound; playing frame by frame until it is ready.");
+}
+
+void UltraVideoWindow::PollDraft() {
+    if (draftStarting_) {
+        // the player has the file: start it once it is ready, give up if it
+        // cannot (an error, or nothing loaded after a few seconds)
+        const VideoPlaybackState state = viewer_.DraftState();
+        const bool failed = state == VideoPlaybackState::Error ||
+                            (state == VideoPlaybackState::Idle && ++draftStartTicks_ > 250);
+        if (failed) {
+            viewer_.HideDraft();
+            draftStarting_ = false;
+            RemoveDraftFile(draftPath_);
+            draftPath_.clear();
+            draftUnavailable_ = true;
+            Message("The player cannot play the draft here: playing frame by frame, without sound.");
+            playFrom_ = document_.view.playhead;
+            playStarted_ = std::chrono::steady_clock::now();
+        } else if (state != VideoPlaybackState::Loading && state != VideoPlaybackState::Buffering &&
+                   state != VideoPlaybackState::Idle) {
+            viewer_.DraftSeek(document_.view.playhead);
+            viewer_.DraftPlay();
+            draftStarting_ = false;
+            draftPlaying_ = true;
+        }
+    }
+    if (!draftJob_ || draftJob_->IsRunning()) return;
+    const VideoFXResult result = draftJob_->GetResult();
+    const std::string error = draftJob_->GetError();
+    draftJob_.reset();
+    const std::string file = draftPending_;
+    draftPending_.clear();
+    if (result != VideoFXResult::Ok) {
+        RemoveDraftFile(file);
+        if (result != VideoFXResult::Cancelled)
+            Message("The draft render failed (" + (error.empty() ? VideoFX_ResultToString(result) : error) + "): playing without sound.");
+        return;
+    }
+    if (draftRevision_ != documentRevision_) {   // edited meanwhile: stale before it was done
+        RemoveDraftFile(file);
+        if (playing_) RenderDraft();
+        return;
+    }
+    RemoveDraftFile(draftPath_);
+    draftPath_ = file;
+    if (playing_ && !draftPlaying_ && !draftStarting_) StartDraftPlayback();
+    else if (!playing_) Message("The draft is ready: Play now runs with sound.");
+}
+
+void UltraVideoWindow::StartDraftPlayback() {
+    if (draftPath_.empty()) return;
+    if (!viewer_.ShowDraft(draftPath_)) {
+        Message("The player cannot open the draft here: playing frame by frame, without sound.");
+        RemoveDraftFile(draftPath_);
+        draftPath_.clear();
+        draftUnavailable_ = true;      // no more drafts this session
+        return;
+    }
+    draftStarting_ = true;
+    draftStartTicks_ = 0;
+    Message("Playing with sound.");
+}
+
+// Drafts are removed when the window closes; ones a crash or a kill left
+// behind go when they are an hour old
+void UltraVideoWindow::SweepOldDrafts() {
+    std::error_code ec;
+    const fs::path dir = fs::temp_directory_path(ec);
+    if (ec) return;
+    const auto now = fs::file_time_type::clock::now();
+    for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        if (ec) break;
+        const std::string name = PathToUtf8(entry.path().filename());
+        if (name.rfind("ultravideo-draft-", 0) != 0) continue;
+        const auto written = entry.last_write_time(ec);
+        if (!ec && now - written > std::chrono::hours(1)) fs::remove(entry.path(), ec);
+    }
+}
+
+void UltraVideoWindow::InvalidateDraft() {
+    ++documentRevision_;
+    if (draftJob_ && draftJob_->IsRunning()) draftJob_->Cancel();   // PollDraft drops its file
+    if (draftPlaying_ || draftStarting_) {
+        // the picture changed under the sound: back to frames from where it was
+        const double at = draftPlaying_ ? viewer_.DraftPosition() : document_.view.playhead;
+        viewer_.DraftPause();
+        viewer_.HideDraft();
+        draftPlaying_ = false;
+        draftStarting_ = false;
+        document_.view.playhead = at;
+        playFrom_ = at;
+        playStarted_ = std::chrono::steady_clock::now();
+        if (playing_) RenderDraft();
+    }
+    RemoveDraftFile(draftPath_);
+    draftPath_.clear();
+}
+
+void UltraVideoWindow::RemoveDraftFile(const std::string& path) {
+    if (path.empty()) return;
+    std::error_code ec;
+    fs::remove(PathFromUtf8(path), ec);
 }
 
 void UltraVideoWindow::Tick() {
     preview_.Pump();
-    if (playing_) {
+    PollDraft();
+    if (playing_ && draftPlaying_) {
+        const double at = viewer_.DraftPosition();
+        const double length = document_.Length();
+        const VideoPlaybackState state = viewer_.DraftState();
+        if (at >= length - 0.02 || state == VideoPlaybackState::Stopped || state == VideoPlaybackState::Idle ||
+            state == VideoPlaybackState::Error) {
+            StopPlayback();
+            SetPlayhead(length, false);
+        } else {
+            SetPlayhead(at, false);
+        }
+    } else if (playing_) {
         const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - playStarted_).count();
         const double at = playFrom_ + elapsed;
         const double length = document_.Length();
@@ -1075,8 +1239,9 @@ void UltraVideoWindow::Tick() {
             SetPlayhead(at, false);
         }
     }
-    // One frame request per tick at most, and never a repeat of the same time
-    if (frameWanted_ && !preview_.IsBusy()) {
+    // One frame request per tick at most, and never a repeat of the same
+    // time; none while the draft's picture is on
+    if (frameWanted_ && !preview_.IsBusy() && !draftPlaying_ && !draftStarting_) {
         frameWanted_ = false;
         if (!document_.project.segments.empty() && preview_.IsOpen()) {
             preview_.RequestFrame(document_.view.playhead, viewer_.SurfaceWidth(), viewer_.SurfaceHeight());

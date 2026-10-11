@@ -51,14 +51,20 @@ The test: `Tests/UltraVideoDocumentTest.cpp` (headless, the engine needed).
   `screens/components/pages/` holds the live pages: one per component,
   `Cover.html`, and `index.html` framing them all with a theme toggle. Open
   `index.html` in a browser. The pages link `../../tokens/tokens.css` and
-  `../../fonts/fonts.css`, that is `screens/tokens/` and `screens/fonts/`,
-  which are not in the tree yet, so they show no colours and the fallback
-  font until those two files are added.
+  `../../fonts/fonts.css`: `screens/tokens/tokens.css` is generated from
+  `screens/tokens/tokens.json` (the design's tokens, the source of truth
+  for both the pages and `UltraVideoTokens.h`) by
+  `scripts/generate_ultravideo_tokens.py`, and `screens/fonts/fonts.css`
+  loads IBM Plex from Google Fonts with the framework's Ubuntu fonts from
+  `media/fonts/` as the offline fallback.
 - The interface icon set (16 px grid, 1.5 px stroke, `currentColor`) lives
   in `media/icons/ultravideo/`, where the window loads it from; the app
   icon in `media/appicon/UltraVideo.{svg,png}`.
 - `UltraVideoTokens.h` - the design tokens as C++: both palettes, spacing,
-  radii, geometry and text styles, generated from the design's `tokens.json`.
+  radii, geometry and text styles, generated from
+  `screens/tokens/tokens.json` by `scripts/generate_ultravideo_tokens.py`
+  (`--check` says whether it and `tokens.css` are current). Edit the JSON,
+  run the script; never the outputs.
 
 The proposal that maps the design onto the framework, the engine and the
 application, with the element specification, the engine changes and the
