@@ -137,13 +137,18 @@ namespace UltraCanvas {
         Color ParseColorValue(const std::string& colorStr);
         float ParseUnit(const librevenge::RVNGProperty* prop, float defaultValue = 0.0f);
         std::vector<Point2Dd> ParsePathData(const librevenge::RVNGPropertyListVector* path);
-        void ApplyStyleToContext(IRenderContext* ctx, const CDRStyleState& style);
-        void FillAndStroke(IRenderContext* ctx, const CDRStyleState& style);
+        // What the recorded draw commands call. They run when a page is drawn,
+        // long after the parse, and this painter is a local of the parse
+        // (ParseCDRFile): so they are static, and reach the document - which
+        // holds the commands, so outlives them - through `doc`, never `this`.
+        static void ApplyStyleToContext(IRenderContext* ctx, const CDRStyleState& style);
+        static void FillAndStroke(IRenderContext* ctx, const CDRStyleState& style, const CDRDocument& doc);
+        static std::shared_ptr<IPaintPattern> CreateGradientPattern(IRenderContext* ctx,
+                                                                    const CDRDocument& doc,
+                                                                    const std::string& gradientId,
+                                                                    const Rect2Dd& bounds);
 
         std::string ParseGradientStyle(const librevenge::RVNGPropertyList& propList, const char* prefix);
-        std::shared_ptr<IPaintPattern> CreateGradientPattern(IRenderContext* ctx,
-                                                             const std::string& gradientId,
-                                                             const Rect2Dd& bounds);
         // Style lookup helpers
         CDRParagraphStyle* GetParagraphStyle(const std::string& name);
         CDRCharacterStyle* GetCharacterStyle(const std::string& name);
