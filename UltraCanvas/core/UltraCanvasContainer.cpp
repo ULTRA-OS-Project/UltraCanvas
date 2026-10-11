@@ -2,6 +2,9 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
+// Version: 4.3.3 - a re-layout keeps the scroll position of a container scrolled to its
+//                 end: UpdateScrollability set the ranges for a viewport measured with
+//                 the scrollbars hidden too, which clamped the position a track short
 // Version: 4.3.2 - AddSpacer's comment: the spacer keeps its size on the cross
 //                 axis too (a set size outranks the container's stretch)
 // Version: 4.3.1 - a scroll repaints 2px past the container's box, so the fringe of
@@ -9,7 +12,7 @@
 //                 scrolled text, slivers below it); FinishArrange
 // Version: 4.3.0 - clipChildren = false draws children unclipped (overflow: visible)
 // Version: 4.2.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -209,36 +212,35 @@ namespace UltraCanvas {
         verticalScrollbar->SetVisible(style.forceShowVerticalScrollbar);
         horizontalScrollbar->SetVisible(style.forceShowHorizontalScrollbar);
 
-        auto clientRect = GetContentArea();
-        horizontalScrollbar->SetScrollDimensions(clientRect.width, maxRight);
-        verticalScrollbar->SetScrollDimensions(clientRect.height, maxBottom);
+        // Whether an axis scrolls, against a viewport (what SetScrollDimensions
+        // makes of these sizes: IsScrollable once they are set).
+        const int contentW = std::max(1, static_cast<int>(maxRight));
+        const int contentH = std::max(1, static_cast<int>(maxBottom));
+        auto scrollsX = [contentW](const Rect2Di& r) { return contentW > std::max(1, r.width); };
+        auto scrollsY = [contentH](const Rect2Di& r) { return contentH > std::max(1, r.height); };
 
         if (style.autoShowScrollbars) {
-            verticalScrollbar->SetVisible(style.autoShowVerticalScrollbar &&
-                                          verticalScrollbar->IsScrollable());
-            horizontalScrollbar->SetVisible(style.autoShowHorizontalScrollbar &&
-                                            horizontalScrollbar->IsScrollable());
+            auto clientRect = GetContentArea();
+            verticalScrollbar->SetVisible(style.autoShowVerticalScrollbar && scrollsY(clientRect));
+            horizontalScrollbar->SetVisible(style.autoShowHorizontalScrollbar && scrollsX(clientRect));
 
             auto newClientRect = GetContentArea();
             if (newClientRect != clientRect) {
-                horizontalScrollbar->SetScrollDimensions(newClientRect.width, maxRight);
-                verticalScrollbar->SetScrollDimensions(newClientRect.height, maxBottom);
-
-                verticalScrollbar->SetVisible(style.autoShowVerticalScrollbar &&
-                                              verticalScrollbar->IsScrollable());
-                horizontalScrollbar->SetVisible(style.autoShowHorizontalScrollbar &&
-                                                horizontalScrollbar->IsScrollable());
+                verticalScrollbar->SetVisible(style.autoShowVerticalScrollbar && scrollsY(newClientRect));
+                horizontalScrollbar->SetVisible(style.autoShowHorizontalScrollbar && scrollsX(newClientRect));
             }
         }
 
-        // Lock the scroll ranges to the FINAL content area (i.e. with the final
-        // scrollbar visibility applied). When one scrollbar appears it shrinks the
-        // cross-axis viewport by trackSize; if the other scrollbar then appears as a
-        // consequence, the first one's viewport was measured before that happened and
-        // is trackSize too large. Recomputing here keeps each scrollbar's range in sync
-        // with what GetContentArea() returns at render time, so the last trackSize px of
-        // content can scroll out from behind the opposite scrollbar instead of staying
-        // hidden under it.
+        // The scroll ranges are set once, for the FINAL content area (with the
+        // final scrollbar visibility applied), so each range matches what
+        // GetContentArea() returns at render time: the last trackSize px of
+        // content can scroll out from behind the opposite scrollbar instead
+        // of staying hidden under it. Setting a range also clamps the scroll
+        // position to it, which is why the provisional viewports above are
+        // only measured, never set: with the scrollbars hidden the viewport is
+        // a track larger, and a container scrolled to its end lost a
+        // scrollbar's thickness of scroll at every re-layout (UltraPaint's
+        // side panel jumped 16 px when a layer was clicked).
         auto finalRect = GetContentArea();
         horizontalScrollbar->SetScrollDimensions(finalRect.width, maxRight);
         verticalScrollbar->SetScrollDimensions(finalRect.height, maxBottom);

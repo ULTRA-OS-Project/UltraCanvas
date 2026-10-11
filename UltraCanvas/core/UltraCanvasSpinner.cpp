@@ -1,7 +1,9 @@
 // core/UltraCanvasSpinner.cpp
 // Platform-independent spinner / spin-button component implementation.
+// Version: 1.3.0 - the value list opens anchored to the field: above it when there is
+//                  no room below, never over it
 // Version: 1.2.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpinner.h"
@@ -361,8 +363,8 @@ namespace UltraCanvas {
 
         Point2Df origin = GetPositionInWindow();
         Rect2Df local   = GetLocalBounds();
-        Point2Di pos(static_cast<int>(origin.x),
-                     static_cast<int>(origin.y + local.height));
+        Rect2Di field(static_cast<int>(origin.x), static_cast<int>(origin.y),
+                      static_cast<int>(local.width), static_cast<int>(local.height));
 
         PopupElementSettings settings;
         settings.popupOwner = shared_from_this();
@@ -370,7 +372,7 @@ namespace UltraCanvas {
         settings.closeByClickOutside = true;
 
         dropdownOpen = true;
-        valueMenu->OpenMenu(pos, *win, settings);
+        valueMenu->OpenMenuAnchored(field, *win, settings, 0);
         RequestRedraw();
     }
 

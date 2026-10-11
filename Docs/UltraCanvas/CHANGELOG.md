@@ -1,3 +1,118 @@
+#### 2026-10-11 *0.9.249*
+- **Button icons are drawn on whole pixels.** `UltraCanvasButton` centred its
+  icon in the content box, and where that left an odd number of pixels
+  around it - or the button was drawn under a translation of a fraction of a
+  pixel - the icon landed half a pixel off and was resampled across two
+  pixels: every 1-2 px line in a toolbar icon blurred into grey, and the
+  dashes of a selection icon ran together (UltraPaint's tool palette). The
+  icon's corner (and the split button's secondary icon's) is now snapped to
+  the nearest whole device pixel through the current transform; its size is
+  kept. New `ButtonIconPixelTest` draws a square icon centred at a half
+  pixel, and under a 0.3 px translation, and finds it on whole pixels with
+  no grey edge.
+- **`UltraCanvasButton::onDoubleClick`.** A button counted the second click
+  of a double-click as another press, so that rapid clicks are not lost: a
+  toggle button toggled back, and a button could not give a double-click a
+  meaning of its own - a list row that selects on a click and renames on a
+  double-click had no way to tell. Set, `onDoubleClick` takes the left
+  double-click instead of that second press (the first click has already
+  pressed or toggled the button); unset, nothing changes. UltraPaint's layer
+  names use it to rename in place. `MouseClickBubblingTest` double-clicks a
+  toggle button: the first click toggles it, the double-click reaches
+  `onDoubleClick` and neither toggles it back nor climbs to its parents, and
+  a middle-button double-click is not taken for it.
+- **A handler that rebuilds the list it sits in no longer crashes.** A
+  button whose handler rebuilds the container it is in - UltraPaint's layer
+  rows, whose button selects the layer and rebuilds the list - dropped the
+  last reference to itself from inside its own `OnEvent`, and went on to
+  request a redraw on the freed object: double-clicking a layer's name
+  crashed UltraPaint in `UltraCanvasUIElement::RequestRedraw`. The
+  application's dispatch (`DispatchEventToElement`) now holds the element
+  until its `OnEvent` has returned, whatever widget it is; one the handler
+  removed finishes detached, where a redraw request does nothing, and is
+  destroyed after the event. `MouseClickBubblingTest` rebuilds a toggle
+  button's list from its own handler, on a press and on a double-click (it
+  crashed before the fix).
+- **A container scrolled to its end stays there when it is laid out
+  again.** `UltraCanvasContainer::UpdateScrollability` set each scroll range
+  first for a viewport measured with both scrollbars hidden - a track taller
+  or wider than the real one - and setting a range clamps the position to
+  it, so a container with both scrollbars, scrolled to the end, lost a
+  scrollbar's thickness of scroll at every re-layout (UltraPaint's side
+  panel jumped 16 px when a layer was clicked). The provisional viewports
+  now only decide which scrollbars show; the ranges are set once, for the
+  final one. `ScrollKeepsPositionOnResizeTest` lays out a view scrolled to
+  its end again and finds it at the end (16 px short before).
+- **A menu opened for a widget never covers it.** New
+  `UltraCanvasMenu::OpenMenuAnchored(anchor, window, settings, gap,
+  align)` takes the widget's bounds in the window - a button, a chip, a
+  field - and opens the menu `gap` pixels below it, or, when it does not fit
+  below and does above, ending `gap` pixels above it, as GTK's popovers and
+  Windows' `TrackPopupMenuEx` with an exclude rectangle place theirs. The
+  menu measures itself, so a caller no longer works out its height to open
+  it upwards (UltraMail's attachment chips did, counted two rows and missed
+  the panel's padding and border, and the menu covered the top of the chip).
+  New `MenuAnchorAlign::Right` lines the menu's right edge up with the
+  widget's. `OpenMenu` at a point behaves as before: below the point, or
+  ending at it.
+  - A menubar's drop-downs are anchored to their item: a bar at the foot of
+    a window opens them upwards instead of over itself.
+  - Anchored now: the breadcrumb's drop-downs and overflow list, the
+    tabbed container's overflow list, the spinner's value list, the video
+    recorder's camera list and the DemoApp's Dark and Flat menu buttons.
+- **Menu icons follow the theme.** Menu icons are mostly line glyphs drawn in
+  black or grey ("symbolic" icons, like those in `media/icons/menu`), which
+  vanished on a dark menu. With the new `MenuStyle::iconTint` at its default,
+  `MenuIconTint::Symbolic`, an icon drawn in one shade of grey is painted
+  in the entry's text colour, as its label is - light on a dark menu, the
+  hover text colour while hovered, the disabled colour when disabled - so one
+  set of icons serves both themes. A coloured icon (an application's, a file
+  type's) keeps its colours, and so does one in black and white (Texter's
+  half-filled theme-switch disc). `MenuIconTint::Original` draws every icon as it
+  is; `MenuIconTint::AllIcons` tints coloured ones too. `MenuStyle::tintIcons`
+  (framework changelog: `menu-flat-icons`) is the same as `AllIcons`, and
+  `Dark()` no longer turns it on: its grey icons take the light text colour
+  by the symbolic default, and an application's coloured icon in a dark
+  menu - UltraFiler's *Open with* - keeps its colours.
+- **Closing all of a menu's submenus no longer frees one mid-close.**
+  `UltraCanvasMenu::CloseAllSubmenus()` - run when a popup menu closes for
+  Escape or by hand, and on a menubar - walked its list of open submenus
+  while closing each, and a closing submenu erases itself from that list and
+  drops the parent's reference to it: the loop ran on over an invalidated
+  list and the submenu was freed inside its own `CloseMenu()`. It closes a
+  copy of the list now.
+- `MenuAndTabBehaviourTest` checks an anchored menu below its widget, above
+  it with no room below (ending the gap above it), lined up by its right
+  edge, a point-opened menu ending at its point, a bottom menubar opening
+  upwards and closing it again, and on a dark menu a black icon painted light, a red one kept,
+  a disabled one greyed, a black-and-white one kept and
+  `MenuIconTint::Original` leaving black black.
+
+#### 2026-10-11 *0.9.248*
+- **Windows: a GUI program typed at a prompt prints its `--help` and
+  `--version` there.** A GUI-subsystem program is given no console, and the
+  framework attached it to the prompt's only in
+  `UltraCanvasWindowsApplication::InitializeNative()`, as the window opens -
+  after `main()` had already printed its help, its version or a bad
+  argument into nothing. The new `ultracanvas_windows_gui_app()`
+  (`cmake/UltraCanvasWindowsGuiApp.cmake`) makes a target a GUI-subsystem
+  program in a Release build, as the *Hide console window on Windows Release
+  builds* list in the root `CMakeLists.txt` did, and compiles
+  `OS/MSWindows/AppEntry/UltraCanvasWindowsAttachConsole.cpp` into it, which
+  calls `AttachParentConsole()` before `main()`. The prompt still does not
+  wait for a GUI program, so the text appears after it has come back;
+  redirected to a file it is complete.
+  - The source goes into the executable, not the core: the core is a DLL in
+    the shared build, and a DLL's static initialisers run under the loader
+    lock. It sits in a folder of its own so the core's `OS/MSWindows/*.cpp`
+    glob does not pick it up.
+  - The root list, UltraMail, and the standalone UltraTexter and AnchorPoint
+    builds use it.
+  - **DemoApp's `--help` prints to stdout**, and an unknown argument to
+    stderr. It wrote to `debugOutput`, which a Release build keeps off, so it
+    printed nothing on any platform. Texter, UltraFiler, UltraViewer and
+    UltraPaint had the same fault; see their changelogs.
+
 #### 2026-10-11 *0.9.247*
 - **`MenuStyle::tintIcons`: a menu's icons drawn in the label's colour.**
   On, each item's icon is drawn as a mask in its label's colour - the text

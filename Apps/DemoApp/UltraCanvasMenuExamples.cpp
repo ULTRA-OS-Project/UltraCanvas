@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasMenuExamples.cpp
 // Implementation of all component example creators
+// Version: 1.1.1 - the Dark and Flat demo menus open anchored to their buttons
 // Version: 1.1.0 - flat icons of media/icons/menu/ instead of emoji in the labels
 // Version: 1.0.2
 // Last Modified: 2026-10-10
@@ -248,8 +249,8 @@ namespace UltraCanvas {
         }));
 
         darkMenuBtn->onClick = [darkMenu, darkMenuBtn = darkMenuBtn.get(), container = container.get()]() {
-            darkMenu->OpenMenu(Point2Di(darkMenuBtn->GetXInWindow(), darkMenuBtn->GetYInWindow() + darkMenuBtn->GetHeight() + 1),
-                               *container->GetWindow(), PopupElementSettings());
+            darkMenu->OpenMenuAnchored(darkMenuBtn->GetBoundsInWindow(),
+                                       *container->GetWindow(), PopupElementSettings(), 1);
         };
 
         // Flat style menu
@@ -276,8 +277,8 @@ namespace UltraCanvas {
         }));
 
         flatMenuBtn->onClick = [flatMenu, flatMenuBtn = flatMenuBtn.get(), container = container.get()]() {
-            flatMenu->OpenMenu(Point2Di(flatMenuBtn->GetXInWindow(), flatMenuBtn->GetYInWindow() + flatMenuBtn->GetHeight() + 1),
-                               *container->GetWindow(), PopupElementSettings());
+            flatMenu->OpenMenuAnchored(flatMenuBtn->GetBoundsInWindow(),
+                                       *container->GetWindow(), PopupElementSettings(), 1);
         };
 
         // Info label about menu features

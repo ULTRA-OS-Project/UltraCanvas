@@ -3407,6 +3407,24 @@ add_test(NAME RenderContextTest COMMAND RenderContextTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: RenderContextTest")
 
+# ===== BUTTON ICON PIXEL TEST =====
+# A button's icon lands on whole pixels, wherever centring it puts it: a
+# square icon centred at a half pixel is drawn offscreen and read back for
+# blurred (grey) edges. Needs no display.
+message(STATUS "  Building ButtonIconPixelTest...")
+add_executable(ButtonIconPixelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ButtonIconPixelTest.cpp
+)
+target_include_directories(ButtonIconPixelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ButtonIconPixelTest PRIVATE cxx_std_20)
+target_link_libraries(ButtonIconPixelTest PRIVATE UltraCanvas)
+set_target_properties(ButtonIconPixelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ButtonIconPixelTest COMMAND ButtonIconPixelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ButtonIconPixelTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own

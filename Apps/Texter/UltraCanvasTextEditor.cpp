@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.3.5 - the Recent files menu opens anchored to its toolbar button
 // Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
 //                  and shortcut colours
 // Version: 2.3.3 - The profile folder and comment author read as UTF-8
@@ -5838,14 +5839,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             );
         }
 
-        // Position below the toolbar button and open
+        // Below the toolbar button, or above it when there is no room below
         auto btn = toolbar->GetWidget("recent");
         if (!btn) return;
 
-        recentFilesPopupMenu->OpenMenu(
-            Point2Di(btn->GetXInWindow(),
-                     btn->GetYInWindow() + btn->GetHeight() + 1),
-            *win, PopupElementSettings());
+        recentFilesPopupMenu->OpenMenuAnchored(btn->GetBoundsInWindow(), *win,
+                                               PopupElementSettings(), 1);
     }
 
     // (Re-)read the list shared with the other windows and UltraTexter

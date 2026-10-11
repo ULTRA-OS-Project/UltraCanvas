@@ -16,6 +16,15 @@
 //    the window, a soft drop shadow the window paints outside the menu's
 //    bounds, a hover highlight inset from the panel's edges, padding above
 //    the first row that hovers nothing, and separators across the panel.
+//  - UltraCanvasMenu::OpenMenuAnchored: a menu opened for a widget goes below
+//    it, or ends above it when it does not fit below - never over it - and
+//    can line its right edge up with the widget's; a menubar at the foot of
+//    the window opens its drop-downs above itself. CloseAllSubmenus() closes
+//    them without walking the list each closed child erases itself from.
+//  - MenuStyle::iconTint: a grey (symbolic) icon is painted in the entry's
+//    text colour - light in a dark menu, greyed when disabled - while a
+//    coloured icon, or one in black and white, keeps its colours;
+//    MenuIconTint::Original leaves them all.
 //  - Escape closes an open menu through the popup system (the application
 //    closes the topmost popup when its closeByEscapeKey is set). That was
 //    already so; the check here keeps the menu registered that way.
@@ -41,7 +50,8 @@
 // the menu is drawn into an offscreen surface read back pixel by pixel. The
 // fade is read off a second stand-in whose "screen" is an offscreen surface,
 // so UpdateAndRender() composites onto it exactly as onto a real window.
-// Version: 1.4.0 - a tall menu bar dropdown stays under its bar
+// Version: 1.5.0 - a tall menu bar dropdown stays under its bar
+// Version: 1.4.0 - anchored menus and menubar drop-downs; symbolic icon tint
 // Version: 1.3.0 - popups blend over the window; the menu's rounded, shadowed panel
 // Version: 1.2.0 - the whole popup fades, composited by the window at its opacity
 // Version: 1.1.0 - activating an item with no application
@@ -556,6 +566,185 @@ void TallDropdownChecks() {
     popup->CloseMenutree();
 }
 
+// A square icon of one colour - or of two, left and right halves - as an
+// image decoded from a PNG made in memory.
+std::shared_ptr<UCImage> SquareIcon(const Color& color, const Color& rightHalf) {
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 16, 16);
+    cairo_t* cr = cairo_create(surface);
+    cairo_set_source_rgba(cr, color.r / 255.0, color.g / 255.0, color.b / 255.0, color.a / 255.0);
+    cairo_paint(cr);
+    cairo_set_source_rgba(cr, rightHalf.r / 255.0, rightHalf.g / 255.0, rightHalf.b / 255.0, rightHalf.a / 255.0);
+    cairo_rectangle(cr, 8, 0, 8, 16);
+    cairo_fill(cr);
+    cairo_destroy(cr);
+    std::vector<uint8_t> png;
+    cairo_surface_write_to_png_stream(surface, [](void* closure, const unsigned char* data, unsigned int length) {
+        auto* out = static_cast<std::vector<uint8_t>*>(closure);
+        out->insert(out->end(), data, data + length);
+        return CAIRO_STATUS_SUCCESS;
+    }, &png);
+    cairo_surface_destroy(surface);
+    return UCImage::GetFromMemory(png.data(), png.size());
+}
+
+std::shared_ptr<UCImage> SquareIcon(const Color& color) { return SquareIcon(color, color); }
+
+// OpenMenuAnchored and the menubar's drop-downs: below the anchor, above it
+// when there is no room below, never over it.
+void AnchoredMenuChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to composite onto", false);
+        return;
+    }
+    win.Frame();
+    auto twoItems = [] {
+        auto menu = std::make_shared<UltraCanvasMenu>("anchored", 120, 0);
+        menu->SetMenuType(MenuType::PopupMenu);
+        menu->SetStyle(MenuStyle::Default());
+        menu->AddItem(MenuItemData::Action("Open", [] {}));
+        menu->AddItem(MenuItemData::Action("Save As...", [] {}));
+        return menu;
+    };
+
+    // ---- Room below: under the widget, left edges lined up ----
+    const Rect2Di high(50, 40, 80, 24);
+    auto below = twoItems();
+    below->OpenMenuAnchored(high, win, PopupElementSettings(), 2);
+    win.Frame();
+    Rect2Di b = WindowBounds(*below);
+    TEST("an anchored menu opens gap pixels below its widget", b.x == 50 && b.y == 40 + 24 + 2);
+    below->CloseMenu();
+
+    // ---- No room below: above the widget, ending gap pixels over it ----
+    const Rect2Di low(50, 250, 80, 24);   // 26 px left below it in a 300 px window
+    auto above = twoItems();
+    above->OpenMenuAnchored(low, win, PopupElementSettings(), 2);
+    win.Frame();
+    b = WindowBounds(*above);
+    TEST("without room below it ends gap pixels above its widget, covering none of it",
+         b.height > 40 && b.y + b.height == 250 - 2 && b.x == 50);
+    above->CloseMenu();
+
+    // ---- Right edges lined up ----
+    const Rect2Di right(300, 40, 60, 24);
+    auto aligned = twoItems();
+    aligned->OpenMenuAnchored(right, win, PopupElementSettings(), 2, MenuAnchorAlign::Right);
+    win.Frame();
+    b = WindowBounds(*aligned);
+    TEST("MenuAnchorAlign::Right lines the menu's right edge up with the widget's",
+         b.width > 60 && b.x + b.width == 360 && b.y == 66);
+    aligned->CloseMenu();
+
+    // ---- A point is still a point: a context menu ends at it ----
+    auto point = twoItems();
+    point->OpenMenu(Point2Di(50, 280), win, PopupElementSettings());
+    win.Frame();
+    b = WindowBounds(*point);
+    TEST("OpenMenu at a point with no room below ends at the point, as before",
+         b.y + b.height == 280);
+    point->CloseMenu();
+
+    // ---- A menubar at the foot of the window opens upwards ----
+    auto bar = std::make_shared<UltraCanvasMenu>("bar", 0, 266, 400, 34);
+    bar->SetMenuType(MenuType::Menubar);
+    bar->AddItem(MenuItemData::Submenu("File", {MenuItemData::Action("New", [] {}),
+                                                MenuItemData::Action("Open", [] {}),
+                                                MenuItemData::Action("Quit", [] {})}));
+    win.AddChild(bar);
+    win.Frame();
+    bar->OpenSubmenu(0);
+    win.Frame();
+    PopupElement* top = win.GetActivePopupElement();
+    const Rect2Di dropDown = top ? WindowBounds(*top->element) : Rect2Di();
+    TEST("a menubar's drop-down with no room below stands on the bar, not over it",
+         top && top->element != bar.get() && dropDown.height > 60 &&
+         dropDown.y + dropDown.height == 266 && dropDown.x == 0);
+    // Closing a child erases it from the bar's list of children: the bar
+    // walked that list while it did, freeing the drop-down inside its own
+    // CloseMenu() (the log was cut off mid-line after this point).
+    bar->CloseAllSubmenus();
+    TEST("CloseAllSubmenus closes the drop-down and leaves no popup open",
+         win.GetActivePopupElement() == nullptr);
+    win.Frame();
+    win.RemoveChild(bar);
+}
+
+// MenuStyle::iconTint: symbolic icons take the entry's text colour.
+void IconTintChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to composite onto", false);
+        return;
+    }
+    win.Frame();
+    auto black = SquareIcon(Color(0, 0, 0, 255));
+    auto red = SquareIcon(Color(220, 30, 30, 255));
+    auto blackAndWhite = SquareIcon(Color(0, 0, 0, 255), Color(255, 255, 255, 255));
+    if (!black || !red || !blackAndWhite) {
+        TEST("icons decoded from PNGs made in memory", false);
+        return;
+    }
+
+    auto open = [&](const MenuStyle& style) {
+        auto menu = std::make_shared<UltraCanvasMenu>("tinted", 160, 0);
+        menu->SetMenuType(MenuType::PopupMenu);
+        menu->SetStyle(style);
+        MenuItemData grey = MenuItemData::Action("Grey icon", [] {});
+        grey.iconImage = black;
+        MenuItemData colour = MenuItemData::Action("Coloured icon", [] {});
+        colour.iconImage = red;
+        MenuItemData greyed = MenuItemData::Action("Disabled", [] {});
+        greyed.iconImage = black;
+        greyed.enabled = false;
+        MenuItemData twoTone = MenuItemData::Action("Black and white", [] {});
+        twoTone.iconImage = blackAndWhite;
+        menu->AddItem(grey);
+        menu->AddItem(colour);
+        menu->AddItem(greyed);
+        menu->AddItem(twoTone);
+        menu->OpenMenu(Point2Di(60, 40), win, PopupElementSettings());
+        win.Frame();
+        return menu;
+    };
+    // The middle of row `row`'s icon.
+    auto iconPixel = [&win](const UltraCanvasMenu& menu, int row, int dx = 0) {
+        const Rect2Di b = WindowBounds(menu);
+        const MenuStyle& s = menu.GetStyle();
+        const int x = b.x + s.borderWidth + s.itemInset + s.paddingLeft + s.iconSize / 2 + dx;
+        const int y = b.y + s.borderWidth + s.paddingTop + row * s.itemHeight + s.itemHeight / 2;
+        const uint32_t p = win.Pixels(Rect2Di(x, y, 1, 1))[0];
+        return Color(static_cast<uint8_t>((p >> 16) & 0xFF), static_cast<uint8_t>((p >> 8) & 0xFF),
+                     static_cast<uint8_t>(p & 0xFF), 255);
+    };
+
+    const MenuStyle dark = MenuStyle::Dark();
+    auto tinted = open(dark);
+    const Color greyOnDark = iconPixel(*tinted, 0);
+    const Color redOnDark = iconPixel(*tinted, 1);
+    const Color disabledOnDark = iconPixel(*tinted, 2);
+    TEST("in a dark menu a black symbolic icon is painted in the light text colour",
+         greyOnDark.r > 220 && greyOnDark.g > 220 && greyOnDark.b > 220);
+    TEST("a coloured icon keeps its colours", redOnDark.r > 190 && redOnDark.g < 70 && redOnDark.b < 70);
+    TEST("a disabled entry's symbolic icon takes the disabled text colour",
+         std::abs(disabledOnDark.r - dark.disabledTextColor.r) <= 3 &&
+         std::abs(disabledOnDark.g - dark.disabledTextColor.g) <= 3);
+    const Color twoToneLeft = iconPixel(*tinted, 3, -4), twoToneRight = iconPixel(*tinted, 3, 4);
+    TEST("an icon in black and white is not one shade: it keeps both",
+         twoToneLeft.r < 40 && twoToneRight.r > 220 && twoToneRight.g > 220);
+    std::cerr << "  (icons on dark: grey " << int(greyOnDark.r) << ", red " << int(redOnDark.r) << "/"
+              << int(redOnDark.g) << ", disabled " << int(disabledOnDark.r) << ")" << std::endl;
+    tinted->CloseMenu();
+
+    MenuStyle original = MenuStyle::Dark();
+    original.iconTint = MenuIconTint::Original;
+    auto untinted = open(original);
+    const Color greyAsDrawn = iconPixel(*untinted, 0);
+    TEST("MenuIconTint::Original leaves a black icon black, as before",
+         greyAsDrawn.r < 30 && greyAsDrawn.g < 30 && greyAsDrawn.b < 30);
+    untinted->CloseMenu();
+}
+
 void TabChecks(HeadlessWindow& win) {
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("tabs", 0, 0, 400, 300);
     win.AddChild(tabs);
@@ -749,10 +938,13 @@ void TextAreaChecks() {
 } // namespace
 
 int main() {
+    UCImage::InitializeImageSubsysterm("MenuAndTabBehaviourTest");
     auto win = std::make_shared<HeadlessWindow>();
     MenuChecks(*win);
     PopupOpacityChecks();
     MenuPanelChecks();
+    AnchoredMenuChecks();
+    IconTintChecks();
     TallDropdownChecks();
     TabChecks(*win);
     TabReorderChecks(*win);

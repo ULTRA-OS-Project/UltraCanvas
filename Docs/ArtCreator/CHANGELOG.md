@@ -21,7 +21,7 @@
 - **The Arrange menu opens.** It closed again at once: taller than the
   window, it was placed over the menu bar, and the release of the click that
   opened it picked one of its rows. It now opens under the bar and scrolls
-  (UltraCanvas, `Docs/UltraCanvas/changelog.d/menubar-tall-dropdown.md`).
+  (UltraCanvas 0.9.249 anchors a menu bar's drop-downs to their item).
 
 #### 2026-10-07 *0.6.8*
 - **Save as and Export keep the file type you chose.** Both added an
