@@ -844,7 +844,8 @@ namespace UltraCanvas {
         imageCard->AddChild(filenameLabel);
 
         auto viewBtn = std::make_shared<UltraCanvasButton>("ViewBtn", 20, 250, 108, 32);
-        viewBtn->SetText("🔍 Full Size");
+        viewBtn->SetText("Full Size");
+        SetFlatButtonIcon(*viewBtn, "menu/zoom-in.svg");
         viewBtn->SetFontSize(10);
         viewBtn->SetColors(info.accentColor, info.accentColor);
         viewBtn->SetTextColors(Color(255, 255, 255, 255));
@@ -856,7 +857,8 @@ namespace UltraCanvas {
         imageCard->AddChild(viewBtn);
 
         auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 138, 250, 108, 32);
-        exportBtn->SetText("📤 Export");
+        exportBtn->SetText("Export");
+        SetFlatButtonIcon(*exportBtn, "menu/extract.svg");
         exportBtn->SetFontSize(10);
         exportBtn->SetColors(Color(241, 245, 249, 255), Color(226, 232, 240, 255));
         exportBtn->SetTextColors(Color(71, 85, 105, 255));
@@ -876,7 +878,7 @@ namespace UltraCanvas {
         container->AddChild(propertiesCard);
 
         auto propHeader = std::make_shared<UltraCanvasLabel>("PropHeader", 20, 16, 300, 24);
-        propHeader->SetText("📊  Image Properties");
+        propHeader->SetText("Image Properties");
         propHeader->SetFontSize(14);
         propHeader->SetFontWeight(FontWeight::Bold);
         propHeader->SetTextColor(Color(30, 41, 59, 255));
@@ -931,18 +933,19 @@ namespace UltraCanvas {
         aboutCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(aboutCard);
 
-        auto aboutIconLabel = std::make_shared<UltraCanvasLabel>("AboutIcon", 16, 12, 36, 36);
-        aboutIconLabel->SetText("📄");
-        aboutIconLabel->SetFontSize(16);
-        aboutIconLabel->SetBackgroundColor(Color(
+        // A flat document icon on a tile of the format's colour (an image,
+        // not a "📄" glyph the bundled UI font does not have).
+        auto aboutIcon = std::make_shared<UltraCanvasImageElement>("AboutIcon", 16, 12, 36, 36);
+        aboutIcon->LoadFromFile(DemoIconPath("menu/file-icons.svg"));
+        aboutIcon->SetFitMode(ImageFitMode::Contain);
+        aboutIcon->SetBackgroundColor(Color(
                 std::min(255, info.accentColor.r + 100),
                 std::min(255, info.accentColor.g + 100),
                 std::min(255, info.accentColor.b + 100),
                 255
         ));
-        aboutIconLabel->SetAlignment(TextAlignment::Center);
-        aboutIconLabel->SetPadding(4);
-        aboutCard->AddChild(aboutIconLabel);
+        aboutIcon->SetPadding(8);
+        aboutCard->AddChild(aboutIcon);
 
         auto aboutTitle = std::make_shared<UltraCanvasLabel>("AboutTitle", 64, 18, 800, 22);
         aboutTitle->SetText(info.aboutTitle);
@@ -972,7 +975,7 @@ namespace UltraCanvas {
         container->AddChild(specCard);
 
         auto specTitle = std::make_shared<UltraCanvasLabel>("SpecTitle", 20, 14, 400, 22);
-        specTitle->SetText("📐  Format Specification");
+        specTitle->SetText("Format Specification");
         specTitle->SetFontSize(14);
         specTitle->SetFontWeight(FontWeight::Bold);
         specTitle->SetTextColor(Color(30, 41, 59, 255));

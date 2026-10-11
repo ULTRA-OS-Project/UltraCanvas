@@ -850,8 +850,11 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `IsFontFileRegistered` / `GetRegisteredFontFiles` add a file's faces to the
   process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
   FontConfig on Windows, CoreText process scope on macOS), followed by
-  `RefreshFontConfiguration()` so the new family resolves in the next layout.
-  Process-private and permanent: there is no unregister.
+  `RefreshFontConfiguration()` so the new family resolves in the next layout,
+  and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
+  layout and a full repaint, popups too; also run when the Windows system
+  fonts arrive after a cold start). Process-private and permanent: there is
+  no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
@@ -1273,6 +1276,13 @@ engine; these classes hold the pixels being edited and hand them to it.
   context. See `Docs/UltraCanvas/UltraCanvasVectorRaster.md`.
 - **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
   drawing for zoomed pixel display (Cairo backend implemented).
+- **UltraCanvasDrawnMarks** (`UltraCanvasDrawnMarks.h`) — marks drawn as
+  shapes for self-rendered elements, in place of symbol characters the
+  bundled UI font lacks (which show as hex boxes on Windows):
+  `DrawTickMark`, `DrawCrossMark`, `DrawSortTriangle`, and `DrawBulletMark` /
+  `IsDrawnBullet` for the list bullets "•", "◦", "▪". Used by the password
+  rule legend, the Markdown and rich-text lists, the Filer's details header
+  and the new-document dialog. Doc: `Docs/UltraCanvas/UltraCanvasDrawnMarks.md`.
 - **IRenderContext compositing and geometry** (`UltraCanvasRenderContext.h`,
   doc `Docs/UltraCanvas/UltraCanvasRenderContext.md`) — `SetBlendMode` /
   `GetBlendMode` (the 16 PDF / CSS modes), groups `BeginGroup` /
@@ -20572,6 +20582,108 @@ tornadoChart->AddDataRow("Variable C", {{"Negative Impact", -30}, {"Positive Imp
 - Mouse interaction is handled through the base class event system
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasDrawnMarks.md
+==============================================================================
+
+# UltraCanvasDrawnMarks
+
+`#include "UltraCanvasDrawnMarks.h"` — small marks drawn as shapes for
+elements that paint themselves: a tick, a cross, a column header's sort
+triangle and the list bullets "•", "◦", "▪".
+
+## Why draw them
+
+The bundled UI font is Ubuntu (`media/fonts`). It has "•", "–", "—", "…",
+"‹", "›", "×" and "·", but no "✓", "✗", "✕", "◦", "▪", "▲", "▼", arrows or
+emoji. Those characters come from whatever fallback font the system has,
+and where it has none — a stock Windows install, or the bundled fonts
+alone — each one shows as a box of hex digits. A drawn mark looks the
+same everywhere and takes the colour it is given.
+
+For a button or a menu item, use a flat SVG icon of `media/icons/menu/`
+drawn as a mask instead (`SetUseIconAsMask(true)` on a button,
+`MenuStyle::tintIcons` on a menu). In a sentence, use a word ("to",
+"Back") or a character the font has.
+
+## Functions
+
+```cpp
+inline void DrawTickMark(IRenderContext* ctx, const Point2Dd& centre, double size, const Color& color);
+inline void DrawCrossMark(IRenderContext* ctx, const Point2Dd& centre, double size, const Color& color);
+inline void DrawSortTriangle(IRenderContext* ctx, const Point2Dd& centre, double size, bool up,
+                             const Color& color);
+inline bool IsDrawnBullet(const std::string& bullet);
+inline bool DrawBulletMark(IRenderContext* ctx, const std::string& bullet, const Point2Dd& topLeft,
+                           const FontStyle& font, const Color& color);
+```
+
+* `DrawTickMark`, `DrawCrossMark` — a stroked tick or diagonal cross
+  filling most of a `size` x `size` box centred on `centre`, with round
+  caps; the stroke grows with the size (at least 1.5 px).
+* `DrawSortTriangle` — a filled triangle `size` wide, pointing up when
+  `up` is true, down otherwise.
+* `DrawBulletMark` — draws "•" (a disc), "◦" (a ring) or "▪" (a square)
+  where `DrawText(bullet, topLeft)` in `font` would put the character:
+  centred on the font's capitals (`GetCapCentreOffset`) and as large as
+  Ubuntu's "•". It returns false and draws nothing for any other string,
+  which the caller then draws as text.
+* `IsDrawnBullet` — true for the three bullets `DrawBulletMark` draws.
+  Each takes the room of a "•", so measure "•" to place text after one.
+
+Each function saves and restores the context's state.
+
+## Example
+
+A row of a self-rendered checklist: a tick or a cross, then the text, both
+centred on the row.
+
+```cpp
+#include "UltraCanvasDrawnMarks.h"
+
+void DrawChecklistRow(IRenderContext* ctx, const Rect2Dd& row, const std::string& text, bool done) {
+    FontStyle font;
+    font.fontSize = 12;
+    const Point2Dd markCentre(row.x + 8, row.y + row.height / 2);
+    if (done) {
+        DrawTickMark(ctx, markCentre, 14, Color(40, 167, 69));
+    } else {
+        DrawCrossMark(ctx, markCentre, 14, Color(220, 53, 69));
+    }
+    ctx->SetFontStyle(font);
+    ctx->SetTextPaint(Color(60, 60, 60));
+    ctx->DrawText(text, Point2Dd(row.x + 22, ctx->TextTopCentredOnCaps(row, font)));
+}
+```
+
+A list item whose bullet is one of the standard three, or any string:
+
+```cpp
+#include "UltraCanvasDrawnMarks.h"
+
+void DrawListItem(IRenderContext* ctx, const std::string& bullet, const Point2Dd& lineTop,
+                  const FontStyle& font, const std::string& text) {
+    if (!DrawBulletMark(ctx, bullet, lineTop, font, Color(80, 80, 80))) {
+        ctx->SetFontStyle(font);
+        ctx->SetTextPaint(Color(80, 80, 80));
+        ctx->DrawText(bullet, lineTop);
+    }
+    ctx->SetFontStyle(font);
+    const double bulletWidth = ctx->GetTextLineWidth(IsDrawnBullet(bullet) ? std::string("\xE2\x80\xA2") : bullet);
+    ctx->DrawText(text, Point2Dd(lineTop.x + bulletWidth + 8, lineTop.y));
+}
+```
+
+## Where the framework uses them
+
+* `UltraCanvasPasswordRuleLegend` — the met and unmet icons ("✓", "✗", and
+  "✔", "✘", "✕", "×", "○", "●" when a config sets them).
+* `UltraCanvasTextArea` (Markdown lists) and `UltraCanvasRichTextEdit` —
+  the nested list bullets.
+* `UltraCanvasFilerWidget` — the details header's sort direction.
+* `UltraCanvasNewDocumentDialog` — the close cross and the selected item's
+  tick.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDropDownExamples.md
 ==============================================================================
 
@@ -27700,9 +27812,13 @@ After a successful registration the framework calls
 `RefreshFontConfiguration()` for you, which rebuilds the FontConfig FontSet
 and signals Pango's default font map (`pango_fc_font_map_config_changed`) so
 the new family is resolvable in the very next layout — not only in windows
-created afterwards. On macOS, and on any build without PangoFT2, there is no
-such signal: the default font map is dropped instead, and contexts that
-already exist pick the font up when their surface is next recreated.
+created afterwards. Every open window is then laid out and drawn again
+(`UltraCanvasWindowBase::RefreshAfterFontChange()`), so text already on
+screen in that family, or a character only the new font covers, shows in it
+at once rather than when that spot next happens to be repainted. On macOS,
+and on any build without PangoFT2, there is no such signal: the default font
+map is dropped instead, and contexts that already exist pick the font up when
+their surface is next recreated.
 
 ## In the filer
 
@@ -38820,8 +38936,8 @@ touches live menus itself, so the host decides how apply/save/reset behave.
 
 ```
 ┌ Menu structure ─┐ ┌─────┐ ┌ Available commands ┐
-│ Program         │ │Add →│ │ File               │
-│  ├ Main Menu Bar│ │←Rem.│ │   New              │
+│ Program         │ │Add ›│ │ File               │
+│  ├ Main Menu Bar│ │‹Rem.│ │   New              │
 │  │  ├ File      │ │Up   │ │   Open...          │
 │  │  │  ├ New    │ │Down │ │ Edit               │
 │  │  │  └ Open...│ │Sub  │ │   Copy             │
@@ -38832,10 +38948,10 @@ touches live menus itself, so the host decides how apply/save/reset behave.
 └──────────────────────────────────────────────────┘
 ```
 
-* **Add →** inserts the command selected on the right into the layout (after the
+* **Add** (a chevron pointing right) inserts the command selected on the right into the layout (after the
   selected node, or inside it when a group is selected). Double-clicking a command
   adds it too.
-* **← Remove** deletes the selected layout entry (the Program root and whole menus
+* **Remove** (a chevron pointing left) deletes the selected layout entry (the Program root and whole menus
   are structural and cannot be removed this way).
 * **Move Up / Move Down** reorder within the current parent.
 * **New Submenu / Separator** insert a group or separator at the selection.
@@ -66587,9 +66703,20 @@ bundled fonts alone (`fonts-startup.conf`) and the full set (`fonts.conf`) is
 scanned on a thread. `LoadBundledFontsNative()` waits up to 400 ms for it
 (`AdoptSystemFontsWithin`): a warm cache ends well within that, and the full
 set is used from the start. Otherwise the application starts with the bundled
-fonts and Windows' two symbol fonts, and every window switches to the full set
-when the scan ends. `GetSystemFontScanStatus()` says which happened, and
+fonts and Windows' symbol fonts (Segoe UI Symbol, Segoe UI Emoji and Cambria
+Math, for the UI's marks, emoji and mathematical symbols), and every window
+switches to the full set when the scan ends - laid out and drawn again
+(`RefreshAfterFontChange()`), so a character the start's fonts lacked does not
+stay a box. `GetSystemFontScanStatus()` says which happened, and
 `SetSystemFontsSwitchedHandler()` hears of the switch.
+
+Text goes through Pango's fontconfig font map on every thread: the main
+thread's is made in `LoadBundledFontsNative()`, and `PANGOCAIRO_BACKEND=fc` is
+set once it exists, so a worker thread (or libvips and librsvg laying out
+text) gets one too rather than Pango's Win32 map, which never reads fontconfig
+and draws a box for any character its font lacks. The debug log
+(`ULTRACANVAS_DEBUG_LOG`) names the map: "UltraCanvas: text font map
+PangoCairoFcFontMap ...".
 
 An application that starts but takes ten seconds to show anything - its
 console window alone on screen, or nothing - spends that time in one of

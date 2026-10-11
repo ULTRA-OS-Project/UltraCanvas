@@ -111,7 +111,9 @@ namespace UltraCanvas {
         // List styling
         int listIndent = 20;
         std::string bulletCharacter = "\xe2\x80\xa2"; // UTF-8 bullet • (kept for compatibility)
-        // Nested bullet characters per nesting level (0=•, 1=◦, 2=▪, deeper levels repeat ▪)
+        // Nested bullet characters per nesting level (0=•, 1=◦, 2=▪, deeper levels repeat ▪).
+        // These three are drawn as shapes (the bundled UI font has no ◦ or ▪);
+        // any other string is drawn as text.
         std::array<std::string, 3> nestedBulletCharacters = {
             "\xe2\x80\xa2",         // level 0: • (U+2022 BULLET)
             "\xe2\x97\xa6",         // level 1: ◦ (U+25E6 WHITE BULLET)

@@ -40,16 +40,22 @@
 //    const.
 //  - Activating a menu item with no application called through a null
 //    pointer to post the MenuClick event; it runs the item and posts nothing.
+//  - A menu bar's dropdown taller than the room below its bar was moved up
+//    to fit, over the bar and the pointer on it: the release of the click
+//    that opened it picked the row it landed on and closed the menu, so
+//    ArtCreator's Arrange menu never stayed open. It stays under the bar and
+//    scrolls; a cascading submenu still moves up to fit, never past the top.
 //
 // Runs headless: popups open in a window stand-in with no native side, and
 // the menu is drawn into an offscreen surface read back pixel by pixel. The
 // fade is read off a second stand-in whose "screen" is an offscreen surface,
 // so UpdateAndRender() composites onto it exactly as onto a real window.
+// Version: 1.5.0 - a tall menu bar dropdown stays under its bar
 // Version: 1.4.0 - anchored menus and menubar drop-downs; symbolic icon tint
 // Version: 1.3.0 - popups blend over the window; the menu's rounded, shadowed panel
 // Version: 1.2.0 - the whole popup fades, composited by the window at its opacity
 // Version: 1.1.0 - activating an item with no application
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMenu.h"
@@ -510,6 +516,56 @@ void MenuPanelChecks() {
          win.MaxDifferenceFromContent(Rect2Di(b.x - 20, b.y - 20, b.width + 40, b.height + 40)) == 0);
 }
 
+void TallDropdownChecks() {
+    ScreenWindow win;
+    if (!win.Ready()) {
+        TEST("a window stand-in with a screen to lay menus out in", false);
+        return;
+    }
+    // Twenty rows: several times the window's height.
+    std::vector<MenuItemData> rows;
+    for (int i = 0; i < 20; ++i) rows.push_back(MenuItemData::Action("Row " + std::to_string(i), [] {}));
+
+    auto bar = MenuBuilder("tall-bar", 0, 0, ScreenWindow::kWidth, 28)
+                       .SetType(MenuType::Menubar)
+                       .AddSubmenu("Arrange", rows)
+                       .Build();
+    win.AddChild(bar);
+    win.Frame();
+    const Rect2Di barBounds = WindowBounds(*bar);
+
+    bar->OpenSubmenu(0);
+    win.Frame();
+    PopupElement* top = win.GetActivePopupElement();
+    TEST("the menu bar's dropdown opens", top && top->element && top->element != bar.get());
+    if (top && top->element) {
+        const Rect2Di b = WindowBounds(*top->element);
+        TEST("a dropdown taller than the window starts under its bar, off the pointer",
+             b.y >= barBounds.y + barBounds.height);
+        TEST("and ends at the window's bottom edge, its rows scrolled",
+             b.y + b.height <= ScreenWindow::kHeight && b.height > 3 * 28);
+    }
+    bar->CloseAllSubmenus();
+
+    // A cascading submenu beside a popup menu moves up to fit instead.
+    auto popup = std::make_shared<UltraCanvasMenu>("cascade", 160, 0);
+    popup->SetMenuType(MenuType::PopupMenu);
+    popup->AddItem(MenuItemData::Submenu("More", rows));
+    popup->OpenMenu(Point2Di(10, 200), win, PopupElementSettings());
+    win.Frame();
+    popup->OpenSubmenu(0);
+    win.Frame();
+    top = win.GetActivePopupElement();
+    TEST("the cascading submenu opens", top && top->element && top->element != popup.get());
+    if (top && top->element) {
+        const Rect2Di b = WindowBounds(*top->element);
+        TEST("a cascading submenu taller than the window moves up to the window's top",
+             b.y == 0 && b.y + b.height <= ScreenWindow::kHeight);
+        TEST("beside its parent, not over it", b.x >= WindowBounds(*popup).x + WindowBounds(*popup).width);
+    }
+    popup->CloseMenutree();
+}
+
 // A square icon of one colour - or of two, left and right halves - as an
 // image decoded from a PNG made in memory.
 std::shared_ptr<UCImage> SquareIcon(const Color& color, const Color& rightHalf) {
@@ -889,6 +945,7 @@ int main() {
     MenuPanelChecks();
     AnchoredMenuChecks();
     IconTintChecks();
+    TallDropdownChecks();
     TabChecks(*win);
     TabReorderChecks(*win);
     TextAreaChecks();

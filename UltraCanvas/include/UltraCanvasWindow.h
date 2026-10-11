@@ -1,5 +1,6 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.6.0 - RefreshAfterFontChange(): lays out and draws everything again
 // Version: 2.5.0 - popups composite with their alpha over the window, and a popup's
 //                  drop shadow (GetPopupShadow) is painted beneath it
 // Version: 2.4.1 - default bodies mark unused parameters (void): no -Wunused-parameter
@@ -7,7 +8,7 @@
 //                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -495,6 +496,13 @@ namespace UltraCanvas {
         void AddDirtyRectangle(const Rect2Di& windowRect);
         // Adds a dirty rectangle (in popup-local coords) to the named popup's queue.
         void AddPopupDirtyRect(UltraCanvasUIElement* popup, const Rect2Di& popupLocalRect);
+        // The fonts available changed (the system fonts arrived after the
+        // start, a font was registered): every element measures its text
+        // again, and the whole window and each open popup is drawn again.
+        // A new layout alone repaints nothing - only dirty rectangles are
+        // drawn - so text shaped with the old fonts, a box where a character
+        // had no font, stayed on screen.
+        void RefreshAfterFontChange();
 
         void RequestPopupGeometry() { _needsPopupGeometry = true; }
         void RequestWindowComposition() { _needsWindowComposition = true; }

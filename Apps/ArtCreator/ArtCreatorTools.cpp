@@ -3,8 +3,9 @@
 // line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
+// Version: 1.2.1 - the Shape Editor button reads "Line / curve", not "Line ⇄ curve"
 // Version: 1.2.0
-// Last Modified: 2026-09-18
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorTools.h"
@@ -729,7 +730,7 @@ public:
         });
         AddButtonRow(panel, "ac-se-ops", {
             {"Delete node", [this, &ctx]() { DeleteSelectedNodes(ctx); }},
-            {"Line ⇄ curve", [this, &ctx]() { ToggleSegmentCurve(ctx); }},
+            {"Line / curve", [this, &ctx]() { ToggleSegmentCurve(ctx); }},   // the UI font has no "⇄"
         });
         AddCaption(panel, "ac-se-cap2", "Path");
         AddButtonRow(panel, "ac-se-path", {

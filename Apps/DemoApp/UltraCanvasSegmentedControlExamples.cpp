@@ -359,7 +359,7 @@ namespace UltraCanvas {
         // KEYBOARD NAVIGATION INFO
         // ========================================
         auto keyboardLabel = std::make_shared<UltraCanvasLabel>("KeyboardNav", 20, yOffset, 800, 25);
-        keyboardLabel->SetText("⌨️ Keyboard Navigation");
+        keyboardLabel->SetText("Keyboard Navigation");
         keyboardLabel->SetFontWeight(FontWeight::Bold);
         keyboardLabel->SetTextColor(Color(50, 100, 200, 255));
         mainContainer->AddChild(keyboardLabel);
