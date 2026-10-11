@@ -28,6 +28,12 @@ UltraCanvas::TimelineModel BuildTimelineModel(const Document& document);
 // lane is edited from the inspector, not on the timeline.
 bool ApplyChange(Document& document, const UltraCanvas::TimelineChange& change);
 
+// The songs as the music lane shows them: "music:<i>" ids in play order
+std::vector<std::string> SongIds(const Document& document);
+int SongOfClip(const std::string& clipId);   // -1 when not a song's id
+// Take a song out of the music (the next one becomes the first)
+bool RemoveSong(Document& document, size_t index);
+
 // A short name for what a change did, for the undo history
 std::string DescribeChange(const UltraCanvas::TimelineChange& change);
 

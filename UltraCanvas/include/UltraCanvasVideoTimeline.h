@@ -203,14 +203,18 @@ private:
     };
     struct Hit {
         enum Kind { Nothing, Ruler, Marker, HeaderName, HeaderToggle, Lane, ClipBody, ClipLeftEdge, ClipRightEdge,
+                    FadeInKnob, FadeOutKnob,   // an audio clip's fade handles, at the top of its ramps
                     TransitionBody, TransitionLeftEdge, TransitionRightEdge, Scrollbar } kind = Nothing;
+        bool IsClip() const {
+            return kind == ClipBody || kind == ClipLeftEdge || kind == ClipRightEdge || kind == FadeInKnob || kind == FadeOutKnob;
+        }
         size_t trackIndex = 0;
         std::string clipId;
         std::string markerId;
         TimelineTrackToggle toggle = TimelineTrackToggle::Visible;
         double seconds = 0.0;
     };
-    enum class Drag { None, Playhead, MoveClip, TrimLeft, TrimRight, Transition, RubberBand, Scrollbar };
+    enum class Drag { None, Playhead, MoveClip, TrimLeft, TrimRight, FadeIn, FadeOut, Transition, RubberBand, Scrollbar };
 
     Rect2Df BodyRect() const;          // the lanes and the ruler, right of the header column
     Rect2Df LanesRect() const;         // the lanes only
@@ -218,6 +222,8 @@ private:
     float TrackDefaultHeight(const TimelineTrack& track) const;
     Hit HitTest(float x, float y) const;
     Rect2Df ClipRect(const TimelineClip& clip, const TrackLayout& lane) const;
+    // An audio clip's fade knobs: the top of each ramp. False when the clip has none to show.
+    bool FadeKnobs(const TimelineClip& clip, const TimelineTrack& track, const TrackLayout& lane, Point2Df& in, Point2Df& out) const;
     Rect2Df TransitionRect(const TimelineTrack& track, const TimelineTransition& t, const TrackLayout& lane) const;
     std::vector<double> SnapCandidates(const std::string& ignoreClipId) const;
     double SnapTime(double seconds, const std::string& ignoreClipId, bool& snapped) const;

@@ -138,7 +138,7 @@ int main() {
     CHECK(main && main->transitions.size() == 1 && main->transitions[0].clipId == doc.clipIds[1] && main->transitions[0].type == "crossfade", "the transition on the cut into the picture");
     CHECK(main && Near(main->clips[1].start, 2.0, 0.1) && Near(main->clips[2].start, 6.0, 0.1), "starts derived with the overlap");
     const TimelineTrack* music = model.FindTrack(kMusicTrackId);
-    CHECK(music && music->locked && music->clips.size() == 1 && music->clips[0].kind == TimelineClipKind::Audio, "the music lane, locked, with the song");
+    CHECK(music && !music->locked && music->clips.size() == 1 && music->clips[0].kind == TimelineClipKind::Audio, "the music lane with the song");
     CHECK(music && Near(music->clips[0].duration, 5.0, 0.1) && Near(music->clips[0].fadeIn, 1.0, 1e-9), "the song's length and fade");
     CHECK(model.markers.size() == 1 && model.rangeIn == 1.0 && model.rangeOut == 6.0 && Near(model.frameRate, 25.0, 0.01), "markers, the work area and the rate");
     CHECK(TransitionChoices().size() == 31 && ChoiceOf(VideoFXTransitionType::WipeLeft).key == std::string("wipeleft"), "every transition type has a name");
@@ -232,9 +232,60 @@ int main() {
     removeM.kind = TimelineChangeKind::MarkerRemove;
     removeM.markerBefore = marker;
     CHECK(ApplyChange(doc, removeM) && doc.markers.size() == 1 && doc.markers[0].id == "m2", "and one removed");
-    TimelineChange onMusic = del;
-    onMusic.trackId = kMusicTrackId;
-    CHECK(!ApplyChange(doc, onMusic), "the music lane is not edited from the timeline");
+    std::printf("\n-- the music lane --\n");
+    {
+        Document md = doc;
+        md.project.settings.music = VideoFXMusic::FromFiles({song, song});
+        CHECK(SongIds(md).size() == 2 && SongOfClip("music:1") == 1 && SongOfClip("c3") == -1, "songs have ids in play order");
+        TimelineModel mm = BuildTimelineModel(md);
+        const TimelineTrack* lane = mm.FindTrack(kMusicTrackId);
+        CHECK(lane && !lane->locked && lane->clips.size() == 2 && lane->transitions.size() == 1 && Near(lane->transitions[0].seconds, 3.0, 1e-9), "an unlocked music lane with two songs and their crossfade");
+        TimelineChange fade;
+        fade.kind = TimelineChangeKind::FadeSet;
+        fade.trackId = kMusicTrackId;
+        fade.before = {lane->clips[0]};
+        fade.after = {lane->clips[0]};
+        fade.after[0].fadeIn = 2.5;
+        CHECK(ApplyChange(md, fade) && Near(md.project.settings.music.fadeIn, 2.5, 1e-9), "the first song's fade in is the music's");
+        fade.before = {lane->clips[1]};
+        fade.after = {lane->clips[1]};
+        fade.after[0].fadeOut = 4.0;
+        CHECK(ApplyChange(md, fade) && Near(md.project.settings.music.fadeOut, 4.0, 1e-9), "the last song's fade out too");
+        fade.after[0].fadeOut = 4.0;   // as the music has it now
+        fade.after[0].fadeIn = 9.0;
+        CHECK(!ApplyChange(md, fade), "a fade in on a later song changes nothing");
+        TimelineChange cross;
+        cross.kind = TimelineChangeKind::TransitionSet;
+        cross.trackId = kMusicTrackId;
+        TimelineTransition ct = lane->transitions[0];
+        ct.seconds = 5.0;
+        cross.transitionAfter = ct;
+        CHECK(ApplyChange(md, cross) && Near(md.project.settings.music.crossfade, 5.0, 1e-9), "the crossfade's length");
+        TimelineChange trimSong;
+        trimSong.kind = TimelineChangeKind::Trim;
+        trimSong.trackId = kMusicTrackId;
+        trimSong.after = lane->clips;
+        trimSong.after[0].sourceIn = 1.5;
+        CHECK(ApplyChange(md, trimSong) && Near(md.project.settings.music.start, 1.5, 1e-9), "the first song's left edge is where the music begins");
+        md.project.settings.music = VideoFXMusic::FromFiles({song, photo});   // two different paths, so the order shows
+        TimelineChange reorder;
+        reorder.kind = TimelineChangeKind::Move;
+        reorder.trackId = kMusicTrackId;
+        mm = BuildTimelineModel(md);
+        lane = mm.FindTrack(kMusicTrackId);
+        reorder.after = {lane->clips[1], lane->clips[0]};
+        CHECK(ApplyChange(md, reorder) && md.project.settings.music.path == photo && md.project.settings.music.playlist == std::vector<std::string>{song}, "songs reorder");
+        TimelineChange dropSong;
+        dropSong.kind = TimelineChangeKind::Delete;
+        dropSong.trackId = kMusicTrackId;
+        dropSong.before = {lane->clips[0]};   // music:0, now the photo path
+        CHECK(ApplyChange(md, dropSong) && md.project.settings.music.path == song && md.project.settings.music.playlist.empty(), "a song is removed and the next moves up");
+        CHECK(RemoveSong(md, 0) && !md.project.settings.music.IsSet(), "removing the last song clears the music");
+        TimelineChange splitSong = del;
+        splitSong.kind = TimelineChangeKind::Split;
+        splitSong.trackId = kMusicTrackId;
+        CHECK(!ApplyChange(md, splitSong), "a song is not split on the timeline");
+    }
     (void)first; (void)third;
 
     std::printf("\n-- titles --\n");

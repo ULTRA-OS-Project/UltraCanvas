@@ -896,7 +896,7 @@ and sound types for *Open with*. All of it is in place (§14).
 | 1 | `UltraCanvasVideoTimeline` and `UltraCanvasTimecodeField`: model, operations, rendering of ruler, main track, clips with filmstrips, transitions, playhead, zoom, selection, keyboard, drop, context menu hook; docs, catalogue rows, DemoApp page, model tests | Framework release |
 | 2 | `VideoFX_RenderFrame` (8.2, **done** in 0.9.0), the draft preset (8.5), export range (8.6) | VideoFX 0.9.0 |
 | 3 | `Apps/UltraVideo` 0.1.0: window, media bin, viewer with scrubbing, inspector (clip, audio, project), timeline wired through the mapping, undo, `.ultravideo`, export dialog (**built**, §14) | First app release |
-| 4 | Title lane (**built**, §14) and music lane in the element (spans, fades, song boundaries, beats, markers, work area, snapping, ripple and slip); the story wizard | App 0.2.0 |
+| 4 | Title lane and music lane (**built**, §14: spans, fades, song boundaries, beats) in the element; markers, work area, snapping, ripple built in phase 1; the story wizard | App 0.2.0 |
 | 5 | Picture-in-picture (8.3) and free audio tracks (8.4) in the engine; the overlay and free audio lanes switched on | VideoFX 0.10, app 0.3 |
 | 6 | Keyframes in the engine and keyframe markers on clips; proxy media; hardware encoder choice | Later |
 
@@ -1019,7 +1019,15 @@ that writing it showed:
   writes the derived overlays beside them, dropping them again on load.
   The inspector edits a title's text, style, place, size, colour, shadow,
   band and fades.
-- Not built, and left for the next phase: fade knobs on the music bar, marker dragging, a real slip trim
+- **The music lane** (§5.3, §6.7): the element gained fade knobs on
+  audio clips (`FadeSet` changes with a "Fade in 2.0 s" readout), and the
+  app's lane is unlocked: the first song's fade in and the last song's
+  fade out, the crossfade badge's length, the first song's left edge as
+  `music.start`, the songs' order by dragging, and `Del` on a song all map
+  onto `settings.music`; selecting a song opens the *Audio* tab. Beat marks
+  come from `VideoFX_DetectBeats` on the first song, run on the worker when
+  the toggle is first switched on. Songs are not split or copied.
+- Not built, and left for the next phase: marker dragging, a real slip trim
   (the Slip tool trims for now), retiming by `Ctrl`-drag, vertical scrolling
   of many tracks, resizing a track by its edge, and the mapping onto the
   framework's theme roles (the element carries its colours in its style

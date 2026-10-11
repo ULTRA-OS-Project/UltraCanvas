@@ -639,6 +639,10 @@ void Inspector::ShowClipTab() {
     if (tabs) tabs->SetActiveTab(0);
 }
 
+void Inspector::ShowAudioTab() {
+    if (tabs) tabs->SetActiveTab(1);
+}
+
 void Inspector::Show(const Document& doc, int index, int titleIndex) {
     updating = true;
     segment = index;

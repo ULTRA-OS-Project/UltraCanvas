@@ -41,6 +41,7 @@
 
 #include <chrono>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -106,6 +107,7 @@ private:
     void DeleteSelection();
     void AddMarker();
     void AddTitle(const std::string& styleKey, double at);
+    void RequestBeats();               // detect the first song's beats on the worker, once per song
     void ShowTimelineMenu(const std::string& trackId, double seconds, const std::string& clipId, int x, int y);
     void ShowBinMenu(size_t index, int x, int y);
 
@@ -164,6 +166,8 @@ private:
     std::string selectedClip_;
     bool snapping_ = true;
     bool showBeats_ = false;
+    std::map<std::string, std::vector<double>> songBeats_;   // per song path; empty = none found
+    std::string beatsPending_;
 
     // export
     std::unique_ptr<VideoFX::VideoFXExportJob> job_;

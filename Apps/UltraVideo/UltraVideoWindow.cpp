@@ -12,6 +12,7 @@
 #include "UltraCanvasVideoTimelineModel.h"
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <filesystem>
 #include <system_error>
@@ -377,6 +378,8 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
         showBeats_ = !showBeats_;
         if (timeline_) timeline_->SetShowBeats(showBeats_);
         RefreshToolbarLooks();
+        if (showBeats_) RequestBeats();
+        RefreshTimeline();
     });
     for (auto& b : {magnet_, snap_, beats_}) timelineBar_->AddChild(b);
     timelineBar_->AddStretch();
@@ -487,11 +490,13 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
     timeline_->onSelectionChanged = [this](const std::vector<std::string>& ids) {
         selectedClip_ = ids.empty() ? "" : ids.back();
         RefreshInspector();
+        if (SongOfClip(selectedClip_) >= 0) inspector_.ShowAudioTab();
     };
     timeline_->onClipActivated = [this](const std::string& id) {
         selectedClip_ = id;
         RefreshInspector();
-        inspector_.ShowClipTab();
+        if (SongOfClip(id) >= 0) inspector_.ShowAudioTab();
+        else inspector_.ShowClipTab();
     };
     timeline_->onTransitionActivated = [this](const std::string& id) {
         selectedClip_ = id;
@@ -713,8 +718,24 @@ void UltraVideoWindow::RefreshBin() {
 void UltraVideoWindow::RefreshTimeline() {
     if (!timeline_) return;
     TimelineModel model = BuildTimelineModel(document_);
+    // the first song's beats, as timeline times (the song may start into itself)
+    const VideoFXMusic& music = document_.project.settings.music;
+    if (showBeats_ && music.IsSet()) {
+        const std::vector<std::string> songs = music.Songs();
+        auto found = songBeats_.find(songs.front());
+        if (found != songBeats_.end()) {
+            const double length = document_.Length();
+            for (double b : found->second) {
+                const double t = b - music.start;
+                if (t >= 0.0 && (length <= 0.0 || t <= length)) model.beats.push_back(t);
+            }
+        } else {
+            RequestBeats();
+        }
+    }
     timeline_->SetModel(model);
-    if (!selectedClip_.empty() && SegmentOfClip(document_, selectedClip_) < 0 && document_.TitleIndex(selectedClip_) < 0)
+    if (!selectedClip_.empty() && SegmentOfClip(document_, selectedClip_) < 0 && document_.TitleIndex(selectedClip_) < 0 &&
+        !(SongOfClip(selectedClip_) >= 0 && static_cast<size_t>(SongOfClip(selectedClip_)) < music.Songs().size()))
         selectedClip_.clear();
     const double length = document_.Length();
     const double fps = document_.FrameRate();
@@ -1029,7 +1050,15 @@ void UltraVideoWindow::DeleteSelection() {
         return;
     }
     Edit(ids.size() > 1 ? "Delete clips" : "Delete clip", [ids](Document& d) {
+        std::vector<int> songs;
         for (const std::string& id : ids) {
+            const int song = SongOfClip(id);
+            if (song >= 0) songs.push_back(song);
+        }
+        std::sort(songs.begin(), songs.end(), std::greater<int>());
+        for (int song : songs) RemoveSong(d, static_cast<size_t>(song));
+        for (const std::string& id : ids) {
+            if (SongOfClip(id) >= 0) continue;
             const int titleIndex = d.TitleIndex(id);
             if (titleIndex >= 0) {
                 d.titles.erase(d.titles.begin() + titleIndex);
@@ -1058,6 +1087,29 @@ void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
         inspector_.ShowClipTab();
         Message("A title at the playhead: set its text in the inspector.");
     }
+}
+
+void UltraVideoWindow::RequestBeats() {
+    const VideoFXMusic& music = document_.project.settings.music;
+    if (!music.IsSet()) return;
+    const std::string song = music.Songs().front();
+    if (songBeats_.count(song) || beatsPending_ == song) return;
+    beatsPending_ = song;
+    auto info = std::make_shared<VideoFXBeatInfo>();
+    preview_.Run([song, info]() { VideoFX_DetectBeats(song, *info); },
+                 [this, song, info]() {
+                     songBeats_[song] = info->beats;
+                     if (beatsPending_ == song) beatsPending_.clear();
+                     if (info->HasBeat()) {
+                         char text[96];
+                         std::snprintf(text, sizeof text, "Beat marks: %.0f beats a minute in %s.", info->bpm,
+                                       PathToUtf8(PathFromUtf8(song).filename()).c_str());
+                         Message(text);
+                     } else {
+                         Message("No steady beat found in " + PathToUtf8(PathFromUtf8(song).filename()) + ".");
+                     }
+                     RefreshTimeline();
+                 });
 }
 
 void UltraVideoWindow::AddMarker() {
@@ -1098,6 +1150,22 @@ void UltraVideoWindow::ShowTimelineMenu(const std::string& trackId, double secon
             const std::string key = st.key;
             menu_->AddItem(MenuItemData::Action(std::string(st.label) + " here", [this, key, seconds]() { AddTitle(key, seconds); }));
         }
+    } else if (trackId == kMusicTrackId && SongOfClip(clipId) >= 0) {
+        const int song = SongOfClip(clipId);
+        const std::vector<std::string> songs = document_.project.settings.music.Songs();
+        const std::string name = static_cast<size_t>(song) < songs.size() ? PathToUtf8(PathFromUtf8(songs[static_cast<size_t>(song)]).filename()) : "Song";
+        menu_->AddItem(MenuItemData::Header(name));
+        menu_->AddItem(MenuItemData::Action("Volume, fades and ducking\xE2\x80\xA6", [this, clipId]() {
+            selectedClip_ = clipId;
+            RefreshInspector();
+            inspector_.ShowAudioTab();
+        }));
+        menu_->AddItem(MenuItemData::Action("Add a song after it\xE2\x80\xA6", [this]() { ImportMedia(); }));
+        menu_->AddItem(MenuItemData::Separator());
+        menu_->AddItem(MenuItemData::ActionWithShortcut("Remove this song", "Del", [this, song]() {
+            Edit("Remove song", [song](Document& d) { RemoveSong(d, static_cast<size_t>(song)); });
+            selectedClip_.clear();
+        }));
     } else if (trackId == kMainTrackId && index >= 0) {
         const VideoFXSegment& s = document_.project.segments[static_cast<size_t>(index)];
         menu_->AddItem(MenuItemData::Header(ClipName(document_, static_cast<size_t>(index))));

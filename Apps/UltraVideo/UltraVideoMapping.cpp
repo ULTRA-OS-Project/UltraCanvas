@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <map>
 
 using namespace UltraCanvas;
@@ -87,6 +88,37 @@ const std::vector<TransitionChoice>& TransitionChoices() {
 const TransitionChoice& ChoiceOf(VideoFXTransitionType type) {
     for (const TransitionChoice& c : TransitionChoices()) if (c.type == type) return c;
     return TransitionChoices().front();
+}
+
+std::vector<std::string> SongIds(const Document& doc) {
+    std::vector<std::string> ids;
+    const size_t n = doc.project.settings.music.Songs().size();
+    for (size_t i = 0; i < n; ++i) ids.push_back("music:" + std::to_string(i));
+    return ids;
+}
+
+int SongOfClip(const std::string& clipId) {
+    if (clipId.rfind("music:", 0) != 0) return -1;
+    try {
+        return std::stoi(clipId.substr(6));
+    } catch (...) {
+        return -1;
+    }
+}
+
+bool RemoveSong(Document& doc, size_t index) {
+    VideoFXMusic& m = doc.project.settings.music;
+    std::vector<std::string> songs = m.Songs();
+    if (index >= songs.size()) return false;
+    songs.erase(songs.begin() + static_cast<std::ptrdiff_t>(index));
+    if (index == 0) m.start = 0.0;
+    if (songs.empty()) {
+        m = VideoFXMusic{};
+        return true;
+    }
+    m.path = songs.front();
+    m.playlist.assign(songs.begin() + 1, songs.end());
+    return true;
 }
 
 int SegmentOfClip(const Document& doc, const std::string& clipId) {
@@ -194,7 +226,7 @@ TimelineModel BuildTimelineModel(const Document& doc) {
     music.kind = TimelineTrackKind::MainAudio;
     music.name = "Music";
     music.magnetic = true;
-    music.locked = true;
+    music.locked = false;
     const VideoFXMusic& m = doc.project.settings.music;
     if (m.IsSet()) {
         const std::vector<std::string> songs = m.Songs();
@@ -315,7 +347,70 @@ bool ApplyChange(Document& doc, const TimelineChange& c) {
                 return false;
         }
     }
-    if (c.trackId != kMainTrackId) return false;   // the music lane is edited in the inspector
+    if (c.trackId == kMusicTrackId) {
+        VideoFXMusic& m = doc.project.settings.music;
+        std::vector<std::string> songs = m.Songs();
+        switch (c.kind) {
+            case TimelineChangeKind::FadeSet: {
+                // the first song's fade in and the last song's fade out are the music's
+                if (c.after.size() != 1) return false;
+                const int index = SongOfClip(c.after[0].id);
+                if (index < 0 || static_cast<size_t>(index) >= songs.size()) return false;
+                bool changed = false;
+                if (index == 0 && std::fabs(c.after[0].fadeIn - m.fadeIn) > 1e-9) { m.fadeIn = std::max(0.0, c.after[0].fadeIn); changed = true; }
+                if (static_cast<size_t>(index) + 1 == songs.size() && std::fabs(c.after[0].fadeOut - m.fadeOut) > 1e-9) {
+                    m.fadeOut = std::max(0.0, c.after[0].fadeOut);
+                    changed = true;
+                }
+                return changed;
+            }
+            case TimelineChangeKind::Move: {
+                // the whole sequence in its new order
+                std::vector<std::string> reordered;
+                for (const TimelineClip& clip : c.after) {
+                    const int index = SongOfClip(clip.id);
+                    if (index < 0 || static_cast<size_t>(index) >= songs.size()) return false;
+                    reordered.push_back(songs[static_cast<size_t>(index)]);
+                }
+                if (reordered.size() != songs.size()) return false;
+                if (!reordered.empty() && reordered.front() != songs.front()) m.start = 0.0;
+                m.path = reordered.front();
+                m.playlist.assign(reordered.begin() + 1, reordered.end());
+                return true;
+            }
+            case TimelineChangeKind::Trim: {
+                // only the first song's left edge: where in it the music begins
+                for (const TimelineClip& clip : c.after) {
+                    if (SongOfClip(clip.id) != 0) continue;
+                    m.start = std::max(0.0, clip.sourceIn);
+                    return true;
+                }
+                return false;
+            }
+            case TimelineChangeKind::Delete: {
+                std::vector<int> gone;
+                for (const TimelineClip& clip : c.before) {
+                    const int index = SongOfClip(clip.id);
+                    if (index >= 0) gone.push_back(index);
+                }
+                std::sort(gone.begin(), gone.end(), std::greater<int>());
+                bool any = false;
+                for (int index : gone) any = RemoveSong(doc, static_cast<size_t>(index)) || any;
+                return any;
+            }
+            case TimelineChangeKind::TransitionSet: {
+                if (!c.transitionAfter) return false;
+                m.crossfade = std::clamp(c.transitionAfter->seconds, 0.0, 30.0);
+                return true;
+            }
+            case TimelineChangeKind::TransitionRemove:
+                m.crossfade = 0.0;
+                return true;
+            default:
+                return false;   // a song is not split or copied here
+        }
+    }
+    if (c.trackId != kMainTrackId) return false;
 
     std::vector<VideoFXSegment>& segments = doc.project.segments;
     std::vector<std::string>& ids = doc.clipIds;

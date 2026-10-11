@@ -35,6 +35,13 @@
     at the span's own ends only, so a title runs across a cut; the viewer
     shows it while editing. The project file keeps the spans and writes
     the derived overlays beside them for `videofx render`.
+  - The music lane: the songs under the video in play order with their
+    waveforms, fades and crossfades, edited on the timeline - the fade
+    knobs at the top of the ramps (the element gained them), the crossfade
+    badge's length, the first song's left edge for where the music starts,
+    reorder by dragging, `Del` to remove a song - and in the *Audio* tab,
+    which opens when a song is selected. *Beat marks* in the toolbar asks
+    the engine for the first song's beats and draws them across the lanes.
   - The inspector: *Clip* (in and out, speed, mute, the transition into
     the clip, a photo's motion, framing and faces, a title's text and
     look), *Audio* (the songs, volume, fades, crossfade, loop, ducking),

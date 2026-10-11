@@ -39,6 +39,7 @@ public:
     // `title` the selected title span, -1 for none
     void Show(const Document& document, int segment, int title = -1);
     void ShowClipTab();
+    void ShowAudioTab();
 
     // An edit of the document, named for the history
     std::function<void(const std::string& label, std::function<void(Document&)> edit)> onEdit;

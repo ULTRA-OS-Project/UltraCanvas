@@ -2,7 +2,8 @@
   tracks under a time ruler, with a playhead, trim handles, reordering on
   the magnetic main track and free placement elsewhere, splitting (blade
   tool or `S`), transitions as badges on the cuts with a draggable length,
-  markers, beat marks, a work-area range, snapping, a rubber-band
+  fade knobs on audio clips (drag the top of a ramp; reported as a
+  `FadeSet`), markers, beat marks, a work-area range, snapping, a rubber-band
   selection, file drop with an insertion marker, and a live timecode
   readout on every drag. It edits a module-free model
   (`UltraCanvasVideoTimelineModel.h`: `TimelineModel`, `TimelineTrack`,

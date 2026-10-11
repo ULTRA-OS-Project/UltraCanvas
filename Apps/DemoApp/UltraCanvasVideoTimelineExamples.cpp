@@ -239,8 +239,14 @@ bool ApplyChange(TimelineModel& model, const TimelineChange& c) {
                                                [&](const TimelineMarker& m) { return m.id == c.markerBefore->id; }),
                                 model.markers.end());
             return true;
-        case TimelineChangeKind::FadeSet:
-            return false;
+        case TimelineChangeKind::FadeSet: {
+            if (!track || c.after.size() != 1) return false;
+            TimelineClip* clip = track->FindClip(c.after[0].id);
+            if (!clip) return false;
+            clip->fadeIn = c.after[0].fadeIn;
+            clip->fadeOut = c.after[0].fadeOut;
+            return true;
+        }
     }
     return false;
 }

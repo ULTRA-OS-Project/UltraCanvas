@@ -178,6 +178,14 @@ bool Apply(TimelineModel& model, const TimelineChange& c) {
             if (!c.markerAfter) return false;
             model.markers.push_back(*c.markerAfter);
             return true;
+        case TimelineChangeKind::FadeSet: {
+            if (!track || c.after.size() != 1) return false;
+            TimelineClip* clip = track->FindClip(c.after[0].id);
+            if (!clip) return false;
+            clip->fadeIn = c.after[0].fadeIn;
+            clip->fadeOut = c.after[0].fadeOut;
+            return true;
+        }
         default:
             return false;
     }
@@ -287,6 +295,36 @@ int main() {
         const TimelineClip* c = model.FindTrack("V1")->FindClip("c");
         TEST("b grew by a second", b && Near(b->duration, 3.0, 0.05));
         TEST("c rippled a second later, less its transition", c && Near(c->start, 6.0 - 0.5, 0.05));
+    }
+
+    std::cerr << "\n--- Fade knobs on the music bar ---" << std::endl;
+    {
+        // the fade-in knob sits at the top of the ramp, one second (80 px) into the song
+        const float knobY = style.rulerHeight + 65.0f + 65.0f + 3.0f + style.clipBandHeight;
+        const float knobX = headerW + 1.0f + 80.0f;
+        const size_t seen = changes.size();
+        timeline->OnEvent(MouseEvent(UCEventType::MouseMove, headerW + 100.0f, musicY));   // hover the bar: the knobs show
+        DisplayTest::Frame(window, {timeline});
+        timeline->OnEvent(MouseEvent(UCEventType::MouseDown, knobX, knobY));
+        timeline->OnEvent(MouseEvent(UCEventType::MouseMove, knobX + 40.0f, knobY));
+        timeline->OnEvent(MouseEvent(UCEventType::MouseMove, knobX + 80.0f, knobY));
+        DisplayTest::Frame(window, {timeline});
+        timeline->OnEvent(MouseEvent(UCEventType::MouseUp, knobX + 80.0f, knobY));
+        const bool fade = changes.size() == seen + 1 && changes.back().kind == TimelineChangeKind::FadeSet;
+        TEST("dragging the knob reports a fade", fade && changes.back().trackId == "A1" && changes.back().after.size() == 1);
+        TEST("the fade in grew to two seconds", fade && Near(changes.back().after[0].fadeIn, 2.0, 0.05) && changes.back().after[0].id == "song");
+        const TimelineClip* song = model.FindTrack("A1")->FindClip("song");
+        TEST("and the model shows it", song && Near(song->fadeIn, 2.0, 0.05));
+        // the fade-out knob sits at the bar's right end (the song is 9 s long): a second back
+        const float endX = timeline->SecondsToX(song->End()) - 1.0f;
+        timeline->OnEvent(MouseEvent(UCEventType::MouseDown, endX, knobY));
+        timeline->OnEvent(MouseEvent(UCEventType::MouseMove, endX - 40.0f, knobY));
+        timeline->OnEvent(MouseEvent(UCEventType::MouseMove, endX - 80.0f, knobY));
+        timeline->OnEvent(MouseEvent(UCEventType::MouseUp, endX - 80.0f, knobY));
+        const bool out = changes.size() == seen + 2 && changes.back().kind == TimelineChangeKind::FadeSet;
+        TEST("the other knob sets the fade out", out && Near(changes.back().after[0].fadeOut, 1.0, 0.05));
+        TEST("the music bar is still found under the knob row", timeline->ClipAt(knobX, knobY, &trackId) == "song");
+        changes.resize(seen);   // the checks below count changes from the start
     }
 
     std::cerr << "\n--- Reorder on the magnetic track ---" << std::endl;

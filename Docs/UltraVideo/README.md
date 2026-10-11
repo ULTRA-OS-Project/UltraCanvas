@@ -70,6 +70,19 @@ with the fades only at the span's own ends, so a title runs across a cut
 without a seam. The project file keeps the spans and writes the overlays
 beside them for `videofx render`.
 
+### Music
+
+The music lane shows the songs under the video in play order, with the
+waveform, the fade ramps and the crossfades between songs. Hover a song
+and drag the knob at the top of a fade ramp for the first song's fade in
+or the last song's fade out; drag the crossfade badge's edge for its
+length; drag the first song's left edge to start the music further into
+the song; drag songs to reorder them; `Del` removes one. Selecting a song
+opens the *Audio* tab, where volume, the fades, the crossfade, repeat and
+the ducking under speech are set. *Beat marks* in the timeline toolbar
+asks the engine for the first song's beats and draws them across the
+lanes, so cuts can land on them.
+
 ### The inspector
 
 - **Clip**: the selected clip's name and what it is; for a video its *In*
@@ -130,8 +143,8 @@ the engine).
 
 ## Not yet
 
-The overlay-video lane, the story wizard, effect presets,
-drag from the bin onto the timeline, playback with sound, and the mapping
+The overlay-video lane, the story wizard, effect presets, playback with sound,
+drag from the bin onto the timeline, and the mapping
 of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.

@@ -55,9 +55,9 @@ split with the blade tool or `S`; delete with ripple; duplicate; nudge;
 markers; the work area; rubber-band selection; file drop with an insertion
 marker; a context-menu hook; keyboard throughout. Light and dark palettes.
 
-Not yet: fade knobs on the music bar, marker dragging, slip trimming
-(the tool is accepted and trims for now), retiming by `Ctrl`-drag, vertical
-scrolling of many tracks, resizing a track by its edge.
+Not yet: marker dragging, slip trimming (the tool is accepted and trims for
+now), retiming by `Ctrl`-drag, vertical scrolling of many tracks, resizing
+a track by its edge.
 
 ## The model
 
@@ -194,6 +194,7 @@ timeline->onChangeRequested = [&](const TimelineChange& change) {   // capture t
 | `Duplicate` | The clip; the copy (`<id>:copy`), or the whole magnetic track with the copy in place | `at` |
 | `TransitionSet` | The clip the cut goes into | `transitionBefore` (if any), `transitionAfter` |
 | `TransitionRemove` | The clip | `transitionBefore` |
+| `FadeSet` | An audio clip, before and after its fade knob was dragged: `after[0]` carries the new `fadeIn` / `fadeOut` | `at` the new fade's seconds |
 | `MarkerAdd`, `MarkerRemove` | — | `markerAfter` / `markerBefore`, `at` |
 
 Every change names its `trackId`. A magnetic track's `after` is the whole
@@ -269,7 +270,9 @@ The wheel zooms around the pointer; `Shift`+wheel and a horizontal wheel
 scroll. Click a clip to select it, `Shift`-click for a range, `Ctrl`-click
 to toggle; drag on empty lane space for a rubber band. Drag a clip to
 reorder (magnetic) or move (free); drag an edge to trim; drag a transition
-badge's edge for its length; click or drag the ruler for the playhead;
+badge's edge for its length; on an audio clip, hover and drag the knob at
+the top of a fade ramp for the fade (the readout says "Fade in 2.0 s" and
+the change is a `FadeSet`); click or drag the ruler for the playhead;
 double-click a clip, a transition or a marker to activate it; right-click
 for the context-menu hook. A hidden or locked track draws dimmed and a
 locked one takes no edits.

@@ -25,6 +25,8 @@ constexpr double kMaxPixelsPerSecond = 2000.0;
 constexpr double kMinTransitionSeconds = 0.04;
 constexpr float kToggleSize = 16.0f;
 constexpr float kToggleGap = 2.0f;
+constexpr float kFadeKnobHit = 7.0f;      // half the hit box of a fade knob
+constexpr float kFadeKnobRadius = 4.0f;   // drawn 8 px across
 constexpr float kMarkerStripHeight = 11.0f;
 constexpr float kTransitionHeight = 18.0f;
 
@@ -394,6 +396,11 @@ UltraCanvasVideoTimeline::Hit UltraCanvasVideoTimeline::HitTest(float x, float y
             const Rect2Df r = ClipRect(clip, lane);
             if (x < r.x || x > r.x + r.width) continue;
             hit.clipId = clip.id;
+            Point2Df knobIn, knobOut;
+            if (FadeKnobs(clip, track, lane, knobIn, knobOut)) {
+                if (std::fabs(x - knobIn.x) <= kFadeKnobHit && std::fabs(y - knobIn.y) <= kFadeKnobHit) { hit.kind = Hit::FadeInKnob; return hit; }
+                if (std::fabs(x - knobOut.x) <= kFadeKnobHit && std::fabs(y - knobOut.y) <= kFadeKnobHit) { hit.kind = Hit::FadeOutKnob; return hit; }
+            }
             const float handle = std::min(style.handleWidth, r.width / 3.0f);
             if (x <= r.x + handle) hit.kind = Hit::ClipLeftEdge;
             else if (x >= r.x + r.width - handle) hit.kind = Hit::ClipRightEdge;
@@ -405,13 +412,25 @@ UltraCanvasVideoTimeline::Hit UltraCanvasVideoTimeline::HitTest(float x, float y
     return hit;
 }
 
+bool UltraCanvasVideoTimeline::FadeKnobs(const TimelineClip& clip, const TimelineTrack& track, const TrackLayout& lane,
+                                        Point2Df& in, Point2Df& out) const {
+    if (clip.kind != TimelineClipKind::Audio || track.collapsed) return false;
+    const Rect2Df r = ClipRect(clip, lane);
+    if (r.width < 24.0f) return false;
+    const float top = r.y + 3.0f + style.clipBandHeight;
+    if (r.y + r.height - top < 12.0f) return false;
+    in = Point2Df(r.x + 1.0f + static_cast<float>(clip.fadeIn * pixelsPerSecond), top);
+    out = Point2Df(r.x + r.width - 1.0f - static_cast<float>(clip.fadeOut * pixelsPerSecond), top);
+    return true;
+}
+
 std::string UltraCanvasVideoTimeline::ClipAt(float x, float y, std::string* trackId) const {
     const Hit hit = HitTest(x, y);
     if (trackId) *trackId = hit.kind != Hit::Nothing && hit.kind != Hit::Ruler && hit.kind != Hit::Marker &&
                                     hit.kind != Hit::Scrollbar && hit.trackIndex < model.tracks.size()
                                 ? model.tracks[hit.trackIndex].id
                                 : "";
-    if (hit.kind == Hit::ClipBody || hit.kind == Hit::ClipLeftEdge || hit.kind == Hit::ClipRightEdge) return hit.clipId;
+    if (hit.IsClip()) return hit.clipId;
     return "";
 }
 
@@ -743,8 +762,8 @@ void UltraCanvasVideoTimeline::DrawClip(IRenderContext* ctx, const TimelineTrack
     ClipFillAndEdge(clip, fill, edge);
     if (clip.kind == TimelineClipKind::Card && !track.collapsed) fill = FromRGB(clip.color);
     const bool selected = selection.count(clip.id) > 0;
-    const bool hovered = (hover.kind == Hit::ClipBody || hover.kind == Hit::ClipLeftEdge || hover.kind == Hit::ClipRightEdge) &&
-                         hover.clipId == clip.id && drag == Drag::None;
+    const bool hovered = hover.IsClip() && hover.clipId == clip.id && drag == Drag::None;
+    const bool fading = (drag == Drag::FadeIn || drag == Drag::FadeOut) && dragClipId == clip.id;
     const bool ghost = drag == Drag::MoveClip && dragClipId == clip.id;
     const bool trimmingLeft = drag == Drag::TrimLeft && dragClipId == clip.id;
     const bool trimmingRight = drag == Drag::TrimRight && dragClipId == clip.id;
@@ -795,6 +814,21 @@ void UltraCanvasVideoTimeline::DrawClip(IRenderContext* ctx, const TimelineTrack
     if (clip.muted || track.muted) {
         ctx->SetFillPaint(style.mutedHatch);
         ctx->FillRoundedRectangle(Rect2Dd(r.x, r.y + 3.0, r.width, r.height - 3.0), style.cornerRadius);
+    }
+    // the fade knobs, while the bar is hovered, selected or being faded
+    Point2Df knobIn, knobOut;
+    if ((hovered || selected || fading) && !track.locked && FadeKnobs(clip, track, lane, knobIn, knobOut)) {
+        const bool inActive = drag == Drag::FadeIn || hover.kind == Hit::FadeInKnob;
+        const bool outActive = drag == Drag::FadeOut || hover.kind == Hit::FadeOutKnob;
+        for (int k = 0; k < 2; ++k) {
+            const Point2Df& p = k == 0 ? knobIn : knobOut;
+            const bool active = k == 0 ? inActive : outActive;
+            ctx->SetFillPaint(active ? style.accent : style.header);
+            ctx->FillCircle(Point2Dd(p.x, p.y), kFadeKnobRadius);
+            ctx->SetStrokePaint(active ? style.accent : edge);
+            ctx->SetStrokeWidth(1.5f);
+            ctx->DrawCircle(Point2Dd(p.x, p.y), kFadeKnobRadius);
+        }
     }
 
     // the band: badges from the right, then the name in what is left
@@ -1090,12 +1124,16 @@ const WaveformChannelData* UltraCanvasVideoTimeline::Peaks(const TimelineClip& c
 
 UCMouseCursor UltraCanvasVideoTimeline::GetMouseCursor() const {
     if (drag == Drag::MoveClip) return UCMouseCursor::SizeAll;
-    if (drag == Drag::TrimLeft || drag == Drag::TrimRight || drag == Drag::Transition) return UCMouseCursor::SizeWE;
+    if (drag == Drag::TrimLeft || drag == Drag::TrimRight || drag == Drag::Transition || drag == Drag::FadeIn ||
+        drag == Drag::FadeOut)
+        return UCMouseCursor::SizeWE;
     switch (hover.kind) {
         case Hit::ClipLeftEdge:
         case Hit::ClipRightEdge:
         case Hit::TransitionLeftEdge:
         case Hit::TransitionRightEdge:
+        case Hit::FadeInKnob:
+        case Hit::FadeOutKnob:
             return UCMouseCursor::SizeWE;
         case Hit::ClipBody:
             if (tool == TimelineTool::Blade) return UCMouseCursor::Cross;
@@ -1204,17 +1242,12 @@ bool UltraCanvasVideoTimeline::HandleMouseDown(const UCEvent& event, float x, fl
     dragSnapped = false;
 
     if (event.button == UCMouseButton::Right) {
-        if ((hit.kind == Hit::ClipBody || hit.kind == Hit::ClipLeftEdge || hit.kind == Hit::ClipRightEdge) &&
-            !selection.count(hit.clipId))
-            SelectClip(hit.clipId, false, false);
+        if (hit.IsClip() && !selection.count(hit.clipId)) SelectClip(hit.clipId, false, false);
         if (onContextMenuRequested) {
             const std::string trackId = hit.trackIndex < model.tracks.size() && hit.kind != Hit::Ruler && hit.kind != Hit::Scrollbar
                                             ? model.tracks[hit.trackIndex].id
                                             : "";
-            const std::string clipId = hit.kind == Hit::ClipBody || hit.kind == Hit::ClipLeftEdge ||
-                                               hit.kind == Hit::ClipRightEdge || hit.kind == Hit::TransitionBody
-                                           ? hit.clipId
-                                           : "";
+            const std::string clipId = hit.IsClip() || hit.kind == Hit::TransitionBody ? hit.clipId : "";
             onContextMenuRequested(trackId, hit.seconds, clipId, event.pointerWindow.x, event.pointerWindow.y);
         }
         return true;
@@ -1265,6 +1298,22 @@ bool UltraCanvasVideoTimeline::HandleMouseDown(const UCEvent& event, float x, fl
                 const TimelineTransition* t = track.FindTransition(hit.clipId);
                 dragTime = t ? t->seconds : 1.0;
             }
+            return true;
+        }
+        case Hit::FadeInKnob:
+        case Hit::FadeOutKnob: {
+            const TimelineTrack& track = model.tracks[hit.trackIndex];
+            selectedTrack = track.id;
+            if (!selection.count(hit.clipId)) SelectClip(hit.clipId, false, false);
+            if (track.locked) return true;
+            const TimelineClip* clip = track.FindClip(hit.clipId);
+            if (!clip) return true;
+            dragClipId = hit.clipId;
+            dragTrackIndex = hit.trackIndex;
+            dragClipOriginal = *clip;
+            dragPreview = track;
+            drag = hit.kind == Hit::FadeInKnob ? Drag::FadeIn : Drag::FadeOut;
+            dragTime = hit.kind == Hit::FadeInKnob ? clip->fadeIn : clip->fadeOut;
             return true;
         }
         case Hit::ClipBody:
@@ -1416,6 +1465,24 @@ bool UltraCanvasVideoTimeline::HandleMouseMove(const UCEvent& event, float x, fl
             RequestRedraw();
             return true;
         }
+        case Drag::FadeIn:
+        case Drag::FadeOut: {
+            dragPreview = model.tracks[dragTrackIndex];
+            TimelineClip* clip = dragPreview.FindClip(dragClipId);
+            if (!clip) return true;
+            const bool in = drag == Drag::FadeIn;
+            double seconds = in ? pointerSeconds - clip->start : clip->End() - pointerSeconds;
+            const double other = in ? clip->fadeOut : clip->fadeIn;
+            seconds = std::clamp(seconds, 0.0, std::max(0.0, clip->duration - other));
+            seconds = TimelineToFrame(seconds, model.frameRate);
+            if (in) clip->fadeIn = seconds; else clip->fadeOut = seconds;
+            dragTime = seconds;
+            char buffer[64];
+            std::snprintf(buffer, sizeof buffer, "Fade %s %.1f s", in ? "in" : "out", seconds);
+            dragReadout = buffer;
+            RequestRedraw();
+            return true;
+        }
         case Drag::Transition: {
             dragPreview = model.tracks[dragTrackIndex];
             TimelineTransition* t = dragPreview.FindTransition(dragClipId);
@@ -1498,6 +1565,20 @@ void UltraCanvasVideoTimeline::FinishDrag(float x, float y) {
             Request(change);
             break;
         }
+        case Drag::FadeIn:
+        case Drag::FadeOut: {
+            if (!dragMoved) break;
+            const TimelineClip* faded = dragPreview.FindClip(dragClipId);
+            if (!faded || (std::fabs(faded->fadeIn - dragClipOriginal.fadeIn) < 1e-9 &&
+                           std::fabs(faded->fadeOut - dragClipOriginal.fadeOut) < 1e-9))
+                break;
+            change.kind = TimelineChangeKind::FadeSet;
+            change.before = {dragClipOriginal};
+            change.after = {*faded};
+            change.at = dragTime;
+            Request(change);
+            break;
+        }
         case Drag::Transition: {
             const TimelineTransition* before = track.FindTransition(dragClipId);
             const TimelineTransition* after = dragPreview.FindTransition(dragClipId);
@@ -1525,6 +1606,8 @@ bool UltraCanvasVideoTimeline::HandleDoubleClick(const UCEvent& event, float x, 
         case Hit::ClipBody:
         case Hit::ClipLeftEdge:
         case Hit::ClipRightEdge:
+        case Hit::FadeInKnob:
+        case Hit::FadeOutKnob:
             if (onClipActivated) onClipActivated(hit.clipId);
             return true;
         case Hit::TransitionBody:
@@ -1785,7 +1868,7 @@ bool UltraCanvasVideoTimeline::HandleKey(const UCEvent& event) {
 
 bool UltraCanvasVideoTimeline::HandleDrop(const UCEvent& event, float x, float y, bool drop) {
     const Hit hit = HitTest(x, y);
-    const bool onLane = hit.kind == Hit::Lane || hit.kind == Hit::ClipBody || hit.kind == Hit::ClipLeftEdge ||
+    const bool onLane = hit.kind == Hit::Lane || hit.IsClip() ||
                         hit.kind == Hit::ClipRightEdge || hit.kind == Hit::TransitionBody;
     if (!onLane || hit.trackIndex >= model.tracks.size()) {
         if (dropActive) { dropActive = false; RequestRedraw(); }
