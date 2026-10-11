@@ -1,10 +1,13 @@
 // core/UltraCanvasNewDocumentDialog.cpp
 // New Document dialog implementation - FIXED version with deferred initialization
-// Version: 1.1.0
-// Last Modified: 2026-05-29
+// Version: 1.1.1
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNewDocumentDialog.h"
+#include "UltraCanvasConfig.h"        // GetResourcesDir
+#include "UltraCanvasDrawnMarks.h"
+#include "UltraCanvasUtils.h"         // NormalizePath
 #include <algorithm>
 #include <cctype>
 
@@ -409,12 +412,17 @@ namespace UltraCanvas {
         ctx->SetTextPaint(style.titleColor);
         ctx->DrawText("Create New Document", Point2Di(titleBounds.x, titleBounds.y + 20));
 
-        int closeX = titleBounds.x + titleBounds.width - 20;
-        int closeY = titleBounds.y + 5;
-
-        ctx->SetFontSize(14);
-        ctx->SetTextPaint(Color(150, 150, 150));
-        ctx->DrawText("✕", Point2Di(closeX, closeY + 14));
+        // The close mark is drawn, level with the title: the bundled UI font
+        // has no "✕", and where no fallback font has one either it showed as
+        // a hex box. HandleMouseDown takes the click around it.
+        FontStyle titleFont;
+        titleFont.fontFamily = "sans-serif";
+        titleFont.fontSize = style.titleFontSize;
+        titleFont.fontWeight = FontWeight::Bold;
+        const double titleTop = titleBounds.y + 20;
+        DrawCrossMark(ctx, Point2Dd(titleBounds.x + titleBounds.width - 14,
+                                    titleTop + ctx->GetCapCentreOffset(titleFont)),
+                      14, Color(150, 150, 150));
     }
 
     void UltraCanvasNewDocumentDialog::RenderFilterInput(IRenderContext* ctx) {
@@ -480,17 +488,23 @@ namespace UltraCanvas {
             ctx->FillRectangle(itemBounds);
         }
 
+        // The name's row, for the marks beside it to sit level with it.
+        FontStyle itemFont;
+        itemFont.fontFamily = "sans-serif";
+        itemFont.fontSize = style.itemFontSize;
+        const int textTop = itemBounds.y + 18;
+        const double rowCentre = textTop + ctx->GetCapCentreOffset(itemFont);
+
+        // A document icon, tinted: the bundled UI font has no "📄".
         int iconX = itemBounds.x + 8;
-        int iconY = itemBounds.y + (style.itemHeight - 16) / 2;
-        ctx->SetFontSize(14);
-        ctx->SetTextPaint(Color(100, 130, 180));
-        ctx->DrawText("📄", Point2Di(iconX, iconY + 14));
+        ctx->DrawMask(Color(100, 130, 180), NormalizePath(GetResourcesDir() + "media/icons/menu/file-icons.svg"),
+                      Rect2Dd(iconX, rowCentre - 8, 16, 16), ImageFitMode::Contain);
 
         int textX = iconX + 24;
         ctx->SetFontFace("sans-serif", FontWeight::Normal, FontSlant::Normal);
         ctx->SetFontSize(style.itemFontSize);
         ctx->SetTextPaint(style.itemTextColor);
-        ctx->DrawText(docType.GetDisplayName(), Point2Di(textX, itemBounds.y + 18));
+        ctx->DrawText(docType.GetDisplayName(), Point2Di(textX, textTop));
 
         if (!docType.category.empty()) {
             ctx->SetFontSize(10);
@@ -501,8 +515,7 @@ namespace UltraCanvas {
         }
 
         if (isSelected) {
-            ctx->SetTextPaint(Color(66, 133, 244));
-            ctx->DrawText("✓", Point2Di(itemBounds.x + itemBounds.width - 24, itemBounds.y + 18));
+            DrawTickMark(ctx, Point2Dd(itemBounds.x + itemBounds.width - 18, rowCentre), 14, Color(66, 133, 244));
         }
     }
 
@@ -615,10 +628,12 @@ namespace UltraCanvas {
         Rect2Di listBounds = GetDocumentListBounds();
 
         Rect2Di titleBounds = GetTitleBounds();
+        // Around the close mark, which sits level with the title below the
+        // top of its bounds.
         int closeX = titleBounds.x + titleBounds.width - 24;
         int closeY = titleBounds.y;
         if (event.pointer.x >= closeX && event.pointer.x <= closeX + 20 &&
-            event.pointer.y >= closeY && event.pointer.y <= closeY + 24) {
+            event.pointer.y >= closeY && event.pointer.y <= closeY + 40) {
             OnCancelClicked();
             return true;
         }

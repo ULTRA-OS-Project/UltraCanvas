@@ -7,10 +7,12 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
-// Version: 1.2.0
+// Version: 1.2.1 - list bullets "•" "◦" "▪" are drawn as shapes
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasUI.h"
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
@@ -2197,7 +2199,12 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
         // At the usual marker position, unless the label is too wide to fit
         // before the text there ("1.2.3.", "(viii)"): then it moves left to
         // end a small gap before the text, but never past the column edge.
-        const double width = static_cast<double>(ctx->GetTextLineWidth(bl.markerText));
+        // The standard bullets are drawn, as wide as a "•": the bundled UI
+        // font has no "◦" or "▪", which showed as hex boxes where no
+        // fallback font has them either.
+        const bool drawnBullet = IsDrawnBullet(bl.markerText);
+        const double width = static_cast<double>(
+                ctx->GetTextLineWidth(drawnBullet ? std::string("\xE2\x80\xA2") : bl.markerText));
         const double gap = std::max(4.0, markerFont.fontSize * 0.4);
         double markerX = std::max(static_cast<double>(originX),
                                   std::min(static_cast<double>(originX + bl.markerLeft),
@@ -2207,7 +2214,10 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
             const double textRight = originX + bl.textLeft + (bl.layout ? bl.layout->GetExplicitWidth() : 0.0);
             markerX = std::max(textRight + gap, static_cast<double>(originX + bl.markerLeft) - width);
         }
-        ctx->DrawText(bl.markerText, Point2Dd(markerX, originY));
+        if (!drawnBullet || !DrawBulletMark(ctx, bl.markerText, Point2Dd(markerX, originY), markerFont,
+                                            style.listMarkerColor)) {
+            ctx->DrawText(bl.markerText, Point2Dd(markerX, originY));
+        }
         ctx->PopState();
     }
 

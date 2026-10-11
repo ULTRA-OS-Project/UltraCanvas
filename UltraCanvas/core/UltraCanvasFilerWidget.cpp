@@ -50,6 +50,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.38.2 - the details header's sort direction is a drawn triangle, not
+//                  "▲" / "▼", which the bundled UI font lacks
 // Version: 1.38.1 - a picture saved over gets a new thumbnail: the workers ask
 //                  the image cache with UCImage::GetFresh, and the disk cache
 //                  keeps a thumbnail only against the file as it was before
@@ -65,7 +67,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -77,6 +79,7 @@
 #endif
 
 #include "UltraCanvasFilerWidget.h"
+#include "UltraCanvasDrawnMarks.h"
 #include "HTMLReader/HTMLDocument.h"   // HTML::DecodeEntities (the text preview)
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
@@ -12819,16 +12822,21 @@ namespace UltraCanvas {
         fsty.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(fsty);
         for (const DetailsColumn& c : detailsColumns) {
-            std::string title = c.title;
-            if (c.sortable && c.field == sortField) {
-                title += sortAscending ? " ▲" : " ▼";
-            }
-            title = EllipsizeText(ctx, title, c.width - 12);
+            // The sort direction is a triangle drawn after the title: the
+            // bundled UI font has no "▲" or "▼", and where no fallback font
+            // has them either they showed as hex boxes.
+            const bool sorted = c.sortable && c.field == sortField;
+            const int markWidth = sorted ? 13 : 0;   // a 5 px gap and the 8 px triangle
+            std::string title = EllipsizeText(ctx, c.title, c.width - 12 - markWidth);
             ctx->SetTextPaint(style.headerTextColor);
             Size2Di ts = ctx->GetTextLineDimensions(title);
-            int tx = c.rightAligned ? c.x + c.width - ts.width - 8 : c.x + 6;
+            int tx = c.rightAligned ? c.x + c.width - ts.width - markWidth - 8 : c.x + 6;
             int ty = area.y + (detailsHeaderHeight - ts.height) / 2;
             ctx->DrawText(title, Point2Dd(tx, ty));
+            if (sorted) {
+                DrawSortTriangle(ctx, Point2Dd(tx + ts.width + 9, ty + ctx->GetCapCentreOffset(fsty)), 8,
+                                 sortAscending, style.headerTextColor);
+            }
         }
     }
 

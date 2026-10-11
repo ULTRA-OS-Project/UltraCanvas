@@ -1094,6 +1094,13 @@ engine; these classes hold the pixels being edited and hand them to it.
   context. See `Docs/UltraCanvas/UltraCanvasVectorRaster.md`.
 - **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
   drawing for zoomed pixel display (Cairo backend implemented).
+- **UltraCanvasDrawnMarks** (`UltraCanvasDrawnMarks.h`) — marks drawn as
+  shapes for self-rendered elements, in place of symbol characters the
+  bundled UI font lacks (which show as hex boxes on Windows):
+  `DrawTickMark`, `DrawCrossMark`, `DrawSortTriangle`, and `DrawBulletMark` /
+  `IsDrawnBullet` for the list bullets "•", "◦", "▪". Used by the password
+  rule legend, the Markdown and rich-text lists, the Filer's details header
+  and the new-document dialog. Doc: `Docs/UltraCanvas/UltraCanvasDrawnMarks.md`.
 - **IRenderContext compositing and geometry** (`UltraCanvasRenderContext.h`,
   doc `Docs/UltraCanvas/UltraCanvasRenderContext.md`) — `SetBlendMode` /
   `GetBlendMode` (the 16 PDF / CSS modes), groups `BeginGroup` /
