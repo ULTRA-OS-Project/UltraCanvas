@@ -36365,6 +36365,10 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 
 **UltraCanvasListView** is a Model-View-Delegate list widget in the UltraCanvas framework. It cleanly separates data (the *model*), per-row drawing (the *delegate*), and selection state (the *selection*), allowing simple single-column lists, multi-column tables with headers, icon lists, and fully custom-painted rows to all share the same view class.
 
+![UltraCanvasListView: the model, delegate and selection, wired through the view](UltraCanvasListView2.svg)
+
+Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
+
 **Version:** 1.0.1
 **Headers:**
 - `include/UltraCanvasListView.h`
