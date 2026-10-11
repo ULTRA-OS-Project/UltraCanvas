@@ -31,8 +31,8 @@
 // time, the holder of the recorder lease (AcquireRecorder).
 //
 // Not thread-safe: use one instance from one thread.
-// Version: 1.0.0
-// Last Modified: 2026-10-06
+// Version: 1.1.0 - ClipboardHistoryPolicy::previewStyle: how UltraClipboard previews an image
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -117,6 +117,12 @@ struct ClipboardHistoryQuery {
     bool newestFirst = false;
 };
 
+// How UltraClipboard previews an image whose thumbnail the pointer rests on.
+enum class ClipboardPreviewStyle : int {
+    Classic = 0,   // the picture alone, floating over the middle of the list
+    Modern = 1     // a pane over the right part of the list, with the viewer's info line
+};
+
 // Shared by every process that opens the history (kept in the database).
 struct ClipboardHistoryPolicy {
     int maxEntries = 500;                        // unpinned
@@ -125,6 +131,7 @@ struct ClipboardHistoryPolicy {
     uint64_t maxEntryBytes = 64ull << 20;
     bool recordingPaused = false;
     bool imageThumbnails = true;
+    ClipboardPreviewStyle previewStyle = ClipboardPreviewStyle::Modern;
     std::vector<std::string> excludedApplications;
 
     static ClipboardHistoryPolicy Defaults();

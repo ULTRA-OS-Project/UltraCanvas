@@ -1,3 +1,21 @@
+#### 2026-10-11 *0.1.3*
+- **Rest the pointer on an image's thumbnail and the image opens at full
+  size beside it.** The preview covers the right 60 % of the list, in a
+  12 px frame, so the thumbnails and the start of every title stay readable
+  on the left; a small image is shown at its own size rather than blown up
+  to fill the pane, and the wheel zooms in on it. The preview is the
+  framework's media viewer, so copied files preview too when their first
+  file is something it shows - a picture, a PDF, a drawing, a 3D model, a
+  video's first frame (silent). It stays while the pointer is on that
+  entry's row or on the preview itself, follows the wheel scrolling the list
+  under a still pointer, and closes on Escape or when the pointer goes
+  elsewhere.
+- **Two styles of preview, in Settings under "Image preview".** *Modern*
+  (the default) is the pane above. *Classic* is the picture alone, in its
+  12 px frame, floating over the middle of the list at the size it fits in
+  60 % of the list's width - no info line, nothing but the image. The choice
+  is kept with the history's settings.
+
 #### 2026-10-10 *0.1.2*
 - **The More button at the top right shows its three dots on Windows.** It
   was the character "⋯", which the bundled Ubuntu font does not have, so

@@ -1,6 +1,6 @@
 // Apps/UltraClipboard/ui/UltraClipboardWindow.cpp
 // UltraClipboard's main window. See UltraClipboardWindow.h.
-// Version: 0.1.0
+// Version: 0.1.3
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraClipboardWindow.h"
@@ -17,14 +17,17 @@
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTooltipManager.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -42,6 +45,9 @@ namespace {
 constexpr int kTickMs = 250;
 constexpr int kMessageTicks = 12;    // 3 s
 constexpr int kGenerationTicks = 4;  // the history changed elsewhere? once a second
+constexpr int kPreviewDelayMs = 150; // the pointer rests on a thumbnail this long before the preview opens
+constexpr float kPreviewShare = 0.6f;  // of the list's width, at its right
+constexpr float kPreviewFrame = 12;    // the frame around the picture
 
 const Color kChrome(250, 251, 252);
 const Color kLine(229, 231, 235);
@@ -132,6 +138,12 @@ UltraClipboardWindow::UltraClipboardWindow(UltraCanvasApplication& app) : app_(a
 
 UltraClipboardWindow::~UltraClipboardWindow() {
     if (timer_) app_.StopTimer(timer_);
+    if (previewTimer_) app_.StopTimer(previewTimer_);
+    if (previewViewer_) previewViewer_->CloseFile();
+    // The images written for the viewer are this window's; the folder stays
+    // (the UltraPaint hand-off shares it).
+    std::error_code ec;
+    for (const auto& [id, file] : previewFiles_) std::filesystem::remove(PathFromUtf8(file), ec);
     if (recorder_) recorder_->Detach();
     // A removal not undone is final now.
     if (history_ && history_->IsOpen()) history_->Prune();
@@ -175,6 +187,7 @@ bool UltraClipboardWindow::Create(const std::string& search, int64_t editId) {
     list_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     list_->onCellHovered = [this](int row, int, const Point2Di& at) {
         if (rows_->SetHover(row, at)) list_->RequestRedraw();
+        OnCellHovered(row, at);
     };
     list_->onCellClicked = [this](int row, int, const Point2Di& at) {
         const ClipboardHistoryEntry* entry = model_->GetEntry(row);
@@ -204,9 +217,14 @@ bool UltraClipboardWindow::Create(const std::string& search, int64_t editId) {
     };
     window->AddChild(list_);
     window->AddChild(BuildStatusBar());
+    // Last, so it is drawn over the list and takes the pointer before it.
+    window->AddChild(BuildPreview());
 
     window->InstallEventFilter("ultraclipboard-keys", [this](const UCEvent& event) { return OnKey(event); },
                                {UCEventType::KeyDown});
+    window->InstallEventFilter("ultraclipboard-pointer",
+                               [this](const UCEvent& event) { return OnPointerMoved(event); },
+                               {UCEventType::MouseMove});
     window->onWindowClosing = [this]() {
         app_.RequestExit();
         return true;
@@ -392,15 +410,22 @@ std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildStatusBar() {
 
 void UltraClipboardWindow::Reload() {
     if (!history_ || !model_) return;
+    // The rows are about to move; a preview belongs to the row under the pointer.
+    HidePreview();
     const ClipboardHistoryEntry* before = SelectedEntry();
     const int64_t selected = before ? before->id : 0;
     const std::string text = search_->GetText();
     model_->SetEntries(history_->List(QueryFor(kinds_->GetSelectedIndex(), text)),
                        ClipboardHistoryListModel::Sections::ByDay);
+    const ClipboardHistoryPolicy policy = history_->GetPolicy();
     updatingRecording_ = true;
-    const bool recordingNow = !history_->GetPolicy().recordingPaused;
+    const bool recordingNow = !policy.recordingPaused;
     if (recording_->IsChecked() != recordingNow) recording_->SetChecked(recordingNow);
     updatingRecording_ = false;
+    if (policy.previewStyle != previewStyle_) {
+        previewStyle_ = policy.previewStyle;
+        ApplyPreviewStyle();
+    }
     UpdateStatus();
     if (model_->GetEntryCount() == 0) {
         list_->ResetSelection();
@@ -446,6 +471,19 @@ void UltraClipboardWindow::Tick() {
     const bool copied = rows_ && rows_->IsShowingCopied();
     if (copied || copiedShowing_) list_->RequestRedraw();
     copiedShowing_ = copied;
+    // The list lost the pointer and no move followed: it left the window.
+    if (previewLeaveCheck_) {
+        previewLeaveCheck_ = false;
+        if (previewId_ != 0 && preview_ && !preview_->GetBoundsInWindow().Contains(pointer_)) HidePreview();
+    }
+    // The window was resized under an open preview: it keeps its share of the list.
+    if (previewId_ != 0 && list_) {
+        const Rect2Df bounds = list_->GetBoundsInWindow();
+        if (bounds.x != previewListBounds_.x || bounds.y != previewListBounds_.y ||
+            bounds.width != previewListBounds_.width || bounds.height != previewListBounds_.height) {
+            PlacePreview();
+        }
+    }
     if (messageTicks_ > 0 && --messageTicks_ == 0) message_->SetText("");
     if (undoTicks_ > 0 && --undoTicks_ == 0) {
         removedId_ = 0;
@@ -469,6 +507,10 @@ bool UltraClipboardWindow::OnKey(const UCEvent& event) {
     };
     switch (event.virtualKey) {
         case UCKeys::Escape:
+            if (previewId_ != 0) {
+                HidePreview();
+                return true;
+            }
             if (!searching) return false;
             search_->SetText("");
             return true;
@@ -638,6 +680,7 @@ void UltraClipboardWindow::OpenInUltraPaint(int64_t id) {
 void UltraClipboardWindow::ShowRowMenu(int row, const UCEvent& event) {
     const ClipboardHistoryEntry* entry = model_ ? model_->GetEntry(row) : nullptr;
     if (!entry || !window_) return;
+    HidePreview();
     const int64_t id = entry->id;
     menu_ = std::make_shared<UltraCanvasMenu>("ucb.rowMenu", 0, 0, 220, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
@@ -719,6 +762,212 @@ void UltraClipboardWindow::Message(const std::string& text) {
     }
     message_->SetText(text);
     messageTicks_ = kMessageTicks;
+}
+
+// ===== THE HOVER PREVIEW =====
+
+// A frame over the right part of the list with the media viewer inside: the
+// frame's padding is the 12 px border around the picture, so a small image
+// still arrives as a visible panel. Out of the window's flow (absolute), and
+// hidden until a thumbnail is rested on.
+std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildPreview() {
+    preview_ = std::make_shared<UltraCanvasContainer>("ucb.preview");
+    preview_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    preview_->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+    preview_->SetPadding(kPreviewFrame);
+    preview_->SetBackgroundColor(kChrome);
+    preview_->SetBorders(1, kLine);
+    preview_->SetVisible(false);
+
+    previewViewer_ = CreateMediaViewer("ucb.preview.viewer", 0, 0, 0, 0);
+    previewViewer_->SetTopBarsVisible(false);        // a preview: the picture and its info line
+    previewViewer_->SetGrabFocusOnAttach(false);     // the search field keeps the keyboard
+    previewViewer_->SetTransparentBackground(TransparentImageBackground::Checkered);
+    previewViewer_->SetFitEnlarges(false);           // a small image at its own size; the wheel zooms
+    previewViewer_->SetVideoPreviewMode(VideoPreviewMode::Still);   // a copied video: its first frame, silent
+    previewViewer_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    preview_->AddChild(previewViewer_);
+    if (history_) previewStyle_ = history_->GetPolicy().previewStyle;
+    ApplyPreviewStyle();
+    return preview_;
+}
+
+// Modern keeps the viewer's info line (name, size, zoom) and its backdrop
+// strip under a transparent image; Classic is the picture alone.
+void UltraClipboardWindow::ApplyPreviewStyle() {
+    if (!previewViewer_) return;
+    const bool modern = previewStyle_ == ClipboardPreviewStyle::Modern;
+    previewViewer_->SetInfoBarVisible(modern);
+    previewViewer_->SetTransparencyPaletteVisible(modern);
+    if (previewId_ != 0) PlacePreview();
+}
+
+// From the list, on every pointer move over it and again when it scrolls
+// under a still pointer: a thumbnail opens its entry's preview; the preview
+// stays while the pointer is on that entry's row, or on the preview itself.
+// The list reports no row when the pointer moves onto the preview (a leave,
+// dispatched before the move itself reaches OnPointerMoved), below its rows,
+// or out of the window: the move that follows settles which, and Tick the
+// case where none follows.
+void UltraClipboardWindow::OnCellHovered(int row, const Point2Di& posInCell) {
+    const ClipboardHistoryEntry* entry = row >= 0 && model_ ? model_->GetEntry(row) : nullptr;
+    if (entry && rows_->IsOverThumbnail(posInCell)) {
+        RequestPreview(entry->id);
+        return;
+    }
+    previewWantedId_ = 0;
+    if (previewId_ == 0) return;
+    if (entry && entry->id == previewId_) return;
+    if (row < 0) {
+        previewLeaveCheck_ = true;
+        return;
+    }
+    HidePreview();   // another entry's row, a header
+}
+
+// Every pointer move in the window, before the element under it sees it:
+// where the pointer is, and whether the preview is done - the list lost the
+// pointer to somewhere but the preview, or the pointer is off both.
+bool UltraClipboardWindow::OnPointerMoved(const UCEvent& event) {
+    pointer_ = event.pointerWindow;
+    if (previewId_ == 0 || !preview_ || !list_) return false;
+    const bool onPreview = preview_->GetBoundsInWindow().Contains(pointer_);
+    if (previewLeaveCheck_) {
+        previewLeaveCheck_ = false;
+        if (!onPreview) HidePreview();
+        return false;
+    }
+    if (onPreview) return false;
+    if (list_->GetBoundsInWindow().Contains(pointer_)) return false;   // the list decides
+    HidePreview();
+    return false;
+}
+
+void UltraClipboardWindow::RequestPreview(int64_t id) {
+    if (id == previewId_) {
+        previewWantedId_ = 0;
+        return;
+    }
+    // Sweeping down the thumbnails opens nothing until the pointer rests.
+    previewWantedId_ = id;
+    if (previewTimer_) app_.StopTimer(previewTimer_);
+    previewTimer_ = app_.StartTimer(kPreviewDelayMs, false, [this](TimerId) {
+        previewTimer_ = 0;
+        const int64_t wanted = previewWantedId_;
+        previewWantedId_ = 0;
+        if (wanted == 0 || wanted == previewId_ || !model_) return;
+        if (const ClipboardHistoryEntry* entry = model_->GetEntry(model_->FindRow(wanted))) ShowPreview(*entry);
+    });
+}
+
+void UltraClipboardWindow::ShowPreview(const ClipboardHistoryEntry& entry) {
+    if (!preview_ || !previewViewer_) return;
+    const std::string file = PreviewFileFor(entry);
+    if (file.empty()) {
+        HidePreview();
+        return;
+    }
+    previewId_ = entry.id;
+    previewWidth_ = entry.kind == ClipboardEntryKind::Image ? entry.width : 0;
+    previewHeight_ = entry.kind == ClipboardEntryKind::Image ? entry.height : 0;
+    PlacePreview();
+    preview_->SetVisible(true);
+    // The row's tooltip (the entry's title) would sit on the thumbnail while
+    // the picture itself is beside it; back when the preview goes.
+    UltraCanvasTooltipManager::HideTooltip();
+    list_->SetShowItemTooltips(false);
+    previewViewer_->SetFiles({file});
+    window_->RequestRedraw();
+}
+
+void UltraClipboardWindow::HidePreview() {
+    previewWantedId_ = 0;
+    previewLeaveCheck_ = false;
+    if (previewTimer_) {
+        app_.StopTimer(previewTimer_);
+        previewTimer_ = 0;
+    }
+    if (previewId_ == 0) return;
+    previewId_ = 0;
+    if (list_) list_->SetShowItemTooltips(true);
+    if (previewViewer_) previewViewer_->StopPlayback();
+    if (preview_) preview_->SetVisible(false);
+    if (window_) window_->RequestRedraw();
+}
+
+// Modern: the right 60 % of the list, its full height - the thumbnails and
+// the start of every title stay readable on the left. Classic: centred over
+// the list, the frame hugging the picture at the size it fits in 60 % of the
+// list's width and the list's height, never enlarged; a file of unknown size
+// takes that whole box.
+void UltraClipboardWindow::PlacePreview() {
+    if (!preview_ || !list_) return;
+    const Rect2Df list = list_->GetBoundsInWindow();
+    previewListBounds_ = list;
+    float width = std::round(list.width * kPreviewShare);
+    float height = list.height;
+    float left = list.x + list.width - width;
+    float top = list.y;
+    if (previewStyle_ == ClipboardPreviewStyle::Classic) {
+        const float edge = 2 * (kPreviewFrame + 1);   // the frame and the 1 px border, both sides
+        if (previewWidth_ > 0 && previewHeight_ > 0) {
+            const float scale = std::min({(width - edge) / previewWidth_, (height - edge) / previewHeight_, 1.0f});
+            width = std::round(previewWidth_ * scale) + edge;
+            height = std::round(previewHeight_ * scale) + edge;
+        }
+        left = std::round(list.x + (list.width - width) / 2);
+        top = std::round(list.y + (list.height - height) / 2);
+    }
+    CSSLayout::Position at;
+    at.left = CSSLayout::Dimension::Px(left);
+    at.top = CSSLayout::Dimension::Px(top);
+    preview_->layoutItem.SetPositionInsets(at);
+    preview_->SetElementSize(CSSLayout::Dimension::Px(width), CSSLayout::Dimension::Px(height));
+}
+
+std::string UltraClipboardWindow::PreviewFileFor(const ClipboardHistoryEntry& entry) {
+    namespace fs = std::filesystem;
+    if (entry.kind == ClipboardEntryKind::Files) {
+        // The first file, when the viewer shows its kind (no sound on a hover).
+        const std::string first = entry.preview.substr(0, entry.preview.find('\n'));
+        std::error_code ec;
+        if (first.empty() || !fs::is_regular_file(PathFromUtf8(first), ec)) return "";
+        if (!UltraCanvasMediaViewer::IsSupportedMedia(first)) return "";
+        switch (UltraCanvasMediaViewer::ClassifyFile(first)) {
+            case MediaKind::Image:
+            case MediaKind::Document:
+            case MediaKind::Vector:
+            case MediaKind::Model:
+            case MediaKind::Video:
+                return first;
+            default:
+                return "";
+        }
+    }
+    if (entry.kind != ClipboardEntryKind::Image || !history_) return "";
+    if (const auto found = previewFiles_.find(entry.id); found != previewFiles_.end()) {
+        std::error_code ec;
+        if (fs::is_regular_file(found->second, ec)) return PathToUtf8(found->second);
+        previewFiles_.erase(found);
+    }
+    // The image as a file, in the folder UltraPaint is handed images in.
+    std::vector<ClipboardFormat> formats;
+    ClipboardSnapshot snapshot;
+    if (!history_->ReadFormats(entry.id, formats)) return "";
+    snapshot.formats = std::move(formats);
+    const ClipboardFormat* image = snapshot.FindImage();
+    if (!image) return "";
+    std::string extension;
+    const std::vector<uint8_t> bytes = ClipboardImageFile(*image, extension);
+    if (previewFolder_.empty()) previewFolder_ = ImageHandOffFolder();
+    if (previewFolder_.empty()) return "";
+    const fs::path file = previewFolder_ / PathFromUtf8("preview-" + std::to_string(entry.id) + "." + extension);
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    out.close();
+    if (!out) return "";
+    previewFiles_[entry.id] = file;
+    return PathToUtf8(file);
 }
 
 } // namespace UltraClipboard
