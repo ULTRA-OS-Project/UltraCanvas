@@ -2,8 +2,8 @@
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.0.3  
-**Last Modified:** 2026-10-07  
+**Version:** 1.0.4  
+**Last Modified:** 2026-10-11  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -434,10 +434,19 @@ The button automatically handles:
 - Border and corner radius
 - Optional shadow effect
 
+The icon is drawn on whole pixels: centred in a content box whose width or
+height leaves an odd number of pixels around it - or drawn under a
+translation of a fraction of a pixel - its corner is moved to the nearest
+whole device pixel, so an icon drawn on a pixel grid keeps its sharp lines
+instead of being resampled across two pixels. For a line icon to be sharp it
+also has to be shown at the size of the grid it was drawn on (a 24-unit
+icon at 24 px, not 22).
+
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |
 | 1.0.3 | 2026-10-07 | Match the header: real `ButtonStyle` fields and `ButtonBuilder` methods, `ElementState`/`GetPrimaryState()` instead of a `ButtonState` enum, layout sizing instead of auto-resize, `SetDisabled()`, `SetPadding()` overloads |
 | 1.0.2 | 2026-09-10 | Document the split button: the `dropdown.svg` arrow, and that `SetUseIconAsMask()` colors the secondary icon through `SetSplitSecondaryIconColors()` |
 | 1.0.1 | 2026-08-31 | Document `onToggle`, `onSecondaryClick` and `onContextMenu`, and that `onClick` is left-button only |

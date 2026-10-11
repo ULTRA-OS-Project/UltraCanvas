@@ -1,3 +1,20 @@
+#### 2026-10-11 *0.2.13*
+- **Sharp, clearer tool icons.** The palette's icons were drawn on a 24-unit
+  grid with thin 1.8-unit strokes and shown at 22 px, half a pixel off: every
+  line fell between two pixels, the selection icons' dashes ran together and
+  several tools looked alike. All 23 are redrawn with 2 px strokes whose
+  straight edges sit on whole pixels, in two sets - `media/icons/ultrapaint/28/`
+  for the palette, shown at 28 px in 36 px buttons, and the 24-unit set for
+  24 px and smaller (menus). The rectangle, ellipse and lasso selections are
+  marching ants with gaps of 3 px or more, so they stay apart at 16 px; the
+  eyedropper, pencil, brush, airbrush (a spray can), clone stamp (a stamp),
+  smudge (a fingertip on a smear), dodge, burn, fill (the bucket with a
+  solid drop), gradient (a real gradient), line and text icons are each
+  their own shape. The framework now draws a button's icon on whole pixels
+  (framework changelog: `button-icon-pixel-grid`). Where the window is too
+  short for every tool's button, the palette scrolls instead of squeezing
+  them.
+
 #### 2026-10-09 *0.2.12*
 - **The Fill tool can make an area transparent.** Filling with a colour
   whose alpha is 0 did nothing at all: the fill only ever painted over the

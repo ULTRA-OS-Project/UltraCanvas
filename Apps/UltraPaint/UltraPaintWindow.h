@@ -8,8 +8,9 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.1.1 - ToolIconPath: the palette's 28 px tool icons
 // Version: 1.1.0
-// Last Modified: 2026-09-12
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -72,6 +73,8 @@ private:
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;
+    // A tool's icon for the palette: the 28 px set (media/icons/ultrapaint/28).
+    std::string ToolIconPath(const std::string& file) const;
     std::string TexterIconPath(const std::string& file) const;
 
     // ----- document -----

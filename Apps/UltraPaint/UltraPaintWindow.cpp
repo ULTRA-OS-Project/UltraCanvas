@@ -3,8 +3,10 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.1.1 - the tool palette shows its tools' 28 px icons (media/icons/ultrapaint/28)
+//                  at 28 px, the grid they are drawn on, in 38 px buttons
 // Version: 1.1.0
-// Last Modified: 2026-09-12
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -53,7 +55,9 @@ namespace UltraCanvas {
 namespace {
     constexpr int   kMenuHeight    = 28;
     constexpr int   kToolbarHeight = 38;
-    constexpr int   kPaletteWidth  = 46;
+    constexpr int   kPaletteWidth  = 48;
+    constexpr int   kToolButton    = 36;   // a tool's button, square, 4 px around its 28 px icon
+    constexpr int   kToolIcon      = 28;
     constexpr int   kRightWidth    = 300;
     constexpr int   kRightInner    = 262;   // what is visible next to the scrollbar
     constexpr int   kStatusHeight  = 24;
@@ -184,6 +188,10 @@ UltraPaintWindow::~UltraPaintWindow() = default;
 
 std::string UltraPaintWindow::IconPath(const std::string& file) const {
     return NormalizePath(GetResourcesDir() + "media/icons/ultrapaint/" + file);
+}
+
+std::string UltraPaintWindow::ToolIconPath(const std::string& file) const {
+    return NormalizePath(GetResourcesDir() + "media/icons/ultrapaint/28/" + file);
 }
 
 std::string UltraPaintWindow::TexterIconPath(const std::string& file) const {
@@ -498,16 +506,27 @@ void UltraPaintWindow::BuildToolPalette() {
     app.showIconLabels = false;
     app.itemSpacing = 1.0f;
     palette->SetAppearance(app);
+    // The buttons keep their size: where the window is too short for all of
+    // them the column scrolls (wheel, or the hints at its ends) rather than
+    // squeezing every icon into a button too small for it.
+    palette->SetOverflowMode(ToolbarOverflowMode::Scroll);
     palette->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     toolButtons.clear();
     for (const auto& t : tools) {
         const PaintToolId id = t->id;
-        auto b = palette->AddToggleButton("up-tool-" + std::to_string(static_cast<int>(id)), "", IconPath(t->iconFile),
-                                          [this, id](bool) { SelectTool(id); });
+        auto b = palette->AddToggleButton("up-tool-" + std::to_string(static_cast<int>(id)), "",
+                                          ToolIconPath(t->iconFile), [this, id](bool) { SelectTool(id); });
         std::string tip = t->name;
         if (t->shortcutKey) tip += std::string(" (") + t->shortcutKey + ")";
         b->SetTooltip(tip);
-        b->SetIconSize(22, 22);
+        // The palette's icons are drawn on a 28-unit grid (media/icons/
+        // ultrapaint/28) with 2-unit strokes on whole units: shown at 28 px
+        // they land on whole pixels and stay sharp. The 24-unit set beside
+        // them is the same tools for 24 px and smaller (menus). Shown at a
+        // size of neither, every line falls between two pixels and blurs, as
+        // the old 24-unit icons did at 22 px.
+        b->SetIconSize(kToolIcon, kToolIcon);
+        b->SetElementSize(Size2Df(kToolButton, kToolButton));
         toolButtons.push_back(b);
     }
     body->AddChild(palette);

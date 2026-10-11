@@ -1,16 +1,32 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
+//                  centred half a pixel off was resampled and blurred
 // Version: 2.7.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasImage.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 
 namespace UltraCanvas {
+    namespace {
+        // An icon drawn off the pixel grid is resampled across pixel
+        // boundaries and every edge in it blurs - a 22 px icon centred in
+        // an odd-width button sat half a pixel off, its 1-2 px lines and
+        // dashes smeared over two rows. The rectangle's corner is moved onto
+        // the nearest whole pixel of the surface; its size is kept.
+        Rect2Df SnapToPixelGrid(IRenderContext* ctx, const Rect2Df& r) {
+            const Point2Dd device = ctx->UserToDevice(Point2Dd(r.x, r.y));
+            const Point2Dd snapped = ctx->DeviceToUser(Point2Dd(std::round(device.x), std::round(device.y)));
+            return Rect2Df(static_cast<float>(snapped.x), static_cast<float>(snapped.y), r.width, r.height);
+        }
+    }
+
 
 // ===== CONSTRUCTOR =====
     UltraCanvasButton::UltraCanvasButton(const std::string& identifier,
@@ -733,21 +749,23 @@ namespace UltraCanvas {
         // follow the text color so the icon tracks the button state.
         Color maskColor = (style.iconMaskColor.a != 0) ? style.iconMaskColor : textColor;
 
+        const Rect2Df rect = SnapToPixelGrid(ctx, iconRect);
+
         // Dim icon when disabled
         if (GetPrimaryState() == ElementState::Disabled) {
             ctx->PushState();
             ctx->SetAlpha(0.35f);
             if (style.useIconAsMask) {
-                ctx->DrawMask(maskColor, *icon.get(), iconRect, ImageFitMode::Contain);
+                ctx->DrawMask(maskColor, *icon.get(), rect, ImageFitMode::Contain);
             } else {
-                ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+                ctx->DrawImage(*icon.get(), rect, ImageFitMode::Contain);
             }
             ctx->PopState();
         } else {
             if (style.useIconAsMask) {
-                ctx->DrawMask(maskColor, *icon.get(), iconRect, ImageFitMode::Contain);
+                ctx->DrawMask(maskColor, *icon.get(), rect, ImageFitMode::Contain);
             } else {
-                ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+                ctx->DrawImage(*icon.get(), rect, ImageFitMode::Contain);
             }
         }
     }
@@ -763,21 +781,23 @@ namespace UltraCanvas {
             // TODO: Apply color tinting to icon
         }
 
+        const Rect2Df rect = SnapToPixelGrid(ctx, secondaryIconRect);
+
         // Dim icon when disabled
         if (GetPrimaryState() == ElementState::Disabled) {
             ctx->PushState();
             ctx->SetAlpha(0.35f);
             if (style.useIconAsMask) {
-                ctx->DrawMask(iconColor, *style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+                ctx->DrawMask(iconColor, *style.splitStyle.secondaryIcon.get(), rect, ImageFitMode::Contain);
             } else {
-                ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+                ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), rect, ImageFitMode::Contain);
             }
             ctx->PopState();
         } else {
             if (style.useIconAsMask) {
-                ctx->DrawMask(iconColor, *style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+                ctx->DrawMask(iconColor, *style.splitStyle.secondaryIcon.get(), rect, ImageFitMode::Contain);
             } else {
-                ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+                ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), rect, ImageFitMode::Contain);
             }
         }
     }
