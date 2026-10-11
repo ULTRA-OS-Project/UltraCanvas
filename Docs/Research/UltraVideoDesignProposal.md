@@ -935,6 +935,43 @@ image types for *Open with*.
    previous keyframe each call. If that is too slow on long GOP footage, a
    per-clip decoder cache in the engine is the fix, inside 8.2's scope.
 
+## 14. What was built (2026-10-11)
+
+Phase 1 of §11, on the branch of this proposal, with the departures from §7
+that writing it showed:
+
+- **`UltraCanvasVideoTimeline`** (`UltraCanvas/include/UltraCanvasVideoTimeline.h`,
+  `core/UltraCanvasVideoTimeline.cpp`) and its model and operations
+  (`UltraCanvasVideoTimelineModel.{h,cpp}`), the catalogue row, the component
+  doc `Docs/UltraCanvas/UltraCanvasVideoTimeline.md`, the DemoApp page
+  (*Video > Video Timeline*), the headless `VideoTimelineModelTest` and the
+  `VideoTimelineElementTest` under Xvfb.
+- The model matches §7.1 with two simplifications: a clip's source range is
+  `sourceIn` plus `duration × speed`, with `sourceLength` as the limit, in
+  place of a separate `sourceOut`; and `TimelineChange` carries no `preview`
+  flag. The element previews a drag on a private copy of the track with the
+  model operations and reports one change on release, so the application
+  sees nothing until the gesture ends. A readout's limit ("max 2.0 s", the
+  unused source beyond an edge) comes from the model's own fields, as §5.4
+  intended, not from a refused edit.
+- Built: the ruler with adaptive steps, markers and the range; track
+  headers with the four toggles; title, free video, main video and audio
+  lanes; clips with band, badges, filmstrips and waveforms from providers,
+  trim grips, selection, muted scrim, trim overflow; transition badges with
+  a draggable length; the playhead; zoom, scroll, fit; reorder on the
+  magnetic track with the insertion marker, free placement elsewhere; trim
+  with snapping and readout; blade and `S`; delete with ripple; duplicate;
+  nudge; markers; the work area; rubber band; file drop with the insertion
+  marker; the context-menu hook; the keyboard map of the brand book; light
+  and dark palettes.
+- Not built, and left for the next phase: `UltraCanvasTimecodeField`
+  (§7.6), fade knobs on the music bar, marker dragging, a real slip trim
+  (the Slip tool trims for now), retiming by `Ctrl`-drag, vertical scrolling
+  of many tracks, resizing a track by its edge, and the mapping onto the
+  framework's theme roles (the element carries its colours in its style
+  struct, as the other elements do; the app fills it from
+  `UltraVideoTokens.h`).
+
 ## See also
 
 - `Docs/Modules/VideoFX/README.md` — the engine, with its roadmap

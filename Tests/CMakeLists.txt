@@ -1088,6 +1088,30 @@ add_test(NAME VideoTimelineModelTest COMMAND VideoTimelineModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VideoTimelineModelTest")
 
+# ===== VIDEO TIMELINE ELEMENT TEST =====
+# UltraCanvasVideoTimeline in a real window: geometry, hit testing and the
+# edits that mouse and key events turn into reported changes (trim with
+# ripple, reorder, free-track move, blade split, marker, delete, drop, the
+# ruler, the wheel). ULTRACANVAS_SCREENSHOT_DIR=<dir> makes it write the
+# window as a PPM. Needs the framework and a display; skips itself without one.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building VideoTimelineElementTest...")
+    add_executable(VideoTimelineElementTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VideoTimelineElementTest.cpp
+    )
+    target_include_directories(VideoTimelineElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VideoTimelineElementTest PRIVATE cxx_std_20)
+    target_link_libraries(VideoTimelineElementTest PRIVATE UltraCanvas)
+    set_target_properties(VideoTimelineElementTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VideoTimelineElementTest COMMAND VideoTimelineElementTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VideoTimelineElementTest")
+else()
+    message(STATUS "  VideoTimelineElementTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CLIPBOARD DIB TEST =====
 # UltraCanvasClipboardDib: the CF_DIB / CF_DIBV5 <-> PNG conversion the
 # Windows clipboard backend puts every image through. Byte work plus cairo's
