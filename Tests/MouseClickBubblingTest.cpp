@@ -17,6 +17,7 @@
 //
 // Opens a real window, so it runs under Xvfb (xvfb-run -a) and skips itself
 // without a DISPLAY.
+// Version: 1.2.0 - a button's onDoubleClick takes the double-click instead of a second press
 // Version: 1.1.0 - a button whose handler rebuilds the list it sits in stays alive
 //                  until it has handled the press
 // Version: 1.0.0
@@ -340,6 +341,30 @@ int main() {
              aliveInHandler);
         TEST("and is released once it has handled the " + kind, pressed.expired());
     }
+
+    // ----- A button that takes its double-click -----
+    // A list row selects on a click and renames on a double-click (UltraPaint's
+    // layer names). Set, onDoubleClick takes the double-click instead of the
+    // second press it otherwise counts as, which would toggle the row back.
+    list->ClearChildren();
+    auto named = std::make_shared<UltraCanvasButton>("named", 10, 10, 200, 30, "Layer 2");
+    named->SetCanToggled(true);
+    int toggles = 0, doubleClicks = 0;
+    named->onToggle = [&toggles](bool) { ++toggles; };
+    named->onDoubleClick = [&doubleClicks]() { ++doubleClicks; };
+    list->AddChild(named);
+    Frame(window, outer);
+    Press(app, window, *named);
+    Press(app, window, *named, UCEventType::MouseUp);
+    TEST("the first click toggles the button", toggles == 1 && named->IsPressed());
+    Press(app, window, *named, UCEventType::MouseDoubleClick);
+    TEST("onDoubleClick takes the double-click, so it does not climb",
+         Count("list") == 0 && Count("outer") == 0);
+    Press(app, window, *named, UCEventType::MouseUp);
+    TEST("the double-click goes to onDoubleClick, not to a second toggle",
+         doubleClicks == 1 && toggles == 1 && named->IsPressed());
+    Press(app, window, *named, UCEventType::MouseDoubleClick, UCMouseButton::Middle);
+    TEST("a middle double-click is not a double-click on the button", doubleClicks == 1);
 
     std::cerr << std::endl << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;

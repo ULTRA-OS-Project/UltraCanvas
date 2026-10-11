@@ -92,7 +92,10 @@ transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
   otherwise crops to the selection),
   Flip, Rotate, Flatten.
 - **Layer:** New, Duplicate, Delete, Merge Down, Move Up / Down,
-  Properties (name, opacity, blend mode, visibility, lock).
+  Properties (name, opacity, blend mode, visibility, lock). In the Layers
+  panel a click selects a layer and a double-click on its name renames it in
+  place (Enter or a click elsewhere keeps the name, Escape the old one; undo
+  takes a rename back).
 - **Select:** All, None, Invert, From Layer Alpha, Feather, Grow, Shrink.
 - **Adjust:** Brightness / Contrast, Hue / Saturation, Gamma, Levels,
   Curves, Posterize, Threshold, Solarize, Invert, Desaturate, Sepia,

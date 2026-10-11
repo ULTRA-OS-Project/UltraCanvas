@@ -1,5 +1,6 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.9.0 - onDoubleClick takes a left double-click instead of a second press
 // Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
 //                  centred half a pixel off was resampled and blurred
 // Version: 2.7.0
@@ -1080,6 +1081,11 @@ namespace UltraCanvas {
                             return true;
                         }
                         return false;
+                    }
+                    if (event.type == UCEventType::MouseDoubleClick &&
+                        event.button == UCMouseButton::Left && onDoubleClick) {
+                        onDoubleClick();
+                        return true;
                     }
                     if (IsPressed() && canToggled) {
                         SetPressed(false);

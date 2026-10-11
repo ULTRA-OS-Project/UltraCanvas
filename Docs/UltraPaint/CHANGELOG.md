@@ -33,6 +33,13 @@
   framework keeps a widget alive while it handles an event (framework
   changelog: `keep-element-alive-during-event`). The side panel no longer
   jumps 16 px when a layer is clicked with the panel scrolled to its end.
+- **Rename a layer by double-clicking its name.** The first click selects
+  the layer as before; the double-click puts a text field with the name,
+  selected, in its place. Enter or a click anywhere else keeps the new name,
+  Escape the old one, and an empty name is ignored. A rename is one undo step
+  ("Rename Layer"), as from Layer > Properties. The name buttons' tooltip
+  says *Double-click to rename*. Built on the button's new `onDoubleClick`
+  (framework changelog: `button-on-double-click`).
 
 #### 2026-10-09 *0.2.12*
 - **The Fill tool can make an area transparent.** Filling with a colour

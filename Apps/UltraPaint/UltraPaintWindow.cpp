@@ -3,6 +3,9 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.1.3 - a double-click on a layer's name renames it in the list (a text
+//                  field in its place: Enter or a click elsewhere keeps the name,
+//                  Escape the old one); the name buttons say so in their tooltip
 // Version: 1.1.2 - the layer list is rebuilt after the click that changed it has been
 //                  handled (ScheduleLayerPanelRebuild): rebuilding it under the clicked
 //                  row's button freed the button mid-click and crashed
@@ -763,6 +766,7 @@ void UltraPaintWindow::InstallShortcuts() {
 void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const std::string& title) {
     (void)title;
     document = std::move(doc);
+    renamingLayer = -1;
     document->onStateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
     surface->SetDocument(document);
     // the surface installed its own structure hook; chain the panel refresh
@@ -1196,11 +1200,34 @@ void UltraPaintWindow::ScheduleLayerPanelRebuild() {
     });
 }
 
+void UltraPaintWindow::StartLayerRename(int index) {
+    if (!document || !document->GetLayer(index)) return;
+    document->SetActiveLayerIndex(index);
+    renamingLayer = index;
+    // From the name button's own double-click: the rebuild that swaps the
+    // button for the field runs once that click has been handled.
+    ScheduleLayerPanelRebuild();
+}
+
+void UltraPaintWindow::FinishLayerRename(bool keep, const std::string& name) {
+    const int index = renamingLayer;
+    if (index < 0) return;
+    // First: the rebuild below removes the field, and its focus loss then
+    // finds no rename to finish again.
+    renamingLayer = -1;
+    const std::string trimmed = Trim(name);
+    if (keep && document && document->GetLayer(index) && !trimmed.empty())
+        document->SetLayerName(index, trimmed);   // undoable, as "Rename Layer"
+    ScheduleLayerPanelRebuild();   // the name button back, also when nothing changed
+}
+
 void UltraPaintWindow::RebuildLayerPanel() {
     if (!layerRows || !document) return;
     layerRows->ClearChildren();
     const int n = document->GetLayerCount();
     const int active = document->GetActiveLayerIndex();
+    if (renamingLayer >= n) renamingLayer = -1;   // the layer went (undo, delete)
+    std::shared_ptr<UltraCanvasTextInput> renameField;
     // top of the stack first
     for (int i = n - 1; i >= 0; --i) {
         auto layer = document->GetLayer(i);
@@ -1214,23 +1241,55 @@ void UltraPaintWindow::RebuildLayerPanel() {
         vis->onStateChanged = [this, i](CheckedState, CheckedState s) { document->SetLayerVisible(i, s == CheckedState::Checked); };
         vis->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         row->AddChild(vis);
-        std::string label = layer->name;
-        if (layer->locked) label += "  [locked]";
-        auto btn = std::make_shared<UltraCanvasButton>("up-lsel-" + std::to_string(i), 0, 0, 0, 24, label);
-        btn->SetCanToggled(true);
-        btn->SetPressed(i == active);
-        ButtonStyle st = btn->GetStyle();
-        st.fontSize = 11.0f;
-        btn->SetStyle(st);
-        btn->onToggle = [this, i](bool) {
-            document->SetActiveLayerIndex(i);
-            // Also when `i` was already active: the click released the
-            // button, and the rebuild presses it again.
-            ScheduleLayerPanelRebuild();
-        };
-        btn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        row->AddChild(btn);
+        if (i == renamingLayer) {
+            auto field = CreateTextInput("up-lname-" + std::to_string(i), 0, 0, 0, 24);
+            TextInputStyle ts = field->GetStyle();
+            ts.fontStyle.fontSize = 11.0f;
+            field->SetStyle(ts);
+            field->SetShowValidationState(false);   // a name, not a form
+            field->SetText(layer->name);
+            field->onEnterPressed = [this](const std::string& text) {
+                FinishLayerRename(true, text);
+                return true;
+            };
+            field->onEscapePressed = [this]() {
+                FinishLayerRename(false, "");
+                return true;
+            };
+            // A click anywhere else keeps the name, as Enter does.
+            UltraCanvasTextInput* raw = field.get();
+            field->onFocusLost = [this, raw]() { FinishLayerRename(true, raw->GetText()); };
+            field->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(field);
+            renameField = field;
+        } else {
+            std::string label = layer->name;
+            if (layer->locked) label += "  [locked]";
+            auto btn = std::make_shared<UltraCanvasButton>("up-lsel-" + std::to_string(i), 0, 0, 0, 24, label);
+            btn->SetCanToggled(true);
+            btn->SetPressed(i == active);
+            btn->SetTooltip("Double-click to rename");
+            ButtonStyle st = btn->GetStyle();
+            st.fontSize = 11.0f;
+            btn->SetStyle(st);
+            btn->onToggle = [this, i](bool) {
+                document->SetActiveLayerIndex(i);
+                // Also when `i` was already active: the click released the
+                // button, and the rebuild presses it again.
+                ScheduleLayerPanelRebuild();
+            };
+            // The first click has selected the layer; the second renames it.
+            btn->onDoubleClick = [this, i]() { StartLayerRename(i); };
+            btn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(btn);
+        }
         layerRows->AddChild(row);
+    }
+    if (renameField) {
+        // In the window now: it can take the keyboard. The whole name is
+        // selected, so typing replaces it.
+        renameField->SetFocus(true);
+        renameField->SelectAll();
     }
     layerRows->SetBounds(Rect2Df(0, 0, kRightInner, static_cast<float>(n) * 28.0f));
     if (auto layer = document->GetActiveLayer()) {
