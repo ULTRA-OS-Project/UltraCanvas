@@ -2,6 +2,7 @@
 // The app-wide preferences behind the Settings window: the remote-image
 // policy, trusted websites (domain matching) and the reading options survive
 // a save and a load, and an old file keeps the defaults.
+// Version: 0.5.0 - the sender-icon downloads are off by default
 // Version: 0.4.0 - folder_tree_content, account_order
 // Version: 0.3.0 - trusted_senders, blocked_senders
 // Version: 0.2.0 - link_display (status bar / tooltip)
@@ -42,6 +43,14 @@ TEST(preferences_domain_matches_subdomains_only) {
     REQUIRE(p.IsTrustedDomain("https://claude.ai.anthropic.com/i.png"));
     REQUIRE(p.IsTrustedDomain("mail.anthropic.com"));
     REQUIRE(!p.IsTrustedDomain("https://anthropic.com.example/i.png"));
+}
+
+// Privacy by default: a fresh install downloads no sender icon from any
+// third-party website until the reader turns it on.
+TEST(preferences_sender_icon_downloads_off_by_default) {
+    Preferences p;
+    REQUIRE(!p.fetchSenderIcons);
+    REQUIRE(!p.fetchSiteIcons);
 }
 
 TEST(preferences_round_trip) {
