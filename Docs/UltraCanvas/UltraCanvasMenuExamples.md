@@ -6,7 +6,7 @@
 
 **UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, scrolling for long menus, and cross-platform compatibility.
 
-**Version:** 1.3.0  
+**Version:** 1.4.0  
 **Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework
 
@@ -202,7 +202,7 @@ struct MenuStyle {
     int itemInset;           // Gap between the panel's border and a row's highlight
     int itemCornerRadius;    // Rounding of a row's highlight
     int iconSpacing;         // Space between icon and text
-    bool tintIcons;          // Draw icons in the label's colour, as masks (default false; on in Dark())
+    bool tintIcons;          // Every icon in the label's colour, coloured ones too (= MenuIconTint::AllIcons; default false)
     int shortcutSpacing;     // Space before shortcut text
     int separatorHeight;     // Height of a separator row; the 1px line is centred in it
     int borderWidth;         // Border thickness
@@ -211,6 +211,7 @@ struct MenuStyle {
     int maxWidth;            // Maximum menu width (0 = none; labels ellipsize beyond it)
     MenuRadioShape radioShape;  // Outline of a Radio item's indicator: Round (default) or Square
     MenuCheckboxShape checkboxShape;  // Outline of a Checkbox item's indicator: Square (default) or Round
+    MenuIconTint iconTint;   // Symbolic (default): grey icons take the text colour; Original; AllIcons
 
     // Submenu
     int submenuDelay;        // Hover delay before opening (ms)
@@ -368,9 +369,40 @@ again with `CloseMenu()`:
 // Open as a popup; pos is window-relative (e.g. UCEvent::pointerWindow)
 void OpenMenu(const Point2Di& pos, UltraCanvasWindowBase& window, const PopupElementSettings& settings);
 
+// Open for a widget whose bounds in the window are `anchor`: below it, or
+// above it when it does not fit below
+void OpenMenuAnchored(const Rect2Di& anchor, UltraCanvasWindowBase& window,
+                      const PopupElementSettings& settings, int gap = 2,
+                      MenuAnchorAlign align = MenuAnchorAlign::Left);
+
 // Close the popup
 void CloseMenu();
 ```
+
+`OpenMenu` is for a context menu at the pointer: the menu's top-left corner
+goes at `pos`, and when it does not fit below `pos` it ends there instead.
+A menu that belongs to a widget - a drop-down button, a chip, a field -
+opens with `OpenMenuAnchored` and the widget's bounds, as GTK's popovers and
+Windows' `TrackPopupMenuEx` with an exclude rectangle place theirs: `gap`
+pixels below the widget, or, when it does not fit there and does above,
+ending `gap` pixels above it. It never covers the widget, and the caller
+does not size it - the menu measures itself, panel padding and border
+included. `MenuAnchorAlign::Right` lines the menu's right edge up with the
+widget's (a button at the right end of a toolbar); a menu wider than the
+room to the window's edge moves left to fit, as any menu does.
+
+```cpp
+void ShowAttachmentMenu(UltraCanvasMenu& menu, UltraCanvasUIElement& chip) {
+    UltraCanvasWindowBase* window = chip.GetWindow();
+    if (!window) return;
+    PopupElementSettings settings;
+    settings.popupOwner = chip.weak_from_this();   // clicks on the chip still reach it
+    menu.OpenMenuAnchored(chip.GetBoundsInWindow(), *window, settings);
+}
+```
+
+A menubar's drop-downs are anchored the same way to their item, so a bar at
+the foot of a window opens them upwards instead of over itself.
 
 ```cpp
 struct PopupElementSettings {
@@ -626,15 +658,34 @@ hidden.iconPath = iconDir + "hidden-files.svg";   // tick + icon + label
 menu->AddItem(hidden);
 ```
 
-The icon of a disabled item is drawn faded (35 % opacity), with its label
-greyed. A menubar (horizontal menu) lays each item out on its own and has no
+A menubar (horizontal menu) lays each item out on its own and has no
 columns.
 
-`MenuStyle::tintIcons` draws every icon as a mask in its label's colour
-instead: a flat, single-colour icon - the set in `media/icons/menu/` - then
-reads on a dark menu, and takes the highlighted row's text colour and a
-disabled item's grey. `MenuStyle::Dark()` turns it on; the other presets
-draw an icon in its own colours, so a coloured icon stays coloured.
+### Icon Colours
+
+Menu icons are mostly line glyphs drawn in black or grey - what GTK calls
+*symbolic* icons, like the ones in `media/icons/menu`. Drawn as they are,
+they vanish on a dark menu. With `iconTint` at its default,
+`MenuIconTint::Symbolic`, the menu paints an icon drawn in one shade of grey
+in the entry's text colour instead, exactly as it paints the label: in
+`textColor`, in `hoverTextColor` while hovered, in `disabledTextColor` when
+the entry is disabled - so one set of icons serves the light and the dark
+theme. An icon with colour in it (an application's, a file type's), or in
+more than one shade - black and white, as a half-filled disc for a theme
+switch - keeps its colours, and such an icon on a disabled entry is drawn
+faded (35 % opacity).
+`MenuIconTint::Original` draws every icon as it is (the earlier behaviour);
+`MenuIconTint::AllIcons` paints coloured icons in the text colour too.
+
+```cpp
+MenuStyle style = MenuStyle::Dark();
+style.iconTint = MenuIconTint::Original;   // keep black icons black
+menu->SetStyle(style);
+```
+
+`MenuStyle::tintIcons = true` draws every icon in its label's colour,
+coloured ones too - the same as `MenuIconTint::AllIcons` - for a menu whose
+icons are all meant to be flat:
 
 ```cpp
 auto tinted = std::make_shared<UltraCanvasMenu>("Tinted", 0, 0, 200, 0);

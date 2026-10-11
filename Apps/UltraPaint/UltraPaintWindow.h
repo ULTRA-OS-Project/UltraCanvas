@@ -8,8 +8,11 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.1.3 - StartLayerRename / FinishLayerRename: a layer is renamed in the list
+// Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
+// Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-09-12
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -72,6 +75,10 @@ private:
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;
+    // A menu entry's icon: the 16 px set (media/icons/ultrapaint/16).
+    std::string MenuIconPath(const std::string& file) const;
+    // A tool's icon for the palette: the 28 px set (media/icons/ultrapaint/28).
+    std::string ToolIconPath(const std::string& file) const;
     std::string TexterIconPath(const std::string& file) const;
 
     // ----- document -----
@@ -166,6 +173,15 @@ private:
     void SelectTool(PaintToolId id);
     void RebuildToolOptions();
     void RebuildLayerPanel();
+    // Rebuilds the layer list once the current event has been handled: the
+    // request usually comes from a widget in that list (a row's button or
+    // visibility box), which the rebuild would destroy under its own handler.
+    void ScheduleLayerPanelRebuild();
+    // Renaming a layer in the list: a double-click on its name puts a text
+    // field in the name's place; Enter or a click elsewhere keeps what was
+    // typed, Escape the old name.
+    void StartLayerRename(int index);
+    void FinishLayerRename(bool keep, const std::string& name);
     PaintTool* ActiveTool() const;
     void PlaceText(double x, double y, const UltraPaintTextResult& r);
 
@@ -246,6 +262,11 @@ private:
     std::string pendingImport;
     double pointerX = 0, pointerY = 0;
     bool pointerInside = false;
+    bool layerPanelRebuildPending = false;
+    int renamingLayer = -1;   // the layer whose name the list is editing, or -1
+    // Expires with the window, so a rebuild posted to the event loop does
+    // not run on a window that closed in between.
+    std::shared_ptr<bool> lifeToken = std::make_shared<bool>(true);
 };
 
 } // namespace UltraCanvas

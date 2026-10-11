@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
+// Version: 0.3.1 - the chip's menu is anchored to the chip (OpenMenuAnchored): below
+//                  it, or above it at the foot of the window, ending just over it;
+//                  it no longer guessed the menu's height and covered the chip's top
 // Version: 0.3.0 - the chip shows the paperclip (an UltraCanvasImageElement)
 //                  instead of a type emoji, which a font without colour emoji
 //                  drew as a box; a click opens the chip's menu under it, a
@@ -138,26 +141,18 @@ void AttachmentChip::ShowMenu(const UCEvent* atPointer) {
     // second click of a double-click, or the click that closes the menu.
     settings.popupOwner = weak_from_this();
 
-    Point2Di at;
     if (atPointer) {
-        at = atPointer->pointerWindow;
-    } else {
-        // Under the chip, its left edges lined up. The chips sit at the foot
-        // of the window, where the menu does not fit below: then it opens
-        // above the chip, ending just over it. (Given the chip's top, the
-        // menu would open downwards from there whenever it fits below that
-        // point - over the chip, where the second click of a double-click
-        // would land on Open.) A vertical popup is as tall as its items.
-        const int menuH = 2 * menu_->GetStyle().itemHeight;
-        constexpr int kMenuGap = 2;
-        const int left = static_cast<int>(GetXInWindow());
-        const int top = static_cast<int>(GetYInWindow());
-        const int bottom = top + static_cast<int>(GetHeight());
-        const bool roomBelow = bottom + kMenuGap + menuH <= window->GetHeight();
-        at = Point2Di(left, roomBelow ? bottom + kMenuGap
-                                      : std::max(0, top - kMenuGap - menuH));
+        menu_->OpenMenu(atPointer->pointerWindow, *window, settings);
+        return;
     }
-    menu_->OpenMenu(at, *window, settings);
+    // Under the chip, its left edges lined up. The chips sit at the foot of
+    // the window, where the menu does not fit below: then it opens above the
+    // chip, ending just over it - never over the chip, where the second click
+    // of a double-click would land on Open. The menu measures itself, its
+    // panel padding and border included.
+    const Rect2Di chip(static_cast<int>(GetXInWindow()), static_cast<int>(GetYInWindow()),
+                       static_cast<int>(GetWidth()), static_cast<int>(GetHeight()));
+    menu_->OpenMenuAnchored(chip, *window, settings, 2);
 }
 
 // ---- AttachmentStrip -------------------------------------------------------

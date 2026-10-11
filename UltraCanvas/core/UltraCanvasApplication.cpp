@@ -1,12 +1,14 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.7.1 - an element is kept alive while it handles an event, so a
+//                  handler that rebuilds the tree around it cannot free it mid-event
 // Version: 1.7.0 - a mouse press the element under the pointer does not take
 //                  climbs to the elements around it (DispatchPressToAncestors)
 // Version: 1.6.0 - Windows: the system fonts are scanned on a thread; the start uses
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -1781,6 +1783,13 @@ namespace UltraCanvas {
         }
 
         currentEvent = event;
+
+        // A handler can rebuild the part of the tree the element sits in -
+        // a list row whose button rebuilds the list - and so drop the last
+        // reference to the element while its OnEvent is still running; the
+        // code after the handler then touched freed memory. The element
+        // stays alive until OnEvent has returned, detached if it was removed.
+        const auto keepAlive = elem->weak_from_this().lock();
 
         if (window->HandleEventFilters(event)) {
             return true;

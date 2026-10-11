@@ -1,3 +1,13 @@
+#### 2026-10-11 *1.63*
+- **Menus opened from buttons stay clear of them.** The Recent files menu of
+  the toolbar and the search bar's settings and history menus open with the
+  framework's `OpenMenuAnchored` (framework changelog:
+  `menu-anchors-symbolic-icons`): below their button, or above it when there
+  is no room below - a search bar at the foot of the window no longer opens
+  its menus over itself. The menus' line icons (zoom, theme and the rest)
+  are painted in the entry's text colour, so they are light in the dark
+  theme instead of black on dark grey.
+
 #### 2026-10-11 *1.62*
 - **`--help` and `--version` print again.** Both wrote to the framework's
   debug log, which a Release build keeps off, so `UltraTexter --help` printed

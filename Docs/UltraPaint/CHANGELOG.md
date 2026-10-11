@@ -1,3 +1,46 @@
+#### 2026-10-11 *0.2.14*
+- **Sharp, clearer tool icons.** The palette's icons were drawn on a 24-unit
+  grid with thin 1.8-unit strokes and shown at 22 px, half a pixel off: every
+  line fell between two pixels, the selection icons' dashes ran together and
+  several tools looked alike. All 23 are redrawn with 2 px strokes whose
+  straight edges sit on whole pixels, in two sets - `media/icons/ultrapaint/28/`
+  for the palette, shown at 28 px in 36 px buttons, and the 24-unit set for
+  24 px and smaller (menus). The rectangle, ellipse and lasso selections are
+  marching ants with gaps of 3 px or more, so they stay apart at 16 px; the
+  eyedropper, pencil, brush, airbrush (a spray can), clone stamp (a stamp),
+  smudge (a fingertip on a smear), dodge, burn, fill (the bucket with a
+  solid drop), gradient (a real gradient), line and text icons are each
+  their own shape. The framework now draws a button's icon on whole pixels
+  (framework changelog: `button-icon-pixel-grid`). Where the window is too
+  short for every tool's button, the palette scrolls instead of squeezing
+  them.
+- **Flat buttons.** The tool palette and the toolbar no longer draw a box
+  around each button: a soft grey rounded highlight marks the button under
+  the pointer and a light blue one the active tool.
+- **Every menu entry has an icon.** All 80 entries of File, Edit, Image,
+  Layer, Select, Adjust, Filter, View and Help - each adjustment and filter
+  included, found by its id - show an icon from a new 16 px set
+  (`media/icons/ultrapaint/16/`): a 16-unit grid with 1 px lines on whole
+  pixels, sharp at the menus' 16 px, in one style instead of Texter's filled
+  icons beside UltraPaint's line ones. They are drawn in one shade of grey,
+  so the menus paint them in the entry's text colour, greyed when disabled.
+- **Double-clicking a layer's name no longer crashes.** Each row's button
+  selected its layer and rebuilt the layer list at once, from inside its own
+  click - the rebuild destroyed the button while it was still handling the
+  click, and the next thing it did crashed UltraPaint (double-clicking
+  *Layer 2* after *New Layer* did it every time). The list is now rebuilt
+  once the click has been handled (`ScheduleLayerPanelRebuild`), and the
+  framework keeps a widget alive while it handles an event (framework
+  changelog: `keep-element-alive-during-event`). The side panel no longer
+  jumps 16 px when a layer is clicked with the panel scrolled to its end.
+- **Rename a layer by double-clicking its name.** The first click selects
+  the layer as before; the double-click puts a text field with the name,
+  selected, in its place. Enter or a click anywhere else keeps the new name,
+  Escape the old one, and an empty name is ignored. A rename is one undo step
+  ("Rename Layer"), as from Layer > Properties. The name buttons' tooltip
+  says *Double-click to rename*. Built on the button's new `onDoubleClick`
+  (framework changelog: `button-on-double-click`).
+
 #### 2026-10-10 *0.2.13*
 - **`--help` and `--version` print again.** Both wrote to the framework's
   debug log, which a Release build keeps off, so `UltraPaint --help` printed

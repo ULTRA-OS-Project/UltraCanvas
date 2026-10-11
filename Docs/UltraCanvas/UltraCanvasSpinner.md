@@ -170,3 +170,5 @@ std::function<void()> onEditingFinished;
   mode, or the `min..max` grid stepped by `step` in numeric modes). Editable
   numeric fields can still be typed into via a **double-click**. Numeric grids
   larger than 512 entries are not listed (the arrows / typing remain available).
+  The list opens under the field, or above it when there is no room below -
+  never over the field (`UltraCanvasMenu::OpenMenuAnchored`).

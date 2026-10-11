@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.18.2 - the More menu is anchored to its button: above it when there is
+//                   no room below
 // Version: 0.18.1 - a blocked sender's mail: the strip says "You blocked this sender"
 //                   and how to undo it
 // Version: 0.18.0 - the sender's menu: a right-click on the sender's name or badge
@@ -51,7 +53,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailHeaderText.h"
@@ -383,12 +385,13 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     moreBtn->onClick = [this, moreRaw]() {
         auto* win = moreRaw->GetWindow();
         if (!win || !moreMenu_) return;
-        // Anchor the menu under the button (window coordinates).
+        // Anchored to the button (window coordinates): under it, or above
+        // it when there is no room below.
         Rect2Df b = moreRaw->GetBoundsInWindow();
         win->AddChild(moreMenu_);
-        moreMenu_->OpenMenu(Point2Di(static_cast<int>(b.x),
-                                     static_cast<int>(b.y + b.height)),
-                            *win, PopupElementSettings());
+        moreMenu_->OpenMenuAnchored(Rect2Di(static_cast<int>(b.x), static_cast<int>(b.y),
+                                            static_cast<int>(b.width), static_cast<int>(b.height)),
+                                    *win, PopupElementSettings(), 0);
     };
 
     // Auto-height, word-wrapping subject: a long subject wraps to the pane

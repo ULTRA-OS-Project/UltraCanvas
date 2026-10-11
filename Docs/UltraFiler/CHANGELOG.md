@@ -1,3 +1,12 @@
+#### 2026-10-11 *1.72.3*
+- **Menus follow the theme and stay clear of their buttons.** The context
+  menu's line icons are painted in the entry's text colour - light on a dark
+  menu, greyed with a disabled entry - while application icons in *Open
+  with* keep their colours (framework changelog:
+  `menu-anchors-symbolic-icons`). The New and Add drive menus open with the
+  framework's `OpenMenuAnchored`: below their button, or above it when there
+  is no room below.
+
 #### 2026-10-11 *1.72.2*
 - **`--help` and `--version` print again.** Both wrote to the framework's
   debug log, which a Release build keeps off, so `UltraFiler --help` printed
