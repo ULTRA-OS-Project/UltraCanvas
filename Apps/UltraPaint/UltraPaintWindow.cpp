@@ -479,6 +479,8 @@ void UltraPaintWindow::BuildToolbar() {
     toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     ToolbarAppearance app = toolbar->GetAppearance();
     app.showIconLabels = false;
+    app.style = ToolbarStyle::Flat;
+    app.hoverBackgroundColor = Color(0, 0, 0, 18);
     toolbar->SetAppearance(app);
     toolbar->AddButton("up-tb-new", "", TexterIconPath("add-document.svg"), [this]() { CmdNew(); })->SetTooltip("New image (Ctrl+N)");
     toolbar->AddButton("up-tb-open", "", TexterIconPath("folder-open.svg"), [this]() { CmdOpen(); })->SetTooltip("Open (Ctrl+O)");
@@ -496,6 +498,14 @@ void UltraPaintWindow::BuildToolbar() {
     toolbar->AddSeparator("up-tb-s3");
     toolbar->AddButton("up-tb-layer", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip("New layer (Ctrl+Shift+N)");
     toolbar->AddButton("up-tb-export", "", IconPath("export.svg"), [this]() { CmdExport(); })->SetTooltip("Export with options (Ctrl+E)");
+    for (auto& c : toolbar->Children()) {
+        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
+            ButtonStyle flat = b->GetStyle();
+            flat.cornerRadius = 6.0f;
+            flat.pressedColor = Color(0, 0, 0, 30);
+            b->SetStyle(flat);
+        }
+    }
     window->AddChild(toolbar);
 }
 
@@ -527,6 +537,15 @@ void UltraPaintWindow::BuildToolPalette() {
         // the old 24-unit icons did at 22 px.
         b->SetIconSize(kToolIcon, kToolIcon);
         b->SetElementSize(Size2Df(kToolButton, kToolButton));
+        // Flat: no box around a tool; a soft grey under the pointer and the
+        // active tool on a light blue, both rounded.
+        ButtonStyle flat = b->GetStyle();
+        flat.normalColor = Colors::Transparent;
+        flat.borderWidth = 0;
+        flat.cornerRadius = 6.0f;
+        flat.hoverColor = Color(0, 0, 0, 18);
+        flat.pressedColor = Color(0, 103, 192, 46);
+        b->SetStyle(flat);
         toolButtons.push_back(b);
     }
     body->AddChild(palette);
