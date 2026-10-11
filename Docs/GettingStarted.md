@@ -375,11 +375,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return main(__argc, __arg
 The `#ifdef` blocks are the whole of what differs per platform in an
 application's entry point: Linux needs X11 threading and the signal handlers,
 Windows needs `WinMain` because the executables are GUI-subsystem programs,
-and macOS needs neither. On Windows also mark the target `WIN32_EXECUTABLE TRUE`
-so no console opens beside the window (for an app in this repository, add it
-to the list under *Hide console window on Windows Release builds* in the root
-`CMakeLists.txt`; an app whose command-line modes print into the prompt stays
-off that list), and embed the icon in the `.exe` with
+and macOS needs neither. On Windows also call `ultracanvas_windows_gui_app(MyApp)`
+(`cmake/UltraCanvasWindowsGuiApp.cmake`), which makes a Release build a
+GUI-subsystem program, so no console opens beside the window, and still lets
+`--help` print into the prompt it was typed at (for an app in this repository,
+add it to the list under *Hide console window on Windows Release builds* in the
+root `CMakeLists.txt`; an app whose command-line modes print into the prompt
+stays off that list), and embed the icon in the `.exe` with
 `ultracanvas_embed_app_icon(MyApp media/appicon/MyApp.png)`, which is what
 Explorer and the taskbar read.
 

@@ -238,6 +238,12 @@ set_target_properties(UltraTexter PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
+# Windows Release builds open no console window beside the editor, as the
+# Texter target of the root build does; --help and --version still print into
+# the prompt it was typed at (cmake/UltraCanvasWindowsGuiApp.cmake).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasWindowsGuiApp.cmake")
+ultracanvas_windows_gui_app(UltraTexter)
+
 # ===== INSTALLATION =====
 install(TARGETS UltraTexter
         RUNTIME DESTINATION bin

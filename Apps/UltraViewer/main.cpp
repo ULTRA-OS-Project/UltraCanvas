@@ -4,12 +4,13 @@
 // video and audio (with player transport controls), documents (PDF),
 // e-books (EPUB/FB2/MOBI/AZW), spreadsheets (ODS/CSV/TSV), 3D models (STL),
 // text / source / markdown and UltraCanvas Document containers (*.ucd).
-// Version: 1.0.0
-// Last Modified: 2026-08-06
+// Version: 1.0.1
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
 #include <exception>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -53,19 +54,19 @@ static void SignalHandler(int signal) {
 #endif
 
 static void PrintUsage(const char* programName) {
-    debugOutput << "UltraViewer - Universal Media Viewer powered by UltraCanvas Framework" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Usage: " << programName << " [options] [file|folder ...]" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Options:" << std::endl;
-    debugOutput << "  -h, --help        Show this help message" << std::endl;
-    debugOutput << "  -v, --version     Show version information" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Examples:" << std::endl;
-    debugOutput << "  " << programName << "                    # Empty viewer (use Open or drag & drop)" << std::endl;
-    debugOutput << "  " << programName << " ~/Pictures         # Browse a folder" << std::endl;
-    debugOutput << "  " << programName << " photo.jpg          # Show a file, browse its folder" << std::endl;
-    debugOutput << "  " << programName << " a.png b.mp4 c.pdf  # View exactly these files" << std::endl;
+    std::cout << "UltraViewer - Universal Media Viewer powered by UltraCanvas Framework" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Usage: " << programName << " [options] [file|folder ...]" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  -h, --help        Show this help message" << std::endl;
+    std::cout << "  -v, --version     Show version information" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Examples:" << std::endl;
+    std::cout << "  " << programName << "                    # Empty viewer (use Open or drag & drop)" << std::endl;
+    std::cout << "  " << programName << " ~/Pictures         # Browse a folder" << std::endl;
+    std::cout << "  " << programName << " photo.jpg          # Show a file, browse its folder" << std::endl;
+    std::cout << "  " << programName << " a.png b.mp4 c.pdf  # View exactly these files" << std::endl;
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
@@ -78,14 +79,14 @@ int main(int argc, char* argv[]) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
         } else if (arg == "--version" || arg == "-v") {
-            debugOutput << "UltraViewer version " << ULTRAVIEWER_VERSION << std::endl;
-            debugOutput << "UltraCanvas Framework" << std::endl;
+            std::cout << "UltraViewer version " << ULTRAVIEWER_VERSION << std::endl;
+            std::cout << "UltraCanvas Framework" << std::endl;
             return EXIT_SUCCESS;
         } else if (arg[0] != '-') {
             pathsToOpen.push_back(arg);
         } else {
-            debugOutput << "Unknown argument: " << arg << std::endl;
-            debugOutput << "Use --help for usage information" << std::endl;
+            std::cerr << "Unknown argument: " << arg << std::endl;
+            std::cerr << "Use --help for usage information" << std::endl;
             return EXIT_FAILURE;
         }
     }

@@ -1,3 +1,16 @@
+#### 2026-10-11 *1.62*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraTexter --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
+- **The standalone build (`Apps/Texter/CMakeLists.txt`) opens no console
+  window on Windows either.** Its `UltraTexter.exe` was a console program in
+  every build; a Release build is now a GUI program, like the editor the
+  root build makes.
+
 #### 2026-10-10 *1.61*
 - **Menus in the dark theme keep their separators and outline.** The
   framework's menus took on the current desktop look (framework changelog:
