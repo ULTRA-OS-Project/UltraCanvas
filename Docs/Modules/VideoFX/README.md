@@ -15,7 +15,7 @@ segments.
 > frames, the segment timeline with 26 effects, speed, joins, 30 transitions
 > between segments, text and image overlays, still images with smooth pan and
 > zoom ("Ken Burns"), one-call slideshows, background music that dips under
-> speech, project files, GIF and audio-only output, lossless cut, the background job and the
+> speech, project files, waveforms for timelines and players, GIF and audio-only output, lossless cut, the background job and the
 > `videofx` command-line tool work today, on FFmpeg 4.4 to 8.x.
 > Picture-in-picture, keyframes and several free audio tracks are planned
 > (see *Roadmap*).
@@ -80,6 +80,7 @@ Every blocking call returns a `VideoFXResult`; on anything but `Ok`,
 | `VideoFX_ExtractFrame(path, seconds, frame, maxW, maxH)` | The frame shown at that time as RGBA, upright, scaled to fit |
 | `VideoFX_ExtractThumbnails(path, count, frames, maxW, maxH)` | `count` frames spread over the whole video — a filmstrip |
 | `VideoFX_SaveFrameImage(frame, "shot.png")` | The frame as PNG or JPEG |
+| `VideoFX_ExtractWaveform(path, waveform, blocksPerSecond, start, end)` | The sound's loudness envelope, block by block — what a timeline or a player draws as the waveform |
 
 `VideoFXMediaInfo::width` / `height` are the *displayed* size: a phone video
 stored landscape with a 90° rotation flag reports portrait, and frames come
@@ -92,6 +93,30 @@ for (const VideoFXFrame& f : strip) {
     // f.pixels is width*height*4 bytes of RGBA
 }
 ```
+
+**Waveforms.** `VideoFX_ExtractWaveform` mixes a file's sound — a song, or a
+video's soundtrack — to mono and cuts it into blocks of equal length, giving
+the lowest sample, the highest sample and the RMS of each (`VideoFXWaveform`:
+`minValues`, `maxValues`, `rmsValues`, `samplesPerBlock`, `sampleRate`,
+`start`, `duration`). Fifty blocks a second, the default, draws a clip at
+any zoom a timeline shows and holds a whole three-minute song in some 100 KB.
+Its member names match `UltraCanvasWaveformElement`'s `WaveformChannelData`,
+so an UltraCanvas application feeds it straight in:
+
+```cpp
+VideoFXWaveform envelope;
+if (VideoFX_ExtractWaveform("holiday.mp4", envelope) == VideoFXResult::Ok)
+    waveformElement->SetFromAudioFX(envelope);          // the element's field-by-field adapter
+
+VideoFX_ExtractWaveform("song.mp3", envelope, 50.0, 12.0, 20.0);   // seconds 12..20 only
+int block = envelope.BlockAt(15.0);                   // which block holds 15 s; -1 outside
+float peak = envelope.Peak();                         // the loudest sample, 0..1
+```
+
+The file is read from its start, so a range saves memory, not time. A file
+without sound fails with `NoMediaStreams`; a range beginning after the sound
+ends with `InvalidArgument`. `videofx waveform <file> [blocksPerSecond] [start [end]]`
+prints the same, one block a line.
 
 ---
 
@@ -735,6 +760,7 @@ videofx slideshow trip.mp4 *.jpg --music a.mp3 --music b.mp3 --music-crossfade 4
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --seconds 3
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --beats-per-image 8 --transition cut
 videofx beats song.mp3                                   # tempo and beat times
+videofx waveform song.mp3 10                             # loudness envelope, 10 blocks a second
 videofx slideshow trip.mp4 a.jpg b.jpg --keep 1:0.40,0.10,0.12,0.16 --keep 2:0.7,0.3,0.1,0.14
 videofx slideshow trip.mp4 *.jpg --no-faces                # plain motion, no face finding
 videofx faces family.jpg                                 # the faces the detector finds
@@ -791,6 +817,7 @@ generates its own clips, so it needs no media files.
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
+| 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
 | 4 | Proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |
 

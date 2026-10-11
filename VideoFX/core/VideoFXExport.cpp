@@ -12,8 +12,8 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.7.0
-// Last Modified: 2026-10-08
+// Version: 0.8.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -34,6 +34,10 @@
 #include <deque>
 #include <filesystem>
 #include <limits>
+#include <sstream>
+#include <locale>
+#include <iomanip>
+#include <functional>
 #include <memory>
 #include <set>
 #include <type_traits>
@@ -2111,9 +2115,12 @@ VideoFXResult Exporter::Run(const std::vector<VideoFXSegment>& segments) {
 // beat detection
 // ---------------------------------------------------------------------------
 
-// The whole sound of `path`, mixed to mono at the beat analysis rate
-VideoFXResult DecodeMono(const std::string& path, std::vector<float>& out) {
-    out.clear();
+// The whole sound of `path`, mixed to mono at `sampleRate` (0 = the file's
+// own rate), handed to `sink` in order as it is decoded, gaps and all closed
+// up. `rateOut` receives the rate before the first call of the sink. A sink
+// returning false stops the reading there.
+VideoFXResult DecodeMonoStream(const std::string& path, int sampleRate,
+                               const std::function<bool(const float*, int)>& sink, int* rateOut = nullptr) {
     FormatInputPtr fmt;
     VideoFXResult r = OpenInput(path, fmt);
     if (r != VideoFXResult::Ok) return r;
@@ -2125,14 +2132,18 @@ VideoFXResult DecodeMono(const std::string& path, std::vector<float>& out) {
     FramePtr decoded = MakeFrame();
     FramePtr scratch = MakeFrame();
     int64_t nextPts = 0;
+    bool enough = false;                // the sink has heard all it wants
     auto collect = [&](AVFrame* f) -> VideoFXResult {
+        if (enough) return VideoFXResult::Ok;
         const float* p = reinterpret_cast<const float*>(f->extended_data[0]);
-        out.insert(out.end(), p, p + f->nb_samples);
+        if (!sink(p, f->nb_samples)) enough = true;
         return VideoFXResult::Ok;
     };
     auto feed = [&](AVFrame* f) -> VideoFXResult {
         if (!graph.graph) {
-            const std::string desc = "[in]aresample=" + std::to_string(kBeatSampleRate) +
+            const int rate = sampleRate > 0 ? sampleRate : f->sample_rate;
+            if (rateOut) *rateOut = rate;
+            const std::string desc = "[in]aresample=" + std::to_string(rate) +
                                      ",aformat=sample_fmts=flt:channel_layouts=mono[out]";
             VideoFXResult br = BuildGraph(graph, false, {{"in", AudioBufferSourceArgs(f, AVRational{1, f->sample_rate})}},
                                           desc);
@@ -2155,7 +2166,7 @@ VideoFXResult DecodeMono(const std::string& path, std::vector<float>& out) {
         }
     };
     PacketPtr pkt = MakePacket();
-    while (av_read_frame(fmt.get(), pkt.get()) >= 0) {
+    while (!enough && av_read_frame(fmt.get(), pkt.get()) >= 0) {
         if (pkt->stream_index == stream) {
             int err = avcodec_send_packet(dec.get(), pkt.get());
             if (err < 0 && err != AVERROR(EAGAIN) && err != AVERROR_INVALIDDATA) {
@@ -2166,6 +2177,7 @@ VideoFXResult DecodeMono(const std::string& path, std::vector<float>& out) {
         }
         av_packet_unref(pkt.get());
     }
+    if (enough) return VideoFXResult::Ok;
     avcodec_send_packet(dec.get(), nullptr);
     if ((r = receive()) != VideoFXResult::Ok) return r;
     if (graph.src) {
@@ -2174,6 +2186,15 @@ VideoFXResult DecodeMono(const std::string& path, std::vector<float>& out) {
         if ((r = PullGraph(graph, scratch.get(), collect)) != VideoFXResult::Ok) return r;
     }
     return VideoFXResult::Ok;
+}
+
+// The whole sound of `path`, mixed to mono at the beat analysis rate
+VideoFXResult DecodeMono(const std::string& path, std::vector<float>& out) {
+    out.clear();
+    return DecodeMonoStream(path, kBeatSampleRate, [&](const float* p, int n) {
+        out.insert(out.end(), p, p + n);
+        return true;
+    });
 }
 
 // The beats of a song list on the slideshow's timeline: each song's beats
@@ -2421,6 +2442,68 @@ VideoFXResult VideoFX_DetectBeats(const std::string& path, VideoFXBeatInfo& info
     info.bpm = a.bpm;
     info.confidence = a.confidence;
     info.beats = a.beats;
+    return VideoFXResult::Ok;
+}
+
+VideoFXResult VideoFX_ExtractWaveform(const std::string& path, VideoFXWaveform& waveform,
+                                      double blocksPerSecond, double start, double end) {
+    ClearError();
+    waveform = VideoFXWaveform{};
+    if (!(blocksPerSecond >= 1.0 && blocksPerSecond <= 1000.0))
+        return Fail(VideoFXResult::InvalidArgument, "blocksPerSecond must be 1..1000");
+    if (start < 0.0 || end < 0.0 || (end > 0.0 && end <= start))
+        return Fail(VideoFXResult::InvalidArgument, "The range needs start >= 0 and end > start (0 = to the end)");
+
+    int rate = 0;
+    int perBlock = 0;
+    int64_t from = 0;                               // first sample wanted
+    int64_t to = std::numeric_limits<int64_t>::max();   // one past the last
+    int64_t position = 0;                           // samples heard so far
+    int inBlock = 0;
+    float lo = 0.0f;
+    float hi = 0.0f;
+    double squares = 0.0;
+    auto flush = [&]() {
+        if (inBlock == 0) return;
+        waveform.minValues.push_back(lo);
+        waveform.maxValues.push_back(hi);
+        waveform.rmsValues.push_back(static_cast<float>(std::sqrt(squares / inBlock)));
+        inBlock = 0;
+        lo = hi = 0.0f;
+        squares = 0.0;
+    };
+    auto sink = [&](const float* samples, int count) {
+        if (perBlock == 0) {                        // the rate is known now
+            perBlock = std::max(1, static_cast<int>(std::lround(rate / blocksPerSecond)));
+            from = static_cast<int64_t>(std::llround(start * rate));
+            if (end > 0.0) to = static_cast<int64_t>(std::llround(end * rate));
+        }
+        for (int i = 0; i < count; ++i, ++position) {
+            if (position < from) continue;
+            if (position >= to) return false;
+            const float v = std::clamp(samples[i], -1.0f, 1.0f);
+            lo = std::min(lo, v);                   // each block spans the zero line
+            hi = std::max(hi, v);
+            squares += static_cast<double>(v) * v;
+            if (++inBlock == perBlock) flush();
+        }
+        return true;
+    };
+    VideoFXResult r = DecodeMonoStream(path, 0, sink, &rate);
+    if (r != VideoFXResult::Ok) return r;
+    flush();
+    if (waveform.minValues.empty()) {
+        std::ostringstream msg;
+        msg.imbue(std::locale::classic());
+        msg << "The sound ends at " << std::fixed << std::setprecision(2)
+            << (rate > 0 ? static_cast<double>(position) / rate : 0.0) << " s, before the range starts";
+        return Fail(VideoFXResult::InvalidArgument, msg.str());
+    }
+    waveform.samplesPerBlock = perBlock;
+    waveform.totalBlocks = static_cast<int>(waveform.minValues.size());
+    waveform.sampleRate = rate;
+    waveform.start = static_cast<double>(from) / rate;
+    waveform.duration = static_cast<double>(std::min(position, to) - from) / rate;
     return VideoFXResult::Ok;
 }
 

@@ -4,6 +4,7 @@
 //
 //   videofx info <file>
 //   videofx beats <file>                 tempo and beat times of its sound
+//   videofx waveform <file> [blocksPerSecond] [start [end]]   its loudness envelope, block by block
 //   videofx faces <image>                frontal faces in a photo, as fractions of it
 //   videofx render <project.vfxproj> [out]   render a saved project (to its own output by default)
 //   videofx project <project.vfxproj>    what a project holds, and which of its media are missing
@@ -97,6 +98,7 @@ int Usage() {
     std::cerr <<
         "usage: videofx info <file>\n"
         "       videofx beats <file>\n"
+        "       videofx waveform <file> [blocksPerSecond] [start [end]]\n"
         "       videofx faces <image>\n"
         "       videofx render <project.vfxproj> [out]\n"
         "       videofx project <project.vfxproj>\n"
@@ -412,6 +414,30 @@ int Beats(const std::string& path) {
     return 0;
 }
 
+int Waveform(const std::vector<std::string>& args) {
+    const double blocksPerSecond = args.size() > 1 ? NumberOr(args[1], kNotANumber) : 10.0;
+    const double start = args.size() > 2 ? NumberOr(args[2], kNotANumber) : 0.0;
+    const double end = args.size() > 3 ? NumberOr(args[3], kNotANumber) : 0.0;
+    if (std::isnan(blocksPerSecond) || std::isnan(start) || std::isnan(end)) return Usage();
+    VideoFXWaveform w;
+    VideoFXResult r = VideoFX_ExtractWaveform(args[0], w, blocksPerSecond, start, end);
+    if (r != VideoFXResult::Ok) return Report(r);
+    std::cout.imbue(std::locale::classic());
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << args[0] << ": " << w.totalBlocks << " blocks of " << w.samplesPerBlock << " samples at "
+              << w.sampleRate << " Hz, " << w.start << " s to " << (w.start + w.duration) << " s, peak " << w.Peak()
+              << "\n";
+    std::cout << "    seconds     min     max     rms\n";
+    for (int i = 0; i < w.totalBlocks; ++i) {
+        std::cout << std::setw(11) << (w.start + i * w.SecondsPerBlock()) << " " << std::setw(7) << w.minValues[i]
+                  << " " << std::setw(7) << w.maxValues[i] << " " << std::setw(7) << w.rmsValues[i] << "  ";
+        const int bar = static_cast<int>(std::lround(w.rmsValues[i] * 40.0));
+        for (int b = 0; b < bar; ++b) std::cout << '#';
+        std::cout << "\n";
+    }
+    return 0;
+}
+
 int Faces(const std::string& path) {
     VideoFXFrame image;
     VideoFXResult r = VideoFX_ExtractFrame(path, 0.0, image);
@@ -507,6 +533,7 @@ int main(int argc, char** argv) {
     if (cmd == "info" && args.size() == 1) return Info(args[0]);
     if (cmd == "beats" && args.size() == 1) return Beats(args[0]);
     if (cmd == "faces" && args.size() == 1) return Faces(args[0]);
+    if (cmd == "waveform" && !args.empty() && args.size() <= 4) return Waveform(args);
     if (cmd == "project" && args.size() == 1) return ShowProject(args[0]);
     if (cmd == "render" && (args.size() == 1 || args.size() == 2)) {
         VideoFXProject p;

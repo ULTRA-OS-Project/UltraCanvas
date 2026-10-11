@@ -1775,6 +1775,39 @@ static void TestMusic(const VideoFXExportSettings& base) {
     CHECK(!beatInfo.HasBeat(), "a steady tone has no beat");
     CHECK(VideoFX_DetectBeats(TempPath("none.wav"), beatInfo) == VideoFXResult::FileNotFound, "missing file");
 
+    // ---- waveform: the loudness envelope a timeline draws ----
+    VideoFXWaveform wave;
+    CHECK_OK(VideoFX_ExtractWaveform(click, wave, 10.0), "waveform of the click track, 10 blocks a second");
+    CHECK(wave.IsValid() && wave.sampleRate == 44100 && wave.samplesPerBlock == 4410, "44.1 kHz, 4410 samples a block");
+    CHECK(wave.totalBlocks == 120 && Near(wave.duration, 12.0, 0.001) && wave.start == 0.0, "12 s: 120 blocks");
+    CHECK(wave.totalBlocks == 120 && wave.maxValues[0] == 0.0f && wave.minValues[0] == 0.0f && wave.rmsValues[0] == 0.0f,
+          "the first tenth of a second is silent");
+    CHECK(wave.totalBlocks == 120 && wave.maxValues[2] > 0.3f && wave.minValues[2] < -0.1f && wave.rmsValues[2] > 0.05f,
+          "the click at 0.25 s is in block 2");
+    CHECK(wave.totalBlocks == 120 && wave.maxValues[7] > 0.3f && wave.maxValues[8] == 0.0f,
+          "the next click at 0.75 s is in block 7, and block 8 is silent again");
+    CHECK(wave.Peak() > 0.3f && wave.Peak() <= 1.0f, "peak from the clicks, within 0..1");
+    CHECK(wave.BlockAt(0.25) == 2 && wave.BlockAt(11.99) == 119 && wave.BlockAt(12.0) == -1, "BlockAt");
+    CHECK_OK(VideoFX_ExtractWaveform(click, wave, 10.0, 1.0, 2.0), "seconds 1 to 2 only");
+    CHECK(wave.totalBlocks == 10 && Near(wave.start, 1.0, 0.001) && Near(wave.duration, 1.0, 0.001), "10 blocks from 1 s");
+    CHECK(wave.totalBlocks == 10 && wave.maxValues[2] > 0.3f && wave.maxValues[0] == 0.0f, "the click at 1.25 s is in its block 2");
+    CHECK(wave.BlockAt(0.5) == -1 && wave.BlockAt(1.25) == 2, "BlockAt counts from the range's start");
+    CHECK_OK(VideoFX_ExtractWaveform(click, wave, 10.0, 11.95), "the last 50 ms: one partial block");
+    CHECK(wave.totalBlocks == 1 && Near(wave.duration, 0.05, 0.001), "one block, 0.05 s");
+    CHECK_OK(VideoFX_ExtractWaveform(longSong, wave, 50.0), "waveform of the encoded 6 s tone");
+    CHECK(wave.IsValid() && Near(wave.duration, 6.0, 0.3) && Near(wave.totalBlocks, 300, 15), "about 300 blocks");
+    CHECK(Near(wave.Peak(), 0.125, 0.04), "the test tone peaks at 1/8");
+    CHECK(wave.IsValid() && Near(wave.rmsValues[wave.totalBlocks / 2], 0.125 / std::sqrt(2.0), 0.03),
+          "and its RMS is a sine's");
+    const std::string silentClip = TempPath("silent.mkv");
+    CHECK_OK(VideoFX_GenerateTestClip(silentClip, 1.0, 64, 48, 25.0, false), "make a clip without sound");
+    CHECK(VideoFX_ExtractWaveform(silentClip, wave) == VideoFXResult::NoMediaStreams, "no sound: NoMediaStreams");
+    CHECK(VideoFX_ExtractWaveform(TempPath("none.wav"), wave) == VideoFXResult::FileNotFound, "missing file");
+    CHECK(VideoFX_ExtractWaveform(click, wave, 0.5) == VideoFXResult::InvalidArgument, "blocksPerSecond below 1");
+    CHECK(VideoFX_ExtractWaveform(click, wave, 10.0, 2.0, 1.0) == VideoFXResult::InvalidArgument, "end before start");
+    CHECK(VideoFX_ExtractWaveform(click, wave, 10.0, 20.0) == VideoFXResult::InvalidArgument, "start past the end");
+    CHECK(!wave.IsValid(), "a failed call leaves an empty waveform");
+
     const uint32_t colours[4] = {0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF};
     std::vector<std::string> cardsOnBeat;
     for (int i = 0; i < 4; ++i) {

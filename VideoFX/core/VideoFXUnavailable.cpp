@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXUnavailable.cpp
 // Built instead of the FFmpeg sources when FFmpeg is not found: the API links,
 // VideoFX_IsAvailable() says false, and every operation returns NotAvailable.
-// Version: 0.7.0
+// Version: 0.8.0
 // Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
@@ -82,6 +82,9 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>&, const std
     return Unavailable();
 }
 VideoFXResult VideoFX_DetectBeats(const std::string&, VideoFXBeatInfo&) { return Unavailable(); }
+VideoFXResult VideoFX_ExtractWaveform(const std::string&, VideoFXWaveform&, double, double, double) {
+    return Unavailable();
+}
 
 // Project files: pure C++, they load and save without FFmpeg; rendering does not
 VideoFXResult VideoFX_SaveProject(const VideoFXProject& project, const std::string& path) {

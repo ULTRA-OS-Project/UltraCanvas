@@ -2027,7 +2027,8 @@ given, or found by the built-in detector) and one-call slideshows,
 background music (fades, looping, ducking under the segments' own sound,
 song lists crossfading into each other), beat detection and slideshows
 changing on the beat, project files (`.vfxproj`, JSON, media paths relative
-to the project, missing media reported),
+to the project, missing media reported), waveforms (loudness envelopes
+for timelines and players),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
 several free audio tracks, hardware encoders beyond the platform ones picked
@@ -2042,7 +2043,7 @@ automatically (VideoToolbox, Media Foundation), proxy media.
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
-  `VideoFXBeatInfo`, `VideoFXRect` (`VideoFXSegment::keepInView`,
+  `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXRect` (`VideoFXSegment::keepInView`,
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
   `VideoFXProject`, `VideoFXProjectKind`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
@@ -2051,7 +2052,9 @@ automatically (VideoToolbox, Media Foundation), proxy media.
   `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
   `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
-  `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`
+  `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
+  `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
+  the shape `UltraCanvasWaveformElement` takes)
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,

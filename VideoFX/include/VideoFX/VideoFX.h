@@ -1,8 +1,8 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.7.0
-// Last Modified: 2026-10-08
+// Version: 0.8.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -109,6 +109,18 @@ VideoFXResult VideoFX_ExtractThumbnails(const std::string& path, int count,
 
 // Write a frame as PNG or JPEG, chosen by the extension (.png / .jpg / .jpeg)
 VideoFXResult VideoFX_SaveFrameImage(const VideoFXFrame& frame, const std::string& path);
+
+// The loudness envelope of a file's sound - a song, or a video's soundtrack -
+// mixed to mono and cut into `blocksPerSecond` blocks a second (1..1000),
+// each with its lowest and highest sample and its RMS: what a timeline or a
+// player draws as the waveform. Seconds `start`..`end` of the file (`end` 0 =
+// to the end). 50 blocks a second draws a clip at any zoom a timeline shows;
+// a whole three-minute song is then some 100 KB. The file is read from its
+// start, so a range saves memory, not time. NoMediaStreams for a file
+// without sound.
+VideoFXResult VideoFX_ExtractWaveform(const std::string& path, VideoFXWaveform& waveform,
+                                      double blocksPerSecond = 50.0,
+                                      double start = 0.0, double end = 0.0);
 
 // ============================================================================
 // EDITING AND EXPORT

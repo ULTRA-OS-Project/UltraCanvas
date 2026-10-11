@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.7.0
-// Last Modified: 2026-10-08
+// Version: 0.8.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -553,6 +553,47 @@ struct VideoFXBeatInfo {
     std::vector<double> beats;      // seconds from the start of the file
 
     bool HasBeat() const { return bpm > 0.0 && !beats.empty(); }
+};
+
+// The loudness envelope of a file's sound (VideoFX_ExtractWaveform): the
+// sound mixed to mono and cut into blocks of equal length, with the lowest
+// sample, the highest sample and the RMS of each block. It is what a
+// timeline or an audio player draws as the waveform. The member names match
+// UltraCanvasWaveformElement's WaveformChannelData, so an UltraCanvas
+// application feeds it straight in: waveform->SetFromAudioFX(envelope).
+struct VideoFXWaveform {
+    std::vector<float> minValues;   // lowest sample of each block, -1..0
+    std::vector<float> maxValues;   // highest sample of each block, 0..1
+    std::vector<float> rmsValues;   // RMS of each block, 0..1
+    int samplesPerBlock = 0;        // at `sampleRate`
+    int totalBlocks = 0;            // == minValues.size(); the last block may be partial
+    int sampleRate = 0;             // Hz, the file's own rate
+    double start = 0.0;             // seconds into the file the first block begins
+    double duration = 0.0;          // seconds of sound the blocks cover
+
+    bool IsValid() const {
+        return totalBlocks > 0 && samplesPerBlock > 0 && sampleRate > 0 &&
+               minValues.size() == static_cast<size_t>(totalBlocks) &&
+               maxValues.size() == minValues.size() && rmsValues.size() == minValues.size();
+    }
+    double SecondsPerBlock() const {
+        return sampleRate > 0 ? static_cast<double>(samplesPerBlock) / sampleRate : 0.0;
+    }
+    // The block holding `seconds` into the file, or -1 outside the envelope
+    int BlockAt(double seconds) const {
+        if (!IsValid() || seconds < start) return -1;
+        const int block = static_cast<int>((seconds - start) / SecondsPerBlock());
+        return block < totalBlocks ? block : -1;
+    }
+    // The loudest sample in any block, 0..1
+    float Peak() const {
+        float peak = 0.0f;
+        for (size_t i = 0; i < maxValues.size(); ++i) {
+            if (maxValues[i] > peak) peak = maxValues[i];
+            if (-minValues[i] > peak) peak = -minValues[i];
+        }
+        return peak;
+    }
 };
 
 // ============================================================================
