@@ -1804,6 +1804,17 @@ namespace UltraCanvas {
                 .AddVariant("video", "Camera Recording")
                 .AddVariant("video", "Custom Controls");
 
+        videoBuilder.AddItem("videotimeline", "Video Timeline",
+                             "A media timeline to edit: clips on tracks under a ruler, trim, reorder, "
+                             "split, transitions, markers, beats, a playhead; every edit reported, never applied",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateVideoTimelineExamples(); },
+                             "DemoApp/UltraCanvasVideoTimelineExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasVideoTimeline.md")
+                .AddVariant("videotimeline", "Magnetic main track, free lanes")
+                .AddVariant("videotimeline", "Trim, split, transitions")
+                .AddVariant("videotimeline", "Light and dark palettes");
+
         // ===== TEXT DOCUMENTS =====
         auto textDocBuilder = DemoCategoryBuilder(this, DemoCategory::TextDocuments);
 
