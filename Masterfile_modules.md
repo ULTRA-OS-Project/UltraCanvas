@@ -2038,7 +2038,8 @@ background music (fades, looping, ducking under the segments' own sound,
 song lists crossfading into each other), beat detection and slideshows
 changing on the beat, project files (`.vfxproj`, JSON, media paths relative
 to the project, missing media reported), waveforms (loudness envelopes
-for timelines and players),
+for timelines and players), a preview (any frame of a timeline rendered
+as the export would make it, for an editor's viewer),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
 several free audio tracks, hardware encoders beyond the platform ones picked
@@ -2053,7 +2054,7 @@ automatically (VideoToolbox, Media Foundation), proxy media.
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
-  `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXRect` (`VideoFXSegment::keepInView`,
+  `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
   `VideoFXProject`, `VideoFXProjectKind`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
@@ -2065,6 +2066,12 @@ automatically (VideoToolbox, Media Foundation), proxy media.
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
   the shape `UltraCanvasWaveformElement` takes)
+- Preview: `VideoFXPreview` (`Open`, `Close`, `IsOpen`, `GetDuration`,
+  `GetWidth`, `GetHeight`, `GetFrameRate`, `SegmentAt`, `RenderFrame`: the
+  output frame at a timeline time, with the segment's effects, overlays
+  and, inside an overlap, the transition), `VideoFX_RenderFrame` (one frame
+  in one call), `VideoFX_PlanSlideshow` (a slideshow's segments and
+  settings before it is rendered)
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,

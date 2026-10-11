@@ -5,14 +5,14 @@
 # VideoFX is a shared library of its own (libVideoFX.so, libVideoFX.dylib,
 # VideoFX.dll / libVideoFX.dll) - not absorbed into the UltraCanvas core, so an
 # application that does no video never loads it or FFmpeg.
-# Version: 0.8.0
+# Version: 0.9.0
 # Last Modified: 2026-10-11
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 
 project(VideoFX
-    VERSION 0.8.0
+    VERSION 0.9.0
     DESCRIPTION "VideoFX - video editing and conversion engine"
     LANGUAGES CXX
 )
@@ -122,7 +122,7 @@ target_compile_definitions(VideoFX PRIVATE VIDEOFX_VERSION_STRING="${PROJECT_VER
 set_target_properties(VideoFX PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(VIDEOFX_BUILD_SHARED)
     # 0.x: every minor version may change the ABI, so it is in the soname
-    # (libVideoFX.so.0.8). The DLL goes to bin/ beside videofx.exe and
+    # (libVideoFX.so.0.9). The DLL goes to bin/ beside videofx.exe and
     # VideoFXTest.exe, where Windows looks for it.
     set_target_properties(VideoFX PROPERTIES
         VERSION ${PROJECT_VERSION}

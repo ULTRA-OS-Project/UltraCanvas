@@ -811,7 +811,7 @@ adds the segment logic over it.
 | # | Change | Needed by | Size |
 |---|---|---|---|
 | 8.1 | **Waveforms**: `VideoFX_ExtractWaveform` | The music bar, clip waveforms | **Done** in 0.8.0 |
-| 8.2 | **Render a frame**: `VideoFX_RenderFrame(segments, settings, seconds, frame, maxW, maxH)` — the output frame at a timeline time with the segment's effects and overlays and, inside an overlap, the transition; music ignored | The viewer while scrubbing (§5.5 level 2) | One function over the existing per-segment filter graph with a seek; a day or two |
+| 8.2 | **Render a frame**: `VideoFXPreview` (`Open` once, `RenderFrame(seconds, frame, maxW, maxH)` per position) and the one-call `VideoFX_RenderFrame` — the output frame at a timeline time with the segment's effects and overlays and, inside an overlap, the transition; music ignored. `VideoFX_PlanSlideshow` gives a slideshow's segments for the same | The viewer while scrubbing (§5.5 level 2) | **Done** in 0.9.0 |
 | 8.3 | **Picture-in-picture**: a segment-level list of overlay *video* clips with position, size, opacity and a time range, composed over the output frame | The overlay video lane | Roadmap stage 3; a week |
 | 8.4 | **Free audio tracks**: sound effects and voice-over placed at timeline times, mixed before the music | A2 and up | Roadmap stage 3; days |
 | 8.5 | **Draft render preset**: `VideoFXExportSettings::Draft(height)`, fast preset, low bit rate, for the playback proxy (§5.5 level 3) | Play | An hour |
@@ -886,7 +886,7 @@ image types for *Open with*.
 |---|---|---|
 | 0 | This proposal; the screens and specs in `Apps/UltraVideo/screens/`; waveforms in VideoFX 0.8.0 | PR #794 |
 | 1 | `UltraCanvasVideoTimeline` and `UltraCanvasTimecodeField`: model, operations, rendering of ruler, main track, clips with filmstrips, transitions, playhead, zoom, selection, keyboard, drop, context menu hook; docs, catalogue rows, DemoApp page, model tests | Framework release |
-| 2 | `VideoFX_RenderFrame` (8.2), the draft preset (8.5), export range (8.6) | VideoFX 0.9.0 |
+| 2 | `VideoFX_RenderFrame` (8.2, **done** in 0.9.0), the draft preset (8.5), export range (8.6) | VideoFX 0.9.0 |
 | 3 | `Apps/UltraVideo` 0.1.0: window, media bin, viewer with scrubbing, inspector (clip, audio, project), timeline wired through the mapping, undo, `.ultravideo`, export dialog | First app release |
 | 4 | Title lane and music lane in the element (spans, fades, song boundaries, beats, markers, work area, snapping, ripple and slip); the story wizard | App 0.2.0 |
 | 5 | Picture-in-picture (8.3) and free audio tracks (8.4) in the engine; the overlay and free audio lanes switched on | VideoFX 0.10, app 0.3 |
@@ -900,7 +900,7 @@ image types for *Open with*.
 |---|---|---|
 | Engine that trims, grades, joins, titles, pans photos, ducks music, exports | VideoFX 0.8.0 | None |
 | Waveform data from a media file | `VideoFX_ExtractWaveform` | None (this branch) |
-| The composed frame at a timeline time | — | `VideoFX_RenderFrame` (8.2) |
+| The composed frame at a timeline time | `VideoFXPreview` / `VideoFX_RenderFrame` (8.2, this branch) | None |
 | Picture-in-picture, free audio tracks | — | Planned in the engine; lanes hidden until then |
 | A media timeline element | — | `UltraCanvasVideoTimeline` (§7) |
 | A timecode entry | — | `UltraCanvasTimecodeField` (§7.6) |
@@ -931,9 +931,11 @@ image types for *Open with*.
    (`IVideoGen`, `IImageGen`, the ComfyUI adapter). A *Generate* tab in the
    media bin is an obvious later addition; it is not in this design and
    nothing here blocks it.
-5. **Frame-accurate scrubbing cost.** `VideoFX_RenderFrame` decodes from the
-   previous keyframe each call. If that is too slow on long GOP footage, a
-   per-clip decoder cache in the engine is the fix, inside 8.2's scope.
+5. **Frame-accurate scrubbing cost.** `VideoFXPreview` keeps every file
+   open between frames and seeks only when the time asked for is behind
+   the decoder or more than two seconds ahead of it, so scrubbing forward
+   within a GOP decodes no frame twice. If that is still too slow on long
+   GOP footage, a frame cache in the engine is the next step.
 
 ## 14. What was built (2026-10-11)
 
@@ -972,6 +974,15 @@ that writing it showed:
   `TimecodeFieldElementTest` under Xvfb; the DemoApp's timeline page drives
   its playhead with one. It owns its entry rather than wrapping the text
   input, because four segments with no caret is not a text field.
+- **The preview in the engine** (§8.2), VideoFX 0.9.0: `VideoFXPreview`
+  plans a timeline once with the exporter's own planner, keeps the files
+  open, and renders one frame per call through the segment's filter chain
+  with the frame stamped at its segment time, so fades and timed overlays
+  fall where the export puts them; inside an overlap it renders both sides
+  and blends them with the transition's own xfade. `VideoFX_RenderFrame`
+  is the one-call form, `VideoFX_PlanSlideshow` the slideshow's segments
+  without a render, and `videofx preview` writes a project's frame. Tested
+  in `VideoFXTest` against the export's own frames.
 - Not built, and left for the next phase: fade knobs on the music bar, marker dragging, a real slip trim
   (the Slip tool trims for now), retiming by `Ctrl`-drag, vertical scrolling
   of many tracks, resizing a track by its edge, and the mapping onto the

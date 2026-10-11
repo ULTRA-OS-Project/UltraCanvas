@@ -1,7 +1,7 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.8.0
+// Version: 0.9.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
@@ -217,6 +217,59 @@ VideoFXResult VideoFX_ProjectFromJson(const std::string& json, VideoFXProject& p
 // Render a project: to `outputPath`, or to its own outputPath when "" is given
 VideoFXResult VideoFX_RenderProject(const VideoFXProject& project, const std::string& outputPath = "",
                                     const VideoFXProgressCallback& progress = {});
+
+// ============================================================================
+// PREVIEW - frames of a timeline, for an editor's viewer
+// ============================================================================
+// The output frame at a time of a timeline, as an export would make it: the
+// segment playing then, trimmed, sped, filtered and fitted to the output
+// size the settings decide, its overlays drawn, and inside a transition's
+// overlap the two segments blended by that transition. Music is ignored.
+// Open plans the timeline once (every file probed, as an export does), and
+// RenderFrame then costs one frame: a seek and a decode of the one source
+// playing, and the segment's filter chain over that single frame. A viewer
+// scrubbing keeps one of these open; VideoFX_RenderFrame below does the
+// three steps in one call for a single picture.
+class VideoFXPreview {
+public:
+    VideoFXPreview();
+    ~VideoFXPreview();
+    VideoFXPreview(const VideoFXPreview&) = delete;
+    VideoFXPreview& operator=(const VideoFXPreview&) = delete;
+
+    VideoFXResult Open(const std::vector<VideoFXSegment>& segments, const VideoFXExportSettings& settings = {});
+    void Close();
+    bool IsOpen() const;
+    double GetDuration() const;      // seconds, the transitions' overlaps subtracted; 0 when the last segment is open-ended
+    int GetWidth() const;            // the output frame size the settings decide
+    int GetHeight() const;
+    double GetFrameRate() const;
+    // The segment playing at `seconds` - an index into the segments given to
+    // Open - and, when asked, how far into it; -1 before the start or past
+    // the end. Inside a transition's overlap it is the segment being entered.
+    int SegmentAt(double seconds, double* segmentSeconds = nullptr) const;
+    // The frame at `seconds`, RGBA, no larger than maxWidth x maxHeight (0 =
+    // the output size). InvalidArgument past the end.
+    VideoFXResult RenderFrame(double seconds, VideoFXFrame& frame, int maxWidth = 0, int maxHeight = 0);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+
+// One frame of a timeline in one call: Open, RenderFrame, Close
+VideoFXResult VideoFX_RenderFrame(const std::vector<VideoFXSegment>& segments, double seconds, VideoFXFrame& frame,
+                                  const VideoFXExportSettings& settings = {}, int maxWidth = 0, int maxHeight = 0);
+
+// The segments and settings a slideshow is exported from - what
+// VideoFX_CreateSlideshow builds before it exports: one image segment per
+// photo with its seconds (all alike, fitted to the music, or on the beat),
+// its motion, framing, regions kept in view, transition and caption, the
+// fades at the ends, and in `settingsOut` the size, rate and music. For
+// previewing a slideshow, or opening one on a timeline to change it.
+VideoFXResult VideoFX_PlanSlideshow(const std::vector<std::string>& imagePaths, const VideoFXSlideshowOptions& options,
+                                    const VideoFXExportSettings& settings, std::vector<VideoFXSegment>& segments,
+                                    VideoFXExportSettings& settingsOut);
 
 // A generated test clip (moving pattern + tone) - for tests and demos
 VideoFXResult VideoFX_GenerateTestClip(const std::string& outputPath, double seconds,

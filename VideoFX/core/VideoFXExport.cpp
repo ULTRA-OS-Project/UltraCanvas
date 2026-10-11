@@ -12,7 +12,7 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.8.0
+// Version: 0.9.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
@@ -34,6 +34,7 @@
 #include <deque>
 #include <filesystem>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <locale>
 #include <iomanip>
@@ -330,9 +331,19 @@ public:
 
     VideoFXResult Run(const std::vector<VideoFXSegment>& segments);
 
+    // ---- preview: frames of the planned timeline, no output file ----
+    VideoFXResult OpenPreview(const std::vector<VideoFXSegment>& segments);
+    int PreviewSegmentAt(double seconds, double* local) const;
+    VideoFXResult RenderPreviewFrame(double seconds, VideoFXFrame& frame, int maxWidth, int maxHeight);
+    double PreviewDuration() const { return previewDuration < 0.0 ? 0.0 : previewDuration; }
+    int Width() const { return width; }
+    int Height() const { return height; }
+    double FrameRate() const { return av_q2d(frameRate); }
+
 private:
     // ---- planning ----
     VideoFXResult PlanSegments(const std::vector<VideoFXSegment>& segments);
+    VideoFXResult PlanGeometry();
     VideoFXResult PlanOutput();
     VideoFXResult OpenVideoEncoder();
     VideoFXResult OpenAudioEncoder();
@@ -382,6 +393,28 @@ private:
 
     bool ReportProgress(double segmentSeconds);
     void Close();
+
+    // ---- preview ----
+    double PreviewOverlap(size_t index) const;       // the transition's overlap into segment `index`
+    VideoFXResult RenderSegmentFrame(size_t index, double local, FramePtr& out);
+    VideoFXResult RenderThroughGraph(const SegmentPlan& plan, const std::string& head, bool sarNotSquare,
+                                     std::vector<GraphSource> sources, AVFrame* input, FramePtr& out);
+    VideoFXResult BlendTransition(const SegmentPlan& into, double overlap, AVFrame* a, AVFrame* b, double progress,
+                                  FramePtr& out);
+    struct PreviewImage {
+        bool ready = false;
+        VideoFXFrame image;
+        VideoFXImageMotion motion;
+        VideoFXRect focus;
+        VideoFXImageFit fit = VideoFXImageFit::Auto;
+        std::vector<uint8_t> backdrop;
+        int64_t frames = 1;
+    };
+    bool previewOpen = false;
+    std::vector<double> previewStarts;             // where each segment begins on the timeline
+    double previewDuration = 0.0;                  // < 0: the last segment is open-ended
+    std::map<std::string, OpenVideo> previewVideos;   // files kept open between frames
+    std::map<size_t, PreviewImage> previewImages;  // photos decoded and fitted once
 
     std::string outputPath;
     VideoFXExportSettings settings;
@@ -598,6 +631,53 @@ VideoFXResult Exporter::PlanSegments(const std::vector<VideoFXSegment>& segments
     return VideoFXResult::Ok;
 }
 
+VideoFXResult Exporter::PlanGeometry() {
+    int srcW = 0, srcH = 0;
+    double srcRate = 0.0;
+    for (const SegmentPlan& p : plans) {
+        if (p.segment.kind == VideoFXSourceKind::File && !p.fileVideo) continue;
+        if (p.segment.kind == VideoFXSourceKind::File) {
+            srcW = p.displayWidth;
+            srcH = p.displayHeight;
+            srcRate = p.frameRate;
+        } else if (p.segment.kind == VideoFXSourceKind::Image) {
+            // The photo's upright shape (EXIF applied), no bigger than 1080p
+            srcW = p.displayWidth;
+            srcH = p.displayHeight;
+            VideoFXFrame upright;
+            if (!p.segment.image.IsValid() &&
+                VideoFX_ExtractFrame(p.segment.path, 0.0, upright, 4096, 4096) == VideoFXResult::Ok) {
+                srcW = upright.width;
+                srcH = upright.height;
+            }
+            const double shrink = std::min(1.0, std::min(1920.0 / std::max(srcW, srcH),
+                                                          1080.0 / std::max(1, std::min(srcW, srcH))));
+            srcW = std::max(2, static_cast<int>(std::lround(srcW * shrink)));
+            srcH = std::max(2, static_cast<int>(std::lround(srcH * shrink)));
+        } else {
+            srcW = 1280;
+            srcH = 720;
+        }
+        ApplyEffectGeometry(p.segment.effects, srcW, srcH);
+        break;
+    }
+    if (srcW <= 0 || srcH <= 0) { srcW = 1280; srcH = 720; }
+
+    width = settings.width;
+    height = settings.height;
+    if (width > 0 && height <= 0) height = static_cast<int>(std::lround(static_cast<double>(width) * srcH / srcW));
+    else if (height > 0 && width <= 0) width = static_cast<int>(std::lround(static_cast<double>(height) * srcW / srcH));
+    else if (width <= 0 && height <= 0) { width = srcW; height = srcH; }
+    if (width > 16384 || height > 16384 || width <= 0 || height <= 0)
+        return Fail(VideoFXResult::InvalidArgument, "Output size must be 1..16384 pixels");
+    if (!gif) { width = EvenDown(width); height = EvenDown(height); }
+
+    double fps = settings.frameRate > 0.0 ? settings.frameRate : srcRate;
+    if (!(fps > 0.0 && fps <= 240.0)) fps = gif ? 12.0 : 30.0;
+    frameRate = av_d2q(fps, 1001000);
+    return VideoFXResult::Ok;
+}
+
 VideoFXResult Exporter::PlanOutput() {
     // ---- container ----
     if (settings.container == VideoFXContainer::Auto) {
@@ -660,49 +740,8 @@ VideoFXResult Exporter::PlanOutput() {
 
     // ---- geometry and rate from the first segment with a picture ----
     if (outVideo) {
-        int srcW = 0, srcH = 0;
-        double srcRate = 0.0;
-        for (const SegmentPlan& p : plans) {
-            if (p.segment.kind == VideoFXSourceKind::File && !p.fileVideo) continue;
-            if (p.segment.kind == VideoFXSourceKind::File) {
-                srcW = p.displayWidth;
-                srcH = p.displayHeight;
-                srcRate = p.frameRate;
-            } else if (p.segment.kind == VideoFXSourceKind::Image) {
-                // The photo's upright shape (EXIF applied), no bigger than 1080p
-                srcW = p.displayWidth;
-                srcH = p.displayHeight;
-                VideoFXFrame upright;
-                if (!p.segment.image.IsValid() &&
-                    VideoFX_ExtractFrame(p.segment.path, 0.0, upright, 4096, 4096) == VideoFXResult::Ok) {
-                    srcW = upright.width;
-                    srcH = upright.height;
-                }
-                const double shrink = std::min(1.0, std::min(1920.0 / std::max(srcW, srcH),
-                                                              1080.0 / std::max(1, std::min(srcW, srcH))));
-                srcW = std::max(2, static_cast<int>(std::lround(srcW * shrink)));
-                srcH = std::max(2, static_cast<int>(std::lround(srcH * shrink)));
-            } else {
-                srcW = 1280;
-                srcH = 720;
-            }
-            ApplyEffectGeometry(p.segment.effects, srcW, srcH);
-            break;
-        }
-        if (srcW <= 0 || srcH <= 0) { srcW = 1280; srcH = 720; }
-
-        width = settings.width;
-        height = settings.height;
-        if (width > 0 && height <= 0) height = static_cast<int>(std::lround(static_cast<double>(width) * srcH / srcW));
-        else if (height > 0 && width <= 0) width = static_cast<int>(std::lround(static_cast<double>(height) * srcW / srcH));
-        else if (width <= 0 && height <= 0) { width = srcW; height = srcH; }
-        if (width > 16384 || height > 16384 || width <= 0 || height <= 0)
-            return Fail(VideoFXResult::InvalidArgument, "Output size must be 1..16384 pixels");
-        if (!gif) { width = EvenDown(width); height = EvenDown(height); }
-
-        double fps = settings.frameRate > 0.0 ? settings.frameRate : srcRate;
-        if (!(fps > 0.0 && fps <= 240.0)) fps = gif ? 12.0 : 30.0;
-        frameRate = av_d2q(fps, 1001000);
+        VideoFXResult r = PlanGeometry();
+        if (r != VideoFXResult::Ok) return r;
     }
 
     // ---- audio format ----
@@ -2233,55 +2272,348 @@ VideoFXResult TimelineBeats(const VideoFXMusic& music, const std::vector<double>
     return VideoFXResult::Ok;
 }
 
-} // namespace
 
-// ============================================================================
-// PUBLIC CALLS
-// ============================================================================
+// ---------------------------------------------------------------------------
+// preview: the frame at a time of the planned timeline
+// ---------------------------------------------------------------------------
 
-VideoFXResult VideoFX_Export(const std::vector<VideoFXSegment>& segments, const std::string& outputPath,
-                             const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
-    Exporter exporter(outputPath, settings, progress);
-    return exporter.Run(segments);
-}
-
-VideoFXResult VideoFX_Transcode(const std::string& inputPath, const std::string& outputPath,
-                                const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
-    return VideoFX_Export({VideoFXSegment::FromFile(inputPath)}, outputPath, settings, progress);
-}
-
-VideoFXResult VideoFX_Trim(const std::string& inputPath, const std::string& outputPath, double start, double end,
-                           const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
-    return VideoFX_Export({VideoFXSegment::FromFile(inputPath, start, end)}, outputPath, settings, progress);
-}
-
-VideoFXResult VideoFX_ApplyEffects(const std::string& inputPath, const std::string& outputPath,
-                                   const std::vector<VideoFXEffect>& effects,
-                                   const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
-    VideoFXSegment segment = VideoFXSegment::FromFile(inputPath);
-    segment.effects = effects;
-    return VideoFX_Export({segment}, outputPath, settings, progress);
-}
-
-VideoFXResult VideoFX_Concatenate(const std::vector<std::string>& inputPaths, const std::string& outputPath,
-                                  const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
-    std::vector<VideoFXSegment> segments;
-    segments.reserve(inputPaths.size());
-    for (const std::string& p : inputPaths) segments.push_back(VideoFXSegment::FromFile(p));
-    return VideoFX_Export(segments, outputPath, settings, progress);
-}
-
-VideoFXResult VideoFX_ExtractAudio(const std::string& inputPath, const std::string& outputPath,
-                                   const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
-    VideoFXExportSettings audioOnly = settings;
-    audioOnly.videoCodec = VideoFXVideoCodec::Disabled;
-    return VideoFX_Export({VideoFXSegment::FromFile(inputPath)}, outputPath, audioOnly, progress);
-}
-
-VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths, const std::string& outputPath,
-                                      const VideoFXSlideshowOptions& options, const VideoFXExportSettings& settings,
-                                      const VideoFXProgressCallback& progress) {
+VideoFXResult Exporter::OpenPreview(const std::vector<VideoFXSegment>& segments) {
+    EnsureBackendInitialised();
     ClearError();
+    previewOpen = false;
+    plans.clear();
+    totalDuration = 0.0;
+    previewStarts.clear();
+    previewVideos.clear();
+    previewImages.clear();
+    VideoFXResult r = PlanSegments(segments);
+    if (r != VideoFXResult::Ok) return r;
+    outVideo = true;
+    gif = false;
+    stageFmt = AV_PIX_FMT_RGBA;
+    if ((r = PlanGeometry()) != VideoFXResult::Ok) return r;
+    fontFile = ResolveDefaultFont();
+    previewDuration = 0.0;
+    double at = 0.0;
+    for (size_t i = 0; i < plans.size(); ++i) {
+        if (i > 0) at -= PreviewOverlap(i);
+        if (at < 0.0) at = 0.0;
+        previewStarts.push_back(at);
+        if (plans[i].outDuration <= 0.0) {
+            if (i + 1 < plans.size())
+                return Fail(VideoFXResult::InvalidArgument,
+                            "The length of " + plans[i].segment.path + " cannot be read, so the segments after it have no place on the timeline");
+            previewDuration = -1.0;
+        } else {
+            at += plans[i].outDuration;
+        }
+    }
+    if (previewDuration >= 0.0) previewDuration = at;
+    previewOpen = true;
+    return VideoFXResult::Ok;
+}
+
+// The overlap of the transition into segment `index`: its length, no more
+// than either neighbour lasts (what the export does too)
+double Exporter::PreviewOverlap(size_t index) const {
+    if (index == 0 || index >= plans.size()) return 0.0;
+    const VideoFXTransition& t = plans[index].segment.transitionIn;
+    if (t.IsCut()) return 0.0;
+    double d = t.duration;
+    if (plans[index - 1].outDuration > 0.0) d = std::min(d, plans[index - 1].outDuration);
+    if (plans[index].outDuration > 0.0) d = std::min(d, plans[index].outDuration);
+    return std::max(0.0, d);
+}
+
+int Exporter::PreviewSegmentAt(double seconds, double* local) const {
+    if (!previewOpen || !(seconds >= 0.0) || plans.empty()) return -1;
+    size_t index = 0;
+    for (size_t i = 0; i < plans.size(); ++i) {
+        if (previewStarts[i] <= seconds + 1e-9) index = i;
+        else break;
+    }
+    const SegmentPlan& plan = plans[index];
+    if (plan.outDuration > 0.0 && seconds >= previewStarts[index] + plan.outDuration - 1e-9) return -1;   // past the end
+    if (local) *local = std::max(0.0, seconds - previewStarts[index]);
+    return static_cast<int>(index);
+}
+
+VideoFXResult Exporter::RenderPreviewFrame(double seconds, VideoFXFrame& frame, int maxWidth, int maxHeight) {
+    ClearError();
+    frame = VideoFXFrame{};
+    if (!previewOpen) return Fail(VideoFXResult::InvalidArgument, "No timeline is open: call Open first");
+    if (!std::isfinite(seconds)) return Fail(VideoFXResult::InvalidArgument, "Time is not a number");
+    if (seconds < 0.0) return Fail(VideoFXResult::InvalidArgument, "Time is before the start of the timeline");
+    double local = 0.0;
+    const int index = PreviewSegmentAt(seconds, &local);
+    if (index < 0) {
+        std::ostringstream msg;
+        msg.imbue(std::locale::classic());
+        msg << "Time is past the end of the timeline (" << std::fixed << std::setprecision(2) << PreviewDuration() << " s)";
+        return Fail(VideoFXResult::InvalidArgument, msg.str());
+    }
+    const size_t i = static_cast<size_t>(index);
+    FramePtr out;
+    VideoFXResult r;
+    const double overlap = PreviewOverlap(i);
+    if (overlap > 0.0 && local < overlap) {
+        FramePtr a, b;
+        if ((r = RenderSegmentFrame(i - 1, seconds - previewStarts[i - 1], a)) != VideoFXResult::Ok) return r;
+        if ((r = RenderSegmentFrame(i, local, b)) != VideoFXResult::Ok) return r;
+        if ((r = BlendTransition(plans[i], overlap, a.get(), b.get(), local / overlap, out)) != VideoFXResult::Ok) return r;
+    } else if ((r = RenderSegmentFrame(i, local, out)) != VideoFXResult::Ok) {
+        return r;
+    }
+    r = ConvertToRgba(out.get(), 0, maxWidth, maxHeight, frame);
+    frame.timestamp = seconds;
+    return r;
+}
+
+// The frame of segment `index` at `local` seconds into it, at the output
+// size in RGBA, with its effects, fit and overlays applied
+VideoFXResult Exporter::RenderSegmentFrame(size_t index, double local, FramePtr& out) {
+    const SegmentPlan& plan = plans[index];
+    const double fps = av_q2d(frameRate);
+    if (plan.outDuration > 0.0) local = std::clamp(local, 0.0, plan.outDuration);
+    const int64_t k = std::max<int64_t>(0, std::llround(local * fps));   // the frame number within the segment
+    VideoFXResult r;
+
+    auto rgbaFrame = [&](FramePtr& f) -> VideoFXResult {
+        f = MakeFrame();
+        f->format = AV_PIX_FMT_RGBA;
+        f->width = width;
+        f->height = height;
+        f->sample_aspect_ratio = AVRational{1, 1};
+        int err = av_frame_get_buffer(f.get(), 0);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Out of memory", err);
+        f->pts = k;
+        return VideoFXResult::Ok;
+    };
+    const std::vector<GraphSource> rgbaSources = {
+        {"in", VideoSourceArgs(width, height, AV_PIX_FMT_RGBA, av_inv_q(frameRate), AVRational{1, 1}, frameRate)}};
+
+    if (plan.segment.kind == VideoFXSourceKind::File && plan.fileVideo) {
+        OpenVideo& v = previewVideos[plan.segment.path];
+        if (!v.fmt && (r = OpenVideoStream(plan.segment.path, v)) != VideoFXResult::Ok) return r;
+        FramePtr decoded = MakeFrame();
+        double frameTime = 0.0;
+        const double sourceSeconds = plan.sourceStart + local * plan.segment.speed;
+        if ((r = DecodeFrameAt(v, sourceSeconds, decoded.get(), frameTime)) != VideoFXResult::Ok) return r;
+        const AVRational sar = decoded->sample_aspect_ratio.num > 0 ? decoded->sample_aspect_ratio : AVRational{1, 1};
+        std::vector<GraphSource> sources = {
+            {"in", VideoSourceArgs(decoded->width, decoded->height, decoded->format, v.tb, sar)}};
+        std::string head = "[in]null";
+        AppendFilter(head, AutoRotateChain(plan.rotation));
+        AppendFilter(head, plan.videoEffects);
+        decoded->pts = static_cast<int64_t>(std::llround(local / av_q2d(v.tb)));   // the segment's own clock
+        return RenderThroughGraph(plan, head, sar.num != sar.den, sources, decoded.get(), out);
+    }
+
+    if (plan.segment.kind == VideoFXSourceKind::Image) {
+        PreviewImage& pi = previewImages[index];
+        if (!pi.ready) {
+            if (plan.segment.image.IsValid()) {
+                pi.image = plan.segment.image;
+            } else if ((r = VideoFX_ExtractFrame(plan.segment.path, 0.0, pi.image)) != VideoFXResult::Ok) {
+                const std::string reason = VideoFX_GetLastError();
+                return Fail(r, "Image " + plan.segment.path + ": " + reason);
+            }
+            pi.fit = ResolveImageFit(plan.segment.imageFit, pi.image.width, pi.image.height, width, height);
+            std::vector<VideoFXRect> keep = plan.segment.keepInView;
+            if (keep.empty() && plan.segment.keepFacesInView) keep = DetectFaces(pi.image);
+            pi.focus = FocusBounds(keep);
+            pi.motion = FitMotionToFocus(
+                ResolveMotion(plan.segment.motion, pi.image.width, pi.image.height, width, height, index), pi.focus,
+                pi.image.width, pi.image.height, width, height, pi.fit);
+            const double closest = pi.motion.style == VideoFXMotionStyle::Still
+                                       ? 1.0 : std::max(pi.motion.startZoom, pi.motion.endZoom);
+            const double need = std::max(static_cast<double>(width) * closest / pi.image.width,
+                                         static_cast<double>(height) * closest / pi.image.height);
+            if (need < 0.75) {
+                VideoFXFrame smaller;
+                const int w = std::max(2, static_cast<int>(std::ceil(pi.image.width * need)));
+                const int h = std::max(2, static_cast<int>(std::ceil(pi.image.height * need)));
+                if ((r = ScaleRgba(pi.image, w, h, smaller)) != VideoFXResult::Ok) return r;
+                pi.image = std::move(smaller);
+            }
+            if (pi.fit == VideoFXImageFit::BlurredBackground) MakeBlurredBackdrop(pi.image, width, height, pi.backdrop);
+            pi.frames = std::max<int64_t>(1, std::llround(plan.outDuration * fps));
+            pi.ready = true;
+        }
+        const int64_t kk = std::min(k, pi.frames - 1);
+        FramePtr f;
+        if ((r = rgbaFrame(f)) != VideoFXResult::Ok) return r;
+        double x, y, w, h;
+        const KenBurnsView view = ViewAt(pi.motion, pi.frames > 1 ? static_cast<double>(kk) / (pi.frames - 1) : 0.0);
+        if (pi.fit == VideoFXImageFit::Cover) ViewRect(view, pi.image.width, pi.image.height, width, height, x, y, w, h);
+        else ContainViewRect(view, pi.image.width, pi.image.height, width, height, x, y, w, h);
+        KeepFocusInView(pi.focus, pi.image.width, pi.image.height, x, y, w, h);
+        RenderView(pi.image, x, y, w, h, width, height, f->data[0], f->linesize[0], settings.threads,
+                   pi.backdrop.empty() ? nullptr : pi.backdrop.data());
+        std::string head = "[in]null";
+        AppendFilter(head, plan.videoEffects);
+        return RenderThroughGraph(plan, head, false, rgbaSources, f.get(), out);
+    }
+
+    if (plan.segment.kind == VideoFXSourceKind::TestPattern) {
+        const std::string rate = Rational(frameRate);
+        std::string desc = "testsrc2=s=" + std::to_string(width) + "x" + std::to_string(height) + ":r=" + rate +
+                           ":d=" + FormatNumber(std::max(plan.outDuration, local + 1.0 / fps));
+        AppendFilter(desc, plan.videoEffects);
+        std::vector<GraphSource> sources;
+        desc = SegmentVideoGraph(plan, desc, false, sources, false);
+        Graph g;
+        if ((r = BuildGraph(g, true, sources, desc)) != VideoFXResult::Ok) return r;
+        if ((r = FeedOverlayImages(g, plan)) != VideoFXResult::Ok) return r;
+        FramePtr scratch = MakeFrame();
+        bool done = false;
+        while (!done && !g.eof) {
+            r = PullGraph(g, scratch.get(), [&](AVFrame* f) {
+                if (done) return VideoFXResult::Ok;
+                out = MakeFrame();
+                av_frame_ref(out.get(), f);
+                if (f->pts >= k) done = true;
+                return VideoFXResult::Ok;
+            });
+            if (r != VideoFXResult::Ok) return r;
+            if (!done && !g.eof) {   // the sink had nothing yet: the source is a generator, so just ask again
+                int err = av_buffersink_get_frame(g.sink, scratch.get());
+                if (err == AVERROR_EOF) g.eof = true;
+                else if (err >= 0) {
+                    out = MakeFrame();
+                    av_frame_ref(out.get(), scratch.get());
+                    if (scratch->pts >= k) done = true;
+                    av_frame_unref(scratch.get());
+                } else if (err != AVERROR(EAGAIN)) {
+                    return Fail(VideoFXResult::FilterError, "Generator failed", err);
+                }
+            }
+        }
+        if (!out) return Fail(VideoFXResult::FilterError, "The test pattern produced no frame");
+        return VideoFXResult::Ok;
+    }
+
+    // a colour card, or a picture-less file: a flat frame of the colour (black for the file)
+    FramePtr f;
+    if ((r = rgbaFrame(f)) != VideoFXResult::Ok) return r;
+    const uint32_t rgb = plan.segment.kind == VideoFXSourceKind::Color ? plan.segment.color : 0x000000;
+    const uint8_t cr = static_cast<uint8_t>((rgb >> 16) & 0xFF), cg = static_cast<uint8_t>((rgb >> 8) & 0xFF),
+                  cb = static_cast<uint8_t>(rgb & 0xFF);
+    for (int y = 0; y < height; ++y) {
+        uint8_t* row = f->data[0] + static_cast<ptrdiff_t>(y) * f->linesize[0];
+        for (int x = 0; x < width; ++x) {
+            row[x * 4] = cr; row[x * 4 + 1] = cg; row[x * 4 + 2] = cb; row[x * 4 + 3] = 255;
+        }
+    }
+    std::string head = "[in]null";
+    if (plan.segment.kind != VideoFXSourceKind::File) AppendFilter(head, plan.videoEffects);
+    if (plan.segment.kind == VideoFXSourceKind::File) {     // black filler: no effects, no overlays
+        SegmentPlan plain = plan;
+        plain.segment.overlays.clear();
+        plain.overlayImages.clear();
+        return RenderThroughGraph(plain, head, false, rgbaSources, f.get(), out);
+    }
+    return RenderThroughGraph(plan, head, false, rgbaSources, f.get(), out);
+}
+
+// One frame through a segment's whole video graph: `head` (its source
+// chain and effects), the fit to the output frame, its overlays, RGBA out
+VideoFXResult Exporter::RenderThroughGraph(const SegmentPlan& plan, const std::string& head, bool sarNotSquare,
+                                           std::vector<GraphSource> sources, AVFrame* input, FramePtr& out) {
+    const std::string desc = SegmentVideoGraph(plan, head, sarNotSquare, sources, false);
+    Graph g;
+    VideoFXResult r = BuildGraph(g, true, sources, desc);
+    if (r != VideoFXResult::Ok) return r;
+    if ((r = FeedOverlayImages(g, plan)) != VideoFXResult::Ok) return r;
+    int err = av_buffersrc_add_frame_flags(g.src, input, AV_BUFFERSRC_FLAG_KEEP_REF);
+    if (err >= 0) err = av_buffersrc_add_frame_flags(g.src, nullptr, 0);
+    if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the effect chain", err);
+    FramePtr scratch = MakeFrame();
+    out.reset();
+    r = PullGraph(g, scratch.get(), [&](AVFrame* f) {
+        if (!out) {
+            out = MakeFrame();
+            av_frame_ref(out.get(), f);
+        }
+        return VideoFXResult::Ok;
+    });
+    if (r != VideoFXResult::Ok) return r;
+    if (!out) return Fail(VideoFXResult::FilterError, "The effect chain produced no frame");
+    return VideoFXResult::Ok;
+}
+
+// The two segments' frames blended by the transition into `into`, at
+// `progress` 0..1 of the overlap - with xfade, as the export does; with a
+// plain cross-fade if xfade gives nothing back for a single frame
+VideoFXResult Exporter::BlendTransition(const SegmentPlan& into, double overlap, AVFrame* a, AVFrame* b,
+                                        double progress, FramePtr& out) {
+    progress = std::clamp(progress, 0.0, 1.0);
+    out.reset();
+    if (into.segment.transitionIn.IsCut()) {
+        out = MakeFrame();
+        av_frame_ref(out.get(), b);
+        return VideoFXResult::Ok;
+    }
+    const AVRational tb = av_inv_q(frameRate);
+    const std::string args = VideoSourceArgs(width, height, AV_PIX_FMT_RGBA, tb, AVRational{1, 1}, frameRate);
+    const std::string desc = "[a][b]xfade=transition=" + TransitionName(into.segment.transitionIn.type) +
+                             ":duration=" + FormatNumber(overlap) + ":offset=0,format=rgba[out]";
+    Graph g;
+    if (BuildGraph(g, true, {{"a", args}, {"b", args}}, desc) == VideoFXResult::Ok) {
+        // xfade measures its progress from the first frame it sees on its first
+        // input, so a lone frame at the blend's time would always come out as
+        // the start of the transition: a pair at 0 goes first, and the pair
+        // at the blend's time gives the frame wanted (the last one out)
+        const int64_t k = static_cast<int64_t>(std::llround(progress * overlap * av_q2d(frameRate)));
+        AVFilterContext* sa = g.Source("a");
+        AVFilterContext* sb = g.Source("b");
+        auto feed = [](AVFilterContext* src, AVFrame* f, int64_t pts) {
+            f->pts = pts;
+            return av_buffersrc_add_frame_flags(src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+        };
+        int err = 0;
+        if (k > 0) {
+            err = feed(sa, a, 0);
+            if (err >= 0) err = feed(sb, b, 0);
+        }
+        if (err >= 0) err = feed(sa, a, k);
+        if (err >= 0) err = feed(sb, b, k);
+        if (err >= 0) err = av_buffersrc_add_frame_flags(sa, nullptr, 0);
+        if (err >= 0) err = av_buffersrc_add_frame_flags(sb, nullptr, 0);
+        if (err >= 0) {
+            FramePtr scratch = MakeFrame();
+            PullGraph(g, scratch.get(), [&](AVFrame* f) {
+                if (!out) out = MakeFrame(); else av_frame_unref(out.get());
+                av_frame_ref(out.get(), f);
+                return VideoFXResult::Ok;
+            });
+        }
+        ClearError();   // a graph that gave nothing is not an error: the blend below stands in
+    }
+    if (out) return VideoFXResult::Ok;
+    out = MakeFrame();
+    out->format = AV_PIX_FMT_RGBA;
+    out->width = width;
+    out->height = height;
+    out->sample_aspect_ratio = AVRational{1, 1};
+    int err = av_frame_get_buffer(out.get(), 0);
+    if (err < 0) return Fail(VideoFXResult::FilterError, "Out of memory", err);
+    const double wa = 1.0 - progress, wb = progress;
+    for (int y = 0; y < height; ++y) {
+        const uint8_t* ra = a->data[0] + static_cast<ptrdiff_t>(y) * a->linesize[0];
+        const uint8_t* rb = b->data[0] + static_cast<ptrdiff_t>(y) * b->linesize[0];
+        uint8_t* ro = out->data[0] + static_cast<ptrdiff_t>(y) * out->linesize[0];
+        for (int x = 0; x < width * 4; ++x) ro[x] = static_cast<uint8_t>(std::lround(ra[x] * wa + rb[x] * wb));
+    }
+    return VideoFXResult::Ok;
+}
+
+// The segments a slideshow is exported from (VideoFX_CreateSlideshow,
+// VideoFX_PlanSlideshow)
+VideoFXResult PlanSlideshowSegments(const std::vector<std::string>& imagePaths, const VideoFXSlideshowOptions& options,
+                                    const VideoFXExportSettings& settings, std::vector<VideoFXSegment>& segments,
+                                    VideoFXExportSettings& settingsOut) {
+    segments.clear();
     if (imagePaths.empty()) return Fail(VideoFXResult::InvalidArgument, "A slideshow needs at least one image");
     const VideoFXMusic music = options.music.IsSet() ? options.music : settings.music;
 
@@ -2340,7 +2672,6 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
         }
     }
 
-    std::vector<VideoFXSegment> segments;
     segments.reserve(n);
     for (size_t i = 0; i < n; ++i) {
         VideoFXSegment s = VideoFXSegment::FromImage(imagePaths[i], seconds[i], options.motion);
@@ -2371,13 +2702,123 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
         segments.back().effects.push_back(VideoFXEffect::FadeOut(std::min(0.8, seconds.back() / 4.0)));
     }
 
-    VideoFXExportSettings s = settings;
-    if (s.width <= 0 && s.height <= 0) {
-        s.width = 1920;
-        s.height = 1080;
+    settingsOut = settings;
+    if (settingsOut.width <= 0 && settingsOut.height <= 0) {
+        settingsOut.width = 1920;
+        settingsOut.height = 1080;
     }
-    if (s.frameRate <= 0.0) s.frameRate = 30.0;
-    s.music = music;
+    if (settingsOut.frameRate <= 0.0) settingsOut.frameRate = 30.0;
+    settingsOut.music = music;
+    return VideoFXResult::Ok;
+}
+
+} // namespace
+
+// ============================================================================
+// PREVIEW
+// ============================================================================
+
+struct VideoFXPreview::Impl {
+    std::unique_ptr<Exporter> exporter;
+};
+
+VideoFXPreview::VideoFXPreview() : impl(std::make_unique<Impl>()) {}
+VideoFXPreview::~VideoFXPreview() = default;
+
+VideoFXResult VideoFXPreview::Open(const std::vector<VideoFXSegment>& segments, const VideoFXExportSettings& settings) {
+    impl->exporter = std::make_unique<Exporter>(std::string(), settings, VideoFXProgressCallback{});
+    const VideoFXResult r = impl->exporter->OpenPreview(segments);
+    if (r != VideoFXResult::Ok) impl->exporter.reset();
+    return r;
+}
+
+void VideoFXPreview::Close() { impl->exporter.reset(); }
+bool VideoFXPreview::IsOpen() const { return impl->exporter != nullptr; }
+double VideoFXPreview::GetDuration() const { return impl->exporter ? impl->exporter->PreviewDuration() : 0.0; }
+int VideoFXPreview::GetWidth() const { return impl->exporter ? impl->exporter->Width() : 0; }
+int VideoFXPreview::GetHeight() const { return impl->exporter ? impl->exporter->Height() : 0; }
+double VideoFXPreview::GetFrameRate() const { return impl->exporter ? impl->exporter->FrameRate() : 0.0; }
+
+int VideoFXPreview::SegmentAt(double seconds, double* segmentSeconds) const {
+    return impl->exporter ? impl->exporter->PreviewSegmentAt(seconds, segmentSeconds) : -1;
+}
+
+VideoFXResult VideoFXPreview::RenderFrame(double seconds, VideoFXFrame& frame, int maxWidth, int maxHeight) {
+    ClearError();
+    frame = VideoFXFrame{};
+    if (!impl->exporter) return Fail(VideoFXResult::InvalidArgument, "No timeline is open: call Open first");
+    return impl->exporter->RenderPreviewFrame(seconds, frame, maxWidth, maxHeight);
+}
+
+VideoFXResult VideoFX_RenderFrame(const std::vector<VideoFXSegment>& segments, double seconds, VideoFXFrame& frame,
+                                  const VideoFXExportSettings& settings, int maxWidth, int maxHeight) {
+    VideoFXPreview preview;
+    const VideoFXResult r = preview.Open(segments, settings);
+    if (r != VideoFXResult::Ok) {
+        frame = VideoFXFrame{};
+        return r;
+    }
+    return preview.RenderFrame(seconds, frame, maxWidth, maxHeight);
+}
+
+VideoFXResult VideoFX_PlanSlideshow(const std::vector<std::string>& imagePaths, const VideoFXSlideshowOptions& options,
+                                    const VideoFXExportSettings& settings, std::vector<VideoFXSegment>& segments,
+                                    VideoFXExportSettings& settingsOut) {
+    ClearError();
+    return PlanSlideshowSegments(imagePaths, options, settings, segments, settingsOut);
+}
+
+// ============================================================================
+// PUBLIC CALLS
+// ============================================================================
+
+VideoFXResult VideoFX_Export(const std::vector<VideoFXSegment>& segments, const std::string& outputPath,
+                             const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
+    Exporter exporter(outputPath, settings, progress);
+    return exporter.Run(segments);
+}
+
+VideoFXResult VideoFX_Transcode(const std::string& inputPath, const std::string& outputPath,
+                                const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
+    return VideoFX_Export({VideoFXSegment::FromFile(inputPath)}, outputPath, settings, progress);
+}
+
+VideoFXResult VideoFX_Trim(const std::string& inputPath, const std::string& outputPath, double start, double end,
+                           const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
+    return VideoFX_Export({VideoFXSegment::FromFile(inputPath, start, end)}, outputPath, settings, progress);
+}
+
+VideoFXResult VideoFX_ApplyEffects(const std::string& inputPath, const std::string& outputPath,
+                                   const std::vector<VideoFXEffect>& effects,
+                                   const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
+    VideoFXSegment segment = VideoFXSegment::FromFile(inputPath);
+    segment.effects = effects;
+    return VideoFX_Export({segment}, outputPath, settings, progress);
+}
+
+VideoFXResult VideoFX_Concatenate(const std::vector<std::string>& inputPaths, const std::string& outputPath,
+                                  const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
+    std::vector<VideoFXSegment> segments;
+    segments.reserve(inputPaths.size());
+    for (const std::string& p : inputPaths) segments.push_back(VideoFXSegment::FromFile(p));
+    return VideoFX_Export(segments, outputPath, settings, progress);
+}
+
+VideoFXResult VideoFX_ExtractAudio(const std::string& inputPath, const std::string& outputPath,
+                                   const VideoFXExportSettings& settings, const VideoFXProgressCallback& progress) {
+    VideoFXExportSettings audioOnly = settings;
+    audioOnly.videoCodec = VideoFXVideoCodec::Disabled;
+    return VideoFX_Export({VideoFXSegment::FromFile(inputPath)}, outputPath, audioOnly, progress);
+}
+
+VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths, const std::string& outputPath,
+                                      const VideoFXSlideshowOptions& options, const VideoFXExportSettings& settings,
+                                      const VideoFXProgressCallback& progress) {
+    ClearError();
+    std::vector<VideoFXSegment> segments;
+    VideoFXExportSettings s;
+    const VideoFXResult r = PlanSlideshowSegments(imagePaths, options, settings, segments, s);
+    if (r != VideoFXResult::Ok) return r;
     return VideoFX_Export(segments, outputPath, s, progress);
 }
 

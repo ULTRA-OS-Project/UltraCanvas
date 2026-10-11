@@ -914,6 +914,7 @@ static double StreamDuration(const VideoFXMediaInfo& info, VideoFXStreamKind kin
 static void TestTransitionsAndOverlays(const VideoFXExportSettings& base);
 static void TestStillImages(const VideoFXExportSettings& base);
 static void TestMusic(const VideoFXExportSettings& base);
+static void TestPreview(const VideoFXExportSettings& base);
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -1123,6 +1124,7 @@ static void TestEngine() {
     TestTransitionsAndOverlays(base);
     TestStillImages(base);
     TestMusic(base);
+    TestPreview(base);
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -1875,6 +1877,153 @@ static void TestMusic(const VideoFXExportSettings& base) {
     CHECK(VideoFX_CreateSlideshow({photo}, TempPath("x.mkv"), noMusic) == VideoFXResult::InvalidArgument,
           "fit to music without music");
     CHECK(!Exists(TempPath("x.wav")) && !Exists(TempPath("x.mkv")), "nothing written by refused exports");
+}
+
+// ============================================================================
+// PREVIEW - a timeline's frames without an export
+// ============================================================================
+static void TestPreview(const VideoFXExportSettings& base) {
+    std::printf("\n-- preview --\n");
+    const std::string clip = TempPath("pattern.mkv");      // 320x240, 25 fps, 3 s, from TestEngine
+
+    // red card 1 s | pattern 0..2 s, cross-fade 0.5 in | blue card with text 1 s | green photo 1 s, fade in
+    VideoFXSegment red = VideoFXSegment::SolidColor(0xFF0000, 1.0);
+    VideoFXSegment file = VideoFXSegment::FromFile(clip, 0.0, 2.0);
+    file.transitionIn = VideoFXTransition::Crossfade(0.5);
+    VideoFXSegment blue = VideoFXSegment::SolidColor(0x0000FF, 1.0);
+    blue.overlays = {VideoFXOverlay::Text("Preview", VideoFXAnchor::Bottom, 0.1)};
+    VideoFXSegment photo = VideoFXSegment::FromImageFrame(SolidFrame(320, 240, 0, 255, 0), 1.0);
+    photo.effects = {VideoFXEffect::FadeIn(0.5)};
+    const std::vector<VideoFXSegment> timeline = {red, file, blue, photo};
+
+    VideoFXExportSettings s = base;
+    s.width = 320; s.height = 240; s.frameRate = 25.0;
+
+    VideoFXPreview preview;
+    CHECK(!preview.IsOpen(), "closed before Open");
+    CHECK_OK(preview.Open(timeline, s), "open the timeline");
+    CHECK(preview.IsOpen(), "open");
+    CHECK(preview.GetWidth() == 320 && preview.GetHeight() == 240, "the settings' size");
+    CHECK(Near(preview.GetFrameRate(), 25.0, 0.01), "the settings' rate");
+    CHECK(Near(preview.GetDuration(), 4.5, 0.01), "1 + 2 + 1 + 1 less the 0.5 s overlap");
+
+    double into = -1.0;
+    CHECK(preview.SegmentAt(0.2, &into) == 0 && Near(into, 0.2, 1e-6), "the card at 0.2 s");
+    CHECK(preview.SegmentAt(0.7, &into) == 1 && Near(into, 0.2, 1e-6), "inside the overlap: the clip being entered");
+    CHECK(preview.SegmentAt(2.0, &into) == 1 && Near(into, 1.5, 1e-6), "the clip at 2.0 s");
+    CHECK(preview.SegmentAt(2.6, &into) == 2 && Near(into, 0.1, 1e-6), "the blue card at 2.6 s");
+    CHECK(preview.SegmentAt(3.6, &into) == 3 && Near(into, 0.1, 1e-6), "the photo at 3.6 s");
+    CHECK(preview.SegmentAt(4.5) == -1 && preview.SegmentAt(-0.1) == -1, "nothing at the end or before the start");
+
+    VideoFXFrame f;
+    double r, g, b;
+    CHECK_OK(preview.RenderFrame(0.2, f), "render the card");
+    CHECK(f.IsValid() && f.width == 320 && f.height == 240, "a 320x240 RGBA frame");
+    CHECK(Near(f.timestamp, 0.2, 1e-6), "stamped with the timeline time");
+    CentreColour(f, r, g, b);
+    CHECK(r > 200 && g < 40 && b < 40, "the card is red");
+
+    CHECK_OK(preview.RenderFrame(0.75, f), "render inside the cross-fade");
+    CentreColour(f, r, g, b);
+    CHECK(r > 40 && r < 220, "mid-fade: red blended with the pattern");
+
+    CHECK_OK(preview.RenderFrame(2.0, f), "render the file");
+    VideoFXFrame direct;
+    CHECK_OK(VideoFX_ExtractFrame(clip, 1.5, direct), "the same frame straight from the file");
+    double dr, dg, db;
+    CentreColour(f, r, g, b);
+    CentreColour(direct, dr, dg, db);
+    CHECK(std::fabs(r - dr) < 24 && std::fabs(g - dg) < 24 && std::fabs(b - db) < 24,
+          "the file's frame at its own 1.5 s");
+    bool onward = true;    // scrubbing forward decodes on without a seek: the frames must still be the right ones
+    for (double step : {0.04, 0.2, 0.4}) {    // the file plays until 2.5 s
+        CHECK_OK(preview.RenderFrame(2.0 + step, f), "render a little later");
+        CHECK_OK(VideoFX_ExtractFrame(clip, 1.5 + step, direct), "the same straight from the file");
+        onward = onward && f.width == direct.width && f.height == direct.height
+                 && std::equal(f.pixels.begin(), f.pixels.end(), direct.pixels.begin(),
+                               [](uint8_t p, uint8_t q) { return std::abs(int(p) - int(q)) <= 2; });
+    }
+    CHECK(onward, "scrubbing forward gives the frames a fresh seek would");
+    CHECK_OK(preview.RenderFrame(2.0, f), "and back again");
+    CHECK_OK(VideoFX_ExtractFrame(clip, 1.5, direct), "the file at 1.5 s again");
+    CHECK(std::equal(f.pixels.begin(), f.pixels.end(), direct.pixels.begin(),
+                     [](uint8_t p, uint8_t q) { return std::abs(int(p) - int(q)) <= 2; }),
+          "a seek back gives the right frame too");
+
+    CHECK_OK(preview.RenderFrame(2.6, f), "render the blue card with text");
+    CentreColour(f, r, g, b);
+    CHECK(b > 200 && r < 40, "blue in the middle");
+    int whiteish = 0;
+    for (int y = f.height * 3 / 4; y < f.height; ++y)
+        for (int x = 0; x < f.width; ++x) {
+            int pr, pg, pb;
+            PixelAt(f, x, y, pr, pg, pb);
+            if (pr > 180 && pg > 180) ++whiteish;
+        }
+    CHECK(whiteish > 50, "the text is drawn along the bottom");
+
+    CHECK_OK(preview.RenderFrame(3.5, f), "render the photo at its first frame");
+    CentreColour(f, r, g, b);
+    CHECK(g < 60, "the fade-in starts black");
+    CHECK_OK(preview.RenderFrame(4.4, f), "render the photo faded in");
+    CentreColour(f, r, g, b);
+    CHECK(g > 200 && r < 40, "green once the fade is over");
+
+    CHECK_OK(preview.RenderFrame(2.0, f, 100, 100), "render scaled");
+    CHECK(f.width == 100 && f.height == 75, "scaled keeping 4:3");
+    CHECK(preview.RenderFrame(4.5, f) == VideoFXResult::InvalidArgument, "past the end is refused");
+    CHECK(preview.RenderFrame(-1.0, f) == VideoFXResult::InvalidArgument, "so is before the start");
+
+    preview.Close();
+    CHECK(!preview.IsOpen() && preview.GetDuration() == 0.0, "closed again");
+    CHECK(preview.RenderFrame(0.0, f) == VideoFXResult::InvalidArgument, "nothing to render when closed");
+
+    // ---- the one-call form ----
+    CHECK_OK(VideoFX_RenderFrame(timeline, 0.2, f, s), "one frame in one call");
+    CentreColour(f, r, g, b);
+    CHECK(r > 200 && g < 40, "and it is the red card");
+    CHECK_OK(VideoFX_RenderFrame({red, blue}, 1.5, f), "default settings take the first segment's size");
+    CHECK(f.width > 0 && f.height > 0, "a frame of some size");
+    CHECK(VideoFX_RenderFrame({}, 0.0, f) == VideoFXResult::InvalidArgument, "no segments");
+    VideoFXSegment missing = VideoFXSegment::FromFile(TempPath("nowhere.mkv"));
+    CHECK(VideoFX_RenderFrame({missing}, 0.0, f) == VideoFXResult::FileNotFound, "a missing file");
+
+    // ---- a slideshow's plan ----
+    std::vector<std::string> photos;
+    const uint8_t rgb[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
+    for (int i = 0; i < 3; ++i) {
+        photos.push_back(TempPath("plan" + std::to_string(i) + ".png"));
+        CHECK_OK(VideoFX_SaveFrameImage(SolidFrame(160, 120, rgb[i][0], rgb[i][1], rgb[i][2]), photos.back()),
+                 "a slideshow photo");
+    }
+    VideoFXSlideshowOptions options;
+    options.secondsPerImage = 2.0;
+    options.transition = VideoFXTransition::Crossfade(0.5);
+    options.captions = {"one", "", "three"};
+    options.keepFacesInView = false;
+    std::vector<VideoFXSegment> plan;
+    VideoFXExportSettings planned;
+    CHECK_OK(VideoFX_PlanSlideshow(photos, options, {}, plan, planned), "plan a slideshow");
+    CHECK(plan.size() == 3, "one segment per photo");
+    bool images = plan.size() == 3;
+    for (const auto& seg : plan) images = images && seg.kind == VideoFXSourceKind::Image && Near(seg.duration, 2.0, 1e-6);
+    CHECK(images, "image segments of two seconds");
+    CHECK(plan.size() == 3 && plan[0].path == photos[0] && plan[2].path == photos[2], "in the order given");
+    CHECK(plan.size() == 3 && plan[0].transitionIn.type == VideoFXTransitionType::Cut
+          && plan[1].transitionIn.type == VideoFXTransitionType::Crossfade && Near(plan[1].transitionIn.duration, 0.5, 1e-6),
+          "the transition on every cut but the first");
+    CHECK(plan.size() == 3 && plan[0].overlays.size() == 1 && plan[0].overlays[0].text == "one"
+          && plan[1].overlays.empty() && plan[2].overlays.size() == 1 && plan[2].overlays[0].text == "three",
+          "captions where given");
+    bool fades = plan.size() == 3 && !plan[0].effects.empty() && plan[0].effects.front().type == VideoFXEffectType::FadeIn
+                 && !plan[2].effects.empty() && plan[2].effects.back().type == VideoFXEffectType::FadeOut;
+    CHECK(fades, "fade in at the start, out at the end");
+    CHECK(planned.width == 1920 && planned.height == 1080, "the slideshow's default size");
+    CHECK_OK(VideoFX_RenderFrame(plan, 3.0, f, planned, 192, 108), "a frame of the plan");
+    CHECK(f.width == 192 && f.height == 108, "scaled to the request");
+    CentreColour(f, r, g, b);
+    CHECK(g > 150 && r < 80, "the second photo at 3 s");
+    CHECK(VideoFX_PlanSlideshow({}, options, {}, plan, planned) == VideoFXResult::InvalidArgument, "no photos");
 }
 
 #else
