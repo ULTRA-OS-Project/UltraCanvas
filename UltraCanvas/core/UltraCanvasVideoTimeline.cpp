@@ -24,7 +24,7 @@ constexpr double kMinPixelsPerSecond = 2.0;
 constexpr double kMaxPixelsPerSecond = 2000.0;
 constexpr double kMinTransitionSeconds = 0.04;
 constexpr float kToggleSize = 16.0f;
-constexpr float kToggleGap = 4.0f;
+constexpr float kToggleGap = 2.0f;
 constexpr float kMarkerStripHeight = 11.0f;
 constexpr float kTransitionHeight = 18.0f;
 
@@ -364,7 +364,7 @@ UltraCanvasVideoTimeline::Hit UltraCanvasVideoTimeline::HitTest(float x, float y
         if (x < body.x) {
             // header: toggles sit at the right, 16 px each
             const std::vector<TimelineTrackToggle> toggles = TogglesFor(track);
-            float right = style.headerWidth - 8.0f;
+            float right = style.headerWidth - 6.0f;
             for (size_t i = toggles.size(); i-- > 0;) {
                 const float left = right - kToggleSize;
                 if (x >= left - 2.0f && x <= right + 2.0f) {
@@ -449,7 +449,7 @@ double UltraCanvasVideoTimeline::SnapTime(double seconds, const std::string& ign
 void UltraCanvasVideoTimeline::SetLabelFont(IRenderContext* ctx, float size, bool mono, bool bold) {
     ctx->SetFontFace(mono ? style.monoFamily : style.fontFamily, bold ? FontWeight::Bold : FontWeight::Normal,
                      FontSlant::Normal);
-    ctx->SetFontSize(size);
+    ctx->SetFontSize(size * 0.75f);   // the style's sizes are pixels; the context takes points
 }
 
 void UltraCanvasVideoTimeline::ClipFillAndEdge(const TimelineClip& clip, Color& fill, Color& edge) const {
@@ -656,7 +656,7 @@ void UltraCanvasVideoTimeline::DrawHeader(IRenderContext* ctx, const TimelineTra
     ctx->DrawLine(Point2Dd(0.0, r.y + r.height + 0.5), Point2Dd(r.width, r.y + r.height + 0.5));
 
     const std::vector<TimelineTrackToggle> toggles = TogglesFor(track);
-    float right = style.headerWidth - 8.0f;
+    float right = style.headerWidth - 6.0f;
     const float boxY = lane.top + (lane.height - kToggleSize) / 2.0f;
     for (size_t i = toggles.size(); i-- > 0;) {
         const float left = right - kToggleSize;
@@ -683,11 +683,11 @@ void UltraCanvasVideoTimeline::DrawHeader(IRenderContext* ctx, const TimelineTra
     ctx->SetTextPaint(style.inkFaint);
     ctx->SetTextAlignment(TextAlignment::Left);
     ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-    ctx->DrawTextInRect(track.id, Rect2Dd(12.0, lane.top, 28.0, lane.height));
+    ctx->DrawTextInRect(track.id, Rect2Dd(10.0, lane.top, 26.0, lane.height));
     SetLabelFont(ctx, style.labelSize, false, selected);
     ctx->SetTextPaint(selected ? style.ink : style.inkMuted);
-    const double nameWidth = std::max(10.0f, right - 48.0f);
-    ctx->DrawTextInRect(Truncated(ctx, track.name, nameWidth), Rect2Dd(40.0, lane.top, nameWidth, lane.height));
+    const double nameWidth = std::max(10.0f, right - 42.0f);
+    ctx->DrawTextInRect(Truncated(ctx, track.name, nameWidth), Rect2Dd(36.0, lane.top, nameWidth, lane.height));
 }
 
 void UltraCanvasVideoTimeline::DrawLane(IRenderContext* ctx, const TimelineTrack& track, const TrackLayout& lane,

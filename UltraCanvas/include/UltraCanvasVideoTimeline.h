@@ -95,7 +95,7 @@ struct VideoTimelineStyle {
     float snapTolerancePx = 8.0f;
     float minTransitionPx = 22.0f;
     float cornerRadius    = 4.0f;
-    // fonts
+    // fonts; sizes in pixels, as the sizes above
     std::string fontFamily = "Ubuntu";
     std::string monoFamily = "Ubuntu Mono";
     float labelSize   = 12.0f;
