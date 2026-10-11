@@ -488,9 +488,20 @@ bundled fonts alone (`fonts-startup.conf`) and the full set (`fonts.conf`) is
 scanned on a thread. `LoadBundledFontsNative()` waits up to 400 ms for it
 (`AdoptSystemFontsWithin`): a warm cache ends well within that, and the full
 set is used from the start. Otherwise the application starts with the bundled
-fonts and Windows' two symbol fonts, and every window switches to the full set
-when the scan ends. `GetSystemFontScanStatus()` says which happened, and
+fonts and Windows' symbol fonts (Segoe UI Symbol, Segoe UI Emoji and Cambria
+Math, for the UI's marks, emoji and mathematical symbols), and every window
+switches to the full set when the scan ends - laid out and drawn again
+(`RefreshAfterFontChange()`), so a character the start's fonts lacked does not
+stay a box. `GetSystemFontScanStatus()` says which happened, and
 `SetSystemFontsSwitchedHandler()` hears of the switch.
+
+Text goes through Pango's fontconfig font map on every thread: the main
+thread's is made in `LoadBundledFontsNative()`, and `PANGOCAIRO_BACKEND=fc` is
+set once it exists, so a worker thread (or libvips and librsvg laying out
+text) gets one too rather than Pango's Win32 map, which never reads fontconfig
+and draws a box for any character its font lacks. The debug log
+(`ULTRACANVAS_DEBUG_LOG`) names the map: "UltraCanvas: text font map
+PangoCairoFcFontMap ...".
 
 An application that starts but takes ten seconds to show anything - its
 console window alone on screen, or nothing - spends that time in one of

@@ -1,5 +1,8 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.13.1 - a menu bar's dropdown taller than the room below stays under
+//                  the bar and scrolls; it was moved up over the bar, where the
+//                  release of the opening click picked a row and closed it
 // Version: 1.13.0 - MenuStyle::tintIcons draws an item's icon as a mask in its
 //                  label's colour
 // Version: 1.12.0 - a current-desktop look for popups and submenus: a rounded panel
@@ -13,7 +16,7 @@
 //                  progress was computed and never drawn); activating an item
 //                  without an application no longer dereferences a null one
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -835,10 +838,15 @@ namespace UltraCanvas {
                 if (submenuPos.x < 0) submenuPos.x = 0;
             }
 
-            // Vertical: shift up if overflows bottom edge
-            if (submenuPos.y + submenuHeight > windowHeight) {
-                submenuPos.y = windowHeight - submenuHeight;
-                if (submenuPos.y < 0) submenuPos.y = 0;
+            // Vertical: a cascading submenu moves up to fit, never past the
+            // window's top. A menu bar's dropdown stays under its bar:
+            // moved up, one taller than the room below covered the bar and
+            // the pointer on it, so the release of the click that opened it
+            // chose the row it landed on and the menu closed at once
+            // (ArtCreator's Arrange menu). ClampMenuToWindow flips it above
+            // the bar or gives it a scrollbar instead.
+            if (orientation == MenuOrientation::Vertical && submenuPos.y + submenuHeight > windowHeight) {
+                submenuPos.y = std::max(0, windowHeight - submenuHeight);
             }
         }
 

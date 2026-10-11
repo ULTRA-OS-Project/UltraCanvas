@@ -18,6 +18,10 @@
   (`media/icons/artcreator/`).
 - **The Shape Editor's "Line ⇄ curve" button reads "Line / curve".** The
   UI font has no "⇄", which showed as a box of hex digits on Windows.
+- **The Arrange menu opens.** It closed again at once: taller than the
+  window, it was placed over the menu bar, and the release of the click that
+  opened it picked one of its rows. It now opens under the bar and scrolls
+  (UltraCanvas, `Docs/UltraCanvas/changelog.d/menubar-tall-dropdown.md`).
 
 #### 2026-10-07 *0.6.8*
 - **Save as and Export keep the file type you chose.** Both added an

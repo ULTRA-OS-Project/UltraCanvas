@@ -850,8 +850,11 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `IsFontFileRegistered` / `GetRegisteredFontFiles` add a file's faces to the
   process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
   FontConfig on Windows, CoreText process scope on macOS), followed by
-  `RefreshFontConfiguration()` so the new family resolves in the next layout.
-  Process-private and permanent: there is no unregister.
+  `RefreshFontConfiguration()` so the new family resolves in the next layout,
+  and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
+  layout and a full repaint, popups too; also run when the Windows system
+  fonts arrive after a cold start). Process-private and permanent: there is
+  no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
@@ -27782,9 +27785,13 @@ After a successful registration the framework calls
 `RefreshFontConfiguration()` for you, which rebuilds the FontConfig FontSet
 and signals Pango's default font map (`pango_fc_font_map_config_changed`) so
 the new family is resolvable in the very next layout — not only in windows
-created afterwards. On macOS, and on any build without PangoFT2, there is no
-such signal: the default font map is dropped instead, and contexts that
-already exist pick the font up when their surface is next recreated.
+created afterwards. Every open window is then laid out and drawn again
+(`UltraCanvasWindowBase::RefreshAfterFontChange()`), so text already on
+screen in that family, or a character only the new font covers, shows in it
+at once rather than when that spot next happens to be repainted. On macOS,
+and on any build without PangoFT2, there is no such signal: the default font
+map is dropped instead, and contexts that already exist pick the font up when
+their surface is next recreated.
 
 ## In the filer
 
@@ -66616,9 +66623,20 @@ bundled fonts alone (`fonts-startup.conf`) and the full set (`fonts.conf`) is
 scanned on a thread. `LoadBundledFontsNative()` waits up to 400 ms for it
 (`AdoptSystemFontsWithin`): a warm cache ends well within that, and the full
 set is used from the start. Otherwise the application starts with the bundled
-fonts and Windows' two symbol fonts, and every window switches to the full set
-when the scan ends. `GetSystemFontScanStatus()` says which happened, and
+fonts and Windows' symbol fonts (Segoe UI Symbol, Segoe UI Emoji and Cambria
+Math, for the UI's marks, emoji and mathematical symbols), and every window
+switches to the full set when the scan ends - laid out and drawn again
+(`RefreshAfterFontChange()`), so a character the start's fonts lacked does not
+stay a box. `GetSystemFontScanStatus()` says which happened, and
 `SetSystemFontsSwitchedHandler()` hears of the switch.
+
+Text goes through Pango's fontconfig font map on every thread: the main
+thread's is made in `LoadBundledFontsNative()`, and `PANGOCAIRO_BACKEND=fc` is
+set once it exists, so a worker thread (or libvips and librsvg laying out
+text) gets one too rather than Pango's Win32 map, which never reads fontconfig
+and draws a box for any character its font lacks. The debug log
+(`ULTRACANVAS_DEBUG_LOG`) names the map: "UltraCanvas: text font map
+PangoCairoFcFontMap ...".
 
 An application that starts but takes ten seconds to show anything - its
 console window alone on screen, or nothing - spends that time in one of
