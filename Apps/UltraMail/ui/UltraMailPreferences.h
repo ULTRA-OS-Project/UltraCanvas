@@ -4,6 +4,9 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.14.0 - fetchSenderIcons and fetchSiteIcons default to off: a fresh
+//                   install contacts no third-party website until the reader
+//                   turns the download on (privacy by default)
 // Version: 0.13.0 - folderTreeContent (Settings > Display > Treeview) and
 //                   accountOrder (account tiles dragged into another order)
 // Version: 0.12.0 - senderLists: trusted and blocked senders
@@ -74,14 +77,17 @@ struct Preferences {
     // Whether UltraMail may download the icons of the services in its known-
     // sender registry into the sender-icon cache, once each. Off means the
     // badge shows the sender's monogram in the brand's colour instead - and
-    // nothing at all is downloaded, website icons included.
-    bool fetchSenderIcons = true;
+    // nothing at all is downloaded, website icons included. Off by default:
+    // each download tells a third party's web server the reader's IP address,
+    // and a fresh install contacts nobody but the reader's own mail server
+    // until the reader decides otherwise (Settings > Privacy > Sender icons).
+    bool fetchSenderIcons = false;
     // Whether a sender that is no known service gets its website's icon:
     // the home page of the domain it writes from is read for its icon, once
     // a week at most, and only for mail that passed the content scan. That
     // tells the sender's web server that someone looked; off, only the
-    // registry's icons are fetched.
-    bool fetchSiteIcons = true;
+    // registry's icons are fetched. Off by default, as above.
+    bool fetchSiteIcons = false;
 
     // Senders whose remote (web) images load without asking ("Always from
     // <sender>" in the reading pane), lower-cased addresses.
