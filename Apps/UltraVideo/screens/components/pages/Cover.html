@@ -1,0 +1,52 @@
+<!doctype html>
+<html data-theme="dark" lang="en">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script>
+<meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 960x288. -->
+<title>UltraVideo</title>
+<style>
+  html, body { margin:0; height:100%; }
+  body { background:var(--bg-100); color:var(--ink); font-family:var(--font-sans); overflow:hidden; }
+  .cover { position:relative; height:288px; overflow:hidden; }
+  .art { position:absolute; top:0; left:480px; width:480px; height:288px; overflow:hidden; }
+  .art svg { display:block; width:480px; height:288px; }
+  .vid { fill:var(--clip-video-edge); }
+  .acc { fill:var(--accent); }
+  .aud { fill:var(--clip-audio-edge); }
+  .ttl { fill:var(--clip-title-edge); }
+  .ph { fill:var(--playhead); }
+  .clip { rx:var(--radius-sm); }
+  .words { position:absolute; left:var(--space-8); bottom:var(--space-8); max-width:440px; }
+  .name { margin:0; font-size:72px; line-height:.92; font-weight:600; letter-spacing:-.02em; color:var(--ink); }
+  .tag { margin:var(--space-2) 0 0 2px; font-size:14px; line-height:20px; color:var(--ink-muted); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="art" aria-hidden="true">
+<svg viewBox="0 0 480 288" width="480" height="288">
+<!--
+  blocks      accent 148×72 (the selected clip, identity amber) · clip-video-edge tiles on two video lanes · clip-audio-edge 512×56 music bar bleeding both sides · clip-title-edge 2 thin overlay spans — ≈45% of 960×288
+  arrangement four timeline lanes stacked at track heights (overlay 24, main 72, overlay video 48, music 56) with space-2 gaps, tiles bleeding off the left and right edges
+  pattern     tiles cut by radius-sm, from "dense, modular UI": clips abut with 6px cuts like the main track; one playhead (playhead token) crosses all lanes
+  scales      lane heights from size tokens (track-h-overlay 28→24, track-h-video 64→72, track-h-audio 48→56); gaps space-2; corners radius-sm
+-->
+<rect class="ttl clip" x="24" y="24" width="126" height="24" rx="4"/>
+<rect class="ttl clip" x="252" y="24" width="120" height="24" rx="4"/>
+<rect class="vid clip" x="-12" y="56" width="122" height="72" rx="4"/>
+<rect class="acc clip" x="116" y="56" width="148" height="72" rx="4"/>
+<rect class="vid clip" x="270" y="56" width="110" height="72" rx="4"/>
+<rect class="vid clip" x="386" y="56" width="110" height="72" rx="4"/>
+<rect class="vid clip" x="168" y="136" width="136" height="48" rx="4"/>
+<rect class="aud clip" x="-12" y="192" width="310" height="56" rx="4"/>
+<rect class="aud clip" x="304" y="192" width="200" height="56" rx="4"/>
+<rect class="ph" x="211" y="14" width="2" height="250"/>
+<path class="ph" d="M205 8h14v8l-7 6-7-6z"/>
+</svg>
+</div>
+<div class="words">
+  <h1 class="name">UltraVideo</h1>
+  <p class="tag">The editing surface of the ULTRA OS video editor.</p>
+</div>
+</div>
+</body>
+</html>

@@ -13,6 +13,12 @@ The application is not written yet. What this directory holds is its design:
   TypeScript types (`index.d.ts`), the reference renderer that draws it
   (`bundle.js`, a visual specification, not production code) and its
   stylesheet (`bundle.css`).
+  `screens/components/pages/` holds the live pages: one per component,
+  `Cover.html`, and `index.html` framing them all with a theme toggle. Open
+  `index.html` in a browser. The pages link `../../tokens/tokens.css` and
+  `../../fonts/fonts.css`, that is `screens/tokens/` and `screens/fonts/`,
+  which are not in the tree yet, so they show no colours and the fallback
+  font until those two files are added.
 - `Icons/` - the interface icon set the screens use (16 px grid, 1.5 px
   stroke, `currentColor`), as single-path SVG files.
 - `UltraVideoTokens.h` - the design tokens as C++: both palettes, spacing,

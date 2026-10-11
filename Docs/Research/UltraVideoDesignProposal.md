@@ -48,7 +48,8 @@ the spacing and the interaction rules they share.
 | [`BrandBook.md`](../../Apps/UltraVideo/screens/BrandBook.md) | Principles, colour tokens, type, spacing, layout, the interaction rules, icons, motion, and the implementation notes for UltraCanvas |
 | [`UltraVideoTokens.h`](../../Apps/UltraVideo/UltraVideoTokens.h) | The tokens as C++: both palettes (dark and light, 41 roles each), shadows, spacing, radii, geometry, opacities, durations and the eight text styles, generated from the design's `tokens.json` (§5.8) |
 | [`Icons/`](../../Apps/UltraVideo/Icons/) | The 46 interface icons the screens use, one path each on a 16 px grid (§5.8) |
-| [`screens/components/`](../../Apps/UltraVideo/screens/components/) | `index.d.ts`, the design's neutral timeline model as TypeScript types; `bundle.js`, the reference renderer that draws that model as HTML and SVG (a visual specification, not production code); `bundle.css`, its stylesheet with the tokens as CSS custom properties (§7.1) |
+| [`screens/components/`](../../Apps/UltraVideo/screens/components/) | `index.d.ts`, the design's neutral timeline model as TypeScript types; `bundle.js`, the reference renderer that draws that model as HTML and SVG (a visual specification, not production code); `bundle.css`, its stylesheet (§7.1) |
+| [`screens/components/pages/`](../../Apps/UltraVideo/screens/components/pages/) | The live pages, one per component plus `Cover.html` and an `index.html` that frames them all with a theme toggle. They draw through the renderer and expect `screens/tokens/tokens.css` (the tokens as CSS custom properties) and `screens/fonts/fonts.css`, which are not in the tree yet, so they render without colours until those two files arrive |
 
 ---
 
