@@ -4,7 +4,8 @@
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
 // Version: 1.1.1 - the tool palette shows its tools' 28 px icons (media/icons/ultrapaint/28)
-//                  at 28 px, the grid they are drawn on, in 38 px buttons
+//                  at 28 px, the grid they are drawn on, in 36 px buttons; flat
+//                  buttons in the palette and the toolbar
 // Version: 1.1.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework

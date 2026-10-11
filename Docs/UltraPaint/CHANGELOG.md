@@ -14,6 +14,9 @@
   (framework changelog: `button-icon-pixel-grid`). Where the window is too
   short for every tool's button, the palette scrolls instead of squeezing
   them.
+- **Flat buttons.** The tool palette and the toolbar no longer draw a box
+  around each button: a soft grey rounded highlight marks the button under
+  the pointer and a light blue one the active tool.
 
 #### 2026-10-09 *0.2.12*
 - **The Fill tool can make an area transparent.** Filling with a colour
