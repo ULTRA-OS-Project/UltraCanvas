@@ -51,8 +51,8 @@
 //          temperature=v grayscale sepia invert blur=r sharpen=v denoise=v
 //          vignette=v rotate90 rotate180 rotate270 rotate=deg hflip vflip
 //          crop=x:y:w:h fadein=s fadeout=s volume=g normalize[=lufs] lut=path
-// Version: 0.7.0
-// Last Modified: 2026-10-08
+// Version: 0.8.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include <VideoFX/VideoFX.h>

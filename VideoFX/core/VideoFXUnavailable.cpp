@@ -2,7 +2,7 @@
 // Built instead of the FFmpeg sources when FFmpeg is not found: the API links,
 // VideoFX_IsAvailable() says false, and every operation returns NotAvailable.
 // Version: 0.8.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
