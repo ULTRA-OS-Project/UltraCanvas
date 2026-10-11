@@ -1969,13 +1969,13 @@ namespace UltraCanvas {
 #endif
 
 #ifdef ULTRACANVAS_HAS_VECTORIZER_PLUGIN
-        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image → SVG vector tracer",
+        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image to SVG vector tracer",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateVectorizerExamples(); },
                              "Apps/DemoApp/UltraCanvasVectorizerExamples.cpp",
                              "Docs/Modules/Vectorizer/README.md");
 #else
-        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image → SVG vector tracer",
+        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image to SVG vector tracer",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/Vectorizer/README.md")); });
 #endif
@@ -2486,16 +2486,16 @@ namespace UltraCanvas {
 
         switch (item->status) {
             case ImplementationStatus::FullyImplemented:
-                statusText << "✓ Fully Implemented";
+                statusText << "Fully Implemented";
                 break;
             case ImplementationStatus::PartiallyImplemented:
-                statusText << "⚠ Partially Implemented";
+                statusText << "Partially Implemented";
                 break;
             case ImplementationStatus::NotImplemented:
-                statusText << "✗ Not Implemented";
+                statusText << "Not Implemented";
                 break;
             case ImplementationStatus::Planned:
-                statusText << "📋 Planned";
+                statusText << "Planned";
                 break;
         }
 

@@ -562,16 +562,18 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     // by not offering the buttons at all rather than by two that do nothing.
     const size_t sampleCount = samples->size();
     if (sampleCount > 1) {
-        auto prevBtn = MakeToolButton("MFPrev", 300, 450, 100, "◀ Prev",
+        auto prevBtn = MakeToolButton("MFPrev", 300, 450, 100, "Prev",
                                       [showSample, currentIndex, sampleCount]() {
                                           showSample((*currentIndex + sampleCount - 1) % sampleCount);
                                       });
+        SetFlatButtonIcon(*prevBtn, "menu/chevron-left.svg");
         viewerPanel->AddChild(prevBtn);
 
-        auto nextBtn = MakeToolButton("MFNext", 410, 450, 100, "Next ▶",
+        auto nextBtn = MakeToolButton("MFNext", 410, 450, 100, "Next",
                                       [showSample, currentIndex, sampleCount]() {
                                           showSample((*currentIndex + 1) % sampleCount);
                                       });
+        SetFlatButtonIcon(*nextBtn, "menu/chevron-right.svg", ButtonIconPosition::Right);
         viewerPanel->AddChild(nextBtn);
     }
 

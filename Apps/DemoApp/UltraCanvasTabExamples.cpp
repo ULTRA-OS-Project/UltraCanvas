@@ -371,11 +371,11 @@ namespace UltraCanvas {
         // Add tabs with icons
         int tabIndex1 = featureTabs->AddTab("Messages", CreateSampleTabContent("Feature1",
                                                                                "Tab Features Demonstrated:\n\n"
-                                                                               "✓ Tab icons (16x16 images next to title)\n"
-                                                                               "✓ Notification badges (red circles with counts)\n"
-                                                                               "✓ Close buttons (× on each tab)\n"
-                                                                               "✓ Hover effects on all interactive elements\n"
-                                                                               "✓ Visual feedback for user actions",
+                                                                               "• Tab icons (16x16 images next to title)\n"
+                                                                               "• Notification badges (red circles with counts)\n"
+                                                                               "• Close buttons (× on each tab)\n"
+                                                                               "• Hover effects on all interactive elements\n"
+                                                                               "• Visual feedback for user actions",
                                                                                Color(250, 250, 250)));
         featureTabs->SetTabIcon(tabIndex1, NormalizePath(GetResourcesDir() + "media/icons/envelope-icon.png"));
         featureTabs->SetTabBadge(tabIndex1, "5", true);  // 5 unread messages
@@ -431,7 +431,7 @@ namespace UltraCanvas {
             std::ostringstream contentStream;
             contentStream << "Content for Tab " << i << "\n\n"
                           << "This demonstrates the overflow dropdown feature.\n"
-                          << "Click the dropdown button (≡) to see all tabs.\n"
+                          << "Click the dropdown arrow at the end of the tab bar to see all tabs.\n"
                           << "Search field appears when dropdown has scrollbar.";
 
             Color tabColor = Color(

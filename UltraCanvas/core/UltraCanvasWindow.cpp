@@ -1,12 +1,13 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.6.0 - RefreshAfterFontChange(): a new layout and a full repaint, popups too
 // Version: 1.5.0 - popups are blended over the window with their alpha (rounded corners
 //                  show what is beneath) and a popup's drop shadow is painted under it
 // Version: 1.4.1 - IsWindowFocused() without an application is false, not a crash
 // Version: 1.4.0 - popups composite at their opacity (SetPopupOpacity), mixed with
 //                  the window content beneath, so a popup can fade as a whole
 // Version: 1.3.3 - PerformClose() closes transient child windows so no orphaned modal survives its parent
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -943,6 +944,29 @@ namespace UltraCanvas {
         pe.shadowSurface->CompositeToSurfaceWithOpacity(nativeSurface,
                                                         {popupPos.x - left, popupPos.y - top},
                                                         pe.opacity);
+    }
+
+    namespace {
+        // Every element of the tree: the next frame measures all text again.
+        void InvalidateLayoutTree(UltraCanvasUIElement* element) {
+            if (!element) return;
+            element->InvalidateLayout();
+            if (auto* container = dynamic_cast<UltraCanvasContainer*>(element)) {
+                for (const auto& child : container->GetChildren()) InvalidateLayoutTree(child.get());
+            }
+        }
+    }
+
+    void UltraCanvasWindowBase::RefreshAfterFontChange() {
+        InvalidateLayoutTree(this);
+        AddDirtyRectangle(Rect2Di(0, 0, config_.width, config_.height));
+        for (auto& pe : popupElements) {
+            if (!pe.element) continue;
+            InvalidateLayoutTree(pe.element);
+            const Size2Di sz = pe.element->GetSize();
+            pe.dirtyRectManager.Add(Rect2Di(0, 0, sz.width, sz.height));
+        }
+        RequestWindowComposition();
     }
 
     void UltraCanvasWindowBase::AddPopupDirtyRect(UltraCanvasUIElement* popup,

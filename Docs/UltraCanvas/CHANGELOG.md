@@ -1,3 +1,115 @@
+#### 2026-10-11 *0.9.250*
+- **The CDR plugin no longer reads freed memory when it draws a page.**
+  `UltraCanvasCDRPainterImpl` records a drawing as draw commands on the
+  document's pages while libcdr parses, and `UltraCanvasCDRRenderer` replays
+  them when a page is drawn. The commands captured the painter (`this`) and
+  called back into it, but the painter is a local of `ParseCDRFile` /
+  `ParseCDRMemory` and was gone by then, so every gradient fill looked its
+  gradient up through a dead object. The DemoApp's *CDR Images* page crashed
+  on `detailed.cdr` (ten gradients) with a segmentation fault in
+  `CreateGradientPattern`. The commands now capture the document they belong
+  to, which outlives them; `ApplyStyleToContext`, `FillAndStroke` and
+  `CreateGradientPattern` are static and take it. `CDRDocument` is no longer
+  copyable, since a copy's commands would point at the original.
+- **`CDRPluginRenderTest`** (`Tests/VectorFormatsTests.cmake`, so Windows CI
+  runs it too) loads every drawing of `media/vector/CDR` through the CDR
+  plugin, draws each page after the parse and checks it paints - and that
+  `detailed.cdr` shows its gradients. On the code before this fix it crashes
+  in `CreateGradientPattern`.
+- **The DemoApp shows no box of hex digits on Windows.** Its labels and
+  buttons wrote characters the bundled Ubuntu UI font does not have - "✓",
+  "✗", "⚠", arrows, "◀ ▶ ▲ ▼ ▾ ⋮" and emoji - in 117 places over 27 pages,
+  and with the bundled fonts alone each drew as a box. Now:
+  - the status bar reads "Status: Fully Implemented" without a mark, and the
+    Label page's status pills say "Success", "Warning", "Error";
+  - the "✓ feature" lists of the CDR, XAR, EPS, DWG, STL and Tabs pages are
+    "• feature" lists;
+  - buttons carry flat icons of `media/icons/menu/` in their text colour
+    (`SetFlatButtonIcon` in `UltraCanvasDemo.h`): Open, Save, Vectorize, Reset,
+    Run OCR, Full Size, Export, Prev / Next, the PDF search arrows, "Format
+    Cells", the sidebar toolbar and the Dependencies page's link menu;
+  - the Domain Dashboard draws its ticks, crosses and three-dot menus;
+  - arrows in sentences are words ("Raster to SVG").
+  `UltraCanvasDemo.h` says so for the next example: a label or a button holds
+  only characters the bundled UI font has.
+- **Eleven more icons in `media/icons/menu/`**: chevron-left, chevron-right,
+  chevron-up, chevron-down, reset, wand, zoom-in, users, chart, globe and code.
+- **When the fonts change, every window is drawn again, not only laid out.**
+  On Windows the system fonts arrive after a cold start (the first start, or
+  after Windows changed its fonts or the application moved), and until then
+  only the bundled fonts and the symbol fonts are available. When the scan
+  ended, `SwitchToSystemFonts` laid every window out again but repainted
+  nothing: a frame draws only its dirty rectangles. A character the start's
+  fonts lacked therefore stayed a box of hex digits until something else
+  redrew that spot.
+  - New `UltraCanvasWindowBase::RefreshAfterFontChange()`: every element
+    measures its text again, and the whole window and each open popup is
+    drawn again. The switch to the system fonts calls it on every window.
+    So does `RegisterFontFile`, so text in a family registered at run time
+    shows in it at once.
+  - Windows: the start's symbol fonts are Segoe UI Symbol, Segoe UI Emoji
+    and now also Cambria Math, for the mathematical symbols (⋮ ∩ ≔).
+  - Windows: every thread's Pango font map reads fontconfig. The map
+    `LoadBundledFontsNative` makes is only the main thread's default. Any
+    other thread built Pango's Win32 map, which never reads fontconfig and
+    draws a box for any character its font lacks. `PANGOCAIRO_BACKEND=fc`
+    (the variable pangocairo reads, not `PANGO_BACKEND`) is set once the
+    main thread's map exists. The debug log names the map.
+  - Tested in the new `FontChangeRepaintTest`.
+- **Framework elements draw their marks instead of typing symbols the UI
+  font lacks.** The bundled Ubuntu font has no "✓", "✗", "✕", "◦", "▪",
+  "▲", "▼", arrows or emoji, and with no fallback font for them (a stock
+  Windows install) each drew as a box of hex digits. Now:
+  - `UltraCanvasDrawnMarks.h` (new; doc `UltraCanvasDrawnMarks.md`) draws a
+    tick, a cross, a sort triangle and the list bullets "•", "◦", "▪" as
+    shapes;
+  - the password rule legend draws its met / unmet icons ("✓" and "✗" by
+    default; "✔", "✘", "✕", "×", "○", "●" when set), any other string still
+    as text;
+  - Markdown lists (`UltraCanvasTextArea`) and `UltraCanvasRichTextEdit`
+    draw their nested bullets;
+  - a success dialog's badge shows a drawn white check
+    (`media/icons/clipboard/check.svg`) instead of "✓";
+  - the e-book viewer's Previous, Next and page-colour buttons show flat
+    chevron and moon icons, with tooltips, instead of "◀", "▶", "☾";
+  - the Filer's details header draws its sort triangle;
+  - the menu configurator's Add and Remove buttons show chevrons, and a
+    separator row reads "————";
+  - the new-document dialog draws its close cross and selection tick, and
+    shows a tinted document icon instead of "📄";
+  - text says it in a word or a character the font has: the date range
+    separator is "–", the chord tooltip "A to B", the sunburst's drill-up
+    hint "Back", a Venn intersection "A & B", the curves readout "Input 128,
+    output 140", a class diagram's reading direction "›" / "‹", a git tag
+    "◊ v1.0", an unread message "•", and a Markdown image placeholder
+    "Remote image: …" / "Missing image: …".
+- **`media/icons/menu/zoom-out.svg`**, the pair of `zoom-in.svg` in the flat
+  menu set.
+- **`MenuAndTabBehaviourTest` checks a menu bar drop-down taller than the
+  window.** It opens under its bar and scrolls, off the pointer; a cascading
+  submenu that tall moves up to the window's top, beside its parent. Before
+  menu bar drop-downs were anchored to their item (0.9.249), such a
+  drop-down was moved up over the bar. The release of the click that opened
+  it then picked a row and closed the menu, so ArtCreator's Arrange menu
+  (about 40 rows) never stayed open.
+- **`UltraCanvasNewDocumentDialog` draws again, with its text in place.**
+  Under the CSS layout it showed only its fields and buttons, stacked at its
+  top-left corner. The container's own background was painted over the
+  title, list and labels the dialog draws, and the layout ignored the bounds
+  the fields were given. The fields are now pinned at their places
+  (`SetElementAbsolutePosition` + `SetElementSize`), and the dialog paints
+  its own background. Text sits on the rows and fields it belongs to:
+  - a list row's name and category, which were 18 px low and across the
+    next row;
+  - the title, in its band;
+  - "Document type:", clear of the filter field's border;
+  - "File name:", which was drawn at the dialog's own offset in its window,
+    over the title;
+  - the "Will create:" preview, which was drawn below the dialog;
+  - the count line, clear of the file name field.
+  The selection tick no longer covers the category. Tested in the new
+  `NewDocumentDialogLayoutTest`.
+
 #### 2026-10-11 *0.9.249*
 - **Button icons are drawn on whole pixels.** `UltraCanvasButton` centred its
   icon in the content box, and where that left an odd number of pixels
