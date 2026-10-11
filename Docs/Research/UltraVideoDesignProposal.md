@@ -46,6 +46,9 @@ the spacing and the interaction rules they share.
 | [`Button-light.svg`](../../Apps/UltraVideo/screens/Button-light.svg), [`Button.md`](../../Apps/UltraVideo/screens/Button.md) | Primary, standard, ghost, icon and toggle buttons and their states (§6.9) |
 | [`EmptyState-light.svg`](../../Apps/UltraVideo/screens/EmptyState-light.svg), [`EmptyState.md`](../../Apps/UltraVideo/screens/EmptyState.md) | The timeline with no clips, idle and during a file drag (§6.9) |
 | [`BrandBook.md`](../../Apps/UltraVideo/screens/BrandBook.md) | Principles, colour tokens, type, spacing, layout, the interaction rules, icons, motion, and the implementation notes for UltraCanvas |
+| [`UltraVideoTokens.h`](../../Apps/UltraVideo/UltraVideoTokens.h) | The tokens as C++: both palettes (dark and light, 41 roles each), shadows, spacing, radii, geometry, opacities, durations and the eight text styles, generated from the design's `tokens.json` (§5.8) |
+| [`Icons/`](../../Apps/UltraVideo/Icons/) | The 46 interface icons the screens use, one path each on a 16 px grid (§5.8) |
+| [`screens/components/`](../../Apps/UltraVideo/screens/components/) | `index.d.ts`, the design's neutral timeline model as TypeScript types; `bundle.js`, the reference renderer that draws that model as HTML and SVG (a visual specification, not production code); `bundle.css`, its stylesheet with the tokens as CSS custom properties (§7.1) |
 
 ---
 
@@ -312,10 +315,21 @@ The brand book defines tokens (`bg-000`…`bg-500`, `ink`, `accent`,
 tints) and says to map every one onto the UltraCanvas theme and hard-code
 nothing in the element. So:
 
+- The tokens exist as code: `Apps/UltraVideo/UltraVideoTokens.h`, generated
+  from the design's `tokens.json`, holds a `Palette` struct with 41 colour
+  roles filled twice (`Dark`, `Light`), the shadows, the spacing and radius
+  scale, the geometry (`AppbarH` 40, `ToolbarH` 36, `ControlH` 28, `RulerH`
+  28, `TrackHeaderW` 200, the track heights, `ClipBandH` 16, `HandleW` 8,
+  `PlayheadW` 2, `BinW` 280, `InspectorW` 300), the opacities, the two
+  durations and the eight text styles. It is the application's source of
+  truth for the design and is regenerated, never edited.
 - The element reads its colours from the framework theme through named
-  roles. The clip kind colours and the playhead are the only roles it adds.
-  Light and dark follow the window's theme; the design's dark theme is the
-  editor's default.
+  roles, and the application fills those roles from the `Palette` for the
+  active theme. The clip kind fills and edges, the waveform, the transition
+  badge, the guides and the playhead are the roles the element adds; the
+  surfaces, ink, accent, focus and danger map onto roles the theme already
+  has. Light and dark follow the window's theme; the design's dark palette
+  is the editor's default.
 - Type: the design names IBM Plex Sans and IBM Plex Mono. The framework
   ships Ubuntu and Ubuntu Mono in `media/fonts/` and every app shares them.
   Ubuntu Mono has tabular figures, so timecode does not jitter. Decision:
@@ -326,10 +340,13 @@ nothing in the element. So:
 - Sizes come from the design's `size` family (control 28, ruler 28, track
   heights 64 / 48 / 28 / 24, header column 200, toolbar 36) multiplied by
   the framework's DPI scale, as every element does.
-- Icons: the design's set is a starting point drawn on a 16 px grid with a
-  1.5 px stroke. The decision in the brand book stands: replace it with one
-  consistent open set before release, keeping the names. The element takes
-  icons as path data through its style, so the swap touches no code.
+- Icons: the set is in `Apps/UltraVideo/Icons/`, 46 icons on a 16 px grid
+  with a 1.5 px stroke, one path each in `currentColor`, named as the specs
+  name them (`magnet`, `snap`, `beat`, `blade`, `slip`, `transition`,
+  `speed`, `motion`, `wave`, the transport and the eye, speaker and lock
+  pairs). The element takes icons as path data through its style, so the
+  app hands these in and a later swap for an open set, which the brand book
+  leaves open, touches no code.
 
 ### 5.9 The story mode
 
@@ -639,6 +656,22 @@ struct TimelineModel {
 } // namespace UltraCanvas
 ```
 
+The model mirrors the design's own,
+[`screens/components/index.d.ts`](../../Apps/UltraVideo/screens/components/index.d.ts),
+which the reference renderer draws: the same tracks, clips, overlay spans,
+transitions, markers, beats, range and playhead, with the same units
+(seconds on the timeline, duration after speed, pixels per second for the
+zoom). Two deliberate differences. The design's model carries view state on
+its records (`hover`, `selected`, `ghost`, `trim`, `drop`, the insertion
+markers, the snap line, the rubber band) because its renderer is stateless
+and redraws from one object; the element keeps that state inside itself and
+its model stays what the app owns. And the design's `overlay` track kind
+becomes the `Title` kind here, with the overlay *video* lane a `Video` track
+that is not the main one, because the two map onto different engine features
+(§5.3). The renderer's `timecode`, `ruler` step choice and `peaksPath` are
+the behaviours §7.4 and §7.6 specify, and the C++ ports of them are what the
+model tests check.
+
 Pure operations on the model, each a free function that returns the
 resulting model or a change (§7.3) and is unit-tested: `MoveClip`,
 `TrimClip`, `SplitClip`, `DeleteClips`, `DuplicateClip`, `SetSpeed`,
@@ -824,9 +857,11 @@ Apps/UltraVideo/
   UltraVideoInspector.{h,cpp}   the inspector forms
   UltraVideoDialogs.{h,cpp}     export, story wizard, project settings
   UltraVideoStory.{h,cpp}       slideshow options from the wizard
+  UltraVideoTokens.h            the design tokens as C++ (generated; present today)
   UltraVideo.desktop
   README.md
-  screens/                      the design: SVG screens, component specs, brand book
+  screens/                      the design: SVG screens, component specs, brand book (present today)
+  Icons/                        the interface icon set (present today)
 Docs/UltraVideo/CHANGELOG.md    "#### <date> *0.1.0*" is the version
 media/appicon/UltraVideo.{png,svg}
 ```
@@ -872,7 +907,8 @@ image types for *Open with*.
 | A reusable undo stack | Per-element only | The app's own `UltraVideoHistory`; a framework one is a candidate (§13) |
 | Theme roles for clip kinds and the playhead | Theme has none | Added with the element |
 | Fonts with tabular figures | Ubuntu Mono shipped | None |
-| An icon set | The design's draft | Replace with one open set before release, same names |
+| An icon set | `Apps/UltraVideo/Icons/`, 46 icons | None; an open set may replace it before release, same names |
+| The design's tokens as code | `Apps/UltraVideo/UltraVideoTokens.h` | The mapping onto theme roles, written with the element |
 
 ---
 
