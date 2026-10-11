@@ -1,6 +1,6 @@
 # Apps/AnchorPoint/CMakeLists.txt
 # AnchorPoint - peer-to-peer file sharing (no server file storage).
-# Version: 0.2.1
+# The version is the first line of Docs/AnchorPoint/CHANGELOG.md.
 #
 # Targets:
 #   anchorpoint_core  static lib: transfer protocol + raw-socket transport (UltraCrypt)
@@ -10,8 +10,13 @@
 #                     toggle with -DANCHORPOINT_BUILD_GUI=ON/OFF)
 cmake_minimum_required(VERSION 3.16)
 
+# ANCHORPOINT_VERSION is read from the first line of
+# Docs/AnchorPoint/CHANGELOG.md. Must be included before project(), which
+# uses it.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
+
 project(AnchorPoint
-        VERSION 0.2.1
+        VERSION ${ANCHORPOINT_VERSION}
         DESCRIPTION "AnchorPoint - peer-to-peer file sharing"
         LANGUAGES CXX)
 
@@ -186,7 +191,6 @@ if(ANCHORPOINT_BUILD_GUI)
         target_compile_features(AnchorPoint PRIVATE cxx_std_20)
         # The version shown in the window title: the first line of
         # Docs/AnchorPoint/CHANGELOG.md (cmake/UltraCanvasVersion.cmake).
-        include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
         target_compile_definitions(AnchorPoint PRIVATE
                 ANCHORPOINT_VERSION="${ANCHORPOINT_VERSION}")
         set_target_properties(AnchorPoint PROPERTIES

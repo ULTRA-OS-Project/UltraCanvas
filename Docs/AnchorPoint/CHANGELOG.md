@@ -4,6 +4,10 @@
   was ever written to. A Release build is now a GUI-subsystem program
   (`cmake/UltraCanvasWindowsGuiApp.cmake`); the headless `anchorpoint` stays
   a console program.
+- **The build reports the right version.** `Apps/AnchorPoint/CMakeLists.txt`
+  set `project(... VERSION 0.2.1)` by hand, so the configure line still said
+  0.2.1 two releases later. It takes the number from this changelog's first
+  line now, as the window title already did.
 
 #### 2026-09-28 *0.2.2*
 - **The version is in the window title** — `AnchorPoint 0.2.2` — so a screenshot or a
