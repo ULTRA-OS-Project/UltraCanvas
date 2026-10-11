@@ -79,11 +79,15 @@ UltraCanvasStart --step 3           # open the window on a step (for screenshots
 UltraCanvasStart --page report      # ...or open the Report (or Guide) dialog; the old page names map to steps
 UltraCanvasStart --for windows      # ...with that platform's guide preselected
 UltraCanvasStart --plan --assistant codex   # the plan and the project for another assistant
+UltraCanvasStart --create ~/MyApp --name "My App" --sdk ~/UltraCanvas-SDK-Linux-0.9.240-x86_64
+                                    # write the project skeleton (the Project step) and exit
 UltraCanvasStart --version
 ```
 
-`--check` and `--plan` open no window, so they work over ssh and in CI, which
-runs `--check` on every platform leg.
+`--check`, `--plan` and `--create` open no window, so they work over ssh and
+in CI, which runs `--check` on every platform leg and builds the skeleton
+`--create` writes against the SDK the leg just installed, so the files the
+Project step writes are known to compile.
 
 ## Engine
 

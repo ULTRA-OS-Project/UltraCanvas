@@ -1,4 +1,7 @@
 // Apps/UltraCanvasStart/engine/StartProject.cpp
+// Version: 0.1.2 - main.cpp calls the framework's CreateWindow(config), not a
+//                  method of the application (which has none); the skeleton
+//                  builds against the SDK again
 // Version: 0.1.1 - the instruction file is the chosen assistant's
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -82,7 +85,9 @@ std::string ProjectMainCpp(const ProjectOptions& options) {
     text += "    config.title  = \"" + options.appName + "\";\n";
     text += "    config.width  = 640;\n";
     text += "    config.height = 400;\n";
-    text += "    auto window = app.CreateWindow(config);\n";
+    text += "    // CreateWindow is the framework's function (UltraCanvasWindow.h);\n";
+    text += "    // the application object has no such method.\n";
+    text += "    auto window = CreateWindow(config);\n";
     text += "    if (!window) return 1;\n\n";
     text += "    auto label = CreateLabel(\"greeting\", 20, 20, 400, 28, \"Hello from " + app + "\");\n";
     text += "    window->AddChild(label);\n\n";

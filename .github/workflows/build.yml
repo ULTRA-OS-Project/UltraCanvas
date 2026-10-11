@@ -1065,6 +1065,11 @@ jobs:
       # this leg's platform: it detects the runner, finds its package manager
       # and checks the toolchain and core libraries, which the leg has by
       # construction, so a non-zero status names a detection or check bug.
+      # Then the project skeleton its Project step writes (--create), built
+      # against the SDK installed above the way a programmer builds it,
+      # cmake --preset default && cmake --build --preset default: 0.3.0's
+      # skeleton called a method the application class does not have, and
+      # nothing compiled it before a user did.
       # The engine test binary is a ctest entry (UltraCanvasStartEngine);
       # Linux runs it again with the rest of the suite below, which is fine.
       # The job's default shell: the MSYS2 shell on Windows, where the DLLs
@@ -1078,6 +1083,14 @@ jobs:
           "$exe" --version
           "$exe" --check
           "$exe" --plan --for ${{ runner.os == 'Linux' && 'windows' || 'linux' }} > /dev/null
+          # The prefix goes into the skeleton's CMakePresets.json as text, so
+          # on Windows it has to be the D:/... form cmake reads, not the
+          # /d/... form of the MSYS2 shell (which converts arguments, not files).
+          sdk="$PWD/$SDK_NAME"
+          if command -v cygpath > /dev/null 2>&1; then sdk=$(cygpath -m "$sdk"); fi
+          "$exe" --create scaffold-smoke --name "Smoke App" --sdk "$sdk"
+          test -f scaffold-smoke/main.cpp
+          (cd scaffold-smoke && cmake --preset default && cmake --build --preset default --parallel 2)
 
       - name: Run UltraNet tests
         if: runner.os != 'Windows'
