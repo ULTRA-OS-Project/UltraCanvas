@@ -25,3 +25,5 @@
     output 140", a class diagram's reading direction "›" / "‹", a git tag
     "◊ v1.0", an unread message "•", and a Markdown image placeholder
     "Remote image: …" / "Missing image: …".
+- **`media/icons/menu/zoom-out.svg`**, the pair of `zoom-in.svg` in the flat
+  menu set.
