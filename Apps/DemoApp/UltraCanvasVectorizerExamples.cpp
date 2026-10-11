@@ -274,7 +274,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     // ===== HEADER =====
     auto header = std::make_shared<UltraCanvasLabel>(
         "VecHeader", 16, 14, pageW - 32, 26);
-    header->SetText("Raster → SVG Vectorizer (VTracer backend)");
+    header->SetText("Raster to SVG Vectorizer (VTracer backend)");
     header->SetFontSize(18);
     header->SetFontWeight(FontWeight::Bold);
     header->SetTextColor(kTextStrong);
@@ -496,7 +496,8 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     auto resetBtn = std::make_shared<UltraCanvasButton>(
         "VecResetBtn", pad, 524, paramInnerW, 32);
-    resetBtn->SetText("↺ Reset to defaults");
+    resetBtn->SetText("Reset to defaults");
+    SetFlatButtonIcon(*resetBtn, "menu/reset.svg");
     resetBtn->SetFontSize(12);
     resetBtn->SetColors(kNeutralBtn, kNeutralBtnH);
     resetBtn->SetTextColors(kTextStrong);
@@ -555,7 +556,8 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     auto saveBtn = std::make_shared<UltraCanvasButton>(
         "VecSaveBtn", pad, 590, outputInnerW, 36);
-    saveBtn->SetText("💾 Save SVG…");
+    saveBtn->SetText("Save SVG…");
+    SetFlatButtonIcon(*saveBtn, "menu/save.svg");
     saveBtn->SetFontSize(12);
     saveBtn->SetColors(kSaveBtn, kSaveBtnH);
     saveBtn->SetTextColors(Color(255, 255, 255, 255));
@@ -747,7 +749,8 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     const int btnY = 590;
     auto openBtn = std::make_shared<UltraCanvasButton>(
         "VecOpenBtn", pad, btnY, 130, 36);
-    openBtn->SetText("📂 Open…");
+    openBtn->SetText("Open…");
+    SetFlatButtonIcon(*openBtn, "menu/folder.svg");
     openBtn->SetFontSize(12);
     openBtn->SetColors(kNeutralBtn, kNeutralBtnH);
     openBtn->SetTextColors(kTextStrong);
@@ -787,7 +790,8 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     auto runBtn = std::make_shared<UltraCanvasButton>(
         "VecRunBtn", pad + 138, btnY, 134, 36);
-    runBtn->SetText("✨ Vectorize");
+    runBtn->SetText("Vectorize");
+    SetFlatButtonIcon(*runBtn, "menu/wand.svg");
     runBtn->SetFontSize(12);
     runBtn->SetColors(kRunBtn, kRunBtnH);
     runBtn->SetTextColors(Color(255, 255, 255, 255));

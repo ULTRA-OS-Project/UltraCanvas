@@ -1,5 +1,6 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
+// Version: 2.9.0 - the Modern style's indicator line has a colour and a thickness of its own
 // Version: 2.8.0 - drag reorder on vertical bars, auto-scroll at the strip's ends, a pill ghost
 // Version: 2.7.0 - a truncated title fills its width, one X weight, the open tab's own X colour
 // Version: 2.6.0 - TabStyle::Pill, capsule tabs floating in the bar
@@ -189,6 +190,9 @@ namespace UltraCanvas {
         Color activeTabBorderColor = Color(96, 146, 224);
         Color inactiveTabBorderColor = Colors::Transparent;
         Color hoveredTabBorderColor = Colors::Transparent;
+        // The line under (beside) the open tab in TabStyle::Modern.
+        Color activeTabIndicatorColor = Color(33, 150, 243);
+        int activeTabIndicatorThickness = 2;
         Color activeTabTextColor = Colors::Black;
         Color inactiveTabTextColor = Color(80, 80, 80);
         Color disabledTabTextColor = Color(150, 150, 150);
@@ -380,6 +384,10 @@ namespace UltraCanvas {
         // 0 keeps the full capsule; a positive radius makes a rounded chip.
         void SetPillCornerRadius(float radius) { pillCornerRadius = std::max(0.0f, radius); InvalidateTabbar(); }
         float GetPillCornerRadius() const { return pillCornerRadius; }
+        void SetActiveTabIndicatorColor(const Color& c) { activeTabIndicatorColor = c; RequestRedraw(); }
+        Color GetActiveTabIndicatorColor() const { return activeTabIndicatorColor; }
+        void SetActiveTabIndicatorThickness(int px) { activeTabIndicatorThickness = std::max(1, px); RequestRedraw(); }
+        int GetActiveTabIndicatorThickness() const { return activeTabIndicatorThickness; }
         void SetActiveTabBorderColor(const Color& c) { activeTabBorderColor = c; RequestRedraw(); }
         Color GetActiveTabBorderColor() const { return activeTabBorderColor; }
         void SetInactiveTabBorderColor(const Color& c) { inactiveTabBorderColor = c; RequestRedraw(); }

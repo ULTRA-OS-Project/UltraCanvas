@@ -51,6 +51,16 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 `[` and `]` change the brush size; `X` swaps the colours, `Shift+D` resets
 them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
 
+The icons are line drawings in sets, each sharp at the size it is drawn
+for: `media/icons/ultrapaint/28/` on a 28-unit grid for the palette's flat
+36 px buttons, `media/icons/ultrapaint/` on a 24-unit grid for 24 px, and
+`media/icons/ultrapaint/16/` on a 16-unit grid with 1 px lines for the menus,
+where every entry has one (an adjustment's or a filter's is named by its
+id: `16/gaussian-blur.svg`). Straight edges sit on whole pixels, and a
+selection's marching ants have gaps of 3 px or more, so they stay apart at
+16 px. Where the window is too short for every tool the palette scrolls (the
+wheel, or the hints at its ends).
+
 ### Filling with a transparent colour
 
 The Fill tool's *Mode* says what the colour does to the pixels it lands on:
@@ -82,7 +92,10 @@ transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
   otherwise crops to the selection),
   Flip, Rotate, Flatten.
 - **Layer:** New, Duplicate, Delete, Merge Down, Move Up / Down,
-  Properties (name, opacity, blend mode, visibility, lock).
+  Properties (name, opacity, blend mode, visibility, lock). In the Layers
+  panel a click selects a layer and a double-click on its name renames it in
+  place (Enter or a click elsewhere keeps the name, Escape the old one; undo
+  takes a rename back).
 - **Select:** All, None, Invert, From Layer Alpha, Feather, Grow, Shrink.
 - **Adjust:** Brightness / Contrast, Hue / Saturation, Gamma, Levels,
   Curves, Posterize, Threshold, Solarize, Invert, Desaturate, Sepia,

@@ -152,6 +152,10 @@ fi
 if compgen -G "$BUILDDIR/lib/*.so*" > /dev/null; then
     cp -a "$BUILDDIR"/lib/*.so* "$PKG/lib/"
 fi
+# libVideoFX is a shared library, but no packaged app links it yet: shipping it
+# would pull FFmpeg's whole dependency tree into lib/ for nothing. Drop this
+# line when the first app that does video is added.
+rm -f "$PKG"/lib/libVideoFX.so*
 
 # --- UltraNet plug-ins (dlopened by UltraMail, UltraNetMonitor, …) -----------
 

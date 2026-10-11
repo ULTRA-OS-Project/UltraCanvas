@@ -588,6 +588,49 @@ else()
     message(STATUS "  MenuAndTabBehaviourTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FONT CHANGE REPAINT TEST =====
+# RefreshAfterFontChange() lays out and draws the whole window and its popups
+# again (the system fonts arriving after a cold Windows start, a registered
+# font), headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FontChangeRepaintTest...")
+    add_executable(FontChangeRepaintTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FontChangeRepaintTest.cpp
+    )
+    target_include_directories(FontChangeRepaintTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FontChangeRepaintTest PRIVATE cxx_std_20)
+    target_link_libraries(FontChangeRepaintTest PRIVATE UltraCanvas)
+    set_target_properties(FontChangeRepaintTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FontChangeRepaintTest COMMAND FontChangeRepaintTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FontChangeRepaintTest")
+else()
+    message(STATUS "  FontChangeRepaintTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== NEW DOCUMENT DIALOG LAYOUT TEST =====
+# The new-document dialog's list names, "File name:" label and file preview
+# are drawn on the rows and fields they belong to, headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building NewDocumentDialogLayoutTest...")
+    add_executable(NewDocumentDialogLayoutTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/NewDocumentDialogLayoutTest.cpp
+    )
+    target_include_directories(NewDocumentDialogLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(NewDocumentDialogLayoutTest PRIVATE cxx_std_20)
+    target_link_libraries(NewDocumentDialogLayoutTest PRIVATE UltraCanvas)
+    set_target_properties(NewDocumentDialogLayoutTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME NewDocumentDialogLayoutTest COMMAND NewDocumentDialogLayoutTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: NewDocumentDialogLayoutTest")
+else()
+    message(STATUS "  NewDocumentDialogLayoutTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXT INPUT BEHAVIOUR TEST =====
 # A text field's formatter, validation, input type and undo steps, headless.
 if(TARGET UltraCanvas)
@@ -3363,6 +3406,24 @@ set_target_properties(RenderContextTest PROPERTIES
 add_test(NAME RenderContextTest COMMAND RenderContextTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: RenderContextTest")
+
+# ===== BUTTON ICON PIXEL TEST =====
+# A button's icon lands on whole pixels, wherever centring it puts it: a
+# square icon centred at a half pixel is drawn offscreen and read back for
+# blurred (grey) edges. Needs no display.
+message(STATUS "  Building ButtonIconPixelTest...")
+add_executable(ButtonIconPixelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ButtonIconPixelTest.cpp
+)
+target_include_directories(ButtonIconPixelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ButtonIconPixelTest PRIVATE cxx_std_20)
+target_link_libraries(ButtonIconPixelTest PRIVATE UltraCanvas)
+set_target_properties(ButtonIconPixelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ButtonIconPixelTest COMMAND ButtonIconPixelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ButtonIconPixelTest")
 
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in

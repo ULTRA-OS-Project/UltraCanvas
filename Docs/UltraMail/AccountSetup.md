@@ -399,7 +399,10 @@ university — go through two more steps.
 **Autoconfig lookup.** UltraMail fetches, in this order, the domain's own
 `https://autoconfig.<domain>/mail/config-v1.1.xml`, its
 `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, and the
-Thunderbird provider database (`autoconfig.thunderbird.net`). Most hosting
+Thunderbird provider database (`autoconfig.thunderbird.net`). All three
+requests name the domain only - the address itself is never sent; a
+per-user value in the published settings is a placeholder (`%EMAILADDRESS%`)
+that UltraMail fills in on the machine. Most hosting
 providers and many organisations publish one of these; the first hit gives
 the servers, ports, security and the username pattern, and the wizard
 reports "settings found for <domain>". The lookup runs off the UI thread

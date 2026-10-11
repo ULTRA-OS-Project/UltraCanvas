@@ -1,4 +1,4 @@
-#### 2026-10-11 *0.3.1*
+#### 2026-10-11 *0.3.2*
 - **The project skeleton builds again.** Its `main.cpp` called
   `app.CreateWindow(config)`, a method the application class does not
   have, so `cmake --build` failed on the first line that mattered; it calls
@@ -8,6 +8,26 @@
   `--sdk <prefix>`, `--assistant <ai>`), and CI builds what it writes
   against the SDK of every leg with `cmake --preset default`, the way a
   programmer does, so the skeleton cannot stop compiling unnoticed again.
+
+#### 2026-10-10 *0.3.1*
+- **The Tools step shows each check with a switch, not a mark.** The list
+  wrote a check mark or a cross before each tool and library, characters the
+  bundled Ubuntu font does not have, and on Windows every line began with a
+  box of hex digits. Each check is now a row: a switch that shows whether it
+  is there (on and green: installed; off: missing, or not checkable without
+  pkg-config), the name in bold, the version found or why it is missing and
+  the package that provides it, the reason in orange. The switches show and
+  do not set: a click changes nothing.
+- **What *Install what is missing* will do is shown above the list.** A
+  line under the buttons names the package manager, how many are missing
+  and whether it asks for administrator rights, with the exact command
+  under it - or says that no package manager was found, so Install cannot
+  run here. The button is off in that case too, and the status line no
+  longer says it runs the package manager.
+- **The step header's check marks are drawn too**, by the framework's
+  `UltraCanvasStepper` (`Docs/UltraCanvas/changelog.d/stepper-drawn-check.md`).
+- The *Install output* console is smaller, giving the list the room, and
+  every scrollbar in the application is half as wide and fully rounded.
 
 #### 2026-10-10 *0.3.0*
 - **A stepper instead of tabs** (`Docs/UltraCanvasStart/WorkflowProposal.md`,

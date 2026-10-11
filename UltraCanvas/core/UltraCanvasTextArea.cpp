@@ -1,11 +1,14 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.7.4 - list bullets "•" "◦" "▪" are drawn as shapes; an image placeholder
+//                 says "Remote image:" / "Missing image:" instead of "🌐" / "⚠"
 // Version: 3.7.3 - style.scrollbarWidth / scrollbarCornerRadius / scrollbarThumbInset
 //                 replace the fixed 15px square scrollbar
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
@@ -3641,12 +3644,17 @@ namespace UltraCanvas {
                                          static_cast<int>(bullets.size()) - 1);
                 const std::string& bullet = bullets[bulletIdx];
                 int markerX = posOrigin.x + (depth - 1) * listIndentPx;
-                ctx->PushState();
-                ctx->SetFontStyle(style.fontStyle);
-                ctx->SetTextPaint(markerColor);
-                ctx->DrawText(bullet, Point2Dd(static_cast<float>(markerX),
-                                               static_cast<float>(posOrigin.y)));
-                ctx->PopState();
+                const Point2Dd markerPos(static_cast<float>(markerX), static_cast<float>(posOrigin.y));
+                // The standard bullets are drawn: the bundled UI font has no
+                // "◦" or "▪", which showed as hex boxes where no fallback font
+                // has them either. Any other bullet string is drawn as text.
+                if (!DrawBulletMark(ctx, bullet, markerPos, style.fontStyle, markerColor)) {
+                    ctx->PushState();
+                    ctx->SetFontStyle(style.fontStyle);
+                    ctx->SetTextPaint(markerColor);
+                    ctx->DrawText(bullet, markerPos);
+                    ctx->PopState();
+                }
                 drawLayout();
                 return;
             }
@@ -3762,8 +3770,8 @@ namespace UltraCanvas {
                                              1.0f, markdownStyle.imagePlaceholderBorderColor);
                     std::string label = !il->altText.empty()
                             ? il->altText
-                            : ((il->isRemote ? std::string("\xF0\x9F\x8C\x90 ")    // 🌐
-                                             : std::string("\xE2\x9A\xA0 "))       // ⚠
+                            : ((il->isRemote ? std::string("Remote image: ")
+                                             : std::string("Missing image: "))
                                + il->sourceUrl);
                     ctx->PushState();
                     ctx->SetFontStyle(style.fontStyle);

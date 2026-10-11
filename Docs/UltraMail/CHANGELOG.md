@@ -1,3 +1,54 @@
+#### 2026-10-11 *0.10.50*
+- **An attachment's menu no longer covers the chip.** At the foot of the
+  window a click on an attachment chip opens its Open / Save As menu above
+  the chip. The chip worked out where from a menu height of two rows, which
+  left out the menu's panel padding and border, so the menu came down over
+  the top of the chip - where the second click of a double-click landed on
+  *Open*. The chip now hands its bounds to the framework's new
+  `OpenMenuAnchored` (framework changelog: `menu-anchors-symbolic-icons`),
+  which measures the menu and ends it just above the chip; the preview's
+  More menu opens the same way. The menus' line icons also follow the theme
+  now: painted in the entry's text colour, light on a dark menu.
+
+#### 2026-10-11 *0.10.49*
+- **Privacy by default.** The two sender-icon downloads (*Settings → Privacy →
+  Sender icons*: the icons of known services, the website icons of other
+  senders) are **off** on a fresh install, and *Restore default* turns them
+  off. Each download tells a third party's web server the reader's IP
+  address; a new installation now contacts nobody but the reader's own mail
+  server until the reader decides otherwise. An existing `preferences.ini`
+  keeps whatever it says.
+- **The autoconfig lookup sends the domain only.** Adding an account at a
+  domain outside the preset table asked `autoconfig.<domain>` and
+  `<domain>/.well-known/autoconfig/` with `?emailaddress=<the full address>`,
+  as Thunderbird does. The address is not needed - a per-user value in the
+  published settings is a `%EMAILADDRESS%` placeholder UltraMail fills in on
+  the machine - so it is no longer sent. The Thunderbird database always
+  received the domain only.
+- The privacy declaration for UltraMail (English and German) lives in
+  `Docs/Legal/Privacy/`; `Docs/UltraMail/AccountSetup.md`,
+  `SenderBadges.md` and `Concept.md` (open question 4, resolved) describe the
+  two data flows.
+
+#### 2026-10-10 *0.10.48*
+- **Attachment chips show the paperclip.** The chips under a message showed a
+  type emoji (a page for a PDF, a picture for an image), which a font without
+  colour emoji - the usual case on Linux and Windows - drew as a box of
+  lines. They now show the paperclip the message list marks mail with
+  attachments with.
+- **One click on an attachment opens its menu.** A click on a chip opens
+  *Open* and *Save As…* under it - above it, at the foot of the window -
+  and a second click closes the menu again. A double-click still opens the
+  attachment straight away, and a right-click opens the same menu at the
+  pointer.
+- **HTML mail keeps the spacing its sender gave it.** Receipts and invoices
+  from Stripe (Anthropic's, among many others) lost every gap they make with
+  spacer cells - above the header, inside the cards, between the rows - and
+  their amount touched the line above it, so the text looked too large for
+  the mail. The sizes were right; the space around them was missing. The
+  mail is now laid out as a browser lays it out. Framework change - see
+  `Docs/UltraCanvas/changelog.d/html-mail-spacer-cells.md`.
+
 #### 2026-10-09 *0.10.47*
 - **Add and delete folders from the folder tree.** A right-click on a row of
   the tree offers *Add folder…* and *Delete folder…*.

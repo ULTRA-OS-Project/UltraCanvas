@@ -1,7 +1,10 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.3.5 - the Recent files menu opens anchored to its toolbar button
+// Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
+//                  and shortcut colours
 // Version: 2.3.3 - The profile folder and comment author read as UTF-8
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -54,6 +57,21 @@ namespace UltraCanvas {
     std::string UltraCanvasTextEditor::version = ULTRATEXTER_VERSION;
     
 namespace {
+    // The theme's colours for the menus' outline, separators, shortcuts,
+    // disabled entries and shadow. The editor colours its menubar's
+    // background, text and hover itself; the rest come from the matching
+    // MenuStyle, whose hairlines are tinted for its own background (a dark
+    // separator on the dark theme would vanish), and reach the submenus,
+    // which take the menubar's style.
+    void ApplyMenuLineColors(MenuStyle& ms, const MenuStyle& theme) {
+        ms.borderColor       = theme.borderColor;
+        ms.separatorColor    = theme.separatorColor;
+        ms.shortcutColor     = theme.shortcutColor;
+        ms.disabledTextColor = theme.disabledTextColor;
+        ms.headerTextColor   = theme.headerTextColor;
+        ms.shadowColor       = theme.shadowColor;
+    }
+
     std::string GetAppDataDirectory() {
 #ifdef _WIN32
         // UTF-8 from the wide environment, as the autosave folder is opened
@@ -4606,6 +4624,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 ms.textColor       = Color(200, 200, 200, 255);
                 ms.hoverColor      = Color(65, 65, 65, 255);
                 ms.hoverTextColor  = Colors::White;
+                ApplyMenuLineColors(ms, MenuStyle::Dark());
                 menuBar->SetStyle(ms);
             }
         } else {
@@ -4668,6 +4687,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 ms.textColor       = Color(30, 30, 30, 255);
                 ms.hoverColor      = Color(210, 210, 210, 255);
                 ms.hoverTextColor  = Colors::Black;
+                ApplyMenuLineColors(ms, MenuStyle::Default());
                 menuBar->SetStyle(ms);
             }
         }
@@ -5819,14 +5839,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             );
         }
 
-        // Position below the toolbar button and open
+        // Below the toolbar button, or above it when there is no room below
         auto btn = toolbar->GetWidget("recent");
         if (!btn) return;
 
-        recentFilesPopupMenu->OpenMenu(
-            Point2Di(btn->GetXInWindow(),
-                     btn->GetYInWindow() + btn->GetHeight() + 1),
-            *win, PopupElementSettings());
+        recentFilesPopupMenu->OpenMenuAnchored(btn->GetBoundsInWindow(), *win,
+                                               PopupElementSettings(), 1);
     }
 
     // (Re-)read the list shared with the other windows and UltraTexter

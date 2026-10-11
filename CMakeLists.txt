@@ -327,6 +327,7 @@ option(ULTRACANVAS_USE_VIDEOFX "Build the VideoFX video editing / conversion mod
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
 include(cmake/UltraCanvasWinManifest.cmake)
+include(cmake/UltraCanvasWindowsGuiApp.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
@@ -2133,31 +2134,31 @@ if (BUILD_FILEMANAGER_APP)
 endif()
 
 # Hide console window on Windows Release builds
+# Every app whose command line only opens the window (--help and --version
+# aside) is a GUI-subsystem program there, so no empty console opens beside
+# it; ultracanvas_windows_gui_app() (cmake/UltraCanvasWindowsGuiApp.cmake)
+# also attaches it to the prompt's console before main(), so --help and
+# --version still print. UltraMail calls it in its own CMakeLists.txt, as do
+# the standalone UltraTexter and AnchorPoint builds.
+#
+# Left as console programs, because their command-line modes print into the
+# prompt they were typed at, and a GUI-subsystem program cannot make that
+# prompt wait for it or see its exit code: DeviceExplorer (--list),
+# UltraCleaner (--scan), UltraNetMonitor (--list), UltraCanvasStart (--check),
+# UltraWeb (--check), UltraClaude (--print), UltraDesktop (--windows) and
+# UltraFIBU (its commands). Double-clicked, they close the console Windows
+# opened for them as their window comes up (ReleaseOwnConsole() in
+# OS/MSWindows/UltraCanvasWindowsDiagnostics.h). Debug builds keep the console.
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
-    if(BUILD_DEMO_APP)
-        set_target_properties(UltraCanvasDemo PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_TEXTER_APP)
-        set_target_properties(Texter PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAFILER_APP)
-        set_target_properties(UltraFiler PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAVIEWER_APP)
-        set_target_properties(UltraViewer PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAPAINT_APP)
-        set_target_properties(UltraPaint PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ARTCREATOR_APP)
-        set_target_properties(ArtCreator PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_FILEMANAGER_APP)
-        set_target_properties(UCFileManager PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAFILER_APP)
-        set_target_properties(UltraFiler PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
+    foreach(_uc_gui_app
+            UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
+            UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
+            UltraClipboard UltraAuthenticator UltraPassword)
+        if(TARGET ${_uc_gui_app})
+            ultracanvas_windows_gui_app(${_uc_gui_app})
+        endif()
+    endforeach()
+    unset(_uc_gui_app)
 endif()
 
 add_custom_target(copy_assets

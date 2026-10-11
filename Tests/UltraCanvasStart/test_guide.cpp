@@ -1,6 +1,8 @@
 // Tests/UltraCanvasStart/test_guide.cpp
 // The Markdown the pages show: one action per numbered step, links that
-// open, the SDK named for real, and the plain-text reduction the report uses.
+// open, the SDK named for real, and the plain-text reduction the report uses;
+// and the words of the Tools step's rows and of what Install will do.
+// Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
 // Version: 0.1.1 - the assistant choice
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -54,20 +56,54 @@ TEST(PlatformGuide_steps_are_one_action_each) {
     }
 }
 
-TEST(ChecksMarkdown_marks_each_result) {
-    std::vector<CheckResult> checks(3);
-    checks[0].title = "CMake"; checks[0].group = DependencyGroup::Toolchain;
-    checks[0].checked = true; checks[0].present = true; checks[0].version = "3.28.3";
-    checks[1].title = "Cairo"; checks[1].group = DependencyGroup::Core;
-    checks[1].checked = true; checks[1].present = false; checks[1].detail = "pkg-config knows no cairo";
-    checks[1].packageName = "libcairo2-dev";
-    checks[2].title = "MuPDF"; checks[2].group = DependencyGroup::Pdf;
-    checks[2].checked = false; checks[2].detail = "no check possible"; checks[2].packageName = "libmupdf-dev";
-    const std::string md = ChecksMarkdown(checks);
-    REQUIRE(md.find("### Toolchain\n\xE2\x9C\x93 **CMake** 3.28.3\n") != std::string::npos);
-    REQUIRE(md.find("\xE2\x9C\x97 **Cairo** - pkg-config knows no cairo - install `libcairo2-dev`") != std::string::npos);
-    REQUIRE(md.find("? **MuPDF** - no check possible") != std::string::npos);
-    REQUIRE(ChecksMarkdown({}).find("Check again") != std::string::npos);
+TEST(CheckDetail_says_the_version_or_why_not_and_the_package) {
+    CheckResult found;
+    found.checked = true; found.present = true; found.version = "3.28.3"; found.packageName = "cmake";
+    REQUIRE_EQ(CheckDetail(found), std::string("3.28.3"));
+    CheckResult missing;
+    missing.checked = true; missing.present = false; missing.detail = "pkg-config knows no cairo";
+    missing.packageName = "libcairo2-dev";
+    REQUIRE_EQ(CheckDetail(missing), std::string("pkg-config knows no cairo - install libcairo2-dev"));
+    CheckResult old;
+    old.checked = true; old.present = true; old.versionOk = false; old.version = "3.10";
+    old.detail = "3.16 or newer is needed"; old.packageName = "cmake";
+    REQUIRE_EQ(CheckDetail(old), std::string("3.10 - 3.16 or newer is needed - install cmake"));
+    CheckResult unchecked;
+    unchecked.checked = false; unchecked.detail = "no check possible"; unchecked.packageName = "libmupdf-dev";
+    REQUIRE_EQ(CheckDetail(unchecked), std::string("no check possible - install libmupdf-dev"));
+}
+
+TEST(InstallPreview_says_what_Install_does) {
+    SystemProfile profile;
+    profile.platform = Platform::Linux;
+    profile.architecture = "x86_64";
+    profile.packageManager = PackageManager::Apt;
+    profile.packageManagerPath = "/usr/bin/apt-get";
+    Choices choices;
+    choices.platform = Platform::Linux;
+    std::vector<CheckResult> checks(2);
+    checks[0].checked = true; checks[0].present = true; checks[0].packageName = "cmake";
+    checks[1].checked = true; checks[1].present = false; checks[1].packageName = "libcairo2-dev";
+
+    REQUIRE(InstallPreview(BuildPlan(profile, choices, {})).find("Check again") != std::string::npos);
+
+    // The manager, how many, then the command on a line of its own.
+    const std::string runs = InstallPreview(BuildPlan(profile, choices, checks));
+    REQUIRE(runs.find("Install runs " + PackageManagerName(PackageManager::Apt) + " for the 1 missing") == 0);
+    const size_t newline = runs.find('\n');
+    REQUIRE(newline != std::string::npos);
+    REQUIRE(runs.find("libcairo2-dev", newline) != std::string::npos);
+    REQUIRE(runs.find(" cmake", newline) == std::string::npos);
+
+    SystemProfile none = profile;
+    none.packageManagerPath.clear();
+    const std::string cannot = InstallPreview(BuildPlan(none, choices, checks));
+    REQUIRE(cannot.find("No package manager was found") == 0);
+    REQUIRE(cannot.find("the 1 missing yourself") != std::string::npos);
+    REQUIRE(cannot.find('\n') == std::string::npos);
+
+    checks[1].present = true;
+    REQUIRE(InstallPreview(BuildPlan(profile, choices, checks)).find("nothing to do") != std::string::npos);
 }
 
 TEST(AiGuide_says_how_to_install_or_where_it_is) {

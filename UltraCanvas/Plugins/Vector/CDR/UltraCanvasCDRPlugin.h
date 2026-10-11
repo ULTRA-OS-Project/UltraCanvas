@@ -1,10 +1,11 @@
 // Plugins/Vector/CDR/UltraCanvasCDRPlugin.h
 // CorelDRAW CDR/CMX file format plugin using libcdr and librevenge
+// Version: 1.2.2 - CDRDocument is not copyable (its draw commands point back at it)
 // Version: 1.2.1 - ExportToXAR names the way to XAR (the Vector plugin's
 //                  CDRConverter + XARConverter) instead of a reason that
 //                  stopped being true
 // Version: 1.2.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -62,8 +63,15 @@ namespace UltraCanvas {
     };
 
 // ===== CDR DOCUMENT =====
+    // Held by shared_ptr and never copied: a page's draw commands point back at
+    // the document that holds them (its gradients), and a copy's commands
+    // would point at the original.
     class CDRDocument {
     public:
+        CDRDocument() = default;
+        CDRDocument(const CDRDocument&) = delete;
+        CDRDocument& operator=(const CDRDocument&) = delete;
+
         std::vector<CDRPage> pages;
         std::map<std::string, CDRGradient> gradients;
         std::map<std::string, std::vector<uint8_t>> images;

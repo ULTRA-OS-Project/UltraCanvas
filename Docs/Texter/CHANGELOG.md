@@ -1,3 +1,35 @@
+#### 2026-10-11 *1.63*
+- **Menus opened from buttons stay clear of them.** The Recent files menu of
+  the toolbar and the search bar's settings and history menus open with the
+  framework's `OpenMenuAnchored` (framework changelog:
+  `menu-anchors-symbolic-icons`): below their button, or above it when there
+  is no room below - a search bar at the foot of the window no longer opens
+  its menus over itself. The menus' line icons (zoom, theme and the rest)
+  are painted in the entry's text colour, so they are light in the dark
+  theme instead of black on dark grey.
+
+#### 2026-10-11 *1.62*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraTexter --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
+- **The standalone build (`Apps/Texter/CMakeLists.txt`) opens no console
+  window on Windows either.** Its `UltraTexter.exe` was a console program in
+  every build; a Release build is now a GUI program, like the editor the
+  root build makes.
+
+#### 2026-10-10 *1.61*
+- **Menus in the dark theme keep their separators and outline.** The
+  framework's menus took on the current desktop look (framework changelog:
+  `modern-menus`), whose hairlines are translucent black - invisible on the
+  dark theme's menubar and its drop-downs, which only had their background,
+  text and hover recoloured. The theme switch now also takes the outline,
+  separator, shortcut, disabled-entry and shadow colours from the matching
+  `MenuStyle` (`Dark()` or `Default()`).
+
 #### 2026-10-05 *1.60*
 - **Settings, autosave and comments work in a Windows profile named in any
   script.** The configuration folder (`config.ini`, the recent files, the

@@ -253,7 +253,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConf
         if (!set.menus.empty()) {
             MenuItemData rootItem;
             rootItem.type = MenuItemType::Submenu;
-            rootItem.label = "Filer menu \xE2\x96\xBE"; // "Filer menu ▾"
+            rootItem.label = "Filer menu";
             rootItem.subItems = MaterializeLayout(set.menus.front(), filerRegistry);
             preview->AddItem(rootItem);
         }

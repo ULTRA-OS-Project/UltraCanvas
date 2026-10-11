@@ -509,6 +509,7 @@ configure time naming what is missing.
 |---|---|---|---|
 | Probe, decode, effects (libavfilter), encode, mux | FFmpeg ≥ 4.4 — libavformat, libavcodec, libavfilter, libavutil, libswscale (optional) | FFmpeg (optional) | FFmpeg (optional) |
 | Face detection (slideshows keeping faces in shot) | OpenCV's frontal-face Haar cascade (bundled data; VideoFX's own evaluator, no OpenCV linked) | the same | the same |
+| Project files (`.vfxproj`) | nlohmann/json (bundled, header only) | the same | the same |
 
 > Found through pkg-config and linked as shared system libraries, never
 > vendored; no FFmpeg type appears in a VideoFX public header. Without it the

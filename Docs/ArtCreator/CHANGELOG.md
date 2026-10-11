@@ -1,3 +1,28 @@
+#### 2026-10-11 *0.6.9*
+- **One flat icon style throughout.** Every icon is now a one-tone line
+  drawing in the style of the rest of the app:
+  - New, Open, Save, Quit, Undo, Redo, Cut, Copy, Paste and the zoom
+    buttons use the framework's flat menu icons instead of the heavier black
+    set borrowed from Texter.
+  - The Fill, Transparency, Shadow, Feather, Contour, Bevel, Blend, Mould
+    and Shape Editor tools are redrawn: they were grey tones, gradients and
+    white fills, and Fill showed as a black block. Fill is now a paint pail,
+    Transparency a checkerboard, Feather a feather, Mould a bent grid.
+  - Actual size reads "1:1" in a frame, where "100" looked like "(00".
+- **Icons on the menu items.** New Window, Save As, Export, Document Setup,
+  Duplicate, Delete, Select All / None, the four stacking orders, Group,
+  Ungroup, both mirrors, the six alignments, Centre on Page, the four
+  distribute modes, the four ways to combine shapes, ClipView, Convert to
+  Editable Shapes, No Fill, No Line, every Layer command, the zoom commands
+  and About each have one. 25 of them are new
+  (`media/icons/artcreator/`).
+- **The Shape Editor's "Line ⇄ curve" button reads "Line / curve".** The
+  UI font has no "⇄", which showed as a box of hex digits on Windows.
+- **The Arrange menu opens.** It closed again at once: taller than the
+  window, it was placed over the menu bar, and the release of the click that
+  opened it picked one of its rows. It now opens under the bar and scrolls
+  (UltraCanvas 0.9.249 anchors a menu bar's drop-downs to their item).
+
 #### 2026-10-07 *0.6.8*
 - **Save as and Export keep the file type you chose.** Both added an
   extension of their own to a name typed without one - `.xar` on Save as,

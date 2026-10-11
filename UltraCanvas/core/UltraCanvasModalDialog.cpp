@@ -1,8 +1,8 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.6.0
-// Last Modified: 2026-08-23
+// Version: 3.6.1
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
@@ -35,6 +35,28 @@ namespace UltraCanvas {
     DialogConfig UltraCanvasDialogManager::defaultConfig;
     InputDialogConfig UltraCanvasDialogManager::defaultInputConfig;
     FileDialogConfig UltraCanvasDialogManager::defaultFileConfig;
+
+    namespace {
+        // The type badge's mark: its letter, or for a success dialog a drawn
+        // check, shown as an inline image. The bundled UI font has no "✓",
+        // and where no fallback font has one either it showed as a hex box.
+        void SetTypeIconMark(UltraCanvasLabel& label, const std::string& mark, float fontSize) {
+            if (mark != "\xE2\x9C\x93") {   // ✓
+                label.SetInlineImages({});
+                label.SetAccessibleName("");
+                label.SetText(mark);
+                return;
+            }
+            LabelInlineImage check;
+            check.byteOffset = 0;
+            check.width = check.height = fontSize * 1.4f;
+            check.image = UCImage::Get(NormalizePath(GetResourcesDir() + "media/icons/clipboard/check.svg"));
+            check.align = LabelInlineImageAlign::Middle;
+            label.SetText("\xEF\xBF\xBC");   // U+FFFC, the image's place
+            label.SetInlineImages({ check });
+            label.SetAccessibleName("Success");
+        }
+    }
 
 // ===== MODAL DIALOG IMPLEMENTATION =====
 
@@ -85,7 +107,7 @@ namespace UltraCanvas {
                              .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel");
-        iconLabel->SetText(GetTypeIcon());
+        SetTypeIconMark(*iconLabel, GetTypeIcon(), style.iconFontSize);
         iconLabel->SetFontSize(style.iconFontSize);
         iconLabel->SetFontWeight(FontWeight::Bold);
         iconLabel->SetTextColor(Colors::White);
@@ -903,7 +925,7 @@ namespace UltraCanvas {
                                       dialogConfig.dialogType != DialogType::Custom);
         }
         if (iconLabel) {
-            iconLabel->SetText(GetTypeIcon());
+            SetTypeIconMark(*iconLabel, GetTypeIcon(), style.iconFontSize);
         }
     }
 

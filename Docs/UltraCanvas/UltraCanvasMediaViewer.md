@@ -353,7 +353,15 @@ preview->SetTopBarsVisible(false);      // host provides the navigation
 preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
 preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
+preview->SetFitEnlarges(false);         // a small picture at its own size, not blown up
+preview->SetInfoBarVisible(false);      // nothing but the picture (UltraClipboard's classic preview)
 ```
+
+`SetFitEnlarges(false)` makes fit-to-window shrink only: a picture smaller
+than the pane is shown at its own size, centred, instead of being enlarged to
+fill it - what a hover preview wants, so an icon stays an icon rather than a
+blur the size of the pane. The wheel still zooms in from there, and the info
+bar reports the resulting zoom as always. The default (`true`) fills the pane.
 
 ### Taking the 3D view out of it
 

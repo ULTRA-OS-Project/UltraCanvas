@@ -15,6 +15,9 @@
 //   AttachParentConsole()          reconnects stdio to the console the process
 //                                  was launched from, so running the EXE from
 //                                  cmd/PowerShell shows its output.
+//   ReleaseOwnConsole()            closes the empty console window Windows
+//                                  opens for a console-subsystem app started
+//                                  by a double-click.
 //   LogWindowsStartupBanner()      records Windows build, architecture, paths
 //                                  and locale — the first thing a "works on 10,
 //                                  not on 11" report needs.
@@ -25,8 +28,9 @@
 //   ReportWindowsStartupFailure()  reports a fatal init failure to the log and
 //                                  to the user instead of exiting quietly.
 //
-// Every one of them is diagnostic only: nothing here changes what the app does
-// when it starts successfully. Message boxes are suppressed by setting
+// Every one of them but ReleaseOwnConsole() is diagnostic only: nothing else
+// here changes what the app does when it starts successfully. Message boxes
+// are suppressed by setting
 // ULTRACANVAS_NO_ERROR_DIALOG=1, which is what a helper/child process
 // (Ladybird's WebContent, a test runner, a CI job) should do so a failure logs
 // and exits instead of blocking on a dialog nobody will click.
@@ -46,6 +50,17 @@ namespace UltraCanvas {
     // detached with `start`, has no parent console and this returns false --
     // which is exactly why the log file matters more than the console.
     bool AttachParentConsole();
+
+    // Lets go of the console when this process is the only one attached to
+    // it - which is the case exactly when Windows opened it for this program,
+    // i.e. a console-subsystem app (one kept so its command-line modes print
+    // into the prompt, such as DeviceExplorer or UltraCleaner) started by a
+    // double-click. Its empty window then closes as the GUI comes up. Started
+    // from a prompt, the console is shared and kept. Nothing happens while
+    // debugOutput is enabled (a Debug build, or ULTRACANVAS_DEBUG_LOG set),
+    // because then the console is where the log goes. Returns true if the
+    // console was released.
+    bool ReleaseOwnConsole();
 
     // Windows version as reported by RtlGetVersion, e.g. "Windows 11 (10.0
     // build 22631)". GetVersionEx is deliberately not used: it reports 6.2 for

@@ -1,3 +1,450 @@
+#### 2026-10-11 *0.9.251*
+- **`UltraCanvasListView`: the hover follows the rows when they scroll under
+  a still pointer.** A wheel scroll (or `EnsureRowVisible`) left the row
+  highlight on the row index the pointer had been over, which had moved
+  away; now the row under the pointer is worked out again and `onItemHovered`
+  / `onCellHovered` are reported for it, so a preview a host hangs on them
+  follows the scroll. The tooltip stays hidden after a wheel scroll as before,
+  and comes back with the next move.
+- **`UltraCanvasMediaSurface::SetFitEnlarges(false)`** (forwarded by
+  `UltraCanvasMediaViewer`): fit-to-window shrinks only, so a picture smaller
+  than the pane is shown at its own size, centred, instead of enlarged to
+  fill it. For hover previews; the wheel still zooms in from there.
+- **`ClipboardHistoryRowDelegate::IsOverThumbnail(posInCell)`**: whether a
+  point of a row is on the thumbnail's column, for a host that opens a
+  preview from it (UltraClipboard 0.1.3).
+- **`UltraCanvasMediaViewer`: the info bar's zoom follows a resize.** It was
+  written on load and on a zoom, so a viewer resized afterwards - or one that
+  loaded its file while hidden, as a hover preview does, and read `0%` on
+  its first showing - kept the stale figure until the next zoom. `Arrange`
+  now refreshes it when the surface's size changes.
+- **`UltraCanvasMediaViewer::SetInfoBarVisible(false)`** hides the info bar
+  under the display surface, as `SetTopBarsVisible(false)` hides the bars
+  above it: a host that wants nothing but the picture.
+- **`ClipboardHistoryPolicy::previewStyle`** (`ClipboardPreviewStyle::Modern`
+  or `Classic`, kept with the policy as `previewStyle`): how UltraClipboard
+  previews an image whose thumbnail the pointer rests on.
+
+#### 2026-10-11 *0.9.250*
+- **The CDR plugin no longer reads freed memory when it draws a page.**
+  `UltraCanvasCDRPainterImpl` records a drawing as draw commands on the
+  document's pages while libcdr parses, and `UltraCanvasCDRRenderer` replays
+  them when a page is drawn. The commands captured the painter (`this`) and
+  called back into it, but the painter is a local of `ParseCDRFile` /
+  `ParseCDRMemory` and was gone by then, so every gradient fill looked its
+  gradient up through a dead object. The DemoApp's *CDR Images* page crashed
+  on `detailed.cdr` (ten gradients) with a segmentation fault in
+  `CreateGradientPattern`. The commands now capture the document they belong
+  to, which outlives them; `ApplyStyleToContext`, `FillAndStroke` and
+  `CreateGradientPattern` are static and take it. `CDRDocument` is no longer
+  copyable, since a copy's commands would point at the original.
+- **`CDRPluginRenderTest`** (`Tests/VectorFormatsTests.cmake`, so Windows CI
+  runs it too) loads every drawing of `media/vector/CDR` through the CDR
+  plugin, draws each page after the parse and checks it paints - and that
+  `detailed.cdr` shows its gradients. On the code before this fix it crashes
+  in `CreateGradientPattern`.
+- **The DemoApp shows no box of hex digits on Windows.** Its labels and
+  buttons wrote characters the bundled Ubuntu UI font does not have - "✓",
+  "✗", "⚠", arrows, "◀ ▶ ▲ ▼ ▾ ⋮" and emoji - in 117 places over 27 pages,
+  and with the bundled fonts alone each drew as a box. Now:
+  - the status bar reads "Status: Fully Implemented" without a mark, and the
+    Label page's status pills say "Success", "Warning", "Error";
+  - the "✓ feature" lists of the CDR, XAR, EPS, DWG, STL and Tabs pages are
+    "• feature" lists;
+  - buttons carry flat icons of `media/icons/menu/` in their text colour
+    (`SetFlatButtonIcon` in `UltraCanvasDemo.h`): Open, Save, Vectorize, Reset,
+    Run OCR, Full Size, Export, Prev / Next, the PDF search arrows, "Format
+    Cells", the sidebar toolbar and the Dependencies page's link menu;
+  - the Domain Dashboard draws its ticks, crosses and three-dot menus;
+  - arrows in sentences are words ("Raster to SVG").
+  `UltraCanvasDemo.h` says so for the next example: a label or a button holds
+  only characters the bundled UI font has.
+- **Eleven more icons in `media/icons/menu/`**: chevron-left, chevron-right,
+  chevron-up, chevron-down, reset, wand, zoom-in, users, chart, globe and code.
+- **When the fonts change, every window is drawn again, not only laid out.**
+  On Windows the system fonts arrive after a cold start (the first start, or
+  after Windows changed its fonts or the application moved), and until then
+  only the bundled fonts and the symbol fonts are available. When the scan
+  ended, `SwitchToSystemFonts` laid every window out again but repainted
+  nothing: a frame draws only its dirty rectangles. A character the start's
+  fonts lacked therefore stayed a box of hex digits until something else
+  redrew that spot.
+  - New `UltraCanvasWindowBase::RefreshAfterFontChange()`: every element
+    measures its text again, and the whole window and each open popup is
+    drawn again. The switch to the system fonts calls it on every window.
+    So does `RegisterFontFile`, so text in a family registered at run time
+    shows in it at once.
+  - Windows: the start's symbol fonts are Segoe UI Symbol, Segoe UI Emoji
+    and now also Cambria Math, for the mathematical symbols (⋮ ∩ ≔).
+  - Windows: every thread's Pango font map reads fontconfig. The map
+    `LoadBundledFontsNative` makes is only the main thread's default. Any
+    other thread built Pango's Win32 map, which never reads fontconfig and
+    draws a box for any character its font lacks. `PANGOCAIRO_BACKEND=fc`
+    (the variable pangocairo reads, not `PANGO_BACKEND`) is set once the
+    main thread's map exists. The debug log names the map.
+  - Tested in the new `FontChangeRepaintTest`.
+- **Framework elements draw their marks instead of typing symbols the UI
+  font lacks.** The bundled Ubuntu font has no "✓", "✗", "✕", "◦", "▪",
+  "▲", "▼", arrows or emoji, and with no fallback font for them (a stock
+  Windows install) each drew as a box of hex digits. Now:
+  - `UltraCanvasDrawnMarks.h` (new; doc `UltraCanvasDrawnMarks.md`) draws a
+    tick, a cross, a sort triangle and the list bullets "•", "◦", "▪" as
+    shapes;
+  - the password rule legend draws its met / unmet icons ("✓" and "✗" by
+    default; "✔", "✘", "✕", "×", "○", "●" when set), any other string still
+    as text;
+  - Markdown lists (`UltraCanvasTextArea`) and `UltraCanvasRichTextEdit`
+    draw their nested bullets;
+  - a success dialog's badge shows a drawn white check
+    (`media/icons/clipboard/check.svg`) instead of "✓";
+  - the e-book viewer's Previous, Next and page-colour buttons show flat
+    chevron and moon icons, with tooltips, instead of "◀", "▶", "☾";
+  - the Filer's details header draws its sort triangle;
+  - the menu configurator's Add and Remove buttons show chevrons, and a
+    separator row reads "————";
+  - the new-document dialog draws its close cross and selection tick, and
+    shows a tinted document icon instead of "📄";
+  - text says it in a word or a character the font has: the date range
+    separator is "–", the chord tooltip "A to B", the sunburst's drill-up
+    hint "Back", a Venn intersection "A & B", the curves readout "Input 128,
+    output 140", a class diagram's reading direction "›" / "‹", a git tag
+    "◊ v1.0", an unread message "•", and a Markdown image placeholder
+    "Remote image: …" / "Missing image: …".
+- **`media/icons/menu/zoom-out.svg`**, the pair of `zoom-in.svg` in the flat
+  menu set.
+- **`MenuAndTabBehaviourTest` checks a menu bar drop-down taller than the
+  window.** It opens under its bar and scrolls, off the pointer; a cascading
+  submenu that tall moves up to the window's top, beside its parent. Before
+  menu bar drop-downs were anchored to their item (0.9.249), such a
+  drop-down was moved up over the bar. The release of the click that opened
+  it then picked a row and closed the menu, so ArtCreator's Arrange menu
+  (about 40 rows) never stayed open.
+- **`UltraCanvasNewDocumentDialog` draws again, with its text in place.**
+  Under the CSS layout it showed only its fields and buttons, stacked at its
+  top-left corner. The container's own background was painted over the
+  title, list and labels the dialog draws, and the layout ignored the bounds
+  the fields were given. The fields are now pinned at their places
+  (`SetElementAbsolutePosition` + `SetElementSize`), and the dialog paints
+  its own background. Text sits on the rows and fields it belongs to:
+  - a list row's name and category, which were 18 px low and across the
+    next row;
+  - the title, in its band;
+  - "Document type:", clear of the filter field's border;
+  - "File name:", which was drawn at the dialog's own offset in its window,
+    over the title;
+  - the "Will create:" preview, which was drawn below the dialog;
+  - the count line, clear of the file name field.
+  The selection tick no longer covers the category. Tested in the new
+  `NewDocumentDialogLayoutTest`.
+
+#### 2026-10-11 *0.9.249*
+- **Button icons are drawn on whole pixels.** `UltraCanvasButton` centred its
+  icon in the content box, and where that left an odd number of pixels
+  around it - or the button was drawn under a translation of a fraction of a
+  pixel - the icon landed half a pixel off and was resampled across two
+  pixels: every 1-2 px line in a toolbar icon blurred into grey, and the
+  dashes of a selection icon ran together (UltraPaint's tool palette). The
+  icon's corner (and the split button's secondary icon's) is now snapped to
+  the nearest whole device pixel through the current transform; its size is
+  kept. New `ButtonIconPixelTest` draws a square icon centred at a half
+  pixel, and under a 0.3 px translation, and finds it on whole pixels with
+  no grey edge.
+- **`UltraCanvasButton::onDoubleClick`.** A button counted the second click
+  of a double-click as another press, so that rapid clicks are not lost: a
+  toggle button toggled back, and a button could not give a double-click a
+  meaning of its own - a list row that selects on a click and renames on a
+  double-click had no way to tell. Set, `onDoubleClick` takes the left
+  double-click instead of that second press (the first click has already
+  pressed or toggled the button); unset, nothing changes. UltraPaint's layer
+  names use it to rename in place. `MouseClickBubblingTest` double-clicks a
+  toggle button: the first click toggles it, the double-click reaches
+  `onDoubleClick` and neither toggles it back nor climbs to its parents, and
+  a middle-button double-click is not taken for it.
+- **A handler that rebuilds the list it sits in no longer crashes.** A
+  button whose handler rebuilds the container it is in - UltraPaint's layer
+  rows, whose button selects the layer and rebuilds the list - dropped the
+  last reference to itself from inside its own `OnEvent`, and went on to
+  request a redraw on the freed object: double-clicking a layer's name
+  crashed UltraPaint in `UltraCanvasUIElement::RequestRedraw`. The
+  application's dispatch (`DispatchEventToElement`) now holds the element
+  until its `OnEvent` has returned, whatever widget it is; one the handler
+  removed finishes detached, where a redraw request does nothing, and is
+  destroyed after the event. `MouseClickBubblingTest` rebuilds a toggle
+  button's list from its own handler, on a press and on a double-click (it
+  crashed before the fix).
+- **A container scrolled to its end stays there when it is laid out
+  again.** `UltraCanvasContainer::UpdateScrollability` set each scroll range
+  first for a viewport measured with both scrollbars hidden - a track taller
+  or wider than the real one - and setting a range clamps the position to
+  it, so a container with both scrollbars, scrolled to the end, lost a
+  scrollbar's thickness of scroll at every re-layout (UltraPaint's side
+  panel jumped 16 px when a layer was clicked). The provisional viewports
+  now only decide which scrollbars show; the ranges are set once, for the
+  final one. `ScrollKeepsPositionOnResizeTest` lays out a view scrolled to
+  its end again and finds it at the end (16 px short before).
+- **A menu opened for a widget never covers it.** New
+  `UltraCanvasMenu::OpenMenuAnchored(anchor, window, settings, gap,
+  align)` takes the widget's bounds in the window - a button, a chip, a
+  field - and opens the menu `gap` pixels below it, or, when it does not fit
+  below and does above, ending `gap` pixels above it, as GTK's popovers and
+  Windows' `TrackPopupMenuEx` with an exclude rectangle place theirs. The
+  menu measures itself, so a caller no longer works out its height to open
+  it upwards (UltraMail's attachment chips did, counted two rows and missed
+  the panel's padding and border, and the menu covered the top of the chip).
+  New `MenuAnchorAlign::Right` lines the menu's right edge up with the
+  widget's. `OpenMenu` at a point behaves as before: below the point, or
+  ending at it.
+  - A menubar's drop-downs are anchored to their item: a bar at the foot of
+    a window opens them upwards instead of over itself.
+  - Anchored now: the breadcrumb's drop-downs and overflow list, the
+    tabbed container's overflow list, the spinner's value list, the video
+    recorder's camera list and the DemoApp's Dark and Flat menu buttons.
+- **Menu icons follow the theme.** Menu icons are mostly line glyphs drawn in
+  black or grey ("symbolic" icons, like those in `media/icons/menu`), which
+  vanished on a dark menu. With the new `MenuStyle::iconTint` at its default,
+  `MenuIconTint::Symbolic`, an icon drawn in one shade of grey is painted
+  in the entry's text colour, as its label is - light on a dark menu, the
+  hover text colour while hovered, the disabled colour when disabled - so one
+  set of icons serves both themes. A coloured icon (an application's, a file
+  type's) keeps its colours, and so does one in black and white (Texter's
+  half-filled theme-switch disc). `MenuIconTint::Original` draws every icon as it
+  is; `MenuIconTint::AllIcons` tints coloured ones too. `MenuStyle::tintIcons`
+  (framework changelog: `menu-flat-icons`) is the same as `AllIcons`, and
+  `Dark()` no longer turns it on: its grey icons take the light text colour
+  by the symbolic default, and an application's coloured icon in a dark
+  menu - UltraFiler's *Open with* - keeps its colours.
+- **Closing all of a menu's submenus no longer frees one mid-close.**
+  `UltraCanvasMenu::CloseAllSubmenus()` - run when a popup menu closes for
+  Escape or by hand, and on a menubar - walked its list of open submenus
+  while closing each, and a closing submenu erases itself from that list and
+  drops the parent's reference to it: the loop ran on over an invalidated
+  list and the submenu was freed inside its own `CloseMenu()`. It closes a
+  copy of the list now.
+- `MenuAndTabBehaviourTest` checks an anchored menu below its widget, above
+  it with no room below (ending the gap above it), lined up by its right
+  edge, a point-opened menu ending at its point, a bottom menubar opening
+  upwards and closing it again, and on a dark menu a black icon painted light, a red one kept,
+  a disabled one greyed, a black-and-white one kept and
+  `MenuIconTint::Original` leaving black black.
+
+#### 2026-10-11 *0.9.248*
+- **Windows: a GUI program typed at a prompt prints its `--help` and
+  `--version` there.** A GUI-subsystem program is given no console, and the
+  framework attached it to the prompt's only in
+  `UltraCanvasWindowsApplication::InitializeNative()`, as the window opens -
+  after `main()` had already printed its help, its version or a bad
+  argument into nothing. The new `ultracanvas_windows_gui_app()`
+  (`cmake/UltraCanvasWindowsGuiApp.cmake`) makes a target a GUI-subsystem
+  program in a Release build, as the *Hide console window on Windows Release
+  builds* list in the root `CMakeLists.txt` did, and compiles
+  `OS/MSWindows/AppEntry/UltraCanvasWindowsAttachConsole.cpp` into it, which
+  calls `AttachParentConsole()` before `main()`. The prompt still does not
+  wait for a GUI program, so the text appears after it has come back;
+  redirected to a file it is complete.
+  - The source goes into the executable, not the core: the core is a DLL in
+    the shared build, and a DLL's static initialisers run under the loader
+    lock. It sits in a folder of its own so the core's `OS/MSWindows/*.cpp`
+    glob does not pick it up.
+  - The root list, UltraMail, and the standalone UltraTexter and AnchorPoint
+    builds use it.
+  - **DemoApp's `--help` prints to stdout**, and an unknown argument to
+    stderr. It wrote to `debugOutput`, which a Release build keeps off, so it
+    printed nothing on any platform. Texter, UltraFiler, UltraViewer and
+    UltraPaint had the same fault; see their changelogs.
+
+#### 2026-10-11 *0.9.247*
+- **`MenuStyle::tintIcons`: a menu's icons drawn in the label's colour.**
+  On, each item's icon is drawn as a mask in its label's colour - the text
+  colour, the highlighted row's, a disabled item's grey - so one flat,
+  single-colour icon reads on a light menu and a dark one. `MenuStyle::Dark()`
+  turns it on, since an icon drawn for a light menu vanishes on it; the other
+  presets still draw an icon in its own colours.
+- **The DemoApp's menus show flat icons instead of emoji.** Every entry of the
+  Menus page (the context menu, File / Edit / View / Help, the dark and flat
+  menus, the list's right-click menu) and the Button page's split-button menu
+  wrote an emoji into its label - 📋 ✂️ 💾 🔍 🌙 and the rest - which draws only
+  where a colour emoji font is installed; with the bundled fonts alone, as on
+  Windows here, each was a box of hex digits. They now carry icons of
+  `media/icons/menu/`, the set UltraFiler's menus use, and the split buttons'
+  "▼" arrows are the dropdown icon.
+- **Nineteen new icons in `media/icons/menu/`**, drawn like the rest of the set
+  (24 px grid, 2 px rounded strokes): save, recent, exit, undo, redo, search,
+  replace, format, toolbar, status-bar, sidebar, book, tutorial, moon, sun,
+  palette, phone, tablet and monitor.
+- `Docs/UltraCanvas/UltraCanvasMenuExamples.md` documents `tintIcons`, and its
+  context-menu example uses icons instead of emoji labels.
+- **The stepper's completed steps show their check mark on Windows.**
+  `UltraCanvasStepper` wrote the mark as the character "✓", which the
+  bundled Ubuntu UI font does not have, so it was left to a fallback font -
+  and on Windows it drew as a box of hex digits (UltraCanvasStart's step
+  header). The check is now a stroked path in the marker's glyph colour, as
+  `UltraCanvasCheckbox` draws its own, so it no longer depends on any font.
+
+#### 2026-10-10 *0.9.246*
+- **Popup menus and submenus look the way current desktops draw them.**
+  Windows 11 (WinUI's `MenuFlyout`), macOS and GNOME (libadwaita's popover
+  menus) agree on a rounded panel lifted off the window by a soft shadow,
+  padding inside it, rows whose highlight is a rounded rectangle inset from
+  the panel's sides in a neutral shade, muted shortcuts and faint hairline
+  separators; `MenuStyle::Default()` now draws exactly that, on Windows 11's
+  mouse metrics: an 8 px panel radius, 4 px padding and inset, a 4 px
+  highlight radius, 28 px rows, a translucent black hover that darkens any
+  background, and a shadow fading over 18 px, 6 px down. A small menu - an
+  attachment's Open / Save As - no longer reads as a square grey box with a
+  full-width blue bar. `Dark()` and `Flat()` follow (`Dark()` with a light
+  hairline outline); a menubar keeps its edge-to-edge items with a rounded
+  highlight.
+  - New `MenuStyle::itemInset` (gap between the border and a row's
+    highlight) and `itemCornerRadius` (the highlight's rounding);
+    `paddingTop` / `paddingBottom`, which a vertical menu ignored, are the
+    panel's padding above the first row and below the last, and
+    `borderRadius` rounds the panel (it was never drawn).
+  - Separators run across the whole panel and are filled on one pixel row,
+    so they stay sharp; they no longer take the hover highlight. Checkbox
+    outlines use the muted secondary colour instead of the faint border.
+  - A submenu opens with its first row level with the item it came from,
+    scrolled or not, and a menubar's drop-down lines up with the item's
+    highlight. An overflowing menu widens by its scrollbar instead of
+    covering the rows' shortcuts.
+- **Popups can have rounded corners and a drop shadow.** The window used to
+  copy a popup's surface over its content, transparent pixels and all; it
+  now blends it over with its alpha, so a popup's transparent corners show
+  the window beneath (at any `SetPopupOpacity`), and paints the soft shadow a
+  popup asks for through the new virtual
+  `UltraCanvasUIElement::GetPopupShadow()` (a `PopupShadow`: colour, blur,
+  offset, corner radius) beneath it, outside the popup's own surface - the
+  popup keeps its bounds and the shadow takes no clicks. The menu answers it
+  from its style; its old "shadow", a 1 px outline drawn inside its own
+  surface, is gone. New
+  `IRenderContext::CompositeToSurfaceWithOpacity()` (an OVER composite at an
+  opacity) does the blending; `RenderContextTest` checks it, and the
+  render-context page describes the four ways a surface goes onto another.
+- `MenuAndTabBehaviourTest` checks the panel on a composited window: corners
+  that show the window, a shadow outside the bounds that fades out and goes
+  with the menu, a highlight inset from the panel's edges, top padding that
+  hovers nothing, and a separator across the panel; its popup-opacity checks
+  expect the blend. `TextMetricsScreenshotTest` measures the menu's first row
+  where it now is.
+
+#### 2026-10-10 *0.9.245*
+- **HTML mail keeps its spacing: table cells ignore `min-height` and
+  `max-height`.** Stripe - and with it the receipts and invoices of every
+  service that bills through it - spaces its mail with cells like
+  `<td height="32" style="font-size:1px; line-height:1px; max-height:1px">`.
+  Browsers ignore `max-height` on a table cell (CSS 2.1 leaves it undefined
+  there); `HTML::ElementBuilder` applied it, so every such gap shrank to 1px:
+  a receipt lost the space above its header and inside its cards, and its
+  text sat packed together - which read as text drawn too large, although the
+  sizes were right. A cell now ignores both limits, as Chromium and Firefox
+  do; a cell made `display: block` (mail columns stacked on a phone) is a
+  block and keeps them. `HTMLTableLayoutTest` expected the opposite for a
+  percentage `min-height` / `max-height` on a cell and now expects what a
+  browser lays out.
+- **An inline element's `line-height` sets its line's height.** A line was
+  as tall as the block's `line-height`, or the font's, and an inline
+  element's own was dropped: Stripe's amount - 36px text on 40px lines - and
+  the 14px caption above it on 20px lines, each in a cell that sets none,
+  were laid out at the fonts' heights, the amount touching the caption. A
+  line is now as tall as the tallest `line-height` of the inline boxes on
+  it, and at least the block's own; text where nothing sets a `line-height`
+  keeps the font's own line spacing, as before.
+
+#### 2026-10-10 *0.9.244*
+- **Files dragged to another file display of the same window land where they
+  are released.** A drag that leaves an `UltraCanvasFilerWidget` keeps going
+  over the rest of the window, and a release over a second file display - the
+  other pane of UltraFiler's split view - handed it the files as a `Drop`
+  event. The display copied them into the folder it showed, whatever was
+  under the pointer: files released on a folder there were copied, out of
+  sight, into the wrong folder, without the question a move asks, and the
+  user saw nothing happen. The second display now takes them directly: into
+  the folder under the pointer, or over its empty space into the folder it
+  shows, moved or copied by the same rule as a drop on a folder of the display
+  the drag started in (`SetDropOnFolderCopies`, Ctrl copies, Shift moves), and
+  after the question its `SetDropConfirmation` asks for that verb. A drop from
+  another application onto a folder tile now goes into that folder too
+  (still a copy). Files on a remote drive go up to the folder under the
+  pointer, and a drive's entries dropped on a local folder come down into it.
+- **A drag over a file display shows where it would land.** While a drag that
+  started elsewhere - another display of the window, or another program - is
+  over the display, the folder under the pointer is framed like the drop target
+  of the display's own drag, and over empty space the display itself is
+  framed, its folder being where the drop would go. New
+  `UltraCanvasFilerWidget::GetIncomingDropFolder()` names that folder (empty
+  while no such drag is over the display).
+- **Elements of the window are told about a file drag passing over them.**
+  The display a drag started in now sends the element under the cursor
+  `DragEnter`, `DragOver` (with the dragged paths in `droppedFiles`) and
+  `DragLeave`, as a drag from another program does, so a folder tree
+  highlights the row a drop would land on while the drag is still in the air.
+  The release still reaches it as a `Drop` event.
+- New `FilerPaneDragTest` (Xvfb): two displays side by side, a file dragged
+  from one onto a folder of the other, onto its empty space, with Ctrl, and
+  under the move confirmation (asked, cancelled, answered with Move); and an
+  element the drag passes over is told it entered, was passed over and left.
+
+#### 2026-10-10 *0.9.243*
+- **VideoFX 0.7.0: project files.** A whole edit can be saved as a
+  `.vfxproj`, a small JSON file. It holds a timeline (or a slideshow's photos
+  and options), its music and its export settings, and refers to media by
+  path. New: `VideoFXProject` (`FromTimeline`, `FromSlideshow`),
+  `VideoFX_SaveProject`, `VideoFX_LoadProject`, `VideoFX_ProjectToJson`,
+  `VideoFX_ProjectFromJson`, `VideoFX_RenderProject` and
+  `kVideoFXProjectFormatVersion` (1).
+  - Media inside the project's folder are stored relative to it, so the
+    folder can move as a whole. Loaded paths come back absolute.
+  - Loading reports media that have gone (`missingMedia`) and still loads.
+  - A file from a newer VideoFX is refused rather than half-read. Unknown
+    keys are ignored and missing keys keep their defaults.
+  - Errors name the place in the file, such as
+    `segments[2].transitionIn.type`.
+  - Saving is atomic. Images held only in memory are refused.
+  - Works without FFmpeg too; only rendering needs the engine.
+  - `videofx`: `--save-project FILE` on any edit command, `videofx project`
+    (summary and missing media) and `videofx render` (render a project).
+- **VideoFX is a shared library.** It is built as `libVideoFX.so`,
+  `libVideoFX.dylib` or `libVideoFX.dll` instead of a static archive. It is
+  not part of the UltraCanvas core, so FFmpeg is loaded only by applications
+  that do video, and they share one copy. The soname carries the minor
+  version (`libVideoFX.so.0.7`) while VideoFX is 0.x. On Windows every symbol
+  is exported, as in the core, and the DLL goes to `bin/` beside `videofx.exe`.
+  `-DVIDEOFX_BUILD_SHARED=OFF` keeps a static build (the default on Android).
+  The Linux package leaves the library out until an app links it.
+
+#### 2026-10-10 *0.9.242*
+- **Windows: apps no longer open an empty console window beside their own.**
+  Only the demo, Texter, UltraFiler, UltraViewer, UltraPaint, ArtCreator,
+  UCFileManager and UltraMail were built as GUI-subsystem programs; every
+  other app opened a console window when started, and nothing was ever
+  written to it. In a Release build:
+  - **EmailCleaner, UltraSocial, UOS-Settings, UltraClipboard,
+    UltraAuthenticator, UltraPassword and the UltraAI dashboard are now
+    GUI-subsystem programs too**, so no console window opens for them at all. The list is now one `foreach` in the root
+    `CMakeLists.txt` (*Hide console window on Windows Release builds*).
+  - **The apps with command-line modes stay console programs** (DeviceExplorer,
+    UltraCleaner, UltraNetMonitor, UltraCanvasStart, UltraWeb, UltraClaude,
+    UltraDesktop, UltraFIBU), because a GUI-subsystem program cannot make the
+    prompt wait for it or see its exit code, so `DeviceExplorer --list` or
+    `UltraCleaner --scan` would stop working in a script. Started by a
+    double-click, they now close the console Windows opened for them as their
+    window comes up: the new `ReleaseOwnConsole()`
+    (`OS/MSWindows/UltraCanvasWindowsDiagnostics.h`), called by
+    `UltraCanvasWindowsApplication::InitializeNative()`, frees a console that
+    no other process shares. Started from a prompt, the console is the
+    prompt's and is kept, and so is the console of a Debug build or of any
+    run with `ULTRACANVAS_DEBUG_LOG` set, where the log is written to it.
+  - In those GUI-subsystem builds, `--help` and `--version` typed at a prompt
+    print nothing, as already for Texter and UltraFiler: they write before
+    the framework attaches to the prompt's console, which it does as the
+    window opens.
+
+#### 2026-10-10 *0.9.241*
+- **The `TabStyle::Modern` indicator line is a setting.** The line under
+  (beside) the open tab was Material blue, two pixels, in the code;
+  `activeTabIndicatorColor` and `activeTabIndicatorThickness`, with their
+  setters, let an application match it to its own accent - UltraFiler's
+  *Simple modern* tab style does.
+
 #### 2026-10-10 *0.9.240*
 - **The doc-example check reads two more kinds of correct C++.** Both
   failed only because of how `scripts/check_doc_examples.py` supplies the
