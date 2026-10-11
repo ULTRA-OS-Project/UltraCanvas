@@ -341,7 +341,7 @@ nothing in the element. So:
 - Sizes come from the design's `size` family (control 28, ruler 28, track
   heights 64 / 48 / 28 / 24, header column 200, toolbar 36) multiplied by
   the framework's DPI scale, as every element does.
-- Icons: the set is in `Apps/UltraVideo/Icons/`, 46 icons on a 16 px grid
+- Icons: the set is in `media/icons/ultravideo/`, 46 icons on a 16 px grid
   with a 1.5 px stroke, one path each in `currentColor`, named as the specs
   name them (`magnet`, `snap`, `beat`, `blade`, `slip`, `transition`,
   `speed`, `motion`, `wave`, the transport and the eye, speaker and lock
@@ -849,34 +849,42 @@ is this document serialised; `project` inside it is
 
 ```
 Apps/UltraVideo/
-  main.cpp                      bootstrap, as Apps/UltraViewer/main.cpp
-  UltraVideoWindow.{h,cpp}      the editor window: app bar, panes, dock
+  main.cpp                      bootstrap, as Apps/UltraClipboard/main.cpp
+  UltraVideoWindow.{h,cpp}      the editor window: app bar, panes, media bin, dock, playback,
+                                the change loop, files, export
   UltraVideoDocument.{h,cpp}    the document, the .ultravideo file, media bin
   UltraVideoMapping.{h,cpp}     BuildTimelineModel / ApplyChange
   UltraVideoHistory.{h,cpp}     undo stack
-  UltraVideoPreview.{h,cpp}     frame requests, draft renders, caches
+  UltraVideoPreview.{h,cpp}     the engine's worker: frame requests, thumbnails, peaks
+                                (draft renders and caches later)
+  UltraVideoViewer.{h,cpp}      the frame surface, Fit, the transport
   UltraVideoInspector.{h,cpp}   the inspector forms
-  UltraVideoDialogs.{h,cpp}     export, story wizard, project settings
-  UltraVideoStory.{h,cpp}       slideshow options from the wizard
-  UltraVideoTokens.h            the design tokens as C++ (generated; present today)
+  UltraVideoDialogs.{h,cpp}     export, the unsaved-changes question (story wizard later)
+  UltraVideoTheme.h             the tokens applied to elements
+  UltraVideoStory.{h,cpp}       slideshow options from the wizard (phase 4)
+  UltraVideoTokens.h            the design tokens as C++ (generated)
   UltraVideo.desktop
+  CMakeLists.txt                its own, added from the root with BUILD_ULTRAVIDEO
   README.md
-  screens/                      the design: SVG screens, component specs, brand book (present today)
-  Icons/                        the interface icon set (present today)
+  screens/                      the design: SVG screens, component specs, brand book
 Docs/UltraVideo/CHANGELOG.md    "#### <date> *0.1.0*" is the version
+Docs/UltraVideo/README.md       how to use it
+Tests/UltraVideoDocumentTest.cpp  the document, mapping and history, headless
+media/icons/ultravideo/         the interface icon set, loaded at run time
 media/appicon/UltraVideo.{png,svg}
 ```
 
-Build: `option(BUILD_ULTRAVIDEO_APP ...)` and an `add_executable` block in
-the root `CMakeLists.txt` after UltraViewer's, linking `${ULTRACANVAS_LIBRARY}`
-and `VideoFX::VideoFX`, with `ULTRAVIDEO_VERSION` from
+Build: `option(BUILD_ULTRAVIDEO ...)` and `add_subdirectory(Apps/UltraVideo)`
+in the root `CMakeLists.txt` after UltraClipboard's, the app's own
+`CMakeLists.txt` linking `${ULTRACANVAS_LIBRARY}` and `VideoFX::VideoFX`,
+with `ULTRAVIDEO_VERSION` from
 `_ultracanvas_declare_product(ULTRAVIDEO "Docs/UltraVideo/CHANGELOG.md")`
 guarded by `#ifndef … #error`; the window title "Summer trip - UltraVideo
 0.1.0". Packaging: one `build_app_bundle` call in `package-macos.sh`
 (VideoFX's dylib goes to the shared `Frameworks/` with the rest), the
-Linux package starts shipping `libVideoFX` because an app now links it, and
-`UltraVideo.desktop` registers the `.ultravideo` type and the video and
-image types for *Open with*.
+Linux package ships `libVideoFX` now that an app links it, and
+`UltraVideo.desktop` registers the `.ultravideo` type and the video, image
+and sound types for *Open with*. All of it is in place (§14).
 
 ---
 
@@ -887,7 +895,7 @@ image types for *Open with*.
 | 0 | This proposal; the screens and specs in `Apps/UltraVideo/screens/`; waveforms in VideoFX 0.8.0 | PR #794 |
 | 1 | `UltraCanvasVideoTimeline` and `UltraCanvasTimecodeField`: model, operations, rendering of ruler, main track, clips with filmstrips, transitions, playhead, zoom, selection, keyboard, drop, context menu hook; docs, catalogue rows, DemoApp page, model tests | Framework release |
 | 2 | `VideoFX_RenderFrame` (8.2, **done** in 0.9.0), the draft preset (8.5), export range (8.6) | VideoFX 0.9.0 |
-| 3 | `Apps/UltraVideo` 0.1.0: window, media bin, viewer with scrubbing, inspector (clip, audio, project), timeline wired through the mapping, undo, `.ultravideo`, export dialog | First app release |
+| 3 | `Apps/UltraVideo` 0.1.0: window, media bin, viewer with scrubbing, inspector (clip, audio, project), timeline wired through the mapping, undo, `.ultravideo`, export dialog (**built**, §14) | First app release |
 | 4 | Title lane and music lane in the element (spans, fades, song boundaries, beats, markers, work area, snapping, ripple and slip); the story wizard | App 0.2.0 |
 | 5 | Picture-in-picture (8.3) and free audio tracks (8.4) in the engine; the overlay and free audio lanes switched on | VideoFX 0.10, app 0.3 |
 | 6 | Keyframes in the engine and keyframe markers on clips; proxy media; hardware encoder choice | Later |
@@ -983,6 +991,24 @@ that writing it showed:
   is the one-call form, `VideoFX_PlanSlideshow` the slideshow's segments
   without a render, and `videofx preview` writes a project's frame. Tested
   in `VideoFXTest` against the export's own frames.
+- **The application** (§10, phase 3 of §11), `Apps/UltraVideo` 0.1.0: the
+  window of §6.1 with the app bar, the three panes and the dock; the media
+  bin as an `UltraCanvasAlbum` under a search field in tabs; the viewer
+  with its own frame surface (the one self-rendered piece: it shows a
+  decoded frame from memory, which no catalogue element does), the Fit
+  choice and the transport; the inspector's three tabs; the timeline fed
+  through `BuildTimelineModel` and written back through `ApplyChange`,
+  thumbnails and peaks decoded on the engine's worker; undo with the clean
+  mark; the `.ultravideo` file; the export dialog and the background job.
+  Departures from the plan: the app colours its elements from the tokens
+  directly (`UltraVideoTheme.h`) rather than through theme roles, which
+  wait for the framework change of §5.8; the music lane is shown on the
+  timeline but edited in the inspector; the main track is always magnetic;
+  playback is level 2 of §5.5 (the engine renders each frame the playhead
+  passes) with no sound yet. A headless test covers the document, the
+  mapping and the history. Writing it found both new elements reading the
+  pointer as window coordinates where the dispatcher hands them
+  element-local ones; fixed, with the display tests mapping the same way.
 - Not built, and left for the next phase: fade knobs on the music bar, marker dragging, a real slip trim
   (the Slip tool trims for now), retiming by `Ctrl`-drag, vertical scrolling
   of many tracks, resizing a track by its edge, and the mapping onto the

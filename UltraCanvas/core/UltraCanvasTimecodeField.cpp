@@ -302,9 +302,9 @@ void UltraCanvasTimecodeField::Render(IRenderContext* ctx, const Rect2Df& /*dirt
 bool UltraCanvasTimecodeField::OnEvent(const UCEvent& event) {
     if (UltraCanvasUIElement::OnEvent(event)) return true;
     if (!IsVisible() || IsDisabled() || readout) return false;
-    const Point2Df inWindow = GetPositionInWindow();
-    const float x = static_cast<float>(event.pointer.x) - inWindow.x;
-    const float y = static_cast<float>(event.pointer.y) - inWindow.y;
+    // event.pointer is element-local: the dispatcher maps it before OnEvent
+    const float x = static_cast<float>(event.pointer.x);
+    const float y = static_cast<float>(event.pointer.y);
     const Rect2Df b = GetLocalBounds();
     const bool inside = x >= 0.0f && y >= 0.0f && x <= b.width && y <= b.height;
 

@@ -1,0 +1,427 @@
+// Apps/UltraVideo/UltraVideoDocument.cpp
+// The document and the .ultravideo file (UltraVideoDocument.h).
+// Version: 0.1.0
+// Last Modified: 2026-10-11
+// Author: UltraCanvas Framework
+#include "UltraVideoDocument.h"
+
+#include "DataFormats/UltraCanvasJSON.h"
+#include "UltraCanvasPathUtf8.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <locale>
+#include <sstream>
+#include <system_error>
+
+namespace fs = std::filesystem;
+using namespace UltraCanvas;
+using namespace VideoFX;
+
+namespace UltraVideo {
+
+namespace {
+
+constexpr int kFileVersion = 1;
+constexpr double kDefaultPictureSeconds = 4.0;
+
+std::string LowerExtension(const std::string& path) {
+    std::string ext = PathToUtf8(PathFromUtf8(path).extension());
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext;
+}
+
+std::string FileName(const std::string& path) {
+    return PathToUtf8(PathFromUtf8(path).filename());
+}
+
+std::string Clock(double seconds) {
+    const int total = static_cast<int>(std::lround(seconds));
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    if (total >= 3600) out << total / 3600 << ':' << std::setw(2) << std::setfill('0') << (total / 60) % 60 << ':';
+    else out << total / 60 << ':';
+    out << std::setw(2) << std::setfill('0') << total % 60;
+    return out.str();
+}
+
+// Paths in the file are relative to its folder when they are inside it
+std::string Relative(const std::string& path, const fs::path& base) {
+    if (base.empty()) return path;
+    std::error_code ec;
+    const fs::path p = PathFromUtf8(path);
+    const fs::path rel = fs::relative(p, base, ec);
+    if (ec || rel.empty()) return path;
+    const std::string text = PathToUtf8(rel);
+    if (text.rfind("..", 0) == 0) return path;
+    return text;
+}
+
+std::string Absolute(const std::string& path, const fs::path& base) {
+    const fs::path p = PathFromUtf8(path);
+    if (p.is_absolute() || base.empty()) return path;
+    return PathToUtf8((base / p).lexically_normal());
+}
+
+JSONValue MarkerToJson(const TimelineMarker& m) {
+    JSONValue o = JSONValue::MakeObject();
+    o.Set("id", m.id);
+    o.Set("seconds", m.seconds);
+    o.Set("color", static_cast<int64_t>(m.color));
+    o.Set("label", m.label);
+    return o;
+}
+
+} // namespace
+
+std::string MediaItem::Badge() const {
+    if (!error.empty()) return "unreadable";
+    if (kind == MediaKind::Image) return "photo";
+    return Clock(duration);
+}
+
+MediaKind Document::KindOfPath(const std::string& path) {
+    static const char* const images[] = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp",
+                                         ".avif", ".jxl", ".gif"};
+    static const char* const sounds[] = {".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".wma", ".aiff"};
+    const std::string ext = LowerExtension(path);
+    for (const char* e : images) if (ext == e) return MediaKind::Image;
+    for (const char* e : sounds) if (ext == e) return MediaKind::Audio;
+    return MediaKind::Unknown;
+}
+
+std::string Document::Name() const {
+    if (!project.title.empty()) return project.title;
+    if (!path.empty()) return PathToUtf8(PathFromUtf8(path).stem());
+    return "Untitled";
+}
+
+// The output size: the settings', else the first video's on the timeline
+// (a photo's own size says nothing about the video it goes into: pictures
+// alone make a 1080p video, as the engine's slideshow does)
+int Document::Width() const {
+    if (project.settings.width > 0) return project.settings.width;
+    for (const VideoFXSegment& s : project.segments)
+        if (s.kind == VideoFXSourceKind::File) { const MediaItem* m = FindMedia(s.path); if (m && m->width > 0 && m->kind == MediaKind::Video) return m->width; }
+    return 1920;
+}
+
+int Document::Height() const {
+    if (project.settings.height > 0) return project.settings.height;
+    for (const VideoFXSegment& s : project.segments)
+        if (s.kind == VideoFXSourceKind::File) { const MediaItem* m = FindMedia(s.path); if (m && m->height > 0 && m->kind == MediaKind::Video) return m->height; }
+    return 1080;
+}
+
+double Document::FrameRate() const {
+    if (project.settings.frameRate > 0.0) return project.settings.frameRate;
+    for (const VideoFXSegment& s : project.segments)
+        if (s.kind == VideoFXSourceKind::File) { const MediaItem* m = FindMedia(s.path); if (m && m->frameRate > 0.0 && m->kind == MediaKind::Video) return m->frameRate; }
+    return 25.0;
+}
+
+std::string Document::Describe() const {
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    out << Width() << " \xC3\x97 " << Height() << " \xC2\xB7 ";
+    const double fps = FrameRate();
+    if (std::fabs(fps - std::round(fps)) < 0.01) out << static_cast<int>(std::lround(fps));
+    else out << std::fixed << std::setprecision(2) << fps;
+    out << " fps";
+    return out.str();
+}
+
+double Document::SegmentSeconds(size_t index) const {
+    if (index >= project.segments.size()) return 0.0;
+    const VideoFXSegment& s = project.segments[index];
+    if (s.kind != VideoFXSourceKind::File) return s.duration;
+    double end = s.end;
+    if (end <= 0.0) {
+        const MediaItem* m = FindMedia(s.path);
+        end = m ? m->duration : 0.0;
+    }
+    const double range = std::max(0.0, end - s.start);
+    return s.speed > 0.0 ? range / s.speed : range;
+}
+
+double Document::Length() const {
+    double at = 0.0;
+    for (size_t i = 0; i < project.segments.size(); ++i) {
+        const double seconds = SegmentSeconds(i);
+        if (i > 0 && !project.segments[i].transitionIn.IsCut()) {
+            at -= std::min(project.segments[i].transitionIn.duration, std::min(seconds, SegmentSeconds(i - 1)));
+        }
+        at = std::max(0.0, at) + seconds;
+    }
+    return at;
+}
+
+std::string Document::NewClipId() {
+    return "c" + std::to_string(nextClipId++);
+}
+
+const MediaItem* Document::FindMedia(const std::string& p) const {
+    for (const MediaItem& m : media) if (m.path == p) return &m;
+    return nullptr;
+}
+
+MediaItem* Document::FindMedia(const std::string& p) {
+    for (MediaItem& m : media) if (m.path == p) return &m;
+    return nullptr;
+}
+
+MediaItem& Document::Import(const std::string& p) {
+    std::error_code ec;
+    const fs::path abs = fs::absolute(PathFromUtf8(p), ec);
+    const std::string absolute = ec ? p : PathToUtf8(abs);
+    MediaItem* item = FindMedia(absolute);
+    if (!item) {
+        media.push_back(MediaItem{});
+        item = &media.back();
+        item->path = absolute;
+    }
+    item->name = FileName(absolute);
+    item->kind = KindOfPath(absolute);
+    item->error.clear();
+    VideoFXMediaInfo info;
+    const VideoFXResult r = VideoFX_Probe(absolute, info);
+    if (r != VideoFXResult::Ok) {
+        item->error = VideoFX_GetLastError();
+        if (item->error.empty()) item->error = VideoFX_ResultToString(r);
+        return *item;
+    }
+    item->duration = info.duration;
+    item->width = info.width;
+    item->height = info.height;
+    item->frameRate = info.frameRate;
+    item->hasAudio = info.HasAudio();
+    if (item->kind == MediaKind::Unknown) {
+        if (info.HasVideo() && info.duration > 0.0) item->kind = MediaKind::Video;
+        else if (info.HasVideo()) item->kind = MediaKind::Image;
+        else if (info.HasAudio()) item->kind = MediaKind::Audio;
+    }
+    if (item->kind == MediaKind::Image) item->duration = 0.0;
+    return *item;
+}
+
+bool Document::MediaInUse(const std::string& p) const {
+    for (const VideoFXSegment& s : project.segments) if (s.path == p) return true;
+    for (const std::string& song : project.settings.music.Songs()) if (song == p) return true;
+    return false;
+}
+
+bool Document::RemoveMedia(const std::string& p) {
+    if (MediaInUse(p)) return false;
+    media.erase(std::remove_if(media.begin(), media.end(), [&](const MediaItem& m) { return m.path == p; }), media.end());
+    return true;
+}
+
+int Document::AppendMedia(const MediaItem& item, double seconds) {
+    return InsertMedia(project.segments.size(), item, seconds);
+}
+
+int Document::InsertMedia(size_t index, const MediaItem& item, double seconds) {
+    if (!item.error.empty()) return -1;
+    index = std::min(index, project.segments.size());
+    VideoFXSegment segment;
+    switch (item.kind) {
+        case MediaKind::Video:
+            segment = VideoFXSegment::FromFile(item.path);
+            break;
+        case MediaKind::Image:
+            segment = VideoFXSegment::FromImage(item.path, seconds > 0.0 ? seconds : kDefaultPictureSeconds);
+            break;
+        case MediaKind::Audio: {
+            VideoFXMusic& music = project.settings.music;
+            if (!music.IsSet()) music = VideoFXMusic::FromFile(item.path);
+            else music.playlist.push_back(item.path);
+            return -1;
+        }
+        case MediaKind::Unknown:
+            return -1;
+    }
+    project.segments.insert(project.segments.begin() + static_cast<std::ptrdiff_t>(index), segment);
+    clipIds.insert(clipIds.begin() + static_cast<std::ptrdiff_t>(index), NewClipId());
+    return static_cast<int>(index);
+}
+
+bool Document::Save(const std::string& toPath, std::string& error) {
+    error.clear();
+    if (clipIds.size() != project.segments.size()) {
+        clipIds.resize(project.segments.size());
+        for (std::string& id : clipIds) if (id.empty()) id = NewClipId();
+    }
+    const fs::path file = PathFromUtf8(toPath);
+    const fs::path base = file.parent_path();
+    std::string projectText;
+    const VideoFXResult r = VideoFX_ProjectToJson(project, projectText, PathToUtf8(base));
+    if (r != VideoFXResult::Ok) {
+        error = VideoFX_GetLastError();
+        if (error.empty()) error = VideoFX_ResultToString(r);
+        return false;
+    }
+    JSONParseResult parsed;
+    JSONValue projectJson = JSON::Parse(projectText, &parsed);
+    if (!parsed.success) {
+        error = "The engine's project text is not JSON: " + parsed.errorMessage;
+        return false;
+    }
+
+    JSONValue root = JSONValue::MakeObject();
+    root.Set("format", "ultravideo");
+    root.Set("version", kFileVersion);
+    root.Set("project", projectJson);
+    JSONValue ids = JSONValue::MakeArray();
+    for (const std::string& id : clipIds) ids.Append(id);
+    root.Set("clipIds", ids);
+    root.Set("nextClipId", nextClipId);
+    JSONValue bin = JSONValue::MakeArray();
+    for (const MediaItem& m : media) {
+        JSONValue o = JSONValue::MakeObject();
+        o.Set("path", Relative(m.path, base));
+        o.Set("name", m.name);
+        bin.Append(o);
+    }
+    root.Set("media", bin);
+    JSONValue marks = JSONValue::MakeArray();
+    for (const TimelineMarker& m : markers) marks.Append(MarkerToJson(m));
+    root.Set("markers", marks);
+    JSONValue v = JSONValue::MakeObject();
+    v.Set("pixelsPerSecond", view.pixelsPerSecond);
+    v.Set("scrollSeconds", view.scrollSeconds);
+    v.Set("playhead", view.playhead);
+    v.Set("rangeIn", view.rangeIn);
+    v.Set("rangeOut", view.rangeOut);
+    v.Set("dark", view.dark);
+    v.Set("binWidth", view.binWidth);
+    v.Set("inspectorWidth", view.inspectorWidth);
+    v.Set("dockPercent", view.dockPercent);
+    root.Set("view", v);
+
+    JSONSerializeOptions options;
+    options.pretty = true;
+    options.indentWidth = 2;
+    const std::string text = JSON::Serialize(root, options);
+    if (text.empty()) {
+        error = "The project could not be written as JSON";
+        return false;
+    }
+    // Atomic: the whole file or nothing
+    const fs::path temp = file.parent_path() / PathFromUtf8(PathToUtf8(file.filename()) + ".tmp");
+    {
+        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            error = "Cannot write " + toPath;
+            return false;
+        }
+        out << text << '\n';
+        if (!out) {
+            error = "Writing " + toPath + " failed";
+            std::error_code ec;
+            fs::remove(temp, ec);
+            return false;
+        }
+    }
+    std::error_code ec;
+    fs::rename(temp, file, ec);
+    if (ec) {
+        error = "Cannot replace " + toPath + ": " + ec.message();
+        fs::remove(temp, ec);
+        return false;
+    }
+    path = toPath;
+    return true;
+}
+
+bool Document::Load(const std::string& fromPath, Document& doc, std::string& error, std::vector<std::string>* missing) {
+    error.clear();
+    if (missing) missing->clear();
+    JSONParseResult parsed;
+    const JSONValue root = JSON::ParseFile(fromPath, &parsed);
+    if (!parsed.success) {
+        error = parsed.errorMessage.empty() ? "Cannot read " + fromPath : parsed.errorMessage;
+        return false;
+    }
+    if (!root.IsObject() || root.Get("format").GetString() != "ultravideo") {
+        error = fromPath + " is not an UltraVideo project";
+        return false;
+    }
+    if (root.Get("version").GetInteger() > kFileVersion) {
+        error = fromPath + " was written by a newer UltraVideo";
+        return false;
+    }
+    const fs::path base = PathFromUtf8(fromPath).parent_path();
+    Document loaded;
+    const std::string projectText = JSON::Serialize(root.Get("project"));
+    const VideoFXResult r = VideoFX_ProjectFromJson(projectText, loaded.project, PathToUtf8(base));
+    if (r != VideoFXResult::Ok) {
+        error = VideoFX_GetLastError();
+        if (error.empty()) error = VideoFX_ResultToString(r);
+        return false;
+    }
+    loaded.nextClipId = static_cast<int>(root.Get("nextClipId").GetInteger(1));
+    const JSONValue& ids = root.Get("clipIds");
+    for (size_t i = 0; i < ids.GetSize(); ++i) loaded.clipIds.push_back(ids.At(i).GetString());
+    loaded.clipIds.resize(loaded.project.segments.size());
+    for (std::string& id : loaded.clipIds) if (id.empty()) id = loaded.NewClipId();
+
+    const JSONValue& bin = root.Get("media");
+    for (size_t i = 0; i < bin.GetSize(); ++i) {
+        const std::string p = Absolute(bin.At(i).Get("path").GetString(), base);
+        if (p.empty()) continue;
+        std::error_code ec;
+        if (!fs::exists(PathFromUtf8(p), ec)) {
+            MediaItem item;
+            item.path = p;
+            item.name = FileName(p);
+            item.kind = KindOfPath(p);
+            item.error = "The file is missing";
+            loaded.media.push_back(item);
+            if (missing) missing->push_back(p);
+            continue;
+        }
+        loaded.Import(p);
+    }
+    // Media the project uses that the bin forgot
+    for (const VideoFXSegment& s : loaded.project.segments) {
+        if (s.kind == VideoFXSourceKind::File || s.kind == VideoFXSourceKind::Image) {
+            if (!s.path.empty() && !loaded.FindMedia(s.path)) {
+                std::error_code ec;
+                if (fs::exists(PathFromUtf8(s.path), ec)) loaded.Import(s.path);
+                else if (missing) missing->push_back(s.path);
+            }
+        }
+    }
+    const JSONValue& marks = root.Get("markers");
+    for (size_t i = 0; i < marks.GetSize(); ++i) {
+        const JSONValue& m = marks.At(i);
+        TimelineMarker marker;
+        marker.id = m.Get("id").GetString();
+        marker.seconds = m.Get("seconds").GetNumber();
+        marker.color = static_cast<uint32_t>(m.Get("color").GetInteger(0xF2A53A));
+        marker.label = m.Get("label").GetString();
+        loaded.markers.push_back(marker);
+    }
+    const JSONValue& v = root.Get("view");
+    if (v.IsObject()) {
+        loaded.view.pixelsPerSecond = v.Get("pixelsPerSecond").GetNumber(80.0);
+        loaded.view.scrollSeconds = v.Get("scrollSeconds").GetNumber(0.0);
+        loaded.view.playhead = v.Get("playhead").GetNumber(0.0);
+        loaded.view.rangeIn = v.Get("rangeIn").GetNumber(0.0);
+        loaded.view.rangeOut = v.Get("rangeOut").GetNumber(0.0);
+        loaded.view.dark = v.Get("dark").GetBoolean(true);
+        loaded.view.binWidth = static_cast<int>(v.Get("binWidth").GetInteger(280));
+        loaded.view.inspectorWidth = static_cast<int>(v.Get("inspectorWidth").GetInteger(300));
+        loaded.view.dockPercent = static_cast<int>(v.Get("dockPercent").GetInteger(35));
+    }
+    loaded.path = fromPath;
+    doc = std::move(loaded);
+    return true;
+}
+
+} // namespace UltraVideo

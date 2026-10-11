@@ -2892,6 +2892,33 @@ if(TARGET VideoFX)
     message(STATUS "    Test registered: VideoFXTest")
 endif()
 
+# ===== ULTRAVIDEO DOCUMENT TEST =====
+# UltraVideo's document, mapping and history without a display: media the
+# engine probes, the timeline model derived from the document, every reported
+# change written back, undo, and the .ultravideo round trip. Skips itself
+# without the FFmpeg engine.
+if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
+    message(STATUS "  Building UltraVideoDocumentTest...")
+    add_executable(UltraVideoDocumentTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraVideoDocumentTest.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoDocument.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoMapping.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoHistory.cpp
+    )
+    target_include_directories(UltraVideoDocumentTest PRIVATE
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo
+        ${ULTRACANVAS_INCLUDE_DIR}
+    )
+    target_link_libraries(UltraVideoDocumentTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_compile_features(UltraVideoDocumentTest PRIVATE cxx_std_20)
+    set_target_properties(UltraVideoDocumentTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraVideoDocumentTest COMMAND UltraVideoDocumentTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraVideoDocumentTest")
+endif()
+
 # ===== VIRTUALFS DELETE TEST =====
 # Regression test for batched archive-entry deletion (single rewrite pass).
 # Needs libarchive; the vendored miniz additionally enables the ZIP raw-copy

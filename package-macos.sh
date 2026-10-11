@@ -1551,6 +1551,48 @@ package_if_built "UltraClipboard" build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Document types for UltraVideo (the video editor): its own projects as the
+# editor, and the media it edits under "Open With" without claiming them.
+ULTRAVIDEO_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>UltraVideo Project</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>ultravideo</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Media Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.movie</string>
+                <string>public.image</string>
+                <string>public.audio</string>
+            </array>
+        </dict>
+    </array>'
+
+# Package UltraVideo (the video editor; libVideoFX and FFmpeg go to the
+# shared Frameworks/ with the rest)
+package_if_built "UltraVideo" build_app_bundle \
+    "UltraVideo" \
+    "UltraVideo" \
+    "com.cloverleaf.UltraVideo" \
+    "media/appicon/UltraVideo.png" \
+    "public.app-category.video" \
+    "$ULTRAVIDEO_DOC_TYPES"
+
 # Package UltraCanvasStart, the setup application (Apps/UltraCanvasStart).
 # In the suite like every app, and with --start-app also on its own
 # (build_standalone_app, after finish_suite).

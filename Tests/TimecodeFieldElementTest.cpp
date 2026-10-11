@@ -54,12 +54,16 @@ UCEvent KeyEvent(UCKeys key, char character = 0, bool ctrl = false, bool shift =
 
 UCEvent Typed(char character) { return KeyEvent(UCKeys::Unknown, character); }
 
+// `x`, `y` in window coordinates; the field sits at (10, 10). The dispatcher
+// hands an element its pointer in element-local coordinates, so the helper
+// maps the way the window would.
 UCEvent MouseEvent(UCEventType type, float x, float y) {
     UCEvent event;
     event.type = type;
     event.button = UCMouseButton::Left;
-    event.pointer = Point2Di(static_cast<int>(x), static_cast<int>(y));
-    event.pointerGlobal = event.pointer;
+    event.pointerWindow = Point2Di(static_cast<int>(x), static_cast<int>(y));
+    event.pointer = Point2Di(static_cast<int>(x) - 10, static_cast<int>(y) - 10);
+    event.pointerGlobal = event.pointerWindow;
     return event;
 }
 

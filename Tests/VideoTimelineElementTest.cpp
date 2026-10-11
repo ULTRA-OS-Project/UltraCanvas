@@ -51,7 +51,9 @@ UCEvent MouseEvent(UCEventType type, float x, float y) {
     UCEvent event;
     event.type = type;
     event.button = UCMouseButton::Left;
+    // the element sits at (0, 0), so window and element-local coordinates agree
     event.pointer = Point2Di(static_cast<int>(x), static_cast<int>(y));
+    event.pointerWindow = event.pointer;
     event.pointerGlobal = event.pointer;
     return event;
 }

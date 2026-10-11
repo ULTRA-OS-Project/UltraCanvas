@@ -1112,9 +1112,10 @@ UCMouseCursor UltraCanvasVideoTimeline::GetMouseCursor() const {
 bool UltraCanvasVideoTimeline::OnEvent(const UCEvent& event) {
     if (UltraCanvasUIElement::OnEvent(event)) return true;
     if (!IsVisible() || IsDisabled()) return false;
-    const Point2Df inWindow = GetPositionInWindow();
-    const float x = static_cast<float>(event.pointer.x) - inWindow.x;
-    const float y = static_cast<float>(event.pointer.y) - inWindow.y;
+    // event.pointer is element-local (the dispatcher maps it); pointerWindow
+    // stays window-relative for anything that opens over the window
+    const float x = static_cast<float>(event.pointer.x);
+    const float y = static_cast<float>(event.pointer.y);
     switch (event.type) {
         case UCEventType::MouseDown: return HandleMouseDown(event, x, y);
         case UCEventType::MouseMove: return HandleMouseMove(event, x, y);
@@ -1214,7 +1215,7 @@ bool UltraCanvasVideoTimeline::HandleMouseDown(const UCEvent& event, float x, fl
                                                hit.kind == Hit::ClipRightEdge || hit.kind == Hit::TransitionBody
                                            ? hit.clipId
                                            : "";
-            onContextMenuRequested(trackId, hit.seconds, clipId, event.pointer.x, event.pointer.y);
+            onContextMenuRequested(trackId, hit.seconds, clipId, event.pointerWindow.x, event.pointerWindow.y);
         }
         return true;
     }
