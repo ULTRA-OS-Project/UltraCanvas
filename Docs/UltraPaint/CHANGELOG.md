@@ -17,6 +17,13 @@
 - **Flat buttons.** The tool palette and the toolbar no longer draw a box
   around each button: a soft grey rounded highlight marks the button under
   the pointer and a light blue one the active tool.
+- **Every menu entry has an icon.** All 80 entries of File, Edit, Image,
+  Layer, Select, Adjust, Filter, View and Help - each adjustment and filter
+  included, found by its id - show an icon from a new 16 px set
+  (`media/icons/ultrapaint/16/`): a 16-unit grid with 1 px lines on whole
+  pixels, sharp at the menus' 16 px, in one style instead of Texter's filled
+  icons beside UltraPaint's line ones. They are drawn in one shade of grey,
+  so the menus paint them in the entry's text colour, greyed when disabled.
 
 #### 2026-10-09 *0.2.12*
 - **The Fill tool can make an area transparent.** Filling with a colour

@@ -51,13 +51,15 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 `[` and `]` change the brush size; `X` swaps the colours, `Shift+D` resets
 them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
 
-The palette's icons are line drawings in two sets, each sharp at the size
-it is drawn for: `media/icons/ultrapaint/28/` on a 28-unit grid for the
-palette's 36 px buttons, and `media/icons/ultrapaint/` on a 24-unit grid for
-24 px and smaller (menus). Strokes are 2 px with every straight edge on a
-whole pixel, and a selection's marching ants have gaps of 3 px or more, so
-they stay apart at 16 px. Where the window is too short for every tool the
-palette scrolls (the wheel, or the hints at its ends).
+The icons are line drawings in sets, each sharp at the size it is drawn
+for: `media/icons/ultrapaint/28/` on a 28-unit grid for the palette's flat
+36 px buttons, `media/icons/ultrapaint/` on a 24-unit grid for 24 px, and
+`media/icons/ultrapaint/16/` on a 16-unit grid with 1 px lines for the menus,
+where every entry has one (an adjustment's or a filter's is named by its
+id: `16/gaussian-blur.svg`). Straight edges sit on whole pixels, and a
+selection's marching ants have gaps of 3 px or more, so they stay apart at
+16 px. Where the window is too short for every tool the palette scrolls (the
+wheel, or the hints at its ends).
 
 ### Filling with a transparent colour
 
