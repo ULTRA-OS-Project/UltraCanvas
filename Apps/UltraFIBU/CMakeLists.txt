@@ -151,7 +151,6 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
         ui/UltraFIBUTabelle.cpp
         ui/UltraFIBUBelegDialog.cpp
         ui/UltraFIBUStart.cpp
-        ui/UltraFIBUKonsole.cpp
     )
     target_compile_features(ultrafibu PRIVATE cxx_std_20)
     target_include_directories(ultrafibu PRIVATE
@@ -178,7 +177,8 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
     # Deliberately NOT a WIN32_EXECUTABLE, unlike the other apps' Release
     # builds: a GUI-subsystem program cannot print into the prompt it was
     # started from, and the commands are half of this one. The console a
-    # double-click opens is closed again at start (ui/UltraFIBUKonsole.h).
+    # double-click opens is closed again as the window comes up, by the
+    # framework (ReleaseOwnConsole() in OS/MSWindows/UltraCanvasWindowsDiagnostics.h).
     ultracanvas_embed_app_icon(ultrafibu
         "${CMAKE_SOURCE_DIR}/media/appicon/UltraFIBU.png")
 

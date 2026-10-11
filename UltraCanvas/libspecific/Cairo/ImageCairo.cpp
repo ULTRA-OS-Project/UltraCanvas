@@ -1,7 +1,9 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.3.2 - a 16-bit image saved as an 8-bit PNG keeps its colours
-// Last Modified: 2026-10-06
+// Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
+//                  drops it; RemoveFromCache releases libvips' cached operations
+//                  too; pixmap keys carry the source stamp
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -9,6 +11,7 @@
 #include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
 #include "UltraCanvasCoderModuleRepair.h"
+#include "UltraCanvasFileStamp.h"
 // The bundled QOI file-format codec (always compiled) - see
 // SavePixmapAsQoiFile at the bottom of this file.
 #include "qoi.h"
@@ -212,6 +215,31 @@ namespace UltraCanvas {
         return im;
     }
 
+    bool UCImageRaster::SourceChangedOnDisk() const {
+        return StampFile(fileName) != source;
+    }
+
+    std::shared_ptr<UCImageRaster> UCImageRaster::GetFresh(const std::string &imagePath) {
+        if (std::shared_ptr<UCImageRaster> cached = g_ImagesCache.GetFromCache(imagePath)) {
+            // A cached decode failure is an answer about the moment it was
+            // made, not about the file: a picture caught half-written, or
+            // held open by the program saving it, fails once and decodes a
+            // moment later. Get() would keep answering with the failure.
+            if (!cached->IsValid() || cached->SourceChangedOnDisk())
+                RemoveFromCache(imagePath);
+            else
+                return cached;
+        }
+        return Get(imagePath);
+    }
+
+    bool UCImageRaster::RemoveFromCacheIfChanged(const std::string &imagePath) {
+        std::shared_ptr<UCImageRaster> cached = g_ImagesCache.GetFromCache(imagePath);
+        if (!cached || !cached->SourceChangedOnDisk()) return false;
+        RemoveFromCache(imagePath);
+        return true;
+    }
+
     void UCImageRaster::RemoveFromCache(const std::string &path) {
         // Loaded raster (keyed by the exact path).
         g_ImagesCache.RemoveFromCache(path);
@@ -226,6 +254,21 @@ namespace UltraCanvas {
         if (UCSvgDocument::IsSvgPath(path)) {
             UCSvgDocument::RemoveFromCache(path);
         }
+#endif
+#ifdef HAS_LIBVIPS
+        // libvips caches finished operations too, file loads among them, keyed
+        // by their arguments - the file NAME, not its content. Without this the
+        // next Load() of a file saved over was handed the old file's header
+        // (its width and height) from that cache. Releasing one file's
+        // operations needs the "revalidate" load option of libvips 8.15, which
+        // the Ubuntu 22.04 builds do not have, so the cache is trimmed to
+        // nothing and allowed to grow again - PixelFX's ReleaseCachedFiles does
+        // the same, and says why vips_cache_drop_all() is not the call for it.
+        // Nothing is lost but a few cached headers, and this runs only when a
+        // file is known to have changed.
+        const int maxOperations = vips_cache_get_max();
+        vips_cache_set_max(0);
+        vips_cache_set_max(maxOperations);
 #endif
     }
 
@@ -292,6 +335,9 @@ namespace UltraCanvas {
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCImageRaster> UCImageRaster::Load(const std::string &imagePath, bool loadOnlyHeader) {
         auto result = std::make_shared<UCImageRaster>(imagePath);
+        // Before the file is read, so a write racing the read leaves the
+        // stamp behind the content and GetFresh() reads the file again.
+        result->source = StampFile(imagePath);
 #ifdef HAS_LIBRSVG
         // SVG parse-once path: take the dimensions from the retained parsed
         // document instead of a vips header read (which parses the XML too).
@@ -568,13 +614,21 @@ namespace UltraCanvas {
 #endif
 
     std::string UCImageRaster::MakePixmapCacheKey(int w, int h, ImageFitMode fitMode, float scale) {
-        char key[300];
         // Including `scale` prevents 1x and 2x rasterizations of the same
         // file/size from colliding in the shared cache (would otherwise show
         // the wrong pixmap on a window dragged between Retina/non-Retina).
-        snprintf(key, sizeof(key) - 1, "%s?w:%dh:%dc:%dr:%g",
-                 fileName.c_str(), w, h, static_cast<int>(fitMode), static_cast<double>(scale));
-        return std::string(key);
+        // The source stamp ends the key: the pixmaps and the rasters are
+        // evicted on separate budgets, so a pixmap of a file's previous
+        // content can outlive its raster, and the raster loaded from the file
+        // as it is now must not find it. The path is joined on rather than
+        // printed into a fixed buffer, which cut long paths short and let two
+        // files deep in one folder share a key.
+        char tail[160];
+        snprintf(tail, sizeof(tail), "?w:%dh:%dc:%dr:%gs:%llut:%lld",
+                 w, h, static_cast<int>(fitMode), static_cast<double>(scale),
+                 static_cast<unsigned long long>(source.size),
+                 static_cast<long long>(source.time));
+        return fileName + tail;
     }
 
     std::shared_ptr<UCPixmapCairo> UCImageRaster::GetPixmap(int w, int h, ImageFitMode fitMode, float scale) {

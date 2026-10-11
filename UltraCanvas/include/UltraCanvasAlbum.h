@@ -2,8 +2,8 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.7.0
-// Last Modified: 2026-08-11
+// Version: 1.8.0
+// Last Modified: 2026-10-10
 // V1.7.0: Automatic video poster frames (AlbumConfig::videoPosterFrames, on by
 //   default) — a Video item with no thumbnailPath now has its cover extracted
 //   from the clip itself on a background thread and cached in memory, so video
@@ -43,6 +43,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasSmoothScroll.h"
+#include "UltraCanvasImageFileWatch.h"
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -652,6 +653,22 @@ namespace UltraCanvas {
         void TriggerAction(int actionIndex, size_t itemIndex);
         void ToggleSelection(size_t itemIndex);
         void FinishDrag();
+
+        // ===== PICTURES SAVED OVER =====
+        // The still images the paint in progress drew (DrawImageInRect) and
+        // the version of each file drawn, handed to imageFileWatch when it
+        // ends: a worker checks those files, and a picture saved over is
+        // dropped from the image cache and the album repaints with what the
+        // file holds now. Never a stat here on the paint path. Declared last
+        // so it is destroyed first: its worker is joined before any other
+        // member goes.
+        std::vector<UltraCanvasImageFileWatch::DrawnImage> drawnImages;
+        UltraCanvasImageFileWatch imageFileWatch{[this]() {
+            // A new picture can have a new shape, which the aspect-driven
+            // layouts (Justified / Masonry) are built from.
+            InvalidateAlbumLayout();
+            RequestRedraw();
+        }};
     };
 
     // ===== FACTORY =====

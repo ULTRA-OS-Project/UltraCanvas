@@ -3,6 +3,7 @@
 // machine has, what the programmer chose, what the checks found and the plan
 // the two together produce. Plain data, no UI, shared by the GUI, the CLI
 // modes and the test suite.
+// Version: 0.1.1 - Assistant: which AI the programmer works with
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -109,6 +110,28 @@ struct CheckResult {
     std::string packageName;         // the package that would provide it here
 };
 
+// ===== THE ASSISTANT =====
+// The AI assistant the programmer works with. The repository is written for
+// any of them: Claude Code reads CLAUDE.md, Codex and Copilot read the
+// vendor-neutral AGENTS.md, Gemini CLI reads GEMINI.md, and anything else
+// (Cursor, Windsurf, a chat) takes AGENTS.md as pasted instructions and
+// llms-full.txt as the corpus (Docs/GettingStarted.md, step 3).
+enum class Assistant {
+    ClaudeCode,
+    Codex,        // OpenAI Codex CLI
+    Copilot,      // GitHub Copilot CLI / coding agent
+    Gemini,       // Google Gemini CLI
+    Other         // Cursor, Windsurf, ChatGPT, a Claude.ai Project, ...
+};
+
+std::string AssistantName(Assistant assistant);
+// The file the assistant reads from a project root: CLAUDE.md, AGENTS.md
+// or GEMINI.md.
+std::string AssistantInstructionFile(Assistant assistant);
+// "claude", "codex", "copilot", "gemini" or "other" (--assistant); false
+// for anything else.
+bool AssistantFromName(const std::string& name, Assistant& out);
+
 // ===== WHAT THE PROGRAMMER CHOSE =====
 struct Choices {
     // The platform the instructions are for. Preselected to the detected one,
@@ -118,7 +141,8 @@ struct Choices {
                                             DependencyGroup::Core };
     bool useSdk = true;              // the prebuilt SDK rather than building the framework
     bool cloneFramework = false;     // clone the repository next to the project
-    bool useAi = true;               // the programmer works with Claude Code
+    bool useAi = true;               // the programmer works with an AI assistant
+    Assistant assistant = Assistant::ClaudeCode;
     bool cloudOnly = false;          // ...and has no compiler locally (GettingStarted-Cloud.md)
     std::string projectFolder;       // UTF-8; where the application lives
     std::string appName = "MyApp";

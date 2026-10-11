@@ -66,8 +66,11 @@
 // click, plus the checkered swatch (SetTransparencyPaletteVisible turns it
 // off, onTransparentBackgroundChanged reports what was picked).
 //
-// Version: 1.10.0
-// Last Modified: 2026-10-05
+// IsPlayingMedia says whether a shown video or sound is playing, so a host
+// that reopens a file which changed on disk can leave one being played alone.
+//
+// Version: 1.11.0
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -404,6 +407,11 @@ public:
     // timer). For hosts that hide or detach the viewer: without this the
     // sound would keep playing while nothing is visible.
     void StopPlayback();
+    // True while the shown file is a video or a sound that is playing (the
+    // muted PreviewClip included); false when it is paused, stopped, ended
+    // or not a video or sound at all. For a host deciding whether it may
+    // reopen the shown file - reopening restarts playback from the start.
+    bool IsPlayingMedia() const;
 
     UltraCanvasMediaSurface* GetSurface() const { return surface.get(); }
 

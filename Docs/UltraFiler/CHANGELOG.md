@@ -1,3 +1,95 @@
+#### 2026-10-10 *1.72.1*
+- **Display > Tab style reaches every tab strip.** 1.71.0 dressed only the
+  window's own strip; the three tabs of the History and Favorites views and
+  the two of the Connection log window kept the rounded tabs whatever was
+  chosen. All of them follow the setting now, at once when it changes, with
+  the Modern capsule 24px tall in the 28px Connection log strip as in the
+  30px window strip.
+
+#### 2026-10-10 *1.72.0*
+- **Split view: a layout of its own.**
+  - **The navigation row's path bar is hidden** while the split view is on:
+    each pane has a path bar of its own, and the one above only repeated
+    whichever was active. It comes back with the single display.
+  - **The preview pane sits under the right-hand pane's path bar**, beside
+    that display, with a splitter of its own - it used to stand beside the
+    pane headers as a third column from the top of the split.
+  - **The two displays are equal halves.** They are put back to the same
+    width when the split view opens, when the preview pane opens or closes,
+    when the tree docks or leaves and when the window is resized; the
+    splitter between them can still be dragged in between. With the preview
+    up, the left-hand pane is as wide as the right-hand display beside it.
+    Before, the preview took its width from the two displays in proportion,
+    so a difference between them - left by docking the tree, or by a drag -
+    stayed until the splitter was dragged back.
+  - **A docked tree fits into its pane.** It used to widen its pane at the
+    other display's expense; it now narrows to the room its pane leaves
+    beside the display's minimum, and the other pane keeps its half.
+  - **The tree buttons show plainly when the tree is docked.** Their pressed
+    look was a pale blue barely different from the active pane's tinted
+    header, and it turned grey while the pointer was still on the button
+    after the click. It is a clear blue now, under the pointer too - so are
+    the navigation row's toggles (split view, History, Favorites, Preview).
+- **Split view: files dropped on a folder of the other pane go into that
+  folder.** Dragged from one pane and released on a folder of the other,
+  files were copied into the folder that pane showed instead - out of sight
+  among its other files, without a question, so it looked as if nothing had
+  happened. They now go into the folder under the pointer, and onto the
+  pane's empty space into the folder it shows. While they are over the other
+  pane it frames the folder they would land in, or the whole pane when that
+  is its own folder. A drop across the split is a move, like a drop on a
+  folder of the same pane: Ctrl copies, Shift moves, Settings > Handling >
+  Drag & Drop sets what a plain drop does, and it asks first under Handling >
+  File operations - moves ask by default, with Move, Copy and Cancel. A drop
+  on the folder tree now shows the row it would land on while the files are
+  still being dragged. Files dropped from another program onto a folder in a
+  pane go into that folder too (still copied). Framework change - see
+  `Docs/UltraCanvas/changelog.d/filer-drop-on-other-display.md`.
+  If an earlier drop seemed to do nothing, look in the folder the target pane
+  showed: the files were copied there.
+
+#### 2026-10-10 *1.71.0*
+- **Settings > Display > Tab style: Modern, Simple modern or Classic.** The
+  window's tab strip can now draw its tabs as capsules floating in a
+  blue-grey strip - the open tab white with a blue outline, the others
+  plain text until the pointer is over them - which is *Modern* and the
+  default from this release; as flat tabs with a blue line under the open
+  one, *Simple modern*; or as the rounded tabs joined to the page that every
+  release before this one drew, *Classic*. The choice shows at once on the
+  open window and is kept in `display.tabs.style`. The tabs behave the same
+  under all three: click to switch, the X or a middle click to close, drag
+  to reorder, and the + at the end opens another tab. Built on the
+  framework's new `TabStyle::Pill` and the `TabStyle::Modern` indicator
+  colour (see the framework changelog).
+
+#### 2026-10-10 *1.70.1*
+- **Thumbnails follow a file's new content.** A picture edited and saved over
+  (in an image editor, by a script, or by a camera upload overwriting it) kept
+  its old thumbnail: the folder was rescanned when the save landed, but the
+  thumbnail was made again from a copy of the picture still held in memory,
+  and that old thumbnail was then kept on disk under the new file's date, so
+  it came back on every later start too. The thumbnail is now made from the
+  file as it is after the save, and a thumbnail is only kept on disk when the
+  file did not change while it was being made. Thumbnails kept by earlier
+  versions are made again once, so pictures already showing an old thumbnail
+  are corrected on the first look. A picture caught while it was still being
+  written, and so failed to show at first, gets its thumbnail once the write
+  finishes, instead of keeping the type icon. The dimensions shown for a
+  changed picture are its new ones. Framework changes - see
+  `Docs/UltraCanvas/changelog.d/image-cache-freshness.md`.
+- **The preview pane follows a file that changes while it is selected.** A
+  picture, document or text file edited and saved by another program while
+  UltraFiler shows it in the preview pane is shown again as it is now, a
+  moment after the save - it used to keep the version it was opened with until
+  something else was selected and it was selected again. A file that keeps
+  changing (a log being written, a download in progress) is shown again at
+  most every 2 seconds, and the last change is always shown. A video or sound
+  is shown again only once its file has stopped changing for 2 seconds and it
+  is not playing - reopening one starts it from the beginning, so a video that
+  is still downloading is not restarted while it grows, and one being watched
+  is left alone until it is paused or ends. Reopening shows the file from the
+  top and at its fitted size, as selecting it does.
+
 #### 2026-10-09 *1.70.0*
 - **FTP drives log in once per burst, not once per folder.** Opening a
   folder on an FTP drive and reading its subfolders ahead used to connect

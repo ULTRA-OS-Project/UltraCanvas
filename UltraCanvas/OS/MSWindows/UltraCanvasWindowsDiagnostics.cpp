@@ -951,6 +951,17 @@ namespace UltraCanvas {
         return true;
     }
 
+    bool ReleaseOwnConsole() {
+        // The log is written to this console when debugOutput is on, so a
+        // developer who asked for it keeps the window.
+        if (IsDebugOutputEnabled()) return false;
+        // One process attached: ours, so Windows made the console for us. A
+        // prompt that started us is attached as well; no console at all reads 0.
+        DWORD processes[2];
+        if (GetConsoleProcessList(processes, 2) != 1) return false;
+        return FreeConsole() != 0;
+    }
+
     std::string GetWindowsVersionString() {
         // RtlGetVersion is the only API that reports the true build number to a
         // process without a compatibility manifest; GetVersionEx would answer

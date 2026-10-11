@@ -66,6 +66,11 @@ namespace UltraCanvas {
         InstallWindowsCrashReporter(appName);
         LogWindowsStartupBanner(appName);
 
+        // A console-subsystem app (one that keeps its command-line modes
+        // printing into the prompt) gets here only when it opens its window:
+        // close the empty console window a double-click gave it.
+        ReleaseOwnConsole();
+
         debugOutput << "UltraCanvas: Initializing Windows Application..." << std::endl;
 
         try {

@@ -1,7 +1,8 @@
 // Tests/FilerHostIconsTest.cpp
 // Display > File icons: the setting itself (UltraCanvasFilerWidget), the
 // cache key the host icon service answers by (UltraCanvasHostFileIcons), and
-// UltraFiler's saved choice (Apps/UltraFiler/UltraFilerSettings.h).
+// UltraFiler's saved choice (Apps/UltraFiler/UltraFilerSettings.h), and its
+// saved tab style (Settings > Display > Tab style) read back the same way.
 //
 // The rule this guards: a host icon is the icon of a TYPE, and the key says
 // which type. Key two file kinds the same and a folder draws one of them with
@@ -139,6 +140,61 @@ void TestUltraFilerSavedChoice() {
     std::filesystem::remove_all(root, ec);
 }
 
+// Settings > Display > Tab style, read back the same way: the window's tab
+// strip has been Modern - the capsules - since 1.71.0, a saved choice comes
+// back after a restart, and a value a later release might add reads back as
+// the default.
+FilerTabStripStyle LoadedTabStyle() {
+    UltraFilerSettings settings;
+    settings.Load();
+    return settings.tabStripStyle;
+}
+
+void TestTabStripStyleSavedChoice() {
+    std::cout << "\n-- UltraFiler's saved tab style --\n";
+    std::error_code ec;
+    const std::filesystem::path root =
+            std::filesystem::temp_directory_path(ec) / "ultrafiler-tab-style-test";
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    if (ec) {
+        Check(false, "a temporary config directory can be made");
+        return;
+    }
+    RedirectConfigDirectory(root);
+
+    Check(UltraFilerSettings().tabStripStyle == FilerTabStripStyle::Modern,
+          "the tab strip is Modern by default");
+    Check(LoadedTabStyle() == FilerTabStripStyle::Modern,
+          "a first start, with no config file, draws the Modern strip");
+
+    struct Named { FilerTabStripStyle style; const char* name; };
+    for (Named n : {Named{FilerTabStripStyle::Modern, "Modern"},
+                    Named{FilerTabStripStyle::SimpleModern, "Simple modern"},
+                    Named{FilerTabStripStyle::Classic, "Classic"}}) {
+        UltraFilerSettings settings;
+        settings.tabStripStyle = n.style;
+        Check(settings.Save(), "the tab style is saved with the other settings");
+        Check(LoadedTabStyle() == n.style,
+              std::string("\"") + n.name + "\" comes back after a restart");
+    }
+
+    WriteConfig("display.tabs.style = classic\n");
+    Check(LoadedTabStyle() == FilerTabStripStyle::Classic,
+          "the key reads \"classic\" by name");
+    WriteConfig("display.tabs.style = simple-modern\n");
+    Check(LoadedTabStyle() == FilerTabStripStyle::SimpleModern,
+          "and \"simple-modern\"");
+    WriteConfig("display.tabs.style = some-later-style\n");
+    Check(LoadedTabStyle() == FilerTabStripStyle::Modern,
+          "an unknown style reads back as Modern");
+    WriteConfig("display.file.icons.style = simple\n");
+    Check(LoadedTabStyle() == FilerTabStripStyle::Modern,
+          "a config from before 1.71.0, with no tab style key, draws the Modern strip");
+
+    std::filesystem::remove_all(root, ec);
+}
+
 } // namespace
 
 int main() {
@@ -237,6 +293,7 @@ int main() {
     filer.SetFileIconStyle(FilerFileIconStyle::Simple);
 
     TestUltraFilerSavedChoice();
+    TestTabStripStyleSavedChoice();
 
     std::cout << "\n";
     if (g_failures == 0) {

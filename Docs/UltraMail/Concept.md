@@ -515,7 +515,7 @@ Phases 1–2 are the minimum for a public preview; phase 3 completes the
    calls so the engine choice stays swappable.
 3. Conversation threading in v1.0 message list or v1.x?
 4. ~~Does the ISPDB lookup need a privacy switch (it reveals the user's
-   mail domain to Mozilla's service)?~~ **Resolved (0.10.48):** the lookups
+   mail domain to Mozilla's service)?~~ **Resolved (0.10.49):** the lookups
    send the domain only, never the address (the `?emailaddress=` parameter
    was dropped; placeholders are filled in locally), and the wizard's Cancel
    plus the manual-settings page are the opt-out. The data flow is disclosed

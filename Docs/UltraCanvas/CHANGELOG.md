@@ -1,3 +1,339 @@
+#### 2026-10-11 *0.9.247*
+- **`MenuStyle::tintIcons`: a menu's icons drawn in the label's colour.**
+  On, each item's icon is drawn as a mask in its label's colour - the text
+  colour, the highlighted row's, a disabled item's grey - so one flat,
+  single-colour icon reads on a light menu and a dark one. `MenuStyle::Dark()`
+  turns it on, since an icon drawn for a light menu vanishes on it; the other
+  presets still draw an icon in its own colours.
+- **The DemoApp's menus show flat icons instead of emoji.** Every entry of the
+  Menus page (the context menu, File / Edit / View / Help, the dark and flat
+  menus, the list's right-click menu) and the Button page's split-button menu
+  wrote an emoji into its label - 📋 ✂️ 💾 🔍 🌙 and the rest - which draws only
+  where a colour emoji font is installed; with the bundled fonts alone, as on
+  Windows here, each was a box of hex digits. They now carry icons of
+  `media/icons/menu/`, the set UltraFiler's menus use, and the split buttons'
+  "▼" arrows are the dropdown icon.
+- **Nineteen new icons in `media/icons/menu/`**, drawn like the rest of the set
+  (24 px grid, 2 px rounded strokes): save, recent, exit, undo, redo, search,
+  replace, format, toolbar, status-bar, sidebar, book, tutorial, moon, sun,
+  palette, phone, tablet and monitor.
+- `Docs/UltraCanvas/UltraCanvasMenuExamples.md` documents `tintIcons`, and its
+  context-menu example uses icons instead of emoji labels.
+- **The stepper's completed steps show their check mark on Windows.**
+  `UltraCanvasStepper` wrote the mark as the character "✓", which the
+  bundled Ubuntu UI font does not have, so it was left to a fallback font -
+  and on Windows it drew as a box of hex digits (UltraCanvasStart's step
+  header). The check is now a stroked path in the marker's glyph colour, as
+  `UltraCanvasCheckbox` draws its own, so it no longer depends on any font.
+
+#### 2026-10-10 *0.9.246*
+- **Popup menus and submenus look the way current desktops draw them.**
+  Windows 11 (WinUI's `MenuFlyout`), macOS and GNOME (libadwaita's popover
+  menus) agree on a rounded panel lifted off the window by a soft shadow,
+  padding inside it, rows whose highlight is a rounded rectangle inset from
+  the panel's sides in a neutral shade, muted shortcuts and faint hairline
+  separators; `MenuStyle::Default()` now draws exactly that, on Windows 11's
+  mouse metrics: an 8 px panel radius, 4 px padding and inset, a 4 px
+  highlight radius, 28 px rows, a translucent black hover that darkens any
+  background, and a shadow fading over 18 px, 6 px down. A small menu - an
+  attachment's Open / Save As - no longer reads as a square grey box with a
+  full-width blue bar. `Dark()` and `Flat()` follow (`Dark()` with a light
+  hairline outline); a menubar keeps its edge-to-edge items with a rounded
+  highlight.
+  - New `MenuStyle::itemInset` (gap between the border and a row's
+    highlight) and `itemCornerRadius` (the highlight's rounding);
+    `paddingTop` / `paddingBottom`, which a vertical menu ignored, are the
+    panel's padding above the first row and below the last, and
+    `borderRadius` rounds the panel (it was never drawn).
+  - Separators run across the whole panel and are filled on one pixel row,
+    so they stay sharp; they no longer take the hover highlight. Checkbox
+    outlines use the muted secondary colour instead of the faint border.
+  - A submenu opens with its first row level with the item it came from,
+    scrolled or not, and a menubar's drop-down lines up with the item's
+    highlight. An overflowing menu widens by its scrollbar instead of
+    covering the rows' shortcuts.
+- **Popups can have rounded corners and a drop shadow.** The window used to
+  copy a popup's surface over its content, transparent pixels and all; it
+  now blends it over with its alpha, so a popup's transparent corners show
+  the window beneath (at any `SetPopupOpacity`), and paints the soft shadow a
+  popup asks for through the new virtual
+  `UltraCanvasUIElement::GetPopupShadow()` (a `PopupShadow`: colour, blur,
+  offset, corner radius) beneath it, outside the popup's own surface - the
+  popup keeps its bounds and the shadow takes no clicks. The menu answers it
+  from its style; its old "shadow", a 1 px outline drawn inside its own
+  surface, is gone. New
+  `IRenderContext::CompositeToSurfaceWithOpacity()` (an OVER composite at an
+  opacity) does the blending; `RenderContextTest` checks it, and the
+  render-context page describes the four ways a surface goes onto another.
+- `MenuAndTabBehaviourTest` checks the panel on a composited window: corners
+  that show the window, a shadow outside the bounds that fades out and goes
+  with the menu, a highlight inset from the panel's edges, top padding that
+  hovers nothing, and a separator across the panel; its popup-opacity checks
+  expect the blend. `TextMetricsScreenshotTest` measures the menu's first row
+  where it now is.
+
+#### 2026-10-10 *0.9.245*
+- **HTML mail keeps its spacing: table cells ignore `min-height` and
+  `max-height`.** Stripe - and with it the receipts and invoices of every
+  service that bills through it - spaces its mail with cells like
+  `<td height="32" style="font-size:1px; line-height:1px; max-height:1px">`.
+  Browsers ignore `max-height` on a table cell (CSS 2.1 leaves it undefined
+  there); `HTML::ElementBuilder` applied it, so every such gap shrank to 1px:
+  a receipt lost the space above its header and inside its cards, and its
+  text sat packed together - which read as text drawn too large, although the
+  sizes were right. A cell now ignores both limits, as Chromium and Firefox
+  do; a cell made `display: block` (mail columns stacked on a phone) is a
+  block and keeps them. `HTMLTableLayoutTest` expected the opposite for a
+  percentage `min-height` / `max-height` on a cell and now expects what a
+  browser lays out.
+- **An inline element's `line-height` sets its line's height.** A line was
+  as tall as the block's `line-height`, or the font's, and an inline
+  element's own was dropped: Stripe's amount - 36px text on 40px lines - and
+  the 14px caption above it on 20px lines, each in a cell that sets none,
+  were laid out at the fonts' heights, the amount touching the caption. A
+  line is now as tall as the tallest `line-height` of the inline boxes on
+  it, and at least the block's own; text where nothing sets a `line-height`
+  keeps the font's own line spacing, as before.
+
+#### 2026-10-10 *0.9.244*
+- **Files dragged to another file display of the same window land where they
+  are released.** A drag that leaves an `UltraCanvasFilerWidget` keeps going
+  over the rest of the window, and a release over a second file display - the
+  other pane of UltraFiler's split view - handed it the files as a `Drop`
+  event. The display copied them into the folder it showed, whatever was
+  under the pointer: files released on a folder there were copied, out of
+  sight, into the wrong folder, without the question a move asks, and the
+  user saw nothing happen. The second display now takes them directly: into
+  the folder under the pointer, or over its empty space into the folder it
+  shows, moved or copied by the same rule as a drop on a folder of the display
+  the drag started in (`SetDropOnFolderCopies`, Ctrl copies, Shift moves), and
+  after the question its `SetDropConfirmation` asks for that verb. A drop from
+  another application onto a folder tile now goes into that folder too
+  (still a copy). Files on a remote drive go up to the folder under the
+  pointer, and a drive's entries dropped on a local folder come down into it.
+- **A drag over a file display shows where it would land.** While a drag that
+  started elsewhere - another display of the window, or another program - is
+  over the display, the folder under the pointer is framed like the drop target
+  of the display's own drag, and over empty space the display itself is
+  framed, its folder being where the drop would go. New
+  `UltraCanvasFilerWidget::GetIncomingDropFolder()` names that folder (empty
+  while no such drag is over the display).
+- **Elements of the window are told about a file drag passing over them.**
+  The display a drag started in now sends the element under the cursor
+  `DragEnter`, `DragOver` (with the dragged paths in `droppedFiles`) and
+  `DragLeave`, as a drag from another program does, so a folder tree
+  highlights the row a drop would land on while the drag is still in the air.
+  The release still reaches it as a `Drop` event.
+- New `FilerPaneDragTest` (Xvfb): two displays side by side, a file dragged
+  from one onto a folder of the other, onto its empty space, with Ctrl, and
+  under the move confirmation (asked, cancelled, answered with Move); and an
+  element the drag passes over is told it entered, was passed over and left.
+
+#### 2026-10-10 *0.9.243*
+- **VideoFX 0.7.0: project files.** A whole edit can be saved as a
+  `.vfxproj`, a small JSON file. It holds a timeline (or a slideshow's photos
+  and options), its music and its export settings, and refers to media by
+  path. New: `VideoFXProject` (`FromTimeline`, `FromSlideshow`),
+  `VideoFX_SaveProject`, `VideoFX_LoadProject`, `VideoFX_ProjectToJson`,
+  `VideoFX_ProjectFromJson`, `VideoFX_RenderProject` and
+  `kVideoFXProjectFormatVersion` (1).
+  - Media inside the project's folder are stored relative to it, so the
+    folder can move as a whole. Loaded paths come back absolute.
+  - Loading reports media that have gone (`missingMedia`) and still loads.
+  - A file from a newer VideoFX is refused rather than half-read. Unknown
+    keys are ignored and missing keys keep their defaults.
+  - Errors name the place in the file, such as
+    `segments[2].transitionIn.type`.
+  - Saving is atomic. Images held only in memory are refused.
+  - Works without FFmpeg too; only rendering needs the engine.
+  - `videofx`: `--save-project FILE` on any edit command, `videofx project`
+    (summary and missing media) and `videofx render` (render a project).
+- **VideoFX is a shared library.** It is built as `libVideoFX.so`,
+  `libVideoFX.dylib` or `libVideoFX.dll` instead of a static archive. It is
+  not part of the UltraCanvas core, so FFmpeg is loaded only by applications
+  that do video, and they share one copy. The soname carries the minor
+  version (`libVideoFX.so.0.7`) while VideoFX is 0.x. On Windows every symbol
+  is exported, as in the core, and the DLL goes to `bin/` beside `videofx.exe`.
+  `-DVIDEOFX_BUILD_SHARED=OFF` keeps a static build (the default on Android).
+  The Linux package leaves the library out until an app links it.
+
+#### 2026-10-10 *0.9.242*
+- **Windows: apps no longer open an empty console window beside their own.**
+  Only the demo, Texter, UltraFiler, UltraViewer, UltraPaint, ArtCreator,
+  UCFileManager and UltraMail were built as GUI-subsystem programs; every
+  other app opened a console window when started, and nothing was ever
+  written to it. In a Release build:
+  - **EmailCleaner, UltraSocial, UOS-Settings, UltraClipboard,
+    UltraAuthenticator, UltraPassword and the UltraAI dashboard are now
+    GUI-subsystem programs too**, so no console window opens for them at all. The list is now one `foreach` in the root
+    `CMakeLists.txt` (*Hide console window on Windows Release builds*).
+  - **The apps with command-line modes stay console programs** (DeviceExplorer,
+    UltraCleaner, UltraNetMonitor, UltraCanvasStart, UltraWeb, UltraClaude,
+    UltraDesktop, UltraFIBU), because a GUI-subsystem program cannot make the
+    prompt wait for it or see its exit code, so `DeviceExplorer --list` or
+    `UltraCleaner --scan` would stop working in a script. Started by a
+    double-click, they now close the console Windows opened for them as their
+    window comes up: the new `ReleaseOwnConsole()`
+    (`OS/MSWindows/UltraCanvasWindowsDiagnostics.h`), called by
+    `UltraCanvasWindowsApplication::InitializeNative()`, frees a console that
+    no other process shares. Started from a prompt, the console is the
+    prompt's and is kept, and so is the console of a Debug build or of any
+    run with `ULTRACANVAS_DEBUG_LOG` set, where the log is written to it.
+  - In those GUI-subsystem builds, `--help` and `--version` typed at a prompt
+    print nothing, as already for Texter and UltraFiler: they write before
+    the framework attaches to the prompt's console, which it does as the
+    window opens.
+
+#### 2026-10-10 *0.9.241*
+- **The `TabStyle::Modern` indicator line is a setting.** The line under
+  (beside) the open tab was Material blue, two pixels, in the code;
+  `activeTabIndicatorColor` and `activeTabIndicatorThickness`, with their
+  setters, let an application match it to its own accent - UltraFiler's
+  *Simple modern* tab style does.
+
+#### 2026-10-10 *0.9.240*
+- **The doc-example check reads two more kinds of correct C++.** Both
+  failed only because of how `scripts/check_doc_examples.py` supplies the
+  names a snippet takes from its application (a `textArea`, a `window`, a
+  variable in a `<!-- doc-check: ... -->` comment). The docs had to work
+  around them; now they need not.
+  - **A `[this]` lambda may use such a name.** The checker declared it as a
+    local of the snippet's statements, so `[this] { textArea->CutSelection(); }`
+    failed with "cannot be implicitly captured". When clang says so, the name
+    is now declared as a member, as it would be in the application.
+    `[name]` still captures a local, and a `[]` lambda that uses the name
+    is still reported.
+  - **A name before `<` is declared.** C++20 reads an undeclared name before
+    `<` as a template's, so for `globalIdx < static_cast<int>(n)` clang
+    reported "expected '>'" and never named `globalIdx`, and the doc-check
+    variable was never supplied. The checker now looks for the names
+    compared with `<` on the line of such an error and the three before it,
+    and supplies those the doc declares.
+- **`TabStyle::Pill` - a modern capsule tab for `UltraCanvasTabbedContainer`.**
+  Every tab is a capsule floating in its slot of the tab bar: the open tab
+  is filled with `activeTabColor` and outlined with the new
+  `activeTabBorderColor` (a mid blue by default), an inactive one is filled
+  with `inactiveTabColor` (transparent for a text-only tab) and outlined with
+  `inactiveTabBorderColor`, a hovered one with `hoveredTabColor` /
+  `hoveredTabBorderColor`. The page below gets a hairline in
+  `tabContentBorderColor` on the bar's side instead of a frame.
+  `SetPillInset()`, `SetPillBorderWidth()` and `SetPillCornerRadius()`
+  (0 = capsule, otherwise a rounded chip) shape it; `GetPillBounds()` is the
+  capsule drawn. `SetTabBarColor()`, `SetHoveredTabBackgroundColor()` and
+  `SetActiveTabTextColor()` join the colour setters.
+  `Tests/TabPillStyleScreenshotTest.cpp` checks the one-pixel outline on
+  composited pixels and writes five colourways as a screenshot;
+  `Docs/UltraCanvas/UltraCanvasTabExamples.md` *Pill Style* lists them.
+- **Tab titles, close buttons.** A truncated tab title now runs up to the
+  close button: `GetTruncatedTabText` stopped 20px short of the width it was
+  given, leaving a gap before the X in every style, and it cut UTF-8 titles
+  byte by byte; it takes whole characters off now. The close X has one
+  weight on every tab (`closeButtonStrokeWidth`, default 1px) instead of 2px
+  on inactive tabs and 1px on the open one, and the open tab's X can have a
+  colour of its own (`activeTabCloseButtonColor`), so a solid accent pill
+  shows a pale X while the other tabs keep a grey one.
+  `SetCloseButtonColor()`, `SetCloseButtonHoverColor()` and the two new
+  setters join the colour setters.
+- **Dragging a tab to another place works on every tab position and past
+  the visible range.** The swap compared the pointer's x with the target's
+  horizontal centre whatever the `TabPosition`, so reordering on a `Left` or
+  `Right` bar, where the tabs are stacked, hardly ever happened; it follows
+  the bar's axis now, as does the drag-out threshold and the insertion line,
+  which is drawn at last (it had no caller). A pointer held within
+  `dragAutoScrollZone` (24px) of either end of a scrolled strip carries the
+  tab one place in that direction every `dragAutoScrollIntervalMs` (250) and
+  scrolls to keep it in view, so a tab reaches any place in one drag. The
+  hovered tab, its close button and the right-clicked tab follow a reorder
+  like the active tab did, instead of pointing at the wrong tab until the
+  next mouse move. The drag ghost of a `TabStyle::Pill` tab is the capsule
+  itself. `SetAllowTabReordering()` joins `SetAllowTabDragOut()`.
+  A press on a tab no longer dereferences the application instance without
+  a check, so a host with no application (a headless test) can drive a whole
+  drag through the events; `Tests/MenuAndTabBehaviourTest.cpp` does, and
+  drives the single steps as well. The DemoApp tab page is as tall as what
+  is placed on it instead of a fixed literal.
+
+#### 2026-10-10 *0.9.239*
+- **A picture saved over is shown as it is now, not as it was.** The image
+  cache `UCImage::Get()` is keyed by the path and never looked at the file
+  again, and libvips' own operation cache under it is keyed by the file name,
+  so a picture edited and saved over kept answering with its old content:
+  the Filer rescanned the folder when the save landed, made the thumbnail
+  again and got the old picture back.
+  - New `UCImage::GetFresh(path)`: `Get()` for a caller that must see the
+    file as it is now. Every image read from a file records the file's size
+    and modification time, taken before the read; `GetFresh()` compares them
+    with the file and, when it has changed - or the cached copy failed to
+    decode, as a file caught half-written does - drops everything cached for
+    the path and reads it again. One stat per call, so it is for thumbnail
+    workers and viewers opening a file, not for paint paths; `Get()` is
+    unchanged.
+  - `UCImage::RemoveFromCache(path)` now also releases libvips' cached
+    operations. Without that, the next load of a file saved over was handed
+    the old file's header - its old width and height - so
+    `UltraCanvasImageElement::LoadFromFile(path, true)` read a changed file
+    at its old size.
+  - A cached pixmap's key carries the source file's size and modification
+    time, so a pixmap of a file's previous content that outlived its raster
+    (the two are evicted on separate budgets) is never served for the file
+    as it is now. The key is no longer printed into a 300-byte buffer, which
+    cut long paths short and let two files deep in one folder share pixmaps.
+  - The Filer's thumbnail workers, its dimensions probe and the media viewer
+    read images with `GetFresh()`.
+- **The thumbnail disk cache no longer keeps a thumbnail of a file's old
+  content as the answer for its new content.** `ThumbnailDiskCache::Store`
+  stamped an entry with the source's size and modification time when it was
+  written, after the decode - so a thumbnail made from the old content (the
+  image cache above, or a save landing mid-decode) was recorded as valid for
+  the new file, and every later run showed the old picture until the file
+  changed again. `Store(request, blob, madeFrom)` now takes the stamp taken
+  before the decode (new `ThumbnailDiskCache::StampSource`) and stores
+  nothing when the file no longer matches it. `kRendererGeneration` is 3, so
+  every entry an earlier build may have recorded this way is made again once.
+- **`UltraCanvasAlbum` and `UltraCanvasSlideshow` show a picture saved over as
+  it is now.** Both paint with `UCImage::Get()`, which never looks at the
+  disk, so an edited photo kept its old picture for the life of the widget.
+  New `UltraCanvasImageFileWatch` (`UltraCanvasImageFileWatch.h`): a view
+  hands it the paths each paint drew - no I/O on the paint path, just a
+  compare-and-swap of the list - and a worker thread checks those files every
+  1.5 s; when one changed its cached copy is dropped and the view's callback
+  runs on the UI thread. The album relayouts and repaints, the slideshow
+  repaints. Only what is on screen is checked, the worker starts with the
+  first picture drawn, and a file that fails to decode is not read again on
+  every pass. Each watch judges a change against its own record of the
+  files, so two views showing one picture both repaint - the first to drop
+  the cached copy no longer takes the change away from the other.
+  - New `UltraCanvasFileStamp.h` (header-only): `FileStamp` and
+    `StampFile(path)`, a file's size and modification time. The image cache,
+    the thumbnail disk cache (`ThumbnailDiskCache::SourceStamp` is now an
+    alias of it), the watch and UltraFiler's preview pane had each grown a
+    copy of these lines.
+  - New `UCImage::RemoveFromCacheIfChanged(path)`: the check `GetFresh()`
+    makes, without the reload - true when a cached copy was dropped because
+    its file changed. Unlike `GetFresh()` it leaves a cached decode failure
+    alone, so a background check that repeats does not decode a broken file
+    over and over.
+- **`UltraCanvasMediaViewer::IsPlayingMedia()`**: whether a shown video or
+  sound is playing (the muted PreviewClip too). For a host deciding whether it
+  may reopen the shown file, which restarts playback - UltraFiler's preview
+  pane uses it to leave a playing video alone when the file changes.
+- **The Filer's and the Gource tree's letter shortcuts no longer warn at
+  build time.** The Filer's Ctrl+A / C / X / V / D / F / P switch and
+  `UltraCanvasGourceTree`'s F / Ctrl+E / Ctrl+Shift+C listed lowercase
+  character literals beside the `UCKeys` letters; no backend delivers a
+  lowercase key code (the Linux one upper-cases the keysym), so those cases
+  were dead and clang reported each as "case value not in enumerated type" -
+  ten warnings in all. They are `UCKeys::A` and so on now, as in the text
+  widgets. No change in behaviour.
+
+#### 2026-10-10 *0.9.238*
+- **A Markdown view's links can go without the underline.**
+  `MarkdownHybridStyle::linkUnderline` existed but the renderer underlined
+  every link regardless; it is honoured now, so a view whose links are file
+  names and addresses full of hyphens and underscores (UltraCanvasStart's
+  guides) can mark them with the link colour and the hand cursor alone. The
+  default stays underlined.
+
 #### 2026-10-10 *0.9.237*
 - **The tree includes the standard headers it uses, and the LLVM 23 bridge
   is gone.** The build defined `_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23` so

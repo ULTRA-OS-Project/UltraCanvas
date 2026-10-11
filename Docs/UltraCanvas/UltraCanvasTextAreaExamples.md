@@ -5,8 +5,8 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 
 **Header:** `UltraCanvasTextArea.h`  
 **Implementation:** `UltraCanvasTextArea.cpp`  
-**Version:** 2.0.1  
-**Last Modified:** 2026-10-07  
+**Version:** 2.0.2  
+**Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework  
 
 <!-- doc-check: void SendChatText(); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
@@ -835,6 +835,21 @@ machinery so the edit is undoable and raises `onTextChanged` like a typed one:
 
 ```cpp
 bool ReplaceTextRange(size_t startByte, size_t byteLength, const std::string& replacement);
+```
+
+## Links in Markdown mode
+
+A `[text](url)` link is drawn in `MarkdownHybridStyle::linkColor`, underlined
+while `linkUnderline` is true (the default), with the hand cursor over it; a
+click reaches `onMarkdownLinkClick` with the address. A view whose links are
+file names and addresses full of hyphens and underscores reads better with
+the colour alone:
+
+```cpp
+auto& md = area->GetMarkdownStyleMutable();
+md.linkColor = Color(37, 99, 235);
+md.linkUnderline = false;
+area->onMarkdownLinkClick = [](const std::string& url) { OpenURL(url); };
 ```
 
 ## Math in Markdown mode

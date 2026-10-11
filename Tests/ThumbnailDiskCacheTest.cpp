@@ -11,6 +11,9 @@
 //     and modification time of the file it was made from, so editing the
 //     picture is a miss, not yesterday's picture — and the dead entry is
 //     removed rather than left to be asked again.
+//   - "Made from" means before the decode. A thumbnail whose source changed
+//     while it was being drawn is not stored at all, or the old picture
+//     would be recorded as the answer for the new file.
 //   - A file that is used is touched, so it survives; one that is not used
 //     is deleted after two weeks. A cache with no expiry is a directory that
 //     grows for the life of the account, because its keys name files the
@@ -22,8 +25,8 @@
 //
 // The test never touches the user's real cache: it points the cache at a
 // temporary directory of its own and removes it at the end.
-// Version: 1.0.0
-// Last Modified: 2026-09-15
+// Version: 1.1.0
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDiskCache.h"
@@ -99,6 +102,15 @@ ThumbnailDiskCache::Request RequestFor(const fs::path& source,
     return request;
 }
 
+// A thumbnail made from the source as it is now: the source stamped, then
+// the blob stored against that stamp - the order the Filer's workers keep
+// (stamp, decode, store).
+bool StoreMadeNow(const ThumbnailDiskCache::Request& request,
+                  const std::vector<uint8_t>& blob) {
+    return ThumbnailDiskCache::Store(
+            request, blob, ThumbnailDiskCache::StampSource(request.sourcePath));
+}
+
 // ===== STORING AND SERVING =====
 void TestStoredThumbnailComesBack() {
     std::cout << "\nA thumbnail stored and asked for again:\n";
@@ -111,7 +123,7 @@ void TestStoredThumbnailComesBack() {
           "nothing is served before anything is stored");
 
     const std::vector<uint8_t> blob = Blob(4096, 0xA5);
-    Check(ThumbnailDiskCache::Store(request, blob), "it stores");
+    Check(StoreMadeNow(request, blob), "it stores");
 
     const std::vector<uint8_t> served = ThumbnailDiskCache::Load(request);
     Check(served == blob, "and comes back byte for byte");
@@ -125,8 +137,8 @@ void TestGeometryIsPartOfTheIdentity() {
 
     const std::vector<uint8_t> small = Blob(64, 0x11);
     const std::vector<uint8_t> large = Blob(256, 0x22);
-    ThumbnailDiskCache::Store(RequestFor(picture, 64, 64), small);
-    ThumbnailDiskCache::Store(RequestFor(picture, 256, 256), large);
+    StoreMadeNow(RequestFor(picture, 64, 64), small);
+    StoreMadeNow(RequestFor(picture, 256, 256), large);
 
     Check(ThumbnailDiskCache::Load(RequestFor(picture, 64, 64)) == small,
           "the small tile serves the small thumbnail");
@@ -142,7 +154,7 @@ void TestUnknownSourceIsAMiss() {
     const fs::path missing = g_root / "deleted.jpg";
     WriteFile(missing, "here for now");
     const auto request = RequestFor(missing);
-    ThumbnailDiskCache::Store(request, Blob(128, 0x33));
+    StoreMadeNow(request, Blob(128, 0x33));
     Check(!ThumbnailDiskCache::Load(request).empty(), "stored while it existed");
 
     fs::remove(missing);
@@ -157,7 +169,7 @@ void TestEditedSourceInvalidates() {
     const fs::path picture = g_root / "edited.png";
     WriteFile(picture, "the first version");
     const auto request = RequestFor(picture);
-    ThumbnailDiskCache::Store(request, Blob(512, 0x44));
+    StoreMadeNow(request, Blob(512, 0x44));
     Check(!ThumbnailDiskCache::Load(request).empty(), "the first version is cached");
 
     // A different size and a new modification time: exactly what saving over
@@ -169,11 +181,66 @@ void TestEditedSourceInvalidates() {
     // And the entry that can never be a hit again does not linger: the same
     // tile is about to write its replacement.
     const auto usageAfter = ThumbnailDiskCache::GetUsage();
-    ThumbnailDiskCache::Store(request, Blob(512, 0x55));
+    StoreMadeNow(request, Blob(512, 0x55));
     Check(ThumbnailDiskCache::GetUsage().files == usageAfter.files + 1,
           "the dead entry was removed, not left beside its replacement");
     Check(ThumbnailDiskCache::Load(request) == Blob(512, 0x55),
           "and the new thumbnail is what is served");
+}
+
+// A thumbnail is only as good as the file it was drawn from. A decode that
+// read the old content - the file was saved over while it ran, or an
+// in-memory image cache had not noticed the save - used to be stored with the
+// stamp of the NEW file, because the stamp was taken when storing. That made
+// the old picture the valid answer for the new file on every run after.
+void TestSourceChangedWhileDrawingIsNotStored() {
+    std::cout << "\nA picture saved over while its thumbnail was being made:\n";
+
+    const fs::path picture = g_root / "saved-over.png";
+    WriteFile(picture, "the version the thumbnail was drawn from");
+    const auto request = RequestFor(picture);
+    const ThumbnailDiskCache::SourceStamp madeFrom =
+            ThumbnailDiskCache::StampSource(picture.string());
+    Check(madeFrom.valid, "the source is stamped before the decode");
+
+    // The save lands mid-decode: a new size, and a modification time moved
+    // on explicitly so the test does not depend on the filesystem's clock
+    // resolution.
+    WriteFile(picture, "the version the user just saved, which is longer");
+    std::error_code ec;
+    fs::last_write_time(picture,
+                        fs::last_write_time(picture, ec) + std::chrono::seconds(5),
+                        ec);
+
+    const auto usageBefore = ThumbnailDiskCache::GetUsage();
+    Check(!ThumbnailDiskCache::Store(request, Blob(512, 0x99), madeFrom),
+          "the thumbnail of the old content is refused");
+    Check(ThumbnailDiskCache::GetUsage().files == usageBefore.files,
+          "nothing was written");
+    Check(ThumbnailDiskCache::Load(request).empty(),
+          "so the new file is a miss and its tile decodes it as it is now");
+
+    // The next decode starts from the saved file and is kept.
+    Check(StoreMadeNow(request, Blob(512, 0xAA)),
+          "a thumbnail drawn from the file as it is now is stored");
+    Check(ThumbnailDiskCache::Load(request) == Blob(512, 0xAA),
+          "and served");
+
+    // Same size, later time: an editor rewriting a fixed-size file in place.
+    const ThumbnailDiskCache::SourceStamp sameSize =
+            ThumbnailDiskCache::StampSource(picture.string());
+    fs::last_write_time(picture,
+                        fs::last_write_time(picture, ec) + std::chrono::seconds(5),
+                        ec);
+    Check(!ThumbnailDiskCache::Store(request, Blob(512, 0xBB), sameSize),
+          "a new modification time alone is a change too");
+
+    const fs::path gone = g_root / "gone-before-stamp.png";
+    Check(!ThumbnailDiskCache::StampSource(gone.string()).valid,
+          "a file that cannot be examined gives an invalid stamp");
+    Check(!ThumbnailDiskCache::Store(RequestFor(gone), Blob(64, 0xCC),
+                                     ThumbnailDiskCache::StampSource(gone.string())),
+          "and nothing is stored against it");
 }
 
 // ===== STALENESS IS ALSO THE RENDERER'S =====
@@ -188,7 +255,7 @@ void TestOtherRendererGenerationInvalidates() {
     const auto request = RequestFor(drawing);
     ThumbnailDiskCache::SetRendererGenerationOverride(
             ThumbnailDiskCache::kRendererGeneration - 1);
-    ThumbnailDiskCache::Store(request, Blob(256, 0x66));
+    StoreMadeNow(request, Blob(256, 0x66));
     Check(!ThumbnailDiskCache::Load(request).empty(),
           "the older build serves its own thumbnail");
 
@@ -198,7 +265,7 @@ void TestOtherRendererGenerationInvalidates() {
           "0 goes back to the built-in generation");
     Check(ThumbnailDiskCache::Load(request).empty(),
           "the fixed build does not: the tile is drawn again");
-    ThumbnailDiskCache::Store(request, Blob(256, 0x77));
+    StoreMadeNow(request, Blob(256, 0x77));
     Check(ThumbnailDiskCache::Load(request) == Blob(256, 0x77),
           "and what it draws is served from then on");
 }
@@ -215,7 +282,7 @@ void TestServingTouchesTheFile() {
     // before it was stored. Found this way rather than by computing the name,
     // so the test says nothing about how entries are named.
     const std::vector<fs::path> before = EntryFiles();
-    ThumbnailDiskCache::Store(request, Blob(256, 0x66));
+    StoreMadeNow(request, Blob(256, 0x66));
     fs::path entry;
     for (const fs::path& path : EntryFiles()) {
         if (std::find(before.begin(), before.end(), path) == before.end()) {
@@ -326,11 +393,11 @@ void TestDisabledCacheIsInert() {
     const fs::path picture = g_root / "off.jpg";
     WriteFile(picture, "a picture");
     const auto request = RequestFor(picture);
-    ThumbnailDiskCache::Store(request, Blob(64, 0x77));
+    StoreMadeNow(request, Blob(64, 0x77));
 
     ThumbnailDiskCache::SetEnabled(false);
     Check(!ThumbnailDiskCache::IsEnabled(), "it reports as off");
-    Check(!ThumbnailDiskCache::Store(request, Blob(64, 0x88)),
+    Check(!StoreMadeNow(request, Blob(64, 0x88)),
           "nothing is written");
     Check(ThumbnailDiskCache::Load(request).empty(), "and nothing is read");
 
@@ -383,6 +450,7 @@ int main() {
     TestGeometryIsPartOfTheIdentity();
     TestUnknownSourceIsAMiss();
     TestEditedSourceInvalidates();
+    TestSourceChangedWhileDrawingIsNotStored();
     TestOtherRendererGenerationInvalidates();
     TestServingTouchesTheFile();
     TestTouchIsThrottled();
