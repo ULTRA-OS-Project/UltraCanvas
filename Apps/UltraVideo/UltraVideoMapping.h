@@ -43,6 +43,31 @@ int SegmentOfClip(const Document& document, const std::string& clipId);
 // What a clip is called in the band and the inspector
 std::string ClipName(const Document& document, size_t segment);
 
+// ---- the story wizard (Docs/Research/UltraVideoDesignProposal.md §5.9, §6.11) ----
+// What the wizard asks: photos and clips in order, a song or none, a style
+struct StoryChoice {
+    std::vector<std::string> files;             // photos and clips, in order
+    double secondsPerPhoto = 4.0;
+    std::vector<std::string> songs;             // none, one, or a playlist
+    bool fitToMusic = false;                    // seconds per photo so the show ends with the song
+    bool beatSync = false;                      // change pictures on the beat
+    VideoFX::VideoFXDuckingPreset ducking = VideoFX::VideoFXDuckingPreset::Speech;
+    VideoFX::VideoFXTransitionType transition = VideoFX::VideoFXTransitionType::Crossfade;
+    double transitionSeconds = 1.0;
+    bool keepFaces = true;
+    VideoFX::VideoFXImageFit portraitFit = VideoFX::VideoFXImageFit::Auto;   // Auto: whole, on a blurred background
+    bool captionsFromNames = false;
+    bool fadeInOut = true;
+};
+// The engine's plan for the photos (VideoFX_PlanSlideshow: probes, beats,
+// faces - run it on the worker). False with the engine's reason.
+bool PlanStory(const StoryChoice& choice, std::vector<VideoFX::VideoFXSegment>& imageSegments,
+               VideoFX::VideoFXExportSettings& settings, std::string& error);
+// The document the plan becomes: the photos' segments interleaved with the
+// clips in the chosen order, captions as title spans, the song as the music
+Document BuildStoryDocument(const StoryChoice& choice, const std::vector<VideoFX::VideoFXSegment>& imageSegments,
+                            const VideoFX::VideoFXExportSettings& settings);
+
 // The transition types by name, for the inspector and the timeline's badges
 struct TransitionChoice {
     VideoFX::VideoFXTransitionType type;

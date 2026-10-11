@@ -18,6 +18,7 @@
 #include "UltraVideoHistory.h"
 #include "UltraVideoInspector.h"
 #include "UltraVideoPreview.h"
+#include "UltraVideoStory.h"
 #include "UltraVideoTheme.h"
 #include "UltraVideoViewer.h"
 
@@ -88,6 +89,7 @@ private:
     bool SaveProjectAs();
     bool SaveTo(const std::string& path);
     void ImportMedia();
+    void MakeStory();                  // the wizard, then the plan on the worker, then a new project
     void ImportFiles(const std::vector<std::string>& files, double at = -1.0);
     void AddMediaToTimeline(const std::string& path, double at = -1.0);
     void ConfirmThen(std::function<void()> then);   // asks to save first when dirty
@@ -131,7 +133,7 @@ private:
     // app bar
     std::shared_ptr<Container> appBar_;
     std::shared_ptr<Label> title_, status_;
-    std::shared_ptr<Button> undo_, redo_, open_, save_, import_, theme_, export_;
+    std::shared_ptr<Button> undo_, redo_, open_, save_, import_, story_, theme_, export_;
     // panes
     std::shared_ptr<UltraCanvas::UltraCanvasSplitPane> columns_, rows_;
     std::shared_ptr<Container> binPanel_, viewerPane_, inspectorPane_, dock_;

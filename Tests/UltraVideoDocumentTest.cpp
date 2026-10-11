@@ -378,6 +378,52 @@ int main() {
         CHECK(back.nextTitleId == td.nextTitleId && back.SegmentsForEngine()[1].overlays.size() == td.SegmentsForEngine()[1].overlays.size(), "and derive the same again");
     }
 
+    std::printf("\n-- the story wizard --\n");
+    {
+        const std::string beach = TempPath("media/at_the-beach.png");
+        CHECK(VideoFX_SaveFrameImage(Solid(160, 120, 0, 0, 255), beach) == VideoFXResult::Ok, "a second photo");
+        StoryChoice choice;
+        choice.files = {photo, clip, beach};
+        choice.secondsPerPhoto = 2.0;
+        choice.songs = {song};
+        choice.captionsFromNames = true;
+        choice.transition = VideoFXTransitionType::WipeLeft;
+        choice.transitionSeconds = 0.5;
+        std::vector<VideoFXSegment> planned;
+        VideoFXExportSettings settings;
+        std::string why;
+        CHECK(PlanStory(choice, planned, settings, why), ("plan: " + why).c_str());
+        CHECK(planned.size() == 2 && Near(planned[0].duration, 2.0, 1e-6), "the engine plans the photos alone, at the chosen pace");
+        CHECK(settings.music.Songs() == std::vector<std::string>{song} && Near(settings.music.duckingThresholdDb, -36.5, 1e-9), "the song and the ducking are in the settings");
+        const Document story = BuildStoryDocument(choice, planned, settings);
+        CHECK(story.project.title == "Story" && story.project.segments.size() == 3 && story.clipIds.size() == 3, "photo, clip, photo");
+        CHECK(story.project.segments[0].kind == VideoFXSourceKind::Image && story.project.segments[1].kind == VideoFXSourceKind::File &&
+              story.project.segments[1].path == clip && story.project.segments[2].path == beach, "in the chosen order");
+        CHECK(story.project.segments[1].transitionIn.type == VideoFXTransitionType::WipeLeft && Near(story.project.segments[1].transitionIn.duration, 0.5, 1e-9) &&
+              story.project.segments[2].transitionIn.type == VideoFXTransitionType::WipeLeft, "the style's transition leads into every later segment");
+        CHECK(story.project.segments[0].transitionIn.type == VideoFXTransitionType::Cut, "nothing leads into the first");
+        CHECK(!story.project.segments[0].effects.empty() && story.project.segments[0].effects.front().type == VideoFXEffectType::FadeIn, "the fade in on the first segment");
+        CHECK(!story.project.segments[2].effects.empty() && story.project.segments[2].effects.back().type == VideoFXEffectType::FadeOut, "the fade out on the last");
+        bool middleFades = false;
+        for (const VideoFXEffect& e : story.project.segments[1].effects) middleFades |= e.type == VideoFXEffectType::FadeIn || e.type == VideoFXEffectType::FadeOut;
+        CHECK(!middleFades, "and none in between");
+        CHECK(story.titles.size() == 3 && story.titles[0].look.text == "photo" && story.titles[1].look.text == "pattern" && story.titles[2].look.text == "at the beach", "captions from the file names, as title spans");
+        CHECK(story.titles[1].style == "caption" && Near(story.titles[1].start, 1.5, 1e-6) && Near(story.titles[1].duration, story.SegmentSeconds(1), 1e-6), "each over its own segment, which begins under the wipe");
+        bool textOverlays = false;
+        for (const VideoFXSegment& sg : story.project.segments) for (const VideoFXOverlay& o : sg.overlays) textOverlays |= o.kind == VideoFXOverlayKind::Text;
+        CHECK(!textOverlays, "the engine's caption overlays are not kept twice");
+        CHECK(story.project.settings.music.Songs() == std::vector<std::string>{song} && story.media.size() == 4 && story.FindMedia(song), "the music set and everything in the bin");
+        const TimelineModel storyModel = BuildTimelineModel(story);
+        CHECK(storyModel.tracks.size() == 3 && storyModel.tracks[0].clips.size() == 3 && storyModel.tracks[1].clips.size() == 3, "a timeline with the captions and the clips");
+
+        StoryChoice plain;
+        plain.files = {clip};
+        plain.fadeInOut = false;
+        CHECK(PlanStory(plain, planned, settings, why) && planned.empty() && !settings.music.IsSet(), "clips alone need no plan");
+        const Document clips = BuildStoryDocument(plain, planned, settings);
+        CHECK(clips.project.segments.size() == 1 && clips.project.segments[0].effects.empty() && clips.titles.empty(), "one clip, no fades, no captions");
+    }
+
     std::printf("\n-- history --\n");
     History history;
     Document before = doc;

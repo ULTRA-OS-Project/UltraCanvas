@@ -205,6 +205,9 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildAppBar() {
     import_ = MakeIconButton("uv.import", "upload", "Import media  Ctrl+I", p);
     import_->SetOnClick([this]() { ImportMedia(); });
     appBar_->AddChild(import_);
+    story_ = MakeIconButton("uv.story", "image", "Make a story from photos and clips  Ctrl+Shift+N", p);
+    story_->SetOnClick([this]() { MakeStory(); });
+    appBar_->AddChild(story_);
     theme_ = MakeIconButton("uv.theme", "eye", "Light or dark", p);
     theme_->SetOnClick([this]() {
         dark_ = !dark_;
@@ -279,7 +282,8 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
 
     // The empty state: the drop zone with the two ways in
     binEmpty_ = CreateLabel("uv.bin.empty", 0, 0, 240, 120,
-                            "Drop clips here to start\n\nVideos, photos and songs. Or import them with the button above.");
+                            "Drop clips here to start\n\nVideos, photos and songs. Or import them with the button above, "
+                            "or make a story from photos with the picture button.");
     binEmpty_->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
     binEmpty_->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
     binEmpty_->layoutItem.SetFlexShrink(0);
@@ -535,7 +539,7 @@ void UltraVideoWindow::ApplyPalette() {
     appBar_->SetBorderBottom(1, ToColor(p.Line));
     title_->SetTextColor(ToColor(p.Ink));
     status_->SetTextColor(ToColor(p.InkMuted));
-    for (auto& b : {undo_, redo_, open_, save_, import_, theme_}) b->SetStyle(GhostButtonStyle(p));
+    for (auto& b : {undo_, redo_, open_, save_, import_, story_, theme_}) b->SetStyle(GhostButtonStyle(p));
     export_->SetStyle(PrimaryButtonStyle(p));
     theme_->SetIcon(IconPath(dark_ ? "eye" : "eyeOff"));
 
@@ -850,6 +854,36 @@ void UltraVideoWindow::ImportMedia() {
     opts.AddFilter("Video, pictures and sound", MediaExtensions());
     UltraCanvasFileLoader::OpenMultipleFilesDialog(opts, [this](DialogResult result, const std::vector<std::string>& files) {
         if (result == DialogResult::OK && !files.empty()) ImportFiles(files);
+    });
+}
+
+void UltraVideoWindow::MakeStory() {
+    ConfirmThen([this]() {
+        // what the bin holds goes in as a start
+        std::vector<std::string> files;
+        for (const MediaItem& m : document_.media) if (m.error.empty()) files.push_back(m.path);
+        const bool dark = dark_;
+        ShowStoryWizard(window_.get(), *palette_, files, [this, dark](const StoryChoice& choice) {
+            Message("Planning the story\xE2\x80\xA6");
+            auto segments = std::make_shared<std::vector<VideoFXSegment>>();
+            auto settings = std::make_shared<VideoFXExportSettings>();
+            auto error = std::make_shared<std::string>();
+            auto ok = std::make_shared<bool>(false);
+            preview_.Run(
+                [choice, segments, settings, error, ok]() { *ok = PlanStory(choice, *segments, *settings, *error); },
+                [this, choice, segments, settings, error, ok, dark]() {
+                    if (!*ok) {
+                        UltraCanvasAlert::Error("The story could not be planned: " + *error, "Make a story", nullptr, window_.get());
+                        Message("The story was not made.");
+                        return;
+                    }
+                    Document story = BuildStoryDocument(choice, *segments, *settings);
+                    story.view.dark = dark;
+                    SetDocument(std::move(story));
+                    if (timeline_) timeline_->ZoomToFit();
+                    Message("The story is on the timeline: change anything, then export.");
+                });
+        });
     });
 }
 
@@ -1371,7 +1405,7 @@ bool UltraVideoWindow::OnKey(const UCEvent& event) {
             case UCKeys::Y: if (history_.Redo(document_)) RefreshAll(); return true;
             case UCKeys::S: if (event.shift) SaveProjectAs(); else SaveProject(); return true;
             case UCKeys::O: OpenProject(); return true;
-            case UCKeys::N: NewProject(); return true;
+            case UCKeys::N: if (event.shift) MakeStory(); else NewProject(); return true;
             case UCKeys::I: ImportMedia(); return true;
             case UCKeys::E: Export(); return true;
             default: break;

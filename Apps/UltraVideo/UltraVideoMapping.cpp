@@ -48,6 +48,119 @@ void ClipToSegment(const Document& doc, const TimelineClip& clip, VideoFXSegment
 
 } // namespace
 
+// ============================================================================
+// the story wizard
+// ============================================================================
+namespace {
+bool IsPictureFile(const std::string& path) { return Document::KindOfPath(path) == MediaKind::Image; }
+bool IsSoundFile(const std::string& path) { return Document::KindOfPath(path) == MediaKind::Audio; }
+
+std::string CaptionFromName(const std::string& path) {
+    std::string stem = PathToUtf8(PathFromUtf8(path).stem());
+    for (char& c : stem) if (c == '_' || c == '-') c = ' ';
+    return stem;
+}
+}
+
+bool PlanStory(const StoryChoice& choice, std::vector<VideoFXSegment>& imageSegments, VideoFXExportSettings& settings,
+               std::string& error) {
+    error.clear();
+    imageSegments.clear();
+    std::vector<std::string> pictures;
+    for (const std::string& f : choice.files) if (IsPictureFile(f)) pictures.push_back(f);
+    settings = VideoFXExportSettings{};
+    if (!choice.songs.empty()) {
+        settings.music = VideoFXMusic::FromFiles(choice.songs);
+        settings.music.SetDuckingPreset(choice.ducking);
+    }
+    if (pictures.empty()) return true;   // clips alone: nothing for the engine to plan
+
+    VideoFXSlideshowOptions options;
+    options.secondsPerImage = std::clamp(choice.secondsPerPhoto, 0.5, 60.0);
+    options.transition = choice.transition == VideoFXTransitionType::Cut
+                             ? VideoFXTransition{}
+                             : VideoFXTransition::Make(choice.transition, std::clamp(choice.transitionSeconds, 0.04, 5.0));
+    options.imageFit = choice.portraitFit;
+    options.keepFacesInView = choice.keepFaces;
+    options.fadeInOut = choice.fadeInOut;
+    options.matchMusicLength = choice.fitToMusic && !choice.songs.empty();
+    options.beatSync = choice.beatSync && !choice.songs.empty();
+    if (choice.captionsFromNames) for (const std::string& p : pictures) options.captions.push_back(CaptionFromName(p));
+    VideoFXExportSettings planned;
+    const VideoFXResult r = VideoFX_PlanSlideshow(pictures, options, settings, imageSegments, planned);
+    if (r != VideoFXResult::Ok) {
+        error = VideoFX_GetLastError();
+        if (error.empty()) error = VideoFX_ResultToString(r);
+        return false;
+    }
+    settings = planned;
+    return true;
+}
+
+Document BuildStoryDocument(const StoryChoice& choice, const std::vector<VideoFXSegment>& imageSegments,
+                            const VideoFXExportSettings& settings) {
+    Document doc;
+    doc.project.title = "Story";
+    doc.project.settings = settings;
+    for (const std::string& f : choice.files) doc.Import(f);
+    for (const std::string& song : choice.songs) doc.Import(song);
+    const VideoFXTransition transition = choice.transition == VideoFXTransitionType::Cut
+                                             ? VideoFXTransition{}
+                                             : VideoFXTransition::Make(choice.transition, std::clamp(choice.transitionSeconds, 0.04, 5.0));
+    // The photos' segments in order, the clips between them where they were chosen
+    size_t nextImage = 0;
+    std::vector<std::string> captions;   // one per segment, "" for none
+    for (const std::string& f : choice.files) {
+        if (IsSoundFile(f)) continue;
+        VideoFXSegment segment;
+        std::string caption;
+        if (IsPictureFile(f)) {
+            if (nextImage >= imageSegments.size()) continue;
+            segment = imageSegments[nextImage++];
+            for (const VideoFXOverlay& o : segment.overlays) if (o.kind == VideoFXOverlayKind::Text && caption.empty()) caption = o.text;
+            segment.overlays.erase(std::remove_if(segment.overlays.begin(), segment.overlays.end(),
+                                                  [](const VideoFXOverlay& o) { return o.kind == VideoFXOverlayKind::Text; }),
+                                   segment.overlays.end());
+        } else {
+            const MediaItem* m = doc.FindMedia(f);
+            if (!m || !m->error.empty()) continue;
+            segment = VideoFXSegment::FromFile(m->path);
+            segment.transitionIn = transition;
+            if (choice.captionsFromNames) caption = CaptionFromName(f);
+        }
+        doc.project.segments.push_back(segment);
+        doc.clipIds.push_back(doc.NewClipId());
+        captions.push_back(caption);
+    }
+    // The fades at the ends belong to the first and the last segment, whatever they are
+    for (size_t i = 0; i < doc.project.segments.size(); ++i) {
+        std::vector<VideoFXEffect>& effects = doc.project.segments[i].effects;
+        effects.erase(std::remove_if(effects.begin(), effects.end(), [](const VideoFXEffect& e) {
+                          return e.type == VideoFXEffectType::FadeIn || e.type == VideoFXEffectType::FadeOut; }),
+                      effects.end());
+        if (choice.fadeInOut && i == 0) effects.insert(effects.begin(), VideoFXEffect::FadeIn(0.5));
+        if (choice.fadeInOut && i + 1 == doc.project.segments.size()) effects.push_back(VideoFXEffect::FadeOut(0.5));
+    }
+    if (!doc.project.segments.empty()) doc.project.segments.front().transitionIn = VideoFXTransition{};
+    // Captions become title spans, one per captioned segment
+    const std::vector<double> starts = doc.SegmentStarts();
+    for (size_t i = 0; i < captions.size() && i < starts.size(); ++i) {
+        if (captions[i].empty()) continue;
+        TitleSpan span;
+        span.id = doc.NewTitleId();
+        const TitleStyle* style = FindTitleStyle("caption");
+        span.style = style ? style->key : "caption";
+        if (style) span.look = style->look;
+        span.look.text = captions[i];
+        span.start = starts[i];
+        span.duration = std::max(0.04, doc.SegmentSeconds(i));
+        span.fadeIn = style ? style->fadeIn : 0.25;
+        span.fadeOut = style ? style->fadeOut : 0.25;
+        doc.titles.push_back(span);
+    }
+    return doc;
+}
+
 const std::vector<TransitionChoice>& TransitionChoices() {
     static const std::vector<TransitionChoice> choices = {
         {VideoFXTransitionType::Cut, "cut", "Cut"},

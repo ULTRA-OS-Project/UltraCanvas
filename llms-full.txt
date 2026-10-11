@@ -82691,8 +82691,8 @@ the screens and the brand book under `Apps/UltraVideo/screens/`.
 ## The window
 
 From top to bottom: the **app bar** with the project's name, its size, frame
-rate and *Saved* or *Edited* state, undo and redo, open, save, import, the
-light-or-dark switch and **Export**; the **media bin**, the **viewer** and
+rate and *Saved* or *Edited* state, undo and redo, open, save, import,
+*Make a story*, the light-or-dark switch and **Export**; the **media bin**, the **viewer** and
 the **inspector** side by side in panes you can drag; the **timeline** with
 its toolbar under them. The design's dark palette is the default; the eye
 button in the app bar switches to the light one.
@@ -82758,6 +82758,25 @@ the ducking under speech are set. *Beat marks* in the timeline toolbar
 asks the engine for the first song's beats and draws them across the
 lanes, so cuts can land on them.
 
+### The story wizard
+
+The *Make a story* button in the app bar (`Ctrl+Shift+N`) builds a video
+from photos and clips in three steps. **1 Pictures**: add files, drag them
+into the order they play, pick how long each photo stays. **2 Music**: a
+song or none; with a song, *Fit the video to the song's length* paces the
+photos so the show ends with it and *Change pictures on the beat* cuts on
+the engine's beats; a dropdown names the clips' own sound so the music
+dips under it the right way. **3 Style**: the transition between pictures
+and its length, *Keep faces in shot* while the camera pans, portrait
+photos whole on a blurred background or filling the frame, *Captions from
+the file names*, a fade in and out. *Make video* asks the engine for the
+photos' plan (`VideoFX_PlanSlideshow`: pan and zoom, faces, beats) and
+opens the result as an ordinary project: the photos and clips in order on
+the main track with the transition between them, the captions as title
+spans, the song on the music lane, the fades on the first and last clip.
+Everything the wizard chose can then be changed. Files already in the bin
+are offered first; a song in the bin becomes the music.
+
 ### The inspector
 
 - **Clip**: the selected clip's name and what it is; for a video its *In*
@@ -82818,8 +82837,8 @@ the engine).
 
 ## Not yet
 
-The overlay-video lane, the story wizard, effect presets, playback with sound,
-drag from the bin onto the timeline, and the mapping
+The overlay-video lane, effect presets, playback with sound, drag from the
+bin onto the timeline, and the mapping
 of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.

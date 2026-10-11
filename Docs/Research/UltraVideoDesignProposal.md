@@ -859,9 +859,9 @@ Apps/UltraVideo/
                                 (draft renders and caches later)
   UltraVideoViewer.{h,cpp}      the frame surface, Fit, the transport
   UltraVideoInspector.{h,cpp}   the inspector forms
-  UltraVideoDialogs.{h,cpp}     export, the unsaved-changes question (story wizard later)
+  UltraVideoDialogs.{h,cpp}     export, the unsaved-changes question
   UltraVideoTheme.h             the tokens applied to elements
-  UltraVideoStory.{h,cpp}       slideshow options from the wizard (phase 4)
+  UltraVideoStory.{h,cpp}       the story wizard
   UltraVideoTokens.h            the design tokens as C++ (generated)
   UltraVideo.desktop
   CMakeLists.txt                its own, added from the root with BUILD_ULTRAVIDEO
@@ -896,7 +896,7 @@ and sound types for *Open with*. All of it is in place (§14).
 | 1 | `UltraCanvasVideoTimeline` and `UltraCanvasTimecodeField`: model, operations, rendering of ruler, main track, clips with filmstrips, transitions, playhead, zoom, selection, keyboard, drop, context menu hook; docs, catalogue rows, DemoApp page, model tests | Framework release |
 | 2 | `VideoFX_RenderFrame` (8.2, **done** in 0.9.0), the draft preset (8.5), export range (8.6) | VideoFX 0.9.0 |
 | 3 | `Apps/UltraVideo` 0.1.0: window, media bin, viewer with scrubbing, inspector (clip, audio, project), timeline wired through the mapping, undo, `.ultravideo`, export dialog (**built**, §14) | First app release |
-| 4 | Title lane and music lane (**built**, §14: spans, fades, song boundaries, beats) in the element; markers, work area, snapping, ripple built in phase 1; the story wizard | App 0.2.0 |
+| 4 | Title lane and music lane (**built**, §14: spans, fades, song boundaries, beats) in the element; markers, work area, snapping, ripple built in phase 1; the story wizard (**built**) | App 0.2.0 |
 | 5 | Picture-in-picture (8.3) and free audio tracks (8.4) in the engine; the overlay and free audio lanes switched on | VideoFX 0.10, app 0.3 |
 | 6 | Keyframes in the engine and keyframe markers on clips; proxy media; hardware encoder choice | Later |
 
@@ -1027,6 +1027,20 @@ that writing it showed:
   onto `settings.music`; selecting a song opens the *Audio* tab. Beat marks
   come from `VideoFX_DetectBeats` on the first song, run on the worker when
   the toggle is first switched on. Songs are not split or copied.
+- **The story wizard** (§5.9, §6.11): `UltraVideoStory` shows the three
+  steps of §6.11 as a flat tabbed container in a modal, with the chosen
+  files as a reorderable album. It departs from §6.11 in one way: *Make
+  video* does not render a draft through `VideoFX_CreateSlideshow`; it asks
+  the engine for the photos' plan (`VideoFX_PlanSlideshow`, on the worker)
+  and `BuildStoryDocument` turns that into the project directly - the
+  planned photo segments interleaved with the clips in the chosen order,
+  the transition between them, the engine's caption overlays lifted into
+  title spans, the song as the music, the fades on the first and last
+  segment - so the result is on the timeline at once and the viewer
+  renders it like any other project. The first screen of §5.9 (*Story* or
+  *Timeline* after *New*) is not built: the wizard is a button in the app
+  bar and `Ctrl+Shift+N`, and it replaces the open project after the
+  unsaved-changes question.
 - Not built, and left for the next phase: marker dragging, a real slip trim
   (the Slip tool trims for now), retiming by `Ctrl`-drag, vertical scrolling
   of many tracks, resizing a track by its edge, and the mapping onto the

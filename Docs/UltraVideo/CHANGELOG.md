@@ -42,6 +42,15 @@
     reorder by dragging, `Del` to remove a song - and in the *Audio* tab,
     which opens when a song is selected. *Beat marks* in the toolbar asks
     the engine for the first song's beats and draws them across the lanes.
+  - The story wizard: *Make a story* in the app bar (`Ctrl+Shift+N`), three
+    steps in a modal - pictures and clips in order with the seconds per
+    photo, a song or none with fit-to-song, beat sync and the ducking
+    preset, the style with the transition and its length, faces kept in
+    shot, portrait fit, captions from file names, fade in and out. The
+    engine plans the photos (`VideoFX_PlanSlideshow`) on the worker and the
+    result opens as an ordinary project: clips and photos in order with
+    the transition between them, captions as title spans, the song as the
+    music, the fades on the first and last clip.
   - The inspector: *Clip* (in and out, speed, mute, the transition into
     the clip, a photo's motion, framing and faces, a title's text and
     look), *Audio* (the songs, volume, fades, crossfade, loop, ducking),
@@ -53,7 +62,7 @@
   - Export: a preset (web MP4 at 1080p, 720p or 4K, WebM, GIF, ProRes,
     MP3), the output file, the whole project or the work area; the job
     runs in the background with a progress dialog and can be cancelled.
-  - Not yet: the overlay-video lane, the story wizard, effect presets,
-    drag from the bin onto the timeline, playback with sound (the draft
-    render), and the theme-role mapping (the app colours its elements from
-    the design's tokens directly).
+  - Not yet: the overlay-video lane, effect presets, drag from the bin
+    onto the timeline, playback with sound (the draft render), and the
+    theme-role mapping (the app colours its elements from the design's
+    tokens directly).
