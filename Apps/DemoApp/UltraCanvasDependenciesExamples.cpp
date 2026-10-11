@@ -610,7 +610,7 @@ namespace UltraCanvas {
         dep("Bitmap codecs (via libvips)", "libpng (libpng 2)\nlibjpeg-turbo (BSD 3)\nlibtiff (libtiff)\nlibwebp (BSD 3)", "libpng (libpng 2)\nlibjpeg-turbo (BSD 3)\nlibtiff (libtiff)\nlibwebp (BSD 3)", "libpng (libpng 2)\nlibjpeg-turbo (BSD 3)\nlibtiff (libtiff)\nlibwebp (BSD 3)");
         dep("GIF / HEIF / AVIF (via libvips)", "giflib (MIT)\nlibheif (LGPL 3)", "giflib (MIT)\nlibheif (LGPL 3)", "giflib (MIT)\nlibheif (LGPL 3)");
         dep("BMP / PCX coders (via libvips)", "ImageMagick (ImageMagick)", "ImageMagick (ImageMagick)", "ImageMagick (ImageMagick)");
-        dep("Audio playback & capture", "miniaudio (MIT-0) (bundled)\n→ ALSA (LGPL 2.1)\n→ PulseAudio (LGPL 2.1)", "miniaudio (MIT-0) (bundled)\n→ CoreAudio", "miniaudio (MIT-0) (bundled)\n→ WASAPI");
+        dep("Audio playback & capture", "miniaudio (MIT-0) (bundled)\nvia ALSA (LGPL 2.1)\nvia PulseAudio (LGPL 2.1)", "miniaudio (MIT-0) (bundled)\nvia CoreAudio", "miniaudio (MIT-0) (bundled)\nvia WASAPI");
         dep("Video playback & capture", "GStreamer (LGPL 2.1) (optional)", "AVFoundation (optional)", "Media Foundation (optional)");
         dep("OpenGL 3D surface", "OpenGL\nEGL / GLX (optional)", "OpenGL\nCGL (optional)", "OpenGL\nGLEW (BSD 3) / WGL (optional)");
         dep("QR / barcode decoding", "zbar (LGPL 2.1) (optional)", "zbar (LGPL 2.1) (optional)", "zbar (LGPL 2.1) (optional)");
@@ -636,15 +636,15 @@ namespace UltraCanvas {
         dep("Language data (tessdata)", "eng.traineddata (bundled)\n+ user downloads", "eng.traineddata (bundled)\n+ user downloads", "eng.traineddata (bundled)\n+ user downloads");
 
         header("Vectorizer plugin (optional)");
-        dep("Raster → SVG tracing", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)");
+        dep("Raster to SVG tracing", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)", "VTracer (MIT)\nvisioncortex (MIT)\n(Rust, via corrosion)");
         dep("Build toolchain", "cargo + rustc\ncorrosion-rs (MIT) (FetchContent)", "cargo + rustc\ncorrosion-rs (MIT) (FetchContent)", "cargo + rustc\ncorrosion-rs (MIT) (FetchContent)");
 
         header("LaTeX plugin (optional, on-demand module)");
-        dep("LaTeX math rendering", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\n→ Cairo / Pango (core)", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\n→ Cairo / Pango (core)", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\n→ Cairo / Pango (core)");
+        dep("LaTeX math rendering", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\nvia Cairo / Pango (core)", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\nvia Cairo / Pango (core)", "MicroTeX (MIT) (bundled)\nLatin Modern Math (LPPL) (bundled)\nvia Cairo / Pango (core)");
 
         // ===== Demo application =====
         header("Demo application");
-        dep("App icon → .exe (build tool)", "– (Windows only)", "– (Windows only)", "ImageMagick (ImageMagick)\n(magick CLI)");
+        dep("App icon to .exe (build tool)", "– (Windows only)", "– (Windows only)", "ImageMagick (ImageMagick)\n(magick CLI)");
 
         // ===== Additional ULTRA OS modules =====
         header("AudioFX module");
@@ -796,17 +796,17 @@ namespace UltraCanvas {
             linkMenu->Clear();
             linkMenu->AddItem(MenuItemData::Header(lib->name));
             linkMenu->AddItem(MenuItemData::Action(
-                "🌐 Website — " + ShortenUrlForDisplay(website),
+                "Website — " + ShortenUrlForDisplay(website), DemoIconPath("menu/globe.svg"),
                 [website]() { OpenURL(website); }));
             linkMenu->AddItem(MenuItemData::Action(
-                "📦 Source code — " + ShortenUrlForDisplay(repo),
+                "Source code — " + ShortenUrlForDisplay(repo), DemoIconPath("menu/code.svg"),
                 [repo]() { OpenURL(repo); }));
             if (lib->license && *lib->license) {
                 if (const DepLicense* lic = FindDepLicense(lib->license)) {
                     std::string licUrl = lic->url;
                     linkMenu->AddItem(MenuItemData::Separator());
                     linkMenu->AddItem(MenuItemData::Action(
-                        std::string("📄 License — ") + lic->fullName,
+                        std::string("License — ") + lic->fullName, DemoIconPath("menu/file-icons.svg"),
                         [licUrl]() { OpenURL(licUrl); }));
                 }
             }

@@ -185,9 +185,9 @@ namespace {
                 { "rotate", "Rotate", "Rotates around the centre with bicubic resampling (Resample::Rotate).",
                   { { "Angle °", -180.0f, 180.0f, 30.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Resample::Rotate(src, p[0]); } },
-                { "fliph", "Flip horizontal", "Mirrors the image left ↔ right (Resample::FlipHorizontal).", {},
+                { "fliph", "Flip horizontal", "Mirrors the image left to right (Resample::FlipHorizontal).", {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Resample::FlipHorizontal(src); } },
-                { "flipv", "Flip vertical", "Mirrors the image top ↔ bottom (Resample::FlipVertical).", {},
+                { "flipv", "Flip vertical", "Mirrors the image top to bottom (Resample::FlipVertical).", {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Resample::FlipVertical(src); } },
                 { "scale", "Scale", "Resizes with a Lanczos3 kernel (Resample::Resize). The "
                   "preview grows or shrinks with the factor relative to the frame: 1.0 fits "

@@ -142,7 +142,8 @@ namespace UltraCanvas {
         root->AddChild(saveBtn);
 
         auto formatBtn = std::make_shared<UltraCanvasButton>("ssFormatBtn", 494, 50, 130, 30,
-                                                             "Format Cells ▾");
+                                                             "Format Cells");
+        SetFlatButtonIcon(*formatBtn, "dropdown.svg", ButtonIconPosition::Right, 10);
         root->AddChild(formatBtn);
 
         auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 632, 56, 374, 22);
