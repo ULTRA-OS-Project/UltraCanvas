@@ -17,8 +17,10 @@
 //
 // Opens a real window, so it runs under Xvfb (xvfb-run -a) and skips itself
 // without a DISPLAY.
+// Version: 1.1.0 - a button whose handler rebuilds the list it sits in stays alive
+//                  until it has handled the press
 // Version: 1.0.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -35,6 +37,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -294,6 +297,49 @@ int main() {
     TEST("a press whose element left the tree is not handed to its former parents",
          cardPresses == 0 && outerPresses == 0);
     leaving->SetEventCallback(nullptr);
+
+    // ----- An element its own handler destroys -----
+    // A list row whose button rebuilds the list - UltraPaint's layer rows -
+    // drops the last reference to the button from inside the button's own
+    // OnEvent. The button then went on with its own code after the handler
+    // (a redraw request) on freed memory, and crashed. The dispatch keeps
+    // the element alive until its OnEvent returns. Only weak references to
+    // the row buttons are held here, so the list is their only owner.
+    auto list = CreateContainer("list", 340, 190, 280, 50);
+    outer->AddChild(list);
+    std::weak_ptr<UltraCanvasUIElement> rowButton;
+    bool aliveInHandler = false;
+    int rebuilds = 0;
+    std::function<void()> rebuild = [&]() {
+        list->ClearChildren();
+        auto b = std::make_shared<UltraCanvasButton>("rowButton" + std::to_string(rebuilds),
+                                                     10, 10, 200, 30, "Layer 2");
+        b->SetCanToggled(true);
+        b->onToggle = [&](bool) {
+            // Copied out first: the rebuild destroys this lambda's button.
+            std::weak_ptr<UltraCanvasUIElement> self = rowButton;
+            bool* alive = &aliveInHandler;
+            rebuild();
+            *alive = !self.expired();
+        };
+        list->AddChild(b);
+        rowButton = b;
+        ++rebuilds;
+    };
+    rebuild();
+    for (UCEventType type : {UCEventType::MouseDown, UCEventType::MouseDoubleClick}) {
+        Frame(window, outer);
+        const std::weak_ptr<UltraCanvasUIElement> pressed = rowButton;
+        UltraCanvasUIElement* at = rowButton.lock().get();   // no reference kept
+        const int before = rebuilds;
+        aliveInHandler = false;
+        Press(app, window, *at, type);
+        const std::string kind = type == UCEventType::MouseDown ? "press" : "double-click";
+        TEST("a " + kind + " on a row button rebuilds its list", rebuilds == before + 1);
+        TEST("the button stays alive while its handler rebuilds the list (" + kind + ")",
+             aliveInHandler);
+        TEST("and is released once it has handled the " + kind, pressed.expired());
+    }
 
     std::cerr << std::endl << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;

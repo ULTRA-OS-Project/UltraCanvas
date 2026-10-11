@@ -24,6 +24,15 @@
   pixels, sharp at the menus' 16 px, in one style instead of Texter's filled
   icons beside UltraPaint's line ones. They are drawn in one shade of grey,
   so the menus paint them in the entry's text colour, greyed when disabled.
+- **Double-clicking a layer's name no longer crashes.** Each row's button
+  selected its layer and rebuilt the layer list at once, from inside its own
+  click - the rebuild destroyed the button while it was still handling the
+  click, and the next thing it did crashed UltraPaint (double-clicking
+  *Layer 2* after *New Layer* did it every time). The list is now rebuilt
+  once the click has been handled (`ScheduleLayerPanelRebuild`), and the
+  framework keeps a widget alive while it handles an event (framework
+  changelog: `keep-element-alive-during-event`). The side panel no longer
+  jumps 16 px when a layer is clicked with the panel scrolled to its end.
 
 #### 2026-10-09 *0.2.12*
 - **The Fill tool can make an area transparent.** Filling with a colour

@@ -3,6 +3,9 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.1.2 - the layer list is rebuilt after the click that changed it has been
+//                  handled (ScheduleLayerPanelRebuild): rebuilding it under the clicked
+//                  row's button freed the button mid-click and crashed
 // Version: 1.1.1 - the tool palette shows its tools' 28 px icons (media/icons/ultrapaint/28)
 //                  at 28 px, the grid they are drawn on, in 36 px buttons; flat
 //                  buttons in the palette and the toolbar; every menu entry has an
@@ -766,7 +769,7 @@ void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const 
     auto surfaceStructure = document->onStructureChanged;
     document->onStructureChanged = [this, surfaceStructure]() {
         if (surfaceStructure) surfaceStructure();
-        RebuildLayerPanel();
+        ScheduleLayerPanelRebuild();
         UpdateStatus();
     };
     surface->ZoomToFit();
@@ -1180,6 +1183,19 @@ void UltraPaintWindow::RebuildToolOptions() {
     rightPanel->RequestRedraw();
 }
 
+void UltraPaintWindow::ScheduleLayerPanelRebuild() {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { RebuildLayerPanel(); return; }
+    if (layerPanelRebuildPending) return;
+    layerPanelRebuildPending = true;
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([this, alive]() {
+        if (alive.expired()) return;
+        layerPanelRebuildPending = false;
+        RebuildLayerPanel();
+    });
+}
+
 void UltraPaintWindow::RebuildLayerPanel() {
     if (!layerRows || !document) return;
     layerRows->ClearChildren();
@@ -1208,7 +1224,9 @@ void UltraPaintWindow::RebuildLayerPanel() {
         btn->SetStyle(st);
         btn->onToggle = [this, i](bool) {
             document->SetActiveLayerIndex(i);
-            RebuildLayerPanel();
+            // Also when `i` was already active: the click released the
+            // button, and the rebuild presses it again.
+            ScheduleLayerPanelRebuild();
         };
         btn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         row->AddChild(btn);
