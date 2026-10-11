@@ -1,4 +1,4 @@
-#### 2026-10-10 *1.72.2*
+#### 2026-10-11 *1.72.3*
 - **Menus follow the theme and stay clear of their buttons.** The context
   menu's line icons are painted in the entry's text colour - light on a dark
   menu, greyed with a disabled entry - while application icons in *Open
@@ -6,6 +6,15 @@
   `menu-anchors-symbolic-icons`). The New and Add drive menus open with the
   framework's `OpenMenuAnchored`: below their button, or above it when there
   is no room below.
+
+#### 2026-10-11 *1.72.2*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraFiler --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
 
 #### 2026-10-10 *1.72.1*
 - **Display > Tab style reaches every tab strip.** 1.71.0 dressed only the

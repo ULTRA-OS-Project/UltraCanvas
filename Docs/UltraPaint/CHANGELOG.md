@@ -1,4 +1,4 @@
-#### 2026-10-11 *0.2.13*
+#### 2026-10-11 *0.2.14*
 - **Sharp, clearer tool icons.** The palette's icons were drawn on a 24-unit
   grid with thin 1.8-unit strokes and shown at 22 px, half a pixel off: every
   line fell between two pixels, the selection icons' dashes ran together and
@@ -40,6 +40,15 @@
   ("Rename Layer"), as from Layer > Properties. The name buttons' tooltip
   says *Double-click to rename*. Built on the button's new `onDoubleClick`
   (framework changelog: `button-on-double-click`).
+
+#### 2026-10-10 *0.2.13*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraPaint --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
 
 #### 2026-10-09 *0.2.12*
 - **The Fill tool can make an area transparent.** Filling with a colour

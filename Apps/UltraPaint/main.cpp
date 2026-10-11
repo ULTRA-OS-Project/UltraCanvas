@@ -3,12 +3,13 @@
 // selections, brushes and shapes on the framework's raster-editing layer
 // (UCRasterDocument / UltraCanvasPaintSurface), adjustments and filters
 // through PixelFX (libvips).
-// Version: 1.1.0
-// Last Modified: 2026-09-12
+// Version: 1.1.1
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
 #include <exception>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -57,22 +58,22 @@ static void SignalHandler(int signal) {
 #endif
 
 static void PrintUsage(const char* programName) {
-    debugOutput << "UltraPaint - Bitmap Editor powered by UltraCanvas Framework" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Usage: " << programName << " [options] [image...]" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Options:" << std::endl;
-    debugOutput << "  -h, --help        Show this help message" << std::endl;
-    debugOutput << "  -v, --version     Show version information" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Examples:" << std::endl;
-    debugOutput << "  " << programName << "                 # blank canvas" << std::endl;
-    debugOutput << "  " << programName << " photo.jpg       # open an image" << std::endl;
-    debugOutput << "  " << programName << " work.ucraster   # open a layered project" << std::endl;
-    debugOutput << "  " << programName << " logo.svg        # a drawing: asks for the raster size" << std::endl;
-    debugOutput << "  " << programName << " part.stl        # a 3D model: asks for the view and the size" << std::endl;
-    debugOutput << "  " << programName << " a.png b.png     # one window each - what a drop on the" << std::endl;
-    debugOutput << "                                   # application icon expands to" << std::endl;
+    std::cout << "UltraPaint - Bitmap Editor powered by UltraCanvas Framework" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Usage: " << programName << " [options] [image...]" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  -h, --help        Show this help message" << std::endl;
+    std::cout << "  -v, --version     Show version information" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Examples:" << std::endl;
+    std::cout << "  " << programName << "                 # blank canvas" << std::endl;
+    std::cout << "  " << programName << " photo.jpg       # open an image" << std::endl;
+    std::cout << "  " << programName << " work.ucraster   # open a layered project" << std::endl;
+    std::cout << "  " << programName << " logo.svg        # a drawing: asks for the raster size" << std::endl;
+    std::cout << "  " << programName << " part.stl        # a 3D model: asks for the view and the size" << std::endl;
+    std::cout << "  " << programName << " a.png b.png     # one window each - what a drop on the" << std::endl;
+    std::cout << "                                   # application icon expands to" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -84,14 +85,14 @@ int main(int argc, char* argv[]) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
         } else if (arg == "--version" || arg == "-v") {
-            debugOutput << "UltraPaint version " << ULTRAPAINT_VERSION << std::endl;
-            debugOutput << "UltraCanvas Framework" << std::endl;
+            std::cout << "UltraPaint version " << ULTRAPAINT_VERSION << std::endl;
+            std::cout << "UltraCanvas Framework" << std::endl;
             return EXIT_SUCCESS;
         } else if (arg[0] != '-') {
             pathsToOpen.push_back(arg);
         } else {
-            debugOutput << "Unknown argument: " << arg << std::endl;
-            debugOutput << "Use --help for usage information" << std::endl;
+            std::cerr << "Unknown argument: " << arg << std::endl;
+            std::cerr << "Use --help for usage information" << std::endl;
             return EXIT_FAILURE;
         }
     }
