@@ -95,9 +95,12 @@ The same content copied again is not a second entry: it moves to the top
 
 `ClipboardHistoryPolicy` holds `maxEntries` (500 unpinned), `maxAgeDays` (30,
 by last use), `maxTotalBytes` (512 MB), `maxEntryBytes` (64 MB; a larger copy
-is not recorded), `recordingPaused`, `imageThumbnails` and
-`excludedApplications` (`Defaults()`: UltraPassword, UltraAuthenticator,
-KeePassXC, Bitwarden, 1Password).
+is not recorded), `recordingPaused`, `imageThumbnails`, `previewStyle` (how
+UltraClipboard previews an image whose thumbnail the pointer rests on:
+`ClipboardPreviewStyle::Modern`, a pane over the right part of the list with
+the viewer's info line, or `Classic`, the picture alone floating over the
+middle of the list) and `excludedApplications` (`Defaults()`: UltraPassword,
+UltraAuthenticator, KeePassXC, Bitwarden, 1Password).
 
 `EditClipboardText(text, edit)` is the edit dialog's text tools:
 `ClipboardTextEdit::Trim`, `JoinLines`, `Upper`, `Lower`, `Title`,

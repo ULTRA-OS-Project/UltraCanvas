@@ -1,6 +1,6 @@
 // Apps/UltraClipboard/ui/ClipboardDialogs.cpp
 // The edit and settings dialogs. See ClipboardDialogs.h.
-// Version: 0.1.0
+// Version: 0.1.3
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ClipboardDialogs.h"
@@ -226,7 +226,7 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
     config.showIcon = false;
     config.buttons = DialogButtons::NoButtons;
     config.width = static_cast<int>(kDialogWidth);
-    config.height = 610;
+    config.height = 650;
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
     dialog->SetIconVisible(false);
 
@@ -247,6 +247,12 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
     auto thumbnails = UltraCanvasCheckbox::CreateCheckbox("cbs.thumbnails", 0, 0, kContentWidth, 26,
                                                           "Show thumbnails of images", policy.imageThumbnails);
     dialog->AddDialogElement(thumbnails);
+    // How an image opens while the pointer rests on its thumbnail.
+    const std::vector<Choice> previewChoices = {
+        {"Classic: the picture floating over the list", static_cast<uint64_t>(ClipboardPreviewStyle::Classic)},
+        {"Modern: a pane on the right, with its info line", static_cast<uint64_t>(ClipboardPreviewStyle::Modern)}};
+    auto preview = ChoiceRow(dialog, "cbs.preview", "Image preview", previewChoices,
+                             static_cast<uint64_t>(policy.previewStyle));
 
     dialog->AddDialogElement(CreateLabel("cbs.excludedLabel", 0, 0, kContentWidth, 24,
                                          "Never record copies from these programs (one per line):"));
@@ -283,6 +289,7 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
     UltraCanvasDropdown* totalBox = total.get();
     UltraCanvasDropdown* largestBox = largest.get();
     UltraCanvasCheckbox* thumbnailsBox = thumbnails.get();
+    UltraCanvasDropdown* previewBox = preview.get();
     UltraCanvasTextArea* excludedBox = excluded.get();
     UltraCanvasDialogManager::ShowDialog(dialog, [=](DialogResult result) {
         if (result != DialogResult::OK) return;
@@ -296,6 +303,7 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
         updated.maxTotalBytes = pick(totalBox, totalChoices);
         updated.maxEntryBytes = pick(largestBox, entrySizeChoices);
         updated.imageThumbnails = thumbnailsBox->IsChecked();
+        updated.previewStyle = static_cast<ClipboardPreviewStyle>(pick(previewBox, previewChoices));
         updated.excludedApplications.clear();
         std::string line;
         for (char c : excludedBox->GetText() + "\n") {

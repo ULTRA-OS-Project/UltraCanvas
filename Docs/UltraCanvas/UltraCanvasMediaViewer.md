@@ -354,6 +354,7 @@ preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
 preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
 preview->SetFitEnlarges(false);         // a small picture at its own size, not blown up
+preview->SetInfoBarVisible(false);      // nothing but the picture (UltraClipboard's classic preview)
 ```
 
 `SetFitEnlarges(false)` makes fit-to-window shrink only: a picture smaller

@@ -10,6 +10,11 @@
   entry's row or on the preview itself, follows the wheel scrolling the list
   under a still pointer, and closes on Escape or when the pointer goes
   elsewhere.
+- **Two styles of preview, in Settings under "Image preview".** *Modern*
+  (the default) is the pane above. *Classic* is the picture alone, in its
+  12 px frame, floating over the middle of the list at the size it fits in
+  60 % of the list's width - no info line, nothing but the image. The choice
+  is kept with the history's settings.
 
 #### 2026-10-10 *0.1.2*
 - **The More button at the top right shows its three dots on Windows.** It

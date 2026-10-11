@@ -17,3 +17,9 @@
   loaded its file while hidden, as a hover preview does, and read `0%` on
   its first showing - kept the stale figure until the next zoom. `Arrange`
   now refreshes it when the surface's size changes.
+- **`UltraCanvasMediaViewer::SetInfoBarVisible(false)`** hides the info bar
+  under the display surface, as `SetTopBarsVisible(false)` hides the bars
+  above it: a host that wants nothing but the picture.
+- **`ClipboardHistoryPolicy::previewStyle`** (`ClipboardPreviewStyle::Modern`
+  or `Classic`, kept with the policy as `previewStyle`): how UltraClipboard
+  previews an image whose thumbnail the pointer rests on.

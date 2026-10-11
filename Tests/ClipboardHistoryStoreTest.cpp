@@ -341,7 +341,10 @@ int main(int, char** argv) {
     TEST("paused: nothing is kept", history.Record(TextCopy("while paused")) == ClipboardRecordResult::Paused);
     policy.recordingPaused = false;
     policy.maxEntries = 10;
+    policy.previewStyle = ClipboardPreviewStyle::Classic;
     history.SetPolicy(policy);
+    TEST("the preview style is kept with the policy",
+         history.GetPolicy().previewStyle == ClipboardPreviewStyle::Classic);
     for (int i = 0; i < 15; ++i) history.Record(TextCopy("note " + std::to_string(i)));
     const auto stats = history.GetStats();
     TEST("at most ten unpinned entries are kept", stats.entries == 11 && stats.pinned == 1);

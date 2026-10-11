@@ -496,6 +496,11 @@ public:
     // provide their own navigation. Default: visible.
     void SetTopBarsVisible(bool visible);
     bool GetTopBarsVisible() const { return topBarsVisible; }
+    // Show/hide the info bar under the display surface (file name, size,
+    // zoom, the Details button). A host that wants nothing but the picture -
+    // UltraClipboard's classic hover preview - turns it off. Default: visible.
+    void SetInfoBarVisible(bool visible);
+    bool GetInfoBarVisible() const { return infoBarVisible; }
 
     // ===== TOOLS FOR THE SHOWN FILE =====
     // Which view / edit tools apply to what is on show (see MediaViewerTools),
@@ -656,6 +661,7 @@ private:
     size_t currentIndex = 0;
     std::string currentFolder;     // folder the breadcrumb reflects
     bool topBarsVisible = true;    // breadcrumb + toolbars above the surface
+    bool infoBarVisible = true;    // the info bar under it
 
     std::shared_ptr<UltraCanvasBreadcrumb>   breadcrumb;
     std::shared_ptr<UltraCanvasToolbar>      toolbar;   // navigation / slideshow row

@@ -17,16 +17,21 @@
 // The preview: resting the pointer on an image's thumbnail (or on the
 // thumbnail of copied files whose first file the media viewer shows - a
 // picture, a PDF, a drawing, a 3D model, a video's first frame) opens the
-// entry at full size in an UltraCanvasMediaViewer over the right 60 % of
-// the list, in a 12 px frame, so the thumbnails and the start of every
-// title stay readable beside it. It stays while the pointer is on that row
-// or on the preview itself, where the wheel zooms; it follows the wheel
-// scrolling the list; Escape or moving elsewhere closes it.
+// entry at full size in an UltraCanvasMediaViewer, in a 12 px frame, in one
+// of two styles (Settings, "Image preview"; ClipboardHistoryPolicy::
+// previewStyle): Modern, a pane over the right 60 % of the list with the
+// viewer's info line, so the thumbnails and the start of every title stay
+// readable beside it; or Classic, the picture alone, floating over the
+// middle of the list at the size it fits in 60 % of the list's width. It
+// stays while the pointer is on that row or on the preview itself, where
+// the wheel zooms; it follows the wheel scrolling the list; Escape or
+// moving elsewhere closes it.
 // Version: 0.1.3
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasClipboardHistory.h"   // ClipboardPreviewStyle
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasWindow.h"
 
@@ -102,7 +107,8 @@ private:
     void RequestPreview(int64_t id);     // after a short rest on the thumbnail
     void ShowPreview(const UltraCanvas::ClipboardHistoryEntry& entry);
     void HidePreview();
-    void PlacePreview();                 // over the right 60 % of the list
+    void ApplyPreviewStyle();            // the policy's style onto the viewer and the panel
+    void PlacePreview();                 // Modern: the right 60 % of the list; Classic: centred, sized to the picture
     // The file the viewer shows for an entry: an image written to the
     // hand-off folder (once per entry), the first of copied files when the
     // viewer can show it; "" when there is nothing to preview.
@@ -140,6 +146,9 @@ private:
     int64_t previewId_ = 0;              // the entry on show; 0 while hidden
     int64_t previewWantedId_ = 0;        // the thumbnail the pointer rests on, until the delay passes
     bool previewLeaveCheck_ = false;     // the list lost the pointer: on the preview, or gone?
+    UltraCanvas::ClipboardPreviewStyle previewStyle_ = UltraCanvas::ClipboardPreviewStyle::Modern;
+    int previewWidth_ = 0;               // the picture on show, in pixels; 0 when not known (a file)
+    int previewHeight_ = 0;
     UltraCanvas::TimerId previewTimer_ = 0;
     UltraCanvas::Rect2Df previewListBounds_;   // the list as the preview was last placed over it
     UltraCanvas::Point2Di pointer_;      // where the pointer last was, in window coordinates

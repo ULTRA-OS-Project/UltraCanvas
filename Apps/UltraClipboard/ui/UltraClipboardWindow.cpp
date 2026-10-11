@@ -417,10 +417,15 @@ void UltraClipboardWindow::Reload() {
     const std::string text = search_->GetText();
     model_->SetEntries(history_->List(QueryFor(kinds_->GetSelectedIndex(), text)),
                        ClipboardHistoryListModel::Sections::ByDay);
+    const ClipboardHistoryPolicy policy = history_->GetPolicy();
     updatingRecording_ = true;
-    const bool recordingNow = !history_->GetPolicy().recordingPaused;
+    const bool recordingNow = !policy.recordingPaused;
     if (recording_->IsChecked() != recordingNow) recording_->SetChecked(recordingNow);
     updatingRecording_ = false;
+    if (policy.previewStyle != previewStyle_) {
+        previewStyle_ = policy.previewStyle;
+        ApplyPreviewStyle();
+    }
     UpdateStatus();
     if (model_->GetEntryCount() == 0) {
         list_->ResetSelection();
@@ -782,7 +787,19 @@ std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildPreview() {
     previewViewer_->SetVideoPreviewMode(VideoPreviewMode::Still);   // a copied video: its first frame, silent
     previewViewer_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     preview_->AddChild(previewViewer_);
+    if (history_) previewStyle_ = history_->GetPolicy().previewStyle;
+    ApplyPreviewStyle();
     return preview_;
+}
+
+// Modern keeps the viewer's info line (name, size, zoom) and its backdrop
+// strip under a transparent image; Classic is the picture alone.
+void UltraClipboardWindow::ApplyPreviewStyle() {
+    if (!previewViewer_) return;
+    const bool modern = previewStyle_ == ClipboardPreviewStyle::Modern;
+    previewViewer_->SetInfoBarVisible(modern);
+    previewViewer_->SetTransparencyPaletteVisible(modern);
+    if (previewId_ != 0) PlacePreview();
 }
 
 // From the list, on every pointer move over it and again when it scrolls
@@ -851,6 +868,8 @@ void UltraClipboardWindow::ShowPreview(const ClipboardHistoryEntry& entry) {
         return;
     }
     previewId_ = entry.id;
+    previewWidth_ = entry.kind == ClipboardEntryKind::Image ? entry.width : 0;
+    previewHeight_ = entry.kind == ClipboardEntryKind::Image ? entry.height : 0;
     PlacePreview();
     preview_->SetVisible(true);
     // The row's tooltip (the entry's title) would sit on the thumbnail while
@@ -876,18 +895,34 @@ void UltraClipboardWindow::HidePreview() {
     if (window_) window_->RequestRedraw();
 }
 
-// The right 60 % of the list, its full height: the thumbnails and the start
-// of every title stay readable on the left.
+// Modern: the right 60 % of the list, its full height - the thumbnails and
+// the start of every title stay readable on the left. Classic: centred over
+// the list, the frame hugging the picture at the size it fits in 60 % of the
+// list's width and the list's height, never enlarged; a file of unknown size
+// takes that whole box.
 void UltraClipboardWindow::PlacePreview() {
     if (!preview_ || !list_) return;
     const Rect2Df list = list_->GetBoundsInWindow();
     previewListBounds_ = list;
-    const float width = std::round(list.width * kPreviewShare);
+    float width = std::round(list.width * kPreviewShare);
+    float height = list.height;
+    float left = list.x + list.width - width;
+    float top = list.y;
+    if (previewStyle_ == ClipboardPreviewStyle::Classic) {
+        const float edge = 2 * (kPreviewFrame + 1);   // the frame and the 1 px border, both sides
+        if (previewWidth_ > 0 && previewHeight_ > 0) {
+            const float scale = std::min({(width - edge) / previewWidth_, (height - edge) / previewHeight_, 1.0f});
+            width = std::round(previewWidth_ * scale) + edge;
+            height = std::round(previewHeight_ * scale) + edge;
+        }
+        left = std::round(list.x + (list.width - width) / 2);
+        top = std::round(list.y + (list.height - height) / 2);
+    }
     CSSLayout::Position at;
-    at.left = CSSLayout::Dimension::Px(list.x + list.width - width);
-    at.top = CSSLayout::Dimension::Px(list.y);
+    at.left = CSSLayout::Dimension::Px(left);
+    at.top = CSSLayout::Dimension::Px(top);
     preview_->layoutItem.SetPositionInsets(at);
-    preview_->SetElementSize(CSSLayout::Dimension::Px(width), CSSLayout::Dimension::Px(list.height));
+    preview_->SetElementSize(CSSLayout::Dimension::Px(width), CSSLayout::Dimension::Px(height));
 }
 
 std::string UltraClipboardWindow::PreviewFileFor(const ClipboardHistoryEntry& entry) {

@@ -1943,6 +1943,13 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
 }
 
+void UltraCanvasMediaViewer::SetInfoBarVisible(bool visible) {
+    if (infoBarVisible == visible) return;
+    infoBarVisible = visible;
+    if (bottomBar) bottomBar->SetVisible(visible);
+    RequestRedraw();
+}
+
 void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
     if (topBarsVisible == visible) return;
     topBarsVisible = visible;
