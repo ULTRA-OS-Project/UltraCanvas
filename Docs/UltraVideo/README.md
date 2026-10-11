@@ -30,8 +30,10 @@ folder imports its files). Every file is probed by the engine and shows a
 duration badge, *photo*, or *unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
 the timeline; a song becomes the music under the whole video. A search
-field filters the bin by name. The *Music* tab lists the songs; *Titles*
-and *Effects* wait for a later release.
+field filters the bin by name. The *Music* tab lists the songs. The
+*Titles* tab holds the title styles - *Opening title*, *Lower third*,
+*Caption*, *Closing card* - and a click puts one on the title lane at the
+playhead. *Effects* waits for a later release.
 
 ### The viewer
 
@@ -46,9 +48,10 @@ with the draft render in a later release.
 
 ### The timeline
 
-The `UltraCanvasVideoTimeline` element with two lanes: **V1 Main track**,
-magnetic - clips follow each other, gaps close - and **A1 Music**, which
-shows the songs and is edited from the inspector. Drag a clip to reorder,
+The `UltraCanvasVideoTimeline` element with three lanes: **T1 Titles**, a
+free lane of title spans over the picture; **V1 Main track**, magnetic -
+clips follow each other, gaps close; and **A1 Music**, which shows the
+songs and is edited from the inspector. Drag a clip to reorder,
 drag an edge to trim, drag a transition's edge for its length, drop files
 at a time, right-click for the menu. The toolbar: Select `V`, Blade `B`,
 Trim `T`, Slip `Y`; split at the playhead `S`, delete `Del`, a marker `M`;
@@ -56,13 +59,26 @@ snapping `N` and beat marks; the playhead's timecode field over the length
 (type a time and `Enter`); zoom out, the zoom slider, zoom in, fit
 `Shift+Z`. The element's own keys are listed in its document.
 
+### Titles
+
+A title is one span on the title lane: drag it to its time, drag its edges
+for its length, split it with `S`, delete it with `Del`. Its text, style,
+place on the frame (the nine anchors), size, colour, shadow, band and
+fades are in the inspector. When the engine renders - in the viewer and in
+the export - the span becomes a text overlay on every clip it crosses,
+with the fades only at the span's own ends, so a title runs across a cut
+without a seam. The project file keeps the spans and writes the overlays
+beside them for `videofx render`.
+
 ### The inspector
 
 - **Clip**: the selected clip's name and what it is; for a video its *In*
   and *Out* as timecode fields and its *Speed*; for a photo or a card its
   *Length*, and for a photo the *Motion* (auto, still, zoom, pan), the
   *Framing* and *Keep faces in shot*; *Mute*; the **transition into** the
-  clip, by type and length with the maximum shown.
+  clip, by type and length with the maximum shown. For a title: its text
+  (type it and press `Enter`), length, style, place, size, colour, shadow,
+  band, fade in and fade out.
 - **Audio**: the music - the songs, *Add song*, *Remove music*, *Volume*,
   *Fade in*, *Fade out*, *Crossfade* between songs, repeat, and the ducking
   under the clips' own sound by preset (speech, outdoor, loud event) and
@@ -114,7 +130,7 @@ the engine).
 
 ## Not yet
 
-The title lane and overlay-video lane, the story wizard, effect presets,
+The overlay-video lane, the story wizard, effect presets,
 drag from the bin onto the timeline, playback with sound, and the mapping
 of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has

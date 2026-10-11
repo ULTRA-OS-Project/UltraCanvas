@@ -35,8 +35,9 @@ public:
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> Build(const Palette& palette);
     void ApplyPalette(const Palette& palette);
 
-    // Show the document: `segment` is the selected clip's segment, -1 for none
-    void Show(const Document& document, int segment);
+    // Show the document: `segment` is the selected clip's segment and
+    // `title` the selected title span, -1 for none
+    void Show(const Document& document, int segment, int title = -1);
     void ShowClipTab();
 
     // An edit of the document, named for the history
@@ -76,6 +77,14 @@ private:
     std::shared_ptr<Switch> keepFaces;
     std::shared_ptr<TimecodeField> stillLength;
     std::shared_ptr<Container> stillRow;
+    // a title span
+    std::shared_ptr<Container> titleRows;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> titleText;
+    std::shared_ptr<Dropdown> titleStyle, titleAnchor, titleColor;
+    std::shared_ptr<Slider> titleSize, titleFadeIn, titleFadeOut;
+    std::shared_ptr<Label> titleSizeValue, titleFadeInValue, titleFadeOutValue;
+    std::shared_ptr<Switch> titleShadow, titleBox;
+    std::shared_ptr<TimecodeField> titleLength;
 
     // Audio
     std::shared_ptr<Label> songs;
@@ -90,6 +99,7 @@ private:
     std::shared_ptr<Dropdown> size, frameRate, fitMode;
 
     int segment = -1;
+    int title = -1;
     double documentFrameRate = 25.0;
     bool updating = false;
 };

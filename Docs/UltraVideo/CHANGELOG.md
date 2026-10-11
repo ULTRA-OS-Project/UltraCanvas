@@ -26,10 +26,19 @@
     at a time. Thumbnails and waveforms come from the engine on the worker.
     The toolbar: the four tools, split, delete, marker, snapping, beat
     marks, the playhead's timecode field over the length, zoom.
+  - The title lane: *T1 Titles* over the main track, a free lane of title
+    spans. The bin's *Titles* tab offers four styles - opening title, lower
+    third, caption, closing card - and puts one at the playhead; the span
+    is dragged, trimmed, split and deleted like a clip, and the inspector
+    sets its text, style, place, size, colour, shadow, band and fades. The
+    engine gets one text overlay per clip the span crosses, with the fades
+    at the span's own ends only, so a title runs across a cut; the viewer
+    shows it while editing. The project file keeps the spans and writes
+    the derived overlays beside them for `videofx render`.
   - The inspector: *Clip* (in and out, speed, mute, the transition into
-    the clip, a photo's motion, framing and faces), *Audio* (the songs,
-    volume, fades, crossfade, loop, ducking), *Project* (name, size, frame
-    rate, fit).
+    the clip, a photo's motion, framing and faces, a title's text and
+    look), *Audio* (the songs, volume, fades, crossfade, loop, ducking),
+    *Project* (name, size, frame rate, fit).
   - Undo and redo over every edit, with the clean mark driving the *Saved*
     state and the close question.
   - `.ultravideo` projects: the engine's own project JSON inside, with the
@@ -37,7 +46,7 @@
   - Export: a preset (web MP4 at 1080p, 720p or 4K, WebM, GIF, ProRes,
     MP3), the output file, the whole project or the work area; the job
     runs in the background with a progress dialog and can be cancelled.
-  - Not yet: the title and overlay-video lanes, the story wizard, effect
-    presets, drag from the bin onto the timeline, playback with sound (the
-    draft render), and the theme-role mapping (the app colours its
-    elements from the design's tokens directly).
+  - Not yet: the overlay-video lane, the story wizard, effect presets,
+    drag from the bin onto the timeline, playback with sound (the draft
+    render), and the theme-role mapping (the app colours its elements from
+    the design's tokens directly).

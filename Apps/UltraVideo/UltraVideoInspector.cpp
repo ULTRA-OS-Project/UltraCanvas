@@ -56,6 +56,14 @@ const char* kFitLabels[] = {"Auto", "Fill the frame", "Whole picture", "Blurred 
 const VideoFXDuckingPreset kDucking[] = {VideoFXDuckingPreset::Speech, VideoFXDuckingPreset::Outdoor, VideoFXDuckingPreset::LoudEvent};
 const char* kDuckingLabels[] = {"Speech", "Outdoor", "Loud event"};
 
+const VideoFXAnchor kAnchors[] = {VideoFXAnchor::TopLeft, VideoFXAnchor::Top, VideoFXAnchor::TopRight, VideoFXAnchor::Left,
+                                  VideoFXAnchor::Center, VideoFXAnchor::Right, VideoFXAnchor::BottomLeft, VideoFXAnchor::Bottom,
+                                  VideoFXAnchor::BottomRight};
+const char* kAnchorLabels[] = {"Top left", "Top", "Top right", "Left", "Centre", "Right", "Bottom left", "Bottom", "Bottom right"};
+struct NamedColor { const char* label; uint32_t rgb; };
+const NamedColor kColors[] = {{"White", 0xFFFFFF}, {"Black", 0x000000}, {"Amber", 0xF2A53A}, {"Red", 0xD23420},
+                              {"Green", 0x2F7A4D}, {"Blue", 0x0B6AA6}, {"Yellow", 0xFFE08A}};
+
 template <typename T, size_t N>
 int IndexIn(const T (&values)[N], T value) {
     for (size_t i = 0; i < N; ++i) if (values[i] == value) return static_cast<int>(i);
@@ -71,6 +79,11 @@ std::shared_ptr<UltraCanvasContainer> Inspector::Page(const std::string& id) {
     auto page = std::make_shared<UltraCanvasContainer>(id, 0, 0, kPageWidth + 24, 600);
     page->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     page->SetPadding(static_cast<float>(Tokens::Space3));
+    // A form taller than the pane scrolls, down only
+    ContainerStyle scroll = page->GetContainerStyle();
+    scroll.autoShowScrollbars = true;
+    scroll.autoShowHorizontalScrollbar = false;
+    page->SetContainerStyle(scroll);
     return page;
 }
 
@@ -124,8 +137,12 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     clipEmpty->AddChild(emptyText);
     clipPage->AddChild(clipEmpty);
 
-    clipFields = std::make_shared<UltraCanvasContainer>("uv.insp.clip.fields", 0, 0, kPageWidth, 500);
+    // Tall enough for the longest form (a title's); the page scrolls when
+    // the pane is shorter. Sections keep their size rather than shrinking,
+    // so the page sees the overflow and shows its scrollbar.
+    clipFields = std::make_shared<UltraCanvasContainer>("uv.insp.clip.fields", 0, 0, kPageWidth, 540);
     clipFields->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    clipFields->layoutItem.SetFlexShrink(0);
     clipName = Heading(clipFields, "uv.insp.clip.name", "");
     clipKind = CreateLabel("uv.insp.clip.kind", 0, 0, kPageWidth, 18, "");
     clipKind->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
@@ -134,6 +151,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
 
     fileRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.file", 0, 0, kPageWidth, 140);
     fileRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    fileRows->layoutItem.SetFlexShrink(0);
     inField = CreateTimecodeField("uv.insp.in", 0, 0, 120, ctl);
     inField->onCommit = [this](long long frames) {
         const double seconds = frames / documentFrameRate;
@@ -216,6 +234,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
 
     imageRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.image", 0, 0, kPageWidth, 110);
     imageRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    imageRows->layoutItem.SetFlexShrink(0);
     motion = CreateDropdown("uv.insp.motion", 0, 0, kFieldWidth, ctl);
     for (const char* l : kMotionLabels) motion->AddItem(l);
     motion->onSelectionChanged = [this](int i, const DropdownItem&) {
@@ -254,8 +273,150 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     imageRows->AddChild(keepFaces);
     clipFields->AddChild(imageRows);
 
+    // ---- a title span ----
+    titleRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.title", 0, 0, kPageWidth, 320);
+    titleRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    titleRows->layoutItem.SetFlexShrink(0);
+    titleText = CreateTextInput("uv.insp.titleText", 0, 0, kPageWidth, ctl);
+    titleText->SetPlaceholder("The title's text");
+    titleText->onEnterPressed = [this](const std::string& text) {
+        const int index = title;
+        Edit("Change title text", [index, text](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.titles.size()) d.titles[static_cast<size_t>(index)].look.text = text;
+        });
+        return true;
+    };
+    titleText->layoutItem.SetFlexShrink(0);
+    titleRows->AddChild(titleText);
+    titleLength = CreateTimecodeField("uv.insp.titleLength", 0, 0, 120, ctl);
+    titleLength->onCommit = [this](long long frames) {
+        const int index = title;
+        const double seconds = std::max(0.04, frames / documentFrameRate);
+        Edit("Set title length", [index, seconds](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.titles.size()) d.titles[static_cast<size_t>(index)].duration = seconds;
+        });
+    };
+    timecodes.push_back(titleLength);
+    Row(titleRows, "uv.insp.row.titleLength", "Length", titleLength);
+    titleStyle = CreateDropdown("uv.insp.titleStyle", 0, 0, kFieldWidth, ctl);
+    for (const TitleStyle& st : TitleStyles()) titleStyle->AddItem(st.label);
+    titleStyle->onSelectionChanged = [this](int i, const DropdownItem&) {
+        const int index = title;
+        const std::string key = TitleStyles()[static_cast<size_t>(std::clamp<int>(i, 0, static_cast<int>(TitleStyles().size()) - 1))].key;
+        Edit("Set title style", [index, key](Document& d) {
+            if (index < 0 || static_cast<size_t>(index) >= d.titles.size()) return;
+            const TitleStyle* st = FindTitleStyle(key);
+            if (!st) return;
+            TitleSpan& t = d.titles[static_cast<size_t>(index)];
+            const std::string text = t.look.text;
+            t.look = st->look;
+            t.look.text = text;
+            t.fadeIn = st->fadeIn;
+            t.fadeOut = st->fadeOut;
+            t.style = st->key;
+        });
+    };
+    dropdowns.push_back(titleStyle);
+    Row(titleRows, "uv.insp.row.titleStyle", "Style", titleStyle);
+    titleAnchor = CreateDropdown("uv.insp.titleAnchor", 0, 0, kFieldWidth, ctl);
+    for (const char* l : kAnchorLabels) titleAnchor->AddItem(l);
+    titleAnchor->onSelectionChanged = [this](int i, const DropdownItem&) {
+        const int index = title;
+        const VideoFXAnchor anchor = kAnchors[std::clamp(i, 0, 8)];
+        Edit("Place title", [index, anchor](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.titles.size()) d.titles[static_cast<size_t>(index)].look.anchor = anchor;
+        });
+    };
+    dropdowns.push_back(titleAnchor);
+    Row(titleRows, "uv.insp.row.titleAnchor", "Place", titleAnchor);
+    titleSize = CreateSlider("uv.insp.titleSize", 0, 0, 110, ctl);
+    titleSize->SetRange(0.02f, 0.3f);
+    titleSize->SetStep(0.005f);
+    titleSize->SetValueDisplay(SliderValueDisplay::NoDisplay);
+    titleSize->onValueChanged = [this](float v) {
+        if (titleSizeValue) titleSizeValue->SetText(std::to_string(static_cast<int>(std::lround(v * 100))) + " %");
+        const int index = title;
+        const double size = std::clamp(static_cast<double>(v), 0.02, 0.3);
+        Edit("Set title size", [index, size](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.titles.size()) d.titles[static_cast<size_t>(index)].look.fontSize = size;
+        });
+    };
+    sliders.push_back(titleSize);
+    auto sizeRow = Row(titleRows, "uv.insp.row.titleSize", "Size", titleSize);
+    titleSizeValue = CreateLabel("uv.insp.titleSizeValue", 0, 0, 44, ctl, "");
+    titleSizeValue->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
+    captions.push_back(titleSizeValue);
+    sizeRow->AddChild(titleSizeValue);
+    titleColor = CreateDropdown("uv.insp.titleColor", 0, 0, kFieldWidth, ctl);
+    for (const NamedColor& c : kColors) titleColor->AddItem(c.label);
+    titleColor->onSelectionChanged = [this](int i, const DropdownItem&) {
+        const int index = title;
+        const uint32_t rgb = kColors[std::clamp(i, 0, 6)].rgb;
+        Edit("Colour title", [index, rgb](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.titles.size()) d.titles[static_cast<size_t>(index)].look.textColor = rgb;
+        });
+    };
+    dropdowns.push_back(titleColor);
+    Row(titleRows, "uv.insp.row.titleColor", "Colour", titleColor);
+    titleShadow = UltraCanvasSwitch::Create("uv.insp.titleShadow", 0, 0, "Shadow", true);
+    titleShadow->onStateChanged = [this](CheckedState, CheckedState now) {
+        const int index = title;
+        const bool on = now == CheckedState::Checked;
+        Edit("Title shadow", [index, on](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.titles.size()) d.titles[static_cast<size_t>(index)].look.shadow = on;
+        });
+    };
+    titleShadow->layoutItem.SetFlexShrink(0);
+    switches.push_back(titleShadow);
+    auto switchRow = std::make_shared<UltraCanvasContainer>("uv.insp.titleSwitches", 0, 0, kPageWidth, ctl + 4);
+    switchRow->layout.SetFlexRow().SetFlexGap(static_cast<int>(Tokens::Space3)).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    switchRow->layoutItem.SetFlexShrink(0);
+    switchRow->AddChild(titleShadow);
+    titleBox = UltraCanvasSwitch::Create("uv.insp.titleBox", 0, 0, "Band", false);
+    titleBox->onStateChanged = [this](CheckedState, CheckedState now) {
+        const int index = title;
+        const bool on = now == CheckedState::Checked;
+        Edit("Title band", [index, on](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.titles.size()) d.titles[static_cast<size_t>(index)].look.box = on;
+        });
+    };
+    titleBox->SetTooltip("A dark band behind the text, as a lower third has");
+    titleBox->layoutItem.SetFlexShrink(0);
+    switches.push_back(titleBox);
+    switchRow->AddChild(titleBox);
+    titleRows->AddChild(switchRow);
+    auto titleSlider = [&](const std::string& id, float lo, float hi, float step, std::shared_ptr<Slider>& out,
+                           std::shared_ptr<Label>& value, const std::string& caption, const std::string& label,
+                           std::function<void(TitleSpan&, double)> apply, std::function<std::string(double)> format) {
+        out = CreateSlider(id, 0, 0, 110, ctl);
+        out->SetRange(lo, hi);
+        out->SetStep(step);
+        out->SetValueDisplay(SliderValueDisplay::NoDisplay);
+        auto row = Row(titleRows, id + ".row", caption, out);
+        value = CreateLabel(id + ".value", 0, 0, 50, ctl, "");
+        value->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
+        captions.push_back(value);
+        row->AddChild(value);
+        sliders.push_back(out);
+        Label* valuePtr = value.get();
+        out->onValueChanged = [this, valuePtr, label, apply, format](float v) {
+            valuePtr->SetText(format(v));
+            const int index = title;
+            const double d = v;
+            Edit(label, [index, apply, d](Document& doc) {
+                if (index >= 0 && static_cast<size_t>(index) < doc.titles.size()) apply(doc.titles[static_cast<size_t>(index)], d);
+            });
+        };
+    };
+    titleSlider("uv.insp.titleFadeIn", 0.0f, 5.0f, 0.1f, titleFadeIn, titleFadeInValue, "Fade in", "Set title fade in",
+                [](TitleSpan& t, double v) { t.fadeIn = v; }, [](double v) { return Seconds(v); });
+    titleSlider("uv.insp.titleFadeOut", 0.0f, 5.0f, 0.1f, titleFadeOut, titleFadeOutValue, "Fade out", "Set title fade out",
+                [](TitleSpan& t, double v) { t.fadeOut = v; }, [](double v) { return Seconds(v); });
+    clipFields->AddChild(titleRows);
+
     transitionRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.transition", 0, 0, kPageWidth, 100);
     transitionRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    transitionRows->layoutItem.SetFlexShrink(0);
     Heading(transitionRows, "uv.insp.transition.heading", "Transition in");
     transitionType = CreateDropdown("uv.insp.transitionType", 0, 0, kFieldWidth, ctl);
     for (const TransitionChoice& c : TransitionChoices()) transitionType->AddItem(c.label);
@@ -445,6 +606,7 @@ void Inspector::StyleControls(const Palette& p) {
     input.caretColor = ToColor(p.Ink);
     input.borderRadius = static_cast<int>(Tokens::RadiusSm);
     projectName->SetStyle(input);
+    titleText->SetStyle(input);
     addSong->SetStyle(PlainButtonStyle(p));
     removeSongs->SetStyle(PlainButtonStyle(p));
 }
@@ -477,17 +639,50 @@ void Inspector::ShowClipTab() {
     if (tabs) tabs->SetActiveTab(0);
 }
 
-void Inspector::Show(const Document& doc, int index) {
+void Inspector::Show(const Document& doc, int index, int titleIndex) {
     updating = true;
     segment = index;
+    title = titleIndex;
     documentFrameRate = doc.FrameRate();
     for (auto& t : timecodes) t->SetFrameRate(documentFrameRate);
 
     // ---- Clip ----
     const bool hasClip = index >= 0 && static_cast<size_t>(index) < doc.project.segments.size();
-    clipEmpty->SetVisible(!hasClip);
-    clipFields->SetVisible(hasClip);
+    const bool hasTitle = !hasClip && titleIndex >= 0 && static_cast<size_t>(titleIndex) < doc.titles.size();
+    clipEmpty->SetVisible(!hasClip && !hasTitle);
+    clipFields->SetVisible(hasClip || hasTitle);
+    titleRows->SetVisible(hasTitle);
+    if (hasTitle) {
+        const TitleSpan& t = doc.titles[static_cast<size_t>(titleIndex)];
+        clipName->SetText(t.Name());
+        clipKind->SetText("Title on the title lane");
+        fileRows->SetVisible(false);
+        stillRow->SetVisible(false);
+        imageRows->SetVisible(false);
+        transitionRows->SetVisible(false);
+        mute->SetVisible(false);
+        clipDuration->SetText(Seconds(t.duration) + " on the timeline, from " + TimelineTimecode(t.start, documentFrameRate));
+        titleText->SetText(t.look.text);
+        titleLength->SetMaximumFrames(0);
+        titleLength->SetSeconds(t.duration);
+        int styleIndex = 0;
+        for (size_t i = 0; i < TitleStyles().size(); ++i) if (t.style == TitleStyles()[i].key) styleIndex = static_cast<int>(i);
+        titleStyle->SetSelectedIndex(styleIndex, false);
+        titleAnchor->SetSelectedIndex(IndexIn(kAnchors, t.look.anchor), false);
+        titleSize->SetValue(static_cast<float>(t.look.fontSize));
+        titleSizeValue->SetText(std::to_string(static_cast<int>(std::lround(t.look.fontSize * 100))) + " %");
+        int colorIndex = 0;
+        for (int i = 0; i < 7; ++i) if (kColors[i].rgb == t.look.textColor) colorIndex = i;
+        titleColor->SetSelectedIndex(colorIndex, false);
+        titleShadow->SetChecked(t.look.shadow);
+        titleBox->SetChecked(t.look.box);
+        titleFadeIn->SetValue(static_cast<float>(t.fadeIn));
+        titleFadeInValue->SetText(Seconds(t.fadeIn));
+        titleFadeOut->SetValue(static_cast<float>(t.fadeOut));
+        titleFadeOutValue->SetText(Seconds(t.fadeOut));
+    }
     if (hasClip) {
+        mute->SetVisible(true);
         const VideoFXSegment& s = doc.project.segments[static_cast<size_t>(index)];
         clipName->SetText(ClipName(doc, static_cast<size_t>(index)));
         const bool isFile = s.kind == VideoFXSourceKind::File;

@@ -237,6 +237,96 @@ int main() {
     CHECK(!ApplyChange(doc, onMusic), "the music lane is not edited from the timeline");
     (void)first; (void)third;
 
+    std::printf("\n-- titles --\n");
+    {
+        Document td;
+        td.Import(clip);
+        td.AppendMedia(*td.FindMedia(clip));          // 0..3 s
+        td.AppendMedia(*td.FindMedia(clip));          // 3..6 s
+        td.project.segments[1].transitionIn = VideoFXTransition::Crossfade(1.0);   // so the second starts at 2 s
+        CHECK(TitleStyles().size() == 4 && FindTitleStyle("lower") && !FindTitleStyle("none"), "four title styles by key");
+        const int first = td.AddTitle("opening", 1.0, "Summer trip");
+        CHECK(first == 0 && td.titles.size() == 1 && td.titles[0].id == "t1" && td.titles[0].look.text == "Summer trip", "a title from a style, with the text");
+        CHECK(td.titles[0].look.anchor == VideoFXAnchor::Center && Near(td.titles[0].duration, 4.0, 1e-9) && Near(td.titles[0].fadeIn, 0.6, 1e-9), "the style's look, length and fades");
+        CHECK(td.titles[0].Name() == "Summer trip", "named by its text");
+        const int second = td.AddTitle("lower", 2.0);
+        CHECK(second == 1 && Near(td.titles[1].start, 5.0, 1e-9) && td.titles[1].look.text == "Lower third", "a second title goes after the first, with the style's name as text");
+        td.titles[1].look.text = "Anna\nat the beach";
+        CHECK(td.titles[1].Name() == "Anna", "the first line names it");
+        CHECK(td.TitleIndex("t2") == 1 && td.TitleIndex("c1") == -1, "titles are found by id");
+
+        const std::vector<double> starts = td.SegmentStarts();
+        const double clipSeconds = td.SegmentSeconds(0);   // the probe's length, 3 s or a little over
+        CHECK(starts.size() == 2 && starts[0] == 0.0 && Near(starts[1], clipSeconds - 1.0, 1e-9), "segment starts as the timeline derives them");
+        std::vector<VideoFXSegment> engine = td.SegmentsForEngine();
+        CHECK(td.project.segments[0].overlays.empty() && engine.size() == 2, "the document's segments stay clean; the engine's copy gets the overlays");
+        CHECK(engine[0].overlays.size() == 1 && Near(engine[0].overlays[0].start, 1.0, 1e-9) && engine[0].overlays[0].end == 0.0, "the first segment: the title from 1 s to its end");
+        CHECK(Near(engine[0].overlays[0].fadeIn, 0.6, 1e-9) && engine[0].overlays[0].fadeOut == 0.0, "fading in at the span's start, not out at the cut");
+        CHECK(engine[1].overlays.size() == 2 && engine[1].overlays[0].start == 0.0 && Near(engine[1].overlays[0].end, 5.0 - starts[1], 1e-9), "the second segment: the same title from its start to the span's end");
+        CHECK(engine[1].overlays[0].fadeIn == 0.0 && Near(engine[1].overlays[0].fadeOut, 0.6, 1e-9), "fading out at the span's end only");
+        CHECK(Near(engine[1].overlays[1].start, 5.0 - starts[1], 1e-9) && engine[1].overlays[1].box && engine[1].overlays[1].text == "Anna\nat the beach", "the lower third on the second segment with its band");
+
+        TimelineModel tm = BuildTimelineModel(td);
+        const TimelineTrack* lane = tm.FindTrack(kTitleTrackId);
+        CHECK(lane && lane->kind == TimelineTrackKind::Title && !lane->IsMagnetic() && lane->clips.size() == 2, "a free title lane with both spans");
+        CHECK(lane && lane->clips[0].kind == TimelineClipKind::Title && lane->clips[0].name == "Summer trip" && Near(lane->clips[0].start, 1.0, 1e-9), "as title clips at their times");
+        CHECK(tm.tracks.size() == 3 && tm.tracks[0].id == kTitleTrackId, "the title lane sits above the main track");
+
+        TimelineChange moveT;
+        moveT.kind = TimelineChangeKind::Move;
+        moveT.trackId = kTitleTrackId;
+        moveT.before = {lane->clips[0]};
+        moveT.after = {lane->clips[0]};
+        moveT.after[0].start = 0.5;
+        CHECK(ApplyChange(td, moveT) && Near(td.titles[0].start, 0.5, 1e-9), "a title moves");
+        TimelineChange trimT = moveT;
+        trimT.kind = TimelineChangeKind::Trim;
+        trimT.after[0].duration = 2.0;
+        CHECK(ApplyChange(td, trimT) && Near(td.titles[0].duration, 2.0, 1e-9), "and trims");
+        tm = BuildTimelineModel(td);
+        lane = tm.FindTrack(kTitleTrackId);
+        TimelineTrack lt = *lane;
+        CHECK(TimelineSplitClip(lt, "t1", 1.5, 25.0, "t1:2"), "the model splits a title");
+        TimelineChange splitT;
+        splitT.kind = TimelineChangeKind::Split;
+        splitT.trackId = kTitleTrackId;
+        splitT.before = {*lane->FindClip("t1")};
+        splitT.after = {*lt.FindClip("t1"), *lt.FindClip("t1:2")};
+        CHECK(ApplyChange(td, splitT) && td.titles.size() == 3 && Near(td.titles[0].duration, 1.0, 1e-9) && td.titles[2].id == "t3" && Near(td.titles[2].start, 1.5, 1e-9), "a split makes two spans, the right one with a fresh id");
+        CHECK(td.titles[0].fadeOut == 0.0 && td.titles[2].fadeIn == 0.0 && td.titles[2].look.text == "Summer trip", "no fade at the new cut; the text on both");
+        TimelineChange delT;
+        delT.kind = TimelineChangeKind::Delete;
+        delT.trackId = kTitleTrackId;
+        delT.before = {*lt.FindClip("t1:2")};
+        delT.before[0].id = "t3";
+        CHECK(ApplyChange(td, delT) && td.titles.size() == 2, "a title deletes");
+        tm = BuildTimelineModel(td);
+        lane = tm.FindTrack(kTitleTrackId);
+        TimelineTrack lt2 = *lane;
+        CHECK(TimelineDuplicateClip(lt2, "t2", "t2:copy"), "the model duplicates a title");
+        TimelineChange dupT;
+        dupT.kind = TimelineChangeKind::Duplicate;
+        dupT.trackId = kTitleTrackId;
+        dupT.before = {*lane->FindClip("t2")};
+        dupT.after = {*lt2.FindClip("t2"), *lt2.FindClip("t2:copy")};
+        CHECK(ApplyChange(td, dupT) && td.titles.size() == 3 && td.titles[2].look.text == td.titles[1].look.text && td.titles[2].start > td.titles[1].start, "a copy after the original");
+
+        const std::string tfile = TempPath("titles.ultravideo");
+        std::string terror;
+        CHECK(td.Save(tfile, terror), ("save with titles: " + terror).c_str());
+        {
+            std::FILE* f = std::fopen(tfile.c_str(), "rb");
+            std::string text;
+            if (f) { char buf[4096]; size_t n; while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n); std::fclose(f); }
+            CHECK(text.find("\"titles\"") != std::string::npos && text.find("\"overlays\"") != std::string::npos, "the file carries the spans and the engine's overlays");
+        }
+        Document back;
+        CHECK(Document::Load(tfile, back, terror, nullptr), ("load with titles: " + terror).c_str());
+        CHECK(back.titles.size() == 3 && back.titles[1].look.text == "Anna\nat the beach" && back.titles[1].look.box && back.titles[1].style == "lower", "the spans come back whole");
+        CHECK(back.project.segments[0].overlays.empty() && back.project.segments[1].overlays.empty(), "the derived overlays are dropped on load");
+        CHECK(back.nextTitleId == td.nextTitleId && back.SegmentsForEngine()[1].overlays.size() == td.SegmentsForEngine()[1].overlays.size(), "and derive the same again");
+    }
+
     std::printf("\n-- history --\n");
     History history;
     Document before = doc;

@@ -79,6 +79,43 @@ JSONValue MarkerToJson(const TimelineMarker& m) {
 
 } // namespace
 
+std::string TitleSpan::Name() const {
+    const std::string::size_type nl = look.text.find('\n');
+    const std::string first = nl == std::string::npos ? look.text : look.text.substr(0, nl);
+    return first.empty() ? "Title" : first;
+}
+
+const std::vector<TitleStyle>& TitleStyles() {
+    static const std::vector<TitleStyle> styles = [] {
+        std::vector<TitleStyle> v;
+        TitleStyle opening{"opening", "Opening title", "Large, centred, fading in and out", VideoFXOverlay::Text("", VideoFXAnchor::Center, 0.11), 0.6, 0.6, 4.0};
+        opening.look.shadow = true;
+        v.push_back(opening);
+        TitleStyle lower{"lower", "Lower third", "A name at the bottom left on a band", VideoFXOverlay::Text("", VideoFXAnchor::BottomLeft, 0.05), 0.3, 0.3, 5.0};
+        lower.look.box = true;
+        lower.look.boxColor = 0x000000;
+        lower.look.boxOpacity = 0.55;
+        lower.look.shadow = false;
+        lower.look.margin = 0.07;
+        v.push_back(lower);
+        TitleStyle caption{"caption", "Caption", "Small, along the bottom, as a slideshow's captions", VideoFXOverlay::Text("", VideoFXAnchor::Bottom, 0.045), 0.25, 0.25, 4.0};
+        caption.look.shadow = true;
+        v.push_back(caption);
+        TitleStyle card{"card", "Closing card", "Large on a dark band, for a last word", VideoFXOverlay::Text("", VideoFXAnchor::Center, 0.08), 0.8, 0.8, 4.0};
+        card.look.box = true;
+        card.look.boxColor = 0x000000;
+        card.look.boxOpacity = 0.7;
+        v.push_back(card);
+        return v;
+    }();
+    return styles;
+}
+
+const TitleStyle* FindTitleStyle(const std::string& key) {
+    for (const TitleStyle& t : TitleStyles()) if (key == t.key) return &t;
+    return nullptr;
+}
+
 std::string MediaItem::Badge() const {
     if (!error.empty()) return "unreadable";
     if (kind == MediaKind::Image) return "photo";
@@ -163,6 +200,86 @@ double Document::Length() const {
 
 std::string Document::NewClipId() {
     return "c" + std::to_string(nextClipId++);
+}
+
+std::string Document::NewTitleId() {
+    return "t" + std::to_string(nextTitleId++);
+}
+
+std::vector<double> Document::SegmentStarts() const {
+    std::vector<double> starts;
+    double at = 0.0;
+    for (size_t i = 0; i < project.segments.size(); ++i) {
+        const double seconds = SegmentSeconds(i);
+        if (i > 0 && !project.segments[i].transitionIn.IsCut()) {
+            at -= std::min(project.segments[i].transitionIn.duration, std::min(seconds, SegmentSeconds(i - 1)));
+        }
+        at = std::max(0.0, at);
+        starts.push_back(at);
+        at += seconds;
+    }
+    return starts;
+}
+
+std::vector<VideoFXSegment> Document::SegmentsForEngine() const {
+    std::vector<VideoFXSegment> segments = project.segments;
+    if (titles.empty()) return segments;
+    const std::vector<double> starts = SegmentStarts();
+    for (size_t i = 0; i < segments.size(); ++i) {
+        const double s = starts[i];
+        const double e = s + SegmentSeconds(i);
+        for (const TitleSpan& t : titles) {
+            if (t.look.text.empty()) continue;
+            const double a = std::max(s, t.start);
+            const double b = std::min(e, t.End());
+            if (b - a < 0.04) continue;
+            VideoFXOverlay o = t.look;
+            o.kind = VideoFXOverlayKind::Text;
+            o.start = a - s;
+            o.end = b - s;
+            if (o.end >= SegmentSeconds(i) - 1e-6) o.end = 0.0;   // to the segment's end
+            o.fadeIn = a <= t.start + 1e-6 ? std::min(t.fadeIn, b - a) : 0.0;
+            o.fadeOut = b >= t.End() - 1e-6 ? std::min(t.fadeOut, b - a) : 0.0;
+            segments[i].overlays.push_back(o);
+        }
+    }
+    return segments;
+}
+
+int Document::AddTitle(const std::string& styleKey, double at, const std::string& text) {
+    const TitleStyle* style = FindTitleStyle(styleKey);
+    if (!style) style = &TitleStyles().front();
+    TitleSpan span;
+    span.id = NewTitleId();
+    span.style = style->key;
+    span.look = style->look;
+    span.look.text = text.empty() ? style->label : text;
+    span.fadeIn = style->fadeIn;
+    span.fadeOut = style->fadeOut;
+    span.duration = style->seconds;
+    // Over the picture, not after it: a title asked for at or past the end
+    // sits on the last seconds
+    const double length = Length();
+    if (length > 0.0 && at + 0.04 >= length) at = length - span.duration;
+    span.start = std::max(0.0, at);
+    // Not over another title: the lane holds one span at a time
+    bool moved = true;
+    while (moved) {
+        moved = false;
+        for (const TitleSpan& other : titles) {
+            if (span.start < other.End() && other.start < span.End()) {
+                span.start = other.End();
+                moved = true;
+            }
+        }
+    }
+    titles.push_back(span);
+    return static_cast<int>(titles.size()) - 1;
+}
+
+int Document::TitleIndex(const std::string& id) const {
+    for (size_t i = 0; i < titles.size(); ++i) if (titles[i].id == id) return static_cast<int>(i);
+    return -1;
 }
 
 const MediaItem* Document::FindMedia(const std::string& p) const {
@@ -258,8 +375,12 @@ bool Document::Save(const std::string& toPath, std::string& error) {
     }
     const fs::path file = PathFromUtf8(toPath);
     const fs::path base = file.parent_path();
+    // The engine's project carries the titles as overlays, so `videofx render`
+    // works on it; the spans themselves follow in `titles`
+    VideoFXProject rendered = project;
+    rendered.segments = SegmentsForEngine();
     std::string projectText;
-    const VideoFXResult r = VideoFX_ProjectToJson(project, projectText, PathToUtf8(base));
+    const VideoFXResult r = VideoFX_ProjectToJson(rendered, projectText, PathToUtf8(base));
     if (r != VideoFXResult::Ok) {
         error = VideoFX_GetLastError();
         if (error.empty()) error = VideoFX_ResultToString(r);
@@ -280,6 +401,30 @@ bool Document::Save(const std::string& toPath, std::string& error) {
     for (const std::string& id : clipIds) ids.Append(id);
     root.Set("clipIds", ids);
     root.Set("nextClipId", nextClipId);
+    JSONValue spans = JSONValue::MakeArray();
+    for (const TitleSpan& t : titles) {
+        JSONValue o = JSONValue::MakeObject();
+        o.Set("id", t.id);
+        o.Set("start", t.start);
+        o.Set("duration", t.duration);
+        o.Set("fadeIn", t.fadeIn);
+        o.Set("fadeOut", t.fadeOut);
+        o.Set("style", t.style);
+        o.Set("text", t.look.text);
+        o.Set("anchor", static_cast<int>(t.look.anchor));
+        o.Set("fontSize", t.look.fontSize);
+        o.Set("color", static_cast<int64_t>(t.look.textColor));
+        o.Set("shadow", t.look.shadow);
+        o.Set("box", t.look.box);
+        o.Set("boxColor", static_cast<int64_t>(t.look.boxColor));
+        o.Set("boxOpacity", t.look.boxOpacity);
+        o.Set("margin", t.look.margin);
+        o.Set("opacity", t.look.opacity);
+        o.Set("fontPath", Relative(t.look.fontPath, base));
+        spans.Append(o);
+    }
+    root.Set("titles", spans);
+    root.Set("nextTitleId", nextTitleId);
     JSONValue bin = JSONValue::MakeArray();
     for (const MediaItem& m : media) {
         JSONValue o = JSONValue::MakeObject();
@@ -369,6 +514,41 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
     for (size_t i = 0; i < ids.GetSize(); ++i) loaded.clipIds.push_back(ids.At(i).GetString());
     loaded.clipIds.resize(loaded.project.segments.size());
     for (std::string& id : loaded.clipIds) if (id.empty()) id = loaded.NewClipId();
+
+    // The spans are the truth for titles: the overlays written for the
+    // engine are derived from them and go
+    if (root.Contains("titles")) {
+        for (VideoFXSegment& seg : loaded.project.segments) {
+            seg.overlays.erase(std::remove_if(seg.overlays.begin(), seg.overlays.end(),
+                                              [](const VideoFXOverlay& o) { return o.kind == VideoFXOverlayKind::Text; }),
+                               seg.overlays.end());
+        }
+        const JSONValue& spans = root.Get("titles");
+        for (size_t i = 0; i < spans.GetSize(); ++i) {
+            const JSONValue& o = spans.At(i);
+            TitleSpan t;
+            t.id = o.Get("id").GetString();
+            t.start = o.Get("start").GetNumber();
+            t.duration = std::max(0.04, o.Get("duration").GetNumber(4.0));
+            t.fadeIn = o.Get("fadeIn").GetNumber(0.0);
+            t.fadeOut = o.Get("fadeOut").GetNumber(0.0);
+            t.style = o.Get("style").GetString();
+            t.look = VideoFXOverlay::Text(o.Get("text").GetString(),
+                                          static_cast<VideoFXAnchor>(std::clamp<int64_t>(o.Get("anchor").GetInteger(7), 0, 9)),
+                                          o.Get("fontSize").GetNumber(0.06));
+            t.look.textColor = static_cast<uint32_t>(o.Get("color").GetInteger(0xFFFFFF));
+            t.look.shadow = o.Get("shadow").GetBoolean(true);
+            t.look.box = o.Get("box").GetBoolean(false);
+            t.look.boxColor = static_cast<uint32_t>(o.Get("boxColor").GetInteger(0));
+            t.look.boxOpacity = o.Get("boxOpacity").GetNumber(0.5);
+            t.look.margin = o.Get("margin").GetNumber(0.05);
+            t.look.opacity = o.Get("opacity").GetNumber(1.0);
+            t.look.fontPath = Absolute(o.Get("fontPath").GetString(), base);
+            if (t.id.empty()) t.id = loaded.NewTitleId();
+            loaded.titles.push_back(t);
+        }
+        loaded.nextTitleId = static_cast<int>(root.Get("nextTitleId").GetInteger(static_cast<int64_t>(loaded.titles.size()) + 1));
+    }
 
     const JSONValue& bin = root.Get("media");
     for (size_t i = 0; i < bin.GetSize(); ++i) {

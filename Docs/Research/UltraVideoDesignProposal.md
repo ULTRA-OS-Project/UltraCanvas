@@ -896,7 +896,7 @@ and sound types for *Open with*. All of it is in place (§14).
 | 1 | `UltraCanvasVideoTimeline` and `UltraCanvasTimecodeField`: model, operations, rendering of ruler, main track, clips with filmstrips, transitions, playhead, zoom, selection, keyboard, drop, context menu hook; docs, catalogue rows, DemoApp page, model tests | Framework release |
 | 2 | `VideoFX_RenderFrame` (8.2, **done** in 0.9.0), the draft preset (8.5), export range (8.6) | VideoFX 0.9.0 |
 | 3 | `Apps/UltraVideo` 0.1.0: window, media bin, viewer with scrubbing, inspector (clip, audio, project), timeline wired through the mapping, undo, `.ultravideo`, export dialog (**built**, §14) | First app release |
-| 4 | Title lane and music lane in the element (spans, fades, song boundaries, beats, markers, work area, snapping, ripple and slip); the story wizard | App 0.2.0 |
+| 4 | Title lane (**built**, §14) and music lane in the element (spans, fades, song boundaries, beats, markers, work area, snapping, ripple and slip); the story wizard | App 0.2.0 |
 | 5 | Picture-in-picture (8.3) and free audio tracks (8.4) in the engine; the overlay and free audio lanes switched on | VideoFX 0.10, app 0.3 |
 | 6 | Keyframes in the engine and keyframe markers on clips; proxy media; hardware encoder choice | Later |
 
@@ -1009,6 +1009,16 @@ that writing it showed:
   mapping and the history. Writing it found both new elements reading the
   pointer as window coordinates where the dispatcher hands them
   element-local ones; fixed, with the display tests mapping the same way.
+- **The title lane** (§5.3, the first part of phase 4): the document keeps
+  title spans (`TitleSpan`: text and look, start, length, fades), the bin's
+  *Titles* tab offers four styles, the mapping shows them as a free `T1`
+  lane of `Title` clips and writes moves, trims, splits, deletes and
+  copies back, and `Document::SegmentsForEngine` cuts each span into one
+  text overlay per segment it crosses with the fades on the outer ends
+  only - exactly the table's row. The project file keeps the spans and
+  writes the derived overlays beside them, dropping them again on load.
+  The inspector edits a title's text, style, place, size, colour, shadow,
+  band and fades.
 - Not built, and left for the next phase: fade knobs on the music bar, marker dragging, a real slip trim
   (the Slip tool trims for now), retiming by `Ctrl`-drag, vertical scrolling
   of many tracks, resizing a track by its edge, and the mapping onto the

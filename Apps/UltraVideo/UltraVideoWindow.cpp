@@ -293,12 +293,31 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     musicPage->AddChild(musicAlbum_);
     binTabs_->AddTab("Music", musicPage);
 
+    // Titles: one button per style, each adding a span at the playhead
     auto titlesPage = std::make_shared<UltraCanvasContainer>("uv.bin.titlesPage", 0, 0, static_cast<int>(Tokens::BinW), 480);
+    titlesPage->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     titlesPage->SetPadding(static_cast<float>(Tokens::Space3));
-    titlesNote_ = CreateLabel("uv.bin.titles", 0, 0, 240, 80,
-                              "Title styles come with the title lane in a later release. A clip's caption is set in the inspector.");
-    titlesNote_->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
+    titlesNote_ = CreateLabel("uv.bin.titles", 0, 0, 240, 40,
+                              "A title goes on the title lane at the playhead; drag it, trim it, and set its text in the inspector.");
+    titlesNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    titlesNote_->layoutItem.SetFlexShrink(0);
     titlesPage->AddChild(titlesNote_);
+    for (const TitleStyle& st : TitleStyles()) {
+        auto button = MakeTextButton(std::string("uv.bin.title.") + st.key, st.label, p, 240);
+        button->SetIcon(IconPath("title"));
+        button->SetIconSize(16, 16);
+        button->SetTooltip(st.hint);
+        button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
+        const std::string key = st.key;
+        button->SetOnClick([this, key]() { AddTitle(key, document_.view.playhead); });
+        titleButtons_.push_back(button);
+        titlesPage->AddChild(button);
+        auto hint = CreateLabel(std::string("uv.bin.titleHint.") + st.key, 0, 0, 240, 18, st.hint);
+        hint->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+        hint->layoutItem.SetFlexShrink(0);
+        titleHints_.push_back(hint);
+        titlesPage->AddChild(hint);
+    }
     binTabs_->AddTab("Titles", titlesPage);
 
     auto effectsPage = std::make_shared<UltraCanvasContainer>("uv.bin.effectsPage", 0, 0, static_cast<int>(Tokens::BinW), 480);
@@ -571,6 +590,8 @@ void UltraVideoWindow::ApplyPalette() {
     binEmpty_->SetTextColor(ToColor(p.InkMuted));
     binEmpty_->SetBorders(1, ToColor(p.LineStrong), Tokens::RadiusLg, UCDashPattern({6.0, 4.0}));
     titlesNote_->SetTextColor(ToColor(p.InkMuted));
+    for (auto& b : titleButtons_) b->SetStyle(PlainButtonStyle(p));
+    for (auto& h : titleHints_) h->SetTextColor(ToColor(p.InkFaint));
     effectsNote_->SetTextColor(ToColor(p.InkMuted));
     viewer_.ApplyPalette(p);
     inspector_.ApplyPalette(p);
@@ -693,7 +714,8 @@ void UltraVideoWindow::RefreshTimeline() {
     if (!timeline_) return;
     TimelineModel model = BuildTimelineModel(document_);
     timeline_->SetModel(model);
-    if (!selectedClip_.empty() && SegmentOfClip(document_, selectedClip_) < 0) selectedClip_.clear();
+    if (!selectedClip_.empty() && SegmentOfClip(document_, selectedClip_) < 0 && document_.TitleIndex(selectedClip_) < 0)
+        selectedClip_.clear();
     const double length = document_.Length();
     const double fps = document_.FrameRate();
     playheadField_->SetFrameRate(fps);
@@ -706,7 +728,7 @@ void UltraVideoWindow::RefreshTimeline() {
 }
 
 void UltraVideoWindow::RefreshInspector() {
-    inspector_.Show(document_, SegmentOfClip(document_, selectedClip_));
+    inspector_.Show(document_, SegmentOfClip(document_, selectedClip_), document_.TitleIndex(selectedClip_));
 }
 
 void UltraVideoWindow::RefreshPreview() {
@@ -714,7 +736,7 @@ void UltraVideoWindow::RefreshPreview() {
     settings.width = document_.Width();
     settings.height = document_.Height();
     settings.frameRate = document_.FrameRate();
-    preview_.Open(document_.project.segments, settings);
+    preview_.Open(document_.SegmentsForEngine(), settings);
     if (document_.project.segments.empty()) viewer_.ClearFrame();
 }
 
@@ -973,6 +995,8 @@ void UltraVideoWindow::SplitAtPlayhead() {
     TimelineModel model = BuildTimelineModel(document_);
     const TimelineTrack* main = model.FindTrack(kMainTrackId);
     if (!main) return;
+    if (document_.TitleIndex(selectedClip_) >= 0) main = model.FindTrack(kTitleTrackId);   // a selected title splits instead
+    if (!main) return;
     std::string target = selectedClip_;
     if (target.empty() || !main->FindClip(target)) {
         for (const TimelineClip& c : main->clips) if (at > c.start && at < c.End()) target = c.id;
@@ -989,11 +1013,11 @@ void UltraVideoWindow::SplitAtPlayhead() {
     }
     TimelineChange change;
     change.kind = TimelineChangeKind::Split;
-    change.trackId = kMainTrackId;
+    change.trackId = main->id;
     change.before = {*clip};
     change.after = {*track.FindClip(target), *track.FindClip(target + ":2")};
     change.at = at;
-    Edit("Split clip", [&change](Document& d) { ApplyChange(d, change); });
+    Edit(main->id == kTitleTrackId ? "Split title" : "Split clip", [&change](Document& d) { ApplyChange(d, change); });
 }
 
 void UltraVideoWindow::DeleteSelection() {
@@ -1006,6 +1030,11 @@ void UltraVideoWindow::DeleteSelection() {
     }
     Edit(ids.size() > 1 ? "Delete clips" : "Delete clip", [ids](Document& d) {
         for (const std::string& id : ids) {
+            const int titleIndex = d.TitleIndex(id);
+            if (titleIndex >= 0) {
+                d.titles.erase(d.titles.begin() + titleIndex);
+                continue;
+            }
             const int index = SegmentOfClip(d, id);
             if (index < 0) continue;
             d.project.segments.erase(d.project.segments.begin() + index);
@@ -1014,6 +1043,21 @@ void UltraVideoWindow::DeleteSelection() {
         if (!d.project.segments.empty()) d.project.segments.front().transitionIn = VideoFXTransition{};
     });
     selectedClip_.clear();
+}
+
+void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
+    std::string id;
+    Edit("Add title", [styleKey, at, &id](Document& d) {
+        const int index = d.AddTitle(styleKey, at);
+        if (index >= 0) id = d.titles[static_cast<size_t>(index)].id;
+    });
+    if (!id.empty()) {
+        selectedClip_ = id;
+        if (timeline_) timeline_->SetSelection({id});
+        RefreshInspector();
+        inspector_.ShowClipTab();
+        Message("A title at the playhead: set its text in the inspector.");
+    }
 }
 
 void UltraVideoWindow::AddMarker() {
@@ -1030,7 +1074,31 @@ void UltraVideoWindow::ShowTimelineMenu(const std::string& trackId, double secon
     menu_ = std::make_shared<UltraCanvasMenu>("uv.timelineMenu", 0, 0, 240, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
     const int index = SegmentOfClip(document_, clipId);
-    if (trackId == kMainTrackId && index >= 0) {
+    const int titleIndex = document_.TitleIndex(clipId);
+    if (trackId == kTitleTrackId && titleIndex >= 0) {
+        menu_->AddItem(MenuItemData::Header(document_.titles[static_cast<size_t>(titleIndex)].Name()));
+        menu_->AddItem(MenuItemData::Action("Edit the text\xE2\x80\xA6", [this, clipId]() {
+            selectedClip_ = clipId;
+            RefreshInspector();
+            inspector_.ShowClipTab();
+        }));
+        menu_->AddItem(MenuItemData::ActionWithShortcut("Split at the playhead", "S", [this, clipId]() {
+            selectedClip_ = clipId;
+            SplitAtPlayhead();
+        }));
+        menu_->AddItem(MenuItemData::Separator());
+        menu_->AddItem(MenuItemData::ActionWithShortcut("Delete", "Del", [this, clipId]() {
+            selectedClip_ = clipId;
+            if (timeline_) timeline_->SetSelection({clipId});
+            DeleteSelection();
+        }));
+    } else if (trackId == kTitleTrackId) {
+        menu_->AddItem(MenuItemData::Header("Titles"));
+        for (const TitleStyle& st : TitleStyles()) {
+            const std::string key = st.key;
+            menu_->AddItem(MenuItemData::Action(std::string(st.label) + " here", [this, key, seconds]() { AddTitle(key, seconds); }));
+        }
+    } else if (trackId == kMainTrackId && index >= 0) {
         const VideoFXSegment& s = document_.project.segments[static_cast<size_t>(index)];
         menu_->AddItem(MenuItemData::Header(ClipName(document_, static_cast<size_t>(index))));
         menu_->AddItem(MenuItemData::ActionWithShortcut("Split at the playhead", "S", [this, clipId]() {
@@ -1125,19 +1193,22 @@ void UltraVideoWindow::Export() {
 }
 
 void UltraVideoWindow::StartExport(const ExportChoice& choice) {
-    std::vector<VideoFXSegment> segments = document_.project.segments;
+    Document exported = document_;
     if (choice.workAreaOnly && document_.view.rangeOut > document_.view.rangeIn) {
-        // Keep what the work area covers: trim the clips at its edges
+        // Keep what the work area covers: trim the clips at its edges, and
+        // the titles with them
+        const double rangeIn = document_.view.rangeIn, rangeOut = document_.view.rangeOut;
         TimelineModel model = BuildTimelineModel(document_);
         const TimelineTrack* main = model.FindTrack(kMainTrackId);
         std::vector<VideoFXSegment> kept;
+        std::vector<std::string> keptIds;
         if (main) {
-            for (size_t i = 0; i < main->clips.size() && i < segments.size(); ++i) {
+            for (size_t i = 0; i < main->clips.size() && i < document_.project.segments.size(); ++i) {
                 const TimelineClip& c = main->clips[i];
-                const double in = std::max(c.start, document_.view.rangeIn);
-                const double out = std::min(c.End(), document_.view.rangeOut);
+                const double in = std::max(c.start, rangeIn);
+                const double out = std::min(c.End(), rangeOut);
                 if (out - in < 0.04) continue;
-                VideoFXSegment s = segments[i];
+                VideoFXSegment s = document_.project.segments[i];
                 if (s.kind == VideoFXSourceKind::File) {
                     s.start = c.sourceIn + (in - c.start) * c.speed;
                     s.end = c.sourceIn + (out - c.start) * c.speed;
@@ -1146,11 +1217,23 @@ void UltraVideoWindow::StartExport(const ExportChoice& choice) {
                 }
                 if (in > c.start) s.transitionIn = VideoFXTransition{};
                 kept.push_back(s);
+                keptIds.push_back(document_.clipIds[i]);
             }
         }
         if (!kept.empty()) kept.front().transitionIn = VideoFXTransition{};
-        segments = kept;
+        exported.project.segments = kept;
+        exported.clipIds = keptIds;
+        std::vector<TitleSpan> titles;
+        for (TitleSpan t : document_.titles) {
+            const double a = std::max(t.start, rangeIn), b = std::min(t.End(), rangeOut);
+            if (b - a < 0.04) continue;
+            t.start = a - rangeIn;
+            t.duration = b - a;
+            titles.push_back(t);
+        }
+        exported.titles = titles;
     }
+    std::vector<VideoFXSegment> segments = exported.SegmentsForEngine();
     if (segments.empty()) {
         Message("The work area holds no clip.");
         return;

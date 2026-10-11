@@ -18,6 +18,7 @@
 
 namespace UltraVideo {
 
+constexpr const char* kTitleTrackId = "T1";
 constexpr const char* kMainTrackId = "V1";
 constexpr const char* kMusicTrackId = "A1";
 
@@ -30,7 +31,7 @@ bool ApplyChange(Document& document, const UltraCanvas::TimelineChange& change);
 // A short name for what a change did, for the undo history
 std::string DescribeChange(const UltraCanvas::TimelineChange& change);
 
-// The segment of a clip id, or -1
+// The segment of a clip id, or -1 (a title's id gives -1: see Document::TitleIndex)
 int SegmentOfClip(const Document& document, const std::string& clipId);
 
 // What a clip is called in the band and the inspector

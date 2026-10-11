@@ -116,6 +116,28 @@ TimelineModel BuildTimelineModel(const Document& doc) {
     model.rangeIn = doc.view.rangeIn;
     model.rangeOut = doc.view.rangeOut;
 
+    // The title lane: free spans over the main track
+    TimelineTrack titleTrack;
+    titleTrack.id = kTitleTrackId;
+    titleTrack.kind = TimelineTrackKind::Title;
+    titleTrack.name = "Titles";
+    titleTrack.magnetic = false;
+    for (const TitleSpan& t : doc.titles) {
+        TimelineClip clip;
+        clip.id = t.id;
+        clip.kind = TimelineClipKind::Title;
+        clip.name = t.Name();
+        clip.start = t.start;
+        clip.duration = std::max(0.04, t.duration);
+        clip.hasTitle = true;
+        clip.fadeIn = t.fadeIn;
+        clip.fadeOut = t.fadeOut;
+        titleTrack.clips.push_back(clip);
+    }
+    std::stable_sort(titleTrack.clips.begin(), titleTrack.clips.end(),
+                     [](const TimelineClip& a, const TimelineClip& b) { return a.start < b.start; });
+    model.tracks.push_back(titleTrack);
+
     TimelineTrack main;
     main.id = kMainTrackId;
     main.kind = TimelineTrackKind::MainVideo;
@@ -236,6 +258,62 @@ bool ApplyChange(Document& doc, const TimelineChange& c) {
                                          [&](const TimelineMarker& m) { return m.id == c.markerBefore->id; }),
                           doc.markers.end());
         return doc.markers.size() != before;
+    }
+    if (c.trackId == kTitleTrackId) {
+        // A free lane: the change names the spans it touches with their new place
+        switch (c.kind) {
+            case TimelineChangeKind::Move:
+            case TimelineChangeKind::Trim: {
+                for (const TimelineClip& clip : c.after) {
+                    const int index = doc.TitleIndex(clip.id);
+                    if (index < 0) return false;
+                    TitleSpan& t = doc.titles[static_cast<size_t>(index)];
+                    t.start = std::max(0.0, clip.start);
+                    t.duration = std::max(0.04, clip.duration);
+                }
+                return !c.after.empty();
+            }
+            case TimelineChangeKind::Split: {
+                if (c.before.size() != 1 || c.after.size() != 2) return false;
+                const int index = doc.TitleIndex(c.before[0].id);
+                if (index < 0) return false;
+                TitleSpan right = doc.titles[static_cast<size_t>(index)];
+                TitleSpan& left = doc.titles[static_cast<size_t>(index)];
+                left.start = c.after[0].start;
+                left.duration = std::max(0.04, c.after[0].duration);
+                left.fadeOut = 0.0;
+                right.id = doc.NewTitleId();
+                right.start = c.after[1].start;
+                right.duration = std::max(0.04, c.after[1].duration);
+                right.fadeIn = 0.0;
+                doc.titles.push_back(right);
+                return true;
+            }
+            case TimelineChangeKind::Delete: {
+                size_t removed = 0;
+                for (const TimelineClip& clip : c.before) {
+                    const int index = doc.TitleIndex(clip.id);
+                    if (index < 0) continue;
+                    doc.titles.erase(doc.titles.begin() + index);
+                    ++removed;
+                }
+                return removed > 0;
+            }
+            case TimelineChangeKind::Duplicate: {
+                if (c.before.size() != 1) return false;
+                const int index = doc.TitleIndex(c.before[0].id);
+                if (index < 0) return false;
+                TitleSpan copy = doc.titles[static_cast<size_t>(index)];
+                copy.id = doc.NewTitleId();
+                for (const TimelineClip& clip : c.after) {
+                    if (clip.id != c.before[0].id) { copy.start = clip.start; copy.duration = std::max(0.04, clip.duration); }
+                }
+                doc.titles.push_back(copy);
+                return true;
+            }
+            default:
+                return false;
+        }
     }
     if (c.trackId != kMainTrackId) return false;   // the music lane is edited in the inspector
 

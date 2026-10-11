@@ -105,6 +105,7 @@ private:
     void SplitAtPlayhead();
     void DeleteSelection();
     void AddMarker();
+    void AddTitle(const std::string& styleKey, double at);
     void ShowTimelineMenu(const std::string& trackId, double seconds, const std::string& clipId, int x, int y);
     void ShowBinMenu(size_t index, int x, int y);
 
@@ -136,6 +137,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> binSearch_;
     std::shared_ptr<UltraCanvas::UltraCanvasAlbum> binAlbum_, musicAlbum_;
     std::shared_ptr<Label> binEmpty_, titlesNote_, effectsNote_;
+    std::vector<std::shared_ptr<Button>> titleButtons_;
+    std::vector<std::shared_ptr<Label>> titleHints_;
     std::vector<size_t> binRows_;      // album row -> media index
     std::vector<size_t> musicRows_;
     Viewer viewer_;
