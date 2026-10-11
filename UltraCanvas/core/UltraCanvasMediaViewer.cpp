@@ -434,7 +434,15 @@ double UltraCanvasMediaSurface::FitScale(double iw, double ih, int rotQ) const {
     bool swap = ((((rotQ % 4) + 4) % 4) % 2) == 1;   // 90° / 270° swap the box
     double effW = swap ? ih : iw;
     double effH = swap ? iw : ih;
-    return std::min(b.width / effW, b.height / effH);
+    const double fit = std::min(b.width / effW, b.height / effH);
+    return fitEnlarges ? fit : std::min(1.0, fit);
+}
+
+void UltraCanvasMediaSurface::SetFitEnlarges(bool enlarges) {
+    if (fitEnlarges == enlarges) return;
+    fitEnlarges = enlarges;
+    RequestRedraw();
+    if (onViewChanged) onViewChanged();
 }
 
 void UltraCanvasMediaSurface::RebuildProcessed() {
@@ -2004,6 +2012,14 @@ Color UltraCanvasMediaViewer::GetTransparentColor() const {
     return surface ? surface->GetTransparentColor() : Color(255, 255, 255, 255);
 }
 
+void UltraCanvasMediaViewer::SetFitEnlarges(bool enlarges) {
+    if (surface) surface->SetFitEnlarges(enlarges);
+}
+
+bool UltraCanvasMediaViewer::GetFitEnlarges() const {
+    return surface ? surface->GetFitEnlarges() : true;
+}
+
 void UltraCanvasMediaViewer::UpdateBreadcrumb() {
     if (!breadcrumb) return;
     if (currentFolder.empty() || !topBarsVisible) {
@@ -3001,6 +3017,16 @@ void UltraCanvasMediaViewer::SetDetailsVisible(bool visible) {
 void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
                                      const CSSLayout::LayoutContext& ctx) {
     UltraCanvasContainer::Arrange(finalRect, ctx);
+    // The zoom the info bar shows is the fit, which the surface's size sets:
+    // after a resize - or the first layout of a viewer that loaded its file
+    // while hidden, a hover preview - it is reported again.
+    if (surface && surface->IsVisible()) {
+        const Size2Df now(surface->GetWidth(), surface->GetHeight());
+        if (now.width != infoBarSurfaceSize.width || now.height != infoBarSurfaceSize.height) {
+            infoBarSurfaceSize = now;
+            UpdateInfoBar();
+        }
+    }
     if (!IsDetailsVisible()) return;
     // Over the active view, inset a little, and no wider than a table of
     // tags and values reads comfortably.

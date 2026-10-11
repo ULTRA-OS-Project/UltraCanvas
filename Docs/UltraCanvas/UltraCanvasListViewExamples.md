@@ -468,7 +468,10 @@ std::function<void(int row)> onItemHovered;
 
 // Cell-level (multi-column aware). posInCell is relative to the cell's
 // top-left corner. onCellHovered reports (-1, -1) when the pointer leaves
-// the rows area.
+// the rows area. The hover follows the rows when they scroll under a still
+// pointer (a wheel scroll, EnsureRowVisible): the row highlight moves, and
+// onItemHovered and onCellHovered are reported again for the row now under
+// the pointer, so a preview hung on them follows the scroll too.
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
 

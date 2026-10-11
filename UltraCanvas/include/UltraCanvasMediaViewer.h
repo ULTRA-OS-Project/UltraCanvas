@@ -229,6 +229,14 @@ public:
 
     void SetCanvasColor(const Color& c) { canvasColor = c; RequestRedraw(); }
 
+    // Whether fit-to-window enlarges a picture smaller than the surface (the
+    // default: the picture fills the pane) or shows it at its own size,
+    // centred, and only shrinks what does not fit. A hover preview turns it
+    // off, so an icon stays an icon instead of a blur the size of the pane;
+    // the wheel still zooms in from there.
+    void SetFitEnlarges(bool enlarges);
+    bool GetFitEnlarges() const { return fitEnlarges; }
+
     // ===== BACKDROP BEHIND TRANSPARENT IMAGES =====
     // Drawn under the image (matching its displayed rectangle) so transparent
     // pixels read against a defined background instead of the canvas colour.
@@ -299,6 +307,7 @@ private:
     UCImageAnimationController animator;
 
     Color canvasColor = Color(24, 24, 28, 255);
+    bool fitEnlarges = true;
 
     // Backdrop under transparent images (see SetTransparentBackground).
     TransparentImageBackground transparentBackground = TransparentImageBackground::SolidColor;
@@ -423,6 +432,11 @@ public:
     TransparentImageBackground GetTransparentBackground() const;
     void SetTransparentColor(const Color& c);
     Color GetTransparentColor() const;
+    // Forwarded to the display surface: whether fit-to-window enlarges a
+    // picture smaller than the pane (the default) or shows it at its own
+    // size. See UltraCanvasMediaSurface::SetFitEnlarges.
+    void SetFitEnlarges(bool enlarges);
+    bool GetFitEnlarges() const;
 
     // ===== BACKDROP PALETTE (UNDER THE PICTURE) =====
     // A strip of colours (greys first, then colours) shown directly beneath the
@@ -717,6 +731,9 @@ private:
     int   pdfThumbWidthPx      = 56;
     float pdfThumbWidthFraction = 0.25f;
     bool  documentWheelZoom    = true;   // plain wheel zooms the PDF page
+    // The surface's size the info bar last reported for: a resize changes
+    // the fit, so the zoom it shows (Arrange refreshes it).
+    Size2Df infoBarSurfaceSize{0.0f, 0.0f};
     bool  transparencyPaletteEnabled = true;  // backdrop strip under the picture
 
     bool grabFocusOnAttach = true;   // claim the keyboard when attached to a window

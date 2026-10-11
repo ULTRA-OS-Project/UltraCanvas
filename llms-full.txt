@@ -16405,7 +16405,7 @@ FILE: Docs/UltraCanvas/UltraCanvasClipboardHistory.md
 
 # UltraCanvasClipboardHistory
 
-<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); UltraCanvasClipboardRecorder recorder; -->
+<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); void Preview(int64_t id); UltraCanvasClipboardRecorder recorder; -->
 
 The clipboard history of ULTRA OS: every copy, in every format the
 framework's clipboard reads, kept on disk so it outlives the program that
@@ -16607,8 +16607,14 @@ listView->SetVariableRowHeights(true);      // headers are lower than rows
 model->SetEntries(history.List(), ClipboardHistoryListModel::Sections::ByDay);
 
 // Raw pointers: a lambda stored in the list must not own the list.
-listView->onCellHovered = [rows = rows.get(), view = listView.get()](int row, int, const Point2Di& at) {
+listView->onCellHovered = [this, rows = rows.get(), model = model.get(), view = listView.get()](
+                                  int row, int, const Point2Di& at) {
     if (rows->SetHover(row, at)) view->RequestRedraw();
+    // The thumbnail's column of an entry row: UltraClipboard opens its hover
+    // preview of an image from here. The list re-reports the hover when it
+    // scrolls under a still pointer, so the preview follows the wheel too.
+    const ClipboardHistoryEntry* entry = model->GetEntry(row);
+    if (entry && rows->IsOverThumbnail(at)) Preview(entry->id);
 };
 listView->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
     const ClipboardHistoryEntry* entry = model->GetEntry(row);
@@ -16638,6 +16644,10 @@ listView->tooltipProvider = [rows = rows.get()](int row, int) {
   style shows the actions on every row, the compact one on the hovered and
   selected rows only. `ShowCopied(id)` turns Copy into a check with a
   "Copied" pill for a moment; redraw while `IsShowingCopied()`.
+  `IsOverThumbnail(posInCell)` says whether a point of a row is on the
+  thumbnail's column (the tile's width, the row's whole height, so a pointer
+  resting there keeps its answer while the rows scroll under it); the caller
+  checks the row is an entry, not a header.
 - The action glyphs are `media/icons/clipboard/*.svg`, drawn as masks;
   `iconsDir` points elsewhere.
 - Helpers: `FormatClipboardAge`, `FormatClipboardSize`,
@@ -36700,7 +36710,10 @@ std::function<void(int row)> onItemHovered;
 
 // Cell-level (multi-column aware). posInCell is relative to the cell's
 // top-left corner. onCellHovered reports (-1, -1) when the pointer leaves
-// the rows area.
+// the rows area. The hover follows the rows when they scroll under a still
+// pointer (a wheel scroll, EnsureRowVisible): the row highlight moves, and
+// onItemHovered and onCellHovered are reported again for the row now under
+// the pointer, so a preview hung on them follows the scroll too.
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
 
@@ -38392,7 +38405,14 @@ preview->SetTopBarsVisible(false);      // host provides the navigation
 preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
 preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
+preview->SetFitEnlarges(false);         // a small picture at its own size, not blown up
 ```
+
+`SetFitEnlarges(false)` makes fit-to-window shrink only: a picture smaller
+than the pane is shown at its own size, centred, instead of being enlarged to
+fill it - what a hover preview wants, so an icon stays an icon rather than a
+blur the size of the pane. The wheel still zooms in from there, and the info
+bar reports the resulting zoom as always. The default (`true`) fills the pane.
 
 ### Taking the 3D view out of it
 
