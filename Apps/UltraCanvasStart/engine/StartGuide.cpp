@@ -1,9 +1,11 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
 // Version: 0.1.2 - the guide names the steps, not the pages
 // Version: 0.1.1 - AiGuide per assistant
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartGuide.h"
+#include "StartPlan.h"
 
 #include "StartSdk.h"
 
@@ -89,32 +91,35 @@ std::string PlatformGuide(Platform platform, const std::string& version,
     return out;
 }
 
-std::string ChecksMarkdown(const std::vector<CheckResult>& checks) {
-    if (checks.empty()) {
-        return "Press **Check again** to look for the tools and libraries the chosen features need.\n";
-    }
-    std::string out;
-    bool first = true;
-    DependencyGroup current = DependencyGroup::Toolchain;
-    for (const auto& c : checks) {
-        if (first || c.group != current) {
-            if (!first) out += "\n";
-            out += "### " + DependencyGroupTitle(c.group) + "\n";
-            current = c.group;
-            first = false;
-        }
-        const bool ok = c.present && c.versionOk;
-        // U+2713 check mark, U+2717 ballot x, and a question mark for a
-        // dependency with no check of its own. The mark is the bullet: the
-        // lines are not a Markdown list.
-        const char* mark = !c.checked ? "?" : (ok ? "\xE2\x9C\x93" : "\xE2\x9C\x97");
-        std::string line = std::string(mark) + " **" + c.title + "**";
-        if (!c.version.empty()) line += " " + c.version;
-        if (!ok || !c.checked) line += " - " + c.detail;
-        if (!c.packageName.empty() && !ok) line += " - install " + Code(c.packageName);
-        out += line + "\n";
-    }
+std::string CheckDetail(const CheckResult& check) {
+    std::string out = check.version;
+    if (check.checked && check.present && check.versionOk) return out;
+    auto add = [&out](const std::string& part) {
+        if (!part.empty()) out += (out.empty() ? "" : " - ") + part;
+    };
+    add(check.detail);
+    if (!check.packageName.empty()) add("install " + check.packageName);
     return out;
+}
+
+std::string InstallPreview(const Plan& plan) {
+    if (plan.checks.empty()) {
+        return "Press Check again to look for the tools and libraries the chosen features need.";
+    }
+    const size_t missing = plan.MissingCount();
+    if (missing == 0) return "Everything the chosen features need is installed: Install has nothing to do.";
+    const std::string count = std::to_string(missing) + " missing";
+    const PlanStep* install = nullptr;
+    for (const auto& step : plan.steps) {
+        if (step.kind == StepKind::Install && !step.argv.empty()) { install = &step; break; }
+    }
+    if (!install || plan.profile.packageManagerPath.empty()) {
+        return "No package manager was found, so Install cannot run here: install the " + count +
+               " yourself and press Check again. Next goes on anyway.";
+    }
+    return "Install runs " + PackageManagerName(plan.profile.packageManager) + " for the " + count + ", then checks again" +
+           (install->needsElevation ? "; it asks for administrator rights" : "") + ":\n" +
+           DisplayCommand(install->argv, install->needsElevation);
 }
 
 std::string AiGuide(const AiStatus& ai, Platform platform, Assistant assistant) {

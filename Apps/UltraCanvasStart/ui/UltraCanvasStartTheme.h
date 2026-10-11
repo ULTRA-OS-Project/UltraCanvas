@@ -12,6 +12,8 @@
 // links that open in the browser (the pages' prose), a console (command
 // output and generated files), a key/value row, a link label and a status
 // badge for the key/value cards (step 1, step 4).
+// Version: 0.3.0 - MakeIndicatorSwitch (the Tools step's rows); scrollbars half
+//                  as wide (kScrollbarWidth) and fully rounded
 // Version: 0.2.0 - StyleSegmented, MakeSegmented (the platform and assistant pickers)
 // Version: 0.1.1 - the Markdown views' links are not underlined
 // Version: 0.1.0
@@ -25,6 +27,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"
@@ -92,6 +95,7 @@ constexpr float kRowHeight     = 20.0f;   // one key/value line
 constexpr float kKeyWidth      = 150.0f;  // the key column of a key/value row
 constexpr float kHeaderHeight  = 44.0f;   // the band above the pages
 constexpr float kStatusHeight  = 28.0f;   // the band below them
+constexpr int   kScrollbarWidth = 6;      // a thin, fully rounded bar in every scrolling view
 
 // ---------------------------------------------------------------------------
 // Element styles (UltraMail's)
@@ -400,8 +404,8 @@ MakeMarkdownView(const std::string& id, float height) {
     style.backgroundColor = kCardBackground;
     style.fontColor       = kTextPrimary;
     style.textPadding     = 4.0f;
-    style.scrollbarWidth  = 12;
-    style.scrollbarCornerRadius = 6.0f;
+    style.scrollbarWidth  = kScrollbarWidth;
+    style.scrollbarCornerRadius = kScrollbarWidth / 2.0f;
     style.scrollbarThumbInset = 0;
     auto& md = view->GetMarkdownStyleMutable();
     md.headerColors = { kTextPrimary, kTextPrimary, kTextPrimary, kTextPrimary, kTextPrimary, kTextPrimary };
@@ -440,8 +444,8 @@ MakeConsole(const std::string& id, float height, bool dark = true) {
     style.backgroundColor = dark ? kConsoleBack : kSidebar;
     style.fontColor       = dark ? kConsoleText : kTextPrimary;
     style.textPadding     = 6.0f;
-    style.scrollbarWidth  = 12;
-    style.scrollbarCornerRadius = 6.0f;
+    style.scrollbarWidth  = kScrollbarWidth;
+    style.scrollbarCornerRadius = kScrollbarWidth / 2.0f;
     style.scrollbarThumbInset = 0;
     view->SetBorders(0.0f, UltraCanvas::Colors::Transparent, kControlRadius);
     view->SetElementSize(UltraCanvas::CSSLayout::Dimension::Auto(), UltraCanvas::CSSLayout::Dimension::Px(height));
@@ -495,6 +499,21 @@ MakeSegmented(const std::string& id, const std::vector<std::string>& labels, int
 
 inline void StyleCheckbox(const std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>& box) {
     if (box) box->SetFontSize(kSizeBody);
+}
+
+// A switch that shows a state rather than setting one: whether a tool is
+// there. It is disabled, so a click does nothing, but keeps its normal
+// colours - a disabled switch is otherwise grey whichever way it points.
+inline std::shared_ptr<UltraCanvas::UltraCanvasSwitch>
+MakeIndicatorSwitch(const std::string& id, bool on) {
+    auto indicator = UltraCanvas::UltraCanvasSwitch::Create(id, 0, 0, "", on);
+    indicator->SetTrackSize(28, 14);
+    auto& style = indicator->GetVisualStyle();
+    style.trackDisabledColor = on ? style.trackOnColor : style.trackOffColor;
+    style.thumbDisabledColor = style.thumbColor;
+    indicator->SetDisabled(true);
+    indicator->layoutItem.SetFlexShrink(0);
+    return indicator;
 }
 
 } // namespace Theme

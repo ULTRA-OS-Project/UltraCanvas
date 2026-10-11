@@ -1,5 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.13.0 - MenuStyle::tintIcons draws an item's icon as a mask in its
+//                  label's colour
 // Version: 1.12.0 - a current-desktop look for popups and submenus: a rounded panel
 //                  with a soft drop shadow (painted by the window), inner padding,
 //                  rounded highlights inset from the panel's edges, full-width
@@ -628,8 +630,18 @@ namespace UltraCanvas {
 
         // Render icon (from an in-memory image if provided, else the file
         // path). A disabled item's icon is faded with its label, as a
-        // disabled button's is.
-        if (hasIcon) {
+        // disabled button's is - or, tinted, takes the label's grey.
+        if (hasIcon && style.tintIcons) {
+            int iconY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
+            std::shared_ptr<UCImage> image = item.iconImage;
+            if (!image && item.iconPath != "-") image = UCImage::Get(item.iconPath);
+            if (image) {
+                const Color tint = item.enabled ? (index == activeIndex ? style.hoverTextColor : style.textColor)
+                                                : style.disabledTextColor;
+                ctx->DrawMask(tint, *image, Rect2Dd(currentX, iconY, style.iconSize, style.iconSize),
+                              ImageFitMode::Contain);
+            }
+        } else if (hasIcon) {
             int iconY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
             if (!item.enabled) {
                 ctx->PushState();

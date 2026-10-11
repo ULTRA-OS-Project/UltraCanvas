@@ -1,5 +1,6 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.14.0 - MenuStyle::tintIcons: icons drawn in the label's colour (on in Dark())
 // Version: 1.13.0 - a current-desktop look for popups and submenus (Windows 11, macOS,
 //                  GNOME): rounded panel with a soft drop shadow, inner padding, rounded
 //                  highlights inset from the edges, neutral hover, muted shortcuts;
@@ -216,6 +217,10 @@ namespace UltraCanvas {
         int itemInset = 4;          // Gap between the panel's border and a row's highlight
         int itemCornerRadius = 4;   // Rounding of a row's highlight
         int iconSpacing = 10;
+        // Icons drawn in the label's colour, as masks: a flat, single-colour
+        // icon then follows the style (light on a dark menu), the highlighted
+        // row and a disabled item. Off, an icon keeps its own colours.
+        bool tintIcons = false;
         int shortcutSpacing = 24;
         int separatorHeight = 9;
         int borderWidth = 1;
@@ -651,6 +656,8 @@ namespace UltraCanvas {
         style.separatorColor = Color(255, 255, 255, 26);
         style.headerTextColor = Color(190, 190, 190, 255);
         style.shadowColor = Color(0, 0, 0, 110);
+        // A flat icon drawn for a light menu would vanish on this one.
+        style.tintIcons = true;
         return style;
     }
 
