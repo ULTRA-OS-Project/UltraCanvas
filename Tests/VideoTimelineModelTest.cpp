@@ -204,6 +204,25 @@ static void TestRulerTimecodeSnap() {
     CHECK(!TimelineSnap(5.5, candidates, 0.2), "nothing within tolerance");
     CHECK(TimelineSnap(5.4, candidates, 2.0).value_or(-1.0) == 4.0, "the nearer of two");
     CHECK(Near(TimelineToFrame(1.013, 25.0), 1.0) && Near(TimelineToFrame(1.03, 25.0), 1.04), "rounded to the frame grid");
+
+    long long frames = -1;
+    CHECK(TimelineFramesToTimecode(0, 25.0) == "00:00:00:00", "zero frames");
+    CHECK(TimelineFramesToTimecode(25 * 3725 + 24, 25.0) == "01:02:05:24", "frames to timecode");
+    CHECK(TimelineFramesToTimecode(-12, 25.0) == "-00:00:00:12", "negative frames");
+    CHECK(TimelineFramesToTimecode(30 * 61 + 29, 29.97) == "00:01:01:29", "29.97 counts 30 frames a second");
+    CHECK(TimelineTimecodeToFrames("00:00:17:12", 25.0, frames) && frames == 17 * 25 + 12, "full timecode");
+    CHECK(TimelineTimecodeToFrames("17:12", 25.0, frames) && frames == 17 * 25 + 12, "two groups: seconds and frames");
+    CHECK(TimelineTimecodeToFrames("12", 25.0, frames) && frames == 12, "one group: frames");
+    CHECK(TimelineTimecodeToFrames("1:05:12", 25.0, frames) && frames == (65 * 25) + 12, "three groups");
+    CHECK(TimelineTimecodeToFrames("+12", 25.0, frames) && frames == 12, "a leading plus");
+    CHECK(TimelineTimecodeToFrames("-1:00", 25.0, frames) && frames == -25, "a leading minus");
+    CHECK(TimelineTimecodeToFrames("00.00.17.12", 25.0, frames) && frames == 17 * 25 + 12, "dots between groups");
+    CHECK(!TimelineTimecodeToFrames("00:00:75:00", 25.0, frames), "75 seconds is not a timecode");
+    CHECK(!TimelineTimecodeToFrames("00:00:00:25", 25.0, frames), "frame 25 at 25 fps is not a timecode");
+    CHECK(!TimelineTimecodeToFrames("1:2:3:4:5", 25.0, frames), "five groups");
+    CHECK(!TimelineTimecodeToFrames("", 25.0, frames) && !TimelineTimecodeToFrames("abc", 25.0, frames) &&
+              !TimelineTimecodeToFrames("1::2", 25.0, frames),
+          "empty, letters, an empty group");
 }
 
 int main() {

@@ -1112,6 +1112,29 @@ else()
     message(STATUS "  VideoTimelineElementTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TIMECODE FIELD ELEMENT TEST =====
+# UltraCanvasTimecodeField in a real window: typing digits that fill from
+# the right, commit, an invalid entry, Esc, relative entries, stepping a
+# segment, Tab between segments, the maximum, a click on a segment, the
+# readout variant. Needs the framework and a display; skips itself without one.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TimecodeFieldElementTest...")
+    add_executable(TimecodeFieldElementTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TimecodeFieldElementTest.cpp
+    )
+    target_include_directories(TimecodeFieldElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TimecodeFieldElementTest PRIVATE cxx_std_20)
+    target_link_libraries(TimecodeFieldElementTest PRIVATE UltraCanvas)
+    set_target_properties(TimecodeFieldElementTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TimecodeFieldElementTest COMMAND TimecodeFieldElementTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TimecodeFieldElementTest")
+else()
+    message(STATUS "  TimecodeFieldElementTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CLIPBOARD DIB TEST =====
 # UltraCanvasClipboardDib: the CF_DIB / CF_DIBV5 <-> PNG conversion the
 # Windows clipboard backend puts every image through. Byte work plus cairo's

@@ -964,8 +964,15 @@ that writing it showed:
   nudge; markers; the work area; rubber band; file drop with the insertion
   marker; the context-menu hook; the keyboard map of the brand book; light
   and dark palettes.
-- Not built, and left for the next phase: `UltraCanvasTimecodeField`
-  (§7.6), fade knobs on the music bar, marker dragging, a real slip trim
+- **`UltraCanvasTimecodeField`** (§7.6), built the same day: segments
+  stepped by the arrow keys and the wheel, digits filling from the right
+  with the untyped zeros dimmed, `+`/`-` offsets, validation with the danger
+  border, `Esc`, `Tab`, a maximum, copy and paste, the readout variant; the
+  frame arithmetic in the model header, tested headless;
+  `TimecodeFieldElementTest` under Xvfb; the DemoApp's timeline page drives
+  its playhead with one. It owns its entry rather than wrapping the text
+  input, because four segments with no caret is not a text field.
+- Not built, and left for the next phase: fade knobs on the music bar, marker dragging, a real slip trim
   (the Slip tool trims for now), retiming by `Ctrl`-drag, vertical scrolling
   of many tracks, resizing a track by its edge, and the mapping onto the
   framework's theme roles (the element carries its colours in its style

@@ -10,6 +10,7 @@
 // Author: UltraCanvas Framework
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasVideoTimeline.h"
+#include "UltraCanvasTimecodeField.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasDropdown.h"
@@ -360,11 +361,25 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTim
     };
     container->AddChild(resetButton);
 
-    auto playheadLabel = CreateLabel("VideoTimelinePlayhead", 20, 470, 960, 22, "Playhead 00:00:00:00");
-    timeline->onPlayheadChanged = [playheadLabel = playheadLabel.get()](double seconds) {
-        playheadLabel->SetText("Playhead " + TimelineTimecode(seconds, 25.0));
-    };
+    // the playhead as a timecode field (type a time, Enter) and as the transport's readout
+    auto playheadLabel = CreateLabel("VideoTimelinePlayheadLabel", 20, 470, 70, 28, "Playhead");
     container->AddChild(playheadLabel);
+    auto playheadField = CreateTimecodeField("VideoTimelinePlayhead", 90, 470, 120, 28);
+    playheadField->SetFrameRate(25.0);
+    playheadField->SetMaximumFrames(static_cast<long long>(state->model.Length() * 25.0));
+    playheadField->onCommit = [timeline = timeline.get()](long long frames) { timeline->SetPlayhead(frames / 25.0); };
+    container->AddChild(playheadField);
+    auto readout = CreateTimecodeField("VideoTimelineReadout", 230, 470, 170, 28);
+    readout->SetFrameRate(25.0);
+    readout->SetReadout(true);
+    container->AddChild(readout);
+    auto hint = CreateLabel("VideoTimelinePlayheadHint", 410, 470, 560, 28,
+                            "Click a segment and press the arrow keys, or type digits and Enter; +12 is twelve frames later.");
+    container->AddChild(hint);
+    timeline->onPlayheadChanged = [playheadField = playheadField.get(), readout = readout.get()](double seconds) {
+        playheadField->SetSeconds(seconds);
+        readout->SetSeconds(seconds);
+    };
 
     auto notes = CreateLabel("VideoTimelineNotes", 20, 498, 960, 60,
                              "The element never applies an edit: it reports it with the clips before and after, and this demo, "

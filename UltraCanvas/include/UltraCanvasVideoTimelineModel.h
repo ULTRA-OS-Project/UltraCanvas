@@ -204,4 +204,14 @@ std::optional<double> TimelineSnap(double seconds, const std::vector<double>& ca
 // Round a time to the frame grid
 double TimelineToFrame(double seconds, double frameRate);
 
+// Whole frames <-> `HH:MM:SS:FF`, at the rounded frame rate (29.97 counts 30
+// frames a second). A negative count carries a leading `-`.
+std::string TimelineFramesToTimecode(long long frames, double frameRate);
+// Parse `HH:MM:SS:FF`, or fewer groups counted from the right (`12` is 12
+// frames, `5:12` five seconds and twelve frames, `1:05:12` a minute more), with
+// `:`, `.`, `;` or a space between groups and an optional leading `+` or `-`.
+// False for anything else, a group out of range (seconds 60, frame FF at or
+// past the rate) or a count with more than four groups.
+bool TimelineTimecodeToFrames(const std::string& text, double frameRate, long long& frames);
+
 } // namespace UltraCanvas

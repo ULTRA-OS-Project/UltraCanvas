@@ -326,6 +326,52 @@ std::optional<double> TimelineSnap(double seconds, const std::vector<double>& ca
     return best;
 }
 
+std::string TimelineFramesToTimecode(long long frames, double frameRate) {
+    const long long perSecond = std::max(1LL, static_cast<long long>(std::llround(frameRate > 0.0 ? frameRate : 25.0)));
+    const bool negative = frames < 0;
+    if (negative) frames = -frames;
+    const long long ff = frames % perSecond;
+    long long total = frames / perSecond;
+    const long long hh = total / 3600;
+    total %= 3600;
+    char buffer[40];
+    std::snprintf(buffer, sizeof buffer, "%s%02lld:%02lld:%02lld:%02lld", negative ? "-" : "", hh, total / 60, total % 60, ff);
+    return buffer;
+}
+
+bool TimelineTimecodeToFrames(const std::string& text, double frameRate, long long& frames) {
+    const long long perSecond = std::max(1LL, static_cast<long long>(std::llround(frameRate > 0.0 ? frameRate : 25.0)));
+    size_t i = 0;
+    while (i < text.size() && text[i] == ' ') ++i;
+    bool negative = false;
+    if (i < text.size() && (text[i] == '+' || text[i] == '-')) negative = text[i++] == '-';
+    std::vector<long long> groups;
+    long long current = 0;
+    bool inGroup = false;
+    for (; i < text.size(); ++i) {
+        const char c = text[i];
+        if (c >= '0' && c <= '9') {
+            if (!inGroup) { current = 0; inGroup = true; }
+            current = current * 10 + (c - '0');
+            if (current > 99999999LL) return false;
+        } else if (c == ':' || c == '.' || c == ';' || c == ' ') {
+            if (!inGroup) return false;
+            groups.push_back(current);
+            inGroup = false;
+        } else {
+            return false;
+        }
+    }
+    if (inGroup) groups.push_back(current);
+    if (groups.empty() || groups.size() > 4) return false;
+    while (groups.size() < 4) groups.insert(groups.begin(), 0);
+    const long long hh = groups[0], mm = groups[1], ss = groups[2], ff = groups[3];
+    if (mm >= 60 || ss >= 60 || ff >= perSecond) return false;
+    frames = ((hh * 60 + mm) * 60 + ss) * perSecond + ff;
+    if (negative) frames = -frames;
+    return true;
+}
+
 double TimelineToFrame(double seconds, double frameRate) {
     const double fps = frameRate > 0.0 ? frameRate : 25.0;
     return std::round(seconds * fps) / fps;
