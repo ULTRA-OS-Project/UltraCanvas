@@ -1,10 +1,12 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.13.0 - OpenMenuAnchored (below a widget, or above it when there is no
+// Version: 1.14.0 - OpenMenuAnchored (below a widget, or above it when there is no
 //                  room below); menubar drop-downs flip above their item; symbolic
 //                  icons painted in the entry's text colour (MenuStyle::iconTint);
 //                  CloseAllSubmenus no longer walks childMenus while closing a
 //                  child erases it from them
+// Version: 1.13.0 - MenuStyle::tintIcons draws an item's icon as a mask in its
+//                  label's colour
 // Version: 1.12.0 - a current-desktop look for popups and submenus: a rounded panel
 //                  with a soft drop shadow (painted by the window), inner padding,
 //                  rounded highlights inset from the panel's edges, full-width
@@ -1000,7 +1002,7 @@ namespace UltraCanvas {
                                      const Color &textColor, IRenderContext *ctx) {
         // A symbolic icon takes the label's colour, as text does: light on a
         // dark menu, greyed with a disabled label.
-        const bool tint = style.iconTint == MenuIconTint::AllIcons ||
+        const bool tint = style.tintIcons || style.iconTint == MenuIconTint::AllIcons ||
                           (style.iconTint == MenuIconTint::Symbolic && IsSymbolicIcon(icon, rect, ctx));
         if (tint) {
             ctx->DrawMask(textColor, icon, rect, ImageFitMode::Contain);

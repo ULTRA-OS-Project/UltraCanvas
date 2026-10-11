@@ -24,7 +24,11 @@
   set of icons serves both themes. A coloured icon (an application's, a file
   type's) keeps its colours, and so does one in black and white (Texter's
   half-filled theme-switch disc). `MenuIconTint::Original` draws every icon as it
-  is; `MenuIconTint::AllIcons` tints coloured ones too.
+  is; `MenuIconTint::AllIcons` tints coloured ones too. `MenuStyle::tintIcons`
+  (framework changelog: `menu-flat-icons`) is the same as `AllIcons`, and
+  `Dark()` no longer turns it on: its grey icons take the light text colour
+  by the symbolic default, and an application's coloured icon in a dark
+  menu - UltraFiler's *Open with* - keeps its colours.
 - **Closing all of a menu's submenus no longer frees one mid-close.**
   `UltraCanvasMenu::CloseAllSubmenus()` - run when a popup menu closes for
   Escape or by hand, and on a menubar - walked its list of open submenus

@@ -1,9 +1,11 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.14.0 - OpenMenuAnchored: a menu opens below a widget, or above it when it
+// Version: 1.15.0 - OpenMenuAnchored: a menu opens below a widget, or above it when it
 //                  does not fit below, without the caller sizing it; menubar drop-downs
 //                  flip above their item; MenuStyle::iconTint paints symbolic (grey)
-//                  icons in the entry's text colour, so they follow the theme
+//                  icons in the entry's text colour, so they follow the theme;
+//                  tintIcons is iconTint's AllIcons, and Dark() leaves it off
+// Version: 1.14.0 - MenuStyle::tintIcons: icons drawn in the label's colour (on in Dark())
 // Version: 1.13.0 - a current-desktop look for popups and submenus (Windows 11, macOS,
 //                  GNOME): rounded panel with a soft drop shadow, inner padding, rounded
 //                  highlights inset from the edges, neutral hover, muted shortcuts;
@@ -243,6 +245,11 @@ namespace UltraCanvas {
         int itemInset = 4;          // Gap between the panel's border and a row's highlight
         int itemCornerRadius = 4;   // Rounding of a row's highlight
         int iconSpacing = 10;
+        // Every icon drawn in the label's colour, as a mask - coloured ones
+        // too: the same as iconTint = MenuIconTint::AllIcons. Off (the
+        // default) iconTint decides, and by default grey (symbolic) icons
+        // are drawn in the label's colour anyway.
+        bool tintIcons = false;
         int shortcutSpacing = 24;
         int separatorHeight = 9;
         int borderWidth = 1;
@@ -707,6 +714,9 @@ namespace UltraCanvas {
         style.separatorColor = Color(255, 255, 255, 26);
         style.headerTextColor = Color(190, 190, 190, 255);
         style.shadowColor = Color(0, 0, 0, 110);
+        // A grey icon drawn for a light menu would vanish on this one: the
+        // default iconTint (Symbolic) draws it in the light text colour,
+        // and leaves a coloured icon - an application's - its colours.
         return style;
     }
 

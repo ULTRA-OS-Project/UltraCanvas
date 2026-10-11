@@ -320,17 +320,9 @@ std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildToolbar() {
     auto settings = IconButton("ucb.settings", "settings.svg", "Settings");
     settings->SetOnClick([this]() { OpenSettings(); });
     top->AddChild(settings);
-    moreButton_ = std::make_shared<UltraCanvasButton>("ucb.more", 0, 0, 34, 34, "\xE2\x8B\xAF");
-    ButtonStyle moreStyle = moreButton_->GetStyle();
-    moreStyle.normalColor = Colors::Transparent;
-    moreStyle.hoverColor = Color(229, 231, 235);
-    moreStyle.pressedColor = Color(209, 213, 219);
-    moreStyle.borderColor = Colors::Transparent;
-    moreStyle.cornerRadius = 6;
-    moreStyle.fontSize = 14;
-    moreButton_->SetStyle(moreStyle);
-    moreButton_->SetTooltip("More");
-    moreButton_->layoutItem.SetFlexShrink(0);
+    // An icon, not a "⋯" glyph: the UI font (Ubuntu) has none, and the
+    // fallback font left it as a missing-glyph box on Windows.
+    moreButton_ = IconButton("ucb.more", "more.svg", "More");
     moreButton_->SetOnClick([this]() { ShowMoreMenu(); });
     top->AddChild(moreButton_);
     toolbar->AddChild(top);

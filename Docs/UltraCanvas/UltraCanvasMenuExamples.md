@@ -202,6 +202,7 @@ struct MenuStyle {
     int itemInset;           // Gap between the panel's border and a row's highlight
     int itemCornerRadius;    // Rounding of a row's highlight
     int iconSpacing;         // Space between icon and text
+    bool tintIcons;          // Every icon in the label's colour, coloured ones too (= MenuIconTint::AllIcons; default false)
     int shortcutSpacing;     // Space before shortcut text
     int separatorHeight;     // Height of a separator row; the 1px line is centred in it
     int borderWidth;         // Border thickness
@@ -532,16 +533,19 @@ menuBar->AddItem(MenuItemData::Submenu("Edit", {
 auto contextMenu = std::make_shared<UltraCanvasMenu>("ContextMenu", 0, 0, 200, 0);
 contextMenu->SetMenuType(MenuType::PopupMenu);
 
-// Add items with shortcuts
-contextMenu->AddItem(MenuItemData::ActionWithShortcut("📋 Copy", "Ctrl+C", []() {
+// Add items with shortcuts and icons. The icons are flat ones of
+// media/icons/menu/, not emoji in the label: an emoji draws only where a
+// colour emoji font is installed, and shows as a box of hex digits elsewhere.
+const std::string icons = GetResourcesDir() + "media/icons/menu/";
+contextMenu->AddItem(MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", icons + "copy.svg", []() {
     std::cerr << "Copy action executed" << std::endl;
 }));
 
-contextMenu->AddItem(MenuItemData::ActionWithShortcut("✂️ Cut", "Ctrl+X", []() {
+contextMenu->AddItem(MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", icons + "cut.svg", []() {
     std::cerr << "Cut action executed" << std::endl;
 }));
 
-contextMenu->AddItem(MenuItemData::ActionWithShortcut("📄 Paste", "Ctrl+V", []() {
+contextMenu->AddItem(MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", icons + "paste.svg", []() {
     std::cerr << "Paste action executed" << std::endl;
 }));
 
@@ -677,6 +681,17 @@ faded (35 % opacity).
 MenuStyle style = MenuStyle::Dark();
 style.iconTint = MenuIconTint::Original;   // keep black icons black
 menu->SetStyle(style);
+```
+
+`MenuStyle::tintIcons = true` draws every icon in its label's colour,
+coloured ones too - the same as `MenuIconTint::AllIcons` - for a menu whose
+icons are all meant to be flat:
+
+```cpp
+auto tinted = std::make_shared<UltraCanvasMenu>("Tinted", 0, 0, 200, 0);
+MenuStyle style = MenuStyle::Default();
+style.tintIcons = true;
+tinted->SetStyle(style);
 ```
 
 ### Custom Styling
