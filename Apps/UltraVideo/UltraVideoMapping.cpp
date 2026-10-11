@@ -73,6 +73,10 @@ bool PlanStory(const StoryChoice& choice, std::vector<VideoFXSegment>& imageSegm
         settings.music = VideoFXMusic::FromFiles(choice.songs);
         settings.music.SetDuckingPreset(choice.ducking);
     }
+    // The framing choice is for the photos, and the clips follow it: a
+    // clip whose shape differs from the frame fills it or is shown whole
+    // (the engine frames files with the export's fit mode, not per clip)
+    settings.fitMode = choice.portraitFit == VideoFXImageFit::Cover ? VideoFXFitMode::Fill : VideoFXFitMode::Letterbox;
     if (pictures.empty()) return true;   // clips alone: nothing for the engine to plan
 
     VideoFXSlideshowOptions options;
@@ -94,6 +98,7 @@ bool PlanStory(const StoryChoice& choice, std::vector<VideoFXSegment>& imageSegm
         return false;
     }
     settings = planned;
+    settings.fitMode = choice.portraitFit == VideoFXImageFit::Cover ? VideoFXFitMode::Fill : VideoFXFitMode::Letterbox;
     return true;
 }
 

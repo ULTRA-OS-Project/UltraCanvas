@@ -92,6 +92,11 @@ private:
     void MakeStory();                  // the wizard, then the plan on the worker, then a new project
     void ImportFiles(const std::vector<std::string>& files, double at = -1.0);
     void AddMediaToTimeline(const std::string& path, double at = -1.0);
+    // A bin tile dragged onto the timeline: the window carries the file
+    // from the album to the element's own drop path (insertion marker,
+    // the lane and time under the pointer)
+    void BeginBinDrag(const std::string& path);
+    void DragToTimeline(const UltraCanvas::UCEvent& event, bool drop);
     void ConfirmThen(std::function<void()> then);   // asks to save first when dirty
 
     // playback and the playhead
@@ -168,6 +173,7 @@ private:
     bool frameWanted_ = false;
     int messageTicks_ = 0;
     std::string selectedClip_;
+    std::string binDrag_;              // the file being dragged from the bin, "" when none
     bool snapping_ = true;
     bool showBeats_ = false;
     std::map<std::string, std::vector<double>> songBeats_;   // per song path; empty = none found

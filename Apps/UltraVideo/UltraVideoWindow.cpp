@@ -135,6 +135,17 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
 
     window->InstallEventFilter("ultravideo-keys", [this](const UCEvent& event) { return OnKey(event); },
                                {UCEventType::KeyDown, UCEventType::Drop});
+    // A file dragged out of the bin follows the pointer to the timeline
+    window->InstallEventFilter("ultravideo-bindrag", [this](const UCEvent& event) {
+        if (binDrag_.empty()) return false;
+        if (event.type == UCEventType::MouseMove) { DragToTimeline(event, false); return true; }
+        if (event.type == UCEventType::MouseUp) {
+            DragToTimeline(event, true);
+            binDrag_.clear();
+            return true;
+        }
+        return false;
+    }, {UCEventType::MouseMove, UCEventType::MouseUp});
     window->onWindowClosing = [this]() {
         if (history_.IsClean()) {
             app_.RequestExit();
@@ -286,6 +297,10 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
         album->onItemActivated = [this, music](size_t row) {
             const std::vector<size_t>& rows = music ? musicRows_ : binRows_;
             if (row < rows.size() && rows[row] < document_.media.size()) AddMediaToTimeline(document_.media[rows[row]].path);
+        };
+        album->onItemDraggedOut = [this, music](size_t row, const Point2Di&) {
+            const std::vector<size_t>& rows = music ? musicRows_ : binRows_;
+            if (row < rows.size() && rows[row] < document_.media.size()) BeginBinDrag(document_.media[rows[row]].path);
         };
     };
     makeAlbum("uv.bin.album", binAlbum_, false);
@@ -613,6 +628,7 @@ void UltraVideoWindow::ApplyPalette() {
         cfg.subtitleColor = ToColor(p.InkMuted);
         cfg.allowSelection = true;
         cfg.selectionColor = ToColor(p.Accent);
+        cfg.mode = AlbumMode::UserEdit;      // tiles can be dragged (out to the timeline)
         album->SetConfig(cfg);
     }
     binEmpty_->SetTextColor(ToColor(p.InkMuted));
@@ -951,6 +967,34 @@ void UltraVideoWindow::ImportFiles(const std::vector<std::string>& files, double
     for (const std::string& p : paths) if (const MediaItem* m = document_.FindMedia(p)) if (!m->error.empty()) ++unreadable;
     if (unreadable > 0) Message(std::to_string(unreadable) + " of the files cannot be read; the bin shows them with the reason.");
     else Message(paths.size() == 1 ? "Imported." : "Imported " + std::to_string(paths.size()) + " files.");
+}
+
+void UltraVideoWindow::BeginBinDrag(const std::string& path) {
+    const MediaItem* m = document_.FindMedia(path);
+    if (!m || !m->error.empty()) return;
+    binDrag_ = path;
+    Message(m->kind == MediaKind::Audio ? "Drop it on the music lane, or anywhere on the timeline, to make it the music."
+                                        : "Drop it on the main track at a time, or on the overlay lane to put it over the picture.");
+}
+
+// The element's drop path takes files from the window system; a bin tile
+// is carried to it the same way, as synthetic drag events with the file
+void UltraVideoWindow::DragToTimeline(const UCEvent& source, bool drop) {
+    if (!timeline_ || binDrag_.empty()) return;
+    const Point2Df inWindow(static_cast<float>(source.pointerWindow.x), static_cast<float>(source.pointerWindow.y));
+    UCEvent e = source;
+    e.targetElement = timeline_.get();
+    e.droppedFiles = {binDrag_};
+    const Point2Df local = timeline_->MapToLocal(inWindow);
+    e.pointer = Point2Di(static_cast<int>(local.x), static_cast<int>(local.y));
+    if (!timeline_->IsVisible() || !timeline_->ContainsInWindow(inWindow)) {
+        e.type = UCEventType::DragLeave;
+        timeline_->OnEvent(e);
+        if (drop) Message("Dropped outside the timeline: nothing added.");
+        return;
+    }
+    e.type = drop ? UCEventType::Drop : UCEventType::DragOver;
+    timeline_->OnEvent(e);
 }
 
 void UltraVideoWindow::AddMediaToTimeline(const std::string& path, double at) {
@@ -1513,6 +1557,16 @@ bool UltraVideoWindow::OnKey(const UCEvent& event) {
     }
     if (TextHasFocus()) return false;
     switch (event.virtualKey) {
+        case UCKeys::Escape:
+            if (!binDrag_.empty()) {   // a drag from the bin let go
+                binDrag_.clear();
+                UCEvent leave;
+                leave.type = UCEventType::DragLeave;
+                if (timeline_) timeline_->OnEvent(leave);
+                Message("Drag cancelled.");
+                return true;
+            }
+            return false;
         case UCKeys::Space: TogglePlay(); return true;
         case UCKeys::V: SetTool(TimelineTool::Select); return true;
         case UCKeys::B: SetTool(TimelineTool::Blade); return true;

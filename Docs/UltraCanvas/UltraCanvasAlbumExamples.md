@@ -13,7 +13,7 @@ Like the slideshow it paints all tiles, captions, badges and action buttons
 directly in `Render()` — there are no child UI elements — so a large album stays
 cheap and the whole look can be swapped by a single enum.
 
-**Version:** 1.7.1
+**Version:** 1.9.0
 **Header:** `include/UltraCanvasAlbum.h`
 **Source:** `core/UltraCanvasAlbum.cpp`
 **Namespace:** `UltraCanvas`
@@ -355,6 +355,7 @@ album->onLinkClicked = [album](size_t i){
 std::function<void(size_t)> onItemClicked;       // single click / tap
 std::function<void(size_t)> onItemActivated;     // double click: open / play
 std::function<void(size_t,size_t)> onItemsReordered;  // (from, to) — edit modes
+std::function<void(size_t, const Point2Di& windowPos)> onItemDraggedOut;  // a tile dragged past the edge (edit modes)
 std::function<void(size_t)> onItemRemoved;       // after RemoveItem
 std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 ```
@@ -365,6 +366,12 @@ std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 - **Double-click** → `onItemActivated` (open / play).
 - **Right-click** (or the kebab icon) → per-item action menu.
 - **Drag** a tile (edit / admin) → reorder; fires `onItemsReordered`.
+- **Drag** a tile past the album's edge (edit / admin) → the reorder ends
+  and `onItemDraggedOut(index, windowPos)` fires once, with the pointer's
+  window position. The app carries the item on from there with the window's
+  own mouse events - a media bin hands its file to a timeline's drop path,
+  say. Set the callback only where that is wanted; without it a drag that
+  leaves the album is simply a reorder that ends where the pointer returns.
 - **Mouse wheel** → scroll (vertical for grids, horizontal for the filmstrip).
 
 ## Demo

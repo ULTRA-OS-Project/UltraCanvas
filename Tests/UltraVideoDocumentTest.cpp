@@ -473,6 +473,10 @@ int main() {
         CHECK(PlanStory(choice, planned, settings, why), ("plan: " + why).c_str());
         CHECK(planned.size() == 2 && Near(planned[0].duration, 2.0, 1e-6), "the engine plans the photos alone, at the chosen pace");
         CHECK(settings.music.Songs() == std::vector<std::string>{song} && Near(settings.music.duckingThresholdDb, -36.5, 1e-9), "the song and the ducking are in the settings");
+        CHECK(settings.fitMode == VideoFXFitMode::Letterbox, "clips of another shape are shown whole, like the photos");
+        StoryChoice filling = choice;
+        filling.portraitFit = VideoFXImageFit::Cover;
+        CHECK(PlanStory(filling, planned, settings, why) && settings.fitMode == VideoFXFitMode::Fill, "or fill the frame when the photos do");
         const Document story = BuildStoryDocument(choice, planned, settings);
         CHECK(story.project.title == "Story" && story.project.segments.size() == 3 && story.clipIds.size() == 3, "photo, clip, photo");
         CHECK(story.project.segments[0].kind == VideoFXSourceKind::Image && story.project.segments[1].kind == VideoFXSourceKind::File &&

@@ -1042,6 +1042,14 @@ that writing it showed:
   menu, a bin tile's action or a drop; the inspector's place, size, opacity
   and fades. A picture on the lane becomes an image overlay: a logo. The
   lane is no longer hidden; the table of §5.3 names the mapping.
+- **Drag from the bin** (§6.2): the framework has no drag source API, and
+  the album's own drag is a reorder; `UltraCanvasAlbum` 1.9.0 gained
+  `onItemDraggedOut`, which fires once when a tile crosses the album's
+  edge and ends the reorder, and the window carries the file from there:
+  a window event filter turns the mouse moves into the timeline element's
+  own `DragOver` / `Drop` events with the file as a dropped file, so the
+  insertion marker, the nearest cut on the main track, the overlay lane
+  and the music all come from the drop path that already existed.
 - **The story wizard** (§5.9, §6.11): `UltraVideoStory` shows the three
   steps of §6.11 as a flat tabbed container in a modal, with the chosen
   files as a reorderable album. It departs from §6.11 in one way: *Make

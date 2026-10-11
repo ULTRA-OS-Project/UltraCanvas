@@ -275,7 +275,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
         std::snprintf(text, sizeof text, "%.1f s", v);
         wiz->lengthValue->SetText(text);
     };
-    auto faces = UltraCanvasSwitch::Create("uv.story.faces", 0, 0, "Keep faces in shot while the camera moves", true);
+    auto faces = UltraCanvasSwitch::Create("uv.story.faces", 0, 0, "Keep faces in shot while the camera moves over photos", true);
     faces->onStateChanged = [wiz](CheckedState, CheckedState now) { wiz->choice.keepFaces = now == CheckedState::Checked; };
     faces->layoutItem.SetFlexShrink(0);
     style->AddChild(faces);
@@ -285,7 +285,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     portrait->onSelectionChanged = [wiz](int i, const DropdownItem&) {
         wiz->choice.portraitFit = i == 1 ? VideoFXImageFit::Cover : i == 2 ? VideoFXImageFit::Contain : VideoFXImageFit::Auto;
     };
-    Row(style, "uv.story.row.portrait", "Portrait photos", portrait);
+    Row(style, "uv.story.row.portrait", "Photos and clips of another shape", portrait);
     auto captions = UltraCanvasSwitch::Create("uv.story.captions", 0, 0, "Captions from the file names", false);
     captions->onStateChanged = [wiz](CheckedState, CheckedState now) { wiz->choice.captionsFromNames = now == CheckedState::Checked; };
     captions->layoutItem.SetFlexShrink(0);

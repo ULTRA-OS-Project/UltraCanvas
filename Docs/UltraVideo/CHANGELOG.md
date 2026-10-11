@@ -42,6 +42,11 @@
     reorder by dragging, `Del` to remove a song - and in the *Audio* tab,
     which opens when a song is selected. *Beat marks* in the toolbar asks
     the engine for the first song's beats and draws them across the lanes.
+  - Drag from the bin: a tile dragged out of the album (`UltraCanvasAlbum`
+    1.9.0's `onItemDraggedOut`) follows the pointer to the timeline as the
+    element's own file drop - the insertion marker, the nearest cut on the
+    main track, a time on the overlay lane, a song as the music; `Esc`
+    lets go.
   - The overlay-video lane: *V2 Overlay video* over the main track, a free
     lane of other files' pictures - a video as picture-in-picture without
     its sound (VideoFX 0.10.0's video overlay), a picture as a logo - added
@@ -54,7 +59,9 @@
     steps in a modal - pictures and clips in order with the seconds per
     photo, a song or none with fit-to-song, beat sync and the ducking
     preset, the style with the transition and its length, faces kept in
-    shot, portrait fit, captions from file names, fade in and out. The
+    shot over photos, the framing of photos and clips of another shape
+    (the engine frames clips with the export's fit mode: filling the frame
+    or whole with bars), captions from file names, fade in and out. The
     engine plans the photos (`VideoFX_PlanSlideshow`) on the worker and the
     result opens as an ordinary project: clips and photos in order with
     the transition between them, captions as title spans, the song as the
@@ -70,6 +77,6 @@
   - Export: a preset (web MP4 at 1080p, 720p or 4K, WebM, GIF, ProRes,
     MP3), the output file, the whole project or the work area; the job
     runs in the background with a progress dialog and can be cancelled.
-  - Not yet: effect presets, drag from the bin onto the timeline, playback
-    with sound (the draft render), and the theme-role mapping (the app
-    colours its elements from the design's tokens directly).
+  - Not yet: effect presets, playback with sound (the draft render), and
+    the theme-role mapping (the app colours its elements from the design's
+    tokens directly).

@@ -29,7 +29,11 @@ dropping them on the window, or by naming them on the command line (a
 folder imports its files). Every file is probed by the engine and shows a
 duration badge, *photo*, or *unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
-the timeline; a song becomes the music under the whole video. A search
+the timeline; a song becomes the music under the whole video. Or drag a
+tile onto the timeline: on the main track it goes in at the cut nearest the
+pointer, on the overlay lane it goes over the picture at that time, and a
+song dropped anywhere becomes the music; the insertion marker shows where,
+`Esc` lets go. A search
 field filters the bin by name. The *Music* tab lists the songs. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
@@ -107,8 +111,9 @@ song or none; with a song, *Fit the video to the song's length* paces the
 photos so the show ends with it and *Change pictures on the beat* cuts on
 the engine's beats; a dropdown names the clips' own sound so the music
 dips under it the right way. **3 Style**: the transition between pictures
-and its length, *Keep faces in shot* while the camera pans, portrait
-photos whole on a blurred background or filling the frame, *Captions from
+and its length, *Keep faces in shot* while the camera pans over photos,
+photos and clips of another shape whole on a blurred background (clips:
+whole, with bars), filling the frame, or whole with bars, *Captions from
 the file names*, a fade in and out. *Make video* asks the engine for the
 photos' plan (`VideoFX_PlanSlideshow`: pan and zoom, faces, beats) and
 opens the result as an ordinary project: the photos and clips in order on
@@ -177,8 +182,7 @@ the engine).
 
 ## Not yet
 
-Effect presets, playback with sound, drag from the bin onto the timeline,
-and the mapping
+Effect presets, playback with sound, and the mapping
 of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.

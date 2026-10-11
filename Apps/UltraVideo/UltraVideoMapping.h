@@ -56,8 +56,11 @@ struct StoryChoice {
     VideoFX::VideoFXDuckingPreset ducking = VideoFX::VideoFXDuckingPreset::Speech;
     VideoFX::VideoFXTransitionType transition = VideoFX::VideoFXTransitionType::Crossfade;
     double transitionSeconds = 1.0;
-    bool keepFaces = true;
-    VideoFX::VideoFXImageFit portraitFit = VideoFX::VideoFXImageFit::Auto;   // Auto: whole, on a blurred background
+    bool keepFaces = true;                      // photos: the engine finds faces in stills only
+    // Photos whose shape differs from the frame: Auto = whole, on a blurred
+    // background. Clips of another shape follow it: Cover fills the frame,
+    // the others show them whole (the export's fit mode)
+    VideoFX::VideoFXImageFit portraitFit = VideoFX::VideoFXImageFit::Auto;
     bool captionsFromNames = false;
     bool fadeInOut = true;
 };
