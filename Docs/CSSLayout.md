@@ -35,7 +35,7 @@ The engine implements a useful subset of CSS, not the whole specification.
 **Not implemented yet** (do not rely on these):
 
 - **No normal flow / inline layout.** `Inline` and `InlineBlock` fall through to Block
-  (see the `TODO` at `Element.cpp:214-215`) — there is no inline formatting context, no
+  (see the `TODO` at `Element.cpp:268-269`) — there is no inline formatting context, no
   text-run wrapping across boxes, no baseline alignment.
 - **No `table-row` / `table-cell` display types.** A table's cells are its direct
   children, placed by row and column (see [Table layout](#table-layout)); there are no
@@ -61,26 +61,33 @@ flowchart TD
 ```
 
 The window calls `Measure()` then `Arrange()` on the root each frame for visible, dirty
-windows (see [UltraCanvasWindow.cpp:343-350](../UltraCanvas/core/UltraCanvasWindow.cpp#L343-L350)):
+windows (see [UltraCanvasWindow.cpp:681-689](../UltraCanvas/core/UltraCanvasWindow.cpp#L681-L689),
+where `window` is `this`):
 
+<!-- doc-check: UltraCanvasWindowBase* window; CSSLayout::LayoutContext lctx; -->
 ```cpp
 CSSLayout::MeasureConstraints mc{
     { CSSLayout::ConstraintMode::Exact, lctx.viewportWidth  },
     { CSSLayout::ConstraintMode::Exact, lctx.viewportHeight }
 };
-this->Measure(mc, lctx);
-this->Arrange(finalBounds, lctx);
+window->Measure(mc, lctx);
+window->Arrange(window->finalBounds, lctx);
 ```
 
 ## The element contract — every UI element must conform
 
 A widget participates in layout by overriding two virtual hooks declared on
-`CSSLayout::Element` ([CSSLayout.h:433-436](../UltraCanvas/include/CSSLayout/CSSLayout.h#L433-L436)):
+`CSSLayout::Element` ([CSSLayout.h:519-522](../UltraCanvas/include/CSSLayout/CSSLayout.h#L519-L522)):
 
 ```cpp
-virtual Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
-                                  const LayoutContext& ctx);
-virtual void    Arrange(const Rect2Df& finalRect, const LayoutContext& ctx);
+namespace UltraCanvas::CSSLayout {
+class Element {
+public:
+    virtual Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                      const LayoutContext& ctx);
+    virtual void    Arrange(const Rect2Df& finalRect, const LayoutContext& ctx);
+};
+}
 ```
 
 **1. `MeasureOwnContent()` — report intrinsic content size.**
@@ -88,7 +95,7 @@ A *leaf* widget (label, image, icon, button text) overrides this to return its o
 **content-box** size, *excluding* padding and border. Pure containers don't need it — the
 base returns `{0, 0}` and the engine sizes them from their children. When the engine needs
 to wrap content it passes a `definiteContentWidth`; otherwise it asks for max-content
-(`std::nullopt`). Example from `UltraCanvasLabel` (`UltraCanvasLabel.cpp:193-212`):
+(`std::nullopt`). Example from `UltraCanvasLabel` (`UltraCanvasLabel.cpp:395-420`):
 
 ```cpp
 Size2Df UltraCanvasLabel::MeasureOwnContent(std::optional<float> definiteContentWidth,
@@ -122,7 +129,7 @@ void UltraCanvasButton::Arrange(const Rect2Df& finalRect, const CSSLayout::Layou
 **3. Do NOT modify `finalBounds` manually.**
 `finalBounds` is engine-owned and written by `Arrange()`. Avoid the legacy
 `SetPosition()` / `SetSize()` setters (they bypass the engine and can break layout — note
-the warning at [UltraCanvasUIElement.h:218](../UltraCanvas/include/UltraCanvasUIElement.h#L218)).
+the warning at [UltraCanvasUIElement.h:258](../UltraCanvas/include/UltraCanvasUIElement.h#L258)).
 Prefer `SetElementSize()` / `SetElementAbsolutePosition()`, which update the CSS properties
 and let the engine recompute placement.
 
@@ -144,7 +151,7 @@ sequenceDiagram
     A->>L: Widget::Arrange override places sub-rects
 ```
 
-- **Measure** (`Element::Measure`, `Element.cpp:187`) computes each node's content-box size
+- **Measure** (`Element::Measure`, `Element.cpp:232`) computes each node's content-box size
   given its constraints, bottom-up. Results are cached by constraints *and* layout context
   (viewport, font size, DPI), so unchanged subtrees are skipped. Besides the current result
   (`measured`), each element keeps its last eight results under other constraints
@@ -154,7 +161,7 @@ sequenceDiagram
   layout time doubled per level of nesting. `InvalidateLayout` / `InvalidateSubtree` clear
   both; code that drops a cached size by hand calls `ForgetMeasurements()`, not
   `measured.valid = false`.
-- **Arrange** (`Element::Arrange`, `Element.cpp:241`) walks top-down, writes each node's
+- **Arrange** (`Element::Arrange`, `Element.cpp:297`) walks top-down, writes each node's
   border-box into `finalBounds`, and dispatches to `ArrangeBlock` / `ArrangeFlex` /
   `ArrangeGrid` to place children.
 
@@ -178,7 +185,7 @@ does exactly this to drop its in-field button when the command bar narrows.
 `finalBounds` now holds the element's **border-box** (border + padding + content;
 **margin excluded**), positioned relative to the parent's border-box origin. UI elements
 default to `box.boxSizing = BorderBox`
-([UltraCanvasUIElement.h:141](../UltraCanvas/include/UltraCanvasUIElement.h#L141)), so an
+([UltraCanvasUIElement.h:181](../UltraCanvas/include/UltraCanvasUIElement.h#L181)), so an
 explicit `width`/`height` describes the border-box directly.
 
 ```
@@ -215,7 +222,7 @@ CSS position type and how the engine sizes it:
 `Absolute` (against the containing block's padding-box) **but also contributes to the
 container's measured size** during Measure — the container grows to cover `left+width` /
 `top+height`. Plain `Absolute` keeps the standard CSS behaviour of *not* affecting the
-parent's size. From [CSSLayout.h:127-131](../UltraCanvas/include/CSSLayout/CSSLayout.h#L127-L131):
+parent's size. From [CSSLayout.h:153-157](../UltraCanvas/include/CSSLayout/CSSLayout.h#L153-L157):
 
 ```cpp
 // AbsoluteUI: positioned exactly like Absolute (against the padding-box),
@@ -226,7 +233,7 @@ enum class PositionType   { Static, Relative, Absolute, Fixed, AbsoluteUI };
 ```
 
 The full-rect constructor stamps `AbsoluteUI` **only for a real non-zero offset**
-([UltraCanvasUIElement.h:144-155](../UltraCanvas/include/UltraCanvasUIElement.h#L144-L155)) —
+([UltraCanvasUIElement.h:184-195](../UltraCanvas/include/UltraCanvasUIElement.h#L184-L195)) —
 flex/grid children are conventionally built with `(0, 0, w, h)` so they stay in flow and
 the parent's algorithm can place them. Note also that an explicit `width`/`height`
 **overrides** the parent's stretch (`align-items` / `justify-items: stretch`), though not
