@@ -1,3 +1,38 @@
+#### 2026-10-12 *0.9.258*
+- **CI reports how big the file-format plug-ins are.** A new "Format plug-in
+  sizes" table in each build row's job summary lists Vector, CDR (with its
+  bundled libcdr), XAR, EPS, Models, OCR and the Vectorizer (with its Rust
+  library). Each row gives the archive's code and data, which is what one
+  copy adds to an application that registers the plug-in, and its file size.
+  The plug-ins are static, so each such application carries its own copy.
+  The table is the measurement for deciding whether to make them shared
+  libraries; OCR and the Vectorizer build only in CI.
+  `scripts/report_plugin_sizes.py [build-dir]` prints the same table
+  locally. The step only measures and never fails a job.
+- **VideoFX 0.11.0: proxy media.** Large clips, such as 4K phone footage,
+  can now be edited through small stand-ins. A proxy is the clip at 540 lines,
+  H.264 with a keyframe every half second, the same sound and the same
+  timing. The editor previews and plays from the proxies, and the export
+  reads the originals.
+  - New: `VideoFXProxySettings`, `VideoFX_CreateProxy`,
+    `VideoFX_CreateProxies` (every clip of a timeline once, one progress),
+    `VideoFX_UseProxies` (the timeline switched to them), `VideoFX_ProxyPath`,
+    `VideoFX_HasProxy`, `VideoFX_ClearProxies` and
+    `VideoFX_GetDefaultProxyDirectory`.
+  - Proxies go in the user's cache folder (`~/.cache`, `~/Library/Caches`,
+    `%LOCALAPPDATA%`, then `VideoFX/Proxies`) or a folder the app names.
+    Each is named after the clip and a hash of its path, size and
+    modification time, so an edited clip gets a new proxy.
+  - A proxy is written under a temporary name and renamed when whole, so a
+    crash or cancel never leaves a half one. Clips no taller than a proxy,
+    and sound files, get none.
+  - Switching keeps trims, speed and overlays and scales a `Crop` to the
+    proxy's pixels.
+  - New export setting `VideoFXExportSettings::keyframeInterval` (seconds
+    between keyframes), also saved in project files.
+  - `videofx proxy <clips>|<project>`, `videofx proxy --clear`, and
+    `--proxies` on `videofx render` and `videofx preview` for a quick draft.
+
 #### 2026-10-12 *0.9.257*
 - **`HTML::PageLoader`: a URL to a page the HTML reader can show**
   (`HTMLReader/HTMLPageLoader.h`). It fetches the document and reads its
