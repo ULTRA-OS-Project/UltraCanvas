@@ -1181,6 +1181,15 @@ target_compile_features(HTMLReaderTestCore PUBLIC cxx_std_20)
 # on every build, and libFuzzer targets with ULTRACANVAS_BUILD_FUZZERS (clang).
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Fuzz ${CMAKE_CURRENT_BINARY_DIR}/Fuzz)
 
+# ===== HTML PAGE LOADER TEST =====
+# HTML::PageLoader against a fake web: charsets, <base>, style sheets,
+# resources, the scheme rules, leaving a page; no network, no UI library.
+add_executable(HTMLPageLoaderTest ${CMAKE_CURRENT_SOURCE_DIR}/HTMLPageLoaderTest.cpp)
+target_link_libraries(HTMLPageLoaderTest PRIVATE HTMLReaderTestCore)
+set_target_properties(HTMLPageLoaderTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_test(NAME HTMLPageLoaderTest COMMAND HTMLPageLoaderTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: HTMLPageLoaderTest")
+
 # ===== HTMLREADER TEST =====
 # Parser, CSS, selector matcher and style resolver, without the UI library.
 message(STATUS "  Building HTMLReaderTest...")

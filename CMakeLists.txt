@@ -1758,6 +1758,18 @@ if (BUILD_TESTS)
     add_test(NAME HTMLFlexGridLayoutTest COMMAND HTMLFlexGridLayoutTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # UltraCanvasWebView on a fake web: loading, links, fragments, history and
+    # scroll positions, error pages, late pictures (headless).
+    add_executable(WebViewTest Tests/WebViewTest.cpp)
+    target_include_directories(WebViewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(WebViewTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(WebViewTest PRIVATE cxx_std_20)
+    set_target_properties(WebViewTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME WebViewTest COMMAND WebViewTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # Mutated HTML through parser, builder and layout: a crash or a hang
     # fails it (Tests/Fuzz/README.md; the parser and CSS have their own
     # targets in Tests/Fuzz, which need no UI library).

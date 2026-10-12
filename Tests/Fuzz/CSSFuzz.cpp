@@ -7,12 +7,14 @@
 //
 // Built as a libFuzzer target (ULTRACANVAS_BUILD_FUZZERS, clang) and as a
 // deterministic smoke run in ctest (FuzzSmokeMain.cpp). See Tests/Fuzz/README.md.
+// Version: 1.1.0 - the page loader's style sheet rewriting and data: URLs
 // Version: 1.0.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
 #include "HTMLReader/HTMLDocument.h"
+#include "HTMLReader/HTMLPageLoader.h"
 #include "HTMLReader/HTMLParser.h"
 #include "HTMLReader/HTMLStyleResolver.h"
 
@@ -55,6 +57,16 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     }
     (void)CssColor::Parse(css);
     (void)CssLength::Parse(css);
+
+    // The page loader's view of a fetched style sheet: its url()s rewritten
+    // against the sheet's address, and data: URLs decoded.
+    auto resolve = [](const std::string& base, const std::string& ref, std::string& out) {
+        out = base + ref;
+        return !ref.empty();
+    };
+    (void)PageLoader::RewriteCssUrls(css, "https://x.org/a/sheet.css", resolve);
+    std::vector<uint8_t> decoded;
+    (void)PageLoader::DecodeDataUrl("data:" + css, decoded);
 
     // The cascade: the bytes as the document's style sheet, and again as the
     // inline style of an element, so every property handler sees them.

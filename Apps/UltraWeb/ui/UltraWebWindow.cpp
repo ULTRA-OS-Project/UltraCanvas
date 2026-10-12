@@ -1,16 +1,19 @@
 // Apps/UltraWeb/ui/UltraWebWindow.cpp
 // The browser window (UltraWebWindow.h).
+// Version: 0.3.0 - web pages in an UltraCanvasWebView; back / forward
 // Version: 0.2.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebWindow.h"
 
 #include "../host/UltraWebFetch.h"
+#include "../host/UltraWebPages.h"
 #include "../host/UltraWebStorage.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasUtils.h"
 #include "WasmHost/UltraCanvasWasmHost.h"
 
 #include <algorithm>
@@ -98,8 +101,16 @@ bool UltraWebWindow::Initialize() {
     page_->SetContainerStyle(plain);
 
     auto toolbar = MakeBar("uwToolbar");
+    backButton_ = CreateButton("uwBack", 0, 0, 34, 28, "\xE2\x86\x90");        // ←
+    backButton_->SetTooltip("Back");
+    backButton_->SetOnClick([this]() { if (showingPage_) webView_->GoBack(); });
+    toolbar->AddChild(backButton_);
+    forwardButton_ = CreateButton("uwForward", 0, 0, 34, 28, "\xE2\x86\x92");  // →
+    forwardButton_->SetTooltip("Forward");
+    forwardButton_->SetOnClick([this]() { if (showingPage_) webView_->GoForward(); });
+    toolbar->AddChild(forwardButton_);
     address_ = CreateTextInput("uwAddress", 0, 0, 0, 28);
-    address_->SetPlaceholder("about:demo, a .wasm file, or an https:// address");
+    address_->SetPlaceholder("a web address, a file, about:demo or a .wasm app");
     address_->layoutItem.SetFlexGrow(1);
     address_->layoutItem.SetFlexShrink(1);
     address_->onEnterPressed = [this](const std::string& text) {
@@ -111,7 +122,10 @@ bool UltraWebWindow::Initialize() {
     goButton_->SetOnClick([this]() { Navigate(address_->GetText()); });
     toolbar->AddChild(goButton_);
     reloadButton_ = CreateButton("uwReload", 0, 0, 80, 28, "Reload");
-    reloadButton_->SetOnClick([this]() { if (!currentAddress_.empty()) Navigate(currentAddress_); });
+    reloadButton_->SetOnClick([this]() {
+        if (showingPage_) webView_->Reload();
+        else if (!currentAddress_.empty()) Navigate(currentAddress_);
+    });
     toolbar->AddChild(reloadButton_);
     page_->AddChild(toolbar);
 
@@ -138,14 +152,52 @@ bool UltraWebWindow::Initialize() {
     statusBar->AddChild(status_);
     page_->AddChild(statusBar);
 
+    // Web pages: the HTML reader on UltraNet. The view lives here and joins
+    // the app area while a page is shown.
+    webView_ = std::make_shared<UltraCanvasWebView>("uwWebView");
+    webView_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    webView_->layoutItem.SetFlexGrow(1);
+    webView_->layoutItem.SetFlexShrink(1);
+    webView_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    webView_->SetServices(MakePageServices(PostToUi));
+    webView_->SetScheduler(PostToUi);
+    HTML::BuildOptions pageOptions;
+    pageOptions.style.baseFontSizePx = 16.f;
+    pageOptions.linkTooltips = false;          // the status bar shows the address
+    webView_->SetBuildOptions(pageOptions);
+    webView_->onUrlChanged = [this](const std::string& url) {
+        currentAddress_ = url;
+        address_->SetText(url);
+        UpdateNavigationButtons();
+    };
+    webView_->onTitleChanged = [this](const std::string& title) {
+        if (window_) window_->SetWindowTitle(title + " - UltraWeb " + ULTRAWEB_VERSION);
+    };
+    webView_->onLoadingChanged = [this](bool loading) {
+        SetStatus(loading ? "Loading " + currentAddress_ + " ..." : currentAddress_);
+        UpdateNavigationButtons();
+    };
+    webView_->onLinkHovered = [this](const std::string& url) {
+        SetStatus(url.empty() ? currentAddress_ : url);
+    };
+    webView_->onExternalLink = [this](const std::string& url) {
+        SetStatus("Opening " + url + " with the system ...");
+        OpenURL(url);
+    };
+    webView_->onNonHtml = [this](const HTML::LoadedPage& page) {
+        // An app served without .wasm in its address, say; anything else is
+        // not something UltraWeb shows (downloads come later).
+        if (page.contentType.find("application/wasm") != std::string::npos) RunApp(page.url);
+        else SetStatus(page.url + " is not a page (" +
+                       (page.contentType.empty() ? std::string("unknown type") : page.contentType) + ")");
+    };
+
     window_->AddChild(page_);
+    UpdateNavigationButtons();
     LayoutForSize(kWindowWidth, kWindowHeight);
     window_->onWindowResize = [this](int width, int height) {
         LayoutForSize(static_cast<float>(width), static_cast<float>(height));
     };
-    if (!UltraCanvasWasm_IsAvailable()) {
-        ShowError("This UltraWeb cannot run apps", UltraCanvasWasm_EngineDescription());
-    }
     return true;
 }
 
@@ -155,6 +207,35 @@ void UltraWebWindow::Show() {
 
 void UltraWebWindow::Navigate(const std::string& address) {
     const std::string target = UltraWebLoader::Normalise(address);
+    if (IsAppAddress(target)) RunApp(target);
+    else OpenPage(ToPageUrl(target));
+}
+
+void UltraWebWindow::OpenPage(const std::string& url) {
+    loader_.Cancel();
+    guest_.reset();
+    if (!showingPage_) {
+        ClearAppArea();
+        appArea_->AddChild(webView_);
+        showingPage_ = true;
+    }
+    webView_->Navigate(url);
+    appArea_->InvalidateLayout();
+}
+
+void UltraWebWindow::UpdateNavigationButtons() {
+    backButton_->SetDisabled(!showingPage_ || !webView_->CanGoBack());
+    forwardButton_->SetDisabled(!showingPage_ || !webView_->CanGoForward());
+}
+
+void UltraWebWindow::RunApp(const std::string& target) {
+    if (!UltraCanvasWasm_IsAvailable()) {
+        if (showingPage_) { webView_->Stop(); showingPage_ = false; }
+        ClearAppArea();
+        UpdateNavigationButtons();
+        ShowError("This UltraWeb cannot run apps", UltraCanvasWasm_EngineDescription());
+        return;
+    }
     address_->SetText(target);
     SetStatus("Loading " + target + " ...");
     loader_.Load(target, [this](LoadedApp app) { ShowApp(app); });
@@ -162,7 +243,12 @@ void UltraWebWindow::Navigate(const std::string& address) {
 
 void UltraWebWindow::ShowApp(const LoadedApp& app) {
     guest_.reset();
+    if (showingPage_) {
+        webView_->Stop();
+        showingPage_ = false;
+    }
     ClearAppArea();
+    UpdateNavigationButtons();
     currentAddress_ = app.address;
     address_->SetText(app.address);
     SetTitleFor(app.address);
