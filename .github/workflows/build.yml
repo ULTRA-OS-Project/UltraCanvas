@@ -804,6 +804,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
+            -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
@@ -1196,6 +1197,19 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest)$"
+
+      # The Win32 backend of the desktop shell module (UltraDesktop's window
+      # list, monitor, screen edges, hot keys, screenshot and Start menu)
+      # against the runner's desktop: the test opens a window of its own,
+      # finds it in the list with its Thai title, reserves a screen edge for
+      # it and checks the work area makes room, minimizes and closes it, and
+      # lists a Start menu it builds under a temp APPDATA and ProgramData.
+      # ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS builds it without the Linux-only
+      # BUILD_TESTS; Linux runs it in the full pass.
+      - name: Run DesktopShellTest (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^DesktopShellTest$"
 
       # EmailCleaner's and UltraMail's engine suites on Windows. Both were
       # built here (see the note above "Run UltraNet tests") but only Linux

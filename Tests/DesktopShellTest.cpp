@@ -5,8 +5,15 @@
 // lifetime. Nothing here needs a display: the test points XDG_RUNTIME_DIR
 // and XDG_DATA_HOME at a throwaway directory and asserts against what it put
 // there, so it passes on every platform and on a headless runner.
-// Version: 1.1.0
-// Last Modified: 2026-09-30
+//
+// On Windows it also drives the Win32 backend against the real desktop: the
+// application list from a Start menu it builds (APPDATA and ProgramData
+// pointed at the throwaway directory), and a window of its own - listed with
+// its UTF-8 title and its program's name, reported by the monitor,
+// minimized, given a reserved screen edge that the work area has to make
+// room for, and closed - plus a global shortcut and a screenshot file.
+// Version: 1.2.0 - the Windows backend
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShell.h"
@@ -18,6 +25,12 @@
 #include <fstream>
 #include <string>
 #include "UltraCanvasPathUtf8.h"
+
+#if defined(_WIN32)
+#include "UltraCanvasShellLink.h"
+#include "ShellLinkTestSupport.h"
+#include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -53,6 +66,78 @@ void WriteFile(const fs::path& file, const std::string& text) {
     std::ofstream out(file, std::ios::binary);
     out << text;
 }
+
+#if defined(_WIN32)
+void WriteBytes(const fs::path& file, const std::vector<uint8_t>& bytes) {
+    fs::create_directories(file.parent_path());
+    std::ofstream out(file, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
+// A Start-menu shortcut to `target`, with `description` as its comment.
+void WriteShortcut(const fs::path& file, const std::string& target, const std::string& description = "") {
+    using namespace ShellLinkTestSupport;
+    LinkSpec spec;
+    spec.flags = IsUnicode | HasLinkInfo | (description.empty() ? 0u : static_cast<uint32_t>(HasName));
+    spec.localBasePath = target;
+    spec.description = description;
+    WriteBytes(file, BuildShellLink(spec));
+}
+
+uint64_t IdOf(HWND hwnd) {
+    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(hwnd));
+}
+
+// This thread's messages, until `done` holds or `ms` milliseconds pass.
+template <typename Done>
+bool PumpUntil(Done done, int ms) {
+    const ULONGLONG until = GetTickCount64() + static_cast<ULONGLONG>(ms);
+    for (;;) {
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        if (done()) return true;
+        if (GetTickCount64() >= until) return false;
+        MsgWaitForMultipleObjects(0, nullptr, FALSE, 20, QS_ALLINPUT);
+    }
+}
+
+HWND OpenTestWindow(const std::string& title) {
+    static const bool registered = []() {
+        WNDCLASSEXW wc = {};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = DefWindowProcW;   // WM_CLOSE -> DestroyWindow
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));   // IDC_ARROW
+        wc.lpszClassName = L"UltraCanvasDesktopShellTestWindow";
+        return RegisterClassExW(&wc) != 0;
+    }();
+    if (!registered) return nullptr;
+    const std::wstring wideTitle = PathUtf8Detail::Utf8ToUtf16<std::wstring>(title);
+    HWND hwnd = CreateWindowExW(0, L"UltraCanvasDesktopShellTestWindow", wideTitle.c_str(), WS_OVERLAPPEDWINDOW,
+                                120, 120, 360, 220, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (hwnd) {
+        ShowWindow(hwnd, SW_SHOWNORMAL);
+        UpdateWindow(hwnd);
+    }
+    return hwnd;
+}
+
+const DesktopWindowInfo* FindListed(const std::vector<DesktopWindowInfo>& windows, HWND hwnd) {
+    for (const DesktopWindowInfo& w : windows) {
+        if (w.id == IdOf(hwnd)) return &w;
+    }
+    return nullptr;
+}
+
+RECT WorkArea() {
+    RECT area = {};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &area, 0);
+    return area;
+}
+#endif
 
 } // namespace
 
@@ -117,6 +202,47 @@ int main() {
     }
 
     // ===== APPLICATIONS =====
+#if defined(_WIN32)
+    // Windows lists the Start menu's shortcuts, not desktop entries: the
+    // user's and the machine's, the user's shadowing the machine's of the
+    // same name, named as the folder's desktop.ini says, programs only.
+    {
+        const fs::path user = scratch / "AppData";
+        const fs::path machine = scratch / "ProgramData";
+        SetEnvironmentVariableW(L"APPDATA", user.c_str());
+        SetEnvironmentVariableW(L"ProgramData", machine.c_str());
+        const fs::path userPrograms = user / "Microsoft" / "Windows" / "Start Menu" / "Programs";
+        const fs::path machinePrograms = machine / "Microsoft" / "Windows" / "Start Menu" / "Programs";
+
+        WriteShortcut(userPrograms / "Writer.lnk", "C:\\Tools\\Writer\\writer.exe", "Writes");
+        WriteShortcut(machinePrograms / "Writer.lnk", "C:\\Program Files\\Writer\\writer-old.exe");
+        WriteShortcut(machinePrograms / "Accessories" / "Tool.lnk", "C:\\Tools\\tool.exe");
+        WriteFile(machinePrograms / "Accessories" / "desktop.ini",
+                  "[LocalizedFileNames]\r\nTool.lnk=Localized Tool\r\n");
+        WriteShortcut(machinePrograms / "Writer" / "Uninstall Writer.lnk",
+                      "C:\\Program Files\\Writer\\unins000.exe");
+        WriteShortcut(machinePrograms / "Writer" / "Read me.lnk", "C:\\Program Files\\Writer\\readme.txt");
+        WriteFile(machinePrograms / "Writer" / "Website.url", "[InternetShortcut]\r\nURL=https://example.com\r\n");
+
+        const auto apps = UltraCanvasDesktopShell::ListApplications(32);
+        Check(apps.size() == 2, "two applications in the Start menu (got " + std::to_string(apps.size()) + ")");
+        if (apps.size() == 2) {
+            Check(apps[0].name == "Localized Tool", "desktop.ini names a shortcut, and the list is sorted: " +
+                                                        apps[0].name);
+            Check(apps[1].name == "Writer", "a shortcut is named after its file");
+            Check(apps[1].comment == "Writes", "the user's shortcut shadows the machine's");
+            Check(apps[1].program == "C:\\Tools\\Writer\\writer.exe", "the program is the shortcut's target: " +
+                                                                           apps[1].program);
+            Check(apps[1].startupWMClass == "writer", "its windows are the program's: " + apps[1].startupWMClass);
+            Check(IsShellLinkPath(apps[1].shortcutPath), "launching opens the shortcut: " + apps[1].shortcutPath);
+            DesktopWindowInfo window;
+            window.appClass = "writer";
+            window.appName = "writer";
+            const UCDesktopEntry* entry = UltraCanvasDesktopShell::MatchApplication(window, apps);
+            Check(entry && entry->name == "Writer", "a window of writer.exe belongs to the Writer shortcut");
+        }
+    }
+#else
     {
         // A system entry, a user entry that shadows it by id, a hidden one,
         // one for the menus only (NoDisplay), and a link that is not an app.
@@ -144,6 +270,8 @@ int main() {
             Check(apps[1].comment == "Writes", "the entry's fields come through");
         }
     }
+
+#endif
 
     // ===== WHICH APPLICATION A WINDOW BELONGS TO =====
     {
@@ -236,6 +364,106 @@ int main() {
             std::printf("  (no screen capture here: %s)\n", captureError.c_str());
         }
     }
+
+#if defined(_WIN32)
+    // ===== WINDOWS: THE WIN32 BACKEND ON THE REAL DESKTOP =====
+    {
+        Check(UltraCanvasDesktopShell::GetBackendName() == "win32", "the backend is win32");
+        const int desktops = UltraCanvasDesktopShell::GetVirtualDesktopCount();
+        const int current = UltraCanvasDesktopShell::GetCurrentVirtualDesktop();
+        Check(desktops >= 1 && current >= 0 && current < desktops,
+              "the virtual desktops are counted (" + std::to_string(current + 1) + " of " +
+                  std::to_string(desktops) + ")");
+        Check(!UltraCanvasDesktopShell::SetVirtualDesktopCount(desktops + 1),
+              "adding a desktop has no Windows call, and says so");
+
+        UltraCanvasDesktopShellMonitor monitor;
+        std::atomic<int> changes{0};
+        Check(monitor.Start([&changes]() { ++changes; }) && monitor.IsNative(), "the monitor watches natively");
+        // Its hooks go in on its own thread, a moment after Start returns;
+        // count only what happens after that.
+        PumpUntil([]() { return false; }, 500);
+        changes.store(0);
+
+        // Thai in the title: the list has to hand it back as UTF-8.
+        const std::string title = "Desktop shell test \xE0\xB8\x97\xE0\xB8\x94\xE0\xB8\xAA\xE0\xB8\xAD\xE0\xB8\x9A";
+        HWND hwnd = OpenTestWindow(title);
+        Check(hwnd != nullptr, "a window of the test's own opens");
+        if (hwnd) {
+            const uint64_t id = IdOf(hwnd);
+            Check(PumpUntil([&changes]() { return changes.load() > 0; }, 5000), "the monitor reports it");
+            const auto windows = UltraCanvasDesktopShell::ListWindows();
+            const DesktopWindowInfo* listed = FindListed(windows, hwnd);
+            Check(listed != nullptr, "ListWindows lists it (" + std::to_string(windows.size()) + " windows)");
+            if (listed) {
+                Check(listed->title == title, "with its title in UTF-8: " + listed->title);
+                Check(listed->appClass == "DesktopShellTest", "named after its program: " + listed->appClass);
+                Check(listed->processId == static_cast<int>(GetCurrentProcessId()), "with this process's id");
+                Check(!listed->skipTaskbar && !listed->minimized, "a taskbar window, not minimized");
+            }
+            bool shellListed = false;
+            for (const DesktopWindowInfo& w : windows) {
+                if (w.id == IdOf(GetShellWindow()) && GetShellWindow()) shellListed = w.skipTaskbar;
+            }
+            Check(!GetShellWindow() || shellListed, "the shell's desktop is listed, out of the taskbar");
+
+            // A reserved edge: the work area makes room for it, and gets it back.
+            const RECT before = WorkArea();
+            Check(UltraCanvasDesktopShell::ReserveScreenEdges(id, 40, 0, 0, 0), "a left edge of 40 px is reserved");
+            RECT during = {};
+            const bool shrank = PumpUntil([&]() { during = WorkArea(); return during.left >= before.left + 40; }, 5000);
+            Check(shrank, "the work area makes room (left " + std::to_string(before.left) + " -> " +
+                              std::to_string(during.left) + ")");
+            Check(UltraCanvasDesktopShell::ReserveScreenEdges(id, 0, 0, 0, 0), "the edge is released");
+            RECT after = {};
+            const bool restored = PumpUntil([&]() { after = WorkArea(); return after.left == before.left; }, 5000);
+            Check(restored, "the work area is whole again (left " + std::to_string(after.left) + ")");
+
+            Check(UltraCanvasDesktopShell::MinimizeWindow(id), "MinimizeWindow accepts it");
+            Check(PumpUntil([hwnd]() { return IsIconic(hwnd) != FALSE; }, 5000), "the window minimizes");
+            const auto minimizedList = UltraCanvasDesktopShell::ListWindows();
+            const DesktopWindowInfo* minimized = FindListed(minimizedList, hwnd);
+            Check(minimized && minimized->minimized, "and is listed as minimized");
+
+            Check(UltraCanvasDesktopShell::CloseWindow(id), "CloseWindow asks it to close");
+            Check(PumpUntil([hwnd]() { return IsWindow(hwnd) == FALSE; }, 5000), "the window closes");
+            Check(!UltraCanvasDesktopShell::ActivateWindow(id), "a closed window cannot be activated");
+        }
+        monitor.Stop();
+
+        UltraCanvasGlobalShortcut shortcut;
+        std::string why;
+        Check(shortcut.Start("Ctrl+Alt+Shift+F11", []() {}, &why), "a free combination is registered " + why);
+        shortcut.Stop();
+        std::string refused;
+        Check(!shortcut.Start("Ctrl+NoSuchKey", []() {}, &refused) && !refused.empty(),
+              "an unknown key name is refused: " + refused);
+        std::string winV;
+        const bool superV = shortcut.Start("Super+V", []() {}, &winV);
+        std::printf("  (Super+V: %s)\n", superV ? "registered" : winV.c_str());
+        shortcut.Stop();
+
+        DesktopScreenImage shot;
+        std::string captureError;
+        if (UltraCanvasDesktopShell::CaptureScreenImage(shot, &captureError)) {
+            const fs::path png = scratch / "Screenshots" / "shot.png";
+            std::string writeError;
+            Check(UltraCanvasDesktopShell::CaptureScreen(PathToUtf8(png), &writeError),
+                  "the screen is written as a PNG file " + writeError);
+            std::ifstream in(png, std::ios::binary);
+            char signature[8] = {};
+            in.read(signature, 8);
+            Check(in && std::string(signature + 1, 3) == "PNG", "the file is a PNG");
+        } else {
+            std::printf("  (no screen here to write: %s)\n", captureError.c_str());
+        }
+
+        const DesktopDeviceActivity devices = UltraCanvasDesktopShell::ReadDeviceActivity();
+        std::printf("  (devices: microphone %s, speaker %s, webcam %s, keyboard \"%s\")\n",
+                    devices.microphoneInUse ? "in use" : "idle", devices.speakerPlaying ? "playing" : "idle",
+                    devices.webcamInUse ? "in use" : "idle", devices.keyboardLayout.c_str());
+    }
+#endif
 
     std::error_code ec;
     fs::remove_all(scratch, ec);

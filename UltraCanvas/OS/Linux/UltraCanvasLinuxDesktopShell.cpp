@@ -24,8 +24,8 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
-// Version: 1.1.0
-// Last Modified: 2026-09-30
+// Version: 1.1.1 - ListNativeApplications (none: desktop entries are the list)
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -645,6 +645,9 @@ bool CaptureScreen(const std::string& pngPath, std::string& error) {
     }
     return true;
 }
+
+// Desktop entries are this platform's application list; the core reads them.
+bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
 
 void ReadDeviceActivity(DesktopDeviceActivity& activity) {
     ProbeAudio(activity);

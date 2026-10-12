@@ -307,45 +307,10 @@ namespace {
         return buffer;
     }
 
-    cairo_status_t WritePngChunk(void* closure, const unsigned char* data,
-                                 unsigned int length) {
-        FILE* file = static_cast<FILE*>(closure);
-        return std::fwrite(data, 1, length, file) == length
-               ? CAIRO_STATUS_SUCCESS : CAIRO_STATUS_WRITE_ERROR;
-    }
-
     bool WritePng(const std::shared_ptr<UCPixmap>& pixmap,
                   const std::string& path) {
         if (!pixmap || !pixmap->IsValid()) return false;
-        cairo_surface_t* surface = pixmap->GetSurface();
-        if (!surface) return false;
-        cairo_surface_flush(surface);
-        // Write beside the target and rename: two processes extracting the
-        // same icon at once must never leave a half-written PNG behind.
-        const std::string temp = path + "." +
-                std::to_string(static_cast<unsigned long>(GetCurrentProcessId()))
-                + ".tmp";
-        // Through a stream, not cairo_surface_write_to_png: that one opens
-        // the narrow path in the process code page, which mangles a cache
-        // directory under a user name outside it.
-        FILE* file = _wfopen(Utf8ToWide(temp).c_str(), L"wb");
-        if (!file) return false;
-        const cairo_status_t status =
-                cairo_surface_write_to_png_stream(surface, WritePngChunk, file);
-        std::fclose(file);
-        if (status != CAIRO_STATUS_SUCCESS) {
-            std::error_code ec;
-            fs::remove(PathFromUtf8(temp), ec);
-            return false;
-        }
-        std::error_code ec;
-        fs::rename(PathFromUtf8(temp), PathFromUtf8(path), ec);
-        if (ec) {
-            // Another process won the race: its file is just as good.
-            fs::remove(PathFromUtf8(temp), ec);
-            return fs::exists(PathFromUtf8(path), ec);
-        }
-        return true;
+        return WindowsIcons::WriteSurfacePng(pixmap->GetSurface(), path);
     }
 
     // Icon `index` of `location` as a PNG file the menu can draw. Cached on

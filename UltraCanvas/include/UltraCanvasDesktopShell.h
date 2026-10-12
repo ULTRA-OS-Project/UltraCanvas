@@ -35,12 +35,15 @@
 // on devices.
 //
 // Backends: Linux/BSD (EWMH over X11 for windows and desktops, XGetImage
-// for the screenshot, procfs and sysfs for the device activity). Where none
-// exists every query answers empty with IsAvailable() false, the monitor
-// polls nothing, and the platform-neutral parts - the application list from
-// desktop entries, the notices, the launcher - still work.
-// Version: 1.1.0
-// Last Modified: 2026-09-30
+// for the screenshot, procfs and sysfs for the device activity) and Windows
+// (EnumWindows filtered as Explorer's taskbar filters, appbars for the screen
+// edges, BitBlt for the screenshot, WinEvent hooks for the monitor,
+// RegisterHotKey for shortcuts, the Start menu for the applications). Where
+// none exists every query answers empty with IsAvailable() false, the
+// monitor polls nothing, and the platform-neutral parts - the application
+// list from desktop entries, the notices, the launcher - still work.
+// Version: 1.2.0 - the Windows backend
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -60,9 +63,10 @@ namespace UltraCanvas {
 
     // ===== A WINDOW ANOTHER APPLICATION HAS OPEN =====
     struct DesktopWindowInfo {
-        uint64_t    id = 0;             // the window system's id (an X11 Window)
+        uint64_t    id = 0;             // the window system's id (an X11 Window, a HWND)
         std::string title;              // _NET_WM_NAME, else WM_NAME
-        std::string appClass;           // WM_CLASS class, e.g. "UltraFiler"
+        std::string appClass;           // WM_CLASS class, e.g. "UltraFiler"; on
+                                        // Windows the program's name
         std::string appName;            // WM_CLASS instance, e.g. "ultrafiler"
         std::string iconFile;           // the app's icon, resolved from appClass through the
                                         // icon themes; "" when none is installed
@@ -135,7 +139,8 @@ namespace UltraCanvas {
 
     class UltraCanvasDesktopShell {
     public:
-        // The platform backend: "x11" on Linux/BSD, "null" where there is none.
+        // The platform backend: "x11" on Linux/BSD, "win32" on Windows, "null"
+        // where there is none.
         static std::string GetBackendName();
         static bool        IsAvailable();
 
@@ -162,7 +167,8 @@ namespace UltraCanvas {
         static bool GetScreenSize(int& width, int& height);
         // Reserve strips along the screen's edges for `windowId` - a desktop's
         // bars, a dock - so that maximised and tiled windows stop short of
-        // them (EWMH _NET_WM_STRUT_PARTIAL on X11). Widths in physical
+        // them (EWMH _NET_WM_STRUT_PARTIAL on X11, an appbar per edge on
+        // Windows - call it there from the window's own thread). Widths in physical
         // pixels, 0 for an edge that reserves nothing; the strip runs the
         // whole length of its edge. Call it again to change or, with four
         // zeros, to release. `windowId` is the window's native handle.
@@ -192,8 +198,9 @@ namespace UltraCanvas {
         // desktop entry in the standard directories (XDG_DATA_HOME and
         // XDG_DATA_DIRS' applications folders), one per desktop-file id (a
         // user's override wins over the system's), sorted by name, with
-        // iconFile resolved at `iconSize` px. Empty on a platform without
-        // desktop entries.
+        // iconFile resolved at `iconSize` px. On Windows the Start menu's
+        // program shortcuts, the user's shadowing the machine's (shortcutPath
+        // set). Empty on a platform with neither.
         static std::vector<UCDesktopEntry> ListApplications(int iconSize = 48);
         // The application a window belongs to, among `applications`
         // (ListApplications): the entry whose StartupWMClass is the window's
@@ -203,7 +210,8 @@ namespace UltraCanvas {
         static const UCDesktopEntry* MatchApplication(const DesktopWindowInfo& window,
                                                       const std::vector<UCDesktopEntry>& applications);
         // Start an application from its entry, detached: the launcher is never
-        // its parent and never waits for it. False with the reason in `error`.
+        // its parent and never waits for it. An entry from a Windows shortcut
+        // opens the shortcut, as Explorer does. False with the reason in `error`.
         static bool LaunchApplication(const UCDesktopEntry& entry,
                                       const std::vector<std::string>& files = {},
                                       std::string* error = nullptr);
@@ -267,7 +275,9 @@ namespace UltraCanvas {
     // ===== A SHORTCUT FOR THE WHOLE DESKTOP =====
     // A key combination that reaches this program whichever window has the
     // focus - the desktop's Super+V for its clipboard panel. On X11 a passive
-    // grab on the root window, on a connection and a thread of its own. The
+    // grab on the root window, on a connection and a thread of its own; on
+    // Windows a RegisterHotKey on a thread of its own (Explorer keeps most
+    // Win-key combinations for itself while it runs). The
     // callback runs on that thread: hand it to the UI thread
     // (UltraCanvasApplicationBase::PostToUIThread). Elsewhere Start fails and
     // says why.

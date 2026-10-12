@@ -1002,6 +1002,17 @@ if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
+# ===== DESKTOP SHELL TEST WITHOUT THE FULL SUITE =====
+# DesktopShellTest alone, for builds that leave BUILD_TESTS off (the Windows
+# CI rows): the Win32 backend of UltraCanvasDesktopShell - the window list,
+# the monitor's hooks, the screen edges, hot keys, the screenshot and the
+# Start menu - is only a test on a Windows desktop.
+option(ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS "Build DesktopShellTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/DesktopShellTests.cmake)
+endif()
+
 # ===== DEVICE TLS TESTS WITHOUT THE FULL SUITE =====
 # IODeviceScannerESCLLiveTest alone, for builds that leave BUILD_TESTS off
 # (the macOS and Windows CI rows): trusting a device's self-signed certificate
