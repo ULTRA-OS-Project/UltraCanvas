@@ -622,6 +622,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLStyleResolver.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLElementBuilder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLRichDocumentImporter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLPageLoader.cpp
 
         # eBook foundation: chapter-oriented engine interface + ZIP/DEFLATE
         # container access (format engines register themselves here).
@@ -633,6 +634,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/MOBIEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/TXTEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEBookViewer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWebView.cpp
 
         # Hardware inventory and sensors (CPU/GPU/NPU/memory/storage/network/
         # USB/Bluetooth) plus the ready-made system-information panel. The probe

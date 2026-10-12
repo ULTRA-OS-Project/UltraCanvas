@@ -11,6 +11,7 @@
 //
 // Owns structure + encodings only; presentation policy (which body to show,
 // remote-image handling, mapping attachments to viewers) stays with the caller.
+// Version: 0.3.0 - UltraNet_ConvertToUtf8: bytes in a named charset to UTF-8
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -33,6 +34,19 @@ bool UltraNet_Base64Decode(const std::string& text, std::vector<uint8_t>& out);
 // Quoted-printable (RFC 2045 §6.7). Decode handles "=XX" and soft line breaks.
 std::string UltraNet_QuotedPrintableEncode(const std::string& text);
 std::string UltraNet_QuotedPrintableDecode(const std::string& text);
+
+// ============================================================================
+// Charsets
+// ============================================================================
+
+// `bytes` in `charset` (a label as mail and HTTP write it: "utf-8",
+// "ISO-8859-1", "windows-1252", "Shift_JIS", "gb2312", ...) as UTF-8. Every
+// charset iconv knows where the build has it (ULTRANET_HAS_ICONV), else
+// UTF-8, US-ASCII, ISO-8859-1 and Windows-1252. An empty, unknown or
+// unconvertible label keeps bytes that are valid UTF-8 and reads anything
+// else as Windows-1252, so the result is always UTF-8. The conversion mail
+// bodies already go through; a web page's charset uses it too.
+std::string UltraNet_ConvertToUtf8(const std::string& bytes, const std::string& charset);
 
 // ============================================================================
 // RFC 2047 encoded-word header fields ("=?UTF-8?Q?...?=")
