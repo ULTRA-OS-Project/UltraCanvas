@@ -1,3 +1,92 @@
+#### 2026-10-12 *0.9.252*
+- **`UltraCanvasAlbum` 1.9.0: a tile dragged out of the album.** The new
+  `onItemDraggedOut(index, windowPos)` fires once when a tile is dragged past
+  the album's edge in an edit mode: the album's own reorder ends and the app
+  carries the item on with the window's mouse events - UltraVideo's media bin
+  hands its file to the timeline's drop path this way, so a tile lands on the
+  main track at a time, or on the overlay lane, with the element's insertion
+  marker. Without the callback nothing changes.
+- **`UltraCanvasTimecodeField`: a timecode entry and readout.** `HH:MM:SS:FF`
+  at a frame rate, as a count of frames. A click selects one of the four
+  segments, `↑`/`↓` and the wheel step it, `Tab` and the arrow keys move
+  between them; typed digits fill the timecode from the right with the
+  untyped leading zeros dimmed, a leading `+` or `-` enters an offset in
+  frames, `Enter` commits, `Esc` restores the last valid value, and an entry
+  that is not a timecode (seconds of 75, a frame past the rate, past the
+  maximum) shows a danger border until it is corrected. `Ctrl+C` copies the
+  timecode, `Ctrl+V` takes one. `SetReadout(true)` is the large read-only
+  variant a transport bar shows. `onCommit` reports the frames. Light and
+  dark palettes. The frame arithmetic, `TimelineFramesToTimecode` and
+  `TimelineTimecodeToFrames` (full timecodes, fewer groups counted from the
+  right, dots or colons, a sign), lives in `UltraCanvasVideoTimelineModel.h`
+  and is tested without a display. Part of the UltraVideo proposal
+  (`Docs/Research/UltraVideoDesignProposal.md` §7.6); the DemoApp's *Video
+  Timeline* page drives its playhead with one.
+- **`UltraCanvasVideoTimeline`: a media timeline editor element.** Clips on
+  tracks under a time ruler, with a playhead, trim handles, reordering on
+  the magnetic main track and free placement elsewhere, splitting (blade
+  tool or `S`), transitions as badges on the cuts with a draggable length,
+  fade knobs on audio clips (drag the top of a ramp; reported as a
+  `FadeSet`), markers, beat marks, a work-area range, snapping, a rubber-band
+  selection, file drop with an insertion marker, and a live timecode
+  readout on every drag. It edits a module-free model
+  (`UltraCanvasVideoTimelineModel.h`: `TimelineModel`, `TimelineTrack`,
+  `TimelineClip`, `TimelineTransition`, `TimelineMarker`) and *reports*
+  every edit through `onChangeRequested` with the clips before and after,
+  for the application to validate against its engine, apply and feed back
+  with `SetModel`; it never applies an edit itself. Thumbnails and waveforms
+  come from providers the app installs and are drawn when they arrive. The
+  pure operations - derived starts with transition overlaps, split, trim
+  with source and neighbour limits, move, delete with ripple, duplicate,
+  the ruler's tick steps, `HH:MM:SS:FF` timecode, snapping - are free
+  functions tested without a display (`VideoTimelineModelTest`). Light and
+  dark palettes from the UltraVideo design. First phase of
+  `Docs/Research/UltraVideoDesignProposal.md`; the DemoApp shows it under
+  *Media*.
+- **VideoFX 0.10.0: the draft preset.** `VideoFXExportSettings::Draft(height)`
+  (360p by default) is a quick, small MP4 - the fastest H.264 preset, a low
+  quality, a 96 kb/s AAC - for an editor that plays its timeline back with
+  sound while it is edited: seconds to render, never the file to deliver.
+- **VideoFX 0.10.0: picture-in-picture.** `VideoFXOverlayKind::Video`: an
+  overlay that plays another file's picture over a segment - placed, sized
+  (`imageHeight`), dimmed and faded like an image, shown in its `start`..`end`
+  window, playing from `videoStart` seconds into the file at its own speed,
+  upright, without its sound; when the file ends first its last frame
+  holds. `VideoFXOverlay::Video(path, anchor, height, videoStart)` makes
+  one. The export decodes it beside the segment's own picture and the
+  preview renders it in the frame; project files carry it as
+  `"kind": "video"` with the file relative to the project. A missing
+  overlay file fails the export before anything is written.
+- **VideoFX 0.9.0: preview.** `VideoFXPreview` renders any frame of a
+  timeline as the export would make it, without an export: `Open` plans the
+  segments once, as `VideoFX_Export` does, and `RenderFrame(seconds, frame,
+  maxWidth, maxHeight)` gives the output frame at that time - the segment
+  playing then, trimmed, sped, filtered and fitted to the output size, its
+  overlays drawn, and inside a transition's overlap the two segments
+  blended by that transition (music is ignored). `SegmentAt` says which
+  segment plays at a time and how far into it; `GetDuration`, `GetWidth`,
+  `GetHeight` and `GetFrameRate` are what the export would produce. An
+  editor's viewer keeps one open while scrubbing. `VideoFX_RenderFrame`
+  does it in one call for a single picture, and `VideoFX_PlanSlideshow`
+  gives the segments and settings a slideshow would be exported from, so a
+  slideshow can be previewed or opened on a timeline before it is rendered.
+  `videofx preview <project.vfxproj> <seconds> <out.png>` writes a saved
+  project's frame. The single-frame decoder behind `VideoFX_ExtractFrame`
+  is shared with the preview.
+- **VideoFX 0.8.0: waveforms.** `VideoFX_ExtractWaveform(path, waveform,
+  blocksPerSecond, start, end)` gives the loudness envelope of a file's
+  sound - a song, or a video's soundtrack - mixed to mono and cut into blocks
+  of equal length, each with its lowest sample, its highest sample and its
+  RMS (`VideoFXWaveform`, with `BlockAt` and `Peak`). It is what a timeline
+  or a player draws as the waveform, and its member names match
+  `UltraCanvasWaveformElement`'s `WaveformChannelData`, so
+  `SetFromAudioFX(waveform)` feeds it without an adapter. Fifty blocks a
+  second, the default, holds a three-minute song in some 100 KB; a range
+  takes only part of the file. A file without sound fails with
+  `NoMediaStreams`. `videofx waveform <file> [blocksPerSecond] [start [end]]`
+  prints it. The mono decoder behind beat detection now streams at any
+  sample rate and is shared by both calls.
+
 #### 2026-10-11 *0.9.251*
 - **`UltraCanvasListView`: the hover follows the rows when they scroll under
   a still pointer.** A wheel scroll (or `EnsureRowVisible`) left the row
