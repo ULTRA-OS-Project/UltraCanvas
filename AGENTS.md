@@ -638,6 +638,11 @@ number anywhere else, and never introduce a new literal copy of one:
    `window`, a callback the reader writes, a version macro - is declared in
    a `<!-- doc-check: ... -->` comment with its real type, never a framework
    API that does not exist.
+   A header's usage example is checked only when it opts in: a
+   `// doc-check: example` line above it (and `// doc-check: <declarations>`
+   for the names it assumes) puts it in the same CI run, at the header's own
+   lines. Mark an example worth keeping right; leave a sketch with `...` in
+   it unmarked.
 4. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and
