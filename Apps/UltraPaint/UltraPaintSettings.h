@@ -4,6 +4,7 @@
 // config.ini - ~/.config/UltraCanvas/UltraPaint/config.ini on Linux). The
 // settings window (UltraPaintSettingsDialog) applies a change to the running
 // editor at once and saves it right away, so there is no OK / Cancel.
+// Version: 1.1.0 - Tool palette: an adaptive or a static toolbar
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -47,6 +48,18 @@ public:
         magnifierSize    = kDefaultMagnifierSize;
     }
 
+    // ===== TOOL PALETTE =====
+    // Tools of a kind share one button of the palette - the selections, the
+    // pens, the shapes - and a bar with all of them folds out while the
+    // pointer rests on it. An adaptive toolbar shows on that button the tool
+    // last picked from its group; a static one always shows the group's
+    // main tool.
+    bool paletteAdaptive = true;
+
+    void RestorePaletteDefaults() {
+        paletteAdaptive = true;
+    }
+
     // ===== THE FILE =====
     // Empty when the environment names no home to keep settings in.
     static std::filesystem::path ConfigFolder() {
@@ -81,6 +94,11 @@ public:
         if (it != kv.end()) ParseInt(it->second, magnifierFactor, kMinMagnifierFactor, kMaxMagnifierFactor);
         it = kv.find("display.magnifier.size");
         if (it != kv.end()) ParseInt(it->second, magnifierSize, kMinMagnifierSize, kMaxMagnifierSize);
+        it = kv.find("palette.toolbar");
+        if (it != kv.end()) {
+            if (it->second == "adaptive") paletteAdaptive = true;
+            else if (it->second == "static") paletteAdaptive = false;
+        }
         return true;
     }
 
@@ -96,6 +114,7 @@ public:
         file << "display.magnifier.enabled = " << (magnifierEnabled ? "true" : "false") << "\n";
         file << "display.magnifier.factor = " << magnifierFactor << "\n";
         file << "display.magnifier.size = " << magnifierSize << "\n";
+        file << "palette.toolbar = " << (paletteAdaptive ? "adaptive" : "static") << "\n";
         return file.good();
     }
 

@@ -26,6 +26,31 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 
 ## Tools
 
+The palette groups tools of a kind on one button: resting the pointer on it
+folds out a bar beside it with the whole group, and a click there picks a
+tool; a click on the button itself picks the tool it shows. A small triangle
+in a button's corner marks a group. Top to bottom:
+
+| Button | Tools |
+|---|---|
+| Select | Rectangle Select, Ellipse Select, Lasso, Magic Wand |
+| Pen | Paintbrush, Pencil, Airbrush |
+| Lines | Line |
+| Shapes | Rectangle, Ellipse |
+| Morph | Smudge, Clone Stamp |
+| Shading | Dodge, Burn |
+| Move, Crop, Eyedropper, Eraser | one tool each |
+| Fill | Fill, Gradient |
+| Text | Text |
+| View | Zoom, Pan |
+
+With an *adaptive* toolbar (the default) a group's button shows the tool last
+picked from it; with a *static* one it always shows the group's main tool -
+the first of the row above - and the bar marks the tool in use
+(*Edit > Settings > Display > Tool palette*). The groups are `PaletteGroups()`
+in `UltraPaintWindow.cpp`; the fold-out is the framework's
+[`UltraCanvasToolGroupButton`](../../Docs/UltraCanvas/UltraCanvasToolGroupButton.md).
+
 | Tool | Key | Notes |
 |---|---|---|
 | Move | M | Drags the selected pixels (or the whole layer) |
@@ -88,9 +113,12 @@ transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
   clipboard history UltraDesktop keeps, saying when it was copied; Paste
   Last Copied Image takes it without asking. Settings opens the settings
   window: *Display > Mouse pointer magnification glass* - on or off, 2x /
-  3x / 4x, and the size of the glass (100-400 px); a change applies at once
-  and is saved to `~/.config/UltraCanvas/UltraPaint/config.ini` (the
-  platform's settings folder elsewhere).
+  3x / 4x, and the size of the glass (100-400 px) - and *Display > Tool
+  palette* - an adaptive toolbar (a group's button shows the tool last
+  picked) or a static one (always the group's main tool). A change applies
+  at once and is saved to `~/.config/UltraCanvas/UltraPaint/config.ini` (the
+  platform's settings folder elsewhere); *Restore defaults* restores the
+  page shown.
 - **Image:** Scale Image, Canvas Size (with anchor), Crop to Selection
   (applies the Crop tool's rectangle when that tool is holding one,
   otherwise crops to the selection),

@@ -1,3 +1,29 @@
+#### 2026-10-12 *0.2.16*
+- **The tool palette groups its tools.** Tools of a kind share one button,
+  so the palette shows 13 instead of 23 and fits a shorter window without
+  scrolling. Resting the pointer on a button folds out a bar beside it with
+  the whole group, and a click there picks a tool; a click on the button
+  itself still picks the tool it shows. A small triangle in a button's
+  corner marks a group. The groups, top to bottom:
+  - *Select* - Rectangle Select, Ellipse Select, Lasso, Magic Wand
+  - *Pen* - Paintbrush, Pencil, Airbrush
+  - *Lines* - Line
+  - *Shapes* - Rectangle, Ellipse
+  - *Morph* - Smudge, Clone Stamp (they reshape the pixels already there)
+  - *Shading* - Dodge, Burn
+
+  then Move, Crop, Eyedropper, Eraser, *Fill* (Fill, Gradient), Text and
+  *View* (Zoom, Pan). A tool's shortcut key picks it as before and shows it
+  in its group's button.
+- **Settings > Display > Tool palette: an adaptive or a static toolbar.**
+  Adaptive (the default): a group's button shows the tool last picked from
+  it. Static: it always shows the group's main tool, stays highlighted while
+  any tool of the group is in use, and the bar marks which one. The choice
+  applies at once and is saved (`palette.toolbar = adaptive | static` in
+  `config.ini`). *Restore defaults* restores the page shown. The fold-out
+  is the framework's new tool group (framework changelog:
+  `toolbar-tool-groups`).
+
 #### 2026-10-12 *0.2.15*
 - **A magnifying glass for the rectangle selection.** While the Rectangle
   Select tool is active a small view sits in a corner of the canvas and shows
