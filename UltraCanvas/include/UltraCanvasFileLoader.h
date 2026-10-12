@@ -295,6 +295,12 @@ namespace UltraCanvas {
         // picture's own.
         static bool GetImageExportOptions(const std::string& path, const FileSaveImageSize& size,
                                           UCImageSave::ImageExportOptions& out);
+        // The other way: stores the options of `options.format` (its quality,
+        // compression, colour depth ... and transparency) as that format's
+        // save settings, as a dialog that edits ImageExportOptions does on
+        // Save (UltraCanvasImageExportDialog). The size is not stored. False
+        // for a format without settings, or when they could not be written.
+        static bool SetImageExportOptions(const UCImageSave::ImageExportOptions& options);
     };
 
 } // namespace UltraCanvas

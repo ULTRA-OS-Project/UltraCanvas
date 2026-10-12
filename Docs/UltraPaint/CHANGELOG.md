@@ -1,3 +1,12 @@
+#### 2026-10-12 *0.2.17*
+- **Export opens on what was chosen.** The image export dialog after Export's
+  file dialog now opens on the format of the name given there (it opened on
+  PNG whatever the name, and "photo.jpg" was written as a PNG under a .jpg
+  name), with that format's save settings - the ones the Save dialog's
+  Settings button edits, and which Export's Save stores back - and at the
+  size chosen in those Settings, since Export now tells the Save dialog the
+  picture's size too (framework, pending changelog entry
+  "save-settings-followups").
 #### 2026-10-12 *0.2.16*
 - **Save As can write the picture at another size.** The Save dialog is told
   the picture's size, so the Settings button on the type row - new in the

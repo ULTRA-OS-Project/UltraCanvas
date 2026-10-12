@@ -282,6 +282,7 @@ the types):
 | `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
 | `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
 | `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings; `GetImageExportOptions(path, size, options)` at a [chosen size](#the-pictures-size) too |
+| `SetImageExportOptions(options)` | The other way: `options.format`'s quality, compression, colour depth ... and transparency stored as that format's settings (not the size) |
 
 Built in are the bitmap formats the image writer takes options for, each with
 only the settings that writer honours: PNG (compression, colours, interlace,
@@ -290,6 +291,12 @@ WebP, AVIF, HEIF, JPEG XL and JPEG 2000 (quality, lossless, effort or speed,
 bit depth), GIF (colours, dither, interlace), TIFF and OpenEXR (compression),
 Netpbm (binary), TGA, PCX, SGI and Photoshop (RLE), DPX and Cineon (bit
 depth). BMP, ICO, QOI, HDR, FITS and Farbfeld are written without options.
+
+The bitmap export dialog (`UltraCanvasImageExportDialog`) is the other
+place these values are edited: it opens every format on its save settings,
+and on the format of the file name it is given, and its Save stores the
+format's options back (`SetImageExportOptions`) - so it and the Save dialog's
+Settings never disagree.
 
 A writer reads them back. `UCRasterDocument::SaveToFile` does so itself when
 the caller passes no options and the user has stored settings for the format
