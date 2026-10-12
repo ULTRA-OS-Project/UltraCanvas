@@ -668,6 +668,10 @@ std::function<void(TreeNode*, TreeCheckState)> onNodeCheckChanged;
 std::function<bool(TreeNode* target)> onFilesDragAccept;
 std::function<bool(TreeNode* target,
                    const std::vector<std::string>& files)> onFilesDroppedOnNode;
+// The row a drag over the tree would drop on right now (the highlighted one
+// onFilesDragAccept accepted), or null - for a drag that carries no files and
+// ends without a Drop, such as the file dialog's Save icon.
+TreeNode* GetDropTargetNode() const;
 // Right mouse button released over a node; the event carries the pointer
 // position (event.pointerWindow) for placing a context menu. A right press
 // never changes the selection.
