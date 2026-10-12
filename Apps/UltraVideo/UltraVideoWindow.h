@@ -123,6 +123,8 @@ private:
     void DeleteSelection();
     void AddMarker();
     void AddTitle(const std::string& styleKey, double at);
+    void ApplyEffectPreset(const std::string& key);          // onto the selected main-track clip
+    void SetTransitionPreset(VideoFX::VideoFXTransitionType type);   // into the selected clip, one second
     void AddOverlay(const std::string& path, double at);     // a file over the picture, on V2
     void ChooseOverlay(double at);                           // ... from a file dialog
     void RequestBeats();               // detect the first song's beats on the worker, once per song
@@ -156,9 +158,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> binTabs_, inspectorTabs_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> binSearch_;
     std::shared_ptr<UltraCanvas::UltraCanvasAlbum> binAlbum_, musicAlbum_;
-    std::shared_ptr<Label> binEmpty_, titlesNote_, effectsNote_;
-    std::vector<std::shared_ptr<Button>> titleButtons_;
-    std::vector<std::shared_ptr<Label>> titleHints_;
+    std::shared_ptr<Label> binEmpty_, titlesNote_, effectsNote_, transitionsHeading_, transitionsNote_;
+    std::vector<std::shared_ptr<Button>> titleButtons_, effectButtons_, transitionButtons_;
+    std::vector<std::shared_ptr<Label>> titleHints_, effectHints_;
     std::vector<size_t> binRows_;      // album row -> media index
     std::vector<size_t> musicRows_;
     Viewer viewer_;

@@ -11,6 +11,7 @@
 #include "UltraVideoDocument.h"
 #include "UltraVideoHistory.h"
 #include "UltraVideoMapping.h"
+#include "UltraVideoPresets.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include "VideoFX/VideoFX.h"
@@ -454,6 +455,33 @@ int main() {
         CHECK(back.overlays[0].look.anchor == VideoFXAnchor::BottomRight && Near(back.overlays[0].look.imageHeight, 0.3, 1e-9) && back.overlays[1].path == photo, "place and size too, and the picture");
         CHECK(back.project.segments[0].overlays.empty() && back.project.segments[1].overlays.empty(), "the derived overlays are dropped on load");
         CHECK(back.nextOverlayId == od.nextOverlayId && back.SegmentsForEngine()[0].overlays.size() == od.SegmentsForEngine()[0].overlays.size(), "and derive the same again");
+    }
+
+    std::printf("\n-- effect presets --\n");
+    {
+        CHECK(EffectPresets().size() >= 8 && FindEffectPreset("warm") && !FindEffectPreset("none"), "presets by key");
+        const EffectPreset& warm = *FindEffectPreset("warm");
+        CHECK(std::string(warm.label) == "Warm film" && warm.effects.size() == 3 && warm.effects[0].type == VideoFXEffectType::Temperature &&
+              warm.effects[2].type == VideoFXEffectType::Vignette, "Warm film is temperature, saturation and a vignette");
+        VideoFXSegment seg = VideoFXSegment::FromFile(clip);
+        seg.effects = {VideoFXEffect::FadeIn(1.0)};
+        ApplyEffectPreset(seg, warm);
+        CHECK(seg.effects.size() == 4 && seg.effects[0].type == VideoFXEffectType::FadeIn && seg.effects[1].type == VideoFXEffectType::Temperature,
+              "a preset goes after the clip's own effects");
+        ApplyEffectPreset(seg, warm);
+        CHECK(seg.effects.size() == 4, "applied twice it is there once");
+        ApplyEffectPreset(seg, *FindEffectPreset("cool"));
+        size_t temperatures = 0;
+        for (const VideoFXEffect& e : seg.effects) if (e.type == VideoFXEffectType::Temperature) ++temperatures;
+        CHECK(temperatures == 1 && seg.effects.size() == 5 && seg.effects.back().type == VideoFXEffectType::Contrast,
+              "another preset replaces the effects of the types it carries and keeps the rest");
+        bool cool = false;
+        for (const VideoFXEffect& e : seg.effects) if (e.type == VideoFXEffectType::Temperature) cool = e.amount < 0.0;
+        CHECK(cool, "the warmth turned round, not stacked");
+        CHECK(EffectName(VideoFXEffect::Temperature(0.3)) == "Warmth +30 %" && EffectName(VideoFXEffect::Temperature(-0.3)) == "Coolness +30 %" &&
+              EffectName(VideoFXEffect::Vignette(0.35)) == "Vignette 35 %" && EffectName(VideoFXEffect::FadeIn(0.5)) == "Fade in 0.5 s" &&
+              EffectName(VideoFXEffect::Grayscale()) == "Black and white" && EffectName(VideoFXEffect::Volume(0.5)) == "Volume 50 %",
+              "effects read as words with their amounts");
     }
 
     std::printf("\n-- the story wizard --\n");

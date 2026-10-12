@@ -21,6 +21,7 @@ UltraVideoPreview.{h,cpp}   the engine's worker thread: frames for the viewer, t
 UltraVideoViewer.{h,cpp}    the frame surface, Fit, the transport
 UltraVideoInspector.{h,cpp} the Clip, Audio and Project tabs
 UltraVideoDialogs.{h,cpp}   the export dialog, the unsaved-changes question
+UltraVideoPresets.{h,cpp}   the effect presets: lists of engine effects, applied to a clip
 UltraVideoStory.{h,cpp}     the story wizard: three steps in a modal, PlanStory and
                             BuildStoryDocument in UltraVideoMapping make the project
 UltraVideoTheme.h           the tokens applied to elements: buttons, the timeline's and the

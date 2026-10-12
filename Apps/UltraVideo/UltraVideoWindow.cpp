@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
 #include "UltraVideoMapping.h"
+#include "UltraVideoPresets.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasFileLoader.h"
@@ -356,12 +357,55 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     }
     binTabs_->AddTab("Titles", titlesPage);
 
+    // The effect presets and the transitions, each a click onto the selected clip
     auto effectsPage = std::make_shared<UltraCanvasContainer>("uv.bin.effectsPage", 0, 0, static_cast<int>(Tokens::BinW), 480);
+    effectsPage->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     effectsPage->SetPadding(static_cast<float>(Tokens::Space3));
-    effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 80,
-                               "Effect presets come in a later release. Transitions are chosen on a cut: right-click it, or use the inspector.");
-    effectsNote_->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
+    ContainerStyle effectsScroll = effectsPage->GetContainerStyle();
+    effectsScroll.autoShowScrollbars = true;
+    effectsScroll.autoShowHorizontalScrollbar = false;
+    effectsPage->SetContainerStyle(effectsScroll);
+    effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 40,
+                               "Select a clip, then click a preset.");
+    effectsNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    effectsNote_->layoutItem.SetFlexShrink(0);
     effectsPage->AddChild(effectsNote_);
+    for (const EffectPreset& preset : EffectPresets()) {
+        auto button = MakeTextButton(std::string("uv.bin.effect.") + preset.key, preset.label, p, 240);
+        button->SetIcon(IconPath("fx"));
+        button->SetIconSize(16, 16);
+        button->SetTooltip(preset.hint);
+        button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start).SetFlexShrink(0);
+        const std::string key = preset.key;
+        button->SetOnClick([this, key]() { ApplyEffectPreset(key); });
+        effectButtons_.push_back(button);
+        effectsPage->AddChild(button);
+        auto hint = CreateLabel(std::string("uv.bin.effectHint.") + preset.key, 0, 0, 240, 18, preset.hint);
+        hint->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+        hint->layoutItem.SetFlexShrink(0);
+        effectHints_.push_back(hint);
+        effectsPage->AddChild(hint);
+    }
+    transitionsHeading_ = CreateLabel("uv.bin.transitions", 0, 0, 240, 22, "Transitions");
+    transitionsHeading_->SetFont(Tokens::Title.family, Tokens::Title.size * 0.75f, FontWeight::Bold);
+    transitionsHeading_->layoutItem.SetFlexShrink(0);
+    effectsPage->AddChild(transitionsHeading_);
+    transitionsNote_ = CreateLabel("uv.bin.transitionsNote", 0, 0, 240, 36,
+                                   "Into the selected clip, a second long; the inspector or the badge changes the length.");
+    transitionsNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    transitionsNote_->layoutItem.SetFlexShrink(0);
+    effectsPage->AddChild(transitionsNote_);
+    for (const TransitionChoice& choice : TransitionChoices()) {
+        if (choice.type == VideoFXTransitionType::Cut) continue;
+        auto button = MakeTextButton(std::string("uv.bin.transition.") + choice.key, choice.label, p, 240);
+        button->SetIcon(IconPath("transition"));
+        button->SetIconSize(16, 16);
+        button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start).SetFlexShrink(0);
+        const VideoFXTransitionType type = choice.type;
+        button->SetOnClick([this, type]() { SetTransitionPreset(type); });
+        transitionButtons_.push_back(button);
+        effectsPage->AddChild(button);
+    }
     binTabs_->AddTab("Effects", effectsPage);
 
     (void)p;
@@ -642,6 +686,11 @@ void UltraVideoWindow::ApplyPalette() {
     for (auto& b : titleButtons_) b->SetStyle(PlainButtonStyle(p));
     for (auto& h : titleHints_) h->SetTextColor(ToColor(p.InkFaint));
     effectsNote_->SetTextColor(ToColor(p.InkMuted));
+    for (auto& b : effectButtons_) b->SetStyle(PlainButtonStyle(p));
+    for (auto& b : transitionButtons_) b->SetStyle(PlainButtonStyle(p));
+    for (auto& h : effectHints_) h->SetTextColor(ToColor(p.InkFaint));
+    transitionsHeading_->SetTextColor(ToColor(p.Ink));
+    transitionsNote_->SetTextColor(ToColor(p.InkMuted));
     viewer_.ApplyPalette(p);
     inspector_.ApplyPalette(p);
 
@@ -1359,6 +1408,41 @@ void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
     }
 }
 
+void UltraVideoWindow::ApplyEffectPreset(const std::string& key) {
+    const EffectPreset* preset = FindEffectPreset(key);
+    const int index = SegmentOfClip(document_, selectedClip_);
+    if (!preset) return;
+    if (index < 0) {
+        Message("Select a clip on the main track first, then click the preset.");
+        return;
+    }
+    Edit(std::string("Apply ") + preset->label, [index, preset](Document& d) {
+        if (static_cast<size_t>(index) < d.project.segments.size()) UltraVideo::ApplyEffectPreset(d.project.segments[static_cast<size_t>(index)], *preset);
+    });
+    inspector_.ShowClipTab();
+    Message(std::string(preset->label) + " is on " + ClipName(document_, static_cast<size_t>(index)) + ": the inspector lists its effects.");
+}
+
+void UltraVideoWindow::SetTransitionPreset(VideoFXTransitionType type) {
+    const int index = SegmentOfClip(document_, selectedClip_);
+    if (index < 0) {
+        Message("Select the clip the transition leads into first.");
+        return;
+    }
+    if (index == 0) {
+        Message("Nothing leads into the first clip: select a later one.");
+        return;
+    }
+    Edit("Set transition", [index, type](Document& d) {
+        if (static_cast<size_t>(index) >= d.project.segments.size()) return;
+        VideoFXSegment& s = d.project.segments[static_cast<size_t>(index)];
+        const double seconds = s.transitionIn.IsCut() ? 1.0 : s.transitionIn.duration;
+        s.transitionIn = VideoFXTransition::Make(type, seconds);
+    });
+    inspector_.ShowClipTab();
+    Message(std::string(ChoiceOf(type).label) + " into " + ClipName(document_, static_cast<size_t>(index)) + ".");
+}
+
 void UltraVideoWindow::AddOverlay(const std::string& path, double at) {
     if (document_.project.segments.empty()) {
         Message("Put a clip on the main track first: an overlay sits over the picture.");
@@ -1519,6 +1603,13 @@ void UltraVideoWindow::ShowTimelineMenu(const std::string& trackId, double secon
                 if (static_cast<size_t>(index) < d.project.segments.size()) d.project.segments[static_cast<size_t>(index)].mute = muted;
             });
         }));
+        if (!s.effects.empty()) {
+            menu_->AddItem(MenuItemData::Action("Remove the effects", [this, index]() {
+                Edit("Remove effects", [index](Document& d) {
+                    if (static_cast<size_t>(index) < d.project.segments.size()) d.project.segments[static_cast<size_t>(index)].effects.clear();
+                });
+            }));
+        }
         if (index > 0) {
             menu_->AddItem(MenuItemData::Separator());
             if (s.transitionIn.IsCut()) {

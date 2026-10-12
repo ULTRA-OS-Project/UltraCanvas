@@ -1,3 +1,19 @@
+#### 2026-10-12 *0.2.0*
+- **Effect presets.** The bin's *Effects* tab lists ten presets - *Warm
+  film* (temperature, saturation, a vignette), *Cool morning*, *Black and
+  white*, *Old photo*, *Vivid*, *Faded*, *Soft focus*, *Crisp*, *Fade in
+  and out*, *Quieter sound* - and a click puts one on the selected clip: its
+  effects replace any of the same types already there, so a preset applied
+  twice is there once and "Cool" after "Warm" turns the warmth round. Under
+  them the transitions, one click to put one on the cut into the selected
+  clip. The inspector's *Clip* tab gained an **Effects** list: every effect
+  on the clip by name and amount ("Warmth +30 %", "Fade in 0.5 s"), a cross
+  per row to take it off, *Clear* for all; the clip's context menu offers
+  *Remove the effects*. The timeline's *Fx* badge marks a clip with effects.
+  The viewer and the export render them as before.
+- Not yet: the mapping of the design's tokens onto the framework's theme
+  roles (the app colours its elements from the tokens directly).
+
 #### 2026-10-11 *0.1.0*
 - **The first release: the editor's skeleton.** `Apps/UltraVideo`, on
   VideoFX 0.9.0 and the framework's `UltraCanvasVideoTimeline` and

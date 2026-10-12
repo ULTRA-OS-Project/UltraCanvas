@@ -82757,7 +82757,25 @@ song dropped anywhere becomes the music; the insertion marker shows where,
 field filters the bin by name. The *Music* tab lists the songs. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. *Effects* waits for a later release.
+playhead. The *Effects* tab holds the effect presets and the transitions
+(below).
+
+### Effects
+
+The bin's *Effects* tab lists ten presets, each a few of the engine's
+effects: *Warm film* (warmth, a little more colour, darker corners), *Cool
+morning*, *Black and white*, *Old photo*, *Vivid*, *Faded*, *Soft focus*,
+*Crisp*, *Fade in and out* and *Quieter sound*. Select a clip on the main
+track and click one: its effects go onto the clip, replacing any of the
+same kinds already there, so a preset applied twice is there once and
+*Cool morning* after *Warm film* turns the warmth round rather than
+stacking it. The clip shows the *Fx* badge, the viewer renders the result,
+and the inspector's *Clip* tab lists the effects by name and amount -
+*Warmth +30 %*, *Vignette 35 %*, *Fade in 0.5 s* - with a cross per row
+to take one off and *Clear* for all; the clip's menu has *Remove the
+effects*. Under the presets the tab lists the transitions: a click puts
+one, a second long, on the cut into the selected clip; its length and
+type are then changed in the inspector or on the badge.
 
 ### The viewer
 
@@ -82911,10 +82929,9 @@ the engine).
 
 ## Not yet
 
-Effect presets, and the mapping
-of the design's tokens onto the framework's theme roles (the app colours
-its elements from the tokens directly). The proposal's roadmap (§11) has
-the order.
+The mapping of the design's tokens onto the framework's theme roles (the
+app colours its elements from the tokens directly). The proposal's roadmap
+(§11) has the order.
 
 ==============================================================================
 FILE: Docs/Legal/Privacy/README.md

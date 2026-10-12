@@ -78,6 +78,13 @@ private:
     std::shared_ptr<Switch> keepFaces;
     std::shared_ptr<TimecodeField> stillLength;
     std::shared_ptr<Container> stillRow;
+    // the clip's effects, one row each, rebuilt on every Show
+    std::shared_ptr<Container> effectRows, effectList;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> clearEffects;
+    std::shared_ptr<Label> effectsEmpty;
+    std::vector<std::shared_ptr<Label>> effectLabels;
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasButton>> effectButtons;
+    const Palette* palette = nullptr;
     // a title span
     std::shared_ptr<Container> titleRows;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> titleText;

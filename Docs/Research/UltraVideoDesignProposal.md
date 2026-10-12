@@ -901,7 +901,7 @@ and sound types for *Open with*. All of it is in place (§14).
 | 2 | `VideoFX_RenderFrame` (8.2, **done** in 0.9.0), the draft preset (8.5), export range (8.6) | VideoFX 0.9.0 |
 | 3 | `Apps/UltraVideo` 0.1.0: window, media bin, viewer with scrubbing, inspector (clip, audio, project), timeline wired through the mapping, undo, `.ultravideo`, export dialog (**built**, §14) | First app release |
 | 4 | Title lane and music lane (**built**, §14: spans, fades, song boundaries, beats) in the element; markers, work area, snapping, ripple built in phase 1; the story wizard (**built**); the overlay-video lane (**built**, on VideoFX 0.10.0) | App 0.2.0 |
-| 5 | Picture-in-picture (8.3) and free audio tracks (8.4) in the engine; the overlay and free audio lanes switched on | VideoFX 0.10, app 0.3 |
+| 5 | Picture-in-picture (8.3, **done** in 0.10.0, the overlay lane on) and free audio tracks (8.4) in the engine; the free audio lanes switched on; effect presets (**built**, app 0.2.0) | VideoFX 0.10, app 0.3 |
 | 6 | Keyframes in the engine and keyframe markers on clips; proxy media; hardware encoder choice | Later |
 
 ---
@@ -1046,6 +1046,19 @@ that writing it showed:
   menu, a bin tile's action or a drop; the inspector's place, size, opacity
   and fades. A picture on the lane becomes an image overlay: a logo. The
   lane is no longer hidden; the table of §5.3 names the mapping.
+- **Effect presets** (§6.2, §6.4; app 0.2.0): `UltraVideoPresets` holds
+  ten presets as lists of engine effects - *Warm film* is the table's
+  temperature, saturation and vignette - and `ApplyEffectPreset` puts one
+  on a segment by replacing the effects of the types it carries and keeping
+  the rest, so a preset is idempotent and two presets that set the same
+  thing do not stack. The bin's *Effects* tab is the presets and the
+  transitions as buttons acting on the selected clip; the inspector's
+  *Clip* tab lists a clip's effects by name and amount (`EffectName`) with
+  a cross per row and *Clear*. Departure from §6.4: no eye per row - the
+  engine's effect has no enabled flag, so a row is taken off rather than
+  switched off. Departure from §6.2: presets are not dragged onto clips;
+  the element's drop path carries files, and a drag source for presets
+  would add a second kind of drop to the element for one gesture.
 - **The design's token files** (§5.8): `screens/tokens/tokens.json` is now
   in the tree as the source of truth, reconstructed from the generated
   header with every description kept, and

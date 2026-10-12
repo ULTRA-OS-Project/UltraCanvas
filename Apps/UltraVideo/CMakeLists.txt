@@ -18,6 +18,7 @@ add_executable(UltraVideo
     UltraVideoHistory.cpp
     UltraVideoInspector.cpp
     UltraVideoMapping.cpp
+    UltraVideoPresets.cpp
     UltraVideoPreview.cpp
     UltraVideoStory.cpp
     UltraVideoViewer.cpp

@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 #include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
+#include "UltraVideoPresets.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasVideoTimelineModel.h"
@@ -120,6 +121,7 @@ void Inspector::Edit(const std::string& label, std::function<void(Document&)> ed
 }
 
 std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
+    palette = &p;
     tabs = std::make_shared<UltraCanvasTabbedContainer>("uv.inspector", 0, 0, kPageWidth + 24, 600);
     tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     tabs->SetCloseMode(TabCloseMode::NoClose);
@@ -231,6 +233,37 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     mute->layoutItem.SetFlexShrink(0);
     switches.push_back(mute);
     clipFields->AddChild(mute);
+
+    // ---- the effects on the clip: a row each, a cross to take one off ----
+    effectRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.effects", 0, 0, kPageWidth, 80);
+    effectRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    effectRows->layoutItem.SetFlexShrink(0);
+    auto effectsHead = std::make_shared<UltraCanvasContainer>("uv.insp.effects.head", 0, 0, kPageWidth, 26);
+    effectsHead->layout.SetFlexRow().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    effectsHead->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(26));
+    auto effectsTitle = CreateLabel("uv.insp.effects.heading", 0, 0, 160, 22, "Effects");
+    effectsTitle->SetFont(Tokens::Title.family, Tokens::Title.size * 0.75f, FontWeight::Bold);
+    headings.push_back(effectsTitle);
+    effectsHead->AddChild(effectsTitle);
+    clearEffects = MakeTextButton("uv.insp.effects.clear", "Clear", *palette, 64);
+    clearEffects->SetOnClick([this]() {
+        const int index = segment;
+        Edit("Remove effects", [index](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.project.segments.size()) d.project.segments[static_cast<size_t>(index)].effects.clear();
+        });
+    });
+    effectsHead->AddChild(clearEffects);
+    effectRows->AddChild(effectsHead);
+    effectsEmpty = CreateLabel("uv.insp.effects.empty", 0, 0, kPageWidth, 18, "None: the bin's Effects tab has the presets.");
+    effectsEmpty->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    effectsEmpty->layoutItem.SetFlexShrink(0);
+    captions.push_back(effectsEmpty);
+    effectRows->AddChild(effectsEmpty);
+    effectList = std::make_shared<UltraCanvasContainer>("uv.insp.effects.list", 0, 0, kPageWidth, 0);
+    effectList->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    effectList->layoutItem.SetFlexShrink(0).SetFlexGrow(0);
+    effectRows->AddChild(effectList);
+    clipFields->AddChild(effectRows);
 
     imageRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.image", 0, 0, kPageWidth, 110);
     imageRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -671,7 +704,11 @@ void Inspector::StyleControls(const Palette& p) {
 }
 
 void Inspector::ApplyPalette(const Palette& p) {
+    palette = &p;
     if (!tabs) return;
+    if (clearEffects) clearEffects->SetStyle(PlainButtonStyle(p));
+    for (auto& l : effectLabels) l->SetTextColor(ToColor(p.Ink));
+    for (auto& b : effectButtons) b->SetStyle(GhostButtonStyle(p));
     tabs->SetBackgroundColor(ToColor(p.Bg100));
     tabs->SetTabBarColor(ToColor(p.Bg100));
     tabs->SetInactiveTabBackgroundColor(ToColor(p.Bg100));
@@ -779,9 +816,45 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
         titleFadeOut->SetValue(static_cast<float>(t.fadeOut));
         titleFadeOutValue->SetText(Seconds(t.fadeOut));
     }
+    effectRows->SetVisible(hasClip);
     if (hasClip) {
         mute->SetVisible(true);
         const VideoFXSegment& s = doc.project.segments[static_cast<size_t>(index)];
+        // the effects, a row each
+        effectList->ClearChildren();
+        effectLabels.clear();
+        effectButtons.clear();
+        const int rowH = static_cast<int>(Tokens::ControlH);
+        const int gap = static_cast<int>(Tokens::Space1);
+        for (size_t k = 0; k < s.effects.size(); ++k) {
+            auto row = std::make_shared<UltraCanvasContainer>("uv.insp.effect.row" + std::to_string(k), 0, 0, kPageWidth - 8, rowH);
+            row->layout.SetFlexRow().SetFlexGap(gap).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            row->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(rowH));
+            auto name = CreateLabel("uv.insp.effect.name" + std::to_string(k), 0, 0, kPageWidth - rowH - 24, rowH, EffectName(s.effects[k]));
+            name->layoutItem.SetFlexShrink(0);
+            name->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
+            if (palette) name->SetTextColor(ToColor(palette->Ink));
+            effectLabels.push_back(name);
+            row->AddChild(name);
+            auto remove = MakeIconButton("uv.insp.effect.remove" + std::to_string(k), "trash", "Take this effect off", palette ? *palette : Tokens::Dark);
+            const int at = static_cast<int>(k);
+            remove->SetOnClick([this, at]() {
+                const int seg = segment;
+                Edit("Remove effect", [seg, at](Document& d) {
+                    if (seg < 0 || static_cast<size_t>(seg) >= d.project.segments.size()) return;
+                    std::vector<VideoFXEffect>& effects = d.project.segments[static_cast<size_t>(seg)].effects;
+                    if (at >= 0 && static_cast<size_t>(at) < effects.size()) effects.erase(effects.begin() + at);
+                });
+            });
+            effectButtons.push_back(remove);
+            row->AddChild(remove);
+            effectList->AddChild(row);
+        }
+        const int listH = s.effects.empty() ? 0 : static_cast<int>(s.effects.size()) * (rowH + gap);
+        effectList->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(listH));
+        effectsEmpty->SetVisible(s.effects.empty());
+        clearEffects->SetVisible(!s.effects.empty());
+        effectRows->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(26 + gap + (s.effects.empty() ? 18 : listH) + gap));
         clipName->SetText(ClipName(doc, static_cast<size_t>(index)));
         const bool isFile = s.kind == VideoFXSourceKind::File;
         const bool isImage = s.kind == VideoFXSourceKind::Image;
