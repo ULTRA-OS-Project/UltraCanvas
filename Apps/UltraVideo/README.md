@@ -18,6 +18,8 @@ UltraVideoMapping.{h,cpp}   BuildTimelineModel / ApplyChange: the document <-> t
 UltraVideoHistory.{h,cpp}   undo and redo, the clean mark
 UltraVideoPreview.{h,cpp}   the engine's worker thread: frames for the viewer, thumbnails,
                             peaks
+UltraVideoProxies.{h,cpp}   proxies of the bin's videos, made on a thread of their own;
+                            the viewer and the draft play the timeline through them
 UltraVideoViewer.{h,cpp}    the frame surface, Fit, the transport
 UltraVideoInspector.{h,cpp} the Clip, Audio and Project tabs
 UltraVideoDialogs.{h,cpp}   the export dialog, the unsaved-changes question

@@ -5,12 +5,13 @@
 // the .ultravideo file round trip with relative media paths and missing
 // media reported. Needs the VideoFX engine (FFmpeg) for the probes and the
 // clips it generates; without it the suite skips itself.
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoHistory.h"
 #include "UltraVideoMapping.h"
+#include "UltraVideoProxies.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include "VideoFX/VideoFX.h"
@@ -20,6 +21,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace UltraCanvas;
@@ -547,6 +549,7 @@ int main() {
     CHECK(loaded.project.settings.music.path == song && loaded.media.size() == 3, "the music and the bin");
     CHECK(loaded.markers.size() == 1 && loaded.markers[0].id == "m2", "the markers");
     CHECK(loaded.view.pixelsPerSecond == 120.0 && !loaded.view.dark && loaded.view.rangeOut == 6.0, "the view");
+    CHECK(loaded.view.useProxies, "proxies on by default, and kept");
     CHECK(missing.empty() && loaded.nextClipId == doc.nextClipId, "nothing missing; ids go on from where they were");
     std::error_code ec;
     fs::remove(PathFromUtf8(photo), ec);
@@ -555,6 +558,81 @@ int main() {
     CHECK(again.FindMedia(photo) && !again.FindMedia(photo)->error.empty(), "and stays in the bin, marked");
     CHECK(!Document::Load(TempPath("nowhere.ultravideo"), again, error, nullptr) && !error.empty(), "a missing file fails with a reason");
     CHECK(!Document::Load(junk, again, error, nullptr), "a text file is not a project");
+
+    std::printf("\n-- proxies --\n");
+    {
+        // a 640x360 clip: taller than a 180-line proxy; the 320x240 one is not
+        const std::string big = TempPath("media/big.mkv");
+        VideoFXExportSettings s;
+        s.container = VideoFXContainer::MKV;
+        s.videoCodec = VideoFXVideoCodec::MPEG4;
+        s.audioCodec = VideoFXAudioCodec::AAC;
+        s.width = 640; s.height = 360; s.frameRate = 25.0;
+        CHECK(VideoFX_Export({VideoFXSegment::TestPattern(2.0)}, big, s) == VideoFXResult::Ok, "a 640x360 clip");
+        VideoFXProxySettings ps;
+        ps.height = 180;
+        ps.cacheDirectory = TempPath("proxies");
+        std::vector<std::pair<std::string, ProxyMaker::State>> done;
+        auto waitFor = [&](ProxyMaker& m, size_t count) {
+            for (int i = 0; i < 600 && done.size() < count; ++i) {
+                m.Pump();
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            m.Pump();
+        };
+        {
+            ProxyMaker maker(ps);
+            maker.onDone = [&](const std::string& c, ProxyMaker::State st) { done.emplace_back(c, st); };
+            CHECK(maker.StateOf(big) == ProxyMaker::State::Unknown, "unknown before it is asked for");
+            maker.Want(big);
+            maker.Want(clip);
+            maker.Want(big);                                   // asked twice: made once
+            CHECK(maker.Pending() >= 1, "queued");
+            waitFor(maker, 2);
+            CHECK(done.size() == 2, "both settled, reported on Pump");
+            CHECK(maker.StateOf(big) == ProxyMaker::State::Ready && VideoFX_HasProxy(big, ps), "the big clip has its proxy");
+            CHECK(maker.StateOf(clip) == ProxyMaker::State::NotNeeded && !VideoFX_HasProxy(clip, ps),
+                  "the small one needs none");
+            CHECK(maker.Badge(big) == "proxy" && maker.Badge(clip).empty() && maker.Pending() == 0, "badges, nothing pending");
+            const std::vector<VideoFXSegment> played = maker.Use({VideoFXSegment::FromFile(big), VideoFXSegment::FromFile(clip)});
+            CHECK(played.size() == 2 && played[0].path == VideoFX_ProxyPath(big, ps) && played[1].path == clip,
+                  "the timeline plays the big clip from its proxy, the small one as it is");
+        }
+        {
+            // a new session: the proxy from the cache is ready at once
+            done.clear();
+            ProxyMaker maker(ps);
+            maker.onDone = [&](const std::string& c, ProxyMaker::State st) { done.emplace_back(c, st); };
+            maker.Want(big);
+            CHECK(maker.StateOf(big) == ProxyMaker::State::Ready, "made in an earlier session: ready at once");
+            maker.Pump();
+            CHECK(done.size() == 1 && done[0].second == ProxyMaker::State::Ready, "and reported");
+        }
+        {
+            // dropped from the bin before its turn: never made
+            VideoFXProxySettings other = ps;
+            other.height = 120;
+            done.clear();
+            ProxyMaker maker(other);
+            maker.onDone = [&](const std::string& c, ProxyMaker::State st) { done.emplace_back(c, st); };
+            maker.Want(big);
+            maker.Keep({});
+            for (int i = 0; i < 40; ++i) { maker.Pump(); std::this_thread::sleep_for(std::chrono::milliseconds(50)); }
+            CHECK(maker.StateOf(big) == ProxyMaker::State::Unknown && maker.Pending() == 0, "forgotten when it leaves the bin");
+            CHECK(!VideoFX_HasProxy(big, other), "and no proxy left behind");
+        }
+        {
+            // a missing file fails; the window falls back to the original
+            done.clear();
+            ProxyMaker maker(ps);
+            maker.onDone = [&](const std::string& c, ProxyMaker::State st) { done.emplace_back(c, st); };
+            maker.Want(TempPath("media/gone.mkv"));
+            waitFor(maker, 1);
+            CHECK(done.size() == 1 && done[0].second == ProxyMaker::State::Failed &&
+                  !maker.Error(TempPath("media/gone.mkv")).empty(), "a missing clip fails, with the reason");
+        }
+        VideoFX_ClearProxies(ps);
+    }
 
     fs::remove_all(PathFromUtf8(TempPath("")), ec);
     std::printf("\n%d of %d checks passed\n", testCount - failCount, testCount);

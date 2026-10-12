@@ -83779,6 +83779,23 @@ sound, and the playhead follows it. An edit throws the draft away and the
 next Play renders a new one. Where no sound device or player is available
 playback stays frame by frame and the status line says so.
 
+**Proxies.** Large clips, such as 4K phone videos, are slow to scrub. So
+every video in the bin gets a *proxy* in the background: the same clip at
+540 lines, quick to seek in (VideoFX's proxy media). The bin tile shows its
+progress, *proxy waiting*, *proxy 40 %*, and *proxy* when it is ready. From
+then on the viewer and the playback draft play that clip from its proxy.
+The **export always reads the originals**, at full quality.
+- Proxies are made one at a time on a thread of their own, so scrubbing
+  never waits behind one.
+- A clip no taller than a proxy, which is already quick, gets none.
+- Proxies are kept in the user's cache folder (`~/.cache/VideoFX/Proxies`
+  and the like), so a project opened again plays from them at once.
+- A clip removed from the bin before its proxy is made is dropped from the
+  queue.
+- *Preview from proxies*, in the inspector's Project tab, turns them off
+  and on for the project. It is saved with the project, and is not an
+  undo step.
+
 ### The timeline
 
 The `UltraCanvasVideoTimeline` element with four lanes: **T1 Titles**, a
@@ -83865,11 +83882,13 @@ are offered first; a song in the bin becomes the music.
   under the clips' own sound by preset (speech, outdoor, loud event) and
   level.
 - **Project**: the name, the output size (from the first clip, Full HD, HD,
-  4K, portrait, square), the frame rate, and how clips of another shape are
-  fitted.
+  4K, portrait, square), the frame rate, how clips of another shape are
+  fitted, and *Preview from proxies* (on by default; see *Proxies* above).
 
 Every field is an edit like any other: it goes through undo and shows on
-the timeline and in the viewer at once.
+the timeline and in the viewer at once. *Preview from proxies* is the one
+exception: it changes how the project is previewed, not the project, so it
+is no undo step.
 
 ## Undo, projects and export
 
