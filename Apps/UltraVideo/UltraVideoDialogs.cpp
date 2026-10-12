@@ -105,7 +105,7 @@ void ShowExportDialog(UltraCanvasWindow* parent, const Document& doc, const Pale
     path->onTextChanged = [state](const std::string& text) { state->outputPath = text; };
     path->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     pathRow->AddChild(path);
-    auto browse = MakeTextButton("uv.export.browse", "Browse\xE2\x80\xA6", p, 84);
+    auto browse = MakeTextButton("uv.export.browse", "Browse\xE2\x80\xA6", 84);
     UltraCanvasTextInput* pathField = path.get();
     browse->SetOnClick([state, pathField, presets, parent]() {
         FileDialogOptions opts;

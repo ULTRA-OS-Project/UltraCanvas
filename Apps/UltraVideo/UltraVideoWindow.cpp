@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.2.4 - the buttons follow the theme by variant; ApplyPalette keeps the timeline
 // Version: 0.2.1 - the draft is rendered at the project's shape
 // Version: 0.2.0 - the panels follow the theme; a player that cannot start falls back
 // Version: 0.1.0
@@ -190,14 +191,15 @@ void UltraVideoWindow::Show() {
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildAppBar() {
-    const Palette& p = *palette_;
     appBar_ = std::make_shared<UltraCanvasContainer>("uv.appbar", 0, 0, 1440, static_cast<int>(Tokens::AppbarH));
     appBar_->layout.SetFlexRow().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     appBar_->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(Tokens::AppbarH));
     appBar_->SetPadding(0, static_cast<float>(Tokens::Space3));
 
     auto logo = std::make_shared<UltraCanvasButton>("uv.logo", 0, 0, 28, 28, "");
-    logo->SetStyle(GhostButtonStyle(p));
+    logo->SetStyle(ButtonShape(false));
+    logo->SetThemeVariant(ButtonVariant::Ghost);
+    logo->SetFollowTheme(true);
     logo->SetIcon(IconPath("logo"));
     logo->SetIconSize(18, 18);
     logo->SetTooltip(std::string("UltraVideo ") + ULTRAVIDEO_VERSION);
@@ -213,28 +215,28 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildAppBar() {
     status_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     appBar_->AddChild(status_);
 
-    undo_ = MakeIconButton("uv.undo", "undo", "Undo  Ctrl+Z", p);
+    undo_ = MakeIconButton("uv.undo", "undo", "Undo  Ctrl+Z");
     undo_->SetOnClick([this]() { if (history_.Undo(document_)) { RefreshAll(); Message("Undid " + history_.RedoLabel()); } });
     appBar_->AddChild(undo_);
-    redo_ = MakeIconButton("uv.redo", "redo", "Redo  Ctrl+Shift+Z", p);
+    redo_ = MakeIconButton("uv.redo", "redo", "Redo  Ctrl+Shift+Z");
     redo_->SetOnClick([this]() { if (history_.Redo(document_)) { RefreshAll(); Message("Redid " + history_.UndoLabel()); } });
     appBar_->AddChild(redo_);
     auto gap = std::make_shared<UltraCanvasContainer>("uv.appbar.gap", 0, 0, 12, 28);
     gap->layoutItem.SetFlexShrink(0);
     appBar_->AddChild(gap);
-    open_ = MakeIconButton("uv.open", "film", "Open project  Ctrl+O", p);
+    open_ = MakeIconButton("uv.open", "film", "Open project  Ctrl+O");
     open_->SetOnClick([this]() { OpenProject(); });
     appBar_->AddChild(open_);
-    save_ = MakeIconButton("uv.save", "duplicate", "Save  Ctrl+S", p);
+    save_ = MakeIconButton("uv.save", "duplicate", "Save  Ctrl+S");
     save_->SetOnClick([this]() { SaveProject(); });
     appBar_->AddChild(save_);
-    import_ = MakeIconButton("uv.import", "upload", "Import media  Ctrl+I", p);
+    import_ = MakeIconButton("uv.import", "upload", "Import media  Ctrl+I");
     import_->SetOnClick([this]() { ImportMedia(); });
     appBar_->AddChild(import_);
-    story_ = MakeIconButton("uv.story", "image", "Make a story from photos and clips  Ctrl+Shift+N", p);
+    story_ = MakeIconButton("uv.story", "image", "Make a story from photos and clips  Ctrl+Shift+N");
     story_->SetOnClick([this]() { MakeStory(); });
     appBar_->AddChild(story_);
-    theme_ = MakeIconButton("uv.theme", "eye", "Light or dark", p);
+    theme_ = MakeIconButton("uv.theme", "eye", "Light or dark");
     theme_->SetOnClick([this]() {
         dark_ = !dark_;
         document_.view.dark = dark_;
@@ -242,7 +244,7 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildAppBar() {
         ApplyPalette();
     });
     appBar_->AddChild(theme_);
-    export_ = MakeTextButton("uv.export", "Export", p, 96, true);
+    export_ = MakeTextButton("uv.export", "Export", 96, true);
     export_->SetIcon(IconPath("export"));
     export_->SetIconSize(16, 16);
     export_->SetTooltip("Export the video  Ctrl+E");
@@ -366,7 +368,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     titlesNote_->layoutItem.SetFlexShrink(0);
     titlesPage->AddChild(titlesNote_);
     for (const TitleStyle& st : TitleStyles()) {
-        auto button = MakeTextButton(std::string("uv.bin.title.") + st.key, st.label, p, 240);
+        auto button = MakeTextButton(std::string("uv.bin.title.") + st.key, st.label, 240);
         button->SetIcon(IconPath("title"));
         button->SetIconSize(16, 16);
         button->SetTooltip(st.hint);
@@ -397,7 +399,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     effectsNote_->layoutItem.SetFlexShrink(0);
     effectsPage->AddChild(effectsNote_);
     for (const EffectPreset& preset : EffectPresets()) {
-        auto button = MakeTextButton(std::string("uv.bin.effect.") + preset.key, preset.label, p, 240);
+        auto button = MakeTextButton(std::string("uv.bin.effect.") + preset.key, preset.label, 240);
         button->SetIcon(IconPath("fx"));
         button->SetIconSize(16, 16);
         button->SetTooltip(preset.hint);
@@ -423,7 +425,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     effectsPage->AddChild(transitionsNote_);
     for (const TransitionChoice& choice : TransitionChoices()) {
         if (choice.type == VideoFXTransitionType::Cut) continue;
-        auto button = MakeTextButton(std::string("uv.bin.transition.") + choice.key, choice.label, p, 240);
+        auto button = MakeTextButton(std::string("uv.bin.transition.") + choice.key, choice.label, 240);
         button->SetIcon(IconPath("transition"));
         button->SetIconSize(16, 16);
         button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start).SetFlexShrink(0);
@@ -439,7 +441,6 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
 }
 
 std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
-    const Palette& p = *palette_;
     timelineBar_ = std::make_shared<UltraCanvasToolbar>("uv.timelineBar", 0, 0, 1440, static_cast<int>(Tokens::ToolbarH));
     timelineBar_->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(Tokens::ToolbarH))
         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -451,25 +452,25 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
     timelineBar_->SetAppearance(bar);
     timelineBar_->SetFollowTheme(true);
 
-    toolSelect_ = MakeIconButton("uv.tool.select", "select", "Select  V", p);
+    toolSelect_ = MakeIconButton("uv.tool.select", "select", "Select  V");
     toolSelect_->SetOnClick([this]() { SetTool(TimelineTool::Select); });
-    toolBlade_ = MakeIconButton("uv.tool.blade", "blade", "Blade  B", p);
+    toolBlade_ = MakeIconButton("uv.tool.blade", "blade", "Blade  B");
     toolBlade_->SetOnClick([this]() { SetTool(TimelineTool::Blade); });
-    toolTrim_ = MakeIconButton("uv.tool.trim", "clipIn", "Trim  T", p);
+    toolTrim_ = MakeIconButton("uv.tool.trim", "clipIn", "Trim  T");
     toolTrim_->SetOnClick([this]() { SetTool(TimelineTool::Trim); });
-    toolSlip_ = MakeIconButton("uv.tool.slip", "slip", "Slip  Y", p);
+    toolSlip_ = MakeIconButton("uv.tool.slip", "slip", "Slip  Y");
     toolSlip_->SetOnClick([this]() { SetTool(TimelineTool::Slip); });
     for (auto& b : {toolSelect_, toolBlade_, toolTrim_, toolSlip_}) timelineBar_->AddChild(b);
     timelineBar_->AddSeparator("uv.sep1");
-    split_ = MakeIconButton("uv.act.split", "split", "Split at the playhead  S", p);
+    split_ = MakeIconButton("uv.act.split", "split", "Split at the playhead  S");
     split_->SetOnClick([this]() { SplitAtPlayhead(); });
-    delete_ = MakeIconButton("uv.act.delete", "trash", "Delete  Del", p);
+    delete_ = MakeIconButton("uv.act.delete", "trash", "Delete  Del");
     delete_->SetOnClick([this]() { DeleteSelection(); });
-    marker_ = MakeIconButton("uv.act.marker", "marker", "Add a marker  M", p);
+    marker_ = MakeIconButton("uv.act.marker", "marker", "Add a marker  M");
     marker_->SetOnClick([this]() { AddMarker(); });
     for (auto& b : {split_, delete_, marker_}) timelineBar_->AddChild(b);
     timelineBar_->AddSeparator("uv.sep2");
-    magnet_ = MakeIconButton("uv.mode.magnet", "magnet", "Magnetic main track  P", p);
+    magnet_ = MakeIconButton("uv.mode.magnet", "magnet", "Magnetic main track  P");
     magnet_->SetOnClick([this]() {
         TimelineTrack* track = nullptr;
         TimelineModel model = BuildTimelineModel(document_);
@@ -479,13 +480,13 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
         (void)on;
     });
     magnet_->SetDisabled(true);   // the main track is always magnetic in this release
-    snap_ = MakeIconButton("uv.mode.snap", "snap", "Snapping  N", p);
+    snap_ = MakeIconButton("uv.mode.snap", "snap", "Snapping  N");
     snap_->SetOnClick([this]() {
         snapping_ = !snapping_;
         if (timeline_) timeline_->SetSnapping(snapping_);
         RefreshToolbarLooks();
     });
-    beats_ = MakeIconButton("uv.mode.beats", "beat", "Beat marks", p);
+    beats_ = MakeIconButton("uv.mode.beats", "beat", "Beat marks");
     beats_->SetOnClick([this]() {
         showBeats_ = !showBeats_;
         if (timeline_) timeline_->SetShowBeats(showBeats_);
@@ -506,7 +507,7 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
     timelineBar_->AddChild(lengthLabel_);
     timelineBar_->AddStretch();
 
-    zoomOut_ = MakeIconButton("uv.zoom.out", "zoomOut", "Zoom out  -", p);
+    zoomOut_ = MakeIconButton("uv.zoom.out", "zoomOut", "Zoom out  -");
     zoomOut_->SetOnClick([this]() { if (timeline_) timeline_->ZoomBy(0.8, document_.view.playhead); });
     timelineBar_->AddChild(zoomOut_);
     zoom_ = CreateSlider("uv.zoom", 0, 0, 120, static_cast<int>(Tokens::ControlH));
@@ -521,10 +522,10 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
     zoom_->SetStyle(zoomStyle);
     zoom_->SetFollowTheme(true);           // the colours, with the slider.handle roles
     timelineBar_->AddChild(zoom_);
-    zoomIn_ = MakeIconButton("uv.zoom.in", "zoomIn", "Zoom in  =", p);
+    zoomIn_ = MakeIconButton("uv.zoom.in", "zoomIn", "Zoom in  =");
     zoomIn_->SetOnClick([this]() { if (timeline_) timeline_->ZoomBy(1.25, document_.view.playhead); });
     timelineBar_->AddChild(zoomIn_);
-    zoomFit_ = MakeIconButton("uv.zoom.fit", "fit", "Fit the project  Shift+Z", p);
+    zoomFit_ = MakeIconButton("uv.zoom.fit", "fit", "Fit the project  Shift+Z");
     zoomFit_->SetOnClick([this]() { if (timeline_) timeline_->ZoomToFit(); });
     timelineBar_->AddChild(zoomFit_);
     timelineBar_->AddSpacer(static_cast<int>(Tokens::Space2));
@@ -664,8 +665,6 @@ void UltraVideoWindow::ApplyPalette() {
     appBar_->SetBorderBottom(1, ToColor(p.Line));
     title_->SetTextColor(ToColor(p.Ink));
     status_->SetTextColor(ToColor(p.InkMuted));
-    for (auto& b : {undo_, redo_, open_, save_, import_, story_, theme_}) b->SetStyle(GhostButtonStyle(p));
-    export_->SetStyle(PrimaryButtonStyle(p));
     theme_->SetIcon(IconPath(dark_ ? "eye" : "eyeOff"));
 
     binPanel_->SetBackgroundColor(ToColor(p.Bg100));
@@ -677,11 +676,8 @@ void UltraVideoWindow::ApplyPalette() {
     binEmpty_->SetTextColor(ToColor(p.InkMuted));
     binEmpty_->SetBorders(1, ToColor(p.LineStrong), Tokens::RadiusLg, UCDashPattern({6.0, 4.0}));
     titlesNote_->SetTextColor(ToColor(p.InkMuted));
-    for (auto& b : titleButtons_) b->SetStyle(PlainButtonStyle(p));
     for (auto& h : titleHints_) h->SetTextColor(ToColor(p.InkFaint));
     effectsNote_->SetTextColor(ToColor(p.InkMuted));
-    for (auto& b : effectButtons_) b->SetStyle(PlainButtonStyle(p));
-    for (auto& b : transitionButtons_) b->SetStyle(PlainButtonStyle(p));
     for (auto& h : effectHints_) h->SetTextColor(ToColor(p.InkFaint));
     transitionsHeading_->SetTextColor(ToColor(p.Ink));
     transitionsNote_->SetTextColor(ToColor(p.InkMuted));
@@ -689,7 +685,6 @@ void UltraVideoWindow::ApplyPalette() {
     inspector_.ApplyPalette(p);
 
     dock_->SetBackgroundColor(ToColor(p.Bg100));
-    for (auto& b : {split_, delete_, marker_, magnet_, zoomOut_, zoomIn_, zoomFit_}) b->SetStyle(GhostButtonStyle(p));
     playheadField_->SetStyle(TimecodeStyleFor(p));
     lengthLabel_->SetTextColor(ToColor(p.InkMuted));
     timeline_->SetStyle(TimelineStyleFor(p));
@@ -1297,15 +1292,14 @@ void UltraVideoWindow::SetTool(TimelineTool tool) {
 
 void UltraVideoWindow::RefreshToolbarLooks() {
     if (!timeline_) return;
-    const Palette& p = *palette_;
     const TimelineTool tool = timeline_->GetTool();
-    SetToggleLook(*toolSelect_, tool == TimelineTool::Select, p);
-    SetToggleLook(*toolBlade_, tool == TimelineTool::Blade, p);
-    SetToggleLook(*toolTrim_, tool == TimelineTool::Trim, p);
-    SetToggleLook(*toolSlip_, tool == TimelineTool::Slip, p);
-    SetToggleLook(*magnet_, true, p);
-    SetToggleLook(*snap_, snapping_, p);
-    SetToggleLook(*beats_, showBeats_, p);
+    SetToggleLook(*toolSelect_, tool == TimelineTool::Select);
+    SetToggleLook(*toolBlade_, tool == TimelineTool::Blade);
+    SetToggleLook(*toolTrim_, tool == TimelineTool::Trim);
+    SetToggleLook(*toolSlip_, tool == TimelineTool::Slip);
+    SetToggleLook(*magnet_, true);
+    SetToggleLook(*snap_, snapping_);
+    SetToggleLook(*beats_, showBeats_);
 }
 
 void UltraVideoWindow::SplitAtPlayhead() {

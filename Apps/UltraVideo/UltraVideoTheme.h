@@ -7,6 +7,7 @@
 // playhead tokens - which the timeline and the timecode field read through
 // their FromTheme. Everything the window colours goes through here, so
 // switching the palette is one call per panel.
+// Version: 0.3.0 - the buttons by ButtonVariant, following the theme; no palette in the factories
 // Version: 0.2.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -40,52 +41,27 @@ inline std::string IconPath(const std::string& name) {
     return UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/icons/ultravideo/" + name + ".svg");
 }
 
-// A ghost icon button: no fill at rest, the hover fill, the icon in ink
-inline UltraCanvas::ButtonStyle GhostButtonStyle(const Palette& p) {
+// The buttons' shape - the design's radius, the small label, icons as
+// masks - set once; their colours are the theme's, by the button's variant
+// (UltraCanvas::ButtonVariant: Ghost for an icon in a bar, Standard for a
+// text button, Primary for the one main action, Selected for an active
+// tool), and follow a theme change on their own
+inline UltraCanvas::ButtonStyle ButtonShape(bool bordered) {
     UltraCanvas::ButtonStyle s;
-    s.normalColor = UltraCanvas::Colors::Transparent;
-    s.hoverColor = ToColor(p.Bg400);
-    s.pressedColor = ToColor(p.Bg500);
-    s.disabledColor = UltraCanvas::Colors::Transparent;
-    s.borderColor = UltraCanvas::Colors::Transparent;
-    s.borderWidth = 0.0f;
+    s.borderWidth = bordered ? 1.0f : 0.0f;
     s.cornerRadius = Tokens::RadiusSm;
     s.useIconAsMask = true;
-    s.normalTextColor = ToColor(p.Ink);
-    s.hoverTextColor = ToColor(p.Ink);
-    s.pressedTextColor = ToColor(p.Ink);
-    s.disabledTextColor = ToColor(p.InkFaint);
     s.fontSize = Tokens::Label.size * 0.75f;
     return s;
 }
 
-// The one primary button on screen: the accent fill
-inline UltraCanvas::ButtonStyle PrimaryButtonStyle(const Palette& p) {
-    UltraCanvas::ButtonStyle s = GhostButtonStyle(p);
-    s.normalColor = ToColor(p.Accent);
-    s.hoverColor = ToColor(p.AccentHover);
-    s.pressedColor = ToColor(p.AccentHover);
-    s.normalTextColor = ToColor(p.OnAccent);
-    s.hoverTextColor = ToColor(p.OnAccent);
-    s.pressedTextColor = ToColor(p.OnAccent);
-    s.fontWeight = UltraCanvas::FontWeight::Bold;
-    return s;
-}
-
-// A secondary text button: the raised surface with a control border
-inline UltraCanvas::ButtonStyle PlainButtonStyle(const Palette& p) {
-    UltraCanvas::ButtonStyle s = GhostButtonStyle(p);
-    s.normalColor = ToColor(p.Bg300);
-    s.borderColor = ToColor(p.LineStrong);
-    s.borderWidth = 1.0f;
-    return s;
-}
-
 inline std::shared_ptr<UltraCanvas::UltraCanvasButton> MakeIconButton(const std::string& id, const std::string& icon,
-                                                                      const std::string& tooltip, const Palette& p,
+                                                                      const std::string& tooltip,
                                                                       int size = static_cast<int>(Tokens::ControlH)) {
     auto button = std::make_shared<UltraCanvas::UltraCanvasButton>(id, 0, 0, size, size, "");
-    button->SetStyle(GhostButtonStyle(p));
+    button->SetStyle(ButtonShape(false));
+    button->SetThemeVariant(UltraCanvas::ButtonVariant::Ghost);
+    button->SetFollowTheme(true);
     button->SetIcon(IconPath(icon));
     button->SetIconSize(static_cast<int>(Tokens::IconSize), static_cast<int>(Tokens::IconSize));
     button->SetTooltip(tooltip);
@@ -94,24 +70,20 @@ inline std::shared_ptr<UltraCanvas::UltraCanvasButton> MakeIconButton(const std:
 }
 
 inline std::shared_ptr<UltraCanvas::UltraCanvasButton> MakeTextButton(const std::string& id, const std::string& text,
-                                                                      const Palette& p, int width, bool primary = false) {
+                                                                      int width, bool primary = false) {
     auto button = std::make_shared<UltraCanvas::UltraCanvasButton>(id, 0, 0, width, static_cast<int>(Tokens::ControlH), text);
-    button->SetStyle(primary ? PrimaryButtonStyle(p) : PlainButtonStyle(p));
+    UltraCanvas::ButtonStyle shape = ButtonShape(!primary);
+    if (primary) shape.fontWeight = UltraCanvas::FontWeight::Bold;
+    button->SetStyle(shape);
+    button->SetThemeVariant(primary ? UltraCanvas::ButtonVariant::Primary : UltraCanvas::ButtonVariant::Standard);
+    button->SetFollowTheme(true);
     button->layoutItem.SetFlexShrink(0);
     return button;
 }
 
-// An active tool or toggle: the soft accent fill with the accent icon
-inline void SetToggleLook(UltraCanvas::UltraCanvasButton& button, bool on, const Palette& p) {
-    UltraCanvas::ButtonStyle s = GhostButtonStyle(p);
-    if (on) {
-        s.normalColor = ToColor(p.AccentSoft);
-        s.hoverColor = ToColor(p.AccentSoft);
-        s.normalTextColor = ToColor(p.Accent);
-        s.hoverTextColor = ToColor(p.Accent);
-        s.pressedTextColor = ToColor(p.Accent);
-    }
-    button.SetStyle(s);
+// An active tool or toggle: the Selected variant, a ghost button otherwise
+inline void SetToggleLook(UltraCanvas::UltraCanvasButton& button, bool on) {
+    button.SetThemeVariant(on ? UltraCanvas::ButtonVariant::Selected : UltraCanvas::ButtonVariant::Ghost);
 }
 
 // The palette as the framework theme (proposal §5.8): the surfaces, lines,

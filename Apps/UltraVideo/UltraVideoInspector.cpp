@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
+// Version: 0.2.2 - the buttons follow the theme by variant
 // Version: 0.2.1 - the sliders and switches follow the theme too
 // Version: 0.2.0 - the tabs, dropdowns and fields follow the theme
 // Version: 0.1.0
@@ -248,7 +249,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     effectsTitle->SetFont(Tokens::Title.family, Tokens::Title.size * 0.75f, FontWeight::Bold);
     headings.push_back(effectsTitle);
     effectsHead->AddChild(effectsTitle);
-    clearEffects = MakeTextButton("uv.insp.effects.clear", "Clear", *palette, 64);
+    clearEffects = MakeTextButton("uv.insp.effects.clear", "Clear", 64);
     clearEffects->SetOnClick([this]() {
         const int index = segment;
         Edit("Remove effects", [index](Document& d) {
@@ -557,10 +558,10 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     auto songButtons = std::make_shared<UltraCanvasContainer>("uv.insp.songButtons", 0, 0, kPageWidth, ctl + 4);
     songButtons->layout.SetFlexRow().SetFlexGap(static_cast<int>(Tokens::Space2));
     songButtons->layoutItem.SetFlexShrink(0);
-    addSong = MakeTextButton("uv.insp.addSong", "Add song\xE2\x80\xA6", p, 110);
+    addSong = MakeTextButton("uv.insp.addSong", "Add song\xE2\x80\xA6", 110);
     addSong->SetOnClick([this]() { if (onAddMusic) onAddMusic(); });
     songButtons->AddChild(addSong);
-    removeSongs = MakeTextButton("uv.insp.removeSongs", "Remove music", p, 120);
+    removeSongs = MakeTextButton("uv.insp.removeSongs", "Remove music", 120);
     removeSongs->SetOnClick([this]() {
         Edit("Remove music", [](Document& d) { d.project.settings.music = VideoFXMusic{}; });
     });
@@ -686,16 +687,12 @@ void Inspector::StyleControls(const Palette& p) {
     for (auto& c : captions) c->SetTextColor(ToColor(p.InkMuted));
     for (auto& h : headings) h->SetTextColor(ToColor(p.Ink));
     if (clipName) clipName->SetTextColor(ToColor(p.Ink));
-    addSong->SetStyle(PlainButtonStyle(p));
-    removeSongs->SetStyle(PlainButtonStyle(p));
 }
 
 void Inspector::ApplyPalette(const Palette& p) {
     palette = &p;
     if (!tabs) return;
-    if (clearEffects) clearEffects->SetStyle(PlainButtonStyle(p));
     for (auto& l : effectLabels) l->SetTextColor(ToColor(p.Ink));
-    for (auto& b : effectButtons) b->SetStyle(GhostButtonStyle(p));
     tabs->SetBackgroundColor(ToColor(p.Bg100));
     tabs->SetInactiveTabBorderColor(ToColor(p.Line));   // the theme leaves these transparent
     tabs->SetHoveredTabBorderColor(ToColor(p.Line));
@@ -811,7 +808,7 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
             if (palette) name->SetTextColor(ToColor(palette->Ink));
             effectLabels.push_back(name);
             row->AddChild(name);
-            auto remove = MakeIconButton("uv.insp.effect.remove" + std::to_string(k), "trash", "Take this effect off", palette ? *palette : Tokens::Dark);
+            auto remove = MakeIconButton("uv.insp.effect.remove" + std::to_string(k), "trash", "Take this effect off");
             const int at = static_cast<int>(k);
             remove->SetOnClick([this, at]() {
                 const int seg = segment;

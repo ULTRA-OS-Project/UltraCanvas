@@ -47,8 +47,13 @@
   inspector sliders and the inspector's switches follow the theme like
   the other controls: the design's ink handle and on-accent thumb are the
   theme's `slider.handle` and `switch.thumb` element roles (framework
-  slider 3.7.0, switch 1.6.0). `ApplyPalette` keeps only the ghost and
-  primary buttons and the timeline.
+  slider 3.7.0, switch 1.6.0).
+- **Buttons follow the theme by their variant.** The app bar's icons, the
+  transport, the timeline tools, the preset buttons, *Export* and the
+  dialogs' buttons are the framework's `Ghost`, `Standard` and `Primary`
+  variants (button 2.9.0), the active tool its `Selected` one: the theme
+  colours them and a switch of the look reaches them on its own.
+  `ApplyPalette` keeps the timeline's token sizes and the labels.
 
 #### 2026-10-11 *0.1.0*
 - **The first release: the editor's skeleton.** `Apps/UltraVideo`, on

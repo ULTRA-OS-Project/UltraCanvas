@@ -151,7 +151,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     auto addRow = std::make_shared<UltraCanvasContainer>("uv.story.addRow", 0, 0, kContentWidth, kControl + 4);
     addRow->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     addRow->layoutItem.SetFlexShrink(0);
-    auto add = MakeTextButton("uv.story.add", "Add photos and clips\xE2\x80\xA6", p, 190);
+    auto add = MakeTextButton("uv.story.add", "Add photos and clips\xE2\x80\xA6", 190);
     Wizard* wiz = w.get();
     add->SetOnClick([wiz]() {
         FileDialogOptions opts;
@@ -221,7 +221,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     auto songRow = std::make_shared<UltraCanvasContainer>("uv.story.songRow", 0, 0, kContentWidth, kControl + 4);
     songRow->layout.SetFlexRow().SetFlexGap(12);
     songRow->layoutItem.SetFlexShrink(0);
-    auto choose = MakeTextButton("uv.story.choose", "Choose a song\xE2\x80\xA6", p, 150);
+    auto choose = MakeTextButton("uv.story.choose", "Choose a song\xE2\x80\xA6", 150);
     choose->SetOnClick([wiz]() {
         FileDialogOptions opts;
         opts.SetTitle("A song for the story").SetParentWindow(wiz->parent);
@@ -233,7 +233,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
         });
     });
     songRow->AddChild(choose);
-    auto none = MakeTextButton("uv.story.none", "No music", p, 110);
+    auto none = MakeTextButton("uv.story.none", "No music", 110);
     none->SetOnClick([wiz]() { wiz->choice.songs.clear(); wiz->RefreshSongs(); });
     songRow->AddChild(none);
     music->AddChild(songRow);

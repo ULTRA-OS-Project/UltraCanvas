@@ -20,7 +20,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.2.0 - the slider's and the switch's element roles
+**Version:** 1.3.0 - the button's variants and their element roles
 **Last Modified:** 2026-10-12
 **Author:** UltraCanvas Framework
 
@@ -76,6 +76,12 @@ are `slider.handle` and `slider.handle-border` (the raised surface and the
 control border otherwise), the switch's `switch.thumb` and
 `switch.thumb-border`: a design whose handle is ink or whose thumb is the
 text-on-accent colour names them and the controls follow the theme too.
+The button's variants (`ButtonVariant`: `Standard`, `Ghost`, `Primary`,
+`Selected`, set on the element with `SetThemeVariant`) read
+`button.ghost-hover`, `button.ghost-pressed`, `button.primary`,
+`button.primary-hover`, `button.on-primary`, `button.selected` and
+`button.on-selected`, the shared hover, pressed, accent, accent-hover,
+on-accent and soft-accent roles otherwise.
 
 ## Using it
 

@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.3.0 - the button variants
 // Version: 1.2.0 - the slider's and the switch's element roles
 // Version: 1.1.0 - every FromTheme, the change handlers, elements that
 //                  follow the theme through a container
@@ -120,6 +121,23 @@ int main() {
     ButtonStyle buttonBase;
     buttonBase.cornerRadius = 13;
     CHECK(ButtonStyle::FromTheme(own, buttonBase).cornerRadius == 13, "button: over a base, its shape stays");
+    const ButtonStyle ghost = ButtonStyle::FromTheme(own, buttonBase, ButtonVariant::Ghost);
+    CHECK(ghost.normalColor.a == 0 && Same(ghost.hoverColor, r.hover) && Same(ghost.pressedColor, r.pressed) && ghost.borderColor.a == 0 &&
+          Same(ghost.normalTextColor, r.ink) && ghost.cornerRadius == 13, "button: Ghost has no fill at rest, the hover and pressed fills, ink");
+    const ButtonStyle primary = ButtonStyle::FromTheme(own, buttonBase, ButtonVariant::Primary);
+    CHECK(Same(primary.normalColor, r.accent) && Same(primary.hoverColor, r.accentHover) && Same(primary.normalTextColor, r.onAccent) &&
+          primary.borderColor.a == 0, "button: Primary is the accent with text on it");
+    const ButtonStyle selected = ButtonStyle::FromTheme(own, buttonBase, ButtonVariant::Selected);
+    CHECK(Same(selected.normalColor, r.accentSoft) && Same(selected.hoverColor, r.accentSoft) && Same(selected.normalTextColor, r.accent),
+          "button: Selected is the soft accent fill with the accent for ink");
+    UltraCanvasTheme namedButtons = own;
+    namedButtons.SetRole("button.primary", Color(11, 11, 11));
+    namedButtons.SetRole("button.ghost-hover", Color(12, 12, 12));
+    namedButtons.SetRole("button.selected", Color(13, 13, 13));
+    CHECK(Same(ButtonStyle::FromTheme(namedButtons, buttonBase, ButtonVariant::Primary).normalColor, Color(11, 11, 11)) &&
+          Same(ButtonStyle::FromTheme(namedButtons, buttonBase, ButtonVariant::Ghost).hoverColor, Color(12, 12, 12)) &&
+          Same(ButtonStyle::FromTheme(namedButtons, buttonBase, ButtonVariant::Selected).normalColor, Color(13, 13, 13)),
+          "button: the variants' element roles where a theme names them");
     const ToolbarAppearance toolbar = ToolbarAppearance::FromTheme(own);
     CHECK(Same(toolbar.backgroundColor, r.panel) && Same(toolbar.foregroundColor, r.ink) && Same(toolbar.separatorColor, r.line) &&
           Same(toolbar.hoverBackgroundColor, r.hover) && Same(toolbar.activeBackgroundColor, r.pressed) && Same(toolbar.disabledForegroundColor, r.inkFaint),
@@ -188,6 +206,16 @@ int main() {
     CHECK(Same(follower->GetStyle().normalColor, dark.roles.raised) && Same(follower->GetStyle().normalTextColor, dark.roles.ink) &&
           Same(text->GetStyle().textColor, dark.roles.ink), "a theme change reaches the children through the container");
     CHECK(Same(styled->GetStyle().normalColor, ownRest), "an element styled by hand keeps its look");
+    auto tool = std::make_shared<UltraCanvasButton>("tool", 0, 0, 24, 24, "");
+    tool->SetThemeVariant(ButtonVariant::Ghost);
+    tool->SetFollowTheme(true);
+    UltraCanvasTheme::SetCurrent(dark);
+    tool->SetThemeVariant(ButtonVariant::Selected);
+    CHECK(tool->GetThemeVariant() == ButtonVariant::Selected && Same(tool->GetStyle().normalColor, dark.roles.accentSoft),
+          "SetThemeVariant re-styles a following button at once");
+    tool->SetThemeVariant(ButtonVariant::Ghost);
+    CHECK(tool->GetStyle().normalColor.a == 0 && Same(tool->GetStyle().hoverColor, dark.roles.hover), "and back to a ghost");
+    UltraCanvasTheme::SetCurrent(light);
     follower->SetFollowTheme(false);
     panel->OnThemeChanged(light);
     CHECK(Same(follower->GetStyle().normalColor, dark.roles.raised) && Same(text->GetStyle().textColor, light.roles.ink),

@@ -2,7 +2,7 @@
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.0.5  
+**Version:** 1.1.0 - the theme and the button's variant  
 **Last Modified:** 2026-10-11  
 **Author:** UltraCanvas Framework
 
@@ -299,6 +299,44 @@ Padding is not part of the style: it is the element's box padding, set with
 `Default()`, `PrimaryStyle()`, `SecondaryStyle()`, `DangerStyle()`,
 `SuccessStyle()`, `FlatStyle()`, `SplitButtonStyle()`, `BadgeButtonStyle()`
 and `CounterButtonStyle()`.
+
+## The theme and the button's variant
+
+`ButtonStyle::FromTheme` maps the framework theme (`UltraCanvasTheme`,
+`Docs/UltraCanvas/UltraCanvasTheme.md`) onto a style, over a base whose
+shape (sizes, fonts, flags) stays, by the button's **variant**:
+
+```cpp
+enum class ButtonVariant {
+    Standard,   // the raised surface with the control border: a text button
+    Ghost,      // no fill at rest, the hover and pressed fills: an icon button in a bar
+    Primary,    // the accent fill with text on it: the one main action
+    Selected    // a ghost button in its on state: the soft accent fill, the accent for its ink
+};
+static ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base,
+                                          ButtonVariant variant = ButtonVariant::Standard);
+```
+
+A button told its variant and asked to follow the theme styles itself
+from the current theme, now and on every change; an active tool switches
+between `Ghost` and `Selected` with `SetThemeVariant` alone:
+
+```cpp
+auto tool = std::make_shared<UltraCanvasButton>("tool.blade", 0, 0, 28, 28, "");
+ButtonStyle shape;
+shape.borderWidth = 0.0f;
+shape.cornerRadius = 4.0f;
+shape.useIconAsMask = true;
+tool->SetStyle(shape);                              // the shape once
+tool->SetThemeVariant(ButtonVariant::Ghost);        // the colours from the theme
+tool->SetFollowTheme(true);
+tool->SetThemeVariant(ButtonVariant::Selected);     // the active tool, re-styled at once
+```
+
+A theme names the variants' colours as element roles where its design
+differs from the shared roles: `button.ghost-hover`, `button.ghost-pressed`,
+`button.primary`, `button.primary-hover`, `button.on-primary`,
+`button.selected`, `button.on-selected`.
 
 ## ButtonBuilder Pattern
 

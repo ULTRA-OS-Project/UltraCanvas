@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoViewer.cpp
 // The viewer (UltraVideoViewer.h).
+// Version: 0.2.4 - the transport buttons follow the theme
 // Version: 0.2.3 - a percent zoom is of the project's pixels on the surface and in the player alike; the sliders follow the theme
 // Version: 0.2.2 - the player draws the title-safe guide too
 // Version: 0.2.1 - SetFit places the picture in the surface and the player alike
@@ -170,11 +171,11 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
     appearance.iconSize = ToolbarIconSize::Small;
     transport->SetAppearance(appearance);
     transport->SetFollowTheme(true);
-    toStart = MakeIconButton("uv.tr.start", "toStart", "To start  Home", p);
-    stepBack = MakeIconButton("uv.tr.back", "stepBack", "Back a frame  \xE2\x86\x90", p);
-    play = MakeIconButton("uv.tr.play", "play", "Play  Space", p);
-    stepForward = MakeIconButton("uv.tr.fwd", "stepFwd", "Forward a frame  \xE2\x86\x92", p);
-    toEnd = MakeIconButton("uv.tr.end", "toEnd", "To end  End", p);
+    toStart = MakeIconButton("uv.tr.start", "toStart", "To start  Home");
+    stepBack = MakeIconButton("uv.tr.back", "stepBack", "Back a frame  \xE2\x86\x90");
+    play = MakeIconButton("uv.tr.play", "play", "Play  Space");
+    stepForward = MakeIconButton("uv.tr.fwd", "stepFwd", "Forward a frame  \xE2\x86\x92");
+    toEnd = MakeIconButton("uv.tr.end", "toEnd", "To end  End");
     toStart->SetOnClick([this]() { if (onToStart) onToStart(); });
     stepBack->SetOnClick([this]() { if (onStepBack) onStepBack(); });
     play->SetOnClick([this]() { if (onPlayPause) onPlayPause(); });
@@ -197,7 +198,7 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
     total->layoutItem.SetFlexShrink(0);
     transport->AddChild(total);
     transport->AddStretch();
-    auto speaker = MakeIconButton("uv.tr.speaker", "speaker", "Volume", p);
+    auto speaker = MakeIconButton("uv.tr.speaker", "speaker", "Volume");
     speaker->SetDisabled(true);
     transport->AddChild(speaker);
     volume = CreateSlider("uv.tr.volume", 0, 0, 90, static_cast<int>(Tokens::ControlH));
@@ -234,8 +235,7 @@ void Viewer::ApplyPalette(const Palette& p) {
         playerStyle.safeAreaColor = ToColor(p.LineStrong);   // the surface's guide colour
         player->SetStyle(playerStyle);
     }
-    // the transport bar and the fit dropdown follow the theme (Build)
-    for (auto& b : {toStart, stepBack, play, stepForward, toEnd}) b->SetStyle(GhostButtonStyle(p));
+    // the transport bar, its buttons and the fit dropdown follow the theme (Build)
     readout->SetStyle(TimecodeStyleFor(p));
     total->SetTextColor(ToColor(p.InkMuted));
 }

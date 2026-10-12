@@ -1062,8 +1062,9 @@ that writing it showed:
   walks its windows: the app's split panes, tabs, fields, albums,
   toolbars, dropdowns, context menu, sliders and switches follow it (the
   ink handle and on-accent thumb as the `slider.handle` and `switch.thumb`
-  element roles), and `ApplyPalette` keeps only the app's own looks (ghost
-  and primary buttons, the timeline).
+  element roles), as do the buttons by their variant (`ButtonVariant`:
+  ghost icons, standard and primary text buttons, the selected tool), and
+  `ApplyPalette` keeps only the timeline's token sizes and the labels.
 - **Effect presets** (§6.2, §6.4; app 0.2.0): `UltraVideoPresets` holds
   ten presets as lists of engine effects - *Warm film* is the table's
   temperature, saturation and vignette - and `ApplyEffectPreset` puts one

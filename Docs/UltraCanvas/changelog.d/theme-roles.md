@@ -39,4 +39,13 @@
   switch's thumb (`switch.thumb`, `switch.thumb-border`) are element
   roles, the raised surface and the control border where a theme does not
   name them, so UltraVideo's ink handle and on-accent thumb follow the
-  theme as well. `Tests/UltraCanvasThemeTest.cpp`: 45 checks.
+  theme as well. `ButtonStyle::FromTheme` takes the button's **variant**
+  (`ButtonVariant`: `Standard` - the raised surface with the control
+  border; `Ghost` - no fill at rest, the hover and pressed fills; `Primary`
+  - the accent with text on it; `Selected` - the soft accent fill with the
+  accent for ink, an active tool), set on the element with
+  `SetThemeVariant`, which re-styles a following button at once; the
+  variants' colours are element roles (`button.primary`,
+  `button.ghost-hover`, `button.selected` ...) over the shared ones. Every
+  UltraVideo button follows the theme by its variant; `ApplyPalette`
+  keeps the timeline alone. `Tests/UltraCanvasThemeTest.cpp`: 51 checks.

@@ -1,5 +1,6 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.11.0 - FromTheme by ButtonVariant
 // Version: 2.10.0 - ButtonStyle::FromTheme
 // Version: 2.9.0 - onDoubleClick takes a left double-click instead of a second press
 // Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
@@ -1159,19 +1160,45 @@ namespace UltraCanvas {
     }
 
 
-    ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base) {
+    ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base, ButtonVariant variant) {
         ButtonStyle s = base;
         const ThemeRoles& r = theme.roles;
-        s.normalColor = r.raised;
-        s.hoverColor = r.hover;
-        s.pressedColor = r.pressed;
-        s.disabledColor = r.panel;
         s.focusedColor = r.focus;
-        s.normalTextColor = r.ink;
-        s.hoverTextColor = r.ink;
-        s.pressedTextColor = r.ink;
         s.disabledTextColor = r.inkFaint;
-        s.borderColor = r.lineStrong;
+        switch (variant) {
+            case ButtonVariant::Ghost:
+                s.normalColor = Colors::Transparent;
+                s.hoverColor = theme.Role("button.ghost-hover", r.hover);
+                s.pressedColor = theme.Role("button.ghost-pressed", r.pressed);
+                s.disabledColor = Colors::Transparent;
+                s.borderColor = Colors::Transparent;
+                s.normalTextColor = s.hoverTextColor = s.pressedTextColor = r.ink;
+                break;
+            case ButtonVariant::Primary:
+                s.normalColor = theme.Role("button.primary", r.accent);
+                s.hoverColor = theme.Role("button.primary-hover", r.accentHover);
+                s.pressedColor = s.hoverColor;
+                s.disabledColor = r.panel;
+                s.borderColor = Colors::Transparent;
+                s.normalTextColor = s.hoverTextColor = s.pressedTextColor = theme.Role("button.on-primary", r.onAccent);
+                break;
+            case ButtonVariant::Selected:
+                s.normalColor = theme.Role("button.selected", r.accentSoft);
+                s.hoverColor = s.normalColor;
+                s.pressedColor = theme.Role("button.ghost-pressed", r.pressed);
+                s.disabledColor = Colors::Transparent;
+                s.borderColor = Colors::Transparent;
+                s.normalTextColor = s.hoverTextColor = s.pressedTextColor = theme.Role("button.on-selected", r.accent);
+                break;
+            default:
+                s.normalColor = r.raised;
+                s.hoverColor = r.hover;
+                s.pressedColor = r.pressed;
+                s.disabledColor = r.panel;
+                s.borderColor = r.lineStrong;
+                s.normalTextColor = s.hoverTextColor = s.pressedTextColor = r.ink;
+                break;
+        }
         return s;
     }
 } // namespace UltraCanvas
