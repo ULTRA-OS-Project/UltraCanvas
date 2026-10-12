@@ -237,6 +237,44 @@ static void TestImports() {
     CHECK(!mixedPage.warnings.empty());
 }
 
+static void TestDownloads() {
+    std::printf("downloads\n");
+    CHECK(PageLoader::DownloadFileName("attachment; filename=\"report.pdf\"", "https://x.org/get?id=1", "") == "report.pdf");
+    CHECK(PageLoader::DownloadFileName("attachment; filename*=UTF-8''caf%C3%A9.txt; filename=\"cafe.txt\"",
+                                       "https://x.org/x", "") == "caf\xC3\xA9.txt");
+    CHECK(PageLoader::DownloadFileName("attachment; filename=plain.zip", "https://x.org/x", "") == "plain.zip");
+    CHECK(PageLoader::DownloadFileName("", "https://x.org/files/My%20Notes.odt?v=2#top", "") == "My Notes.odt");
+    CHECK(PageLoader::DownloadFileName("attachment; filename=\"../../etc/passwd\"", "https://x.org/", "") == "_.._etc_passwd");
+    CHECK(PageLoader::DownloadFileName("attachment; filename=\".hidden\"", "https://x.org/", "") == "hidden");
+    CHECK(PageLoader::DownloadFileName("", "https://x.org/", "application/pdf") == "download.pdf");
+    CHECK(PageLoader::DownloadFileName("", "https://x.org", "") == "download");
+
+    FakeWeb web;
+    web.Add("https://x.org/a.zip", std::string("PK\x03\x04zip", 7), "application/zip");
+    FetchResult att;
+    att.ok = true; att.status = 200; att.contentType = "text/html";
+    att.contentDisposition = "attachment; filename=\"page.html\"";
+    att.body = Bytes("<p>save me</p>");
+    web.pages["https://x.org/save"] = att;
+    FetchResult big;
+    big.ok = false; big.status = 200; big.contentType = "application/octet-stream";
+    big.tooLarge = true; big.error = "too large";
+    web.pages["https://x.org/big.iso"] = big;
+    FetchResult bigPage = big;
+    bigPage.contentType = "text/html";
+    web.pages["https://x.org/big.html"] = bigPage;
+
+    PageLoader loader(web.Services());
+    LoadedPage zip = LoadNow(loader, "https://x.org/a.zip");
+    CHECK(zip.kind == PageKind::Other && !zip.truncated && zip.body.size() == 7 && zip.fileName == "a.zip");
+    LoadedPage saved = LoadNow(loader, "https://x.org/save");
+    CHECK(saved.kind == PageKind::Other && saved.attachment && saved.fileName == "page.html" && !saved.body.empty());
+    LoadedPage iso = LoadNow(loader, "https://x.org/big.iso");
+    CHECK(iso.kind == PageKind::Other && iso.truncated && iso.body.empty() && iso.fileName == "big.iso");
+    LoadedPage huge = LoadNow(loader, "https://x.org/big.html");
+    CHECK(huge.kind == PageKind::Error);                       // a page that big is refused
+}
+
 static void TestResourcesOnDemand() {
     std::printf("resources on demand\n");
     FakeWeb web;
@@ -405,6 +443,7 @@ int main() {
     TestCharsets();
     TestBaseAndStyleSheets();
     TestImports();
+    TestDownloads();
     TestResourcesOnDemand();
     TestRules();
     TestKinds();

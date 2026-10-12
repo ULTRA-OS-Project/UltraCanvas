@@ -1,5 +1,6 @@
 // Apps/UltraWeb/host/UltraWebPages.cpp
 // The page services and the app-or-page decision (UltraWebPages.h).
+// Version: 0.5.0 - downloads: Content-Disposition and the size limit reported
 // Version: 0.4.1 - AcceptExtensions for file uploads
 // Version: 0.4.0 - forms: POST through UltraNet
 // Version: 0.3.0
@@ -88,6 +89,7 @@ HTML::FetchResult ReadFile(const std::string& url) {
     std::fclose(file);
     if (static_cast<int64_t>(result.body.size()) > kMaxPageBytes) {
         result.body.clear();
+        result.tooLarge = true;
         result.error = path + " is larger than " + std::to_string(kMaxPageBytes / (1024 * 1024)) + " MB.";
         return result;
     }
@@ -124,10 +126,14 @@ HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void(
             result.status = response.statusCode;
             result.finalUrl = response.finalUrl;
             result.contentType = response.contentType;
+            result.contentDisposition = response.headers.Get("Content-Disposition");
             if (response.statusCode == 0) {
                 result.error = "Could not load " + url +
                                (response.statusMessage.empty() ? std::string(" (no answer).") : ": " + response.statusMessage);
             } else if (response.exceededReceiveLimit) {
+                // A file to download, perhaps: the loader decides, and the
+                // window fetches it again, streaming, to disk.
+                result.tooLarge = true;
                 result.error = url + " is larger than " + std::to_string(kMaxPageBytes / (1024 * 1024)) + " MB.";
             } else if (!response.IsComplete()) {
                 result.error = "Could not load " + url + ": " + response.transferError;

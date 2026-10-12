@@ -72,9 +72,18 @@ both framework pieces (`Docs/UltraCanvas/UltraCanvasHTMLReader.md`):
   schemes go to the system's handler. `javascript:` does nothing.
 - **History.** Back and forward keep each page's scroll position.
 - **Other content.** Plain text shows as text, a picture on a page of its
-  own, a folder as a list of its files, and an answer that is neither
-  HTML nor an app says so in the status bar. A page that cannot be loaded
-  shows an error page saying why.
+  own, a folder as a list of its files. A page that cannot be loaded shows
+  an error page saying why.
+- **Downloads.** A link to anything else - a PDF, a zip, an answer the
+  server marks `Content-Disposition: attachment` - opens the save dialog
+  in the Downloads folder, named as the server or the address says (the
+  name cleaned of folders and hidden dots). The page stays on show, with
+  its address and history. A file up to 16 MB is saved from what was
+  fetched; a larger one is fetched again and streamed to disk, with its
+  progress in the status bar. A file is written as `<name>.part` and
+  renamed when complete, so a broken download leaves no file that looks
+  whole; downloads still running when the window closes are cancelled.
+  Nothing is opened after it is saved.
 - **Forms.** Text and password fields, text areas, checkboxes, radio
   groups, dropdowns and buttons are real widgets. A submit button or Enter
   sends the form: GET opens the action with the fields as its query, POST
@@ -363,6 +372,6 @@ a compiled-module cache; per-app permissions — with them reading the
 clipboard, fetching beyond the app's origin without CORS, a larger store,
 and keeping a private-network address from a public app; CORS preflight
 requests; C++ element proxies generated from the framework headers; the
-macOS, Windows and packaging builds. For pages (Phase 2): tabs, downloads,
-bookmarks and a history kept across runs;
+macOS, Windows and packaging builds. For pages (Phase 2): tabs, a
+downloads list, bookmarks and a history kept across runs;
 then modern layout beyond flex and grid, the live DOM, and JavaScript.

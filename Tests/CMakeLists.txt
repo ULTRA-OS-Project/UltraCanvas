@@ -204,6 +204,26 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     message(STATUS "    Test registered: UltraWebGuestTest")
 endif()
 
+# ===== ULTRAWEB DOWNLOADS TEST =====
+# UltraWeb's downloads (Apps/UltraWeb/host/UltraWebDownloads): bytes saved
+# through a part file, a local file copied, and http downloads streamed to
+# disk from a loopback server (POSIX only; skipped on Windows).
+if(TARGET UltraCanvas AND TARGET UltraNet)
+    set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
+    add_executable(UltraWebDownloadsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebDownloadsTest.cpp
+        ${_uw_dir}/host/UltraWebDownloads.cpp)
+    target_include_directories(UltraWebDownloadsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir})
+    target_compile_features(UltraWebDownloadsTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraWebDownloadsTest PRIVATE UltraNet UltraCanvas)
+    set_target_properties(UltraWebDownloadsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraWebDownloadsTest COMMAND UltraWebDownloadsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraWebDownloadsTest")
+endif()
+
 # ===== FOLDER WATCHER TEST =====
 # UltraCanvasFolderWatcher is built from its own sources - the core file plus
 # this platform's backend - so the test needs no display and does not link

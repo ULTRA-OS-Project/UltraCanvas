@@ -579,8 +579,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Image / Other / Error, final URL, base, charset, the parsed `Document`,
   warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
   (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
-  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`; `LoadPost` for a form's
-  POST. Fetch, POST, URL resolution and charset conversion are services the
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`, `DownloadFileName`;
+  `LoadPost` for a form's POST; a non-page answer keeps its bytes and file
+  name for the host to save. Fetch, POST, URL resolution and charset conversion are services the
   caller passes in, so it is framework-independent; linked style sheets and
   their `@import`s load before a page is ready;
   mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
@@ -31949,8 +31950,19 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
   queues what it does not have, and `onResourcesArrived` says when to build
   again.
 - **Kinds:** HTML and XHTML. Plain text becomes a `<pre>` page, a picture a
-  page of its own. Anything else (`PageKind::Other`, say `application/wasm`)
-  goes back to the caller undecided, and a failed fetch is `PageKind::Error`.
+  page of its own. Anything else (`PageKind::Other`, say `application/wasm`
+  or a zip) goes back to the caller undecided, and a failed fetch is
+  `PageKind::Error`.
+- **Downloads:** an Other answer keeps its bytes (`LoadedPage::body`) and
+  the name to save it as (`fileName`, from `DownloadFileName`:
+  Content-Disposition's `filename*` or `filename`, else the address's last
+  segment, cleaned of folders, control characters and leading dots). A
+  `Content-Disposition: attachment` answer is Other even when it is HTML
+  (`attachment`). A non-page over the fetch's size limit (the fetch sets
+  `FetchResult::tooLarge`) is Other with `truncated` set and no bytes, for
+  the host to fetch again streaming; a page that large is still an error.
+  `UltraCanvasWebView` hands it to `onNonHtml` and keeps the page on show,
+  its address and its history.
 - **Rules:** an http(s) page loads http(s) and `data:` resources, an https
   page no http ones, and only a `file:` page loads `file:` resources.
 - **Limits:** 16 MB per document, 32 style sheets, 512 resources a page.

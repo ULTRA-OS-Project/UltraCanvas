@@ -447,8 +447,19 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
   queues what it does not have, and `onResourcesArrived` says when to build
   again.
 - **Kinds:** HTML and XHTML. Plain text becomes a `<pre>` page, a picture a
-  page of its own. Anything else (`PageKind::Other`, say `application/wasm`)
-  goes back to the caller undecided, and a failed fetch is `PageKind::Error`.
+  page of its own. Anything else (`PageKind::Other`, say `application/wasm`
+  or a zip) goes back to the caller undecided, and a failed fetch is
+  `PageKind::Error`.
+- **Downloads:** an Other answer keeps its bytes (`LoadedPage::body`) and
+  the name to save it as (`fileName`, from `DownloadFileName`:
+  Content-Disposition's `filename*` or `filename`, else the address's last
+  segment, cleaned of folders, control characters and leading dots). A
+  `Content-Disposition: attachment` answer is Other even when it is HTML
+  (`attachment`). A non-page over the fetch's size limit (the fetch sets
+  `FetchResult::tooLarge`) is Other with `truncated` set and no bytes, for
+  the host to fetch again streaming; a page that large is still an error.
+  `UltraCanvasWebView` hands it to `onNonHtml` and keeps the page on show,
+  its address and its history.
 - **Rules:** an http(s) page loads http(s) and `data:` resources, an https
   page no http ones, and only a `file:` page loads `file:` resources.
 - **Limits:** 16 MB per document, 32 style sheets, 512 resources a page.

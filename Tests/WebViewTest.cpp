@@ -480,6 +480,28 @@ static void TestFileUpload() {
     std::filesystem::remove(PathFromUtf8(path), ec);
 }
 
+static void TestDownloadKeepsPage() {
+    std::printf("a link to a file to save leaves the page, its address and history\n");
+    Fixture f;
+    f.web.Add("https://x.org/list", "<title>List</title><p><a href='files/r.zip'>report</a></p>");
+    f.web.Add("https://x.org/files/r.zip", std::string("PK\x03\x04", 4), "application/zip");
+    std::vector<HTML::LoadedPage> downloads;
+    f.view->onNonHtml = [&](const HTML::LoadedPage& p) { downloads.push_back(p); };
+    f.view->Navigate("https://x.org/list");
+    f.Settle();
+    UltraCanvasLabel* link = f.Label("report");
+    Check(link && link->onLinkActivated, "the link");
+    if (!link || !link->onLinkActivated) return;
+    link->onLinkActivated("files/r.zip");
+    f.Settle();
+    Check(downloads.size() == 1 && downloads[0].fileName == "r.zip" && downloads[0].body.size() == 4,
+          "the host gets the file, named, with its bytes");
+    Check(f.view->GetUrl() == "https://x.org/list", "the address is the page's again");
+    Check(f.view->GetTitle() == "List" && f.Label("report") != nullptr, "the page stays");
+    Check(!f.view->CanGoForward() && !f.view->CanGoBack(), "and the history has no entry for the file");
+    Check(!f.urls.empty() && f.urls.back() == "https://x.org/list", "onUrlChanged said so");
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("WebViewTest");
     TestLoadAndLinks();
@@ -490,6 +512,7 @@ int main() {
     TestImportsWithoutLoader();
     TestForms();
     TestFileUpload();
+    TestDownloadKeepsPage();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

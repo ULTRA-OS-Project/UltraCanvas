@@ -18,6 +18,10 @@
 // Rules for subresources: http(s) pages load http(s) and data: resources, an
 // https page no http ones (mixed content), and only a file: page loads file:
 // resources. Anything else is refused and logged in the page's warnings.
+// Version: 1.3.0 - downloads: LoadedPage keeps an Other answer's bytes and the
+//                  name to save it as (DownloadFileName); Content-Disposition:
+//                  attachment is a download; a non-page over the size limit is
+//                  a truncated download, not an error
 // Version: 1.2.0 - LoadPost and PageLoaderServices::post: the page a form's POST
 //                  answers with
 // Version: 1.1.0 - @import: the sheets a linked sheet or a <style> imports
@@ -52,6 +56,12 @@ struct FetchResult {
     std::string contentType;
     std::vector<uint8_t> body;
     std::string error;
+    // The Content-Disposition header ("attachment; filename=..."), if any.
+    std::string contentDisposition;
+    // The answer went over the fetch's size limit: body is not all of it
+    // (ok is false). A page that big is refused; anything else is a download
+    // the host fetches again itself, streaming.
+    bool tooLarge = false;
 };
 
 struct PageLoaderServices {
@@ -100,6 +110,13 @@ struct LoadedPage {
     std::shared_ptr<Document> document;
     std::string charset;      // what the bytes were read as
     std::vector<std::string> warnings;
+    // Other - a download: its bytes, when they all arrived (`truncated`
+    // false), the name to save it as (DownloadFileName), and whether the
+    // server asked for it to be saved (Content-Disposition: attachment).
+    std::vector<uint8_t> body;
+    bool truncated = false;
+    std::string fileName;
+    bool attachment = false;
 };
 
 class PageLoader {
@@ -145,6 +162,12 @@ public:
     static std::string RewriteCssUrls(const std::string& css, const std::string& sheetUrl,
                                       const std::function<bool(const std::string&, const std::string&,
                                                                std::string&)>& resolve);
+    // The name to save a download as: Content-Disposition's filename*
+    // (RFC 5987, UTF-8) or filename, else the URL's last path segment
+    // (percent-decoded), else "download" with an extension for its type.
+    // Folders, control characters and leading dots are taken out.
+    static std::string DownloadFileName(const std::string& contentDisposition, const std::string& url,
+                                        const std::string& contentType);
     // A data: URL's bytes (base64 or percent-encoded); false when malformed.
     static bool DecodeDataUrl(const std::string& url, std::vector<uint8_t>& out);
 
