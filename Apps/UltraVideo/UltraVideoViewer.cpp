@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoViewer.cpp
 // The viewer (UltraVideoViewer.h).
+// Version: 0.2.1 - SetFit places the picture in the surface and the player alike
 // Version: 0.2.0 - the transport bar and the fit dropdown follow the theme; DraftPlay reports a refusal
 // Version: 0.1.0
 // Last Modified: 2026-10-11
@@ -75,7 +76,7 @@ void FrameSurface::Render(IRenderContext* ctx, const Rect2Df&) {
 
     // Where the picture goes: fitted, filled, or at a zoom of its own pixels
     const double shape = pixmap ? static_cast<double>(frameWidth) / std::max(1, frameHeight) : aspect;
-    const double margin = 12.0;
+    const double margin = kMargin;
     const double availW = std::max(1.0, b.width - 2 * margin);
     const double availH = std::max(1.0, b.height - 2 * margin);
     double w, h;
@@ -128,16 +129,7 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
     fitStyle.cornerRadius = Tokens::RadiusSm;
     fit->SetStyle(fitStyle);
     fit->SetFollowTheme(true);
-    fit->onSelectionChanged = [this](int index, const DropdownItem&) {
-        if (!surface) return;
-        switch (index) {
-            case 1: surface->SetZoomPercent(0.0, true); break;
-            case 2: surface->SetZoomPercent(50.0); break;
-            case 3: surface->SetZoomPercent(100.0); break;
-            case 4: surface->SetZoomPercent(200.0); break;
-            default: surface->SetZoomPercent(0.0); break;
-        }
-    };
+    fit->onSelectionChanged = [this](int index, const DropdownItem&) { SetFit(index); };
     fit->layoutItem.SetFlexShrink(0);
     top->AddChild(fit);
     panel->AddChild(top);
@@ -155,6 +147,7 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
     VideoPlayerStyle playerStyle = player->GetStyle();
     playerStyle.showControls = false;
     playerStyle.autoHideControls = false;
+    playerStyle.videoInset = static_cast<int>(FrameSurface::kMargin);   // the picture where the surface has it
     player->SetStyle(playerStyle);
     player->SetVisible(false);
     panel->AddChild(player);
@@ -240,6 +233,26 @@ void Viewer::ApplyPalette(const Palette& p) {
     slider.trackHeight = 4.0f;
     slider.handleSize = 12.0f;
     volume->SetStyle(slider);
+}
+
+void Viewer::SetFit(int index) {
+    // the surface and the player alike, so the draft takes the frame's place
+    double zoom = 0.0;
+    bool fill = false;
+    switch (index) {
+        case 1: fill = true; break;
+        case 2: zoom = 50.0; break;
+        case 3: zoom = 100.0; break;
+        case 4: zoom = 200.0; break;
+        default: break;
+    }
+    if (surface) surface->SetZoomPercent(zoom, fill);
+    if (player) {
+        VideoPlayerStyle style = player->GetStyle();
+        style.videoFit = zoom > 0.0 ? VideoPlayerFit::Pixels : fill ? VideoPlayerFit::Cover : VideoPlayerFit::Contain;
+        style.zoomPercent = zoom > 0.0 ? static_cast<float>(zoom) : 100.0f;
+        player->SetStyle(style);
+    }
 }
 
 void Viewer::ShowFrame(const VideoFXFrame& frame) {

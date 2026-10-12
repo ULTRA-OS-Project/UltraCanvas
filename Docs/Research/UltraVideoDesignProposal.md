@@ -1098,7 +1098,10 @@ that writing it showed:
   Confirmed with the GStreamer plugins installed (no sound server: the
   framework's backend now lets playbin pick a silent sink where PulseAudio
   does not answer, so the picture plays at pace; a player that refuses to
-  start falls back to frames instead of a playhead at the end).
+  start falls back to frames instead of a playhead at the end). The draft
+  is rendered at the project's shape and the player places its picture as
+  the frame surface does (`VideoPlayerStyle::videoFit` and `videoInset`,
+  player element 0.1.5), so nothing moves when it takes over.
 - **Drag from the bin** (§6.2): the framework has no drag source API, and
   the album's own drag is a reorder; `UltraCanvasAlbum` 1.9.0 gained
   `onItemDraggedOut`, which fires once when a tile crosses the album's

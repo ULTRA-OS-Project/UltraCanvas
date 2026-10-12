@@ -1,7 +1,10 @@
 // core/UltraCanvasVideoPlayerElement.cpp
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.8
-// Last Modified: 2026-10-07
+// Version: 0.1.9
+// Last Modified: 2026-10-12
+// V0.1.9: The picture is placed by VideoPlayerStyle::videoFit (Contain, Cover,
+//   Pixels with zoomPercent) inside videoInset; Cover and Pixels are clipped to
+//   the element.
 // V0.1.8: A seek or volume drag captures the mouse, so its release arrives
 //   even off the player (the scrub stayed on before), and that release is
 //   reported as the player's.
@@ -343,9 +346,34 @@ void UltraCanvasVideoPlayerElement::DrawVideoSurface(IRenderContext* ctx) {
                              style.backgroundColor, 0.0f, Color(0, 0, 0, 0), 0);
 
     if (haveFrame && framePixmap && framePixmap->IsValid()) {
-        Rect2Di fit = FitContain(videoRect, frameW, frameH);
+        const int inset = std::max(0, style.videoInset);
+        const Rect2Di area(videoRect.x + inset, videoRect.y + inset,
+                           std::max(1, videoRect.width - 2 * inset), std::max(1, videoRect.height - 2 * inset));
+        Rect2Di fit;
+        switch (style.videoFit) {
+            case VideoPlayerFit::Cover: {
+                const double s = std::max(static_cast<double>(area.width) / std::max(1, frameW),
+                                          static_cast<double>(area.height) / std::max(1, frameH));
+                const int w = static_cast<int>(frameW * s), h = static_cast<int>(frameH * s);
+                fit = Rect2Di(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h);
+                break;
+            }
+            case VideoPlayerFit::Pixels: {
+                const double z = std::max(1.0f, style.zoomPercent) / 100.0;
+                const int w = static_cast<int>(frameW * z), h = static_cast<int>(frameH * z);
+                fit = Rect2Di(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h);
+                break;
+            }
+            default:
+                fit = FitContain(area, frameW, frameH);
+                break;
+        }
+        // a picture larger than the element (Cover, a zoom) stays inside it
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(videoRect.x, videoRect.y, videoRect.width, videoRect.height));
         ctx->DrawPixmap(*framePixmap, Rect2Dd(fit.x, fit.y, fit.width, fit.height),
                         ImageFitMode::Fill);
+        ctx->PopState();
     } else {
         // No-signal placeholder
         std::string msg = player->IsLoaded() ? "Buffering..." : "No video loaded";

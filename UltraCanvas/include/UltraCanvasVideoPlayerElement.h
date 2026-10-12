@@ -1,7 +1,10 @@
 // include/UltraCanvasVideoPlayerElement.h
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.4
-// Last Modified: 2026-08-06
+// Version: 0.1.5
+// Last Modified: 2026-10-12
+// V0.1.5: VideoPlayerStyle::videoFit (Contain, Cover, Pixels with zoomPercent)
+//   and videoInset place the picture as a host's own frame surface does, so a
+//   player shown in its place puts the picture where the surface had it.
 // V0.1.4: LoadFrom* resets the per-file frame state; HasVideoFrame() reports
 //   whether a frame of the current source has been shown yet (hosts use it to
 //   request a still frame explicitly when the load-time preroll delivered none).
@@ -22,9 +25,17 @@
 
 namespace UltraCanvas {
 
+// Where the picture goes in the element: fitted whole (Contain, letterboxed),
+// filling the element (Cover, cropped), or at a zoom of its own pixels
+// (Pixels) - what a viewer's Fit menu offers
+enum class VideoPlayerFit { Contain, Cover, Pixels };
+
 // ===== VISUAL STYLE =====
 struct VideoPlayerStyle {
     Color backgroundColor = Color(16, 16, 16);          // letterbox / no-signal fill
+    VideoPlayerFit videoFit = VideoPlayerFit::Contain;
+    float zoomPercent = 100.0f;                         // Pixels: the frame's own pixels, in percent
+    int   videoInset = 0;                               // the picture's distance from the element's edges
     Color controlBarColor = Color(0, 0, 0, 160);        // translucent overlay
     Color progressTrackColor = Color(90, 90, 90);
     Color progressFillColor = Color(0, 150, 230);

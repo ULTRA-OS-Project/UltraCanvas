@@ -65635,9 +65635,14 @@ Callbacks: `onRecordingStateChanged`, `onPreviewFrame`, `onSaved`,
 
 ### UI elements
 
-`UltraCanvasVideoPlayerElement` — video surface (aspect-fit letterbox) with an
-auto-hiding overlay transport bar: play/pause, seek, mute, volume, time labels.
-`ShowOpenDialog()` opens the native file picker.
+`UltraCanvasVideoPlayerElement` — video surface with an auto-hiding overlay
+transport bar: play/pause, seek, mute, volume, time labels.
+`ShowOpenDialog()` opens the native file picker. `VideoPlayerStyle::videoFit`
+places the picture: `Contain` (fitted whole, letterboxed; the default),
+`Cover` (filling the element, cropped) or `Pixels` (its own pixels at
+`zoomPercent`), inside `videoInset` from the element's edges - a host that
+shows the player in place of a frame surface of its own gives it the same
+inset and fit, and the picture stays put.
 
 `UltraCanvasVideoRecorderElement` — live camera preview with a REC/stop button,
 elapsed-time readout, blinking record indicator, and a camera picker popup.

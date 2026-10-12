@@ -32,6 +32,13 @@
   framework's GStreamer backend no longer insists on a PulseAudio sink
   where no PulseAudio server answers, so the picture plays at pace, silent,
   on such a desktop.
+- **The draft in the frame's place.** The draft is rendered at the
+  project's shape, 360 lines high: with only a height given the engine took
+  the width from the first segment, and a 4:3 photo first made a 4:3 draft
+  of a 16:9 project that sat letterboxed and smaller than the frame
+  surface. The player keeps the surface's 12 px inset and follows the
+  viewer's *Fit* menu (fit, fill, 50, 100, 200 %) as the surface does, so
+  the picture does not move when the draft takes over.
 
 #### 2026-10-11 *0.1.0*
 - **The first release: the editor's skeleton.** `Apps/UltraVideo`, on

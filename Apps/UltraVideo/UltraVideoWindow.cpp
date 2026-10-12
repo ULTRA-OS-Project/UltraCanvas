@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.2.1 - the draft is rendered at the project's shape
 // Version: 0.2.0 - the panels follow the theme; a player that cannot start falls back
 // Version: 0.1.0
 // Last Modified: 2026-10-11
@@ -1113,7 +1114,12 @@ void UltraVideoWindow::RenderDraft() {
     if (!draftPath_.empty() && draftRevision_ == documentRevision_) return;
     std::vector<VideoFXSegment> segments = document_.SegmentsForEngine();
     if (segments.empty()) return;
+    // 360 lines at the project's shape: a height alone would take the width
+    // from the first segment, and a 4:3 photo first made a 4:3 draft of a
+    // 16:9 project, letterboxed inside and smaller than the frame surface
     VideoFXExportSettings settings = VideoFXExportSettings::Draft(360);
+    const int projectW = std::max(1, document_.Width()), projectH = std::max(1, document_.Height());
+    settings.width = std::max(16, static_cast<int>(std::lround(360.0 * projectW / projectH / 2.0)) * 2);
     settings.music = document_.project.settings.music;
     settings.fitMode = document_.project.settings.fitMode;
     settings.frameRate = document_.FrameRate();

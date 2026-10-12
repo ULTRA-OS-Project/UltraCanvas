@@ -6,6 +6,7 @@
 // end, the large timecode readout over the project length, the volume.
 // Playback itself is the window's: it moves the playhead and the viewer
 // shows what the engine renders for it.
+// Version: 0.2.1 - SetFit
 // Version: 0.2.0 - DraftPlay returns bool
 // Version: 0.1.0
 // Last Modified: 2026-10-11
@@ -39,6 +40,7 @@ public:
     void SetFrame(const VideoFX::VideoFXFrame& frame);
     void ClearFrame();
     bool HasFrame() const { return pixmap != nullptr; }
+    static constexpr double kMargin = 12.0;   // the picture's distance from the surface's edges
     // 0 = fit the frame to the surface; else a percentage of the frame's own pixels
     void SetZoomPercent(double percent, bool fill = false);
     void SetAspect(double widthOverHeight) { aspect = widthOverHeight; RequestRedraw(); }
@@ -67,6 +69,7 @@ public:
     void SetTime(double seconds, double total);      // the readout and the length
     void SetFrameRate(double frameRate);
     void SetAspect(double widthOverHeight);
+    void SetFit(int index);                 // the Fit menu's choice: fit, fill, 50, 100, 200 %
     void SetPlaying(bool playing);
     // The size to ask the engine for: the surface in logical pixels
     int SurfaceWidth() const;
