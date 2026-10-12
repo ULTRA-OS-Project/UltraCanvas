@@ -31,6 +31,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasRasterDocument.h"
+#include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
 
 #include "UltraPaintTools.h"
 #include "UltraPaintFilters.h"
@@ -120,7 +121,9 @@ private:
     // Merges a document's flattened pixels into the open image as a new layer.
     void MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
                        const std::string& path, bool scaleToFit);
-    bool SaveToPath(const std::string& path);
+    // `size`: the pixel size chosen in the Save dialog's Settings for this
+    // save (Save As); the picture's own size otherwise.
+    bool SaveToPath(const std::string& path, const FileSaveImageSize& size = FileSaveImageSize());
     // Opens a dialog as this window's own: created, marked transient for the
     // editor and centred on it. A dialog that skips this is a top-level window
     // as far as the desktop is concerned, and gets placed like one — behind

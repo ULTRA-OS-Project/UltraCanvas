@@ -9,6 +9,15 @@
   copy, a merge or its settings, Actual Pixels reads "1:1", and the toolbars
   draw them at the 24 px they are drawn for (framework changelog:
   `toolbar-icon-size`).
+- **Save As can write the picture at another size.** The Save dialog is told
+  the picture's size, so the Settings button on the type row - new in the
+  framework's Save dialog - opens a bitmap type's settings with a Size
+  row first: width x height in pixels, opened on the picture's own size, with
+  Keep proportions. The file is written at the size chosen there; the open
+  picture keeps its own size, and the next Save As starts on it again. The
+  rest of the type's settings (JPEG quality, PNG compression ...) are the
+  framework's per-format save settings, which a plain Save already follows
+  (framework, pending changelog entry "save-dialog-file-icon-and-settings").
 
 #### 2026-10-12 *0.2.16*
 - **The tool palette groups its tools.** Tools of a kind share one button,

@@ -89,6 +89,33 @@ opts.AddFilter("Drawings", UltraCanvasFileLoader::GetVectorLoadExtensions());
 viewer, useless to an editor. Use `LoadVectorDocument` whenever the drawing
 is to be changed or written back.
 
+### Save Settings
+How a format is written - JPEG's quality, PNG's compression, TIFF's codec - is
+described per format (`UltraCanvasFileSaveSettings.h`), so one dialog can offer
+the settings of any of them, and the values the user chose are kept for every
+application, between runs. The framework's Save dialog has a **Settings**
+button on its type row that edits the chosen type's settings, and the
+writers read them back - `UCRasterDocument::SaveToFile` does so on its own:
+
+```cpp
+if (UltraCanvasFileLoader::HasSaveSettings("photo.jpg"))
+    UltraCanvasFileLoader::ShowSaveSettingsDialog("photo.jpg", window.get());
+
+FileSaveSettings jpeg = UltraCanvasFileLoader::GetSaveSettings("jpg");
+int quality = jpeg.GetInt("quality", 85);
+
+UCImageSave::ImageExportOptions options;                 // the image writer's, ready made
+UltraCanvasFileLoader::GetImageExportOptions("out.webp", options);
+```
+
+The bitmap formats the image writer takes options for are built in; a plugin
+or an application adds its own with `RegisterSaveFormat`. A caller that passes
+the picture's size (`FileDialogOptions::SetImageSize`) also gets a Size row in
+a bitmap type's settings, for that save only: the size comes back through the
+`SaveFileDialog` overload whose callback takes a `FileSaveImageSize`, and
+`GetImageExportOptions(path, size, options)` writes at it. See *Save settings*
+in [the file dialog's documentation](../../UltraCanvas/UltraCanvasFileDialog.md#save-settings).
+
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
 with. Compressed content (gzip, zlib, Zstandard, LZ4) is detected by
