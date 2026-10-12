@@ -1786,6 +1786,18 @@ if (BUILD_TESTS)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     set_tests_properties(HTMLBuilderFuzzSmoke PROPERTIES TIMEOUT 600)
 
+    # Every UltraCanvasUIElement constructor makes a border-box element: a
+    # widget's size includes its padding and border however it was built.
+    add_executable(UIElementBoxSizingTest Tests/UIElementBoxSizingTest.cpp)
+    target_include_directories(UIElementBoxSizingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(UIElementBoxSizingTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(UIElementBoxSizingTest PRIVATE cxx_std_20)
+    set_target_properties(UIElementBoxSizingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UIElementBoxSizingTest COMMAND UIElementBoxSizingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # UltraCanvasJSON unit tests (DataFormats section). Compiles only the JSON
     # module and its vendored engine, so it runs headless without the UI stack.
     add_executable(JSONTests
