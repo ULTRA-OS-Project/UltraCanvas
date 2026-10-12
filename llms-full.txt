@@ -1017,6 +1017,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `WindowType::Desktop` (`UltraCanvasWindow.h`) is
   the screen-sized window at the bottom of the stack a desktop draws into.
 
+- **UltraCanvasToolGroupButton** (`UltraCanvasToolGroupButton.h`) — several
+  tools sharing one slot of a palette or toolbar: the slot shows one of them,
+  a bar of the whole group folds out beside it while the pointer rests on it
+  (`SetFoldOutDelay`, `SetFoldOutSide`, `OpenFoldOut` / `CloseFoldOut`), and a
+  click there picks a tool (`onItemSelected`). `SetItems` / `AddItem`,
+  `SetCurrentItem` (the tool in use, set without firing), `GetSlotItem`,
+  `SetSlotShowsLastPicked` (adaptive: the tool last picked; static: always
+  the first). `UltraCanvasToolbar::AddToolGroup` adds one with the toolbar's
+  button look. See `Docs/UltraCanvas/UltraCanvasToolGroupButton.md`.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.
@@ -1251,8 +1261,9 @@ engine; these classes hold the pixels being edited and hand them to it.
 - **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
-  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/DrawCurve/DrawArrow/
+  FillCoverage/StampMask/FloodFill/MagicWandMask/FillGradient/SampleColour`,
+  with `FlattenCubicBezier` and `ArrowShape` for previews (`FillCompositing`:
   Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
@@ -13069,8 +13080,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.0.5  
-**Last Modified:** 2026-10-11  
+**Version:** 1.0.6  
+**Last Modified:** 2026-10-12  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -13220,6 +13231,11 @@ void SetPadding(float vertical, float horizontal);
 void SetPadding(float top, float right, float bottom, float left);
 void SetIconSpacing(int spacing);
 void SetCornerRadius(float radius);
+
+// The icon's size as set with SetIconSize - what a twin of the button
+// (a tool group's fold-out bar) copies
+int GetIconWidth() const;
+int GetIconHeight() const;
 
 // Shadow configuration
 void SetShadow(
@@ -13528,6 +13544,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
 | 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |
 | 1.0.3 | 2026-10-07 | Match the header: real `ButtonStyle` fields and `ButtonBuilder` methods, `ElementState`/`GetPrimaryState()` instead of a `ButtonState` enum, layout sizing instead of auto-resize, `SetDisabled()`, `SetPadding()` overloads |
@@ -44065,8 +44082,8 @@ them back. The first application built on it is **UltraPaint**
 | `UCBrushStroke`, `RasterPaint` | The brush engine: interactive strokes (dabs with spacing, hardness, opacity vs flow, paint / erase / clone / smudge / dodge / burn) and one-shot operations (anti-aliased shapes, flood fill, magic wand, gradients, mask stamping, eyedropper) | `include/UltraCanvasBrushEngine.h`, `core/UltraCanvasBrushEngine.cpp` |
 | `UltraCanvasPaintSurface` | The element: zoom / pan view of a document with checkerboard, pixel grid, selection ants and brush cursor; forwards pointer events in image coordinates to the tool the host installs | `include/UltraCanvasPaintSurface.h`, `core/UltraCanvasPaintSurface.cpp` |
 
-**Version**: 1.0.0
-**Last Modified**: 2026-09-06
+**Version**: 1.0.1 - `DrawCurve`, `DrawArrow`
+**Last Modified**: 2026-10-12
 **Author**: UltraCanvas Framework
 
 None of the model classes touch a window; `UltraCanvasPaintSurface` is the
@@ -44210,7 +44227,11 @@ stroke.End();
 
 `RasterPaint` holds the one-shot operations: `DrawLine`, `DrawRectangle`,
 `DrawEllipse`, `DrawPolygon` (outline and fill, 4×4 supersampled
-anti-aliasing through `FillCoverage`), `FloodFill` (tolerance, contiguous or
+anti-aliasing through `FillCoverage`; open, it is a polyline whose joins are
+painted once), `DrawCurve` (a cubic Bezier curve; `FlattenCubicBezier` gives
+its points for a preview), `DrawArrow` (a shaft with a filled head at the
+tip, or at both ends, in one pass; `ArrowShape` gives its geometry),
+`FloodFill` (tolerance, contiguous or
 global, optionally sampling a merged layer; `FillCompositing::Replace` sets
 the region to the colour, alpha included, where the default `Blend` paints
 over it - the way to fill with transparency), `MagicWandMask` (the same
@@ -61679,6 +61700,180 @@ the `Roadmap` design, item groups/phase brackets (A-D6), per-item images
 sequential entrance animation (A-I7).
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasToolGroupButton.md
+==============================================================================
+
+# UltraCanvasToolGroupButton
+
+Several tools sharing one slot of a tool palette or toolbar - the selection
+tools, the brushes, the shapes of a paint program.
+
+The slot shows one tool of the group, and a click on it picks that tool.
+Resting the pointer on the slot folds out a bar beside it with every tool of
+the group; a click in the bar picks that tool. A small triangle in the
+slot's corner says the slot holds more than one tool. The bar folds back when
+the pointer leaves both the slot and the bar, on Escape and on a click
+elsewhere. A group of one tool is an ordinary toggle button: no triangle and
+nothing to fold out.
+
+**Version:** 1.0.0
+**Header:** `include/UltraCanvasToolGroupButton.h`
+**Namespace:** `UltraCanvas`
+**Base Class:** `UltraCanvasButton`
+
+## Adaptive or static
+
+What the slot shows after a pick is the host's choice:
+
+| `SetSlotShowsLastPicked` | The slot shows | A click on the slot picks |
+|---|---|---|
+| `true` (default) - an *adaptive* toolbar | the tool last picked, from the bar or with `SetCurrentItem` | that tool |
+| `false` - a *static* toolbar | always the first item, the group's main tool | the main tool |
+
+Either way the bar marks the tool in use - the *current* item - while the slot
+is pressed. UltraPaint offers the choice as *Settings > Display > Tool
+palette*.
+
+## Adding one to a toolbar
+
+`UltraCanvasToolbar::AddToolGroup` creates the slot with the toolbar's button
+appearance, as `AddToggleButton` does for a single tool. In a vertical toolbar
+the bar folds out to the right of the slot as a row; in a horizontal one it
+folds out below as a column. Where the window has no room on that side it
+goes to the opposite one.
+
+```cpp
+#include "UltraCanvasToolbar.h"
+
+auto palette = std::make_shared<UltraCanvasToolbar>("palette", 0, 0, 48, 0);
+palette->SetOrientation(ToolbarOrientation::Vertical);
+
+auto selectGroup = palette->AddToolGroup("select", {
+        {"rect-select",    "media/icons/ultrapaint/28/select-rect.svg",    "Rectangle Select (R)"},
+        {"ellipse-select", "media/icons/ultrapaint/28/select-ellipse.svg", "Ellipse Select (E)"},
+        {"lasso",          "media/icons/ultrapaint/28/lasso.svg",          "Lasso (L)"},
+    },
+    [](const std::string& toolId) {
+        // Make toolId the active tool.
+        (void)toolId;
+    });
+selectGroup->SetIconSize(28, 28);
+selectGroup->SetElementSize(Size2Df(36, 36));
+```
+
+The bar's buttons copy the slot when the bar folds out - its size, its icon
+size and its `ButtonStyle` - so a flat palette gets a flat bar, and the tool
+in use wears the slot's `pressedColor`.
+
+## Keeping the palette in step
+
+The slot is a toggle button: a pick presses it. When the active tool changes
+some other way - a shortcut key, a command that switches tools - the host
+presses the slot of the new tool's group, lets every other slot go, and tells
+the group which of its tools it is:
+
+```cpp
+// slots: every group of the palette; toolId: the tool that just became active.
+for (const auto& slot : slots) {
+    const bool inGroup = slot->SetCurrentItem(toolId);   // false: not one of its tools
+    slot->SetPressed(inGroup);
+}
+```
+<!-- doc-check: std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> slots; std::string toolId; -->
+
+`SetCurrentItem` fires nothing, so this does not loop back into
+`onItemSelected`.
+
+## Class reference
+
+```cpp
+UltraCanvasToolGroupButton(const std::string& identifier, float x, float y, float w, float h);
+UltraCanvasToolGroupButton(const std::string& identifier, float w, float h);
+
+// Items - the group's tools, in the bar's order
+void SetItems(const std::vector<ToolGroupItem>& groupItems);
+void AddItem(const ToolGroupItem& item);
+const std::vector<ToolGroupItem>& GetItems() const;
+int GetItemCount() const;
+bool HasItem(const std::string& itemId) const;
+
+// The tool last picked or set, and the one the slot shows
+bool SetCurrentItem(const std::string& itemId);
+std::string GetCurrentItem() const;
+std::string GetSlotItem() const;
+void SetSlotShowsLastPicked(bool showLastPicked);
+bool GetSlotShowsLastPicked() const;
+
+// The fold-out bar
+void SetFoldOutSide(ToolGroupFoldOutSide side);
+ToolGroupFoldOutSide GetFoldOutSide() const;
+void SetFoldOutDelay(int milliseconds);
+int GetFoldOutDelay() const;
+void OpenFoldOut();
+void CloseFoldOut();
+bool IsFoldOutOpen() const;
+std::shared_ptr<UltraCanvasContainer> GetFoldOut() const;
+```
+
+```cpp
+std::function<void(const std::string& itemId)> onItemSelected;
+```
+
+`onItemSelected` fires on a click on the slot (with the tool it shows) and on
+a click in the bar (with that tool).
+
+`SetFoldOutDelay` is how long the pointer rests on the slot before the bar
+folds out: 150 ms by default, so a pointer crossing the palette on its way to
+the canvas does not flash every group's bar; 0 folds it out at once.
+`OpenFoldOut` and `CloseFoldOut` do it from code - a group of one, or a slot
+in no window, has nothing to fold out.
+
+`CreateToolGroupButton(identifier, x, y, w, h, items)` creates one outside a
+toolbar.
+
+### ToolGroupItem
+
+```cpp
+struct ToolGroupItem {
+    std::string id;          // handed back by onItemSelected
+    std::string iconPath;
+    std::string tooltip;     // its name (and shortcut)
+};
+```
+
+### ToolGroupFoldOutSide
+
+```cpp
+enum class ToolGroupFoldOutSide {
+    Auto = 0,     // right of a slot in a vertical toolbar, below one in any other
+    Right = 1,
+    Left = 2,
+    Bottom = 3,   // below the slot
+    Top = 4       // above it
+};
+```
+
+The bar runs along its side: a row to the right or left, a column below or
+above. The values are `Bottom` and `Top` rather than *Below* and *Above*
+because X11's headers `#define` those two words.
+
+## Implementation notes
+
+- The bar is a popup on the slot's window, with the slot as its owner. The
+  window hands an open popup every pointer event that is on neither it nor its
+  owner, which is how the bar sees the pointer leave and folds back. It
+  touches the slot, so the pointer never crosses a gap that belongs to neither
+  on its way from one to the other.
+- The bar's buttons do not take the keyboard focus: the canvas keeps it while
+  a tool is picked.
+- A focused slot picks its tool with Space or Return.
+
+## See Also
+
+- [UltraCanvasToolbarExamples.md](UltraCanvasToolbarExamples.md) - `AddToolGroup` and the rest of the toolbar
+- [UltraCanvasButtonExamples.md](UltraCanvasButtonExamples.md) - the button it is built on
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 ==============================================================================
 
@@ -61688,14 +61883,14 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.6.1
+**Version:** 1.8.0
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
 
 ## Features
 
-- **Item Types**: Button, ToggleButton, DropdownButton, Separator, Spacer (fixed and flex), Label, TextInput, SearchBox, Checkbox
+- **Item Types**: Button, ToggleButton, DropdownButton, ToolGroup (several tools in one slot, with a fold-out bar), Separator, Spacer (fixed and flex), Label, TextInput, SearchBox, Checkbox
 - **Multiple Styles**: Standard, Flat, Raised, Docked (macOS-like), Ribbon, StatusBar, Sidebar
 - **Orientation**: Horizontal or Vertical
 - **Overflow Handling**: Wrap, overflow menu, scroll, or hide
@@ -61795,6 +61990,10 @@ std::shared_ptr<UltraCanvasDropdown> AddDropdownButton(
         const std::vector<std::string>& items,
         std::function<void(const std::string&)> onSelect = nullptr);
 
+std::shared_ptr<UltraCanvasToolGroupButton> AddToolGroup(
+        const std::string& id, const std::vector<ToolGroupItem>& items,
+        std::function<void(const std::string&)> onSelect = nullptr);
+
 std::shared_ptr<UltraCanvasSeparator> AddSeparator(const std::string& id = "");
 std::shared_ptr<UltraCanvasSpacer> AddSpacer(int size = 8);
 std::shared_ptr<UltraCanvasSpacer> AddStretch(float stretch = 1.0f);
@@ -61805,6 +62004,27 @@ std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
 std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
         const std::string& id, const std::string& placeholder = "Search...",
         std::function<void(const std::string&)> onTextChange = nullptr);
+```
+
+### Tool Groups
+
+`AddToolGroup` puts several tools in one slot, as a paint program's palette
+groups its selection tools or its brushes. The slot shows one of them; resting
+the pointer on it folds out a bar with the whole group - to the right in a
+vertical toolbar, below in a horizontal one - and a click there picks a tool.
+`onSelect` gets the id of the tool picked, by a click on the slot or in the
+bar. The slot shows the tool last picked, or always the group's first tool
+with `SetSlotShowsLastPicked(false)`. A group of one item is a plain toggle
+button. See [UltraCanvasToolGroupButton.md](UltraCanvasToolGroupButton.md).
+
+```cpp
+auto palette = std::make_shared<UltraCanvasToolbar>("palette", 0, 0, 48, 0);
+palette->SetOrientation(ToolbarOrientation::Vertical);
+auto shapes = palette->AddToolGroup("shapes", {
+        {"rectangle", "media/icons/ultrapaint/28/rect.svg",    "Rectangle (Q)"},
+        {"ellipse",   "media/icons/ultrapaint/28/ellipse.svg", "Ellipse (P)"},
+    },
+    [](const std::string& toolId) { (void)toolId; /* make it the active tool */ });
 ```
 
 ### Auto-Hide
@@ -62171,6 +62391,7 @@ running->ClearItemBadge("webcam");                                // off again
 ## See Also
 
 - [UltraCanvasButton](UltraCanvasButton.md) - Building block for toolbar buttons
+- [UltraCanvasToolGroupButton](UltraCanvasToolGroupButton.md) - Several tools in one slot, with a fold-out bar (`AddToolGroup`)
 - [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown buttons and overflow menus
 - [UltraCanvasContainer](UltraCanvasContainer.md) - Base container class
 - [UltraCanvasLayoutExamples](UltraCanvasLayoutExamples.md) - Layout managers used internally
@@ -63906,6 +64127,7 @@ formats, and does not re-decode on every frame the way an ad-hoc
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
 | A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page) | `UltraCanvasToolbar.h` |
+| Several tools sharing one slot of a palette or toolbar - the slot shows one, a bar of the whole group folds out while the pointer rests on it, the slot then shows the tool last picked (or always the main one) ([doc](UltraCanvasToolGroupButton.md)) | `UltraCanvasToolGroupButton` (`UltraCanvasToolbar::AddToolGroup`) | `UltraCanvasToolGroupButton.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
 | The S-curve between two groups on one bar (a taskbar's system group flowing into its running apps) — one group's colour up to the curve, the next group's after it ([doc](UltraCanvasWaveSeparator.md)) | `UltraCanvasWaveSeparator` | `UltraCanvasWaveSeparator.h` |
 

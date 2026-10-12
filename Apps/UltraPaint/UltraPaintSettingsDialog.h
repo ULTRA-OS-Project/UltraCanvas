@@ -1,10 +1,11 @@
 // Apps/UltraPaint/UltraPaintSettingsDialog.h
 // UltraPaint's settings window (Edit > Settings...): a tree of settings
-// pages on the left - Display > Mouse pointer magnification glass - and the
-// selected page on the right. A change applies to the running editor at
+// pages on the left - Display > Mouse pointer magnification glass and
+// Display > Tool palette - and the selected page on the right. A change applies to the running editor at
 // once through onChanged and is saved right away; the window has only a
 // Close button. Built out of framework elements like the other dialogs and
 // shown through UltraPaintWindow::ShowDialog.
+// Version: 1.1.0 - Display > Tool palette: an adaptive or a static toolbar
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -38,8 +39,10 @@ public:
 
 private:
     std::shared_ptr<UltraCanvasContainer> BuildMagnifierPage();
+    std::shared_ptr<UltraCanvasContainer> BuildPalettePage();
     void ShowPage(const std::string& pageId);
     void UpdateMagnifierControls();
+    void UpdatePaletteControls();
     void Changed();
 
     UltraPaintSettings* settings;
@@ -50,6 +53,8 @@ private:
     std::shared_ptr<UltraCanvasTreeView>  tree;
     std::shared_ptr<UltraCanvasContainer> pageArea;
     std::map<std::string, std::shared_ptr<UltraCanvasContainer>> pages;
+    // The page shown: Restore defaults restores its settings.
+    std::string currentPage;
 
     // Display > Mouse pointer magnification glass
     std::shared_ptr<UltraCanvasCheckbox> magnifierBox;
@@ -57,6 +62,10 @@ private:
     UltraCanvasRadioGroup                factorGroup;
     std::shared_ptr<UltraCanvasSlider>   sizeSlider;
     std::shared_ptr<UltraCanvasLabel>    sizeValue;
+
+    // Display > Tool palette
+    std::shared_ptr<UltraCanvasRadio>    adaptiveRadio, staticRadio;
+    UltraCanvasRadioGroup                paletteGroup;
 };
 
 } // namespace UltraCanvas
