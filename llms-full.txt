@@ -2736,10 +2736,14 @@ does exactly this to drop its in-field button when the command bar narrows.
 ## `finalBounds` is a border-box
 
 `finalBounds` now holds the element's **border-box** (border + padding + content;
-**margin excluded**), positioned relative to the parent's border-box origin. UI elements
-default to `box.boxSizing = BorderBox`
-([UltraCanvasUIElement.h:181](../UltraCanvas/include/UltraCanvasUIElement.h#L181)), so an
-explicit `width`/`height` describes the border-box directly.
+**margin excluded**), positioned relative to the parent's border-box origin. What an
+explicit `width`/`height` describes depends on `box.boxSizing`, and that depends on the
+constructor. The full-rect constructor `(id, x, y, w, h)` sets `BorderBox`
+([UltraCanvasUIElement.h:181](../UltraCanvas/include/UltraCanvasUIElement.h#L181)), so
+the size is the border-box. The size-only constructor `(id, w, h)` leaves the engine's
+default, `ContentBox` ([CSSLayout.h:260](../UltraCanvas/include/CSSLayout/CSSLayout.h#L260)),
+so padding and border are added to it. Set `box.boxSizing` yourself when the difference
+matters.
 
 ```
    margin (NOT part of finalBounds)
