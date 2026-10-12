@@ -169,8 +169,9 @@ the isolation headers, and the size of what a visitor downloads.
    diagram palettes). A website theme — colours, type scale, spacing,
    block style variants, header and footer layouts — is UltraPress's own
    data, §7.4.
-3. **A browser-side History API.** `WASMURL` reads the current URL, query
-   and hash; nothing pushes a URL. A multi-page site in one renderer must
+3. **A browser-side History API** - added on this date: `WASMURL::PushUrl`,
+   `ReplaceUrl`, `GetPath` and `SetOnNavigate` (`popstate`) in
+   `UltraCanvasWASMSupport.h`, so a multi-page site in one renderer can
    update the address bar and answer the back button, §4.3.
 4. **A single-threaded WebAssembly build, or a measured decision to keep
    threads.** The core propagates `-pthread` to every Emscripten
@@ -228,10 +229,10 @@ the line the brief draws, and the port draws it in the same place today.
 
 | Cost | What it means for a website | Answer |
 |---|---|---|
-| **Download size** | The module carries cairo, pango, glib, fontconfig, harfbuzz, freetype, libvips and the bundled Ubuntu fonts. No figure exists in the repository: the demo's size has never been recorded. Comparable Emscripten builds of libvips alone run to several MB compressed [unverified]. | Phase 0 measures the demo as built by `wasm-build.yml`: raw, Brotli-compressed, and time to first paint on a mid-range laptop and a phone. A build without libvips (pictures decoded by the browser, handed in as pixels through `WASMBrowser::LoadImage`) and with a subset of the fonts is the first thing to try. The renderer is served with a one-year cache and a content hash in its name, so it is paid once per release. |
+| **Download size** | The module carries cairo, pango, glib, fontconfig, harfbuzz, freetype, libvips and the bundled Ubuntu fonts. No figure exists in the repository yet: `wasm-build.yml` now writes each demo's raw, gzip and Brotli sizes into its job summary (its *Demo sizes* step), but the workflow is dispatched by hand and has not run since. Comparable Emscripten builds of libvips alone run to several MB compressed [unverified]. | Phase 0 dispatches `wasm-build.yml` and reads the table, then measures time to first paint on a mid-range laptop and a phone. A build without libvips (pictures decoded by the browser, handed in as pixels through `WASMBrowser::LoadImage`) and with a subset of the fonts is the first thing to try. The renderer is served with a one-year cache and a content hash in its name, so it is paid once per release. |
 | **Cross-origin isolation** | Threads need `SharedArrayBuffer`, which needs `COOP: same-origin` and `COEP: require-corp`. Under `require-corp` the page cannot embed a cross-origin resource that does not opt in — a payment provider's iframe, a YouTube embed, a map. | Build the renderer **single-threaded** if the framework allows it (the core passes `-pthread` PUBLIC; what inside the framework needs a worker on a website is the question Phase 0 answers). If it does not, keep threads and use hosted checkout *redirects* instead of embedded widgets (§7.5), and no third-party embeds. Either way, a static host that cannot set headers (many cannot) is served the single-threaded build or nothing. |
 | **Search engines, previews, accessibility** | A canvas has no text. Google indexes nothing, a shared link shows no title and picture, a screen reader announces "canvas", the browser's find-in-page and translate do nothing, printing prints a bitmap. | The HTML shadow, §4.4. |
-| **Navigation** | One module shows many pages, so the URL must change on a click and the back button must work, or the site is one URL. | `WASMBrowser::PushUrl` / `ReplaceUrl` and a `popstate` callback, added to `UltraCanvasWASMSupport.h` beside `GetCurrentURL`; a few lines of `EM_ASM`. The renderer reads the path on start and on `popstate` and shows that page. |
+| **Navigation** | One module shows many pages, so the URL must change on a click and the back button must work, or the site is one URL. | Done: `WASMURL::PushUrl` / `ReplaceUrl` and `SetOnNavigate` (`popstate`) in `UltraCanvasWASMSupport.h`. The renderer reads `GetPath()` on start and on every navigation callback and shows that page. |
 | **First paint** | The module must download, compile and lay out before anything shows. WordPress shows text while images are still loading. | The HTML shadow shows the page's text at once; the renderer takes the viewport over when it is ready. Browsers cache compiled WebAssembly across visits. |
 | **Text selection, copy, right-click** | The framework's own, inside the canvas, not the browser's. | Acceptable for a site; the editor side is the desktop app anyway. |
 | **Firefox, Safari, mobile** | Untested by the port. | Phase 0 runs the demo on all three and lists what breaks; touch is synthesised already. |
@@ -728,9 +729,9 @@ produces that model.
 `wasm-build.yml` and record: the renderer's size raw and compressed, with
 and without libvips and with a font subset; time to first paint on a laptop
 and a phone; whether a single-threaded build links and runs; Firefox and
-Safari; whether an Emscripten side module loads. Add `PushUrl` and
-`popstate` to `UltraCanvasWASMSupport.h`. Decide the HTML shadow with the
-user (§11, question 1). Deliverable: the numbers in this document's §4.3,
+Safari; whether an Emscripten side module loads. (The History API,
+`PushUrl` and `SetOnNavigate`, is already in `UltraCanvasWASMSupport.h`.)
+Decide the HTML shadow with the user (§11, question 1). Deliverable: the numbers in this document's §4.3,
 and a go / no-go on B.
 
 **Phase 1 — websites, static tier.** The content model, the block

@@ -120,6 +120,37 @@ jobs:
         working-directory: UltraCanvas/OS/WASM/demo
         run: cmake --build build --parallel "$(nproc)"
 
+      # What a visitor downloads: each demo's .wasm, .js, .data and worker
+      # file, raw and as a server would compress them (gzip, and Brotli when
+      # the runner has it). The .wasm carries the framework with cairo, pango,
+      # glib, fontconfig, libvips and the bundled fonts in the .data, so this
+      # table is the number every "UltraCanvas as a web page" decision rests
+      # on (Docs/Research/UltraPressDesignProposal.md §4.3). Measurement
+      # only: it never fails the job.
+      - name: Demo sizes
+        continue-on-error: true
+        working-directory: UltraCanvas/OS/WASM/demo/build
+        run: |
+          kb() { du -k "$1" | cut -f1; }
+          mb() { awk -v k="$1" 'BEGIN { printf "%.2f MB", k / 1024 }'; }
+          gz() { gzip -9 -c "$1" | wc -c | awk '{ printf "%.2f MB", $1 / 1048576 }'; }
+          br() { if command -v brotli >/dev/null; then brotli -q 11 -c "$1" | wc -c | awk '{ printf "%.2f MB", $1 / 1048576 }'; else echo "n/a"; fi; }
+          {
+            echo "### WebAssembly demo sizes (emsdk ${{ inputs.emsdk_version }})"
+            echo ""
+            echo "| File | Raw | gzip -9 | brotli -q 11 |"
+            echo "|---|---:|---:|---:|"
+            for demo in wasm-demo ultraos-frontpage; do
+              total=0
+              for f in "$demo".wasm "$demo".js "$demo".data "$demo".ww.js; do
+                [ -f "$f" ] || continue
+                k=$(kb "$f"); total=$((total + k))
+                echo "| $f | $(mb "$k") | $(gz "$f") | $(br "$f") |"
+              done
+              echo "| **$demo, all files** | **$(mb "$total")** | | |"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       # Both demos, with serve.py: unzip the artifact into a folder, run
       # `python3 serve.py 8080` there and open wasm-demo.html or
       # ultraos-frontpage.html (the pages need the server's cross-origin

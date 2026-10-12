@@ -1,6 +1,6 @@
 # UltraCanvas on WebAssembly
 
-<!-- doc-check: std::vector<uint8_t> documentBytes; -->
+<!-- doc-check: std::vector<uint8_t> documentBytes; void ShowPageFor(const std::string& url); -->
 
 **Status: experimental.** The framework builds with Emscripten and runs in
 Chromium: windows render through the same Cairo/Pango pipeline as the desktop
@@ -132,9 +132,20 @@ WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::
 
 `WASMBrowser` also wraps `alert` / `confirm` / `prompt`, the console,
 `navigator.userAgent`, the screen size and `localStorage`. `WASMURL` reads the
-page URL, its query parameters (`GetQueryParameter`, `GetAllQueryParameters`)
-and hash, and can navigate or reload. `WASMTime` exposes `performance.now()`
-and performance marks.
+page URL, its path, its query parameters (`GetQueryParameter`,
+`GetAllQueryParameters`) and hash, and can navigate or reload. An application
+that shows several pages from one module uses its History API instead of
+navigating: `PushUrl` changes the address bar and adds an entry the back
+button returns to, `ReplaceUrl` rewrites the current entry, and
+`SetOnNavigate` hears the back and forward buttons (every `popstate`, a hash
+change included) with the new URL, on the main thread:
+
+```cpp
+WASMURL::SetOnNavigate([](const std::string& url) { ShowPageFor(url); });
+WASMURL::PushUrl("/the-plan/");          // on a click; does not call the callback
+```
+
+`WASMTime` exposes `performance.now()` and performance marks.
 
 ## Serving an application
 

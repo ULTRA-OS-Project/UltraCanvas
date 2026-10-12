@@ -1568,11 +1568,17 @@ Store, and any other UltraCanvas-based application that needs local or
 networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
-**Implementation status (this branch):** Concept / design only. Public
-surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
-rollout is SQLite core + registry + query/transaction/migration API
-(Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
-remaining drivers and at-rest encryption (Stage 3).
+**Implementation status (this branch):** Stage 1 implemented, and the
+PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
+parameterized queries, prepared statements, transactions and versioned
+migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
+`Tests/UltraDatabase`); the PostgreSQL driver
+(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
+found, verifies TLS by default and reads its password from UltraVault, and
+UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
+networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
+queries, pooling, streaming cursors and at-rest encryption. Details in
+`Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
 
@@ -67167,7 +67173,7 @@ FILE: Docs/UltraCanvas/UltraCanvasWebAssembly.md
 
 # UltraCanvas on WebAssembly
 
-<!-- doc-check: std::vector<uint8_t> documentBytes; -->
+<!-- doc-check: std::vector<uint8_t> documentBytes; void ShowPageFor(const std::string& url); -->
 
 **Status: experimental.** The framework builds with Emscripten and runs in
 Chromium: windows render through the same Cairo/Pango pipeline as the desktop
@@ -67299,9 +67305,20 @@ WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::
 
 `WASMBrowser` also wraps `alert` / `confirm` / `prompt`, the console,
 `navigator.userAgent`, the screen size and `localStorage`. `WASMURL` reads the
-page URL, its query parameters (`GetQueryParameter`, `GetAllQueryParameters`)
-and hash, and can navigate or reload. `WASMTime` exposes `performance.now()`
-and performance marks.
+page URL, its path, its query parameters (`GetQueryParameter`,
+`GetAllQueryParameters`) and hash, and can navigate or reload. An application
+that shows several pages from one module uses its History API instead of
+navigating: `PushUrl` changes the address bar and adds an entry the back
+button returns to, `ReplaceUrl` rewrites the current entry, and
+`SetOnNavigate` hears the back and forward buttons (every `popstate`, a hash
+change included) with the new URL, on the main thread:
+
+```cpp
+WASMURL::SetOnNavigate([](const std::string& url) { ShowPageFor(url); });
+WASMURL::PushUrl("/the-plan/");          // on a click; does not call the callback
+```
+
+`WASMTime` exposes `performance.now()` and performance marks.
 
 ## Serving an application
 

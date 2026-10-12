@@ -1389,11 +1389,17 @@ Store, and any other UltraCanvas-based application that needs local or
 networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
-**Implementation status (this branch):** Concept / design only. Public
-surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
-rollout is SQLite core + registry + query/transaction/migration API
-(Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
-remaining drivers and at-rest encryption (Stage 3).
+**Implementation status (this branch):** Stage 1 implemented, and the
+PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
+parameterized queries, prepared statements, transactions and versioned
+migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
+`Tests/UltraDatabase`); the PostgreSQL driver
+(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
+found, verifies TLS by default and reads its password from UltraVault, and
+UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
+networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
+queries, pooling, streaming cursors and at-rest encryption. Details in
+`Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
 
