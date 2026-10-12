@@ -1105,7 +1105,9 @@ that writing it showed:
   start falls back to frames instead of a playhead at the end). The draft
   is rendered at the project's shape and the player places its picture as
   the frame surface does (`VideoPlayerStyle::videoFit` and `videoInset`,
-  player element 0.1.5), so nothing moves when it takes over.
+  player element 0.1.5), so nothing moves when it takes over. The sound was
+  measured through a PulseAudio null sink: present for the whole play,
+  the clip's sound joining at its cut, half the level at half volume.
 - **Drag from the bin** (§6.2): the framework has no drag source API, and
   the album's own drag is a reorder; `UltraCanvasAlbum` 1.9.0 gained
   `onItemDraggedOut`, which fires once when a tile crosses the album's

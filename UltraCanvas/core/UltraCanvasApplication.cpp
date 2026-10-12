@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.10.0 - a key delivered to a window a modal blocks goes to the modal, not dropped
 // Version: 1.9.0 - Initialize installs the theme change handler: every window re-styles, the tooltips too
 // Version: 1.8.0 - when the system fonts arrive after the start, or a font file is
 //                  registered, every window is drawn again, not only laid out:
@@ -1158,7 +1159,7 @@ namespace UltraCanvas {
         return GetCurrentModalWindow() != nullptr;
     }
 
-    bool UltraCanvasApplicationBase::HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow* targetWindow) {
+    bool UltraCanvasApplicationBase::HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow*& targetWindow) {
         auto* modalWindow = GetCurrentModalWindow();
         if (!modalWindow) return false;
 
@@ -1180,11 +1181,21 @@ namespace UltraCanvas {
             case UCEventType::MouseWheel:
             case UCEventType::MouseEnter:
             case UCEventType::MouseLeave:
+                if (targetWindow != modalWindow) return true;
+                break;
             case UCEventType::KeyDown:
             case UCEventType::KeyUp:
             case UCEventType::TextInput:
             case UCEventType::TextComposition:
-                if (targetWindow != modalWindow) return true;
+                // A key the system delivered to a blocked window (focus follows
+                // the pointer, or no window manager gave the dialog the focus)
+                // goes to the modal: Escape and Return reach the dialog, typing
+                // reaches its field, instead of being dropped.
+                if (targetWindow != modalWindow) {
+                    auto* modalAsWindow = dynamic_cast<UltraCanvasWindow*>(modalWindow);
+                    if (!modalAsWindow) return true;
+                    targetWindow = modalAsWindow;
+                }
                 break;
             case UCEventType::WindowFocus:
                 if (targetWindow && targetWindow != modalWindow) {

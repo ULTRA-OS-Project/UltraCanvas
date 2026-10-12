@@ -31,7 +31,10 @@
   with the message, where before the playhead jumped to the end; and the
   framework's GStreamer backend no longer insists on a PulseAudio sink
   where no PulseAudio server answers, so the picture plays at pace, silent,
-  on such a desktop.
+  on such a desktop. The sound itself was then measured through a
+  PulseAudio null sink: it starts and stops with playback, the music's
+  fade and the clip's own sound arrive where the timeline has them, and
+  the volume slider at half halves the level.
 - **The draft in the frame's place.** The draft is rendered at the
   project's shape, 360 lines high: with only a height given the engine took
   the width from the first segment, and a 4:3 photo first made a 4:3 draft

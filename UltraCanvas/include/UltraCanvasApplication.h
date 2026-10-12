@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.8.0 - keys aimed at a blocked window go to the modal
 // Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
 // Last Modified: 2026-08-03
@@ -260,7 +261,9 @@ namespace UltraCanvas {
         void UnregisterWindow(UltraCanvasWindowBase* window);
 
         // Modal window management
-        bool HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow* targetWindow);
+        // True when the event is swallowed; a key aimed at a blocked window is
+        // redirected to the modal (targetWindow changed) and not swallowed
+        bool HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow*& targetWindow);
         bool HasActiveModalWindow();
         UltraCanvasWindowBase* GetCurrentModalWindow();
         void RegisterModalWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
