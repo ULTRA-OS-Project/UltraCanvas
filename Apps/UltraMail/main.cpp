@@ -3,7 +3,7 @@
 // the local store under the user data directory, shows the main window (start
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop. One UltraMail per user: a second start brings the running one
-// forward and quits (UltraMailSingleInstance.h).
+// forward and quits (UltraCanvasSingleInstance.h).
 // Version: 0.7.0 - one UltraMail per user: a second start brings the first
 //                  one's window forward instead of opening another copy
 // Version: 0.6.2 - WinMain: Windows Release builds have no console window
@@ -16,14 +16,13 @@
 #include "ui/UltraMailApp.h"
 #include "ui/UltraMailSettingsDialog.h"
 #include "ui/UltraMailAlerts.h"
-#include "ui/UltraMailSingleInstance.h"
 
 #include "UltraMailTrace.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
-#include "UltraCanvasModalDialog.h"   // UltraCanvasDialogManager
 #include "UltraCanvasPathUtf8.h"   // GetEnvUtf8
+#include "UltraCanvasSingleInstance.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -76,9 +75,12 @@ int main() {
 
     // One UltraMail per user, decided before anything else is opened: a
     // second copy would sync, store and send the same accounts twice.
-    UltraMail::SingleInstance instance;
-    const UltraMail::SingleInstance::Start start = instance.Claim(UserDataDir());
-    if (start == UltraMail::SingleInstance::Start::HandedOff) {
+    // The lock sits in the data folder: one UltraMail per mailbox.
+    using UltraCanvas::UltraCanvasSingleInstance;
+    UltraCanvasSingleInstance instance("org.ultraos.ultramail", "UltraMail");
+    const UltraCanvasSingleInstance::Start start =
+        instance.Claim(UltraCanvas::JSONValue::MakeObject(), UserDataDir());
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) {
         Trace::Line("UltraMail is already running: brought its window forward; this start ends");
         return EXIT_SUCCESS;
     }
@@ -121,19 +123,11 @@ int main() {
     app.SetDefaultWindowIcon(
         UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/UltraMail.png"));
 
-    if (start == UltraMail::SingleInstance::Start::AlreadyRunning) {
+    if (start == UltraCanvasSingleInstance::Start::AlreadyRunning) {
         // The other copy holds the lock but did not answer (busy, or a build
         // without the message bus). Say so rather than vanish without a word.
-        UltraCanvas::AlertOptions opts;
-        opts.severity = UltraCanvas::AlertSeverity::Info;
-        opts.title    = "UltraMail";
-        opts.message  = "UltraMail is already running.";
-        opts.details  = "Only one UltraMail can work on the mailbox at a time. "
-                        "Switch to the window that is already open.";
-        opts.onResult = [&app](UltraCanvas::DialogResult) { app.Exit(); };
-        UltraCanvas::UltraCanvasAlert::Show(opts);
-        app.Run();
-        return EXIT_SUCCESS;
+        Trace::Line("UltraMail is already running but did not answer; saying so");
+        return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraMail");
     }
 
     UltraMail::UltraMailApp mail;
@@ -168,16 +162,9 @@ int main() {
     window->Show();
     step.reset();
     // A later start asks this window to come forward.
-    UltraCanvas::UltraCanvasWindow* shown = window.get();
-    instance.Listen([shown]() {
-        if (shown->IsMinimized()) shown->Restore();
-        // An open dialog keeps what is typed in it: it is what comes forward.
-        const auto dialogs = UltraCanvas::UltraCanvasDialogManager::GetActiveDialogs();
-        if (!dialogs.empty()) {
-            dialogs.back()->RaiseAndFocus();
-            return;
-        }
-        shown->RaiseAndFocus();
+    instance.Listen([](const UltraCanvas::JSONValue&) {
+        Trace::Line("Single instance: another start asked for the window; bringing it forward");
+        UltraCanvasSingleInstance::BringToFront();
     });
 
     // From here the event loop runs: the first frame, the first mail check

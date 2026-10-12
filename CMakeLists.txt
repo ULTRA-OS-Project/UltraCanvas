@@ -328,6 +328,7 @@ include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
 include(cmake/UltraCanvasWinManifest.cmake)
 include(cmake/UltraCanvasWindowsGuiApp.cmake)
+include(cmake/UltraCanvasSingleInstance.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
