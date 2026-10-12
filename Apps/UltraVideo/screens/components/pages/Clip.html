@@ -1,0 +1,30 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 1000x330. --><title>Clip — preview</title>
+<style>html,body{margin:0;background:var(--bg-100)} .g{display:grid;grid-template-columns:repeat(4,1fr);gap:12px 16px;padding:12px} .c .uv-lane{height:64px;border-radius:var(--radius-sm)} .c .uv-cap{margin-bottom:4px}</style></head>
+<body class="uv">
+<div class="g" id="g"></div>
+<script>
+  var U = UltraVideo, cells = [
+    ['Video · rest', { name: 'Beach_wide.mp4', dur: 6.5, shots: [0, 5] }],
+    ['Hover · trim handles appear', { name: 'Beach_wide.mp4', dur: 6.5, shots: [0, 5], hover: true }],
+    ['Selected', { name: 'Forest_walk.mp4', dur: 5.5, shots: [1], selected: true }],
+    ['Speed 1.5× and effects', { name: 'Forest_walk.mp4', dur: 3.7, shots: [1], speed: 1.5, fx: ['fx', 'title', 'logo'] }],
+    ['Muted', { name: 'Sunset.mp4', dur: 5.5, shots: [5], muted: true }],
+    ['Locked track', { name: 'Interview_A.mov', dur: 7, shots: [3], locked: true }],
+    ['Still image with motion', { kind: 'image', name: 'IMG_2041.jpg', dur: 4, shots: [2] }],
+    ['Colour card', { kind: 'card', name: 'Warm white', dur: 3, color: '#efe6d6' }]
+  ], h = '';
+  cells.forEach(function (c) { h += '<div class="c"><div class="uv-cap">' + c[0] + '</div><div class="uv-lane">' + U.clip(c[1], 8, 200, 64) + '</div></div>'; });
+  // trimming: left edge active, unused source shown as overflow
+  h += '<div class="c" style="grid-column:span 2"><div class="uv-cap">Trimming the left edge · unused source shown beyond the edge</div><div class="uv-lane">' +
+       '<div class="uv-overflow" style="left:8px;width:110px"><span class="uv-overflow__lbl" style="left:0">+2.8 s</span></div>' +
+       U.clip({ name: 'Interview_A.mov', dur: 7, shots: [3], selected: true, trim: 'l' }, 118, 230, 64) +
+       '<div class="uv-overflow" style="left:349px;width:60px"><span class="uv-overflow__lbl" style="right:0">+1.4 s</span></div>' +
+       '<div class="uv-tip uv-tip--readout" style="position:absolute;left:124px;top:70px">In 00:00:02:20 · −00:00:00:12</div></div></div>';
+  h += '<div class="c" style="grid-column:span 2"><div class="uv-cap">Collapsed track · 24 px, no filmstrip</div><div class="uv-lane" style="height:24px">' +
+       U.clip({ name: 'Beach_wide.mp4', dur: 6.5 }, 8, 180, 24) + U.clip({ name: 'Forest_walk.mp4', dur: 5.5, selected: true }, 189, 150, 24) + U.clip({ kind: 'image', name: 'IMG_2041.jpg', dur: 4 }, 340, 100, 24) + '</div></div>';
+  document.getElementById('g').innerHTML = h;
+</script>
+</body>
+</html>

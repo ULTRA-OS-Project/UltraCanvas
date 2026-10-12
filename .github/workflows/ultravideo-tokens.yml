@@ -1,0 +1,42 @@
+name: UltraVideo tokens
+
+# Apps/UltraVideo/screens/tokens/tokens.json is the design's source of truth;
+# scripts/generate_ultravideo_tokens.py writes Apps/UltraVideo/UltraVideoTokens.h
+# (the tokens as C++) and Apps/UltraVideo/screens/tokens/tokens.css (the live
+# design pages' custom properties) from it. Neither output is edited by hand,
+# so a change to one of the three that leaves the others stale fails here.
+
+# Trigger policy matches ui-reuse.yml: `pull_request` covers feature branches,
+# so listing them under `push` too would run this check twice per commit.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Apps/UltraVideo/screens/tokens/**'
+      - 'Apps/UltraVideo/UltraVideoTokens.h'
+      - 'scripts/generate_ultravideo_tokens.py'
+      - '.github/workflows/ultravideo-tokens.yml'
+  pull_request:
+    # `branches` filters the BASE branch, so stacked pull requests based on
+    # another claude/** branch are covered too - see the note in ui-reuse.yml.
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'Apps/UltraVideo/screens/tokens/**'
+      - 'Apps/UltraVideo/UltraVideoTokens.h'
+      - 'scripts/generate_ultravideo_tokens.py'
+      - '.github/workflows/ultravideo-tokens.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check the generated token files are current
+        run: python3 scripts/generate_ultravideo_tokens.py --check

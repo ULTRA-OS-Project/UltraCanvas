@@ -1,7 +1,7 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.8.0
+// Version: 1.9.0
 // Last Modified: 2026-10-10
 // V1.8.0: A picture saved over shows its new content. The paths a paint drew
 //   go to an UltraCanvasImageFileWatch, whose worker checks the files and
@@ -1488,6 +1488,18 @@ namespace UltraCanvas {
         activePopupMenu->OpenMenu(winPos, *win, settings);
     }
 
+    // A tile dragged past the album's edge: the reorder is over, the app
+    // carries the item on from here
+    void UltraCanvasAlbum::DragOut(const Point2Di& windowPos) {
+        if (!dragging || dragItem < 0 || dragItem >= static_cast<int>(items.size()) || !onItemDraggedOut) return;
+        const size_t index = static_cast<size_t>(dragItem);
+        dragging = false;
+        dragArmed = false;
+        dragItem = -1;
+        RequestRedraw();
+        onItemDraggedOut(index, windowPos);
+    }
+
     void UltraCanvasAlbum::FinishDrag() {
         if (dragItem >= 0 && dragItem < static_cast<int>(items.size())) {
             Point2Di cp = ToContentPoint(dragCurrent);
@@ -1710,6 +1722,7 @@ namespace UltraCanvas {
                 }
                 dragArmed = false;
                 draggingScrollbar = false;
+                DragOut(Point2Di(event.pointerWindow.x, event.pointerWindow.y));
                 return true;
             }
             case UCEventType::MouseWheel: {
@@ -1744,6 +1757,11 @@ namespace UltraCanvas {
                     if (dx * dx + dy * dy >= kDragThreshold * kDragThreshold) {
                         dragging = true;
                     }
+                }
+                if (dragging && onItemDraggedOut &&
+                    !Rect2Di(0, 0, static_cast<int>(GetWidth()), static_cast<int>(GetHeight())).Contains(local)) {
+                    DragOut(Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+                    return true;
                 }
                 int newHover = TileAt(ToContentPoint(local));
                 if (dragging || newHover != hoveredItem) {

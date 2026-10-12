@@ -13,10 +13,13 @@ segments.
 
 > **Status: stages 1 and 2 implemented, plus photos and music.** Probe,
 > frames, the segment timeline with 26 effects, speed, joins, 30 transitions
-> between segments, text and image overlays, still images with smooth pan and
+> between segments, text, image and video overlays (picture-in-picture),
+> still images with smooth pan and
 > zoom ("Ken Burns"), one-call slideshows, background music that dips under
-> speech, project files, GIF and audio-only output, lossless cut, the background job and the
-> `videofx` command-line tool work today, on FFmpeg 4.4 to 8.x.
+> speech, project files, waveforms for timelines and players, a preview
+> that renders any frame of a timeline without an export, GIF and
+> audio-only output, lossless cut, the background job and the `videofx`
+> command-line tool work today, on FFmpeg 4.4 to 8.x.
 > Picture-in-picture, keyframes and several free audio tracks are planned
 > (see *Roadmap*).
 
@@ -80,6 +83,7 @@ Every blocking call returns a `VideoFXResult`; on anything but `Ok`,
 | `VideoFX_ExtractFrame(path, seconds, frame, maxW, maxH)` | The frame shown at that time as RGBA, upright, scaled to fit |
 | `VideoFX_ExtractThumbnails(path, count, frames, maxW, maxH)` | `count` frames spread over the whole video — a filmstrip |
 | `VideoFX_SaveFrameImage(frame, "shot.png")` | The frame as PNG or JPEG |
+| `VideoFX_ExtractWaveform(path, waveform, blocksPerSecond, start, end)` | The sound's loudness envelope, block by block — what a timeline or a player draws as the waveform |
 
 `VideoFXMediaInfo::width` / `height` are the *displayed* size: a phone video
 stored landscape with a 90° rotation flag reports portrait, and frames come
@@ -92,6 +96,30 @@ for (const VideoFXFrame& f : strip) {
     // f.pixels is width*height*4 bytes of RGBA
 }
 ```
+
+**Waveforms.** `VideoFX_ExtractWaveform` mixes a file's sound — a song, or a
+video's soundtrack — to mono and cuts it into blocks of equal length, giving
+the lowest sample, the highest sample and the RMS of each (`VideoFXWaveform`:
+`minValues`, `maxValues`, `rmsValues`, `samplesPerBlock`, `sampleRate`,
+`start`, `duration`). Fifty blocks a second, the default, draws a clip at
+any zoom a timeline shows and holds a whole three-minute song in some 100 KB.
+Its member names match `UltraCanvasWaveformElement`'s `WaveformChannelData`,
+so an UltraCanvas application feeds it straight in:
+
+```cpp
+VideoFXWaveform envelope;
+if (VideoFX_ExtractWaveform("holiday.mp4", envelope) == VideoFXResult::Ok)
+    waveformElement->SetFromAudioFX(envelope);          // the element's field-by-field adapter
+
+VideoFX_ExtractWaveform("song.mp3", envelope, 50.0, 12.0, 20.0);   // seconds 12..20 only
+int block = envelope.BlockAt(15.0);                   // which block holds 15 s; -1 outside
+float peak = envelope.Peak();                         // the loudest sample, 0..1
+```
+
+The file is read from its start, so a range saves memory, not time. A file
+without sound fails with `NoMediaStreams`; a range beginning after the sound
+ends with `InvalidArgument`. `videofx waveform <file> [blocksPerSecond] [start [end]]`
+prints the same, one block a line.
 
 ---
 
@@ -132,6 +160,60 @@ output (see `fitMode`) and picture and sound stay in sync across every join —
 a stream that runs short is padded before the next segment, video by holding
 its last frame, audio with silence. A file without a picture shows black for
 its length in a video export.
+
+---
+
+## Previewing a timeline
+
+An editor's viewer needs the *output* frame at a time of the timeline - the
+segment playing then, trimmed, sped, filtered and fitted to the output size,
+its overlays drawn, and inside a transition's overlap the two segments
+blended by that transition - without exporting anything. `VideoFXPreview`
+does that: `Open` plans the timeline once, as an export does (every file
+probed, the output size and rate decided from the settings), and
+`RenderFrame` then costs one frame - a seek and a decode of the one source
+playing, and the segment's filter chain over that single frame. Music is
+ignored; the preview is picture only.
+
+```cpp
+VideoFXPreview preview;
+if (preview.Open(timeline, VideoFXExportSettings::WebMP4(1080)) != VideoFXResult::Ok)
+    Show(VideoFX_GetLastError());
+
+double duration = preview.GetDuration();          // the transitions' overlaps subtracted
+double into = 0.0;
+int segment = preview.SegmentAt(12.5, &into);     // which segment plays at 12.5 s, and how far into it
+
+VideoFXFrame frame;                               // RGBA, no larger than the viewer
+if (preview.RenderFrame(12.5, frame, viewerWidth, viewerHeight) == VideoFXResult::Ok)
+    viewer->SetImage(frame.pixels, frame.width, frame.height);
+```
+
+A viewer scrubbing keeps one `VideoFXPreview` open and calls `RenderFrame`
+for every position; after an edit it calls `Open` again with the new
+timeline. `GetWidth` / `GetHeight` / `GetFrameRate` are what the export
+would produce. `RenderFrame` fails with `InvalidArgument` past the end or
+before the start. The frame's `timestamp` is the timeline time asked for.
+
+For a single picture - a thumbnail of a project, a poster frame -
+`VideoFX_RenderFrame(segments, seconds, frame, settings, maxW, maxH)` does
+the three steps in one call. `VideoFX_PlanSlideshow(imagePaths, options,
+settings, segments, settingsOut)` gives the segments and settings a
+slideshow would be exported from - one image segment per photo with its
+seconds, motion, framing, regions kept in view, transition and caption, the
+fades at the ends, and the size, rate and music in `settingsOut` - so a
+slideshow can be previewed, or opened on a timeline to be changed, before
+`VideoFX_CreateSlideshow` renders it.
+
+```cpp
+std::vector<VideoFXSegment> show;
+VideoFXExportSettings showSettings;
+VideoFX_PlanSlideshow(photos, options, VideoFXExportSettings::WebMP4(1080), show, showSettings);
+VideoFX_RenderFrame(show, 3.0, frame, showSettings, 320, 180);   // the show at 3 s, viewer sized
+```
+
+`videofx preview <project.vfxproj> <seconds> <out.png|out.jpg> [maxWidth maxHeight]`
+writes the frame of a saved project.
 
 ---
 
@@ -470,12 +552,12 @@ VideoFX_Export({ a, b, c }, "joined.mp4");   // length: a + b + c - 1.5 s
 
 ---
 
-## Overlays: titles and logos
+## Overlays: titles, logos and picture-in-picture
 
-`VideoFXSegment::overlays` draws text and images over a segment, after its
-effects, on the **output** frame — a title sits in the same place whatever
-the source's size. Sizes and margins are fractions of the output height, so
-a layout looks the same at 480p and 4K.
+`VideoFXSegment::overlays` draws text, images and other videos over a
+segment, after its effects, on the **output** frame — a title sits in the
+same place whatever the source's size. Sizes and margins are fractions of
+the output height, so a layout looks the same at 480p and 4K.
 
 ```cpp
 VideoFXSegment clip = VideoFXSegment::FromFile("talk.mp4");
@@ -490,7 +572,11 @@ title.fadeOut = 0.5;
 VideoFXOverlay logo = VideoFXOverlay::Image("logo.png", VideoFXAnchor::TopRight, 0.10);
 logo.opacity = 0.8;
 
-clip.overlays = { title, logo };
+VideoFXOverlay cam = VideoFXOverlay::Video("speaker.mp4", VideoFXAnchor::BottomRight, 0.3, 12.0);
+cam.start = 5.0;                     // shown from 5 s into the segment
+cam.fadeIn = 0.5;                    // playing speaker.mp4 from its 12 s on
+
+clip.overlays = { title, logo, cam };
 ```
 
 | Field | Meaning |
@@ -500,6 +586,7 @@ clip.overlays = { title, logo };
 | `fadeIn`, `fadeOut`, `opacity` | Seconds; 0..1 |
 | **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = the default font (below) |
 | **Image:** `imagePath` or `image`, `imageHeight` | A PNG keeps its transparency; `image` takes RGBA pixels from memory (for example a picture UltraCanvas rendered); `imageHeight` 0 = its own pixel size |
+| **Video:** `videoPath`, `videoStart`, `imageHeight` | Picture-in-picture: the file's picture plays from `videoStart` seconds into it from the overlay's `start` on, at its own speed, upright, without its sound; when the file ends before the overlay does its last frame holds. `imageHeight` sizes it like an image (0 = the file's own pixels). `VideoFXOverlay::Video` makes one from a path, anchor, height and start second. The file is checked when the export is planned, so a missing one fails before anything is written. |
 
 Text is taken literally — `:`, quotes, `%` and backslashes need no escaping.
 
@@ -551,7 +638,10 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `sampleRate`, `channels` | first audio source / stereo | Mono only when every source is mono |
 
 Presets: `WebMP4(height)`, `WebM(height)`, `AnimatedGif(width, fps)`,
-`MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`.
+`MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`, and the draft
+preset `VideoFXExportSettings::Draft` - a 360p MP4 with the fastest H.264
+preset, a low quality and a small AAC, for playing a timeline back with
+sound while it is edited: seconds to render, never the file to deliver.
 
 Which encoders exist depends on the FFmpeg build — ask before offering a
 choice in the UI:
@@ -735,6 +825,8 @@ videofx slideshow trip.mp4 *.jpg --music a.mp3 --music b.mp3 --music-crossfade 4
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --seconds 3
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --beats-per-image 8 --transition cut
 videofx beats song.mp3                                   # tempo and beat times
+videofx waveform song.mp3 10                             # loudness envelope, 10 blocks a second
+videofx preview trip.vfxproj 12.5 shot.png 640 360        # the project's frame at 12.5 s, no export
 videofx slideshow trip.mp4 a.jpg b.jpg --keep 1:0.40,0.10,0.12,0.16 --keep 2:0.7,0.3,0.1,0.14
 videofx slideshow trip.mp4 *.jpg --no-faces                # plain motion, no face finding
 videofx faces family.jpg                                 # the faces the detector finds
@@ -789,9 +881,12 @@ generates its own clips, so it needs no media files.
 | 3c | Beat detection; slideshows changing on the beat | **Done** |
 | 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
-| 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
+| 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
+| 3 | Keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
+| 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
+| 4c | Preview: any frame of a timeline rendered as the export would make it, without an export (`VideoFXPreview`); a slideshow's plan as segments | **Done** |
 | 4 | Proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
-| 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |
+| 5 | A timeline editor element in UltraCanvas on top of the engine (`UltraCanvasVideoTimeline`, in the core) | **Done** |
 
 *VideoFX — part of the UltraCanvas framework.*

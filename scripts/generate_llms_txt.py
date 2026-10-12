@@ -55,7 +55,7 @@ EXCLUDE_PATTERNS = ("Proposal", "Plan", "DesignVariants")
 # data flows from its source, which is exactly what an assistant asked "what
 # does UltraMail send, and to whom?" should find, so they are indexed.
 APP_DOC_DIRS = ("UltraAuthenticator", "UltraPassword", "UltraClipboard", "UltraPaint", "ArtCreator", "DeviceExplorer",
-                "UltraDesktop", "UltraCanvasStart", "UltraMail", "Legal")
+                "UltraDesktop", "UltraCanvasStart", "UltraMail", "UltraVideo", "Legal")
 
 SUMMARY = (
     "UltraCanvas is a modular cross-platform C++20 UI and rendering framework "

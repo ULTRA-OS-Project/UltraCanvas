@@ -1,8 +1,8 @@
 // VideoFX/core/VideoFXUnavailable.cpp
 // Built instead of the FFmpeg sources when FFmpeg is not found: the API links,
 // VideoFX_IsAvailable() says false, and every operation returns NotAvailable.
-// Version: 0.7.0
-// Last Modified: 2026-10-08
+// Version: 0.10.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -82,6 +82,36 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>&, const std
     return Unavailable();
 }
 VideoFXResult VideoFX_DetectBeats(const std::string&, VideoFXBeatInfo&) { return Unavailable(); }
+VideoFXResult VideoFX_ExtractWaveform(const std::string&, VideoFXWaveform&, double, double, double) {
+    return Unavailable();
+}
+
+struct VideoFXPreview::Impl {};
+VideoFXPreview::VideoFXPreview() = default;
+VideoFXPreview::~VideoFXPreview() = default;
+VideoFXResult VideoFXPreview::Open(const std::vector<VideoFXSegment>&, const VideoFXExportSettings&) { return Unavailable(); }
+void VideoFXPreview::Close() {}
+bool VideoFXPreview::IsOpen() const { return false; }
+double VideoFXPreview::GetDuration() const { return 0.0; }
+int VideoFXPreview::GetWidth() const { return 0; }
+int VideoFXPreview::GetHeight() const { return 0; }
+double VideoFXPreview::GetFrameRate() const { return 0.0; }
+int VideoFXPreview::SegmentAt(double, double*) const { return -1; }
+VideoFXResult VideoFXPreview::RenderFrame(double, VideoFXFrame& frame, int, int) {
+    frame = VideoFXFrame{};
+    return Unavailable();
+}
+VideoFXResult VideoFX_RenderFrame(const std::vector<VideoFXSegment>&, double, VideoFXFrame& frame,
+                                  const VideoFXExportSettings&, int, int) {
+    frame = VideoFXFrame{};
+    return Unavailable();
+}
+VideoFXResult VideoFX_PlanSlideshow(const std::vector<std::string>&, const VideoFXSlideshowOptions&,
+                                    const VideoFXExportSettings&, std::vector<VideoFXSegment>& segments,
+                                    VideoFXExportSettings&) {
+    segments.clear();
+    return Unavailable();
+}
 
 // Project files: pure C++, they load and save without FFmpeg; rendering does not
 VideoFXResult VideoFX_SaveProject(const VideoFXProject& project, const std::string& path) {

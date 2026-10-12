@@ -574,6 +574,17 @@ if(BUILD_ULTRACLIPBOARD)
     add_subdirectory(Apps/UltraClipboard)
 endif()
 
+# ===== ULTRAVIDEO =====
+# The video editor on the VideoFX engine and the UltraCanvasVideoTimeline
+# element: media bin, viewer with scrubbing, inspector, timeline, undo,
+# .ultravideo projects, export (Docs/Research/UltraVideoDesignProposal.md).
+option(BUILD_ULTRAVIDEO "Build the UltraVideo application" ON)
+if(BUILD_ULTRAVIDEO)
+    message(STATUS "")
+    message(STATUS "── Building UltraVideo ──")
+    add_subdirectory(Apps/UltraVideo)
+endif()
+
 # ===== DEVICEEXPLORER =====
 # Shows the devices connected to this computer - printers, scanners, cameras -
 # as the IODeviceManager module finds them: a tree grouped by category,
@@ -738,6 +749,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAudioFXExamples.cpp
             Apps/DemoApp/UltraCanvasEBookExamples.cpp
             Apps/DemoApp/UltraCanvasWaveformExamples.cpp
+            Apps/DemoApp/UltraCanvasVideoTimelineExamples.cpp
             Apps/DemoApp/UltraCanvasSpectrogramExamples.cpp
             Apps/DemoApp/UltraCanvasLevelMeterExamples.cpp
             Apps/DemoApp/UltraCanvasAudioAnalysisExamples.cpp
@@ -2153,7 +2165,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraAuthenticator UltraPassword)
+            UltraClipboard UltraAuthenticator UltraPassword UltraVideo)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()
@@ -2177,6 +2189,9 @@ if(BUILD_ULTRAFILER_APP)
 endif()
 if(BUILD_ULTRAVIEWER_APP)
     add_dependencies(UltraViewer copy_assets)
+endif()
+if(TARGET UltraVideo)
+    add_dependencies(UltraVideo copy_assets)
 endif()
 if(BUILD_ULTRAPAINT_APP)
     add_dependencies(UltraPaint copy_assets)

@@ -1804,6 +1804,17 @@ namespace UltraCanvas {
                 .AddVariant("video", "Camera Recording")
                 .AddVariant("video", "Custom Controls");
 
+        videoBuilder.AddItem("videotimeline", "Video Timeline",
+                             "A media timeline to edit: clips on tracks under a ruler, trim, reorder, "
+                             "split, transitions, markers, beats, a playhead; every edit reported, never applied",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateVideoTimelineExamples(); },
+                             "DemoApp/UltraCanvasVideoTimelineExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasVideoTimeline.md")
+                .AddVariant("videotimeline", "Magnetic main track, free lanes")
+                .AddVariant("videotimeline", "Trim, split, transitions")
+                .AddVariant("videotimeline", "Light and dark palettes");
+
         // ===== TEXT DOCUMENTS =====
         auto textDocBuilder = DemoCategoryBuilder(this, DemoCategory::TextDocuments);
 
@@ -2106,10 +2117,14 @@ namespace UltraCanvas {
                                "as single native windows (Wine tier)",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraWin"); });
-        // Built module (VideoFX/, target VideoFX, on FFmpeg) at stage 1 of its
-        // roadmap: probe, frames, trim / speed / effects / joins, export, the
-        // videofx CLI and VideoFXTest. No application calls it yet, and
-        // transitions, overlays and keyframes are still to come - partial.
+        // Built module (VideoFX/, target VideoFX, on FFmpeg) through stage 4b
+        // of its roadmap: probe, frames, waveforms, the segment timeline with
+        // effects, speed, transitions and overlays, photos with pan and zoom
+        // keeping faces in shot, slideshows, music with ducking, beats,
+        // project files, the videofx CLI and VideoFXTest. No application calls
+        // it yet (UltraVideo is proposed), and picture-in-picture, keyframes,
+        // free audio tracks and the timeline element are still to come -
+        // partial. Docs/Modules/VideoFX/README.md, *Roadmap*, is the record.
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });

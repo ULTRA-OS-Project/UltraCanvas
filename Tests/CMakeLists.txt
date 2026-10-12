@@ -1068,6 +1068,73 @@ add_test(NAME PathUtf8Test COMMAND PathUtf8Test
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: PathUtf8Test")
 
+# ===== VIDEO TIMELINE MODEL TEST =====
+# The model behind UltraCanvasVideoTimeline (UltraCanvasVideoTimelineModel.h):
+# derived starts on a magnetic track, splitting, trimming, moving, deleting,
+# duplicating, the ruler's steps, timecode and snapping. The model has no
+# framework dependency, so the test compiles its source directly and links
+# nothing; it runs without a display.
+message(STATUS "  Building VideoTimelineModelTest...")
+add_executable(VideoTimelineModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/VideoTimelineModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasVideoTimelineModel.cpp
+)
+target_include_directories(VideoTimelineModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(VideoTimelineModelTest PRIVATE cxx_std_20)
+set_target_properties(VideoTimelineModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME VideoTimelineModelTest COMMAND VideoTimelineModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: VideoTimelineModelTest")
+
+# ===== VIDEO TIMELINE ELEMENT TEST =====
+# UltraCanvasVideoTimeline in a real window: geometry, hit testing and the
+# edits that mouse and key events turn into reported changes (trim with
+# ripple, reorder, free-track move, blade split, marker, delete, drop, the
+# ruler, the wheel). ULTRACANVAS_SCREENSHOT_DIR=<dir> makes it write the
+# window as a PPM. Needs the framework and a display; skips itself without one.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building VideoTimelineElementTest...")
+    add_executable(VideoTimelineElementTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VideoTimelineElementTest.cpp
+    )
+    target_include_directories(VideoTimelineElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VideoTimelineElementTest PRIVATE cxx_std_20)
+    target_link_libraries(VideoTimelineElementTest PRIVATE UltraCanvas)
+    set_target_properties(VideoTimelineElementTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VideoTimelineElementTest COMMAND VideoTimelineElementTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VideoTimelineElementTest")
+else()
+    message(STATUS "  VideoTimelineElementTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TIMECODE FIELD ELEMENT TEST =====
+# UltraCanvasTimecodeField in a real window: typing digits that fill from
+# the right, commit, an invalid entry, Esc, relative entries, stepping a
+# segment, Tab between segments, the maximum, a click on a segment, the
+# readout variant. Needs the framework and a display; skips itself without one.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TimecodeFieldElementTest...")
+    add_executable(TimecodeFieldElementTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TimecodeFieldElementTest.cpp
+    )
+    target_include_directories(TimecodeFieldElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TimecodeFieldElementTest PRIVATE cxx_std_20)
+    target_link_libraries(TimecodeFieldElementTest PRIVATE UltraCanvas)
+    set_target_properties(TimecodeFieldElementTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TimecodeFieldElementTest COMMAND TimecodeFieldElementTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TimecodeFieldElementTest")
+else()
+    message(STATUS "  TimecodeFieldElementTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CLIPBOARD DIB TEST =====
 # UltraCanvasClipboardDib: the CF_DIB / CF_DIBV5 <-> PNG conversion the
 # Windows clipboard backend puts every image through. Byte work plus cairo's
@@ -2823,6 +2890,33 @@ if(TARGET VideoFX)
     add_test(NAME VideoFXTest COMMAND VideoFXTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: VideoFXTest")
+endif()
+
+# ===== ULTRAVIDEO DOCUMENT TEST =====
+# UltraVideo's document, mapping and history without a display: media the
+# engine probes, the timeline model derived from the document, every reported
+# change written back, undo, and the .ultravideo round trip. Skips itself
+# without the FFmpeg engine.
+if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
+    message(STATUS "  Building UltraVideoDocumentTest...")
+    add_executable(UltraVideoDocumentTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraVideoDocumentTest.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoDocument.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoMapping.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoHistory.cpp
+    )
+    target_include_directories(UltraVideoDocumentTest PRIVATE
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo
+        ${ULTRACANVAS_INCLUDE_DIR}
+    )
+    target_link_libraries(UltraVideoDocumentTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_compile_features(UltraVideoDocumentTest PRIVATE cxx_std_20)
+    set_target_properties(UltraVideoDocumentTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraVideoDocumentTest COMMAND UltraVideoDocumentTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraVideoDocumentTest")
 endif()
 
 # ===== VIRTUALFS DELETE TEST =====

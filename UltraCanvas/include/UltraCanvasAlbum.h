@@ -2,7 +2,7 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
-// Version: 1.8.0
+// Version: 1.9.0
 // Last Modified: 2026-10-10
 // V1.7.0: Automatic video poster frames (AlbumConfig::videoPosterFrames, on by
 //   default) — a Video item with no thumbnailPath now has its cover extracted
@@ -402,6 +402,11 @@ namespace UltraCanvas {
         std::function<void(size_t)> onLinkClicked;        // subtitle link row clicked
         std::function<void(size_t)> onItemActivated;      // double-click: open / play
         std::function<void(size_t, size_t)> onItemsReordered;  // (from, to) — edit modes
+        // A tile dragged out of the album (edit modes): the album's own
+        // reorder ends and the app may carry the item elsewhere - a media
+        // bin's file onto a timeline, say - following the pointer from
+        // `windowPos` (window-relative) with the window's mouse events.
+        std::function<void(size_t, const Point2Di& windowPos)> onItemDraggedOut;
         std::function<void(size_t)> onItemRemoved;        // after RemoveItem
         std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 
@@ -653,6 +658,7 @@ namespace UltraCanvas {
         void TriggerAction(int actionIndex, size_t itemIndex);
         void ToggleSelection(size_t itemIndex);
         void FinishDrag();
+        void DragOut(const Point2Di& windowPos);   // hand a dragged tile to onItemDraggedOut
 
         // ===== PICTURES SAVED OVER =====
         // The still images the paint in progress drew (DrawImageInRect) and
