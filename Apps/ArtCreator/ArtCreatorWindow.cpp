@@ -4,7 +4,7 @@
 // and every command.
 // Version: 1.5.0 - icons redrawn on pixel grids, in three sets: the palette's tools at
 //                 28 px (media/icons/artcreator/28) in 36 px buttons, the toolbar and
-//                 panel icons at 24 px (they were drawn at 20 and 22 px and blurred),
+//                 panel icons on a 24 px grid (toolbars draw them at 24 px now),
 //                 and a 16 px set for every menu entry (media/icons/artcreator/16);
 //                 flat palette and toolbar buttons, as UltraPaint's
 // Version: 1.4.0 - flat one-tone icons throughout: the menu set's for the file
@@ -66,7 +66,6 @@ namespace {
     constexpr float kPaletteWidth = 48.0f;
     constexpr float kToolButton = 36.0f;   // a tool's button, square, 4 px around its 28 px icon
     constexpr float kToolIcon = 28.0f;
-    constexpr float kButtonIcon = 24.0f;   // toolbar and panel icons: the 24 px grid they are drawn on
     constexpr float kRightWidth = 300.0f;
     constexpr float kRightInner = 262.0f;
     constexpr float kStatusHeight = 24.0f;
@@ -476,11 +475,8 @@ void ArtCreatorWindow::BuildToolbar() {
     toolbar->AddSeparator("ac-tb-s4");
     toolbar->AddButton("ac-tb-mirror-h", "", IconPath("mirror-h.svg"), [this]() { CmdMirror(true); })->SetTooltip("Mirror horizontally");
     toolbar->AddButton("ac-tb-mirror-v", "", IconPath("mirror-v.svg"), [this]() { CmdMirror(false); })->SetTooltip("Mirror vertically");
-    // The toolbar would draw its icons at 20 px; these are drawn on a 24 px
-    // grid and are sharp only at that size.
     for (auto& c : toolbar->Children()) {
         if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
-            b->SetIconSize(kButtonIcon, kButtonIcon);
             ButtonStyle flat = b->GetStyle();
             flat.cornerRadius = 6.0f;
             flat.pressedColor = Color(0, 0, 0, 30);
@@ -653,9 +649,6 @@ void ArtCreatorWindow::BuildRightPanel() {
     buttons->AddButton("ac-l-del", "", IconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); })->SetTooltip("Delete layer");
     buttons->AddButton("ac-l-up", "", IconPath("layer-up.svg"), [this]() { CmdLayerMove(1); })->SetTooltip("Move up");
     buttons->AddButton("ac-l-down", "", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); })->SetTooltip("Move down");
-    for (auto& c : buttons->Children()) {
-        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) b->SetIconSize(kButtonIcon, kButtonIcon);
-    }
     layersPanel->AddChild(buttons);
 
     layerRows = std::make_shared<UltraCanvasContainer>("ac-layer-rows", 0, 0, 0, 0);

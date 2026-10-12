@@ -13,7 +13,9 @@
     Line, Rectangle, Ellipse, Text, Fill, Zoom and Push are UltraPaint's
     drawings;
   - the 60 toolbar and panel icons at 24 px (`media/icons/artcreator/`), shown
-    at 24 px now: the toolbar drew them at 20;
+    at 24 px now: every toolbar drew its icons at 20 (framework changelog:
+    `toolbar-icon-size`), and so does the DemoApp's vector example, which uses
+    this set;
   - a 16 px set for every menu entry (`media/icons/artcreator/16/`), 72 icons
     in one style. It replaces the mix of the shared menu set and the 24 px
     icons shrunk to 16, and adds icons where entries had none: the line widths

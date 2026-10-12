@@ -4,7 +4,7 @@
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.6.1
+**Version:** 1.6.2
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -221,6 +221,25 @@ enum class ToolbarIconSize {
     Huge,       // 64x64
     Custom      // user-defined
 };
+```
+
+Every button the toolbar adds draws its icon at this size, and
+`SetAppearance()` applies it again to the buttons already there:
+`ToolbarAppearance::IconPixelSize()` gives the pixels (Custom is
+`customIconWidth` x `customIconHeight`). Pick the size the icon set is drawn
+for. A line icon is drawn on the pixel grid of one size, and at any other
+size its lines fall between two pixels and blur: the shared 24 px sets
+(`media/icons/menu/`, `media/icons/artcreator/`) want `Medium`, a 16 px set
+`Small`. A button that needs another size sets it with `SetIconSize()` after
+it is added, and again after a later `SetAppearance()`.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasToolbar>("tools", 0, 0, 0, 38);
+ToolbarAppearance look = bar->GetAppearance();
+look.iconSize = ToolbarIconSize::Small;   // a set drawn on a 16 px grid
+bar->SetAppearance(look);
+auto play = bar->AddButton("play", "", "media/icons/ultravideo/play.svg", [] {});
+Size2Di drawn = play->GetIconSize();      // 16 x 16
 ```
 
 ## ToolbarAppearance Structure

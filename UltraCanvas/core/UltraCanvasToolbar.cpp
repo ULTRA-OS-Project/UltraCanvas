@@ -1,10 +1,12 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.6.2 - buttons draw their icons at the size ToolbarAppearance::iconSize
+//                  names (IconPixelSize), not at 20 px whatever it said
 // Version: 1.6.1 - a movable bar is dragged by its own surface only, in window
 //                  coordinates, with the mouse captured, and stays where it
 //                  is dropped (its CSS position moves, not just its bounds)
 // Version: 1.6.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbar.h"
@@ -520,7 +522,12 @@ namespace UltraCanvas {
             style.disabledColor = Colors::Transparent;
         }
         button->SetStyle(style);
-        button->SetIconSize(20, 20);
+        // The size the appearance asks for. Every button used to get 20 px
+        // whatever was set, and the line icons drawn on a 24 px grid (most of
+        // media/icons) were scaled to 5/6 and blurred; a 16 px set was blown
+        // up to 20 and blurred the other way.
+        const Size2Di icon = toolbarAppearance.IconPixelSize();
+        button->SetIconSize(icon.width, icon.height);
     }
 
     void UltraCanvasToolbar::ApplyAppearanceToChildren() {

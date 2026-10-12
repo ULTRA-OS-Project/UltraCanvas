@@ -2,8 +2,8 @@
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.0.5  
-**Last Modified:** 2026-10-11  
+**Version:** 1.0.6  
+**Last Modified:** 2026-10-12  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -152,6 +152,8 @@ void SetPadding(float all);                                      // inherited fr
 void SetPadding(float vertical, float horizontal);
 void SetPadding(float top, float right, float bottom, float left);
 void SetIconSpacing(int spacing);
+void SetIconSize(int width, int height);   // the size the icon is drawn at
+Size2Di GetIconSize() const;
 void SetCornerRadius(float radius);
 
 // Shadow configuration
@@ -461,6 +463,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.6 | 2026-10-12 | `SetIconSize()` / `GetIconSize()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
 | 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |
 | 1.0.3 | 2026-10-07 | Match the header: real `ButtonStyle` fields and `ButtonBuilder` methods, `ElementState`/`GetPrimaryState()` instead of a `ButtonState` enum, layout sizing instead of auto-resize, `SetDisabled()`, `SetPadding()` overloads |

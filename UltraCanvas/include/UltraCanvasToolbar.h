@@ -15,8 +15,9 @@
 // scrolls them with the mouse wheel instead of clipping them, and a chevron
 // at the edge the items continue past says so and scrolls a page when
 // clicked (SetScrollHints).
+// Version: 1.8.0 - ToolbarAppearance::IconPixelSize(); buttons use it
 // Version: 1.7.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -142,6 +143,22 @@ namespace UltraCanvas {
         ToolbarIconSize iconSize = ToolbarIconSize::Medium;
         int customIconWidth = 24;
         int customIconHeight = 24;
+
+        // The pixel size the buttons' icons are drawn at: Small 16, Medium 24,
+        // Large 32, ExtraLarge 48, Huge 64, Custom customIconWidth x
+        // customIconHeight. A line icon is drawn on the pixel grid of one size
+        // and is sharp only at it, so this is the size the icon set was drawn for.
+        Size2Di IconPixelSize() const {
+            switch (iconSize) {
+                case ToolbarIconSize::Small:      return Size2Di(16, 16);
+                case ToolbarIconSize::Large:      return Size2Di(32, 32);
+                case ToolbarIconSize::ExtraLarge: return Size2Di(48, 48);
+                case ToolbarIconSize::Huge:       return Size2Di(64, 64);
+                case ToolbarIconSize::Custom:     return Size2Di(customIconWidth, customIconHeight);
+                case ToolbarIconSize::Medium:
+                default:                          return Size2Di(24, 24);
+            }
+        }
         bool showIconLabels = true;
         bool centerIcons = false;
 

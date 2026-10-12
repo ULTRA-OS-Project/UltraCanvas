@@ -1,3 +1,15 @@
+#### 2026-10-12 *0.2.15*
+- **Sharp toolbar and layer-panel icons.** Fit to Window, Actual Pixels, New
+  Layer and Export in the toolbar, and the seven buttons above the layer list,
+  were still the old 24-unit drawings with 1.8-unit strokes, shown at 20 px:
+  every line blurred, Actual Pixels read "100", and New Layer, Delete Layer
+  and Merge Down were a plus, a bin and an arrow with nothing of a layer about
+  them. They are redrawn like the tools, with 2 px strokes on whole pixels:
+  the layer buttons show a layer with a plus, a minus, an arrow up or down, a
+  copy, a merge or its settings, Actual Pixels reads "1:1", and the toolbars
+  draw them at the 24 px they are drawn for (framework changelog:
+  `toolbar-icon-size`).
+
 #### 2026-10-11 *0.2.14*
 - **Sharp, clearer tool icons.** The palette's icons were drawn on a 24-unit
   grid with thin 1.8-unit strokes and shown at 22 px, half a pixel off: every

@@ -1,8 +1,9 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.7.1 - GetIconSize()
 // Version: 2.7.0 - onDoubleClick
 // Version: 2.6.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -233,6 +234,7 @@ namespace UltraCanvas {
         void SetIcon(std::shared_ptr<UCImage> image);
         void SetIconPosition(ButtonIconPosition position);
         void SetIconSize(int width, int height);
+        Size2Di GetIconSize() const { return Size2Di(iconWidth, iconHeight); }
         void SetUseIconAsMask(bool useAsMask);
         void SetIconMaskColor(const Color& c);
         bool HasIcon() const { return icon != nullptr; }
