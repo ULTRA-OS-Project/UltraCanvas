@@ -12,6 +12,8 @@
 // links that open in the browser (the pages' prose), a console (command
 // output and generated files), a key/value row, a link label and a status
 // badge for the key/value cards (step 1, step 4).
+// Version: 0.3.1 - the console is dark again: a text area paints the element's
+//                  background, not its style's (MakeConsole, MakeMarkdownView)
 // Version: 0.3.0 - MakeIndicatorSwitch (the Tools step's rows); scrollbars half
 //                  as wide (kScrollbarWidth) and fully rounded
 // Version: 0.2.0 - StyleSegmented, MakeSegmented (the platform and assistant pickers)
@@ -399,9 +401,11 @@ MakeMarkdownView(const std::string& id, float height) {
     view->SetShowLineNumbers(false);
     view->SetHighlightCurrentLine(false);
     view->SetFontSize(kSizeProse);
+    // The text area paints the element's background (UltraCanvasUIElement),
+    // not style.backgroundColor, which nothing reads.
+    view->SetBackgroundColor(kCardBackground);
     auto& style = view->GetStyle();
     style.borderColor     = UltraCanvas::Colors::Transparent;
-    style.backgroundColor = kCardBackground;
     style.fontColor       = kTextPrimary;
     style.textPadding     = 4.0f;
     style.scrollbarWidth  = kScrollbarWidth;
@@ -439,9 +443,9 @@ MakeConsole(const std::string& id, float height, bool dark = true) {
     view->SetHighlightCurrentLine(false);
     view->SetFontFamily("monospace");
     view->SetFontSize(kSizeBody);
+    view->SetBackgroundColor(dark ? kConsoleBack : kSidebar);   // the element's, see MakeMarkdownView
     auto& style = view->GetStyle();
     style.borderColor     = dark ? UltraCanvas::Colors::Transparent : kCardBorder;
-    style.backgroundColor = dark ? kConsoleBack : kSidebar;
     style.fontColor       = dark ? kConsoleText : kTextPrimary;
     style.textPadding     = 6.0f;
     style.scrollbarWidth  = kScrollbarWidth;
