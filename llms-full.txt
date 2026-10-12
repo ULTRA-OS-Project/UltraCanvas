@@ -80898,6 +80898,15 @@ Two goals drive every design decision in this document:
 
 ### 2.1 The start page and the Toolbox
 
+> **Shipped:** the start page, as drawn below (`UltraMailStartPage`,
+> 0.1.0). The **Toolbox was never built**: as soon as the first account
+> exists the window goes straight to the main window of section 3, whose
+> account bar (3.0) is one summary strip for a single account and a row of
+> tiles for several, with *Add account* as a button beside *New email*,
+> *Reload email* and *Contacts*. There is no home button and no *Start on*
+> setting; the app always opens on the mail window, on the account it last
+> showed. The Toolbox paragraphs below are the original design.
+
 **On first use — no account configured yet — UltraMail shows nothing but
 a start page: the logo, the app title and one "Add email account"
 button.** No status bar, no tiles, no hint text; the button is the only
@@ -80994,6 +81003,13 @@ The page is also the fallback when the autoconfig lookup finds nothing,
 and Reload opens it for an account without known servers.)*
 
 ### 2.3 What the user never has to do
+
+> **Shipped as designed.** The wizard asks for a name, an address and a
+> password (or nothing, for a browser sign-in); the username defaults to the
+> address, the folder roles come from IMAP SPECIAL-USE with a name-based
+> fallback (`FolderRole` in `UltraMailTypes.h`), and the sign-in is checked
+> as part of the flow (`LoginCheck`, 0.9.1). The one place a user sees ports
+> and TLS modes is the manual-settings page of 2.2, the expert fallback.
 
 No port numbers, no "SSL vs STARTTLS" choice, no separate username
 field (defaults to the address), no folder mapping (Sent/Drafts/Trash
