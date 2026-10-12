@@ -55,6 +55,13 @@ namespace UltraCanvas {
         // FileDialogConfig::saveSettingsButton). Turn it off when the file is
         // written by a writer that does not read them.
         bool saveSettingsButton = true;
+        // Save: the size of the picture being saved, in pixels (0: not a
+        // picture, or not said). With it, the settings of a bitmap type offer
+        // to write it at another size, and the size chosen comes back through
+        // the SaveFileDialog that reports a FileSaveImageSize
+        // (FileDialogConfig::imageWidth / imageHeight).
+        int imageWidth = 0;
+        int imageHeight = 0;
         UltraCanvasWindowBase* parentWindow = nullptr;
 
         FileDialogOptions() = default;
@@ -77,6 +84,7 @@ namespace UltraCanvas {
         FileDialogOptions& SetDefaultExtension(const std::string& e) { defaultExtension = e; return *this; }
         FileDialogOptions& SetRegisterAsRecent(bool v)  { registerAsRecent = v; return *this; }
         FileDialogOptions& SetSaveSettingsButton(bool v) { saveSettingsButton = v; return *this; }
+        FileDialogOptions& SetImageSize(int w, int h)   { imageWidth = w; imageHeight = h; return *this; }
         FileDialogOptions& SetParentWindow(UltraCanvasWindowBase* p) { parentWindow = p; return *this; }
     };
 
@@ -138,6 +146,14 @@ namespace UltraCanvas {
 
         static void SaveFileDialog(const FileDialogOptions& opts,
                                    std::function<void(DialogResult, const std::string&)> onResult);
+        // The same, for a picture: `size` is the pixel size chosen for this
+        // save in the Settings of a bitmap type (the Size row, offered when
+        // opts carries the picture's size - SetImageSize), IsOriginal() when
+        // none was chosen, the type is not a bitmap format, or the dialog was
+        // the platform's. Write it with GetImageExportOptions(path, size, ...).
+        static void SaveFileDialog(const FileDialogOptions& opts,
+                                   std::function<void(DialogResult, const std::string&,
+                                                      const FileSaveImageSize& size)> onResult);
 
         static void SelectFolderDialog(const FileDialogOptions& opts,
                                        std::function<void(DialogResult, const std::string&)> onResult);
@@ -255,6 +271,18 @@ namespace UltraCanvas {
         static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
                                            UltraCanvasWindowBase* parent = nullptr,
                                            std::function<void(DialogResult)> onClosed = nullptr);
+        // The same for a picture of `pictureWidth` x `pictureHeight` pixels:
+        // a bitmap format's dialog starts with a Size row (width x height,
+        // Keep proportions), opened on `size` (IsOriginal: the picture's own),
+        // so it is offered even for a bitmap format without settings. The
+        // size is not stored with the settings: `onClosed` hands it back, as
+        // IsOriginal() when it is the picture's own.
+        static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
+                                           int pictureWidth, int pictureHeight,
+                                           const FileSaveImageSize& size,
+                                           UltraCanvasWindowBase* parent,
+                                           std::function<void(DialogResult,
+                                                              const FileSaveImageSize&)> onClosed);
 
         // The image writer's options (UCImageRaster::Save, ExportVImage) for
         // `path`: its format from the extension, and that format's save
@@ -262,6 +290,10 @@ namespace UltraCanvas {
         // extension; `out` is then untouched. UCRasterDocument::SaveToFile
         // uses this when the user has stored settings for the format.
         static bool GetImageExportOptions(const std::string& path,
+                                          UCImageSave::ImageExportOptions& out);
+        // ... written at `size` (targetWidth / targetHeight) unless it is the
+        // picture's own.
+        static bool GetImageExportOptions(const std::string& path, const FileSaveImageSize& size,
                                           UCImageSave::ImageExportOptions& out);
     };
 

@@ -3,7 +3,7 @@
 // (SaveSettings.conf) and the image writer's options made from them. See
 // UltraCanvasFileSaveSettings.h. The dialog that edits them is in
 // UltraCanvasFileSaveSettingsDialog.cpp.
-// Version: 1.0.0
+// Version: 1.1.0 - bitmap formats, and the image writer's options at a chosen size
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -315,6 +315,16 @@ namespace UltraCanvas {
             formats.push_back({"SGI", {"sgi"}, {
                 Spec::Toggle("rle", "RLE compression", false, "Run-length encoding, lossless.")}});
 
+            // Written without options, but still pictures: their settings
+            // dialog is the Size row alone.
+            formats.push_back({"BMP", {"bmp"}, {}});
+            formats.push_back({"Windows icon", {"ico"}, {}});
+            formats.push_back({"QOI", {"qoi"}, {}});
+            formats.push_back({"Radiance HDR", {"hdr"}, {}});
+            formats.push_back({"FITS", {"fits", "fit"}, {}});
+            formats.push_back({"Farbfeld", {"ff"}, {}});
+
+            for (FileSaveFormat& format : formats) format.bitmap = true;
             return formats;
         }
 
@@ -485,6 +495,7 @@ namespace UltraCanvas {
     void UltraCanvasFileLoader::RegisterSaveFormat(const FileSaveFormat& format) {
         FileSaveFormat clean;
         clean.name = format.name;
+        clean.bitmap = format.bitmap;
         for (const std::string& ext : format.extensions) {
             std::string e = ToLower(ext);
             if (!e.empty() && e.front() == '.') e.erase(0, 1);
@@ -604,6 +615,22 @@ namespace UltraCanvas {
         StoredValues stored = LoadStore();
         if (!stored.erase(format.Key())) return true;
         return SaveStore(stored);
+    }
+
+    bool UltraCanvasFileLoader::GetImageExportOptions(const std::string& path,
+                                                      const FileSaveImageSize& size,
+                                                      UCImageSave::ImageExportOptions& out) {
+        UCImageSave::ImageExportOptions opts;
+        if (!GetImageExportOptions(path, opts)) return false;
+        if (!size.IsOriginal()) {
+            // Both sides as chosen: the proportions were kept (or not) when
+            // they were entered.
+            opts.targetWidth = size.width;
+            opts.targetHeight = size.height;
+            opts.maintainAspectRatio = false;
+        }
+        out = opts;
+        return true;
     }
 
     bool UltraCanvasFileLoader::GetImageExportOptions(const std::string& path,

@@ -1,3 +1,13 @@
+#### 2026-10-12 *0.2.16*
+- **Save As can write the picture at another size.** The Save dialog is told
+  the picture's size, so the Settings button beside the file name - new in
+  the framework's Save dialog - opens a bitmap type's settings with a Size
+  row first: width x height in pixels, opened on the picture's own size, with
+  Keep proportions. The file is written at the size chosen there; the open
+  picture keeps its own size, and the next Save As starts on it again. The
+  rest of the type's settings (JPEG quality, PNG compression ...) are the
+  framework's per-format save settings, which a plain Save already follows
+  (framework, pending changelog entry "save-dialog-file-icon-and-settings").
 #### 2026-10-12 *0.2.15*
 - **A magnifying glass for the rectangle selection.** While the Rectangle
   Select tool is active a small view sits in a corner of the canvas and shows

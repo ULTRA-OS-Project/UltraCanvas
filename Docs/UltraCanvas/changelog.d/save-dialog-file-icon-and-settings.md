@@ -38,6 +38,23 @@
   `UCRasterDocument::SaveToFile` without options writes with the user's
   settings once any are stored for the format (until then, the writer's own
   defaults as before), so UltraPaint's Save follows the button with no change
-  of its own. `FileDialogTest` covers the store, the button, a drop on the
-  listing and on the tree, Escape, and a JPEG written at two stored
-  qualities.
+  of its own.
+- **The picture's size in a bitmap type's Settings, for one save.** A caller
+  that tells the Save dialog how big the picture is
+  (`FileDialogOptions::SetImageSize` / `FileDialogConfig::imageWidth`,
+  `imageHeight`) gets a Size row at the top of a bitmap type's Settings:
+  width x height in pixels (`UltraCanvasSpinner`s), opened on the picture's
+  size, and Keep proportions, which makes one side follow the other. Every
+  pixel format offers it - `FileSaveFormat::bitmap`, set for the built-in
+  image formats, BMP, ICO, QOI, HDR, FITS and Farbfeld included, which have no
+  settings of their own and so get a dialog with the size alone. The size is
+  not stored with the settings: it comes back with that save as a
+  `FileSaveImageSize`, through a new `SaveFileDialog` overload whose callback
+  takes it, `UltraCanvasFileDialog::GetSaveImageSize()`, and the
+  `ShowSaveSettingsDialog` overload that takes the picture's size.
+  `GetImageExportOptions(path, size, options)` turns it into the image
+  writer's target size. UltraPaint's Save As uses it. `FileDialogTest` covers
+  the store, the button, a drop on the listing and on the tree, Escape, a
+  JPEG written at two stored qualities, the Size row (both sides following,
+  Defaults, free sides, a type that is not a bitmap, BMP), the size coming
+  back through the loader and a picture written at the size chosen.

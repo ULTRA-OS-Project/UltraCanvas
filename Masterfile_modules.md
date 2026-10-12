@@ -1231,7 +1231,10 @@ application in `SaveSettings.conf` in the same folder.
 `ResetSaveSettings` / `RegisterSaveFormat` / `ShowSaveSettingsDialog` /
 `GetImageExportOptions` are the surface; the framework Save dialog's Settings
 button edits them, its file icon (`UltraCanvasFileDragIcon`) is dropped on a
-folder to save there, and `UCRasterDocument::SaveToFile` reads them.
+folder to save there, and `UCRasterDocument::SaveToFile` reads them. A
+picture's size for one save (`FileSaveImageSize`, offered when the caller
+passes `FileDialogOptions::SetImageSize`) comes back through the
+`SaveFileDialog` overload that reports it, never stored.
 
 ### **4. Plug-ins for File Types**
 

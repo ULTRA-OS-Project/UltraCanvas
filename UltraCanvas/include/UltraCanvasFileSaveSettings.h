@@ -22,7 +22,13 @@
 // the user has set. A format with no line there has never been set and its
 // writer runs as it always did.
 //
-// Version: 1.0.0
+// A bitmap format (FileSaveFormat::bitmap) can also be written at another
+// pixel size (FileSaveImageSize). That is not one of its settings: it belongs
+// to the picture being saved, is chosen for one save - the settings dialog
+// shows it when the Save dialog was told the picture's size - and comes back
+// with that save, never remembered for the next one.
+//
+// Version: 1.1.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
@@ -79,6 +85,10 @@ namespace UltraCanvas {
         // are stored under it, whichever of the extensions a file has.
         std::vector<std::string> extensions;   // {"jpg", "jpeg", "jpe"}
         std::vector<FileSaveSettingSpec> settings;
+        // A pixel format: a picture saved in it can be written at another
+        // size (FileSaveImageSize). True for the built-in image formats,
+        // including the ones without settings (BMP, ICO, QOI ...).
+        bool bitmap = false;
 
         const std::string& Key() const;
         const FileSaveSettingSpec* FindSetting(const std::string& key) const;
@@ -101,6 +111,19 @@ namespace UltraCanvas {
         void SetInt(const std::string& key, int value) { values[key] = std::to_string(value); }
 
         bool operator==(const FileSaveSettings&) const = default;
+    };
+
+    // The pixel size a bitmap is written at, chosen for one save. 0 x 0 - or
+    // either side 0 - is the picture's own size (IsOriginal). keepProportions
+    // is how the size was entered (one side follows the other); width and
+    // height are the result either way.
+    struct FileSaveImageSize {
+        int width = 0;
+        int height = 0;
+        bool keepProportions = true;
+
+        bool IsOriginal() const { return width <= 0 || height <= 0; }
+        bool operator==(const FileSaveImageSize&) const = default;
     };
 
 } // namespace UltraCanvas

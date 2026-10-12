@@ -33,10 +33,15 @@
 // greyed out for a type that has none, and stored on OK where every
 // application's writer reads them - UCRasterDocument::SaveToFile among them.
 //
+// The picture's size, when the caller gives it, makes a bitmap type's Settings
+// start with a Size row: width x height, Keep proportions. The size is for
+// that save only and comes back with it (GetSaveImageSize, and the
+// SaveFileDialog that reports a FileSaveImageSize), never stored.
+//
 // The naming rule and the settings store are checked on their own and always
 // run; the dialog itself is read back from the composited pixels, so that
 // part runs under Xvfb and skips - rather than fails - without a display.
-// Version: 1.5.0
+// Version: 1.6.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -55,6 +60,7 @@
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSettingsFolder.h"
 #include "UltraCanvasSlider.h"
+#include "UltraCanvasSpinner.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 
@@ -431,6 +437,20 @@ int main() {
              options.format == UCImageSaveFormat::BMP);
         TEST("A type the image writer does not write has no options",
              !UltraCanvasFileLoader::GetImageExportOptions("notes.txt", options));
+        {
+            FileSaveFormat bmp;
+            TEST("BMP is a bitmap format with no settings",
+                 UltraCanvasFileLoader::FindSaveFormat("x.bmp", bmp) && bmp.bitmap && bmp.settings.empty());
+            FileSaveImageSize half;
+            half.width = 300;
+            half.height = 200;
+            TEST("A chosen size is the writer's target size",
+                 UltraCanvasFileLoader::GetImageExportOptions("x.png", half, options) &&
+                 options.targetWidth == 300 && options.targetHeight == 200 && !options.maintainAspectRatio);
+            TEST("... and the picture's own size is none",
+                 UltraCanvasFileLoader::GetImageExportOptions("x.png", FileSaveImageSize(), options) &&
+                 options.targetWidth == 0 && options.targetHeight == 0);
+        }
 
         // A plugin's own format.
         FileSaveFormat custom;
@@ -479,6 +499,19 @@ int main() {
             const uintmax_t high = sizeAt(100);
             TEST("SaveToFile writes with the stored settings", low > 0 && high > low);
             UltraCanvasFileLoader::ResetSaveSettings("jpg");
+
+            // At a chosen size: 64 x 64 written as 32 x 16.
+            FileSaveImageSize smaller;
+            smaller.width = 32;
+            smaller.height = 16;
+            UCImageSave::ImageExportOptions sized;
+            const std::string file = PathToUtf8(store / "smaller.png");
+            std::string error;
+            UCRasterDocument reopened;
+            TEST("A picture is written at the size chosen for it",
+                 UltraCanvasFileLoader::GetImageExportOptions(file, smaller, sized) &&
+                 doc.SaveToFile(file, error, &sized) && reopened.LoadFromFile(file, error) &&
+                 reopened.GetWidth() == 32 && reopened.GetHeight() == 16);
         }
 #endif
         fs::remove_all(store, ec);
@@ -829,6 +862,112 @@ int main() {
             }
             UltraCanvasFileLoader::ResetSaveSettings("jpg");
             run.dialog->CloseDialog(DialogResult::Cancel);
+
+            // The picture's size given: a Size row first, for this save only.
+            auto openSettings = [&](SaveRun& r) -> std::shared_ptr<UltraCanvasModalDialog> {
+                auto* button = dynamic_cast<UltraCanvasButton*>(r.dialog->FindChildById("FileDialogSaveSettings"));
+                const size_t count = UltraCanvasDialogManager::GetActiveDialogs().size();
+                if (!button || button->IsDisabled() || !button->onClick) return nullptr;
+                button->onClick();
+                const auto now = UltraCanvasDialogManager::GetActiveDialogs();
+                return now.size() > count ? now.back() : nullptr;
+            };
+            run = ShowSave(folder, "picture.png", 0, "", [](FileDialogConfig& c) {
+                c.imageWidth = 640;
+                c.imageHeight = 480;
+            });
+            TEST("Nothing chosen, the size is the picture's own", run.dialog->GetSaveImageSize().IsOriginal());
+            top = openSettings(run);
+            auto* sizeW = top ? dynamic_cast<UltraCanvasSpinner*>(top->FindChildById("SaveSizeWidth")) : nullptr;
+            auto* sizeH = top ? dynamic_cast<UltraCanvasSpinner*>(top->FindChildById("SaveSizeHeight")) : nullptr;
+            auto* keep = top ? dynamic_cast<UltraCanvasCheckbox*>(top->FindChildById("SaveSizeKeepProportions"))
+                             : nullptr;
+            TEST("With the picture's size, a bitmap's settings have a Size row", sizeW && sizeH && keep);
+            if (sizeW && sizeH && keep) {
+                TEST("... opened on the picture's size, proportions kept",
+                     sizeW->GetIntValue() == 640 && sizeH->GetIntValue() == 480 && keep->IsChecked());
+                sizeW->SetValue(320);
+                TEST("... and the height follows the width", sizeH->GetIntValue() == 240);
+                sizeH->SetValue(120);
+                TEST("... and the width the height", sizeW->GetIntValue() == 160);
+                if (auto* defaults = dynamic_cast<UltraCanvasButton*>(top->FindChildById("SaveSettingsDefaults"))) {
+                    if (defaults->onClick) defaults->onClick();
+                }
+                TEST("Defaults puts the picture's size back", sizeW->GetIntValue() == 640 &&
+                                                              sizeH->GetIntValue() == 480);
+                keep->SetChecked(false);
+                sizeW->SetValue(100);
+                sizeH->SetValue(50);
+                TEST("Without Keep proportions the sides are free",
+                     sizeW->GetIntValue() == 100 && sizeH->GetIntValue() == 50);
+                if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+                    for (int frame = 0; frame < 3; ++frame) top->UpdateAndRender();
+                    WritePpm(top.get(), static_cast<int>(top->GetWidth()), static_cast<int>(top->GetHeight()),
+                             std::string(shotDir) + "/save-settings-size.ppm");
+                }
+                top->ActivateButton(DialogButton::OK);
+                const FileSaveImageSize picked = run.dialog->GetSaveImageSize();
+                TEST("OK makes it this save's size", picked.width == 100 && picked.height == 50 &&
+                                                     !picked.keepProportions);
+                TEST("... without storing it as a setting", !UltraCanvasFileLoader::HasStoredSaveSettings("png") ||
+                     UltraCanvasFileLoader::GetSaveSettings("png").values.count("width") == 0);
+                TypeName(run, "notes.txt");
+                if (auto* types = dynamic_cast<UltraCanvasDropdown*>(run.dialog->FindChildById("FileDialogType")))
+                    types->SetSelectedIndex(3);   // All files: a text file is no picture
+                TEST("A type that is not a bitmap is saved at no size",
+                     run.dialog->GetSaveImageSize().IsOriginal());
+                TypeName(run, "picture.bmp");
+                TEST("BMP has no settings but its size: the button can be used",
+                     !dynamic_cast<UltraCanvasButton*>(run.dialog->FindChildById("FileDialogSaveSettings"))->IsDisabled());
+                TEST("... and the size chosen holds for it", run.dialog->GetSaveImageSize().width == 100);
+            }
+            run.dialog->CloseDialog(DialogResult::Cancel);
+
+            // Without the picture's size: no Size row, and BMP has nothing.
+            run = ShowSave(folder, "picture.png");
+            top = openSettings(run);
+            TEST("Without the picture's size there is no Size row",
+                 top && top->FindChildById("SaveSizeWidth") == nullptr);
+            if (top) top->CloseDialog(DialogResult::Cancel);
+            if (auto* types = dynamic_cast<UltraCanvasDropdown*>(run.dialog->FindChildById("FileDialogType")))
+                types->SetSelectedIndex(3);
+            TypeName(run, "picture.bmp");
+            TEST("... and a bitmap without settings has none to show",
+                 dynamic_cast<UltraCanvasButton*>(run.dialog->FindChildById("FileDialogSaveSettings"))->IsDisabled());
+            run.dialog->CloseDialog(DialogResult::Cancel);
+
+            // Through UltraCanvasFileLoader: the size comes back with the save.
+            {
+                auto saved = std::make_shared<std::string>();
+                auto savedSize = std::make_shared<FileSaveImageSize>();
+                FileDialogOptions opts;
+                opts.SetTitle("Loader save").SetInitialDirectory(folder)
+                    .AddFilter("PNG", std::string("png"))
+                    .SetDefaultFileName("scaled.png").SetImageSize(800, 600).SetRegisterAsRecent(false);
+                UltraCanvasFileLoader::SaveFileDialog(opts, [saved, savedSize](DialogResult r, const std::string& path,
+                                                                               const FileSaveImageSize& size) {
+                    if (r != DialogResult::OK) return;
+                    *saved = path;
+                    *savedSize = size;
+                });
+                const auto open = UltraCanvasDialogManager::GetActiveDialogs();
+                auto shown = open.empty() ? nullptr : std::dynamic_pointer_cast<UltraCanvasFileDialog>(open.back());
+                SaveRun loaderRun;
+                loaderRun.dialog = shown;
+                loaderRun.nameField = shown ? dynamic_cast<UltraCanvasTextInput*>(shown->FindChildById("FileDialogName"))
+                                            : nullptr;
+                auto settingsDialog = shown ? openSettings(loaderRun) : nullptr;
+                auto* w = settingsDialog ? dynamic_cast<UltraCanvasSpinner*>(settingsDialog->FindChildById("SaveSizeWidth"))
+                                         : nullptr;
+                TEST("SetImageSize reaches the framework dialog's settings", w != nullptr);
+                if (w) {
+                    w->SetValue(400);
+                    settingsDialog->ActivateButton(DialogButton::OK);
+                }
+                PressEnter(loaderRun, "scaled");
+                TEST("... and the size chosen comes back with the path",
+                     *saved == expect("scaled.png") && savedSize->width == 400 && savedSize->height == 300);
+            }
 
             // A caller whose writer does not read the settings turns it off.
             run = ShowSave(folder, "untitled.png", 0, "",

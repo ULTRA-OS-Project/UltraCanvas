@@ -57,7 +57,8 @@ options say `SetRegisterAsRecent(false)` - by the framework dialog itself
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
 `SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu`,
-`SetDefaultExtension`, `SetSaveSettingsButton` and the parent window.
+`SetDefaultExtension`, `SetSaveSettingsButton`, `SetImageSize` and the parent
+window.
 
 ### Building it yourself
 
@@ -93,6 +94,7 @@ A config starts without filters: the dialog then lists every file under an
 | `validateNames` | Save refuses a name the file system cannot hold, saying why, and stays open (default `true`) - see [Save names](#save-names) |
 | `addToRecent` | Open, Open multiple and Save add what they accept to the system's recent files (default `true`; `UltraCanvasFileLoader` sets it from `SetRegisterAsRecent`) |
 | `saveSettingsButton` | Save: the Settings button after the name, for the chosen type's [save settings](#save-settings) (default `true`; `FileDialogOptions::SetSaveSettingsButton`). Off for a caller whose writer does not read them |
+| `imageWidth`, `imageHeight` | Save: the size of the picture being saved (`FileDialogOptions::SetImageSize`). A bitmap type's Settings then offer [another size](#the-pictures-size) for this save; `GetSaveImageSize()` is the size chosen |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -242,9 +244,11 @@ A press that is released without moving is a click (`onClick`).
 How a file is written is often a choice: JPEG's quality, PNG's compression,
 whether a TIFF is LZW or Deflate. The **Settings** button after the name in a
 Save dialog shows the settings of the type being saved - a checkbox, a slider
-or a list per setting - and stores them on OK. The button is greyed out while
-the type has none ("notes.txt", a name of no type, BMP), and its tooltip
-names the type. The dialog's **Defaults** button puts every setting back to
+or a list per setting - and stores them on OK. For a picture of known size a
+bitmap type's dialog also has the picture's size for this save
+([The picture's size](#the-pictures-size)). The button is greyed out while
+the type has nothing to set ("notes.txt", a name of no type, BMP without a
+picture size), and its tooltip names the type. The dialog's **Defaults** button puts every setting back to
 the format's default; Cancel keeps what was there.
 
 The settings belong to the format, not to the dialog: they are kept per
@@ -261,9 +265,9 @@ the types):
 | `GetSaveSettings(extensionOrPath)` | Every setting's value: the user's where they set it, the default elsewhere |
 | `HasStoredSaveSettings(extensionOrPath)` | The user has set any of them |
 | `SetSaveSettings(settings)` / `ResetSaveSettings(extensionOrPath)` | Store (merged over what was there; a value is clamped or replaced by the default when it is not one the setting can hold, and a key the format lacks is dropped) / forget |
-| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens |
+| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
 | `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
-| `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings |
+| `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings; `GetImageExportOptions(path, size, options)` at a [chosen size](#the-pictures-size) too |
 
 Built in are the bitmap formats the image writer takes options for, each with
 only the settings that writer honours: PNG (compression, colours, interlace,
@@ -304,6 +308,51 @@ not be read back from the file and is left out with a debug message. A caller
 whose writer ignores the settings turns the button off
 (`FileDialogOptions::SetSaveSettingsButton(false)`), so the dialog does not
 offer a choice that changes nothing.
+
+### The picture's size
+
+A bitmap is often wanted at another size than the picture has - a smaller
+copy for the web, an icon. When the caller tells the Save dialog how big the
+picture is (`FileDialogOptions::SetImageSize(width, height)`, or
+`FileDialogConfig::imageWidth` / `imageHeight`), the Settings of a **bitmap
+type** start with a **Size** row: width × height in pixels, opened on the
+picture's own size, and **Keep proportions** under it (on: change one side
+and the other follows the picture's shape; off: both are free). The row is
+there for every pixel format, so BMP, ICO and QOI - which have no settings of
+their own - get a Settings dialog with the size alone. Defaults puts the
+picture's size back with the rest.
+
+The size is **not** a setting of the format: it belongs to this picture, so
+it is not stored and the next Save starts on the next picture's own size. It
+comes back with the save instead:
+
+<!-- doc-check: std::shared_ptr<UCRasterDocument> doc; -->
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Save image as")
+    .AddFilter("PNG", std::string("png"))
+    .AddFilter("JPEG", std::vector<std::string>{ "jpg", "jpeg" })
+    .SetImageSize(doc->GetWidth(), doc->GetHeight())
+    .SetParentWindow(window.get());
+UltraCanvasFileLoader::SaveFileDialog(opts, [doc](DialogResult r, const std::string& path,
+                                                  const FileSaveImageSize& size) {
+    if (r != DialogResult::OK) return;
+    UCImageSave::ImageExportOptions options;   // the format's settings, at that size
+    std::string error;
+    if (!size.IsOriginal() && UltraCanvasFileLoader::GetImageExportOptions(path, size, options))
+        doc->SaveToFile(path, error, &options);
+    else
+        doc->SaveToFile(path, error);           // the stored settings, if any
+});
+```
+
+`FileSaveImageSize` is the picture's own size while `IsOriginal()` - nothing
+chosen, a type that is not a bitmap format, or the platform's save dialog,
+which has no Settings. A dialog built directly reports it with
+`UltraCanvasFileDialog::GetSaveImageSize()`, and
+`ShowSaveSettingsDialog(extensionOrPath, pictureWidth, pictureHeight, size,
+parent, onClosed)` offers the same row anywhere else. UltraPaint's Save As
+passes its picture's size.
 
 ## Filter toggles
 

@@ -169,6 +169,8 @@ namespace UltraCanvas {
         // it here.
         config.addToRecent      = opts.registerAsRecent;
         config.saveSettingsButton = opts.saveSettingsButton;
+        config.imageWidth       = opts.imageWidth;
+        config.imageHeight      = opts.imageHeight;
         // A folder has no file filter; a file dialog takes the caller's (the
         // dialog lists every file when there are none).
         if (type != FileDialogType::SelectFolder) config.filters = opts.filters;
@@ -278,6 +280,15 @@ namespace UltraCanvas {
     void UltraCanvasFileLoader::SaveFileDialog(
             const FileDialogOptions& opts,
             std::function<void(DialogResult, const std::string&)> onResult) {
+        SaveFileDialog(opts, [onResult](DialogResult dr, const std::string& path,
+                                        const FileSaveImageSize&) {
+            if (onResult) onResult(dr, path);
+        });
+    }
+
+    void UltraCanvasFileLoader::SaveFileDialog(
+            const FileDialogOptions& opts,
+            std::function<void(DialogResult, const std::string&, const FileSaveImageSize&)> onResult) {
 
         const bool registerAsRecent = opts.registerAsRecent;
         auto deliver = [registerAsRecent, onResult](DialogResult dr,
@@ -285,16 +296,28 @@ namespace UltraCanvas {
             if (dr == DialogResult::OK && registerAsRecent) {
                 NotifyRecentFile(result);
             }
-            if (onResult) onResult(dr, result);
+            // The platform's dialog has no Settings: the picture's own size.
+            if (onResult) onResult(dr, result, FileSaveImageSize());
         };
 
         if (!UltraCanvasDialogManager::GetUseNativeDialogs()) {
-            ShowFrameworkFileDialog(
-                FileConfigFrom(opts, FileDialogType::Save, "Save File"),
-                opts.parentWindow,
-                [onResult](DialogResult dr, const std::vector<std::string>& paths) {
-                    if (onResult) onResult(dr, paths.empty() ? std::string() : paths.front());
-                });
+            // As ShowFrameworkFileDialog, but the size chosen in the dialog's
+            // Settings is read before the dialog goes.
+            auto dialog = UltraCanvasDialogManager::CreateFileDialog(
+                    FileConfigFrom(opts, FileDialogType::Save, "Save File"));
+            UltraCanvasDialogManager::ShowDialog(
+                dialog,
+                [dialog = dialog.get(), onResult](DialogResult result) {
+                    std::string path;
+                    FileSaveImageSize size;
+                    if (result == DialogResult::OK) {
+                        path = dialog->GetSelectedFilePath();
+                        size = dialog->GetSaveImageSize();
+                    }
+                    if (path.empty()) result = DialogResult::Cancel;
+                    if (onResult) onResult(result, path, size);
+                },
+                opts.parentWindow);
             return;
         }
 

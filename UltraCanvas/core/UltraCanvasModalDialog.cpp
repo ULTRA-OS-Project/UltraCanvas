@@ -2497,11 +2497,16 @@ namespace UltraCanvas {
         const std::string type = (dot == std::string::npos || dot == 0 || dot + 1 >= leaf.size())
                                          ? std::string() : leaf.substr(dot + 1);
         FileSaveFormat format;
-        const bool hasSettings = !type.empty() && UltraCanvasFileLoader::FindSaveFormat(type, format) &&
-                                 !format.settings.empty();
+        const bool known = !type.empty() && UltraCanvasFileLoader::FindSaveFormat(type, format);
+        // A picture of known size in a pixel format can at least be given
+        // another size, settings of its own or not (BMP).
+        const bool offersSize = known && format.bitmap && HasPictureSize();
+        const bool hasSettings = known && (!format.settings.empty() || offersSize);
         saveSettingsButton->SetDisabled(!hasSettings);
         if (hasSettings) {
-            saveSettingsButton->SetTooltip(format.name + " settings: how the file is written");
+            saveSettingsButton->SetTooltip(format.settings.empty()
+                    ? format.name + " settings: the size it is written at"
+                    : format.name + " settings: how the file is written");
         } else if (type.empty()) {
             saveSettingsButton->SetTooltip("Settings: the name has no type to choose settings for");
         } else {
@@ -2511,7 +2516,29 @@ namespace UltraCanvas {
 
     void UltraCanvasFileDialog::ShowSaveTypeSettings() {
         if (fileConfig.dialogType != FileDialogType::Save) return;
-        UltraCanvasFileLoader::ShowSaveSettingsDialog(GetSaveTypeName(), this);
+        std::weak_ptr<UltraCanvasUIElement> weak = weak_from_this();
+        UltraCanvasFileLoader::ShowSaveSettingsDialog(
+                GetSaveTypeName(), fileConfig.imageWidth, fileConfig.imageHeight, saveImageSize, this,
+                [weak, this](DialogResult result, const FileSaveImageSize& size) {
+                    if (weak.expired() || result != DialogResult::OK) return;
+                    saveImageSize = size;
+                });
+    }
+
+    bool UltraCanvasFileDialog::HasPictureSize() const {
+        return fileConfig.imageWidth > 0 && fileConfig.imageHeight > 0;
+    }
+
+    FileSaveImageSize UltraCanvasFileDialog::GetSaveImageSize() const {
+        if (fileConfig.dialogType != FileDialogType::Save || !HasPictureSize() ||
+            saveImageSize.IsOriginal())
+            return FileSaveImageSize();
+        // Only a pixel format is written at a size: the type may have been
+        // switched to another since the size was chosen.
+        FileSaveFormat format;
+        if (!UltraCanvasFileLoader::FindSaveFormat(GetSaveTypeName(), format) || !format.bitmap)
+            return FileSaveImageSize();
+        return saveImageSize;
     }
 
     void UltraCanvasFileDialog::OnFileIconDropped(UltraCanvasUIElement* target,

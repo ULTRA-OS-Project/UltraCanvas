@@ -109,7 +109,11 @@ UltraCanvasFileLoader::GetImageExportOptions("out.webp", options);
 ```
 
 The bitmap formats the image writer takes options for are built in; a plugin
-or an application adds its own with `RegisterSaveFormat`. See *Save settings*
+or an application adds its own with `RegisterSaveFormat`. A caller that passes
+the picture's size (`FileDialogOptions::SetImageSize`) also gets a Size row in
+a bitmap type's settings, for that save only: the size comes back through the
+`SaveFileDialog` overload whose callback takes a `FileSaveImageSize`, and
+`GetImageExportOptions(path, size, options)` writes at it. See *Save settings*
 in [the file dialog's documentation](../../UltraCanvas/UltraCanvasFileDialog.md#save-settings).
 
 ### Transparent Decompression

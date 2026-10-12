@@ -16,6 +16,7 @@
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
 #include <string>
 #include <vector>
 #include <memory>
@@ -385,6 +386,12 @@ namespace UltraCanvas {
         // Dialog); it is greyed out while that type has none. Off for a
         // caller whose writer does not read the settings.
         bool saveSettingsButton = true;
+        // Save: the size of the picture being saved, in pixels (0: not a
+        // picture, or not said). With it, the Settings of a bitmap type start
+        // with a Size row, to write the picture at another size this once;
+        // the size chosen is GetSaveImageSize().
+        int imageWidth = 0;
+        int imageHeight = 0;
 
         FileDialogConfig();
 
@@ -828,6 +835,8 @@ namespace UltraCanvas {
         // after the name (FileDialogConfig::saveSettingsButton).
         std::shared_ptr<UltraCanvasFileDragIcon> fileIcon;
         std::shared_ptr<UltraCanvasButton> saveSettingsButton;
+        // The size chosen in the Settings for this save (GetSaveImageSize).
+        FileSaveImageSize saveImageSize;
         std::shared_ptr<UltraCanvasDropdown> filterDropdown;
         // The filters as toggle buttons, in place of the dropdown, when
         // fileConfig.filterToggles is set; activeFilters holds the ones on.
@@ -899,6 +908,11 @@ namespace UltraCanvas {
         // empty. Its extension is the type the icon in front of the name
         // shows and the Settings button after it edits.
         std::string GetSaveTypeName() const;
+        // Save: the pixel size chosen for this save in the Settings (the Size
+        // row of a bitmap type), or IsOriginal() - none chosen, no picture
+        // size given (FileDialogConfig::imageWidth), or a type that is not a
+        // bitmap format.
+        FileSaveImageSize GetSaveImageSize() const;
 
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
         // Remembers the view and the window size for the next file dialog.
@@ -939,8 +953,11 @@ namespace UltraCanvas {
         // The icon was dropped on `target` at `windowPoint`: a folder of the
         // listing or the tree under it becomes the current folder.
         void OnFileIconDropped(UltraCanvasUIElement* target, const Point2Di& windowPoint);
-        // The Settings button: the save settings of the type being saved.
+        // The Settings button: the save settings of the type being saved,
+        // and the picture's size for this save when the caller gave it.
         void ShowSaveTypeSettings();
+        // The caller said how big the picture being saved is.
+        bool HasPictureSize() const;
 
         // ===== FOLDER TREE =====
         void PopulateFolderTree();
