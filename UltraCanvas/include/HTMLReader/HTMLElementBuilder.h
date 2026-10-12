@@ -6,6 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.15.0 - runBoxes: inline elements' backgrounds and borders drawn by
+//                   the label (LabelTextBox)
 // Version: 1.14.0 - @import: ExpandImports puts imported sheets before the
 //                   importing sheet's rules
 // Version: 1.13.0 - AppendInlineSpace: an inline element's horizontal margin,
@@ -132,6 +134,9 @@ private:
     std::vector<LabelInlineImage> runImages;
     // Where the last room ends in runPlain, and the text's last character
     // before it: white space collapses across room as if it were not there.
+    // Inline elements' backgrounds and borders in the current run, around
+    // byte ranges of runPlain (LabelTextBox).
+    std::vector<LabelTextBox> runBoxes;
     size_t runRoomEnd = std::string::npos;
     char runBeforeRoom = '\n';
     // The tallest line-height of the run's text - CSS makes a line as tall as
@@ -227,9 +232,11 @@ private:
     void AppendInlineSpace(float px, bool glueAfter, std::string& out);
     // Pango markup that turns `runStyle` text into `style` text (bold, size,
     // color, ...); `tag` adds <sub>/<sup>.
+    // withBackground: the element's background as a Pango background (an
+    // inline element in a run gets a LabelTextBox instead).
     static void StyleWrap(const ComputedStyle& style, const ComputedStyle& runStyle,
                           std::string& prefix, std::string& suffix,
-                          const std::string& tag = std::string());
+                          const std::string& tag = std::string(), bool withBackground = true);
 
     // Maps the node's id (and <a name>) to the built element in `anchors`,
     // recursing into `node`'s subtree when deep is true.

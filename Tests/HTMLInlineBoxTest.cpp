@@ -311,19 +311,70 @@ void TestMailButton() {
     Check(inBlock.root != nullptr, "an inline around a block keeps the old path");
 }
 
+// The label holding `text` in a laid-out page, and its rect.
+UltraCanvasLabel* LabelWith(const Laid& laid, const std::string& text, Rect2Df* where = nullptr) {
+    for (const auto& [e, r] : laid.all)
+        if (auto* l = dynamic_cast<UltraCanvasLabel*>(e))
+            if (l->GetText().find(text) != std::string::npos) {
+                if (where) *where = r;
+                return l;
+            }
+    return nullptr;
+}
+
 void TestBorders() {
-    std::printf("an inline element with a border is a box on the line\n");
-    Laid laid = LayOut("<p>Tags: <span id='t' style='border:2px solid #00CC00;padding:0 6px'>html</span>"
+    std::printf("an inline element's border is drawn by the label around its text\n");
+    Laid laid = LayOut("<p>Tags: <span style='border:2px solid #00CC00;padding:0 6px'>html</span>"
                        " and more</p>", 400.f);
     const Rect2Df green = Paint(laid, 400, 120).Around(0x00CC00);
     Check(green.width > 20.f && green.height > 10.f, "its border is drawn");
-    CheckNear(laid.Of("t").width, LineWidth("html") + 16.f, "the box is the text plus padding and border", 2.f);
-    Check(laid.Of("t").y < 30.f, "on the first line, with the text");
+    CheckNear(green.width, LineWidth("html") + 16.f, "around the text, its padding and its border", 2.f);
+    UltraCanvasLabel* label = LabelWith(laid, "Tags");
+    Check(label && label->GetTextBoxes().size() == 1, "one box in the line's label");
 
-    // Deeper in a run (inside <b>) the border takes room but is not drawn.
-    Laid nested = LayOut("<p><b>Tags: <span style='border:2px solid #00CC00'>html</span></b></p>", 400.f);
-    Check(nested.root != nullptr, "a nested bordered element builds");
+    std::printf("nested in another inline element too\n");
+    Laid nested = LayOut("<p><b>Tags: <span style='border:2px solid #00CC00'>html</span> end</b></p>", 400.f);
+    Check(Paint(nested, 400, 120).Around(0x00CC00).width > 20.f, "a nested element's border is drawn");
+
+    std::printf("a long bordered element breaks across lines, sliced\n");
+    Rect2Df where;
+    Laid wrapped = LayOut("<div style='width:160px'>Start <span style='border:2px solid #00CC00;"
+                          "background:#FFEEEE'>one two three four five six seven</span> end</div>", 400.f);
+    UltraCanvasLabel* l = LabelWith(wrapped, "Start", &where);
+    Check(l && l->GetTextBoxes().size() == 1, "one box");
+    if (l && l->GetTextBoxes().size() == 1) {
+        const std::vector<Rect2Df> pieces = l->TextBoxPieces(0);
+        Check(pieces.size() >= 2, "in a piece per line (" + std::to_string(pieces.size()) + ")");
+        if (pieces.size() >= 2) {
+            Check(pieces[1].y > pieces[0].y + 5.f, "the second piece on the next line");
+            CheckNear(pieces[1].x, 0.f, "starting at the line's left edge", 1.f);
+        }
+    }
+    const Painted painted = Paint(wrapped, 400, 160);
+    Check(painted.Around(0x00CC00).height > 30.f, "the border runs over two lines");
+
+    std::printf("a nested element's vertical padding is painted without moving the line\n");
+    Laid tall = LayOut("<p><i>Line <span style='background:#FF0000;padding:6px 4px'>marked</span></i> one</p>", 400.f);
+    Laid flat = LayOut("<p><i>Line <span style='background:#FF0000'>marked</span></i> one</p>", 400.f);
+    UltraCanvasLabel* tl = LabelWith(tall, "Line");
+    Check(tl && tl->GetTextBoxes().size() == 1, "drawn by the label");
+    Rect2Df tallLine, flatLine;
+    LabelWith(tall, "Line", &tallLine);
+    LabelWith(flat, "Line", &flatLine);
+    CheckNear(tallLine.height, flatLine.height, "the line keeps its height");
+    if (tl && tl->GetTextBoxes().size() == 1 && !tl->TextBoxPieces(0).empty())
+        CheckNear(tl->TextBoxPieces(0)[0].height,
+                  flat.Labels().front()->TextBoxPieces(0)[0].height + 12.f,
+                  "the painted box is 12px taller", 1.f);
 }
+
+void TestRadius() {
+    std::printf("a rounded inline background stays inside its piece\n");
+    Laid laid = LayOut("<p>A <span style='background:#FF0000;border-radius:40px'>pill</span> b</p>", 400.f);
+    const Rect2Df red = Paint(laid, 400, 120).Around(0xFF0000);
+    Check(red.width > 10.f && red.height > 5.f, "drawn, radius capped at half its height");
+}
+
 } // namespace
 
 int main() {
@@ -335,6 +386,7 @@ int main() {
     TestBackgrounds();
     TestMailButton();
     TestBorders();
+    TestRadius();
     if (g_failures) {
         std::printf("%d check(s) failed\n", g_failures);
         return 1;

@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.31.0 - an inline element's background and border, at any depth in
+//                   a run, drawn by the label around its text (LabelTextBox),
+//                   across lines; only vertical padding makes it a box
 // Version: 1.30.0 - inline elements' backgrounds: a Pango background over the
 //                   text and its padding; one with a border, or a background
 //                   with vertical padding (the mail button), is a box on the line;
@@ -1581,6 +1584,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     runPlain.clear();
     runLinks.clear();
     runImages.clear();
+    runBoxes.clear();
     runRoomEnd = std::string::npos;
     runLineHeightPx = 0.f;
     runLineHeightSet = false;
@@ -1644,6 +1648,10 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
             link.endByte -= static_cast<int>(begin);
         }
         for (auto& image : runImages) image.byteOffset -= static_cast<int>(begin);
+        for (auto& box : runBoxes) {
+            box.startByte = std::max(0, box.startByte - static_cast<int>(begin));
+            box.endByte -= static_cast<int>(begin);
+        }
     }
     while (!markup.empty() && markup.back() == ' ') {
         markup.pop_back();
@@ -1695,12 +1703,17 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
         label->SetShowLinkTooltips(opts.linkTooltips);
     }
     if (!runImages.empty()) label->SetInlineImages(runImages);
+    for (auto& box : runBoxes) box.endByte = std::min(box.endByte, static_cast<int>(runPlain.size()));
+    runBoxes.erase(std::remove_if(runBoxes.begin(), runBoxes.end(),
+                                  [](const LabelTextBox& b) { return b.endByte <= b.startByte; }),
+                   runBoxes.end());
+    if (!runBoxes.empty()) label->SetTextBoxes(runBoxes);
     return label;
 }
 
 void ElementBuilder::StyleWrap(const ComputedStyle& style, const ComputedStyle& runStyle,
                                std::string& prefix, std::string& suffix,
-                               const std::string& tag) {
+                               const std::string& tag, bool withBackground) {
     auto wrap = [&](const std::string& open, const std::string& close) {
         prefix += open;
         suffix = close + suffix;
@@ -1728,10 +1741,10 @@ void ElementBuilder::StyleWrap(const ComputedStyle& style, const ComputedStyle& 
         wrap("<span foreground=\"" + ColorHex(style.color) + "\">", "</span>");
     }
     // An inline element's own background (it is not inherited: runStyle's
-    // is its block's, painted by the block's box). Behind the text and the
-    // room its padding and border take (AppendInlineMarkup puts that room
-    // inside this span), as tall as the text.
-    if (style.backgroundColor && style.backgroundColor->a > 0) {
+    // is its block's, painted by the block's box), as tall as the text. In
+    // a run AppendInlineMarkup draws it as a LabelTextBox instead; this is
+    // for the text of an inline the builder looked through.
+    if (withBackground && style.backgroundColor && style.backgroundColor->a > 0) {
         wrap("<span background=\"" + ColorHex(*style.backgroundColor) + "\">", "</span>");
     }
 }
@@ -1828,13 +1841,11 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 
     // Span wrappers derived from the difference to the enclosing run style.
     std::string prefix, suffix;
-    StyleWrap(style, runStyle, prefix, suffix, node.tag);
+    StyleWrap(style, runStyle, prefix, suffix, node.tag, /*withBackground=*/false);
 
     // Its margin, border and padding on the left and the right: room before
     // its first letter and after its last (CSS 2 §10.3.1 - an inline box's
-    // vertical ones do not move its line). An element with a border is a
-    // box of its own (NeedsInlineBox) when it is a child of the block; deeper
-    // in a run its border is room only.
+    // vertical ones do not move its line).
     // The margin is outside the element's span; the border and padding
     // inside it, where its background (StyleWrap) paints them, and inside
     // its link: a click on a link's padding follows it, as in a browser.
@@ -1846,12 +1857,36 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
     AppendInlineSpace(marginBefore, /*glueAfter=*/true, out);
     out += prefix;
     const int linkStart = static_cast<int>(runPlain.size());
+    // Its background and border: a box the label draws around its bytes,
+    // the room for its padding and border included. Pushed before the boxes
+    // inside it, so it is drawn under them.
+    const bool paints = style.backgroundColor && style.backgroundColor->a > 0;
+    size_t boxIndex = std::string::npos;
+    if (paints || style.HasBorder()) {
+        LabelTextBox box;
+        box.startByte = linkStart;
+        if (paints) box.background = ToColor(*style.backgroundColor);
+        auto side = [&](const BorderSide& b) {
+            return LabelInlineImageBorder{ b.Width(), ToColor(b.color), BorderDash(b) };
+        };
+        box.borderTop = side(style.borderTop);
+        box.borderRight = side(style.borderRight);
+        box.borderBottom = side(style.borderBottom);
+        box.borderLeft = side(style.borderLeft);
+        box.paddingTop = std::max(0.f, style.paddingTop);
+        box.paddingBottom = std::max(0.f, style.paddingBottom);
+        // In px; the label caps it at half the piece (a percentage is not kept).
+        box.borderRadius = style.borderRadiusPercent > 0.f ? 0.f : std::max(0.f, style.borderRadius);
+        boxIndex = runBoxes.size();
+        runBoxes.push_back(box);
+    }
     AppendInlineSpace(insideBefore, /*glueAfter=*/true, out);
     bool childPre = preserveWhitespace || style.preserveWhitespace;
     for (const auto& child : node.children) {
         AppendInlineMarkup(*child, style, childPre, out);
     }
     AppendInlineSpace(insideAfter, /*glueAfter=*/false, out);
+    if (boxIndex != std::string::npos) runBoxes[boxIndex].endByte = static_cast<int>(runPlain.size());
     out += suffix;
 
     if (style.isLink && !style.href.empty()) {
@@ -2074,15 +2109,16 @@ bool ElementBuilder::NeedsInlineBox(const Node& element) const {
     const ComputedStyle& style = resolver.StyleOf(&element);
     if (element.tag == "img" || element.tag == "image" || element.tag == "svg") return false;
     if (style.display == DisplayMode::Inline) {
-        // A plain inline element with a border, or a background reaching
-        // past its text (vertical padding - the mail "button" <a
-        // style="background:#07f;padding:12px 24px;color:#fff">), is drawn
-        // as a box on the line: a run of text cannot draw either. A
-        // background alone is a Pango background in the run (StyleWrap).
+        // A plain inline element whose background or border reaches past its
+        // text (vertical padding - the mail "button" <a
+        // style="background:#07f;padding:12px 24px;color:#fff">) is a box on
+        // the line, which grows the line to hold it. Any other background or
+        // border is drawn by the label around the element's text
+        // (LabelTextBox), breaking across lines with it.
         if (element.tag == "br" || HasBlockDescendant(element)) return false;
         const bool paints = style.backgroundColor.has_value() && style.backgroundColor->a > 0;
-        return style.HasBorder() ||
-               (paints && (style.paddingTop > 0.f || style.paddingBottom > 0.f));
+        return (paints || style.HasBorder()) &&
+               (style.paddingTop > 0.f || style.paddingBottom > 0.f);
     }
     if (style.display != DisplayMode::InlineBlock) return false;
     if (style.layoutMode != BoxLayoutMode::Flow) return true;   // inline-flex / inline-grid

@@ -31626,15 +31626,16 @@ outside the element's link and the padding inside it, and white space on
 either side of the room collapses to one space. Vertical margins do not move
 the line, as in CSS.
 
-Its background is a Pango background over its text and padding, as tall as
-the text (`<mark>`, inline `code`). An inline element with a border, or with
-a background and vertical padding - the mail button,
-`<a style="background:#07f;padding:12px 24px;color:#fff">Buy</a>` - is a
-box on the line instead, as an `inline-block` is: its padding is painted all
-round, and it grows its line. That holds for a child of the block; deeper in
-a run (`<b><span style="border:...">`) the border is room only, and the
-element does not break across lines. A space between a box and the text
-beside it stays: "Order now: [Buy] today".
+Its background and border are drawn by the label around its text and
+padding (`LabelTextBox`), at any depth in a run (`<b><span
+style="border:...">`): a piece per line when it breaks across lines, the
+left border on the first piece and the right on the last, its vertical
+padding painted above and below the text without moving the lines. An
+inline element that has vertical padding as well as a background or a border
+- the mail button, `<a style="background:#07f;padding:12px 24px;color:#fff">Buy</a>`
+- is a box on the line instead, as an `inline-block` is, when it is a child of
+the block: the line grows to hold its padding, and it does not break. A space
+between a box and the text beside it stays: "Order now: [Buy] today".
 
 **Flex and grid containers** are laid out by the CSSLayout flex and grid
 engines. Their children are items, as in CSS. Each child element is a box of
@@ -34933,6 +34934,40 @@ placed by `text-align`: side by side on one wrapping line while only
 whitespace separates them, a space of their font apart where the HTML has
 whitespace, standing on the line's bottom unless `vertical-align` puts them at
 its top or middle; `display:block` or `<br>` starts a new line.
+
+A placeholder with no `image` is room: it takes the frame's width
+(`frame.marginLeft`) and draws nothing. The HTML reader uses it for an inline
+element's horizontal margin, border and padding.
+
+### Inline boxes
+
+`SetTextBoxes` draws backgrounds and borders around byte ranges of the
+rendered text, behind it: CSS's box of an inline element (`<mark>`, a
+bordered `<span>`). Each `LabelTextBox` is a range `[startByte, endByte)`,
+a `background`, four border sides (`LabelInlineImageBorder`), the
+`paddingTop` / `paddingBottom` it reaches above and below the text, and a
+`borderRadius`.
+
+```cpp
+label->SetText("Some highlighted words here");
+LabelTextBox mark;
+mark.startByte = 5;                  // "highlighted words"
+mark.endByte = 22;
+mark.background = Color(255, 235, 59, 255);
+mark.paddingTop = mark.paddingBottom = 2;
+label->SetTextBoxes({ mark });
+```
+
+- A box is drawn in a piece per line it spans: as tall as its first real
+  character's text, plus its vertical padding and border, which do not
+  move the lines. Its left border is on the first piece and its right on the
+  last (CSS `box-decoration-break: slice`); a radius applies to a box on one
+  line, capped at half its height.
+- Horizontal padding is not added: put room in the text for it (a picture-
+  less `LabelInlineImage`), inside the range, so the sides fall at the
+  room's outer edges.
+- Boxes are drawn in order, so give an enclosing box before the ones inside
+  it. `TextBoxPieces(i)` returns box `i`'s pieces, label-local.
 
 ### Selectable text
 

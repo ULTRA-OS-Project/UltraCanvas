@@ -11,15 +11,20 @@
     element's link and the padding inside it; white space collapses across
     the room; negative margins take none; vertical margins move nothing, as
     in CSS; an empty element with a margin builds no line.
-  - **Background:** a Pango `background` span over the text and its padding
-    (`<mark>`, inline `code`).
-  - **A border, or a background with vertical padding** (the mail button):
+  - **Background and border:** drawn by the label around the element's text
+    and padding, at any depth in a run (`<b><span style="border:...">`). The
+    new `LabelTextBox` (`UltraCanvasLabel::SetTextBoxes`) is a range of the
+    text with a background, four border sides, vertical padding and a
+    radius. It is drawn a piece per line, so a long bordered element breaks
+    across lines like in a browser: the left border on its first piece, the
+    right on its last. Its vertical padding is painted without moving the
+    lines.
+  - **Vertical padding with a background or a border** (the mail button):
     the element is a box on the line, as an `inline-block` is, with its
-    padding painted all round. This holds for a child of the block; deeper
-    in a run the border is room only.
+    padding painted all round and its line grown to hold it.
   - A space between an inline box and the text beside it is kept ("Order
     now: [Buy] today" read "Order now:[Buy]today"). This applies to
     `inline-block` buttons too.
   - `UltraCanvasLabel` leaves word joiners out of copied text.
   - New `HTMLInlineBoxTest`: room, line breaks, links, and painted pixels for
-    backgrounds, the button and borders.
+    backgrounds, the button, borders (nested and across lines) and radii.

@@ -387,15 +387,16 @@ outside the element's link and the padding inside it, and white space on
 either side of the room collapses to one space. Vertical margins do not move
 the line, as in CSS.
 
-Its background is a Pango background over its text and padding, as tall as
-the text (`<mark>`, inline `code`). An inline element with a border, or with
-a background and vertical padding - the mail button,
-`<a style="background:#07f;padding:12px 24px;color:#fff">Buy</a>` - is a
-box on the line instead, as an `inline-block` is: its padding is painted all
-round, and it grows its line. That holds for a child of the block; deeper in
-a run (`<b><span style="border:...">`) the border is room only, and the
-element does not break across lines. A space between a box and the text
-beside it stays: "Order now: [Buy] today".
+Its background and border are drawn by the label around its text and
+padding (`LabelTextBox`), at any depth in a run (`<b><span
+style="border:...">`): a piece per line when it breaks across lines, the
+left border on the first piece and the right on the last, its vertical
+padding painted above and below the text without moving the lines. An
+inline element that has vertical padding as well as a background or a border
+- the mail button, `<a style="background:#07f;padding:12px 24px;color:#fff">Buy</a>`
+- is a box on the line instead, as an `inline-block` is, when it is a child of
+the block: the line grows to hold its padding, and it does not break. A space
+between a box and the text beside it stays: "Order now: [Buy] today".
 
 **Flex and grid containers** are laid out by the CSSLayout flex and grid
 engines. Their children are items, as in CSS. Each child element is a box of

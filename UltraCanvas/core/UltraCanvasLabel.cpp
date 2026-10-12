@@ -14,6 +14,8 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.15.0 - LabelTextBox: an inline element's background and border
+//                  drawn around a byte range, one piece per line
 // Version: 2.14.0 - copied text leaves out word joiners (U+2060), which the
 //                  HTML reader glues room to its text with
 // Version: 2.13.0 - selectable text: a drag, a double-click (word) and a
@@ -252,6 +254,98 @@ namespace UltraCanvas {
             }
         }
         return true;
+    }
+
+    // ===== INLINE BOXES =====
+
+    void UltraCanvasLabel::SetTextBoxes(std::vector<LabelTextBox> boxes) {
+        textBoxes = std::move(boxes);
+        RequestRedraw();
+    }
+
+    std::vector<Rect2Df> UltraCanvasLabel::TextBoxPieces(size_t index) {
+        std::vector<Rect2Df> pieces;
+        if (index >= textBoxes.size()) return pieces;
+        if (!internalLayoutValid || !textLayout) {
+            UpdateInternalLayout(GetRenderContext());
+            if (!internalLayoutValid || !textLayout) return pieces;
+        }
+        const LabelTextBox& box = textBoxes[index];
+        const std::string rendered = textLayout->GetText();
+        const int length = static_cast<int>(rendered.size());
+        const int first = std::max(0, std::min(box.startByte, length));
+        const int last = std::max(0, std::min(box.endByte, length));
+        if (first >= last) return pieces;
+        // A position's x on its line, as RenderSelection takes it.
+        auto xAt = [&](int pos, int lineStart, int lineEnd) -> double {
+            if (pos < lineEnd) return textLayout->IndexToPos(pos).x;
+            if (lineEnd <= lineStart) return textLayout->IndexToPos(lineStart).x;
+            const int lastChar = static_cast<int>(utf8_prev_boundary(rendered, static_cast<size_t>(lineEnd)));
+            const Rect2Di r = textLayout->IndexToPos(lastChar);
+            return r.x + r.width;
+        };
+        // The text's own height on a piece: its first real character's (the
+        // room placeholders and word joiners have none of their own).
+        auto textRect = [&](int a, int b) -> Rect2Di {
+            for (int i = a; i < b; ) {
+                const bool room = rendered.compare(static_cast<size_t>(i), 3, "\xEF\xBF\xBC") == 0 ||
+                                  rendered.compare(static_cast<size_t>(i), 3, "\xE2\x81\xA0") == 0;
+                if (!room) {
+                    const Rect2Di r = textLayout->IndexToPos(i);
+                    if (r.height > 0) return r;
+                }
+                i = static_cast<int>(utf8_next_boundary(rendered, static_cast<size_t>(i)));
+            }
+            return Rect2Di(0, 0, 0, 0);
+        };
+        const float left = static_cast<float>(GetBorderLeftWidth() + GetPaddingLeft());
+        const float top = static_cast<float>(GetBorderTopWidth() + GetPaddingTop() +
+                                             textLayout->GetLayoutVerticalOffset());
+        for (const LayoutLineExtent& line : textLayout->GetLineExtents()) {
+            const int lineStart = line.startByte;
+            const int lineEnd = line.startByte + line.lengthBytes;
+            const int a = std::max(first, lineStart);
+            const int b = std::min(last, lineEnd);
+            if (a >= b) continue;
+            double x1 = xAt(a, lineStart, lineEnd), x2 = xAt(b, lineStart, lineEnd);
+            if (x2 < x1) std::swap(x1, x2);
+            if (x2 - x1 < 0.5) continue;
+            Rect2Di text = textRect(a, b);
+            float y = line.top, h = line.height;
+            if (text.height > 0) { y = static_cast<float>(text.y); h = static_cast<float>(text.height); }
+            y -= box.paddingTop + box.borderTop.width;
+            h += box.paddingTop + box.paddingBottom + box.borderTop.width + box.borderBottom.width;
+            pieces.push_back(Rect2Df(left + static_cast<float>(x1), top + y, static_cast<float>(x2 - x1), h));
+        }
+        return pieces;
+    }
+
+    void UltraCanvasLabel::RenderTextBoxes(IRenderContext* ctx) {
+        for (size_t i = 0; i < textBoxes.size(); ++i) {
+            const LabelTextBox& box = textBoxes[i];
+            const std::vector<Rect2Df> pieces = TextBoxPieces(i);
+            for (size_t k = 0; k < pieces.size(); ++k) {
+                const Rect2Dd r(pieces[k].x, pieces[k].y, pieces[k].width, pieces[k].height);
+                // Sliced: the left side on the first piece, the right on the last.
+                const float leftWidth = k == 0 ? box.borderLeft.width : 0.f;
+                const float rightWidth = k + 1 == pieces.size() ? box.borderRight.width : 0.f;
+                const double rad = pieces.size() == 1
+                    ? std::min<double>(box.borderRadius, std::min(r.width, r.height) / 2.0) : 0.0;
+                const bool border = leftWidth > 0.f || rightWidth > 0.f ||
+                                    box.borderTop.width > 0.f || box.borderBottom.width > 0.f;
+                if (border) {
+                    if (box.background.a > 0) ctx->SetFillPaint(box.background);
+                    ctx->DrawRoundedRectangleWidthBorders(
+                        r, box.background.a > 0,
+                        leftWidth, rightWidth, box.borderTop.width, box.borderBottom.width,
+                        box.borderLeft.color, box.borderRight.color, box.borderTop.color, box.borderBottom.color,
+                        rad, rad, rad, rad,
+                        box.borderLeft.dash, box.borderRight.dash, box.borderTop.dash, box.borderBottom.dash);
+                } else if (box.background.a > 0) {
+                    ctx->DrawFilledRectangle(r, box.background, 0.f, Colors::Transparent, static_cast<float>(rad));
+                }
+            }
+        }
     }
 
     // ===== INLINE IMAGES =====
@@ -881,6 +975,7 @@ namespace UltraCanvas {
             // Element-local content rect: ctx is already translated to element origin
             int contentX = GetBorderLeftWidth() + GetPaddingLeft();
             int contentY = GetBorderTopWidth() + GetPaddingTop();
+            RenderTextBoxes(ctx);
             RenderSelection(ctx, contentX, contentY);
             if (style.hasShadow) {
                 ctx->SetCurrentPaint(style.shadowColor);
