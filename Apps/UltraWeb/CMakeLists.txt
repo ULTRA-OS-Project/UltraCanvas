@@ -7,6 +7,7 @@
 # without wasmtime it reports that it cannot run apps) and UltraNet, which
 # fetches apps from https:// addresses.
 #
+# Version: 0.4.0 - forms (POST through UltraNet in host/UltraWebPages.cpp)
 # Version: 0.3.0 - host/UltraWebPages.cpp: web pages
 # Version: 0.2.0
 # Author: UltraCanvas Framework / ULTRA OS

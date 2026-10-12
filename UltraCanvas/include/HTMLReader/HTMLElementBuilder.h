@@ -6,6 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.16.0 - BuildOptions::interactiveForms / onFormSubmit and
+//                   BuildResult::forms: real form widgets and FormController
 // Version: 1.15.0 - runBoxes: inline elements' backgrounds and borders drawn by
 //                   the label (LabelTextBox)
 // Version: 1.14.0 - @import: ExpandImports puts imported sheets before the
@@ -33,6 +35,7 @@
 #pragma once
 
 #include "HTMLReader/HTMLDocument.h"
+#include "HTMLReader/HTMLForms.h"
 #include "HTMLReader/HTMLParser.h"
 #include "HTMLReader/HTMLStyleResolver.h"
 
@@ -86,6 +89,16 @@ struct BuildOptions {
     // word, and Ctrl+C / Ctrl+A work once the text has been clicked. A text
     // link then opens when the button is released without having dragged.
     bool selectableText = false;
+
+    // Form controls are the framework's real widgets - text inputs and areas,
+    // checkboxes, radio groups, dropdowns, buttons - on the line with their
+    // text, so the reader can fill a form in (caret, selection, clipboard,
+    // focus). Each <form>'s controls are held by a FormController
+    // (BuildResult::forms); a submit button or Enter in a field calls
+    // onFormSubmit with what the form sends. Off (mail): a control is drawn
+    // for display only, its value as text.
+    bool interactiveForms = false;
+    std::function<void(const FormSubmission& submission)> onFormSubmit;
 };
 
 struct BuildResult {
@@ -101,6 +114,12 @@ struct BuildResult {
     // id/name attribute → the native element built for (or containing) it.
     // Viewers use this to scroll to #fragment link targets.
     std::unordered_map<std::string, std::shared_ptr<UltraCanvasUIElement>> anchors;
+
+    // With BuildOptions::interactiveForms: one controller per <form> in
+    // document order (and one for controls outside every form, last, when
+    // there are any). Keep them: they hold the radio groups, and Save /
+    // Restore carry what was typed across a rebuild.
+    std::vector<std::shared_ptr<FormController>> forms;
 };
 
 class ElementBuilder {
@@ -212,6 +231,18 @@ private:
     // Display-only render of a form control (input/textarea/button/select):
     // a styled box showing its value/label. Returns null for hidden inputs.
     std::shared_ptr<UltraCanvasContainer> BuildFormControl(Node& element);
+    // BuildOptions::interactiveForms: the control as a real widget, sized
+    // as a browser sizes it (CSS width / height, else size / cols / rows
+    // and the font), registered with its form's controller. Null for a
+    // hidden input (registered, not shown).
+    std::shared_ptr<UltraCanvasUIElement> BuildFormWidget(Node& element);
+    FormController& FormFor(const Node& control);
+    static bool IsFormControl(const Node& node);
+    bool ContainsFormControl(const Node& node) const;
+    Document* currentDocument = nullptr;
+    std::vector<std::shared_ptr<FormController>> builtForms;
+    std::unordered_map<const Node*, std::shared_ptr<FormController>> formByNode;
+    std::shared_ptr<FormController> formless;
 
     // `css` with the sheets its @import rules name (fetched through
     // opts.resourceLoader, read relative to `sheetHref`) put in front of its

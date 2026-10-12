@@ -496,6 +496,58 @@ view->onExternalLink = [](const std::string& url) { /* the system's mail client 
 view->Navigate("https://example.org/");
 ```
 
+### Forms
+
+With `BuildOptions::interactiveForms` the builder makes a form's controls
+the framework's widgets, so the reader can fill it in: `<input>` text-like
+types and `password` are `UltraCanvasTextInput`s, `<textarea>` an
+`UltraCanvasTextArea`, checkboxes and radios `UltraCanvasCheckbox` /
+`UltraCanvasRadio` (radios with one name in one form are one
+`UltraCanvasRadioGroup`), `<select>` an `UltraCanvasDropdown` (`<optgroup>`s
+flattened), and buttons `UltraCanvasButton`s. They are `inline-block`, as in
+browsers: on the line with their labels, sized by CSS `width` / `height`,
+else by `size`, `cols` / `rows` and the font. A control can be a flex or
+grid item (a search bar). `disabled`, a disabled `<fieldset>`, `readonly`,
+`maxlength`, `placeholder` and `form="id"` are honoured. File, colour and
+range inputs are drawn for display only and not sent.
+
+Each `<form>` gets an `HTML::FormController` (`HTMLReader/HTMLForms.h`) in
+`BuildResult::forms`; keep them, since they hold the radio groups. A submit
+button, or Enter in a text field, calls `BuildOptions::onFormSubmit` with
+an `HTML::FormSubmission`: the form's action, method and enctype, and the
+entry list in tree order, as HTML builds it (named, enabled controls; a
+checkbox or radio only when checked, `on` without a value; the selected
+option's value; only the button that was clicked). `Encoded()`,
+`Multipart(boundary)` and `PlainText()` are its three encodings, and `Body`
+/ `ContentType` pick the one the form asks for. A reset button puts back
+what the page wrote. `Save()` / `Restore()` carry what was typed into a
+rebuilt page.
+
+```cpp
+HTML::BuildOptions opts;
+opts.interactiveForms = true;
+opts.onFormSubmit = [](const HTML::FormSubmission& form) {
+    if (form.method == "get") { /* open form.action + "?" + form.Encoded() */ }
+    else { /* POST form.Body(boundary) as form.ContentType(boundary) */ }
+};
+HTML::ElementBuilder builder;
+HTML::BuildResult r = builder.Build("<form action='/find'><input name='q'> <button>Go</button></form>", opts);
+for (const auto& form : r.forms) {
+    HTML::FormSubmission now = form->Collect();   // what it would send now
+    (void)now;
+}
+```
+
+`UltraCanvasWebView` turns forms on (`SetInteractiveForms(false)` turns them
+off) and sends them itself (`SubmitForm`): GET as a navigation to the
+action with the fields as its query, POST through
+`PageLoader::LoadPost` - the `post` service the host passes in - and back
+from the answer re-asks its address by GET. A rebuild of the page (a new
+width, pictures arriving) keeps what was typed and the focus. Mail keeps
+`interactiveForms` off: its controls are drawn for display only, the value
+as text on a line of its own. Not yet: file uploads; a click on a
+`<label>`'s text does not reach its control.
+
 ## HTML into an editable document
 
 `ImportHTMLToRichDocument(html, options)` and `AppendHTMLToRichDocument`
@@ -574,9 +626,10 @@ blocks new ones.
 | `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML` |
 | `include/HTMLReader/HTMLRichDocumentImporter.h` | `ImportHTMLToRichDocument`, `AppendHTMLToRichDocument`, `HTMLRichImportOptions` |
 | `include/HTMLReader/HTMLPageLoader.h` | `PageLoader`, `PageLoaderServices`, `PageLoaderLimits`, `FetchResult`, `LoadedPage`, `PageKind` |
+| `include/HTMLReader/HTMLForms.h` | `FormSubmission`, `FormController` (forms with real widgets) |
 | `include/UltraCanvasWebView.h` | `UltraCanvasWebView`, the element that shows pages from URLs |
 | `Tests/HTMLReaderTest.cpp` | parser, CSS, matcher and resolver, without the UI library |
-| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, the viewer |
+| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `HTMLInlineBoxTest.cpp`, `HTMLFormsTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, inline boxes, forms, the viewer |
 | `Tests/Fuzz/` | fuzz targets for the parser, the CSS, and the builder with the layout ([README](../../Tests/Fuzz/README.md)) |
 
 ## Fuzzing

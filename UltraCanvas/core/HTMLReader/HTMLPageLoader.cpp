@@ -1,6 +1,7 @@
 // core/HTMLReader/HTMLPageLoader.cpp
 // URL -> decoded, parsed page with its style sheets; subresources on demand.
 // See include/HTMLReader/HTMLPageLoader.h.
+// Version: 1.2.0 - LoadPost: a form's POST
 // Version: 1.1.0 - @import sheets fetched before the page is ready
 // Version: 1.0.0
 // Last Modified: 2026-10-12
@@ -117,14 +118,33 @@ bool PageLoader::IsLoading() const { return current_ != nullptr; }
 size_t PageLoader::PendingResources() const { return pending_; }
 const std::string& PageLoader::BaseUrl() const { return baseUrl_; }
 
+uint64_t PageLoader::LoadPost(const std::string& url, const std::string& contentType,
+                              const std::string& body, std::function<void(LoadedPage)> onReady) {
+    if (!services_.post) {
+        Cancel();
+        LoadedPage page;
+        page.url = url;
+        page.error = "this browser cannot send the form (no way to post)";
+        onReady(std::move(page));
+        return *generation_;
+    }
+    PostRequest request{ contentType, body };
+    return Start(url, std::move(onReady), &request);
+}
+
 uint64_t PageLoader::Load(const std::string& url, std::function<void(LoadedPage)> onReady) {
+    return Start(url, std::move(onReady), nullptr);
+}
+
+uint64_t PageLoader::Start(const std::string& url, std::function<void(LoadedPage)> onReady,
+                           const PostRequest* post) {
     Cancel();
     auto nav = std::make_shared<Navigation>();
     nav->id = *generation_;
     nav->onReady = std::move(onReady);
     nav->page.url = url;
     current_ = nav;
-    if (!services_.fetch) {
+    if (!services_.fetch && !post) {
         LoadedPage page;
         page.url = url;
         page.error = "no way to fetch pages";
@@ -138,13 +158,15 @@ uint64_t PageLoader::Load(const std::string& url, std::function<void(LoadedPage)
     // with the page's address (across a redirect too, as in browsers).
     const size_t hash = url.find('#');
     const std::string fragment = hash == std::string::npos ? std::string() : url.substr(hash);
-    services_.fetch(WithoutFragment(url), [this, alive, id, nav, fragment](FetchResult result) {
+    auto done = [this, alive, id, nav, fragment](FetchResult result) {
         auto gen = alive.lock();
         if (!gen || *gen != id) return;           // left, or the loader is gone
         if (!fragment.empty() && !result.finalUrl.empty() && result.finalUrl.find('#') == std::string::npos)
             result.finalUrl += fragment;
         Finish(nav, std::move(result));
-    });
+    };
+    if (post) services_.post(WithoutFragment(url), post->contentType, post->body, std::move(done));
+    else services_.fetch(WithoutFragment(url), std::move(done));
     return id;
 }
 

@@ -18,6 +18,8 @@
 // Rules for subresources: http(s) pages load http(s) and data: resources, an
 // https page no http ones (mixed content), and only a file: page loads file:
 // resources. Anything else is refused and logged in the page's warnings.
+// Version: 1.2.0 - LoadPost and PageLoaderServices::post: the page a form's POST
+//                  answers with
 // Version: 1.1.0 - @import: the sheets a linked sheet or a <style> imports
 //                  are fetched before the page is ready too (up to 4 deep,
 //                  within maxStyleSheets), and RewriteCssUrls makes their
@@ -56,6 +58,11 @@ struct PageLoaderServices {
     // Fetch `url` (http, https or file); call `done` exactly once, on the
     // loader's thread.
     std::function<void(const std::string& url, std::function<void(FetchResult)> done)> fetch;
+    // POST `body` (with `contentType`) to `url`, for a form; call `done`
+    // exactly once, on the loader's thread. Without it a page's forms can
+    // only send by GET.
+    std::function<void(const std::string& url, const std::string& contentType, const std::string& body,
+                       std::function<void(FetchResult)> done)> post;
     // `reference` read against `base` (RFC 3986); false when it cannot be.
     std::function<bool(const std::string& base, const std::string& reference,
                        std::string& absolute)> resolve;
@@ -106,6 +113,10 @@ public:
     // answer never arrives. `onReady` is called once, with the page or the
     // error. Returns the navigation's number.
     uint64_t Load(const std::string& url, std::function<void(LoadedPage)> onReady);
+    // The page a form's POST answers with: `body` sent as `contentType` to
+    // `url` (PageLoaderServices::post), the answer read as Load reads one.
+    uint64_t LoadPost(const std::string& url, const std::string& contentType, const std::string& body,
+                      std::function<void(LoadedPage)> onReady);
     // Drops the navigation in progress (and the resources it queued).
     void Cancel();
     bool IsLoading() const;
@@ -144,6 +155,11 @@ private:
         std::vector<uint8_t> bytes;
     };
 
+    struct PostRequest {
+        std::string contentType;
+        std::string body;
+    };
+    uint64_t Start(const std::string& url, std::function<void(LoadedPage)> onReady, const PostRequest* post);
     void Finish(const std::shared_ptr<Navigation>& nav, FetchResult result);
     void FetchStyleSheets(const std::shared_ptr<Navigation>& nav);
     // Fetch one sheet for the navigation (`depth` imports below the page),

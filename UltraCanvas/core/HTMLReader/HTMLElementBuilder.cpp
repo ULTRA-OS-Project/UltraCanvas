@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.32.0 - BuildOptions::interactiveForms: real form widgets on the line
+//                   with their text, held by a FormController per <form>
 // Version: 1.31.0 - an inline element's background and border, at any depth in
 //                   a run, drawn by the label around its text (LabelTextBox),
 //                   across lines; only vertical padding makes it a box
@@ -104,6 +106,12 @@
 #include <functional>
 
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasDropdown.h"
+#include "UltraCanvasRadio.h"
+#include "UltraCanvasTextArea.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasTextSelection.h"
 
 #include <algorithm>
@@ -770,6 +778,10 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     anchors.clear();
     elementCount = 0;
     nextId = 0;
+    currentDocument = &document;
+    builtForms.clear();
+    formByNode.clear();
+    formless.reset();
 
     resolver.ClearStyleSheets();
     resolver.SetMediaWidth(opts.viewportWidth > 0.f ? opts.viewportWidth : 800.f);
@@ -817,6 +829,11 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     result.warnings = warnings;
     result.elementCount = elementCount;
     result.anchors = std::move(anchors);
+    result.forms = std::move(builtForms);
+    if (formless) result.forms.push_back(std::move(formless));
+    builtForms.clear();
+    formByNode.clear();
+    currentDocument = nullptr;
     return result;
 }
 
@@ -1048,6 +1065,7 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildItem(Node& element) {
     }
     if (element.tag == "input" || element.tag == "textarea" ||
         element.tag == "button" || element.tag == "select") {
+        if (opts.interactiveForms) return BuildFormWidget(element);   // a search bar's field and button
         return BuildFormControl(element);
     }
     // Any other element is a box (a <span> or <a> item is blockified), as
@@ -1443,6 +1461,19 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         // into children and emits nothing since the value lives in an attribute.
         if (child.tag == "input" || child.tag == "textarea" ||
             child.tag == "button" || child.tag == "select") {
+            // Real widgets sit on the line with their text, as a browser's
+            // inline-block controls do ("Name: [______] [Search]").
+            if (opts.interactiveForms) {
+                if (!IsBlockDisplay(childStyle.display)) {
+                    addBox(child);
+                    return;
+                }
+                flushRun();            // display: block - a line of its own
+                if (auto widget = BuildFormWidget(child)) {
+                    addFlowChild(widget, childStyle.marginTop, childStyle.marginBottom);
+                }
+                return;
+            }
             flushRun();
             if (auto control = BuildFormControl(child)) {
                 addFlowChild(control, childStyle.marginTop, childStyle.marginBottom);
@@ -1511,7 +1542,10 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         // An inline element around a block or a table (<a href><table>,
         // <font><div>): as in a browser, the block breaks the line and the
         // inline's formatting carries on inside it - so look through it.
-        if (HasBlockDescendant(child)) {
+        // Likewise an inline element around a form control (<label>Name
+        // <input></label>) when the controls are widgets: a run of text
+        // cannot hold a widget.
+        if (HasBlockDescendant(child) || (opts.interactiveForms && ContainsFormControl(child))) {
             RegisterAnchors(child, std::static_pointer_cast<UltraCanvasUIElement>(
                                        parent.shared_from_this()));
             for (const auto& grand : child.children) processChild(*grand);
@@ -2092,6 +2126,222 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildFormControl(Node& ele
     return box;
 }
 
+// ============================================================================
+// INTERACTIVE FORMS
+// ============================================================================
+
+bool ElementBuilder::IsFormControl(const Node& node) {
+    return node.IsElement() && (node.tag == "input" || node.tag == "textarea" ||
+                                node.tag == "button" || node.tag == "select");
+}
+
+bool ElementBuilder::ContainsFormControl(const Node& node) const {
+    for (const auto& child : node.children) {
+        if (!child->IsElement()) continue;
+        if (resolver.StyleOf(child.get()).display == DisplayMode::Hidden) continue;
+        if (IsFormControl(*child) || ContainsFormControl(*child)) return true;
+    }
+    return false;
+}
+
+FormController& ElementBuilder::FormFor(const Node& control) {
+    // form="id" names the form; else the nearest <form> around the control.
+    const Node* form = nullptr;
+    const std::string formId = control.GetAttribute("form");
+    if (!formId.empty() && currentDocument && currentDocument->root) {
+        currentDocument->root->ForEachElement([&](Node& n) {
+            if (n.tag == "form" && n.GetAttribute("id") == formId) { form = &n; return false; }
+            return true;
+        });
+    }
+    if (!form && formId.empty())
+        for (const Node* p = control.parent; p; p = p->parent)
+            if (p->IsElement("form")) { form = p; break; }
+    if (!form) {
+        if (!formless) {
+            formless = std::make_shared<FormController>();
+            formless->inForm = false;
+        }
+        return *formless;
+    }
+    auto it = formByNode.find(form);
+    if (it != formByNode.end()) return *it->second;
+    auto controller = std::make_shared<FormController>();
+    controller->inForm = true;
+    controller->action = TrimAscii(form->GetAttribute("action"));
+    std::string method = form->GetAttribute("method");
+    std::transform(method.begin(), method.end(), method.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    controller->method = TrimAscii(method) == "post" ? "post" : "get";
+    std::string enctype = form->GetAttribute("enctype");
+    std::transform(enctype.begin(), enctype.end(), enctype.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    enctype = TrimAscii(enctype);
+    if (enctype == "multipart/form-data" || enctype == "text/plain") controller->enctype = enctype;
+    controller->target = form->GetAttribute("target");
+    controller->onSubmit = opts.onFormSubmit;
+    formByNode.emplace(form, controller);
+    builtForms.push_back(controller);
+    return *controller;
+}
+
+std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildFormWidget(Node& element) {
+    const ComputedStyle& style = resolver.StyleOf(&element);
+    FormController& form = FormFor(element);
+    std::weak_ptr<FormController> formRef;
+    for (const auto& f : builtForms) if (f.get() == &form) formRef = f;
+    if (!form.inForm) formRef = formless;
+    const int index = static_cast<int>(form.controls.size());
+
+    FormController::Control control;
+    control.name = element.GetAttribute("name");
+    control.disabled = element.HasAttribute("disabled");
+    for (const Node* p = element.parent; p && !control.disabled; p = p->parent)
+        if (p->IsElement("fieldset") && p->HasAttribute("disabled")) control.disabled = true;
+
+    // Sizes from the font, as a browser sizes a control with no CSS size.
+    const float fs = style.fontSizePx > 0.f ? style.fontSizePx : 14.f;
+    const float charWidth = fs * 0.55f;
+    const float lineHeight = std::round(fs * 1.25f + 10.f);
+    auto attrInt = [&](const char* name, int fallback, int lo, int hi) {
+        const std::string v = TrimAscii(element.GetAttribute(name));
+        if (v.empty() || !std::isdigit(static_cast<unsigned char>(v[0]))) return fallback;
+        int n = 0;
+        for (char c : v) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) break;
+            n = std::min(hi, n * 10 + (c - '0'));
+        }
+        return std::max(lo, n);
+    };
+    auto size = [&](UltraCanvasUIElement& w, float width, float height) {
+        if (style.widthPercent) w.size.width = CSSLayout::Dimension::Pct(*style.widthPercent);
+        else w.size.width = CSSLayout::Dimension::Px(style.widthPx ? *style.widthPx : std::round(width));
+        w.size.height = CSSLayout::Dimension::Px(style.heightPx ? *style.heightPx : std::round(height));
+        w.box.margin.left = CSSLayout::Dimension::Px(std::max(0.f, style.marginLeft));
+        w.box.margin.right = CSSLayout::Dimension::Px(std::max(0.f, style.marginRight));
+        w.layoutItem.SetFlexGrow(0.f).SetFlexShrink(style.widthPercent ? 1.f : 0.f);
+        if (style.widthPercent) w.layoutItem.SetFlexBasis(CSSLayout::Dimension::Pct(*style.widthPercent));
+    };
+    std::string type = element.GetAttribute("type");
+    std::transform(type.begin(), type.end(), type.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    type = TrimAscii(type);
+
+    std::shared_ptr<UltraCanvasUIElement> widget;
+    auto submitOnEnter = [formRef](const std::string&) {
+        if (auto f = formRef.lock(); f && f->inForm) { f->Submit(-1); return true; }
+        return false;
+    };
+
+    if (element.tag == "textarea") {
+        auto area = std::make_shared<UltraCanvasTextArea>(MakeId("textarea"));
+        std::string text = element.TextContent();
+        if (!text.empty() && text[0] == '\n') text.erase(0, 1);     // the newline after <textarea>
+        area->SetText(text, false);
+        area->SetBorders(1.f, Color(118, 118, 118, 255));   // a browser's field edge
+        control.kind = FormController::Kind::Text;
+        control.initialText = text;
+        size(*area, attrInt("cols", 20, 1, 500) * charWidth + 16.f,
+             attrInt("rows", 2, 1, 200) * fs * 1.3f + 12.f);
+        widget = area;
+    } else if (element.tag == "select") {
+        auto dropdown = std::make_shared<UltraCanvasDropdown>(MakeId("select"));
+        int selected = -1, longest = 4;
+        std::function<void(const Node&)> addOptions = [&](const Node& n) {
+            for (const auto& c : n.children) {
+                if (c->IsElement("optgroup")) { addOptions(*c); continue; }
+                if (!c->IsElement("option")) continue;
+                const std::string text = CollapseWhitespace(TrimAscii(c->TextContent()), "\n");
+                const std::string value = c->HasAttribute("value") ? c->GetAttribute("value") : text;
+                dropdown->AddItem(text.empty() ? std::string(" ") : text, value);
+                control.optionValues.push_back(value);
+                if (c->HasAttribute("selected")) selected = static_cast<int>(control.optionValues.size()) - 1;
+                longest = std::max(longest, static_cast<int>(text.size()));
+            }
+        };
+        addOptions(element);
+        if (selected < 0 && !control.optionValues.empty()) selected = 0;
+        if (selected >= 0) dropdown->SetSelectedIndex(selected, false);
+        control.kind = FormController::Kind::Select;
+        control.initialIndex = selected;
+        size(*dropdown, std::min(longest, 40) * charWidth + 36.f, lineHeight);
+        widget = dropdown;
+    } else if (element.tag == "button" || type == "submit" || type == "reset" ||
+               type == "button" || type == "image") {
+        std::string buttonType = element.tag == "button" ? type : type;
+        if (element.tag == "button" && buttonType != "reset" && buttonType != "button") buttonType = "submit";
+        std::string text = element.tag == "button" ? TrimAscii(element.TextContent())
+                                                    : element.GetAttribute("value");
+        if (text.empty() && element.tag == "input" && type == "image") text = element.GetAttribute("alt");
+        if (text.empty()) text = buttonType == "reset" ? "Reset" : buttonType == "submit" ? "Submit" : " ";
+        control.kind = buttonType == "reset" ? FormController::Kind::Reset
+                     : buttonType == "button" ? FormController::Kind::Button
+                                              : FormController::Kind::Submit;
+        control.value = element.GetAttribute("value");
+        if (element.tag == "button" && !element.HasAttribute("value")) control.value = std::string();
+        auto button = std::make_shared<UltraCanvasButton>(MakeId("button"), text);
+        const FormController::Kind kind = control.kind;
+        button->onClick = [formRef, index, kind]() {
+            auto f = formRef.lock();
+            if (!f) return;
+            if (kind == FormController::Kind::Submit) f->Submit(index);
+            else if (kind == FormController::Kind::Reset) f->Reset();
+        };
+        size(*button, static_cast<float>(std::min<size_t>(text.size(), 60)) * fs * 0.6f + 24.f, lineHeight);
+        widget = button;
+    } else if (type == "checkbox" || type == "radio") {
+        const bool checked = element.HasAttribute("checked");
+        control.kind = type == "radio" ? FormController::Kind::Radio : FormController::Kind::Checkbox;
+        control.value = element.HasAttribute("value") ? element.GetAttribute("value") : "on";
+        control.initialChecked = checked;
+        std::shared_ptr<UltraCanvasLabeledToggleBase> toggle;
+        if (type == "radio") {
+            auto radio = std::make_shared<UltraCanvasRadio>(MakeId("radio"), std::string());
+            // Radios with one name in one form are one group.
+            auto& group = form.radioGroups[control.name.empty() ? MakeId("unnamed") : control.name];
+            if (!group) group = std::make_shared<UltraCanvasRadioGroup>();
+            radio->SetChecked(checked);
+            group->AddRadioButton(radio);
+            toggle = radio;
+        } else {
+            auto box = std::make_shared<UltraCanvasCheckbox>(MakeId("checkbox"), std::string());
+            box->SetChecked(checked);
+            toggle = box;
+        }
+        size(*toggle, 18.f, 18.f);
+        if (style.marginLeft <= 0.f) toggle->box.margin.left = CSSLayout::Dimension::Px(3.f);
+        if (style.marginRight <= 0.f) toggle->box.margin.right = CSSLayout::Dimension::Px(3.f);
+        widget = toggle;
+    } else if (type == "hidden") {
+        control.kind = FormController::Kind::Hidden;
+        control.value = element.GetAttribute("value");
+        form.controls.push_back(std::move(control));
+        return nullptr;
+    } else if (type == "file" || type == "color" || type == "range") {
+        // Shown as the page wrote it, not sent (no file upload yet).
+        control.kind = FormController::Kind::Other;
+        form.controls.push_back(std::move(control));
+        return BuildFormControl(element);
+    } else {
+        auto input = std::make_shared<UltraCanvasTextInput>(MakeId("input"));
+        if (type == "password") input->SetInputType(TextInputType::Password);
+        const std::string value = element.GetAttribute("value");
+        input->SetText(value);
+        input->SetPlaceholder(element.GetAttribute("placeholder"));
+        if (element.HasAttribute("readonly")) input->SetReadOnly(true);
+        if (element.HasAttribute("maxlength")) input->SetMaxLength(attrInt("maxlength", 524288, 0, 524288));
+        input->onEnterPressed = submitOnEnter;
+        control.kind = FormController::Kind::Text;
+        control.initialText = value;
+        size(*input, attrInt("size", 20, 1, 500) * charWidth + 16.f, lineHeight);
+        widget = input;
+    }
+
+    if (control.disabled) widget->SetDisabled(true);
+    control.element = widget;
+    form.controls.push_back(std::move(control));
+    RegisterAnchors(element, widget);
+    return widget;
+}
+
+
 bool ElementBuilder::HasBlockDescendant(const Node& element) const {
     for (const auto& childPtr : element.children) {
         const Node& child = *childPtr;
@@ -2099,6 +2349,8 @@ bool ElementBuilder::HasBlockDescendant(const Node& element) const {
         const ComputedStyle& style = resolver.StyleOf(&child);
         if (style.display == DisplayMode::Hidden) continue;
         if (child.tag == "table" || IsBlockDisplay(style.display)) return true;
+        // A control drawn for display only is a block of its own.
+        if (!opts.interactiveForms && IsFormControl(child)) return true;
         if (style.display == DisplayMode::InlineBlock) continue;   // a box of its own
         if (HasBlockDescendant(child)) return true;
     }
@@ -2130,6 +2382,7 @@ bool ElementBuilder::NeedsInlineBox(const Node& element) const {
 }
 
 std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildInlineBox(Node& element) {
+    if (opts.interactiveForms && IsFormControl(element)) return BuildFormWidget(element);
     const ComputedStyle& style = resolver.StyleOf(&element);
     if (element.tag == "table" || style.display == DisplayMode::Table) {
         return BuildTable(element, /*inlineBox=*/true);
