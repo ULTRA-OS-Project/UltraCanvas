@@ -148,7 +148,19 @@ Cross-Origin-Embedder-Policy: require-corp
 
 `UltraCanvas/OS/WASM/demo/serve.py` is a minimal server that sets both. The
 bundled fonts must be preloaded into the virtual FS at `/share/media/fonts`
-(`--preload-file media/fonts@/share/media/fonts`).
+(`--preload-file media/fonts@/share/media/fonts`), and so must any other
+file the application reads through `GetResourcesDir()` - the front-page demo
+preloads its logo at `/share/media/images/...` the same way.
+
+Two sample applications live in `UltraCanvas/OS/WASM/demo/`: `wasm-demo.cpp`,
+a window with labels and a button, and `ultraos-frontpage.cpp`, the
+https://ultraos.eu front page as a scrolling page of UltraCanvas elements
+(navigation, hero, card rows, a status list, a newsletter form, a footer).
+The second is the pattern for a web-page-like application: one scrollable
+container filling the window, sections stacked by Block layout so wrapped
+text gets its real height, Flex rows for the horizontal pieces, and
+`Maximize()` under `__EMSCRIPTEN__` to fill the viewport. Both also build as
+desktop applications (`-DBUILD_WASM_DEMOS=ON` at the repository root).
 
 ## Known limitations
 

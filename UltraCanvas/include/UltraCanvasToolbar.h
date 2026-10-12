@@ -15,7 +15,12 @@
 // scrolls them with the mouse wheel instead of clipping them, and a chevron
 // at the edge the items continue past says so and scrolls a page when
 // clicked (SetScrollHints).
-// Version: 1.8.0 - ToolbarAppearance::IconPixelSize(); buttons use it
+//
+// AddToolGroup puts several tools in one slot - an UltraCanvasToolGroupButton
+// showing one of them, whose bar of all of them folds out while the pointer
+// rests on it - as a paint program's palette groups its selection tools.
+// Version: 1.9.0 - ToolbarAppearance::IconPixelSize(); buttons use it
+// Version: 1.8.0 - AddToolGroup: several tools sharing one slot, with a fold-out bar
 // Version: 1.7.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -27,6 +32,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasToolGroupButton.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
@@ -377,6 +383,15 @@ namespace UltraCanvas {
                 const std::string& id, const std::string& text,
                 const std::vector<std::string>& items,
                 std::function<void(const std::string&)> onSelect = nullptr);
+        // Several tools sharing one slot: a toggle button showing one of
+        // them, a bar of all of them folding out beside it while the pointer
+        // rests on it (to the right in a vertical toolbar, below in a
+        // horizontal one). `onSelect` gets the id of the tool picked, by a
+        // click on the slot or in the bar. A group of one item is a plain
+        // toggle button. See UltraCanvasToolGroupButton.h.
+        std::shared_ptr<UltraCanvasToolGroupButton> AddToolGroup(
+                const std::string& id, const std::vector<ToolGroupItem>& items,
+                std::function<void(const std::string&)> onSelect = nullptr);
         std::shared_ptr<UltraCanvasSeparator> AddSeparator(const std::string& id = "");
         std::shared_ptr<UltraCanvasSpacer> AddSpacer(int size = 8);
         std::shared_ptr<UltraCanvasSpacer> AddStretch(float stretch = 1.0f);
@@ -506,6 +521,8 @@ namespace UltraCanvas {
         UltraCanvasToolbarBuilder& AddDropdownButton(const std::string& id, const std::string& text,
                                                      const std::vector<std::string>& items,
                                                      std::function<void(const std::string&)> onSelect = nullptr);
+        UltraCanvasToolbarBuilder& AddToolGroup(const std::string& id, const std::vector<ToolGroupItem>& items,
+                                                std::function<void(const std::string&)> onSelect = nullptr);
         UltraCanvasToolbarBuilder& AddSeparator(const std::string& id = "");
         UltraCanvasToolbarBuilder& AddSpacer(int size = 8);
         UltraCanvasToolbarBuilder& AddStretch(float stretch = 1.0f);

@@ -177,6 +177,66 @@ static void TestBaseAndStyleSheets() {
     CHECK(web.asked.size() == 3);                                 // both answered from the cache
 }
 
+static void TestImports() {
+    std::printf("@import\n");
+    FakeWeb web;
+    web.Add("https://x.org/p/page.html",
+            "<html><head><link rel='stylesheet' href='css/a.css'>"
+            "<style>@import '/s.css'; p{}</style></head><body></body></html>");
+    web.Add("https://x.org/p/css/a.css", "@import \"b.css\";\n@import url(sub/c.css) print;\nh1{color:red}", "text/css");
+    web.Add("https://x.org/p/css/b.css", "@import url(a.css); b{color:blue}", "text/css");   // a cycle
+    web.Add("https://x.org/p/css/sub/c.css", "c{background:url(i.png)}", "text/css");
+    web.Add("https://x.org/s.css", "s{color:green}", "text/css");
+
+    // Not ready until every imported sheet is in: answer one round at a time.
+    web.hold = true;
+    PageLoader loader(web.Services());
+    bool ready = false;
+    LoadedPage page;
+    loader.Load("https://x.org/p/page.html", [&](LoadedPage p) { page = std::move(p); ready = true; });
+    web.Release();                         // the page: asks for a.css and /s.css
+    CHECK(!ready);
+    web.Release();                         // a.css and s.css: a asks for b and c
+    CHECK(!ready);
+    web.Release();                         // b and c (b's import of a is a repeat)
+    CHECK(ready);
+    CHECK(web.held.empty());
+    CHECK(web.asked.size() == 5);          // page, a, s, b, c - each once
+    CHECK(page.warnings.empty());
+
+    // The importing sheet names its imports by absolute address now.
+    const std::vector<uint8_t> a = loader.GetResource("css/a.css");
+    const std::string text(a.begin(), a.end());
+    CHECK(text.find("@import url(\"https://x.org/p/css/b.css\")") != std::string::npos);
+    CHECK(text.find("url(\"https://x.org/p/css/sub/c.css\") print") != std::string::npos);
+    const std::vector<uint8_t> c = loader.GetResource("https://x.org/p/css/sub/c.css");
+    CHECK(std::string(c.begin(), c.end()).find("https://x.org/p/css/sub/i.png") != std::string::npos);
+    CHECK(!loader.GetResource("https://x.org/s.css").empty());
+    CHECK(web.asked.size() == 5);          // from the cache
+
+    // Imports nest at most 4 deep below the page's sheets.
+    FakeWeb deep;
+    deep.Add("https://d.org/", "<link rel='stylesheet' href='/0.css'>");
+    for (int k = 0; k < 7; ++k)
+        deep.Add("https://d.org/" + std::to_string(k) + ".css",
+                 "@import '" + std::to_string(k + 1) + ".css';", "text/css");
+    PageLoader deepLoader(deep.Services());
+    LoadedPage deepPage = LoadNow(deepLoader, "https://d.org/");
+    CHECK(deep.asked.size() == 6);         // the page, 0.css and four imports
+    bool warned = false;
+    for (const auto& w : deepPage.warnings) warned |= w.find("nested too deep") != std::string::npos;
+    CHECK(warned);
+
+    // An https page imports no http sheet.
+    FakeWeb mixed;
+    mixed.Add("https://m.org/", "<style>@import 'http://m.org/x.css';</style>");
+    mixed.Add("http://m.org/x.css", "p{}", "text/css");
+    PageLoader mixedLoader(mixed.Services());
+    LoadedPage mixedPage = LoadNow(mixedLoader, "https://m.org/");
+    CHECK(mixed.asked.size() == 1);
+    CHECK(!mixedPage.warnings.empty());
+}
+
 static void TestResourcesOnDemand() {
     std::printf("resources on demand\n");
     FakeWeb web;
@@ -344,6 +404,7 @@ static void TestLimits() {
 int main() {
     TestCharsets();
     TestBaseAndStyleSheets();
+    TestImports();
     TestResourcesOnDemand();
     TestRules();
     TestKinds();

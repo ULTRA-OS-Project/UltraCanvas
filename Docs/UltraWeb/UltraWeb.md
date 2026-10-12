@@ -59,8 +59,9 @@ both framework pieces (`Docs/UltraCanvas/UltraCanvasHTMLReader.md`):
 - **Loading.** The page's charset is read from its BOM, its `Content-Type`,
   or a `<meta charset>`, else it is taken to be UTF-8 when it is and
   Windows-1252 when it is not. Every charset UltraNet's iconv knows is read.
-  `<base href>` is honoured. Linked style sheets (up to 32) are fetched
-  before the page is shown, with their `url()`s made absolute. Pictures
+  `<base href>` is honoured. Linked style sheets and the sheets they
+  `@import` (up to 32) are fetched before the page is shown, with their
+  `url()`s made absolute. Pictures
   load after it, and the page is built again as they arrive.
 - **What a page may load.** An http(s) page loads http(s) and `data:`
   resources, an https page no http ones (mixed content), and only a local
@@ -74,6 +75,11 @@ both framework pieces (`Docs/UltraCanvas/UltraCanvasHTMLReader.md`):
   own, a folder as a list of its files, and an answer that is neither
   HTML nor an app says so in the status bar. A page that cannot be loaded
   shows an error page saying why.
+- **Forms.** Text and password fields, text areas, checkboxes, radio
+  groups, dropdowns and buttons are real widgets. A submit button or Enter
+  sends the form: GET opens the action with the fields as its query, POST
+  sends them (urlencoded, multipart or plain text) and shows the answer.
+  What was typed survives a rebuild of the page. No file uploads yet.
 - **No JavaScript.** `<script>` is not run, `<noscript>` is shown.
 - **Layout** is the HTML reader's: blocks, inline text, tables, floats,
   flex and grid, backgrounds, `@media` at the window's width (the page is
@@ -356,5 +362,5 @@ clipboard, fetching beyond the app's origin without CORS, a larger store,
 and keeping a private-network address from a public app; CORS preflight
 requests; C++ element proxies generated from the framework headers; the
 macOS, Windows and packaging builds. For pages (Phase 2): tabs, downloads,
-bookmarks and a history kept across runs, `@import` in style sheets, forms;
+bookmarks and a history kept across runs, file uploads in forms;
 then modern layout beyond flex and grid, the live DOM, and JavaScript.

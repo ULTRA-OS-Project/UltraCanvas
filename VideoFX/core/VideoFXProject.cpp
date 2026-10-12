@@ -10,8 +10,8 @@
 //     "title": "...", "output": "out.mp4", "settings": {...},
 //     "segments": [ {...}, ... ] }                       a timeline, or
 //     "slideshow": { "images": [...], "options": {...} } a slideshow
-// Version: 0.8.0
-// Last Modified: 2026-10-08
+// Version: 0.11.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "VideoFXProject.h"
@@ -324,6 +324,7 @@ Json SettingsOut(const VideoFXExportSettings& s, const Paths& paths) {
                 {"width", s.width}, {"height", s.height}, {"frameRate", s.frameRate},
                 {"fitMode", NameOf(MakeNames(kFitModes, "fit mode"), s.fitMode)},
                 {"quality", s.quality}, {"videoBitRate", s.videoBitRate}, {"encoderPreset", s.encoderPreset},
+                {"keyframeInterval", s.keyframeInterval},
                 {"sampleRate", s.sampleRate}, {"channels", s.channels}, {"audioBitRate", s.audioBitRate},
                 {"threads", s.threads}, {"music", MusicOut(s.music, paths)}};
 }
@@ -450,7 +451,7 @@ void SettingsIn(const Json& j, VideoFXExportSettings& s, const Paths& paths, con
     Get(j, "width", s.width, at); Get(j, "height", s.height, at); Get(j, "frameRate", s.frameRate, at);
     Get(j, "fitMode", s.fitMode, MakeNames(kFitModes, "fit mode"), at);
     Get(j, "quality", s.quality, at); Get(j, "videoBitRate", s.videoBitRate, at);
-    Get(j, "encoderPreset", s.encoderPreset, at);
+    Get(j, "encoderPreset", s.encoderPreset, at); Get(j, "keyframeInterval", s.keyframeInterval, at);
     Get(j, "sampleRate", s.sampleRate, at); Get(j, "channels", s.channels, at);
     Get(j, "audioBitRate", s.audioBitRate, at); Get(j, "threads", s.threads, at);
     MusicIn(Object(j, "music", at), s.music, paths, Where(at, "music"));

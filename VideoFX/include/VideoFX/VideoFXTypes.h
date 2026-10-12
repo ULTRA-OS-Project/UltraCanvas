@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.10.0
-// Last Modified: 2026-10-11
+// Version: 0.11.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -514,6 +514,9 @@ struct VideoFXExportSettings {
     int quality = -1;
     int64_t videoBitRate = 0;       // bits per second, 0 = quality-driven
     std::string encoderPreset;      // e.g. "veryfast" for x264/x265; empty = default
+    // Seconds between keyframes, 0 = the encoder's default. Short intervals
+    // make a file quick to seek in (proxies use 0.5) at some cost in size.
+    double keyframeInterval = 0.0;
 
     int sampleRate = 0;             // 0 = first audio segment's rate (48000 fallback)
     int channels = 0;               // 0 = stereo (mono if every source is mono)
@@ -612,6 +615,21 @@ struct VideoFXWaveform {
         }
         return peak;
     }
+};
+
+// ============================================================================
+// PROXY MEDIA (VideoFX_CreateProxy / VideoFX_UseProxies)
+// ============================================================================
+// A proxy is a small stand-in for a large clip: the same picture and sound,
+// timed the same, at a low resolution, with a keyframe every half second.
+// An editor previews and scrubs over proxies, and the export reads the
+// originals. Proxies live in a cache folder, named after the clip's path,
+// size and modification time, so an edited or replaced clip gets a new one.
+struct VideoFXProxySettings {
+    int height = 540;               // picture height; width follows the clip's shape
+    int quality = 50;               // 0..100, as VideoFXExportSettings::quality
+    double keyframeInterval = 0.5;  // seconds between keyframes: what makes scrubbing fast
+    std::string cacheDirectory;     // "" = VideoFX_GetDefaultProxyDirectory()
 };
 
 // ============================================================================

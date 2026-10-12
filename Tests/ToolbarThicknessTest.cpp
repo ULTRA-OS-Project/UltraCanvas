@@ -182,11 +182,11 @@ void TestBuilderHorizontalTakesItsHeight() {
 }
 
 bool IconIs(const std::shared_ptr<UltraCanvasButton>& b, int w, int h) {
-    return b && b->GetIconSize().width == w && b->GetIconSize().height == h;
+    return b && b->GetIconWidth() == w && b->GetIconHeight() == h;
 }
 
 std::string IconOf(const std::shared_ptr<UltraCanvasButton>& b) {
-    return b ? std::to_string(b->GetIconSize().width) + "x" + std::to_string(b->GetIconSize().height) : "none";
+    return b ? std::to_string(b->GetIconWidth()) + "x" + std::to_string(b->GetIconHeight()) : "none";
 }
 
 void TestIconSizes() {

@@ -49,6 +49,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     sheet.SetMediaWidth(size % 2 ? 320.f : 1280.f);
     sheet.ParseAppend(css);
     (void)StyleSheet::MediaMatches(css, 800.f);
+    for (const StyleImport& import : StyleSheet::ParseImports(css)) {
+        (void)StyleSheet::MediaMatches(import.media, 800.f);
+    }
 
     // The same bytes as a style="" attribute and as single values.
     for (const auto& decl : StyleSheet::ParseDeclarationList(css)) {

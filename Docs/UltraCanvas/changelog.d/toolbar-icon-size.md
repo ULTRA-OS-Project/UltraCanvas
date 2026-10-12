@@ -12,5 +12,6 @@
   Toolbars with the default Medium size - Texter, UltraPaint, ArtCreator, the
   media viewer and UltraViewer, the DemoApp's - draw 24 px icons now, and
   UltraVideo's Small bars 16 px; a toolbar grows to fit them as before.
-  `UltraCanvasButton::GetIconSize()` is new. `ToolbarThicknessTest` checks
+  A tool group (`AddToolGroup`) takes the same size for its slot and its
+  fold-out bar. `ToolbarThicknessTest` checks
   each size, for buttons added before and after the appearance changes.

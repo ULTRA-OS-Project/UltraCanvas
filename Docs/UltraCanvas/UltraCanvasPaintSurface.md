@@ -21,8 +21,8 @@ them back. The first application built on it is **UltraPaint**
 | `UCBrushStroke`, `RasterPaint` | The brush engine: interactive strokes (dabs with spacing, hardness, opacity vs flow, paint / erase / clone / smudge / dodge / burn) and one-shot operations (anti-aliased shapes, flood fill, magic wand, gradients, mask stamping, eyedropper) | `include/UltraCanvasBrushEngine.h`, `core/UltraCanvasBrushEngine.cpp` |
 | `UltraCanvasPaintSurface` | The element: zoom / pan view of a document with checkerboard, pixel grid, selection ants and brush cursor; forwards pointer events in image coordinates to the tool the host installs | `include/UltraCanvasPaintSurface.h`, `core/UltraCanvasPaintSurface.cpp` |
 
-**Version**: 1.0.0
-**Last Modified**: 2026-09-06
+**Version**: 1.0.1 - `DrawCurve`, `DrawArrow`
+**Last Modified**: 2026-10-12
 **Author**: UltraCanvas Framework
 
 None of the model classes touch a window; `UltraCanvasPaintSurface` is the
@@ -166,7 +166,11 @@ stroke.End();
 
 `RasterPaint` holds the one-shot operations: `DrawLine`, `DrawRectangle`,
 `DrawEllipse`, `DrawPolygon` (outline and fill, 4×4 supersampled
-anti-aliasing through `FillCoverage`), `FloodFill` (tolerance, contiguous or
+anti-aliasing through `FillCoverage`; open, it is a polyline whose joins are
+painted once), `DrawCurve` (a cubic Bezier curve; `FlattenCubicBezier` gives
+its points for a preview), `DrawArrow` (a shaft with a filled head at the
+tip, or at both ends, in one pass; `ArrowShape` gives its geometry),
+`FloodFill` (tolerance, contiguous or
 global, optionally sampling a merged layer; `FillCompositing::Replace` sets
 the region to the colour, alpha included, where the default `Blend` paints
 over it - the way to fill with transparency), `MagicWandMask` (the same

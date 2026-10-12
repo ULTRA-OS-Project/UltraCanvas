@@ -494,6 +494,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordStrengthMeter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordRuleLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolGroupButton.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSmoothScroll.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
@@ -621,6 +622,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/CSSStyleSheet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLStyleResolver.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLElementBuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLForms.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLRichDocumentImporter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/HTMLReader/HTMLPageLoader.cpp
 

@@ -1,3 +1,201 @@
+#### 2026-10-12 *0.9.260*
+- **HTML reader: `@import` in style sheets.** Imported sheets were skipped,
+  so a site whose `site.css` imports its theme lost the theme.
+  - `HTML::StyleSheet::ParseImports(css)` lists the `@import` rules at the
+    head of a sheet: `url("x")` or `"x"`, the media list after it, `layer()`
+    and `supports()` dropped. Those after the first other rule are ignored,
+    as in CSS.
+  - The element builder puts each imported sheet in front of the importing
+    sheet's rules (in an `@media` block when the import names media), with
+    its address read relative to the importing sheet. At most 8 deep and 64
+    sheets, each sheet once, so a cycle ends.
+  - `HTML::PageLoader` fetches the sheets that linked sheets and `<style>`
+    blocks import before the page is ready (up to 4 deep, within the 32
+    sheets per page; the mixed-content rules apply). `RewriteCssUrls` turns
+    `@import "x.css"` into an absolute `@import url(...)`.
+  - The CSS fuzz target covers `ParseImports`. Tests in `HTMLReaderTest`,
+    `HTMLPageLoaderTest` and `WebViewTest`.
+- **HTML reader: forms with real widgets (`BuildOptions::interactiveForms`).**
+  A form's controls were drawn for display only, as text in a box. With the
+  option on they are the framework's widgets, so the reader can fill a form
+  in and send it (caret, selection, clipboard, focus).
+  - **Widgets:**
+    - text-like `<input>`s and `password` are `UltraCanvasTextInput`s;
+    - `<textarea>` is an `UltraCanvasTextArea`;
+    - checkboxes and radios are `UltraCanvasCheckbox` / `UltraCanvasRadio`, with one radio group per name in a form;
+    - `<select>` is an `UltraCanvasDropdown`;
+    - buttons are `UltraCanvasButton`s.
+  - **Placement and size:** controls are `inline-block`, as in browsers (the
+    user-agent style said `block`): on the line with their labels, or flex
+    and grid items. They are sized by CSS, else by `size`, `cols` / `rows`
+    and the font.
+  - **Attributes:** `disabled`, a disabled `<fieldset>`, `readonly`,
+    `maxlength`, `placeholder` and `form="id"` are honoured.
+  - **`HTML::FormController`** (new `HTMLReader/HTMLForms.h`, one per
+    `<form>`, in `BuildResult::forms`) builds HTML's entry list
+    (`Collect`), submits (`Submit`, from a submit button or Enter in a
+    field) to `BuildOptions::onFormSubmit`, resets, and saves / restores
+    what was typed across a rebuild.
+  - **`HTML::FormSubmission`** encodes the entry list urlencoded,
+    multipart or as plain text.
+  - **`PageLoader::LoadPost`** and `PageLoaderServices::post` load the page
+    a form's POST answers with.
+  - **`UltraCanvasWebView`** turns forms on (`SetInteractiveForms`) and
+    sends them (`SubmitForm`): GET as a navigation with the fields as the
+    query, POST through the loader. A rebuild of the page keeps what was
+    typed and the focus.
+  - Mail keeps the option off: its controls stay display-only, each on a
+    line of its own.
+  - Not yet: file uploads; a click on a `<label>`'s text does not reach its
+    control.
+  - New `HTMLFormsTest`; form round trips in `WebViewTest`.
+- **HTML reader: a plain inline element's box - margin, padding, border and
+  background - is drawn.** `<nav><a style="margin-right:18px">About</a><a>Index</a></nav>`
+  showed "AboutIndex", and the mail button
+  `<a style="background:#07f;padding:12px 24px;color:#fff">Buy</a>` was white
+  text on white: inline elements went into the label's Pango markup with no
+  box, so their margins were dropped and their backgrounds not painted.
+  - **Margin, border and padding** on the left and right are room in the
+    line: a picture-less U+FFFC placeholder of that width in the run. A word
+    joiner (U+2060) glues it to the element's first or last letter, so a line
+    does not break between a word and its margin. The margin lies outside the
+    element's link and the padding inside it; white space collapses across
+    the room; negative margins take none; vertical margins move nothing, as
+    in CSS; an empty element with a margin builds no line.
+  - **Background and border:** drawn by the label around the element's text
+    and padding, at any depth in a run (`<b><span style="border:...">`). The
+    new `LabelTextBox` (`UltraCanvasLabel::SetTextBoxes`) is a range of the
+    text with a background, four border sides, vertical padding and a
+    radius. It is drawn a piece per line, so a long bordered element breaks
+    across lines like in a browser: the left border on its first piece, the
+    right on its last. Its vertical padding is painted without moving the
+    lines.
+  - **Vertical padding with a background or a border** (the mail button):
+    the element is a box on the line, as an `inline-block` is, with its
+    padding painted all round and its line grown to hold it.
+  - A space between an inline box and the text beside it is kept ("Order
+    now: [Buy] today" read "Order now:[Buy]today"). This applies to
+    `inline-block` buttons too.
+  - `UltraCanvasLabel` leaves word joiners out of copied text.
+  - New `HTMLInlineBoxTest`: room, line breaks, links, and painted pixels for
+    backgrounds, the button, borders (nested and across lines) and radii.
+- **The brush engine draws curves and arrows, and a path's stroke costs its
+  length.** `RasterPaint::DrawCurve` strokes a cubic Bezier curve, and
+  `FlattenCubicBezier` gives the points it passes through (at most 2 px
+  apart by default, 8 to 4096 segments) for a preview to draw.
+  `RasterPaint::DrawArrow` draws a shaft with a filled triangular head at
+  the tip - and at the tail with `headAtTail` - shaft and heads in one
+  coverage pass, so a translucent arrow has no darker seam; `ArrowShape`
+  returns that geometry (the shaft between the heads' bases, the heads'
+  corners) for the preview. A head is never narrower than the shaft plus
+  2 px nor longer than the arrow, and a wide shaft stops at the head's base
+  instead of poking out past the point. The stroke of `DrawPolygon` - and of
+  `DrawCurve` - is now one coverage map that each segment marks near itself
+  only: it tested every segment at every sample of the path's bounding box,
+  which for a curve of a few hundred segments across a canvas cost seconds;
+  the samples and the inside test are unchanged, so a polyline looks the
+  same, its joins still painted once. `RasterEditingTest` checks a
+  translucent polyline's corner and arrow seam, a curve's bend and an
+  arrow's heads. UltraPaint's Polyline, Arrow and Curve tools draw with them
+  (UltraPaint 0.2.16).
+- **`UltraCanvasTextArea` 3.7.5: a console that appends shows whole lines.**
+  Scrolling down to the caret - what `AppendText` does on every line of
+  output - set the offset so the caret's bottom met the view's bottom, which
+  left the tail of a line cut off at the top of the view. The offset now
+  lands on a line top, the lowest one at or past the minimal offset while the
+  caret's line still fits, so the first visible line is a whole one and the
+  gap at the bottom is less than a line. The line ending exactly at the
+  viewport's top edge was drawn too, and its descenders, which reach below
+  the line's box, showed on the first row of the view; it is skipped. The
+  clip at the padded edge was never at fault: nothing is drawn in the
+  padding. UltraCanvasStart's Install and Build consoles showed both.
+- **Tool groups: several tools in one toolbar slot, with a fold-out bar.**
+  `UltraCanvasToolGroupButton` (new, `UltraCanvasToolGroupButton.h`) is a
+  slot of a tool palette or toolbar holding a group of tools - the
+  selections, the brushes, the shapes. It shows one of them, and a click on
+  it picks that tool; resting the pointer on it for 150 ms
+  (`SetFoldOutDelay`) folds out a bar beside it with the whole group - to
+  the right of a slot in a vertical toolbar as a row, below one in a
+  horizontal toolbar as a column, on the opposite side where the window has
+  no room - and a click there picks a tool (`onItemSelected`). The bar
+  folds back when the pointer leaves the slot and the bar, on Escape and on
+  a click elsewhere. A small triangle in the slot's corner marks a group;
+  a group of one tool is a plain toggle button. The slot shows the tool last
+  picked - an adaptive toolbar - or, with `SetSlotShowsLastPicked(false)`,
+  always the group's first, main tool - a static one; either way the bar
+  marks the tool in use while the slot is pressed. `SetCurrentItem` tells
+  the group which of its tools became active some other way (a shortcut
+  key) without firing anything. The bar's buttons copy the slot's size,
+  icon size and style, so a flat palette folds out a flat bar.
+  `UltraCanvasToolbar::AddToolGroup` (and the builder's) adds one with the
+  toolbar's button appearance, as `AddToggleButton` does a single tool, and
+  `UltraCanvasButton` reports its icon size (`GetIconWidth` /
+  `GetIconHeight`). `Tests/ToolGroupButtonTest` drives the window's real
+  pointer dispatch under Xvfb: folding out, crossing into the bar, picking,
+  folding back, the static slot, the horizontal and the window-edge cases.
+  Doc: `Docs/UltraCanvas/UltraCanvasToolGroupButton.md`. UltraPaint's tool
+  palette is the first to use it (UltraPaint 0.2.16).
+
+#### 2026-10-12 *0.9.259*
+- **WebAssembly: the ultraos.eu front page as a demo app.**
+  `UltraCanvas/OS/WASM/demo/ultraos-frontpage.cpp` builds the
+  https://ultraos.eu front page out of UltraCanvas elements - a header with
+  the navigation and the logo, a hero with two call-to-action buttons, the
+  "For desktops" / "For mobile" cards, the reasons for ULTRA OS, the three
+  ways to support the project, the status timeline, a newsletter form and a
+  footer - in one scrollable page that fills the browser viewport. It is the
+  second browser validation app beside `wasm-demo` and the first that
+  exercises what a real application does in the browser: the layout engine
+  (Block for the stacked sections, so wrapped text gets its real height;
+  Flex rows that wrap for the cards and the navigation), hover states, an
+  image preloaded into the virtual FS, a text input with Enter, wheel
+  scrolling, and `OpenURL()` on every link, which opens the real page in a
+  new tab. The texts are tables at the top of the file.
+  - Both demos build as desktop applications too: `-DBUILD_WASM_DEMOS=ON`
+    at the repository root adds `wasm-demo` and `ultraos-frontpage` as
+    native targets, so a page can be looked at before the hour-long wasm
+    pipeline runs. The demo's `CMakeLists.txt` serves both ways: standalone
+    under `emcmake` it adds the library itself, as a subdirectory it uses the
+    one already configured.
+  - The `WebAssembly build` workflow builds both pages and uploads them with
+    `serve.py` in the `wasm-demo` artifact, so the download runs as it is:
+    unzip, `python3 serve.py 8080`, open either page.
+
+#### 2026-10-12 *0.9.258*
+- **CI reports how big the file-format plug-ins are.** A new "Format plug-in
+  sizes" table in each build row's job summary lists Vector, CDR (with its
+  bundled libcdr), XAR, EPS, Models, OCR and the Vectorizer (with its Rust
+  library). Each row gives the archive's code and data, which is what one
+  copy adds to an application that registers the plug-in, and its file size.
+  The plug-ins are static, so each such application carries its own copy.
+  The table is the measurement for deciding whether to make them shared
+  libraries; OCR and the Vectorizer build only in CI.
+  `scripts/report_plugin_sizes.py [build-dir]` prints the same table
+  locally. The step only measures and never fails a job.
+- **VideoFX 0.11.0: proxy media.** Large clips, such as 4K phone footage,
+  can now be edited through small stand-ins. A proxy is the clip at 540 lines,
+  H.264 with a keyframe every half second, the same sound and the same
+  timing. The editor previews and plays from the proxies, and the export
+  reads the originals.
+  - New: `VideoFXProxySettings`, `VideoFX_CreateProxy`,
+    `VideoFX_CreateProxies` (every clip of a timeline once, one progress),
+    `VideoFX_UseProxies` (the timeline switched to them), `VideoFX_ProxyPath`,
+    `VideoFX_HasProxy`, `VideoFX_ClearProxies` and
+    `VideoFX_GetDefaultProxyDirectory`.
+  - Proxies go in the user's cache folder (`~/.cache`, `~/Library/Caches`,
+    `%LOCALAPPDATA%`, then `VideoFX/Proxies`) or a folder the app names.
+    Each is named after the clip and a hash of its path, size and
+    modification time, so an edited clip gets a new proxy.
+  - A proxy is written under a temporary name and renamed when whole, so a
+    crash or cancel never leaves a half one. Clips no taller than a proxy,
+    and sound files, get none.
+  - Switching keeps trims, speed and overlays and scales a `Crop` to the
+    proxy's pixels.
+  - New export setting `VideoFXExportSettings::keyframeInterval` (seconds
+    between keyframes), also saved in project files.
+  - `videofx proxy <clips>|<project>`, `videofx proxy --clear`, and
+    `--proxies` on `videofx render` and `videofx preview` for a quick draft.
+
 #### 2026-10-12 *0.9.257*
 - **`HTML::PageLoader`: a URL to a page the HTML reader can show**
   (`HTMLReader/HTMLPageLoader.h`). It fetches the document and reads its
