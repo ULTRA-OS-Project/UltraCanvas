@@ -5,8 +5,8 @@
 // UCRasterDocument layers / undo / redo / selection-aware filters, colour
 // keying (Colour to Alpha), and the PNG and .ucraster round trips (the last
 // three only with libvips).
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.1.0 - TestListeners: several observers of one document
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterLayer.h"
@@ -33,6 +33,44 @@ static int checks = 0;
 
 #define CHECK(cond) do { ++checks; if (!(cond)) { ++failures; std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); } } while (0)
 #define CHECK_NEAR(a, b, tol) do { ++checks; if (std::abs(static_cast<int>(a) - static_cast<int>(b)) > (tol)) { ++failures; std::printf("FAIL %s:%d: %s=%d vs %s=%d\n", __FILE__, __LINE__, #a, static_cast<int>(a), #b, static_cast<int>(b)); } } while (0)
+
+// Two listeners and the slot all hear a change; a removed listener does
+// not, even when it removes itself from inside its own callback.
+static void TestListeners() {
+    UCRasterDocument doc(4, 4, RasterPixel(0, 0, 0, 0));
+    int slotPixels = 0, aPixels = 0, bPixels = 0, aState = 0, aSelection = 0, aStructure = 0;
+    doc.onPixelsChanged = [&](const Rect2Di&) { ++slotPixels; };
+    UCRasterDocument::Listener a;
+    a.pixelsChanged = [&](const Rect2Di& r) { ++aPixels; CHECK(r.width > 0); };
+    a.stateChanged = [&]() { ++aState; };
+    a.selectionChanged = [&]() { ++aSelection; };
+    a.structureChanged = [&]() { ++aStructure; };
+    const UCRasterDocument::ListenerId idA = doc.AddListener(a);
+    UCRasterDocument::ListenerId idB = 0;
+    UCRasterDocument::Listener b;
+    b.pixelsChanged = [&](const Rect2Di&) { ++bPixels; doc.RemoveListener(idB); };   // once, then gone
+    idB = doc.AddListener(b);
+    CHECK(idA != 0 && idB != 0 && idA != idB);
+
+    doc.NotifyChanged(Rect2Di(1, 1, 1, 1));
+    CHECK(slotPixels == 1 && aPixels == 1 && bPixels == 1);
+    doc.NotifyChanged(Rect2Di(1, 1, 1, 1));
+    CHECK(slotPixels == 2 && aPixels == 2 && bPixels == 1);
+
+    doc.SetModified(true);
+    CHECK(aState >= 1);
+    doc.GetSelection().SetRectangle(Rect2Di(0, 0, 2, 2), RasterSelectionMode::Replace);
+    doc.CommitSelectionChange("Select");
+    CHECK(aSelection >= 1);
+    doc.AddLayer("second");
+    CHECK(aStructure >= 1);
+
+    doc.RemoveListener(idA);
+    doc.RemoveListener(idA);   // twice is harmless
+    const int before = aPixels;
+    doc.NotifyChanged(Rect2Di(0, 0, 1, 1));
+    CHECK(aPixels == before && slotPixels == 3);
+}
 
 static void TestLayerBasics() {
     UCRasterLayer l(8, 4, RasterPixel(10, 20, 30, 255), "t");
@@ -628,6 +666,7 @@ int main() {
 #ifdef HAS_LIBVIPS
     if (VIPS_INIT("RasterEditingTest")) { std::printf("vips init failed\n"); return 1; }
 #endif
+    TestListeners();
     TestLayerBasics();
     TestBlend();
     TestSelection();

@@ -1,9 +1,11 @@
 // Apps/UltraWeb/ui/UltraWebWindow.h
-// The UltraWeb browser window: an address bar, the app area a WebAssembly
-// app builds its UI into (UC_ROOT_HANDLE of the element ABI), and a status
-// bar. One app at a time in this version; tabs come with the HTML reader.
+// The UltraWeb browser window: an address bar with back / forward, the area
+// a WebAssembly app builds its UI into (UC_ROOT_HANDLE of the element ABI) or
+// a web page is shown in (UltraCanvasWebView), and a status bar. One app or
+// page at a time in this version; tabs come next.
+// Version: 0.3.0 - web pages: addresses that are not apps open in a web view
 // Version: 0.1.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -14,6 +16,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasWebView.h"
 #include "UltraCanvasWindow.h"
 
 #include <memory>
@@ -28,10 +31,14 @@ public:
 
     bool Initialize();
     void Show();
-    // Load and run what an address names (about:demo, a path, a URL).
+    // Open what an address names: an app (about:demo, a .wasm or .wat path
+    // or URL) runs, anything else opens as a web page.
     void Navigate(const std::string& address);
 
 private:
+    void RunApp(const std::string& address);
+    void OpenPage(const std::string& url);
+    void UpdateNavigationButtons();
     void ShowApp(const LoadedApp& app);
     void ShowError(const std::string& title, const std::string& detail);
     void ClearAppArea();
@@ -42,6 +49,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> page_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> address_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> backButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> forwardButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> goButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> reloadButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> appArea_;
@@ -51,6 +60,9 @@ private:
 
     UltraWebLoader loader_;
     std::unique_ptr<UltraWebGuest> guest_;
+    // Web pages; in the app area while one is shown (showingPage_).
+    std::shared_ptr<UltraCanvas::UltraCanvasWebView> webView_;
+    bool showingPage_ = false;
     std::string currentAddress_;
     // Deferred work (a guest failure reported on a later turn) checks this
     // before touching the window.

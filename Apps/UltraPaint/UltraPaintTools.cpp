@@ -281,6 +281,9 @@ public:
             StrokeViewRect(ctx, vr);
         }
     }
+    // The rectangle is placed corner to corner on exact pixels, which is what
+    // the magnifying glass is for.
+    bool WantsMagnifier() const override { return !isEllipse; }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         AddSliderRow(panel, "sel-feather", "Feather", 0, 50, static_cast<float>(ctx.options->selectionFeather), 1, true,
                      [o = ctx.options](float v) { o->selectionFeather = static_cast<int>(v); });

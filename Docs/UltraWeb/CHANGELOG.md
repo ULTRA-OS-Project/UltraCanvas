@@ -1,3 +1,25 @@
+#### 2026-10-12 *0.3.0*
+- **Web pages.** An address that is not an app opens as a page, laid out by
+  the framework's HTML reader as native elements (`UltraCanvasWebView`), with
+  no JavaScript: http(s) through UltraNet with TLS verification on and no
+  cookies, local files and folders, plain text and pictures. A `.wasm` or
+  `.wat` address, `about:`, and a page address that serves
+  `application/wasm` still run as apps.
+  - The page's charset comes from its BOM, Content-Type or `<meta>`, else
+    UTF-8 or Windows-1252. `<base href>` is honoured. Linked style sheets
+    load before the page shows and pictures after it.
+  - An https page loads no http resources, and a web page no local files.
+  - Links: a `#fragment` scrolls. `mailto:` and other schemes go to the
+    system.
+  - Back and forward keep each page's scroll position.
+  - A page that cannot be loaded shows an error page saying why.
+  - The status bar shows the link under the pointer.
+- **Back and forward buttons** in the toolbar, for pages.
+- **`--page <address>`** loads a page without a window and prints its title,
+  address, status, charset, warnings and text.
+- The framework pieces are `HTML::PageLoader`, `UltraCanvasWebView` and
+  `UltraNet_ConvertToUtf8` (see the framework changelog).
+
 #### 2026-10-06 *0.2.0*
 - **Apps get timers, fetch, storage and the clipboard (element ABI v2).**
   Beside its elements an app may now start timers (`uc_timer_start`), fetch

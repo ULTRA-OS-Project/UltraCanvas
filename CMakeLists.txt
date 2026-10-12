@@ -1475,6 +1475,7 @@ if (BUILD_ULTRAPAINT_APP)
             Apps/UltraPaint/UltraPaintTools.cpp
             Apps/UltraPaint/UltraPaintFilters.cpp
             Apps/UltraPaint/UltraPaintDialogs.cpp
+            Apps/UltraPaint/UltraPaintSettingsDialog.cpp
     )
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
@@ -1743,6 +1744,48 @@ if (BUILD_TESTS)
     )
     add_test(NAME HTMLTableLayoutTest COMMAND HTMLTableLayoutTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # display: flex and grid on the CSSLayout flex / grid engines: items,
+    # flex sizing, tracks, auto-fill, named areas, hostile values (builder +
+    # layout, headless).
+    add_executable(HTMLFlexGridLayoutTest Tests/HTMLFlexGridLayoutTest.cpp)
+    target_include_directories(HTMLFlexGridLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLFlexGridLayoutTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLFlexGridLayoutTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLFlexGridLayoutTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLFlexGridLayoutTest COMMAND HTMLFlexGridLayoutTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # UltraCanvasWebView on a fake web: loading, links, fragments, history and
+    # scroll positions, error pages, late pictures (headless).
+    add_executable(WebViewTest Tests/WebViewTest.cpp)
+    target_include_directories(WebViewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(WebViewTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(WebViewTest PRIVATE cxx_std_20)
+    set_target_properties(WebViewTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME WebViewTest COMMAND WebViewTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Mutated HTML through parser, builder and layout: a crash or a hang
+    # fails it (Tests/Fuzz/README.md; the parser and CSS have their own
+    # targets in Tests/Fuzz, which need no UI library).
+    add_executable(HTMLBuilderFuzzSmoke Tests/Fuzz/HTMLBuilderFuzz.cpp Tests/Fuzz/FuzzSmokeMain.cpp)
+    target_include_directories(HTMLBuilderFuzzSmoke PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLBuilderFuzzSmoke PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLBuilderFuzzSmoke PRIVATE cxx_std_20)
+    set_target_properties(HTMLBuilderFuzzSmoke PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLBuilderFuzzSmoke
+             COMMAND HTMLBuilderFuzzSmoke -runs=400 -max_len=16384
+                     -dict=${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/html.dict
+                     ${CMAKE_CURRENT_SOURCE_DIR}/Tests/Fuzz/corpus/html
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(HTMLBuilderFuzzSmoke PROPERTIES TIMEOUT 600)
 
     # Every UltraCanvasUIElement constructor makes a border-box element: a
     # widget's size includes its padding and border however it was built.

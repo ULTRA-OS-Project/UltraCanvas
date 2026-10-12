@@ -388,7 +388,7 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   **Extras > Set folder icon** gives *any* folder a picture of the user's
   choosing: it opens the file dialog filtered to the image formats the build
   can read, and converts the chosen file to a QOI icon kept in the config
-  directory (`~/.config/UltraFiler/foldericons`), so the icon survives the
+  directory (`~/.config/UltraCanvas/UltraFiler/foldericons`), so the icon survives the
   original being moved or deleted. It is drawn everywhere the folder appears —
   every tab, the folder preview, the History and Favorites lists, the tree row
   and its Pinned bookmark — and beats the built-in icon of a main user folder.
@@ -473,9 +473,13 @@ notes explaining the setting set apart in a tinted block at the foot of the
 page. A page's *Restore default ...* button sits at the left end of the
 window's bottom bar, opposite *Close*. Clicking a section opens it and moves on
 to its first page, since a section has no page of its own. Every change applies
-to the running application immediately and is saved to the config file
-(`~/.config/UltraFiler/config.ini`, `%APPDATA%\UltraFiler\config.ini`,
-`~/Library/Application Support/UltraFiler/config.ini`).
+to the running application immediately and is saved to the config file in
+UltraFiler's folder of the shared UltraCanvas settings folder
+(`~/.config/UltraCanvas/UltraFiler/config.ini`,
+`%APPDATA%\UltraCanvas\UltraFiler\config.ini`,
+`~/Library/Application Support/UltraCanvas/UltraFiler/config.ini`). A folder
+from before 1.72.4 (`~/.config/UltraFiler` and the like) is moved there, whole,
+the first time the new version runs.
 
 | Page | Setting |
 |---|---|

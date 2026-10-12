@@ -4,6 +4,7 @@
 // building. Pure C++ / STL — no libcurl or platform dependency; other
 // charsets than UTF-8 and Latin-1 go through iconv where the build has it
 // (ULTRANET_HAS_ICONV).
+// Version: 0.5.0 - UltraNet_ConvertToUtf8 (the body charset conversion, public)
 // Version: 0.4.0 - UltraNet_ImapUtf7Encode (a typed mailbox name for the wire)
 // Version: 0.3.1 - MimeBuild takes a Message-ID passed among the extra headers
 // Version: 0.3.0 - HTML messages with a text alternative and cid: pictures
@@ -834,6 +835,10 @@ bool UltraNet_Base64Decode(const std::string& text, std::vector<uint8_t>& out) {
 }
 std::string UltraNet_QuotedPrintableEncode(const std::string& text) { return QpEncodeImpl(text); }
 std::string UltraNet_QuotedPrintableDecode(const std::string& text) { return QpDecodeImpl(text); }
+
+std::string UltraNet_ConvertToUtf8(const std::string& bytes, const std::string& charset) {
+    return CharsetToUtf8(bytes, charset);
+}
 
 std::string UltraNet_MimeDecodeHeader(const std::string& raw) { return DecodeHeaderImpl(raw); }
 std::string UltraNet_MimeDecodeHeader(const std::string& raw, const std::string& fallbackCharset) {

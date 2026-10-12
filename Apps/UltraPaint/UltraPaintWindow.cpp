@@ -3,6 +3,9 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.2.0 - the mouse pointer magnification glass: a loupe in a corner of the canvas
+//                  while the rectangle selection is active, that keeps out of the pointer's
+//                  way; Edit > Settings... (Display > Mouse pointer magnification glass)
 // Version: 1.1.3 - a double-click on a layer's name renames it in the list (a text
 //                  field in its place: Enter or a click elsewhere keeps the name,
 //                  Escape the old one); the name buttons say so in their tooltip
@@ -14,7 +17,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -231,6 +234,7 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     window->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window->SetBackgroundColor(Color(236, 236, 238, 255));
 
+    settings.Load();   // no file yet: the defaults stand
     tools = CreatePaintTools();
 
     BuildMenuBar();
@@ -248,6 +252,7 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     body->AddChild(surface);
 
     BuildRightPanel();
+    BuildMagnifier();
     BuildStatusBar();
 
     // ----- tool context -----
@@ -283,26 +288,36 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
         pointerX = e.x; pointerY = e.y; pointerInside = e.insideImage;
         if (auto* t = ActiveTool()) t->OnDrag(toolContext, e);
         UpdateStatus();
+        UpdateMagnifier(e.x, e.y, e.view);
     };
     surface->onToolRelease = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnRelease(toolContext, e); };
     surface->onToolHover = [this](const PaintPointerEvent& e) {
         pointerX = e.x; pointerY = e.y; pointerInside = e.insideImage;
         if (auto* t = ActiveTool()) t->OnHover(toolContext, e);
         UpdateStatus();
+        UpdateMagnifier(e.x, e.y, e.view);
     };
     surface->onToolDoubleClick = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnDoubleClick(toolContext, e); };
     surface->onToolKey = [this](const UCEvent& ev) { auto* t = ActiveTool(); return t && t->OnKey(toolContext, ev); };
     surface->onDrawOverlay = [this](IRenderContext* ctx, const PaintViewTransform& v) { if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v); };
-    surface->onViewChanged = [this]() { UpdateStatus(); };
+    surface->onViewChanged = [this]() {
+        UpdateStatus();
+        // The glass magnifies the view's own zoom, so it follows a zoom change.
+        if (magnifier && magnifier->IsVisible() && pointerInside)
+            magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, pointerX, pointerY);
+    };
     surface->onFilesDropped = [this](const std::vector<std::string>& files) { HandleDroppedFiles(files); };
 
     InstallShortcuts();
 
     window->onWindowClosing = [this]() -> bool {
-        if (!document || !document->IsModified()) return true;
+        if (!document || !document->IsModified()) {
+            if (auto dlg = settingsDialog.lock()) dlg->Close();
+            return true;
+        }
         ConfirmDiscard("The image has unsaved changes. Close anyway?", [this]() {
             document->SetModified(false);
-            window->Close();
+            window->Close();   // comes back through here, and closes the settings window
         });
         return false;
     };
@@ -438,6 +453,8 @@ void UltraPaintWindow::BuildMenuBar() {
             M::ActionWithShortcut("Delete", "Del", MenuIconPath("delete.svg"), [this]() { CmdDelete(); }),
             M::ActionWithShortcut("Fill with Foreground", "Alt+Backspace", MenuIconPath("fill-fg.svg"), [this]() { CmdFill(true); }),
             M::ActionWithShortcut("Fill with Background", "Ctrl+Backspace", MenuIconPath("fill-bg.svg"), [this]() { CmdFill(false); }),
+            M::Separator(),
+            M::Action("Settings...", MenuIconPath("settings.svg"), [this]() { CmdSettings(); }),
         })
         .AddSubmenu("Image", {
             M::Action("Scale Image...", MenuIconPath("scale.svg"), [this]() { CmdScaleImage(); }),
@@ -765,17 +782,18 @@ void UltraPaintWindow::InstallShortcuts() {
 
 void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const std::string& title) {
     (void)title;
+    if (document && documentListener) document->RemoveListener(documentListener);
     document = std::move(doc);
     renamingLayer = -1;
-    document->onStateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
+    // The window's own listener beside the surfaces' (the editing view and
+    // the magnifying glass each add theirs in SetDocument): the panels and
+    // the title follow the document without chaining behind anyone's slot.
+    UCRasterDocument::Listener l;
+    l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
+    l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); };
+    documentListener = document->AddListener(std::move(l));
     surface->SetDocument(document);
-    // the surface installed its own structure hook; chain the panel refresh
-    auto surfaceStructure = document->onStructureChanged;
-    document->onStructureChanged = [this, surfaceStructure]() {
-        if (surfaceStructure) surfaceStructure();
-        ScheduleLayerPanelRebuild();
-        UpdateStatus();
-    };
+    if (magnifier) magnifier->SetDocument(document);
     surface->ZoomToFit();
     RebuildLayerPanel();
     UpdateUndoButtons();
@@ -1165,7 +1183,129 @@ void UltraPaintWindow::SelectTool(PaintToolId id) {
     surface->SetCursorSquare(t->CursorSquare(toolContext));
     if (statusHint) statusHint->SetText(t->name + ": " + t->hint);
     RebuildToolOptions();
+    UpdateMagnifierVisibility();
     surface->Refresh();
+}
+
+// ===========================================================================
+// THE MOUSE POINTER MAGNIFICATION GLASS
+// ===========================================================================
+
+namespace {
+    // How far the glass keeps from the canvas's edges, and how near the
+    // pointer may come before it moves to another corner.
+    constexpr float kMagnifierMargin = 12.0f;
+    constexpr float kMagnifierAvoidDistance = 48.0f;
+}
+
+void UltraPaintWindow::BuildMagnifier() {
+    // The frame is the glass's border; it lies over the canvas, out of the
+    // body's flex flow, above the surface, and takes no pointer - the
+    // surface under it gets every event, so a drag can pass beneath it.
+    magnifierFrame = std::make_shared<UltraCanvasContainer>("up-magnifier-frame");
+    magnifierFrame->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    magnifierFrame->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+    if (!magnifierFrame->layoutItem.position) magnifierFrame->layoutItem.position = CSSLayout::Position();
+    magnifierFrame->SetZIndex(OverlayZOrder::Overlays);
+    magnifierFrame->SetBackgroundColor(Color(40, 40, 44, 255));
+    magnifierFrame->SetBorderLeft(1, Color(255, 255, 255, 200));
+    magnifierFrame->SetBorderRight(1, Color(255, 255, 255, 200));
+    magnifierFrame->SetBorderTop(1, Color(255, 255, 255, 200));
+    magnifierFrame->SetBorderBottom(1, Color(255, 255, 255, 200));
+    magnifierFrame->SetPadding(1);
+    magnifierFrame->SetInteractive(false);
+    magnifierFrame->SetVisible(false);
+
+    magnifier = CreatePaintSurface("up-magnifier");
+    magnifier->SetLoupeMode(true);
+    magnifier->SetCanvasColor(Color(40, 40, 44, 255));
+    magnifier->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The rubber band of the tool, magnified along with the pixels.
+    magnifier->onDrawOverlay = [this](IRenderContext* ctx, const PaintViewTransform& v) {
+        if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
+    };
+    magnifierFrame->AddChild(magnifier);
+    body->AddChild(magnifierFrame);
+    ApplySettings();
+}
+
+void UltraPaintWindow::ApplySettings() {
+    if (!magnifierFrame) return;
+    const float size = static_cast<float>(std::clamp(settings.magnifierSize,
+            UltraPaintSettings::kMinMagnifierSize, UltraPaintSettings::kMaxMagnifierSize));
+    magnifierFrame->size.width  = CSSLayout::Dimension::Px(size);
+    magnifierFrame->size.height = CSSLayout::Dimension::Px(size);
+    PlaceMagnifier(magnifierCorner);
+    UpdateMagnifierVisibility();
+    if (magnifier && magnifier->IsVisible() && pointerInside)
+        magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, pointerX, pointerY);
+}
+
+void UltraPaintWindow::UpdateMagnifierVisibility() {
+    if (!magnifierFrame) return;
+    PaintTool* t = ActiveTool();
+    const bool show = settings.magnifierEnabled && t && t->WantsMagnifier() && document;
+    if (show == magnifierFrame->IsVisible()) return;
+    magnifierFrame->SetVisible(show);
+    if (show) {
+        // Until the pointer moves, the glass shows the middle of the image,
+        // or the last place the pointer was.
+        const double ix = pointerInside ? pointerX : document->GetWidth() * 0.5;
+        const double iy = pointerInside ? pointerY : document->GetHeight() * 0.5;
+        magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, ix, iy);
+        PlaceMagnifier(magnifierCorner);
+    }
+    body->RequestRedraw();
+}
+
+Rect2Df UltraPaintWindow::MagnifierRectForCorner(int corner) const {
+    const Rect2Df s = surface->GetBounds();   // in the body, where the frame lives
+    const float size = static_cast<float>(std::clamp(settings.magnifierSize,
+            UltraPaintSettings::kMinMagnifierSize, UltraPaintSettings::kMaxMagnifierSize));
+    const float x = (corner % 2 == 0) ? s.x + kMagnifierMargin : s.x + s.width - size - kMagnifierMargin;
+    const float y = (corner < 2) ? s.y + kMagnifierMargin : s.y + s.height - size - kMagnifierMargin;
+    return Rect2Df(x, y, size, size);
+}
+
+void UltraPaintWindow::PlaceMagnifier(int corner) {
+    if (!magnifierFrame || !surface) return;
+    magnifierCorner = std::clamp(corner, 0, 3);
+    const Rect2Df r = MagnifierRectForCorner(magnifierCorner);
+    magnifierFrame->layoutItem.position->left = CSSLayout::Dimension::Px(r.x);
+    magnifierFrame->layoutItem.position->top  = CSSLayout::Dimension::Px(r.y);
+    magnifierFrame->InvalidateLayout();
+    body->RequestRedraw();
+}
+
+void UltraPaintWindow::UpdateMagnifier(double imageX, double imageY, const Point2Di& view) {
+    if (!magnifier || !magnifierFrame || !magnifierFrame->IsVisible()) return;
+    magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, imageX, imageY);
+
+    // The canvas may have been resized since the glass was placed (the window
+    // or a panel): its corner is where it was placed in, not where it is.
+    {
+        const Rect2Df want = MagnifierRectForCorner(magnifierCorner);
+        const Rect2Df have = magnifierFrame->GetBounds();
+        if (std::fabs(want.x - have.x) > 0.5f || std::fabs(want.y - have.y) > 0.5f) PlaceMagnifier(magnifierCorner);
+    }
+
+    // Keep out of the pointer's way: when it comes within reach of the
+    // glass, move to the corner farthest from it.
+    const Rect2Df s = surface->GetBounds();
+    const Point2Df p(s.x + static_cast<float>(view.x), s.y + static_cast<float>(view.y));
+    auto distance = [&p](const Rect2Df& r) {
+        const float dx = std::max({r.x - p.x, 0.0f, p.x - (r.x + r.width)});
+        const float dy = std::max({r.y - p.y, 0.0f, p.y - (r.y + r.height)});
+        return std::sqrt(dx * dx + dy * dy);
+    };
+    if (distance(MagnifierRectForCorner(magnifierCorner)) >= kMagnifierAvoidDistance) return;
+    int best = magnifierCorner;
+    float bestDistance = -1.0f;
+    for (int c = 0; c < 4; ++c) {
+        const float d = distance(MagnifierRectForCorner(c));
+        if (d > bestDistance) { bestDistance = d; best = c; }
+    }
+    if (best != magnifierCorner) PlaceMagnifier(best);
 }
 
 void UltraPaintWindow::RebuildToolOptions() {
@@ -2023,6 +2163,20 @@ void UltraPaintWindow::CmdColourToAlpha() {
 // ===========================================================================
 // HELP
 // ===========================================================================
+
+void UltraPaintWindow::CmdSettings() {
+    // Raise the open window instead of opening a second one.
+    if (auto open = settingsDialog.lock()) { open->Show(); return; }
+    auto dlg = std::make_shared<UltraPaintSettingsDialog>(&settings);
+    // The dialog reads this window's settings, so it must not outlive it:
+    // the editor's own close takes it down (onWindowClosing), and the token
+    // guards the callbacks for the turn of the loop in between.
+    std::weak_ptr<bool> alive = lifeToken;
+    dlg->onChanged = [this, alive]() { if (!alive.expired()) ApplySettings(); };
+    dlg->onWindowClosed = [this, alive]() { if (!alive.expired()) settingsDialog.reset(); };
+    settingsDialog = dlg;
+    ShowDialog(dlg);
+}
 
 void UltraPaintWindow::CmdAbout() {
     std::string text = "UltraPaint " ULTRAPAINT_VERSION "\n\n"

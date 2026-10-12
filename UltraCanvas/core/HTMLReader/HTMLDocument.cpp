@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLDocument.cpp
 // DOM helpers and entity decoding for the HTMLReader module.
+// Version: 1.4.0 - EscapeText
 // Version: 1.3.1 - merged: the Lines layout (1.3.0) beside the inline-aware single
 //                  line and the node overload (1.2.1, 1.2.2), made side by side
 // Version: 1.3.0 - ExtractPlainText's Lines layout: the text as a reader sees it,
@@ -10,7 +11,7 @@
 // Version: 1.2.0 - attribute lookup by name is exact, then ASCII case-insensitive
 //                  (viewBox inside <svg> is found as "viewbox" too)
 // Version: 1.1.0 - every HTML 4 named entity (&acute; &eth; &alpha; ...)
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLDocument.h"
@@ -266,6 +267,22 @@ const std::unordered_map<std::string, unsigned>& NamedEntities() {
 }
 
 } // namespace
+
+std::string EscapeText(const std::string& text) {
+    std::string out;
+    out.reserve(text.size() + text.size() / 8);
+    for (char c : text) {
+        switch (c) {
+            case '&':  out += "&amp;";  break;
+            case '<':  out += "&lt;";   break;
+            case '>':  out += "&gt;";   break;
+            case '"':  out += "&quot;"; break;
+            case '\'': out += "&#39;";  break;
+            default:   out += c;        break;
+        }
+    }
+    return out;
+}
 
 std::string DecodeEntities(const std::string& text) {
     std::string out;

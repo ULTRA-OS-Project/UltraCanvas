@@ -26,8 +26,8 @@ and plain-text view (`PlainTextLayout::Lines`), EmailCleaner's matching, the
 Filer's `.html` preview and UltraCloud's WebDAV client, and, from its pull
 request 696 on, the Vector plugin's SVG reader (`HTML::StyleSheet` for
 `<style>` sheets; its own copy of the selector matcher is to become a Traits
-type for the shared one, below). UltraWeb's page reader
-(`Docs/UltraWeb/UltraWebProposal.md`, §5) is planned on it.
+type for the shared one, below), and UltraWeb's web pages (`HTML::PageLoader`
+and `UltraCanvasWebView`, below).
 
 **The rule** (AGENTS.md, *Core conventions*): HTML, CSS and HTML entities are
 read through this module. Do not write another tag stripper, entity table,
@@ -40,6 +40,7 @@ next caller finds it. `scripts/check_html_reuse.py` flags new ones.
 #include "HTMLReader/HTMLStyleResolver.h"   // StyleResolver, ComputedStyle
 #include "HTMLReader/HTMLElementBuilder.h"  // ElementBuilder (needs the UI library)
 #include "HTMLReader/HTMLRichDocumentImporter.h"
+#include "HTMLReader/HTMLPageLoader.h"      // PageLoader: a URL to a page
 using namespace UltraCanvas;
 ```
 
@@ -50,6 +51,7 @@ Everything but the importer lives in `namespace UltraCanvas::HTML`.
 | You have | You want | Call |
 |---|---|---|
 | HTML text | something to show on screen | `HTML::ElementBuilder::Build` → a container tree, hosted in a scroll view |
+| A URL | the page, shown and browsable | `UltraCanvasWebView` (an element), or `HTML::PageLoader` to load it yourself |
 | HTML text | text to edit in `UltraCanvasRichTextEdit` | `ImportHTMLToRichDocument` / `AppendHTMLToRichDocument` |
 | HTML text | its words, for a list or a search index (one line), or to read or quote (`PlainTextLayout::Lines`) | `HTML::ExtractPlainText` |
 | A string with `&amp;`, `&#233;`, `&nbsp;` | the characters | `HTML::DecodeEntities` |
@@ -103,6 +105,14 @@ case-insensitive, so `GetAttribute("viewbox")` finds `viewBox`.
 `ClassList()`, `HasClass()`, `GetId()`, `GetElementById()` do what their
 names say. `parent` is a raw back pointer, children are `shared_ptr`.
 
+**Depth.** Elements nest at most `HTML::kMaxTreeDepth` (128) deep. An element
+that would open deeper is kept as a leaf, and what follows it lands beside it,
+as browsers flatten past their own limit, and `Errors()` says so. The resolver,
+the builder, the layout and the DOM's own destructor all recurse per level, so
+without the cap a few kilobytes of nested `<div>`s in a mail overflowed the
+stack. 128 is far deeper than real mail or books nest, and leaves the builder
+and the layout a wide margin on a 1 MB stack.
+
 Two helpers need no DOM of the caller's:
 
 ```cpp
@@ -110,6 +120,7 @@ std::string plain = HTML::ExtractPlainText(html);   // tags gone, <script>/<styl
                                                      // entities decoded, whitespace collapsed
 std::string text = HTML::ExtractPlainText(html, HTML::PlainTextLayout::Lines);   // line by line
 std::string s = HTML::DecodeEntities("Tom &amp; Jerry &#8212; &eacute;");   // every HTML 4 entity, numeric too
+std::string safe = HTML::EscapeText("a < b & \"c\"");   // the inverse: text to put in HTML
 ```
 
 `ExtractPlainText` with the default `PlainTextLayout::SingleLine` is what a
@@ -253,7 +264,7 @@ properties and resolution of lengths to px. One `ComputedStyle` per element:
 display mode, font, colour, alignment, line height, margins, padding,
 borders per side, backgrounds (several layers, position, size, repeat),
 widths and heights in px or percent, floats, `box-sizing`, `overflow`,
-`object-fit`, links.
+`object-fit`, flex and grid (below), links.
 
 ```cpp
 HTML::StyleResolver resolver;
@@ -266,8 +277,33 @@ resolver.Resolve(doc, options);
 const HTML::ComputedStyle& s = resolver.StyleOf(heading);
 ```
 
-`Docs/UltraWeb/UltraWebProposal.md` §6 lists what the resolver does not map
-yet (flex and grid come out as blocks, no `position`, no viewport units).
+### Flex and grid
+
+`display: flex` / `grid` keep `display` a block (and `inline-flex` /
+`inline-grid` an inline block): how the box sits among its siblings does not
+change. What changes is `layoutMode` (`BoxLayoutMode::Flex` or `Grid`), which
+says how it lays out its children. The resolver reads:
+
+| Properties | Into |
+|---|---|
+| `flex-direction`, `flex-wrap`, `flex-flow` | `flexDirection`, `flexWrap` |
+| `justify-content`, `align-items`, `align-content`, `justify-items`, `place-items`, `place-content` | `BoxAlignMode` fields; `Unset` is CSS's `normal` (`safe` / `unsafe` dropped) |
+| `gap`, `row-gap`, `column-gap` (and the `grid-` names) | `rowGapPx`, `columnGapPx` (a percentage is 0) |
+| `flex`, `flex-grow`, `flex-shrink`, `flex-basis`, `order`, `align-self`, `justify-self`, `place-self` | the item fields; `flex: 1` is `1 1 0`, `none`, `auto` as in CSS |
+| `grid-template-columns`, `grid-template-rows`, `grid-template`, `grid` (rows / columns) | `GridTemplate`: px, %, `fr`, `auto`, `min-content`, `max-content`, `fit-content()`, `minmax()`, `repeat(N, ...)`, one `repeat(auto-fill / auto-fit, ...)`; line names dropped |
+| `grid-template-areas` | `gridAreas`, one row of names per string, `.` for none |
+| `grid-column`, `grid-row`, `grid-area` and the `-start` / `-end` longhands | `GridLineSpec`: auto, a line (negative from the end), `span N`, an area name |
+| `grid-auto-flow` | `gridAutoFlowColumn` |
+
+An invalid value (a `minmax()` with an `fr` minimum, two auto repeats,
+`subgrid`, rows of areas of unequal length) is ignored, as in CSS. Track
+counts, line numbers, spans and `order` are capped at `HTML::kMaxGridLines`
+(1000), so `grid-column: 99999` or `repeat(99999999, 1px)` cannot make the
+layout build a grid that size.
+
+`Docs/UltraWeb/UltraWebProposal.md` §5.2 lists what is still not mapped: no
+`position`, `float` only through the existing float path, no viewport units
+or `calc()` in the resolver.
 
 ## The element builder
 
@@ -328,11 +364,101 @@ boxes on it, and at least the block's own: a `<span style="line-height:40px">`
 in a cell that sets none is a 40px line. Text where nothing sets a
 `line-height` keeps the font's own line spacing.
 
+**Flex and grid containers** are laid out by the CSSLayout flex and grid
+engines. Their children are items, as in CSS. Each child element is a box of
+its own at its own size (a `<span>` or `<a>` item is "blockified"), with real
+margins that do not collapse. Each run of text between the elements is an
+anonymous item formatted as the container, and whitespace between items
+renders nothing. Flex items take `flex`, `order` and `align-self`, and
+`align-items: normal` stretches them, as in CSS. Grid items take their lines,
+spans and named areas: negative lines are counted from the end of the
+explicit grid, and `span N / <line>` counts back from the line. A
+`repeat(auto-fill, ...)` is written out as many times as fit the grid's width, estimated before layout from the viewport down
+through its ancestors' widths, margins, padding and borders
+(`EstimateContentWidth`); `auto-fit` keeps no more repetitions than there are
+items. A grid without columns gets one column as wide as the grid, as CSS's
+stretched implicit column is. `Tests/HTMLFlexGridLayoutTest.cpp` lays all of
+this out and checks the positions.
+
+Where the engines differ from CSS: `minmax(<min>, <n>fr)` is `<n>fr` (the
+minimum still counts for auto-fill); grid items' margins are not applied; no
+baseline alignment (`baseline` aligns to the start); `order` does not reorder
+grid items.
+
 The built tree has its own scrollbars disabled on purpose: host it in a
 container that scrolls (see `UltraCanvasEBookViewer.cpp` and UltraMail's
-`MessagePreview::RenderBody` for the two hosts that exist). A reusable
-`UltraCanvasHTMLView` element wrapping that host is the planned next step,
-so that a third reader does not build it a third time.
+`MessagePreview::RenderBody` for the two hosts that exist). For a page that
+comes from a URL, `UltraCanvasWebView` (below) is that host.
+
+## Pages from a URL
+
+`HTML::PageLoader` turns a URL into a page the builder can show. It does
+not reach the network itself: the caller passes in the fetch, URL
+resolution and charset conversion (`HTML::PageLoaderServices`; UltraWeb
+passes UltraNet's), so it is framework-independent and runs offline in tests.
+
+- **Charset:** the BOM, the `Content-Type` charset, a `<meta charset>` in the
+  first 1024 bytes, else UTF-8 when the bytes are valid UTF-8 and
+  Windows-1252 when they are not.
+- **Base:** `<base href>`, else the page's final URL after redirects. A
+  `#fragment` is never fetched and stays with the address.
+- **Style sheets:** linked sheets (up to 32) are fetched before the page is
+  ready, so the first build has them. Each sheet's `url()`s are rewritten
+  against the sheet's own URL (`RewriteCssUrls`), so they still mean the same
+  inside the page. `@import` is not followed yet.
+- **Other resources** load on demand. `GetResource(href)` is the builder's
+  `resourceLoader`: it answers from a cache (64 MB, oldest out first),
+  queues what it does not have, and `onResourcesArrived` says when to build
+  again.
+- **Kinds:** HTML and XHTML. Plain text becomes a `<pre>` page, a picture a
+  page of its own. Anything else (`PageKind::Other`, say `application/wasm`)
+  goes back to the caller undecided, and a failed fetch is `PageKind::Error`.
+- **Rules:** an http(s) page loads http(s) and `data:` resources, an https
+  page no http ones, and only a `file:` page loads `file:` resources.
+- **Limits:** 16 MB per document, 32 style sheets, 512 resources a page.
+- **Threading:** the loader is used from one thread, and `fetch` calls its
+  `done` back on it. A newer `Load` or `Cancel` drops the answers of the
+  navigation before.
+
+```cpp
+HTML::PageLoaderServices services;
+services.fetch = [](const std::string& url, std::function<void(HTML::FetchResult)> done) {
+    HTML::FetchResult result;   // fetch url; fill ok, status, finalUrl, contentType, body
+    done(result);               // on the loader's thread
+};
+services.resolve = [](const std::string& base, const std::string& reference, std::string& absolute) {
+    absolute = base + reference;   // UltraWeb: UltraNet_ResolveUrl (RFC 3986)
+    return true;
+};
+HTML::PageLoader loader(services);
+loader.Load("https://example.org/", [&](HTML::LoadedPage page) {
+    if (page.kind != HTML::PageKind::Html) return;
+    HTML::BuildOptions options;
+    options.resourceLoader = [&](const std::string& href) { return loader.GetResource(href); };
+    HTML::ElementBuilder builder;
+    HTML::BuildResult built = builder.BuildDocument(*page.document, options);
+});
+```
+
+`UltraCanvasWebView` (`UltraCanvasWebView.h`) puts this together as an element: give
+it the services and a URL, and it builds the page into a scrolling pane,
+follows links, keeps the history (back / forward with each page's scroll
+position), scrolls to `#fragments`, builds again when its width changes or
+pictures arrive (on a later turn of the UI loop, never inside layout), and
+shows an error page when a page cannot be loaded. `mailto:` and other
+schemes go to `onExternalLink`, and a non-HTML answer to `onNonHtml`.
+`<script>` is not run, and `<noscript>` and its content are shown.
+`Tests/HTMLPageLoaderTest.cpp` and `Tests/WebViewTest.cpp` cover both
+against a fake web. UltraWeb is the browser around it
+(`Docs/UltraWeb/UltraWeb.md`).
+
+```cpp
+auto view = std::make_shared<UltraCanvasWebView>("web");
+view->SetServices(services);
+view->onTitleChanged = [](const std::string& title) { /* the window title */ };
+view->onExternalLink = [](const std::string& url) { /* the system's mail client */ };
+view->Navigate("https://example.org/");
+```
 
 ## HTML into an editable document
 
@@ -396,7 +522,8 @@ blocks new ones.
   `HTML::Parser`.
 - `>` is a descendant combinator; sibling combinators and `:hover`-style
   pseudo-classes are not matched.
-- The resolver lays out flex and grid as blocks and knows no `position`.
+- The resolver knows no `position`, viewport units or `calc()`. Flex and
+  grid are mapped, with the differences listed under the element builder.
 - The builder is one-shot: it builds a tree, it does not patch one. A live
   DOM is UltraWeb's Phase 4 (`UltraWebProposal.md` §7.3).
 
@@ -410,5 +537,21 @@ blocks new ones.
 | `include/HTMLReader/HTMLStyleResolver.h` | `ComputedStyle`, `ResolverOptions`, `StyleResolver`, `NodeSelectorTraits`, `Matches` |
 | `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML` |
 | `include/HTMLReader/HTMLRichDocumentImporter.h` | `ImportHTMLToRichDocument`, `AppendHTMLToRichDocument`, `HTMLRichImportOptions` |
+| `include/HTMLReader/HTMLPageLoader.h` | `PageLoader`, `PageLoaderServices`, `PageLoaderLimits`, `FetchResult`, `LoadedPage`, `PageKind` |
+| `include/UltraCanvasWebView.h` | `UltraCanvasWebView`, the element that shows pages from URLs |
 | `Tests/HTMLReaderTest.cpp` | parser, CSS, matcher and resolver, without the UI library |
-| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, the viewer |
+| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, the viewer |
+| `Tests/Fuzz/` | fuzz targets for the parser, the CSS, and the builder with the layout ([README](../../Tests/Fuzz/README.md)) |
+
+## Fuzzing
+
+Everything this module reads comes from someone else: mail, books, web
+pages. `Tests/Fuzz` has a libFuzzer target for the parser and one for the
+CSS, plus a builder-and-layout target. In every `BUILD_TESTS` build they run
+as deterministic smoke tests in ctest (`HTMLParserFuzzSmoke`, `CSSFuzzSmoke`,
+`HTMLBuilderFuzzSmoke`). The `html-fuzz.yml` workflow fuzzes the first two
+under AddressSanitizer and UndefinedBehaviorSanitizer whenever this module
+changes. A change to the parser or the resolver keeps the smoke tests
+passing. A crash the fuzzer finds is fixed, and its input is added to
+`Tests/Fuzz/corpus`. The first run found the nesting overflow that
+`kMaxTreeDepth` now prevents.
