@@ -916,6 +916,29 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TOOL GROUP BUTTON TEST =====
+# Several tools sharing one toolbar slot: the bar of the whole group folds out
+# while the pointer rests on the slot, a click in it picks a tool, and it folds
+# back once the pointer leaves the slot and the bar. Drives the window's real
+# pointer dispatch, so it needs a display; skips itself without one.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ToolGroupButtonTest...")
+    add_executable(ToolGroupButtonTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ToolGroupButtonTest.cpp
+    )
+    target_include_directories(ToolGroupButtonTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ToolGroupButtonTest PRIVATE cxx_std_20)
+    target_link_libraries(ToolGroupButtonTest PRIVATE UltraCanvas)
+    set_target_properties(ToolGroupButtonTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ToolGroupButtonTest COMMAND ToolGroupButtonTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ToolGroupButtonTest")
+else()
+    message(STATUS "  ToolGroupButtonTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TAG INPUT GROW TEST =====
 # A tag field grows to fit its chips inside a flex layout (the layout pass
 # used to put its first height back, cutting off every row after the first),

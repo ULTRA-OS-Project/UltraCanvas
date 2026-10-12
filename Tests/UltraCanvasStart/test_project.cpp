@@ -1,16 +1,21 @@
 // Tests/UltraCanvasStart/test_project.cpp
 // The project scaffold and the assistant texts, over a temporary folder.
+// Version: 0.1.2 - the skeleton is compiled against the SDK ULTRACANVAS_SDK_PREFIX names
 // Version: 0.1.1 - main.cpp uses the framework's CreateWindow
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
 #include "StartAi.h"
+#include "StartBuild.h"
 #include "StartProject.h"
 #include "StartSdk.h"
+#include "StartSystem.h"
 
 #include "UltraCanvasPathUtf8.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -124,4 +129,54 @@ TEST(Scaffold_writes_the_chosen_assistants_file) {
     REQUIRE(text.rfind("# GEMINI.md", 0) == 0);
     REQUIRE(text.find("AGENTS.md") != std::string::npos);
     REQUIRE(ProjectClaudeMd(options).rfind("# CLAUDE.md", 0) == 0);
+}
+
+TEST(BuildCommands_are_the_programmers_two_commands) {
+    const std::string text = BuildCommandsText("/tmp/My App");
+    REQUIRE(text.find("cd \"/tmp/My App\"\n") != std::string::npos);
+    REQUIRE(text.find("cmake --preset default\n") != std::string::npos);
+    REQUIRE(text.find("cmake --build --preset default\n") != std::string::npos);
+    const SystemProfile profile = DetectSystem();
+    const auto commands = BuildCommands("/tmp/My App", profile);
+    // Without cmake there is nothing to run; with it, the configure of the
+    // default preset in the folder, then the build of the preset's build dir.
+    if (!commands.empty()) {
+        REQUIRE_EQ(commands.size(), size_t(2));
+        REQUIRE(commands[0].size() == 5 && commands[0][1] == "-S" && commands[0][2] == "/tmp/My App" &&
+                commands[0][3] == "--preset" && commands[0][4] == "default");
+        REQUIRE(commands[1].size() == 5 && commands[1][1] == "--build" &&
+                commands[1][2] == "/tmp/My App/build" && commands[1][3] == "--parallel");
+    }
+    REQUIRE(!BuildProject("", profile).started);
+}
+
+// The skeleton compiled against a real SDK: the guard that catches a
+// skeleton which no longer builds before CI's SDK step does. It needs an
+// installed SDK, named by ULTRACANVAS_SDK_PREFIX (a cmake --install prefix
+// or an unpacked SDK archive); without the variable the test is skipped.
+TEST(BuildProject_compiles_the_skeleton_against_the_sdk) {
+    const char* prefix = std::getenv("ULTRACANVAS_SDK_PREFIX");
+    if (!prefix || !*prefix) {
+        std::printf("    (skipped: ULTRACANVAS_SDK_PREFIX is not set)\n");
+        return;
+    }
+    const fs::path folder = fs::temp_directory_path() / UltraCanvas::PathFromUtf8("UltraCanvasStart-build-check");
+    std::error_code ec;
+    fs::remove_all(folder, ec);
+
+    ProjectOptions options;
+    options.folder = UltraCanvas::PathToUtf8(folder);
+    options.appName = "Build Check";
+    options.useSdk = true;
+    options.sdkPrefix = prefix;
+    REQUIRE(ScaffoldProject(options).ok);
+
+    const SystemProfile profile = DetectSystem();
+    const BuildResult result = BuildProject(options.folder, profile);
+    if (!result.Succeeded()) std::printf("%s\n", (result.output + result.error).c_str());
+    REQUIRE(result.started);
+    REQUIRE(result.configured);
+    REQUIRE(result.built);
+    REQUIRE(fs::is_directory(folder / "build"));
+    fs::remove_all(folder, ec);
 }

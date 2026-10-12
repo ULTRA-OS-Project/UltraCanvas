@@ -499,6 +499,40 @@ static void TestStyleSheetParsing() {
     CHECK_EQ(decls.size(), size_t(2));
 }
 
+static void TestStyleImports() {
+    // The forms @import takes, at the head of a sheet.
+    auto imports = StyleSheet::ParseImports(
+        "@charset \"utf-8\";\n"
+        "/* a comment */ @import url(\"a.css\");\n"
+        "@import 'b.css' screen and (max-width: 600px);\n"
+        "@IMPORT url(c.css) print;\n"
+        "@layer base;\n"
+        "@import url( 'd.css' ) layer(base) supports(display: grid) ;\n"
+        "@import \"e\\\"q.css\";\n"
+        "@import nonsense;\n"
+        "p { color: red }\n"
+        "@import url(late.css);\n");
+    CHECK_EQ(imports.size(), size_t(5));
+    if (imports.size() == 5) {
+        CHECK(imports[0].href == "a.css" && imports[0].media.empty());
+        CHECK(imports[1].href == "b.css" && imports[1].media == "screen and (max-width: 600px)");
+        CHECK(imports[2].href == "c.css" && imports[2].media == "print");
+        CHECK(imports[3].href == "d.css" && imports[3].media.empty());   // layer() / supports() dropped
+        CHECK(imports[4].href == "e\"q.css");
+    }
+    // After the first rule, @import is ignored (CSS); a block @layer ends them too.
+    CHECK(StyleSheet::ParseImports("p{} @import 'x.css';").empty());
+    CHECK(StyleSheet::ParseImports("@layer a { p{} } @import 'x.css';").empty());
+    CHECK(StyleSheet::ParseImports("<!-- @import 'x.css'; -->").size() == 1);
+    CHECK(StyleSheet::ParseImports("@import url(x.css").empty());      // no ';'
+    CHECK(StyleSheet::ParseImports("").empty());
+
+    // ParseAppend skips the @import rules themselves.
+    StyleSheet sheet;
+    sheet.ParseAppend("@import 'x.css'; p { color: red }");
+    CHECK_EQ(sheet.rules.size(), size_t(1));
+}
+
 // ============================================================================
 // STYLE RESOLUTION
 // ============================================================================
@@ -1603,6 +1637,7 @@ int main() {
     TestCssLength();
     TestCssNumbersIgnoreLocale();
     TestStyleSheetParsing();
+    TestStyleImports();
     TestStyleResolution();
     TestReadingModeOverride();
     TestHtml4Entities();

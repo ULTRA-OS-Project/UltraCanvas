@@ -1,10 +1,11 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.7.0 - AddToolGroup
 // Version: 1.6.1 - a movable bar is dragged by its own surface only, in window
 //                  coordinates, with the mouse captured, and stays where it
 //                  is dropped (its CSS position moves, not just its bounds)
 // Version: 1.6.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbar.h"
@@ -445,6 +446,22 @@ namespace UltraCanvas {
         }
         RegisterWidget(id, dropdown);
         return dropdown;
+    }
+
+    std::shared_ptr<UltraCanvasToolGroupButton> UltraCanvasToolbar::AddToolGroup(
+            const std::string& id, const std::vector<ToolGroupItem>& items,
+            std::function<void(const std::string&)> onSelect) {
+        auto group = std::make_shared<UltraCanvasToolGroupButton>(id, 0, 0, 0, 32);
+        group->SetItems(items);
+        if (onSelect) {
+            group->onItemSelected = std::move(onSelect);
+        }
+        // The toolbar's button look, which the fold-out bar's buttons copy.
+        // ApplyButtonAppearance sets the icon size too, so the items' icons
+        // come out at the toolbar's size like any other button's.
+        ApplyButtonAppearance(group);
+        RegisterWidget(id, group);
+        return group;
     }
 
     std::shared_ptr<UltraCanvasSeparator> UltraCanvasToolbar::AddSeparator(const std::string& id) {
@@ -1030,6 +1047,13 @@ namespace UltraCanvas {
                                                                           const std::string& icon,
                                                                           std::function<void(bool)> onToggle) {
         toolbar->AddToggleButton(id, text, icon, onToggle);
+        return *this;
+    }
+
+    UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::AddToolGroup(const std::string& id,
+                                                                       const std::vector<ToolGroupItem>& items,
+                                                                       std::function<void(const std::string&)> onSelect) {
+        toolbar->AddToolGroup(id, items, std::move(onSelect));
         return *this;
     }
 

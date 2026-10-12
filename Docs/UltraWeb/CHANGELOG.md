@@ -1,3 +1,19 @@
+#### 2026-10-12 *0.4.0*
+- **Forms.** A page's form can be filled in and sent. Its controls are the
+  framework's widgets: text and password fields, text areas, checkboxes,
+  radio groups, dropdowns and buttons, on the line with their labels.
+  - A submit button, or Enter in a field, sends the form. A GET form opens
+    its action with the fields as the query. A POST form sends them through
+    UltraNet as `application/x-www-form-urlencoded`, `multipart/form-data`
+    or `text/plain`, and shows the answer. Reset puts the page's values back.
+  - What was typed survives the page being built again (a new window width,
+    pictures arriving), focus included.
+  - Back from a POST answer reloads its address by GET.
+  - Not yet: file uploads, and clicking a `<label>`'s text to toggle its box.
+- **`@import`** in style sheets, and the margins, padding, backgrounds and
+  borders of inline elements (`<mark>`, tags, links spaced apart, mail
+  buttons), come with the framework's HTML reader.
+
 #### 2026-10-12 *0.3.0*
 - **Web pages.** An address that is not an app opens as a page, laid out by
   the framework's HTML reader as native elements (`UltraCanvasWebView`), with
