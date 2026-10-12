@@ -1,5 +1,6 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
+// Version: 1.5.0 - EnsureImageSubsysterm
 // Version: 1.4.0 - GetFresh: the cached image checked against the file
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
@@ -287,6 +288,11 @@ namespace UltraCanvas {
 
         static bool InitializeImageSubsysterm(const char* programName);
         static void ShutdownImageSubsysterm();
+        // Initialise the subsystem if nothing has yet (the loaders call it,
+        // so a process without an UltraCanvasApplication - a headless tool
+        // recording a copied image into the clipboard history - decodes
+        // instead of crashing inside libvips). False when it cannot be.
+        static bool EnsureImageSubsysterm();
     };
 
     // ===== QOI FILE EXPORT =====

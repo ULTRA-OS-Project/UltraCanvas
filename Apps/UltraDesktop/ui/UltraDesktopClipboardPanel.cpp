@@ -1,6 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopClipboardPanel.cpp
 // The clipboard quick panel. See UltraDesktopClipboardPanel.h.
-// Version: 0.1.0
+// Version: 0.2.2
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopClipboardPanel.h"
@@ -46,6 +46,7 @@ UltraDesktopClipboardPanel::UltraDesktopClipboardPanel(UltraCanvasClipboardHisto
 
 UltraDesktopClipboardPanel::~UltraDesktopClipboardPanel() {
     if (undoTimer_) UltraCanvasApplication::GetInstance()->StopTimer(undoTimer_);
+    preview_.reset();   // before the window it is attached to
     if (window_) {
         window_->onWindowClosed = nullptr;
         window_->onWindowBlur = nullptr;
@@ -96,6 +97,7 @@ void UltraDesktopClipboardPanel::Open(int rightX, int topY, Target target) {
     closing_ = false;
     window_->onWindowClosed = [this]() {
         open_ = false;
+        preview_.reset();
         window_.reset();
     };
     // Gone when something else is chosen, like a menu.
@@ -183,6 +185,7 @@ void UltraDesktopClipboardPanel::Build() {
     list_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     list_->onCellHovered = [this](int row, int, const Point2Di& at) {
         if (rows_->SetHover(row, at)) list_->RequestRedraw();
+        if (preview_) preview_->OnCellHovered(row, at);
     };
     list_->onCellClicked = [this](int row, int, const Point2Di& at) {
         const ClipboardHistoryEntry* entry = model_->GetEntry(row);
@@ -274,6 +277,12 @@ void UltraDesktopClipboardPanel::Build() {
     });
     footer->AddChild(openApp);
     window->AddChild(footer);
+
+    // Over the list: the picture of the thumbnail the pointer rests on, in
+    // the style UltraClipboard's Settings choose.
+    preview_ = std::make_unique<ClipboardHistoryPreview>(history_, list_.get(), model_.get(), rows_.get());
+    if (history_ && history_->IsOpen()) preview_->SetStyle(history_->GetPolicy().previewStyle);
+    preview_->Attach(window);
 }
 
 void UltraDesktopClipboardPanel::Refresh() {
@@ -325,8 +334,11 @@ void UltraDesktopClipboardPanel::Reload() {
         shown = history_->List(query);
     }
     model_->SetEntries(std::move(shown), ClipboardHistoryListModel::Sections::PinnedAndRecent, lead);
+    if (preview_) preview_->Hide();   // the rows are about to move
     if (recording_ && history_->IsOpen()) {
-        const bool recordingNow = !history_->GetPolicy().recordingPaused;
+        const ClipboardHistoryPolicy policy = history_->GetPolicy();
+        if (preview_) preview_->SetStyle(policy.previewStyle);
+        const bool recordingNow = !policy.recordingPaused;
         if (recording_->IsChecked() != recordingNow) recording_->SetChecked(recordingNow);
     }
     if (model_->GetEntryCount() == 0) {
@@ -375,6 +387,7 @@ bool UltraDesktopClipboardPanel::OnKey(const UCEvent& event) {
     if (event.type != UCEventType::KeyDown) return false;
     switch (event.virtualKey) {
         case UCKeys::Escape:
+            if (preview_ && preview_->HandleKey(event)) return true;
             CloseSoon();
             return true;
         case UCKeys::Up:

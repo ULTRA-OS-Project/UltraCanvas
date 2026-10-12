@@ -3069,7 +3069,8 @@ endif()
 if(TARGET UltraCrypt)
     add_library(UltraClipboardHistory STATIC
         ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistory.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/ClipboardHistory/UltraCanvasClipboardHistoryPreview.cpp)
     set_target_properties(UltraClipboardHistory PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_compile_features(UltraClipboardHistory PUBLIC cxx_std_20)
     target_include_directories(UltraClipboardHistory PUBLIC

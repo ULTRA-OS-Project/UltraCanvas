@@ -1,3 +1,12 @@
+#### 2026-10-12 *0.2.2*
+- **The clipboard panel previews images.** Rest the pointer on an image's
+  thumbnail and the picture opens over the list, in the style UltraClipboard's
+  Settings choose under "Image preview": Modern, a pane on the right with the
+  viewer's info line, or Classic, the picture alone floating over the list.
+  It follows the wheel scrolling the list, the wheel over it zooms, and
+  Escape closes it before it closes the panel. Copied files preview too when
+  the first file is a picture, a PDF, a drawing, a 3D model or a video.
+
 #### 2026-10-08 *0.2.1*
 - **The clipboard panel offers first what you are pasting into.** Super+V
   over a paint program puts its newest images (and colours) first, under

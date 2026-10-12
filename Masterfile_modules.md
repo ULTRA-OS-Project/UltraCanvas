@@ -786,7 +786,15 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
     (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
-    / Delete hit-tested with `ActionAt`.
+    / Delete hit-tested with `ActionAt`, `IsOverThumbnail`.
+  - `ClipboardHistoryPreview` (`UltraCanvasClipboardHistoryPreview.h`) - the
+    hover preview over such a list: the image whose thumbnail the pointer
+    rests on, in an `UltraCanvasMediaViewer`, Modern (a pane on the right)
+    or Classic (the picture floating over the list) by
+    `ClipboardHistoryPolicy::previewStyle`; `Attach`, `OnCellHovered`,
+    `HandleKey`, `SetStyle`, `Hide`.
+  - `ClipboardHandOffFolder` - the per-process folder an image entry waits
+    in as a file, for UltraPaint or the preview.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
     `FoldForClipboardSearch`, `DescribeClipboardEntry`,
     `PreferredClipboardKinds` (what a program takes when pasted into, from

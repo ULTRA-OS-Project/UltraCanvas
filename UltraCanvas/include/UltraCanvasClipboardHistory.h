@@ -37,6 +37,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -296,5 +297,14 @@ std::vector<ClipboardEntryKind> PreferredClipboardKinds(const std::vector<std::s
 // to UltraPaint this way): its bytes - a Windows CF_DIB gains the BMP file
 // header it lacks - and the extension that names its format ("png", "jpg").
 std::vector<uint8_t> ClipboardImageFile(const ClipboardFormat& image, std::string& extension);
+
+// Where such a file waits for the other program, or for a preview: a folder
+// only this user can enter - the session's runtime folder on Linux
+// ($XDG_RUNTIME_DIR/UltraClipboard), the per-user temporary folder on
+// Windows and macOS, and in a /tmp shared with other users a folder of a
+// random name this process made itself. Made on the first call and kept
+// for the process, so every hand-off and preview shares one; "" when none
+// could be made.
+std::filesystem::path ClipboardHandOffFolder();
 
 } // namespace UltraCanvas

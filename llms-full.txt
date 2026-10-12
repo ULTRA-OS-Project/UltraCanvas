@@ -965,7 +965,15 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
     (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
-    / Delete hit-tested with `ActionAt`.
+    / Delete hit-tested with `ActionAt`, `IsOverThumbnail`.
+  - `ClipboardHistoryPreview` (`UltraCanvasClipboardHistoryPreview.h`) - the
+    hover preview over such a list: the image whose thumbnail the pointer
+    rests on, in an `UltraCanvasMediaViewer`, Modern (a pane on the right)
+    or Classic (the picture floating over the list) by
+    `ClipboardHistoryPolicy::previewStyle`; `Attach`, `OnCellHovered`,
+    `HandleKey`, `SetStyle`, `Hide`.
+  - `ClipboardHandOffFolder` - the per-process folder an image entry waits
+    in as a file, for UltraPaint or the preview.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
     `FoldForClipboardSearch`, `DescribeClipboardEntry`,
     `PreferredClipboardKinds` (what a program takes when pasted into, from
@@ -16651,6 +16659,53 @@ listView->tooltipProvider = [rows = rows.get()](int row, int) {
   thumbnail's column (the tile's width, the row's whole height, so a pointer
   resting there keeps its answer while the rows scroll under it); the caller
   checks the row is an entry, not a header.
+
+### The hover preview
+
+`ClipboardHistoryPreview` (`UltraCanvasClipboardHistoryPreview.h`) is what
+UltraClipboard's window and the desktop's quick panel share: resting the
+pointer on an image's thumbnail - or on the thumbnail of copied files whose
+first file the media viewer shows (a picture, a PDF, a drawing, a 3D model, a
+video's first frame) - opens the entry at full size in an
+[`UltraCanvasMediaViewer`](UltraCanvasMediaViewer.md) laid over the list, in
+a 12 px frame coloured by the row style's `previewFrame` / `previewBorder`.
+`ClipboardHistoryPolicy::previewStyle` picks the style: `Modern`, a pane over
+the right 60 % of the list with the viewer's info line, so the thumbnails and
+the start of every title stay readable beside it; `Classic`, the picture alone
+floating over the middle of the list at the size it fits in 60 % of the list's
+width. It opens after the pointer has rested 150 ms, stays while the pointer
+is on that entry's row or on the preview itself (where the wheel zooms),
+follows the wheel scrolling the list under a still pointer, and closes on
+Escape or when the pointer goes elsewhere. The viewer shows files: an image
+entry is written once to `ClipboardHandOffFolder()` and removed with the
+preview.
+
+```cpp
+auto preview = std::make_unique<ClipboardHistoryPreview>(&history, listView.get(), model.get(), rows.get());
+listView->onCellHovered = [rows = rows.get(), view = listView.get(), preview = preview.get()](
+                                  int row, int, const Point2Di& at) {
+    if (rows->SetHover(row, at)) view->RequestRedraw();
+    preview->OnCellHovered(row, at);
+};
+window->AddChild(listView);
+preview->SetStyle(history.GetPolicy().previewStyle);   // again on every reload
+preview->Attach(window.get());                          // after the list: it lies over it
+window->InstallEventFilter("keys", [preview = preview.get()](const UCEvent& event) {
+    return preview->HandleKey(event);                   // Escape closes an open preview
+}, {UCEventType::KeyDown});
+```
+
+The preview holds the list, model, delegate and history raw, so the host
+destroys it before them and before the window (`preview.reset()` first in
+the destructor, and in `onWindowClosed`). `SetShare` and `SetFrame` change the
+60 % and the 12 px; `Hide()` closes it when the rows are about to move (a
+reload) or a menu opens.
+
+`ClipboardHandOffFolder()` is where an image entry waits as a file for
+another program (UltraClipboard hands images to UltraPaint through it) or for
+the preview: the session's runtime folder on Linux, the per-user temporary
+folder elsewhere, and in a shared `/tmp` a folder of a random name this
+process made itself - made once and kept for the process.
 - The action glyphs are `media/icons/clipboard/*.svg`, drawn as masks;
   `iconsDir` points elsewhere.
 - Helpers: `FormatClipboardAge`, `FormatClipboardSize`,

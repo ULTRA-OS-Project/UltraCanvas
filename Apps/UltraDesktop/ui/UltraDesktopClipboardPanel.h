@@ -16,14 +16,19 @@
 // copies it. What a program takes comes from its desktop entry's
 // Categories= and MimeType= (UltraCanvas::PreferredClipboardKinds).
 //
+// Resting the pointer on an image's thumbnail opens the picture over the
+// list (ClipboardHistoryPreview, shared with UltraClipboard, in the style
+// its Settings choose).
+//
 // Keys: typing searches; Up / Down choose; Enter copies; F2 or Ctrl+E edits
 // (in UltraClipboard); Delete deletes while the search field is empty
-// (Ctrl+Delete always); Escape closes.
-// Version: 0.1.0
+// (Ctrl+Delete always); Escape closes the preview, then the panel.
+// Version: 0.2.2
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraCanvasClipboardHistory.h"
+#include "UltraCanvasClipboardHistoryPreview.h"
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasWindow.h"
 
@@ -102,6 +107,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasListView> list_;
     std::shared_ptr<UltraCanvas::ClipboardHistoryListModel> model_;
     std::shared_ptr<UltraCanvas::ClipboardHistoryRowDelegate> rows_;
+    std::unique_ptr<UltraCanvas::ClipboardHistoryPreview> preview_;   // over the list; destroyed before the window
     std::shared_ptr<UltraCanvas::UltraCanvasSwitch> recording_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> undo_;

@@ -107,6 +107,8 @@ struct ClipboardRowStyle {
     Color selectionBackground = Colors::Selection;
     Color hoverBackground = Colors::SelectionHover;
     Color listBackground = Colors::White;
+    Color previewFrame = Color(250, 251, 252);    // the hover preview's 12 px frame (ClipboardHistoryPreview)
+    Color previewBorder = Color(229, 231, 235);   // and its 1 px edge
 
     static ClipboardRowStyle Light();
     static ClipboardRowStyle Dark();   // the desktop's bar colours, compact

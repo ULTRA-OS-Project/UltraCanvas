@@ -199,6 +199,8 @@ ClipboardRowStyle ClipboardRowStyle::Dark() {
     s.selectedMetaColor = Color(170, 170, 170);
     s.headerColor = Color(140, 140, 140);
     s.headerBackground = Color(31, 31, 31);
+    s.previewFrame = Color(44, 44, 44);
+    s.previewBorder = Color(72, 72, 72);
     s.divider = Color(31, 31, 31);
     s.actionColor = Color(229, 229, 229);
     s.actionActiveColor = Color(255, 255, 255);

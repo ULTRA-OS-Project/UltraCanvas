@@ -23,3 +23,16 @@
 - **`ClipboardHistoryPolicy::previewStyle`** (`ClipboardPreviewStyle::Modern`
   or `Classic`, kept with the policy as `previewStyle`): how UltraClipboard
   previews an image whose thumbnail the pointer rests on.
+- **`ClipboardHistoryPreview`** (`UltraCanvasClipboardHistoryPreview.h`): the
+  hover preview over a clipboard history list, taken out of UltraClipboard's
+  window so UltraDesktop's quick panel shows it too. `Attach(window)`,
+  `OnCellHovered`, `HandleKey` (Escape), `SetStyle`, `Hide`; the frame's
+  colours come from `ClipboardRowStyle::previewFrame` / `previewBorder`.
+- **`ClipboardHandOffFolder()`**: the folder an image entry waits in as a
+  file, for UltraPaint or a preview, made once per process. UltraClipboard
+  made a fresh random folder under a shared `/tmp` on every hand-off.
+- **`UCImageRaster` initialises libvips itself when nothing has.** A process
+  without an `UltraCanvasApplication` - a headless tool recording a copied
+  image into the clipboard history - crashed inside libvips' class map on
+  the first decode; the loaders now call `EnsureImageSubsysterm()`, and a
+  decode that still cannot initialise fails with a message instead.

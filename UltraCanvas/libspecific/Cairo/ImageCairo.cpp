@@ -1,5 +1,6 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.5.0 - EnsureImageSubsysterm: the loaders initialise libvips themselves when no application did
 // Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
 //                  drops it; RemoveFromCache releases libvips' cached operations
 //                  too; pixmap keys carry the source stamp
@@ -152,6 +153,9 @@ namespace UltraCanvas {
     }
 
 
+    // Set by InitializeImageSubsysterm, read by EnsureImageSubsysterm.
+    static std::atomic<bool> s_imageSubsystemReady{false};
+
 #ifdef HAS_LIBVIPS
     bool UCImageRaster::InitializeImageSubsysterm(const char *programName) {
 #ifdef _WIN32
@@ -181,15 +185,27 @@ namespace UltraCanvas {
 #endif
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
+        s_imageSubsystemReady = true;
         return true;
     }
 
     void UCImageRaster::ShutdownImageSubsysterm() {
         vips_shutdown();
+        s_imageSubsystemReady = false;
+    }
+
+    bool UCImageRaster::EnsureImageSubsysterm() {
+        if (s_imageSubsystemReady) return true;
+        // A process that decodes without an application - a headless tool
+        // recording a copied image into the clipboard history - reached
+        // libvips before VIPS_INIT and crashed in its class map. Initialise
+        // here; the application's own call later is a no-op.
+        return InitializeImageSubsysterm(nullptr);
     }
 #else
     bool UCImageRaster::InitializeImageSubsysterm(const char *) { return true; }
     void UCImageRaster::ShutdownImageSubsysterm() {}
+    bool UCImageRaster::EnsureImageSubsysterm() { return true; }
 #endif
 
     UCImageRaster::~UCImageRaster() {
@@ -436,6 +452,7 @@ namespace UltraCanvas {
     }
 
     vips::VImage UCImageRaster::GetVImage() {
+        EnsureImageSubsysterm();
         if (imgDataPtr) { // Create VImage from memory buffer
             return vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "");
         } else { // Create VImage from file
@@ -458,6 +475,10 @@ namespace UltraCanvas {
 
         if (!data || dataSize == 0) {
             result->errorMessage = "Invalid data: null pointer or zero size";
+            return result;
+        }
+        if (!EnsureImageSubsysterm()) {
+            result->errorMessage = "The image subsystem (libvips) could not be initialised";
             return result;
         }
 
@@ -553,6 +574,7 @@ namespace UltraCanvas {
             // Re-open the source with n=-1 so every page loads, stacked
             // vertically ("toilet roll"); libvips composites GIF disposal so
             // each page is a complete frame.
+            EnsureImageSubsysterm();
             auto options = vips::VImage::option()->set("n", -1);
             vips::VImage strip = imgDataPtr
                 ? vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "", options)
@@ -806,6 +828,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
         if (!imgDataPtr && !LoadFileToMemory(fileName)) return nullptr;
+        if (!EnsureImageSubsysterm()) return nullptr;
         try {
             vips::VImage vimg = vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "");
             const int nb = vimg.bands();

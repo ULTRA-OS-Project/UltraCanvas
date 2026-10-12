@@ -23,6 +23,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdio>
+#include <random>
 #include <cstring>
 #include <filesystem>
 #include <set>
@@ -566,6 +567,31 @@ std::vector<ClipboardEntryKind> PreferredClipboardKinds(const std::vector<std::s
     if (!viewer && images > 0 && texts == 0 && others == 0) return {Kind::Image, Kind::Colour};
     if (texts > 0 && images == 0 && others == 0) return {Kind::Text, Kind::Code, Kind::Link};
     return {};
+}
+
+std::filesystem::path ClipboardHandOffFolder() {
+    static const fs::path folder = [] {
+        std::error_code ec;
+        fs::path made;
+        if (const std::string runtime = GetEnvUtf8("XDG_RUNTIME_DIR"); !runtime.empty()) {
+            made = PathFromUtf8(runtime) / "UltraClipboard";
+            fs::create_directories(made, ec);
+        } else {
+#if defined(_WIN32) || defined(__APPLE__)
+            made = fs::temp_directory_path(ec) / "UltraClipboard";
+            fs::create_directories(made, ec);
+#else
+            std::random_device random;
+            char name[32];
+            std::snprintf(name, sizeof(name), "UltraClipboard-%08x%08x", random(), random());
+            made = fs::temp_directory_path(ec) / PathFromUtf8(name);
+            if (!fs::create_directory(made, ec)) return fs::path();
+#endif
+        }
+        fs::permissions(made, fs::perms::owner_all, fs::perm_options::replace, ec);
+        return fs::is_directory(made, ec) ? made : fs::path();
+    }();
+    return folder;
 }
 
 std::vector<uint8_t> ClipboardImageFile(const ClipboardFormat& image, std::string& extension) {
