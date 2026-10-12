@@ -43,7 +43,8 @@ void RegisterShowTopic() {
     (void)registered;
 }
 
-UltraMsgHandle Connect(bool hostBus) {
+// `quiet` keeps a retry loop from saying the same thing forty times.
+UltraMsgHandle Connect(bool hostBus, bool quiet = false) {
     RegisterShowTopic();
     UltraMsgConnectOptions options;
     options.appId = kAppId;
@@ -51,7 +52,7 @@ UltraMsgHandle Connect(bool hostBus) {
     options.startBrokerIfAbsent = hostBus;
     UltraMsgResult error;
     const UltraMsgHandle endpoint = UltraMsg_Connect(options, &error);
-    if (endpoint == UltraMsgInvalidHandle)
+    if (endpoint == UltraMsgInvalidHandle && !quiet)
         Trace::Line("Single instance: no UltraMessage bus (" + error.message + ")");
     return endpoint;
 }
@@ -59,12 +60,13 @@ UltraMsgHandle Connect(bool hostBus) {
 } // namespace
 
 bool SingleInstance::HandOff() {
+    bool firstTry = true;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kStartingGraceMs);
     do {
         // The running copy hosts the bus once it listens, so this start never
         // hosts one of its own.
         if (endpoint_ == 0) {
-            const UltraMsgHandle endpoint = Connect(false);
+            const UltraMsgHandle endpoint = Connect(false, !firstTry);
             if (endpoint != UltraMsgInvalidHandle) endpoint_ = endpoint;
         }
         if (endpoint_ != 0) {
@@ -81,6 +83,7 @@ bool SingleInstance::HandOff() {
                 }
             }
         }
+        firstTry = false;
         std::this_thread::sleep_for(std::chrono::milliseconds(kRetryPauseMs));
     } while (std::chrono::steady_clock::now() < deadline);
     return false;
