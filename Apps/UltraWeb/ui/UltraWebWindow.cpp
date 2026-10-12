@@ -13,6 +13,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasUtils.h"
 #include "WasmHost/UltraCanvasWasmHost.h"
 
@@ -183,6 +184,27 @@ bool UltraWebWindow::Initialize() {
     webView_->onExternalLink = [this](const std::string& url) {
         SetStatus("Opening " + url + " with the system ...");
         OpenURL(url);
+    };
+    // A file input's button: the system's (or the framework's) file dialog,
+    // filtered by the input's accept="" list where it names extensions.
+    webView_->onChooseFiles = [](bool multiple, const std::string& accept,
+                                 std::function<void(std::vector<std::string>)> done) {
+        FileDialogOptions options;
+        options.title = multiple ? "Choose files to upload" : "Choose a file to upload";
+        std::vector<std::string> extensions = AcceptExtensions(accept);
+        if (!extensions.empty()) options.filters.emplace_back("Accepted files", extensions);
+        options.filters.emplace_back("All files", std::vector<std::string>{ "*" });
+        if (multiple) {
+            UltraCanvasFileLoader::OpenMultipleFilesDialog(options,
+                [done](DialogResult result, const std::vector<std::string>& paths) {
+                    done(result == DialogResult::OK ? paths : std::vector<std::string>{});
+                });
+        } else {
+            UltraCanvasFileLoader::OpenFileDialog(options, [done](DialogResult result, const std::string& path) {
+                done(result == DialogResult::OK && !path.empty() ? std::vector<std::string>{ path }
+                                                                 : std::vector<std::string>{});
+            });
+        }
     };
     webView_->onNonHtml = [this](const HTML::LoadedPage& page) {
         // An app served without .wasm in its address, say; anything else is

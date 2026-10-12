@@ -419,7 +419,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   enctype, the entry list; `Encoded`, `Multipart`, `PlainText`, `Body`,
   `ContentType`) and `FormController`, one per `<form>` built with
   `BuildOptions::interactiveForms`: its widgets (held weakly), radio groups,
-  `Collect`, `Submit`, `Reset`, `Save` / `Restore`.
+  `Collect`, `Submit`, `Reset`, `Save` / `Restore`; file inputs (`SetFiles`,
+  `BuildOptions::onChooseFiles`, multipart file parts in
+  `FormSubmission::files`) and `ActivateControl` for a `<label>`'s click.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
   `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
