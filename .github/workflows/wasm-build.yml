@@ -1,8 +1,8 @@
 name: WebAssembly build
 
-# Builds the WebAssembly backend's demo app with Emscripten, so OS/WASM/ and
-# the core's __EMSCRIPTEN__ branches get compiled somewhere other than one
-# developer's machine.
+# Builds the WebAssembly backend's demo apps (wasm-demo and the ultraos.eu
+# front page) with Emscripten, so OS/WASM/ and the core's __EMSCRIPTEN__
+# branches get compiled somewhere other than one developer's machine.
 #
 # Manual dispatch only, on purpose: the wasm sysroot (glib, cairo, pango,
 # fontconfig, harfbuzz, libvips and their dependencies) takes the better part
@@ -120,14 +120,24 @@ jobs:
         working-directory: UltraCanvas/OS/WASM/demo
         run: cmake --build build --parallel "$(nproc)"
 
-      - name: Upload demo
+      # Both demos, with serve.py: unzip the artifact into a folder, run
+      # `python3 serve.py 8080` there and open wasm-demo.html or
+      # ultraos-frontpage.html (the pages need the server's cross-origin
+      # isolation headers, see UltraCanvas/OS/WASM/README.md).
+      - name: Upload demos
         uses: actions/upload-artifact@v6
         with:
           name: wasm-demo
           path: |
+            UltraCanvas/OS/WASM/demo/serve.py
             UltraCanvas/OS/WASM/demo/build/wasm-demo.html
             UltraCanvas/OS/WASM/demo/build/wasm-demo.js
             UltraCanvas/OS/WASM/demo/build/wasm-demo.wasm
             UltraCanvas/OS/WASM/demo/build/wasm-demo.data
             UltraCanvas/OS/WASM/demo/build/wasm-demo.ww.js
+            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.html
+            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.js
+            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.wasm
+            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.data
+            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.ww.js
           if-no-files-found: error
