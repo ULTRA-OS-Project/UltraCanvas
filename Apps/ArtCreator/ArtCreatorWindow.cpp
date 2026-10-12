@@ -2,11 +2,16 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.5.0 - icons redrawn on pixel grids, in three sets: the palette's tools at
+//                 28 px (media/icons/artcreator/28) in 36 px buttons, the toolbar and
+//                 panel icons at 24 px (they were drawn at 20 and 22 px and blurred),
+//                 and a 16 px set for every menu entry (media/icons/artcreator/16);
+//                 flat palette and toolbar buttons, as UltraPaint's
 // Version: 1.4.0 - flat one-tone icons throughout: the menu set's for the file
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -50,9 +55,18 @@ using namespace VectorStorage;
 using namespace VectorEdit;
 
 namespace {
+    // A menu entry with an icon beside its check box.
+    MenuItemData WithIcon(MenuItemData item, const std::string& iconPath) {
+        item.iconPath = iconPath;
+        return item;
+    }
+
     constexpr float kMenuHeight = 28.0f;
     constexpr float kToolbarHeight = 38.0f;
-    constexpr float kPaletteWidth = 46.0f;
+    constexpr float kPaletteWidth = 48.0f;
+    constexpr float kToolButton = 36.0f;   // a tool's button, square, 4 px around its 28 px icon
+    constexpr float kToolIcon = 28.0f;
+    constexpr float kButtonIcon = 24.0f;   // toolbar and panel icons: the 24 px grid they are drawn on
     constexpr float kRightWidth = 300.0f;
     constexpr float kRightInner = 262.0f;
     constexpr float kStatusHeight = 24.0f;
@@ -143,8 +157,16 @@ std::string ArtCreatorWindow::IconPath(const std::string& file) const {
     return NormalizePath(GetResourcesDir() + "media/icons/artcreator/" + file);
 }
 
-// The shared flat set (New, Open, Save, Undo, Cut, Zoom, ...).
+std::string ArtCreatorWindow::ToolIconPath(const std::string& file) const {
+    return NormalizePath(GetResourcesDir() + "media/icons/artcreator/28/" + file);
+}
+
 std::string ArtCreatorWindow::MenuIconPath(const std::string& file) const {
+    return NormalizePath(GetResourcesDir() + "media/icons/artcreator/16/" + file);
+}
+
+// The framework's shared line set (New, Open, Save, Undo, Zoom, ...).
+std::string ArtCreatorWindow::SharedIconPath(const std::string& file) const {
     return NormalizePath(GetResourcesDir() + "media/icons/menu/" + file);
 }
 
@@ -313,16 +335,16 @@ void ArtCreatorWindow::BuildMenuBar() {
         .SetType(MenuType::Menubar)
         .AddSubmenu("File", {
             M::ActionWithShortcut("New...", "Ctrl+N", MenuIconPath("new.svg"), [this]() { CmdNew(); }),
-            M::ActionWithShortcut("New Window", "Ctrl+Alt+N", IconPath("new-window.svg"), [this]() { CmdNewWindow(); }),
-            M::ActionWithShortcut("Open...", "Ctrl+O", MenuIconPath("folder.svg"), [this]() { CmdOpen(); }),
+            M::ActionWithShortcut("New Window", "Ctrl+Alt+N", MenuIconPath("new-window.svg"), [this]() { CmdNewWindow(); }),
+            M::ActionWithShortcut("Open...", "Ctrl+O", MenuIconPath("open.svg"), [this]() { CmdOpen(); }),
             M::Separator(),
             M::ActionWithShortcut("Save", "Ctrl+S", MenuIconPath("save.svg"), [this]() { CmdSave(); }),
-            M::ActionWithShortcut("Save As...", "Ctrl+Shift+S", MenuIconPath("save.svg"), [this]() { CmdSaveAs(); }),
-            M::ActionWithShortcut("Export...", "Ctrl+E", MenuIconPath("extract.svg"), [this]() { CmdExport(); }),
+            M::ActionWithShortcut("Save As...", "Ctrl+Shift+S", MenuIconPath("save-as.svg"), [this]() { CmdSaveAs(); }),
+            M::ActionWithShortcut("Export...", "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
             M::Separator(),
-            M::Action("Document Setup...", MenuIconPath("settings.svg"), [this]() { CmdDocumentSetup(); }),
+            M::Action("Document Setup...", MenuIconPath("document-setup.svg"), [this]() { CmdDocumentSetup(); }),
             M::Separator(),
-            M::ActionWithShortcut("Quit", "Ctrl+Q", MenuIconPath("exit.svg"), [this]() { CmdQuit(); }),
+            M::ActionWithShortcut("Quit", "Ctrl+Q", MenuIconPath("quit.svg"), [this]() { CmdQuit(); }),
         })
         .AddSubmenu("Edit", {
             M::ActionWithShortcut("Undo", "Ctrl+Z", MenuIconPath("undo.svg"), [this]() { CmdUndo(); }),
@@ -331,94 +353,94 @@ void ArtCreatorWindow::BuildMenuBar() {
             M::ActionWithShortcut("Cut", "Ctrl+X", MenuIconPath("cut.svg"), [this]() { CmdCut(); }),
             M::ActionWithShortcut("Copy", "Ctrl+C", MenuIconPath("copy.svg"), [this]() { CmdCopy(); }),
             M::ActionWithShortcut("Paste", "Ctrl+V", MenuIconPath("paste.svg"), [this]() { CmdPaste(); }),
-            M::ActionWithShortcut("Duplicate", "Ctrl+D", IconPath("duplicate.svg"), [this]() { CmdDuplicate(); }),
-            M::ActionWithShortcut("Delete", "Del", IconPath("delete.svg"), [this]() { CmdDelete(); }),
+            M::ActionWithShortcut("Duplicate", "Ctrl+D", MenuIconPath("duplicate.svg"), [this]() { CmdDuplicate(); }),
+            M::ActionWithShortcut("Delete", "Del", MenuIconPath("delete.svg"), [this]() { CmdDelete(); }),
             M::Separator(),
-            M::ActionWithShortcut("Select All", "Ctrl+A", IconPath("select-all.svg"), [this]() { CmdSelectAll(); }),
-            M::ActionWithShortcut("Select None", "Ctrl+Shift+A", IconPath("select-none.svg"), [this]() { CmdSelectNone(); }),
+            M::ActionWithShortcut("Select All", "Ctrl+A", MenuIconPath("select-all.svg"), [this]() { CmdSelectAll(); }),
+            M::ActionWithShortcut("Select None", "Ctrl+Shift+A", MenuIconPath("select-none.svg"), [this]() { CmdSelectNone(); }),
         })
         .AddSubmenu("Arrange", {
-            M::ActionWithShortcut("Bring to Front", "Ctrl+F", IconPath("to-front.svg"), [this]() { CmdReorder(ZOrderMove::ToFront); }),
-            M::ActionWithShortcut("Bring Forward", "Ctrl+Shift+F", IconPath("forward.svg"), [this]() { CmdReorder(ZOrderMove::Forward); }),
-            M::ActionWithShortcut("Send Backward", "Ctrl+Shift+B", IconPath("backward.svg"), [this]() { CmdReorder(ZOrderMove::Backward); }),
-            M::ActionWithShortcut("Send to Back", "Ctrl+B", IconPath("to-back.svg"), [this]() { CmdReorder(ZOrderMove::ToBack); }),
+            M::ActionWithShortcut("Bring to Front", "Ctrl+F", MenuIconPath("to-front.svg"), [this]() { CmdReorder(ZOrderMove::ToFront); }),
+            M::ActionWithShortcut("Bring Forward", "Ctrl+Shift+F", MenuIconPath("forward.svg"), [this]() { CmdReorder(ZOrderMove::Forward); }),
+            M::ActionWithShortcut("Send Backward", "Ctrl+Shift+B", MenuIconPath("backward.svg"), [this]() { CmdReorder(ZOrderMove::Backward); }),
+            M::ActionWithShortcut("Send to Back", "Ctrl+B", MenuIconPath("to-back.svg"), [this]() { CmdReorder(ZOrderMove::ToBack); }),
             M::Separator(),
-            M::ActionWithShortcut("Group", "Ctrl+G", IconPath("group.svg"), [this]() { CmdGroup(); }),
-            M::ActionWithShortcut("Ungroup", "Ctrl+U", IconPath("ungroup.svg"), [this]() { CmdUngroup(); }),
+            M::ActionWithShortcut("Group", "Ctrl+G", MenuIconPath("group.svg"), [this]() { CmdGroup(); }),
+            M::ActionWithShortcut("Ungroup", "Ctrl+U", MenuIconPath("ungroup.svg"), [this]() { CmdUngroup(); }),
             M::Separator(),
-            M::Action("Mirror Horizontally", IconPath("mirror-h.svg"), [this]() { CmdMirror(true); }),
-            M::Action("Mirror Vertically", IconPath("mirror-v.svg"), [this]() { CmdMirror(false); }),
+            M::Action("Mirror Horizontally", MenuIconPath("mirror-h.svg"), [this]() { CmdMirror(true); }),
+            M::Action("Mirror Vertically", MenuIconPath("mirror-v.svg"), [this]() { CmdMirror(false); }),
             M::Separator(),
             M::Header("Align to selection"),
-            M::Action("Left Edges", IconPath("align-left.svg"), [this]() { CmdAlign(AlignMode::Left, false); }),
-            M::Action("Horizontal Centres", IconPath("align-hcentre.svg"), [this]() { CmdAlign(AlignMode::HorizontalCenter, false); }),
-            M::Action("Right Edges", IconPath("align-right.svg"), [this]() { CmdAlign(AlignMode::Right, false); }),
-            M::Action("Top Edges", IconPath("align-top.svg"), [this]() { CmdAlign(AlignMode::Top, false); }),
-            M::Action("Vertical Centres", IconPath("align-vcentre.svg"), [this]() { CmdAlign(AlignMode::VerticalCenter, false); }),
-            M::Action("Bottom Edges", IconPath("align-bottom.svg"), [this]() { CmdAlign(AlignMode::Bottom, false); }),
+            M::Action("Left Edges", MenuIconPath("align-left.svg"), [this]() { CmdAlign(AlignMode::Left, false); }),
+            M::Action("Horizontal Centres", MenuIconPath("align-hcentre.svg"), [this]() { CmdAlign(AlignMode::HorizontalCenter, false); }),
+            M::Action("Right Edges", MenuIconPath("align-right.svg"), [this]() { CmdAlign(AlignMode::Right, false); }),
+            M::Action("Top Edges", MenuIconPath("align-top.svg"), [this]() { CmdAlign(AlignMode::Top, false); }),
+            M::Action("Vertical Centres", MenuIconPath("align-vcentre.svg"), [this]() { CmdAlign(AlignMode::VerticalCenter, false); }),
+            M::Action("Bottom Edges", MenuIconPath("align-bottom.svg"), [this]() { CmdAlign(AlignMode::Bottom, false); }),
             M::Separator(),
             M::Header("Align to page"),
-            M::Action("Centre on Page", IconPath("align-page.svg"), [this]() { CmdAlign(AlignMode::HorizontalCenter, true); CmdAlign(AlignMode::VerticalCenter, true); }),
+            M::Action("Centre on Page", MenuIconPath("align-page.svg"), [this]() { CmdAlign(AlignMode::HorizontalCenter, true); CmdAlign(AlignMode::VerticalCenter, true); }),
             M::Separator(),
             M::Header("Distribute"),
-            M::Action("Horizontal Centres Evenly", IconPath("distribute-h.svg"), [this]() { CmdDistribute(DistributeMode::HorizontalCenters); }),
-            M::Action("Vertical Centres Evenly", IconPath("distribute-v.svg"), [this]() { CmdDistribute(DistributeMode::VerticalCenters); }),
-            M::Action("Equal Horizontal Gaps", IconPath("space-h.svg"), [this]() { CmdDistribute(DistributeMode::HorizontalGaps); }),
-            M::Action("Equal Vertical Gaps", IconPath("space-v.svg"), [this]() { CmdDistribute(DistributeMode::VerticalGaps); }),
+            M::Action("Horizontal Centres Evenly", MenuIconPath("distribute-h.svg"), [this]() { CmdDistribute(DistributeMode::HorizontalCenters); }),
+            M::Action("Vertical Centres Evenly", MenuIconPath("distribute-v.svg"), [this]() { CmdDistribute(DistributeMode::VerticalCenters); }),
+            M::Action("Equal Horizontal Gaps", MenuIconPath("space-h.svg"), [this]() { CmdDistribute(DistributeMode::HorizontalGaps); }),
+            M::Action("Equal Vertical Gaps", MenuIconPath("space-v.svg"), [this]() { CmdDistribute(DistributeMode::VerticalGaps); }),
             M::Separator(),
             M::Header("Combine shapes"),
-            M::Action("Add Shapes", IconPath("combine-add.svg"), [this]() { CmdCombine(CombineOp::Add); }),
-            M::Action("Subtract Shapes", IconPath("combine-subtract.svg"), [this]() { CmdCombine(CombineOp::Subtract); }),
-            M::Action("Intersect Shapes", IconPath("combine-intersect.svg"), [this]() { CmdCombine(CombineOp::Intersect); }),
-            M::Action("Slice Shapes", IconPath("combine-slice.svg"), [this]() { CmdCombine(CombineOp::Slice); }),
+            M::Action("Add Shapes", MenuIconPath("combine-add.svg"), [this]() { CmdCombine(CombineOp::Add); }),
+            M::Action("Subtract Shapes", MenuIconPath("combine-subtract.svg"), [this]() { CmdCombine(CombineOp::Subtract); }),
+            M::Action("Intersect Shapes", MenuIconPath("combine-intersect.svg"), [this]() { CmdCombine(CombineOp::Intersect); }),
+            M::Action("Slice Shapes", MenuIconPath("combine-slice.svg"), [this]() { CmdCombine(CombineOp::Slice); }),
             M::Separator(),
-            M::ActionWithShortcut("Apply ClipView", "Ctrl+K", IconPath("clipview.svg"), [this]() { CmdApplyClipView(); }),
-            M::Action("Remove ClipView, Blend or Mould", IconPath("ungroup.svg"), [this]() { CmdRemoveContainer(); }),
+            M::ActionWithShortcut("Apply ClipView", "Ctrl+K", MenuIconPath("clipview.svg"), [this]() { CmdApplyClipView(); }),
+            M::Action("Remove ClipView, Blend or Mould", MenuIconPath("release.svg"), [this]() { CmdRemoveContainer(); }),
             M::Separator(),
-            M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+S", IconPath("shape-editor.svg"), [this]() { CmdConvertToPath(); }),
+            M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+S", MenuIconPath("shape-editor.svg"), [this]() { CmdConvertToPath(); }),
         })
         .AddSubmenu("Object", {
-            M::Action("No Fill", IconPath("no-fill.svg"), [this]() { CmdRemoveFill(); }),
-            M::Action("No Line", IconPath("no-line.svg"), [this]() { CmdRemoveLine(); }),
+            M::Action("No Fill", MenuIconPath("no-fill.svg"), [this]() { CmdRemoveFill(); }),
+            M::Action("No Line", MenuIconPath("no-line.svg"), [this]() { CmdRemoveLine(); }),
             M::Separator(),
             M::Header("Line width"),
-            M::Action("Hairline (0.25 pt)", [this]() { CmdLineWidth(0.25f); }),
-            M::Action("0.5 pt", [this]() { CmdLineWidth(0.5f); }),
-            M::Action("1 pt", [this]() { CmdLineWidth(1.0f); }),
-            M::Action("2 pt", [this]() { CmdLineWidth(2.0f); }),
-            M::Action("4 pt", [this]() { CmdLineWidth(4.0f); }),
-            M::Action("8 pt", [this]() { CmdLineWidth(8.0f); }),
+            M::Action("Hairline (0.25 pt)", MenuIconPath("line-hairline.svg"), [this]() { CmdLineWidth(0.25f); }),
+            M::Action("0.5 pt", MenuIconPath("line-05.svg"), [this]() { CmdLineWidth(0.5f); }),
+            M::Action("1 pt", MenuIconPath("line-1.svg"), [this]() { CmdLineWidth(1.0f); }),
+            M::Action("2 pt", MenuIconPath("line-2.svg"), [this]() { CmdLineWidth(2.0f); }),
+            M::Action("4 pt", MenuIconPath("line-4.svg"), [this]() { CmdLineWidth(4.0f); }),
+            M::Action("8 pt", MenuIconPath("line-8.svg"), [this]() { CmdLineWidth(8.0f); }),
         })
         .AddSubmenu("Layer", {
-            M::ActionWithShortcut("New Layer", "Ctrl+Shift+N", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); }),
-            M::Action("Delete Layer", IconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); }),
+            M::ActionWithShortcut("New Layer", "Ctrl+Shift+N", MenuIconPath("layer-add.svg"), [this]() { CmdLayerAdd(); }),
+            M::Action("Delete Layer", MenuIconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); }),
             M::Separator(),
-            M::Action("Move Layer Up", IconPath("layer-up.svg"), [this]() { CmdLayerMove(1); }),
-            M::Action("Move Layer Down", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); }),
+            M::Action("Move Layer Up", MenuIconPath("layer-up.svg"), [this]() { CmdLayerMove(1); }),
+            M::Action("Move Layer Down", MenuIconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); }),
             M::Separator(),
-            M::Action("Show Layer", MenuIconPath("display.svg"), [this]() { CmdLayerToggle(true); }),
-            M::Action("Hide Layer", MenuIconPath("hidden-files.svg"), [this]() { CmdLayerToggle(false); }),
+            M::Action("Show Layer", MenuIconPath("layer-show.svg"), [this]() { CmdLayerToggle(true); }),
+            M::Action("Hide Layer", MenuIconPath("layer-hide.svg"), [this]() { CmdLayerToggle(false); }),
         })
         .AddSubmenu("View", {
             M::ActionWithShortcut("Zoom In", "+", MenuIconPath("zoom-in.svg"), [this]() { canvas->ZoomIn(); }),
             M::ActionWithShortcut("Zoom Out", "-", MenuIconPath("zoom-out.svg"), [this]() { canvas->ZoomOut(); }),
-            M::ActionWithShortcut("Fit Page", "Ctrl+0", IconPath("zoom-page.svg"), [this]() { canvas->ZoomToPage(); }),
-            M::Action("Fit Drawing", IconPath("fit-drawing.svg"), [this]() { canvas->ZoomToDrawing(); }),
-            M::Action("Fit Selection", IconPath("fit-selection.svg"), [this]() { canvas->ZoomToSelection(); }),
-            M::ActionWithShortcut("Actual Size", "Ctrl+1", IconPath("zoom-100.svg"), [this]() { canvas->ZoomToActual(); }),
+            M::ActionWithShortcut("Fit Page", "Ctrl+0", MenuIconPath("zoom-page.svg"), [this]() { canvas->ZoomToPage(); }),
+            M::Action("Fit Drawing", MenuIconPath("fit-drawing.svg"), [this]() { canvas->ZoomToDrawing(); }),
+            M::Action("Fit Selection", MenuIconPath("fit-selection.svg"), [this]() { canvas->ZoomToSelection(); }),
+            M::ActionWithShortcut("Actual Size", "Ctrl+1", MenuIconPath("zoom-100.svg"), [this]() { canvas->ZoomToActual(); }),
             M::Separator(),
-            M::Checkbox("Rulers", true, [this](bool on) { canvas->SetShowRulers(on); }),
-            M::Checkbox("Grid", false, [this](bool on) { VectorGridSpec g = canvas->GetGrid(); g.visible = on; canvas->SetGrid(g); }),
-            M::Checkbox("Guides", true, [this](bool on) { canvas->SetShowGuides(on); }),
+            WithIcon(M::Checkbox("Rulers", true, [this](bool on) { canvas->SetShowRulers(on); }), MenuIconPath("rulers.svg")),
+            WithIcon(M::Checkbox("Grid", false, [this](bool on) { VectorGridSpec g = canvas->GetGrid(); g.visible = on; canvas->SetGrid(g); }), MenuIconPath("grid.svg")),
+            WithIcon(M::Checkbox("Guides", true, [this](bool on) { canvas->SetShowGuides(on); }), MenuIconPath("guides.svg")),
             M::Separator(),
-            M::Checkbox("Snap to Grid", false, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toGrid = on; canvas->SetSnapOptions(s); }),
-            M::Checkbox("Snap to Guides", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toGuides = on; canvas->SetSnapOptions(s); }),
-            M::Checkbox("Snap to Objects", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toObjects = on; canvas->SetSnapOptions(s); }),
-            M::Checkbox("Snap to Page", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toPage = on; canvas->SetSnapOptions(s); }),
-            M::Action("Clear Guides", [this]() { canvas->ClearGuides(); }),
+            WithIcon(M::Checkbox("Snap to Grid", false, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toGrid = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-grid.svg")),
+            WithIcon(M::Checkbox("Snap to Guides", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toGuides = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-guides.svg")),
+            WithIcon(M::Checkbox("Snap to Objects", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toObjects = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-objects.svg")),
+            WithIcon(M::Checkbox("Snap to Page", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toPage = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-page.svg")),
+            M::Action("Clear Guides", MenuIconPath("clear-guides.svg"), [this]() { canvas->ClearGuides(); }),
         })
         .AddSubmenu("Help", {
-            M::Action("About ArtCreator", MenuIconPath("info-bar.svg"), [this]() { CmdAbout(); }),
+            M::Action("About ArtCreator", MenuIconPath("about.svg"), [this]() { CmdAbout(); }),
         })
         .Build();
     menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -430,18 +452,20 @@ void ArtCreatorWindow::BuildToolbar() {
     toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     ToolbarAppearance app = toolbar->GetAppearance();
     app.showIconLabels = false;
+    app.style = ToolbarStyle::Flat;
+    app.hoverBackgroundColor = Color(0, 0, 0, 18);
     toolbar->SetAppearance(app);
-    toolbar->AddButton("ac-tb-new", "", MenuIconPath("new.svg"), [this]() { CmdNew(); })->SetTooltip("New drawing (Ctrl+N)");
-    toolbar->AddButton("ac-tb-open", "", MenuIconPath("folder.svg"), [this]() { CmdOpen(); })->SetTooltip("Open (Ctrl+O)");
-    toolbar->AddButton("ac-tb-save", "", MenuIconPath("save.svg"), [this]() { CmdSave(); })->SetTooltip("Save (Ctrl+S)");
+    toolbar->AddButton("ac-tb-new", "", SharedIconPath("new.svg"), [this]() { CmdNew(); })->SetTooltip("New drawing (Ctrl+N)");
+    toolbar->AddButton("ac-tb-open", "", SharedIconPath("folder.svg"), [this]() { CmdOpen(); })->SetTooltip("Open (Ctrl+O)");
+    toolbar->AddButton("ac-tb-save", "", SharedIconPath("save.svg"), [this]() { CmdSave(); })->SetTooltip("Save (Ctrl+S)");
     toolbar->AddSeparator("ac-tb-s1");
-    undoButton = toolbar->AddButton("ac-tb-undo", "", MenuIconPath("undo.svg"), [this]() { CmdUndo(); });
+    undoButton = toolbar->AddButton("ac-tb-undo", "", SharedIconPath("undo.svg"), [this]() { CmdUndo(); });
     undoButton->SetTooltip("Undo (Ctrl+Z)");
-    redoButton = toolbar->AddButton("ac-tb-redo", "", MenuIconPath("redo.svg"), [this]() { CmdRedo(); });
+    redoButton = toolbar->AddButton("ac-tb-redo", "", SharedIconPath("redo.svg"), [this]() { CmdRedo(); });
     redoButton->SetTooltip("Redo (Ctrl+Y)");
     toolbar->AddSeparator("ac-tb-s2");
-    toolbar->AddButton("ac-tb-zoomout", "", MenuIconPath("zoom-out.svg"), [this]() { canvas->ZoomOut(); })->SetTooltip("Zoom out (-)");
-    toolbar->AddButton("ac-tb-zoomin", "", MenuIconPath("zoom-in.svg"), [this]() { canvas->ZoomIn(); })->SetTooltip("Zoom in (+)");
+    toolbar->AddButton("ac-tb-zoomout", "", SharedIconPath("zoom-out.svg"), [this]() { canvas->ZoomOut(); })->SetTooltip("Zoom out (-)");
+    toolbar->AddButton("ac-tb-zoomin", "", SharedIconPath("zoom-in.svg"), [this]() { canvas->ZoomIn(); })->SetTooltip("Zoom in (+)");
     toolbar->AddButton("ac-tb-fit", "", IconPath("zoom-page.svg"), [this]() { canvas->ZoomToPage(); })->SetTooltip("Fit page (Ctrl+0)");
     toolbar->AddButton("ac-tb-100", "", IconPath("zoom-100.svg"), [this]() { canvas->ZoomToActual(); })->SetTooltip("Actual size (Ctrl+1)");
     toolbar->AddSeparator("ac-tb-s3");
@@ -452,6 +476,17 @@ void ArtCreatorWindow::BuildToolbar() {
     toolbar->AddSeparator("ac-tb-s4");
     toolbar->AddButton("ac-tb-mirror-h", "", IconPath("mirror-h.svg"), [this]() { CmdMirror(true); })->SetTooltip("Mirror horizontally");
     toolbar->AddButton("ac-tb-mirror-v", "", IconPath("mirror-v.svg"), [this]() { CmdMirror(false); })->SetTooltip("Mirror vertically");
+    // The toolbar would draw its icons at 20 px; these are drawn on a 24 px
+    // grid and are sharp only at that size.
+    for (auto& c : toolbar->Children()) {
+        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
+            b->SetIconSize(kButtonIcon, kButtonIcon);
+            ButtonStyle flat = b->GetStyle();
+            flat.cornerRadius = 6.0f;
+            flat.pressedColor = Color(0, 0, 0, 30);
+            b->SetStyle(flat);
+        }
+    }
     toolbar->AddSeparator("ac-tb-s5");
     // Display quality: outlines only, fills and lines, or antialiased.
     auto qualityCaption = toolbar->AddLabel("ac-tb-quality-caption", "Quality");
@@ -493,16 +528,35 @@ void ArtCreatorWindow::BuildToolPalette() {
     app.showIconLabels = false;
     app.itemSpacing = 1.0f;
     palette->SetAppearance(app);
+    // The buttons keep their size: where the window is too short for all of
+    // them the column scrolls (wheel, or the hints at its ends) rather than
+    // squeezing every icon into a button too small for it.
+    palette->SetOverflowMode(ToolbarOverflowMode::Scroll);
     palette->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     toolButtons.clear();
     for (const auto& t : tools) {
         const ArtToolId id = t->id;
-        auto b = palette->AddToggleButton("ac-tool-" + std::to_string(static_cast<int>(id)), "", IconPath(t->iconFile),
+        auto b = palette->AddToggleButton("ac-tool-" + std::to_string(static_cast<int>(id)), "", ToolIconPath(t->iconFile),
                                           [this, id](bool) { SelectTool(id); });
         std::string tip = t->name;
         if (t->shortcutKey) tip += std::string(" (") + t->shortcutKey + ")";
         b->SetTooltip(tip);
-        b->SetIconSize(22, 22);
+        // The palette's icons are drawn on a 28 px grid (media/icons/
+        // artcreator/28) with 2 px strokes on whole units: shown at 28 px
+        // they land on whole pixels and stay sharp. Shown at any other size
+        // every line falls between two pixels and blurs, as the 24 px icons
+        // did at 22 px.
+        b->SetIconSize(kToolIcon, kToolIcon);
+        b->SetElementSize(Size2Df(kToolButton, kToolButton));
+        // Flat: no box around a tool; a soft grey under the pointer and the
+        // active tool on a light blue, both rounded.
+        ButtonStyle flat = b->GetStyle();
+        flat.normalColor = Colors::Transparent;
+        flat.borderWidth = 0;
+        flat.cornerRadius = 6.0f;
+        flat.hoverColor = Color(0, 0, 0, 18);
+        flat.pressedColor = Color(0, 103, 192, 46);
+        b->SetStyle(flat);
         toolButtons.push_back(b);
     }
     body->AddChild(palette);
@@ -599,6 +653,9 @@ void ArtCreatorWindow::BuildRightPanel() {
     buttons->AddButton("ac-l-del", "", IconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); })->SetTooltip("Delete layer");
     buttons->AddButton("ac-l-up", "", IconPath("layer-up.svg"), [this]() { CmdLayerMove(1); })->SetTooltip("Move up");
     buttons->AddButton("ac-l-down", "", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); })->SetTooltip("Move down");
+    for (auto& c : buttons->Children()) {
+        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) b->SetIconSize(kButtonIcon, kButtonIcon);
+    }
     layersPanel->AddChild(buttons);
 
     layerRows = std::make_shared<UltraCanvasContainer>("ac-layer-rows", 0, 0, 0, 0);
