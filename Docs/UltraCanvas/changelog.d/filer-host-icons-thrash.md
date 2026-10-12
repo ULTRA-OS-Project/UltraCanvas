@@ -16,3 +16,14 @@
   `SHGFI_USEFILEATTRIBUTES`, the desktops by MIME type or UTType), so a
   `.dll` keys as `ext:dll` like any other type now; a program's own icon is
   still the native module's answer and is unaffected.
+- **On Windows a host icon is held at the size it is drawn.** The shell's
+  jumbo list answers 256 pixels a side whatever was asked, so a medium tile
+  asking for 128 held a quarter-megabyte pixmap and drew it at a quarter of
+  the area. The Windows backend resamples the icon down to the size asked
+  for (never up), which holds four times as many types in the same cache.
+- **A stale Windows version resource fails CI.** `UltraTexter.rc` /
+  `.manifest` and `UltraFiler.rc` / `.manifest` carry a literal copy of the
+  version that `set-version.sh` writes, and the configure-time warning for
+  one that fell behind its changelog was not enough: UltraFiler 1.72.4
+  shipped with a 1.72.3 version resource. `scripts/check_changelog.py`
+  compares them now and `changelog.yml` runs on a change to them.

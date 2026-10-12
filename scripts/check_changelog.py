@@ -115,6 +115,29 @@ GAP_LIMIT = 10
 HEADER = re.compile(r"^#### (\d{4}-\d{2}-\d{2}) \*(\d+(?:\.\d+)*)\*\s*$")
 DECLARE = re.compile(r'^\s*_ultracanvas_declare_product\(\s*(\S+)\s+"([^"]+)"')
 
+# The Windows resource scripts and manifests still hold a literal copy of two
+# products' versions - windres reads them from disk, so cmake cannot feed them
+# the changelog's number - and set-version.sh rewrites them. The configure
+# step warns when they have fallen behind, and a warning was not enough:
+# UltraFiler 1.72.4 shipped with a 1.72.3 version resource. So the same
+# comparison is made here, where it fails the pull request that bumped the
+# changelog without running the script. Per product: the files, and in each
+# the pattern whose group 1 is the version and the form it is written in
+# ("comma4" 1,72,5,0 / "dot4" 1.72.5.0 / "plain" 1.72.5) - the forms
+# set-version.sh writes.
+WINDOWS_RESOURCES = {
+    "ULTRATEXTER": [
+        ("Apps/Texter/UltraTexter.rc", r"^\s+(?:FILEVERSION|PRODUCTVERSION)\s+([0-9,]+)", "comma4"),
+        ("Apps/Texter/UltraTexter.rc", r'^\s+VALUE\s+"(?:FileVersion|ProductVersion)",\s+"([0-9.]+)\\0"', "plain"),
+        ("Apps/Texter/UltraTexter.manifest", r'^        version="([0-9.]+)"', "dot4"),
+    ],
+    "ULTRAFILER": [
+        ("Apps/UltraFiler/UltraFiler.rc", r"^\s+(?:FILEVERSION|PRODUCTVERSION)\s+([0-9,]+)", "comma4"),
+        ("Apps/UltraFiler/UltraFiler.rc", r'^\s+VALUE\s+"(?:FileVersion|ProductVersion)",\s+"([0-9.]+)\\0"', "plain"),
+        ("Apps/UltraFiler/UltraFiler.manifest", r'^        version="([0-9.]+)"', "dot4"),
+    ],
+}
+
 
 def changelogs():
     """The changelog of every product cmake declares, so the two cannot drift."""
@@ -300,6 +323,52 @@ def check_pending():
     return problems
 
 
+def version_forms(version):
+    """The three spellings of a changelog version, as cmake/UltraCanvasVersion.cmake
+    and set-version.sh write them: padded to four components for the resource
+    script and the manifest, as written for the string values."""
+    parts = [str(p) for p in version]
+    four = (parts + ["0", "0", "0", "0"])[:4]
+    return {"plain": ".".join(parts), "dot4": ".".join(four), "comma4": ",".join(four)}
+
+
+def check_windows_resources(products):
+    """A product's Windows resource files carry the version its changelog is on."""
+    problems = []
+    changelog_of = dict(products)
+    for prefix, resources in WINDOWS_RESOURCES.items():
+        relative = changelog_of.get(prefix)
+        if relative is None or not (REPO / relative).exists():
+            continue   # check() already reports a missing or undeclared changelog
+        entries = parse((REPO / relative).read_text(encoding="utf-8"))
+        if not entries:
+            continue   # reported by check()
+        forms = version_forms(entries[0][2])
+        for resource, pattern, form in resources:
+            path = REPO / resource
+            if not path.exists():
+                continue
+            matcher = re.compile(pattern)
+            hits = 0
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                m = matcher.match(line)
+                if not m:
+                    continue
+                hits += 1
+                if m.group(1) != forms[form]:
+                    problems.append(
+                        f"{resource}:{number}: version {m.group(1)} but {relative} is on "
+                        f"{forms['plain']}. windres reads this file from disk, so the "
+                        f"build ships it as it stands - run ./set-version.sh and commit "
+                        f"the result.")
+            if hits == 0:
+                problems.append(
+                    f"{resource}: no version line matches what set-version.sh writes "
+                    f"({pattern}) - the file or the script changed shape, and the "
+                    f"version in it is no longer checked.")
+    return problems
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -313,6 +382,7 @@ def main():
     for prefix, relative in products:
         problems.extend(check(prefix, relative, args.base))
     problems.extend(check_pending())
+    problems.extend(check_windows_resources(products))
 
     if problems:
         for p in problems:

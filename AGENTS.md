@@ -590,7 +590,9 @@ number anywhere else, and never introduce a new literal copy of one:
   them from disk: `Apps/Texter/UltraTexter.{rc,manifest}` and
   `Apps/UltraFiler/UltraFiler.{rc,manifest}`. Run `./set-version.sh` after
   bumping either app's version; a CMake configure on any platform warns when
-  they are stale. Nothing else may hold a literal — UltraFiler's compile
+  they are stale, and `scripts/check_changelog.py` (CI's `changelog.yml`)
+  fails the pull request - the warning alone let UltraFiler 1.72.4 ship with
+  a 1.72.3 version resource. Nothing else may hold a literal — UltraFiler's compile
   definition did, and titled its window `UltraFiler 0.8.0` for thirteen
   releases while its changelog said 1.17.0.
 
