@@ -5,12 +5,13 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
+// Version: 4.5.0 - the size-only constructor is border-box too, like the full-rect one
 // Version: 4.4.0 - GetPopupShadow: a soft drop shadow the window paints under a popup
 // Version: 4.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 4.3.0 - accessible name/description overrides, toggle state, range value, value text and default action
 // Version: 4.2.0 - ArrangeOwnBox: take a box without laying the children out
 // Version: 4.1.0 - SetBorderRadius: rounded corners without a border
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -196,10 +197,16 @@ namespace UltraCanvas {
             stateFlags.Reset();
         }
 
+        // Border-box, as the full-rect constructor above: a widget's width
+        // and height are its whole box, padding and border included, however
+        // it was constructed. (This one used to keep the engine's content-box
+        // default, so the same widget with the same size came out larger by
+        // its padding and border when built without a position.)
         explicit UltraCanvasUIElement(const std::string& idstr = "",
                              float w = 0, float h = 0) {
             id = idstr;
             finalBounds = Rect2Df{0.f, 0.f, w, h};
+            box.boxSizing = CSSLayout::BoxSizing::BorderBox;
             if (w > 0) size.width  = CSSLayout::Dimension::Px(w);
             if (h > 0) size.height = CSSLayout::Dimension::Px(h);
             stateFlags.Reset();
