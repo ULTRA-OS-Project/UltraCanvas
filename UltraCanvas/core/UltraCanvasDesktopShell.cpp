@@ -482,6 +482,33 @@ bool UltraCanvasDesktopShell::LaunchProgram(const std::string& program,
     return ok;
 }
 
+// ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
+
+bool UltraCanvasDesktopShell::CanReplaceSystemDesktop() { return DesktopShellBackend::CanReplaceSystemDesktop(); }
+bool UltraCanvasDesktopShell::IsSystemDesktopReplaced() { return DesktopShellBackend::IsSystemDesktopReplaced(); }
+
+bool UltraCanvasDesktopShell::ReplaceSystemDesktop(const std::string& desktopProgram,
+                                                   const std::vector<std::string>& arguments,
+                                                   std::string* error) {
+    std::string reason;
+    std::error_code ec;
+    const fs::path program = PathFromUtf8(desktopProgram);
+    if (desktopProgram.empty() || !program.is_absolute() || !fs::is_regular_file(program, ec)) {
+        reason = "\"" + desktopProgram + "\" is not a program this account can start at sign-in.";
+    } else if (DesktopShellBackend::ReplaceSystemDesktop(desktopProgram, arguments, reason)) {
+        return true;
+    }
+    if (error) *error = reason;
+    return false;
+}
+
+bool UltraCanvasDesktopShell::RestoreSystemDesktop(std::string* error) {
+    std::string reason;
+    if (DesktopShellBackend::RestoreSystemDesktop(reason)) return true;
+    if (error) *error = reason;
+    return false;
+}
+
 // ===== NOTICES =====
 
 std::string UltraCanvasDesktopShell::NoticesDirectory() {
@@ -676,6 +703,14 @@ namespace DesktopShellBackend {
     }
 
     bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
+
+    bool CanReplaceSystemDesktop() { return false; }
+    bool IsSystemDesktopReplaced() { return false; }
+    bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, std::string& error) {
+        error = "This platform has no switch for which desktop a session starts.";
+        return false;
+    }
+    bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
 
     void ReadDeviceActivity(DesktopDeviceActivity& activity) {
         activity.warnings.push_back(

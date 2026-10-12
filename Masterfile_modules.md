@@ -783,6 +783,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     by opening the shortcut), `MatchApplication` (a window's entry, by
     `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
     `FindProgram` (next to this executable first, then `PATH`).
+  - `CanReplaceSystemDesktop` / `IsSystemDesktopReplaced` /
+    `ReplaceSystemDesktop` / `RestoreSystemDesktop` - a program (UltraDesktop)
+    in place of the system's desktop at sign-in, and the way back (Windows:
+    the user's Run key and Explorer's taskbar on auto-hide, its previous
+    state restored; elsewhere the session decides and the calls say so).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.

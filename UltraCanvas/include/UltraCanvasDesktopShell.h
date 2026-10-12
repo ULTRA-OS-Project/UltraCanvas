@@ -42,7 +42,7 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
-// Version: 1.2.0 - the Windows backend
+// Version: 1.3.0 - in place of the system's desktop (ReplaceSystemDesktop)
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
@@ -222,6 +222,28 @@ namespace UltraCanvas {
                                   std::string* error = nullptr);
         // Where LaunchProgram would find `program`; "" when it would not.
         static std::string FindProgram(const std::string& program);
+
+        // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
+        // Whether this user's sign-in starts `desktopProgram` (UltraDesktop)
+        // as the desktop, and the way back. On Windows the program starts with
+        // the session, given `arguments`, and Explorer's taskbar hides itself;
+        // Explorer keeps running, so its tray, its notifications and the
+        // programs that need it go on working. Restoring removes the start
+        // and gives the taskbar back the state it had before - that state,
+        // not a default. Per user: no other account changes and no
+        // administrator rights are needed; it takes effect for the session
+        // that is running, and every one after. Where the session itself
+        // decides which desktop runs (ULTRA OS, Linux) or the platform has no
+        // such switch, CanReplaceSystemDesktop() is false and the calls fail
+        // saying so.
+        static bool CanReplaceSystemDesktop();
+        static bool IsSystemDesktopReplaced();
+        // `desktopProgram` is an absolute path to the executable.
+        static bool ReplaceSystemDesktop(const std::string& desktopProgram,
+                                         const std::vector<std::string>& arguments = {},
+                                         std::string* error = nullptr);
+        // Safe to call when nothing was replaced: true, nothing changes.
+        static bool RestoreSystemDesktop(std::string* error = nullptr);
 
         // ===== NOTICES =====
         // Publish `count` (and an optional line of text) under `application`.

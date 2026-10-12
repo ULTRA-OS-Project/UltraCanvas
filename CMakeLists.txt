@@ -2304,24 +2304,15 @@ endif()
 # THE CMAKE PACKAGE"), where the link interface and the dependency choices they
 # describe are in scope. Tests/PackageConsumer builds against the result.
 
-# ===== CPack CONFIGURATION =====
-#set(CPACK_PACKAGE_NAME "UltraCanvas")
-#set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-#set(CPACK_PACKAGE_VENDOR "ULTRA OS Development GmbH")
-#set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Cross-platform UI & Rendering Framework")
-#set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
-#set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
-#
-#if(UNIX AND NOT APPLE)
-#    set(CPACK_GENERATOR "DEB;TGZ")
-#    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libcairo2, libpango-1.0-0, libfreetype6")
-#elseif(APPLE)
-#    set(CPACK_GENERATOR "DragNDrop;TGZ")
-#elseif(WIN32)
-#    set(CPACK_GENERATOR "NSIS;ZIP")
-#endif()
-#
-#include(CPack)
+# ===== PACKAGES =====
+# Not CPack: what a package must hold - every DLL an application loads, the
+# ImageMagick coders renamed away from Windows system DLL names, the CA
+# bundle, the vips and libheif modules - is collected by the platform
+# scripts, not by install() rules, and a second collection here could only
+# disagree with them. Windows: package-win.sh builds the zip and, with
+# --installer, the installer from the same folder
+# (Windows/Installer/UltraCanvasSetup.nsi, scripts/build-windows-installer.sh).
+# Linux: package-linux.sh and appimage/. macOS: package-macos.sh.
 
 # ===== FINAL CONFIGURATION SUMMARY =====
 message(STATUS "")

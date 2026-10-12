@@ -11,8 +11,12 @@
 // pointed at the throwaway directory), and a window of its own - listed with
 // its UTF-8 title and its program's name, reported by the monitor,
 // minimized, given a reserved screen edge that the work area has to make
-// room for, and closed - plus a global shortcut and a screenshot file.
-// Version: 1.2.0 - the Windows backend
+// room for, and closed - plus a global shortcut and a screenshot file. On a
+// CI runner (CI=true) it also switches the desktop at sign-in to itself and
+// back, and checks the Run value and the taskbar's state come back as they
+// were; anywhere else that is skipped, so a developer's own taskbar and
+// sign-in are never touched.
+// Version: 1.3.0 - ReplaceSystemDesktop / RestoreSystemDesktop
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -30,6 +34,7 @@
 #include "UltraCanvasShellLink.h"
 #include "ShellLinkTestSupport.h"
 #include <windows.h>
+#include <shellapi.h>   // SHAppBarMessage
 #endif
 
 namespace fs = std::filesystem;
@@ -365,6 +370,19 @@ int main() {
         }
     }
 
+    // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
+    {
+        std::string error;
+        Check(UltraCanvasDesktopShell::RestoreSystemDesktop(&error), "restoring when nothing was replaced is fine " +
+                                                                         error);
+        Check(!UltraCanvasDesktopShell::ReplaceSystemDesktop("relative/UltraDesktop", {}, &error) && !error.empty(),
+              "a program that is not an absolute path is refused: " + error);
+#if !defined(_WIN32)
+        Check(!UltraCanvasDesktopShell::CanReplaceSystemDesktop(), "here the session decides which desktop runs");
+        Check(!UltraCanvasDesktopShell::IsSystemDesktopReplaced(), "so nothing is replaced");
+#endif
+    }
+
 #if defined(_WIN32)
     // ===== WINDOWS: THE WIN32 BACKEND ON THE REAL DESKTOP =====
     {
@@ -456,6 +474,47 @@ int main() {
             Check(in && std::string(signature + 1, 3) == "PNG", "the file is a PNG");
         } else {
             std::printf("  (no screen here to write: %s)\n", captureError.c_str());
+        }
+
+        // The desktop at sign-in: switched to this test program and back. It
+        // writes the user's Run key and hides the taskbar, so only on a CI
+        // runner - a developer running the suite keeps their sign-in as is.
+        const char* ci = std::getenv("CI");   // path-string-ok: ASCII flag
+        if (ci && std::string(ci) == "true") {
+            Check(UltraCanvasDesktopShell::CanReplaceSystemDesktop(), "Windows can start another desktop at sign-in");
+            const bool explorer = FindWindowW(L"Shell_TrayWnd", nullptr) != nullptr;
+            APPBARDATA bar = {};
+            bar.cbSize = sizeof(bar);
+            const UINT taskbarBefore = static_cast<UINT>(SHAppBarMessage(ABM_GETSTATE, &bar));
+            wchar_t self[MAX_PATH * 2] = {};
+            GetModuleFileNameW(nullptr, self, MAX_PATH * 2);
+            const std::string program = PathUtf8Detail::Utf16ToUtf8(std::wstring(self));
+            std::string why;
+            Check(UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--session", "two words"}, &why),
+                  "the switch is made " + why);
+            Check(UltraCanvasDesktopShell::IsSystemDesktopReplaced(), "and reads back as made");
+            wchar_t command[1024] = {};
+            DWORD size = sizeof(command);
+            RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                         L"UltraCanvas Desktop", RRF_RT_REG_SZ, nullptr, command, &size);
+            const std::wstring expected = L"\"" + std::wstring(self) + L"\" --session \"two words\"";
+            Check(std::wstring(command) == expected,
+                  "the sign-in starts the program with its arguments: " + PathUtf8Detail::Utf16ToUtf8(std::wstring(command)));
+            if (explorer) {
+                Check(PumpUntil([&bar]() { return (SHAppBarMessage(ABM_GETSTATE, &bar) & ABS_AUTOHIDE) != 0; }, 3000),
+                      "the taskbar hides itself");
+            }
+            Check(UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--session"}, &why),
+                  "switching again is fine " + why);
+            Check(UltraCanvasDesktopShell::RestoreSystemDesktop(&why), "the switch is undone " + why);
+            Check(!UltraCanvasDesktopShell::IsSystemDesktopReplaced(), "and nothing starts at sign-in any more");
+            if (explorer) {
+                Check(PumpUntil([&]() { return static_cast<UINT>(SHAppBarMessage(ABM_GETSTATE, &bar)) == taskbarBefore; },
+                                3000),
+                      "the taskbar is as it was before the first switch (" + std::to_string(taskbarBefore) + ")");
+            }
+        } else {
+            std::printf("  (desktop switch at sign-in: not on a CI runner, left alone)\n");
         }
 
         const DesktopDeviceActivity devices = UltraCanvasDesktopShell::ReadDeviceActivity();

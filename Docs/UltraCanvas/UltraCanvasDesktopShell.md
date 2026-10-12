@@ -114,6 +114,21 @@ second or two is fine.
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. |
 | `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
+### In place of the system's desktop
+
+| Call | Meaning |
+|---|---|
+| `CanReplaceSystemDesktop()` | Whether this platform has a switch for which desktop a session starts: true on Windows; false where the session itself decides (ULTRA OS, Linux) and elsewhere. |
+| `ReplaceSystemDesktop(program, arguments, &error)` | From now on this account's sign-in starts `program` (an absolute path) with `arguments`, in place of the system's desktop. On Windows: a value *UltraCanvas Desktop* under the user's `Run` key (so it is listed among Task Manager's startup apps) and Explorer's taskbar set to auto-hide, its state before the first switch recorded. Explorer keeps running, so its tray, its notifications and the programs that need it go on working. No administrator rights; no other account changes. |
+| `RestoreSystemDesktop(&error)` | The way back: the start at sign-in removed and the taskbar given the recorded state — as it was, not a default. True, changing nothing, when nothing was replaced (and on every platform without the switch). |
+| `IsSystemDesktopReplaced()` | Whether the sign-in starts the program now. |
+
+UltraDesktop switches over with `--use-as-desktop` and back with
+`--restore-desktop`, passes itself `--session` for the sign-in, and closes
+within a second when a session desktop finds the switch gone — so turning it
+off in UOS-Settings brings the Windows desktop back at once. See
+[UltraDesktop on Windows](../UltraDesktop/README.md#on-windows).
+
 ### Notices
 
 A count an application publishes for the desktop to show: UltraMail publishes

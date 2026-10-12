@@ -34,7 +34,11 @@
 //   - Applications: the Start menu's shortcuts, the user's and the
 //     machine's, named as the Start menu names them (desktop.ini) and
 //     launched by opening the shortcut, as Explorer does.
-// Version: 1.0.0
+//   - In place of the system's desktop: a value under the user's Run key
+//     starts the desktop at sign-in, and Explorer's taskbar is set to hide
+//     itself; the taskbar's state before is kept and given back on the way
+//     back. Explorer keeps running beside it.
+// Version: 1.1.0 - ReplaceSystemDesktop / RestoreSystemDesktop
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -752,6 +756,71 @@ namespace {
         return dirs;
     }
 
+    // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
+    // The sign-in start is a value under the user's Run key - what every
+    // program that starts with Windows uses, so it is listed (and can be
+    // switched off) in Task Manager's startup apps like any other. The
+    // taskbar's state before the switch is kept in the framework's own key,
+    // so the way back restores exactly that.
+
+    constexpr wchar_t kRunKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+    constexpr wchar_t kRunValue[] = L"UltraCanvas Desktop";
+    constexpr wchar_t kShellStateKey[] = L"Software\\UltraCanvas\\DesktopShell";
+    constexpr wchar_t kTaskbarStateValue[] = L"TaskbarStateBeforeReplacing";
+
+    // An argument as the C runtime splits a command line back into argv:
+    // quoted when it holds a space, a tab or a quote, with the backslashes
+    // before a quote doubled.
+    std::wstring QuoteArgument(const std::wstring& argument) {
+        if (!argument.empty() && argument.find_first_of(L" \t\"") == std::wstring::npos) return argument;
+        std::wstring quoted = L"\"";
+        size_t backslashes = 0;
+        for (wchar_t c : argument) {
+            if (c == L'\\') {
+                ++backslashes;
+                continue;
+            }
+            quoted.append(c == L'"' ? backslashes * 2 + 1 : backslashes, L'\\');
+            backslashes = 0;
+            quoted += c;
+        }
+        quoted.append(backslashes * 2, L'\\');
+        quoted += L'"';
+        return quoted;
+    }
+
+    bool ReadDword(const wchar_t* subKey, const wchar_t* name, DWORD& out) {
+        DWORD size = sizeof(out);
+        return RegGetValueW(HKEY_CURRENT_USER, subKey, name, RRF_RT_REG_DWORD, nullptr, &out, &size) ==
+               ERROR_SUCCESS;
+    }
+
+    bool WriteValue(const wchar_t* subKey, const wchar_t* name, DWORD type, const void* data, DWORD size) {
+        HKEY key = nullptr;
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, subKey, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) !=
+            ERROR_SUCCESS)
+            return false;
+        const bool written = RegSetValueExW(key, name, 0, type, static_cast<const BYTE*>(data), size) == ERROR_SUCCESS;
+        RegCloseKey(key);
+        return written;
+    }
+
+    UINT TaskbarState() {
+        APPBARDATA data = {};
+        data.cbSize = sizeof(data);
+        return static_cast<UINT>(SHAppBarMessage(ABM_GETSTATE, &data));
+    }
+
+    // Auto-hide on or off, as the taskbar's own settings switch it; Explorer
+    // keeps the choice for the next sign-in.
+    void SetTaskbarState(UINT state) {
+        APPBARDATA data = {};
+        data.cbSize = sizeof(data);
+        data.hWnd = FindWindowW(L"Shell_TrayWnd", nullptr);
+        data.lParam = static_cast<LPARAM>(state);
+        SHAppBarMessage(ABM_SETSTATE, &data);
+    }
+
     // ===== THE MONITOR =====
 
     struct WindowsMonitorState {
@@ -1227,6 +1296,56 @@ bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out) {
             entry.iconFile = CachedIconFile(key, [&path, size]() { return LoadNativeFileIconPixmap(path, size); });
             out.push_back(std::move(entry));
         }
+    }
+    return true;
+}
+
+// ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
+
+bool CanReplaceSystemDesktop() { return true; }
+
+bool IsSystemDesktopReplaced() {
+    DWORD size = 0;
+    return RegGetValueW(HKEY_CURRENT_USER, kRunKey, kRunValue, RRF_RT_REG_SZ, nullptr, nullptr, &size) ==
+           ERROR_SUCCESS;
+}
+
+bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::string>& arguments,
+                          std::string& error) {
+    // The program always in quotes: "C:\Program Files\..." has a space.
+    std::wstring command = L"\"" + Widen(program) + L"\"";
+    for (const std::string& argument : arguments) command += L" " + QuoteArgument(Widen(argument));
+
+    // The taskbar as it is now, recorded once: switching again must not
+    // record the hidden taskbar as the one to come back to.
+    const bool explorer = ExplorerTaskbarRunning();
+    DWORD recorded = 0;
+    if (explorer && !ReadDword(kShellStateKey, kTaskbarStateValue, recorded)) {
+        const DWORD state = TaskbarState();
+        WriteValue(kShellStateKey, kTaskbarStateValue, REG_DWORD, &state, sizeof(state));
+    }
+    const DWORD bytes = static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t));
+    if (!WriteValue(kRunKey, kRunValue, REG_SZ, command.c_str(), bytes)) {
+        error = "Windows did not let this account start a program at sign-in: the Run key could not be written.";
+        return false;
+    }
+    if (explorer) SetTaskbarState(ABS_AUTOHIDE | ABS_ALWAYSONTOP);
+    return true;
+}
+
+bool RestoreSystemDesktop(std::string& error) {
+    const LSTATUS removed = RegDeleteKeyValueW(HKEY_CURRENT_USER, kRunKey, kRunValue);
+    if (removed != ERROR_SUCCESS && removed != ERROR_FILE_NOT_FOUND) {
+        error = "The desktop's start at sign-in could not be removed (Windows error " + std::to_string(removed) +
+                ").";
+        return false;
+    }
+    // The taskbar as it was. Kept for later when Explorer is not running to
+    // be given it.
+    DWORD previous = 0;
+    if (ReadDword(kShellStateKey, kTaskbarStateValue, previous) && ExplorerTaskbarRunning()) {
+        SetTaskbarState(previous);
+        RegDeleteKeyValueW(HKEY_CURRENT_USER, kShellStateKey, kTaskbarStateValue);
     }
     return true;
 }

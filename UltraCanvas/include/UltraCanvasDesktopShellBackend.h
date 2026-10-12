@@ -3,7 +3,8 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
-// Version: 1.2.0 - the Windows backend; ListNativeApplications
+// Version: 1.3.0 - the Windows backend; ListNativeApplications;
+//                  in place of the system's desktop
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
@@ -50,6 +51,14 @@ namespace DesktopShellBackend {
     // Windows. False where desktop entries are the answer, and the core then
     // reads them itself; true with `out` filled (unsorted) otherwise.
     bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out);
+
+    // In place of the system's desktop (UltraCanvasDesktopShell.h). The core
+    // has checked that `program` is an existing absolute path.
+    bool CanReplaceSystemDesktop();
+    bool IsSystemDesktopReplaced();
+    bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::string>& arguments,
+                              std::string& error);
+    bool RestoreSystemDesktop(std::string& error);
 
     // The parts of the device activity only the platform can read: audio
     // and video capture in use, playback running, the battery, the keyboard

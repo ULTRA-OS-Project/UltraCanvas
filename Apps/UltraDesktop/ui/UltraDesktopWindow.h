@@ -26,6 +26,7 @@
 // every notification that nothing else draws - on ULTRA OS UltraMessage
 // itself is the notification server, so every application's notifications
 // (and UltraMail's new mail) would otherwise reach the message feed only.
+// Version: 0.3.0 - Windows: in place of the Windows desktop and back
 // Version: 0.2.0 - the notification toasts
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -78,6 +79,16 @@ public:
     // over the file for this run without being written back.
     bool Initialize(const std::string& settingsPath, const TaskbarEdge* edgeOverride);
     void Show();
+
+    // ===== IN PLACE OF THE SYSTEM'S DESKTOP (Windows) =====
+    // Started by the sign-in (--session, or just switched over): the desktop
+    // closes when the switch is turned off elsewhere - UOS-Settings, the
+    // uninstaller, --restore-desktop - so the Windows desktop is back at once.
+    void SetSessionDesktop(bool session) { sessionDesktop_ = session; }
+    // The settings button's menu: switch over, or back. Back closes the
+    // desktop; Explorer's taskbar returns as it was.
+    void UseAsSystemDesktop();
+    void SwitchBackToSystemDesktop();
 
     // ===== WHAT THE BARS DO (also reachable from the windows this opens) =====
     // The ULTRA OS settings button: starts UOS-Settings, the system's settings
@@ -145,6 +156,9 @@ private:
     // ===== RUNNING APPS =====
     void ShowWindowMenu(uint64_t windowId, int windowX, int windowY);
     void ShowClipboardMenu(int windowX, int windowY);
+    void ShowSettingsButtonMenu(int windowX, int windowY);
+    // Once a second: a session desktop whose switch was turned off closes.
+    void CheckDesktopSwitch();
 
     // ===== CLIPBOARD HISTORY =====
     void StartClipboardHistory();
@@ -165,6 +179,8 @@ private:
     // different one means another program wrote it.
     std::filesystem::file_time_type settingsFileTime_{};
     std::chrono::steady_clock::time_point nextSettingsCheck_{};
+    bool sessionDesktop_ = false;
+    std::chrono::steady_clock::time_point nextSwitchCheck_{};
     std::string iconsDir_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;

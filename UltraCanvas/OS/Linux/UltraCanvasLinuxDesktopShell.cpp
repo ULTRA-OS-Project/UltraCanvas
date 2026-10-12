@@ -24,7 +24,8 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
-// Version: 1.1.1 - ListNativeApplications (none: desktop entries are the list)
+// Version: 1.1.2 - ListNativeApplications (none: desktop entries are the list);
+//                  ReplaceSystemDesktop (none: the session starts the desktop)
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -648,6 +649,16 @@ bool CaptureScreen(const std::string& pngPath, std::string& error) {
 
 // Desktop entries are this platform's application list; the core reads them.
 bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
+
+// The session decides which desktop runs - on ULTRA OS, UltraDesktop's own
+// session file - so there is nothing for a program to switch.
+bool CanReplaceSystemDesktop() { return false; }
+bool IsSystemDesktopReplaced() { return false; }
+bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, std::string& error) {
+    error = "On this system the session starts the desktop; choose UltraDesktop's session at sign-in.";
+    return false;
+}
+bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
 
 void ReadDeviceActivity(DesktopDeviceActivity& activity) {
     ProbeAudio(activity);

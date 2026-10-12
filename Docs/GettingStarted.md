@@ -601,6 +601,14 @@ it, and without the entitlement the device is refused.
 
 `./package-win.sh`, run from the CLANG64 or CLANGARM64 shell after the build,
 collects every application with the DLLs it needs into one standalone zip.
+`--installer` also builds `UltraCanvas-Setup-Windows-<version>-<arch>.exe`
+from the same folder (`Windows/Installer/UltraCanvasSetup.nsi`, through
+`scripts/build-windows-installer.sh`; `pacman -S nsis` first). It installs for
+the current account without administrator rights, into
+`%LOCALAPPDATA%\Programs\UltraCanvas`. Every GUI program gets a Start-menu
+entry, and the suite gets an *Apps & features* entry. The finish page offers
+UltraDesktop as the Windows desktop. The uninstaller gives the Windows desktop
+back first, then removes exactly the files it installed.
 `--no-sign` skips Authenticode signing when no certificate is present;
 `SignUltraDemo.ps1` and `SignUltraTexter.ps1` are the signing scripts the
 release uses. The version in the `.exe` resource and the manifest comes from

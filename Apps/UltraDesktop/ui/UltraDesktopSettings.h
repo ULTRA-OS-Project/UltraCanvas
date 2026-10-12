@@ -4,6 +4,7 @@
 // virtual desktops the organiser offers, and the sticky notes on the
 // Stickerboard. One JSON file, read at start-up and written on every change.
 // No UI in here, which is what lets the test read and write it.
+// Version: 0.1.1 - no RAM disc by default on Windows
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -32,7 +33,11 @@ struct Sticker {
 struct DesktopSettings {
     TaskbarEdge taskbarEdge = TaskbarEdge::Left;
     std::string wallpaper;              // "" = the framework's default picture
-    std::string ramDiscPath = "/dev/shm";
+#if defined(_WIN32)
+    std::string ramDiscPath;            // Windows has no RAM disc of its own: no button
+#else
+    std::string ramDiscPath = "/dev/shm";   // "" = no RAM disc button
+#endif
     std::string filerProgram = "UltraFiler";
     int virtualDesktops = 3;            // 1..9, what the organiser offers
     bool stickerboardVisible = false;
