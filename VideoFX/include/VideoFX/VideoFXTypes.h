@@ -2,7 +2,7 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.11.0
+// Version: 0.12.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
@@ -401,6 +401,33 @@ enum class VideoFXVideoCodec {
     Disabled                        // no video stream in the output
 };
 
+// Which encoder makes the video: software, the graphics hardware, or one
+// hardware family by name. A hardware encoder is several times faster and
+// leaves the processor free, at some cost in quality for the same size.
+// Whether one works depends on the machine, not only on FFmpeg: the build
+// may carry h264_nvenc and the computer have no NVIDIA card. VideoFX tries
+// each one once (a frame through it) before choosing it, so a choice never
+// lands on an encoder that cannot run here.
+enum class VideoFXAcceleration {
+    Auto,               // as before: the software encoder, then the platform's (VideoToolbox, Media Foundation)
+    Software,           // software encoders only (libx264, libx265, ...)
+    Hardware,           // the first hardware encoder that works here; software when none does
+    NVENC,              // NVIDIA (h264_nvenc, hevc_nvenc, av1_nvenc)
+    QuickSync,          // Intel Quick Sync Video (h264_qsv, ...)
+    VAAPI,              // VA-API on Linux: Intel and AMD graphics (h264_vaapi, ...)
+    AMF,                // AMD on Windows (h264_amf, ...)
+    VideoToolbox,       // macOS (h264_videotoolbox, ...)
+    MediaFoundation     // Windows (h264_mf, ...)
+};
+
+// One encoder FFmpeg offers for a codec (VideoFX_ListVideoEncoders)
+struct VideoFXEncoderInfo {
+    std::string name;                                       // FFmpeg's name, e.g. "h264_nvenc"
+    VideoFXVideoCodec codec = VideoFXVideoCodec::Auto;
+    VideoFXAcceleration acceleration = VideoFXAcceleration::Software;   // Software or a hardware family
+    bool works = false;                                     // tried on this machine: it encodes
+};
+
 enum class VideoFXAudioCodec {
     Auto,                           // the container's usual codec (AAC for MP4, Opus for WebM ...)
     AAC, MP3, Opus, Vorbis, FLAC, PCM16,
@@ -517,6 +544,10 @@ struct VideoFXExportSettings {
     // Seconds between keyframes, 0 = the encoder's default. Short intervals
     // make a file quick to seek in (proxies use 0.5) at some cost in size.
     double keyframeInterval = 0.0;
+    // Software, hardware, or one hardware family (see VideoFXAcceleration).
+    // A named family that does not work here fails with EncoderNotAvailable;
+    // Hardware falls back to software instead.
+    VideoFXAcceleration acceleration = VideoFXAcceleration::Auto;
 
     int sampleRate = 0;             // 0 = first audio segment's rate (48000 fallback)
     int channels = 0;               // 0 = stereo (mono if every source is mono)
@@ -630,6 +661,9 @@ struct VideoFXProxySettings {
     int quality = 50;               // 0..100, as VideoFXExportSettings::quality
     double keyframeInterval = 0.5;  // seconds between keyframes: what makes scrubbing fast
     std::string cacheDirectory;     // "" = VideoFX_GetDefaultProxyDirectory()
+    // The encoder that makes them; Hardware frees the processor for editing
+    // while proxies are made, and falls back to software where none works
+    VideoFXAcceleration acceleration = VideoFXAcceleration::Auto;
 };
 
 // ============================================================================

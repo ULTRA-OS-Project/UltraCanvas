@@ -10,7 +10,7 @@
 //     "title": "...", "output": "out.mp4", "settings": {...},
 //     "segments": [ {...}, ... ] }                       a timeline, or
 //     "slideshow": { "images": [...], "options": {...} } a slideshow
-// Version: 0.11.0
+// Version: 0.12.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -130,6 +130,12 @@ constexpr std::pair<VideoFXAudioCodec, const char*> kAudioCodecs[] = {
 
 constexpr std::pair<VideoFXFitMode, const char*> kFitModes[] = {
     {VideoFXFitMode::Letterbox, "letterbox"}, {VideoFXFitMode::Fill, "fill"}, {VideoFXFitMode::Stretch, "stretch"}};
+
+constexpr std::pair<VideoFXAcceleration, const char*> kAccelerations[] = {
+    {VideoFXAcceleration::Auto, "auto"}, {VideoFXAcceleration::Software, "software"},
+    {VideoFXAcceleration::Hardware, "hardware"}, {VideoFXAcceleration::NVENC, "nvenc"},
+    {VideoFXAcceleration::QuickSync, "qsv"}, {VideoFXAcceleration::VAAPI, "vaapi"}, {VideoFXAcceleration::AMF, "amf"},
+    {VideoFXAcceleration::VideoToolbox, "videotoolbox"}, {VideoFXAcceleration::MediaFoundation, "mf"}};
 
 constexpr std::pair<VideoFXProjectKind, const char*> kProjectKinds[] = {
     {VideoFXProjectKind::Timeline, "timeline"}, {VideoFXProjectKind::Slideshow, "slideshow"}};
@@ -325,6 +331,7 @@ Json SettingsOut(const VideoFXExportSettings& s, const Paths& paths) {
                 {"fitMode", NameOf(MakeNames(kFitModes, "fit mode"), s.fitMode)},
                 {"quality", s.quality}, {"videoBitRate", s.videoBitRate}, {"encoderPreset", s.encoderPreset},
                 {"keyframeInterval", s.keyframeInterval},
+                {"acceleration", NameOf(MakeNames(kAccelerations, "acceleration"), s.acceleration)},
                 {"sampleRate", s.sampleRate}, {"channels", s.channels}, {"audioBitRate", s.audioBitRate},
                 {"threads", s.threads}, {"music", MusicOut(s.music, paths)}};
 }
@@ -452,6 +459,7 @@ void SettingsIn(const Json& j, VideoFXExportSettings& s, const Paths& paths, con
     Get(j, "fitMode", s.fitMode, MakeNames(kFitModes, "fit mode"), at);
     Get(j, "quality", s.quality, at); Get(j, "videoBitRate", s.videoBitRate, at);
     Get(j, "encoderPreset", s.encoderPreset, at); Get(j, "keyframeInterval", s.keyframeInterval, at);
+    Get(j, "acceleration", s.acceleration, MakeNames(kAccelerations, "acceleration"), at);
     Get(j, "sampleRate", s.sampleRate, at); Get(j, "channels", s.channels, at);
     Get(j, "audioBitRate", s.audioBitRate, at); Get(j, "threads", s.threads, at);
     MusicIn(Object(j, "music", at), s.music, paths, Where(at, "music"));
@@ -668,4 +676,22 @@ VideoFXResult LoadProjectFile(const std::string& path, VideoFXProject& project, 
 }
 
 } // namespace Internal
+
+// The acceleration's name for people (a settings dialog, the CLI), here with
+// the file names above because it, too, is needed with and without FFmpeg
+const char* VideoFX_AccelerationName(VideoFXAcceleration acceleration) {
+    switch (acceleration) {
+        case VideoFXAcceleration::Auto: return "Automatic";
+        case VideoFXAcceleration::Software: return "Software";
+        case VideoFXAcceleration::Hardware: return "Hardware";
+        case VideoFXAcceleration::NVENC: return "NVENC";
+        case VideoFXAcceleration::QuickSync: return "Quick Sync";
+        case VideoFXAcceleration::VAAPI: return "VA-API";
+        case VideoFXAcceleration::AMF: return "AMF";
+        case VideoFXAcceleration::VideoToolbox: return "VideoToolbox";
+        case VideoFXAcceleration::MediaFoundation: return "Media Foundation";
+    }
+    return "?";
+}
+
 } // namespace VideoFX
