@@ -4,6 +4,7 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.11.0 - LabelTextLink::quiet: a link with no tooltip or hover report
 // Version: 2.10.0 - LabelTextBox / SetTextBoxes: backgrounds and borders around
 //                  byte ranges of the text (CSS inline boxes), a piece per line
 // Version: 2.9.0 - selectable text: SetSelectable / SetTextSelection, a drag
@@ -84,6 +85,10 @@ namespace UltraCanvas {
         int startByte = 0;
         int endByte = 0;      // exclusive
         std::string href;
+        // Clickable without showing it: no tooltip, and onLinkHovered is
+        // told nothing (the HTML reader's <label> text, which acts on its
+        // form control).
+        bool quiet = false;
     };
 
     // An image flowing in the text, like a browser's inline <img>: it stands on

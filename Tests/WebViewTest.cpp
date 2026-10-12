@@ -18,12 +18,14 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasRenderContext.h"
 #include "CSSLayout/CSSLayout.h"
 
 #include <cstdio>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <algorithm>
 #include <map>
@@ -442,6 +444,42 @@ static void TestForms() {
     Check(after && after->GetText() == "half-typed", "with the text that was typed");
 }
 
+static void TestFileUpload() {
+    std::printf("a file upload through the view: multipart POST with the file's bytes\n");
+    const std::string path = PathToUtf8(std::filesystem::temp_directory_path() / "ucwebview-upload-test.txt");
+    { std::FILE* out = OpenFileUtf8(path, "wb"); if (out) { std::fputs("file body", out); std::fclose(out); } }
+    Fixture f;
+    f.view->onChooseFiles = [path](bool, const std::string&, std::function<void(std::vector<std::string>)> done) {
+        done({ path });
+    };
+    f.web.Add("https://x.org/up", "<title>Up</title><form action='/recv' method='post' enctype='multipart/form-data'>"
+              "<label for='f'>File:</label> <input type='file' id='f' name='upload'> <button>Send</button></form>");
+    f.web.Add("https://x.org/recv", "<title>Received</title><p>ok</p>");
+    f.view->Navigate("https://x.org/up");
+    f.Settle();
+    std::vector<UltraCanvasButton*> buttons;
+    std::function<void(UltraCanvasUIElement*)> collect = [&](UltraCanvasUIElement* e) {
+        if (auto* b = dynamic_cast<UltraCanvasButton*>(e)) buttons.push_back(b);
+        if (auto* c = dynamic_cast<UltraCanvasContainer*>(e))
+            for (auto& child : c->GetChildren()) collect(child.get());
+    };
+    collect(f.view.get());
+    Check(buttons.size() == 2, "the chooser and the send button");
+    if (buttons.size() != 2) return;
+    buttons[0]->onClick();                // choose
+    buttons[1]->onClick();                // send
+    f.Settle();
+    Check(!f.web.posted.empty(), "posted");
+    if (f.web.posted.empty()) return;
+    const auto& [type, body] = f.web.posted.back();
+    Check(type.rfind("multipart/form-data; boundary=", 0) == 0, "as multipart");
+    Check(body.find("name=\"upload\"; filename=\"ucwebview-upload-test.txt\"\r\nContent-Type: text/plain\r\n\r\nfile body\r\n")
+              != std::string::npos, "with the file's name, type and bytes");
+    Check(f.view->GetTitle() == "Received", "and the answer is shown");
+    std::error_code ec;
+    std::filesystem::remove(PathFromUtf8(path), ec);
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("WebViewTest");
     TestLoadAndLinks();
@@ -451,6 +489,7 @@ int main() {
     TestImportedStyleSheets();
     TestImportsWithoutLoader();
     TestForms();
+    TestFileUpload();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -1,3 +1,50 @@
+#### 2026-10-12 *0.9.262*
+- **HTML reader: file uploads and label clicks in forms.**
+  - **File inputs** were drawn for display only. Now one is a "Choose file…"
+    button beside the names chosen.
+    - The button asks the host through the new
+      `BuildOptions::onChooseFiles` (several with `multiple`, the `accept`
+      list as written); without it the button is disabled.
+    - The files are read when the form is sent into the new
+      `FormSubmission::files`: file name, a type from the extension, and the
+      bytes. They go out as multipart file parts, and as their names outside
+      multipart. With nothing chosen, one empty part is sent, as browsers do.
+    - Over 64 MB together (`FormController::kMaxUploadBytes`), or
+      unreadable, a file goes empty and is named in
+      `FormSubmission::warnings`.
+    - A choice survives a rebuild; reset clears it.
+    - `UltraCanvasWebView::onChooseFiles` passes the request to the host,
+      and UltraWeb answers with the file dialog, filtered by `accept`.
+  - **Labels:** a click on a `<label>`'s text acts on its control - the one
+    its `for="id"` names, else the first inside it (new
+    `FormController::ActivateControl`).
+    - A checkbox toggles, a radio is chosen through its group, a button is
+      pressed, a file input opens its chooser, any other control takes the
+      focus.
+    - The text is a new *quiet* link (`LabelTextLink::quiet`), with no
+      tooltip and no hover report.
+  - Tests in `HTMLFormsTest` (file parts, choosing, reset, rebuild, label
+    clicks) and `WebViewTest` (an upload end to end).
+
+#### 2026-10-12 *0.9.261*
+- **WebAssembly: the front-page demo is the real ultraos.eu page.** The
+  first version of `UltraCanvas/OS/WASM/demo/ultraos-frontpage.cpp` was
+  reconstructed from search snippets; it now follows the published page,
+  top to bottom: the header with the site's drop-down navigation as popup
+  menus anchored under their buttons, the hero, the desktop and mobile
+  cards, the eight reasons for ULTRA OS, the newsletter form with its
+  privacy checkbox, the status with the three audiences, the two pre-order
+  offers, the donation links, the social networks, the ULTRA OS variants
+  with the picture alternating sides, the eight purpose-based editions, the
+  FAQ as an accordion that opens and closes its answers, the contact form
+  with a text area, and the footer with its columns and a second newsletter
+  form. The page's own texts are tables at the top of the file. The site's
+  photos are placeholder tiles except three the repository now carries in
+  `media/images/ultraos/`: the ULTRA OS logo, the UltraCanvas logo and the
+  chip photo, as PNG because the wasm sysroot decodes neither JPEG nor WebP.
+  Checked as a desktop application under Xvfb at 1280 px wide; the browser
+  build preloads the three pictures beside the fonts.
+
 #### 2026-10-12 *0.9.260*
 - **HTML reader: `@import` in style sheets.** Imported sheets were skipped,
   so a site whose `site.css` imports its theme lost the theme.
