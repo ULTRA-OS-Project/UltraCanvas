@@ -205,7 +205,9 @@ over the canvas. The surface handles what every tool shares:
 - **Checkerboard** behind transparent pixels, a drop shadow and border, the
   **pixel grid** from 8× (`SetPixelGridThreshold`), the **selection
   outline** as marching ants (animated on an application timer only while
-  a selection exists), and a **brush cursor** circle / square of
+  a selection exists - one clock per document, shared by every surface
+  showing it, so a loupe's ants march in step with the editing view's), and
+  a **brush cursor** circle / square of
   `SetCursorRadius()`.
 - Keyboard events go to `onToolKey` first, then to the zoom keys.
 - Dropped files arrive through `onFilesDropped`.
@@ -246,7 +248,8 @@ loupe->SetLoupeCrosshair(true, 8.0);   // the default: two diagonals, 8 px clear
   `SetLoupeCrosshair(false)` hides it; it is never drawn outside loupe mode.
 - A loupe listens to the document like the editing view does
   (`UCRasterDocument::AddListener`), so pixels, the selection and its
-  marching ants, and the layers follow by themselves.
+  marching ants (in step with the editing view's, on the one clock both
+  share), and the layers follow by themselves.
 - The checkerboard, the pixel grid from 8x and `onDrawOverlay` work as in
   the editing view, in the loupe's own transform.
 

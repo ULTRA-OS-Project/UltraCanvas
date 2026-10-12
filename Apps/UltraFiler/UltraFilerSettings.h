@@ -344,24 +344,25 @@ public:
     }
 
     // Where UltraFiler kept its settings before 1.72.4; empty when the
-    // environment names no home.
+    // environment names no home. Every variable is read through GetEnvUtf8,
+    // like every path in UltraFiler: the narrow getenv answers in the ANSI
+    // code page on Windows, which cannot spell a profile folder named in
+    // Thai. This and MoveLegacyConfigDirectory can go once a release has
+    // carried the move to every installation.
     static std::filesystem::path LegacyConfigDirectory() {
 #if defined(_WIN32) || defined(_WIN64)
-        // Read as UTF-8 from the process's UTF-16 environment (GetEnvUtf8),
-        // like every path in UltraFiler: the narrow getenv answers in the
-        // ANSI code page, which cannot spell a profile folder named in Thai.
         if (const std::string appdata = GetEnvUtf8("APPDATA"); !appdata.empty())
             return PathFromUtf8(appdata) / "UltraFiler";
         return {};
 #elif defined(__APPLE__)
-        const char* home = std::getenv("HOME");
-        return home ? PathFromUtf8(home) / "Library" / "Application Support" / "UltraFiler"
-                    : std::filesystem::path();
+        const std::string home = GetEnvUtf8("HOME");
+        return home.empty() ? std::filesystem::path()
+                            : PathFromUtf8(home) / "Library" / "Application Support" / "UltraFiler";
 #else
-        if (const char* xdgConfig = std::getenv("XDG_CONFIG_HOME"); xdgConfig && *xdgConfig)
+        if (const std::string xdgConfig = GetEnvUtf8("XDG_CONFIG_HOME"); !xdgConfig.empty())
             return PathFromUtf8(xdgConfig) / "UltraFiler";
-        const char* home = std::getenv("HOME");
-        return home ? PathFromUtf8(home) / ".config" / "UltraFiler" : std::filesystem::path();
+        const std::string home = GetEnvUtf8("HOME");
+        return home.empty() ? std::filesystem::path() : PathFromUtf8(home) / ".config" / "UltraFiler";
 #endif
     }
 

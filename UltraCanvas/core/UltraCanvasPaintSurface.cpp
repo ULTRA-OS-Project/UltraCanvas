@@ -2,6 +2,7 @@
 // Editable raster view: zoom / pan, checkerboard, pixel grid, marching-ants
 // selection, brush cursor, and pointer events forwarded to the active tool
 // in image coordinates.
+// Version: 1.1.1 - the surfaces showing one document share one marching-ants clock
 // Version: 1.1.0 - loupe mode: a second surface that shows the pixels around a point magnified
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -12,6 +13,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -61,10 +64,11 @@ void UltraCanvasPaintSurface::UnhookDocument() {
 
 void UltraCanvasPaintSurface::SetDocument(std::shared_ptr<UCRasterDocument> doc) {
     UnhookDocument();
+    StopAntsTimer();   // before the old document goes: the clock is keyed by it
     document = std::move(doc);
     HookDocument();
     fitPending = !loupeMode;
-    if (document && document->GetSelection().IsActive()) StartAntsTimer(); else StopAntsTimer();
+    if (document && document->GetSelection().IsActive()) StartAntsTimer();
     RequestRedraw();
 }
 
@@ -213,20 +217,61 @@ void UltraCanvasPaintSurface::DrawLoupeCrosshair(IRenderContext* ctx) {
 // MARCHING ANTS
 // ===========================================================================
 
+namespace {
+    // One marching-ants clock per document, shared by every surface showing
+    // it - the editing view and a magnifying glass - so the ants march in
+    // step in both and there is one timer per document rather than one per
+    // view. The first view with a selection to draw starts it, the last one
+    // to let go stops it. Keyed by the document's address, which is only
+    // ever compared: a surface leaves the clock before it lets its document go.
+    struct AntsClock {
+        TimerId timer = 0;
+        double offset = 0.0;
+        std::vector<UltraCanvasPaintSurface*> views;
+    };
+    std::map<const UCRasterDocument*, AntsClock>& AntsClocks() {
+        static std::map<const UCRasterDocument*, AntsClock> clocks;
+        return clocks;
+    }
+}
+
 void UltraCanvasPaintSurface::StartAntsTimer() {
-    if (antsTimer) return;
+    if (antsJoined || !document) return;
     auto* app = UltraCanvasApplication::GetInstance();
     if (!app) return;
-    antsTimer = app->StartTimer(120, true, [this](TimerId) {
-        antsOffset = std::fmod(antsOffset + 1.0, 8.0);
-        if (IsVisible() && showSelection) RequestRedraw();
+    const UCRasterDocument* key = document.get();
+    AntsClock& clock = AntsClocks()[key];
+    clock.views.push_back(this);
+    antsJoined = true;
+    antsClockKey = key;
+    antsOffset = clock.offset;
+    if (clock.timer) return;
+    clock.timer = app->StartTimer(120, true, [key](TimerId) {
+        auto it = AntsClocks().find(key);
+        if (it == AntsClocks().end()) return;
+        AntsClock& c = it->second;
+        c.offset = std::fmod(c.offset + 1.0, 8.0);
+        // On a copy: a redraw request must not reshape the list under the loop.
+        const std::vector<UltraCanvasPaintSurface*> views = c.views;
+        for (UltraCanvasPaintSurface* v : views) {
+            v->antsOffset = c.offset;
+            if (v->IsVisible() && v->showSelection) v->RequestRedraw();
+        }
     });
 }
 
 void UltraCanvasPaintSurface::StopAntsTimer() {
-    if (!antsTimer) return;
-    if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(antsTimer);
-    antsTimer = 0;
+    if (!antsJoined) return;
+    antsJoined = false;
+    auto& clocks = AntsClocks();
+    auto it = clocks.find(antsClockKey);
+    antsClockKey = nullptr;
+    if (it == clocks.end()) return;
+    AntsClock& clock = it->second;
+    clock.views.erase(std::remove(clock.views.begin(), clock.views.end(), this), clock.views.end());
+    if (!clock.views.empty()) return;
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(clock.timer);
+    clocks.erase(it);
 }
 
 // ===========================================================================

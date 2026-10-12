@@ -9,6 +9,7 @@
 //
 // Distinct from UltraCanvasZoomPanImage (a read-only viewer of a UCImage)
 // and UltraCanvasMediaSurface (the media viewer's display): this one edits.
+// Version: 1.1.1 - the surfaces showing one document share one marching-ants clock
 // Version: 1.1.0 - loupe mode: a second surface that shows the pixels around a point magnified
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -182,8 +183,10 @@ private:
     Point2Di hoverPointer;
     bool hasHover = false;
 
-    // marching ants
-    TimerId antsTimer = 0;
+    // marching ants: the phase, from the clock every surface showing this
+    // document shares (see StartAntsTimer), and whether this one has joined it
+    bool antsJoined = false;
+    const UCRasterDocument* antsClockKey = nullptr;
     double antsOffset = 0.0;
 };
 

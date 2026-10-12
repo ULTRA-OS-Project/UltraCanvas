@@ -7,3 +7,6 @@
   its events. A translucent diagonal crosshair (`SetLoupeCrosshair`) marks
   the centre and leaves the pixel there clear. UltraPaint's mouse pointer
   magnification glass is the first user.
+  The surfaces showing one document share one marching-ants clock: the
+  ants march in step in the editing view and the glass, on one timer per
+  document rather than one per view.
