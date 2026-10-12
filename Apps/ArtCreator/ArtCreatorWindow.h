@@ -68,7 +68,7 @@ private:
     void BuildStatusBar();
     void InstallShortcuts();
     std::string IconPath(const std::string& file) const;
-    std::string TexterIconPath(const std::string& file) const;
+    std::string MenuIconPath(const std::string& file) const;
 
     // ----- document -----
     void NewDrawing(const ArtCreatorPageResult& page);

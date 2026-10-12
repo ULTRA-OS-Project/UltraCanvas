@@ -4,6 +4,7 @@
 // flag <-> IMAP-token conversion and SPECIAL-USE role detection. Kept
 // header-only and free of libcurl / UltraNet-link dependencies so the logic is
 // unit-testable without a live server.
+// Version: 0.8.0 - CreateMailboxCommand, DeleteMailboxCommand
 // Version: 0.7.0 - a quoted LIST name or delimiter is unescaped (\" and \\);
 //                  ImapResponse::AsLine (a response with its literals as quoted strings, for
 //                  the LIST / STATUS parsers); RFC822.SIZE in ParseFetchResponse
@@ -146,6 +147,29 @@ inline std::string SearchByMessageIdCommand(const std::string& messageId) {
 // \Deleted - a plain EXPUNGE would remove every message flagged so.
 inline std::string UidExpungeCommand(uint32_t uid) {
     return "UID EXPUNGE " + std::to_string(uid);
+}
+
+// "CREATE "<name>"" / "DELETE "<name>"" (RFC 3501 6.3.3, 6.3.4): a mailbox
+// made or removed. `name` is the full name in its wire form (modified UTF-7,
+// UltraNet_ImapUtf7Encode); a quote or backslash in it is escaped, and a line
+// break, which would end the command, is left out.
+inline std::string QuotedMailboxName(const std::string& name) {
+    std::string quoted;
+    quoted.reserve(name.size() + 2);
+    quoted += '"';
+    for (char c : name) {
+        if (c == '\r' || c == '\n') continue;
+        if (c == '"' || c == '\\') quoted += '\\';
+        quoted += c;
+    }
+    quoted += '"';
+    return quoted;
+}
+inline std::string CreateMailboxCommand(const std::string& name) {
+    return "CREATE " + QuotedMailboxName(name);
+}
+inline std::string DeleteMailboxCommand(const std::string& name) {
+    return "DELETE " + QuotedMailboxName(name);
 }
 
 // ---- flags <-> IMAP tokens -------------------------------------------------

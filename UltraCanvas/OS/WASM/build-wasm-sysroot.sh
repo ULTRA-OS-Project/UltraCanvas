@@ -6,7 +6,8 @@
 # Where a dependency is also built by kleisauke/wasm-vips, the recipe below
 # follows that project (including its pre-patched glib/libvips branches).
 #
-# Requirements: an activated emsdk (source emsdk_env.sh), meson, ninja, cmake,
+# Requirements: an activated emsdk (source emsdk_env.sh), meson 1.4 or newer
+# (glib's; Ubuntu 24.04 packages 1.3.2, so take it from PyPI), ninja, cmake,
 # gperf, python3. Network access to github.com and (for the freedesktop
 # tarballs) either their release hosts or an Ubuntu 24.04 deb-src mirror.
 #

@@ -3,6 +3,12 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.4 - HandleAddFolder / HandleDeleteFolder (the folder tree's
+//                   menu), the tree's content (Settings > Display > Treeview),
+//                   LoadAccounts / HandleReorderAccounts (the account order the
+//                   tiles were dragged into)
+// Version: 0.12.3 - HandleSenderListChange, ApplySenderLists: the sender menu's
+//                   trusted and blocked senders saved, and their mail judged again
 // Version: 0.12.2 - FinishStartup: the window and the stored mail first, the
 //                   plug-ins, the vault and the first check after it is shown
 // Version: 0.12.1 - the timing trace: the stages of the start and of an
@@ -309,6 +315,13 @@ private:
     // clears \Seen. All non-blocking; failures surface an alert.
     void HandleDeleteMessage(const MessageEnvelope& env);
     void HandleJunkMessage(const MessageEnvelope& env);
+    // The sender menu's "Always trust this sender" / "Block this sender" /
+    // "Block everything from <domain>" and their undoing: the lists saved,
+    // and the sender's stored verdicts judged again.
+    void HandleSenderListChange(const std::string& entry, bool blockList, bool add);
+    // New lists in effect for the scan (Settings, or the menu): only the
+    // senders whose entry changed have their mail judged again.
+    void ApplySenderLists();
     void HandleMarkUnread(const MessageEnvelope& env);
     // Opening a message marks it read: updates the local store and the list row
     // immediately (optimistic), then pushes \Seen to the server in the
@@ -323,6 +336,19 @@ private:
                                                     const UltraNetMailOptions&)> op,
                           const std::string& actionName,
                           std::function<void()> onSuccess = nullptr);
+    // The folder tree's menu. Add folder asks for the name (`typed` fills the
+    // box again after a name that cannot be used) and makes the folder below
+    // `parent` - the account's top level when empty; Delete folder asks first
+    // and removes the folder with its mail from the server.
+    void HandleAddFolder(const std::string& accountId, const std::string& parent,
+                         const std::string& typed = std::string());
+    void HandleDeleteFolder(const std::string& accountId, const std::string& folder);
+    // The accounts from the store, in the order the reader dragged the tiles
+    // into (Preferences::accountOrder).
+    void LoadAccounts();
+    // The tiles were dragged into `order` (account ids): kept, and the tree
+    // follows.
+    void HandleReorderAccounts(const std::vector<std::string>& order);
     // Message-list menu actions.
     void HandleMoveMessage(const MessageEnvelope& env, const std::string& folder);
     void HandleNotJunk(const MessageEnvelope& env);

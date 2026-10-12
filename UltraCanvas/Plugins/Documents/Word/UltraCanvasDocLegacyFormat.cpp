@@ -1,7 +1,8 @@
 // Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
 // Import for legacy Word 97-2003 (.doc) files, with formatting.
 // A .doc is an OLE2 Compound File Binary (CFB): a mini filesystem of
-// FAT-chained sectors holding named streams. The document text lives in the
+// FAT-chained sectors holding named streams, read through the framework's
+// UCCompoundFileReader (UltraCanvasCompoundFile.h). The document text lives in the
 // "WordDocument" stream as pieces described by the piece table (Clx/PlcPcd)
 // stored in the "0Table"/"1Table" stream — each piece is either 8-bit
 // CP1252 or UTF-16LE. Formatting is stored beside the text, not in it:
@@ -17,27 +18,24 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
-// Version: 2.0.0
-// Last Modified: 2026-09-25
+// Version: 2.0.1
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasWordFormatInternal.h"
+#include "UltraCanvasCompoundFile.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstring>
-#include <fstream>
 #include <string>
 #include <vector>
-#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
 namespace {
-
-constexpr uint32_t kMaxChainLength = 1u << 22;   // loop guard for corrupt FAT chains
 
 uint16_t ReadU16(const std::vector<uint8_t>& data, size_t offset) {
     if (offset + 2 > data.size()) return 0;
@@ -50,177 +48,6 @@ uint32_t ReadU32(const std::vector<uint8_t>& data, size_t offset) {
          | (static_cast<uint32_t>(data[offset + 2]) << 16)
          | (static_cast<uint32_t>(data[offset + 3]) << 24);
 }
-
-// ===== COMPOUND FILE BINARY READER =====
-
-class CfbReader {
-public:
-    bool Load(const std::string& filePath, std::string& error) {
-        std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
-        if (!file.is_open()) {
-            error = "Cannot open file: " + filePath;
-            return false;
-        }
-        data_.assign((std::istreambuf_iterator<char>(file)),
-                     std::istreambuf_iterator<char>());
-        static const uint8_t magic[8] = {0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1};
-        if (data_.size() < 512 || std::memcmp(data_.data(), magic, 8) != 0) {
-            error = "Not an OLE2 compound file";
-            return false;
-        }
-
-        uint16_t sectorShift = ReadU16(data_, 0x1E);
-        if (sectorShift < 7 || sectorShift > 20) {
-            error = "Invalid compound file sector size";
-            return false;
-        }
-        sectorSize_ = static_cast<size_t>(1) << sectorShift;
-        miniSectorSize_ = static_cast<size_t>(1) << ReadU16(data_, 0x20);
-        miniCutoff_ = ReadU32(data_, 0x38);
-
-        if (!LoadFat() || !LoadDirectory(ReadU32(data_, 0x30))) {
-            error = "Corrupt compound file structure";
-            return false;
-        }
-        LoadMiniFat(ReadU32(data_, 0x3C));
-        // The mini stream is the root entry's own stream, read via the
-        // regular FAT regardless of its size.
-        if (!dirs_.empty()) {
-            ReadChain(dirs_[0].startSector, dirs_[0].size, miniStream_);
-        }
-        return true;
-    }
-
-    // Reads a named stream (case-sensitive, as Word writes fixed names).
-    bool ReadStream(const std::string& name, std::vector<uint8_t>& out) const {
-        for (size_t i = 1; i < dirs_.size(); ++i) {
-            if (dirs_[i].type == 2 && dirs_[i].name == name) {
-                if (dirs_[i].size < miniCutoff_) {
-                    return ReadMiniChain(dirs_[i].startSector, dirs_[i].size, out);
-                }
-                return ReadChain(dirs_[i].startSector, dirs_[i].size, out);
-            }
-        }
-        return false;
-    }
-
-private:
-    std::vector<uint8_t> data_;
-    size_t sectorSize_ = 512;
-    size_t miniSectorSize_ = 64;
-    size_t miniCutoff_ = 4096;
-    std::vector<uint32_t> fat_;
-    std::vector<uint32_t> miniFat_;
-    std::vector<uint8_t> miniStream_;
-
-    struct DirEntry {
-        std::string name;      // decoded to ASCII (stream names Word uses are ASCII)
-        uint8_t type = 0;      // 1=storage, 2=stream, 5=root
-        uint32_t startSector = 0;
-        uint64_t size = 0;
-    };
-    std::vector<DirEntry> dirs_;
-
-    size_t SectorOffset(uint32_t sector) const {
-        return (static_cast<size_t>(sector) + 1) * sectorSize_;
-    }
-
-    void AppendFatSector(uint32_t sector) {
-        size_t offset = SectorOffset(sector);
-        for (size_t i = 0; i + 4 <= sectorSize_ && offset + i + 4 <= data_.size(); i += 4) {
-            fat_.push_back(ReadU32(data_, offset + i));
-        }
-    }
-
-    bool LoadFat() {
-        // 109 DIFAT entries live in the header; more come from DIFAT sectors.
-        for (int i = 0; i < 109; ++i) {
-            uint32_t sector = ReadU32(data_, 0x4C + i * 4);
-            if (sector >= 0xFFFFFFFE) break;
-            AppendFatSector(sector);
-        }
-        uint32_t difatSector = ReadU32(data_, 0x44);
-        uint32_t difatCount = ReadU32(data_, 0x48);
-        for (uint32_t d = 0; d < difatCount && difatSector < 0xFFFFFFFE; ++d) {
-            size_t offset = SectorOffset(difatSector);
-            if (offset + sectorSize_ > data_.size()) break;
-            size_t entries = sectorSize_ / 4 - 1;
-            for (size_t i = 0; i < entries; ++i) {
-                uint32_t sector = ReadU32(data_, offset + i * 4);
-                if (sector < 0xFFFFFFFE) AppendFatSector(sector);
-            }
-            difatSector = ReadU32(data_, offset + entries * 4);
-        }
-        return !fat_.empty();
-    }
-
-    void LoadMiniFat(uint32_t firstSector) {
-        uint32_t sector = firstSector;
-        uint32_t guard = 0;
-        while (sector < 0xFFFFFFFE && guard++ < kMaxChainLength) {
-            size_t offset = SectorOffset(sector);
-            if (offset + sectorSize_ > data_.size()) break;
-            for (size_t i = 0; i + 4 <= sectorSize_; i += 4) {
-                miniFat_.push_back(ReadU32(data_, offset + i));
-            }
-            sector = (sector < fat_.size()) ? fat_[sector] : 0xFFFFFFFE;
-        }
-    }
-
-    bool LoadDirectory(uint32_t firstSector) {
-        std::vector<uint8_t> dirData;
-        if (!ReadChain(firstSector, SIZE_MAX, dirData)) return false;
-        for (size_t offset = 0; offset + 128 <= dirData.size(); offset += 128) {
-            DirEntry entry;
-            uint16_t nameLen = ReadU16(dirData, offset + 0x40);
-            if (nameLen >= 2 && nameLen <= 64) {
-                for (size_t i = 0; i + 2 < static_cast<size_t>(nameLen); i += 2) {
-                    uint16_t ch = ReadU16(dirData, offset + i);
-                    entry.name.push_back(
-                        (ch > 0 && ch < 128) ? static_cast<char>(ch) : '?');
-                }
-            }
-            entry.type = dirData[offset + 0x42];
-            entry.startSector = ReadU32(dirData, offset + 0x74);
-            entry.size = ReadU32(dirData, offset + 0x78);   // v3: low 32 bits suffice
-            dirs_.push_back(std::move(entry));
-        }
-        return !dirs_.empty();
-    }
-
-    // Follows a regular FAT chain; maxSize==SIZE_MAX reads the whole chain.
-    bool ReadChain(uint32_t firstSector, uint64_t maxSize, std::vector<uint8_t>& out) const {
-        out.clear();
-        uint32_t sector = firstSector;
-        uint32_t guard = 0;
-        while (sector < 0xFFFFFFFE && guard++ < kMaxChainLength) {
-            size_t offset = SectorOffset(sector);
-            if (offset + sectorSize_ > data_.size()) break;
-            out.insert(out.end(), data_.begin() + offset,
-                       data_.begin() + offset + sectorSize_);
-            if (maxSize != SIZE_MAX && out.size() >= maxSize) break;
-            sector = (sector < fat_.size()) ? fat_[sector] : 0xFFFFFFFE;
-        }
-        if (maxSize != SIZE_MAX && out.size() > maxSize) out.resize(maxSize);
-        return !out.empty();
-    }
-
-    bool ReadMiniChain(uint32_t firstSector, uint64_t maxSize, std::vector<uint8_t>& out) const {
-        out.clear();
-        uint32_t sector = firstSector;
-        uint32_t guard = 0;
-        while (sector < 0xFFFFFFFE && guard++ < kMaxChainLength) {
-            size_t offset = static_cast<size_t>(sector) * miniSectorSize_;
-            if (offset + miniSectorSize_ > miniStream_.size()) break;
-            out.insert(out.end(), miniStream_.begin() + offset,
-                       miniStream_.begin() + offset + miniSectorSize_);
-            if (out.size() >= maxSize) break;
-            sector = (sector < miniFat_.size()) ? miniFat_[sector] : 0xFFFFFFFE;
-        }
-        if (out.size() > maxSize) out.resize(maxSize);
-        return !out.empty();
-    }
-};
 
 // ===== TEXT DECODING =====
 
@@ -1984,8 +1811,11 @@ bool UCWordDocumentIO::LoadDoc(const std::string& filePath, UCRichDocument& outD
     outDocument = UCRichDocument{};
     outError.clear();
 
-    CfbReader cfb;
-    if (!cfb.Load(filePath, outError)) return false;
+    UCCompoundFileReader cfb;
+    if (!cfb.Open(filePath)) {
+        outError = cfb.GetLastError();
+        return false;
+    }
 
     std::vector<uint8_t> wordStream;
     if (!cfb.ReadStream("WordDocument", wordStream) || wordStream.size() < 0x200) {

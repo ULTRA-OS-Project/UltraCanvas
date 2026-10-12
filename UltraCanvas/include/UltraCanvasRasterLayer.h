@@ -171,4 +171,11 @@ uint8_t RasterBlendChannel(RasterBlendMode mode, uint8_t src, uint8_t dst);
 RasterPixel RasterBlendPixel(const RasterPixel& src, const RasterPixel& dst,
                              float coverage, RasterBlendMode mode = RasterBlendMode::Normal);
 
+// Moves `dst` `coverage` (0..1) of the way to `src`, alpha included, in
+// premultiplied space: at full coverage the result is `src` itself, so a
+// transparent source clears the pixel where source-over would leave it as it
+// was. For an opaque source this is the same as RasterBlendPixel in Normal.
+// A result with no alpha left is (0, 0, 0, 0), whatever the source's RGB.
+RasterPixel RasterReplacePixel(const RasterPixel& src, const RasterPixel& dst, float coverage);
+
 } // namespace UltraCanvas

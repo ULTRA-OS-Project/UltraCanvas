@@ -465,6 +465,13 @@ namespace UltraCanvas {
                     if (!mime.empty()) entry.mimeTypes.push_back(mime);
                 }
             }
+            else if (key == "Categories") {
+                for (const std::string& raw : SplitList(value, ';')) {
+                    const std::string category = Trim(raw);
+                    if (!category.empty()) entry.categories.push_back(category);
+                }
+            }
+            else if (key == "StartupWMClass") entry.startupWMClass = value;
         }
         if (!sawMainGroup) return false;     // not a desktop entry at all
 

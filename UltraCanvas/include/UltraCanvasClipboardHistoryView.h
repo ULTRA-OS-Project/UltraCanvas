@@ -17,8 +17,8 @@
 // The actions are painted into the row, as UltraMail's contact list paints its
 // bin, and hit-tested through onCellClicked; the keyboard reaches them too
 // (Enter copies, F2 edits, Delete deletes - the window handles those keys).
-// Version: 1.0.0
-// Last Modified: 2026-10-06
+// Version: 1.1.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -44,7 +44,17 @@ public:
     // sections: Pinned / Today / Yesterday / Earlier headers (the
     // application); compact: Pinned / Recent (the desktop's panel).
     enum class Sections { Flat, ByDay, PinnedAndRecent };
-    void SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections);
+    // A section above the others: the first `count` entries under `title`
+    // ("FOR ULTRAPAINT"), whatever their own section would be. The desktop's
+    // quick panel puts what the window being pasted into takes there.
+    struct LeadSection {
+        std::string title;
+        size_t count = 0;
+    };
+    void SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections, const LeadSection& lead);
+    void SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections) {
+        SetEntries(std::move(entries), sections, LeadSection{});
+    }
 
     int GetRowCount() const override { return static_cast<int>(rows.size()); }
     int GetColumnCount() const override { return 1; }
@@ -119,6 +129,12 @@ public:
     bool SetHover(int row, const Point2Di& posInCell);
     // The action under the pointer on `row`, NoAction elsewhere: for the tooltip.
     ClipboardRowAction GetHoverAction(int row) const { return row == hoverRow ? hoverAction : ClipboardRowAction::NoAction; }
+    // Whether a point in a row (posInCell, as above) is on the thumbnail's
+    // column - the tile's width, the row's whole height - so a pointer
+    // resting there keeps its answer while the rows scroll under it. The
+    // caller checks the row is an entry (GetEntry), not a header. UltraClipboard
+    // opens its hover preview of an image from here.
+    bool IsOverThumbnail(const Point2Di& posInCell) const;
     // The Copy glyph shows a check for a moment after a copy.
     void ShowCopied(int64_t entryId);
     bool IsShowingCopied() const;

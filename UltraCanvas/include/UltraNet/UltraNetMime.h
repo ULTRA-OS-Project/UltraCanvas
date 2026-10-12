@@ -76,6 +76,14 @@ std::string UltraNet_MimeEncodeAddress(const std::string& utf8Address,
 // for SELECT/FETCH — decode only what the user sees.
 std::string UltraNet_ImapUtf7Decode(const std::string& mUtf7);
 
+// The other way: a mailbox name a person typed, in UTF-8, as modified UTF-7
+// for the wire - what CREATE, SELECT and the rest need. Printable ASCII
+// (0x20-0x7E) passes through, '&' becomes "&-", and every run of other
+// characters becomes one "&<modified BASE64 of UTF-16BE>-" shift
+// ("Bücher" -> "B&APw-cher"). A byte that is not UTF-8 is taken as U+FFFD,
+// so the result is always a valid name. UltraNet_ImapUtf7Decode reads it back.
+std::string UltraNet_ImapUtf7Encode(const std::string& utf8);
+
 // ============================================================================
 // Message parsing
 // ============================================================================

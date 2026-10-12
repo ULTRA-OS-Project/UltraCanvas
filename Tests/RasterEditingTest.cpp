@@ -241,6 +241,37 @@ static void TestRasterPaint() {
     // global fill replaces every white pixel
     RasterPaint::FloodFill(f, nullptr, 1, 1, RasterPixel(0, 0, 255, 255), 0, false);
     CHECK(f.GetPixel(1, 1).b == 255 && f.GetPixel(18, 18).b == 255);
+    // A transparent colour: painted over (Blend) it changes nothing; Replace
+    // makes the region transparent, stored as (0, 0, 0, 0), and stops at the frame.
+    UCRasterLayer t(20, 20, RasterPixel(255, 255, 255, 255));
+    RasterPaint::DrawRectangle(t, nullptr, Rect2Df(5, 5, 10, 10), frame);
+    const RasterPixel clear(255, 255, 255, 0);
+    RasterPaint::FloodFill(t, nullptr, 10, 10, clear, 0, true);
+    CHECK(t.GetPixel(10, 10) == RasterPixel(255, 255, 255, 255));
+    RasterPaint::FloodFill(t, nullptr, 10, 10, clear, 0, true, nullptr, RasterBlendMode::Normal, 1.0f,
+                           RasterPaint::FillCompositing::Replace);
+    CHECK(t.GetPixel(10, 10) == RasterPixel(0, 0, 0, 0));
+    CHECK(t.GetPixel(5, 10).a == 255 && t.GetPixel(1, 1) == RasterPixel(255, 255, 255, 255));
+    // the cleared area is one region with what a new transparent layer holds
+    std::vector<uint8_t> holeWand = RasterPaint::MagicWandMask(t, 10, 10, 0, true);
+    CHECK(holeWand[8 * 20 + 8] == 255 && holeWand[1 * 20 + 1] == 0);
+    // Replace at half opacity goes half way: the alpha halves, the colour stays white
+    UCRasterLayer h(4, 4, RasterPixel(255, 255, 255, 255));
+    RasterPaint::FloodFill(h, nullptr, 0, 0, clear, 0, true, nullptr, RasterBlendMode::Normal, 0.5f,
+                           RasterPaint::FillCompositing::Replace);
+    CHECK_NEAR(h.GetPixel(2, 2).a, 128, 1);
+    CHECK(h.GetPixel(2, 2).r == 255 && h.GetPixel(2, 2).g == 255);
+    // a half-transparent red replaces rather than tints: alpha 128, pure red
+    RasterPaint::FloodFill(h, nullptr, 0, 0, RasterPixel(255, 0, 0, 128), 255, true, nullptr,
+                           RasterBlendMode::Normal, 1.0f, RasterPaint::FillCompositing::Replace);
+    CHECK(h.GetPixel(1, 1) == RasterPixel(255, 0, 0, 128));
+    // for an opaque colour Replace and Blend agree, at any coverage
+    for (const float cov : { 0.25f, 0.5f, 1.0f }) {
+        const RasterPixel src(10, 200, 30, 255), dst(240, 20, 90, 160);
+        const RasterPixel a = RasterBlendPixel(src, dst, cov), b = RasterReplacePixel(src, dst, cov);
+        CHECK_NEAR(a.r, b.r, 1); CHECK_NEAR(a.g, b.g, 1); CHECK_NEAR(a.b, b.b, 1); CHECK_NEAR(a.a, b.a, 1);
+    }
+
     std::vector<uint8_t> wand = RasterPaint::MagicWandMask(f, 10, 10, 0, true);
     CHECK(wand[10 * 20 + 10] == 255 && wand[1 * 20 + 1] == 0);
 

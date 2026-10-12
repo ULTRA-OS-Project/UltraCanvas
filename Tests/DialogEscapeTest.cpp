@@ -11,12 +11,18 @@
 // The key is routed the way the application routes a real one
 // (HandleEventWithBubbling from the focused element), so the test covers the
 // whole path, not just the text area's return value.
+//
+// Checkboxes, radios and switches take the keyboard focus now, so the same
+// path decides what Space and Enter do on a focused one: Space activates it,
+// and Enter reaches the dialog, whose default button it presses.
 // Runs headless under Xvfb; skips when there is no display.
+// Version: 1.1.0 - Space and Enter on a focused checkbox in a dialog
 // Version: 1.0.0
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextArea.h"
@@ -64,15 +70,27 @@ struct Shown {
     std::shared_ptr<DialogResult> result;
 };
 
-// A custom dialog like UltraMail's and UltraPassword's: no built-in buttons,
-// its own fields in a column. `field` goes into the column.
-Shown ShowCustomDialog(const std::shared_ptr<UltraCanvasUIElement>& field) {
+UCEvent Key(UCKeys key, const char* text) {
+    UCEvent e;
+    e.type = UCEventType::KeyDown;
+    e.virtualKey = key;
+    e.text = text;
+    e.character = static_cast<unsigned char>(text[0]);
+    return e;
+}
+
+// A custom dialog like UltraMail's and UltraPassword's: its own fields in a
+// column and no built-in buttons. With `buttons` it is a Question dialog
+// instead, whose button row carries them (a Custom one builds none). `field`
+// goes into the column.
+Shown ShowCustomDialog(const std::shared_ptr<UltraCanvasUIElement>& field,
+                       DialogButtons buttons = DialogButtons::NoButtons) {
     DialogConfig config;
     config.title      = "Escape test";
     config.width      = 360;
     config.height     = 220;
-    config.dialogType = DialogType::Custom;
-    config.buttons    = DialogButtons::NoButtons;
+    config.dialogType = buttons == DialogButtons::NoButtons ? DialogType::Custom : DialogType::Question;
+    config.buttons    = buttons;
 
     Shown shown;
     shown.result = std::make_shared<DialogResult>(DialogResult::NoResult);
@@ -124,6 +142,30 @@ int main() {
         TEST("Escape from a text input cancels the dialog",
              *shown.result == DialogResult::Cancel);
         TEST("and leaves its text alone", title->GetText() == "keep me too");
+    }
+
+    std::cerr << "\n--- A focused checkbox: Space toggles, Enter is the dialog's ---" << std::endl;
+    {
+        auto remember = std::make_shared<UltraCanvasCheckbox>("remember", 0, 0, 200, 24, "Remember me");
+        Shown shown = ShowCustomDialog(remember, DialogButtons::OKCancel);
+        TEST("The checkbox can take the dialog's focus",
+             shown.dialog->GetFocusedElement() == remember.get());
+        if (!remember->IsFocused()) {
+            // IsFocused() also needs the dialog to be the focused window,
+            // which the window manager decides; give it the focus as a real
+            // FocusIn would.
+            UCEvent focus;
+            focus.type = UCEventType::WindowFocus;
+            focus.targetWindow = shown.dialog;
+            app.DispatchEvent(focus);
+        }
+        TEST("and is focused", remember->IsFocused());
+        app.HandleEventWithBubbling(remember.get(), Key(UCKeys::Space, " "));
+        TEST("Space checks it", remember->IsChecked());
+        TEST("and leaves the dialog open", *shown.result == DialogResult::NoResult);
+        app.HandleEventWithBubbling(remember.get(), Key(UCKeys::Return, "\r"));
+        TEST("Enter presses the dialog's default button", *shown.result == DialogResult::OK);
+        TEST("and does not toggle the checkbox", remember->IsChecked());
     }
 
     std::cerr << "\n========================================" << std::endl;

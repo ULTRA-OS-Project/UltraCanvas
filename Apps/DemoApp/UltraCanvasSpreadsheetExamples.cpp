@@ -1,6 +1,6 @@
 // Apps/DemoApp/UltraCanvasSpreadsheetExamples.cpp
 // Demonstrates UltraCanvasSpreadsheet: an editable grid with an "Open" button
-// that loads spreadsheet files (.ods / .xlsx / .csv) through
+// that loads spreadsheet files (.ods / .xlsx / .xls / .csv) through
 // UltraCanvasFileLoader, column widths taken from the imported document (and
 // auto-fitted to the content when the document carries none), and the cell
 // formatting menu - alignment, number-format presets, colours and column/row
@@ -142,7 +142,8 @@ namespace UltraCanvas {
         root->AddChild(saveBtn);
 
         auto formatBtn = std::make_shared<UltraCanvasButton>("ssFormatBtn", 494, 50, 130, 30,
-                                                             "Format Cells ▾");
+                                                             "Format Cells");
+        SetFlatButtonIcon(*formatBtn, "dropdown.svg", ButtonIconPosition::Right, 10);
         root->AddChild(formatBtn);
 
         auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 632, 56, 374, 22);
@@ -212,9 +213,10 @@ namespace UltraCanvas {
         openBtn->onClick = [sheet, status, hint, describeGrid]() {
             FileDialogOptions opts;
             opts.SetTitle("Open Spreadsheet File")
-                .AddFilter("Spreadsheet files", std::vector<std::string>{ "ods", "xlsx", "csv", "tsv" })
+                .AddFilter("Spreadsheet files", std::vector<std::string>{ "ods", "xlsx", "xls", "csv", "tsv" })
                 .AddFilter("OpenDocument Spreadsheet", "ods")
                 .AddFilter("Excel Workbook", "xlsx")
+                .AddFilter("Excel 97-2003 Workbook", "xls")
                 .AddFilter("CSV / TSV", std::vector<std::string>{ "csv", "tsv" })
                 .AddFilter("All files", "*");
 

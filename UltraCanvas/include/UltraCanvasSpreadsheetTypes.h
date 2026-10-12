@@ -998,15 +998,32 @@ inline CellAddress CellAddress::FromString(const std::string& str) {
     
     std::string s = str;
     
-    // Check for sheet reference (Sheet1.A1 or 'Sheet Name'.A1)
-    size_t dotPos = s.find('.');
-    if (dotPos != std::string::npos) {
-        result.sheetName = s.substr(0, dotPos);
-        // Remove quotes if present
-        if (!result.sheetName.empty() && result.sheetName[0] == '\'') {
-            result.sheetName = result.sheetName.substr(1, result.sheetName.length() - 2);
+    // Check for sheet reference (Sheet1.A1 or 'Sheet Name'.A1). A quoted
+    // name runs to its closing quote - it may hold a '.' of its own - and a
+    // doubled quote inside it stands for one.
+    if (s[0] == '\'') {
+        std::string name;
+        size_t i = 1;
+        bool closed = false;
+        while (i < s.size()) {
+            if (s[i] == '\'') {
+                if (i + 1 < s.size() && s[i + 1] == '\'') { name += '\''; i += 2; continue; }
+                closed = true;
+                ++i;
+                break;
+            }
+            name += s[i++];
         }
-        s = s.substr(dotPos + 1);
+        if (closed && i < s.size() && s[i] == '.') {
+            result.sheetName = name;
+            s = s.substr(i + 1);
+        }
+    } else {
+        size_t dotPos = s.find('.');
+        if (dotPos != std::string::npos) {
+            result.sheetName = s.substr(0, dotPos);
+            s = s.substr(dotPos + 1);
+        }
     }
     
     size_t i = 0;
@@ -1024,7 +1041,9 @@ inline CellAddress CellAddress::FromString(const std::string& str) {
         i++;
     }
     
-    if (colStr.empty()) {
+    // Three letters reach XFD, the last column; a longer run of letters is a
+    // name ("Rate2024"), not a column.
+    if (colStr.empty() || colStr.size() > 3) {
         result.row = -1;  // Invalid
         return result;
     }
@@ -1043,7 +1062,9 @@ inline CellAddress CellAddress::FromString(const std::string& str) {
         i++;
     }
     
-    if (rowStr.empty()) {
+    // More digits than any sheet has rows is no reference (and would not
+    // fit an int).
+    if (rowStr.empty() || rowStr.size() > 9) {
         result.row = -1;  // Invalid
         return result;
     }

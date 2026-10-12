@@ -128,10 +128,6 @@ std::string AddressInsideDisplayName(const std::string& displayName) {
 // through exactly the same steps; these stay as the classifier's documented
 // entry points (and are what the tests drive).
 
-std::string Classifier::StripHtml(const std::string& html) {
-    return EmailCleaner::StripHtml(html);
-}
-
 std::string Classifier::CollapseObfuscation(const std::string& text) {
     return EmailCleaner::CollapseObfuscation(text);
 }

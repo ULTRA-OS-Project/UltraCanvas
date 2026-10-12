@@ -1,5 +1,7 @@
 # UltraCanvasTimelineChart
 
+<!-- doc-check: Rect2Dd plot; double mouseX; -->
+
 A **chronological timeline**: milestones and spans placed *to scale* on a real
 date axis, with a two-tier header, automatic lane packing, callout labels, and
 wheel zoom / drag pan. It deliberately has no task table and no dependency

@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.8.0 - Wheel delta normalized to +/-1 per notch
-// Last Modified: 2026-07-20
+// Version: 1.9.0 - Property events of a clipboard copy sent in pieces go to the clipboard
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxAccessibility.h"
@@ -398,6 +398,10 @@ namespace UltraCanvas {
                 }
             }
             UltraCanvasLinuxClipboard::ProcessClipboardEvent(xEvent);
+        } else if (xEvent.type == PropertyNotify &&
+                   UltraCanvasLinuxClipboard::ProcessClipboardPropertyEvent(xEvent)) {
+            // A piece of a clipboard copy sent or received in pieces (INCR)
+            return;
         } else {
             auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
 
@@ -701,7 +705,14 @@ namespace UltraCanvas {
             }
 
             case FocusIn: {
-                //debugOutput << "focus xwindow=" << xEvent.xany.window << std::endl;
+                // A keyboard grab starting or ending (a global shortcut held
+                // down, a window manager's key binding) moves the focus away
+                // and back for its own duration; the window keeps it. A real
+                // change during a grab arrives as NotifyWhileGrabbed.
+                if (xEvent.xfocus.mode == NotifyGrab || xEvent.xfocus.mode == NotifyUngrab) {
+                    event.type = UCEventType::Unknown;
+                    break;
+                }
                 event.type = UCEventType::WindowFocus;
                 
                 // Set XIC focus when window gains focus
@@ -715,7 +726,14 @@ namespace UltraCanvas {
             }
 
             case FocusOut: {
-                //debugOutput << "blur xwindow=" << xEvent.xany.window << std::endl;
+                // See FocusIn: the grab's own focus changes are not a blur.
+                // A popup that closes when its window loses the focus (the
+                // desktop's clipboard panel) shut whenever Super+V was
+                // pressed over it.
+                if (xEvent.xfocus.mode == NotifyGrab || xEvent.xfocus.mode == NotifyUngrab) {
+                    event.type = UCEventType::Unknown;
+                    break;
+                }
                 event.type = UCEventType::WindowBlur;
                 
                 // Unset XIC focus when window loses focus

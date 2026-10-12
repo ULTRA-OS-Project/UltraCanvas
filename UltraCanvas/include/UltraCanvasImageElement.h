@@ -1,12 +1,14 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
+// Version: 1.9.0 - SetBoxAspectRatio: the shape the box keeps when its height
+//                  follows its width (an <img> with width and height)
 // Version: 1.8.0 - an image to screen readers (name it with SetAccessibleName)
 // Version: 1.6.0 - onHoverEnter / onHoverLeave
 // Version: 1.5.0 - SetHeightFollowsWidth: a set width scales the height both ways
 // Version: 1.4.0 - ImagePosition moved to UltraCanvasCommonTypes.h (FitImageRect)
 // Version: 1.3.0 - SetImageRepeat: the image tiles across the element (either axis)
 // Version: 1.2.0 - SetImagePosition: where the fitted image sits in the element
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -55,6 +57,7 @@ private:
     ImageFitMode fitMode = ImageFitMode::Contain;
     ImagePosition imagePosition;   // centred unless set
     bool heightFollowsWidth = false;  // see SetHeightFollowsWidth
+    float boxAspectRatio = 0.f;       // see SetBoxAspectRatio (0: the picture's)
     bool hoverNotified = false;       // onHoverEnter sent, onHoverLeave not yet
     bool repeatX = false;           // tile across / down the element
     bool repeatY = false;
@@ -143,6 +146,16 @@ public:
     // the picture's own height otherwise.
     void SetHeightFollowsWidth(bool follows) { heightFollowsWidth = follows; InvalidateLayout(); }
     bool GetHeightFollowsWidth() const { return heightFollowsWidth; }
+    // The shape (width / height) the element keeps while its height follows
+    // its width, instead of the picture's own; 0, the default, is the
+    // picture's. An HTML <img width="101" height="37"> keeps 101:37 when a
+    // narrower column shrinks it, rather than getting narrower at its full
+    // height - which, drawn with ImageFitMode::Fill, squeezed the picture.
+    void SetBoxAspectRatio(float widthOverHeight) {
+        boxAspectRatio = widthOverHeight > 0.f ? widthOverHeight : 0.f;
+        InvalidateLayout();
+    }
+    float GetBoxAspectRatio() const { return boxAspectRatio; }
     bool GetImageRepeatX() const { return repeatX; }
     bool GetImageRepeatY() const { return repeatY; }
     // The rectangle (element-local) the image is drawn into for the current

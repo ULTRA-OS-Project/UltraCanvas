@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>   // std::atoi
 #include <cstring>
 
 namespace EmailCleaner {

@@ -1,15 +1,25 @@
 // core/HTMLReader/HTMLDocument.cpp
 // DOM helpers and entity decoding for the HTMLReader module.
+// Version: 1.3.1 - merged: the Lines layout (1.3.0) beside the inline-aware single
+//                  line and the node overload (1.2.1, 1.2.2), made side by side
+// Version: 1.3.0 - ExtractPlainText's Lines layout: the text as a reader sees it,
+//                  line by line, from the parsed DOM
+// Version: 1.2.2 - ExtractPlainText(const Node&): the same text of a parsed element
+// Version: 1.2.1 - ExtractPlainText: an inline element (<b>, <span>, <a>) no longer
+//                  splits a word in two; a no-break space counts as a space
 // Version: 1.2.0 - attribute lookup by name is exact, then ASCII case-insensitive
 //                  (viewBox inside <svg> is found as "viewbox" too)
 // Version: 1.1.0 - every HTML 4 named entity (&acute; &eth; &alpha; ...)
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLDocument.h"
+#include "HTMLReader/CSSStyleSheet.h"   // StyleSheet::ParseDeclarationList (display:none)
+#include "HTMLReader/HTMLParser.h"
 
 #include <algorithm>
 #include <cctype>
+#include <initializer_list>
 #include <unordered_map>
 
 namespace UltraCanvas {
@@ -314,7 +324,87 @@ std::string DecodeEntities(const std::string& text) {
     return out;
 }
 
-std::string ExtractPlainText(const std::string& html) {
+namespace {
+
+// Whether an element formats text inside a line without starting a new box.
+bool IsInlineName(const std::string& name) {
+    static const char* const kInline[] = {
+        "a", "abbr", "b", "bdi", "bdo", "big", "cite", "code", "data", "del", "dfn", "em",
+        "font", "i", "ins", "kbd", "label", "mark", "nobr", "q", "s", "samp", "small",
+        "span", "strike", "strong", "sub", "sup", "time", "tt", "u", "var", "wbr",
+    };
+    for (const char* inlineName : kInline)
+        if (name == inlineName) return true;
+    return false;
+}
+
+// Whether the tag starting at `open` ('<') opens or closes an inline element.
+bool IsInlineTag(const std::string& html, size_t open) {
+    size_t i = open + 1;
+    if (i < html.size() && html[i] == '/') ++i;
+    std::string name;
+    while (i < html.size() && std::isalnum(static_cast<unsigned char>(html[i])) && name.size() < 12) {
+        name += static_cast<char>(std::tolower(static_cast<unsigned char>(html[i])));
+        ++i;
+    }
+    return IsInlineName(name);
+}
+
+// Every run of whitespace - a no-break space counts - as one space, none at
+// the start or the end.
+std::string CollapseWhitespace(const std::string& text) {
+    std::string result;
+    result.reserve(text.size());
+    bool lastWasSpace = true;
+    for (size_t k = 0; k < text.size(); ++k) {
+        char c = text[k];
+        if (c == '\xC2' && k + 1 < text.size() && text[k + 1] == '\xA0') {
+            ++k;
+            c = ' ';
+        }
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            if (!lastWasSpace) {
+                result += ' ';
+                lastWasSpace = true;
+            }
+        } else {
+            result += c;
+            lastWasSpace = false;
+        }
+    }
+    while (!result.empty() && result.back() == ' ') result.pop_back();
+    return result;
+}
+
+// The text of a parsed node, words apart where a block, <br> or picture is.
+void AppendNodeText(const Node& node, std::string& out) {
+    if (node.type == NodeType::Text) {
+        out += node.text;
+        return;
+    }
+    if (node.type == NodeType::Comment) return;
+    const std::string& tag = node.tag;
+    if (tag == "script" || tag == "style" || tag == "head" || tag == "title" || tag == "template")
+        return;
+    const bool separates = node.type == NodeType::Element && !IsInlineName(tag);
+    if (separates) out += ' ';
+    for (const NodePtr& child : node.children)
+        if (child) AppendNodeText(*child, out);
+    if (separates) out += ' ';
+}
+
+std::string ExtractSingleLine(const std::string& html);
+std::string ExtractLines(const std::string& html);
+
+} // namespace
+
+std::string ExtractPlainText(const std::string& html, PlainTextLayout layout) {
+    return layout == PlainTextLayout::Lines ? ExtractLines(html) : ExtractSingleLine(html);
+}
+
+namespace {
+
+std::string ExtractSingleLine(const std::string& html) {
     std::string stripped;
     stripped.reserve(html.size());
 
@@ -361,10 +451,13 @@ std::string ExtractPlainText(const std::string& html) {
                 }
                 i = end;
                 inTag = true;   // consume the closing tag
+                stripped += ' ';   // a word on either side stays apart
                 continue;
             }
-            // Block-level separation keeps words from running together.
-            stripped += ' ';
+            // A block, a <br> or a picture separates words; an inline element
+            // does not, as on screen: "wor<b>ld</b>" is one word ("<b>via</b>gra"
+            // is how spam hides one from a keyword filter).
+            if (!IsInlineTag(html, i)) stripped += ' ';
             inTag = true;
             ++i;
             continue;
@@ -375,25 +468,228 @@ std::string ExtractPlainText(const std::string& html) {
 
     std::string decoded = DecodeEntities(stripped);
 
-    // Collapse whitespace runs.
-    std::string result;
-    result.reserve(decoded.size());
-    bool lastWasSpace = true;
-    for (char c : decoded) {
-        if (std::isspace(static_cast<unsigned char>(c))) {
-            if (!lastWasSpace) {
-                result += ' ';
-                lastWasSpace = true;
+    return CollapseWhitespace(decoded);
+}
+
+} // namespace
+
+std::string ExtractPlainText(const Node& node) {
+    std::string text;
+    AppendNodeText(node, text);
+    return CollapseWhitespace(text);
+}
+
+namespace {
+
+// ===== The Lines layout =====
+
+// The text as it is written out: words a single space apart, line breaks
+// asked for by the blocks around them (the most asked for wins, none before
+// the first word), a tab between table cells.
+class LineWriter {
+public:
+    // Text of a node: whitespace collapses, unless `pre` keeps it as written.
+    void Text(const std::string& text, bool pre) {
+        for (size_t i = 0; i < text.size(); ++i) {
+            char c = text[i];
+            // A no-break space reads as a space.
+            if (c == '\xC2' && i + 1 < text.size() && text[i + 1] == '\xA0') {
+                ++i;
+                c = ' ';
             }
-        } else {
-            result += c;
-            lastWasSpace = false;
+            if (pre) {
+                if (c == '\r') continue;
+                if (c == '\n') { LineBreak(); continue; }
+                Flush();
+                out += c;
+                lineEmpty = false;
+                continue;
+            }
+            if (std::isspace(static_cast<unsigned char>(c))) {
+                space = true;
+                continue;
+            }
+            Flush();
+            if (space && !lineEmpty) out += ' ';
+            space = false;
+            out += c;
+            lineEmpty = false;
         }
     }
-    while (!result.empty() && result.back() == ' ') result.pop_back();
+    // At least `count` line breaks before the next text (2: a blank line).
+    void Breaks(int count) {
+        breaks = std::max(breaks, count);
+        space = false;
+    }
+    // A <br>: one line break of its own, however many came before.
+    void LineBreak() {
+        Flush();
+        out += '\n';
+        lineEmpty = true;
+        space = false;
+        started = true;
+    }
+    // The next text starts a new table cell on the same row.
+    void Tab() { tab = true; }
 
-    return result;
+    // The text, each line without trailing blanks, at most one blank line
+    // in a row, none at the start or the end.
+    std::string Finish() const {
+        std::string result;
+        result.reserve(out.size());
+        size_t lineStart = 0;
+        int newlines = 0;
+        while (lineStart <= out.size()) {
+            size_t end = out.find('\n', lineStart);
+            if (end == std::string::npos) end = out.size();
+            std::string line = out.substr(lineStart, end - lineStart);
+            while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.pop_back();
+            if (line.empty()) {
+                ++newlines;
+            } else {
+                if (!result.empty()) result.append(static_cast<size_t>(std::min(newlines + 1, 2)), '\n');
+                result += line;
+                newlines = 0;
+            }
+            lineStart = end + 1;
+        }
+        return result;
+    }
+
+private:
+    std::string out;
+    int breaks = 0;
+    bool tab = false;
+    bool space = false;
+    bool lineEmpty = true;
+    bool started = false;   // a word (or a <br>) has been written
+
+    // Writes the breaks or the tab the next text is waiting for.
+    void Flush() {
+        if (!started) {
+            breaks = 0;
+            tab = false;
+            started = true;
+            return;
+        }
+        if (breaks > 0) {
+            out.append(static_cast<size_t>(breaks), '\n');
+            lineEmpty = true;
+            space = false;
+            tab = false;
+        } else if (tab) {
+            out += '\t';
+            space = false;
+            tab = false;
+        }
+        breaks = 0;
+    }
+};
+
+bool IsOneOf(const std::string& tag, std::initializer_list<const char*> tags) {
+    for (const char* t : tags)
+        if (tag == t) return true;
+    return false;
 }
+
+// Not shown at all: the head and what is never rendered.
+bool IsUnrendered(const std::string& tag) {
+    return IsOneOf(tag, {"head", "title", "script", "style", "template", "noscript",
+                         "meta", "link", "svg", "math", "select", "object", "iframe"});
+}
+
+// Hidden by the hidden attribute or by its inline style.
+bool IsHidden(const Node& element) {
+    if (element.HasAttribute("hidden")) return true;
+    const std::string style = element.GetAttribute("style");
+    if (style.empty()) return false;
+    for (const Declaration& d : StyleSheet::ParseDeclarationList(style)) {
+        std::string value = d.value;
+        for (char& c : value) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (d.property == "display" && value == "none") return true;
+        if (d.property == "visibility" && value == "hidden") return true;
+        if (d.property == "mso-hide" && value == "all") return true;
+    }
+    return false;
+}
+
+// A paragraph, set apart by a blank line; any other block starts a line.
+bool IsParagraph(const std::string& tag) {
+    return IsOneOf(tag, {"p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "hr"});
+}
+
+bool IsBlock(const std::string& tag) {
+    return IsOneOf(tag, {"address", "article", "aside", "body", "caption", "center", "dd", "details",
+                         "dialog", "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer",
+                         "form", "header", "hgroup", "html", "legend", "li", "main", "menu", "nav",
+                         "ol", "section", "summary", "table", "tbody", "tfoot", "thead", "tr", "ul"});
+}
+
+// The number an <ol> starts at (its start attribute, else 1).
+int ListStart(const Node& list) {
+    const std::string start = list.GetAttribute("start");
+    int value = 0;
+    bool any = false, negative = false;
+    for (size_t i = 0; i < start.size(); ++i) {
+        const char c = start[i];
+        if (i == 0 && c == '-') { negative = true; continue; }
+        if (c < '0' || c > '9') break;
+        value = value * 10 + (c - '0');
+        any = true;
+        if (value > 1000000) break;
+    }
+    return any ? (negative ? -value : value) : 1;
+}
+
+// `marker`: a list item's "- " or "1. ", written where its text starts.
+void WriteNode(const Node& node, LineWriter& writer, bool pre, const std::string& marker = std::string()) {
+    if (node.type == NodeType::Text) {
+        writer.Text(node.text, pre);
+        return;
+    }
+    if (node.type != NodeType::Element && node.type != NodeType::Document) return;
+    const std::string& tag = node.tag;
+    if (node.type == NodeType::Element) {
+        if (IsUnrendered(tag) || IsHidden(node)) return;
+        if (tag == "br") {
+            writer.LineBreak();
+            return;
+        }
+    }
+    const bool paragraph = IsParagraph(tag);
+    const bool block = paragraph || IsBlock(tag);
+    if (block) writer.Breaks(paragraph ? 2 : 1);
+    if (!marker.empty()) writer.Text(marker, true);
+
+    const bool inPre = pre || tag == "pre" || tag == "textarea" || tag == "listing" || tag == "xmp";
+    int cell = 0;
+    int item = tag == "ol" ? ListStart(node) : 0;
+    for (const NodePtr& child : node.children) {
+        if (!child) continue;
+        if (child->IsElement("td") || child->IsElement("th")) {
+            // The cells of a row a tab apart.
+            if (cell++ > 0) writer.Tab();
+        }
+        std::string childMarker;
+        if (child->IsElement("li") && (tag == "ul" || tag == "ol" || tag == "menu"))
+            childMarker = tag == "ol" ? std::to_string(item++) + ". " : std::string("- ");
+        WriteNode(*child, writer, inPre, childMarker);
+    }
+    if (block) writer.Breaks(paragraph ? 2 : 1);
+}
+
+std::string ExtractLines(const std::string& html) {
+    ParseOptions options;
+    options.keepWhitespaceNodes = true;   // "a <b>x</b> <i>y</i>": the space between
+    Parser parser;
+    Document document = parser.Parse(html, options);
+    if (!document.root) return std::string();
+    LineWriter writer;
+    WriteNode(*document.root, writer, false);
+    return writer.Finish();
+}
+
+} // namespace
 
 } // namespace HTML
 } // namespace UltraCanvas

@@ -8,7 +8,7 @@
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
 **Base Class:** `UltraCanvasChartElementBase`  
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Last Modified:** 2026-10-07  
 **Author:** UltraCanvas Framework
 
@@ -284,8 +284,9 @@ The line chart follows this rendering sequence:
 ### Supported Events
 
 - **MouseMove:** Updates tooltips and hover states; pans a zoomed chart during a drag
-- **MouseDown:** Starts a pan when pan is on and the chart is zoomed in
-- **MouseUp:** Ends the pan
+- **MouseDown:** Starts a pan when pan is on and the chart is zoomed in;
+  any other left press is left to the parent
+- **MouseUp:** Ends the pan (a release that ends none is left to the parent)
 - **MouseWheel:** Zooms the x axis in/out around the pointer when zoom is on
 
 ### Tooltip Behavior

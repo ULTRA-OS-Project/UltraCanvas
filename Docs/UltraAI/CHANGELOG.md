@@ -1,3 +1,25 @@
+#### 2026-10-09 *0.1.12*
+- **New dashboard icon.** The face is drawn larger and without the light blue
+  disc behind it (`media/appicon/UltraAI.svg`, the uploaded artwork).
+  `media/appicon/UltraAI.png` is re-rendered from it at 256 px through
+  librsvg; the drawing is taller than wide (229 x 303 units), so it is padded
+  to a square on a transparent background. The window and taskbar icon, the
+  Windows `.exe` icon and the `hicolor` theme icons are all made from this
+  pair, so every one of them changes with it.
+
+#### 2026-10-07 *0.1.11*
+- **The Translation dialog takes the source language and the formality.**
+  It sent only the texts and a target language, so the register and a known
+  source language could not be tried from the dashboard. The target field now
+  shares a row with a source-language field (empty: the provider detects it)
+  and a Default / Formal / Informal picker, and the run happens off the UI
+  thread like the other dialogs, since a chat model behind the translator
+  takes seconds per batch where the mock answered at once.
+- **The Translation dialog names the model.** The provider row carries a
+  model field, as the image, video and speech dialogs do: the translator
+  providers translate through their chat models, and until now only the
+  provider's default model could be used.
+
 #### 2026-10-07 *0.1.10*
 - **Translation works through every chat model.** `ITranslator` had only the
   mock behind it; the module now serves it with any `ITextLLM`

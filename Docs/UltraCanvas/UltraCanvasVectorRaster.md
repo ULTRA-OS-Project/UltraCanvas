@@ -1,5 +1,7 @@
 # Vector artwork → pixels
 
+<!-- doc-check: std::string path; void ShowError(const std::string& message); void ShowStatus(const std::string& message); -->
+
 `UltraCanvasVectorRaster.h` turns a vector file into an editable
 [`UCRasterLayer`](UltraCanvasPaintSurface.md) at a size the caller chooses.
 It is the answer to "the user dropped an SVG on a bitmap editor" — and to

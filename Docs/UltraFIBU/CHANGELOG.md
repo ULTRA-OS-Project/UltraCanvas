@@ -1,3 +1,13 @@
+#### 2026-10-10 *0.24.3*
+- **Windows: the framework now closes the console a double-click opens.**
+  UltraFIBU stays a console program, so its commands print into the prompt
+  and the prompt waits for them (0.24.0). Its own helper for closing the
+  console Windows opens on a double-click (`ui/UltraFIBUKonsole.*`) is gone:
+  the framework's `ReleaseOwnConsole()` does the same for every console
+  program as its window comes up (framework 0.9.242, see there). One
+  difference: a Debug build, or a run with `ULTRACANVAS_DEBUG_LOG` set, keeps
+  the console, because the log is written there.
+
 #### 2026-09-28 *0.24.2*
 - **The version is in the window title** — `UltraFIBU 0.24.2` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

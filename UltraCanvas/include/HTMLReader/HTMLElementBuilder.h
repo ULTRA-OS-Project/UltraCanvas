@@ -6,8 +6,10 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
-// Version: 1.11.0 - flex and grid containers on the CSSLayout flex / grid engines:
+// Version: 1.12.0 - flex and grid containers on the CSSLayout flex / grid engines:
 //                  BuildContentInto, BuildItemsInto, BuildItem, EstimateContentWidth
+// Version: 1.11.0 - BuildOptions::selectableText: the text can be selected across
+//                  the whole tree and copied (BuildResult::textSelection)
 // Version: 1.10.0 - BuildOptions::linkTooltips (a link's href as a tooltip, or not)
 // Version: 1.9.0 - merged with main's 1.3.0 (a list marker carried into the item's
 //                  first block)
@@ -30,6 +32,7 @@
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTextSelection.h"
 
 #include <functional>
 #include <memory>
@@ -70,6 +73,13 @@ struct BuildOptions {
     // links and linked pictures). An app that shows the address elsewhere -
     // a status line fed by onLinkHovered - turns it off.
     bool linkTooltips = true;
+
+    // The text can be selected and copied as in a browser: every label of the
+    // tree joins one UltraCanvasTextSelection (BuildResult::textSelection),
+    // so a drag runs on from paragraph to paragraph, a double-click takes a
+    // word, and Ctrl+C / Ctrl+A work once the text has been clicked. A text
+    // link then opens when the button is released without having dragged.
+    bool selectableText = false;
 };
 
 struct BuildResult {
@@ -77,6 +87,10 @@ struct BuildResult {
     std::string title;
     std::vector<std::string> warnings;
     int elementCount = 0;   // native elements created
+
+    // With BuildOptions::selectableText, the selection every label of the
+    // tree shares (keep it to offer Copy / Select All); null otherwise.
+    std::shared_ptr<UltraCanvasTextSelection> textSelection;
 
     // id/name attribute → the native element built for (or containing) it.
     // Viewers use this to scroll to #fragment link targets.
@@ -111,6 +125,14 @@ private:
     std::vector<LabelTextLink> runLinks;
     // Images flowing in the current run, at U+FFFC placeholders of runPlain.
     std::vector<LabelInlineImage> runImages;
+    // The tallest line-height of the run's text - CSS makes a line as tall as
+    // the tallest inline box on it, so <span style="line-height:40px"> in a
+    // cell is a 40px line - and whether any of that text sets one. A run
+    // where none does keeps the font's own line spacing.
+    float runLineHeightPx = 0.f;
+    bool runLineHeightSet = false;
+    // Notes the line-height `style` gives a piece of visible text of the run.
+    void NoteRunLineHeight(const ComputedStyle& style);
 
     // The width of a space in a style's font, in px - the gap between two
     // images a space apart. Measured on a small offscreen context made on
@@ -203,8 +225,10 @@ private:
     // The border sides and radius of a style (ApplyBoxStyle calls it; a
     // collapsed table's cells call it once their shared edges are settled).
     void ApplyBorders(UltraCanvasUIElement& target, const ComputedStyle& style);
+    // `runLineHeightPx` > 0: the line height of an inline run whose text
+    // sets its own (BuildInlineRun), in place of the block's.
     void ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
-                        bool noWrap = false);
+                        bool noWrap = false, float runLineHeightPx = 0.f);
     // background-image: the first url() layer that loads, drawn under the
     // box's content (an out-of-flow image element filling it), fitted by that
     // layer's background-size, placed by its background-position and tiled

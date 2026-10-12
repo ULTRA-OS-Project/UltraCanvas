@@ -120,4 +120,4 @@ has no file formats.
 | `ArtCreatorTools.{h,cpp}` | The `ArtTool` base, the 15 tools, the line gallery's named choices, the option-widget helpers |
 | `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup and Text |
 | `ArtCreator.desktop` | The freedesktop launcher |
-| `../../media/icons/artcreator/` | Tool and command icons; `../../media/appicon/ArtCreator.{png,svg}` the app icon |
+| `../../media/icons/artcreator/` | Tool and command icons, flat and one-tone like `../../media/icons/menu/` (which gives the file, edit and zoom ones); `../../media/appicon/ArtCreator.{png,svg}` the app icon |

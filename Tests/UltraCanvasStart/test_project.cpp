@@ -1,5 +1,6 @@
 // Tests/UltraCanvasStart/test_project.cpp
 // The project scaffold and the assistant texts, over a temporary folder.
+// Version: 0.1.1 - main.cpp uses the framework's CreateWindow
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -58,6 +59,12 @@ TEST(ScaffoldProject_writes_the_files_and_refuses_to_overwrite) {
     const std::string main = ReadAll(folder / "main.cpp");
     REQUIRE(main.find("app.Initialize(\"DemoApp\")") != std::string::npos);
     REQUIRE(main.find("config.title  = \"Demo App\"") != std::string::npos);
+    // The window comes from the framework's CreateWindow(config): the
+    // application class has no CreateWindow, and 0.3.0's skeleton did not
+    // compile because it called one. CI builds the skeleton against the SDK
+    // (--create in build.yml), this only pins the line.
+    REQUIRE(main.find("    auto window = CreateWindow(config);") != std::string::npos);
+    REQUIRE(main.find("app.CreateWindow") == std::string::npos);
 
     const ProjectResult again = ScaffoldProject(options);
     REQUIRE(!again.ok);
@@ -106,4 +113,15 @@ TEST(FirstPrompt_names_the_app_and_the_workflow) {
     REQUIRE(local.find("pull request") == std::string::npos);
     REQUIRE(!CloudChecklist().empty());
     REQUIRE(!ClaudeInstallInstructions(Platform::Windows).empty());
+    choices.assistant = Assistant::Codex;
+    REQUIRE(FirstPrompt(choices).rfind("Read AGENTS.md, then", 0) == 0);
+}
+
+TEST(Scaffold_writes_the_chosen_assistants_file) {
+    ProjectOptions options;
+    options.assistant = Assistant::Gemini;
+    const std::string text = ProjectAssistantMd(options);
+    REQUIRE(text.rfind("# GEMINI.md", 0) == 0);
+    REQUIRE(text.find("AGENTS.md") != std::string::npos);
+    REQUIRE(ProjectClaudeMd(options).rfind("# CLAUDE.md", 0) == 0);
 }

@@ -1,5 +1,7 @@
 # UltraCanvas Vector Editing: VectorCanvas, VectorEdit, BezierPath
 
+<!-- doc-check: std::vector<VectorEdit::ElementPtr> els; VectorEdit::ElementPtr el; Point2Dd pivot; std::shared_ptr<VectorStorage::VectorGroup> otherGroup; std::shared_ptr<VectorStorage::VectorPath> path; struct EditorTool { void OnPress(const VectorPointerEvent& e); void OnDrag(const VectorPointerEvent& e); void OnRelease(const VectorPointerEvent& e); bool OnKey(const UCEvent& k); void DrawOverlay(IRenderContext* ctx, const VectorViewTransform& v); }; std::shared_ptr<EditorTool> tool; -->
+
 ## Overview
 
 The **vector-editing layer** is what a vector drawing editor needs on top of
@@ -91,7 +93,8 @@ history.Record("Move", [&] { TranslateElements(selection.Elements(), 10, 0); });
 
 // A drag: one entry from press to release.
 history.BeginEdit("Scale");
-... ScaleElements(...) on every drag event ...
+// on every drag event:
+ScaleElements(selection.Elements(), sx, sy, pivot);
 history.EndEdit();
 
 // Repeated nudges collapse into one step.
@@ -127,20 +130,20 @@ TranslateElements(els, dx, dy);
 ScaleElements(els, sx, sy, pivot);            // pivot in document units
 RotateElements(els, radians, pivot);
 SkewElements(els, radX, radY, pivot);
-TransformElements(els, Matrix3x3);            // any document-space matrix
+TransformElements(els, Matrix3x3::Scale(2, 2)); // any document-space Matrix3x3
 BakeTransform(el);                            // write the transform into the geometry
 
 ReorderElements(els, ZOrderMove::ToFront);    // ToFront / Forward / Backward / ToBack
 auto group = GroupElements(els);              // into the topmost member's parent
 auto freed = UngroupElements({group});        // placement preserved both ways; clip views, blends and moulds dissolve too
-ReparentElement(el, otherGroup, index);
+ReparentElement(el, otherGroup, 0);           // child index in the new parent, -1 = the end
 
 DeleteElements(els);
 auto copies = DuplicateElements(els, 10, 10); // above the originals, fresh Ids
 AlignElements(els, AlignMode::Left);          // to the selection, or a reference rect (the page)
 DistributeElements(els, DistributeMode::HorizontalCenters);
 auto path = ConvertToPath(el);                // rect / circle / ellipse / line / polygon → path, in place
-auto made = CombineShapes(sel.Elements(), CombineOp::Subtract);   // Xara's Combine Shapes: the front shape
+auto made = CombineShapes(selection.Elements(), CombineOp::Subtract); // Xara's Combine Shapes: the front shape
                                               // cuts the others (Add / Intersect: one shape, the back one's style)
 ```
 

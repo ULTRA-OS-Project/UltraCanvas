@@ -4,7 +4,7 @@
 
 The `UltraCanvasBarChartElement` is a specialized chart component within the UltraCanvas framework that renders vertical bar charts for data visualization. It inherits from `UltraCanvasChartElementBase` and provides comprehensive functionality for displaying categorical data with customizable bar styling, interactive features, and animation support.
 
-**Version:** 1.1.0  
+**Version:** 1.1.1  
 **Last Modified:** 2026-10-07  
 **Header:** `include/Plugins/Charts/UltraCanvasSpecificChartElements.h`  
 **Implementation:** `Plugins/Charts/UltraCanvasSpecificChartElements.cpp`  
@@ -247,7 +247,9 @@ Handles mouse movement for tooltip display and bar highlighting.
 
 ### Inherited Event Handlers
 
-- `HandleMouseDown` / `HandleMouseUp` - track the left button
+- `HandleMouseDown` / `HandleMouseUp` - leave the left button to the parent
+  (the bar chart does not pan), so a chart in a scrolling or draggable
+  container does not swallow its clicks
 - `HandleMouseWheel` - leaves the wheel to the parent (the bar chart does not zoom)
 
 ## Usage Examples

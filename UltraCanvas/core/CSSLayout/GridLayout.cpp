@@ -5,11 +5,12 @@
 // MinContent/MaxContent/FitContent, gaps, justify-self / align-self.
 // Deferred (TODO): named lines, named areas, dense packing, subgrid, MinMax
 // proper resolution (currently approximated as Min..Max bounds).
-// Version: 1.4.1 - rows are sized after the columns, each item measured at the
+// Version: 1.5.1 - rows are sized after the columns, each item measured at the
 //                 width of the columns it spans (text in a grid cell wraps and
 //                 its row grows with it, CSS Grid §12.1); an auto-placed item
 //                 spanning more tracks than the grid has adds implicit tracks
 //                 instead of hanging auto-placement
+// Version: 1.5.0 - widthSetByParent: an Exact width is the grid's used width
 // Version: 1.4.0 - justify-self / align-self Auto take the container's
 //                 justify-items / align-items (Start by default, so nothing
 //                 stretches unless asked); the container's stretch keeps a set
@@ -22,7 +23,7 @@
 //                 derives its content extent from the constraint rather than its
 //                 own explicit size, so a grown/stretched grid lays out its tracks
 //                 against its USED size, not its specified size.
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -501,7 +502,9 @@ namespace UltraCanvas {
                 auto ownW = resolveDimension(e.size.width,  parentInline, ctx);
                 auto ownH = resolveDimension(e.size.height,
                                              parentBlock ? parentBlock : e.percentHeightBase, ctx);
-                if (authoritative && parentInline.has_value()) {
+                const bool usedWidth = authoritative ||
+                    (e.widthSetByParent && c.horizontal.mode == ConstraintMode::Exact);
+                if (usedWidth && parentInline.has_value()) {
                     s.availW = std::max(0.f, *parentInline - s.padH - s.bordH);
                     s.widthKnown = true;
                 } else if (ownW.has_value()) {

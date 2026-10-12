@@ -19,7 +19,11 @@ them without linking UltraCanvas.
 Who uses it today: the eBook viewer and the EPUB, FB2 and MOBI engines
 (`HTML::ElementBuilder`), UltraMail's message pane (`HTML::ElementBuilder`),
 UltraMail's composer, replies and signatures (`ImportHTMLToRichDocument`),
-UltraMail's header decoding (`HTML::DecodeEntities`), and, from its pull
+a rich paste into `UltraCanvasRichTextEdit` (`UCRichDocument::FromHTML`, on
+the same importer), UltraMail's header decoding (`HTML::DecodeEntities`), its
+scam check (the parsed page's links and pictures, `HTML::ExtractPlainText`)
+and plain-text view (`PlainTextLayout::Lines`), EmailCleaner's matching, the
+Filer's `.html` preview and UltraCloud's WebDAV client, and, from its pull
 request 696 on, the Vector plugin's SVG reader (`HTML::StyleSheet` for
 `<style>` sheets; its own copy of the selector matcher is to become a Traits
 type for the shared one, below). UltraWeb's page reader
@@ -47,7 +51,7 @@ Everything but the importer lives in `namespace UltraCanvas::HTML`.
 |---|---|---|
 | HTML text | something to show on screen | `HTML::ElementBuilder::Build` → a container tree, hosted in a scroll view |
 | HTML text | text to edit in `UltraCanvasRichTextEdit` | `ImportHTMLToRichDocument` / `AppendHTMLToRichDocument` |
-| HTML text | its words, for a list, a search index or a reply quote | `HTML::ExtractPlainText` |
+| HTML text | its words, for a list or a search index (one line), or to read or quote (`PlainTextLayout::Lines`) | `HTML::ExtractPlainText` |
 | A string with `&amp;`, `&#233;`, `&nbsp;` | the characters | `HTML::DecodeEntities` |
 | HTML text | the links, images, headings or any other elements | `HTML::Parser::Parse`, then walk the `Document` or use `HTML::Matches` with a selector |
 | CSS text and your own tree (SVG, XML) | which rules apply to an element | `HTML::StyleSheet::ParseAppend`, then `HTML::MatchingRules<YourTraits>` |
@@ -59,7 +63,10 @@ Everything but the importer lives in `namespace UltraCanvas::HTML`.
 `HTML::Parser::Parse` reads HTML or XHTML the way documents are actually
 written: unclosed `<p>` and `<li>`, void elements, self-closing XHTML
 syntax, comments, CDATA, a doctype, entities, and the raw-text bodies of
-`<style>` and `<script>`. It never fails; `Errors()` lists what it had to
+`<style>` and `<script>`. As HTML's tree builder does, it drops the one
+newline right after a `<pre>`, `<listing>` or `<textarea>` start tag, so
+content that starts on the next source line has no empty first line; a
+second newline is a blank line. It never fails; `Errors()` lists what it had to
 repair. The result is an `HTML::Document` whose `root` is always an `<html>`
 with a body, even for a fragment, so `Body()` is always there.
 
@@ -104,17 +111,43 @@ without the cap a few kilobytes of nested `<div>`s in a mail overflowed the
 stack. 128 is far deeper than real mail or books nest, and leaves the builder
 and the layout a wide margin on a 1 MB stack.
 
-Two helpers need no DOM:
+Two helpers need no DOM of the caller's:
 
 ```cpp
 std::string plain = HTML::ExtractPlainText(html);   // tags gone, <script>/<style> bodies dropped,
                                                      // entities decoded, whitespace collapsed
+std::string text = HTML::ExtractPlainText(html, HTML::PlainTextLayout::Lines);   // line by line
 std::string s = HTML::DecodeEntities("Tom &amp; Jerry &#8212; &eacute;");   // every HTML 4 entity, numeric too
 ```
 
-`ExtractPlainText` is what a message list's preview line, a search index or
-a reply's quoted text want. It is not a layout: block boundaries become
-spaces, not newlines.
+`ExtractPlainText` with the default `PlainTextLayout::SingleLine` is what a
+message list's preview line, a search index or a keyword filter want: block
+boundaries, `<br>` and pictures become spaces, everything is one line. An
+inline element (`<b>`, `<span>`, `<a>` ...) leaves no space, as on screen -
+`wor<b>ld</b>` is "world", and a spam word split by formatting
+(`<b>via</b>gra`) is still the word. A no-break space counts as a space.
+
+`ExtractPlainText(const Node&)` gives the same single line for an element
+already parsed - what a link, a cell or a heading says, read from the DOM.
+UltraMail's threat scan reads every link's text that way while it walks the
+parsed page for `a[href]`, `area[href]` and `form[action]`.
+
+`PlainTextLayout::Lines` is the text a person reads or quotes - an HTML mail
+shown as plain text, the quote in a reply. It parses the page and writes it
+the way a browser's `innerText` does, simplified:
+
+- a block element (`<div>`, `<li>`, `<tr>`, `<table>` ...) on lines of its
+  own, a blank line around `<p>`, headings, `<blockquote>`, `<pre>` and
+  `<hr>` - never more than one blank line in a row;
+- `<br>` a line break, two of them a blank line;
+- the cells of a table row a tab apart;
+- list items as `- item`, or `1. item` in an `<ol>` (from its `start`);
+- `<pre>` as written; elsewhere whitespace collapses to single spaces, and a
+  no-break space is a space;
+- what a browser does not show is left out: `<head>`, `<script>`, `<style>`,
+  `<template>`, `<select>`, `<svg>`, the `hidden` attribute, and an inline
+  `display: none`, `visibility: hidden` or `mso-hide: all` (a mail's hidden
+  preheader). A class that hides through a style sheet is not looked up.
 
 ## CSS: the style sheet model
 
@@ -288,6 +321,7 @@ opts.resourceLoader = [&](const std::string& href) { return LoadBytes(href); }; 
 opts.onLinkActivated = [&](const std::string& href) { Open(href); };
 opts.onLinkHovered = [&](const std::string& href) { status->SetText(href); };
 opts.linkTooltips = false;                    // the status line shows the address instead
+opts.selectableText = true;                   // the text selects and copies, as in a browser
 
 HTML::ElementBuilder builder;
 HTML::BuildResult r = builder.Build(html, opts);     // or BuildDocument(doc, opts) for a parsed one
@@ -299,6 +333,34 @@ if (r.root) {
 for (const std::string& w : r.warnings) Log(w);
 ```
 
+With `selectableText` every label of the tree joins one
+`UltraCanvasTextSelection` (`r.textSelection`): a drag runs on from
+paragraph to paragraph, a double-click takes a word, Ctrl+C / Ctrl+A work
+once the text has been clicked, and a text link opens when it is released
+without a drag. Keep `r.textSelection` to offer Copy and Select All in a
+menu (its `onContextMenu` is asked on a right-click); see
+`UltraCanvasLabelExamples.md`, *Selectable text*.
+
+Pictures are sized as a browser sizes a replaced element: `width` alone or
+`height` alone gives the other in the picture's shape, both give a box of
+their own, and min / max sizes clamp keeping the shape where CSS does. The
+size becomes a width the height follows, so a narrower line shrinks the
+picture in proportion - in its own shape, or in the box's where the author
+gave one (`UltraCanvasImageElement::SetBoxAspectRatio`). `object-fit: fill`
+(the default) stretches the picture only into a box the author shaped
+differently; any other box is the picture's shape, and the picture is fitted
+keeping its proportions. A percentage height inside a table cell is a share
+of the cell's set height, and auto when the cell sets none.
+
+Table cells ignore `min-height` and `max-height`, as browsers do (CSS 2.1
+leaves them undefined there): the spacer cell many mailers use -
+`<td height="32" style="font-size:1px; line-height:1px; max-height:1px">` -
+is as tall as its `height` says. A cell made `display: block` is a block,
+and keeps them. A line is as tall as the tallest `line-height` of the inline
+boxes on it, and at least the block's own: a `<span style="line-height:40px">`
+in a cell that sets none is a 40px line. Text where nothing sets a
+`line-height` keeps the font's own line spacing.
+
 **Flex and grid containers** are laid out by the CSSLayout flex and grid
 engines. Their children are items, as in CSS. Each child element is a box of
 its own at its own size (a `<span>` or `<a>` item is "blockified"), with real
@@ -307,8 +369,8 @@ anonymous item formatted as the container, and whitespace between items
 renders nothing. Flex items take `flex`, `order` and `align-self`, and
 `align-items: normal` stretches them, as in CSS. Grid items take their lines,
 spans and named areas: negative lines are counted from the end of the
-explicit grid, and `span N / <line>` counts back from the line. A `repeat(auto-fill, ...)` is written out as many
-times as fit the grid's width, estimated before layout from the viewport down
+explicit grid, and `span N / <line>` counts back from the line. A
+`repeat(auto-fill, ...)` is written out as many times as fit the grid's width, estimated before layout from the viewport down
 through its ancestors' widths, margins, padding and borders
 (`EstimateContentWidth`); `auto-fit` keeps no more repetitions than there are
 items. A grid without columns gets one column as wide as the grid, as CSS's
@@ -332,11 +394,32 @@ so that a third reader does not build it a third time.
 read HTML through the same parser and cascade and produce a `UCRichDocument`
 for `UltraCanvasRichTextEdit`: paragraphs, headings, lists, rules, the
 inline formats, links, colours, fonts and sizes, alignment and indents,
-`<blockquote>` as quote level, pictures (`data:` URIs decoded, others
-through `options.resolveImage`), and tables, with the one-column scaffolding
-tables of mail layouts unwrapped into the flow. See
-`UltraCanvasRichTextEdit.md` for the document model and
-`Tests/HTMLRichImportTest.cpp` for what is covered.
+`<blockquote>` as quote level, right-to-left paragraphs (`dir="rtl"` on the
+element or one around it), Word's list paragraphs as list items, pictures (`data:` URIs decoded, others through
+`options.resolveImage`, else their alt text in brackets; a 1-2 px tracking
+pixel left out), and tables, with the one-column scaffolding tables of mail
+layouts unwrapped into the flow. See `UltraCanvasRichTextEdit.md` for the
+document model and `Tests/HTMLRichImportTest.cpp` for what is covered.
+
+Word writes a list as paragraphs, not `<ul>` / `<ol>` - on the clipboard and
+in every mail Outlook sends: `<p class=MsoListParagraph style="mso-list:l0
+level1 lfo1">`, with the label it shows typed out in front, inside a
+`<span style="mso-list:Ignore">`. Such a paragraph becomes a list item at
+that level, and its label its marker rather than text: a number, letter or
+Roman numeral (`1.`, `a)`, `(iv)`) makes a numbered item in that format, and
+gives it its own number only where the model's count would differ - a list
+starting at 4, or one Word carries on past a paragraph between; a bullet in
+Word's symbol fonts becomes the model's (`o` in Courier New a circle, `§` in
+Wingdings a square). A numbered heading stays a heading, its number text.
+
+Two options are for a paste rather than a mail, and are off by default:
+`preAsCodeBlock` makes a `<pre>` a code block (a mail's `<pre>` is mostly a
+quoted plain-text message, so there it stays monospaced lines of a
+paragraph), and `skipWordListLabels` leaves out a label Word types out in a
+`mso-list:Ignore` span where no list item takes it - the "1." of a numbered
+heading (a browser shows it, so a mail keeps it). `UCRichDocument::FromHTML` - the editor's paste from
+another application - is the importer with both on, and a no-break space
+turned into a space.
 
 ```cpp
 HTMLRichImportOptions options;
@@ -351,18 +434,11 @@ UCRichDocument reply = ImportHTMLToRichDocument(message.htmlBody, options);
 
 ## What is still implemented elsewhere
 
-These sites predate the rule and are listed in
-`scripts/html_reuse_baseline.txt`; each is a replacement waiting to happen,
-and the check blocks new ones:
-
-| Site | Has its own | Replace with |
-|---|---|---|
-| `UltraCanvas/core/UltraCanvasRichDocument.cpp` (`UCRichDocument::FromHTML`) | tokenizer, entity table, `ApplyCss` | `ImportHTMLToRichDocument` |
-| `UltraCanvas/core/UltraCanvasFilerWidget.cpp` (the file preview) | entity decoder, tag stripper | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` (`HtmlToText`) | tag stripper, four entities | `HTML::ExtractPlainText` |
-| `Apps/UltraMail/engine/UltraMailThreatScan.cpp` | `DecodeEntities`, `StripTags`, an `<a href>` scanner | `HTML::Parser` + a walk over `a[href]`, `area[href]`, `form[action]` |
-| `Apps/EmailCleaner/engine/EmailCleanerText.cpp` (`StripHtml`) | entity table, tag stripper | `HTML::ExtractPlainText` |
-| `UltraCloud/providers/UltraCloudWebDav.cpp` (`DecodeEntities`) | the five XML entities | `HTML::DecodeEntities` decodes those too |
+Nothing: `scripts/html_reuse_baseline.txt` lists no site. The last ones -
+`UCRichDocument::FromHTML`'s tokenizer, entity table and CSS reader, and the
+Filer's tag-level line splitter for its `.html` preview - read through the
+importer and `PlainTextLayout::Lines` now. `scripts/check_html_reuse.py`
+blocks new ones.
 
 ## Limits
 

@@ -1,5 +1,7 @@
 # UltraCanvasSpellChecker Documentation
 
+<!-- doc-check: void ShowWordCount(); void OnDictionaryPicked(const std::string& code); std::string GetConfigDir(); struct TextByteSpan { size_t startByte = 0; size_t byteLength = 0; }; std::vector<TextByteSpan> ScanMarkdownNoSpellRanges(const std::string& text); bool SpanCoversRange(const std::vector<TextByteSpan>& spans, size_t startByte, size_t byteLength); std::shared_ptr<UltraCanvasMenu> menuBar; bool darkMode; -->
+
 ## Overview
 **UltraCanvasSpellChecker** is the framework's cross-platform spell checking
 service. It owns a backend, a user dictionary, a session ignore list and one
@@ -69,7 +71,7 @@ spell.Initialize();   // native backend, else Hunspell; language from LANG/LC_AL
 menuBar->AddItem(MenuItemData::Submenu("Tools", {
     UltraCanvasSpellChecker::BuildSpellCheckMenu(),
     MenuItemData::Separator(),
-    MenuItemData::Action("Word Count", cmd(TexterCommand::ToolsWordCount)),
+    MenuItemData::Action("Word Count", [this] { ShowWordCount(); }),
 }));
 ```
 
@@ -170,7 +172,7 @@ positions.
 Because the UI thread manages the language and the worker thread runs the
 checks, **every backend is entered from two threads**. On Windows that is not
 just a locking question: COM objects belong to the apartment of the thread that
-created them, and UltraCanvas calls `OleInitialize()` on the UI thread, so
+created them, and UltraCanvas calls `OleInitialize` on the UI thread, so
 anything created there is single-threaded-apartment bound. The Windows backend
 therefore keeps its `ISpellCheckerFactory` and `ISpellChecker` **per thread**,
 created in that thread's own apartment and released when it exits; only the
@@ -336,6 +338,7 @@ static std::vector<MenuItemData> BuildSuggestionMenuItems(
 
 ### Text utilities — `namespace SpellCheckText`
 ```cpp
+namespace SpellCheckText {
 std::vector<WordSpan> TokenizeWords(const std::string& text);
 size_t ByteOffsetToCharIndex(const std::string& text, size_t byteOffset);
 size_t CharIndexToByteOffset(const std::string& text, size_t charIndex);
@@ -346,10 +349,12 @@ bool IsMixedCase(const std::string& word);
 bool LooksLikeUrlOrEmail(const std::string& word);
 std::string ToLowerAscii(const std::string& word);
 const SpellError* FindErrorAtByteOffset(const std::vector<SpellError>& errors, size_t byteOffset);
+}
 ```
 
 ### Rendering — `namespace SpellCheckRendering`
 ```cpp
+namespace SpellCheckRendering {
 void DrawSpellErrorMark(IRenderContext* ctx, const Rect2Df& wordRect,
                         const SpellCheckStyle& style,
                         SpellErrorKind kind = SpellErrorKind::Misspelled);
@@ -357,6 +362,7 @@ void DrawWavyUnderline(IRenderContext* ctx, float x, float y, float width,
                        const Color& color, float amplitude, float waveLength, float strokeWidth);
 void DrawDottedUnderline(IRenderContext* ctx, float x, float y, float width,
                          const Color& color, float strokeWidth);
+}
 ```
 
 Any component that can produce a word rectangle can call these — they know
@@ -398,7 +404,7 @@ textArea->onContextMenu = [this](const UCEvent& event) -> bool {
         items.push_back(MenuItemData::Separator());
     }
 
-    items.push_back(MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", [this]{ Cut(); }));
+    items.push_back(MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", [this]{ textArea->CutSelection(); }));
     // ... the rest of the application's edit commands ...
 
     // build and open the menu, then:
@@ -431,8 +437,9 @@ textArea->onPrepareSpellCheck = [](SpellCheckOptions& options, const std::string
 Capture the precomputed ranges by value: the predicate itself runs on the
 worker thread and must not read anything the UI thread can change.
 
-UltraTexter does exactly this for markdown documents — see
-`Apps/Texter/UltraCanvasMarkdownSpellRanges.h` for a scanner that covers fenced
+UltraTexter does exactly this for markdown documents — `TextByteSpan`,
+`ScanMarkdownNoSpellRanges` and `SpanCoversRange` above are its own, from
+`Apps/Texter/UltraCanvasMarkdownSpellRanges.h`, a scanner that covers fenced
 and indented code, inline code spans, link and image targets, autolinks, inline
 HTML, math and YAML front matter.
 

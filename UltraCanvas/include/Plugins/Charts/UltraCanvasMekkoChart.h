@@ -1,7 +1,8 @@
 // include/Plugins/Charts/UltraCanvasMekkoChart.h
 // Mekko (Marimekko / mosaic) chart element with variable-width 100% stacked columns
+// Version: 1.1.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.1.0
-// Last Modified: 2026-08-20
+// Last Modified: 2026-10-08
 // V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
@@ -94,7 +95,7 @@ namespace UltraCanvas {
         bool SupportsStreaming() const override { return false; }
         // CSV format: header "Column,Series1,Series2,..." then one row per column.
         void LoadFromCSV(const std::string& filePath) override;
-        void LoadFromArray(const std::vector<ChartDataPoint>& data) override {}
+        void LoadFromArray(const std::vector<ChartDataPoint>& data) override { (void)data; }
     };
 
 // =============================================================================

@@ -350,8 +350,14 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `styleSheetLinks`. Elements nest at most `kMaxTreeDepth` (128) deep,
   deeper ones are kept as leaves (a hostile mail's nesting cannot overflow
   the stack). Helpers without a DOM: `DecodeEntities` (every HTML 4
-  entity and numeric references), `ExtractPlainText` (tags gone,
-  `<script>`/`<style>` bodies dropped, entities decoded).
+  entity and numeric references), `ExtractPlainText(html, layout)` (tags
+  gone, `<script>`/`<style>` bodies dropped, entities decoded; one line by
+  default - whitespace and no-break spaces collapsed, an inline element such
+  as `<b>` keeping a word whole, a block separating words -
+  `PlainTextLayout::Lines` keeps the text's line structure - paragraphs,
+  `<br>`, table rows and cells, list items, `<pre>` - and leaves out hidden
+  content; `ExtractPlainText(const Node&)` the single line for a parsed
+  element).
 - **CSSStyleSheet** (`HTMLReader/CSSStyleSheet.h`) — `StyleSheet::ParseAppend`
   (rules with specificity and source order, `@media` against
   `SetMediaWidth`, comments), `ParseDeclarationList` (a `style=""` value),
@@ -379,8 +385,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   options)` → `BuildResult` (`root` container tree on the CSSLayout engine,
   `title`, `warnings`, `anchors` id → element). `BuildOptions`: `style`
   (ResolverOptions), `userCss`, `viewportWidth`, `enableImages`,
-  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`.
-  Blocks become containers, inline runs `UltraCanvasLabel` with Pango
+  `resourceLoader`, `onLinkActivated`, `onLinkHovered`, `linkTooltips`,
+  `selectableText` (every label joins one `UltraCanvasTextSelection`,
+  `BuildResult::textSelection`: the page's text selects and copies as in a
+  browser). Blocks become containers, inline runs `UltraCanvasLabel` with Pango
   markup, pictures `UltraCanvasImageElement`, tables the CSSLayout table
   engine, `display: flex` / `grid` the CSSLayout flex and grid engines
   (child elements are items, text between them anonymous items); the tree's
@@ -392,7 +400,10 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
   options)` → `UCRichDocument` through the same parser and cascade
   (`quoteLevel`, `resolveImage`, `baseFontSizePx`, `keepFonts`,
-  `keepColors`). `UCRichDocument::ToHTML` is the writer.
+  `keepColors`, and for a paste `preAsCodeBlock`, `skipWordListLabels`);
+  `dir="rtl"` makes right-to-left paragraphs, and Word's list paragraphs
+  (`mso-list`) list items, their typed labels the markers. `UCRichDocument::FromHTML`
+  (a rich paste) reads through it; `UCRichDocument::ToHTML` is the writer.
 
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
   cross-platform "Open with" service: which applications the OS registers
@@ -531,8 +542,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   safe on background threads. Public surface:
   - `IsDesktopEntryPath` — recognition by extension, before a file is opened.
   - `ReadDesktopEntry` — `UCDesktopEntry` (Type, localized Name / GenericName
-    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Terminal /
-    NoDisplay / Hidden) plus `program`, the executable it resolves to on this
+    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Categories,
+    StartupWMClass, Terminal / NoDisplay / Hidden) plus `program`, the
+    executable it resolves to on this
     machine. False for a file with no `[Desktop Entry]` group, so a file that
     merely ends in `.desktop` is never mistaken for one.
   - `FindDesktopIconFile` — an icon *name* resolved to an image file through
@@ -576,6 +588,30 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     (`OS/MacOS/UltraCanvasMacOSAlias.mm`); elsewhere the resolver reports
     false rather than guessing.
   See `Docs/UltraCanvas/UltraCanvasMacBundle.md`.
+
+- **UltraCanvasCompoundFile** (`UltraCanvasCompoundFile.h`) — read-only OLE2
+  compound files ([MS-CFB]), the container of the legacy Office formats
+  (`.doc`, `.xls`, `.ppt`, `.msg`). In `core/UltraCanvasCompoundFile.cpp`;
+  every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
+  `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
+  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
+  `.doc` importer and the `.xls` reader.
+  See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
+  workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
+  tables and Excel 2003 XML files saved under the name, read into a UI-free
+  model (`XlsWorkbook` → `XlsSheet` → `XlsCell`, `XlsCellFormat`, `XlsFont`,
+  `XlsDefinedName`). Formulas are translated into the spreadsheet engine's
+  syntax and every formula cell keeps Excel's cached result. In
+  `core/UltraCanvasSpreadsheetXls.cpp`; `UltraCanvasSpreadsheet::LoadXLS`
+  (`core/UltraCanvasSpreadsheetXlsIO.cpp`, called by `LoadFromFile`) builds a
+  sheet from it, and the file display previews from it. Public surface:
+  `DetectXlsFileKind`, `ReadXlsWorkbook(path, out, error, XlsReadOptions)`,
+  `ReadXlsWorkbookFromMemory`, `XlsCellText`, `XlsErrorText` /
+  `XlsErrorType`, and `ExcelNumberFormatCategory` (shared with the `.xlsx`
+  loader). Read only: there is no `.xls` writer.
+  See `Docs/UltraCanvas/UltraCanvasSpreadsheetXls.md`.
 
 - **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons the
   other two desktops keep their applications' faces in, read without either
@@ -643,8 +679,11 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   `IsFontFileRegistered` / `GetRegisteredFontFiles` add a file's faces to the
   process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
   FontConfig on Windows, CoreText process scope on macOS), followed by
-  `RefreshFontConfiguration()` so the new family resolves in the next layout.
-  Process-private and permanent: there is no unregister.
+  `RefreshFontConfiguration()` so the new family resolves in the next layout,
+  and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
+  layout and a full repaint, popups too; also run when the Windows system
+  fonts arrive after a cold start). Process-private and permanent: there is
+  no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
 - **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
@@ -719,8 +758,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
-    icons resolved), `LaunchApplication`, `LaunchProgram` / `FindProgram`
-    (next to this executable first, then `PATH`).
+    icons resolved), `MatchApplication` (a window's entry, by
+    `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
+    `FindProgram` (next to this executable first, then `PATH`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -759,7 +799,9 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
     / Delete hit-tested with `ActionAt`.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
-    `FoldForClipboardSearch`, `DescribeClipboardEntry`.
+    `FoldForClipboardSearch`, `DescribeClipboardEntry`,
+    `PreferredClipboardKinds` (what a program takes when pasted into, from
+    its desktop entry's categories and MIME types).
   See `Docs/UltraCanvas/UltraCanvasClipboardHistory.md`.
 
 - **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
@@ -993,7 +1035,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
   BlendFrom/CropCopy/Clone/ResizeCanvas/Flip*/Rotate*/ResampleBilinear`,
   `CompositeOnto` (premultiplied ARGB32), `ToPixelFX/FromPixelFX`
-  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths.
+  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths,
+  `RasterReplacePixel` the replace-with-alpha one.
 - **UCRasterSelection** — coverage mask: `SelectAll/SelectNone/Invert/
   SetRectangle/SetEllipse/SetPolygon/SetMask` with `RasterSelectionMode`
   (Replace/Add/Subtract/Intersect), `Feather/Grow/Shrink/Translate`,
@@ -1012,7 +1055,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
   ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour`. No libvips needed.
+  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
@@ -1061,6 +1105,13 @@ engine; these classes hold the pixels being edited and hand them to it.
   context. See `Docs/UltraCanvas/UltraCanvasVectorRaster.md`.
 - **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
   drawing for zoomed pixel display (Cairo backend implemented).
+- **UltraCanvasDrawnMarks** (`UltraCanvasDrawnMarks.h`) — marks drawn as
+  shapes for self-rendered elements, in place of symbol characters the
+  bundled UI font lacks (which show as hex boxes on Windows):
+  `DrawTickMark`, `DrawCrossMark`, `DrawSortTriangle`, and `DrawBulletMark` /
+  `IsDrawnBullet` for the list bullets "•", "◦", "▪". Used by the password
+  rule legend, the Markdown and rich-text lists, the Filer's details header
+  and the new-document dialog. Doc: `Docs/UltraCanvas/UltraCanvasDrawnMarks.md`.
 - **IRenderContext compositing and geometry** (`UltraCanvasRenderContext.h`,
   doc `Docs/UltraCanvas/UltraCanvasRenderContext.md`) — `SetBlendMode` /
   `GetBlendMode` (the 16 PDF / CSS modes), groups `BeginGroup` /
@@ -1193,7 +1244,8 @@ future.
   `UltraNet_FtpRemoveDirectory`; the session log of every call
   (`UltraNetFtpOptions::onLog`, `UltraNet_SetThreadFtpLog`:
   `UltraNetFtpLogLine` steps, commands with the password masked, replies with
-  their codes, the error with libcurl's number)
+  their codes, the error with libcurl's number); connections kept open
+  between calls on one thread, closed by `UltraNet_FtpCloseIdleConnections`
 - `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
   `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
@@ -1974,7 +2026,10 @@ target `VideoFX`, header `<VideoFX/VideoFX.h>`, `namespace VideoFX`; see
 core (`UltraCanvasVideoPlayer`, `UltraCanvasVideoRecorder`,
 `UltraCanvasVideoThumbnail`, on the platform media frameworks). VideoFX is
 headless and has no UltraCanvas UI dependency; applications call it from a
-worker thread or through `VideoFXExportJob`.
+worker thread or through `VideoFXExportJob`. It is a shared library of its
+own (`libVideoFX.so` / `.dylib` / `.dll`, `VIDEOFX_BUILD_SHARED`, default ON
+except on Android), not absorbed into the UltraCanvas core, so FFmpeg is
+loaded only by applications that do video.
 
 Like UltraNet and VirtualFS it encapsulates an open-source engine (FFmpeg:
 libavformat, libavcodec, libavfilter, libswscale) behind its own types; no
@@ -1984,16 +2039,19 @@ time: without it the same API links from a stub whose calls return
 
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
-(picture via xfade, sound cross-faded), text and image overlays on the output
-frame, still images with sub-pixel pan and zoom (keeping faces in shot -
+(picture via xfade, sound cross-faded), text, image and video overlays
+(picture-in-picture) on the output frame, still images with sub-pixel pan and zoom (keeping faces in shot -
 given, or found by the built-in detector) and one-call slideshows,
 background music (fades, looping, ducking under the segments' own sound,
 song lists crossfading into each other), beat detection and slideshows
-changing on the beat,
+changing on the beat, project files (`.vfxproj`, JSON, media paths relative
+to the project, missing media reported), waveforms (loudness envelopes
+for timelines and players), a preview (any frame of a timeline rendered
+as the export would make it, for an editor's viewer),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
 several free audio tracks, hardware encoders beyond the platform ones picked
-automatically (VideoToolbox, Media Foundation), project files.
+automatically (VideoToolbox, Media Foundation), proxy media.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
@@ -2004,19 +2062,31 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
-  `VideoFXBeatInfo`, `VideoFXRect` (`VideoFXSegment::keepInView`,
-  `VideoFXSlideshowOptions::keepInView` / `findKeepInView`)
+  `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
+  `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
+  `VideoFXProject`, `VideoFXProjectKind`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
   `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
   `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
-  `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`
+  `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
+  `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
+  the shape `UltraCanvasWaveformElement` takes)
+- Preview: `VideoFXPreview` (`Open`, `Close`, `IsOpen`, `GetDuration`,
+  `GetWidth`, `GetHeight`, `GetFrameRate`, `SegmentAt`, `RenderFrame`: the
+  output frame at a timeline time, with the segment's effects, overlays
+  and, inside an overlap, the transition), `VideoFX_RenderFrame` (one frame
+  in one call), `VideoFX_PlanSlideshow` (a slideshow's segments and
+  settings before it is rendered)
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
   `VideoFX_DetectBeats`, `VideoFX_DetectFaces`, `VideoFX_GenerateTestClip`
+- Project files: `VideoFX_SaveProject`, `VideoFX_LoadProject`,
+  `VideoFX_ProjectToJson`, `VideoFX_ProjectFromJson`,
+  `VideoFX_RenderProject`, `kVideoFXProjectFormatVersion`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -2042,7 +2112,9 @@ automatically (VideoToolbox, Media Foundation), project files.
   CrossfadeGains, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
   TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
   FocusBounds, FitMotionToFocus, KeepFocusInView, DetectFacesGray,
-  DetectFaces}` (`core/VideoFXFaces.h` - the cascade compiled in as
+  DetectFaces, ProjectToJsonText, ProjectFromJsonText, SaveProjectFile,
+  LoadProjectFile, ProjectMedia}` (`core/VideoFXProject.h` - on the vendored
+  nlohmann/json, no FFmpeg dependency; `core/VideoFXFaces.h` - the cascade compiled in as
   `core/VideoFXFaceCascade.inc`, generated by `scripts/generate_face_cascade.py`
   from `UltraCanvas/third_party/opencv_haarcascade/`)
   (`core/VideoFXKenBurns.h`, `core/VideoFXMusic.h` and `core/VideoFXBeats.h`

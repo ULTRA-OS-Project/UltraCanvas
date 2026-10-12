@@ -127,6 +127,14 @@ public:
     // session); devices that disappeared are removed. Returns the number of
     // devices now registered in that category, or an error if no enumerator
     // is registered for it.
+    //
+    // ULTRACANVAS_DEVICE_BACKENDS, when set, is a comma-separated list of the
+    // backend names allowed to run ("eSCL,IPP"; case does not matter), for
+    // leaving out one that is slow to search and not wanted - SANE probing
+    // every port, say, when only network scanners are used, or a test that
+    // needs one backend alone. A category none of whose backends is listed is
+    // an error, as one with no backend is, and its devices are left as they
+    // were. GetRegisteredBackends() still lists every backend.
     IODeviceResult EnumerateDevices(IODeviceCategory category);
 
     // As above for every category that has an enumerator.

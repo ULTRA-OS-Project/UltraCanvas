@@ -1,5 +1,21 @@
 # UltraCanvas Image Performance Test Documentation
 
+<!-- doc-check:
+double NowMs();
+UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f);
+std::string EncodeQOIFromVImage(vips::VImage vImg, const std::string& outPath);
+bool DecodeQOIFile(const std::string& path);
+std::string EncodeBMPFromVImage(vips::VImage vImg, const std::string& outPath);
+bool DecodeBMPFile(const std::string& path);
+using Step = std::function<void()>;
+Step cleanupTempFiles; Step resetThumbnails; Step runBenchmark;
+CodecResult r; CodecEntry entry; UCImageSave::ImageExportOptions opts; vips::VImage vImg;
+std::string outPath; std::string stablePath; int globalIdx; int slot; int activeCount;
+double t0; double t1; double d0; double d1;
+UltraCanvasWindowBase* win; IRenderContext* ctx;
+std::shared_ptr<UltraCanvasImageElement> imageElement;
+-->
+
 ## Overview
 
 The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
@@ -20,7 +36,7 @@ The demo is registered in `UltraCanvasDemo.cpp` under three navigation variants 
 
 In the v2.x codebase all three variants present the same benchmark UI; the differing labels remain to expose the underlying conceptual breakdown of the image pipeline.
 
-**Version:** 2.5.7
+**Version:** 2.5.9
 **Source file:** `Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp`
 
 ## Header Includes
@@ -32,10 +48,11 @@ In the v2.x codebase all three variants present the same benchmark UI; the diffe
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBoxLayout.h"
+#include "UltraCanvasPathUtf8.h"      // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
+#include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasNativeDialogs.h"
-#include "UltraCanvasModalDialog.h"
+#include "UltraCanvasModalDialog.h"   // FileFilter
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
 
@@ -105,10 +122,14 @@ struct ImageExportOptions {
 ```cpp
 class UltraCanvasImageElement : public UltraCanvasUIElement {
 public:
-    UltraCanvasImageElement(const std::string& identifier = "ImageElement",
-                            long x = 0, long y = 0, long w = 100, long h = 100);
+    UltraCanvasImageElement(const std::string& identifier,
+                            float x, float y, float w, float h);
+    UltraCanvasImageElement(const std::string& identifier, float w, float h);
+    UltraCanvasImageElement(const std::string& identifier = "ImageElement");
 
-    bool LoadFromFile(const std::string& filePath);
+    // Both return true when the element shows a valid image. LoadFromFile
+    // goes through UCImage's path-keyed cache unless forceLoad is set.
+    bool LoadFromFile(const std::string& filePath, bool forceLoad = false);
     bool LoadFromImage(std::shared_ptr<UCImage> img);
 
     void SetFitMode(ImageFitMode mode);   // Contain, Cover, Stretch, ...
@@ -167,16 +188,93 @@ struct CodecResult {
 };
 ```
 
+### Helpers (file-local)
+
+Every timed region reads one monotonic millisecond clock, and every libvips
+codec is saved with the same options builder - the struct defaults already
+carry each codec's quality (85 / 80 / 65 / 50 / ...):
+
+```cpp
+double NowMs() {
+    using namespace std::chrono;
+    return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
+}
+
+UCImageSave::ImageExportOptions DefaultOptionsFor(UCImageSaveFormat f) {
+    UCImageSave::ImageExportOptions opt;
+    opt.format = f;
+    opt.preserveMetadata = false;
+    opt.preserveTransparency = true;
+    return opt;
+}
+```
+
+The bundled QOI and BMP paths have four more: `EncodeQOIFromVImage(vImg, path)`
+and `EncodeBMPFromVImage(vImg, path)` return an error string (empty on
+success), `DecodeQOIFile(path)` and `DecodeBMPFile(path)` decode every pixel
+and return whether that worked. All of them live in an anonymous namespace
+in the source file; none is part of the framework.
+
+### CodecComparisonChartElement (the grouped bar chart, file-local)
+
+```cpp
+class CodecComparisonChartElement : public UltraCanvasUIElement {
+public:
+    CodecComparisonChartElement(const std::string& identifier)
+            : UltraCanvasUIElement(identifier) {}
+
+    void SetCodecNames(const std::vector<std::string>& names);   // one bar group per name
+    void SetResults(const std::vector<CodecResult>& newResults);  // the rows so far; repaints
+    void SetThumbnailImages(const std::vector<std::shared_ptr<UltraCanvasImageElement>>& thumbs);
+
+    // Fired from Render() when the chart's bounds changed since the last
+    // paint: the demo moves the thumbnails under their bar groups.
+    std::function<void()> onGeometryChanged;
+
+    // Geometry, for aligning the thumbnails with the bar groups.
+    Rect2Di GetPlotArea() const;
+    int GetGroupCenterX(int index) const;
+    int GetGroupInnerWidth() const;
+    int GetXAxisBottomY() const;
+};
+```
+
+### PanelState (shared by every lambda of the page)
+
+```cpp
+struct PanelState {
+    std::string sourcePath;
+    UCImagePtr  sourceImage;
+    int         sourceWidth = 0;
+    int         sourceHeight = 0;
+    std::vector<CodecResult> results;
+
+    std::shared_ptr<UltraCanvasButton>   chooseBtn;
+    std::shared_ptr<UltraCanvasCheckbox> includeBmpCheckbox;
+    std::shared_ptr<UltraCanvasLabel>    infoLabel;
+    std::shared_ptr<UltraCanvasLabel>    statusLabel;
+    std::shared_ptr<CodecComparisonChartElement> chartElem;
+    std::shared_ptr<UltraCanvasContainer> thumbsRow;
+    std::vector<std::shared_ptr<UltraCanvasImageElement>> thumbs;
+
+    std::vector<std::string> codecNames;   // chart groups, in display order
+    std::vector<int> activeCodecIndices;   // indices into kAllCodecs[], same order
+    bool benchmarkRunning = false;         // re-entry guard while a run is in flight
+    std::string runStamp;                  // temp-file prefix, new for every run
+};
+auto state = std::make_shared<PanelState>();
+```
+
 ## Events / Callbacks
 
 The benchmark wires up the following user-facing actions:
 
-| Control            | Callback              | Behavior                                                          |
-|--------------------|----------------------|-------------------------------------------------------------------|
-| `chooseBtn`        | `onClick`             | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
-| `includeBmpCheckbox` | `onCheckedChanged`  | Rebuilds active codec set, re-runs benchmark                      |
-| Thumbnail per codec| `onClick`             | Opens `ShowInMediaViewer(path)` at 1:1 zoom                 |
-| `chartElem`        | `onGeometryChanged`   | Repositions thumbnails under their bar groups when bounds shift   |
+| Control              | Callback            | Behavior                                                          |
+|----------------------|---------------------|-------------------------------------------------------------------|
+| `chooseBtn`          | `SetOnClick`        | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
+| `includeBmpCheckbox` | `onStateChanged`    | Rebuilds active codec set, re-runs benchmark                      |
+| Thumbnail per codec  | `onClick`           | Opens `ShowInMediaViewer(path)` at 1:1 zoom                       |
+| `chartElem`          | `onGeometryChanged` | Repositions thumbnails under their bar groups when bounds shift   |
 
 Internally, the demo exposes two lambdas — `loadSourceImage` and `runBenchmark` — that callers can hook into if they want to drive the benchmark programmatically.
 
@@ -250,7 +348,8 @@ auto loadSourceImage = [state, cleanupTempFiles, resetThumbnails,
     state->chartElem->SetResults(state->results);
     resetThumbnails();
 
-    std::string fileName = std::filesystem::path(path).filename().string();
+    // File names are UTF-8 on every platform: never path.string().
+    std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
     std::ostringstream info;
     info << fileName << "  -  " << state->sourceWidth << " x " << state->sourceHeight << " px";
     state->infoLabel->SetText(info.str());
@@ -274,8 +373,10 @@ double t1 = NowMs();
 if (err.empty()) {
     r.encodeTimeMs    = t1 - t0;
     r.encodedFilePath = outPath;
-    r.encodedSizeBytes =
-        static_cast<size_t>(std::filesystem::file_size(outPath));
+    std::error_code ec;
+    r.encodedSizeBytes = static_cast<size_t>(
+            std::filesystem::file_size(PathFromUtf8(outPath), ec));
+    if (ec) r.encodedSizeBytes = 0;
 
     // Force eager decode so libvips doesn't lazy-defer the work.
     double d0 = NowMs();

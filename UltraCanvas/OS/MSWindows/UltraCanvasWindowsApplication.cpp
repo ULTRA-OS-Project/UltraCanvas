@@ -1,9 +1,12 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
+// Version: 1.6.0 - every thread's Pango font map reads fontconfig (PANGOCAIRO_BACKEND=fc
+//                  once the main thread's FC map exists), and the start's symbol
+//                  fonts include Cambria Math for the mathematical symbols
 // Version: 1.5.0 - the system fonts are not waited for: with a cold font cache the
 //                  start goes on with the bundled fonts and Windows' symbol fonts
 // Version: 1.4.0 - Wheel delta normalized to +/-1 per notch
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 // winsock2.h must precede windows.h (pulled in by the headers below) so the legacy winsock.h v1
@@ -19,6 +22,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>          // getenv, _putenv_s (PANGOCAIRO_BACKEND)
 #include <exception>
 #include <filesystem>
 #include <sstream>
@@ -65,6 +69,11 @@ namespace UltraCanvas {
         AttachParentConsole();
         InstallWindowsCrashReporter(appName);
         LogWindowsStartupBanner(appName);
+
+        // A console-subsystem app (one that keeps its command-line modes
+        // printing into the prompt) gets here only when it opens its window:
+        // close the empty console window a double-click gave it.
+        ReleaseOwnConsole();
 
         debugOutput << "UltraCanvas: Initializing Windows Application..." << std::endl;
 
@@ -1075,15 +1084,16 @@ namespace UltraCanvas {
         }
 
         // Starting before the system fonts: the bundled ones lack symbols the
-        // UI draws (● ↩ ✓ ▲ ▼ ←) and every emoji, so Windows' two symbol fonts
-        // are added by file - two files, not the whole folder - until the
-        // full set arrives.
+        // UI draws (● ↩ ✓ ▲ ▼ ←), the mathematical ones (⋮ ∩ ≔) and every
+        // emoji, so Windows' symbol fonts are added by file - Segoe UI Symbol,
+        // Segoe UI Emoji and Cambria Math, three files, not the whole folder -
+        // until the full set arrives.
         if (!systemFonts && cfg) {
             wchar_t windowsDir[MAX_PATH] = {};
             const UINT n = GetWindowsDirectoryW(windowsDir, MAX_PATH);
             if (n > 0 && n < MAX_PATH) {
                 const std::string fontsDir = Utf16ToUtf8(std::wstring(windowsDir, n)) + "\\Fonts\\";
-                for (const char* name : { "seguisym.ttf", "seguiemj.ttf" }) {
+                for (const char* name : { "seguisym.ttf", "seguiemj.ttf", "cambria.ttc" }) {
                     const std::string path = fontsDir + name;
                     std::error_code fontEc;
                     if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(path), fontEc)) continue;
@@ -1100,16 +1110,29 @@ namespace UltraCanvas {
             // config; required on a FcConfigCreate'd one.
             FcConfigBuildFonts(cfg);
 
-            // PANGO_BACKEND env var is ignored by MSYS2's Pango, so the
-            // default font map stays Win32 — which never reads our FC config.
-            // Force an FC-backed map by constructing one explicitly via
+            // Pango's default font map on Windows is its Win32 one, which
+            // never reads our FC config and falls back poorly: a character
+            // its font lacks shows as a box. Force an FC-backed map by
+            // constructing one explicitly via
             // pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT) and
             // setting it as the default. set_default takes its own ref, so
             // we drop ours afterwards.
             PangoFontMap* fcFm = pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT);
             if (fcFm) {
                 pango_cairo_font_map_set_default(PANGO_CAIRO_FONT_MAP(fcFm));
+                debugOutput << "UltraCanvas: text font map " << G_OBJECT_TYPE_NAME(fcFm)
+                            << (systemFonts ? " with the system fonts"
+                                            : " with the bundled and symbol fonts until the scan ends")
+                            << std::endl;
                 g_object_unref(fcFm);
+                // The default font map is per thread, and that was the main
+                // thread's. Any other thread - a worker drawing a preview,
+                // libvips or librsvg laying out text - would build the Win32
+                // map for itself. pangocairo reads PANGOCAIRO_BACKEND (not
+                // PANGO_BACKEND) when it builds one, so theirs read
+                // fontconfig too. Only now: had the FC map failed, "fc" would
+                // leave those threads with no font map at all.
+                if (!std::getenv("PANGOCAIRO_BACKEND")) _putenv_s("PANGOCAIRO_BACKEND", "fc");
             } else {
                 debugOutput << "UltraCanvas: pango_cairo_font_map_new_for_font_type(FT) returned null" << std::endl;
                 pango_cairo_font_map_set_default(nullptr);

@@ -13,8 +13,9 @@
 // render context stands in for a window), scroll a tall view down, lay the
 // page out again at a new size, and check the position is unchanged.
 //
+// Version: 1.1.0 - a view scrolled to its end, with both scrollbars, keeps the end
 // Version: 1.0.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -130,11 +131,47 @@ void TestTabbedContainer() {
           std::to_string(view->GetVerticalScrollPosition()) + ")");
 }
 
+// A view scrolled to its very end, with both scrollbars shown, keeps its
+// position when it is laid out again. The ranges used to be set for a
+// viewport measured with the scrollbars hidden too, a track taller than the
+// real one, and that clamped the position a track short of the end:
+// UltraPaint's side panel jumped 16 px every time a layer was clicked.
+void TestScrolledToTheEnd() {
+    std::printf("Scrolled to the end, both scrollbars:\n");
+    auto page = std::make_shared<PageRoot>(300.0f, 400.0f);
+    auto view = CreateContainer("EndView", 0, 0, 0, 0);
+    ContainerStyle style = view->GetContainerStyle();
+    style.autoShowScrollbars = true;
+    style.autoShowVerticalScrollbar = true;
+    style.autoShowHorizontalScrollbar = true;
+    view->SetContainerStyle(style);
+    Fill(view);
+    auto wide = CreateContainer("EndViewWide", 0, 0, 0, 0);
+    wide->size.width  = Dimension::Px(500.0f);   // wider than the view: a horizontal bar
+    wide->size.height = Dimension::Px(kContentHeight);
+    view->AddChild(wide);
+    page->AddChild(view);
+
+    LayOut(*page, 300.0f, 400.0f);
+    Check(view->GetHorizontalScrollBar().IsVisible() && view->GetVerticalScrollBar().IsVisible(),
+          "both scrollbars are shown");
+    view->ScrollToVertical(static_cast<int>(kContentHeight));
+    const int end = view->GetVerticalScrollPosition();
+    Check(end > 0, "scrolled to the end (" + std::to_string(end) + ")");
+
+    LayOut(*page, 300.0f, 400.0f);
+    Check(view->GetVerticalScrollPosition() == end,
+          "the end survives a re-layout (got " +
+          std::to_string(view->GetVerticalScrollPosition()) + ", was " +
+          std::to_string(end) + ")");
+}
+
 } // namespace
 
 int main() {
     TestSplitPane();
     TestTabbedContainer();
+    TestScrolledToTheEnd();
     if (g_failures) {
         std::printf("%d check(s) failed.\n", g_failures);
         return 1;

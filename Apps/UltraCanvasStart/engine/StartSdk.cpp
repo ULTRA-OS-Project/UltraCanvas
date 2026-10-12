@@ -7,6 +7,7 @@
 #include "UltraCanvasPathUtf8.h"
 
 #if defined(ULTRACANVASSTART_HAS_NET)
+#include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
 #endif
 
@@ -36,12 +37,20 @@ std::string SdkArtifactName(Platform platform, const std::string& version,
 
 std::string SdkArchiveName(Platform platform, const std::string& version,
                            const std::string& architecture) {
-    return SdkArtifactName(platform, version, architecture) +
-           (platform == Platform::Windows ? ".zip" : ".tar.gz");
+    // The extension the workflow's "Pack the SDK" step gives each platform.
+    switch (platform) {
+        case Platform::Windows: return SdkArtifactName(platform, version, architecture) + ".zip";
+        case Platform::Linux:   return SdkArtifactName(platform, version, architecture) + ".tar.xz";
+        default:                return SdkArtifactName(platform, version, architecture) + ".tar.gz";
+    }
 }
 
 std::string SdkDownloadPage() {
     return std::string("https://github.com/") + kRepository + "/actions/workflows/build.yml?query=branch%3Amain";
+}
+
+std::string SdkReleasePage(const std::string& version) {
+    return std::string("https://github.com/") + kRepository + "/releases/tag/v" + version;
 }
 
 std::string SdkReleaseAssetUrl(Platform platform, const std::string& version,
@@ -60,14 +69,22 @@ bool SdkDownloadAvailable() {
 
 bool DownloadSdk(const std::string& url, const std::string& localPath, std::string& error) {
 #if defined(ULTRACANVASSTART_HAS_NET)
+    if (!UltraNet_IsInitialized()) {
+        const UltraNetResult started = UltraNet_Initialize();
+        if (!started.success) {
+            error = "The network module could not start: " + started.message;
+            return false;
+        }
+    }
     UltraNetHttpOptions options = UltraNetHttpOptions::Default();
     options.followRedirects = true;
     const UltraNetResult result = UltraNet_HttpDownloadFile(url, localPath, options);
     if (result.success) return true;
     error = result.message;
     if (result.httpStatus == 404) {
-        error = "No release asset at " + url + " (the SDK is published as a CI artifact; "
-                "download it from " + SdkDownloadPage() + " and unpack that file instead)";
+        error = "Nothing at " + url + " yet: the release of this version may still be building. "
+                "Try again later, or download the archive of the same name from " + SdkDownloadPage() +
+                " and unpack it by hand.";
     }
     return false;
 #else
@@ -84,8 +101,9 @@ PlanStep UnpackStep(const std::string& archive, const std::string& destination) 
     step.kind = StepKind::Unpack;
     step.title = "Unpack the SDK";
     step.description = "Unpacks " + archive + " into " + destination;
-    // GNU tar on Linux and bsdtar on macOS and Windows 10+ all read a .tar.gz;
-    // bsdtar reads a .zip as well, and Windows ships it as tar.exe.
+    // GNU tar on Linux and bsdtar on macOS and Windows 10+ read a .tar.gz
+    // and a .tar.xz by their contents (-xf, no compression flag); bsdtar
+    // reads a .zip as well, and Windows ships it as tar.exe.
     step.argv = { "tar", "-xf", archive, "-C", destination };
     return step;
 }

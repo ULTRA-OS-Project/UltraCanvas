@@ -1,5 +1,7 @@
 # Menu Configuration Widget
 
+<!-- doc-check: void OnOpen(); void SetWordWrap(bool on); MenuItemData BuildRecentFilesSubmenu(); std::string ConfigDir(); -->
+
 `UltraCanvasMenuConfigWidget` lets end users customise an application's menus at
 runtime: reorder entries, add or remove commands, group them into submenus, and
 save the result so it survives a restart. It works together with two supporting
@@ -12,7 +14,7 @@ reconfigurable.
 Menus are normally built imperatively with lambdas:
 
 ```cpp
-menuBar = MenuBuilder("Bar")
+menuBar = MenuBuilder("Bar", 0, 0, 800, 28)
     .AddSubmenu("File", {
         MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", [this]() { OnOpen(); }),
     })
@@ -105,8 +107,8 @@ touches live menus itself, so the host decides how apply/save/reset behave.
 
 ```
 ┌ Menu structure ─┐ ┌─────┐ ┌ Available commands ┐
-│ Program         │ │Add →│ │ File               │
-│  ├ Main Menu Bar│ │←Rem.│ │   New              │
+│ Program         │ │Add ›│ │ File               │
+│  ├ Main Menu Bar│ │‹Rem.│ │   New              │
 │  │  ├ File      │ │Up   │ │   Open...          │
 │  │  │  ├ New    │ │Down │ │ Edit               │
 │  │  │  └ Open...│ │Sub  │ │   Copy             │
@@ -117,10 +119,10 @@ touches live menus itself, so the host decides how apply/save/reset behave.
 └──────────────────────────────────────────────────┘
 ```
 
-* **Add →** inserts the command selected on the right into the layout (after the
+* **Add** (a chevron pointing right) inserts the command selected on the right into the layout (after the
   selected node, or inside it when a group is selected). Double-clicking a command
   adds it too.
-* **← Remove** deletes the selected layout entry (the Program root and whole menus
+* **Remove** (a chevron pointing left) deletes the selected layout entry (the Program root and whole menus
   are structural and cannot be removed this way).
 * **Move Up / Move Down** reorder within the current parent.
 * **New Submenu / Separator** insert a group or separator at the selection.

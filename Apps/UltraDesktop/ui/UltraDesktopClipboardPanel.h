@@ -10,6 +10,12 @@
 // under every other, so a popup inside it would be covered by whatever window
 // sits there. It closes when it loses the focus, on Escape, and after a copy.
 //
+// It adapts to the program it is opened over: what that program takes comes
+// first - the newest images for a bitmap editor, files for a file manager,
+// code and text for an editor - under "For <program>", chosen, so Enter
+// copies it. What a program takes comes from its desktop entry's
+// Categories= and MimeType= (UltraCanvas::PreferredClipboardKinds).
+//
 // Keys: typing searches; Up / Down choose; Enter copies; F2 or Ctrl+E edits
 // (in UltraClipboard); Delete deletes while the search field is empty
 // (Ctrl+Delete always); Escape closes.
@@ -17,6 +23,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCanvasClipboardHistory.h"
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasWindow.h"
 
@@ -24,6 +31,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraCanvas {
     class UltraCanvasButton;
@@ -51,13 +59,24 @@ public:
         std::function<void(const std::string& text)> openApplication;
     };
 
+    // The program the paste is for: its name, for the section header, and
+    // the kinds of entry it takes, most wanted first
+    // (UltraCanvas::PreferredClipboardKinds). With no kinds the history is
+    // shown as it is.
+    struct Target {
+        std::string name;
+        std::vector<UltraCanvas::ClipboardEntryKind> kinds;
+    };
+
     UltraDesktopClipboardPanel(UltraCanvas::UltraCanvasClipboardHistory* history, Actions actions);
     ~UltraDesktopClipboardPanel();
 
     // `rightX`, `topY`: the panel's top right corner in screen pixels (the
     // bar's left edge beside the button); centred on the screen when both
-    // are negative (Super+V).
-    void Open(int rightX, int topY);
+    // are negative (Super+V). `target`: what is being pasted into - its
+    // newest entries of the kinds it takes come first, under "For <name>",
+    // the first of them chosen.
+    void Open(int rightX, int topY, Target target = {});
     void Close();
     bool IsOpen() const;
     // The history changed (in this process or another): list it again.
@@ -86,6 +105,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasSwitch> recording_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> undo_;
+    Target target_;
     int64_t removedId_ = 0;
     UltraCanvas::TimerId undoTimer_ = 0;
     bool open_ = false;

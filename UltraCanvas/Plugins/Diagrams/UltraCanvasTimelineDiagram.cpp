@@ -1,7 +1,8 @@
 // Plugins/Diagrams/UltraCanvasTimelineDiagram.cpp
 // Narrative timeline infographic with nine design presets
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-07-30
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasTimelineDiagram.h"
@@ -85,7 +86,7 @@ namespace UltraCanvas {
     void UltraCanvasTimelineDiagram::SetDesign(TimelineDesign d) {
         if (design == d) return;
         design = d;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -97,18 +98,18 @@ namespace UltraCanvas {
             darkTheme = false;
             SetDarkTheme(true);
         }
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineDiagram::SetStyle(const TimelineDiagramStyle& s) {
         style = s;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineDiagram::StyleChanged() {
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -167,7 +168,7 @@ namespace UltraCanvas {
     void UltraCanvasTimelineDiagram::SetColorMode(TimelineColorMode mode) {
         if (colorMode == mode) return;
         colorMode = mode;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -196,21 +197,21 @@ namespace UltraCanvas {
     void UltraCanvasTimelineDiagram::SetSidePolicy(TimelineSidePolicy policy) {
         if (sidePolicy == policy) return;
         sidePolicy = policy;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineDiagram::SetPlacement(TimelinePlacement p) {
         if (placement == p) return;
         placement = p;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineDiagram::SetReverseOrder(bool reverse) {
         if (reverseOrder == reverse) return;
         reverseOrder = reverse;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -222,13 +223,13 @@ namespace UltraCanvas {
 
     void UltraCanvasTimelineDiagram::SetSubtitle(const std::string& text) {
         subtitle = text;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineDiagram::SetScaleLabels(const std::vector<std::string>& labels) {
         scaleLabels = labels;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -238,14 +239,14 @@ namespace UltraCanvas {
 
     void UltraCanvasTimelineDiagram::AddItem(const TimelineItem& item) {
         items.push_back(item);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineDiagram::AddItem(const std::string& caption, const std::string& title,
                                              const std::string& body) {
         items.emplace_back(caption, title, body);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -254,7 +255,7 @@ namespace UltraCanvas {
         items.insert(items.begin() + index, item);
         hoveredItem = TimelineItemRef();
         selectedItem = TimelineItemRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -262,7 +263,7 @@ namespace UltraCanvas {
         items = list;
         hoveredItem = TimelineItemRef();
         selectedItem = TimelineItemRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -278,7 +279,7 @@ namespace UltraCanvas {
         fix(selectedItem);
         fix(hoveredItem);
 
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -289,7 +290,7 @@ namespace UltraCanvas {
         items.insert(items.begin() + to, moved);
         hoveredItem = TimelineItemRef();
         selectedItem = TimelineItemRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -297,12 +298,12 @@ namespace UltraCanvas {
         items.clear();
         hoveredItem = TimelineItemRef();
         selectedItem = TimelineItemRef();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasTimelineDiagram::ItemsChanged() {
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 

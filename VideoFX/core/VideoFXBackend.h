@@ -6,8 +6,8 @@
 // channel-layout API (AVChannelLayout, FFmpeg 5.1), the stream side-data move
 // (codecpar->coded_side_data, 6.1) and the supported-config query (7.1) are
 // wrapped here so the pipeline code does not care which one it runs on.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.10.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -118,6 +118,39 @@ bool FontconfigCanDrawText();
 // (libx264, then platform encoders, ...). nullptr = none in this build.
 const AVCodec* FindVideoEncoder(VideoFXVideoCodec codec);
 const AVCodec* FindAudioEncoder(VideoFXAudioCodec codec);
+
+// ---- single-frame decoding (VideoFXProbe.cpp), shared with the preview ----
+
+// A file opened for its video stream
+struct OpenVideo {
+    FormatInputPtr fmt;
+    CodecContextPtr dec;
+    int stream = -1;
+    int rotation = 0;
+    AVRational tb{1, 1};
+    int64_t startTs = 0;          // stream timestamps are relative to this
+    double duration = 0.0;
+    std::string path;
+    bool fresh = true;            // nothing read since the file was opened
+    bool still = false;           // a single image (image2 / *_pipe demuxers)
+    double lastTime = -1.0;       // time of the last frame decoded, -1 = none (a seek is needed)
+    bool spent = false;           // the decoder has been flushed: a seek is needed before more frames
+};
+
+VideoFXResult OpenVideoStream(const std::string& path, OpenVideo& v);
+// Decode the frame displayed at `seconds` into `out`, seeking first unless
+// it lies shortly after the last frame decoded (then decoding just goes on,
+// which is what scrubbing forward wants); `frameTime` receives the frame's
+// own time
+VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& frameTime);
+// The frame after the last one decoded, in stream order, without seeking;
+// `endOfStream` is set (with Ok) when the file has no more. For a video
+// overlay, which plays on from where DecodeFrameAt put it.
+VideoFXResult DecodeNextFrame(OpenVideo& v, AVFrame* out, double& frameTime, bool& endOfStream);
+// The stream's rotation, or for a still without one its EXIF orientation
+int DisplayRotation(const OpenVideo& v, const AVFrame* frame);
+// Convert a decoded frame to upright RGBA no larger than maxWidth x maxHeight (0 = no limit)
+VideoFXResult ConvertToRgba(const AVFrame* src, int rotation, int maxWidth, int maxHeight, VideoFXFrame& dst);
 
 } // namespace Internal
 } // namespace VideoFX

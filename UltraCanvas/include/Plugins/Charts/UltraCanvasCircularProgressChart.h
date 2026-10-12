@@ -1,8 +1,9 @@
 // include/Plugins/Charts/UltraCanvasCircularProgressChart.h
 // Circular progress chart element: concentric progress rings ("activity
 // rings"), single progress ring and progress pie, all angle-encoded.
+// Version: 1.1.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.1.0
-// Last Modified: 2026-08-20
+// Last Modified: 2026-10-08
 // V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #pragma once
@@ -259,7 +260,14 @@ namespace UltraCanvas {
         size_t hoveredRing = SIZE_MAX;
 
         // ----- Helpers -----
-        void InvalidateLayout();
+    public:
+        // The framework's invalidation - a new size, visibility, style - drops
+        // the chart's own layout cache and lets the layout engine re-measure.
+        // A cache-only InvalidateLayout() overrode the engine's and kept the
+        // change from reaching the parent.
+        void InvalidateLayout() override { DropLayoutCache(); UltraCanvasChartElementBase::InvalidateLayout(); }
+    private:
+        void DropLayoutCache();
         void RebuildLayout();
         size_t VisibleRingCount() const;
         double RingFraction(const ProgressRing& ring) const;

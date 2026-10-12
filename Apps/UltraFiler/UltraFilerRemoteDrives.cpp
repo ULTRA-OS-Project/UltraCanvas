@@ -1,6 +1,6 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.5.0
-// Last Modified: 2026-10-04
+// Version: 1.6.0
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
 #include "UltraFilerRemoteCache.h"
@@ -900,15 +900,14 @@ void UltraFilerRemoteDrives::QueuePrefetchLocked(
     if (shutdown_) return;
     if (!DrivePrefetchesLocked(RemoteFilerAccountId(folderPath))) return;
 
-    // Known: anything cached that the server has answered for this session,
-    // or that is already on its way. A listing kept from the last run is not
-    // known - fetching it ahead is what brings it up to date before it is
-    // opened.
+    // Known: anything cached - answered this session, on its way, or kept
+    // from the last run - and anything already queued. A listing kept from
+    // the last run is shown the moment its folder is opened and asked for
+    // again then (List); fetching it ahead as well re-read every subfolder
+    // of every folder opened, on every run, whether or not anybody opened it
+    // again.
     std::unordered_set<std::string> known = prefetchQueued_;
-    for (const auto& [path, entry] : cache_) {
-        if (entry.state != CacheState::Stale || entry.revalidating)
-            known.insert(path);
-    }
+    for (const auto& [path, entry] : cache_) known.insert(path);
     std::vector<RemoteCachedEntry> candidates;
     candidates.reserve(entries.size());
     for (const FilerEntry& e : entries) {
@@ -947,15 +946,8 @@ bool UltraFilerRemoteDrives::TakePrefetchLocked(Job& job) {
         // The drive may have gone, or the user may have opened the folder
         // meanwhile - its own listing is then already queued or in.
         if (!DrivePrefetchesLocked(RemoteFilerAccountId(path))) continue;
-        auto it = cache_.find(path);
-        if (it != cache_.end()) {
-            if (it->second.state != CacheState::Stale || it->second.revalidating)
-                continue;
-            // Kept from the last run: stays on show while it is checked.
-            it->second.revalidating = true;
-        } else {
-            cache_[path] = CacheEntry{};   // Loading
-        }
+        if (cache_.count(path)) continue;
+        cache_[path] = CacheEntry{};   // Loading
         job = Job{};
         job.isListing = true;
         job.isPrefetch = true;
@@ -1147,15 +1139,39 @@ void UltraFilerRemoteDrives::ReportActivity(const RemoteActivity& activity,
 }
 
 void UltraFilerRemoteDrives::WorkerMain() {
+    // Whether a job has run since the FTP connections this thread keeps open
+    // were last closed (UltraNet_FtpCloseIdleConnections).
+    bool connectionsOpen = false;
     for (;;) {
         Job job;
         std::size_t waiting = 0;
         {
             std::unique_lock<std::mutex> lk(mutex_);
-            cond_.wait(lk, [this]() {
+            auto ready = [this]() {
                 return shutdown_ || !queue_.empty() || !prefetchQueue_.empty();
-            });
-            if (shutdown_) return;
+            };
+            if (!connectionsOpen) {
+                cond_.wait(lk, ready);
+            } else if (!cond_.wait_for(lk, kRemoteConnectionIdleClose, ready)) {
+                // Gone quiet: the connection the last job left open is
+                // closed while the server has only just answered on it. The
+                // close says QUIT and waits for the reply, which a connection
+                // whose network has since gone away does not send - so the
+                // later this happens, the longer it can hold the next job,
+                // or the window closing, which joins this thread.
+                lk.unlock();
+                UltraNet_FtpCloseIdleConnections();
+                connectionsOpen = false;
+                continue;
+            }
+            if (shutdown_) {
+                // Closed here rather than left to the end of the thread,
+                // which would close it too - but on Windows a thread's last
+                // rites run under the loader lock, no place for a QUIT.
+                lk.unlock();
+                if (connectionsOpen) UltraNet_FtpCloseIdleConnections();
+                return;
+            }
             if (!queue_.empty()) {
                 job = std::move(queue_.front());
                 queue_.pop_front();
@@ -1275,6 +1291,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
             }
         }
         UltraNet_SetThreadFtpLog(std::move(previousLog));
+        connectionsOpen = true;
         log_.Finish(logId, outcome.failed, outcome.message, outcome.category,
                     outcome.diagnostics);
         NotifyLogChanged();
@@ -1477,12 +1494,6 @@ bool UltraFilerRemoteDrives::RecordListingFailureLocked(const std::string& path,
                                                         const std::string& error) {
     auto it = cache_.find(path);
     if (isPrefetch && it != cache_.end()) {
-        // Kept from the last run: still the best there is to show, and the
-        // folder is asked again when it is opened.
-        if (it->second.state == CacheState::Stale) {
-            it->second.revalidating = false;
-            return false;
-        }
         // Fetched ahead and nobody has asked for it meanwhile: forget the
         // failure, so opening the folder asks the server afresh rather than
         // showing an error from a moment the user never saw. Someone who did

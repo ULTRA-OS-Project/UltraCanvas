@@ -1,8 +1,9 @@
 // Plugins/Charts/UltraCanvasPolarChart.cpp
 // Comprehensive polar chart element: scatter, line, spline, area and column
 // series plotted on a configurable angle/radius coordinate system
+// Version: 1.1.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.1.0
-// Last Modified: 2026-08-20
+// Last Modified: 2026-10-08
 // V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasPolarChart.h"
@@ -85,7 +86,7 @@ namespace UltraCanvas {
 
     void UltraCanvasPolarChart::AddSeries(const PolarSeries& series) {
         seriesList.push_back(series);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -121,14 +122,14 @@ namespace UltraCanvas {
         seriesList.clear();
         hoveredSeries = SIZE_MAX;
         hoveredPoint = SIZE_MAX;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     PolarSeries* UltraCanvasPolarChart::GetSeries(size_t index) {
         if (index >= seriesList.size()) return nullptr;
         // Callers may mutate the returned series; relayout on the next render.
-        InvalidateLayout();
+        DropLayoutCache();
         return &seriesList[index];
     }
 
@@ -140,14 +141,14 @@ namespace UltraCanvas {
     void UltraCanvasPolarChart::SetSeriesColor(size_t index, const Color& color) {
         if (index >= seriesList.size()) return;
         seriesList[index].color = color;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetSeriesType(size_t index, PolarSeriesType type) {
         if (index >= seriesList.size()) return;
         seriesList[index].type = type;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -156,7 +157,7 @@ namespace UltraCanvas {
         if (seriesList[index].visible == visible) return;
         seriesList[index].visible = visible;
         if (onSeriesVisibilityChanged) onSeriesVisibilityChanged(index, visible);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -171,20 +172,20 @@ namespace UltraCanvas {
 
     void UltraCanvasPolarChart::SetAngleMode(PolarAngleMode mode) {
         angleMode = mode;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetCategories(const std::vector<std::string>& cats) {
         categories = cats;
         angleMode = PolarAngleMode::Categorical;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetCategoryPlacement(PolarCategoryPlacement placement) {
         categoryPlacement = placement;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -192,32 +193,32 @@ namespace UltraCanvas {
         if (maxAngle == minAngle) return;
         angleMin = std::min(minAngle, maxAngle);
         angleMax = std::max(minAngle, maxAngle);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetZeroAngle(float degrees) {
         zeroAngleDeg = degrees;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetDirection(PolarDirection dir) {
         direction = dir;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetSweepAngle(float degrees) {
         sweepAngleDeg = std::max(10.0f, std::min(360.0f, degrees));
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetAngleAxisStyle(const PolarAngleAxisStyle& style) {
         angleAxis = style;
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -225,13 +226,13 @@ namespace UltraCanvas {
         angleAxis.placement = show ? PolarLabelPlacement::Outside
                                    : PolarLabelPlacement::Hidden;
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetAngleTickInterval(float degrees) {
         angleAxis.tickIntervalDeg = std::max(0.0f, degrees);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -243,27 +244,27 @@ namespace UltraCanvas {
     void UltraCanvasPolarChart::SetAngleLabelPlacement(PolarLabelPlacement placement) {
         angleAxis.placement = placement;
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetAngleLabelFormatter(std::function<std::string(double)> formatter) {
         angleLabelFormatter = std::move(formatter);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetSecondaryAngleAxisEnabled(bool enabled) {
         secondaryAngleAxisEnabled = enabled;
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetSecondaryAngleAxisStyle(const PolarAngleAxisStyle& style) {
         secondaryAngleAxis = style;
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -273,7 +274,7 @@ namespace UltraCanvas {
 
     void UltraCanvasPolarChart::SetRadialScale(PolarRadialScale scale) {
         radialScale = scale;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -281,43 +282,43 @@ namespace UltraCanvas {
         manualRadialRange = true;
         manualRadialMin = std::min(minValue, maxValue);
         manualRadialMax = std::max(minValue, maxValue);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::ClearRadialRange() {
         manualRadialRange = false;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetRadialTickCount(int count) {
         radialTickCount = std::max(2, std::min(20, count));
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetRadialTickInterval(double interval) {
         radialTickInterval = std::max(0.0, interval);
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetRadialAxisIncludesZero(bool include) {
         radialIncludesZero = include;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetRadialAxisReversed(bool reversed) {
         radialReversed = reversed;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetInnerRadiusFraction(float fraction) {
         innerRadiusFraction = std::max(0.0f, std::min(0.9f, fraction));
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -435,13 +436,13 @@ namespace UltraCanvas {
 
     void UltraCanvasPolarChart::SetStackMode(PolarStackMode mode) {
         stackMode = mode;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetColumnWidthFraction(float fraction) {
         columnWidthFraction = std::max(0.05f, std::min(1.0f, fraction));
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -453,7 +454,7 @@ namespace UltraCanvas {
 
     void UltraCanvasPolarChart::SetSortPointsByAngle(bool sort) {
         sortPointsByAngle = sort;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -464,14 +465,14 @@ namespace UltraCanvas {
 
     void UltraCanvasPolarChart::SetColorPalette(const std::vector<Color>& palette) {
         colorPalette = palette.empty() ? DefaultPalette() : palette;
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetSubtitle(const std::string& text) {
         subtitle = text;
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -486,14 +487,14 @@ namespace UltraCanvas {
         angleAxis.fontFamily = family;
         angleAxis.fontSize = labelFontSize;
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
     void UltraCanvasPolarChart::SetLegendPosition(PolarLegendPosition position) {
         legendPosition = position;
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -501,7 +502,7 @@ namespace UltraCanvas {
         legendFontFamily = family;
         legendFontSize = std::max(6.0f, size);
         InvalidateCache();
-        InvalidateLayout();
+        DropLayoutCache();
         RequestRedraw();
     }
 
@@ -755,7 +756,7 @@ namespace UltraCanvas {
     // LAYOUT
     // =========================================================================
 
-    void UltraCanvasPolarChart::InvalidateLayout() {
+    void UltraCanvasPolarChart::DropLayoutCache() {
         layoutValid = false;
     }
 
@@ -802,12 +803,12 @@ namespace UltraCanvas {
         // through the base class, which cannot notify us.
         if (layoutTitleSnapshot != chartTitle) {
             layoutTitleSnapshot = chartTitle;
-            InvalidateLayout();
+            DropLayoutCache();
         }
         if (lastLayoutWidth != GetWidth() || lastLayoutHeight != GetHeight()) {
             lastLayoutWidth = GetWidth();
             lastLayoutHeight = GetHeight();
-            InvalidateLayout();
+            DropLayoutCache();
         }
         // Measure the legend before the plot area is calculated: the reserved
         // band comes straight from the measured legend box. The legend lays
@@ -845,7 +846,7 @@ namespace UltraCanvas {
         }
         if (band != legendBandSize) {
             legendBandSize = band;
-            InvalidateLayout();
+            DropLayoutCache();
         }
         // Margins depend on the legend, the categories and the axis fonts, so
         // any change that invalidates the layout also invalidates the plot area.
@@ -2148,7 +2149,7 @@ namespace UltraCanvas {
                     // One pixel of horizontal travel rotates the chart by 0.5°.
                     float delta = static_cast<float>(event.pointer.x - rotateAnchor.x) * 0.5f;
                     zeroAngleDeg = rotateAnchorAngle + delta;
-                    InvalidateLayout();
+                    DropLayoutCache();
                     RequestRedraw();
                     return true;
                 }

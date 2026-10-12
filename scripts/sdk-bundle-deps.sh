@@ -12,12 +12,30 @@
 #   <sdk>/deps/bin/*.dll          Windows: the DLLs the core and those
 #                                 libraries need at run time
 #
-# Which libraries: the pkg-config closure (Requires and Requires.private) of
-# the modules UltraCanvasConfig.cmake re-finds on the consuming machine, plus
-# what the exported targets find through CMake (fmt, libcurl, zlib). Each
-# .pc file in the closure names the package that owns it (pacman -Qo on
-# MSYS2, the Cellar keg on Homebrew) and that package's include/ and lib/
-# are copied as they are.
+# Which libraries: the pkg-config closure of the modules
+# UltraCanvasConfig.cmake re-finds on the consuming machine, plus what the
+# exported targets find through CMake (fmt, libcurl, zlib). Each .pc file in
+# the closure names the package that owns it (pacman -Qo on MSYS2, the
+# Cellar keg on Homebrew, the vcpkg info list), and what is carried of that
+# package depends on how the closure reached it:
+#
+#   the public closure (Requires only)        headers, import libraries or
+#                                             dylibs, lib/pkgconfig, lib/cmake:
+#                                             a consumer compiles and links
+#                                             against these
+#   reached through Requires.private only     its .pc files alone: pkg-config
+#                                             refuses a module whose private
+#                                             requirement it cannot find, but
+#                                             nothing of the package is
+#                                             included or linked by a shared
+#                                             build
+#
+# A static archive is left out where the same library exists as a DLL
+# import library or a dylib beside it: the SDK's core is shared and so are
+# its dependencies, and the archives were the bulk of the Windows bundle.
+# The DLLs the core needs at run time come from a walk of its import table,
+# so the private packages' DLLs are still there (deps/bin on Windows); on
+# macOS the dylib walk closes the set the same way.
 #
 # The .pc files are made relocatable: `prefix=${pcfiledir}/../..`, which
 # pkgconf and pkg-config 0.29+ both expand to the directory two levels above
@@ -41,7 +59,7 @@
 # builds Tests/PackageConsumer against the bundled files alone
 # (PKG_CONFIG_LIBDIR pointed at nothing) to prove they are enough.
 #
-# Version: 0.1.0
+# Version: 0.2.0
 # Author: UltraCanvas Framework / ULTRA OS
 set -eu
 
@@ -91,7 +109,7 @@ fi
 # What UltraCanvasConfig.cmake asks pkg-config for, plus what the exported
 # targets link by name and what find_dependency() looks for.
 MODULES="cairo pango pangocairo freetype2 harfbuzz glib-2.0 gobject-2.0 gio-2.0 tinyxml2"
-for optional in vips-cpp fmt libcurl zlib libpng x11 xcursor gl; do
+for optional in vips-cpp fontconfig fmt libcurl zlib libpng x11 xcursor gl; do
     # The vcpkg prefix's libcurl is tesseract's; the framework links Apple's
     # (cmake/UltraCanvasMacOSDeps.cmake), so a consumer must find that one.
     [ -n "$MAC_DEPS" ] && [ "$optional" = libcurl ] && continue
@@ -102,37 +120,52 @@ done
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-: > "$WORK/closure"
-: > "$WORK/queue"
-for m in $MODULES; do echo "$m" >> "$WORK/queue"; done
-while [ -s "$WORK/queue" ]; do
-    m="$(head -1 "$WORK/queue")"
-    sed -i.bak '1d' "$WORK/queue" && rm -f "$WORK/queue.bak"
-    if grep -qx "$m" "$WORK/closure"; then continue; fi
-    if ! "$PKG_CONFIG" --exists "$m" 2>/dev/null; then
-        echo "  (no .pc for $m - skipped)"
-        continue
-    fi
-    echo "$m" >> "$WORK/closure"
-    # Requires lines read "name >= 1.2, other"; the first word of each
-    # comma-separated item is the module name. Homebrew's vips.pc names its
-    # keg-only libarchive by the full path of its .pc file
-    # (/opt/homebrew/opt/libarchive/lib/pkgconfig/libarchive.pc); that is
-    # the module "libarchive", found through the opt/ directories above.
-    { "$PKG_CONFIG" --print-requires "$m"; "$PKG_CONFIG" --print-requires-private "$m"; } 2>/dev/null \
-        | tr ',' '\n' | awk '{print $1}' | sed -e 's|.*/||' -e 's|\.pc$||' | grep -v '^$' >> "$WORK/queue" || true
-done
-echo "pkg-config closure: $(wc -l < "$WORK/closure" | tr -d ' ') modules"
 
-# The .pc file of each module, as a real path.
+# closure <out> <private>: the modules reachable from MODULES through
+# Requires, and through Requires.private too when <private> is yes.
+closure() {
+    local out="$1" private="$2" m
+    : > "$out"
+    : > "$WORK/queue"
+    for m in $MODULES; do echo "$m" >> "$WORK/queue"; done
+    while [ -s "$WORK/queue" ]; do
+        m="$(head -1 "$WORK/queue")"
+        sed -i.bak '1d' "$WORK/queue" && rm -f "$WORK/queue.bak"
+        if grep -qx "$m" "$out"; then continue; fi
+        if ! "$PKG_CONFIG" --exists "$m" 2>/dev/null; then
+            [ "$private" = yes ] && echo "  (no .pc for $m - skipped)"
+            continue
+        fi
+        echo "$m" >> "$out"
+        # Requires lines read "name >= 1.2, other"; the first word of each
+        # comma-separated item is the module name. Homebrew's vips.pc names its
+        # keg-only libarchive by the full path of its .pc file
+        # (/opt/homebrew/opt/libarchive/lib/pkgconfig/libarchive.pc); that is
+        # the module "libarchive", found through the opt/ directories above.
+        { "$PKG_CONFIG" --print-requires "$m"
+          [ "$private" = yes ] && "$PKG_CONFIG" --print-requires-private "$m"; } 2>/dev/null \
+            | tr ',' '\n' | awk '{print $1}' | sed -e 's|.*/||' -e 's|\.pc$||' | grep -v '^$' >> "$WORK/queue" || true
+    done
+}
+closure "$WORK/closure_public" no
+closure "$WORK/closure" yes
+echo "pkg-config closure: $(wc -l < "$WORK/closure" | tr -d ' ') modules, $(wc -l < "$WORK/closure_public" | tr -d ' ') of them public"
+
+# The .pc file of each module, as a real path: pcfiles for the whole closure,
+# pcfiles_public for the modules a consumer includes and links.
 realpath_of() {
     python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || echo "$1"
 }
-: > "$WORK/pcfiles"
-while read -r m; do
-    dir="$("$PKG_CONFIG" --variable=pcfiledir "$m" 2>/dev/null || true)"
-    [ -n "$dir" ] && [ -f "$dir/$m.pc" ] && realpath_of "$dir/$m.pc" >> "$WORK/pcfiles"
-done < "$WORK/closure"
+pcfile_list() {
+    local in="$1" out="$2" m dir
+    : > "$out"
+    while read -r m; do
+        dir="$("$PKG_CONFIG" --variable=pcfiledir "$m" 2>/dev/null || true)"
+        [ -n "$dir" ] && [ -f "$dir/$m.pc" ] && realpath_of "$dir/$m.pc" >> "$out"
+    done < "$in"
+}
+pcfile_list "$WORK/closure" "$WORK/pcfiles"
+pcfile_list "$WORK/closure_public" "$WORK/pcfiles_public"
 
 mkdir -p "$DEPS/include" "$DEPS/lib/pkgconfig" "$DEPS/share/pkgconfig"
 
@@ -140,6 +173,11 @@ copy_rel() {
     # copy_rel <root> <file under root>: the file at the same relative path under deps/
     local root="$1" file="$2" rel dest
     rel="${file#"$root"/}"
+    # A static archive with a shared twin beside it is not carried.
+    case "$rel" in
+        *.dll.a) ;;
+        lib/*.a) if [ -e "${file%.a}.dll.a" ] || [ -e "${file%.a}.dylib" ]; then return 0; fi ;;
+    esac
     dest="$DEPS/$rel"
     mkdir -p "$(dirname "$dest")"
     if [ -L "$file" ]; then
@@ -149,8 +187,12 @@ copy_rel() {
     fi
 }
 
-# Is this path one of the development files worth carrying?
+# Is this path one of the development files worth carrying? For a package
+# reached only through Requires.private, only its .pc files are.
 wanted_rel() {
+    if [ "${PACKAGE_MODE:-full}" = pconly ]; then
+        case "$1" in lib/pkgconfig/*.pc|share/pkgconfig/*.pc) return 0 ;; *) return 1 ;; esac
+    fi
     case "$1" in
         include/*) return 0 ;;
         lib/pkgconfig/*|share/pkgconfig/*|lib/cmake/*) return 0 ;;
@@ -167,16 +209,24 @@ wanted_rel() {
 # ---- Windows (MSYS2) ---------------------------------------------------------
 if [ "$PLATFORM" = windows ]; then
     PREFIX="${MINGW_PREFIX:-/clang64}"
-    : > "$WORK/owners"
-    while read -r pc; do
-        # MSYS2's pkgconf is a native program and reports native paths
-        # (C:/msys64/clang64/...); pacman wants the POSIX spelling.
-        case "$pc" in /*) ;; *) command -v cygpath >/dev/null 2>&1 && pc="$(cygpath -u "$pc")" ;; esac
-        pacman -Qoq "$pc" 2>/dev/null >> "$WORK/owners" || echo "  (no package owns $pc)"
-    done < "$WORK/pcfiles"
-    sort -u "$WORK/owners" -o "$WORK/owners"
-    echo "packages: $(tr '\n' ' ' < "$WORK/owners")"
+    owners_of() {
+        local in="$1" out="$2" pc
+        : > "$out"
+        while read -r pc; do
+            # MSYS2's pkgconf is a native program and reports native paths
+            # (C:/msys64/clang64/...); pacman wants the POSIX spelling.
+            case "$pc" in /*) ;; *) command -v cygpath >/dev/null 2>&1 && pc="$(cygpath -u "$pc")" ;; esac
+            pacman -Qoq "$pc" 2>/dev/null >> "$out" || echo "  (no package owns $pc)"
+        done < "$in"
+        sort -u "$out" -o "$out"
+    }
+    owners_of "$WORK/pcfiles" "$WORK/owners"
+    owners_of "$WORK/pcfiles_public" "$WORK/owners_public"
+    echo "packages: $(tr '\n' ' ' < "$WORK/owners_public")"
+    echo "packages (.pc only): $(grep -vxFf "$WORK/owners_public" "$WORK/owners" | tr '\n' ' ')"
     while read -r pkg; do
+        if grep -qx "$pkg" "$WORK/owners_public"; then PACKAGE_MODE=full; else PACKAGE_MODE=pconly; fi
+        export PACKAGE_MODE
         pacman -Qlq "$pkg" | while read -r f; do
             case "$f" in "$PREFIX"/*) ;; *) continue ;; esac
             [ -f "$f" ] || [ -L "$f" ] || continue
@@ -222,15 +272,23 @@ fi
 if [ "$PLATFORM" = macos ] && [ -n "$MAC_DEPS" ]; then
     INFO="$(dirname "$MAC_DEPS")/vcpkg/info"
     TRIPLET="$(basename "$MAC_DEPS")"
-    : > "$WORK/lists"
-    while read -r pc; do
-        rel="${pc#"$MAC_DEPS"/}"
-        list="$(grep -lx "$TRIPLET/$rel" "$INFO"/*.list 2>/dev/null | head -1 || true)"
-        if [ -n "$list" ]; then echo "$list" >> "$WORK/lists"; else echo "  (no vcpkg package owns $pc)"; fi
-    done < "$WORK/pcfiles"
-    sort -u "$WORK/lists" -o "$WORK/lists"
-    echo "packages: $(sed -e 's|.*/||' -e 's|_.*||' "$WORK/lists" | tr '\n' ' ')"
+    lists_of() {
+        local in="$1" out="$2" pc rel list
+        : > "$out"
+        while read -r pc; do
+            rel="${pc#"$MAC_DEPS"/}"
+            list="$(grep -lx "$TRIPLET/$rel" "$INFO"/*.list 2>/dev/null | head -1 || true)"
+            if [ -n "$list" ]; then echo "$list" >> "$out"; else echo "  (no vcpkg package owns $pc)"; fi
+        done < "$in"
+        sort -u "$out" -o "$out"
+    }
+    lists_of "$WORK/pcfiles" "$WORK/lists"
+    lists_of "$WORK/pcfiles_public" "$WORK/lists_public"
+    echo "packages: $(sed -e 's|.*/||' -e 's|_.*||' "$WORK/lists_public" | tr '\n' ' ')"
+    echo "packages (.pc only): $(grep -vxFf "$WORK/lists_public" "$WORK/lists" | sed -e 's|.*/||' -e 's|_.*||' | tr '\n' ' ')"
     while read -r list; do
+        if grep -qx "$list" "$WORK/lists_public"; then PACKAGE_MODE=full; else PACKAGE_MODE=pconly; fi
+        export PACKAGE_MODE
         while read -r entry; do
             rel="${entry#"$TRIPLET"/}"
             f="$MAC_DEPS/$rel"
@@ -246,19 +304,27 @@ if [ "$PLATFORM" = macos ] && [ -z "$MAC_DEPS" ]; then
     HOMEBREW_PREFIX="$(brew --prefix)"
     CELLAR="$(brew --cellar)"
     MAC_LIBROOT="$HOMEBREW_PREFIX"
-    : > "$WORK/kegs"
-    while read -r pc; do
-        case "$pc" in
-            "$CELLAR"/*)
-                rest="${pc#"$CELLAR"/}"
-                formula="${rest%%/*}"; rest="${rest#*/}"; version="${rest%%/*}"
-                echo "$CELLAR/$formula/$version" >> "$WORK/kegs" ;;
-            *) echo "  ($pc is not in the Cellar - skipped)" ;;
-        esac
-    done < "$WORK/pcfiles"
-    sort -u "$WORK/kegs" -o "$WORK/kegs"
-    echo "kegs: $(sed "s|$CELLAR/||" "$WORK/kegs" | tr '\n' ' ')"
+    kegs_of() {
+        local in="$1" out="$2" pc rest formula version
+        : > "$out"
+        while read -r pc; do
+            case "$pc" in
+                "$CELLAR"/*)
+                    rest="${pc#"$CELLAR"/}"
+                    formula="${rest%%/*}"; rest="${rest#*/}"; version="${rest%%/*}"
+                    echo "$CELLAR/$formula/$version" >> "$out" ;;
+                *) if [ "$out" = "$WORK/kegs" ]; then echo "  ($pc is not in the Cellar - skipped)"; fi ;;
+            esac
+        done < "$in"
+        sort -u "$out" -o "$out"
+    }
+    kegs_of "$WORK/pcfiles" "$WORK/kegs"
+    kegs_of "$WORK/pcfiles_public" "$WORK/kegs_public"
+    echo "kegs: $(sed "s|$CELLAR/||" "$WORK/kegs_public" | tr '\n' ' ')"
+    echo "kegs (.pc only): $(grep -vxFf "$WORK/kegs_public" "$WORK/kegs" | sed "s|$CELLAR/||" | tr '\n' ' ')"
     while read -r keg; do
+        if grep -qx "$keg" "$WORK/kegs_public"; then PACKAGE_MODE=full; else PACKAGE_MODE=pconly; fi
+        export PACKAGE_MODE
         find "$keg/include" "$keg/lib" "$keg/share/pkgconfig" \( -type f -o -type l \) 2>/dev/null | while read -r f; do
             rel="${f#"$keg"/}"
             if wanted_rel "$rel"; then copy_rel "$keg" "$f"; fi
@@ -352,28 +418,33 @@ if [ "$PLATFORM" = macos ] && [ -z "$MAC_DEPS" ]; then
     fi
 fi
 
-# A package's CMake config may name a program next to its library
-# (MSYS2's CURLConfig.cmake imports CURL::curl as bin/curl.exe), and CMake
-# refuses the whole config when one referenced file is missing. Carry the
-# programs the bundled configs name, and nothing else from bin/.
+# A bundled CMake config may name a file the rules above left out: MSYS2's
+# CURLConfig.cmake imports CURL::curl as bin/curl.exe, and its fmt config
+# exports a static target beside the shared one, pointing at lib/libfmt.a.
+# CMake refuses the whole config when one referenced file is missing, so
+# every ${_IMPORT_PREFIX}/bin/... and ${_IMPORT_PREFIX}/lib/... the configs
+# name is carried after all, from wherever the package keeps it.
 if [ -d "$DEPS/lib/cmake" ]; then
-    grep -rhoE '\$\{_IMPORT_PREFIX\}/bin/[^"]+' "$DEPS/lib/cmake" 2>/dev/null | sort -u | while read -r ref; do
-        name="${ref#*/bin/}"
-        for root in "${PREFIX:-}" "${CELLAR:-}"; do
-            [ -n "$root" ] || continue
-            if [ "$PLATFORM" = macos ]; then
-                src="$(ls -d "$root"/*/*/bin/"$name" 2>/dev/null | head -1 || true)"
-            else
-                src="$root/bin/$name"
-            fi
-            if [ -n "$src" ] && [ -f "$src" ] && [ ! -f "$DEPS/bin/$name" ]; then
-                mkdir -p "$DEPS/bin"
-                cp "$src" "$DEPS/bin/$name"
-            fi
-        done
+    grep -rhoE '\$\{_IMPORT_PREFIX\}/(bin|lib)/[^"]+' "$DEPS/lib/cmake" 2>/dev/null | sort -u | while read -r ref; do
+        rel="${ref#*\}/}"
+        [ -e "$DEPS/$rel" ] && continue
+        src=""
+        if [ "$PLATFORM" = windows ]; then
+            src="$PREFIX/$rel"
+        elif [ -n "${MAC_DEPS:-}" ]; then
+            src="$MAC_DEPS/$rel"
+        elif [ -n "${CELLAR:-}" ]; then
+            src="$(ls -d "$CELLAR"/*/*/"$rel" 2>/dev/null | head -1 || true)"
+        fi
+        if [ -n "$src" ] && [ -f "$src" ]; then
+            mkdir -p "$(dirname "$DEPS/$rel")"
+            cp "$src" "$DEPS/$rel"
+            echo "  carried $rel for a CMake config"
+        fi
     done || true
 fi
 
+unset PACKAGE_MODE
 echo "bundled into $DEPS:"
 echo "  headers:   $(find "$DEPS/include" -type f | wc -l | tr -d ' ') files"
 echo "  libraries: $(find "$DEPS/lib" -maxdepth 1 \( -name '*.a' -o -name '*.dylib' \) | wc -l | tr -d ' ')"

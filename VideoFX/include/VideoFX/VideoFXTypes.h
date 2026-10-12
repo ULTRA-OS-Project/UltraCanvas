@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.6.0
-// Last Modified: 2026-10-07
+// Version: 0.10.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -214,12 +214,16 @@ struct VideoFXTransition {
 };
 
 // ============================================================================
-// OVERLAYS (text and images on top of a segment)
+// OVERLAYS (text, images and video on top of a segment)
 // ============================================================================
 // Placed on the OUTPUT frame, so a title sits in the same spot whatever the
 // source's size. Sizes and margins are fractions of the output height, which
 // keeps a layout the same at 480p and 4K.
-enum class VideoFXOverlayKind { Text, Image };
+enum class VideoFXOverlayKind {
+    Text,
+    Image,
+    Video                           // picture-in-picture: another file's picture, silent
+};
 
 enum class VideoFXAnchor {
     TopLeft, Top, TopRight,
@@ -244,7 +248,15 @@ struct VideoFXOverlay {
     // ---- image ----
     std::string imagePath;          // PNG (alpha kept) / JPEG / anything FFmpeg decodes
     VideoFXFrame image;             // or pixels in memory - used when valid
-    double imageHeight = 0.0;       // fraction of output height, 0 = the image's own pixel size
+    double imageHeight = 0.0;       // image or video: fraction of output height, 0 = its own pixel size
+
+    // ---- video (picture-in-picture) ----
+    // The file's picture plays from `videoStart` seconds into it while the
+    // overlay is shown, at its own speed, upright (rotation applied), without
+    // its sound; when the file ends first its last frame holds. Sized by
+    // `imageHeight` and placed like an image.
+    std::string videoPath;
+    double videoStart = 0.0;        // seconds into the file where it begins
 
     // ---- placement ----
     VideoFXAnchor anchor = VideoFXAnchor::Bottom;
@@ -264,6 +276,8 @@ struct VideoFXOverlay {
                                 double heightFraction = 0.12);
     static VideoFXOverlay ImageFromFrame(const VideoFXFrame& frame, VideoFXAnchor anchor = VideoFXAnchor::TopRight,
                                          double heightFraction = 0.12);
+    static VideoFXOverlay Video(const std::string& path, VideoFXAnchor anchor = VideoFXAnchor::TopRight,
+                                double heightFraction = 0.3, double videoStart = 0.0);
 };
 
 // ============================================================================
@@ -511,6 +525,10 @@ struct VideoFXExportSettings {
 
     // Presets for common targets
     static VideoFXExportSettings WebMP4(int height = 1080);     // H.264 + AAC, 1080p default
+    // A quick low-resolution MP4 for playback while editing: the fastest
+    // H.264 preset, a low quality, a small AAC. Seconds to render, not
+    // minutes; never the file to deliver.
+    static VideoFXExportSettings Draft(int height = 360);
     static VideoFXExportSettings WebM(int height = 720);        // VP9 + Opus
     static VideoFXExportSettings AnimatedGif(int width = 480, double fps = 12.0);
     static VideoFXExportSettings MasterProRes();                // ProRes 422 + PCM in MOV
@@ -553,6 +571,86 @@ struct VideoFXBeatInfo {
     std::vector<double> beats;      // seconds from the start of the file
 
     bool HasBeat() const { return bpm > 0.0 && !beats.empty(); }
+};
+
+// The loudness envelope of a file's sound (VideoFX_ExtractWaveform): the
+// sound mixed to mono and cut into blocks of equal length, with the lowest
+// sample, the highest sample and the RMS of each block. It is what a
+// timeline or an audio player draws as the waveform. The member names match
+// UltraCanvasWaveformElement's WaveformChannelData, so an UltraCanvas
+// application feeds it straight in: waveform->SetFromAudioFX(envelope).
+struct VideoFXWaveform {
+    std::vector<float> minValues;   // lowest sample of each block, -1..0
+    std::vector<float> maxValues;   // highest sample of each block, 0..1
+    std::vector<float> rmsValues;   // RMS of each block, 0..1
+    int samplesPerBlock = 0;        // at `sampleRate`
+    int totalBlocks = 0;            // == minValues.size(); the last block may be partial
+    int sampleRate = 0;             // Hz, the file's own rate
+    double start = 0.0;             // seconds into the file the first block begins
+    double duration = 0.0;          // seconds of sound the blocks cover
+
+    bool IsValid() const {
+        return totalBlocks > 0 && samplesPerBlock > 0 && sampleRate > 0 &&
+               minValues.size() == static_cast<size_t>(totalBlocks) &&
+               maxValues.size() == minValues.size() && rmsValues.size() == minValues.size();
+    }
+    double SecondsPerBlock() const {
+        return sampleRate > 0 ? static_cast<double>(samplesPerBlock) / sampleRate : 0.0;
+    }
+    // The block holding `seconds` into the file, or -1 outside the envelope
+    int BlockAt(double seconds) const {
+        if (!IsValid() || seconds < start) return -1;
+        const int block = static_cast<int>((seconds - start) / SecondsPerBlock());
+        return block < totalBlocks ? block : -1;
+    }
+    // The loudest sample in any block, 0..1
+    float Peak() const {
+        float peak = 0.0f;
+        for (size_t i = 0; i < maxValues.size(); ++i) {
+            if (maxValues[i] > peak) peak = maxValues[i];
+            if (-minValues[i] > peak) peak = -minValues[i];
+        }
+        return peak;
+    }
+};
+
+// ============================================================================
+// PROJECT FILES (VideoFX_SaveProject / VideoFX_LoadProject)
+// ============================================================================
+// A whole edit as one small JSON file (.vfxproj): the timeline - or the
+// photos and options of a slideshow - with its music and export settings.
+// It refers to media by path and holds no media itself; paths are stored
+// relative to the project file where they can be, so a folder holding the
+// project and its media can move as a whole.
+enum class VideoFXProjectKind {
+    Timeline,                       // `segments`, rendered with VideoFX_Export
+    Slideshow                       // `images` + `slideshow`, rendered with VideoFX_CreateSlideshow
+};
+
+struct VideoFXProject {
+    VideoFXProjectKind kind = VideoFXProjectKind::Timeline;
+    std::string title;
+    std::vector<VideoFXSegment> segments;       // Timeline
+    std::vector<std::string> images;            // Slideshow
+    VideoFXSlideshowOptions slideshow;          // Slideshow (findKeepInView, a function, is not saved)
+    VideoFXExportSettings settings;
+    std::string outputPath;                     // where it renders to by default; "" = the caller says
+
+    static VideoFXProject FromTimeline(std::vector<VideoFXSegment> segments, VideoFXExportSettings settings = {}) {
+        VideoFXProject p;
+        p.segments = std::move(segments);
+        p.settings = std::move(settings);
+        return p;
+    }
+    static VideoFXProject FromSlideshow(std::vector<std::string> images, VideoFXSlideshowOptions options = {},
+                                        VideoFXExportSettings settings = {}) {
+        VideoFXProject p;
+        p.kind = VideoFXProjectKind::Slideshow;
+        p.images = std::move(images);
+        p.slideshow = std::move(options);
+        p.settings = std::move(settings);
+        return p;
+    }
 };
 
 // Progress 0..1 of the whole export. Return false to cancel; the call then

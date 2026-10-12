@@ -1821,7 +1821,7 @@ UltraCanvasSequenceModel UltraCanvasEventFlow() {
     model.AddSynchronousMessage("Application", "Button", "OnEvent(MouseDown)");
     model.AddReturnMessage("Button", "Application", "true");
     model.AddSynchronousMessage("Application", "Button", "OnEvent(MouseUp)");
-    model.AddSelfMessage("Button", "Click() → onClick()");
+    model.AddSelfMessage("Button", "Click() calls onClick()");
     model.AddSelfMessage("Button", "RequestRedraw()");
     model.AddReturnMessage("Button", "Application", "true");
     size_t render = model.AddSynchronousMessage("Application", "Window",

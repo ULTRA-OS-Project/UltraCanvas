@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.12.0 - folder_tree_content (current / all), account_order
+// Version: 0.11.0 - trusted_senders, blocked_senders
+// Version: 0.10.0 - warn_* (Settings > Spam/scam warnings)
 // Version: 0.9.0 - notify_new_mail (a notification on screen when new mail arrives)
 // Version: 0.8.0 - fetch_site_icons (website icons of other senders)
 // Version: 0.7.0 - check_mail_every_sec (how often new mail is checked)
@@ -58,6 +61,28 @@ bool Preferences::Load(const std::string& path) {
         if (key == "fetch_sender_icons") fetchSenderIcons = ParseBool(value);
         if (key == "notify_new_mail")    notifyNewMail    = ParseBool(value);
         if (key == "fetch_site_icons")   fetchSiteIcons   = ParseBool(value);
+        if (key == "warn_phishing")       scamWarnings.phishing      = ParseBool(value);
+        if (key == "warn_romance")        scamWarnings.romance       = ParseBool(value);
+        if (key == "warn_advance_fee")    scamWarnings.advanceFee    = ParseBool(value);
+        if (key == "warn_government")     scamWarnings.government    = ParseBool(value);
+        if (key == "warn_crypto_scams")   scamWarnings.cryptoScams   = ParseBool(value);
+        if (key == "warn_crypto_caution") scamWarnings.cryptoCaution = ParseBool(value);
+        if (key == "warn_attachments")    scamWarnings.attachments   = ParseBool(value);
+        if (key == "warn_spam_flag")      scamWarnings.spamFlag      = ParseBool(value);
+        if (key == "trusted_senders" || key == "blocked_senders") {
+            // Comma-separated addresses; a blocked "@example.com" is a domain.
+            const bool blockList = key == "blocked_senders";
+            std::set<std::string>& list = blockList ? senderLists.blocked : senderLists.trusted;
+            std::size_t start = 0;
+            while (start <= value.size()) {
+                std::size_t comma = value.find(',', start);
+                if (comma == std::string::npos) comma = value.size();
+                const std::string entry =
+                    SenderLists::Entry(value.substr(start, comma - start), blockList);
+                if (!entry.empty()) list.insert(entry);
+                start = comma + 1;
+            }
+        }
         if (key == "remote_images") {
             const std::string v = Trim(value);
             remoteImages = v == "always" ? RemoteImagePolicy::LoadAlways
@@ -80,6 +105,22 @@ bool Preferences::Load(const std::string& path) {
                                              kFolderTreeMaxWidth);
             }
             catch (...) { /* keeps the default */ }
+        }
+        if (key == "folder_tree_content")
+            folderTreeContent = Trim(value) == "current" ? FolderTreeContent::CurrentAccount
+                                                         : FolderTreeContent::AllAccounts;
+        if (key == "account_order") {
+            accountOrder.clear();
+            std::size_t start = 0;
+            while (start <= value.size()) {
+                std::size_t comma = value.find(',', start);
+                if (comma == std::string::npos) comma = value.size();
+                std::string id = Trim(value.substr(start, comma - start));
+                if (!id.empty() &&
+                    std::find(accountOrder.begin(), accountOrder.end(), id) == accountOrder.end())
+                    accountOrder.push_back(id);
+                start = comma + 1;
+            }
         }
         if (key == "link_display")
             linkDisplay = Trim(value) == "tooltip" ? LinkDisplay::Tooltip
@@ -120,6 +161,16 @@ bool Preferences::Load(const std::string& path) {
     return true;
 }
 
+void Preferences::OrderAccounts(std::vector<Account>& accounts) const {
+    if (accountOrder.empty()) return;
+    auto rank = [this](const Account& a) {
+        const auto it = std::find(accountOrder.begin(), accountOrder.end(), a.accountId);
+        return static_cast<std::size_t>(it - accountOrder.begin());   // unnamed: size()
+    };
+    std::stable_sort(accounts.begin(), accounts.end(),
+                     [&](const Account& a, const Account& b) { return rank(a) < rank(b); });
+}
+
 bool Preferences::Save(const std::string& path) const {
     std::ofstream file(UltraCanvas::PathFromUtf8(path), std::ios::trunc);
     if (!file.is_open()) return false;
@@ -149,6 +200,12 @@ bool Preferences::Save(const std::string& path) const {
     file << "folder_tree_width_mode = "
          << (folderTreeWidthMode == FolderTreeWidthMode::FixedWidth ? "fixed" : "auto") << "\n";
     file << "folder_tree_width = " << folderTreeWidth << "\n";
+    file << "folder_tree_content = "
+         << (folderTreeContent == FolderTreeContent::CurrentAccount ? "current" : "all") << "\n";
+    file << "account_order = ";
+    for (std::size_t i = 0; i < accountOrder.size(); ++i)
+        file << (i ? ", " : "") << accountOrder[i];
+    file << "\n";
     file << "link_display = "
          << (linkDisplay == LinkDisplay::Tooltip ? "tooltip" : "status-bar") << "\n";
     file << "needs_answer_max_age_days = " << needsAnswerMaxAgeDays << "\n";
@@ -156,6 +213,28 @@ bool Preferences::Save(const std::string& path) const {
     file << "list_sort = " << listSort.ToString() << "\n";
     file << "check_mail_every_sec = " << checkMailEverySec << "\n";
     file << "notify_new_mail = " << (notifyNewMail ? "true" : "false") << "\n";
+    auto flag = [&file](const char* key, bool on) {
+        file << key << " = " << (on ? "true" : "false") << "\n";
+    };
+    flag("warn_phishing",       scamWarnings.phishing);
+    flag("warn_romance",        scamWarnings.romance);
+    flag("warn_advance_fee",    scamWarnings.advanceFee);
+    flag("warn_government",     scamWarnings.government);
+    flag("warn_crypto_scams",   scamWarnings.cryptoScams);
+    flag("warn_crypto_caution", scamWarnings.cryptoCaution);
+    flag("warn_attachments",    scamWarnings.attachments);
+    flag("warn_spam_flag",      scamWarnings.spamFlag);
+    auto list = [&file](const char* key, const std::set<std::string>& entries) {
+        file << key << " = ";
+        bool firstEntry = true;
+        for (const auto& e : entries) {
+            file << (firstEntry ? "" : ", ") << e;
+            firstEntry = false;
+        }
+        file << "\n";
+    };
+    list("trusted_senders", senderLists.trusted);
+    list("blocked_senders", senderLists.blocked);
     return static_cast<bool>(file);
 }
 

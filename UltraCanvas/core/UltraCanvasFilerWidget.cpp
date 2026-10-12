@@ -50,8 +50,24 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.38.2 - the details header's sort direction is a drawn triangle, not
+//                  "▲" / "▼", which the bundled UI font lacks
+// Version: 1.38.1 - a picture saved over gets a new thumbnail: the workers ask
+//                  the image cache with UCImage::GetFresh, and the disk cache
+//                  keeps a thumbnail only against the file as it was before
+//                  the decode (ThumbnailDiskCache::Store's madeFrom)
+// Version: 1.38.0 - an .xls file previews as a cell grid like .xlsx and .ods: the
+//                  first rows of its first sheet, read by the .xls reader
+//                  (UltraCanvasSpreadsheetXls.h) - or, for the HTML, XML, ZIP or
+//                  text that travels under the name, by the matching reader
+// Version: 1.37.0 - an .html file's preview is the page as a browser lays it out
+//                  (HTML::ExtractPlainText, PlainTextLayout::Lines): a line per
+//                  paragraph, hidden text left out; TextPreviewLines (public)
+// Version: 1.36.1 - the text preview decodes entities through the HTMLReader module
+//                  (HTML::DecodeEntities): every named and numeric reference, where
+//                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -63,6 +79,8 @@
 #endif
 
 #include "UltraCanvasFilerWidget.h"
+#include "UltraCanvasDrawnMarks.h"
+#include "HTMLReader/HTMLDocument.h"   // HTML::DecodeEntities (the text preview)
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
@@ -76,6 +94,8 @@
 #include "UltraCanvasShellLink.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasSpreadsheetXls.h"   // the .xls preview
+#include "UltraCanvasCSVImport.h"         // CSVDecodeToUtf8 - an .xls that is UTF-16 text
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir - the context menu's icons
 #include "UltraCanvasTrash.h"
@@ -932,7 +952,6 @@ namespace UltraCanvas {
         // Kindle book's tile is its cover instead - EBookCoverReadable below.)
         bool TextPreviewReadable(const std::string& ext) {
             static const std::set<std::string> containersWithoutReader = {
-                "xls",      // OLE2 workbook (the reader covers xlsx / ods)
                 "epub", "fb2.zip",   // ZIP e-book containers
                 "mobi", "prc", "azw", "azw3",   // Mobipocket record files
             };
@@ -1222,6 +1241,9 @@ namespace UltraCanvas {
         constexpr size_t kPreviewMaxColumns = 8;     // spreadsheet cells per row
         constexpr size_t kPreviewLineChars  = 160;
         constexpr size_t kPreviewReadBytes  = 128 * 1024;
+        // A binary .xls is read whole for its preview; beyond this it keeps
+        // its type glyph.
+        constexpr uintmax_t kXlsPreviewMaxBytes = 32ull * 1024 * 1024;
 
         // First bytes of a file, stopping at a NUL (binary files preview as
         // nothing rather than as mojibake).
@@ -1284,33 +1306,10 @@ namespace UltraCanvas {
             }
         }
 
-        // The five predefined XML / HTML entities plus numeric references —
-        // everything else is left as written, which is harmless in a preview.
-        std::string DecodeEntities(const std::string& in) {
-            std::string out;
-            out.reserve(in.size());
-            for (size_t i = 0; i < in.size(); ++i) {
-                if (in[i] != '&') { out.push_back(in[i]); continue; }
-                size_t end = in.find(';', i + 1);
-                if (end == std::string::npos || end - i > 10) { out.push_back('&'); continue; }
-                const std::string name = in.substr(i + 1, end - i - 1);
-                if      (name == "amp")  out.push_back('&');
-                else if (name == "lt")   out.push_back('<');
-                else if (name == "gt")   out.push_back('>');
-                else if (name == "quot") out.push_back('"');
-                else if (name == "apos") out.push_back('\'');
-                else if (name == "nbsp") out.push_back(' ');
-                else if (!name.empty() && name[0] == '#') out.push_back(' ');
-                else { out.push_back('&'); continue; }
-                i = end;
-            }
-            return out;
-        }
-
-        // Text of a markup document with the tags removed. `breakTags` names
-        // the elements that end a preview line (paragraphs, headings, rows);
-        // everything else is treated as inline. `<script>` / `<style>` bodies
-        // are dropped so an HTML preview shows the page, not its code.
+        // Text of a spreadsheet's XML (a cell, a shared string) with the tags
+        // removed. `breakTags` names the elements that end a preview line
+        // (an ODS cell's text:p); everything else is treated as inline. HTML
+        // is not read here: it goes through HTML::ExtractPlainText.
         void MarkupToPreviewLines(const std::string& markup,
                                   const std::vector<std::string>& breakTags,
                                   std::vector<std::string>& lines) {
@@ -1333,18 +1332,12 @@ namespace UltraCanvas {
                 std::string name = tag.substr(0, tag.find_first_of(" \t\r\n/"));
                 std::transform(name.begin(), name.end(), name.begin(),
                                [](unsigned char c) { return std::tolower(c); });
-                if (!closing && (name == "script" || name == "style")) {
-                    const std::string closeTag = "</" + name;
-                    size_t skip = markup.find(closeTag, i);
-                    i = (skip == std::string::npos) ? markup.size() : skip;
-                    continue;
-                }
-                if (isBreakTag(name) || name == "br") {
-                    AppendPreviewLine(lines, DecodeEntities(current));
+                if (isBreakTag(name)) {
+                    AppendPreviewLine(lines, HTML::DecodeEntities(current));
                     current.clear();
                 }
             }
-            AppendPreviewLine(lines, DecodeEntities(current));
+            AppendPreviewLine(lines, HTML::DecodeEntities(current));
         }
 
         // RTF: drop the control words, the groups the reader is meant to skip
@@ -1484,6 +1477,30 @@ namespace UltraCanvas {
             }
         }
 
+        // Legacy Excel workbook: the first rows of its first sheet, each row's
+        // cells at their own columns (a gap stays a gap). Numbers are shown as
+        // stored, as the .xlsx preview shows them.
+        void XlsToPreviewLines(const XlsSheet& sheet, std::vector<std::string>& lines) {
+            std::map<int, std::vector<std::string>> rows;
+            for (const XlsCell& cell : sheet.cells) {
+                if (cell.col < 0 || static_cast<size_t>(cell.col) >= kPreviewMaxColumns) continue;
+                std::string text = XlsCellText(cell);
+                if (text.empty()) continue;
+                std::vector<std::string>& row = rows[cell.row];
+                if (row.size() <= static_cast<size_t>(cell.col)) row.resize(cell.col + 1);
+                row[static_cast<size_t>(cell.col)] = std::move(text);
+            }
+            for (const auto& entry : rows) {
+                if (lines.size() >= kPreviewMaxLines) break;
+                std::string joined;
+                for (size_t i = 0; i < entry.second.size(); ++i) {
+                    if (i) joined.push_back('\t');
+                    joined += entry.second[i];
+                }
+                AppendPreviewLine(lines, joined, true);
+            }
+        }
+
         // CSV / TSV: the separator becomes a tab so the drawing code lays the
         // values out as cells. Quoted fields keep their separators.
         void DelimitedToPreviewLines(const std::string& text, char separator,
@@ -1561,6 +1578,68 @@ namespace UltraCanvas {
                                         ext == "tsv" ? '\t' : ',', lines);
                 return true;
             }
+            if (ext == "xls") {
+                // What the name holds decides the reader: a real binary
+                // workbook, or the HTML, Excel 2003 XML, renamed .xlsx or
+                // delimited text that applications also save as .xls.
+                const XlsFileKind kind = DetectXlsFileKind(path);
+                if (kind == XlsFileKind::Missing || kind == XlsFileKind::Unknown) return false;
+                tabular = true;
+                if (kind == XlsFileKind::Text) {
+                    std::string head = ReadFileHead(path, kPreviewReadBytes);
+                    const bool utf16 = head.size() >= 2 &&
+                                       ((static_cast<unsigned char>(head[0]) == 0xFF &&
+                                         static_cast<unsigned char>(head[1]) == 0xFE) ||
+                                        (static_cast<unsigned char>(head[0]) == 0xFE &&
+                                         static_cast<unsigned char>(head[1]) == 0xFF));
+                    if (utf16) {
+                        // UTF-16 (Excel's "Unicode Text"): its NULs end the
+                        // head at once, so read and decode it raw.
+                        std::string raw(kPreviewReadBytes, '\0');
+                        if (std::FILE* f = OpenFileUtf8(path, "rb")) {
+                            raw.resize(std::fread(raw.data(), 1, raw.size(), f));
+                            std::fclose(f);
+                        } else {
+                            raw.clear();
+                        }
+                        const bool bigEndian = raw.size() >= 2 &&
+                                               static_cast<unsigned char>(raw[0]) == 0xFE;
+                        head = CSVDecodeToUtf8(raw, bigEndian ? CSVImportOptions::Encoding::UTF16BE
+                                                              : CSVImportOptions::Encoding::UTF16LE);
+                    }
+                    const std::string firstLine = head.substr(0, head.find('\n'));
+                    const auto count = [&](char c) {
+                        return std::count(firstLine.begin(), firstLine.end(), c);
+                    };
+                    const char separator = count('\t') ? '\t'
+                                         : count(';') > count(',') ? ';' : ',';
+                    DelimitedToPreviewLines(head, separator, lines);
+                    return true;
+                }
+                if (kind == XlsFileKind::OpenXml) {
+                    UCZipPackageReader zip;
+                    if (!zip.Open(path)) return false;
+                    XlsxToPreviewLines(zip, lines);
+                    return true;
+                }
+                // A binary workbook is read whole - its first sheet follows
+                // the workbook's string table and formats - so a very large
+                // one keeps its glyph rather than stall a preview worker.
+                std::error_code sizeError;
+                const auto size = fs::file_size(PathFromUtf8(path), sizeError);
+                if (sizeError || size > kXlsPreviewMaxBytes) return false;
+                XlsReadOptions options;
+                options.maxSheets = 1;
+                options.maxRows = static_cast<int>(kPreviewMaxLines) * 4;
+                options.maxColumns = static_cast<int>(kPreviewMaxColumns);
+                options.translateFormulas = false;
+                XlsWorkbook workbook;
+                std::string error;
+                if (!ReadXlsWorkbook(path, workbook, error, options) || workbook.sheets.empty())
+                    return false;
+                XlsToPreviewLines(workbook.sheets.front(), lines);
+                return true;
+            }
             if (ext == "ods" || ext == "xlsx") {
                 UCZipPackageReader zip;
                 if (!zip.Open(path)) return false;
@@ -1579,9 +1658,12 @@ namespace UltraCanvas {
                 return true;
             }
             if (ext == "html" || ext == "htm") {
-                MarkupToPreviewLines(ReadFileHead(path, kPreviewReadBytes),
-                                     {"p", "div", "li", "tr", "h1", "h2", "h3",
-                                      "h4", "h5", "h6", "title"}, lines);
+                // The page as a browser lays it out: a line per paragraph,
+                // list item or table row, its cells a tab apart, the head,
+                // scripts and hidden text left out.
+                SplitPreviewLines(HTML::ExtractPlainText(ReadFileHead(path, kPreviewReadBytes),
+                                                         HTML::PlainTextLayout::Lines),
+                                  lines);
                 return true;
             }
             if (ext == "rtf") {
@@ -4735,12 +4817,15 @@ namespace UltraCanvas {
         }
 
         // Inside the widget the folder under the cursor is the drop target;
-        // outside it there is none to highlight.
+        // outside it there is none to highlight here - the element under the
+        // cursor is told about the drag instead, and shows its own target.
         auto lb = GetLocalBounds();
         Rect2Di local(static_cast<int>(lb.x), static_cast<int>(lb.y),
                       static_cast<int>(lb.width), static_cast<int>(lb.height));
-        int folder = local.Contains(localPoint) ? DragDropFolderAt(localPoint) : -1;
+        const bool inWidget = local.Contains(localPoint);
+        int folder = inWidget ? DragDropFolderAt(localPoint) : -1;
         if (folder != dragDropFolderIndex) dragDropFolderIndex = folder;
+        UpdateDragHoverElement(windowPoint, inWidget);
         UpdateDragOverlay(localPoint);
         RequestRedraw();
     }
@@ -4756,14 +4841,37 @@ namespace UltraCanvas {
         std::string destDir = (folder >= 0 && folder < static_cast<int>(entries.size()))
                 ? entries[folder].path : std::string();
         Point2Di windowPoint = ToWindowPoint(localPoint);
+        const bool overWindow = !inWidget && IsInsideWindow(windowPoint);
+        // Another file display under the release (the other pane of a split
+        // view) is found before the drag state goes. Held weakly: ending the
+        // gesture tells it the drag left, and nothing here may outlive it.
+        std::weak_ptr<UltraCanvasUIElement> otherDisplay;
+        if (overWindow) {
+            if (UltraCanvasFilerWidget* other = OtherDisplayAt(windowPoint))
+                otherDisplay = other->weak_from_this();
+        }
         EndDragGesture();
         RequestRedraw();
         if (!paths.empty()) {
             if (!destDir.empty()) {
                 DropPathsInto(paths, destDir, copy);
-            } else if (!inWidget && IsInsideWindow(windowPoint)) {
-                // Released over another element of this window (a second filer
-                // pane, a folder tree, ...): offer it the files the same way an
+            } else if (auto other = otherDisplay.lock()) {
+                // Released over another file display of this window: the files
+                // go into the folder under the cursor there, or the folder it
+                // shows - moved or copied as a drop on a folder here would be,
+                // and asked about under the same confirmation. A Drop event
+                // could say neither where nor which verb, and used to copy
+                // everything into the shown folder.
+                auto* display = static_cast<UltraCanvasFilerWidget*>(other.get());
+                const Point2Df there = display->MapToLocal(
+                        Point2Df(static_cast<float>(windowPoint.x),
+                                 static_cast<float>(windowPoint.y)));
+                display->DropOnOtherDisplay(paths,
+                        Point2Di(static_cast<int>(there.x), static_cast<int>(there.y)),
+                        copy);
+            } else if (overWindow) {
+                // Released over another element of this window (a folder
+                // tree, a preview, ...): offer it the files the same way an
                 // external drop would.
                 DeliverInWindowDrop(windowPoint, paths);
             }
@@ -4779,6 +4887,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::EndDragGesture() {
+        // Whatever the drag was over outside this widget stops showing a
+        // drop target: the drag is over, dropped or not.
+        LeaveDragHoverElement();
         if (dragMouseCaptured) {
             if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
             dragMouseCaptured = false;
@@ -4888,14 +4999,129 @@ namespace UltraCanvas {
         app->PushEvent(drop);
     }
 
+    void UltraCanvasFilerWidget::SendDragEvent(UltraCanvasUIElement* element,
+                                               UCEventType type,
+                                               const Point2Di& windowPoint) {
+        auto* win = GetWindow();
+        auto* app = UltraCanvasApplication::GetInstance();
+        // An element that has left this window meanwhile is told nothing.
+        if (!element || !win || !app || element->GetWindow() != win) return;
+        UCEvent e;
+        e.type = type;
+        e.targetWindow = win->GetWindowWeakPtr();
+        e.nativeWindowHandle = win->GetNativeHandle();
+        e.pointerWindow = windowPoint;
+        e.pointer = windowPoint;
+        e.droppedFiles = dragPaths;
+        e.dragMimeType = "text/uri-list";
+        // Inline, like the release that ends the drag in the same widget: the
+        // element shows its target under the cursor on this very move.
+        app->HandleEventWithBubbling(element, e);
+    }
+
+    void UltraCanvasFilerWidget::UpdateDragHoverElement(const Point2Di& windowPoint,
+                                                        bool overThisWidget) {
+        UltraCanvasUIElement* hit = nullptr;
+        auto* win = GetWindow();
+        if (!overThisWidget && win && IsInsideWindow(windowPoint)) {
+            hit = win->FindElementAtPoint(Point2Df(static_cast<float>(windowPoint.x),
+                                                   static_cast<float>(windowPoint.y)),
+                                          true);
+            // This widget's own elements (the rename field, the filter's
+            // buttons) are this widget, and the window itself is no target.
+            for (UltraCanvasUIElement* e = hit; e; e = e->GetParentContainer()) {
+                if (e == this) { hit = nullptr; break; }
+            }
+            if (hit == win) hit = nullptr;
+        }
+        if (dragHoverElement.lock().get() != hit) {
+            LeaveDragHoverElement();
+            if (hit) {
+                dragHoverElement = hit->weak_from_this();
+                SendDragEvent(hit, UCEventType::DragEnter, windowPoint);
+            }
+        }
+        if (hit) SendDragEvent(hit, UCEventType::DragOver, windowPoint);
+    }
+
+    void UltraCanvasFilerWidget::LeaveDragHoverElement() {
+        std::shared_ptr<UltraCanvasUIElement> previous = dragHoverElement.lock();
+        dragHoverElement.reset();
+        if (previous) SendDragEvent(previous.get(), UCEventType::DragLeave, ToWindowPoint(dragPos));
+    }
+
+    UltraCanvasFilerWidget* UltraCanvasFilerWidget::OtherDisplayAt(
+            const Point2Di& windowPoint) const {
+        auto* win = GetWindow();
+        if (!win) return nullptr;
+        UltraCanvasUIElement* hit = win->FindElementAtPoint(
+                Point2Df(static_cast<float>(windowPoint.x), static_cast<float>(windowPoint.y)),
+                true);
+        // The element under the cursor, or the display it is part of (the
+        // display's own rename field, filter button, ...).
+        for (UltraCanvasUIElement* e = hit; e; e = e->GetParentContainer()) {
+            if (e == this) return nullptr;
+            if (auto* display = dynamic_cast<UltraCanvasFilerWidget*>(e)) {
+                if (display->IsDisabled() || !display->IsVisible()) return nullptr;
+                return display;
+            }
+        }
+        return nullptr;
+    }
+
+    void UltraCanvasFilerWidget::UpdateIncomingDrop(const Point2Di& localPoint,
+                                                    const std::vector<std::string>& dragged) {
+        const int folder = DropFolderAt(localPoint, dragged);
+        if (incomingDropActive && folder == incomingDropFolderIndex) return;
+        incomingDropActive = true;
+        incomingDropFolderIndex = folder;
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::ClearIncomingDrop() {
+        if (!incomingDropActive) return;
+        incomingDropActive = false;
+        incomingDropFolderIndex = -1;
+        RequestRedraw();
+    }
+
+    std::string UltraCanvasFilerWidget::GetIncomingDropFolder() const {
+        if (!incomingDropActive) return std::string();
+        if (incomingDropFolderIndex >= 0 &&
+            incomingDropFolderIndex < static_cast<int>(entries.size()))
+            return entries[static_cast<size_t>(incomingDropFolderIndex)].path;
+        return currentPath;
+    }
+
+    std::string UltraCanvasFilerWidget::IncomingDropFolderAt(
+            const Point2Di& localPoint, const std::vector<std::string>& dragged) const {
+        const int folder = DropFolderAt(localPoint, dragged);
+        if (folder >= 0) return entries[static_cast<size_t>(folder)].path;
+        return currentPath;
+    }
+
+    void UltraCanvasFilerWidget::DropOnOtherDisplay(const std::vector<std::string>& paths,
+                                                    const Point2Di& localPoint, bool copy) {
+        ClearIncomingDrop();
+        // The compress dialog is modal over this display: a drop is no more
+        // its business than a click is.
+        if (compressDlg.active || paths.empty()) return;
+        AcceptDroppedFiles(paths, IncomingDropFolderAt(localPoint, paths), copy);
+    }
+
     int UltraCanvasFilerWidget::DragDropFolderAt(const Point2Di& localPoint) const {
+        return DropFolderAt(localPoint, dragPaths);
+    }
+
+    int UltraCanvasFilerWidget::DropFolderAt(const Point2Di& localPoint,
+                                             const std::vector<std::string>& dragged) const {
         if (IsInInfoBar(localPoint)) return -1;
         int idx = ItemAt(ToContentPoint(localPoint));
         if (idx < 0 || idx >= static_cast<int>(entries.size())) return -1;
         if (!entries[idx].isDirectory) return -1;
         // A folder cannot be dropped on itself.
-        if (std::find(dragPaths.begin(), dragPaths.end(), entries[idx].path)
-            != dragPaths.end()) {
+        if (std::find(dragged.begin(), dragged.end(), entries[idx].path)
+            != dragged.end()) {
             return -1;
         }
         return idx;
@@ -4909,8 +5135,10 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasFilerWidget::UploadDroppedFiles(const std::vector<std::string>& paths) {
+    void UltraCanvasFilerWidget::UploadDroppedFiles(const std::vector<std::string>& paths,
+                                                    const std::string& destDir) {
         if (paths.empty()) return;
+        const std::string folder = destDir.empty() ? currentPath : destDir;
         if (!remoteUpload) {
             ReportError("Cannot upload to this drive.");
             return;
@@ -4919,7 +5147,7 @@ namespace UltraCanvas {
         // not; with nothing accepted that is the whole answer, with some
         // accepted it is the part worth saying while the rest goes up.
         std::string error;
-        const bool any = remoteUpload(currentPath, paths, error);
+        const bool any = remoteUpload(folder, paths, error);
         if (!any) ReportError(error.empty() ? "Cannot upload to this drive." : error);
         else if (!error.empty()) ReportError(error);
     }
@@ -5149,15 +5377,19 @@ namespace UltraCanvas {
                 });
     }
 
-    void UltraCanvasFilerWidget::AcceptDroppedFiles(const std::vector<std::string>& paths) {
+    void UltraCanvasFilerWidget::AcceptDroppedFiles(const std::vector<std::string>& paths,
+                                                    const std::string& destDir,
+                                                    bool copy) {
         if (paths.empty()) return;
+        const std::string dest = destDir.empty() ? currentPath : destDir;
+        if (dest.empty()) return;   // a page of tiles that shows no folder
         // A remote folder has no local disk to copy onto: the files go up.
-        if (ShowingRemoteFolder()) {
-            UploadDroppedFiles(paths);
+        if (isRemotePath && isRemotePath(dest)) {
+            UploadDroppedFiles(paths, dest);
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(UltraCanvas::PathFromUtf8(currentPath), ec)) return;
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(dest), ec)) return;
 
         // The reverse of the upload above: entries dropped here that live
         // on a drive come DOWN into this folder, and the local paste below
@@ -5170,35 +5402,15 @@ namespace UltraCanvas {
             if (isRemotePath && isRemotePath(p)) remoteSources.push_back(p);
             else                                 localSources.push_back(p);
         }
-        if (!remoteSources.empty()) DownloadDroppedFiles(remoteSources, currentPath);
+        if (!remoteSources.empty()) DownloadDroppedFiles(remoteSources, dest);
         if (localSources.empty()) return;
 
-        // Skip files already in this folder and the folder itself; the rest
-        // goes through the paste machinery, so a taken name raises the
-        // conflict dialog and the folder-into-itself guard applies there.
-        fs::path canonicalHere = fs::weakly_canonical(PathFromUtf8(currentPath), ec);
-        std::vector<std::string> sources;
-        for (const std::string& src : localSources) {
-            ec.clear();
-            fs::path canonicalFrom = fs::weakly_canonical(PathFromUtf8(src), ec);
-            if (canonicalFrom == canonicalHere) continue;
-            if (canonicalFrom.parent_path() == canonicalHere) continue;
-            sources.push_back(src);
-        }
-        if (sources.empty()) return;
-
-        const std::string dest = currentPath;
-        auto perform = [this, sources, dest](bool copy) {
-            StartPaste(dest, std::vector<std::string>(sources), /*cut=*/!copy, nullptr);
-        };
-        // Files handed over by another program (or another pane of this
-        // window) are copied, so only a confirmation that covers copies asks
-        // about them - and that question offers Move beside Copy, like every
-        // other.
-        if (DropNeedsConfirmation(/*copy=*/true))
-            ConfirmTransfer(sources, dest, /*copyRequested=*/true, perform);
-        else
-            perform(true);
+        // The rest goes the way a drop on a folder of this display goes:
+        // entries already in the folder are skipped, the question is asked
+        // when the drop confirmation covers this verb (and offers the other
+        // one beside it), a taken name raises the conflict dialog, and the
+        // folder is re-read and reported once the paste is done.
+        DropPathsInto(localSources, dest, copy);
     }
 
     std::string UltraCanvasFilerWidget::UniquePathIn(
@@ -10152,7 +10364,8 @@ namespace UltraCanvas {
         DrawSelectionInfoBar(ctx, bounds);
         // Drop-folder highlight above the whole view (including chrome); the
         // badge travels on the window overlay so it survives the widget border.
-        if (draggingItems) DrawDragFeedback(ctx, bounds);
+        // A drag from elsewhere over this view is framed the same way.
+        if (draggingItems || incomingDropActive) DrawDragFeedback(ctx, bounds);
         // Rubber-band rectangle of a running drag selection.
         if (marqueeActive) DrawMarquee(ctx);
         ctx->PopState();
@@ -10160,10 +10373,12 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::DrawDragFeedback(IRenderContext* ctx,
                                                   const Rect2Di& bounds) {
-        // The folder the drop would land in, framed like a selected item.
-        if (dragDropFolderIndex >= 0) {
+        // The folder the drop would land in, framed like a selected item: for
+        // this view's own drag, or for one from elsewhere passing over it.
+        const int folder = draggingItems ? dragDropFolderIndex : incomingDropFolderIndex;
+        if (folder >= 0) {
             for (const ItemLayout& it : items) {
-                if (static_cast<int>(it.entryIndex) != dragDropFolderIndex) continue;
+                if (static_cast<int>(it.entryIndex) != folder) continue;
                 Rect2Di r(it.rect.x - scrollOffsetX, it.rect.y - scrollOffsetY,
                           it.rect.width, it.rect.height);
                 Color fillc = style.selectionColor; fillc.a = 130;
@@ -10174,6 +10389,15 @@ namespace UltraCanvas {
                 ctx->DrawRoundedRectangle(Rect2Dd(r), 6);
                 break;
             }
+        } else if (incomingDropActive && !draggingItems) {
+            // From elsewhere, over no folder: the drop lands in the folder this
+            // view shows, so the view itself is framed - the files' new home
+            // is visible before the button goes up, not guessed afterwards.
+            Rect2Dd frame(bounds.x + 1.5, bounds.y + 1.5,
+                          std::max(0, bounds.width - 3), std::max(0, bounds.height - 3));
+            ctx->SetStrokePaint(style.selectionBorderColor);
+            ctx->SetStrokeWidth(2.5f);
+            ctx->DrawRoundedRectangle(frame, 6);
         }
 
         // The badge that follows the cursor is NOT drawn here: it has to stay
@@ -11237,6 +11461,13 @@ namespace UltraCanvas {
         return previews;
     }
 
+    bool UltraCanvasFilerWidget::TextPreviewLines(const std::string& path,
+                                                  std::vector<std::string>& lines,
+                                                  bool& tabular) {
+        lines.clear();
+        return ExtractTextPreview(path, lines, tabular);
+    }
+
     std::vector<Rect2Di> UltraCanvasFilerWidget::FolderPreviewCardRects(
             const Rect2Di& rect, size_t count) {
         // The cards stand in the folder like photos in a wallet: their upper
@@ -11712,9 +11943,13 @@ namespace UltraCanvas {
                 continue;
             }
 
-            // The expensive part — outside the lock. UCImage::Get and
+            // The expensive part — outside the lock. UCImage::GetFresh and
             // GetPixmap populate the shared mutex-guarded caches, so later
             // synchronous users (e.g. the media viewer) get free cache hits.
+            // GetFresh rather than Get: the shared cache is keyed by path, so
+            // a picture saved over since it was first drawn came back from it
+            // as it was - after every rescan, and into the disk cache below
+            // under the new file's stamp, so on every run after as well.
             // Which producer runs is decided by the file itself, not by the
             // entry: the request may name an entry's explicit thumbnail image
             // rather than the entry's own file.
@@ -11722,6 +11957,18 @@ namespace UltraCanvas {
             // Failed below and the tile keeps its glyph.
             std::shared_ptr<UCPixmap> pm;
             const bool nativeIcon = NativeFileIconAvailable(req.path);
+            // The file as it is before anything reads it. A thumbnail goes to
+            // the disk cache only against this stamp, and only while the file
+            // still matches it: one drawn from content the file no longer
+            // holds is not kept (see ThumbnailDiskCache::Store). Taken here,
+            // on the worker - it is a stat, and the paint path never touches
+            // the filesystem.
+            ThumbnailDiskCache::SourceStamp madeFrom;
+            if (!nativeIcon && ThumbnailDiskCache::IsEnabled()) {
+                RunGuarded("thumbnail source stamp", req.path, [&]() {
+                    madeFrom = ThumbnailDiskCache::StampSource(req.path);
+                });
+            }
 
             // The thumbnail this machine already made, on an earlier run.
             // Asked before anything is decoded, because that is the whole
@@ -11802,7 +12049,7 @@ namespace UltraCanvas {
                     // the preview bitmap the document carries.
                     const std::string ext = LowerExtension(req.path);
                     if (ImagePipelineLoadsExtension(ext)) {
-                        auto img = UCImage::Get(req.path);
+                        auto img = UCImage::GetFresh(req.path);
                         if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
                             pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
                     }
@@ -11829,7 +12076,7 @@ namespace UltraCanvas {
                     break;
                 }
                 default: {
-                    auto img = UCImage::Get(req.path);
+                    auto img = UCImage::GetFresh(req.path);
                     if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
                         pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
                     }
@@ -11864,7 +12111,8 @@ namespace UltraCanvas {
             // cost the user a re-decode, never a missing thumbnail.
             if (blob && !diskBlob && !nativeIcon) {
                 RunGuarded("thumbnail disk cache write", req.path, [&]() {
-                    ThumbnailDiskCache::Store(DiskCacheRequestFor(req), *blob);
+                    ThumbnailDiskCache::Store(DiskCacheRequestFor(req), *blob,
+                                              madeFrom);
                 });
             }
 
@@ -12574,16 +12822,21 @@ namespace UltraCanvas {
         fsty.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(fsty);
         for (const DetailsColumn& c : detailsColumns) {
-            std::string title = c.title;
-            if (c.sortable && c.field == sortField) {
-                title += sortAscending ? " ▲" : " ▼";
-            }
-            title = EllipsizeText(ctx, title, c.width - 12);
+            // The sort direction is a triangle drawn after the title: the
+            // bundled UI font has no "▲" or "▼", and where no fallback font
+            // has them either they showed as hex boxes.
+            const bool sorted = c.sortable && c.field == sortField;
+            const int markWidth = sorted ? 13 : 0;   // a 5 px gap and the 8 px triangle
+            std::string title = EllipsizeText(ctx, c.title, c.width - 12 - markWidth);
             ctx->SetTextPaint(style.headerTextColor);
             Size2Di ts = ctx->GetTextLineDimensions(title);
-            int tx = c.rightAligned ? c.x + c.width - ts.width - 8 : c.x + 6;
+            int tx = c.rightAligned ? c.x + c.width - ts.width - markWidth - 8 : c.x + 6;
             int ty = area.y + (detailsHeaderHeight - ts.height) / 2;
             ctx->DrawText(title, Point2Dd(tx, ty));
+            if (sorted) {
+                DrawSortTriangle(ctx, Point2Dd(tx + ts.width + 9, ty + ctx->GetCapCentreOffset(fsty)), 8,
+                                 sortAscending, style.headerTextColor);
+            }
         }
     }
 
@@ -13344,8 +13597,9 @@ namespace UltraCanvas {
                     if (!ProbeImageDimensions(media.path, w, h)) {
                         // Unknown container (AVIF, HEIC, ...): ask the shared
                         // image cache — same call the thumbnail workers make,
-                        // so a later tile decode is a free cache hit.
-                        auto img = UCImage::Get(media.path);
+                        // so a later tile decode is a free cache hit, and a
+                        // picture saved over is measured as it is now.
+                        auto img = UCImage::GetFresh(media.path);
                         if (img) { w = img->GetWidth(); h = img->GetHeight(); }
                     }
                     if (w > 0 && h > 0)
@@ -15168,6 +15422,17 @@ namespace UltraCanvas {
         return false;
     }
 
+    // Whether a press landed on one of the widget's own child elements - the
+    // element the window hands a press to before the widget. Hit-tested as the
+    // window does it (visible, interactive, scrolling, clipping), from the
+    // parent's frame, where FindElementAtPoint starts.
+    static bool PressOnChildElement(UltraCanvasContainer& widget, const UCEvent& event) {
+        const Rect2Df bounds = widget.GetBounds();
+        UltraCanvasUIElement* hit = widget.FindElementAtPoint(
+                Point2Df(bounds.x + event.pointer.x, bounds.y + event.pointer.y), true);
+        return hit && hit != &widget;
+    }
+
     bool UltraCanvasFilerWidget::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
 
@@ -15175,9 +15440,24 @@ namespace UltraCanvas {
         // consumes every event and nothing behind it reacts.
         if (compressDlg.active) return HandleCompressDialogEvent(event);
 
+        // A press one of the widget's own elements (the filter's "clear"
+        // button, the hidden-files notice, the rename field) did not take
+        // climbs here, but it is not a press on the files painted under that
+        // element: a right-click on "clear" took the keyboard from the search
+        // field, committed an open rename and opened the folder's menu. A
+        // release is not filtered - a drag the widget captured ends on it,
+        // over a button or not.
+        if ((event.type == UCEventType::MouseDown || event.type == UCEventType::MouseDoubleClick) &&
+            PressOnChildElement(*this, event)) {
+            return false;
+        }
+
         switch (event.type) {
             case UCEventType::MouseLeave: {
                 pointerInside = false;   // nothing to re-derive a hover at
+                // The pointer is the mouse's again: a drag from another
+                // program whose DragLeave went to another element is over.
+                ClearIncomingDrop();
                 if (hoveredIndex != -1) { hoveredIndex = -1; RequestRedraw(); }
                 if (hoveredSplitter != -1 && draggingSplitter < 0) {
                     hoveredSplitter = -1;
@@ -15211,6 +15491,7 @@ namespace UltraCanvas {
             }
             case UCEventType::MouseMove: {
                 Point2Di local(event.pointer.x, event.pointer.y);
+                ClearIncomingDrop();   // as on MouseLeave
                 // Remembered for RefreshHoverState(): scrolling and relayouts
                 // move files under the pointer with no move event to read.
                 RememberPointer(event);
@@ -15596,14 +15877,17 @@ namespace UltraCanvas {
                 if (renamingIndex >= 0) return true;
 
                 if (event.ctrl) {
+                    // Letter keys arrive as UCKeys::A..Z on every backend
+                    // (the Linux one upper-cases the keysym); a lowercase
+                    // 'a' is not a key code and could never match.
                     switch (event.virtualKey) {
-                        case 'a': case 'A': SelectAll(); return true;
-                        case 'c': case 'C': CopySelection(); return true;
-                        case 'x': case 'X': CutSelection(); return true;
-                        case 'v': case 'V': Paste(); return true;
-                        case 'd': case 'D': DuplicateSelection(); return true;
-                        case 'f': case 'F': CreateNewFolder(); return true;
-                        case 'p': case 'P':
+                        case UCKeys::A: SelectAll(); return true;
+                        case UCKeys::C: CopySelection(); return true;
+                        case UCKeys::X: CutSelection(); return true;
+                        case UCKeys::V: Paste(); return true;
+                        case UCKeys::D: DuplicateSelection(); return true;
+                        case UCKeys::F: CreateNewFolder(); return true;
+                        case UCKeys::P:
                             if (onPrint) onPrint(SelectionOrAll());
                             return true;
                         default: break;
@@ -15680,11 +15964,30 @@ namespace UltraCanvas {
                 }
                 return false;
             }
+            case UCEventType::DragEnter:
+            case UCEventType::DragOver: {
+                // A drag from elsewhere - another program, or another element
+                // of this window - is over the display: frame the folder under
+                // the pointer that a drop would land in, or, over empty space,
+                // the display itself, whose folder it would land in then.
+                UpdateIncomingDrop(Point2Di(event.pointer.x, event.pointer.y),
+                                   event.droppedFiles);
+                return true;
+            }
+            case UCEventType::DragLeave:
+                ClearIncomingDrop();
+                return true;
             case UCEventType::Drop: {
                 // Files dragged in from other applications / windows are
-                // copied into the shown folder.
+                // copied into the folder under the pointer, or the shown
+                // folder. (Another file display of this window hands its
+                // files over directly instead - DropOnOtherDisplay - so that
+                // they are moved when that is what the gesture means.)
+                const Point2Di local(event.pointer.x, event.pointer.y);
+                const std::string dest = IncomingDropFolderAt(local, event.droppedFiles);
+                ClearIncomingDrop();
                 if (event.droppedFiles.empty()) return false;
-                AcceptDroppedFiles(event.droppedFiles);
+                AcceptDroppedFiles(event.droppedFiles, dest, /*copy=*/true);
                 return true;
             }
             default:

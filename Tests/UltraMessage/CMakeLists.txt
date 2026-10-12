@@ -1,6 +1,8 @@
 # Tests/UltraMessage/CMakeLists.txt
 # Builds UltraMessageTests. In-tree it is enabled by
-# ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS and links the UltraMessage archive.
+# ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS and links UltraMessage - the module's
+# home, which is the shared core that absorbed the archive, or the archive
+# itself under a static core (UltraCanvas/CMakeLists.txt, "MODULE HOMES").
 #
 # It also configures on its own (cmake -S Tests/UltraMessage -B build), where
 # it compiles the module, UltraCanvasJSON, the vendored yyjson and the
@@ -128,6 +130,11 @@ set_target_properties(UltraMessageTests PROPERTIES
 include(CTest)
 add_test(NAME UltraMessage COMMAND UltraMessageTests
          WORKING_DIRECTORY ${_um_output_dir})
+# In-tree the binary loads the shared core from the build root, and on
+# Windows the loader finds a DLL only beside the executable, in the working
+# directory or on PATH (see Tests/VaultTests.cmake).
+set_tests_properties(UltraMessage PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${CMAKE_BINARY_DIR}")
 
 # The message centre element and the notification toasts, headless: in-tree
 # only, since they need the widget library. Same framework, same private bus.
@@ -142,4 +149,6 @@ if(TARGET UltraMessageCenter)
         RUNTIME_OUTPUT_DIRECTORY ${_um_output_dir})
     add_test(NAME UltraMessageCenter COMMAND UltraMessageCenterTests
              WORKING_DIRECTORY ${_um_output_dir})
+    set_tests_properties(UltraMessageCenter PROPERTIES
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${CMAKE_BINARY_DIR}")
 endif()

@@ -134,8 +134,9 @@ The engine is built in **Uni-math** mode with glyphs rendered as vector paths
 
 ## nlohmann/json (JSON for Modern C++)
 
-- **Used by:** the UltraNet JMAP plug-in (`ULTRACANVAS_PLUGIN_JMAP`) and the
-  Documents plug-in's JSON handling.
+- **Used by:** the UltraNet JMAP plug-in (`ULTRACANVAS_PLUGIN_JMAP`), the
+  Documents plug-in's JSON handling and VideoFX project files
+  (`VideoFX/core/VideoFXProject.cpp`).
 - **Website:** https://json.nlohmann.me/
 - **Upstream:** https://github.com/nlohmann/json (v3.12.0, single-header
   release).

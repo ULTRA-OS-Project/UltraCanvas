@@ -1,5 +1,7 @@
 # 3D models → pixels
 
+<!-- doc-check: std::string path; std::shared_ptr<UltraCanvasMediaViewer> viewer; std::shared_ptr<UCRasterDocument> document; void ShowError(const std::string& message); -->
+
 `UltraCanvasModelRaster.h` turns a mesh into pixels, and a 3D model file into
 an editable [`UCRasterLayer`](UltraCanvasPaintSurface.md) — the 3D counterpart
 of [vector artwork → pixels](UltraCanvasVectorRaster.md).
@@ -25,7 +27,7 @@ if (IsModelGraphicsPath(path)) {
     ModelRasterOptions options;
     options.width  = 1024;
     options.height = 768;
-    options.pose   = viewer->GetModelViewPose();             // what the user framed
+    viewer->GetModelViewPose(options.pose);                  // what the user framed
     std::string error;
     if (auto layer = RasterizeModelFile(path, options, error)) {
         document->AddLayer(layer);

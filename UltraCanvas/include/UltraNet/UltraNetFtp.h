@@ -10,8 +10,12 @@
 // message is libcurl's specific reason plus the server's refusal ("RETR
 // response: 550 - the server said \"550 Permission denied\""), and
 // UltraNetResult::diagnostics carries the connection chain.
-// Version: 0.4.0 - session log, specific failure messages, inactivity timeout
-// Last Modified: 2026-10-04
+//
+// Connections are kept open between calls on one thread
+// (UltraNet_FtpCloseIdleConnections), and a server that refused MLSD is
+// listed with LIST from then on.
+// Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -87,6 +91,21 @@ struct UltraNetFtpOptions {
 // which calls UltraNet - and so cannot hand an onLog down. Per thread, so
 // two workers never read each other's sessions. An empty callback clears it.
 UltraNetFtpLogCallback UltraNet_SetThreadFtpLog(UltraNetFtpLogCallback sink);
+
+// Every call leaves its connection open, and the next call ON THE SAME THREAD
+// to the same server, as the same user with the same TLS settings, takes it
+// up without connecting or logging in again - so a worker listing one folder
+// after another logs in once, not once per folder. libcurl drops a connection
+// left idle for two minutes, and one the server has closed.
+//
+// This closes the calling thread's open connections now (each is sent QUIT).
+// A thread's connections are also closed when it ends, and every thread's by
+// UltraNet_Shutdown. A caller whose work comes in bursts calls it when it
+// falls idle: an open connection whose network has gone away since can hold
+// the QUIT for as long as libcurl waits for the reply - up to two minutes
+// before libcurl 8.10 - and the thread's end, which a window closing may wait
+// on, with it.
+void UltraNet_FtpCloseIdleConnections();
 
 struct UltraNetFtpEntry {
     std::string name;

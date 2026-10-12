@@ -7,9 +7,14 @@
 // devices attached, battery level, keyboard layout), and the counts an
 // application publishes for the desktop to show beside its icon.
 //
-//   for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows())
-//       taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile, ...);
-//   UltraCanvasDesktopShell::ActivateWindow(id);
+//   for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+//       if (w.skipTaskbar) continue;
+//       const uint64_t id = w.id;
+//       taskbar->AddToggleButton("win-" + std::to_string(id), "", w.iconFile, [id](bool on) {
+//           if (on) UltraCanvasDesktopShell::ActivateWindow(id);
+//           else UltraCanvasDesktopShell::MinimizeWindow(id);
+//       });
+//   }
 //   UltraCanvasDesktopShell::SetCurrentVirtualDesktop(2);
 //   UltraCanvasDesktopShell::CaptureScreen(UltraCanvasDesktopShell::DefaultScreenshotPath());
 //   DesktopDeviceActivity now = UltraCanvasDesktopShell::ReadDeviceActivity();
@@ -190,6 +195,13 @@ namespace UltraCanvas {
         // iconFile resolved at `iconSize` px. Empty on a platform without
         // desktop entries.
         static std::vector<UCDesktopEntry> ListApplications(int iconSize = 48);
+        // The application a window belongs to, among `applications`
+        // (ListApplications): the entry whose StartupWMClass is the window's
+        // WM_CLASS, else whose program, icon name or name the window's class
+        // or instance spells (case aside: "Gimp-2.10" is gimp-2.10's).
+        // nullptr when none matches.
+        static const UCDesktopEntry* MatchApplication(const DesktopWindowInfo& window,
+                                                      const std::vector<UCDesktopEntry>& applications);
         // Start an application from its entry, detached: the launcher is never
         // its parent and never waits for it. False with the reason in `error`.
         static bool LaunchApplication(const UCDesktopEntry& entry,

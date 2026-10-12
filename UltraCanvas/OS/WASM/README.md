@@ -66,7 +66,7 @@ callbacks cast to `GInterfaceInitFunc`/`GFunc`: native ABIs tolerate the
 arity mismatch, wasm's strict indirect-call signature checking traps on it.
 
 ```bash
-source /path/to/emsdk/emsdk_env.sh   # Emscripten 6.x
+source /path/to/emsdk/emsdk_env.sh   # Emscripten 6.0.11 - the version CI builds with
 ./build-wasm-sysroot.sh /path/to/wasm-sysroot
 ```
 
@@ -79,7 +79,11 @@ final link.
 
 ```bash
 source /path/to/emsdk/emsdk_env.sh
-export EM_PKG_CONFIG_PATH=/path/to/wasm-sysroot/lib/pkgconfig
+# CMake runs the host's pkg-config, and emcmake does not pass it
+# EM_PKG_CONFIG_PATH: put the sysroot on PKG_CONFIG_PATH, and on
+# PKG_CONFIG_LIBDIR so no host .pc file is found instead.
+export PKG_CONFIG_PATH=/path/to/wasm-sysroot/lib/pkgconfig:/path/to/wasm-sysroot/share/pkgconfig
+export PKG_CONFIG_LIBDIR=$PKG_CONFIG_PATH
 emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release
 cmake --build build-wasm
 ```

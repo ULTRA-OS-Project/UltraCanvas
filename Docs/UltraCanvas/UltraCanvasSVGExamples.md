@@ -34,8 +34,10 @@ viewer->Show(path, UltraCanvasApplication::GetInstance()->GetFocusedWindow());
 
 The file is parsed once and the parsed document is cached by path
 (`UCSvgDocument::Get`), so zooming, HiDPI and relayout only pay for the
-vector render. `UCImageRaster::ClearCache` / `UCSvgDocument::RemoveFromCache`
-drop a document when the file changed on disk. CSS inside the file - a
+vector render. `UCImage::GetFresh(path)` reads a file that changed on disk
+since it was cached again (`UCImage::Get` never checks), and
+`UCImage::RemoveFromCache(path)` drops the raster, its pixmaps and the parsed
+document by hand. CSS inside the file - a
 `<style>` block, `class=""` attributes - is applied by librsvg.
 
 `Apps/DemoApp/UltraCanvasSVGExamples.cpp` is the demo page: one tile per

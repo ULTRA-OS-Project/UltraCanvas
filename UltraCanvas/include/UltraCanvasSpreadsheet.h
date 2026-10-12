@@ -450,6 +450,11 @@ public:
     bool SaveODS(const std::string& filePath);
     bool LoadXLSX(const std::string& filePath);
     bool SaveXLSX(const std::string& filePath);
+    // Legacy Excel workbooks (.xls): Excel 97-2003 and 5.0/95 binary files, and
+    // what else Excel opens under the name - an .xlsx renamed, an HTML table, an
+    // Excel 2003 XML workbook, delimited text. Read only: save as .xlsx or .ods.
+    // See UltraCanvasSpreadsheetXls.h.
+    bool LoadXLS(const std::string& filePath);
     // Load a CSV/TSV file. The single-argument form auto-detects the encoding,
     // field separator and decimal separator (see CSVDetectOptions); use the
     // WithOptions form to apply settings chosen in the import dialog.

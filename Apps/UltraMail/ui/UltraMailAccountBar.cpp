@@ -1,9 +1,15 @@
 // Apps/UltraMail/ui/UltraMailAccountBar.cpp
+// Version: 0.6.0 - the tiles sit in a toolbar that lets them be dragged into
+//                  another order (onReorderAccounts)
+// Version: 0.5.0 - a click anywhere on a tile selects its account (its text
+//                  and counters took the click before, and only the tile's
+//                  padding answered); the counters' captions are in the
+//                  tile's tooltip, beside the address.
 // Version: 0.4.0 - the summary strip and the tiles are white cards on the
 //                  page: initial in a tinted avatar square, local part as the
 //                  name, and the three counters as tinted count · caption
 //                  pills instead of saturated badges.
-// Last Modified: 2026-09-09
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountBar.h"
 
@@ -28,7 +34,7 @@ constexpr float kTilePill     = 18.0f;
 constexpr float kCountSize    = 11.0f;
 
 // A tinted "count · caption" pill. With an empty caption it is a compact
-// count-only pill (the tiles), with the caption in the tooltip.
+// count-only pill (the tiles, whose tooltip names each counter).
 std::shared_ptr<UltraCanvasContainer> MakePill(const std::string& id, int count,
                                                const std::string& caption,
                                                const Color& tint, const Color& text,
@@ -88,6 +94,7 @@ void AccountBar::Rebuild(const std::vector<Account>& accounts,
     if (!root_) Build();
     root_->ClearChildren();
     tiles_.clear();
+    tileRow_.reset();
     if (accounts.empty()) return;
     if (accounts.size() == 1)
         BuildSummary(accounts.front(), StatusFor(status, accounts.front().accountId));
@@ -138,6 +145,30 @@ void AccountBar::BuildSummary(const Account& account, const AccountStatus& statu
 void AccountBar::BuildTiles(const std::vector<Account>& accounts,
                             const std::vector<AccountStatus>& status,
                             const std::string& selectedAccountId) {
+    // The tiles are a toolbar's items, for its drag into another order; the
+    // toolbar itself shows nothing of its own - no fill, frame or padding -
+    // and keeps the bar's gap between the tiles, which stretch to one height.
+    tileRow_ = std::make_shared<UltraCanvasToolbar>("acctTiles", 0, 0, 0, 0);
+    ToolbarAppearance look = ToolbarAppearance::Flat();
+    look.backgroundColor = Colors::Transparent;
+    look.itemSpacing = Theme::kGap;
+    tileRow_->SetAppearance(look);
+    tileRow_->SetBorders(0.0f, Colors::Transparent);
+    tileRow_->SetPadding(0);
+    tileRow_->layout.SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    tileRow_->EnableItemReordering(true);
+    tileRow_->onItemReordered = [this](int, int) {
+        if (!tileRow_) return;
+        std::vector<std::string> order;
+        for (const auto& item : tileRow_->GetItems())
+            for (const auto& [acc, tile] : tiles_)
+                if (tile.get() == item.get()) order.push_back(acc);
+        if (onReorderAccounts) onReorderAccounts(order);
+    };
+    root_->AddChild(tileRow_);
+    tileRow_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
     for (const auto& account : accounts) {
         const std::string acc = account.accountId;
         const AccountStatus& st = StatusFor(status, acc);
@@ -162,7 +193,14 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         tile->layout.SetFlexColumn()
                     .SetFlexGap(10)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        tile->SetTooltip(account.email);
+        // The whole tile is one target (see PassPointerThroughContent below),
+        // so its tooltip carries the address and what each counter counts.
+        TooltipContent tip;
+        tip.AddTitle(account.email);
+        tip.AddRow(Theme::kNewTodayText, "New today", std::to_string(st.unreadToday));
+        tip.AddRow(Theme::kUnreadText, "Unread (before today)", std::to_string(st.unreadOlder));
+        tip.AddRow(Theme::kWaitingText, "Waiting for reply", std::to_string(st.needsAnswer));
+        tile->SetTooltipContent(tip);
 
         // Head: avatar beside the name and domain.
         auto head = CreateContainer("acctHead_" + acc, 0, 0, 0, 0);
@@ -179,26 +217,24 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         head->AddChild(who);
         tile->AddChild(head);
 
-        // Counters: compact pills, captions in their tooltips.
+        // Counters: compact pills, captions in the tile's tooltip.
         auto counters = CreateContainer("acctCounters_" + acc, 0, 0, 0, 0);
         counters->layout.SetFlexRow()
                         .SetFlexGap(6)
                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto today = MakePill("acctPill_today_" + acc, st.unreadToday, "",
-                              Theme::kNewTodayTint, Theme::kNewTodayText, kTilePill);
-        today->SetTooltip("New today");
-        auto older = MakePill("acctPill_older_" + acc, st.unreadOlder, "",
-                              Theme::kUnreadTint, Theme::kUnreadText, kTilePill);
-        older->SetTooltip("Unread (before today)");
-        auto waiting = MakePill("acctPill_waiting_" + acc, st.needsAnswer, "",
-                                Theme::kWaitingTint, Theme::kWaitingText, kTilePill);
-        waiting->SetTooltip("Waiting for reply");
-        counters->AddChild(today);
-        counters->AddChild(older);
-        counters->AddChild(waiting);
+        counters->AddChild(MakePill("acctPill_today_" + acc, st.unreadToday, "",
+                                    Theme::kNewTodayTint, Theme::kNewTodayText, kTilePill));
+        counters->AddChild(MakePill("acctPill_older_" + acc, st.unreadOlder, "",
+                                    Theme::kUnreadTint, Theme::kUnreadText, kTilePill));
+        counters->AddChild(MakePill("acctPill_waiting_" + acc, st.needsAnswer, "",
+                                    Theme::kWaitingTint, Theme::kWaitingText, kTilePill));
         tile->AddChild(counters);
 
-        root_->AddChild(tile);
+        // A click or hover on the name, the avatar or a counter is the
+        // tile's: one target, with one tooltip that names the counters.
+        tile->PassPointerThroughContent();
+
+        tileRow_->AddChild(tile);
         tiles_[acc] = tile;
     }
 }

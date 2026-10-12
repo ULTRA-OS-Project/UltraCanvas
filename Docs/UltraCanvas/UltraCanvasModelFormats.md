@@ -1,5 +1,7 @@
 # UltraCanvasModelFormats — reading 3D files
 
+<!-- doc-check: std::string path; -->
+
 The **Models plugin** reads a 3D file of any supported format into one
 structure: `ModelStorage::ModelDocument`. There is no per-format document type
 and no per-format API — a caller names a path, and what comes back is a scene

@@ -1,7 +1,9 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
-// Version: 4.14.0 - Element::measureCache: the last measurements under other
+// Version: 4.15.0 - Element::measureCache: the last measurements under other
 //                   constraints (ForgetMeasurements clears them with `measured`)
+// Version: 4.14.0 - Element::widthSetByParent: an Exact width from a parent that
+//                   decides the width (a table, for its cells) is the used width
 // Version: 4.13.0 - nothing stretches unless the layout asks for it: flex
 //                   align-items and grid justify-items / align-items start at
 //                   Start, grid items at Auto (their container decides); a
@@ -13,7 +15,7 @@
 // Version: 4.10.0 - Dimension::offsetPx: a length plus pixels (calc(50% - 20px))
 // Version: 4.10.0 (main) - LayoutItem::floatSide (float: left / right in block layout)
 // Version: 4.9.0 - DisplayType::Table (HTML automatic table layout)
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -424,6 +426,15 @@ namespace UltraCanvas {
             // otherwise it limits nothing). Empty for children of other
             // layouts, which pass definite heights as constraints.
             std::optional<float> percentHeightBase;
+
+            // Set by a parent that decides this element's width itself - a
+            // table, for its cells (the column width). An Exact width
+            // constraint from it is then the used width, as an Exact on both
+            // axes always is, not a fill hint the element's own width could
+            // override: a cell with width="50%" otherwise measured its content
+            // at half its column, so the row was too short for a picture
+            // sized width:100% inside it and the picture hung out below.
+            bool widthSetByParent = false;
 
             // caches
             MeasureResult  measured;    // extrinsic, keyed by MeasureConstraints

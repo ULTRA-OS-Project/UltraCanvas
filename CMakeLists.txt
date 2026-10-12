@@ -152,6 +152,15 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Every file includes the standard headers it uses. libc++ 23 (LLVM 23, which
+# MSYS2's CLANG64/CLANGARM64 ship since 2026-10-09) dropped most of its
+# transitive includes - <string> no longer brings in <algorithm>, <cstdlib>,
+# <iterator>, <optional> and more - and libc++ 24 removes the bridge that
+# restored them (_LIBCPP_KEEP_TRANSITIVE_INCLUDES_LLVM23), so the tree does
+# not define it: the Windows legs, which build with libc++ 23, reject a file
+# that relies on a transitive include the day it is written, instead of the
+# day LLVM 24 arrives.
+
 # Build type defaults to Release
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
@@ -171,18 +180,20 @@ set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -pg" C
 # x86-64 and harmless for the static build.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# macOS: record only the dylibs a binary actually takes a symbol from. On
-# macOS the core is linked statically (ULTRACANVAS_BUILD_SHARED is off there),
-# so every application's link line carries the core's whole PUBLIC dependency
-# list - tesseract, leptonica, MuPDF, zbar, libcdr with boost and ICU, the
-# audio codecs - and ld64, unlike GNU ld with --as-needed, writes a load
-# command for each one whether the program uses it or not. package-macos.sh
-# then copies every one of them, with its own dependencies, into each .app's
-# Frameworks/, six bundles over. With this flag an app that never reaches the
-# OCR or PDF code no longer loads (or ships) those libraries. Only libraries
-# that supplied no symbol at link time are dropped, so nothing an app calls
-# can go missing; it would only matter for a library needed purely for a side
-# effect of its initializer, and none of the Homebrew dependencies is that.
+# macOS: record only the dylibs a binary actually takes a symbol from. ld64,
+# unlike GNU ld with --as-needed, writes a load command for every library on
+# the link line whether the program takes a symbol from it or not. While the
+# core was linked statically on macOS, every application's link line carried
+# the core's whole PUBLIC dependency list - tesseract, leptonica, MuPDF, zbar,
+# libcdr with boost and ICU, the audio codecs - and package-macos.sh copied
+# every one of them into each .app's Frameworks/. The core is a shared
+# libUltraCanvas.dylib on macOS now too (ULTRACANVAS_BUILD_SHARED), so the
+# apps' link lines are short, but the flag still earns its place: the core
+# itself records only the libraries it uses, and a format plug-in archive an
+# app links still brings its dependency list along. Only libraries that
+# supplied no symbol at link time are dropped, so nothing an app calls can go
+# missing; it would only matter for a library needed purely for a side effect
+# of its initializer, and none of the dependencies is that.
 if(APPLE)
     add_link_options(LINKER:-dead_strip_dylibs)
 endif()
@@ -316,6 +327,7 @@ option(ULTRACANVAS_USE_VIDEOFX "Build the VideoFX video editing / conversion mod
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
 include(cmake/UltraCanvasWinManifest.cmake)
+include(cmake/UltraCanvasWindowsGuiApp.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
@@ -562,6 +574,17 @@ if(BUILD_ULTRACLIPBOARD)
     add_subdirectory(Apps/UltraClipboard)
 endif()
 
+# ===== ULTRAVIDEO =====
+# The video editor on the VideoFX engine and the UltraCanvasVideoTimeline
+# element: media bin, viewer with scrubbing, inspector, timeline, undo,
+# .ultravideo projects, export (Docs/Research/UltraVideoDesignProposal.md).
+option(BUILD_ULTRAVIDEO "Build the UltraVideo application" ON)
+if(BUILD_ULTRAVIDEO)
+    message(STATUS "")
+    message(STATUS "── Building UltraVideo ──")
+    add_subdirectory(Apps/UltraVideo)
+endif()
+
 # ===== DEVICEEXPLORER =====
 # Shows the devices connected to this computer - printers, scanners, cameras -
 # as the IODeviceManager module finds them: a tree grouped by category,
@@ -647,6 +670,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasODTExamples.cpp
             Apps/DemoApp/UltraCanvasWYSIWYGExamples.cpp
             Apps/DemoApp/UltraCanvasListViewExamples.cpp
+            Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp
             Apps/DemoApp/UltraCanvasDependenciesExamples.cpp
             Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
             Apps/DemoApp/UltraCanvasBarChartExamples.cpp
@@ -725,6 +749,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAudioFXExamples.cpp
             Apps/DemoApp/UltraCanvasEBookExamples.cpp
             Apps/DemoApp/UltraCanvasWaveformExamples.cpp
+            Apps/DemoApp/UltraCanvasVideoTimelineExamples.cpp
             Apps/DemoApp/UltraCanvasSpectrogramExamples.cpp
             Apps/DemoApp/UltraCanvasLevelMeterExamples.cpp
             Apps/DemoApp/UltraCanvasAudioAnalysisExamples.cpp
@@ -977,6 +1002,18 @@ if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
+# ===== DEVICE TLS TESTS WITHOUT THE FULL SUITE =====
+# IODeviceScannerESCLLiveTest alone, for builds that leave BUILD_TESTS off
+# (the macOS and Windows CI rows): trusting a device's self-signed certificate
+# on first use rests on libcurl's public-key pinning and certificate capture,
+# which each TLS library implements apart - OpenSSL on Linux, Apple's TLS on
+# macOS, Schannel on Windows - so it is a test on every one of them.
+option(ULTRACANVAS_BUILD_DEVICE_TLS_TESTS "Build the device TLS tests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_DEVICE_TLS_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/DeviceTlsTests.cmake)
+endif()
+
 # ===== VAULT TESTS WITHOUT THE FULL SUITE =====
 # UltraVaultTests alone, for builds that leave BUILD_TESTS off (the Windows CI
 # row): the device-key vault in a Thai-and-emoji folder is only a test where a
@@ -1060,6 +1097,10 @@ if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)
     add_executable(ultramsg Apps/UltraMessageCli/main.cpp)
     target_compile_features(ultramsg PRIVATE cxx_std_20)
     target_link_libraries(ultramsg PRIVATE UltraMessage)
+    # A command-line tool has no window to set an icon on; on Windows the
+    # .exe carries media/appicon/UltraMsg.png (the render of UltraMsg.svg).
+    ultracanvas_embed_app_icon(ultramsg
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraMsg.png")
 endif()
 
 # ===== ULTRADATABASE TESTS =====
@@ -1447,6 +1488,13 @@ if (BUILD_ULTRAPAINT_APP)
     target_link_libraries(UltraPaint PRIVATE
             ${ULTRACANVAS_LIBRARY}
     )
+
+    # Paste with nothing on the clipboard offers the newest image of the
+    # clipboard history UltraDesktop keeps; Edit > Paste Last Copied Image.
+    if(TARGET UltraClipboardHistory)
+        target_link_libraries(UltraPaint PRIVATE UltraClipboardHistory)
+        target_compile_definitions(UltraPaint PRIVATE ULTRAPAINT_HAVE_CLIPBOARD_HISTORY=1)
+    endif()
 
     # The 3D model formats. Core reads STL by itself; OBJ, PLY, COLLADA, FBX,
     # X3D, Alembic, MilkShape, .blend and STEP arrive with this plugin, and
@@ -2128,31 +2176,31 @@ if (BUILD_FILEMANAGER_APP)
 endif()
 
 # Hide console window on Windows Release builds
+# Every app whose command line only opens the window (--help and --version
+# aside) is a GUI-subsystem program there, so no empty console opens beside
+# it; ultracanvas_windows_gui_app() (cmake/UltraCanvasWindowsGuiApp.cmake)
+# also attaches it to the prompt's console before main(), so --help and
+# --version still print. UltraMail calls it in its own CMakeLists.txt, as do
+# the standalone UltraTexter and AnchorPoint builds.
+#
+# Left as console programs, because their command-line modes print into the
+# prompt they were typed at, and a GUI-subsystem program cannot make that
+# prompt wait for it or see its exit code: DeviceExplorer (--list),
+# UltraCleaner (--scan), UltraNetMonitor (--list), UltraCanvasStart (--check),
+# UltraWeb (--check), UltraClaude (--print), UltraDesktop (--windows) and
+# UltraFIBU (its commands). Double-clicked, they close the console Windows
+# opened for them as their window comes up (ReleaseOwnConsole() in
+# OS/MSWindows/UltraCanvasWindowsDiagnostics.h). Debug builds keep the console.
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
-    if(BUILD_DEMO_APP)
-        set_target_properties(UltraCanvasDemo PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_TEXTER_APP)
-        set_target_properties(Texter PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAFILER_APP)
-        set_target_properties(UltraFiler PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAVIEWER_APP)
-        set_target_properties(UltraViewer PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAPAINT_APP)
-        set_target_properties(UltraPaint PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ARTCREATOR_APP)
-        set_target_properties(ArtCreator PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_FILEMANAGER_APP)
-        set_target_properties(UCFileManager PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
-    if(BUILD_ULTRAFILER_APP)
-        set_target_properties(UltraFiler PROPERTIES WIN32_EXECUTABLE TRUE)
-    endif()
+    foreach(_uc_gui_app
+            UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
+            UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
+            UltraClipboard UltraAuthenticator UltraPassword UltraVideo)
+        if(TARGET ${_uc_gui_app})
+            ultracanvas_windows_gui_app(${_uc_gui_app})
+        endif()
+    endforeach()
+    unset(_uc_gui_app)
 endif()
 
 add_custom_target(copy_assets
@@ -2171,6 +2219,9 @@ if(BUILD_ULTRAFILER_APP)
 endif()
 if(BUILD_ULTRAVIEWER_APP)
     add_dependencies(UltraViewer copy_assets)
+endif()
+if(TARGET UltraVideo)
+    add_dependencies(UltraVideo copy_assets)
 endif()
 if(BUILD_ULTRAPAINT_APP)
     add_dependencies(UltraPaint copy_assets)

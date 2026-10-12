@@ -1,6 +1,14 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
-// Last Modified: 2026-10-04
+// Version: 1.3.0 - the hover follows the rows when they scroll under a still
+//                  pointer (a wheel scroll, EnsureRowVisible): hoveredRow,
+//                  onItemHovered and onCellHovered are re-reported
+// Version: 1.2.0 - the callbacks the view puts on its model do nothing once the
+//                  view is gone (a model may outlive it); OnModelChanged for
+//                  subclasses, instead of wrapping those callbacks
+// Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth: what fitting a
+//                  column to its title and its rows' text takes
+// Last Modified: 2026-10-11
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -15,6 +23,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <unordered_map>
 
 namespace UltraCanvas {
 
@@ -178,6 +187,21 @@ namespace UltraCanvas {
         void SetColumnWidth(int column, int width);
         int  GetColumnWidth(int column) const;
 
+        // What fitting a column to its content takes (multi-column), measured
+        // on `ctx` - the context the view is painted on - without a layout.
+        //  - MeasureHeaderWidth: the narrowest width at which the column's
+        //    header shows its whole title, in headerFontSize, with room for the
+        //    sort triangle whether or not it is the sorted column - so a fitted
+        //    column keeps its width when the order changes, and a translated
+        //    title is measured as it reads.
+        //  - MeasureColumnTextWidth: the widest DisplayRole text of the
+        //    column's rows in `font`, without the delegate's padding. Each
+        //    distinct text is measured once and remembered (a date column of
+        //    thousands of rows holds a few hundred dates); another font starts
+        //    over.
+        int MeasureHeaderWidth(IRenderContext* ctx, int column) const;
+        int MeasureColumnTextWidth(IRenderContext* ctx, int column, const FontStyle& font) const;
+
         // Interactive column resizing by dragging the header column borders
         // (on by default; needs the header shown and >= 2 columns).
         void SetColumnsResizable(bool resizable) { columnsResizable = resizable; }
@@ -229,6 +253,14 @@ namespace UltraCanvas {
         void SetWindow(UltraCanvasWindowBase* win) override;
         bool AcceptsFocus() const override { return true; }
 
+    protected:
+        // After the view has taken in a change its model signalled - the rows
+        // replaced, one changed, inserted or removed. A subclass that keeps
+        // something derived from the rows (a column fitted to their text)
+        // marks it stale here, rather than wrapping the model's callbacks,
+        // which would outlive it.
+        virtual void OnModelChanged() {}
+
     private:
         // Model / Delegate / Selection
         std::shared_ptr<IListModel> model;
@@ -258,6 +290,17 @@ namespace UltraCanvas {
         int hoveredColumn = -1;
         int hoveredHeaderColumn = -1;
         int focusedRow = -1;
+        // Where the pointer last was (element and window coordinates) and
+        // whether it is still over the view: the rows move under a still
+        // pointer when the view scrolls, so the hover is worked out again
+        // from here (UpdateHover) and re-reported, as a mouse move would.
+        Point2Di lastPointer;
+        Point2Di lastPointerWindow;
+        bool pointerOver = false;
+        // A scroll under the pointer changed the hovered cell without a
+        // mouse move; the tooltip is left hidden then (as after any wheel
+        // scroll) and shown again by the next move, wherever it lands.
+        bool hoverTooltipStale = false;
 
         bool showItemTooltips = true;
 
@@ -270,6 +313,11 @@ namespace UltraCanvas {
         int  resizeCol = -1;
         int  resizeStartX = 0;
         int  resizeStartW = 0;
+
+        // MeasureColumnTextWidth's widths, per text, in the font textWidthFont
+        // names.
+        mutable std::unordered_map<std::string, int> textWidths;
+        mutable std::string textWidthFont;
 
         // Sort indicator (SetSortIndicator); sortColumn == -1 shows none.
         int  sortColumn = -1;
@@ -314,8 +362,15 @@ namespace UltraCanvas {
         void RenderRows(IRenderContext* ctx, const Rect2Di& contentRect);
 
         // Tooltips
-        void UpdateHoverTooltip(const UCEvent& event, int row, int column, int headerColumn);
+        void UpdateHoverTooltip(const Point2Di& pointerWindow, int row, int column, int headerColumn);
         void HideHoverTooltip();
+
+        // The hover for the cell under `pointer` (element coordinates):
+        // hoveredRow / hoveredColumn / hoveredHeaderColumn, onCellHovered,
+        // onItemHovered and - unless `tooltip` is false - the tooltip. True
+        // when the hovered row changed. A mouse move and a scroll under a
+        // still pointer both come here.
+        bool UpdateHover(const Point2Di& pointer, const Point2Di& pointerWindow, bool tooltip);
 
         // Event handlers
         bool HandleMouseDown(const UCEvent& event);
@@ -333,7 +388,13 @@ namespace UltraCanvas {
         void NavigateHome();
         void NavigateEnd();
 
-        // Model connection
+        // Model connection. The callbacks put on the model hold a weak handle
+        // to signalToken and do nothing once it is gone: the model can outlive
+        // the view (an application keeps it), and a proxy chained onto it
+        // keeps a copy of them (UltraCanvasListSortFilterProxy), so they are
+        // made harmless rather than removed - removing them from the model
+        // would cut off whoever chained on after the view.
+        std::shared_ptr<char> signalToken = std::make_shared<char>(0);
         void ConnectModelSignals();
         void DisconnectModelSignals();
     };

@@ -42,12 +42,17 @@ std::string ToForwardSlashes(std::string path) {
     return StripTrailingSeparator(std::move(path));
 }
 
-bool IsDirectory(const std::string& path) {
-    std::error_code ec;
-    return std::filesystem::is_directory(UltraCanvas::PathFromUtf8(path), ec) && !ec;
+} // namespace
+
+bool IsSystemRefusal(const std::error_code& ec) {
+    return ec == std::errc::operation_not_permitted;
 }
 
-} // namespace
+bool IsRefusedBySystem(const std::string& path) {
+    std::error_code ec;
+    std::filesystem::directory_iterator probe(PathFromUtf8(path), ec);
+    return IsSystemRefusal(ec);
+}
 
 std::string HomeDir() {
 #if defined(_WIN32) || defined(_WIN64)
@@ -302,7 +307,8 @@ bool GlobMatch(const std::string& name, const std::string& pattern) {
     return pi == p.size();
 }
 
-std::vector<std::string> ExpandWildcardDirectories(const std::string& pattern) {
+std::vector<std::string> ExpandWildcardDirectories(const std::string& pattern,
+                                                   size_t* refused) {
     std::vector<std::string> results;
     if (pattern.empty()) return results;
 
@@ -347,7 +353,10 @@ std::vector<std::string> ExpandWildcardDirectories(const std::string& pattern) {
             std::error_code ec;
             std::filesystem::directory_iterator iterator(
                 prefix, std::filesystem::directory_options::skip_permission_denied, ec);
-            if (ec) continue;
+            if (ec) {
+                if (refused && IsSystemRefusal(ec)) ++*refused;
+                continue;
+            }
             for (const auto& entry : iterator) {
                 std::error_code entryEc;
                 if (!entry.is_directory(entryEc) || entryEc) continue;
@@ -360,9 +369,16 @@ std::vector<std::string> ExpandWildcardDirectories(const std::string& pattern) {
         if (current.empty()) break;
     }
 
+    // A candidate the system will not even stat - on macOS 27 the path into
+    // another developer's container - is counted rather than dropped in
+    // silence, so the scan can say why it found nothing there.
     for (auto& path : current) {
-        if (!path.empty() && path != "/" && IsDirectory(path)) {
+        if (path.empty() || path == "/") continue;
+        std::error_code ec;
+        if (std::filesystem::is_directory(PathFromUtf8(path), ec) && !ec) {
             results.push_back(path);
+        } else if (refused && IsSystemRefusal(ec)) {
+            ++*refused;
         }
     }
     return results;

@@ -255,7 +255,7 @@ Never the current working directory (§7).
 |---|---|---|
 | **Charts** | `create` (+ optional CSV/`IChartDataSource` hookup later) | CumulativeFlowChart, contour family (pulls heavy marching-squares/3D code out of lean builds) |
 | **Diagrams** | `create` + `createFromText`/`textKeywords` — gives the framework a single `RenderDiagramText(text)` API that dispatches "kanban"→board, future "flowchart"→flowchart… | KanbanBoard (pilot; its Mermaid loader exists), FlowChart, Sankey |
-| **Widgets** | `create`; create-by-name feeds `UltraCanvasTemplate`/future UI-from-file | Spreadsheet, EBookViewer, MediaViewer — the heavyweight widgets |
+| **Widgets** | `create`; create-by-name feeds a future UI-from-file loader | Spreadsheet, EBookViewer, MediaViewer — the heavyweight widgets |
 | **Tools** | `create` (workbench panel) + optional headless `invoke` | OCR (Docs list it as "Investigation & Proposal" — specify it as a plugin from day one), Vectorizer, QR/Barcode |
 | **File formats** | existing `IGraphicsPlugin` via `host->RegisterGraphicsPlugin` — folded into the same DSOs | CDR, XAR (already separate CMake targets), LaTeX (already a dlopen'ed MODULE — port it to the common loader) |
 

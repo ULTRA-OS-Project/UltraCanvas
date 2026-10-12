@@ -2,8 +2,10 @@
 // The interactive curve editor element. The curve model it edits lives in
 // core/UltraCanvasToneCurve.cpp.
 // See include/UltraCanvasCurveEditor.h for the API and the interaction rules.
+// Version: 1.0.1 - a press of a button other than left or right leaves the
+//                  focus where it is and goes on to the elements around
 // Version: 1.0.0
-// Last Modified: 2026-08-25
+// Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCurveEditor.h"
@@ -273,6 +275,12 @@ bool UltraCanvasCurveEditor::OnEvent(const UCEvent& event) {
         case UCEventType::MouseDown: {
             Point2Df pos(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
             if (!Contains(pos)) return false;
+            // Left and right edit the curve; any other button is not the
+            // editor's, so it neither takes the focus nor stops the press
+            // from going on to the elements around the editor.
+            if (event.button != UCMouseButton::Left && event.button != UCMouseButton::Right) {
+                return false;
+            }
             SetFocus(true);
 
             float in = 0.0f, out = 0.0f;

@@ -119,6 +119,8 @@ void PrintReport(const UltraCleaner::ScanReport& report, size_t itemLimit) {
     if (report.unreadablePaths > 0) {
         std::printf("%zu locations could not be read\n", report.unreadablePaths);
     }
+    const std::string blocked = UltraCleaner::BlockedAccessAdvice(report);
+    if (!blocked.empty()) std::printf("%s\n", blocked.c_str());
     std::printf("\n");
     for (const auto& summary : report.categories) {
         std::printf("  %-26s %6zu items  %10s  %s\n",

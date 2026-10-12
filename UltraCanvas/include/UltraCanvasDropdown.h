@@ -1,7 +1,7 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-05-29
+// Last Modified: 2026-10-08 - default bodies mark unused parameters (void)
 #pragma once
 
 #include "UltraCanvasUIElement.h"
@@ -105,7 +105,7 @@ namespace UltraCanvas {
         int GetRowCount() const override;
         int GetColumnCount() const override { return 1; }
         ListDataValue GetData(const ListIndex& index, ListDataRole role) const override;
-        bool SetData(const ListIndex& index, ListDataRole role, const ListDataValue& value) override { return false; }
+        bool SetData(const ListIndex& index, ListDataRole role, const ListDataValue& value) override { (void)index; (void)role; (void)value; return false; }
 
     private:
         const std::vector<DropdownItem>* items = nullptr;

@@ -44,6 +44,8 @@ below it cannot overwrite the entry's own name or command.
 | `iconName` / `iconFile` | `Icon=` and, when a caller resolves it, the image file it names |
 | `url` | `URL=`, for a `Type=Link` web shortcut |
 | `mimeTypes` | `MimeType=` — what the application declares it opens |
+| `categories` | `Categories=` — the menu categories it belongs to (`Graphics`, `RasterGraphics`, `TextEditor`, …) |
+| `startupWMClass` | `StartupWMClass=` — the `WM_CLASS` its windows carry, which ties a running window to its entry |
 | `terminal` / `noDisplay` / `hidden` | the flags, reported rather than acted on |
 
 **Localization** follows the specification: `Name[de_DE]` beats `Name[de]`

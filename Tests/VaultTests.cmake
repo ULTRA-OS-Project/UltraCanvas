@@ -18,3 +18,11 @@ set_target_properties(UltraVaultTests PROPERTIES
 )
 add_test(NAME UltraVaultTests COMMAND UltraVaultTests
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+# UltraVault is a home in the shared core (UltraCanvas/CMakeLists.txt, "MODULE
+# HOMES"), so this binary loads libUltraCanvas. On Windows the loader looks
+# beside the executable, in the working directory and on PATH - and the DLL
+# is in the build root while the test is in bin/, which exited it with
+# STATUS_DLL_NOT_FOUND (0xc0000135) in CI. Linux and macOS find it through
+# the build-tree rpath; the extra PATH entry is harmless there.
+set_tests_properties(UltraVaultTests PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${CMAKE_BINARY_DIR}")

@@ -1,5 +1,7 @@
 # UltraCanvas on WebAssembly
 
+<!-- doc-check: std::vector<uint8_t> documentBytes; -->
+
 **Status: experimental.** The framework builds with Emscripten and runs in
 Chromium: windows render through the same Cairo/Pango pipeline as the desktop
 backends, and mouse, wheel, touch and keyboard input drive the widgets. This
@@ -54,11 +56,15 @@ ticking; a stack-local application would be destroyed under it.
 ## Browser utilities (`UltraCanvasWASMSupport.h`)
 
 Optional helpers for the browser features that have no desktop equivalent.
-They are only declared when building for WebAssembly, so guard their use:
+They are only built for WebAssembly, so guard their use. The header lives in
+`UltraCanvas/OS/WASM/`, which is not on the library's public include path: add
+the checkout's `UltraCanvas` directory to the application's include directories
+(`target_include_directories(myapp PRIVATE <checkout>/UltraCanvas)`) and include
+it by that path:
 
 ```cpp
 #if defined(__EMSCRIPTEN__)
-#include "UltraCanvasWASMSupport.h"
+#include "OS/WASM/UltraCanvasWASMSupport.h"
 #endif
 ```
 
@@ -70,12 +76,12 @@ touch UI elements.
 
 ```cpp
 // Mount /data on IndexedDB and load what it holds from the last session.
-WASMFileSystem::MountFileSystem("/data", [](bool loaded) {
+WASMFileSystem::MountFileSystem("/data", [settings](bool loaded) {
     if (loaded) settings->LoadFrom("/data/settings.json");
 });
 
 // Later, after writing files under /data:
-WASMFileSystem::SyncToBrowser([](bool ok) { statusLabel->SetText(ok ? "Saved" : "Save failed"); });
+WASMFileSystem::SyncToBrowser([statusLabel](bool ok) { statusLabel->SetText(ok ? "Saved" : "Save failed"); });
 ```
 
 `FileExists`, `ReadFile`, `WriteFile`, `DeleteFile`, `CreateDirectory` and
@@ -87,12 +93,13 @@ and `std::fstream` see the same files.
 ```cpp
 // Let the user pick one or more images; they land in the virtual FS.
 WASMBrowser::PickFilesAsync(".png,.jpg,image/*", /*multiple=*/true,
-    [](const std::vector<std::string>& paths) {
+    [imageViewer](const std::vector<std::string>& paths) {
         for (const auto& path : paths) imageViewer->LoadImage(path);   // empty: cancelled
     });
 
 // Save: the framework facade already does the right thing.
-UltraCanvasNativeDialogs::SaveContent(documentBytes, FileDialogOptions().SetDefaultFileName("drawing.svg"));
+UltraCanvasNativeDialogs::SaveContent(documentBytes.data(), documentBytes.size(),
+                                      FileDialogOptions().SetDefaultFileName("drawing.svg"));
 // or directly:
 WASMBrowser::DownloadFile("drawing.svg", documentBytes, "image/svg+xml");
 ```
@@ -100,8 +107,8 @@ WASMBrowser::DownloadFile("drawing.svg", documentBytes, "image/svg+xml");
 ### Fetching
 
 ```cpp
-WASMNetwork::FetchTextAsync("data/catalogue.json", [](bool ok, const std::string& text) {
-    if (ok) catalogue = UltraCanvasJSON::Parse(text);
+WASMNetwork::FetchTextAsync("data/catalogue.json", [this](bool ok, const std::string& text) {
+    if (ok) catalogue = JSON::Parse(text);   // catalogue: a JSONValue member
 });
 ```
 
@@ -111,11 +118,13 @@ Same-origin URLs always work; cross-origin needs CORS on the server.
 
 ```cpp
 // Decode through the browser (any format it supports); pixels are straight RGBA.
-WASMResourceLoader::LoadImage("photo.webp", [](bool ok, int w, int h, const std::vector<uint8_t>& rgba) { ... });
+WASMResourceLoader::LoadImage("photo.webp", [](bool ok, int w, int h, const std::vector<uint8_t>& rgba) {
+    // ok: rgba holds w * h * 4 bytes, row by row
+});
 
 // Fetch a font file into the virtual FS and register it with Pango.
 WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::string& path) {
-    if (ok) UltraCanvasApplication::GetInstance()->RegisterFontFile(path);
+    if (ok) UltraCanvasApplication::GetCurrent()->RegisterFontFile(path);
 });
 ```
 

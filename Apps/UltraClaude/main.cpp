@@ -15,11 +15,14 @@
 // Last Modified: 2026-10-02
 // Author: UltraCanvas Framework / ULTRA OS
 
+#include "ChatStore.h"
 #include "ClaudeChatSession.h"
+#include "RepoStatus.h"
 #include "ui/UltraClaudeWindow.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 
 #include <condition_variable>
@@ -55,6 +58,9 @@ void PrintUsage(const char* programName) {
         "      --permission-mode <mode>\n"
         "                        default, acceptEdits, plan or bypassPermissions\n"
         "  --claude <path>       The claude program to run (default: claude on PATH)\n"
+        "  --list-chats          Print the chats the window remembers and exit\n"
+        "  --count-lines [<dir>] Print the lines <dir> (default: this folder) holds that\n"
+        "                        its default branch does not - the chat list's badge\n"
         "  --version             Print the version and exit\n"
         "  --help                This text\n"
         "\n"
@@ -125,6 +131,41 @@ int RunPrint(const std::string& prompt, const ClaudeChatOptions& options) {
 
 } // namespace
 
+// --list-chats: the chats the window's list shows, newest first.
+int RunListChats() {
+    ChatStore store(ChatStore::DefaultFolder());
+    std::string error;
+    if (!store.Load(error)) { std::fprintf(stderr, "%s\n", error.c_str()); return EXIT_FAILURE; }
+    std::printf("%s\n", UltraCanvas::PathToUtf8(ChatStore::DefaultFolder()).c_str());
+    for (const ChatRecord& chat : store.Chats()) {
+        std::printf("%s  %-40s  %s  session=%s\n", chat.id.c_str(), chat.title.c_str(),
+                    chat.folder.c_str(), chat.sessionId.empty() ? "-" : chat.sessionId.c_str());
+    }
+    return EXIT_SUCCESS;
+}
+
+// --count-lines: the number the chat list's badge shows for a folder.
+int RunCountLines(const std::string& folder) {
+    const RepoLines r = MeasureLinesNotMerged(folder);
+    switch (r.state) {
+        case RepoLines::State::Measured:
+            std::printf("%lld lines not in %s%s%s\n", static_cast<long long>(r.lines), r.base.c_str(),
+                        r.branch.empty() ? "" : (" (branch " + r.branch + ")").c_str(),
+                        r.fetched ? "" : " - not fetched, compared with the last fetch");
+            return EXIT_SUCCESS;
+        case RepoLines::State::NoBase:
+            std::printf("No default branch to compare with%s%s\n", r.error.empty() ? "" : ": ", r.error.c_str());
+            return EXIT_SUCCESS;
+        case RepoLines::State::NotARepo:
+            std::printf("Not a git work tree\n");
+            return EXIT_SUCCESS;
+        case RepoLines::State::Failed:
+            break;
+    }
+    std::fprintf(stderr, "Could not count: %s\n", r.error.c_str());
+    return EXIT_FAILURE;
+}
+
 int main(int argc, char** argv) {
     std::string printPrompt;
     bool print = false;
@@ -154,6 +195,10 @@ int main(int argc, char** argv) {
             options.workingDirectory = next("--cwd");
         } else if (std::strcmp(arg, "--permission-mode") == 0) {
             options.permissionMode = next("--permission-mode");
+        } else if (std::strcmp(arg, "--list-chats") == 0) {
+            return RunListChats();
+        } else if (std::strcmp(arg, "--count-lines") == 0) {
+            return RunCountLines(i + 1 < argc ? argv[i + 1] : ".");
         } else if (std::strcmp(arg, "--claude") == 0) {
             options.executable = next("--claude");
         } else {

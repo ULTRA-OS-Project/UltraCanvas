@@ -31,8 +31,8 @@
 // time, the holder of the recorder lease (AcquireRecorder).
 //
 // Not thread-safe: use one instance from one thread.
-// Version: 1.0.0
-// Last Modified: 2026-10-06
+// Version: 1.1.0 - ClipboardHistoryPolicy::previewStyle: how UltraClipboard previews an image
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -112,6 +112,15 @@ struct ClipboardHistoryQuery {
     std::vector<ClipboardEntryKind> kinds;   // empty = all
     bool pinnedOnly = false;
     size_t limit = 0;                        // 0 = all
+    // Most recently used first, pinned or not (List puts the pinned ones
+    // first otherwise): "the last image copied".
+    bool newestFirst = false;
+};
+
+// How UltraClipboard previews an image whose thumbnail the pointer rests on.
+enum class ClipboardPreviewStyle : int {
+    Classic = 0,   // the picture alone, floating over the middle of the list
+    Modern = 1     // a pane over the right part of the list, with the viewer's info line
 };
 
 // Shared by every process that opens the history (kept in the database).
@@ -122,6 +131,7 @@ struct ClipboardHistoryPolicy {
     uint64_t maxEntryBytes = 64ull << 20;
     bool recordingPaused = false;
     bool imageThumbnails = true;
+    ClipboardPreviewStyle previewStyle = ClipboardPreviewStyle::Modern;
     std::vector<std::string> excludedApplications;
 
     static ClipboardHistoryPolicy Defaults();
@@ -271,6 +281,16 @@ enum class ClipboardTextEdit {
     Sentence     // The first letter of each sentence capitalised, the rest lower
 };
 std::string EditClipboardText(const std::string& text, ClipboardTextEdit edit);
+
+// The kinds of entry a program takes when something is pasted into it, most
+// wanted first, from its desktop entry's Categories= and MimeType=
+// (UCDesktopEntry): images and colours for a graphics editor, files for a
+// file manager, code and text for an editor, an IDE or a terminal, links and
+// text for a browser. Empty when nothing says - the history is then offered
+// as it is. UltraDesktop's quick panel puts these first for the window that
+// Super+V was pressed over.
+std::vector<ClipboardEntryKind> PreferredClipboardKinds(const std::vector<std::string>& categories,
+                                                        const std::vector<std::string>& mimeTypes);
 
 // An image entry as a file another program opens (UltraClipboard hands images
 // to UltraPaint this way): its bytes - a Windows CF_DIB gains the BMP file

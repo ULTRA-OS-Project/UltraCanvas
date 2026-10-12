@@ -27,6 +27,13 @@
 
 namespace UltraCanvas {
 
+// Display > Tab style: the three looks of the window's tab strip.
+enum class FilerTabStripStyle {
+    Modern,        // capsules floating in the strip, the open one outlined
+    SimpleModern,  // flat tabs, a line under the open one
+    Classic        // the rounded tabs joined to the page, as before 1.71.0
+};
+
 class UltraFilerSettings {
 public:
     // ===== DEFAULTS =====
@@ -140,6 +147,14 @@ public:
     // thumbnail of their own content, and programs and shortcuts that carry
     // an icon inside them, are drawn the same way under both.
     FilerFileIconStyle fileIconStyle = FilerFileIconStyle::HostOperatingSystem;
+
+    // Display > Tab style: how the window's tab strip draws its tabs.
+    // Modern is the capsule look (each tab a pill floating in the strip,
+    // the open one white with a blue outline, the others plain text until
+    // hovered); Simple modern is flat tabs with a blue line under the open
+    // one; Classic is the rounded tabs joined to the page that every release
+    // before 1.71.0 drew.
+    FilerTabStripStyle tabStripStyle = FilerTabStripStyle::Modern;
 
     // Display > Files: whether the file display lists what the platform
     // calls hidden - the dot names everywhere, plus the hidden attribute on
@@ -391,6 +406,8 @@ public:
         // Its only other value, "host", is the default now anyway.
         it = kv.find("display.file.icons.style");
         if (it != kv.end()) fileIconStyle = ParseFileIconStyle(it->second);
+        it = kv.find("display.tabs.style");
+        if (it != kv.end()) tabStripStyle = ParseTabStripStyle(it->second);
         it = kv.find("display.files.show.hidden");
         if (it != kv.end())
             showHiddenFiles =
@@ -502,6 +519,8 @@ public:
              << FormatExtensionBadge(extensionBadge) << "\n";
         file << "display.file.icons.style = "
              << FormatFileIconStyle(fileIconStyle) << "\n";
+        file << "display.tabs.style = "
+             << FormatTabStripStyle(tabStripStyle) << "\n";
         file << "display.files.show.hidden = "
              << (showHiddenFiles ? "true" : "false") << "\n";
         file << "display.ignored.builtin = "
@@ -580,6 +599,25 @@ public:
     static FilerFileIconStyle ParseFileIconStyle(const std::string& text) {
         return Trim(text) == "host" ? FilerFileIconStyle::HostOperatingSystem
                                     : FilerFileIconStyle::Simple;
+    }
+
+    // ===== HOW THE TAB STRIP DRAWS ITS TABS =====
+    // Named, like every other choice in the file. An unknown value - a file
+    // written by a later release with a fourth style - reads back as Modern,
+    // the default.
+    static std::string FormatTabStripStyle(FilerTabStripStyle style) {
+        switch (style) {
+            case FilerTabStripStyle::SimpleModern: return "simple-modern";
+            case FilerTabStripStyle::Classic:      return "classic";
+            default:                               return "modern";
+        }
+    }
+
+    static FilerTabStripStyle ParseTabStripStyle(const std::string& text) {
+        const std::string value = Trim(text);
+        if (value == "simple-modern") return FilerTabStripStyle::SimpleModern;
+        if (value == "classic")       return FilerTabStripStyle::Classic;
+        return FilerTabStripStyle::Modern;
     }
 
     // ===== THE DROP CONFIRMATION =====

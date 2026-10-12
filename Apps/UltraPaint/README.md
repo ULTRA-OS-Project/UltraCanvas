@@ -41,7 +41,7 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 | Clone Stamp | S | Ctrl+click sets the source |
 | Smudge | U | Drags colour along |
 | Dodge / Burn | O / K | Lighten / darken |
-| Fill | F | Flood fill: tolerance, contiguous, sample merged, opacity |
+| Fill | F | Flood fill: mode (Normal / Replace), tolerance, contiguous, sample merged, opacity |
 | Gradient | G | Foreground → background; linear, radial, reflected |
 | Line / Rectangle / Ellipse | D / Q / P | Outline in the foreground colour, fill in the background colour, anti-aliased, Shift constrains |
 | Text | T | Click, type, choose font / size / bold |
@@ -51,19 +51,51 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 `[` and `]` change the brush size; `X` swaps the colours, `Shift+D` resets
 them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
 
+The icons are line drawings in sets, each sharp at the size it is drawn
+for: `media/icons/ultrapaint/28/` on a 28-unit grid for the palette's flat
+36 px buttons, `media/icons/ultrapaint/` on a 24-unit grid for 24 px, and
+`media/icons/ultrapaint/16/` on a 16-unit grid with 1 px lines for the menus,
+where every entry has one (an adjustment's or a filter's is named by its
+id: `16/gaussian-blur.svg`). Straight edges sit on whole pixels, and a
+selection's marching ants have gaps of 3 px or more, so they stay apart at
+16 px. Where the window is too short for every tool the palette scrolls (the
+wheel, or the hints at its ends).
+
+### Filling with a transparent colour
+
+The Fill tool's *Mode* says what the colour does to the pixels it lands on:
+
+| Mode | What a fill does |
+|---|---|
+| Normal | Paints over them. The colour's alpha only says how much of it shows, so alpha 0 changes nothing - the status bar says so instead of ignoring the click |
+| Replace | Puts the colour in their place, alpha included. Alpha 0 makes the area transparent, and the checkerboard shows through; alpha 128 leaves it half transparent in that colour |
+
+For an opaque colour the two are the same. *Opacity* applies to both: at
+0.5, Replace takes the area half way to the colour. The colour's alpha is
+the *A* slider of the colour panel (the last two digits of *Hex*). A
+transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
+`.ucraster`); a JPEG has none.
+
 ## Menus
 
 - **File:** New (presets, background), New Window, Open, Import Image
   (merge into this image or open a new window), Save, Save As, Export with
   Options (the framework's format dialog), Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
-  as New Image, Delete, Fill with Foreground / Background.
+  as New Image, Paste Last Copied Image (Ctrl+Alt+V), Delete, Fill with
+  Foreground / Background. When Paste finds no picture on the clipboard -
+  text was copied after it - it offers the newest image of the clipboard
+  history UltraDesktop keeps, saying when it was copied; Paste Last Copied
+  Image takes it without asking.
 - **Image:** Scale Image, Canvas Size (with anchor), Crop to Selection
   (applies the Crop tool's rectangle when that tool is holding one,
   otherwise crops to the selection),
   Flip, Rotate, Flatten.
 - **Layer:** New, Duplicate, Delete, Merge Down, Move Up / Down,
-  Properties (name, opacity, blend mode, visibility, lock).
+  Properties (name, opacity, blend mode, visibility, lock). In the Layers
+  panel a click selects a layer and a double-click on its name renames it in
+  place (Enter or a click elsewhere keeps the name, Escape the old one; undo
+  takes a rename back).
 - **Select:** All, None, Invert, From Layer Alpha, Feather, Grow, Shrink.
 - **Adjust:** Brightness / Contrast, Hue / Saturation, Gamma, Levels,
   Curves, Posterize, Threshold, Solarize, Invert, Desaturate, Sepia,

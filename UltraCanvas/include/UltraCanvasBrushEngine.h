@@ -141,21 +141,33 @@ namespace RasterPaint {
                          const std::function<bool(float, float)>& inside,
                          const RasterPixel& colour, bool antialias, RasterBlendMode blend);
 
+    // How a fill meets the pixels already there.
+    enum class FillCompositing {
+        Blend = 0,   // laid over them in the blend mode (source-over): the
+                     // colour's alpha only says how much of it shows, so a
+                     // transparent colour changes nothing
+        Replace      // takes their place, alpha included: a transparent
+                     // colour makes them transparent. `blend` is not used.
+    };
+
     // Stamp a width*height coverage map (255 = full) at (x, y) in `colour`.
     Rect2Di StampMask(UCRasterLayer& layer, const UCRasterSelection* sel,
                       const uint8_t* mask, int maskWidth, int maskHeight, int x, int y,
                       const RasterPixel& colour, float opacity = 1.0f,
-                      RasterBlendMode blend = RasterBlendMode::Normal);
+                      RasterBlendMode blend = RasterBlendMode::Normal,
+                      FillCompositing compositing = FillCompositing::Blend);
 
     // Flood fill from (x, y): `tolerance` 0..255 is the mean per-channel RGBA
     // distance a pixel may have from the seed; `contiguous` false fills every
     // matching pixel in the layer. `sampleMerged` lets the caller pass a
-    // different layer to read colours from (the composite). Returns the
-    // changed rectangle.
+    // different layer to read colours from (the composite). `compositing`
+    // Replace sets the region to `colour` - transparent included - where
+    // Blend paints over it. Returns the changed rectangle.
     Rect2Di FloodFill(UCRasterLayer& layer, const UCRasterSelection* sel, int x, int y,
                       const RasterPixel& colour, int tolerance, bool contiguous,
                       const UCRasterLayer* sampleLayer = nullptr,
-                      RasterBlendMode blend = RasterBlendMode::Normal, float opacity = 1.0f);
+                      RasterBlendMode blend = RasterBlendMode::Normal, float opacity = 1.0f,
+                      FillCompositing compositing = FillCompositing::Blend);
 
     // Magic wand: the same region test as FloodFill, returned as a
     // canvas-sized coverage map for UCRasterSelection::SetMask().

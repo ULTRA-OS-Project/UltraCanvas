@@ -1,8 +1,9 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixDiagram.h
 // Matrix diagram element: item sets crossed in L and T arrangements, cell marks
 // drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 //
 // The matrix diagram is one of the Seven Management and Planning Tools: it
@@ -250,7 +251,14 @@ namespace UltraCanvas {
         Layout layout;
 
         // ===== LAYOUT =====
-        void InvalidateLayout();
+    public:
+        // The framework's invalidation - a new size, visibility, style - drops
+        // the chart's own layout cache and lets the layout engine re-measure.
+        // A cache-only InvalidateLayout() overrode the engine's and kept the
+        // change from reaching the parent.
+        void InvalidateLayout() override { DropLayoutCache(); UltraCanvasChartElementBase::InvalidateLayout(); }
+    private:
+        void DropLayoutCache();
         void UpdateLayout(IRenderContext* ctx);
         void LayoutL(IRenderContext* ctx, const Rect2Dd& area);
         void LayoutT(IRenderContext* ctx, const Rect2Dd& area);

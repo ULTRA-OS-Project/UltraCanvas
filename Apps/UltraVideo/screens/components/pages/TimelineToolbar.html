@@ -1,0 +1,22 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 1100x96. --><title>Timeline toolbar — preview</title>
+<style>html,body{margin:0;background:var(--bg-100)} .note{padding:8px 12px}</style></head>
+<body class="uv">
+<div class="uv-toolbar" id="tb"></div>
+<div class="note uv-cap">Tools <span class="uv-kbd">V</span> Select · <span class="uv-kbd">B</span> Blade · <span class="uv-kbd">T</span> Trim · <span class="uv-kbd">Y</span> Slip &nbsp;—&nbsp; Toggles <span class="uv-kbd">P</span> Magnetic main track · <span class="uv-kbd">N</span> Snapping · <span class="uv-kbd">⇧B</span> Beat marks</div>
+<script>
+  var I = UltraVideo.icon, b = function (ic, t, cls) { return '<button class="uv-btn uv-btn--ghost uv-btn--icon ' + (cls || '') + '" title="' + t + '">' + I(ic) + '</button>'; };
+  document.getElementById('tb').innerHTML =
+    b('select', 'Select (V)', 'is-on') + b('blade', 'Blade (B)') + b('ripple', 'Trim (T)') + b('slip', 'Slip (Y)') +
+    '<span class="uv-toolbar__sep"></span>' +
+    b('split', 'Split at playhead (S)') + b('trash', 'Delete (Del)') + b('marker', 'Add marker (M)') +
+    '<span class="uv-toolbar__sep"></span>' +
+    b('magnet', 'Magnetic main track (P)', 'is-on') + b('snap', 'Snapping (N)', 'is-on') + b('beat', 'Beat marks (Shift+B)') +
+    '<span class="uv-toolbar__spacer"></span>' +
+    '<span class="uv-tc uv-tc--lg">00:00:11:05</span><span class="uv-cap uv-mono">/ 00:00:30:00</span>' +
+    '<span class="uv-toolbar__spacer"></span>' +
+    b('zoomOut', 'Zoom out (−)') + '<span class="uv-zoom"><span class="uv-zoom__fill" style="width:42%"></span><span class="uv-zoom__knob" style="left:42%"></span></span>' + b('zoomIn', 'Zoom in (+)') + b('fit', 'Fit project (Shift+Z)');
+</script>
+</body>
+</html>

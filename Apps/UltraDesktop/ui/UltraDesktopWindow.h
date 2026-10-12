@@ -190,6 +190,12 @@ private:
     bool clipboardPaused_ = false;
     int ticksSinceHistoryCheck_ = 0;
     int ticksSincePrune_ = 0;
+    // What the quick panel is opened for: the last window of another program
+    // to have had the focus (the bar's button takes it from that window), and
+    // the installed applications, to know what that program takes.
+    uint64_t lastPasteWindow_ = 0;
+    std::vector<UltraCanvas::UCDesktopEntry> applications_;
+    std::chrono::steady_clock::time_point applicationsRead_{};
 
     // window id -> the toolbar item for it, in the order the user keeps
     std::map<uint64_t, std::string> runningItems_;

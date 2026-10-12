@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.6 - the header title wraps a long page description instead of cutting it off
-// Last Modified: 2026-10-04
+// Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
+// Last Modified: 2026-10-08
+// V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
 //   never scroll the header away); displayContainer is now the explicit single
@@ -890,6 +891,15 @@ namespace UltraCanvas {
                 .AddVariant("listview", "Detail View (columns + header)")
                 .AddVariant("listview", "Styled List")
                 .AddVariant("listview", "Icon List");
+
+        // The old "Templates demo" (a container of elements per row), ported
+        // to the list view: one delegate paints every row.
+        extendedBuilder.AddItem("listviewdashboard", "Domain Dashboard",
+                                "A list view with a custom delegate: links, actions, sparklines, sorting and a row menu",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateListViewDashboardExamples(); },
+                                "DemoApp/UltraCanvasListViewDashboardExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasListViewExamples.md");
 
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
@@ -1794,6 +1804,17 @@ namespace UltraCanvas {
                 .AddVariant("video", "Camera Recording")
                 .AddVariant("video", "Custom Controls");
 
+        videoBuilder.AddItem("videotimeline", "Video Timeline",
+                             "A media timeline to edit: clips on tracks under a ruler, trim, reorder, "
+                             "split, transitions, markers, beats, a playhead; every edit reported, never applied",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateVideoTimelineExamples(); },
+                             "DemoApp/UltraCanvasVideoTimelineExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasVideoTimeline.md")
+                .AddVariant("videotimeline", "Magnetic main track, free lanes")
+                .AddVariant("videotimeline", "Trim, split, transitions")
+                .AddVariant("videotimeline", "Light and dark palettes");
+
         // ===== TEXT DOCUMENTS =====
         auto textDocBuilder = DemoCategoryBuilder(this, DemoCategory::TextDocuments);
 
@@ -1959,13 +1980,13 @@ namespace UltraCanvas {
 #endif
 
 #ifdef ULTRACANVAS_HAS_VECTORIZER_PLUGIN
-        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image → SVG vector tracer",
+        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image to SVG vector tracer",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateVectorizerExamples(); },
                              "Apps/DemoApp/UltraCanvasVectorizerExamples.cpp",
                              "Docs/Modules/Vectorizer/README.md");
 #else
-        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image → SVG vector tracer",
+        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image to SVG vector tracer",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"Docs/Modules/Vectorizer/README.md")); });
 #endif
@@ -2096,10 +2117,14 @@ namespace UltraCanvas {
                                "as single native windows (Wine tier)",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraWin"); });
-        // Built module (VideoFX/, target VideoFX, on FFmpeg) at stage 1 of its
-        // roadmap: probe, frames, trim / speed / effects / joins, export, the
-        // videofx CLI and VideoFXTest. No application calls it yet, and
-        // transitions, overlays and keyframes are still to come - partial.
+        // Built module (VideoFX/, target VideoFX, on FFmpeg) through stage 4b
+        // of its roadmap: probe, frames, waveforms, the segment timeline with
+        // effects, speed, transitions and overlays, photos with pan and zoom
+        // keeping faces in shot, slideshows, music with ducking, beats,
+        // project files, the videofx CLI and VideoFXTest. No application calls
+        // it yet (UltraVideo is proposed), and picture-in-picture, keyframes,
+        // free audio tracks and the timeline element are still to come -
+        // partial. Docs/Modules/VideoFX/README.md, *Roadmap*, is the record.
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
@@ -2472,16 +2497,16 @@ namespace UltraCanvas {
 
         switch (item->status) {
             case ImplementationStatus::FullyImplemented:
-                statusText << "✓ Fully Implemented";
+                statusText << "Fully Implemented";
                 break;
             case ImplementationStatus::PartiallyImplemented:
-                statusText << "⚠ Partially Implemented";
+                statusText << "Partially Implemented";
                 break;
             case ImplementationStatus::NotImplemented:
-                statusText << "✗ Not Implemented";
+                statusText << "Not Implemented";
                 break;
             case ImplementationStatus::Planned:
-                statusText << "📋 Planned";
+                statusText << "Planned";
                 break;
         }
 
@@ -2528,7 +2553,7 @@ namespace UltraCanvas {
     }
 
 // ===== APPLICATION LIFECYCLE =====
-    void UltraCanvasDemoApplication::Run() {
+    void UltraCanvasDemoApplication::Run(bool showInfoWindow) {
         // Run application main loop
         debugOutput << "Running UltraCanvas Demo Application..." << std::endl;
         debugOutput << "Select items from the tree view to see implementation examples." << std::endl;
@@ -2538,8 +2563,11 @@ namespace UltraCanvas {
             // The application will handle the event loop
         }
 
-        // Show the info window at startup
-        ShowInfoWindow();
+        // Show the info window at startup, unless the command line asked for a
+        // page or for no About window - it is modal and would cover the page
+        if (showInfoWindow) {
+            ShowInfoWindow();
+        }
 
         auto app = UltraCanvasApplication::GetInstance();
         app->Run();

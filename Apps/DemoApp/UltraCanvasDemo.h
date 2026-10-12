@@ -1,9 +1,13 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.6 - DemoIconPath, SetFlatButtonIcon: flat icons instead of glyphs
+// Version: 1.0.5 - Run(showInfoWindow): the About window can be left out at start
+// Version: 1.0.4 - CreateListViewDashboardExamples: the domain dashboard, ported to
+//                 the list view
 // Version: 1.0.3 - CreateDomainTableDemo is gone with UltraCanvasTableDemo.cpp, which
 //                 was in no build
 // Version: 1.0.2
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 //
 // One rule that every example file here follows, because the demo is the
@@ -22,6 +26,13 @@
 //   point the other way are ownership and stay shared_ptr: a popup the
 //   lambda keeps alive, a sibling it updates, the make_shared state it
 //   counts in.
+//
+// And one about what goes into a label or a button's text: only characters
+// the bundled UI font has. An emoji, a check mark, an arrow or a "▼" drawn as
+// text depends on some other font having it, and where none does - Windows,
+// with the bundled fonts - it shows as a box of hex digits. Give a button a
+// flat icon instead (SetFlatButtonIcon, media/icons/menu/), and write
+// "Raster to SVG" rather than "Raster → SVG".
 #pragma once
 
 #include "UltraCanvasWindow.h"
@@ -36,6 +47,8 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
 #include "Plugins/Diagrams/UltraCanvasGourceTree.h"
 #include <memory>
@@ -264,6 +277,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTableViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSpreadsheetExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateListViewExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateListViewDashboardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuConfigExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
@@ -307,6 +321,7 @@ namespace UltraCanvas {
         // Media Elements
         std::shared_ptr<UltraCanvasUIElement> CreateAudioExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateWaveformExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateVideoTimelineExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSpectrogramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLevelMeterExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAudioAnalysisExamples();
@@ -482,7 +497,10 @@ namespace UltraCanvas {
         );
 
         // ===== APPLICATION LIFECYCLE =====
-        void Run();
+        // showInfoWindow = false starts without the "About UltraCanvas" window
+        // (main.cpp: --no-about, and implied by --component), so a page can be
+        // opened and screenshotted without a click.
+        void Run(bool showInfoWindow = true);
         void Shutdown();
     };
 
@@ -510,5 +528,22 @@ namespace UltraCanvas {
 
 // ===== MEDIA VIEWER (full-size bitmaps, vector drawings, 3D models) =====
     void ShowInMediaViewer(const std::string& path);
+
+// ===== ICONS =====
+    // A file of media/icons/, e.g. DemoIconPath("menu/save.svg").
+    inline std::string DemoIconPath(const std::string& relativePath) {
+        return NormalizePath(GetResourcesDir() + "media/icons/" + relativePath);
+    }
+
+    // A flat icon of media/icons/ on a button, drawn in the button's text
+    // colour (as a mask), in place of an emoji or a symbol in its label.
+    // ButtonIconPosition::Center shows the icon alone.
+    inline void SetFlatButtonIcon(UltraCanvasButton& button, const std::string& relativePath,
+                                  ButtonIconPosition position = ButtonIconPosition::Left, int size = 16) {
+        button.SetIcon(DemoIconPath(relativePath));
+        button.SetIconSize(size, size);
+        button.SetIconPosition(position);
+        button.SetUseIconAsMask(true);
+    }
 
 } // namespace UltraCanvas

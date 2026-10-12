@@ -11,8 +11,9 @@
 // See Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md for the research
 // behind the split.
 //
+// Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-07-30
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -380,7 +381,14 @@ namespace UltraCanvas {
         bool IsPending(size_t index) const;
 
         // ===== LAYOUT =====
-        void InvalidateLayout() { layout.valid = false; }
+    public:
+        // The framework's invalidation - a new size, visibility, style - drops
+        // the chart's own layout cache and lets the layout engine re-measure.
+        // A cache-only InvalidateLayout() overrode the engine's and kept the
+        // change from reaching the parent.
+        void InvalidateLayout() override { DropLayoutCache(); UltraCanvasChartElementBase::InvalidateLayout(); }
+    private:
+        void DropLayoutCache() { layout.valid = false; }
         void UpdateLayout(IRenderContext* ctx);
         double TitleBandHeight() const;
         int SideForItem(size_t index) const;

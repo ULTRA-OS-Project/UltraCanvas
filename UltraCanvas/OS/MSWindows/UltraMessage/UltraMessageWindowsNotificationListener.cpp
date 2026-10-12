@@ -34,6 +34,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>   // std::snprintf
 #include <iterator>
 #include <map>
 #include <mutex>

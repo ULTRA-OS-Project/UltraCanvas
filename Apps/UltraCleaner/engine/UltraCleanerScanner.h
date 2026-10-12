@@ -90,7 +90,10 @@ uint64_t DirectorySize(const std::string& path, uint64_t fileLimit = 0);
 int64_t LastWriteSeconds(const std::string& path);
 
 // Resolves a rule's roots for the running machine: token expansion, then
-// wildcard expansion. Roots whose tokens do not resolve drop out.
-std::vector<std::string> ResolveRuleRoots(const CleanRule& rule);
+// wildcard expansion. Roots whose tokens do not resolve drop out. `refused`,
+// when given, counts the directories the wildcard expansion could not look
+// into because the system refused (see ExpandWildcardDirectories).
+std::vector<std::string> ResolveRuleRoots(const CleanRule& rule,
+                                          size_t* refused = nullptr);
 
 } // namespace UltraCleaner

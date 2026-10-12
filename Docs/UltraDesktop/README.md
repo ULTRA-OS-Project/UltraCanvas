@@ -81,7 +81,11 @@ windows stop short of the bars instead of covering them.
   secret. The clipboard button, or `Super+V` from any window, opens the quick
   panel: a search field, the pinned entries and the ten latest (typing
   searches the whole history), each with a thumbnail and Copy, Edit and
-  Delete. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
+  Delete. What the program being pasted into takes comes first, under "For
+  <program>" and chosen - the newest images for a paint program, files for
+  a file manager, code and text for an editor - from its desktop entry's
+  categories and file types; the bar's button uses the window that had the
+  focus before it was clicked. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
   edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
   *Recording* switch pauses the history and *Open UltraClipboard* shows all
   of it. Right-click the button for *Pause recording*, *Open UltraClipboard*

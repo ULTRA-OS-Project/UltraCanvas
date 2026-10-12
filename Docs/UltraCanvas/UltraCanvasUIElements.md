@@ -78,7 +78,7 @@ from an external "Show password" checkbox. See
 
 | You need | Element | Header |
 |---|---|---|
-| Static text | `UltraCanvasLabel` | `UltraCanvasLabel.h` |
+| Static text - selectable and copyable with `SetSelectable`, or across many labels with one `UltraCanvasTextSelection` | `UltraCanvasLabel` | `UltraCanvasLabel.h`, `UltraCanvasTextSelection.h` |
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
@@ -89,6 +89,8 @@ from an external "Show password" checkbox. See
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
 | Audio waveform, input level | `UltraCanvasWaveformElement`, `UltraCanvasLevelMeter` | `UltraCanvasWaveformElement.h`, `UltraCanvasAudioRecorderElement.h` |
+| A media timeline to edit: clips on tracks under a time ruler, trim, reorder, split, transitions, markers, beat marks, a playhead; every edit reported to the app, never applied | `UltraCanvasVideoTimeline` | `UltraCanvasVideoTimeline.h` (model and operations: `UltraCanvasVideoTimelineModel.h`) |
+| A timecode `HH:MM:SS:FF` to enter or show: segments stepped by the arrow keys, digits filling from the right, `+`/`-` offsets, a large read-only readout for a transport bar | `UltraCanvasTimecodeField` | `UltraCanvasTimecodeField.h` |
 | A gallery or a timed slideshow | `UltraCanvasAlbum`, `UltraCanvasSlideshow` | matching `*.h` |
 | eBooks | `UltraCanvasEBookViewer` | `UltraCanvasEBookViewer.h` |
 | A LaTeX formula (equation, matrix, ...) as an element | `UltraCanvasLaTeXView` via `CreateLaTeXView()` | `Plugins/LaTeX/UltraCanvasLaTeXView.h` |
@@ -251,7 +253,7 @@ exists:
 
 ```cpp
 auto name   = CreateTextInput("archive-name", 0, 0, 240, 26);
-auto shot   = CreateImageElement("preview", 0, 0, 320, 240, "poster.png");
+auto shot   = CreateImageFromFile("preview", 0, 0, 320, 240, "poster.png");
 auto accept = CreateButton("ok", 0, 0, 104, 30, "Compress");
 ```
 

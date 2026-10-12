@@ -338,6 +338,41 @@ std::vector<UCDesktopEntry> UltraCanvasDesktopShell::ListApplications(int iconSi
     return apps;
 }
 
+const UCDesktopEntry* UltraCanvasDesktopShell::MatchApplication(const DesktopWindowInfo& window,
+                                                                const std::vector<UCDesktopEntry>& applications) {
+    auto lower = [](std::string text) {
+        std::transform(text.begin(), text.end(), text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return text;
+    };
+    const std::string appClass = lower(window.appClass);
+    const std::string appName = lower(window.appName);
+    if (appClass.empty() && appName.empty()) return nullptr;
+    auto spells = [&](const std::string& value) {
+        if (value.empty()) return false;
+        const std::string candidate = lower(value);
+        return candidate == appClass || candidate == appName;
+    };
+    // The entry that says which windows are its own decides; the rest is
+    // what docks have always guessed with.
+    for (const UCDesktopEntry& entry : applications) {
+        if (spells(entry.startupWMClass)) return &entry;
+    }
+    for (const UCDesktopEntry& entry : applications) {
+        // The file name, not the stem: "gimp-2.10" has no extension to lose.
+        std::string program = entry.program.empty() ? std::string() : PathToUtf8(PathFromUtf8(entry.program).filename());
+        if (program.size() > 4 && lower(program.substr(program.size() - 4)) == ".exe") program.resize(program.size() - 4);
+        if (spells(program)) return &entry;
+    }
+    for (const UCDesktopEntry& entry : applications) {
+        if (entry.iconName.find('/') == std::string::npos && spells(entry.iconName)) return &entry;
+    }
+    for (const UCDesktopEntry& entry : applications) {
+        if (spells(entry.name)) return &entry;
+    }
+    return nullptr;
+}
+
 bool UltraCanvasDesktopShell::LaunchApplication(const UCDesktopEntry& entry,
                                                 const std::vector<std::string>& files,
                                                 std::string* error) {

@@ -1,3 +1,18 @@
+#### 2026-10-08 *0.2.1*
+- **The clipboard panel offers first what you are pasting into.** Super+V
+  over a paint program puts its newest images (and colours) first, under
+  "For UltraPaint", the first of them chosen: Super+V, Enter, Ctrl+V pastes
+  the last picture even when text was copied after it. A file manager gets
+  files first, an editor, an IDE or a terminal code and text, a browser
+  links. What a program takes comes from its desktop entry's categories and
+  file types; one that says nothing gets the history as before. The bar's
+  button does the same for the window that had the focus before it was
+  clicked (framework changelog: `paste-target`).
+- **Super+V opens the panel every time.** About one press in two the panel
+  opened and shut again at once, and Super+V over the open panel did not
+  close it. The shortcut now acts when its key is let go, once however long
+  it is held (framework changelog: `x11-shortcut-focus`).
+
 #### 2026-10-07 *0.2.0*
 - **Notifications appear on screen.** On ULTRA OS no notification server runs
   besides UltraMessage, which serves `org.freedesktop.Notifications` itself, so

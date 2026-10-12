@@ -116,6 +116,7 @@ engines linked into the binary are reported. RTF is **not** supported.
 |--------|--------------|:----:|:----:|
 | OpenDocument Spreadsheet | `.ods` | ✅ | ✅ |
 | Excel workbook (OOXML) | `.xlsx` | ✅ | ✅ |
+| Excel 97-2003 workbook | `.xls` | ✅ | — |
 | Comma-separated values | `.csv` | ✅ | ✅ |
 | Tab-separated values | `.tsv` | ✅ | ✅ |
 

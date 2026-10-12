@@ -1,11 +1,23 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
-// Version: 1.24.0 - display: flex / grid (and inline-flex / inline-grid) lay their
+// Version: 1.27.0 - display: flex / grid (and inline-flex / inline-grid) lay their
 //                   children out on the CSSLayout flex and grid engines: elements
 //                   are items of their own size with real margins, text between
 //                   them anonymous items; flex / order / align-self, grid lines,
 //                   spans and named areas; repeat(auto-fill / auto-fit) counted
 //                   against the grid's estimated width
+// Version: 1.26.0 - a table cell ignores min-height / max-height (mail's spacer
+//                  cells, max-height:1px, kept their height); an inline
+//                  element's line-height sets its line's height
+// Version: 1.25.0 - <img> with a height and no width is as wide as the picture's
+//                   shape makes it (it took the picture's own width, and fill
+//                   stretched it); with a width and a height it keeps that
+//                   shape when a column shrinks it; the picture is stretched
+//                   only into a box the author gave another shape; a cell's
+//                   content with a percentage height is auto unless the cell
+//                   sets a height
+// Version: 1.24.0 - BuildOptions::selectableText: the tree's labels share one
+//                   UltraCanvasTextSelection (BuildResult::textSelection)
 // Version: 1.23.0 - BuildOptions::linkTooltips: text links and linked pictures
 // Version: 1.22.0 - merged with main's 1.5.0-1.6.0 (floats, clear, shrink-to-fit
 //                   tables, list markers, stacking cells, content-box px sizes):
@@ -72,7 +84,7 @@
 //                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -80,6 +92,7 @@
 #include <functional>
 
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasTextSelection.h"
 
 #include <algorithm>
 #include <cctype>
@@ -90,6 +103,11 @@ namespace UltraCanvas {
 namespace HTML {
 
 namespace {
+
+// line-height: normal, as a factor of the font size - what browsers use for
+// the common sans faces, where a run's line height has to be reckoned before
+// the text is shaped.
+constexpr float kNormalLineHeight = 1.2f;
 
 Color ToColor(const CssColor& c) { return Color(c.r, c.g, c.b, c.a); }
 
@@ -274,8 +292,6 @@ UCDashPattern BorderDash(const BorderSide& side) {
     }
 }
 
-// The display size of an image's picture: its width / height (one of them
-// keeps the picture's shape), else the picture's own size.
 // The size an image's picture is shown at: its width / height (one of them
 // keeps the picture's shape), else the picture's own size - then held within
 // min-width / max-width / min-height / max-height (px), keeping the shape
@@ -333,8 +349,18 @@ ImageUsedSize UsedImageSize(const ComputedStyle& style, const UCImage& raster) {
     return out;
 }
 
-Size2Df ImageContentSize(const ComputedStyle& style, const UCImage& raster) {
-    return UsedImageSize(style, raster).size;
+// How an image's picture fills its box. object-fit: fill, CSS's default,
+// stretches it to the box - which gives it another shape only where the
+// author gave the box one: a width and a height, or min / max sizes that
+// broke the ratio. Every other box has the picture's own shape, so there it
+// is fitted keeping its proportions: the same as fill in a box of the right
+// shape, and no distorted picture when the layout hands it a box of another
+// (LinkedIn's header icons, height="25" alone, were drawn twice as wide).
+ImageFitMode ImageFitFor(const ComputedStyle& style, const ImageUsedSize& used) {
+    if (style.objectFit != ObjectFitMode::Fill) return ToImageFit(style.objectFit);
+    const bool authorsShape = ((style.widthPx || style.widthPercent) && style.heightPx) ||
+                              !used.keepsRatio;
+    return authorsShape ? ImageFitMode::Fill : ImageFitMode::Contain;
 }
 
 // border-radius in px for a border box of `boxW` x `boxH`: a percentage of
@@ -657,6 +683,12 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
 
     result.root = BuildBlock(*body);
     ++elementCount;   // the root itself
+    // One selection over every label, in document order: a drag runs on from
+    // paragraph to paragraph, as in a browser.
+    if (opts.selectableText && result.root) {
+        result.textSelection = std::make_shared<UltraCanvasTextSelection>();
+        result.textSelection->AddLabelsIn(*result.root);
+    }
     result.warnings = warnings;
     result.elementCount = elementCount;
     result.anchors = std::move(anchors);
@@ -1403,6 +1435,8 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     runPlain.clear();
     runLinks.clear();
     runImages.clear();
+    runLineHeightPx = 0.f;
+    runLineHeightSet = false;
     if (!markerPrefix.empty()) {
         markup += EscapeMarkup(markerPrefix);
         runPlain += markerPrefix;
@@ -1485,8 +1519,21 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
                  "\">" + markup + "</span>";
     }
 
+    // The line's height, where the run's text sets one: the tallest of its
+    // inline boxes', and at least the block's own (its strut) - Stripe's
+    // receipt puts "Receipt from ..." (line-height 20px) and the amount
+    // (36px text on 40px lines) in cells of their own, and both were laid
+    // out at the font's height, the amount touching the line above it.
+    float runLineHeight = 0.f;
+    if (runLineHeightSet) {
+        const float strut = blockStyle.lineHeightSet
+                ? (blockStyle.lineHeightPx ? *blockStyle.lineHeightPx
+                                           : blockStyle.lineHeight * blockStyle.fontSizePx)
+                : kNormalLineHeight * blockStyle.fontSizePx;
+        runLineHeight = std::max(strut, runLineHeightPx);
+    }
     auto label = std::make_shared<UltraCanvasLabel>(MakeId("text"));
-    ConfigureLabel(*label, blockStyle, runNoWrap);
+    ConfigureLabel(*label, blockStyle, runNoWrap, runLineHeight);
     label->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
     label->size.width = CSSLayout::Dimension::Pct(100.f);
     label->SetTextIsMarkup(true);
@@ -1540,6 +1587,9 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
     // runPlain mirrors the text the layout will render (markup stripped,
     // entities decoded); link byte ranges are recorded against it.
     if (node.type == NodeType::Text) {
+        for (unsigned char c : node.text) {
+            if (!std::isspace(c)) { NoteRunLineHeight(runStyle); break; }
+        }
         std::string plain = preserveWhitespace
             ? node.text : CollapseWhitespace(node.text, runPlain);
         out += EscapeMarkup(plain);
@@ -1568,15 +1618,15 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
             std::shared_ptr<UCImage> raster =
                 bytes.empty() ? nullptr : UCImageRaster::LoadFromMemory(bytes);
             if (raster && raster->GetWidth() > 0 && raster->GetHeight() > 0) {
-                const Size2Df size = ImageContentSize(style, *raster);
-                const float w = size.width, h = size.height;
+                const ImageUsedSize used = UsedImageSize(style, *raster);
+                const float w = used.size.width, h = used.size.height;
                 if (w >= 1.f && h >= 1.f) {
                     LabelInlineImage image;
                     image.byteOffset = static_cast<int>(runPlain.size());
                     image.width = w;
                     image.height = h;
                     image.image = raster;
-                    image.fit = ToImageFit(style.objectFit);
+                    image.fit = ImageFitFor(style, used);
                     image.position = ToImagePosition(style.objectPosition);
                     // Its CSS box: margins, border, padding, background.
                     LabelInlineImageFrame& f = image.frame;
@@ -1691,15 +1741,16 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     image->SetHeightFollowsWidth(true);   // <img width="800">: the height in proportion
 
     const ComputedStyle& style = resolver.StyleOf(&element);
+    const ImageUsedSize used = UsedImageSize(style, *raster);
     // object-fit / object-position: how the picture fills the box its width
-    // and height give it (CSS's default stretches it), and where it sits.
-    image->SetFitMode(ToImageFit(style.objectFit));
+    // and height give it, and where it sits.
+    image->SetFitMode(ImageFitFor(style, used));
     image->SetImagePosition(ToImagePosition(style.objectPosition));
     // Border, background, padding and rounded corners go around the picture:
     // width / height size the picture itself (CSS's content-box), and the
     // horizontal margins stay margins - the background must not fill them.
     ComputedStyle boxStyle = style;
-    const Size2Df content = ImageContentSize(style, *raster);
+    const Size2Df content = used.size;
     boxStyle.borderRadius = BorderRadiusPx(style,
         content.width + style.paddingLeft + style.paddingRight + style.BorderHorizontal(),
         content.height + style.paddingTop + style.paddingBottom + style.BorderVertical());
@@ -1725,18 +1776,22 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     if (style.maxHeightPercent) constraints.maxHeight = CSSLayout::Dimension::Pct(*style.maxHeightPercent);
     if (style.minHeightPercent) constraints.minHeight = CSSLayout::Dimension::Pct(*style.minHeightPercent);
     image->boxConstraints = constraints;
-    // min / max width and height in px: the size they leave the picture,
-    // shaped as CSS shapes it. A size that keeps the picture's shape gives
-    // the width only - the height follows it, and a line narrower than it
-    // still shrinks the picture in proportion (MeasureOwnContent); a size
-    // that breaks the shape gives both.
-    if (style.minWidthPx || style.maxWidthPx || style.minHeightPx || style.maxHeightPx) {
-        const ImageUsedSize used = UsedImageSize(style, *raster);
+    // The size CSS gives the picture - from min / max width and height in
+    // px, from a height alone (its width is the picture's shape at that
+    // height, CSS 2.1 10.3.2), or from a width and a height - as a width the
+    // height follows: a line narrower than it shrinks the picture in
+    // proportion (MeasureOwnContent), in the picture's shape or, where the
+    // sizes broke it, in the box's own (SetBoxAspectRatio). A height alone
+    // left the width to the picture's own size, so a 50px-high icon shown 25
+    // high kept its 50px width.
+    const bool pxLimits = style.minWidthPx || style.maxWidthPx || style.minHeightPx || style.maxHeightPx;
+    const bool heightOnly = style.heightPx && !style.widthPx && !style.widthPercent;
+    const bool widthAndHeight = style.widthPx && style.heightPx;
+    if (pxLimits || heightOnly || widthAndHeight) {
         image->size.width = CSSLayout::Dimension::Px(used.size.width);
-        if (used.keepsRatio)
-            image->size.height = CSSLayout::Dimension::Auto();
-        else
-            image->size.height = CSSLayout::Dimension::Px(used.size.height);
+        image->size.height = CSSLayout::Dimension::Auto();
+        if (!used.keepsRatio && used.size.width > 0.f && used.size.height > 0.f)
+            image->SetBoxAspectRatio(used.size.width / used.size.height);
     }
     image->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
     if (!linkHref.empty() && opts.onLinkActivated) {
@@ -1993,6 +2048,19 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
             rule.currentColor = false;
             boxStyle.SetAllBorders(rule);
         }
+        // min-height and max-height do not apply to a table cell (CSS 2.1
+        // §10.7 leaves them undefined; browsers ignore both). Stripe's - and
+        // many mailers' - spacer cell is <td height="32" style="font-size:1px;
+        // line-height:1px; max-height:1px">: honoured, every such gap in a
+        // receipt collapsed to 1px and the text was packed together. A cell
+        // made a block (display:block, mail columns on a phone) is a block,
+        // and keeps them.
+        if (cellStyle.display == DisplayMode::TableCell) {
+            boxStyle.minHeightPx.reset();
+            boxStyle.minHeightPercent.reset();
+            boxStyle.maxHeightPx.reset();
+            boxStyle.maxHeightPercent.reset();
+        }
         CellEntry entry{ cellBox, static_cast<int>(r), c, rowSpan, colSpan, boxStyle };
         if (style.borderCollapse) {
             // Settled with the neighbours' once every cell is placed.
@@ -2019,6 +2087,17 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
         cellBox->layoutItem.SetGridRowColSimplified(static_cast<int>(r), c, rowSpan, colSpan);
         ApplyBackgroundImage(*cellBox, cellStyle);
         BuildChildrenInto(*cellBox, cell);
+        // A percentage height on the cell's content is a share of the cell's
+        // own height: where none is set - the row decides it - it is auto, as
+        // in browsers (CSS 2.1 10.5). So <td><table height="100%"> keeps its
+        // rows together in a row a picture in the next cell makes taller,
+        // centred by the cell, instead of spreading them over all of it.
+        const bool cellHeightSet = cellStyle.heightPx || (cellStyle.heightPercent && style.heightPx);
+        if (!cellHeightSet) {
+            for (const auto& child : cellBox->GetChildren())
+                if (child->size.height.unit == CSSLayout::DimensionUnit::Percent)
+                    child->size.height = CSSLayout::Dimension::Auto();
+        }
         // A cell lays its content out as a column that stretches every child
         // across it. A child with a width of its own (<div style="width:250px">,
         // <table width="420">) keeps that width, placed as the cell's align
@@ -2336,14 +2415,27 @@ float ElementBuilder::SpaceWidth(const ComputedStyle& style) {
     return width;
 }
 
+void ElementBuilder::NoteRunLineHeight(const ComputedStyle& style) {
+    const float height = style.lineHeightSet
+            ? (style.lineHeightPx ? *style.lineHeightPx : style.lineHeight * style.fontSizePx)
+            : kNormalLineHeight * style.fontSizePx;
+    runLineHeightPx = std::max(runLineHeightPx, height);
+    if (style.lineHeightSet) runLineHeightSet = true;
+}
+
 void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
-                                    bool noWrap) {
+                                    bool noWrap, float runLineHeightPx) {
     LabelStyle labelStyle;
     labelStyle.fontStyle = FontOf(style);
-    // line-height as set: px, or a factor of this text's font size.
-    if (style.lineHeightSet) {
+    // line-height as set: px, or a factor of this text's font size - or the
+    // inline run's, where its text sets one (BuildInlineRun).
+    if (runLineHeightPx > 0.f) {
+        labelStyle.lineHeightPx = runLineHeightPx;
+    } else if (style.lineHeightSet) {
         labelStyle.lineHeightPx = style.lineHeightPx ? *style.lineHeightPx
                                                      : style.lineHeight * style.fontSizePx;
+    }
+    if (runLineHeightPx > 0.f || style.lineHeightSet) {
         // line-height: 0 (spacer cells) is next to nothing, not "the font's".
         labelStyle.lineHeightPx = std::max(labelStyle.lineHeightPx, 0.01f);
     }

@@ -1,6 +1,7 @@
 #!/bin/bash
 # package-macos.sh - Create the macOS UltraCanvas suite: every app in one
-# folder with one shared Frameworks/ (see "Suite layout" below), the
+# folder with one shared Frameworks/ (see "Suite layout" below) that holds
+# the framework itself, libUltraCanvas, next to the libraries it uses, the
 # `ultramsg` command-line tool beside them, and an optional DMG.
 #
 # Usage: ./package-macos.sh [options]
@@ -13,6 +14,11 @@
 #                      says how to open it (see "Unsigned builds" below)
 #   --notarize         Notarize the suite folder (one submission) and staple each app
 #                      (requires APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD env vars)
+#   --start-app        Also package UltraCanvasStart on its own: a bundle with its
+#                      own Frameworks/, cut out of the finished suite, signed and
+#                      notarized like the suite, as a DMG of its own with --dmg
+#                      (see "UltraCanvasStart on its own" below)
+#   --start-dir DIR    Where that goes (default: dist-start)
 #
 # Environment variables:
 #   MACOSX_DEPLOYMENT_TARGET  Oldest macOS the apps must run on (CI: 15.0).
@@ -33,6 +39,8 @@ OUTPUT_DIR="dist-macos"
 CREATE_DMG=false
 DO_SIGN=true
 NOTARIZE=false
+START_APP=false
+START_OUTPUT_DIR="dist-start"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENTITLEMENTS_PATH="MacOS/entitlements.plist"
 IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: ULTRA OS Devolopment GmbH (29638T25M9)}"
@@ -40,9 +48,11 @@ IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: ULTRA OS Devolopment GmbH (
 # ── Suite layout ─────────────────────────────────────────────────────────────
 #
 #   <output>/UltraCanvas/
-#     Frameworks/                 every bundled dylib, once
+#     Frameworks/                 libUltraCanvas.1.dylib and every bundled
+#                                 dylib it and the apps use, once
 #     Texter.app, UltraFiler.app, ...   no Contents/Frameworks/ of their own
-#     ultramsg/bin/ultramsg       the command-line tool (own, empty Frameworks/)
+#     ultramsg/bin/ultramsg       the command-line tool, loading from the
+#                                 same Frameworks/ (two levels up)
 #
 # Each .app used to carry its own copy of the ~90 Homebrew dylibs (95-131 MB);
 # with eight apps that was ~830 MB of the same libraries, and every new app
@@ -52,11 +62,18 @@ IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: ULTRA OS Devolopment GmbH (
 # executable and resources. verify_suite fails the run if an app ends up with
 # libraries of its own or a reference outside the shared folder.
 #
+# The framework is in that folder too. The core used to be linked statically
+# into every app on macOS, so each of the ~20 executables carried the whole
+# of UltraCanvas and the modules folded into it; the build now makes the
+# shared libUltraCanvas.1.dylib here as it always did on Linux and Windows
+# (ULTRACANVAS_BUILD_SHARED, the CMake default), bundle_dylibs picks it up
+# from <build>/lib like any other dylib, and the apps are small.
+#
 # The price: an app works only inside the suite folder. Install by dragging
 # the whole UltraCanvas folder to /Applications, not a single app out of it.
 SUITE_NAME="UltraCanvas"
 APP_FW_REF="@executable_path/../../../Frameworks"
-TOOL_FW_REF="@executable_path/../Frameworks"
+TOOL_FW_REF="@executable_path/../../Frameworks"
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
@@ -67,8 +84,10 @@ while [[ $# -gt 0 ]]; do
         --dmg)        CREATE_DMG=true; shift ;;
         --no-sign)    DO_SIGN=false; shift ;;
         --notarize)   NOTARIZE=true; shift ;;
+        --start-app)  START_APP=true; shift ;;
+        --start-dir)  START_OUTPUT_DIR="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,22p' "$0" | sed 's/^# \?//'
+            sed -n '2,27p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -101,12 +120,21 @@ if [ -z "$DEPS_PREFIX" ]; then
     exit 1
 fi
 
+# The build tree's own dylibs: libUltraCanvas.1.dylib (the shared core) and
+# the LaTeX module. Absolute, because the load commands and LC_RPATH entries
+# this is matched against are.
+BUILD_LIB_DIR=""
+if [ -d "$BUILD_DIR/lib" ]; then
+    BUILD_LIB_DIR="$(cd "$BUILD_DIR/lib" && pwd -P)"
+fi
+
 # True when $1 is a library this script bundles: one under the dependency
-# prefix or Homebrew's. Spelled out rather than as `${HOMEBREW_PREFIX}/*` in a
-# case pattern, which an empty prefix would turn into `/*` - every file.
+# prefix or Homebrew's, or one the build made (the shared core). Spelled out
+# rather than as `${HOMEBREW_PREFIX}/*` in a case pattern, which an empty
+# prefix would turn into `/*` - every file.
 is_bundled_source() {
     local prefix
-    for prefix in "$DEPS_PREFIX" "$HOMEBREW_PREFIX" /opt/homebrew /usr/local; do
+    for prefix in "$BUILD_LIB_DIR" "$DEPS_PREFIX" "$HOMEBREW_PREFIX" /opt/homebrew /usr/local; do
         [ -n "$prefix" ] || continue
         case "$1" in "$prefix"/*) return 0 ;; esac
     done
@@ -131,6 +159,7 @@ echo "  Minimum macOS:   ${MIN_MACOS:-measured per app (MACOSX_DEPLOYMENT_TARGET
 echo "  Code signing:    $($DO_SIGN && echo "Developer ID" || echo "ad hoc (--no-sign)")"
 echo "  Notarize:        $NOTARIZE"
 echo "  Create DMG:      $CREATE_DMG"
+echo "  UltraCanvasStart on its own: $($START_APP && echo "yes, to $START_OUTPUT_DIR" || echo no)"
 echo ""
 
 # ── Validate prerequisites ───────────────────────────────────────────────────
@@ -201,6 +230,103 @@ generate_icns() {
     echo "  Generated icon: $(basename "$output_icns")"
 }
 
+# ── Helper: Privacy - camera, microphone, local network ─────────────────────
+#
+# macOS asks the user before an app opens the camera or the microphone, and
+# (from macOS 15) before it reaches the local network; the prompt shows the
+# reason the app's Info.plist gives. A signed app needs two things to open a
+# camera or a microphone, and without either one it cannot:
+#   - the usage description (NSCameraUsageDescription,
+#     NSMicrophoneUsageDescription): TCC terminates an app that opens the
+#     device without one;
+#   - the hardened-runtime entitlement (com.apple.security.device.camera,
+#     com.apple.security.device.audio-input): every app here is signed with
+#     --options runtime, under which the request is refused before the user
+#     is even asked.
+# Neither was written until October 2026, so UltraAuthenticator's QR scan and
+# the demo's recorders could not open a device in the signed, notarized suite.
+# Both now follow from the one line per app below, so they cannot disagree:
+# the reason goes into Info.plist (privacy_plist_entries) and the entitlement
+# into what the app is signed with (write_app_entitlements).
+#
+# Only the apps that open a device are listed. An app that starts recording
+# gets a line here; the text is what the user reads in the prompt, so it says
+# what the app does with the device.
+camera_usage() {
+    case "$1" in
+        UltraAuthenticator) echo "UltraAuthenticator uses the camera to read the QR code of an account you add. No picture is saved." ;;
+        UltraCanvasDemo)    echo "The UltraCanvas Demo shows and records the camera in its video examples." ;;
+    esac
+}
+
+microphone_usage() {
+    case "$1" in
+        UltraCanvasDemo) echo "The UltraCanvas Demo records from the microphone and shows its level in its audio and video examples." ;;
+    esac
+}
+
+# The local network is every app's: an app that prints looks for IPP printers
+# on it (IODeviceManager's printer enumeration browses Bonjour), and
+# DeviceExplorer looks for eSCL scanners as well. NSBonjourServices lists each
+# service type the framework browses - keep it in step with
+# UltraCanvasIODevicePrinterIPP.cpp and UltraCanvasIODeviceScannerESCL.cpp.
+# Apple's TN3179, "Understanding local network privacy", has the rules.
+BONJOUR_SERVICES=(_ipp._tcp _ipps._tcp _uscan._tcp _uscans._tcp)
+
+# $1 with &, < and > escaped for a plist <string>. sed rather than ${s//...}:
+# bash 5.2 reads an & in a substitution's replacement as the matched text.
+xml_escape() {
+    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+# The privacy keys of app $1 (display name $2), as Info.plist lines.
+privacy_plist_entries() {
+    local exe_name="$1" display_name="$2" reason service
+    printf '    <key>NSLocalNetworkUsageDescription</key>\n'
+    printf '    <string>%s</string>\n' "$(xml_escape "$display_name looks for printers and scanners on your network and connects to the devices and servers on it that you choose.")"
+    printf '    <key>NSBonjourServices</key>\n'
+    printf '    <array>\n'
+    for service in "${BONJOUR_SERVICES[@]}"; do
+        printf '        <string>%s</string>\n' "$service"
+    done
+    printf '    </array>\n'
+    reason="$(camera_usage "$exe_name")"
+    if [ -n "$reason" ]; then
+        printf '    <key>NSCameraUsageDescription</key>\n'
+        printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
+    fi
+    reason="$(microphone_usage "$exe_name")"
+    if [ -n "$reason" ]; then
+        printf '    <key>NSMicrophoneUsageDescription</key>\n'
+        printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
+    fi
+}
+
+# Where write_app_entitlements leaves each app's entitlements for
+# codesign_bundle.
+APP_ENTITLEMENTS_DIR=$(mktemp -d)
+
+# Write the entitlements app $1 is signed with: MacOS/entitlements.plist plus
+# the device entitlement of each device the app gives a reason for. A
+# --no-sign run (every pull request) signs ad hoc with the same file
+# (sign_code), so a pull request already carries what the release will.
+write_app_entitlements() {
+    local exe_name="$1"
+    local out="$APP_ENTITLEMENTS_DIR/$exe_name.entitlements"
+    local devices=""
+    cp "$SCRIPT_DIR/$ENTITLEMENTS_PATH" "$out"
+    if [ -n "$(camera_usage "$exe_name")" ]; then
+        /usr/libexec/PlistBuddy -c "Add :com.apple.security.device.camera bool true" "$out"
+        devices+=" camera"
+    fi
+    if [ -n "$(microphone_usage "$exe_name")" ]; then
+        /usr/libexec/PlistBuddy -c "Add :com.apple.security.device.audio-input bool true" "$out"
+        devices+=" microphone"
+    fi
+    plutil -lint "$out"
+    echo "  Entitlements written (devices:${devices:- none})"
+}
+
 # ── Helper: Generate Info.plist ──────────────────────────────────────────────
 
 generate_plist() {
@@ -211,6 +337,9 @@ generate_plist() {
     local version="$5"
     local category="$6"
     local extra_plist_entries="$7"
+
+    local privacy_entries
+    privacy_entries="$(privacy_plist_entries "$exe_name" "$display_name")"
 
     # LSMinimumSystemVersion is not written here: finish_suite adds it once
     # every app and the shared Frameworks/ are in place and their minimum macOS
@@ -247,10 +376,12 @@ generate_plist() {
     <string>Copyright (C) 2026 ULTRA OS Development GmbH. All rights reserved.</string>
     <key>LSApplicationCategoryType</key>
     <string>${category}</string>
+${privacy_entries}
 ${extra_plist_entries}
 </dict>
 </plist>
 PLIST
+    plutil -lint "$plist_path"
     echo "  Generated Info.plist"
 }
 
@@ -433,9 +564,16 @@ fix_install_names() {
         dep_basename=$(basename "$dep")
 
         if [ -f "$frameworks_dir/$dep_basename" ]; then
+            # A library built without header padding (mupdf, croco) has room
+            # for a few longer load commands and then none; the reference
+            # then stays as it was, @rpath/<name>, and the run path each
+            # executable carries resolves it (build_app_bundle). Said in the
+            # log rather than swallowed: on 2026-10-09 eight such references
+            # went unnoticed until a bundle built from the suite checked them.
             install_name_tool -change "$dep" \
                 "$fw_ref/$dep_basename" \
-                "$binary" 2>/dev/null || true
+                "$binary" 2>/dev/null \
+                || echo "  $(basename "$binary") keeps $dep (install_name_tool could not lengthen it; the run path resolves it)"
         fi
     done
 }
@@ -460,7 +598,8 @@ delete_build_rpaths() {
         /cmd LC_RPATH/          { r = 1; next }
         r && $1 == "path"       { print $2; r = 0 }')
     for rp in $rpaths; do
-        if is_bundled_source "$rp"; then
+        # The build tree's lib/ is the run path itself, not a file under it.
+        if is_bundled_source "$rp" || [ -n "$BUILD_LIB_DIR" -a "$rp" = "$BUILD_LIB_DIR" ]; then
             install_name_tool -delete_rpath "$rp" "$f" 2>/dev/null || true
         fi
     done
@@ -613,11 +752,15 @@ codesign_bundle() {
     # Sign the main executable with hardened runtime + secure timestamp
     sign_code "$app_bundle/Contents/MacOS/"*
 
-    # Sign the outer bundle with hardened runtime, secure timestamp, and entitlements
-    sign_code --entitlements "$ENTITLEMENTS_PATH" "$app_bundle"
+    # Sign the outer bundle with hardened runtime, secure timestamp, and the
+    # app's entitlements (write_app_entitlements)
+    sign_code --entitlements \
+        "$APP_ENTITLEMENTS_DIR/$(basename "$app_bundle" .app).entitlements" \
+        "$app_bundle"
 
-    # Verify the final bundle
+    # Verify the final bundle, and log the entitlements it was signed with
     codesign --verify --verbose=4 --strict "$app_bundle"
+    codesign --display --entitlements - "$app_bundle"
 
     echo "  Bundle signed"
 }
@@ -644,31 +787,55 @@ notarize_bundle() {
         /usr/bin/ditto -c -k --keepParent "$app_bundle" "$zip_path"
     fi
 
-    echo "  Submitting to Apple notary service (this may take a few minutes)..."
-    # Tee to a temp file so we keep live progress output AND can parse the result
-    xcrun notarytool submit "$submit_path" \
-        --apple-id "$APPLE_ID" \
-        --team-id "$APPLE_TEAM_ID" \
-        --password "$APPLE_APP_PASSWORD" \
-        --wait 2>&1 | tee "$submit_log"
-
+    # Submit, and wait for Apple's verdict. The runner's network dropped out
+    # of that wait twice on 2026-10-09 ("The Internet connection appears to
+    # be offline"), once in the suite's image and once in UltraCanvasStart's,
+    # each time after the upload had succeeded and while Apple was still
+    # processing - and each time it cost the whole leg and its release. So
+    # the wait is resumed rather than failed: the submission id is kept from
+    # the submit, and while the status is not final the wait is taken up
+    # again on that id, up to NOTARY_WAIT_ATTEMPTS times (default 6) with a
+    # pause between, which asks Apple nothing new. Only a submit that gave
+    # no id at all - the upload itself failed - is submitted a second time.
+    local submission_id="" status="" attempt
+    local notary=(--apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD")
+    for attempt in 1 2; do
+        echo "  Submitting to Apple notary service (this may take a few minutes)..."
+        # Tee to a temp file so we keep live progress output AND can parse
+        # the result; a failed wait must not end the run here (set -e).
+        xcrun notarytool submit "$submit_path" "${notary[@]}" --wait 2>&1 | tee "$submit_log" || true
+        submission_id=$(awk '/^  id:/ {print $2; exit}' "$submit_log")
+        status=$(awk '/^  status:/ {print $2}' "$submit_log" | tail -n 1)
+        [ -n "$submission_id" ] && break
+        echo "  No submission id received, so the upload itself failed; submitting again in 30 s"
+        sleep 30
+    done
     [ -n "$zip_path" ] && rm -f "$zip_path"
+    if [ -z "$submission_id" ]; then
+        echo "  ERROR: the notary service took no submission"
+        rm -f "$submit_log"
+        exit 1
+    fi
 
-    # Parse the submission ID and final status from the captured output
-    local submission_id status
-    submission_id=$(awk '/^  id:/ {print $2; exit}' "$submit_log")
-    status=$(awk '/^  status:/ {print $2}' "$submit_log" | tail -n 1)
+    attempt=0
+    while [ "$status" != "Accepted" ] && [ "$status" != "Invalid" ] && [ "$status" != "Rejected" ]; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -gt "${NOTARY_WAIT_ATTEMPTS:-6}" ]; then
+            echo "  ERROR: no final status for submission $submission_id after $((attempt - 1)) resumed waits (last: '${status:-none}')"
+            rm -f "$submit_log"
+            exit 1
+        fi
+        echo "  The wait on submission $submission_id ended without a final status ('${status:-none}'); resuming it in 30 s ($attempt of ${NOTARY_WAIT_ATTEMPTS:-6})"
+        sleep 30
+        xcrun notarytool wait "$submission_id" "${notary[@]}" --timeout 30m 2>&1 | tee "$submit_log" || true
+        status=$(awk '/^  status:/ {print $2}' "$submit_log" | tail -n 1)
+    done
     rm -f "$submit_log"
 
     if [ "$status" != "Accepted" ]; then
         echo "  ERROR: Notarization status is '$status' (expected 'Accepted')"
-        if [ -n "$submission_id" ]; then
-            echo "  Fetching notarization log for submission $submission_id..."
-            xcrun notarytool log "$submission_id" \
-                --apple-id "$APPLE_ID" \
-                --team-id "$APPLE_TEAM_ID" \
-                --password "$APPLE_APP_PASSWORD" || true
-        fi
+        echo "  Fetching notarization log for submission $submission_id..."
+        xcrun notarytool log "$submission_id" "${notary[@]}" || true
         exit 1
     fi
 
@@ -806,9 +973,10 @@ build_app_bundle() {
     # Generate .icns
     generate_icns "$SCRIPT_DIR/$icon_src" "$contents_dir/Resources/AppIcon.icns"
 
-    # Generate Info.plist
+    # Generate Info.plist, and the entitlements codesign_bundle signs with
     generate_plist "$contents_dir/Info.plist" \
         "$exe_name" "$display_name" "$bundle_id" "$VERSION" "$category" "$extra_plist"
+    write_app_entitlements "$exe_name"
 
     # Copy executable
     cp "$exe_path" "$contents_dir/MacOS/$exe_name"
@@ -888,6 +1056,15 @@ build_app_bundle() {
     [ -d "$contents_dir/PlugIns" ] && strip_dirs+=("$contents_dir/PlugIns")
     strip_binaries "${strip_dirs[@]}"
 
+    # A run path to the shared folder, after strip_binaries has deleted the
+    # build tree's. A library built without header padding (mupdf, croco)
+    # keeps some of its references as @rpath/<name> - install_name_tool
+    # cannot lengthen them once the padding is used up, and fix_install_names
+    # lets that pass - and dyld expands @rpath against the run paths of the
+    # executable, so with this one those references resolve to the shared
+    # Frameworks/ too. verify_suite checks each of them against the folder.
+    install_name_tool -add_rpath "$APP_FW_REF" "$contents_dir/MacOS/$exe_name"
+
     # Signed and notarized after the last app (finish_suite): the shared
     # Frameworks/ has to be complete and signed first.
     BUILT_APPS+=("$app_dir")
@@ -900,9 +1077,11 @@ build_app_bundle() {
 
 # ── Package one command-line tool ────────────────────────────────────────────
 #
-# A command-line tool is not an .app: it ships as <name>/bin/<name> with its
-# Homebrew dylibs in <name>/Frameworks/, the same relative layout a bundle
-# has, so bundle_dylibs' @executable_path/../Frameworks rewrite holds for it.
+# A command-line tool is not an .app: it ships as <name>/bin/<name> and loads
+# from the suite's shared Frameworks/ two levels up, exactly as the apps do
+# three levels up. It used to carry its own Frameworks/, which was small while
+# the core was static; with the shared core it would have been a second copy
+# of libUltraCanvas and everything it loads.
 
 build_cli_tool() {
     local exe_name="$1"
@@ -917,27 +1096,19 @@ build_cli_tool() {
 
     echo "── Packaging $exe_name (command line) ──"
 
-    mkdir -p "$tool_dir/bin" "$tool_dir/Frameworks"
+    mkdir -p "$tool_dir/bin"
     cp "$exe_path" "$tool_dir/bin/$exe_name"
     chmod 755 "$tool_dir/bin/$exe_name"
     echo "  Copied executable"
 
-    bundle_dylibs "$tool_dir/bin/$exe_name" "$tool_dir/Frameworks" "$TOOL_FW_REF"
-    strip_binaries "$tool_dir/bin" "$tool_dir/Frameworks"
-    check_min_macos "$exe_name" "" "" "$tool_dir/bin" "$tool_dir/Frameworks"
+    bundle_dylibs "$tool_dir/bin/$exe_name" "$SHARED_FW" "$TOOL_FW_REF"
+    strip_binaries "$tool_dir/bin"
+    # The run path to the shared folder, as build_app_bundle gives an app.
+    install_name_tool -add_rpath "$TOOL_FW_REF" "$tool_dir/bin/$exe_name"
 
-    # Ad hoc with --no-sign (sign_code).
-    echo "  Signing tool..."
-    for dylib in "$tool_dir/Frameworks/"*.dylib; do
-        if [ -f "$dylib" ]; then
-            sign_code "$dylib"
-        fi
-    done
-    sign_code "$tool_dir/bin/$exe_name"
-    codesign --verify --verbose=4 --strict "$tool_dir/bin/$exe_name"
-    echo "  Tool signed"
-
-    # Notarized with the rest of the suite folder (finish_suite).
+    # Signed after the shared Frameworks/ it loads from, and notarized with
+    # the rest of the suite folder (finish_suite).
+    BUILT_TOOLS+=("$tool_dir/bin/$exe_name")
 
     echo "  Tool size: $(du -sh "$tool_dir" | cut -f1)"
     echo ""
@@ -946,14 +1117,17 @@ build_cli_tool() {
 # ── Suite checks, signing and notarization ──────────────────────────────────
 
 # Fails the run when the suite breaks its layout. Every reference in an app's
-# executable, its plug-ins and the shared dylibs must be a system library or
-# a dylib that is in the shared Frameworks/, and no app may carry
-# Contents/Frameworks/. That is the rule that keeps a new app from adding
-# another ~95 MB copy of the libraries: an app packaged any other way than
-# through build_app_bundle trips it.
+# executable, its plug-ins, the command-line tools and the shared dylibs must
+# be a system library or a dylib that is in the shared Frameworks/, no app may
+# carry Contents/Frameworks/ or a tool its own Frameworks/, and the shared
+# core itself must be in the shared folder - an app that still carries the
+# framework statically is the ~20-fold copy this layout exists to end. That
+# is the rule that keeps a new app from adding another ~95 MB copy of the
+# libraries: an app packaged any other way than through build_app_bundle
+# trips it.
 verify_suite() {
     echo "── Verifying the suite layout ──"
-    local errors=0 app bin dep name
+    local errors=0 app tool bin dep name
     for app in "${BUILT_APPS[@]}"; do
         if [ -d "$app/Contents/Frameworks" ] && \
            [ -n "$(ls -A "$app/Contents/Frameworks" 2>/dev/null)" ]; then
@@ -961,13 +1135,28 @@ verify_suite() {
             errors=$((errors + 1))
         fi
     done
+    for tool in "${BUILT_TOOLS[@]}"; do
+        if [ -d "$(dirname "$tool")/../Frameworks" ]; then
+            echo "  ERROR: $(basename "$tool") has its own Frameworks/ - tools share $SUITE_NAME/Frameworks/"
+            errors=$((errors + 1))
+        fi
+    done
+    if ! ls "$SHARED_FW"/libUltraCanvas.*.dylib >/dev/null 2>&1; then
+        echo "  ERROR: no libUltraCanvas.*.dylib in $SUITE_NAME/Frameworks/ - the build was not a shared core (ULTRACANVAS_BUILD_SHARED=ON)"
+        errors=$((errors + 1))
+    fi
     while IFS= read -r -d '' bin; do
         case "$(file -b "$bin")" in Mach-O*) ;; *) continue ;; esac
         while IFS= read -r dep; do
             case "$dep" in
                 /System/*|/usr/lib/*) ;;
-                "$APP_FW_REF"/*)
+                "$APP_FW_REF"/*|"$TOOL_FW_REF"/*|@rpath/*)
+                    # @rpath/<name>: a reference fix_install_names could not
+                    # lengthen, resolved through the run path each
+                    # executable carries (build_app_bundle).
                     name="${dep#"$APP_FW_REF"/}"
+                    name="${name#"$TOOL_FW_REF"/}"
+                    name="${name#@rpath/}"
                     if [ ! -f "$SHARED_FW/$name" ]; then
                         echo "  ERROR: $(basename "$bin") needs $name, which is not in $SUITE_NAME/Frameworks/"
                         errors=$((errors + 1))
@@ -982,12 +1171,13 @@ verify_suite() {
             esac
         done < <(otool -L "$bin" 2>/dev/null | tail -n +2 | awk '{print $1}')
     done < <(find "$SHARED_FW" "${BUILT_APPS[@]/%//Contents/MacOS}" \
-                  "${BUILT_APPS[@]/%//Contents/PlugIns}" -type f -print0 2>/dev/null)
+                  "${BUILT_APPS[@]/%//Contents/PlugIns}" "${BUILT_TOOLS[@]}" \
+                  -type f -print0 2>/dev/null)
     if [ "$errors" -gt 0 ]; then
         echo "  $errors layout error(s) - see \"Suite layout\" at the top of this script"
         exit 1
     fi
-    echo "  ${#BUILT_APPS[@]} apps share $(find "$SHARED_FW" -name '*.dylib' | wc -l | tr -d ' ') dylibs in $SUITE_NAME/Frameworks/"
+    echo "  ${#BUILT_APPS[@]} apps and ${#BUILT_TOOLS[@]} tools share $(find "$SHARED_FW" -name '*.dylib' | wc -l | tr -d ' ') dylibs in $SUITE_NAME/Frameworks/"
 }
 
 sign_shared_frameworks() {
@@ -1021,9 +1211,18 @@ finish_suite() {
         [ -d "$app/Contents/PlugIns" ] && own+=("$app/Contents/PlugIns")
         check_min_macos "$(basename "$app")" "$app/Contents/Info.plist" "$shared_min" "${own[@]}"
     done
+    for tool in "${BUILT_TOOLS[@]}"; do
+        check_min_macos "$(basename "$tool")" "" "$shared_min" "$(dirname "$tool")"
+    done
 
     # Ad hoc with --no-sign (sign_code).
     sign_shared_frameworks
+    local tool
+    for tool in "${BUILT_TOOLS[@]}"; do
+        echo "── Signing $(basename "$tool") ──"
+        sign_code "$tool"
+        codesign --verify --verbose=4 --strict "$tool"
+    done
     for app in "${BUILT_APPS[@]}"; do
         echo "── Signing $(basename "$app") ──"
         codesign_bundle "$app"
@@ -1041,6 +1240,181 @@ finish_suite() {
     echo ""
 }
 
+# ── UltraCanvasStart on its own ──────────────────────────────────────────────
+#
+# The one bundle that leaves the suite layout, on purpose. UltraCanvasStart
+# sets a Mac up for UltraCanvas development, so it has to reach a Mac that
+# has nothing yet - and the suite is an image of twenty apps, half a gigabyte.
+# With --start-app the finished suite's UltraCanvasStart.app is copied out
+# and given a Contents/Frameworks/ of its own: the closure its executable and
+# plug-in reach through the suite's shared Frameworks/, with every load
+# command rewritten from @executable_path/../../../Frameworks/ (three levels
+# up, the suite folder) to @executable_path/../Frameworks/ (its own). The
+# copies are the suite's - stripped, the build run paths deleted - and are
+# signed again, because the rewrite breaks the seal; the bundle is notarized
+# and stapled in a submission of its own, since the suite's ticket covers
+# the suite's files and not this copy. verify_suite never sees it: it is not
+# in BUILT_APPS, and it is the exception the rule allows - one app shipped
+# alone, carrying only what it loads (a fraction of the shared Frameworks/).
+#
+# The Resources keep the media the framework loads - the fonts, the widget
+# icons, the app icons, media/lib (the default window icon and the cursors)
+# - and the MicroTeX fonts of the plug-in. Docs/ and the rest of media/ go:
+# the app never opens them. The archive is named like the SDKs, after the
+# framework version, since the app and the SDK it fetches belong to the same
+# release.
+STANDALONE_FW_REF="@executable_path/../Frameworks"
+STANDALONE_MEDIA=(fonts icons appicon lib microtex)
+STANDALONE_APP=""
+
+build_standalone_app() {
+    local exe_name="$1"
+    local src_app="$SUITE_DIR/$exe_name.app"
+    if [ ! -d "$src_app" ]; then
+        echo "Error: $exe_name.app is not in the suite - was $exe_name built?" >&2
+        exit 1
+    fi
+    echo "── Packaging $exe_name on its own ──"
+    rm -rf "$START_OUTPUT_DIR"
+    mkdir -p "$START_OUTPUT_DIR"
+    local app="$START_OUTPUT_DIR/$exe_name.app"
+    local contents="$app/Contents"
+    local fw="$contents/Frameworks"
+    cp -R "$src_app" "$app"
+    mkdir -p "$fw"
+
+    # The resources it loads, nothing else.
+    local res="$contents/Resources" entry name keep m
+    rm -rf "$res/Docs" "$res/DemoApp"
+    for entry in "$res/media"/*; do
+        [ -e "$entry" ] || continue
+        name="$(basename "$entry")"
+        keep=false
+        for m in "${STANDALONE_MEDIA[@]}"; do
+            [ "$name" = "$m" ] && keep=true
+        done
+        $keep || rm -rf "$entry"
+    done
+
+    # The closure: every dylib of the suite's Frameworks/ the executable and
+    # the plug-in reach, breadth first, copied into the bundle's own.
+    local queue_file count=0 current dep
+    queue_file=$(mktemp)
+    echo "$contents/MacOS/$exe_name" > "$queue_file"
+    for current in "$contents/PlugIns"/*.dylib; do
+        [ -f "$current" ] && echo "$current" >> "$queue_file"
+    done
+    while [ -s "$queue_file" ]; do
+        current=$(head -1 "$queue_file")
+        sed -i '' '1d' "$queue_file"
+        for dep in $(otool -L "$current" 2>/dev/null | tail -n +2 | awk '{print $1}'); do
+            # A reference the suite could not rewrite is still @rpath/<name>
+            # (see "the run path" below); the file is in the shared folder
+            # under that name all the same.
+            case "$dep" in
+                "$APP_FW_REF"/*) name="${dep#"$APP_FW_REF"/}" ;;
+                @rpath/*)        name="${dep#@rpath/}" ;;
+                *) continue ;;
+            esac
+            [ -f "$fw/$name" ] && continue
+            if [ ! -f "$SHARED_FW/$name" ]; then
+                echo "  ERROR: $(basename "$current") loads $name, which is not in the suite's Frameworks/" >&2
+                exit 1
+            fi
+            cp "$SHARED_FW/$name" "$fw/$name"
+            chmod 644 "$fw/$name"
+            count=$((count + 1))
+            echo "$fw/$name" >> "$queue_file"
+        done
+    done
+    rm -f "$queue_file"
+    echo "  Copied $count of the suite's $(find "$SHARED_FW" -name '*.dylib' | wc -l | tr -d ' ') dylibs"
+
+    # The load commands: from the suite's shared folder to the bundle's own.
+    # The new path is shorter than the old, so it always fits the load
+    # command. The rewrite invalidates the suite's signatures; they are
+    # made again below.
+    #
+    # A reference the suite left as @rpath/<name> is one install_name_tool
+    # could not lengthen: a library built without header padding (mupdf,
+    # croco) has room for a few longer load commands and then none, and
+    # fix_install_names lets that pass. The same rewrite is tried here, and
+    # where it does not fit the reference stays @rpath/<name>: the run path
+    # added to the executable below resolves it to the bundle's own
+    # Frameworks/, since dyld expands @rpath against the run paths of every
+    # image on the load chain up to the executable.
+    local bin
+    while IFS= read -r -d '' bin; do
+        case "$(file -b "$bin")" in Mach-O*) ;; *) continue ;; esac
+        chmod u+w "$bin"
+        case "$bin" in
+            "$fw"/*) install_name_tool -id "$STANDALONE_FW_REF/$(basename "$bin")" "$bin" ;;
+        esac
+        for dep in $(otool -L "$bin" 2>/dev/null | tail -n +2 | awk '{print $1}'); do
+            case "$dep" in
+                "$APP_FW_REF"/*)
+                    install_name_tool -change "$dep" "$STANDALONE_FW_REF/${dep#"$APP_FW_REF"/}" "$bin" ;;
+                @rpath/*)
+                    install_name_tool -change "$dep" "$STANDALONE_FW_REF/${dep#@rpath/}" "$bin" 2>/dev/null \
+                        || echo "  $(basename "$bin") keeps $dep (no room for the longer path; the run path resolves it)" ;;
+            esac
+        done
+    done < <(find "$contents/MacOS" "$contents/PlugIns" "$fw" -type f -print0 2>/dev/null)
+    install_name_tool -add_rpath "$STANDALONE_FW_REF" "$contents/MacOS/$exe_name"
+
+    # Every reference now resolves inside the bundle or to the system.
+    local errors=0
+    while IFS= read -r -d '' bin; do
+        case "$(file -b "$bin")" in Mach-O*) ;; *) continue ;; esac
+        for dep in $(otool -L "$bin" 2>/dev/null | tail -n +2 | awk '{print $1}'); do
+            case "$dep" in
+                /System/*|/usr/lib/*) ;;
+                "$STANDALONE_FW_REF"/*|@rpath/*)
+                    name="${dep#"$STANDALONE_FW_REF"/}"
+                    name="${name#@rpath/}"
+                    if [ ! -f "$fw/$name" ]; then
+                        echo "  ERROR: $(basename "$bin") needs $name, which is not in the bundle" >&2
+                        errors=$((errors + 1))
+                    fi ;;
+                *)
+                    echo "  ERROR: $(basename "$bin") still loads $dep" >&2
+                    errors=$((errors + 1)) ;;
+            esac
+        done
+    done < <(find "$contents/MacOS" "$contents/PlugIns" "$fw" -type f -print0 2>/dev/null)
+    if [ "$errors" -gt 0 ]; then
+        echo "  $errors reference(s) outside the bundle" >&2
+        exit 1
+    fi
+
+    # The minimum macOS of this bundle's own binaries. The plist keeps the
+    # LSMinimumSystemVersion finish_suite wrote, computed over these files
+    # and the rest of the suite's; written again it would break the plist.
+    local own=("$contents/MacOS" "$fw")
+    [ -d "$contents/PlugIns" ] && own+=("$contents/PlugIns")
+    check_min_macos "$exe_name (on its own)" "" "" "${own[@]}"
+
+    # Signed inside out like the suite: the dylibs, then the plug-in, the
+    # executable and the bundle (codesign_bundle, with the entitlements
+    # build_app_bundle wrote for this app).
+    local dylib
+    for dylib in "$fw"/*.dylib; do
+        [ -f "$dylib" ] && sign_code "$dylib"
+    done
+    codesign_bundle "$app"
+
+    # Proof that the closure loads: the bundle runs from where it is.
+    echo "  Running the packaged application..."
+    "$contents/MacOS/$exe_name" --version | head -1
+
+    if $NOTARIZE; then
+        notarize_bundle "$app"
+    fi
+    STANDALONE_APP="$app"
+    echo "  Bundle size: $(du -sh "$app" | cut -f1)"
+    echo ""
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 # Clean and create output directory
@@ -1050,6 +1424,7 @@ SUITE_DIR="$OUTPUT_DIR/$SUITE_NAME"
 SHARED_FW="$SUITE_DIR/Frameworks"
 mkdir -p "$SHARED_FW"
 BUILT_APPS=()
+BUILT_TOOLS=()
 
 # Document types for Texter (text editor)
 TEXTER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
@@ -1176,6 +1551,59 @@ package_if_built "UltraClipboard" build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Document types for UltraVideo (the video editor): its own projects as the
+# editor, and the media it edits under "Open With" without claiming them.
+ULTRAVIDEO_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>UltraVideo Project</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>ultravideo</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Media Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.movie</string>
+                <string>public.image</string>
+                <string>public.audio</string>
+            </array>
+        </dict>
+    </array>'
+
+# Package UltraVideo (the video editor; libVideoFX and FFmpeg go to the
+# shared Frameworks/ with the rest)
+package_if_built "UltraVideo" build_app_bundle \
+    "UltraVideo" \
+    "UltraVideo" \
+    "com.cloverleaf.UltraVideo" \
+    "media/appicon/UltraVideo.png" \
+    "public.app-category.video" \
+    "$ULTRAVIDEO_DOC_TYPES"
+
+# Package UltraCanvasStart, the setup application (Apps/UltraCanvasStart).
+# In the suite like every app, and with --start-app also on its own
+# (build_standalone_app, after finish_suite).
+package_if_built "UltraCanvasStart" build_app_bundle \
+    "UltraCanvasStart" \
+    "UltraCanvasStart" \
+    "com.cloverleaf.UltraCanvasStart" \
+    "media/appicon/UltraCanvasStart.png" \
+    "public.app-category.developer-tools" \
+    ""
+
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 package_if_built "ultramsg" build_cli_tool "ultramsg"
 
@@ -1194,58 +1622,70 @@ fi
 # own Frameworks/ (verify_suite rejects that). See "Suite layout".
 finish_suite
 
-# ── Optional DMG creation ───────────────────────────────────────────────────
+# UltraCanvasStart on its own is cut out of the finished suite, after it.
+if $START_APP; then
+    build_standalone_app "UltraCanvasStart"
+fi
 
-if $CREATE_DMG; then
-    echo "── Creating DMG ──"
-    # An ad-hoc build says so in its file and volume name: Gatekeeper refuses
-    # it once downloaded, and it must not pass for the notarized release of
-    # the same version (see "Unsigned builds" above sign_code).
-    DMG_SUFFIX=""
-    DMG_VOLNAME="UltraCanvas $VERSION"
-    if ! $DO_SIGN; then
-        DMG_SUFFIX="-unsigned"
-        DMG_VOLNAME="UltraCanvas $VERSION (unsigned)"
-    fi
-    DMG_NAME="UCDemo-MacOS-${VERSION}-$(uname -m)${DMG_SUFFIX}.dmg"
-    DMG_STAGING="$OUTPUT_DIR/.dmg_staging"
+# ── DMG creation ────────────────────────────────────────────────────────────
 
-    mkdir -p "$DMG_STAGING"
+# create_dmg ITEM DIR NAME VOLNAME - the disk image DIR/NAME holding ITEM
+# (the suite folder, or an app on its own) beside an Applications link,
+# signed and notarized like what is inside it.
+create_dmg() {
+    local item="$1" out_dir="$2" dmg_name="$3" volname="$4"
+    local staging="$out_dir/.dmg_staging"
+    local base
+    base="$(basename "$item")"
+    echo "── Creating $dmg_name ──"
+
+    rm -rf "$staging"
+    mkdir -p "$staging"
 
     # The suite folder as one item: dragging it to Applications installs the
-    # apps together with the Frameworks/ they share.
-    cp -R "$SUITE_DIR" "$DMG_STAGING/"
+    # apps together with the Frameworks/ they share. An app on its own is
+    # one item as well.
+    cp -R "$item" "$staging/"
 
     # Add Applications symlink for drag-and-drop install
-    ln -s /Applications "$DMG_STAGING/Applications"
+    ln -s /Applications "$staging/Applications"
 
-    # Beside the folder, the first thing seen on opening the image: why macOS
+    # Beside the item, the first thing seen on opening the image: why macOS
     # calls the apps damaged, and the command that lets them run.
     if ! $DO_SIGN; then
-        cat > "$DMG_STAGING/Unsigned build - read me.txt" <<README
+        local what="the apps" copy_step open_step
+        if [ "$base" = "$SUITE_NAME" ]; then
+            copy_step="1. Copy the whole $SUITE_NAME folder to Applications. The apps share the
+   Frameworks folder inside it and do not start when moved out on their own."
+            open_step="3. Open the apps from /Applications/$SUITE_NAME."
+        else
+            what="the app"
+            copy_step="1. Copy $base to Applications."
+            open_step="3. Open $base from Applications."
+        fi
+        cat > "$staging/Unsigned build - read me.txt" <<README
 UltraCanvas $VERSION ($(uname -m)) - unsigned build
 
 This disk image comes from a pull request or a manual build. Its apps are
 signed ad hoc, not with the project's Developer ID, and Apple has not
 notarized them. Only the builds made on main are signed and notarized.
 
-So macOS refuses to open these apps once a browser has downloaded the image.
+So macOS refuses to open $what once a browser has downloaded the image.
 On a Mac with Apple silicon it says:
 
     "UltraFiler.app" is damaged and can't be opened.
     You should move it to the Trash.
 
 Nothing is damaged: that is how macOS refuses a downloaded app that no
-registered developer has signed. To run the apps anyway:
+registered developer has signed. To run $what anyway:
 
-1. Copy the whole UltraCanvas folder to Applications. The apps share the
-   Frameworks folder inside it and do not start when moved out on their own.
+$copy_step
 
 2. In Terminal, remove the download quarantine from the copy:
 
-       xattr -dr com.apple.quarantine /Applications/UltraCanvas
+       xattr -dr com.apple.quarantine /Applications/$base
 
-3. Open the apps from /Applications/UltraCanvas.
+$open_step
 
 For a signed and notarized build, download the macOS artifact of a build run
 on main: its name does not end in "-unsigned".
@@ -1259,12 +1699,12 @@ README
     # run on (check_min_macos). hdiutil on CI runners now and then fails
     # with "Resource busy" while the system indexes the staging folder, so it
     # gets three tries.
-    dmg_try=1
+    local dmg_try=1
     until hdiutil create \
-            -volname "$DMG_VOLNAME" \
-            -srcfolder "$DMG_STAGING" \
+            -volname "$volname" \
+            -srcfolder "$staging" \
             -ov -format ULMO \
-            "$OUTPUT_DIR/$DMG_NAME"; do
+            "$out_dir/$dmg_name"; do
         if [ "$dmg_try" -ge 3 ]; then
             echo "  ERROR: hdiutil create failed $dmg_try times"
             exit 1
@@ -1274,7 +1714,7 @@ README
         sleep 10
     done
 
-    rm -rf "$DMG_STAGING"
+    rm -rf "$staging"
 
     # The image is what a user downloads and opens, so it carries the same
     # Developer ID signature as the apps inside it and, on a notarized run, its
@@ -1283,16 +1723,37 @@ README
     # unsigned build's image stays unsigned.
     if $DO_SIGN; then
         echo "  Signing DMG..."
-        codesign --force --timestamp --sign "$IDENTITY" "$OUTPUT_DIR/$DMG_NAME"
-        codesign --verify --verbose=2 "$OUTPUT_DIR/$DMG_NAME"
+        codesign --force --timestamp --sign "$IDENTITY" "$out_dir/$dmg_name"
+        codesign --verify --verbose=2 "$out_dir/$dmg_name"
     fi
     if $NOTARIZE; then
-        notarize_bundle "$OUTPUT_DIR/$DMG_NAME"
+        notarize_bundle "$out_dir/$dmg_name"
     fi
 
-    DMG_SIZE=$(du -sh "$OUTPUT_DIR/$DMG_NAME" | cut -f1)
-    echo "  DMG created: $OUTPUT_DIR/$DMG_NAME ($DMG_SIZE)"
+    echo "  DMG created: $out_dir/$dmg_name ($(du -sh "$out_dir/$dmg_name" | cut -f1))"
     echo ""
+}
+
+if $CREATE_DMG; then
+    # An ad-hoc build says so in its file and volume name: Gatekeeper refuses
+    # it once downloaded, and it must not pass for the notarized release of
+    # the same version (see "Unsigned builds" above sign_code).
+    DMG_SUFFIX=""
+    DMG_VOLNAME="UltraCanvas $VERSION"
+    if ! $DO_SIGN; then
+        DMG_SUFFIX="-unsigned"
+        DMG_VOLNAME="UltraCanvas $VERSION (unsigned)"
+    fi
+    create_dmg "$SUITE_DIR" "$OUTPUT_DIR" \
+        "UCDemo-MacOS-${VERSION}-$(uname -m)${DMG_SUFFIX}.dmg" "$DMG_VOLNAME"
+    # UltraCanvasStart on its own: named like the SDK archives, after the
+    # framework version, in its own folder (the suite's artifact upload
+    # takes every image in $OUTPUT_DIR).
+    if $START_APP; then
+        create_dmg "$STANDALONE_APP" "$START_OUTPUT_DIR" \
+            "UltraCanvasStart-MacOS-${VERSION}-$(uname -m)${DMG_SUFFIX}.dmg" \
+            "UltraCanvasStart $VERSION${DMG_SUFFIX:+ (unsigned)}"
+    fi
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
@@ -1327,11 +1788,29 @@ fw_count=$(find "$SHARED_FW" -name '*.dylib' | wc -l | tr -d ' ')
 fw_min_macos=$(awk '$1 == "Frameworks/" {print $2}' "$MIN_MACOS_LOG")
 echo "    Frameworks/ (shared by ${#BUILT_APPS[@]} apps): $fw_size in $fw_count dylibs, needs macOS ${fw_min_macos:-?}"
 SIZE_TABLE+=$'\n'"| Frameworks/ (shared by ${#BUILT_APPS[@]} apps) | $fw_size | $fw_count | ${fw_min_macos:-?} |"
+# The core on its own: the one copy of the framework every app loads.
+for core in "$SHARED_FW"/libUltraCanvas.*.dylib; do
+    [ -f "$core" ] || continue
+    echo "    of which $(basename "$core"): $(du -sh "$core" | cut -f1)"
+    SIZE_TABLE+=$'\n'"| &nbsp;&nbsp;of which $(basename "$core") | $(du -sh "$core" | cut -f1) | | |"
+done
 SIZE_TABLE+=$'\n'"| **$SUITE_NAME/** (unpacked) | $(du -sh "$SUITE_DIR" | cut -f1) | | |"
 for dmg in "$OUTPUT_DIR"/*.dmg; do
     [ -f "$dmg" ] || continue
     SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | | |"
 done
+if [ -n "$STANDALONE_APP" ]; then
+    echo "  UltraCanvasStart on its own ($START_OUTPUT_DIR/):"
+    sa_min=$(awk '$1 == "UltraCanvasStart" && $2 == "(on" {print $NF}' "$MIN_MACOS_LOG")
+    sa_fw=$(find "$STANDALONE_APP/Contents/Frameworks" -name '*.dylib' | wc -l | tr -d ' ')
+    echo "    $(basename "$STANDALONE_APP"): $(du -sh "$STANDALONE_APP" | cut -f1) with $sa_fw dylibs of its own, needs macOS ${sa_min:-?}"
+    SIZE_TABLE+=$'\n'"| **$(basename "$STANDALONE_APP")** on its own (unpacked) | $(du -sh "$STANDALONE_APP" | cut -f1) | $sa_fw | ${sa_min:-?} |"
+    for dmg in "$START_OUTPUT_DIR"/*.dmg; do
+        [ -f "$dmg" ] || continue
+        echo "    $(basename "$dmg"): $(du -sh "$dmg" | cut -f1)"
+        SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | | |"
+    done
+fi
 rm -f "$MIN_MACOS_LOG"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     {

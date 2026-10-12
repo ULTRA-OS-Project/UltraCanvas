@@ -1,5 +1,7 @@
 # UltraCanvas Color Swatch Bar Documentation
 
+<!-- doc-check: void SetFillColor(const Color& c); std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+
 ## Overview
 
 **UltraCanvasColorSwatchBar** is a strip of colour swatches: one click picks a
@@ -46,12 +48,18 @@ container->AddChild(bar);
 ```
 
 A backdrop chooser adds the checkerboard entry — `CreateBackdropSwatchBar` does
-both steps:
+both steps. Here it sets the backdrop an `UltraCanvasMediaViewer` draws under
+transparent images:
 
 ```cpp
 auto backdrop = CreateBackdropSwatchBar("backdrop", 0, 0, 0, 28);
-backdrop->onColorSelected    = [&](const Color& c) { view->SetBackdropColor(c); };
-backdrop->onCheckeredSelected = [&]()              { view->SetBackdropCheckered(); };
+backdrop->onColorSelected = [&](const Color& c) {
+    viewer->SetTransparentBackground(TransparentImageBackground::SolidColor);
+    viewer->SetTransparentColor(c);
+};
+backdrop->onCheckeredSelected = [&]() {
+    viewer->SetTransparentBackground(TransparentImageBackground::Checkered);
+};
 ```
 
 ## Palettes

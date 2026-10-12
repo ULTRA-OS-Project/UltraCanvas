@@ -1,5 +1,7 @@
 # UltraCanvas Coordinate System & Positioning Guide
 
+<!-- doc-check: class MyElement : public UltraCanvasUIElement { public: void Render(IRenderContext* ctx, const Rect2Df& dirty) override; bool OnEvent(const UCEvent& e) override; Rect2Di SidebarArea() const; Color background; int sidebarWidth_ = 200; }; std::shared_ptr<UltraCanvasUIElement> child; Rect2Di adjustedChildBounds; Rect2Di childDirty; UltraCanvasUIElement* elem; std::shared_ptr<UltraCanvasContainer> container; std::shared_ptr<UltraCanvasUIElement> view; std::shared_ptr<UltraCanvasUIElement> el; float x; float y; float w; float h; -->
+
 A practical guide to how positions work in UltraCanvas, so your custom
 elements draw and respond to input in the right place.
 
@@ -126,7 +128,7 @@ bool MyElement::OnEvent(const UCEvent& e) {
             break;
         }
         case UCEventType::MouseWheel: {
-            const bool inSidebar = e.pointer.x < sidebarWidth;  // local x
+            const bool inSidebar = e.pointer.x < sidebarWidth_;  // local x
             break;
         }
     }
@@ -145,6 +147,46 @@ Rect2Di MyElement::SidebarArea() const {
 
 Drag deltas (`pointer - anchor`) are frame‑independent, so panning logic that
 only uses differences is safe in any frame.
+
+### Which element gets a press
+
+A mouse press (`MouseDown`, `MouseUp`, `MouseDoubleClick`) goes first to the
+innermost interactive element under the pointer. If its `OnEvent` returns
+`false`, the press climbs to that element's parent, then the grandparent, and
+so on — each one gets it with `event.pointer` mapped into *its own* local
+space — until one returns `true`. The climb stops below the window, which
+still gets a press nobody took, once, at the end. A popup is a child of the
+window, so a press inside a popup never reaches what lies under it.
+
+So a container that acts on clicks — a clickable card, a row, a tile — hears
+a click on the label or icon inside it without any extra work, and:
+
+- **Return `true` for a press you acted on**, `false` for one you did not.
+  A press you used but report as untaken goes on to your parents, which may
+  act on it again — clearing a selection or taking the focus is acting on
+  it. A press you have no use for (a middle press on an editor) is better
+  left alone entirely: do not take the focus first, and return `false`.
+  A right press you have no menu for goes on on purpose, so the menu of the
+  element around you can open (a button does this).
+- **A container gets the presses its children did not take**, with the
+  pointer over that child. A view that hit‑tests its own painted content
+  must not treat such a press as a click on whatever is painted under the
+  child.
+- A press whose element left the tree while handling it (a click that
+  closed its row) stops there; the elements it left do not get it.
+- Hit‑testing skips an element that is not interactive
+  (`SetInteractive(false)`) together with everything inside it: the press
+  lands on the element around it directly, and so does the hover — and with
+  it the tooltip.
+- A window event filter (`InstallEventFilter`) sees every step of the climb,
+  `event.targetElement` set to the element of that step — as it already did
+  for the wheel — so a filter that acts on a press must act once, or return
+  `true` to stop the press.
+
+Before October 2026 a press went to the innermost element and then straight
+to the window, so a card answered only on its padding - UltraMail's account
+tiles switched the account from 1 of 14 spots (framework changelog: "A mouse
+press the element under the pointer does not take climbs to its parents").
 
 ---
 
@@ -197,8 +239,8 @@ global hit‑tests) — not in normal `Render`/`OnEvent`:
 | `MapFromLocal(localPt)` | this element's **local** point → **window** frame |
 
 ```cpp
-// A child wants to know where a local point lands on screen:
-Point2Df onScreen = MapFromLocal({0, 0});   // my top-left, in window coords
+// Where a local point of `el` lands in the window:
+Point2Df inWindow = el->MapFromLocal({0, 0});   // el's top-left, in window coords
 ```
 
 ---
@@ -228,37 +270,60 @@ These are the patterns that bite. Each one compiles and "looks" right.
 `GetBounds()`:
 
 ```cpp
-// BEFORE — parent-relative, double-offset
-void Render(IRenderContext* ctx, const Rect2Df&) {
-    const Rect2Di b = GetBounds();        // e.g. (12, 94, W, H) inside its parent
-    ctx->FillRectangle(b);                // …but ctx is already translated by (12, 94)
-    // → the viewer paints at (24, 188): a white gap under the toolbar,
-    //   the page badge slides off to the right, clipping is wrong.
-}
+// BEFORE — parent-relative, double-offset (UltraCanvasPDFView, cut down)
+class PDFView : public UltraCanvasUIElement {
+    int thumbStripWidth = 160;
+public:
+    void Render(IRenderContext* ctx, const Rect2Df&) override {
+        const Rect2Di b = GetBounds();        // e.g. (12, 94, W, H) inside its parent
+        ctx->FillRectangle(b);                // …but ctx is already translated by (12, 94)
+        // → the viewer paints at (24, 188): a white gap under the toolbar,
+        //   the page badge slides off to the right, clipping is wrong.
+    }
 
-case UCEventType::MouseWheel: {
-    Point2Di local(event.pointer.x - GetX(), event.pointer.y - GetY()); // wrong
-    bool inThumbs = local.x < thumbStripWidth;
-}
+    bool OnEvent(const UCEvent& event) override {
+        switch (event.type) {
+            case UCEventType::MouseWheel: {
+                Point2Di local(event.pointer.x - GetX(), event.pointer.y - GetY()); // wrong
+                bool inThumbs = local.x < thumbStripWidth;
+                break;
+            }
+            default: break;
+        }
+        return UltraCanvasUIElement::OnEvent(event);
+    }
+};
 ```
 
 The fix was to move everything to the local frame:
 
 ```cpp
 // AFTER — local frame, single source of truth
-void Render(IRenderContext* ctx, const Rect2Df&) {
-    const Rect2Di b(0, 0, (int)GetWidth(), (int)GetHeight());
-    ctx->FillRectangle(b);
-}
+class PDFView : public UltraCanvasUIElement {
+    int thumbStripWidth = 160;
+    bool showThumbs_ = true;
+public:
+    void Render(IRenderContext* ctx, const Rect2Df&) override {
+        const Rect2Di b(0, 0, (int)GetWidth(), (int)GetHeight());
+        ctx->FillRectangle(b);
+    }
 
-Rect2Di PageContentArea() const {                 // local
-    const int left = showThumbs_ ? thumbStripWidth : 0;
-    return Rect2Di(left, 0, (int)GetWidth() - left, (int)GetHeight());
-}
+    Rect2Di PageContentArea() const {                 // local
+        const int left = showThumbs_ ? thumbStripWidth : 0;
+        return Rect2Di(left, 0, (int)GetWidth() - left, (int)GetHeight());
+    }
 
-case UCEventType::MouseWheel: {
-    bool inThumbs = event.pointer.x < thumbStripWidth;  // pointer is already local
-}
+    bool OnEvent(const UCEvent& event) override {
+        switch (event.type) {
+            case UCEventType::MouseWheel: {
+                bool inThumbs = event.pointer.x < thumbStripWidth;  // pointer is already local
+                break;
+            }
+            default: break;
+        }
+        return UltraCanvasUIElement::OnEvent(event);
+    }
+};
 ```
 
 Result: the viewer sits flush under the toolbar, the page‑number badge lines up

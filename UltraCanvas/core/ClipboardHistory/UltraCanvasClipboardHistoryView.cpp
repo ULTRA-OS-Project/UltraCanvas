@@ -1,8 +1,8 @@
 // core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp
 // The list model and row painter for a clipboard history. See
 // include/UltraCanvasClipboardHistoryView.h.
-// Version: 1.0.0
-// Last Modified: 2026-10-06
+// Version: 1.1.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboardHistoryView.h"
@@ -72,9 +72,24 @@ const std::string& IconsDir(const std::string& configured) {
 } // namespace
 
 // ===== MODEL =====
-void ClipboardHistoryListModel::SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections) {
+void ClipboardHistoryListModel::SetEntries(std::vector<ClipboardHistoryEntry> entries, Sections sections,
+                                           const LeadSection& lead) {
     rows.clear();
     entryCount = entries.size();
+    const size_t leading = lead.title.empty() ? 0 : std::min(lead.count, entries.size());
+    if (leading > 0) {
+        ClipboardHistoryRow header;
+        header.header = true;
+        header.headerText = lead.title;
+        header.headerCount = static_cast<int>(leading);
+        rows.push_back(std::move(header));
+        for (size_t i = 0; i < leading; ++i) {
+            ClipboardHistoryRow row;
+            row.entry = std::move(entries[i]);
+            rows.push_back(std::move(row));
+        }
+        entries.erase(entries.begin(), entries.begin() + static_cast<std::ptrdiff_t>(leading));
+    }
     if (sections == Sections::Flat) {
         for (auto& entry : entries) {
             ClipboardHistoryRow row;
@@ -360,6 +375,12 @@ ClipboardRowAction ClipboardHistoryRowDelegate::ActionAt(int row, const Point2Di
     if (posInCell.x < left || posInCell.x >= left + 3.0 * style.actionSize) return ClipboardRowAction::NoAction;
     const int slot = static_cast<int>((posInCell.x - left) / style.actionSize);
     return slot == 0 ? ClipboardRowAction::Copy : slot == 1 ? ClipboardRowAction::Edit : ClipboardRowAction::Delete;
+}
+
+bool ClipboardHistoryRowDelegate::IsOverThumbnail(const Point2Di& posInCell) const {
+    const int left = style.padding;
+    return posInCell.x >= left && posInCell.x < left + style.thumbnailSize && posInCell.y >= 0 &&
+           posInCell.y < style.rowHeight;
 }
 
 bool ClipboardHistoryRowDelegate::SetHover(int row, const Point2Di& posInCell) {

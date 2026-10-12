@@ -171,12 +171,13 @@ namespace UltraCanvas {
             tile->AddChild(nameLabel);
 
             auto makeButton = [&](const std::string& suffix, int bx, int bw,
-                                  const std::string& text, std::function<void()> action) {
+                                  const std::string& text, std::function<void()> action) -> UltraCanvasButton& {
                 auto btn = std::make_shared<UltraCanvasButton>(id + suffix, bx, 260, bw, 26);
                 btn->SetText(text);
                 btn->SetFontSize(9);
                 btn->onClick = std::move(action);
                 tile->AddChild(btn);
+                return *btn;
             };
 
             // Page navigation. The label doubles as the page indicator.
@@ -191,18 +192,24 @@ namespace UltraCanvas {
                                    std::to_string(element->GetPageCount()));
             };
 
-            makeButton("Prev", 10, 26, "\xE2\x97\x80", [element]() {   // U+25C0
+            // The page arrows are icons, not "◀" / "▶" glyphs, which the
+            // bundled UI font does not have.
+            UltraCanvasButton& prev = makeButton("Prev", 10, 26, "", [element]() {
                 if (element->IsLoaded() && element->GetCurrentPage() > 0) {
                     element->SetCurrentPage(element->GetCurrentPage() - 1);
                 }
             });
+            SetFlatButtonIcon(prev, "menu/chevron-left.svg", ButtonIconPosition::Center, 14);
+            prev.SetTooltip("Previous page");
             tile->AddChild(pageLabel);
-            makeButton("Next", 102, 26, "\xE2\x96\xB6", [element]() {  // U+25B6
+            UltraCanvasButton& next = makeButton("Next", 102, 26, "", [element]() {
                 if (element->IsLoaded() &&
                     element->GetCurrentPage() < element->GetPageCount() - 1) {
                     element->SetCurrentPage(element->GetCurrentPage() + 1);
                 }
             });
+            SetFlatButtonIcon(next, "menu/chevron-right.svg", ButtonIconPosition::Center, 14);
+            next.SetTooltip("Next page");
 
             // Zoom / fit.
             makeButton("ZoomOut", 134, 26, "\xE2\x88\x92", [element]() {  // U+2212
@@ -261,17 +268,17 @@ namespace UltraCanvas {
 
         auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 42, 450, 230);
         infoText->SetText(
-                "\xE2\x9C\x93 CorelDRAW CDR format\n"
-                "\xE2\x9C\x93 Corel Presentation Exchange CMX\n"
-                "\xE2\x9C\x93 Multi-page document support\n"
-                "\xE2\x9C\x93 Vector paths and shapes\n"
-                "\xE2\x9C\x93 Text with styling\n"
-                "\xE2\x9C\x93 Transformations (rotate, scale)\n"
-                "\xE2\x9C\x93 Groups and layers\n"
-                "\xE2\x9C\x93 Stroke and fill styles\n"
-                "\xE2\x9C\x93 Zoom and pan controls\n"
-                "\xE2\x9C\x93 Fit modes (page, width, height)\n"
-                "\xE2\x9C\x93 Save as SVG (XAR planned)\n"
+                "\xE2\x80\xA2 CorelDRAW CDR format\n"
+                "\xE2\x80\xA2 Corel Presentation Exchange CMX\n"
+                "\xE2\x80\xA2 Multi-page document support\n"
+                "\xE2\x80\xA2 Vector paths and shapes\n"
+                "\xE2\x80\xA2 Text with styling\n"
+                "\xE2\x80\xA2 Transformations (rotate, scale)\n"
+                "\xE2\x80\xA2 Groups and layers\n"
+                "\xE2\x80\xA2 Stroke and fill styles\n"
+                "\xE2\x80\xA2 Zoom and pan controls\n"
+                "\xE2\x80\xA2 Fit modes (page, width, height)\n"
+                "\xE2\x80\xA2 Save as SVG (XAR planned)\n"
                 "\n"
                 "Uses libcdr for parsing."
         );

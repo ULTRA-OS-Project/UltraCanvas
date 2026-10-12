@@ -57,3 +57,55 @@ TEST(folder_separator_from_the_server_else_from_the_names) {
     REQUIRE_EQ(AccountFolderDelimiter(slashed), std::string("/"));
     REQUIRE_EQ(AccountFolderDelimiter({}), std::string("/"));
 }
+
+// Add folder: the name a person typed, placed where the server keeps folders
+// and encoded for the wire - or refused, with the reason.
+TEST(new_folder_name_places_and_encodes_the_typed_name) {
+    std::string error;
+    std::vector<Folder> plain = { F("INBOX", "/"), F("Sent", "/"), F("Work", "/") };
+    REQUIRE_EQ(NewFolderName("  Projects ", "", plain, error), std::string("Projects"));
+    REQUIRE(error.empty());
+    REQUIRE_EQ(NewFolderName("Projects", "INBOX", plain, error), std::string("Projects"));
+    REQUIRE_EQ(NewFolderName("2026", "Work", plain, error), std::string("Work/2026"));
+    REQUIRE_EQ(NewFolderName("B\xC3\xBC" "cher & Hefte", "", plain, error),
+               std::string("B&APw-cher &- Hefte"));
+
+    // Every folder below the inbox (Courier): a new top-level one goes there.
+    std::vector<Folder> courier = { F("INBOX", "."), F("INBOX.Drafts", "."), F("INBOX.Work", ".") };
+    REQUIRE_EQ(NewFolderName("Projects", "", courier, error), std::string("INBOX.Projects"));
+    REQUIRE_EQ(NewFolderName("2026", "INBOX.Work", courier, error),
+               std::string("INBOX.Work.2026"));
+
+    // Refused, with the reason.
+    REQUIRE(NewFolderName("   ", "", plain, error).empty());
+    REQUIRE(!error.empty());
+    REQUIRE(NewFolderName("a/b", "", plain, error).empty());
+    REQUIRE(error.find('/') != std::string::npos);
+    REQUIRE(NewFolderName("Projects.2026", "", courier, error).empty());
+    REQUIRE(NewFolderName("Top*", "", plain, error).empty());
+    REQUIRE(NewFolderName("50%", "", plain, error).empty());
+    REQUIRE(NewFolderName("a\tb", "", plain, error).empty());
+    REQUIRE(NewFolderName("work", "", plain, error).empty());       // "Work" is there
+    REQUIRE(error.find("work") != std::string::npos);
+    REQUIRE(NewFolderName("Inbox", "", plain, error).empty());
+    REQUIRE(NewFolderName("Drafts", "", courier, error).empty());   // INBOX.Drafts
+}
+
+// Delete folder: never the inbox, a folder with a role, or one with
+// folders below it.
+TEST(can_delete_folder_keeps_the_ones_mail_needs) {
+    Folder inbox = F("INBOX", "/");     inbox.role = FolderRole::Inbox;
+    Folder sent  = F("Sent", "/");      sent.role = FolderRole::Sent;
+    Folder work  = F("Work", "/");
+    Folder year  = F("Work/2026", "/");
+    Folder other = F("Workshop", "/");
+    const std::vector<Folder> all = { inbox, sent, work, year, other };
+    std::string why;
+    REQUIRE(!CanDeleteFolder(inbox, all, &why));
+    REQUIRE(!why.empty());
+    REQUIRE(!CanDeleteFolder(sent, all, &why));
+    REQUIRE(!CanDeleteFolder(work, all, &why));     // Work/2026 below it
+    REQUIRE(CanDeleteFolder(year, all, &why));
+    REQUIRE(why.empty());
+    REQUIRE(CanDeleteFolder(other, all));           // "Workshop" is not below "Work"
+}

@@ -1,4 +1,11 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.31 - a password typed on the server settings page drops stored
+//                   OAuth tokens, so the account switches to it
+// Version: 0.9.30 - trusted and blocked senders: set at start, changed from the
+//                   sender menus or Settings, the changed senders' mail judged
+//                   again; a trusted sender's pictures load like a contact's
+// Version: 0.9.29 - Settings > Spam/scam warnings: the scan's options set at start
+//                   and on a change, which has the stored verdicts judged again
 // Version: 0.9.28 - the window first: only what the first frame shows is done
 //                   before it (the mail list and the selected message);
 //                   the mail plug-ins, the vault, the cloud accounts, the
@@ -106,6 +113,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraMailSenderBrands.h"   // RegistrableDomain
 #include <map>
+#include <set>
 
 // ULTRAMAIL_VERSION comes from the build alone: CMake reads the first line of
 // Docs/UltraMail/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -192,6 +200,10 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     prefsPath_ = dataDir + "/preferences.ini";
     step.emplace("Preferences", 0);
     prefs_.Load(prefsPath_);
+    // Which spam/scam warnings the content scan gives - before anything is
+    // scanned, on the sync's threads or in the reading pane.
+    SetThreatScanOptions(prefs_.scamWarnings);
+    SetSenderLists(prefs_.senderLists);
     ApplyNeedsAnswerRules();
     // The sender-icon cache (the badge left of every subject line) lives under
     // the cache directory; it is safe to point at it before the folder exists.
@@ -222,7 +234,7 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
 
     step.emplace("Accounts", 0);
-    store_.ListAccounts(accounts_);
+    LoadAccounts();
     step.emplace("Count every account's mail (unread, today, waiting for reply)", 0);
     store_.GetAccountStatus(status_);
     step.reset();
@@ -533,6 +545,9 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     accountBar_.onSelectAccount = [this](const std::string& accountId) {
         SwitchToAccount(accountId);
     };
+    accountBar_.onReorderAccounts = [this](const std::vector<std::string>& order) {
+        HandleReorderAccounts(order);
+    };
     accountView_->AddChild(bar);
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -585,7 +600,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
             case RemoteImagePolicy::LoadTrusted: break;
         }
         const std::string a = lowerAddr(addr);
-        if (prefs_.remoteImageSenders.count(a)) return true;
+        if (prefs_.remoteImageSenders.count(a) || prefs_.senderLists.Trusts(a)) return true;
         if (const auto at = a.rfind('@'); at != std::string::npos &&
             prefs_.IsTrustedDomain(a.substr(at + 1)))
             return true;
@@ -612,9 +627,19 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         return groups;
     };
     mailView_.onNotJunk    = [this](const MessageEnvelope& e) { HandleNotJunk(e); };
+    mailView_.senderLists  = [this]() { return prefs_.senderLists; };
+    mailView_.onSenderListChange = [this](const std::string& entry, bool blockList, bool add) {
+        HandleSenderListChange(entry, blockList, add);
+    };
     mailView_.onUnsubscribe = [this](const MessageEnvelope& e) { HandleUnsubscribe(e); };
     mailView_.onMoveTo     = [this](const MessageEnvelope& e, const std::string& folder) {
         HandleMoveMessage(e, folder);
+    };
+    mailView_.onAddFolder = [this](const std::string& accountId, const std::string& parent) {
+        HandleAddFolder(accountId, parent);
+    };
+    mailView_.onDeleteFolder = [this](const std::string& accountId, const std::string& folder) {
+        HandleDeleteFolder(accountId, folder);
     };
     mailView_.onSetNeedsAnswer = [this](const MessageEnvelope& e, bool needs) {
         HandleSetNeedsAnswer(e, needs);
@@ -668,6 +693,8 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         prefs_.Save(prefsPath_);
     };
     mailView_.SetSort(prefs_.listSort);
+    mailView_.SetTreeCurrentAccountOnly(prefs_.folderTreeContent ==
+                                        FolderTreeContent::CurrentAccount);
     step.emplace("Mail view: folder tree, message list, reading pane", 0);
     auto mail = mailView_.Build();
     accountView_->AddChild(mail);
@@ -1430,6 +1457,81 @@ void UltraMailApp::HandleMoveMessage(const MessageEnvelope& env, const std::stri
         "Move to " + FolderLabel(env.accountId, folder));
 }
 
+void UltraMailApp::HandleAddFolder(const std::string& accountId, const std::string& parent,
+                                   const std::string& typed) {
+    UltraCanvas::UltraCanvasWindowBase* window = window_ ? window_.get() : nullptr;
+    const std::string where = parent.empty()
+        ? std::string("Name of the new folder:")
+        : "Name of the new folder in \"" + FolderLabel(accountId, parent) + "\":";
+    UltraCanvasDialogManager::ShowInputDialog(where, "Add folder", typed, InputType::Text,
+        [this, accountId, parent, window](DialogResult result, const std::string& text) {
+            if (result != DialogResult::OK) return;
+            std::vector<Folder> folders;
+            store_.ListFolders(accountId, folders);
+            std::string error;
+            const std::string name = NewFolderName(text, parent, folders, error);
+            if (name.empty()) {
+                // The box again, with what was typed, once the reason is read.
+                AlertWarning(window, "The folder could not be added.", error,
+                             [this, accountId, parent, text]() {
+                                 HandleAddFolder(accountId, parent, text);
+                             });
+                return;
+            }
+            RunMailboxAction(accountId,
+                [accountId, name](SyncEngine& engine, const std::string& url,
+                                  const UltraNetMailOptions& opts) {
+                    return engine.CreateFolder(accountId, name, url, opts);
+                },
+                "Adding the folder");
+        },
+        window);
+}
+
+void UltraMailApp::HandleDeleteFolder(const std::string& accountId, const std::string& folder) {
+    UltraCanvas::UltraCanvasWindowBase* window = window_ ? window_.get() : nullptr;
+    std::vector<Folder> folders;
+    store_.ListFolders(accountId, folders);
+    const Folder* target = nullptr;
+    for (const auto& f : folders) if (f.name == folder) target = &f;
+    std::string why = "The folder is not in the list.";
+    if (!target || !CanDeleteFolder(*target, folders, &why)) {
+        AlertWarning(window, "The folder cannot be deleted.", why);
+        return;
+    }
+    const std::string label = FolderDisplayPath(folder, FolderDelimiter(*target, folders));
+    UltraCanvasAlert::Confirm(
+        "Delete the folder \"" + label + "\" and all the mail in it from the server?\n\n"
+        "This cannot be undone.",
+        "Delete folder",
+        [this, accountId, folder](bool yes) {
+            if (!yes) return;
+            RunMailboxAction(accountId,
+                [accountId, folder](SyncEngine& engine, const std::string& url,
+                                    const UltraNetMailOptions& opts) {
+                    return engine.DeleteFolder(accountId, folder, url, opts);
+                },
+                "Deleting the folder");
+        },
+        window);
+}
+
+void UltraMailApp::LoadAccounts() {
+    store_.ListAccounts(accounts_);
+    prefs_.OrderAccounts(accounts_);
+}
+
+void UltraMailApp::HandleReorderAccounts(const std::vector<std::string>& order) {
+    if (order.empty() || order == prefs_.accountOrder) return;
+    prefs_.accountOrder = order;
+    prefs_.Save(prefsPath_);
+    prefs_.OrderAccounts(accounts_);
+    // The bar has its tiles in this order already (the drag moved them); the
+    // tree lists the accounts in it.
+    mailView_.SetAccounts(accounts_);
+    mailView_.ShowAccount(selectedAccount_);
+}
+
 void UltraMailApp::HandleNotJunk(const MessageEnvelope& env) {
     std::string inbox = FolderWithRole(env.accountId, FolderRole::Inbox);
     if (inbox.empty()) inbox = "INBOX";
@@ -1438,6 +1540,46 @@ void UltraMailApp::HandleNotJunk(const MessageEnvelope& env) {
             return engine.MoveMessage(env.accountId, env.folder, env.uid, inbox, url, opts);
         },
         "Not spam");
+}
+
+void UltraMailApp::HandleSenderListChange(const std::string& entry, bool blockList, bool add) {
+    SenderLists& lists = prefs_.senderLists;
+    std::set<std::string>& list  = blockList ? lists.blocked : lists.trusted;
+    std::set<std::string>& other = blockList ? lists.trusted : lists.blocked;
+    if (add) {
+        list.insert(entry);
+        // An address is trusted or blocked, not both. (A trusted address under
+        // a blocked domain stays trusted: the exception to the block.)
+        other.erase(entry);
+    } else {
+        list.erase(entry);
+    }
+    prefs_.Save(prefsPath_);
+    SettingsDialog::SyncWithPreferences();
+    ApplySenderLists();
+}
+
+void UltraMailApp::ApplySenderLists() {
+    const SenderLists before = GetSenderLists();
+    const SenderLists& after = prefs_.senderLists;
+    if (before == after) return;
+    SetSenderLists(after);
+    // The entries on one list and not the other, before or after.
+    std::set<std::string> changed;
+    auto diff = [&changed](const std::set<std::string>& a, const std::set<std::string>& b) {
+        for (const auto& e : a) if (!b.count(e)) changed.insert(e);
+    };
+    diff(before.trusted, after.trusted);
+    diff(after.trusted, before.trusted);
+    diff(before.blocked, after.blocked);
+    diff(after.blocked, before.blocked);
+    // Their mail in the list on screen at once, the rest as the mail check
+    // re-scans stale verdicts.
+    for (const auto& entry : changed) {
+        store_.MarkSenderVerdictsStale(entry);
+        mailView_.RescanSender(entry);
+    }
+    mailView_.RecheckShownMessage();
 }
 
 void UltraMailApp::HandleSetNeedsAnswer(const MessageEnvelope& env, bool needsAnswer) {
@@ -2959,7 +3101,7 @@ void UltraMailApp::Refresh() {
     Trace::Stage trace("Refresh", 50);
     std::optional<Trace::Stage> step;
     step.emplace("Accounts", 0);
-    store_.ListAccounts(accounts_);
+    LoadAccounts();
     step.emplace("Count every account's mail (unread, today, waiting for reply)", 0);
     store_.GetAccountStatus(status_);
     step.reset();
@@ -3339,6 +3481,8 @@ void UltraMailApp::OpenSettings() {
         mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
         mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                      prefs_.folderTreeWidth);
+        mailView_.SetTreeCurrentAccountOnly(prefs_.folderTreeContent ==
+                                            FolderTreeContent::CurrentAccount);
         if (senderIcons_.NetworkEnabled() != prefs_.fetchSenderIcons ||
             senderIcons_.SiteIconsEnabled() != prefs_.fetchSiteIcons) {
             senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
@@ -3350,6 +3494,18 @@ void UltraMailApp::OpenSettings() {
         // New waiting-for-reply rules: the account bar's count and the list's
         // reply marks are worked out again.
         if (ApplyNeedsAnswerRules()) Refresh();
+        // Other spam/scam warnings: every stored verdict is judged again - the
+        // message on screen at once, the rest as the mail check re-scans them
+        // (a batch per folder and check), starting with one now.
+        if (!(GetThreatScanOptions() == prefs_.scamWarnings)) {
+            SetThreatScanOptions(prefs_.scamWarnings);
+            store_.MarkVerdictsStale();
+            mailView_.RecheckShownMessage();
+            SyncAllInBackground();
+        }
+        // Senders taken off (or put on) Settings > Warnings > Trusted and
+        // blocked senders.
+        ApplySenderLists();
     });
 }
 
@@ -3426,8 +3582,13 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
                 }
                 // Another server or user: what is held came from another mailbox.
                 if (otherMailbox) ForgetDownloadedMail(account.accountId);
-                // A typed password replaces the stored one (the vault is open).
-                if (!r.newPassword.empty()) vault_.Store(account.accountId, r.newPassword);
+                // A typed password replaces the stored one (the vault is open)
+                // and switches the account to it: stored OAuth tokens would
+                // otherwise go on being used ahead of the password.
+                if (!r.newPassword.empty()) {
+                    vault_.Store(account.accountId, r.newPassword);
+                    if (!r.reauth) vault_.RemoveOAuthTokens(account.accountId);
+                }
                 Refresh();
                 StartBackgroundSync();
                 // The "Sign in with <provider>" button flags a re-auth: run the
@@ -3686,8 +3847,9 @@ void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::str
                                     std::function<void()> onReauthed) {
     // Out-of-band providers (Yahoo) can't redirect to a loopback listener, so
     // they take a separate flow: open the browser, then prompt for the code the
-    // provider shows rather than waiting on a socket.
-    if (OAuthApps::Get(providerId).redirectUri == "oob") {
+    // provider shows (or the https redirect address it lands on) rather than
+    // waiting on a socket.
+    if (OAuthUsesPastedCode(OAuthApps::Get(providerId).redirectUri)) {
         StartOAuthOobSignIn(accountId, email, providerId, std::move(onReauthed));
         return;
     }

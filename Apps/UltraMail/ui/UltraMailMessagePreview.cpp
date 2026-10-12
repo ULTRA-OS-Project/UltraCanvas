@@ -1,4 +1,28 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.18.2 - the More menu is anchored to its button: above it when there is
+//                   no room below
+// Version: 0.18.1 - a blocked sender's mail: the strip says "You blocked this sender"
+//                   and how to undo it
+// Version: 0.18.0 - the sender's menu: a right-click on the sender's name or badge
+//                   offers copying the address, the sender's mail, the address
+//                   book and spam, above Copy and Select All (senderMenuItems)
+// Version: 0.17.1 - a look-alike sender domain or a letter in an agency's name is
+//                   told as phishing; the domain mismatch only while phishing
+//                   warnings are on (Settings > Spam/scam warnings)
+// Version: 0.17.0 - the warning strip names a romance scam and a cryptocurrency
+//                   scam, each with a footnote saying what it is; any mail about
+//                   crypto gets a caution strip, whoever sent it
+// Version: 0.16.1 - HTML mail as plain text (Settings > Reading) and the quote of
+//                   a formatted mail in a reply or forward come from the
+//                   HTMLReader module (HTML::ExtractPlainText, Lines layout):
+//                   paragraphs and line breaks kept, every entity decoded,
+//                   the hidden preheader left out
+// Version: 0.16.0 - the message's text can be selected and copied: a drag across
+//                   the HTML body (paragraph to paragraph), a double-click for
+//                   a word, Ctrl+C / Ctrl+A; the subject, sender, recipients
+//                   and date as well; a right-click offers Copy and Select All
+//                   over the HTML and the plain-text body alike. A one-time
+//                   code gets a copy button in its own box, or in the code bar
 // Version: 0.15.2 - the HTML body sits in a page box as wide as the visible pane,
 //                   so its percentage widths (Reddit's body { min-width: 100% })
 //                   no longer reach under the vertical scrollbar
@@ -29,7 +53,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailHeaderText.h"
@@ -44,6 +68,7 @@
 #include "UltraCanvasTooltipManager.h"
 #include "HTMLReader/HTMLElementBuilder.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasClipboard.h"
 #include "UltraCanvasUtils.h"      // OpenURL
 
 #include "UltraMailMimeCodec.h"
@@ -87,27 +112,6 @@ std::shared_ptr<UltraCanvasLabel> MakeAuthTag(const std::string& id, const AuthC
     tag->SetTooltip(check.tooltip);
     tag->layoutItem.SetFlexShrink(0);
     return tag;
-}
-
-// Very small HTML-to-text reduction (for the quoted reply body): drop tags and
-// decode a few entities.
-std::string HtmlToText(const std::string& html) {
-    std::string out;
-    bool inTag = false;
-    for (std::size_t i = 0; i < html.size(); ++i) {
-        char c = html[i];
-        if (c == '<') { inTag = true; continue; }
-        if (c == '>') { inTag = false; out.push_back(' '); continue; }
-        if (inTag) continue;
-        if (c == '&') {
-            if (html.compare(i, 5, "&amp;") == 0) { out.push_back('&'); i += 4; continue; }
-            if (html.compare(i, 4, "&lt;") == 0)  { out.push_back('<'); i += 3; continue; }
-            if (html.compare(i, 4, "&gt;") == 0)  { out.push_back('>'); i += 3; continue; }
-            if (html.compare(i, 6, "&nbsp;") == 0){ out.push_back(' '); i += 5; continue; }
-        }
-        out.push_back(c);
-    }
-    return out;
 }
 
 // Opens a link of the message in the browser - web and mail addresses only,
@@ -244,6 +248,18 @@ private:
     }
 };
 
+std::string IconPath(const std::string& name) {
+    return NormalizePath(GetResourcesDir() + "media/icons/" + name);
+}
+
+// Every label of a built HTML body, in reading order.
+void CollectLabels(UltraCanvasContainer& box, std::vector<UltraCanvasLabel*>& labels) {
+    for (const auto& child : box.GetChildren()) {
+        if (auto* label = dynamic_cast<UltraCanvasLabel*>(child.get())) labels.push_back(label);
+        else if (auto* inner = dynamic_cast<UltraCanvasContainer*>(child.get())) CollectLabels(*inner, labels);
+    }
+}
+
 std::string SanitizeFolder(const std::string& folder) {
     std::string out;
     for (char c : folder) out.push_back((c == '/' || c == '\\' || c == ':') ? '_' : c);
@@ -369,12 +385,13 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     moreBtn->onClick = [this, moreRaw]() {
         auto* win = moreRaw->GetWindow();
         if (!win || !moreMenu_) return;
-        // Anchor the menu under the button (window coordinates).
+        // Anchored to the button (window coordinates): under it, or above
+        // it when there is no room below.
         Rect2Df b = moreRaw->GetBoundsInWindow();
         win->AddChild(moreMenu_);
-        moreMenu_->OpenMenu(Point2Di(static_cast<int>(b.x),
-                                     static_cast<int>(b.y + b.height)),
-                            *win, PopupElementSettings());
+        moreMenu_->OpenMenuAnchored(Rect2Di(static_cast<int>(b.x), static_cast<int>(b.y),
+                                            static_cast<int>(b.width), static_cast<int>(b.height)),
+                                    *win, PopupElementSettings(), 0);
     };
 
     // Auto-height, word-wrapping subject: a long subject wraps to the pane
@@ -400,6 +417,15 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
 
     avatarHost_ = CreateContainer("prevAvatarHost", 0, 0, kAvatarSide, kAvatarSide);
     avatarHost_->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // A right-click on the badge opens the sender's menu (the badge itself is
+    // rebuilt per message; its press reaches the host it sits in).
+    avatarHost_->SetEventCallback([this](const UCEvent& event) {
+        if (event.type != UCEventType::MouseDown || event.button != UCMouseButton::Right ||
+            !hasMessage_)
+            return false;
+        ShowSenderMenu(event, /*withText=*/false, false, nullptr, nullptr);
+        return true;
+    });
     header->AddChild(avatarHost_);
 
     auto who = CreateContainer("prevWho", 0, 0, 0, 0);
@@ -431,6 +457,12 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     date_->SetAlignment(TextAlignment::Right);
     header->AddChild(date_);
     date_->layoutItem.SetFlexShrink(0);
+
+    // The header's text can be selected and copied - a sender's address, the
+    // subject - one selection running subject, from, to, date.
+    headerSelection_ = std::make_shared<UltraCanvasTextSelection>();
+    for (const auto& label : { subject_, from_, to_, date_ }) headerSelection_->AddLabel(*label);
+    WireTextSelection(headerSelection_);
 
     root_->AddChild(header);
     header->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -500,6 +532,47 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     remoteBar_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     remoteBar_->SetVisible(false);
 
+    // The code bar: a one-time code the message carries (a sign-in code) and
+    // a button that copies it. Hidden unless the body has a code that could
+    // not be given a button where it stands - a plain-text mail, a code in
+    // the middle of a sentence.
+    codeBar_ = CreateContainer("prevCodeBar", 0, 0, 0, 0);
+    codeBar_->layout.SetFlexRow()
+                    .SetFlexGap(Theme::kInnerGap)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    codeBar_->SetPadding(6.0f, 10.0f);
+    codeBar_->SetBackgroundColor(Theme::kSidebar);
+    codeBar_->SetBorders(1.0f, Theme::kCardBorder, Theme::kControlRadius);
+    if (auto st = codeBar_->GetContainerStyle(); true) {
+        st.autoShowScrollbars = false;
+        codeBar_->SetContainerStyle(st);
+    }
+    auto codeCaption = Theme::MakeText("prevCodeCaption", "Code", Theme::kSizeSecondary,
+                                       Theme::kTextSecondary);
+    codeBar_->AddChild(codeCaption);
+    codeCaption->layoutItem.SetFlexShrink(0);
+    codeText_ = Theme::MakeText("prevCodeText", "", Theme::kSizeHeading, Theme::kTextPrimary,
+                                FontWeight::Bold);
+    codeText_->SetSelectable(true);
+    codeBar_->AddChild(codeText_);
+    codeText_->layoutItem.SetFlexShrink(0);
+    codeCopy_ = CreateButton("prevCodeCopy", 0, 0, 80, Theme::kControlHeight, "Copy");
+    Theme::FitToLabel(codeCopy_, 80);
+    Theme::StyleSecondary(codeCopy_);
+    codeCopy_->SetIcon(IconPath("copy.svg"));
+    codeCopy_->SetIconPosition(ButtonIconPosition::Left);
+    codeCopy_->SetIconSize(14, 14);
+    codeCopy_->SetIconSpacing(6);
+    codeCopy_->SetUseIconAsMask(true);
+    codeCopy_->SetTooltip("Copy the code");
+    codeCopy_->onClick = [this]() {
+        if (!codes_.empty()) CopyCode(codes_.front().code, codeCopy_.get());
+    };
+    codeBar_->AddChild(codeCopy_);
+    root_->AddChild(codeBar_);
+    codeBar_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    codeBar_->SetVisible(false);
+
     // Body host: takes the remaining height; RenderBody() fills it with either
     // a read-only text area (plain text) or the HTMLReader-built element tree.
     bodyHost_ = CreateContainer("prevBodyHost", 0, 0, 0, 0);
@@ -547,6 +620,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     std::optional<Trace::Stage> step;
     step.emplace("Remove the last message's body", 0);
     bodyHost_->ClearChildren();
+    bodySelection_.reset();
     // The links the reader can check before clicking one.
     step.emplace("Links in the message, for the status line", 0);
     if (onLinksShown) onLinksShown(ExtractLinks(body, isHtml));
@@ -572,12 +646,16 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             if (onLinkHovered) onLinkHovered(href);
         };
         opts.linkTooltips = linkTooltips;
+        // The text can be selected across the whole body and copied.
+        opts.selectableText = true;
         HTML::ElementBuilder builder;
         step.emplace("HTML body (" + std::to_string(body.size() / 1024) +
                      " KB): elements, styles, pictures", 0);
         HTML::BuildResult r = builder.Build(body, opts);
         step.reset();
         if (r.root) {
+            bodySelection_ = r.textSelection;
+            if (bodySelection_) WireTextSelection(bodySelection_);
             // Host the tree in a dedicated scroll container (the proven pattern
             // from UltraCanvasEBookViewer): a plain container sized by the flex
             // column, holding r.root with no stretch/size/grow. It clips and
@@ -611,6 +689,20 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             bodyHost_->AddChild(scroll);
             scroll->AddChild(page);
             scroll->ScrollToVertical(0);
+            // One-time codes: a paragraph (label) at a time.
+            std::vector<UltraCanvasLabel*> labels;
+            CollectLabels(*r.root, labels);
+            std::vector<std::string> blocks;
+            blocks.reserve(labels.size());
+            for (UltraCanvasLabel* label : labels) {
+                // The rendered text needs the window's render context; a body
+                // shown before the pane is in a window reads the markup.
+                std::string text = label->GetRenderedText();
+                if (text.empty() && !label->GetText().empty())
+                    text = HTML::ExtractPlainText(label->GetText());
+                blocks.push_back(std::move(text));
+            }
+            ShowOneTimeCodes(blocks, labels);
             return;
         }
         // Fall through to a text area if the build produced nothing.
@@ -624,6 +716,20 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     };
     text->onLinkActivated = [this](const std::string& href) { ActivateLink(href); };
     text->linkTooltips = linkTooltips;
+    // Copy and Select All on a right-click, as over the HTML body. The text
+    // area is reached weakly from the menu, which may outlive it.
+    text->onContextMenu = [this, area = text.get()](const UCEvent& event) {
+        std::weak_ptr<UltraCanvasUIElement> weak = area->weak_from_this();
+        auto withArea = [weak](std::function<void(UltraCanvasTextArea&)> action) {
+            return [weak, action]() {
+                if (auto a = std::dynamic_pointer_cast<UltraCanvasTextArea>(weak.lock())) action(*a);
+            };
+        };
+        ShowTextMenu(event, area->HasSelection(),
+                     withArea([](UltraCanvasTextArea& a) { a.CopySelection(); }),
+                     withArea([](UltraCanvasTextArea& a) { a.SelectAll(); }));
+        return true;
+    };
     text->SetReadOnly(true);
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
@@ -639,9 +745,159 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         ts.scrollbarTrackColor   = modern.trackColor;
         ts.scrollbarColor        = modern.thumbColor;
     }
-    text->SetText(isHtml ? HtmlToText(body) : body);
+    text->SetText(isHtml ? HTML::ExtractPlainText(body, HTML::PlainTextLayout::Lines) : body);
     bodyHost_->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    // One-time codes: a line at a time.
+    std::vector<std::string> lines;
+    const std::string& shown = text->GetText();
+    for (std::size_t from = 0; from <= shown.size();) {
+        std::size_t to = shown.find('\n', from);
+        if (to == std::string::npos) to = shown.size();
+        lines.push_back(shown.substr(from, to - from));
+        from = to + 1;
+    }
+    ShowOneTimeCodes(lines, {});
+}
+
+void MessagePreview::ShowTextMenu(const UCEvent& event, bool canCopy,
+                                  std::function<void()> copy, std::function<void()> selectAll) {
+    UltraCanvasWindowBase* window = root_ ? root_->GetWindow() : nullptr;
+    if (!window) return;
+    textMenu_ = std::make_shared<UltraCanvasMenu>("prevTextMenu", 0, 0, 180, 0);
+    textMenu_->SetMenuType(MenuType::PopupMenu);
+    MenuItemData copyItem = MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", std::move(copy));
+    copyItem.enabled = canCopy;
+    textMenu_->AddItem(copyItem);
+    textMenu_->AddItem(MenuItemData::ActionWithShortcut("Select All", "Ctrl+A", std::move(selectAll)));
+    textMenu_->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
+}
+
+bool MessagePreview::PointerOnSender(const Point2Di& p) const {
+    for (const UltraCanvasUIElement* e : { static_cast<const UltraCanvasUIElement*>(from_.get()),
+                                           static_cast<const UltraCanvasUIElement*>(avatarHost_.get()) }) {
+        if (!e) continue;
+        const Rect2Df b = e->GetBoundsInWindow();
+        if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) return true;
+    }
+    return false;
+}
+
+void MessagePreview::ShowSenderMenu(const UCEvent& event, bool withText, bool canCopy,
+                                    std::function<void()> copy, std::function<void()> selectAll) {
+    UltraCanvasWindowBase* window = root_ ? root_->GetWindow() : nullptr;
+    if (!window) return;
+    textMenu_ = std::make_shared<UltraCanvasMenu>("prevSenderMenu", 0, 0, 220, 0);
+    textMenu_->SetMenuType(MenuType::PopupMenu);
+    // Whose message this is, as the menu's title, as in the message list.
+    if (!curEnv_.fromAddr.empty()) {
+        textMenu_->AddItem(MenuItemData::Header(curEnv_.fromAddr));
+        textMenu_->AddItem(MenuItemData::Separator());
+    }
+    if (senderMenuItems)
+        for (auto& item : senderMenuItems(curEnv_)) textMenu_->AddItem(item);
+    if (withText) {
+        textMenu_->AddItem(MenuItemData::Separator());
+        MenuItemData copyItem = MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", std::move(copy));
+        copyItem.enabled = canCopy;
+        textMenu_->AddItem(copyItem);
+        textMenu_->AddItem(MenuItemData::ActionWithShortcut("Select All", "Ctrl+A",
+                                                            std::move(selectAll)));
+    }
+    textMenu_->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
+}
+
+void MessagePreview::WireTextSelection(const std::shared_ptr<UltraCanvasTextSelection>& selection) {
+    // Raw here - the selection holds these callbacks - and weak in the menu,
+    // which can outlive the body the selection belongs to.
+    UltraCanvasTextSelection* raw = selection.get();
+    selection->onContextMenu = [this, raw](const UCEvent& event) {
+        std::weak_ptr<UltraCanvasTextSelection> weak = raw->weak_from_this();
+        auto copy = [weak]() { if (auto s = weak.lock()) s->CopyToClipboard(); };
+        auto selectAll = [weak]() { if (auto s = weak.lock()) s->SelectAll(); };
+        // On the sender's name: the sender's menu, Copy and Select All in it.
+        if (raw == headerSelection_.get() && hasMessage_ && PointerOnSender(event.pointerWindow))
+            ShowSenderMenu(event, /*withText=*/true, raw->HasSelection(), copy, selectAll);
+        else
+            ShowTextMenu(event, raw->HasSelection(), copy, selectAll);
+    };
+    // One highlight at a time, as on a web page: selecting in the header lets
+    // go of the body's selection, and the other way round.
+    selection->onSelectionChanged = [this, raw]() {
+        if (!raw->HasSelection()) return;
+        for (UltraCanvasTextSelection* other : { headerSelection_.get(), bodySelection_.get() })
+            if (other && other != raw) other->ClearSelection();
+    };
+}
+
+void MessagePreview::ShowOneTimeCodes(const std::vector<std::string>& blocks,
+                                      const std::vector<UltraCanvasLabel*>& labels) {
+    // The envelope's subject: Show renders the body before it fills current_.
+    codes_ = hasMessage_ ? FindOneTimeCodes(DisplayHeader(curEnv_.subject), blocks)
+                         : std::vector<OneTimeCode>{};
+    bool placed = false;
+    for (std::size_t n = 0; n < codes_.size(); ++n) {
+        const OneTimeCode& code = codes_[n];
+        if (!code.standalone || code.block < 0 || static_cast<std::size_t>(code.block) >= labels.size())
+            continue;
+        UltraCanvasLabel* label = labels[static_cast<std::size_t>(code.block)];
+        UltraCanvasContainer* box = label ? label->GetParentContainer() : nullptr;
+        if (!box) continue;
+        // Only a box the code has to itself (a background picture aside): the
+        // button sits inside it, at its right edge.
+        bool alone = true;
+        for (const auto& child : box->GetChildren())
+            if (child.get() != label && child->layoutItem.positionType != CSSLayout::PositionType::Absolute)
+                alone = false;
+        if (!alone) continue;
+
+        constexpr float kSide = 26.0f;
+        auto button = CreateButton("prevCodeCopy" + std::to_string(n), 0, 0, kSide, kSide, "");
+        Theme::StyleSecondary(button);
+        button->SetIcon(IconPath("copy.svg"));
+        button->SetIconPosition(ButtonIconPosition::Center);
+        button->SetIconSize(14, 14);
+        button->SetUseIconAsMask(true);
+        button->SetTooltip("Copy the code " + code.shown);
+        // Out of the flow, centred on the box's right edge; the box keeps
+        // room for it so a code that fills the box is not covered.
+        CSSLayout::Position at;
+        at.right = CSSLayout::Dimension::Px(6.0f);
+        at.top = CSSLayout::Dimension::PctPlus(50.0f, -kSide / 2.0f);
+        button->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute).SetPositionInsets(at);
+        box->SetPadding(box->GetPaddingTop(), box->GetPaddingRight() + kSide + 8.0f,
+                        box->GetPaddingBottom(), box->GetPaddingLeft());
+        button->onClick = [this, b = button.get(), value = code.code]() { CopyCode(value, b); };
+        box->AddChild(button);
+        placed = true;
+    }
+    if (!codeBar_) return;
+    const bool bar = !codes_.empty() && !placed;
+    if (bar) codeText_->SetText(codes_.front().shown);
+    if (codeCopy_) {
+        codeCopy_->SetText("Copy");
+        codeCopy_->SetIcon(IconPath("copy.svg"));
+    }
+    codeBar_->SetVisible(bar);
+}
+
+void MessagePreview::CopyCode(const std::string& code, UltraCanvasButton* button) {
+    SetClipboardText(code);
+    if (!button) return;
+    // A check mark (and "Copied") for a moment, then the copy icon again.
+    const bool hasText = !button->GetText().empty();
+    button->SetIcon(IconPath("clipboard/check.svg"));
+    if (hasText) button->SetText("Copied");
+    std::weak_ptr<UltraCanvasUIElement> weak = button->weak_from_this();
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        app->StartTimer(1500, false, [weak, hasText](TimerId) {
+            auto b = std::dynamic_pointer_cast<UltraCanvasButton>(weak.lock());
+            if (!b) return;
+            b->SetIcon(IconPath("copy.svg"));
+            if (hasText) b->SetText("Copy");
+        });
+    }
 }
 
 void MessagePreview::ActivateLink(const std::string& href) {
@@ -802,6 +1058,7 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
         sec.reason = report.Summary();
         sec.verifiedDomain = report.verifiedDomain;
         sec.verifiedBy     = report.verifiedBy;
+        sec.findings       = report.Codes();
         sec.scannedAt = static_cast<int64_t>(std::time(nullptr));
         changed = true;
     }
@@ -822,10 +1079,37 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                                          const std::string& raw) {
     if (!warning_ || !warningTitle_ || !warningText_) return;
 
+    const bool romance = security.HasFinding("romance-scam");
+    const bool lookalike = security.HasFinding("sender-domain-lookalike") ||
+                           security.HasFinding("government-impersonation");
+    const bool cryptoScam = security.HasFinding("crypto-wallet-secret") ||
+                            security.HasFinding("crypto-payment-demand") ||
+                            security.HasFinding("crypto-investment-lure");
+    const bool crypto = cryptoScam || security.HasFinding("crypto-content");
+    // Blocked by the reader (the sender menu): marked as spam for that alone,
+    // or with the scan's own reasons beside it.
+    const bool blocked = security.HasFinding("blocked-sender");
+    const bool onlyBlocked = blocked && security.findings == "blocked-sender";
+    const char* cryptoAdvice =
+        "A crypto payment cannot be called back: whoever receives it keeps it. No genuine "
+        "wallet, exchange or help desk asks for your recovery phrase (seed phrase) or "
+        "private key, and no genuine investment guarantees a profit. Never send crypto to "
+        "someone you only know from email or the internet.";
+
     // Only the two verdicts worth interrupting a reader for. Advertisements and
-    // unknown senders are the badge's business, not a banner's.
+    // unknown senders are the badge's business, not a banner's - except that
+    // any mail about crypto gets a word of caution, whoever sent it.
     if (!status.Dangerous()) {
-        warning_->SetVisible(false);
+        if (!crypto) {
+            warning_->SetVisible(false);
+            return;
+        }
+        warning_->SetBackgroundColor(Theme::kTrustSpamSoft);
+        warning_->SetBorders(1.0f, Theme::kTrustSpam, Theme::kControlRadius);
+        warningTitle_->SetTextColor(Theme::kTrustSpam);
+        warningTitle_->SetText("\xE2\x9A\xA0 Caution: this message is about cryptocurrency");
+        warningText_->SetText(cryptoAdvice);
+        warning_->SetVisible(true);
         return;
     }
 
@@ -835,19 +1119,28 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     // Only on the scan's own verdict: a newsletter that is merely sitting in
     // Junk links to its tracking domain too, and is not phishing for that.
     DomainMismatch mismatch;
-    if (security.level >= ThreatLevel::Suspicious) mismatch = FindDomainMismatchInRaw(raw);
+    if (security.level >= ThreatLevel::Suspicious && GetThreatScanOptions().phishing)
+        mismatch = FindDomainMismatchInRaw(raw);
     const bool phishing = mismatch.found;
 
+    // The scam the scan named comes first: a love letter that links to a
+    // "verification" site is a romance scam, and is told as one.
     const bool scam = status.cls == SenderClass::Scam || phishing;
     const Color accent = scam ? Theme::kTrustScam : Theme::kTrustSpam;
     warning_->SetBackgroundColor(scam ? Theme::kTrustScamSoft : Theme::kTrustSpamSoft);
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
+    const char* what = romance                ? "romance scam"
+                     : phishing || lookalike  ? "phishing"
+                     : cryptoScam ? "cryptocurrency scam"
+                     : nullptr;
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
-        (phishing ? "Warning: This is likely a phishing\xC2\xB2 email!"
+        (what ? std::string(scam ? "Warning: This is likely a " : "Warning: This may be a ") +
+                    what + "\xC2\xB2 email!"
          : status.cls == SenderClass::Scam
-              ? "This message looks like a scam or phishing attempt"
-              : "Parts of this message do not add up"));
+              ? std::string("This message looks like a scam or phishing attempt")
+         : blocked ? std::string("You blocked this sender")
+              : std::string("Parts of this message do not add up")));
 
     std::string text;
     if (phishing) {
@@ -858,15 +1151,35 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         if (!mismatch.linkText.empty())
             text += "  (\xE2\x80\x9C" + mismatch.linkText + "\xE2\x80\x9D)";
         text += "\n";
-    } else {
+    } else if (!onlyBlocked) {
         text = status.reason;
     }
     if (!security.reason.empty()) text += (text.empty() ? "" : "\n") + security.reason;
-    text += "\nDo not sign in, pay or reply through the links in this message unless you "
-            "are sure who sent it.";
-    if (phishing)
+    if (onlyBlocked)
+        text += "\nRight-click the sender to unblock them. \"Mark as spam\" moves the "
+                "message to the junk folder.";
+    else if (romance)
+        text += "\nDo not send money, gift cards or crypto to someone you only know from "
+                "email or the internet, and do not sign up or give card details on a site "
+                "they send you to.";
+    else
+        text += "\nDo not sign in, pay or reply through the links in this message unless "
+                "you are sure who sent it.";
+    if (crypto && !romance) text += std::string("\n") + cryptoAdvice;
+    if (romance)
+        text += "\n\n\xC2\xB2 Romance scams are love letters from strangers - a made-up "
+                "profile, someone else's photos, \"destiny\" - written to win your trust "
+                "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
+                "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
+                "search of the photo often finds it under another name.";
+    else if (phishing || lookalike)
         text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
                 "to hack your accounts on other websites.";
+    else if (cryptoScam)
+        text += "\n\n\xC2\xB2 Cryptocurrency scams ask for a wallet's recovery phrase, "
+                "demand payment to a wallet address (blackmail, fake invoices) or promise "
+                "profits on an \"investment platform\" that shows made-up gains and keeps "
+                "what is paid in.";
     warningText_->SetText(text);
     warning_->SetVisible(true);
 }
@@ -918,6 +1231,9 @@ void MessagePreview::Clear() {
     if (authRow_) authRow_->ClearChildren();
     shownBadge_ = SenderBadge{};
     if (bodyHost_) bodyHost_->ClearChildren();
+    bodySelection_.reset();
+    codes_.clear();
+    if (codeBar_) codeBar_->SetVisible(false);
     attachmentStrip_.SetAttachments({});
 }
 
@@ -1018,7 +1334,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         attachmentStrip_.SetAttachments(pm.attachments);
         // The text for a plain reply, and the HTML a formatted one is built
         // from (UltraMailRichComposer).
-        current_.body = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
+        current_.body = pm.bodyIsHtml ? HTML::ExtractPlainText(pm.body, HTML::PlainTextLayout::Lines)
+                                      : pm.body;
         current_.bodyHtml = pm.bodyIsHtml ? pm.body : std::string();
         current_.attachments = pm.attachments;
     }

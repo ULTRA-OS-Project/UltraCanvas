@@ -22,7 +22,7 @@ namespace UltraCanvas {
         Vector,        // vector graphics (svg, cdr, xar, ...)
         Model3D,       // 3D models (stl, ...)
         Document,      // word processing, PDF, e-books, markdown/plain text
-        Spreadsheet,   // ods, xlsx, csv, tsv
+        Spreadsheet,   // ods, xlsx, xls, csv, tsv
         Audio,
         Video,
         Font,          // font definition files (ttf, otf, woff, ...)

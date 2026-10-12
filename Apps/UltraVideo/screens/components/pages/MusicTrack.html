@@ -1,0 +1,18 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 1380x208. --><title>Music track — preview</title>
+<style>html,body{margin:0;background:var(--bg-100)}</style></head>
+<body>
+<div id="tl"></div>
+<script>
+  var U = UltraVideo, m = U.demoModel({ playhead: 2.1, markers: [] });
+  var music = m.tracks[3]; music.height = 88; music.selected = true; music.items[0].selected = true;
+  music.fadeKnobs = [2, 27];
+  m.tracks = [{ id: 'A1', kind: 'audio', name: 'Music · default', items: [{ name: 'Summer Drive · Night Lines  (playlist, 2 songs)', start: 0, dur: 30, fadeIn: 2, fadeOut: 3, crossfades: [{ at: 16, dur: 3 }], seed: 11, showDur: false }] }, music];
+  music.name = 'Music · selected';
+  m.extra = ['<div class="uv-tip uv-tip--readout" style="position:absolute;left:' + (2 * 40 + 8) + 'px;top:' + (28 + 48 + 26) + 'px">Fade in 2.0 s</div>',
+             '<div class="uv-tip" style="position:absolute;left:' + (16 * 40 - 70) + 'px;top:' + (28 + 48 + 56) + 'px">' + U.icon('music', 'uv-ico--sm') + 'Crossfade 3.0 s</div>'];
+  U.timeline(document.getElementById('tl'), m);
+</script>
+</body>
+</html>

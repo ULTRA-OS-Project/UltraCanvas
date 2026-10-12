@@ -3,6 +3,10 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.12.2 - MarkSenderVerdictsStale (a sender trusted or blocked)
+// Version: 0.12.1 - MarkVerdictsStale (the scam warnings changed)
+// Version: 0.12.0 - schema 11: the codes of a verdict's findings
+//                   (MessageSecurity::findings, HasFinding)
 // Version: 0.11.0 - schema 10: the verified sender domain with each verdict
 //                   (MessageSecurity::verifiedDomain / verifiedBy);
 //                   ListStaleVerdicts (verdicts of older rules, to re-scan)
@@ -70,8 +74,12 @@ struct MessageSecurity {
     // how; "" when nothing proved it (ThreatReport::verifiedDomain).
     std::string verifiedDomain;
     std::string verifiedBy;
+    // The codes of the findings (ThreatReport::Codes), comma-separated: what
+    // the reading pane names the scam by ("romance-scam", "crypto-content").
+    std::string findings;
 
     bool Scanned() const { return level != ThreatLevel::Unscanned; }
+    bool HasFinding(const std::string& code) const { return HasFindingCode(findings, code); }
 };
 
 class LocalStore {
@@ -230,6 +238,14 @@ public:
     UltraDbResult ListUncountedAttachments(const std::string& accountId,
                                            const std::string& folder, int limit,
                                            std::vector<int64_t>& uids) const;
+    // Every stored verdict judged again: the warnings the scan gives changed
+    // (Settings > Spam/scam warnings). Each counts as scanned before any rules
+    // revision, so ListStaleVerdicts and the reading pane scan it anew.
+    UltraDbResult MarkVerdictsStale();
+    // The same for one sender's mail only (the reader trusted or blocked
+    // them): `entry` is an address, or "@example.com" for a domain and its
+    // subdomains.
+    UltraDbResult MarkSenderVerdictsStale(const std::string& entry);
     // Messages of a folder scanned before `rulesRevision` (an epoch second:
     // their verdict came from older rules), newest first, at most `limit`.
     UltraDbResult ListStaleVerdicts(const std::string& accountId, const std::string& folder,

@@ -1,9 +1,10 @@
 // UltraCanvasDivergingBarChart.h
 // Diverging bar chart component for multi-valued categorical data (population pyramid, likert scales, etc.)
+// Version: 1.2.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.2.0 - CreatePopulationPyramid lays out its rowLabels as rows;
 //                  AddDataRow fills a row of that label instead of adding a second
 // Version: 1.1.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -56,6 +57,7 @@ namespace UltraCanvas {
         }
 
         void LoadFromCSV(const std::string& filePath) override {
+            (void)filePath;
             // CSV format: rowLabel,Category1,Category2,Category3,...
             // Could implement CSV loading for diverging data
         }

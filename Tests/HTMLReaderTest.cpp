@@ -1,8 +1,9 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
-// Version: 1.20.0 - nesting depth capped (kMaxTreeDepth); flex and grid properties: display, the flex shorthand, alignment,
+// Version: 1.21.0 - nesting depth capped (kMaxTreeDepth); flex and grid properties: display, the flex shorthand, alignment,
 //                  gaps, grid templates (repeat, minmax, auto-fill, areas), grid lines
+// Version: 1.20.0 - the newline right after <pre> / <listing> / <textarea>
 // Version: 1.19.0 - foreign content: inline <svg> / <math> keep their vocabulary's case
 // Version: 1.18.0 - the selector matcher on a tree that is not the DOM (an SVG-shaped one)
 // Version: 1.17.0 - the !important cascade: inline !important beats a style
@@ -100,6 +101,25 @@ static void TestParserBasics() {
         CHECK(b != nullptr);
         if (b) CHECK_EQ(b->TextContent(), std::string("bold"));
     }
+}
+
+// The newline right after <pre> / <listing> / <textarea> is not content, as
+// in HTML's tree builder; a second one, or one after a child's start tag, is.
+static void TestParserPreNewline() {
+    Parser parser;
+    auto preText = [&](const std::string& html, const char* tag = "pre") {
+        Document doc = parser.Parse(html);
+        Node* element = doc.root ? doc.root->FindFirst(tag) : nullptr;
+        return element ? element->TextContent() : std::string("<no element>");
+    };
+    CHECK_EQ(preText("<pre>\nline one\nline two</pre>"), std::string("line one\nline two"));
+    CHECK_EQ(preText("<pre>\r\nline</pre>"), std::string("line"));
+    CHECK_EQ(preText("<pre>\n\nafter a blank line</pre>"), std::string("\nafter a blank line"));
+    CHECK_EQ(preText("<pre>no newline</pre>"), std::string("no newline"));
+    CHECK_EQ(preText("<pre><code>\nkept</code></pre>"), std::string("\nkept"));
+    CHECK_EQ(preText("<listing>\nlisted</listing>", "listing"), std::string("listed"));
+    CHECK_EQ(preText("<textarea>\ntyped</textarea>", "textarea"), std::string("typed"));
+    CHECK_EQ(preText("<div>\nkept</div>", "div"), std::string("\nkept"));
 }
 
 static void TestParserFragmentAndRecovery() {
@@ -271,6 +291,69 @@ static void TestExtractPlainText() {
         "<html><head><style>p{color:red}</style></head>"
         "<body><h1>Head</h1><p>One &amp; two</p></body></html>");
     CHECK_EQ(text, std::string("Head One & two"));
+    // An inline element keeps a word whole, as on screen; a block, <br> or
+    // picture separates words.
+    CHECK_EQ(ExtractPlainText("wor<b>ld</b> <span>and</span><a href=x>more</a>"),
+             std::string("world andmore"));
+    CHECK_EQ(ExtractPlainText("<B>via</B>gra"), std::string("viagra"));
+    CHECK_EQ(ExtractPlainText("one<br>two<div>three</div>four<img src=x>five"),
+             std::string("one two three four five"));
+    // A no-break space is a space.
+    CHECK_EQ(ExtractPlainText("a&nbsp;b \xC2\xA0 c"), std::string("a b c"));
+    // Where a <style> or <script> was, words stay apart.
+    CHECK_EQ(ExtractPlainText("<style>p{}</style>hello<script>x()</script>world"),
+             std::string("hello world"));
+
+    // The text of a parsed element, by the same rules.
+    Parser parser;
+    Document doc = parser.Parse("<a href=x>www.pay<b>pal</b>.com</a>"
+                                "<a href=y><table><tr><td>Click</td><td>here&nbsp;&amp; now</td></tr></table></a>");
+    std::vector<Node*> anchors;
+    doc.root->ForEachElement([&](Node& n) { if (n.IsElement("a")) anchors.push_back(&n); return true; });
+    CHECK(anchors.size() == 2);
+    if (anchors.size() == 2) {
+        CHECK_EQ(ExtractPlainText(*anchors[0]), std::string("www.paypal.com"));
+        CHECK_EQ(ExtractPlainText(*anchors[1]), std::string("Click here & now"));
+    }
+}
+
+// PlainTextLayout::Lines: the text as a reader sees it, line by line - what an
+// HTML mail shows as plain text and quotes in a reply.
+static void TestExtractPlainTextLines() {
+    auto lines = [](const std::string& html) {
+        return ExtractPlainText(html, PlainTextLayout::Lines);
+    };
+    // Paragraphs a blank line apart, blocks on lines of their own.
+    CHECK_EQ(lines("<html><head><title>T</title><style>p{color:red}</style></head>"
+                   "<body><h1>Head</h1><p>One &amp; two</p><div>a</div><div>b</div></body></html>"),
+             std::string("Head\n\nOne & two\n\na\nb"));
+    // <br> is a line break, two a blank line.
+    CHECK_EQ(lines("Hi,<br><br>see you<br>Anna"), std::string("Hi,\n\nsee you\nAnna"));
+    // Whitespace between inline elements stays one space; runs collapse.
+    CHECK_EQ(lines("<p>Hello <b>big</b>   <i>world</i>\n  again</p>"),
+             std::string("Hello big world again"));
+    // Table rows on lines, their cells a tab apart.
+    CHECK_EQ(lines("<table><tr><td>Name</td><td>Anna</td></tr>"
+                   "<tr><th>City</th><td>Berlin</td></tr></table>"),
+             std::string("Name\tAnna\nCity\tBerlin"));
+    // Lists: "- " and numbers, from the start attribute.
+    CHECK_EQ(lines("<ul><li>one</li><li>two</li></ul><ol start=\"3\"><li>third</li><li>fourth</li></ol>"),
+             std::string("- one\n- two\n3. third\n4. fourth"));
+    // <pre> as written.
+    CHECK_EQ(lines("<p>Code:</p><pre>a  b\n  c</pre><p>end</p>"),
+             std::string("Code:\n\na  b\n  c\n\nend"));
+    // What is not shown: a mail's hidden preheader, the hidden attribute,
+    // scripts. A no-break space is a space.
+    CHECK_EQ(lines("<div style=\"display: none; max-height:0\">Preview text</div>"
+                   "<span style=\"visibility:hidden\">x</span><p hidden>gone</p>"
+                   "<script>var a = 1;</script><p>Body&nbsp;text &#8211; &eacute;t&eacute;</p>"),
+             std::string("Body text \xE2\x80\x93 \xC3\xA9t\xC3\xA9"));
+    // A layout table of a mail: blocks inside cells, no stray blank lines.
+    CHECK_EQ(lines("<table><tr><td><p>Dear Anna,</p><p>your order shipped.</p></td></tr>"
+                   "<tr><td>&nbsp;</td></tr><tr><td><p>Thanks</p></td></tr></table>"),
+             std::string("Dear Anna,\n\nyour order shipped.\n\nThanks"));
+    // The default is still one line.
+    CHECK_EQ(ExtractPlainText("<p>a</p><p>b</p>"), std::string("a b"));
 }
 
 // ============================================================================
@@ -1510,10 +1593,12 @@ int main() {
     TestSelectorMatchingOnForeignTree();
     TestParserBasics();
     TestParserFragmentAndRecovery();
+    TestParserPreNewline();
     TestParserXhtmlAndEntities();
     TestParserUnquotedAttributes();
     TestParserForeignContent();
     TestExtractPlainText();
+    TestExtractPlainTextLines();
     TestCssColor();
     TestCssLength();
     TestCssNumbersIgnoreLocale();

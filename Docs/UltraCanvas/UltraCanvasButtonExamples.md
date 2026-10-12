@@ -2,8 +2,8 @@
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.0.3  
-**Last Modified:** 2026-10-07  
+**Version:** 1.0.5  
+**Last Modified:** 2026-10-11  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -176,6 +176,7 @@ std::function<void()> onClick;           // Fired when the button is clicked (le
 std::function<void()> onPress;           // Fired when button is pressed down
 std::function<void()> onRelease;         // Fired when button is released
 std::function<void(bool isPressed)> onToggle;  // Fired on a toggle button's state change
+std::function<void()> onDoubleClick;     // Left double-click, instead of a second press
 std::function<void()> onSecondaryClick;  // Fired when a split button's secondary section is clicked
 std::function<void(int windowX, int windowY)> onContextMenu;  // Right mouse button, window coordinates
 std::function<void()> onHoverEnter;      // Fired when mouse enters button
@@ -192,6 +193,20 @@ window coordinates, and is ignored when no `onContextMenu` is set. Inspecting
 button->onContextMenu = [menu, container](int windowX, int windowY) {
     menu->OpenMenu(Point2Di(windowX, windowY), *container->GetWindow(), PopupElementSettings());
 };
+```
+
+**A double-click is a second press unless `onDoubleClick` is set.** Without
+it, the second click of a double-click presses the button again (so rapid
+clicks are not lost) and toggles a toggle button back. Set, `onDoubleClick`
+takes the left double-click instead: the first click has already pressed or
+toggled the button, and the second does what a double-click means - a list
+row that selects on a click and renames on a double-click:
+
+```cpp
+auto row = CreateButton("LayerName", 0, 0, 200, 24, "Layer 2");
+row->SetCanToggled(true);
+row->onToggle = [](bool) { /* select the layer */ };
+row->onDoubleClick = []() { /* put a text field in the row's place */ };
 ```
 
 ### Event Usage Example
@@ -434,10 +449,20 @@ The button automatically handles:
 - Border and corner radius
 - Optional shadow effect
 
+The icon is drawn on whole pixels: centred in a content box whose width or
+height leaves an odd number of pixels around it - or drawn under a
+translation of a fraction of a pixel - its corner is moved to the nearest
+whole device pixel, so an icon drawn on a pixel grid keeps its sharp lines
+instead of being resampled across two pixels. For a line icon to be sharp it
+also has to be shown at the size of the grid it was drawn on (a 24-unit
+icon at 24 px, not 22).
+
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
+| 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |
 | 1.0.3 | 2026-10-07 | Match the header: real `ButtonStyle` fields and `ButtonBuilder` methods, `ElementState`/`GetPrimaryState()` instead of a `ButtonState` enum, layout sizing instead of auto-resize, `SetDisabled()`, `SetPadding()` overloads |
 | 1.0.2 | 2026-09-10 | Document the split button: the `dropdown.svg` arrow, and that `SetUseIconAsMask()` colors the secondary icon through `SetSplitSecondaryIconColors()` |
 | 1.0.1 | 2026-08-31 | Document `onToggle`, `onSecondaryClick` and `onContextMenu`, and that `onClick` is left-button only |

@@ -1,12 +1,14 @@
 // core/HTMLReader/HTMLParser.cpp
 // Tolerant HTML/XHTML parser implementation.
-// Version: 1.4.0 - elements nest at most kMaxTreeDepth deep; deeper ones are leaves
+// Version: 1.5.0 - elements nest at most kMaxTreeDepth deep; deeper ones are leaves
+// Version: 1.4.0 - the newline right after a <pre>, <listing> or <textarea> start tag
+//                  is not content, as in HTML's tree builder
 // Version: 1.3.0 - foreign content: inside <svg> / <math> the SVG and MathML
 //                  names keep their case (the standard's adjustment tables), HTML
 //                  resumes at foreignObject / desc / title / annotation-xml / mi...
 // Version: 1.2.0 - <!DOCTYPE> recorded; quirks mode decided from it
 // Version: 1.1.0 - <style media="..."> becomes an @media block
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -463,6 +465,14 @@ void Parser::ParseTag(Node* /*parent*/, std::vector<Node*>& openStack) {
         return;
     }
     openStack.push_back(element.get());
+
+    // A newline straight after <pre>, <listing> or <textarea> is dropped, as
+    // HTML's tree builder drops it, so the content can start on the next
+    // source line; a second one is a blank line.
+    if (content == Content::Html && (tag == "pre" || tag == "listing" || tag == "textarea")) {
+        if (Match("\r\n")) pos += 2;
+        else if (!AtEnd() && (Cur() == '\n' || Cur() == '\r')) ++pos;
+    }
 }
 
 void Parser::ParseAttributes(Node& element, Content content) {

@@ -1,5 +1,6 @@
 // UltraCanvasRadio.cpp
 // Radio button rendering and exclusive-selection group.
+// Version: 1.3.0 - a radio added already checked becomes the group's selection
 // Version: 1.2.0 - the group's onChecked handler no longer owns its radio, and the group
 //                 takes it back when it is destroyed or the radio is removed
 // Version: 1.1.1
@@ -142,6 +143,16 @@ namespace UltraCanvas {
         if (!button) return;
         radioButtons.push_back(button);
         button->onChecked = CheckedHandler{ this, button.get() };
+        // A radio that arrives checked is the group's choice - the last one
+        // added wins, as the last checked radio of an HTML group does - and
+        // the one chosen before is cleared. Building a group is not a choice
+        // the user made, so onSelectionChanged is not called.
+        if (button->IsChecked()) {
+            selectedButton = button;
+            for (auto& other : radioButtons) {
+                if (other != button && other->IsChecked()) other->SetChecked(false);
+            }
+        }
     }
 
     void UltraCanvasRadioGroup::RemoveRadioButton(std::shared_ptr<UltraCanvasRadio> button) {

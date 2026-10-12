@@ -30,8 +30,11 @@
 // Header-only and free of libcurl: UltraNetFtp.cpp maps libcurl's debug
 // stream onto Channel, and Tests/UltraNet/test_ftp_log.cpp feeds a recorded
 // transcript straight in.
-// Version: 1.0.1 - reads libcurl 8.21's "Established connection to" wording
-// Last Modified: 2026-10-05
+// A call that takes up a connection an earlier call left open says so
+// ("Using the open connection to ftp.example.com - already logged in")
+// instead of resolving and logging in again.
+// Version: 1.1.0 - a connection kept open and used again
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -134,6 +137,12 @@ inline bool IsNoise(const std::string& text) {
         "Curl_",
         "multi_done",
         "Getting file with size",      // repeats what the reply already said
+        // The connection pool looking for a connection to take up again
+        // ("Found bundle for host: 0x5581... [serially]", libcurl 8.x before
+        // 8.10): said before "Re-using existing connection", which is the
+        // line the log reports.
+        "Found bundle for host",
+        "Can not multiplex",
         // The list of hosts that bypass a proxy, often hundreds of characters;
         // a proxy that IS used is still named ("Uses proxy env variable
         // ftp_proxy == ...").
@@ -189,15 +198,17 @@ public:
 
     bool Active() const { return static_cast<bool>(sink_); }
 
-    // A new connection is about to be made for `url`: one per libcurl
-    // handle, so a listing that has to ask twice says so twice.
+    // A transfer for `url` is about to start: one per libcurl handle, so a
+    // listing that has to ask twice says so twice. "Resolving address of"
+    // is held back until libcurl says what it does first: a connection kept
+    // open by an earlier call is used again without resolving or logging in,
+    // and the log must not claim it was.
     void Begin(const std::string& url) {
         controlConnected_ = false;
         loggedIn_ = false;
         authRefused_ = false;
         tlsUp_ = false;
-        const std::string host = HostOfUrl(url);
-        if (!host.empty()) Step("Resolving address of " + host);
+        pendingHost_ = HostOfUrl(url);
     }
 
     // Read whether or not anyone listens: the last reply is what a failure
@@ -217,6 +228,7 @@ public:
     // The last line of a failed call.
     void Fail(const std::string& message, UltraNetResultCode code, int transportCode) {
         if (!sink_) return;
+        SayResolving();
         UltraNetFtpLogLine l;
         l.kind = UltraNetFtpLogKind::Error;
         l.text = message;
@@ -227,10 +239,24 @@ public:
 
     int LastReplyCode() const { return lastReplyCode_; }
     const std::string& LastReply() const { return lastReply_; }
+    // The verb of the last command sent ("MLSD", "TYPE"), in upper case: what
+    // the last reply answered.
+    const std::string& LastCommand() const { return lastVerb_; }
 
 private:
+    // The step Begin held back, said before anything else is: whatever
+    // libcurl reports first, other than taking up a kept connection, belongs
+    // to a connection being made.
+    void SayResolving() {
+        if (pendingHost_.empty()) return;
+        const std::string host = std::move(pendingHost_);
+        pendingHost_.clear();
+        Emit(UltraNetFtpLogKind::Step, "Resolving address of " + host);
+    }
+
     void Emit(UltraNetFtpLogKind kind, const std::string& text, int replyCode = 0) {
         if (!sink_ || text.empty()) return;
+        SayResolving();
         UltraNetFtpLogLine l;
         l.kind = kind;
         l.text = text;
@@ -240,6 +266,27 @@ private:
 
     void OnText(const std::string& line) {
         if (IsNoise(line)) return;
+        // A connection an earlier call left open, taken up again: already
+        // connected and logged in, so the next connection libcurl reports is
+        // the data connection. Worded "Re-using existing connection ..." up
+        // to libcurl 8.x and "Reusing existing ftp: connection ..." from
+        // 8.21, the vendored third_party/curl.
+        if (StartsWith(line, "Re-using existing") || StartsWith(line, "Reusing existing")) {
+            const std::string host = std::move(pendingHost_);
+            pendingHost_.clear();
+            controlConnected_ = true;
+            loggedIn_ = true;
+            Step(host.empty() ? "Using the open connection - already logged in"
+                              : "Using the open connection to " + host +
+                                " - already logged in");
+            return;
+        }
+        // "Connection #0 to host h left intact": what makes the line above
+        // possible next time.
+        if (StartsWith(line, "Connection #") && line.find("left intact") != std::string::npos) {
+            Step("Connection kept open for the next request");
+            return;
+        }
         // "Trying 203.0.113.7:21..." is the connect starting.
         if (StartsWith(line, "Trying ")) {
             Step("Connecting to " + line.substr(7));
@@ -314,6 +361,8 @@ private:
     bool loggedIn_ = false;
     bool authRefused_ = false;
     bool tlsUp_ = false;
+    // The host Begin named, until "Resolving address of" has been said.
+    std::string pendingHost_;
     std::string lastVerb_;
     int lastReplyCode_ = 0;
     std::string lastReply_;

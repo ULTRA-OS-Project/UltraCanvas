@@ -1,7 +1,8 @@
 // include/UltraCanvasElementDebug.h
 // Debug rendering functions for UltraCanvas elements
+// Version: 1.0.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.0.0
-// Last Modified: 2024-12-19
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -195,6 +196,7 @@ namespace UltraCanvas {
         }
 
         static std::string GenerateDebugText(UltraCanvasUIElement* element, const DebugRenderSettings& settings, IRenderContext* ctx) {
+            (void)ctx;
             std::ostringstream debugText;
 
             if (settings.showElementID) {
@@ -269,6 +271,7 @@ namespace UltraCanvas {
 
         static void DrawDebugText(const std::string& text, const Rect2Di& bounds,
                                   const Point2Di& absolutePos, const DebugRenderSettings& settings, IRenderContext* ctx) {
+            (void)absolutePos;
             if (text.empty()) return;
 
             ctx->PushState();

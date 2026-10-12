@@ -1,5 +1,7 @@
 # UltraCanvas Dialog Keyboard Handling
 
+<!-- doc-check: void DeleteSelection(); -->
+
 ## Overview
 
 Every dialog built on `UltraCanvasModalDialog` — message boxes, alerts, input
@@ -98,7 +100,7 @@ config.buttons = DialogButtons::YesNoCancel;
 auto dialog = UltraCanvasDialogManager::CreateDialog(config);
 dialog->SetButtonMnemonic(DialogButton::No, 'O');   // "N<u>o</u>"
 char yesKey = dialog->GetButtonMnemonic(DialogButton::Yes);  // 'Y'
-dialog->ShowModal(parentWindow);
+dialog->ShowModal(parentWindow.get());
 ```
 
 `SetButtonMnemonic()` returns `false` and changes nothing when the letter does
@@ -156,7 +158,7 @@ UltraCanvasDialogManager::ShowDialog(
         [](DialogResult result) {
             if (result == DialogResult::Yes) DeleteSelection();
         },
-        parentWindow);
+        parentWindow.get());
 ```
 
 ## Mnemonics on plain buttons

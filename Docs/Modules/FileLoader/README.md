@@ -159,7 +159,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **Audio** (miniaudio + optional codec libs): WAV (load + save); MP3, FLAC (load always, save with LAME / libFLAC); OGG Vorbis, Opus (load + save with libvorbis / opusfile + libopusenc)
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
-**Spreadsheets:** ODS, XLSX, CSV, TSV (load + save)
+**Spreadsheets:** ODS, XLSX, CSV, TSV (load + save), XLS — Excel 97-2003 and 5.0/95 (load)
 **Transparent decompression:** GZIP, zlib, Zstandard, LZ4 (streams, by content — not archive containers; use VirtualFS for ZIP/7z/TAR)
 
 *...and easily extensible for custom graphics formats via the plugin registry*

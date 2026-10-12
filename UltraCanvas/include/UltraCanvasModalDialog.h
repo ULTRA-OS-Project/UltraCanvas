@@ -201,6 +201,26 @@ namespace UltraCanvas {
     // opens on the type of the name it suggests.
     int FindFilterForName(const std::string& name, const std::vector<FileFilter>& filters);
 
+    // `name` with `extension` ("png", undotted) added when its last component
+    // has no extension of its own: the default for a Save under a type that
+    // names none (All files). Trailing dots are dropped first; a leading dot
+    // (".profile") is part of the name. An empty `extension` changes nothing.
+    std::string ApplyDefaultExtension(const std::string& name, const std::string& extension);
+
+    // Whose rules a file name is held to: the system this runs on, or one
+    // named outright (for a name meant for another system, and for tests).
+    enum class FileNameRules { Host, Windows, Posix };
+
+    // Why `name` (one path component, UTF-8) cannot name a file, or "" when
+    // it can. Everywhere: empty, "." or "..", a control character, or longer
+    // than 255 (bytes on POSIX, UTF-16 units on Windows). Windows also
+    // refuses < > : " / \ | ? *, a trailing space or dot, and the device
+    // names CON, PRN, AUX, NUL, COM1-9 and LPT1-9 (with any extension).
+    // POSIX also refuses "/". The reason reads after the name: "\"a:b\" "
+    // + "contains \":\"".
+    std::string InvalidFileNameReason(const std::string& name,
+                                      FileNameRules rules = FileNameRules::Host);
+
 // ===== DIALOG STYLE =====
     struct ModalDialogStyle {
         // Spacing
@@ -353,7 +373,12 @@ namespace UltraCanvas {
         // file under the pointer), as UltraFiler has it. Off: a picker chooses
         // files, it does not manage them.
         bool hoverIconMenu = false;
+        // Save: refuse a name the file system cannot hold
+        // (InvalidFileNameReason) with a message, and stay open on it.
         bool validateNames = true;
+        // Open, Open multiple and Save add what they accept to the system's
+        // recent files (UltraCanvasFileLoader::NotifyRecentFile).
+        // UltraCanvasFileLoader sets it from FileDialogOptions::registerAsRecent.
         bool addToRecent = true;
 
         FileDialogConfig();

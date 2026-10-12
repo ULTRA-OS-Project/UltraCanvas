@@ -2,8 +2,8 @@
 // The persistent clipboard history: SQLite index (UltraDatabase), payloads as
 // encrypted files named by a keyed hash, image thumbnails, retention, the
 // recorder lease. See include/UltraCanvasClipboardHistory.h.
-// Version: 1.0.0
-// Last Modified: 2026-10-06
+// Version: 1.1.0 - the policy's previewStyle
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboardHistory.h"
@@ -355,6 +355,7 @@ JSONValue PolicyToJson(const ClipboardHistoryPolicy& policy) {
     root.Set("maxEntryBytes", static_cast<int64_t>(policy.maxEntryBytes));
     root.Set("recordingPaused", policy.recordingPaused);
     root.Set("imageThumbnails", policy.imageThumbnails);
+    root.Set("previewStyle", policy.previewStyle == ClipboardPreviewStyle::Classic ? "classic" : "modern");
     JSONValue excluded = JSONValue::MakeArray();
     for (const std::string& name : policy.excludedApplications) excluded.Append(JSONValue(name));
     root.Set("excludedApplications", std::move(excluded));
@@ -372,6 +373,7 @@ ClipboardHistoryPolicy PolicyFromJson(const JSONValue& root) {
             static_cast<int64_t>(policy.maxEntryBytes)), 1 << 10));
     policy.recordingPaused = root.Get("recordingPaused").GetBoolean(policy.recordingPaused);
     policy.imageThumbnails = root.Get("imageThumbnails").GetBoolean(policy.imageThumbnails);
+    if (root.Get("previewStyle").GetString("") == "classic") policy.previewStyle = ClipboardPreviewStyle::Classic;
     const JSONValue& excluded = root.Get("excludedApplications");
     if (excluded.IsArray()) {
         policy.excludedApplications.clear();
@@ -533,6 +535,38 @@ bool IsWordCharacter(uint32_t cp) {
 }
 
 } // namespace
+
+std::vector<ClipboardEntryKind> PreferredClipboardKinds(const std::vector<std::string>& categories,
+                                                        const std::vector<std::string>& mimeTypes) {
+    using Kind = ClipboardEntryKind;
+    auto has = [&categories](const char* category) {
+        return std::find(categories.begin(), categories.end(), category) != categories.end();
+    };
+    // What it is, by the freedesktop menu categories. A viewer shows
+    // pictures; nothing is pasted into it.
+    const bool viewer = has("Viewer");
+    if (!viewer && (has("RasterGraphics") || has("2DGraphics") || has("VectorGraphics") ||
+                    has("3DGraphics") || has("Photography") || has("Graphics"))) {
+        return {Kind::Image, Kind::Colour};
+    }
+    if (has("FileManager")) return {Kind::Files};
+    if (has("TextEditor") || has("IDE") || has("Development") || has("TerminalEmulator")) {
+        return {Kind::Code, Kind::Text, Kind::Link};
+    }
+    if (has("WebBrowser")) return {Kind::Link, Kind::Text};
+
+    // What it opens, when the categories say nothing of the above.
+    size_t images = 0, texts = 0, others = 0;
+    for (const std::string& mime : mimeTypes) {
+        if (mime == "inode/directory") return {Kind::Files};
+        if (mime.rfind("image/", 0) == 0) ++images;
+        else if (mime.rfind("text/", 0) == 0) ++texts;
+        else ++others;
+    }
+    if (!viewer && images > 0 && texts == 0 && others == 0) return {Kind::Image, Kind::Colour};
+    if (texts > 0 && images == 0 && others == 0) return {Kind::Text, Kind::Code, Kind::Link};
+    return {};
+}
 
 std::vector<uint8_t> ClipboardImageFile(const ClipboardFormat& image, std::string& extension) {
     std::string format = image.mime.rfind("image/", 0) == 0 ? image.mime.substr(6) : "png";
@@ -1134,8 +1168,9 @@ std::vector<ClipboardHistoryEntry> UltraCanvasClipboardHistory::List(const Clipb
     std::vector<ClipboardHistoryEntry> result;
     if (!d.open) return result;
     UltraDbResultSet rows;
-    if (!d.Query(std::string("SELECT ") + kEntryColumns +
-                 " FROM entries WHERE deleted_at = 0 ORDER BY pinned DESC, last_used_at DESC, id DESC", {}, rows)) {
+    const char* order = query.newestFirst ? " ORDER BY last_used_at DESC, id DESC"
+                                          : " ORDER BY pinned DESC, last_used_at DESC, id DESC";
+    if (!d.Query(std::string("SELECT ") + kEntryColumns + " FROM entries WHERE deleted_at = 0" + order, {}, rows)) {
         return result;
     }
 

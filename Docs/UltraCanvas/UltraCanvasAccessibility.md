@@ -1,5 +1,7 @@
 # UltraCanvasAccessibility
 
+<!-- doc-check: UltraCanvasUIElement* element; -->
+
 What assistive technology — screen readers, magnifiers, braille displays —
 needs to know about an element, in a form that does not depend on the
 platform: its **role**, its **name**, for text a **text interface** (content,

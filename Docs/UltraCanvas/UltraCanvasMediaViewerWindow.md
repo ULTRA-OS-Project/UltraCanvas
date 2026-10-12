@@ -33,7 +33,10 @@ out of scope closes immediately.
 
 ```cpp
 class MyWindow {
-    ...
+    // ...the rest of your window class...
+    void OnFileActivated(const std::string& path);
+
+    std::shared_ptr<UltraCanvasWindow> window;      // the application's main window
     UltraCanvasMediaViewerWindow mediaWindow;
 };
 

@@ -1,7 +1,7 @@
 # The UltraCanvas SDK
 
-**Version:** 1.0.0
-**Last Modified:** 2026-10-03
+**Version:** 1.3.1
+**Last Modified:** 2026-10-10
 **Author:** UltraCanvas Framework
 
 The SDK is the framework **already built and installed**, zipped up: the
@@ -12,19 +12,41 @@ that UltraCanvasStart can set a machine up by unpacking one folder instead of
 running a forty-minute build.
 
 CI produces it on every pull request and every push to `main`, one per
-platform leg, as a workflow artifact:
+platform leg, as a workflow artifact, and every release build of `main`
+attaches the same six archives to a GitHub release:
 
 | Artifact | Contents |
 |---|---|
 | `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` the core needs |
-| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | static core, built against Homebrew libraries, with those libraries' development files in `deps/` |
+| `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | shared core (`lib/libUltraCanvas.dylib`), built against the vcpkg libraries CI makes for the oldest supported macOS, with those libraries' development files in `deps/` |
 | `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64, with the MSYS2 packages' development files and DLLs in `deps/` |
 
 Each is the result of `cmake --install build --prefix <sdk>` for that leg,
-plus a copy of this page, the licenses and the `PackageConsumer` example. The
+plus a copy of this page, the licenses and the `PackageConsumer` example,
+as a `.tar.xz` on Linux, a `.tar.gz` on macOS and a `.zip` on Windows. The
 version in the name is the framework's, from the first line of
-`Docs/UltraCanvas/CHANGELOG.md`. Artifacts are kept for seven days; a release
-copy is a matter of attaching the same file to a GitHub release.
+`Docs/UltraCanvas/CHANGELOG.md`.
+
+**Where to get one.** Each version of `main` has a GitHub release tagged
+`v<version>` (the `publish-sdk` job of `.github/workflows/build.yml` creates
+it from the release build that `changelog-fold.yml` dispatches, with the
+version's changelog section as its notes), and the archives are its assets at
+a fixed address:
+
+```
+https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v<version>/<archive>
+https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/v0.9.211/UltraCanvas-SDK-Windows-0.9.211-x86_64.zip
+```
+
+That is what UltraCanvasStart's Framework step fetches with *Download and
+unpack...*, for the platform and architecture it runs on and the version it was
+built from. UltraCanvasStart itself is on the same release, on its own, as
+`UltraCanvasStart-<OS>-<version>-<arch>` (a `.tar.xz` on Linux, a `.zip` on
+Windows, a signed and notarized `.dmg` on macOS): the application, the
+libraries it loads and nothing else, for a computer that has neither the
+toolchain nor a clone yet (`Apps/UltraCanvasStart/README.md`). The workflow
+artifacts (seven days, a signed-in browser) remain for pull-request builds,
+and for the minutes between a merge and the end of its release build.
 
 ## Layout
 
@@ -51,7 +73,7 @@ UltraCanvas-SDK-<platform>-<version>-<arch>/
 ## Using it
 
 ```bash
-tar xzf UltraCanvas-SDK-Linux-0.9.142-x86_64.tar.gz   # unzip on Windows
+tar xf UltraCanvas-SDK-Linux-0.9.142-x86_64.tar.xz   # .tar.gz on macOS, unzip on Windows
 cmake -S MyApp -B build -DCMAKE_PREFIX_PATH=$PWD/UltraCanvas-SDK-Linux-0.9.142-x86_64
 cmake --build build
 ```
@@ -73,9 +95,17 @@ that opens a window and registers the formats. Copy it, rename it, start
 there. The imported targets and variables the package provides are listed at
 the top of `UltraCanvasConfig.cmake`.
 
-On Linux the shared core sits in `lib/`; run an application with that
+The core is a shared library on every platform, and the modules (UltraNet,
+UltraDatabase, UltraCrypt, UltraVault, UltraMessage, VirtualFS, ...) are
+inside it: `UltraCanvas::UltraDatabase` and the other module targets resolve
+to the core, which exports their whole API, so an application links nothing
+else. On Linux the shared core sits in `lib/`; run an application with that
 directory on `LD_LIBRARY_PATH`, or set an rpath, or copy the `.so` files beside
-the executable the way `package-linux.sh` does. On Windows the core is
+the executable the way `package-linux.sh` does. On macOS it is
+`lib/libUltraCanvas.dylib` with an `@rpath` install name: the application
+needs a run path to that directory (CMake writes one into a build-tree
+executable), or the dylib copied beside it the way `package-macos.sh` does
+into the suite's `Frameworks/`. On Windows the core is
 `bin/libUltraCanvas.dll`: put that directory on `PATH`, or copy the DLL beside
 the executable, which is what `package-win.sh` does for a release.
 
@@ -93,10 +123,17 @@ matter. The public headers include `<cairo/cairo.h>`, `<glib.h>` and
 glib, tinyxml2 and libvips through pkg-config:
 
 - **Windows and macOS SDKs carry them**, in `deps/`: `scripts/sdk-bundle-deps.sh`
-  copies the headers, import libraries or dylibs, static archives, `.pc` and
-  CMake config files of every package in the pkg-config closure of those
-  modules (plus fmt, libcurl and zlib where the build used the system ones),
-  and on Windows the DLLs the core needs at run time. The `.pc` files are
+  follows the pkg-config closure of those modules (plus fontconfig, fmt,
+  libcurl and zlib where the build used the system ones). A package the
+  closure reaches through `Requires` - one a consumer includes and links -
+  comes whole: headers, import libraries or dylibs, `.pc` and CMake config
+  files. A package reached only through `Requires.private` contributes its
+  `.pc` files alone, because pkg-config refuses a module whose private
+  requirement it cannot find, while nothing of such a package is included or
+  linked by a shared build. A static archive is left out where the same
+  library exists as a DLL or dylib beside it. The DLLs the core needs at run
+  time are walked from its import table on Windows, private packages'
+  included, so `deps/bin` runs the result. The `.pc` files are
   relocatable (`prefix=${pcfiledir}/../..`), and `UltraCanvasConfig.cmake`
   puts `deps/` first on `CMAKE_PREFIX_PATH`, which is all FindPkgConfig and
   `find_dependency()` need. A consumer therefore builds with no MSYS2 or

@@ -10,7 +10,7 @@
 //   Document     — MuPDF (compile-gated), the built-in ODT/DOCX/DOC engines,
 //                  the Markdown/HTML text path, plus every extension the
 //                  eBook engine registry reports at runtime.
-//   Spreadsheet  — the built-in ODS/XLSX/CSV engines (always compiled in).
+//   Spreadsheet  — the built-in ODS/XLSX/XLS/CSV engines (always compiled in).
 //   Audio, Video — UltraCanvasMediaCodecRegistry, which holds the built-in
 //                  codec matrix (miniaudio, the optional system codec
 //                  libraries, FAAD2/fdk-aac, the platform media plugins, and
@@ -264,6 +264,10 @@ namespace {
         out.push_back({ "xlsx", {}, "Excel workbook (OOXML)",
                         MediaFormatCategory::Spreadsheet, true, true,
                         "built-in (miniz + tinyxml2)", "" });
+        out.push_back({ "xls", {}, "Excel 97-2003 workbook",
+                        MediaFormatCategory::Spreadsheet, true, false,
+                        "built-in .xls reader",
+                        "BIFF8 and Excel 5.0/95; HTML and Excel 2003 XML under the name too" });
         out.push_back({ "csv", {}, "Comma-separated values",
                         MediaFormatCategory::Spreadsheet, true, true,
                         "built-in CSV engine",

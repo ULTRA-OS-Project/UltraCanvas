@@ -28,8 +28,8 @@
 // and a port, which is a second query on every platform. The Windows branch
 // used to stop after the first one and hand back names nothing could connect
 // to, so eSCL scanners were discoverable everywhere except there.
-// Version: 0.3.0
-// Last Modified: 2026-10-07
+// Version: 0.3.1
+// Last Modified: 2026-10-08
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
@@ -303,7 +303,6 @@ void DNSSD_API OnBrowseReply(DNSServiceRef, DNSServiceFlags flags,
                              uint32_t interfaceIndex, DNSServiceErrorType err,
                              const char* serviceName, const char* regtype,
                              const char* replyDomain, void* ctx) {
-    auto* p = static_cast<BonjourPending*>(ctx);
     if (err != kDNSServiceErr_NoError) return;
     if (!(flags & kDNSServiceFlagsAdd)) return;
 
@@ -687,7 +686,7 @@ bool RunWindowsBrowse(const std::string& serviceType, BrowseState& state,
 class MdnsPlugin : public IDirectoryProtocolPlugin {
 public:
     std::string GetName() const override { return "UltraNet-mDNS"; }
-    std::string GetVersion() const override { return "0.3.0"; }
+    std::string GetVersion() const override { return "0.3.1"; }
     std::vector<std::string> GetSupportedSchemes() const override {
         return {"mdns", "dns-sd"};
     }

@@ -103,14 +103,14 @@ namespace UltraCanvas {
 
         auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 40, 450, 240);
         infoText->SetText(
-                "✓ Xara .xar drawings (compressed too)\n"
-                "✓ Paths, QuickShapes, groups, layers\n"
-                "✓ Flat, gradient and bitmap fills\n"
-                "✓ Contone fills and soft shadows\n"
-                "✓ Text: fonts, justification, lists\n"
-                "✓ Embedded bitmaps with transparency\n"
-                "✓ Multi-page documents (spreads)\n"
-                "✓ Opens in the media viewer\n"
+                "• Xara .xar drawings (compressed too)\n"
+                "• Paths, QuickShapes, groups, layers\n"
+                "• Flat, gradient and bitmap fills\n"
+                "• Contone fills and soft shadows\n"
+                "• Text: fonts, justification, lists\n"
+                "• Embedded bitmaps with transparency\n"
+                "• Multi-page documents (spreads)\n"
+                "• Opens in the media viewer\n"
         );
         infoText->SetFontSize(11);
         infoText->SetTextColor(Color(50, 50, 50, 255));

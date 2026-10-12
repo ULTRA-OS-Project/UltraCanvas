@@ -1,9 +1,10 @@
 // core/UltraCanvasPasswordRuleLegend.cpp
 // Interactive password requirements checklist component
-// Version: 1.2.0
-// Last Modified: 2026-08-31
+// Version: 1.3.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #include "UltraCanvasPasswordRuleLegend.h"
+#include "UltraCanvasDrawnMarks.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -11,6 +12,42 @@
 #include <chrono>
 
 namespace UltraCanvas {
+
+    namespace {
+        // A rule's icon in a `size` box whose left edge is `left`, centred
+        // on the capitals of the 12 px rule text drawn at `textTop`. The
+        // ticks, crosses and circles a legend is given (its defaults "✓" and
+        // "✗" among them) are drawn: the bundled UI font has none of them,
+        // and where no fallback font has one either it shows as a hex box.
+        // Any other string is drawn as text.
+        void DrawRuleIcon(IRenderContext* ctx, const std::string& icon, double left, double textTop,
+                          int size, const Color& color) {
+            FontStyle ruleFont;
+            ruleFont.fontSize = 12;
+            const Point2Dd centre(left + size / 2.0, textTop + ctx->GetCapCentreOffset(ruleFont));
+            if (icon == "\xE2\x9C\x93" || icon == "\xE2\x9C\x94") {             // ✓ ✔
+                DrawTickMark(ctx, centre, size, color);
+            } else if (icon == "\xE2\x9C\x97" || icon == "\xE2\x9C\x98" ||      // ✗ ✘
+                       icon == "\xE2\x9C\x95" || icon == "\xC3\x97") {           // ✕ ×
+                DrawCrossMark(ctx, centre, size, color);
+            } else if (icon == "\xE2\x97\x8B") {                                  // ○
+                ctx->PushState();
+                ctx->SetStrokePaint(color);
+                ctx->SetStrokeWidth(1.5);
+                ctx->DrawCircle(centre, size * 0.3);
+                ctx->PopState();
+            } else if (icon == "\xE2\x97\x8F") {                                  // ●
+                ctx->PushState();
+                ctx->SetFillPaint(color);
+                ctx->FillCircle(centre, size * 0.3);
+                ctx->PopState();
+            } else {
+                ctx->SetTextPaint(color);
+                ctx->SetFontSize(size);
+                ctx->DrawText(icon, Point2Dd(left, textTop - (size - 12)));
+            }
+        }
+    }
 
     UltraCanvasPasswordRuleLegend::UltraCanvasPasswordRuleLegend(const std::string &id, float x, float y, float w,
                                                                  float h)
@@ -266,10 +303,8 @@ namespace UltraCanvas {
             // Draw icon
             Color iconColor = rule.isMet ? config.metColor : config.unmetColor;
             iconColor.a = static_cast<uint8_t>(255 * alpha);
-            ctx->SetTextPaint(iconColor);
-            ctx->SetFontSize(config.iconSize);
-            std::string icon = rule.isMet ? config.metIcon : config.unmetIcon;
-            ctx->DrawText(icon, Point2Dd(bounds.x + 10, currentY - (config.iconSize - 12)));
+            const std::string& icon = rule.isMet ? config.metIcon : config.unmetIcon;
+            DrawRuleIcon(ctx, icon, bounds.x + 10, currentY, config.iconSize, iconColor);
 
             // Draw text
             Color textColor = config.textColor;
@@ -332,10 +367,8 @@ namespace UltraCanvas {
             // Draw icon
             Color iconColor = rule.isMet ? config.metColor : config.unmetColor;
             iconColor.a = static_cast<uint8_t>(255 * alpha);
-            ctx->SetTextPaint(iconColor);
-            ctx->SetFontSize(config.iconSize);
-            std::string icon = rule.isMet ? config.metIcon : config.unmetIcon;
-            ctx->DrawText(icon, Point2Dd(bounds.x + 20, currentY - (config.iconSize - 12)));
+            const std::string& icon = rule.isMet ? config.metIcon : config.unmetIcon;
+            DrawRuleIcon(ctx, icon, bounds.x + 20, currentY, config.iconSize, iconColor);
 
             // Draw text
             Color textColor = config.textColor;
