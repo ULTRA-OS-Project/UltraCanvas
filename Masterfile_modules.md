@@ -400,9 +400,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Image / Other / Error, final URL, base, charset, the parsed `Document`,
   warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
   (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
-  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`. Fetch, URL resolution and
-  charset conversion are services the caller passes in, so it is
-  framework-independent; linked style sheets load before a page is ready;
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`; `LoadPost` for a form's
+  POST. Fetch, POST, URL resolution and charset conversion are services the
+  caller passes in, so it is framework-independent; linked style sheets and
+  their `@import`s load before a page is ready;
   mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
   `EscapeText` (`HTMLDocument.h`) is DecodeEntities' inverse.
 - **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
@@ -411,7 +412,14 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
   `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
   `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
-  JavaScript (`<noscript>` shown).
+  JavaScript (`<noscript>` shown). Forms the reader fills in and sends
+  (`SetInteractiveForms`, `SubmitForm`: GET as a navigation, POST through
+  `PageLoader::LoadPost`), what was typed kept across a rebuild.
+- **HTMLForms** (`HTMLReader/HTMLForms.h`) - `FormSubmission` (action, method,
+  enctype, the entry list; `Encoded`, `Multipart`, `PlainText`, `Body`,
+  `ContentType`) and `FormController`, one per `<form>` built with
+  `BuildOptions::interactiveForms`: its widgets (held weakly), radio groups,
+  `Collect`, `Submit`, `Reset`, `Save` / `Restore`.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
   `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
@@ -838,6 +846,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `WindowType::Desktop` (`UltraCanvasWindow.h`) is
   the screen-sized window at the bottom of the stack a desktop draws into.
 
+- **UltraCanvasToolGroupButton** (`UltraCanvasToolGroupButton.h`) — several
+  tools sharing one slot of a palette or toolbar: the slot shows one of them,
+  a bar of the whole group folds out beside it while the pointer rests on it
+  (`SetFoldOutDelay`, `SetFoldOutSide`, `OpenFoldOut` / `CloseFoldOut`), and a
+  click there picks a tool (`onItemSelected`). `SetItems` / `AddItem`,
+  `SetCurrentItem` (the tool in use, set without firing), `GetSlotItem`,
+  `SetSlotShowsLastPicked` (adaptive: the tool last picked; static: always
+  the first). `UltraCanvasToolbar::AddToolGroup` adds one with the toolbar's
+  button look. See `Docs/UltraCanvas/UltraCanvasToolGroupButton.md`.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.
@@ -1072,8 +1090,9 @@ engine; these classes hold the pixels being edited and hand them to it.
 - **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
-  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/DrawCurve/DrawArrow/
+  FillCoverage/StampMask/FloodFill/MagicWandMask/FillGradient/SampleColour`,
+  with `FlattenCubicBezier` and `ArrowShape` for previews (`FillCompositing`:
   Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,

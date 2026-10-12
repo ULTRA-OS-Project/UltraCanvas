@@ -8,6 +8,7 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.3.0 - toolSlots: the palette's tools in groups, one slot each, with a fold-out bar
 // Version: 1.2.0 - the mouse pointer magnification glass (a loupe over the canvas while the
 //                  rectangle selection is active) and Edit > Settings... with its page
 // Version: 1.1.3 - StartLayerRename / FinishLayerRename: a layer is renamed in the list
@@ -239,7 +240,9 @@ private:
     std::shared_ptr<UltraCanvasContainer>      statusBar;
     std::shared_ptr<UltraCanvasLabel>          statusPos, statusZoom, statusSize, statusHint;
     std::shared_ptr<UltraCanvasButton>         undoButton, redoButton;
-    std::vector<std::shared_ptr<UltraCanvasButton>> toolButtons;
+    // The palette's slots, one per tool group (UltraPaintWindow.cpp:
+    // PaletteGroups), top to bottom.
+    std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
     std::shared_ptr<UltraCanvasContainer>      magnifierFrame;   // the glass's border, over the canvas
     std::shared_ptr<UltraCanvasPaintSurface>   magnifier;        // the loupe inside it
     int magnifierCorner = 1;                                      // where it sits now

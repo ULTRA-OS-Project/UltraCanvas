@@ -4,14 +4,14 @@
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.6.1
+**Version:** 1.8.0
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
 
 ## Features
 
-- **Item Types**: Button, ToggleButton, DropdownButton, Separator, Spacer (fixed and flex), Label, TextInput, SearchBox, Checkbox
+- **Item Types**: Button, ToggleButton, DropdownButton, ToolGroup (several tools in one slot, with a fold-out bar), Separator, Spacer (fixed and flex), Label, TextInput, SearchBox, Checkbox
 - **Multiple Styles**: Standard, Flat, Raised, Docked (macOS-like), Ribbon, StatusBar, Sidebar
 - **Orientation**: Horizontal or Vertical
 - **Overflow Handling**: Wrap, overflow menu, scroll, or hide
@@ -111,6 +111,10 @@ std::shared_ptr<UltraCanvasDropdown> AddDropdownButton(
         const std::vector<std::string>& items,
         std::function<void(const std::string&)> onSelect = nullptr);
 
+std::shared_ptr<UltraCanvasToolGroupButton> AddToolGroup(
+        const std::string& id, const std::vector<ToolGroupItem>& items,
+        std::function<void(const std::string&)> onSelect = nullptr);
+
 std::shared_ptr<UltraCanvasSeparator> AddSeparator(const std::string& id = "");
 std::shared_ptr<UltraCanvasSpacer> AddSpacer(int size = 8);
 std::shared_ptr<UltraCanvasSpacer> AddStretch(float stretch = 1.0f);
@@ -121,6 +125,27 @@ std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
 std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
         const std::string& id, const std::string& placeholder = "Search...",
         std::function<void(const std::string&)> onTextChange = nullptr);
+```
+
+### Tool Groups
+
+`AddToolGroup` puts several tools in one slot, as a paint program's palette
+groups its selection tools or its brushes. The slot shows one of them; resting
+the pointer on it folds out a bar with the whole group - to the right in a
+vertical toolbar, below in a horizontal one - and a click there picks a tool.
+`onSelect` gets the id of the tool picked, by a click on the slot or in the
+bar. The slot shows the tool last picked, or always the group's first tool
+with `SetSlotShowsLastPicked(false)`. A group of one item is a plain toggle
+button. See [UltraCanvasToolGroupButton.md](UltraCanvasToolGroupButton.md).
+
+```cpp
+auto palette = std::make_shared<UltraCanvasToolbar>("palette", 0, 0, 48, 0);
+palette->SetOrientation(ToolbarOrientation::Vertical);
+auto shapes = palette->AddToolGroup("shapes", {
+        {"rectangle", "media/icons/ultrapaint/28/rect.svg",    "Rectangle (Q)"},
+        {"ellipse",   "media/icons/ultrapaint/28/ellipse.svg", "Ellipse (P)"},
+    },
+    [](const std::string& toolId) { (void)toolId; /* make it the active tool */ });
 ```
 
 ### Auto-Hide
@@ -487,6 +512,7 @@ running->ClearItemBadge("webcam");                                // off again
 ## See Also
 
 - [UltraCanvasButton](UltraCanvasButton.md) - Building block for toolbar buttons
+- [UltraCanvasToolGroupButton](UltraCanvasToolGroupButton.md) - Several tools in one slot, with a fold-out bar (`AddToolGroup`)
 - [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown buttons and overflow menus
 - [UltraCanvasContainer](UltraCanvasContainer.md) - Base container class
 - [UltraCanvasLayoutExamples](UltraCanvasLayoutExamples.md) - Layout managers used internally

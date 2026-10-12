@@ -4,6 +4,8 @@
 // descendant chains, the box-model / typography / color properties, and a
 // specificity-ordered cascade. Framework-independent: value types here are
 // plain structs; HTMLElementBuilder maps them onto CSSLayout/widget types.
+// Version: 1.4.0 - StyleSheet::ParseImports: a sheet's @import rules (href,
+//                  media), for whoever loads the sheets to fetch and inline them
 // Version: 1.3.0 - selector matching lives here, for any tree: SelectorMatches /
 //                  CompoundMatches / MatchingRules over a Traits type (the HTML
 //                  DOM's is NodeSelectorTraits; the SVG reader supplies its own)
@@ -104,6 +106,14 @@ struct Selector {
     int Specificity() const;   // id*10000 + class*100 + tag
 };
 
+// One @import rule: the sheet it names, as written (url("x") or "x"), and
+// the media query list after it ("" for all media). layer() and supports()
+// conditions are dropped: the sheet applies as if they held.
+struct StyleImport {
+    std::string href;
+    std::string media;
+};
+
 struct Rule {
     std::vector<Selector> selectors;
     std::vector<Declaration> declarations;
@@ -132,6 +142,13 @@ public:
     // Whether a media query list ("only screen and (min-width:480px), print")
     // holds on a screen `widthPx` wide. Unknown media features do not match.
     static bool MediaMatches(const std::string& query, float widthPx);
+
+    // The @import rules at the head of `css`, in order. As in CSS, only
+    // those before the first other rule count (@charset and @layer
+    // statements may come between); the rest are ignored. ParseAppend skips
+    // @import itself: the caller fetches each sheet and parses it first, so
+    // its rules come before the importing sheet's in the cascade.
+    static std::vector<StyleImport> ParseImports(const std::string& css);
 
     // Parse a bare declaration list — the content of a style="" attribute.
     static std::vector<Declaration> ParseDeclarationList(const std::string& text);

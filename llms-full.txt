@@ -579,9 +579,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Image / Other / Error, final URL, base, charset, the parsed `Document`,
   warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
   (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
-  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`. Fetch, URL resolution and
-  charset conversion are services the caller passes in, so it is
-  framework-independent; linked style sheets load before a page is ready;
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`; `LoadPost` for a form's
+  POST. Fetch, POST, URL resolution and charset conversion are services the
+  caller passes in, so it is framework-independent; linked style sheets and
+  their `@import`s load before a page is ready;
   mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
   `EscapeText` (`HTMLDocument.h`) is DecodeEntities' inverse.
 - **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
@@ -590,7 +591,14 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
   `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
   `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
-  JavaScript (`<noscript>` shown).
+  JavaScript (`<noscript>` shown). Forms the reader fills in and sends
+  (`SetInteractiveForms`, `SubmitForm`: GET as a navigation, POST through
+  `PageLoader::LoadPost`), what was typed kept across a rebuild.
+- **HTMLForms** (`HTMLReader/HTMLForms.h`) - `FormSubmission` (action, method,
+  enctype, the entry list; `Encoded`, `Multipart`, `PlainText`, `Body`,
+  `ContentType`) and `FormController`, one per `<form>` built with
+  `BuildOptions::interactiveForms`: its widgets (held weakly), radio groups,
+  `Collect`, `Submit`, `Reset`, `Save` / `Restore`.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
   `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
@@ -1017,6 +1025,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `WindowType::Desktop` (`UltraCanvasWindow.h`) is
   the screen-sized window at the bottom of the stack a desktop draws into.
 
+- **UltraCanvasToolGroupButton** (`UltraCanvasToolGroupButton.h`) — several
+  tools sharing one slot of a palette or toolbar: the slot shows one of them,
+  a bar of the whole group folds out beside it while the pointer rests on it
+  (`SetFoldOutDelay`, `SetFoldOutSide`, `OpenFoldOut` / `CloseFoldOut`), and a
+  click there picks a tool (`onItemSelected`). `SetItems` / `AddItem`,
+  `SetCurrentItem` (the tool in use, set without firing), `GetSlotItem`,
+  `SetSlotShowsLastPicked` (adaptive: the tool last picked; static: always
+  the first). `UltraCanvasToolbar::AddToolGroup` adds one with the toolbar's
+  button look. See `Docs/UltraCanvas/UltraCanvasToolGroupButton.md`.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.
@@ -1251,8 +1269,9 @@ engine; these classes hold the pixels being edited and hand them to it.
 - **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
-  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/DrawCurve/DrawArrow/
+  FillCoverage/StampMask/FloodFill/MagicWandMask/FillGradient/SampleColour`,
+  with `FlattenCubicBezier` and `ArrowShape` for previews (`FillCompositing`:
   Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
@@ -13083,8 +13102,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.0.5  
-**Last Modified:** 2026-10-11  
+**Version:** 1.0.6  
+**Last Modified:** 2026-10-12  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -13234,6 +13253,11 @@ void SetPadding(float vertical, float horizontal);
 void SetPadding(float top, float right, float bottom, float left);
 void SetIconSpacing(int spacing);
 void SetCornerRadius(float radius);
+
+// The icon's size as set with SetIconSize - what a twin of the button
+// (a tool group's fold-out bar) copies
+int GetIconWidth() const;
+int GetIconHeight() const;
 
 // Shadow configuration
 void SetShadow(
@@ -13542,6 +13566,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
 | 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |
 | 1.0.3 | 2026-10-07 | Match the header: real `ButtonStyle` fields and `ButtonBuilder` methods, `ElementState`/`GetPrimaryState()` instead of a `ButtonState` enum, layout sizing instead of auto-resize, `SetDisabled()`, `SetPadding()` overloads |
@@ -31642,6 +31667,17 @@ sheet, `@media` blocks (applied when their query holds at `SetMediaWidth`),
 and skips other at-rules whole. A selector it cannot read drops out of its
 rule alone; the rule's other selectors still apply.
 
+`@import` is skipped by `ParseAppend` and listed by
+`StyleSheet::ParseImports(css)`: the rules at the head of the sheet, each an
+`href` as written and its `media` (`layer()` and `supports()` dropped). Only
+those before the first other rule count, as in CSS. Whoever loads sheets
+fetches them: the element builder puts each imported sheet in front of the
+importing sheet's rules, in an `@media` block when the import names media,
+reading its address relative to the importing sheet (an EPUB's
+`css/book.css` importing `fonts.css` reads `css/fonts.css`), 8 deep and 64
+sheets at most, each sheet once. `HTML::PageLoader` fetches them before a
+page is ready.
+
 Selectors: type, `*`, `.class`, `#id`, attribute selectors (`[a]`, `[a=v]`,
 `~=` `^=` `$=` `*=` `|=`, the `i` flag), `:link` / `:any-link`, the
 structural pseudo-classes (`:first-child`, `:last-child`, `:only-child`,
@@ -31673,6 +31709,9 @@ for (const HTML::Rule& rule : sheet.rules)
 
 auto declarations = HTML::StyleSheet::ParseDeclarationList("fill: red; stroke-width: 2 !important");
 bool print = HTML::StyleSheet::MediaMatches("print, screen and (min-width: 600px)", 480);   // false
+
+for (const HTML::StyleImport& import : HTML::StyleSheet::ParseImports("@import url(a.css) print; p{}"))
+    ;   // import.href == "a.css", import.media == "print"
 ```
 
 ## Selector matching, on any tree
@@ -31846,6 +31885,26 @@ boxes on it, and at least the block's own: a `<span style="line-height:40px">`
 in a cell that sets none is a 40px line. Text where nothing sets a
 `line-height` keeps the font's own line spacing.
 
+An inline element's horizontal margin, border and padding are room in its
+line: `<nav><a style="margin-right:18px">About</a><a>Index</a></nav>` keeps
+the two links 18px apart. The room is a picture-less placeholder in the
+label's run, joined to the element's first or last letter by a word joiner,
+so a line does not break between a word and its margin. The margin lies
+outside the element's link and the padding inside it, and white space on
+either side of the room collapses to one space. Vertical margins do not move
+the line, as in CSS.
+
+Its background and border are drawn by the label around its text and
+padding (`LabelTextBox`), at any depth in a run (`<b><span
+style="border:...">`): a piece per line when it breaks across lines, the
+left border on the first piece and the right on the last, its vertical
+padding painted above and below the text without moving the lines. An
+inline element that has vertical padding as well as a background or a border
+- the mail button, `<a style="background:#07f;padding:12px 24px;color:#fff">Buy</a>`
+- is a box on the line instead, as an `inline-block` is, when it is a child of
+the block: the line grows to hold its padding, and it does not break. A space
+between a box and the text beside it stays: "Order now: [Buy] today".
+
 **Flex and grid containers** are laid out by the CSSLayout flex and grid
 engines. Their children are items, as in CSS. Each child element is a box of
 its own at its own size (a `<span>` or `<a>` item is "blockified"), with real
@@ -31887,7 +31946,9 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
 - **Style sheets:** linked sheets (up to 32) are fetched before the page is
   ready, so the first build has them. Each sheet's `url()`s are rewritten
   against the sheet's own URL (`RewriteCssUrls`), so they still mean the same
-  inside the page. `@import` is not followed yet.
+  inside the page. The sheets a linked sheet or a `<style>` imports
+  (`@import`, up to 4 deep, within the 32) are fetched before the page is
+  ready too, and their addresses rewritten to absolute ones.
 - **Other resources** load on demand. `GetResource(href)` is the builder's
   `resourceLoader`: it answers from a cache (64 MB, oldest out first),
   queues what it does not have, and `onResourcesArrived` says when to build
@@ -31941,6 +32002,58 @@ view->onTitleChanged = [](const std::string& title) { /* the window title */ };
 view->onExternalLink = [](const std::string& url) { /* the system's mail client */ };
 view->Navigate("https://example.org/");
 ```
+
+### Forms
+
+With `BuildOptions::interactiveForms` the builder makes a form's controls
+the framework's widgets, so the reader can fill it in: `<input>` text-like
+types and `password` are `UltraCanvasTextInput`s, `<textarea>` an
+`UltraCanvasTextArea`, checkboxes and radios `UltraCanvasCheckbox` /
+`UltraCanvasRadio` (radios with one name in one form are one
+`UltraCanvasRadioGroup`), `<select>` an `UltraCanvasDropdown` (`<optgroup>`s
+flattened), and buttons `UltraCanvasButton`s. They are `inline-block`, as in
+browsers: on the line with their labels, sized by CSS `width` / `height`,
+else by `size`, `cols` / `rows` and the font. A control can be a flex or
+grid item (a search bar). `disabled`, a disabled `<fieldset>`, `readonly`,
+`maxlength`, `placeholder` and `form="id"` are honoured. File, colour and
+range inputs are drawn for display only and not sent.
+
+Each `<form>` gets an `HTML::FormController` (`HTMLReader/HTMLForms.h`) in
+`BuildResult::forms`; keep them, since they hold the radio groups. A submit
+button, or Enter in a text field, calls `BuildOptions::onFormSubmit` with
+an `HTML::FormSubmission`: the form's action, method and enctype, and the
+entry list in tree order, as HTML builds it (named, enabled controls; a
+checkbox or radio only when checked, `on` without a value; the selected
+option's value; only the button that was clicked). `Encoded()`,
+`Multipart(boundary)` and `PlainText()` are its three encodings, and `Body`
+/ `ContentType` pick the one the form asks for. A reset button puts back
+what the page wrote. `Save()` / `Restore()` carry what was typed into a
+rebuilt page.
+
+```cpp
+HTML::BuildOptions opts;
+opts.interactiveForms = true;
+opts.onFormSubmit = [](const HTML::FormSubmission& form) {
+    if (form.method == "get") { /* open form.action + "?" + form.Encoded() */ }
+    else { /* POST form.Body(boundary) as form.ContentType(boundary) */ }
+};
+HTML::ElementBuilder builder;
+HTML::BuildResult r = builder.Build("<form action='/find'><input name='q'> <button>Go</button></form>", opts);
+for (const auto& form : r.forms) {
+    HTML::FormSubmission now = form->Collect();   // what it would send now
+    (void)now;
+}
+```
+
+`UltraCanvasWebView` turns forms on (`SetInteractiveForms(false)` turns them
+off) and sends them itself (`SubmitForm`): GET as a navigation to the
+action with the fields as its query, POST through
+`PageLoader::LoadPost` - the `post` service the host passes in - and back
+from the answer re-asks its address by GET. A rebuild of the page (a new
+width, pictures arriving) keeps what was typed and the focus. Mail keeps
+`interactiveForms` off: its controls are drawn for display only, the value
+as text on a line of its own. Not yet: file uploads; a click on a
+`<label>`'s text does not reach its control.
 
 ## HTML into an editable document
 
@@ -32020,9 +32133,10 @@ blocks new ones.
 | `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML` |
 | `include/HTMLReader/HTMLRichDocumentImporter.h` | `ImportHTMLToRichDocument`, `AppendHTMLToRichDocument`, `HTMLRichImportOptions` |
 | `include/HTMLReader/HTMLPageLoader.h` | `PageLoader`, `PageLoaderServices`, `PageLoaderLimits`, `FetchResult`, `LoadedPage`, `PageKind` |
+| `include/HTMLReader/HTMLForms.h` | `FormSubmission`, `FormController` (forms with real widgets) |
 | `include/UltraCanvasWebView.h` | `UltraCanvasWebView`, the element that shows pages from URLs |
 | `Tests/HTMLReaderTest.cpp` | parser, CSS, matcher and resolver, without the UI library |
-| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, the viewer |
+| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `HTMLInlineBoxTest.cpp`, `HTMLFormsTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, inline boxes, forms, the viewer |
 | `Tests/Fuzz/` | fuzz targets for the parser, the CSS, and the builder with the layout ([README](../../Tests/Fuzz/README.md)) |
 
 ## Fuzzing
@@ -35141,6 +35255,40 @@ placed by `text-align`: side by side on one wrapping line while only
 whitespace separates them, a space of their font apart where the HTML has
 whitespace, standing on the line's bottom unless `vertical-align` puts them at
 its top or middle; `display:block` or `<br>` starts a new line.
+
+A placeholder with no `image` is room: it takes the frame's width
+(`frame.marginLeft`) and draws nothing. The HTML reader uses it for an inline
+element's horizontal margin, border and padding.
+
+### Inline boxes
+
+`SetTextBoxes` draws backgrounds and borders around byte ranges of the
+rendered text, behind it: CSS's box of an inline element (`<mark>`, a
+bordered `<span>`). Each `LabelTextBox` is a range `[startByte, endByte)`,
+a `background`, four border sides (`LabelInlineImageBorder`), the
+`paddingTop` / `paddingBottom` it reaches above and below the text, and a
+`borderRadius`.
+
+```cpp
+label->SetText("Some highlighted words here");
+LabelTextBox mark;
+mark.startByte = 5;                  // "highlighted words"
+mark.endByte = 22;
+mark.background = Color(255, 235, 59, 255);
+mark.paddingTop = mark.paddingBottom = 2;
+label->SetTextBoxes({ mark });
+```
+
+- A box is drawn in a piece per line it spans: as tall as its first real
+  character's text, plus its vertical padding and border, which do not
+  move the lines. Its left border is on the first piece and its right on the
+  last (CSS `box-decoration-break: slice`); a radius applies to a box on one
+  line, capped at half its height.
+- Horizontal padding is not added: put room in the text for it (a picture-
+  less `LabelInlineImage`), inside the range, so the sides fall at the
+  room's outer edges.
+- Boxes are drawn in order, so give an enclosing box before the ones inside
+  it. `TextBoxPieces(i)` returns box `i`'s pieces, label-local.
 
 ### Selectable text
 
@@ -44297,8 +44445,8 @@ them back. The first application built on it is **UltraPaint**
 | `UCBrushStroke`, `RasterPaint` | The brush engine: interactive strokes (dabs with spacing, hardness, opacity vs flow, paint / erase / clone / smudge / dodge / burn) and one-shot operations (anti-aliased shapes, flood fill, magic wand, gradients, mask stamping, eyedropper) | `include/UltraCanvasBrushEngine.h`, `core/UltraCanvasBrushEngine.cpp` |
 | `UltraCanvasPaintSurface` | The element: zoom / pan view of a document with checkerboard, pixel grid, selection ants and brush cursor; forwards pointer events in image coordinates to the tool the host installs | `include/UltraCanvasPaintSurface.h`, `core/UltraCanvasPaintSurface.cpp` |
 
-**Version**: 1.0.0
-**Last Modified**: 2026-09-06
+**Version**: 1.0.1 - `DrawCurve`, `DrawArrow`
+**Last Modified**: 2026-10-12
 **Author**: UltraCanvas Framework
 
 None of the model classes touch a window; `UltraCanvasPaintSurface` is the
@@ -44443,7 +44591,11 @@ stroke.End();
 
 `RasterPaint` holds the one-shot operations: `DrawLine`, `DrawRectangle`,
 `DrawEllipse`, `DrawPolygon` (outline and fill, 4×4 supersampled
-anti-aliasing through `FillCoverage`), `FloodFill` (tolerance, contiguous or
+anti-aliasing through `FillCoverage`; open, it is a polyline whose joins are
+painted once), `DrawCurve` (a cubic Bezier curve; `FlattenCubicBezier` gives
+its points for a preview), `DrawArrow` (a shaft with a filled head at the
+tip, or at both ends, in one pass; `ArrowShape` gives its geometry),
+`FloodFill` (tolerance, contiguous or
 global, optionally sampling a merged layer; `FillCompositing::Replace` sets
 the region to the colour, alpha included, where the default `Blend` paints
 over it - the way to fill with transparency), `MagicWandMask` (the same
@@ -61912,6 +62064,180 @@ the `Roadmap` design, item groups/phase brackets (A-D6), per-item images
 sequential entrance animation (A-I7).
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasToolGroupButton.md
+==============================================================================
+
+# UltraCanvasToolGroupButton
+
+Several tools sharing one slot of a tool palette or toolbar - the selection
+tools, the brushes, the shapes of a paint program.
+
+The slot shows one tool of the group, and a click on it picks that tool.
+Resting the pointer on the slot folds out a bar beside it with every tool of
+the group; a click in the bar picks that tool. A small triangle in the
+slot's corner says the slot holds more than one tool. The bar folds back when
+the pointer leaves both the slot and the bar, on Escape and on a click
+elsewhere. A group of one tool is an ordinary toggle button: no triangle and
+nothing to fold out.
+
+**Version:** 1.0.0
+**Header:** `include/UltraCanvasToolGroupButton.h`
+**Namespace:** `UltraCanvas`
+**Base Class:** `UltraCanvasButton`
+
+## Adaptive or static
+
+What the slot shows after a pick is the host's choice:
+
+| `SetSlotShowsLastPicked` | The slot shows | A click on the slot picks |
+|---|---|---|
+| `true` (default) - an *adaptive* toolbar | the tool last picked, from the bar or with `SetCurrentItem` | that tool |
+| `false` - a *static* toolbar | always the first item, the group's main tool | the main tool |
+
+Either way the bar marks the tool in use - the *current* item - while the slot
+is pressed. UltraPaint offers the choice as *Settings > Display > Tool
+palette*.
+
+## Adding one to a toolbar
+
+`UltraCanvasToolbar::AddToolGroup` creates the slot with the toolbar's button
+appearance, as `AddToggleButton` does for a single tool. In a vertical toolbar
+the bar folds out to the right of the slot as a row; in a horizontal one it
+folds out below as a column. Where the window has no room on that side it
+goes to the opposite one.
+
+```cpp
+#include "UltraCanvasToolbar.h"
+
+auto palette = std::make_shared<UltraCanvasToolbar>("palette", 0, 0, 48, 0);
+palette->SetOrientation(ToolbarOrientation::Vertical);
+
+auto selectGroup = palette->AddToolGroup("select", {
+        {"rect-select",    "media/icons/ultrapaint/28/select-rect.svg",    "Rectangle Select (R)"},
+        {"ellipse-select", "media/icons/ultrapaint/28/select-ellipse.svg", "Ellipse Select (E)"},
+        {"lasso",          "media/icons/ultrapaint/28/lasso.svg",          "Lasso (L)"},
+    },
+    [](const std::string& toolId) {
+        // Make toolId the active tool.
+        (void)toolId;
+    });
+selectGroup->SetIconSize(28, 28);
+selectGroup->SetElementSize(Size2Df(36, 36));
+```
+
+The bar's buttons copy the slot when the bar folds out - its size, its icon
+size and its `ButtonStyle` - so a flat palette gets a flat bar, and the tool
+in use wears the slot's `pressedColor`.
+
+## Keeping the palette in step
+
+The slot is a toggle button: a pick presses it. When the active tool changes
+some other way - a shortcut key, a command that switches tools - the host
+presses the slot of the new tool's group, lets every other slot go, and tells
+the group which of its tools it is:
+
+```cpp
+// slots: every group of the palette; toolId: the tool that just became active.
+for (const auto& slot : slots) {
+    const bool inGroup = slot->SetCurrentItem(toolId);   // false: not one of its tools
+    slot->SetPressed(inGroup);
+}
+```
+<!-- doc-check: std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> slots; std::string toolId; -->
+
+`SetCurrentItem` fires nothing, so this does not loop back into
+`onItemSelected`.
+
+## Class reference
+
+```cpp
+UltraCanvasToolGroupButton(const std::string& identifier, float x, float y, float w, float h);
+UltraCanvasToolGroupButton(const std::string& identifier, float w, float h);
+
+// Items - the group's tools, in the bar's order
+void SetItems(const std::vector<ToolGroupItem>& groupItems);
+void AddItem(const ToolGroupItem& item);
+const std::vector<ToolGroupItem>& GetItems() const;
+int GetItemCount() const;
+bool HasItem(const std::string& itemId) const;
+
+// The tool last picked or set, and the one the slot shows
+bool SetCurrentItem(const std::string& itemId);
+std::string GetCurrentItem() const;
+std::string GetSlotItem() const;
+void SetSlotShowsLastPicked(bool showLastPicked);
+bool GetSlotShowsLastPicked() const;
+
+// The fold-out bar
+void SetFoldOutSide(ToolGroupFoldOutSide side);
+ToolGroupFoldOutSide GetFoldOutSide() const;
+void SetFoldOutDelay(int milliseconds);
+int GetFoldOutDelay() const;
+void OpenFoldOut();
+void CloseFoldOut();
+bool IsFoldOutOpen() const;
+std::shared_ptr<UltraCanvasContainer> GetFoldOut() const;
+```
+
+```cpp
+std::function<void(const std::string& itemId)> onItemSelected;
+```
+
+`onItemSelected` fires on a click on the slot (with the tool it shows) and on
+a click in the bar (with that tool).
+
+`SetFoldOutDelay` is how long the pointer rests on the slot before the bar
+folds out: 150 ms by default, so a pointer crossing the palette on its way to
+the canvas does not flash every group's bar; 0 folds it out at once.
+`OpenFoldOut` and `CloseFoldOut` do it from code - a group of one, or a slot
+in no window, has nothing to fold out.
+
+`CreateToolGroupButton(identifier, x, y, w, h, items)` creates one outside a
+toolbar.
+
+### ToolGroupItem
+
+```cpp
+struct ToolGroupItem {
+    std::string id;          // handed back by onItemSelected
+    std::string iconPath;
+    std::string tooltip;     // its name (and shortcut)
+};
+```
+
+### ToolGroupFoldOutSide
+
+```cpp
+enum class ToolGroupFoldOutSide {
+    Auto = 0,     // right of a slot in a vertical toolbar, below one in any other
+    Right = 1,
+    Left = 2,
+    Bottom = 3,   // below the slot
+    Top = 4       // above it
+};
+```
+
+The bar runs along its side: a row to the right or left, a column below or
+above. The values are `Bottom` and `Top` rather than *Below* and *Above*
+because X11's headers `#define` those two words.
+
+## Implementation notes
+
+- The bar is a popup on the slot's window, with the slot as its owner. The
+  window hands an open popup every pointer event that is on neither it nor its
+  owner, which is how the bar sees the pointer leave and folds back. It
+  touches the slot, so the pointer never crosses a gap that belongs to neither
+  on its way from one to the other.
+- The bar's buttons do not take the keyboard focus: the canvas keeps it while
+  a tool is picked.
+- A focused slot picks its tool with Space or Return.
+
+## See Also
+
+- [UltraCanvasToolbarExamples.md](UltraCanvasToolbarExamples.md) - `AddToolGroup` and the rest of the toolbar
+- [UltraCanvasButtonExamples.md](UltraCanvasButtonExamples.md) - the button it is built on
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 ==============================================================================
 
@@ -61921,14 +62247,14 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.6.1
+**Version:** 1.8.0
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
 
 ## Features
 
-- **Item Types**: Button, ToggleButton, DropdownButton, Separator, Spacer (fixed and flex), Label, TextInput, SearchBox, Checkbox
+- **Item Types**: Button, ToggleButton, DropdownButton, ToolGroup (several tools in one slot, with a fold-out bar), Separator, Spacer (fixed and flex), Label, TextInput, SearchBox, Checkbox
 - **Multiple Styles**: Standard, Flat, Raised, Docked (macOS-like), Ribbon, StatusBar, Sidebar
 - **Orientation**: Horizontal or Vertical
 - **Overflow Handling**: Wrap, overflow menu, scroll, or hide
@@ -62028,6 +62354,10 @@ std::shared_ptr<UltraCanvasDropdown> AddDropdownButton(
         const std::vector<std::string>& items,
         std::function<void(const std::string&)> onSelect = nullptr);
 
+std::shared_ptr<UltraCanvasToolGroupButton> AddToolGroup(
+        const std::string& id, const std::vector<ToolGroupItem>& items,
+        std::function<void(const std::string&)> onSelect = nullptr);
+
 std::shared_ptr<UltraCanvasSeparator> AddSeparator(const std::string& id = "");
 std::shared_ptr<UltraCanvasSpacer> AddSpacer(int size = 8);
 std::shared_ptr<UltraCanvasSpacer> AddStretch(float stretch = 1.0f);
@@ -62038,6 +62368,27 @@ std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
 std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
         const std::string& id, const std::string& placeholder = "Search...",
         std::function<void(const std::string&)> onTextChange = nullptr);
+```
+
+### Tool Groups
+
+`AddToolGroup` puts several tools in one slot, as a paint program's palette
+groups its selection tools or its brushes. The slot shows one of them; resting
+the pointer on it folds out a bar with the whole group - to the right in a
+vertical toolbar, below in a horizontal one - and a click there picks a tool.
+`onSelect` gets the id of the tool picked, by a click on the slot or in the
+bar. The slot shows the tool last picked, or always the group's first tool
+with `SetSlotShowsLastPicked(false)`. A group of one item is a plain toggle
+button. See [UltraCanvasToolGroupButton.md](UltraCanvasToolGroupButton.md).
+
+```cpp
+auto palette = std::make_shared<UltraCanvasToolbar>("palette", 0, 0, 48, 0);
+palette->SetOrientation(ToolbarOrientation::Vertical);
+auto shapes = palette->AddToolGroup("shapes", {
+        {"rectangle", "media/icons/ultrapaint/28/rect.svg",    "Rectangle (Q)"},
+        {"ellipse",   "media/icons/ultrapaint/28/ellipse.svg", "Ellipse (P)"},
+    },
+    [](const std::string& toolId) { (void)toolId; /* make it the active tool */ });
 ```
 
 ### Auto-Hide
@@ -62404,6 +62755,7 @@ running->ClearItemBadge("webcam");                                // off again
 ## See Also
 
 - [UltraCanvasButton](UltraCanvasButton.md) - Building block for toolbar buttons
+- [UltraCanvasToolGroupButton](UltraCanvasToolGroupButton.md) - Several tools in one slot, with a fold-out bar (`AddToolGroup`)
 - [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown buttons and overflow menus
 - [UltraCanvasContainer](UltraCanvasContainer.md) - Base container class
 - [UltraCanvasLayoutExamples](UltraCanvasLayoutExamples.md) - Layout managers used internally
@@ -64120,7 +64472,7 @@ from an external "Show password" checkbox. See
 | A timecode `HH:MM:SS:FF` to enter or show: segments stepped by the arrow keys, digits filling from the right, `+`/`-` offsets, a large read-only readout for a transport bar | `UltraCanvasTimecodeField` | `UltraCanvasTimecodeField.h` |
 | A gallery or a timed slideshow | `UltraCanvasAlbum`, `UltraCanvasSlideshow` | matching `*.h` |
 | eBooks | `UltraCanvasEBookViewer` | `UltraCanvasEBookViewer.h` |
-| A web page from a URL (http(s) or a file): fetched, laid out as native elements by the HTML reader, scrolled, with links, `#fragments`, back / forward and an error page; no JavaScript. The host gives it the network (`HTML::PageLoaderServices`). For HTML you already have in memory, build it with `HTML::ElementBuilder` | `UltraCanvasWebView` | `UltraCanvasWebView.h` (loading alone: `HTMLReader/HTMLPageLoader.h`) |
+| A web page from a URL (http(s) or a file): fetched, laid out as native elements by the HTML reader, scrolled, with links, `#fragments`, back / forward, forms the reader fills in and sends, and an error page; no JavaScript. The host gives it the network (`HTML::PageLoaderServices`). For HTML you already have in memory, build it with `HTML::ElementBuilder` | `UltraCanvasWebView` | `UltraCanvasWebView.h` (loading alone: `HTMLReader/HTMLPageLoader.h`) |
 | A LaTeX formula (equation, matrix, ...) as an element | `UltraCanvasLaTeXView` via `CreateLaTeXView()` | `Plugins/LaTeX/UltraCanvasLaTeXView.h` |
 | A LaTeX document (`article`: sections, lists, tables, figures, formulas) as a rich document | `UltraCanvasLaTeXDocumentReader` → `UCRichDocument` → `ToMarkdown()` into a `UltraCanvasTextArea` in Markdown mode; `UCWordDocumentIO::Load` and `UltraCanvasFileLoader::LoadTextDocument` dispatch to it for `.tex` | `Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h` |
 | A formula inside a line of text you lay out yourself | `UltraCanvasInlineMath` (typeset, measure, draw at a baseline); `UltraCanvasTextArea`'s Markdown mode already does this for `$...$` | `UltraCanvasInlineMath.h` |
@@ -64143,6 +64495,7 @@ formats, and does not re-decode on every frame the way an ad-hoc
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
 | A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page) | `UltraCanvasToolbar.h` |
+| Several tools sharing one slot of a palette or toolbar - the slot shows one, a bar of the whole group folds out while the pointer rests on it, the slot then shows the tool last picked (or always the main one) ([doc](UltraCanvasToolGroupButton.md)) | `UltraCanvasToolGroupButton` (`UltraCanvasToolbar::AddToolGroup`) | `UltraCanvasToolGroupButton.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
 | The S-curve between two groups on one bar (a taskbar's system group flowing into its running apps) — one group's colour up to the curve, the next group's after it ([doc](UltraCanvasWaveSeparator.md)) | `UltraCanvasWaveSeparator` | `UltraCanvasWaveSeparator.h` |
 
@@ -81717,7 +82070,7 @@ and would not reduce it, is measured in
 
 ## Steps
 
-The window is a stepper (`Docs/UltraCanvasStart/WorkflowProposal.md`): five
+The window is a stepper (`Docs/UltraCanvasStart/WorkflowProposal.md`): six
 steps in the order the work happens, Back and Next below the pane, and the
 Guide and the Report as dialogs from the header at any time. It is styled
 like UltraMail (`ui/UltraCanvasStartTheme.h` carries UltraMail's colours,
@@ -81733,7 +82086,8 @@ as `code`, and each numbered step of a guide is one action.
 | **2 Features** | The feature groups (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options). The assistant: Claude Code, Codex, Copilot, Gemini or another in a segmented control; whether its instruction file goes into the project and the first prompt is prepared; whether the work goes through GitHub alone. For the chosen assistant: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, and the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../GettingStarted-Cloud.md). | Which packages step 3 checks; which file the project gets. |
 | **3 Tools** | The checks run on entering: every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need, each on a row with a switch that shows whether it is there (on, green: installed; off: missing or not checkable), the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* or *everything installed*, and the line under the buttons says what *Install what is missing* will do - the package manager, how many and the exact command - or why it cannot run. *Install what is missing* (enabled only while something is missing) runs the package manager after a confirmation that shows the command again: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree. The output is shown in a console and the checks run again. Next goes on even with something missing; the step keeps the error marker until the checks pass. | Whether the toolchain and libraries are there. |
 | **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its download address, the release page, the workflow artifacts while a release is still building; *Download and unpack...* fetches the archive from the release into a folder you pick, unpacks it and fills the prefix in; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
-| **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then the **Done** page: what was written, the three build commands, the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | The application. |
+| **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then what was written. The step carries the error marker while no project exists. | The application. |
+| **6 Build** | The proof that the installation works: the two commands a programmer runs (`cmake --preset default`, `cmake --build --preset default`) shown for the project folder, *Build the project* runs them (`engine/StartBuild`: cmake with `-S` and the preset, then the preset's `build/` directory; on Windows the MSYS2 bin directories on the child's PATH), cmake's output in a console, a badge that says *not built yet*, *building...*, *built* or *failed*; the step carries the error marker after a failed build. Under it the hand-over: the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | Whether the application compiles here. |
 
 **Guide** (header): the way in for any platform, the same guide as step 1,
 in a dialog. **Report** (header): the system, the checks, the plan and the
@@ -81746,7 +82100,7 @@ UltraCanvasStart --check            # detect, check, print the report; exit 2 if
 UltraCanvasStart --plan             # ...and the install plan
 UltraCanvasStart --plan --for macos # the plan for another platform
 UltraCanvasStart --check --all      # every feature group
-UltraCanvasStart --step 3           # open the window on a step (for screenshots and support)
+UltraCanvasStart --step 6           # open the window on a step, 1 to 6 (for screenshots and support)
 UltraCanvasStart --page report      # ...or open the Report (or Guide) dialog; the old page names map to steps
 UltraCanvasStart --for windows      # ...with that platform's guide preselected
 UltraCanvasStart --plan --assistant codex   # the plan and the project for another assistant
@@ -81758,7 +82112,11 @@ UltraCanvasStart --version
 `--check`, `--plan` and `--create` open no window, so they work over ssh and
 in CI, which runs `--check` on every platform leg and builds the skeleton
 `--create` writes against the SDK the leg just installed, so the files the
-Project step writes are known to compile.
+Project step writes are known to compile. The engine tests compile it too,
+through `StartBuild` (what the Build step runs), when `ULTRACANVAS_SDK_PREFIX`
+names an installed SDK; CI sets it on every leg, and locally
+`ULTRACANVAS_SDK_PREFIX=/path/to/sdk ctest -R UltraCanvasStartEngine` is the
+earlier guard.
 
 ## Engine
 

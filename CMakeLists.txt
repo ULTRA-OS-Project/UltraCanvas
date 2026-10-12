@@ -1783,6 +1783,32 @@ if (BUILD_TESTS)
     add_test(NAME WebViewTest COMMAND WebViewTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # HTML forms with real widgets: encodings, the builder's widgets and their
+    # places, the entry list, submit / Enter / reset, radio groups, form="id",
+    # what was typed across a rebuild (headless).
+    add_executable(HTMLFormsTest Tests/HTMLFormsTest.cpp)
+    target_include_directories(HTMLFormsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLFormsTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLFormsTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLFormsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLFormsTest COMMAND HTMLFormsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # A plain inline element's box: margin, border and padding as room in its
+    # line, its background painted, a bordered one or a mail button as a box
+    # on the line (builder + layout + paint, headless).
+    add_executable(HTMLInlineBoxTest Tests/HTMLInlineBoxTest.cpp)
+    target_include_directories(HTMLInlineBoxTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLInlineBoxTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLInlineBoxTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLInlineBoxTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLInlineBoxTest COMMAND HTMLInlineBoxTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # Mutated HTML through parser, builder and layout: a crash or a hang
     # fails it (Tests/Fuzz/README.md; the parser and CSS have their own
     # targets in Tests/Fuzz, which need no UI library).

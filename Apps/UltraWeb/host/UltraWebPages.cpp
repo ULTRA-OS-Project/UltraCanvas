@@ -1,5 +1,6 @@
 // Apps/UltraWeb/host/UltraWebPages.cpp
 // The page services and the app-or-page decision (UltraWebPages.h).
+// Version: 0.4.0 - forms: POST through UltraNet
 // Version: 0.3.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
@@ -129,6 +130,45 @@ HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void(
                 result.error = url + " is larger than " + std::to_string(kMaxPageBytes / (1024 * 1024)) + " MB.";
             } else if (!response.IsComplete()) {
                 result.error = "Could not load " + url + ": " + response.transferError;
+            } else {
+                result.ok = true;
+                result.body = response.body;
+            }
+            answer(std::move(result));
+        });
+    };
+    // A form's POST: http(s) only, the answer read as a page.
+    services.post = [post](const std::string& url, const std::string& contentType, const std::string& body,
+                           std::function<void(HTML::FetchResult)> done) {
+        auto answer = [post, done](HTML::FetchResult result) {
+            post([done, result = std::move(result)]() mutable { done(std::move(result)); });
+        };
+        if (!StartsWithLower(url, "http://") && !StartsWithLower(url, "https://")) {
+            HTML::FetchResult refused;
+            refused.error = "UltraWeb sends forms only to http and https addresses.";
+            answer(std::move(refused));
+            return;
+        }
+        UltraNetHttpRequest request;
+        request.url = url;
+        request.method = UltraNetHttpMethod::Post;
+        request.body.assign(body.begin(), body.end());
+        request.options.maxReceiveSize = kMaxPageBytes;
+        request.options.timeoutMs = 30000;
+        request.headers.Set("Content-Type", contentType);
+        request.headers.Set("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5");
+        UltraNet_HttpRequestAsync(request, [answer, url](const UltraNetResponse& response) {
+            HTML::FetchResult result;
+            result.status = response.statusCode;
+            result.finalUrl = response.finalUrl;
+            result.contentType = response.contentType;
+            if (response.statusCode == 0) {
+                result.error = "Could not send the form to " + url +
+                               (response.statusMessage.empty() ? std::string(" (no answer).") : ": " + response.statusMessage);
+            } else if (response.exceededReceiveLimit) {
+                result.error = url + " answered with more than " + std::to_string(kMaxPageBytes / (1024 * 1024)) + " MB.";
+            } else if (!response.IsComplete()) {
+                result.error = "Could not send the form to " + url + ": " + response.transferError;
             } else {
                 result.ok = true;
                 result.body = response.body;
