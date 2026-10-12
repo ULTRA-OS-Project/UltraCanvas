@@ -1,4 +1,4 @@
-#### 2026-10-12 *0.2.17*
+#### 2026-10-12 *0.2.18*
 - **Sharp toolbar and layer-panel icons.** Fit to Window, Actual Pixels, New
   Layer and Export in the toolbar, and the seven buttons above the layer list,
   were still the old 24-unit drawings with 1.8-unit strokes, shown at 20 px:
@@ -9,6 +9,8 @@
   copy, a merge or its settings, Actual Pixels reads "1:1", and the toolbars
   draw them at the 24 px they are drawn for (framework changelog:
   `toolbar-icon-size`).
+
+#### 2026-10-12 *0.2.17*
 - **Save As can write the picture at another size.** The Save dialog is told
   the picture's size, so the Settings button on the type row - new in the
   framework's Save dialog - opens a bitmap type's settings with a Size
