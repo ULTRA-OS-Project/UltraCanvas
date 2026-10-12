@@ -71,8 +71,8 @@ namespace {
 
 UltraPaintSettingsDialog::UltraPaintSettingsDialog(UltraPaintSettings* s) : UltraCanvasWindow(), settings(s) {
     config_.title = "UltraPaint - Settings";
-    config_.width = 660; config_.height = 480;
-    config_.minWidth = 560; config_.minHeight = 400;
+    config_.width = 700; config_.height = 480;
+    config_.minWidth = 600; config_.minHeight = 400;
     config_.resizable = true;
     config_.type = WindowType::Dialog;
     config_.deleteOnClose = true;
@@ -94,7 +94,8 @@ UltraPaintSettingsDialog::UltraPaintSettingsDialog(UltraPaintSettings* s) : Ultr
     // its first page.
     tree->SetShowFirstChildOnExpand(true);
     tree->SetAutoExpandSelectedNode(true);
-    tree->size.width = CSSLayout::Dimension::Px(200);
+    // Wide enough for "Mouse pointer magnification glass" at the tree's font.
+    tree->size.width = CSSLayout::Dimension::Px(240);
     tree->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     TreeNodeData rootData;
