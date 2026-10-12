@@ -8,6 +8,8 @@
 //   videofx faces <image>                frontal faces in a photo, as fractions of it
 //   videofx render <project.vfxproj> [out]   render a saved project (to its own output by default)
 //   videofx project <project.vfxproj>    what a project holds, and which of its media are missing
+//   videofx proxy <clip>... | <project.vfxproj>   make proxies (small stand-ins for editing)
+//   videofx proxy --clear                delete every proxy in the cache folder
 //   videofx frame <file> <seconds> <out.png|out.jpg> [maxWidth maxHeight]
 //   videofx preview <project.vfxproj> <seconds> <out.png|out.jpg> [maxWidth maxHeight]   the project's frame at that time
 //   videofx transcode <in> <out> [options]
@@ -41,6 +43,9 @@
 //                                        shot - a face; fractions of the image; repeatable
 //          --no-faces                    slideshow: do not look for faces to keep in shot
 //          --save-project FILE           write the edit as a project file instead of rendering it
+//          --proxies                     render / preview: play clips from their proxies (a
+//                                        quick draft); clips without one stay as they are
+//          --proxy-height N --proxy-dir DIR   proxy size (default 540) and cache folder
 // transitions: crossfade dissolve fadeblack fadewhite wipeleft wiperight
 //          wipeup wipedown slideleft slideright slideup slidedown smoothleft
 //          smoothright smoothup smoothdown circleopen circleclose circlecrop
@@ -52,8 +57,8 @@
 //          temperature=v grayscale sepia invert blur=r sharpen=v denoise=v
 //          vignette=v rotate90 rotate180 rotate270 rotate=deg hflip vflip
 //          crop=x:y:w:h fadein=s fadeout=s volume=g normalize[=lufs] lut=path
-// Version: 0.10.0
-// Last Modified: 2026-10-11
+// Version: 0.11.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include <VideoFX/VideoFX.h>
@@ -104,6 +109,8 @@ int Usage() {
         "       videofx faces <image>\n"
         "       videofx render <project.vfxproj> [out]\n"
         "       videofx project <project.vfxproj>\n"
+        "       videofx proxy <clip>... | <project.vfxproj> [--proxy-height N] [--proxy-dir DIR]\n"
+        "       videofx proxy --clear [--proxy-dir DIR]\n"
         "       videofx frame <file> <seconds> <out.png|out.jpg> [maxWidth maxHeight]\n"
         "       videofx transcode <in> <out> [options]\n"
         "       videofx trim <in> <out> <start> <end> [--lossless] [options]\n"
@@ -117,6 +124,7 @@ int Usage() {
         "         [--music-volume V] [--music-start S] [--duck LEVEL] [--no-loop] [--fit-music]\n"
         "         [--beat-sync] [--beats-per-image N] [--keep N:X,Y,W,H]... [--no-faces]\n"
         "         --save-project FILE   (write the edit as a project instead of rendering it)\n"
+        "         --proxies             (render / preview from the clips' proxies: a quick draft)\n"
         "         [--duck-preset speech|outdoor|loud]\n"
         "         [--duck-threshold DB] [--duck-attack S] [--duck-hold S] [--duck-release S]\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
@@ -165,6 +173,9 @@ struct Options {
     std::vector<VideoFXOverlay> overlays;
     VideoFXSlideshowOptions slideshow;
     std::string saveProject;            // --save-project: write the project, do not render
+    VideoFXProxySettings proxy;         // --proxy-height, --proxy-dir
+    bool useProxies = false;            // --proxies: render / preview from the proxies
+    bool clearProxies = false;          // proxy --clear
 };
 
 bool ParseMotion(const std::string& s, VideoFXImageMotion& m) {
@@ -294,6 +305,10 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--beat-sync") o.slideshow.beatSync = true;
         else if (a == "--no-faces") o.slideshow.keepFacesInView = false;
         else if (a == "--save-project" && next(v)) o.saveProject = v;
+        else if (a == "--proxies") o.useProxies = true;
+        else if (a == "--clear") o.clearProxies = true;
+        else if (a == "--proxy-height" && next(v)) o.proxy.height = static_cast<int>(NumberOr(v, -1));
+        else if (a == "--proxy-dir" && next(v)) o.proxy.cacheDirectory = v;
         else if (a == "--keep" && next(v)) { if (!ParseKeep(v, o.slideshow.keepInView)) return false; }
         else if (a == "--beats-per-image" && next(v)) o.slideshow.beatsPerImage = static_cast<int>(NumberOr(v, -1.0));
         else if (a == "--fit" && next(v)) {
@@ -416,8 +431,27 @@ int Beats(const std::string& path) {
     return 0;
 }
 
+// The timeline a project plays, a slideshow planned into segments; with
+// --proxies its clips switched to their proxies
+VideoFXResult ProjectTimeline(const VideoFXProject& project, const Options& o, std::vector<VideoFXSegment>& segments,
+                              VideoFXExportSettings& settings) {
+    segments = project.segments;
+    settings = project.settings;
+    if (project.kind == VideoFXProjectKind::Slideshow) {
+        const VideoFXResult r =
+            VideoFX_PlanSlideshow(project.images, project.slideshow, project.settings, segments, settings);
+        if (r != VideoFXResult::Ok) return r;
+    }
+    if (o.useProxies) {
+        int replaced = 0;
+        segments = VideoFX_UseProxies(segments, o.proxy, &replaced);
+        std::cerr << "videofx: " << replaced << " clip(s) played from proxies\n";
+    }
+    return VideoFXResult::Ok;
+}
+
 // The frame of a project at a time, as its export would make it
-int Preview(const std::vector<std::string>& args) {
+int Preview(const std::vector<std::string>& args, const Options& o) {
     const double seconds = NumberOr(args[1], kNotANumber);
     const double maxW = args.size() > 3 ? NumberOr(args[3], kNotANumber) : 0.0;
     const double maxH = args.size() > 4 ? NumberOr(args[4], kNotANumber) : 0.0;
@@ -427,12 +461,10 @@ int Preview(const std::vector<std::string>& args) {
     VideoFXResult r = VideoFX_LoadProject(args[0], project, &missing);
     if (r != VideoFXResult::Ok) return Report(r);
     for (const std::string& m : missing) std::cerr << "videofx: missing media: " << m << "\n";
-    std::vector<VideoFXSegment> segments = project.segments;
-    VideoFXExportSettings settings = project.settings;
-    if (project.kind == VideoFXProjectKind::Slideshow) {
-        r = VideoFX_PlanSlideshow(project.images, project.slideshow, project.settings, segments, settings);
-        if (r != VideoFXResult::Ok) return Report(r);
-    }
+    std::vector<VideoFXSegment> segments;
+    VideoFXExportSettings settings;
+    r = ProjectTimeline(project, o, segments, settings);
+    if (r != VideoFXResult::Ok) return Report(r);
     VideoFXFrame frame;
     r = VideoFX_RenderFrame(segments, seconds, frame, settings, static_cast<int>(maxW), static_cast<int>(maxH));
     if (r != VideoFXResult::Ok) return Report(r);
@@ -491,6 +523,55 @@ int RunOrSave(VideoFXProject project, const std::string& output, const Options& 
     VideoFXResult r = VideoFX_SaveProject(project, o.saveProject);
     if (r == VideoFXResult::Ok) std::cout << "videofx: wrote " << o.saveProject << " - render it with videofx render\n";
     return Report(r);
+}
+
+// Proxies for clips, or for every clip of a project; or --clear
+int Proxy(const std::vector<std::string>& args, const Options& o) {
+    std::cout.imbue(std::locale::classic());
+    if (o.clearProxies) {
+        if (!args.empty()) return Usage();
+        int files = 0;
+        uint64_t bytes = 0;
+        const VideoFXResult r = VideoFX_ClearProxies(o.proxy, &files, &bytes);
+        std::cout << "videofx: removed " << files << " proxies (" << std::fixed << std::setprecision(1)
+                  << bytes / 1048576.0 << " MB) from "
+                  << (o.proxy.cacheDirectory.empty() ? VideoFX_GetDefaultProxyDirectory() : o.proxy.cacheDirectory)
+                  << "\n";
+        return Report(r);
+    }
+    if (args.empty()) return Usage();
+    std::vector<std::string> clips = args;
+    const std::string& first = args[0];
+    if (args.size() == 1 && first.size() > 8 && first.compare(first.size() - 8, 8, ".vfxproj") == 0) {
+        VideoFXProject project;
+        VideoFXResult r = VideoFX_LoadProject(first, project);
+        if (r != VideoFXResult::Ok) return Report(r);
+        clips.clear();
+        for (const VideoFXSegment& s : project.segments) {
+            if (s.kind == VideoFXSourceKind::File) clips.push_back(s.path);
+            for (const VideoFXOverlay& ov : s.overlays)
+                if (ov.kind == VideoFXOverlayKind::Video && ov.imageHeight > 0.0) clips.push_back(ov.videoPath);
+        }
+        if (clips.empty()) {
+            std::cout << first << ": no clips to make proxies of\n";
+            return 0;
+        }
+    }
+    int failures = 0;
+    for (const std::string& clip : clips) {
+        std::string editPath;
+        const VideoFXResult r = VideoFX_CreateProxy(clip, o.proxy, Progress, &editPath);
+        if (r != VideoFXResult::Ok) {
+            std::cerr << "videofx: " << clip << ": " << VideoFX_ResultToString(r) << " - " << VideoFX_GetLastError()
+                      << "\n";
+            ++failures;
+        } else if (editPath == clip) {
+            std::cout << clip << ": no proxy needed (no taller than " << o.proxy.height << " lines, or no picture)\n";
+        } else {
+            std::cout << clip << " -> " << editPath << "\n";
+        }
+    }
+    return failures ? 1 : 0;
 }
 
 int ShowProject(const std::string& path) {
@@ -564,7 +645,8 @@ int main(int argc, char** argv) {
     if (cmd == "beats" && args.size() == 1) return Beats(args[0]);
     if (cmd == "faces" && args.size() == 1) return Faces(args[0]);
     if (cmd == "waveform" && !args.empty() && args.size() <= 4) return Waveform(args);
-    if (cmd == "preview" && (args.size() == 3 || args.size() == 5)) return Preview(args);
+    if (cmd == "preview" && (args.size() == 3 || args.size() == 5)) return Preview(args, options);
+    if (cmd == "proxy") return Proxy(args, options);
     if (cmd == "project" && args.size() == 1) return ShowProject(args[0]);
     if (cmd == "render" && (args.size() == 1 || args.size() == 2)) {
         VideoFXProject p;
@@ -572,7 +654,16 @@ int main(int argc, char** argv) {
         VideoFXResult r = VideoFX_LoadProject(args[0], p, &missing);
         if (r != VideoFXResult::Ok) return Report(r);
         for (const std::string& m : missing) std::cerr << "videofx: missing media: " << m << "\n";
-        return Report(VideoFX_RenderProject(p, args.size() == 2 ? args[1] : std::string(), Progress));
+        if (!options.useProxies)
+            return Report(VideoFX_RenderProject(p, args.size() == 2 ? args[1] : std::string(), Progress));
+        // A draft from the proxies: the timeline as planned, its clips swapped
+        const std::string out = args.size() == 2 ? args[1] : p.outputPath;
+        if (out.empty()) return Usage();
+        std::vector<VideoFXSegment> segments;
+        VideoFXExportSettings s;
+        r = ProjectTimeline(p, options, segments, s);
+        if (r != VideoFXResult::Ok) return Report(r);
+        return Report(VideoFX_Export(segments, out, s, Progress));
     }
 
     if (cmd == "frame" && (args.size() == 3 || args.size() == 5)) {

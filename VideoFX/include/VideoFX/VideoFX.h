@@ -1,8 +1,8 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.10.0
-// Last Modified: 2026-10-11
+// Version: 0.11.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -217,6 +217,65 @@ VideoFXResult VideoFX_ProjectFromJson(const std::string& json, VideoFXProject& p
 // Render a project: to `outputPath`, or to its own outputPath when "" is given
 VideoFXResult VideoFX_RenderProject(const VideoFXProject& project, const std::string& outputPath = "",
                                     const VideoFXProgressCallback& progress = {});
+
+// ============================================================================
+// PROXY MEDIA - small stand-ins for large clips while editing
+// ============================================================================
+// 4K phone clips are slow to scrub. A proxy is the same clip at 540 lines
+// with a keyframe every half second: make proxies once (in the background,
+// VideoFX_CreateProxies), preview and play the timeline that
+// VideoFX_UseProxies returns, and export the original timeline.
+//
+//     VideoFX_CreateProxies(timeline);                  // once; skips what exists
+//     preview.Open(VideoFX_UseProxies(timeline), settings);
+//     ...
+//     VideoFX_Export(timeline, "final.mp4", settings);  // the originals
+//
+// Give the export size in `settings` when previewing over proxies: with
+// width and height 0 the size is taken from the first segment, which is
+// then the proxy.
+
+// <user cache folder>/VideoFX/Proxies: ~/.cache (XDG_CACHE_HOME) on Linux,
+// ~/Library/Caches on macOS, %LOCALAPPDATA% on Windows
+std::string VideoFX_GetDefaultProxyDirectory();
+
+// Where the proxy of `clip` is (or would be) kept; "" when the clip does not
+// exist. Depends on the clip's path, size and modification time and on the
+// proxy settings, so it changes when any of them does.
+std::string VideoFX_ProxyPath(const std::string& clip, const VideoFXProxySettings& settings = {});
+
+// Whether that proxy has been made
+bool VideoFX_HasProxy(const std::string& clip, const VideoFXProxySettings& settings = {});
+
+// Make the proxy of `clip`, unless it exists. `editPath`, when given, gets
+// the file to edit with: the proxy - or the clip itself when it has no
+// picture or is no taller than a proxy, which then is not made. The proxy is
+// written under a temporary name and renamed when complete, so a crash or a
+// cancel never leaves a half proxy that would be taken for a whole one.
+VideoFXResult VideoFX_CreateProxy(const std::string& clip, const VideoFXProxySettings& settings = {},
+                                  const VideoFXProgressCallback& progress = {}, std::string* editPath = nullptr);
+
+// Proxies for every clip a timeline plays - its file segments and its
+// picture-in-picture videos - each once, the progress weighted by length.
+// Stops at the first failure.
+VideoFXResult VideoFX_CreateProxies(const std::vector<VideoFXSegment>& segments,
+                                    const VideoFXProxySettings& settings = {},
+                                    const VideoFXProgressCallback& progress = {});
+
+// The timeline with every clip that has a proxy replaced by it; the rest as
+// they are. A Crop effect, in the clip's pixels, is scaled to the proxy's.
+// A picture-in-picture video at its own pixel size (imageHeight 0) keeps its
+// original, which a proxy would shrink. `replaced`, when given, counts the
+// segments and overlays switched.
+std::vector<VideoFXSegment> VideoFX_UseProxies(const std::vector<VideoFXSegment>& segments,
+                                               const VideoFXProxySettings& settings = {},
+                                               int* replaced = nullptr);
+
+// Delete every proxy in the cache folder (and any left half-made); nothing
+// else there is touched. `filesRemoved` / `bytesFreed`, when given, say how
+// much went.
+VideoFXResult VideoFX_ClearProxies(const VideoFXProxySettings& settings = {}, int* filesRemoved = nullptr,
+                                   uint64_t* bytesFreed = nullptr);
 
 // ============================================================================
 // PREVIEW - frames of a timeline, for an editor's viewer

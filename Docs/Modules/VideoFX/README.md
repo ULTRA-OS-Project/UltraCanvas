@@ -17,11 +17,12 @@ segments.
 > still images with smooth pan and
 > zoom ("Ken Burns"), one-call slideshows, background music that dips under
 > speech, project files, waveforms for timelines and players, a preview
-> that renders any frame of a timeline without an export, GIF and
+> that renders any frame of a timeline without an export, proxy media for
+> smooth editing of large clips, GIF and
 > audio-only output, lossless cut, the background job and the `videofx`
 > command-line tool work today, on FFmpeg 4.4 to 8.x.
-> Picture-in-picture, keyframes and several free audio tracks are planned
-> (see *Roadmap*).
+> Keyframed parameters and several free audio tracks are planned (see
+> *Roadmap*).
 
 ---
 
@@ -214,6 +215,77 @@ VideoFX_RenderFrame(show, 3.0, frame, showSettings, 320, 180);   // the show at 
 
 `videofx preview <project.vfxproj> <seconds> <out.png|out.jpg> [maxWidth maxHeight]`
 writes the frame of a saved project.
+
+---
+
+## Proxy media
+
+A 4K phone clip is slow to scrub: every seek decodes a large frame, often
+from a keyframe seconds back. A **proxy** is a small stand-in for it - the
+same picture and sound, timed the same, at 540 lines, as H.264 with a
+keyframe every half second. The editor previews and plays the timeline from
+the proxies, and the export reads the originals.
+
+```cpp
+VideoFXProxySettings proxies;                     // 540 lines, the user's cache folder
+
+// once, in the background (a job of the app's own, or a worker thread)
+VideoFX_CreateProxies(timeline, proxies, [&](double f) { gauge->SetValue(f * 100.0); return !cancelled; });
+
+// the viewer plays the proxies...
+preview.Open(VideoFX_UseProxies(timeline, proxies), settings);
+
+// ...the export reads the originals
+VideoFX_Export(timeline, "final.mp4", settings);
+```
+
+- **Where they live.** In a cache folder: `VideoFXProxySettings::cacheDirectory`,
+  or by default `VideoFX_GetDefaultProxyDirectory()` - `$XDG_CACHE_HOME`
+  (else `~/.cache`) on Linux, `~/Library/Caches` on macOS and
+  `%LOCALAPPDATA%` on Windows, each followed by `VideoFX/Proxies`.
+- **Named after the clip.** A proxy's name is the clip's own name plus a hash
+  of its full path, size and modification time and of the proxy settings,
+  for example `Trip_2026-3f9a0c41d27be805.mp4`. A clip that is edited or replaced
+  gets a new proxy, and the stale one is simply never used again.
+  `VideoFX_ProxyPath(clip)` says where a clip's proxy is, and
+  `VideoFX_HasProxy(clip)` whether it has been made.
+- **Made once.** `VideoFX_CreateProxy(clip, settings, progress, &editPath)`
+  skips a proxy that exists. A clip with no picture, or one no taller than
+  a proxy, gets none: `editPath` is then the clip itself.
+  `VideoFX_CreateProxies(timeline)` makes them for every file segment and
+  every sized picture-in-picture video, each clip once, with one progress
+  for the lot.
+- **Never half made.** A proxy is written under a temporary name and renamed
+  when complete. A crash, a full disk or a cancel leaves nothing that could
+  be taken for a whole proxy.
+- **Switching.** `VideoFX_UseProxies(timeline)` returns the timeline with
+  every clip that has a proxy replaced by it; trims, speed, effects and
+  overlays are kept. A `Crop` effect, which is in the clip's pixels, is
+  scaled to the proxy's. A picture-in-picture video at its own pixel size
+  (`imageHeight` 0) keeps its original, since a proxy would shrink it.
+- **Give the output size.** With `width` and `height` 0 an export or preview
+  takes its size from the first segment, which over proxies is the proxy.
+  Set the size in the settings, as a project does, so the preview frame is
+  the export's.
+- **Clearing.** `VideoFX_ClearProxies(settings, &files, &bytes)` deletes
+  every proxy in the cache folder, and any half-made one, and touches
+  nothing else there.
+
+Proxies keep the clip's timing to the frame, so a trim made on a proxy is
+the same trim on the original. Keyframes come from the new export setting
+`VideoFXExportSettings::keyframeInterval` (seconds, 0 = the encoder's
+default), which any export can use.
+
+From the command line:
+
+```
+videofx proxy clip1.mov clip2.mov                  # make proxies; prints each one's path
+videofx proxy trip.vfxproj                         # for every clip of a project
+videofx proxy clip.mov --proxy-height 360 --proxy-dir ~/proxies
+videofx preview trip.vfxproj 12.5 shot.png --proxies   # the frame, from the proxies
+videofx render trip.vfxproj draft.mp4 --proxies    # a quick draft from the proxies
+videofx proxy --clear                              # delete them all
+```
 
 ---
 
@@ -635,6 +707,7 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `quality` | codec default | 0..100 → CRF / qscale per encoder |
 | `videoBitRate`, `audioBitRate` | 0 | Set to use a bit rate instead of quality |
 | `encoderPreset` | — | e.g. `"veryfast"` for x264 / x265 |
+| `keyframeInterval` | encoder default | Seconds between keyframes; short = quick to seek (proxies use 0.5) |
 | `sampleRate`, `channels` | first audio source / stereo | Mono only when every source is mono |
 
 Presets: `WebMP4(height)`, `WebM(height)`, `AnimatedGif(width, fps)`,
@@ -836,6 +909,8 @@ videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-pr
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --save-project trip.vfxproj
 videofx project trip.vfxproj                             # what it holds, missing media
 videofx render trip.vfxproj                              # render a saved project
+videofx proxy trip.vfxproj                               # proxies of its clips, for editing
+videofx render trip.vfxproj draft.mp4 --proxies          # a quick draft from the proxies
 ```
 
 ---
@@ -886,7 +961,8 @@ generates its own clips, so it needs no media files.
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
 | 4c | Preview: any frame of a timeline rendered as the export would make it, without an export (`VideoFXPreview`); a slideshow's plan as segments | **Done** |
-| 4 | Proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
+| 4d | Proxy media: small stand-ins for large clips, made once into a cache folder, switched in for previews and drafts, the originals exported | **Done** |
+| 4 | Explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine (`UltraCanvasVideoTimeline`, in the core) | **Done** |
 
 *VideoFX — part of the UltraCanvas framework.*

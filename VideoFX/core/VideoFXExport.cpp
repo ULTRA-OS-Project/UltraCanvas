@@ -12,8 +12,8 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.10.0
-// Last Modified: 2026-10-11
+// Version: 0.11.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -23,6 +23,7 @@
 #include "VideoFXFaces.h"
 #include "VideoFXMusic.h"
 #include "VideoFXProject.h"
+#include "VideoFXProxy.h"
 #include "VideoFX/VideoFX.h"
 
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"   // PathFromUtf8
@@ -820,6 +821,8 @@ VideoFXResult Exporter::PlanGeometry() {
     else if (width <= 0 && height <= 0) { width = srcW; height = srcH; }
     if (width > 16384 || height > 16384 || width <= 0 || height <= 0)
         return Fail(VideoFXResult::InvalidArgument, "Output size must be 1..16384 pixels");
+    if (!(settings.keyframeInterval >= 0.0 && settings.keyframeInterval <= 60.0))
+        return Fail(VideoFXResult::InvalidArgument, "Keyframe interval must be 0..60 seconds");
     if (!gif) { width = EvenDown(width); height = EvenDown(height); }
 
     double fps = settings.frameRate > 0.0 ? settings.frameRate : srcRate;
@@ -1008,6 +1011,13 @@ VideoFXResult Exporter::OpenVideoEncoder() {
         av_opt_set(c->priv_data, "deadline", "good", 0);
     }
     if (!settings.encoderPreset.empty()) av_opt_set(c->priv_data, "preset", settings.encoderPreset.c_str(), 0);
+    // A keyframe every so many seconds: what a seek lands on, so short
+    // intervals (proxies) make scrubbing cheap. The encoder may add more at
+    // scene cuts, never fewer.
+    if (settings.keyframeInterval > 0.0 && !gif) {
+        c->gop_size = std::max(1, static_cast<int>(std::lround(settings.keyframeInterval * fps)));
+        if (c->gop_size < 3) c->max_b_frames = 0;       // no B-frames to borrow from a missing neighbour
+    }
 
     int err = avcodec_open2(c, vcodec, nullptr);
     if (err < 0) return Fail(VideoFXResult::EncodeError, std::string("Cannot open the ") + name + " encoder", err);
@@ -3075,6 +3085,51 @@ VideoFXResult VideoFX_RenderProject(const VideoFXProject& project, const std::st
     if (project.kind == VideoFXProjectKind::Slideshow)
         return VideoFX_CreateSlideshow(project.images, out, project.slideshow, project.settings, progress);
     return VideoFX_Export(project.segments, out, project.settings, progress);
+}
+
+// Proxies: the logic is in VideoFXProxy.cpp (shared with the stub build)
+std::string VideoFX_GetDefaultProxyDirectory() { return DefaultProxyDirectory(); }
+
+std::string VideoFX_ProxyPath(const std::string& clip, const VideoFXProxySettings& settings) {
+    return ProxyPathFor(clip, settings);
+}
+
+bool VideoFX_HasProxy(const std::string& clip, const VideoFXProxySettings& settings) {
+    const std::string proxy = ProxyPathFor(clip, settings);
+    std::error_code ec;
+    return !proxy.empty() && std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(proxy), ec);
+}
+
+VideoFXResult VideoFX_CreateProxy(const std::string& clip, const VideoFXProxySettings& settings,
+                                  const VideoFXProgressCallback& progress, std::string* editPath) {
+    ClearError();
+    std::string error;
+    const VideoFXResult r = CreateProxy(clip, settings, progress, editPath, error);
+    if (r == VideoFXResult::Ok) ClearError();           // the probe / export inside left nothing to report
+    return r == VideoFXResult::Ok ? r : Fail(r, error);
+}
+
+VideoFXResult VideoFX_CreateProxies(const std::vector<VideoFXSegment>& segments,
+                                    const VideoFXProxySettings& settings, const VideoFXProgressCallback& progress) {
+    ClearError();
+    std::string error;
+    const VideoFXResult r = CreateProxies(segments, settings, progress, error);
+    if (r == VideoFXResult::Ok) ClearError();
+    return r == VideoFXResult::Ok ? r : Fail(r, error);
+}
+
+std::vector<VideoFXSegment> VideoFX_UseProxies(const std::vector<VideoFXSegment>& segments,
+                                               const VideoFXProxySettings& settings, int* replaced) {
+    std::vector<VideoFXSegment> out = UseProxies(segments, settings, replaced);
+    ClearError();                                       // a probe that kept a clip is not a failure
+    return out;
+}
+
+VideoFXResult VideoFX_ClearProxies(const VideoFXProxySettings& settings, int* filesRemoved, uint64_t* bytesFreed) {
+    ClearError();
+    std::string error;
+    const VideoFXResult r = ClearProxies(settings, filesRemoved, bytesFreed, error);
+    return r == VideoFXResult::Ok ? r : Fail(r, error);
 }
 
 VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFXRect>& faces) {
