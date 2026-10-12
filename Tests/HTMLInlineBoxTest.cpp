@@ -10,6 +10,8 @@
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on, and pages are painted
 // into, an offscreen render context.
+// Version: 1.0.1 - the painted boxes leave out the coloured fringes subpixel
+//                  antialiasing puts on black text
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -117,18 +119,30 @@ struct Painted {
     int width = 0, height = 0;
     std::vector<uint32_t> pixels;
     uint32_t At(int x, int y) const { return pixels[static_cast<size_t>(y) * width + x] & 0xFFFFFF; }
-    // The box around the pixels near `rgb` (each channel within 40); empty when none.
+    // Whether the pixel at (x, y) is near `rgb` (each channel within 40);
+    // false outside the page.
+    bool Near(int x, int y, uint32_t rgb) const {
+        if (x < 0 || y < 0 || x >= width || y >= height) return false;
+        const uint32_t p = At(x, y);
+        for (int shift = 0; shift <= 16; shift += 8) {
+            const int a = static_cast<int>((p >> shift) & 0xFF), b = static_cast<int>((rgb >> shift) & 0xFF);
+            if (std::abs(a - b) > 40) return false;
+        }
+        return true;
+    }
+    // The box around the painted area near `rgb`; empty when none. A pixel
+    // counts when it has a neighbour of that colour beside it and one above or
+    // below it: a fill or a 2px border does, while the coloured fringe that
+    // subpixel antialiasing leaves on black text - a pixel wide, beside each
+    // stem - does not. Counting the fringe measured the text instead of the
+    // box, wherever text renders in subpixel (a desktop with an RGB fontconfig).
     Rect2Df Around(uint32_t rgb) const {
         int x0 = width, y0 = height, x1 = -1, y1 = -1;
         for (int y = 0; y < height; ++y)
             for (int x = 0; x < width; ++x) {
-                const uint32_t p = At(x, y);
-                bool near = true;
-                for (int shift = 0; shift <= 16; shift += 8) {
-                    const int a = static_cast<int>((p >> shift) & 0xFF), b = static_cast<int>((rgb >> shift) & 0xFF);
-                    if (std::abs(a - b) > 40) near = false;
-                }
-                if (!near) continue;
+                if (!Near(x, y, rgb)) continue;
+                if (!Near(x - 1, y, rgb) && !Near(x + 1, y, rgb)) continue;
+                if (!Near(x, y - 1, rgb) && !Near(x, y + 1, rgb)) continue;
                 x0 = std::min(x0, x); y0 = std::min(y0, y);
                 x1 = std::max(x1, x); y1 = std::max(y1, y);
             }
