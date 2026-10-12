@@ -67322,12 +67322,14 @@ preloads its logo at `/share/media/images/...` the same way.
 Two sample applications live in `UltraCanvas/OS/WASM/demo/`: `wasm-demo.cpp`,
 a window with labels and a button, and `ultraos-frontpage.cpp`, the
 https://ultraos.eu front page as a scrolling page of UltraCanvas elements
-(navigation, hero, card rows, a status list, a newsletter form, a footer).
-The second is the pattern for a web-page-like application: one scrollable
-container filling the window, sections stacked by Block layout so wrapped
-text gets its real height, Flex rows for the horizontal pieces, and
-`Maximize()` under `__EMSCRIPTEN__` to fill the viewport. Both also build as
-desktop applications (`-DBUILD_WASM_DEMOS=ON` at the repository root).
+(a navigation with popup menus, hero, card rows, offers, an FAQ accordion,
+forms with text inputs, a text area and a checkbox, a footer). The second
+is the pattern for a web-page-like application: one scrollable container
+filling the window, sections stacked by Block layout so wrapped text gets
+its real height, Flex rows for the horizontal pieces, popup menus anchored
+under their buttons, and `Maximize()` under `__EMSCRIPTEN__` to fill the
+viewport. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
+at the repository root).
 
 ## Known limitations
 
