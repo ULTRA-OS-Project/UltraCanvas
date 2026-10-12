@@ -3,6 +3,7 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.3.1 - Shift+X picks the Eraser: a tool key can need Shift (it never matched with it)
 // Version: 1.3.0 - the tool palette groups its tools: tools of a kind share one slot
 //                  (UltraCanvasToolGroupButton) that shows the last one picked (adaptive)
 //                  or the group's main one (static, Settings > Display > Tool palette),
@@ -610,7 +611,7 @@ void UltraPaintWindow::BuildToolPalette() {
         item.id = ToolItemId(t.id);
         item.iconPath = ToolIconPath(t.iconFile);
         item.tooltip = t.name;
-        if (t.shortcutKey) item.tooltip += std::string(" (") + t.shortcutKey + ")";
+        if (t.shortcutKey) item.tooltip += " (" + t.ShortcutLabel() + ")";
         return item;
     };
 
@@ -837,10 +838,16 @@ void UltraPaintWindow::InstallShortcuts() {
             colorPicker->SetBackgroundColor(background.ToColor());
             return true;
         }
-        // single-letter tool keys (not while a tool is mid-drag)
-        if (!e.alt && !e.shift && k >= UCKeys::A && k <= UCKeys::Z) {
+        // Single-letter tool keys, plain or with Shift as the tool says: the
+        // Eraser is Shift+X, plain X being the colour swap above. Matching the
+        // Shift as well is what makes it reachable - the loop used to skip any
+        // key pressed with Shift, so the Eraser had no working key at all.
+        if (!e.alt && k >= UCKeys::A && k <= UCKeys::Z) {
             for (const auto& t : tools) {
-                if (t->shortcutKey && t->shortcutKey == static_cast<char>(k)) { SelectTool(t->id); return true; }
+                if (t->shortcutKey && t->shortcutKey == static_cast<char>(k) && t->shortcutShift == e.shift) {
+                    SelectTool(t->id);
+                    return true;
+                }
             }
         }
         return false;

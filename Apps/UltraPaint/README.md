@@ -62,7 +62,7 @@ in `UltraPaintWindow.cpp`; the fold-out is the framework's
 | Pencil | N | Hard, aliased pixels |
 | Paintbrush | B | Size, hardness, opacity, flow, spacing, round / square, pressure |
 | Airbrush | A | Soft, low flow |
-| Eraser | X (Shift) | To transparency |
+| Eraser | Shift+X | To transparency (plain `X` swaps the colours) |
 | Clone Stamp | S | Ctrl+click sets the source |
 | Smudge | U | Drags colour along |
 | Dodge / Burn | O / K | Lighten / darken |

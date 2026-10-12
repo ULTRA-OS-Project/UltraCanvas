@@ -33,6 +33,10 @@
   one pass, so a translucent colour is no darker where a polyline turns or
   where an arrow's shaft meets its head (framework changelog:
   `raster-paint-curves-arrows`).
+- **Shift+X picks the Eraser.** The README promised it, but the Eraser had
+  no working shortcut at all: plain `X` is the colour swap, and the tool
+  keys ignored any letter pressed with Shift. A tool's key can now ask for
+  Shift, and the Eraser's tooltip says *Shift+X*.
 - **Settings > Display > Tool palette: an adaptive or a static toolbar.**
   Adaptive (the default): a group's button shows the tool last picked from
   it. Static: it always shows the group's main tool, stays highlighted while

@@ -604,8 +604,9 @@ private:
 class BrushTool : public PaintTool {
 public:
     BrushTool(PaintToolId id, const std::string& name, const std::string& icon, char key, const std::string& hint,
-              BrushMode m, UCBrushSettings PaintToolOptions::* settingsMember, bool hardness, bool flow)
-        : PaintTool(id, name, icon, key, hint), mode(m), member(settingsMember),
+              BrushMode m, UCBrushSettings PaintToolOptions::* settingsMember, bool hardness, bool flow,
+              bool shiftKey = false)
+        : PaintTool(id, name, icon, key, hint, shiftKey), mode(m), member(settingsMember),
           showHardness(hardness), showFlow(flow) {}
 
     UCBrushSettings& Settings(PaintToolContext& ctx) const { return ctx.options->*member; }
@@ -1241,7 +1242,8 @@ std::vector<std::unique_ptr<PaintTool>> CreatePaintTools() {
     tools.push_back(std::make_unique<BrushTool>(PaintToolId::Airbrush, "Airbrush", "airbrush.svg", 'A',
                     "Soft, low-flow spray", BrushMode::Paint, &PaintToolOptions::airbrush, true, true));
     tools.push_back(std::make_unique<BrushTool>(PaintToolId::Eraser, "Eraser", "eraser.svg", 'X',
-                    "Erase to transparency", BrushMode::Erase, &PaintToolOptions::eraser, true, true));
+                    "Erase to transparency", BrushMode::Erase, &PaintToolOptions::eraser, true, true,
+                    /*shiftKey*/ true));   // Shift+X: plain X swaps the colours
     tools.push_back(std::make_unique<BrushTool>(PaintToolId::Clone, "Clone Stamp", "clone.svg", 'S',
                     "Ctrl+click the source, then paint", BrushMode::Clone, &PaintToolOptions::clone, true, true));
     tools.push_back(std::make_unique<BrushTool>(PaintToolId::Smudge, "Smudge", "smudge.svg", 'U',
