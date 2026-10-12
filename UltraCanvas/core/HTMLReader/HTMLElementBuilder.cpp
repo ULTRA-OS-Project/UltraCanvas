@@ -1,5 +1,11 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.30.0 - inline elements' backgrounds: a Pango background over the
+//                   text and its padding; one with a border, or a background
+//                   with vertical padding (the mail button), is a box on the line;
+//                   a space between a box and the text beside it is kept
+// Version: 1.29.0 - @import: imported sheets come before the importing sheet's
+//                   rules (in an @media block when the import names media)
 // Version: 1.28.0 - an inline element's horizontal margin, border and padding
 //                   keep its text apart from its neighbours (placeholders of
 //                   that width in the label's run)
@@ -254,6 +260,29 @@ ImagePosition ToImagePosition(const BackgroundPosition& p) {
 
 // Whether a run holds nothing but whitespace text (spaces, newlines, &nbsp;)
 // - between two images it is the space that separates them on their line.
+// Whether the text at the start (atEnd false) or the end of `run` is
+// collapsible white space - the space a label trims, which a box next to
+// the run must keep as a gap ("Order now: [Buy] today").
+const Node* EdgeText(const Node& node, bool atEnd) {
+    if (node.type == NodeType::Text) return node.text.empty() ? nullptr : &node;
+    if (!node.IsElement() || node.children.empty()) return nullptr;
+    const size_t n = node.children.size();
+    for (size_t k = 0; k < n; ++k) {
+        const Node& child = *node.children[atEnd ? n - 1 - k : k];
+        if (child.type == NodeType::Text && child.text.empty()) continue;
+        return EdgeText(child, atEnd);
+    }
+    return nullptr;
+}
+
+bool RunEdgeIsSpace(const std::vector<Node*>& run, bool atEnd) {
+    if (run.empty()) return false;
+    const Node* text = EdgeText(*(atEnd ? run.back() : run.front()), atEnd);
+    if (!text) return false;
+    const unsigned char c = static_cast<unsigned char>(atEnd ? text->text.back() : text->text.front());
+    return std::isspace(c) != 0;
+}
+
 bool OnlyWhitespace(const std::vector<Node*>& run) {
     for (const Node* n : run) {
         if (n->type != NodeType::Text) return false;
@@ -622,6 +651,47 @@ void FixBackwardSpan(CSSLayout::GridLine& start, CSSLayout::GridLine& end) {
     }
 }
 
+// `ref` read relative to `base` (a sheet's own href): an absolute URL, a
+// scheme, a /root path or no base leaves it as it is; otherwise it goes in
+// base's folder, "." and ".." resolved. A sheet named by an absolute URL
+// (PageLoader rewrites imports to those) is never changed.
+std::string JoinHref(const std::string& base, const std::string& ref) {
+    if (ref.empty() || base.empty() || ref[0] == '/' || ref[0] == '#') return ref;
+    for (char c : ref) {
+        if (c == ':') return ref;                         // a scheme: absolute
+        if (c == '/' || c == '?' || c == '#') break;
+    }
+    std::string dir = base.substr(0, base.find_first_of("?#"));
+    const size_t slash = dir.rfind('/');
+    dir = slash == std::string::npos ? std::string() : dir.substr(0, slash + 1);
+    // Keep "scheme://host/" out of the path arithmetic.
+    size_t rootEnd = 0;
+    if (const size_t scheme = dir.find("://"); scheme != std::string::npos) {
+        const size_t pathStart = dir.find('/', scheme + 3);
+        rootEnd = pathStart == std::string::npos ? dir.size() : pathStart + 1;
+    }
+    std::vector<std::string> parts;
+    std::string joined = dir.substr(rootEnd) + ref;
+    const size_t query = joined.find_first_of("?#");
+    const std::string tail = query == std::string::npos ? std::string() : joined.substr(query);
+    if (query != std::string::npos) joined.resize(query);
+    size_t start = 0;
+    while (start <= joined.size()) {
+        size_t end = joined.find('/', start);
+        if (end == std::string::npos) end = joined.size();
+        const std::string part = joined.substr(start, end - start);
+        if (part == "..") { if (!parts.empty() && parts.back() != "..") parts.pop_back(); else if (rootEnd == 0) parts.push_back(part); }
+        else if (part != "." && !(part.empty() && end != joined.size())) parts.push_back(part);
+        start = end + 1;
+    }
+    std::string out = dir.substr(0, rootEnd);
+    for (size_t k = 0; k < parts.size(); ++k) {
+        if (k) out += '/';
+        out += parts[k];
+    }
+    return out + tail;
+}
+
 // True when the run's text is nothing but room (picture-less placeholders,
 // their word joiners) and white space: empty inline elements with margins.
 bool OnlyRoom(const std::string& plain, const std::vector<LabelInlineImage>& images) {
@@ -658,6 +728,33 @@ bool MarkupHasVisibleText(const std::string& markup) {
 // ENTRY POINTS
 // ============================================================================
 
+std::string ElementBuilder::ExpandImports(const std::string& css, const std::string& sheetHref,
+                                          int depth, std::vector<std::string>& seen) {
+    const std::vector<StyleImport> imports = StyleSheet::ParseImports(css);
+    if (imports.empty()) return css;
+    std::string out;
+    for (const StyleImport& import : imports) {
+        const std::string href = JoinHref(sheetHref, import.href);
+        if (std::find(seen.begin(), seen.end(), href) != seen.end()) continue;   // once (and no cycles)
+        if (depth >= kMaxImportDepth || seen.size() >= kMaxImportedSheets) {
+            warnings.push_back("style sheet not imported (too many or too deep): " + href);
+            continue;
+        }
+        seen.push_back(href);
+        if (!opts.resourceLoader) continue;
+        const std::vector<uint8_t> bytes = opts.resourceLoader(href);
+        if (bytes.empty()) {
+            warnings.push_back("stylesheet not found: " + href);
+            continue;
+        }
+        std::string sheet = ExpandImports(std::string(bytes.begin(), bytes.end()), href, depth + 1, seen);
+        if (!import.media.empty()) sheet = "@media " + import.media + " {\n" + sheet + "\n}";
+        out += sheet;
+        out += '\n';
+    }
+    return out + css;
+}
+
 BuildResult ElementBuilder::Build(const std::string& html, const BuildOptions& options) {
     Parser parser;
     Document doc = parser.Parse(html);
@@ -673,18 +770,23 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
 
     resolver.ClearStyleSheets();
     resolver.SetMediaWidth(opts.viewportWidth > 0.f ? opts.viewportWidth : 800.f);
+    // A sheet's @import rules bring their sheets in ahead of its own rules;
+    // one sheet is imported once however many sheets name it.
+    std::vector<std::string> importedSheets(document.styleSheetLinks.begin(),
+                                            document.styleSheetLinks.end());
     for (const auto& href : document.styleSheetLinks) {
         if (opts.resourceLoader) {
             std::vector<uint8_t> bytes = opts.resourceLoader(href);
             if (!bytes.empty()) {
-                resolver.AddStyleSheet(std::string(bytes.begin(), bytes.end()));
+                resolver.AddStyleSheet(ExpandImports(std::string(bytes.begin(), bytes.end()),
+                                                     href, 0, importedSheets));
             } else {
                 warnings.push_back("stylesheet not found: " + href);
             }
         }
     }
     for (const auto& css : document.styleSheets) {
-        resolver.AddStyleSheet(css);
+        resolver.AddStyleSheet(ExpandImports(css, std::string(), 0, importedSheets));
     }
     if (!opts.userCss.empty()) {
         resolver.AddStyleSheet(opts.userCss);
@@ -951,6 +1053,12 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildItem(Node& element) {
     auto box = MakeContainer(element.tag);
     RegisterAnchors(element, box);
     ApplyBoxStyle(*box, style, /*fillWidth=*/false, /*realMargins=*/true);
+    if (style.display == DisplayMode::Inline) {
+        // A plain inline element drawn as a box: its vertical margins do
+        // not move its line (CSS 2 §10.6.1), only its horizontal ones count.
+        box->box.margin.top = CSSLayout::Dimension::Px(0.f);
+        box->box.margin.bottom = CSSLayout::Dimension::Px(0.f);
+    }
     ConfigureBlockLayout(*box);
     ApplyBackgroundImage(*box, style);
     BuildContentInto(*box, element);
@@ -1089,12 +1197,30 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             ++elementCount;
         };
         if (!marker.empty() && lineParts.front().box) addLabel({});
-        for (auto& part : lineParts) {
+        for (size_t k = 0; k < lineParts.size(); ++k) {
+            LinePart& part = lineParts[k];
             if (!part.box) {
                 addLabel(part.run);
                 continue;
             }
             if (auto box = BuildInlineBox(*part.box)) {
+                // The labels trim their outer spaces; a space between a run
+                // and the box stays as a gap beside the box. White space at
+                // the start of the line, or alone between two boxes, is one
+                // gap (after the first box) or none.
+                const ComputedStyle& boxStyle = resolver.StyleOf(part.box);
+                const LinePart* before = k > 0 ? &lineParts[k - 1] : nullptr;
+                const LinePart* after = k + 1 < lineParts.size() ? &lineParts[k + 1] : nullptr;
+                const bool spaceBefore = before && !before->box && !OnlyWhitespace(before->run) &&
+                                         RunEdgeIsSpace(before->run, /*atEnd=*/true);
+                const bool spaceAfter = after && !after->box && RunEdgeIsSpace(after->run, /*atEnd=*/false) &&
+                                        (!OnlyWhitespace(after->run) ||
+                                         (k + 2 < lineParts.size() && lineParts[k + 2].box));
+                const float space = (spaceBefore || spaceAfter) ? SpaceWidth(blockStyle) : 0.f;
+                if (spaceBefore)
+                    box->box.margin.left = CSSLayout::Dimension::Px(std::max(0.f, boxStyle.marginLeft) + space);
+                if (spaceAfter)
+                    box->box.margin.right = CSSLayout::Dimension::Px(std::max(0.f, boxStyle.marginRight) + space);
                 // vertical-align: top / bottom on the box (side-by-side mail
                 // columns are top); otherwise centred on its neighbours.
                 switch (resolver.StyleOf(part.box).verticalAlign) {
@@ -1601,6 +1727,13 @@ void ElementBuilder::StyleWrap(const ComputedStyle& style, const ComputedStyle& 
     if (colorDiffers) {
         wrap("<span foreground=\"" + ColorHex(style.color) + "\">", "</span>");
     }
+    // An inline element's own background (it is not inherited: runStyle's
+    // is its block's, painted by the block's box). Behind the text and the
+    // room its padding and border take (AppendInlineMarkup puts that room
+    // inside this span), as tall as the text.
+    if (style.backgroundColor && style.backgroundColor->a > 0) {
+        wrap("<span background=\"" + ColorHex(*style.backgroundColor) + "\">", "</span>");
+    }
 }
 
 void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
@@ -1699,20 +1832,26 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 
     // Its margin, border and padding on the left and the right: room before
     // its first letter and after its last (CSS 2 §10.3.1 - an inline box's
-    // vertical ones do not move its line). Its background is not drawn in
-    // running text, so the three are all just room.
-    const float before = std::max(0.f, style.marginLeft) + style.borderLeft.Width() +
-                         std::max(0.f, style.paddingLeft);
-    const float after = std::max(0.f, style.marginRight) + style.borderRight.Width() +
-                        std::max(0.f, style.paddingRight);
+    // vertical ones do not move its line). An element with a border is a
+    // box of its own (NeedsInlineBox) when it is a child of the block; deeper
+    // in a run its border is room only.
+    // The margin is outside the element's span; the border and padding
+    // inside it, where its background (StyleWrap) paints them, and inside
+    // its link: a click on a link's padding follows it, as in a browser.
+    const float marginBefore = std::max(0.f, style.marginLeft);
+    const float marginAfter = std::max(0.f, style.marginRight);
+    const float insideBefore = style.borderLeft.Width() + std::max(0.f, style.paddingLeft);
+    const float insideAfter = style.borderRight.Width() + std::max(0.f, style.paddingRight);
 
-    AppendInlineSpace(before, /*glueAfter=*/true, out);
+    AppendInlineSpace(marginBefore, /*glueAfter=*/true, out);
     out += prefix;
     const int linkStart = static_cast<int>(runPlain.size());
+    AppendInlineSpace(insideBefore, /*glueAfter=*/true, out);
     bool childPre = preserveWhitespace || style.preserveWhitespace;
     for (const auto& child : node.children) {
         AppendInlineMarkup(*child, style, childPre, out);
     }
+    AppendInlineSpace(insideAfter, /*glueAfter=*/false, out);
     out += suffix;
 
     if (style.isLink && !style.href.empty()) {
@@ -1722,7 +1861,7 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
         }
     }
     // After the link's range: a click on the margin is not a click on it.
-    AppendInlineSpace(after, /*glueAfter=*/false, out);
+    AppendInlineSpace(marginAfter, /*glueAfter=*/false, out);
 }
 
 void ElementBuilder::AppendInlineSpace(float px, bool glueAfter, std::string& out) {
@@ -1933,8 +2072,19 @@ bool ElementBuilder::HasBlockDescendant(const Node& element) const {
 
 bool ElementBuilder::NeedsInlineBox(const Node& element) const {
     const ComputedStyle& style = resolver.StyleOf(&element);
-    if (style.display != DisplayMode::InlineBlock) return false;
     if (element.tag == "img" || element.tag == "image" || element.tag == "svg") return false;
+    if (style.display == DisplayMode::Inline) {
+        // A plain inline element with a border, or a background reaching
+        // past its text (vertical padding - the mail "button" <a
+        // style="background:#07f;padding:12px 24px;color:#fff">), is drawn
+        // as a box on the line: a run of text cannot draw either. A
+        // background alone is a Pango background in the run (StyleWrap).
+        if (element.tag == "br" || HasBlockDescendant(element)) return false;
+        const bool paints = style.backgroundColor.has_value() && style.backgroundColor->a > 0;
+        return style.HasBorder() ||
+               (paints && (style.paddingTop > 0.f || style.paddingBottom > 0.f));
+    }
+    if (style.display != DisplayMode::InlineBlock) return false;
     if (style.layoutMode != BoxLayoutMode::Flow) return true;   // inline-flex / inline-grid
     if (HasBlockDescendant(element)) return true;
     return style.backgroundColor.has_value() || style.HasBorder() ||

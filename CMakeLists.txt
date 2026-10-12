@@ -1770,16 +1770,17 @@ if (BUILD_TESTS)
     add_test(NAME WebViewTest COMMAND WebViewTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-    # An inline element's horizontal margin, border and padding: room in its
-    # line, kept with its word, outside its link (builder + layout, headless).
-    add_executable(HTMLInlineMarginTest Tests/HTMLInlineMarginTest.cpp)
-    target_include_directories(HTMLInlineMarginTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
-    target_link_libraries(HTMLInlineMarginTest PRIVATE ${ULTRACANVAS_LIBRARY})
-    target_compile_features(HTMLInlineMarginTest PRIVATE cxx_std_20)
-    set_target_properties(HTMLInlineMarginTest PROPERTIES
+    # A plain inline element's box: margin, border and padding as room in its
+    # line, its background painted, a bordered one or a mail button as a box
+    # on the line (builder + layout + paint, headless).
+    add_executable(HTMLInlineBoxTest Tests/HTMLInlineBoxTest.cpp)
+    target_include_directories(HTMLInlineBoxTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLInlineBoxTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLInlineBoxTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLInlineBoxTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
-    add_test(NAME HTMLInlineMarginTest COMMAND HTMLInlineMarginTest
+    add_test(NAME HTMLInlineBoxTest COMMAND HTMLInlineBoxTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # Mutated HTML through parser, builder and layout: a crash or a hang

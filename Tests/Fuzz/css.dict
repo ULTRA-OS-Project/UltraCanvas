@@ -160,3 +160,7 @@
 "vertical-align"
 "object-fit"
 "list-style"
+"layer("
+"supports("
+"@charset"
+"@layer"

@@ -160,6 +160,17 @@ sheet, `@media` blocks (applied when their query holds at `SetMediaWidth`),
 and skips other at-rules whole. A selector it cannot read drops out of its
 rule alone; the rule's other selectors still apply.
 
+`@import` is skipped by `ParseAppend` and listed by
+`StyleSheet::ParseImports(css)`: the rules at the head of the sheet, each an
+`href` as written and its `media` (`layer()` and `supports()` dropped). Only
+those before the first other rule count, as in CSS. Whoever loads sheets
+fetches them: the element builder puts each imported sheet in front of the
+importing sheet's rules, in an `@media` block when the import names media,
+reading its address relative to the importing sheet (an EPUB's
+`css/book.css` importing `fonts.css` reads `css/fonts.css`), 8 deep and 64
+sheets at most, each sheet once. `HTML::PageLoader` fetches them before a
+page is ready.
+
 Selectors: type, `*`, `.class`, `#id`, attribute selectors (`[a]`, `[a=v]`,
 `~=` `^=` `$=` `*=` `|=`, the `i` flag), `:link` / `:any-link`, the
 structural pseudo-classes (`:first-child`, `:last-child`, `:only-child`,
@@ -191,6 +202,9 @@ for (const HTML::Rule& rule : sheet.rules)
 
 auto declarations = HTML::StyleSheet::ParseDeclarationList("fill: red; stroke-width: 2 !important");
 bool print = HTML::StyleSheet::MediaMatches("print, screen and (min-width: 600px)", 480);   // false
+
+for (const HTML::StyleImport& import : HTML::StyleSheet::ParseImports("@import url(a.css) print; p{}"))
+    ;   // import.href == "a.css", import.media == "print"
 ```
 
 ## Selector matching, on any tree
@@ -366,13 +380,22 @@ in a cell that sets none is a 40px line. Text where nothing sets a
 
 An inline element's horizontal margin, border and padding are room in its
 line: `<nav><a style="margin-right:18px">About</a><a>Index</a></nav>` keeps
-the two links 18px apart, and `padding: 0 8px` makes room inside a tag. The
-room is a picture-less placeholder in the label's run, joined to the
-element's first or last letter by a word joiner, so a line does not break
-between a word and its margin. It lies outside the element's link, and white
-space on either side of it collapses to one space. Vertical margins do not
-move the line, as in CSS. The element's background and border are not
-drawn: only their width counts.
+the two links 18px apart. The room is a picture-less placeholder in the
+label's run, joined to the element's first or last letter by a word joiner,
+so a line does not break between a word and its margin. The margin lies
+outside the element's link and the padding inside it, and white space on
+either side of the room collapses to one space. Vertical margins do not move
+the line, as in CSS.
+
+Its background is a Pango background over its text and padding, as tall as
+the text (`<mark>`, inline `code`). An inline element with a border, or with
+a background and vertical padding - the mail button,
+`<a style="background:#07f;padding:12px 24px;color:#fff">Buy</a>` - is a
+box on the line instead, as an `inline-block` is: its padding is painted all
+round, and it grows its line. That holds for a child of the block; deeper in
+a run (`<b><span style="border:...">`) the border is room only, and the
+element does not break across lines. A space between a box and the text
+beside it stays: "Order now: [Buy] today".
 
 **Flex and grid containers** are laid out by the CSSLayout flex and grid
 engines. Their children are items, as in CSS. Each child element is a box of
@@ -415,7 +438,9 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
 - **Style sheets:** linked sheets (up to 32) are fetched before the page is
   ready, so the first build has them. Each sheet's `url()`s are rewritten
   against the sheet's own URL (`RewriteCssUrls`), so they still mean the same
-  inside the page. `@import` is not followed yet.
+  inside the page. The sheets a linked sheet or a `<style>` imports
+  (`@import`, up to 4 deep, within the 32) are fetched before the page is
+  ready too, and their addresses rewritten to absolute ones.
 - **Other resources** load on demand. `GetResource(href)` is the builder's
   `resourceLoader`: it answers from a cache (64 MB, oldest out first),
   queues what it does not have, and `onResourcesArrived` says when to build

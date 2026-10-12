@@ -18,6 +18,10 @@
 // Rules for subresources: http(s) pages load http(s) and data: resources, an
 // https page no http ones (mixed content), and only a file: page loads file:
 // resources. Anything else is refused and logged in the page's warnings.
+// Version: 1.1.0 - @import: the sheets a linked sheet or a <style> imports
+//                  are fetched before the page is ready too (up to 4 deep,
+//                  within maxStyleSheets), and RewriteCssUrls makes their
+//                  addresses absolute
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -62,7 +66,7 @@ struct PageLoaderServices {
 
 struct PageLoaderLimits {
     size_t maxDocumentBytes = 16u * 1024u * 1024u;   // larger documents are refused
-    size_t maxStyleSheets = 32;                       // <link rel=stylesheet> fetched per page
+    size_t maxStyleSheets = 32;                       // <link rel=stylesheet> and @import sheets per page
     size_t maxResources = 512;                        // subresources fetched per page
     size_t cacheBytes = 64u * 1024u * 1024u;          // resource cache, oldest out first
 };
@@ -124,8 +128,9 @@ public:
     // then "utf-8" when the bytes are valid UTF-8, else "windows-1252".
     static std::string DetectCharset(const std::vector<uint8_t>& bytes,
                                      const std::string& contentType);
-    // Every url(...) in a style sheet made absolute against the sheet's own
-    // URL, so it means the same once the sheet is part of the page.
+    // Every url(...) in a style sheet, and every @import "..." address,
+    // made absolute against the sheet's own URL, so it means the same once
+    // the sheet is part of the page.
     static std::string RewriteCssUrls(const std::string& css, const std::string& sheetUrl,
                                       const std::function<bool(const std::string&, const std::string&,
                                                                std::string&)>& resolve);
@@ -141,6 +146,13 @@ private:
 
     void Finish(const std::shared_ptr<Navigation>& nav, FetchResult result);
     void FetchStyleSheets(const std::shared_ptr<Navigation>& nav);
+    // Fetch one sheet for the navigation (`depth` imports below the page),
+    // then the sheets it imports; the page is ready when none is pending.
+    void FetchSheet(const std::shared_ptr<Navigation>& nav, const std::string& url, int depth);
+    // Queue the sheets `css` imports, read against `sheetUrl`.
+    void FetchImports(const std::shared_ptr<Navigation>& nav, const std::string& css,
+                      const std::string& sheetUrl, int depth);
+    void SheetDone(const std::shared_ptr<Navigation>& nav);
     std::string ToUtf8(const std::vector<uint8_t>& bytes, const std::string& charset) const;
     bool Allowed(const std::string& absolute, std::string& why) const;
     void Store(const std::string& url, CacheEntry entry);

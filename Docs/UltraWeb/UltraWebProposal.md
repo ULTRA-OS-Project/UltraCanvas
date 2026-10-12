@@ -747,8 +747,8 @@ Done in UltraWeb 0.3.0 ([`UltraWeb.md`](UltraWeb.md#web-pages)):
 
 Next:
 - Tabs, downloads, a history and bookmarks kept across runs.
-- `@import`; forms (§6.5); backgrounds and borders on inline elements
-  (their margins and padding are room in the line since 2026-10-12).
+- Forms (§6.5). (`@import`, and inline elements' margins, padding,
+  backgrounds and borders, are done since 2026-10-12.)
 - Windows and macOS.
 
 **Done when:** Wikipedia articles, the repository's `Docs/` read from

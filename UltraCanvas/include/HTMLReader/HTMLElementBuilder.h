@@ -6,6 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.14.0 - @import: ExpandImports puts imported sheets before the
+//                   importing sheet's rules
 // Version: 1.13.0 - AppendInlineSpace: an inline element's horizontal margin,
 //                   border and padding as room in its run
 // Version: 1.12.0 - flex and grid containers on the CSSLayout flex / grid engines:
@@ -205,6 +207,16 @@ private:
     // Display-only render of a form control (input/textarea/button/select):
     // a styled box showing its value/label. Returns null for hidden inputs.
     std::shared_ptr<UltraCanvasContainer> BuildFormControl(Node& element);
+
+    // `css` with the sheets its @import rules name (fetched through
+    // opts.resourceLoader, read relative to `sheetHref`) put in front of its
+    // own rules, each in an @media block when its import names media. At
+    // most kMaxImportDepth deep and kMaxImportedSheets in all; a sheet is
+    // imported once.
+    std::string ExpandImports(const std::string& css, const std::string& sheetHref,
+                              int depth, std::vector<std::string>& seen);
+    static constexpr int kMaxImportDepth = 8;
+    static constexpr size_t kMaxImportedSheets = 64;
 
     void AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
                             bool preserveWhitespace, std::string& out);

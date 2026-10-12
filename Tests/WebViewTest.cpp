@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <deque>
 #include <functional>
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -300,12 +301,73 @@ static void TestResourcesRebuild() {
     Check(images(f.view.get()) >= 1, "with the picture in it");
 }
 
+static void TestImportedStyleSheets() {
+    std::printf("@import: imported sheets style the page, in cascade order\n");
+    Fixture f;
+    f.web.Add("https://x.org/doc/page",
+              "<html><head><title>Import</title><link rel='stylesheet' href='css/site.css'>"
+              "<style>@import 'inline.css';</style></head><body>"
+              "<p>One <span class='x'>imported</span> two <span class='z'>overridden</span>"
+              " three <span class='p'>printonly</span> four <span class='i'>fromstyle</span></p>"
+              "</body></html>");
+    f.web.Add("https://x.org/doc/css/site.css",
+              "@import \"base.css\";\n@import url(print.css) print;\n.z { color: #222222 }", "text/css");
+    f.web.Add("https://x.org/doc/css/base.css", ".x { color: #FF0000 } .z { color: #111111 }", "text/css");
+    f.web.Add("https://x.org/doc/css/print.css", ".p { color: #0000FF }", "text/css");
+    f.web.Add("https://x.org/doc/inline.css", ".i { color: #00AA00 }", "text/css");
+    f.view->Navigate("https://x.org/doc/page");
+    f.Settle();
+    UltraCanvasLabel* label = f.Label("imported");
+    Check(label != nullptr, "the page is built");
+    const std::string markup = label ? label->GetText() : std::string();
+    Check(markup.find("foreground=\"#FF0000\">imported") != std::string::npos, "an imported sheet's rule applies");
+    Check(markup.find("foreground=\"#222222\">overridden") != std::string::npos,
+          "the importing sheet's rule wins over the imported one");
+    Check(markup.find("#0000FF") == std::string::npos, "a print-only import does not apply on screen");
+    Check(markup.find("foreground=\"#00AA00\">fromstyle") != std::string::npos,
+          "a <style>'s import is read against the page");
+}
+
+static void TestImportsWithoutLoader() {
+    std::printf("@import in the builder alone: relative to the importing sheet (an EPUB's folders)\n");
+    std::map<std::string, std::string> files = {
+        { "OEBPS/css/book.css", "@import 'fonts/faces.css'; @import url(../shared/base.css); .b { color: #333333 }" },
+        { "OEBPS/css/fonts/faces.css", "@import '../book.css'; .f { color: #444444 }" },   // a cycle back
+        { "OEBPS/shared/base.css", ".s { color: #555555 }" },
+    };
+    std::vector<std::string> asked;
+    HTML::BuildOptions opts;
+    opts.resourceLoader = [&](const std::string& href) {
+        asked.push_back(href);
+        auto it = files.find(href);
+        return it == files.end() ? std::vector<uint8_t>{} : std::vector<uint8_t>(it->second.begin(), it->second.end());
+    };
+    HTML::ElementBuilder builder;
+    HTML::BuildResult r = builder.Build(
+        "<html><head><link rel='stylesheet' href='OEBPS/css/book.css'></head><body>"
+        "<p>a <span class='f'>face</span> b <span class='s'>shared</span> c <span class='b'>book</span></p>"
+        "</body></html>", opts);
+    std::string markup;
+    std::function<void(UltraCanvasUIElement*)> collect = [&](UltraCanvasUIElement* e) {
+        if (auto* l = dynamic_cast<UltraCanvasLabel*>(e)) markup += l->GetText();
+        if (auto* c = dynamic_cast<UltraCanvasContainer*>(e))
+            for (auto& child : c->GetChildren()) collect(child.get());
+    };
+    if (r.root) collect(r.root.get());
+    Check(markup.find("foreground=\"#444444\">face") != std::string::npos, "an import in a subfolder");
+    Check(markup.find("foreground=\"#555555\">shared") != std::string::npos, "an import through ..");
+    Check(markup.find("foreground=\"#333333\">book") != std::string::npos, "the importing sheet's own rules");
+    Check(std::count(asked.begin(), asked.end(), "OEBPS/css/book.css") == 1, "a cycle reads no sheet twice");
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("WebViewTest");
     TestLoadAndLinks();
     TestFragmentsAndScroll();
     TestErrorsAndOther();
     TestResourcesRebuild();
+    TestImportedStyleSheets();
+    TestImportsWithoutLoader();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }
