@@ -12574,6 +12574,22 @@ namespace UltraCanvas {
         if (!ctx || rect.width <= 2 || rect.height <= 2) return;
         // An entry with nothing but a name: no file is read, so there is no
         // thumbnail, content preview or folder preview to show - the type.
+        const FilerEntry e = TypeEntryFor(path, isFolder);
+        if (auto hostIcon = AcquireHostIcon(e, rect, ctx->GetDeviceScale())) {
+            ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
+            return;
+        }
+        DrawTypeGlyph(ctx, e, rect);
+    }
+
+    void UltraCanvasFilerWidget::GetTypeColors(const std::string& path, bool isFolder,
+                                               Color& fill, Color& ink) const {
+        const FilerEntry e = TypeEntryFor(path, isFolder);
+        fill = EntryColorOf(e);
+        ink = EntryCaptionInkOf(e);
+    }
+
+    FilerEntry UltraCanvasFilerWidget::TypeEntryFor(const std::string& path, bool isFolder) const {
         FilerEntry e;
         e.path = path;
         std::string name = path;
@@ -12590,11 +12606,7 @@ namespace UltraCanvas {
             }
         }
         ApplyEntryTypeInfo(e);
-        if (auto hostIcon = AcquireHostIcon(e, rect, ctx->GetDeviceScale())) {
-            ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
-            return;
-        }
-        DrawTypeGlyph(ctx, e, rect);
+        return e;
     }
 
     void UltraCanvasFilerWidget::DrawShortcutOverlay(IRenderContext* ctx,

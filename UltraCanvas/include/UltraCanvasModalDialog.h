@@ -381,10 +381,10 @@ namespace UltraCanvas {
         // recent files (UltraCanvasFileLoader::NotifyRecentFile).
         // UltraCanvasFileLoader sets it from FileDialogOptions::registerAsRecent.
         bool addToRecent = true;
-        // Save: a Settings button after the file name, for the save settings
-        // of the type being saved (UltraCanvasFileLoader::ShowSaveSettings-
-        // Dialog); it is greyed out while that type has none. Off for a
-        // caller whose writer does not read the settings.
+        // Save: a Settings button at the end of the type row, for the save
+        // settings of the type being saved (UltraCanvasFileLoader::
+        // ShowSaveSettingsDialog); it is greyed out while that type has none.
+        // Off for a caller whose writer does not read the settings.
         bool saveSettingsButton = true;
         // Save: the size of the picture being saved, in pixels (0: not a
         // picture, or not said). With it, the Settings of a bitmap type start
@@ -804,10 +804,12 @@ namespace UltraCanvas {
     // pickers). It is assembled from elements: an editable path field with an
     // "up" button, a folder tree (the user's places and every mounted drive,
     // loaded as it is expanded) beside the listing of the current folder, and
-    // the file-name field and file-type dropdown below them. A Save dialog
-    // puts the icon of the type being saved in front of the name - drop it on
-    // a folder of the listing or the tree and that folder is where the file
-    // goes - and a Settings button for that type's save settings after it.
+    // the file-name field and file-type dropdown below them. Typing a name
+    // narrows the listing to the files whose name has it in. A Save dialog
+    // puts the big icon of the type being saved left of the name and type -
+    // drop it on a folder of the listing or the tree and that folder is where
+    // the file goes - and a Settings button for that type's save settings at
+    // the end of the type row.
     class UltraCanvasFileDialog : public UltraCanvasModalDialog {
     private:
         FileDialogConfig fileConfig;
@@ -830,9 +832,10 @@ namespace UltraCanvas {
         int typeColumnWidth = 105;
         int modifiedColumnWidth = 145;
         std::shared_ptr<UltraCanvasTextInput> fileNameInput;
-        // Save: the icon of the type being saved, in front of the name, which
-        // is dragged onto a folder to save there; and the Settings button
-        // after the name (FileDialogConfig::saveSettingsButton).
+        // Save: the big icon of the type being saved, left of the name and
+        // type rows with "Drag to Folder" under it, which is dragged onto a
+        // folder to save there; and the Settings button at the end of the
+        // type row (FileDialogConfig::saveSettingsButton).
         std::shared_ptr<UltraCanvasFileDragIcon> fileIcon;
         std::shared_ptr<UltraCanvasButton> saveSettingsButton;
         // The size chosen in the Settings for this save (GetSaveImageSize).
@@ -842,6 +845,10 @@ namespace UltraCanvas {
         // fileConfig.filterToggles is set; activeFilters holds the ones on.
         std::shared_ptr<UltraCanvasSegmentedControl> filterToggleBar;
         std::set<int> activeFilters;
+        // What the user typed into the name field (its last path part,
+        // trimmed): the listing shows only the entries whose name has it in,
+        // in every folder the dialog goes to. Empty: no narrowing.
+        std::string nameFilter;
         // A "Replace it?" question is showing: OK and activation wait for it.
         bool overwritePromptOpen = false;
 
@@ -905,8 +912,8 @@ namespace UltraCanvas {
         // Save: the name of the file the dialog would write as things stand -
         // the name field's text with the chosen type's extension (and the
         // default extension), or "untitled" with them while the field is
-        // empty. Its extension is the type the icon in front of the name
-        // shows and the Settings button after it edits.
+        // empty. Its extension is the type the big icon beside the name and
+        // type shows and the Settings button on the type row edits.
         std::string GetSaveTypeName() const;
         // Save: the pixel size chosen for this save in the Settings (the Size
         // row of a bitmap type), or IsOriginal() - none chosen, no picture
@@ -975,6 +982,12 @@ namespace UltraCanvas {
         // Applies the file-type filter (and folders-only for a folder
         // picker) to the listing.
         void ApplyListingFilter();
+        // The user edited the name field: the listing is narrowed to the
+        // entries whose name has the typed name in (the listing's own
+        // UltraCanvasFilerWidget::SetNameFilter), and a Save's icon and
+        // Settings follow the name's type.
+        void OnNameTyped(const std::string& text);
+        void SetNameFilter(const std::string& typed);
 
         // ===== NAVIGATION =====
         // Makes `directory` the current folder. syncTree: select its row in

@@ -26,10 +26,11 @@
 // files. The dialog now refuses such a name (InvalidFileNameReason) and adds
 // what it accepts to the recent files itself.
 //
-// A Save dialog puts the icon of the type being saved in front of the name.
-// Dragged onto a folder of the listing or of the folder tree, it opens that
-// folder - the one the file is saved in. A Settings button after the name
-// edits the type's save settings (UltraCanvasFileLoader's SAVE SETTINGS):
+// A Save dialog puts the big icon of the type being saved left of the name
+// and type rows, "Drag to Folder" under it. Dragged onto a folder of the
+// listing or of the folder tree, it opens that folder - the one the file is
+// saved in. Typing a name narrows the listing to the entries that have it in.
+// A Settings button at the end of the type row edits the type's save settings (UltraCanvasFileLoader's SAVE SETTINGS):
 // greyed out for a type that has none, and stored on OK where every
 // application's writer reads them - UCRasterDocument::SaveToFile among them.
 //
@@ -41,7 +42,7 @@
 // The naming rule and the settings store are checked on their own and always
 // run; the dialog itself is read back from the composited pixels, so that
 // part runs under Xvfb and skips - rather than fails - without a display.
-// Version: 1.6.0
+// Version: 1.7.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -64,6 +65,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -541,6 +543,7 @@ int main() {
     fs::create_directories(scratch / "config", ec);
     fs::create_directories(scratch / "listing" / "A folder", ec);
     std::ofstream(scratch / "listing" / "picture.png") << "not really";
+    std::ofstream(scratch / "listing" / "other.png") << "not really either";
     RedirectSettingsFolder(scratch / "config");
 
     UltraCanvasApplication app;
@@ -727,7 +730,7 @@ int main() {
                  *saved == expect("loader.png"));
         }
 
-        // ----- the icon in front of the name, the Settings button after it -----
+        // ----- the icon beside the name and type, the Settings button on the type row -----
         {
             run = ShowSave(folder, "untitled.png");
             for (int frame = 0; frame < 3; ++frame) run.dialog->UpdateAndRender();
@@ -740,10 +743,20 @@ int main() {
                 const Rect2Df iconBox = icon->GetBoundsInWindow();
                 const Rect2Df nameBox = run.nameField->GetBoundsInWindow();
                 const Rect2Df buttonBox = settings->GetBoundsInWindow();
-                TEST("... the icon in front of the name, the button after it",
-                     iconBox.x + iconBox.width <= nameBox.x && nameBox.x + nameBox.width <= buttonBox.x);
-                TEST("... on the name's line", std::fabs(iconBox.y - nameBox.y) <= 1.0f &&
-                                               std::fabs(buttonBox.y - nameBox.y) <= 1.0f);
+                auto* nameLabel = run.dialog->FindChildById("FileDialogNameLabel");
+                auto* typeBox = run.dialog->FindChildById("FileDialogType");
+                auto* caption = dynamic_cast<UltraCanvasLabel*>(run.dialog->FindChildById("FileDialogFileIconCaption"));
+                TEST("... the big icon left of the name and type, the button after the type",
+                     nameLabel && typeBox && iconBox.x + iconBox.width <= nameLabel->GetBoundsInWindow().x &&
+                     typeBox->GetBoundsInWindow().x + typeBox->GetBoundsInWindow().width <= buttonBox.x);
+                TEST("... the icon as tall as both rows, from the name's line",
+                     typeBox && std::fabs(iconBox.y - nameBox.y) <= 1.0f &&
+                     iconBox.y + iconBox.height >= typeBox->GetBoundsInWindow().y + typeBox->GetBoundsInWindow().height - 1.0f);
+                TEST("... and the button on the type's line",
+                     typeBox && std::fabs(buttonBox.y - typeBox->GetBoundsInWindow().y) <= 1.0f);
+                TEST("\"Drag to Folder\" is written under the icon",
+                     caption && caption->GetText() == "Drag to Folder" &&
+                     caption->GetBoundsInWindow().y >= iconBox.y + iconBox.height - 1.0f);
                 TEST("The icon is the type being saved", icon->GetFileName() == "untitled.png");
                 TEST("PNG has settings, so the button can be used", !settings->IsDisabled());
                 TypeName(run, "photo");
@@ -760,8 +773,39 @@ int main() {
                     TEST("... a name of no type has none", settings->IsDisabled());
                     types->SetSelectedIndex(0);
                 }
+                // Typing a name narrows the listing to what has it in.
+                if (listing) {
+                    auto names = [listing]() {
+                        std::vector<std::string> shown;
+                        for (const FilerEntry& e : listing->GetEntries()) shown.push_back(e.name);
+                        return shown;
+                    };
+                    auto has = [](const std::vector<std::string>& v, const char* n) {
+                        return std::find(v.begin(), v.end(), n) != v.end();
+                    };
+                    TypeName(run, "");   // what the type tests above typed
+                    for (int frame = 0; frame < 3; ++frame) run.dialog->UpdateAndRender();
+                    const auto all = names();
+                    TEST("Before typing the listing shows the folder",
+                         has(all, "picture.png") && has(all, "other.png") && has(all, "A folder"));
+                    TypeName(run, "PICT");
+                    auto shown = names();
+                    TEST("Typing a name filters the listing, whatever the case",
+                         has(shown, "picture.png") && !has(shown, "other.png") && !has(shown, "A folder"));
+                    TypeName(run, "fold");
+                    shown = names();
+                    TEST("... folders included", has(shown, "A folder") && !has(shown, "picture.png"));
+                    TypeName(run, "");
+                    shown = names();
+                    TEST("An empty name shows everything again", shown.size() == all.size());
+                    TypeName(run, "pic");
+                    run.dialog->SetDefaultFileName("chosen.png");   // the dialog's own change, no search
+                    TEST("A name the dialog puts in leaves the filter as typed",
+                         has(names(), "picture.png") && !has(names(), "other.png"));
+                    TypeName(run, "");
+                }
                 if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
-                    TypeName(run, "holiday photo");
+                    run.dialog->SetDefaultFileName("holiday photo");   // put in, not typed: no filter
                     for (int frame = 0; frame < 3; ++frame) run.dialog->UpdateAndRender();
                     WritePpm(run.dialog.get(), static_cast<int>(run.dialog->GetWidth()),
                              static_cast<int>(run.dialog->GetHeight()),

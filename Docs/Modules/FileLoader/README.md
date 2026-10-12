@@ -94,7 +94,7 @@ How a format is written - JPEG's quality, PNG's compression, TIFF's codec - is
 described per format (`UltraCanvasFileSaveSettings.h`), so one dialog can offer
 the settings of any of them, and the values the user chose are kept for every
 application, between runs. The framework's Save dialog has a **Settings**
-button beside the file name that edits the chosen type's settings, and the
+button on its type row that edits the chosen type's settings, and the
 writers read them back - `UCRasterDocument::SaveToFile` does so on its own:
 
 ```cpp

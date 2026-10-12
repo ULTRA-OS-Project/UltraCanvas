@@ -1,9 +1,12 @@
-- **Save dialog: the file's icon in front of the name, dragged onto a folder
-  to save there.** The framework's Save dialog shows the icon of the file it
-  is about to write - the type the name has with the chosen type's
-  extension, drawn as the listing draws that type - between "File name:" and
-  the field, and it follows the name as it is typed and the type as it is
-  switched. As in the RISC OS save box, the icon is picked up and dropped on
+- **Save dialog: a big logo of the file's type, dragged onto a folder to
+  save there.** The framework's Save dialog shows, at the left of the name
+  and type rows with "Drag to Folder" under it, a 64-pixel logo of the file
+  it is about to write - the type the name has with the chosen type's
+  extension: a page with a folded corner and the extension on a band in the
+  colour the listing gives the type (`UltraCanvasFileDragIcon::
+  DrawDocumentGlyph`, `UltraCanvasFilerWidget::GetTypeColors`), or this
+  desktop's icon for the type when the listing shows those - and it follows
+  the name as it is typed and the type as it is switched. As in the RISC OS save box, the icon is picked up and dropped on
   a folder: a folder of the listing is framed while it is under the pointer
   (over empty space, the folder the listing shows), a place or drive of the
   folder tree is highlighted, and the release opens that folder, so OK then
@@ -19,7 +22,7 @@
   thumbnail), and `UltraCanvasTreeView::GetDropTargetNode` answers which row
   a drag would drop on.
 - **Save settings per file format, through UltraCanvasFileLoader, and a
-  Settings button after the name.** How a format is written - JPEG quality,
+  Settings button at the end of the type row.** How a format is written - JPEG quality,
   PNG compression and colours, TIFF and EXR codecs, WebP / AVIF / HEIF / JPEG
   XL / JPEG 2000 quality, lossless and effort, GIF colours and dithering, RLE
   for TGA / PCX / SGI / PSD, Netpbm binary, DPX / Cineon bit depth - is now
@@ -58,3 +61,11 @@
   JPEG written at two stored qualities, the Size row (both sides following,
   Defaults, free sides, a type that is not a bitmap, BMP), the size coming
   back through the loader and a picture written at the size chosen.
+- **File dialog: typing a name filters the listing.** While the name field
+  holds text the user typed, the listing shows only the files and folders
+  whose name has it in, in any case - through the file display's own
+  filter-as-you-type (`UltraCanvasFilerWidget::SetNameFilter`), so no
+  keystroke reads the folder again. A typed path narrows by its last part;
+  the filter holds in every folder the dialog goes to, a name the dialog puts
+  in itself (the file clicked, the type's extension) leaves it as typed, and
+  an emptied field lists everything again. Open and Save dialogs alike.

@@ -1,7 +1,7 @@
 #### 2026-10-12 *0.2.16*
 - **Save As can write the picture at another size.** The Save dialog is told
-  the picture's size, so the Settings button beside the file name - new in
-  the framework's Save dialog - opens a bitmap type's settings with a Size
+  the picture's size, so the Settings button on the type row - new in the
+  framework's Save dialog - opens a bitmap type's settings with a Size
   row first: width x height in pixels, opened on the picture's own size, with
   Keep proportions. The file is written at the size chosen there; the open
   picture keeps its own size, and the next Save As starts on it again. The

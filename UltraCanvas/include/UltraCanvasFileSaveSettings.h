@@ -12,7 +12,7 @@
 // SETTINGS"): it knows the formats - the bitmap formats the image writer
 // takes options for are built in, and a plugin or an application registers
 // its own with RegisterSaveFormat - and keeps the values. The framework's
-// Save dialog edits them with its Settings button beside the file name
+// Save dialog edits them with its Settings button on the type row
 // (ShowSaveSettingsDialog), and the writers read them back: the image writer
 // through GetImageExportOptions, anything else through GetSaveSettings.
 //

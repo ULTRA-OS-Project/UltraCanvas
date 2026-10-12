@@ -1,9 +1,10 @@
 // include/UltraCanvasFileDragIcon.h
 // The icon of a file that is about to be written, which the user picks up and
 // drops on a folder to say where it goes - the save box's file icon, as
-// RISC OS has always had it. The framework's Save dialog puts one in front of
-// its name field: dropped on a folder of the listing or of the folder tree,
-// it makes that folder the one the file is saved in.
+// RISC OS has always had it. The framework's Save dialog puts a big one left
+// of its name and type rows, "Drag to Folder" under it: dropped on a folder of
+// the listing or of the folder tree, it makes that folder the one the file is
+// saved in.
 //
 // It carries no file - there is none yet - so it is not a file drag: while
 // it is dragged a badge (the icon and the name) follows the pointer over the
@@ -19,7 +20,7 @@
 // The drag stays inside its window: beyond the edge the badge stops at the
 // border, and a release there drops on nothing.
 //
-// Version: 1.0.0
+// Version: 1.1.0 - DrawDocumentGlyph: a type's logo, a page with a folded corner
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
@@ -56,11 +57,20 @@ namespace UltraCanvas {
         const std::string& GetFileName() const { return fileName; }
         bool IsFolder() const { return folder; }
 
-        // The icon of the type: the file dialog hands it its listing's
-        // painter (UltraCanvasFilerWidget::DrawTypeIcon), so the icon is the
-        // one the listing draws for the type. Without one: a sheet with the
-        // extension on it, or a folder shape.
+        // The icon of the type. Without a painter: DrawDocumentGlyph in a
+        // neutral blue (a folder shape for a folder). The file dialog draws
+        // that page in the colour its listing gives the type, or the listing's
+        // own icon when it shows this desktop's (UltraCanvasFilerWidget::
+        // GetTypeColors, DrawTypeIcon).
         void SetIconPainter(IconPainter painter);
+
+        // A file type's logo, as the Save dialog shows it big: a page with a
+        // folded corner and the type's extension (upper case, up to four
+        // letters) on a band of `band` in `ink` across its lower half. The
+        // extension is left off below 28 pixels, where it could not be read.
+        static void DrawDocumentGlyph(IRenderContext* ctx, const Rect2Di& rect,
+                                      const std::string& name, const Color& band,
+                                      const Color& ink);
 
         // ===== DRAGGING =====
         // How far (in pixels) the pointer moves with the button down before

@@ -305,7 +305,10 @@ this display gives the type of `path` - a name or a whole path, which need not
 exist - under the current style, and never a thumbnail, since there may be no
 file to take one from. The file dialog's Save icon
 ([`UltraCanvasFileDragIcon`](UltraCanvasFileDialog.md#the-file-icon)) is drawn
-this way, so it matches the listing beside it.
+this way, so it matches the listing beside it. `GetTypeColors(path, isFolder,
+fill, ink)` gives the colours the display uses for that type - the band of its
+glyph and the ink for text on it - for a host that draws the type its own way
+in the listing's colours (the Save dialog's big type logo).
 
 <!-- doc-check: UltraCanvasFilerWidget* filer; IRenderContext* ctx; -->
 ```cpp

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -113,27 +114,53 @@ namespace UltraCanvas {
             ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y + tabH, rect.width, rect.height - tabH), 2);
             return;
         }
-        // A sheet with the extension on it.
-        const Rect2Dd sheet(rect.x + rect.width * 0.12, rect.y, rect.width * 0.76, rect.height);
-        ctx->SetFillPaint(Color(252, 252, 253, 255));
-        ctx->FillRoundedRectangle(sheet, 2);
-        ctx->SetStrokePaint(Color(0, 0, 0, 70));
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRoundedRectangle(sheet, 2);
-        const double band = std::max(3.0, sheet.height * 0.30);
-        ctx->SetFillPaint(Color(96, 125, 160, 255));
-        ctx->FillRoundedRectangle(Rect2Dd(sheet.x, sheet.y + sheet.height - band, sheet.width, band), 2);
-        const std::string tag = ExtensionTag(LastComponent(fileName));
-        if (!tag.empty() && rect.height >= 20) {
+        DrawDocumentGlyph(ctx, rect, fileName, Color(96, 125, 160, 255), Colors::White);
+    }
+
+    void UltraCanvasFileDragIcon::DrawDocumentGlyph(IRenderContext* ctx, const Rect2Di& rect,
+                                                    const std::string& name, const Color& band,
+                                                    const Color& ink) {
+        if (!ctx || rect.width < 6 || rect.height < 6) return;
+        // The page: three quarters as wide as it is tall, centred, its top
+        // right corner folded down.
+        const double h = rect.height;
+        const double w = std::min<double>(rect.width, h * 0.78);
+        const double x = rect.x + (rect.width - w) / 2.0;
+        const double y = rect.y;
+        const double fold = w * 0.28;
+        const double line = std::max(1.0, h / 40.0);
+        ctx->PushState();
+        ctx->SetStrokeWidth(static_cast<float>(line));
+        ctx->SetStrokePaint(Color(110, 110, 118, 255));
+        const std::vector<Point2Dd> page = {
+                {x + line / 2, y + line / 2}, {x + w - fold, y + line / 2}, {x + w - line / 2, y + fold},
+                {x + w - line / 2, y + h - line / 2}, {x + line / 2, y + h - line / 2}};
+        ctx->SetFillPaint(Color(253, 253, 254, 255));
+        ctx->FillLinePath(page);
+        ctx->DrawLinePath(page, true);
+        const std::vector<Point2Dd> corner = {
+                {x + w - fold, y + line / 2}, {x + w - fold, y + fold}, {x + w - line / 2, y + fold}};
+        ctx->SetFillPaint(Color(222, 222, 228, 255));
+        ctx->FillLinePath(corner);
+        ctx->DrawLinePath(corner, true);
+
+        // The band with the type on it, across the lower half and out over
+        // the page's right edge, as a label stuck on.
+        const Rect2Dd label(x + w * 0.16, y + h * 0.50, w * 0.90, h * 0.28);
+        ctx->SetFillPaint(band);
+        ctx->FillRectangle(label);
+        const std::string tag = ExtensionTag(LastComponent(name));
+        if (!tag.empty() && rect.height >= 28) {
             FontStyle font;
-            font.fontSize = std::max(7.0, sheet.height * 0.22);
+            font.fontSize = std::max(7.0, label.height * 0.58);
             font.fontWeight = FontWeight::Bold;
             ctx->SetFontStyle(font);
-            ctx->SetTextPaint(Color(60, 60, 66, 255));
+            ctx->SetTextPaint(ink);
             const Size2Di ts = ctx->GetTextLineDimensions(tag);
-            ctx->DrawText(tag, Point2Dd(sheet.x + (sheet.width - ts.width) / 2.0,
-                                        sheet.y + (sheet.height - band - ts.height) / 2.0));
+            ctx->DrawText(tag, Point2Dd(label.x + (label.width - ts.width) / 2.0,
+                                        label.y + (label.height - ts.height) / 2.0));
         }
+        ctx->PopState();
     }
 
     std::string UltraCanvasFileDragIcon::BadgeLabel() const {

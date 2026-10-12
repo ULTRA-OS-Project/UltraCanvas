@@ -23205,11 +23205,12 @@ every platform:
   the file under the pointer): a picker chooses files rather than managing
   them. `hoverIconMenu` below brings it back;
 - the file-name field, and below it the file-type filter: a dropdown, or a row
-  of toggle buttons (see [Filter toggles](#filter-toggles)). In a Save dialog
-  the name has the **icon of the type being saved** in front of it - drag it
-  onto a folder to save there ([The file icon](#the-file-icon)) - and a
-  **Settings** button after it, for how that type is written
-  ([Save settings](#save-settings)).
+  of toggle buttons (see [Filter toggles](#filter-toggles)). Typing a name
+  narrows the listing to the entries that have it in their name. In a Save
+  dialog a big **logo of the type being saved** sits left of the two rows,
+  "Drag to Folder" under it - drag it onto a folder to save there
+  ([The file icon](#the-file-icon)) - and a **Settings** button ends the type
+  row, for how that type is written ([Save settings](#save-settings)).
 
 ## Opening one
 
@@ -23285,7 +23286,7 @@ A config starts without filters: the dialog then lists every file under an
 | `hoverIconMenu` | The listing shows the Filer's hover icon menu (default `false`) |
 | `validateNames` | Save refuses a name the file system cannot hold, saying why, and stays open (default `true`) - see [Save names](#save-names) |
 | `addToRecent` | Open, Open multiple and Save add what they accept to the system's recent files (default `true`; `UltraCanvasFileLoader` sets it from `SetRegisterAsRecent`) |
-| `saveSettingsButton` | Save: the Settings button after the name, for the chosen type's [save settings](#save-settings) (default `true`; `FileDialogOptions::SetSaveSettingsButton`). Off for a caller whose writer does not read them |
+| `saveSettingsButton` | Save: the Settings button at the end of the type row, for the chosen type's [save settings](#save-settings) (default `true`; `FileDialogOptions::SetSaveSettingsButton`). Off for a caller whose writer does not read them |
 | `imageWidth`, `imageHeight` | Save: the size of the picture being saved (`FileDialogOptions::SetImageSize`). A bitmap type's Settings then offer [another size](#the-pictures-size) for this save; `GetSaveImageSize()` is the size chosen |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
@@ -23302,6 +23303,14 @@ between folders.
   listing. A typed folder name opens that folder instead of accepting it. A
   typed name that is not a file gets a **File Not Found** notice and the
   dialog stays open on it, as the platforms' open dialogs do.
+- **Typing a name filters the listing**: while the name field holds text the
+  user typed, the listing shows only the files and folders whose name has it
+  in (any case) - the file display's own filter-as-you-type
+  (`UltraCanvasFilerWidget::SetNameFilter`), which narrows what was already
+  read without reading the folder again. A path narrows by its last part. It
+  holds in every folder the dialog then goes to, a name the dialog puts in
+  itself (the file clicked, the type's extension) leaves it as typed, and
+  emptying the field lists everything again.
 - **Save** accepts any name in a folder that exists (a path typed into a
   folder that is not there gets a **Folder Not Found** notice), with the
   chosen file type's extension - see [Save names](#save-names). A name that is already a
@@ -23378,12 +23387,17 @@ offered:
 
 ## The file icon
 
-A Save dialog shows, in front of the file name, the icon of the file it is
+A Save dialog shows, big (64 pixels) at the left of the name and type rows
+and with **Drag to Folder** written under it, the logo of the file it is
 about to write - the type the name has with the chosen type's extension
-(`GetSaveTypeName()`), drawn as the listing draws that type
-(`UltraCanvasFilerWidget::DrawTypeIcon`, so it follows Display > File icons
-too). It changes as the name is typed and as the type is switched: "photo"
-with JPEG chosen is a JPEG, and "notes.txt" under All files a text file.
+(`GetSaveTypeName()`): a page with a folded corner and the extension on a
+band in the colour the listing gives that type
+(`UltraCanvasFileDragIcon::DrawDocumentGlyph`,
+`UltraCanvasFilerWidget::GetTypeColors`), or this desktop's own icon for the
+type while the listing shows those (Display > File icons = Host OS,
+`DrawTypeIcon`). It changes as the name is typed and as the type is
+switched: "photo" with JPEG chosen is a JPEG, and "notes.txt" under All files
+a text file.
 
 The icon is what RISC OS's save box has always had: **drag it onto a folder**
 and that folder is where the file goes. While it is dragged, a badge with the
@@ -23434,8 +23448,8 @@ A press that is released without moving is a click (`onClick`).
 ## Save settings
 
 How a file is written is often a choice: JPEG's quality, PNG's compression,
-whether a TIFF is LZW or Deflate. The **Settings** button after the name in a
-Save dialog shows the settings of the type being saved - a checkbox, a slider
+whether a TIFF is LZW or Deflate. The **Settings** button at the end of a
+Save dialog's type row (after "Files of type") shows the settings of the type being saved - a checkbox, a slider
 or a list per setting - and stores them on OK. For a picture of known size a
 bitmap type's dialog also has the picture's size for this save
 ([The picture's size](#the-pictures-size)). The button is greyed out while
@@ -24028,7 +24042,10 @@ this display gives the type of `path` - a name or a whole path, which need not
 exist - under the current style, and never a thumbnail, since there may be no
 file to take one from. The file dialog's Save icon
 ([`UltraCanvasFileDragIcon`](UltraCanvasFileDialog.md#the-file-icon)) is drawn
-this way, so it matches the listing beside it.
+this way, so it matches the listing beside it. `GetTypeColors(path, isFolder,
+fill, ink)` gives the colours the display uses for that type - the band of its
+glyph and the ink for text on it - for a host that draws the type its own way
+in the listing's colours (the Save dialog's big type logo).
 
 <!-- doc-check: UltraCanvasFilerWidget* filer; IRenderContext* ctx; -->
 ```cpp
@@ -64154,7 +64171,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
 | Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
-| The icon of a file about to be saved, dragged onto a folder of the window to choose where it goes (the RISC OS save box's icon; the Save dialog has one in front of its name field) | `UltraCanvasFileDragIcon` (`CreateFileDragIcon`; [doc](UltraCanvasFileDialog.md#the-file-icon)) | `UltraCanvasFileDragIcon.h` |
+| The icon of a file about to be saved, dragged onto a folder of the window to choose where it goes (the RISC OS save box's icon; the Save dialog has a big one left of its name and type, "Drag to Folder" under it) | `UltraCanvasFileDragIcon` (`CreateFileDragIcon`; [doc](UltraCanvasFileDialog.md#the-file-icon)) | `UltraCanvasFileDragIcon.h` |
 | One file format's save settings (JPEG quality, PNG compression, TIFF codec ...), kept for every application - and, for a picture, the size to write it at this once | `UltraCanvasFileLoader::ShowSaveSettingsDialog` ([doc](UltraCanvasFileDialog.md#save-settings)) | `UltraCanvasFileLoader.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
@@ -70158,7 +70175,7 @@ How a format is written - JPEG's quality, PNG's compression, TIFF's codec - is
 described per format (`UltraCanvasFileSaveSettings.h`), so one dialog can offer
 the settings of any of them, and the values the user chose are kept for every
 application, between runs. The framework's Save dialog has a **Settings**
-button beside the file name that edits the chosen type's settings, and the
+button on its type row that edits the chosen type's settings, and the
 writers read them back - `UCRasterDocument::SaveToFile` does so on its own:
 
 ```cpp

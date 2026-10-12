@@ -50,7 +50,7 @@ namespace UltraCanvas {
         // dialog, framework or native, applies it.
         std::string defaultExtension;
         bool registerAsRecent = true;          // opt-out for NotifyRecentFile
-        // Save: the framework dialog's Settings button beside the file name,
+        // Save: the framework dialog's Settings button on the type row,
         // which edits the chosen type's save settings (GetSaveSettings below;
         // FileDialogConfig::saveSettingsButton). Turn it off when the file is
         // written by a writer that does not read them.
