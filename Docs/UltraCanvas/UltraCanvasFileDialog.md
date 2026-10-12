@@ -13,7 +13,11 @@ every platform:
   the file under the pointer): a picker chooses files rather than managing
   them. `hoverIconMenu` below brings it back;
 - the file-name field, and below it the file-type filter: a dropdown, or a row
-  of toggle buttons (see [Filter toggles](#filter-toggles)).
+  of toggle buttons (see [Filter toggles](#filter-toggles)). In a Save dialog
+  the name has the **icon of the type being saved** in front of it - drag it
+  onto a folder to save there ([The file icon](#the-file-icon)) - and a
+  **Settings** button after it, for how that type is written
+  ([Save settings](#save-settings)).
 
 ## Opening one
 
@@ -53,7 +57,7 @@ options say `SetRegisterAsRecent(false)` - by the framework dialog itself
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
 `SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu`,
-`SetDefaultExtension` and the parent window.
+`SetDefaultExtension`, `SetSaveSettingsButton` and the parent window.
 
 ### Building it yourself
 
@@ -88,6 +92,7 @@ A config starts without filters: the dialog then lists every file under an
 | `hoverIconMenu` | The listing shows the Filer's hover icon menu (default `false`) |
 | `validateNames` | Save refuses a name the file system cannot hold, saying why, and stays open (default `true`) - see [Save names](#save-names) |
 | `addToRecent` | Open, Open multiple and Save add what they accept to the system's recent files (default `true`; `UltraCanvasFileLoader` sets it from `SetRegisterAsRecent`) |
+| `saveSettingsButton` | Save: the Settings button after the name, for the chosen type's [save settings](#save-settings) (default `true`; `FileDialogOptions::SetSaveSettingsButton`). Off for a caller whose writer does not read them |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -177,6 +182,129 @@ offered:
   adds it and asks itself. Android's document picker is offered the
   suggested name with the default extension added.
 
+## The file icon
+
+A Save dialog shows, in front of the file name, the icon of the file it is
+about to write - the type the name has with the chosen type's extension
+(`GetSaveTypeName()`), drawn as the listing draws that type
+(`UltraCanvasFilerWidget::DrawTypeIcon`, so it follows Display > File icons
+too). It changes as the name is typed and as the type is switched: "photo"
+with JPEG chosen is a JPEG, and "notes.txt" under All files a text file.
+
+The icon is what RISC OS's save box has always had: **drag it onto a folder**
+and that folder is where the file goes. While it is dragged, a badge with the
+icon and the name follows the pointer, and the folder a release would choose
+is shown the way a file drag shows it - framed in the listing (a folder entry,
+or over empty space the folder the listing shows), highlighted in the folder
+tree (a place or a drive). Released there, the dialog opens that folder; the
+name stays as it was, so OK (or Return) then saves into it. A release over
+anything else, over a file, or onto a folder inside an archive the listing is
+browsing changes nothing, and Escape ends the drag without closing the
+dialog. The drag stays inside the dialog: there is no file yet to hand to
+another window.
+
+The icon is an element of its own, `UltraCanvasFileDragIcon`
+(`UltraCanvasFileDragIcon.h`), for any other save box that wants one. It
+carries a name, not a file: the elements under it are sent `DragEnter` /
+`DragOver` / `DragLeave` with `dragMimeType` set to
+`UltraCanvasFileDragIcon::kDragMimeType` and no `droppedFiles`, so nothing
+that accepts files copies anything, and the release goes to `onDropped`,
+which asks the target where the drop lands while it still shows it:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> row; std::shared_ptr<UltraCanvasFilerWidget> listing; std::shared_ptr<UltraCanvasTreeView> tree; void SaveInto(const std::string& folder); -->
+```cpp
+auto icon = CreateFileDragIcon("SaveIcon", "report.pdf", 0, 0, 32, 32);
+icon->SetIconPainter([listing = listing.get()](IRenderContext* ctx, const std::string& name,
+                                               bool isFolder, const Rect2Di& rect) {
+    listing->DrawTypeIcon(ctx, name, isFolder, rect);
+});
+// The tree highlights the rows a drop can land on.
+tree->onFilesDragAccept = [icon = icon.get()](TreeNode* node) {
+    return node != nullptr && icon->IsDragging();
+};
+icon->onDropped = [listing = listing.get(), tree = tree.get()](UltraCanvasUIElement* target,
+                                                               const Point2Di&) {
+    for (UltraCanvasUIElement* e = target; e; e = e->GetParentContainer()) {
+        if (e == listing) { SaveInto(listing->GetIncomingDropFolder()); return; }
+        if (e == tree) {
+            if (TreeNode* node = tree->GetDropTargetNode()) SaveInto(node->data.nodeId);
+            return;
+        }
+    }
+};
+row->AddChild(icon);
+```
+
+A press that is released without moving is a click (`onClick`).
+
+## Save settings
+
+How a file is written is often a choice: JPEG's quality, PNG's compression,
+whether a TIFF is LZW or Deflate. The **Settings** button after the name in a
+Save dialog shows the settings of the type being saved - a checkbox, a slider
+or a list per setting - and stores them on OK. The button is greyed out while
+the type has none ("notes.txt", a name of no type, BMP), and its tooltip
+names the type. The dialog's **Defaults** button puts every setting back to
+the format's default; Cancel keeps what was there.
+
+The settings belong to the format, not to the dialog: they are kept per
+format for **every application**, between runs, in `SaveSettings.conf` in the
+UltraCanvas settings folder ([What it remembers](#what-it-remembers)), one
+`<format>.<setting>=<value>` line for each setting the user has set. They are
+reached through `UltraCanvasFileLoader` (`UltraCanvasFileSaveSettings.h` holds
+the types):
+
+| Call | |
+|---|---|
+| `HasSaveSettings(extensionOrPath)` | The type has settings. `"jpg"`, `".JPEG"`, `"photo.jpe"` and a whole path all name JPEG |
+| `FindSaveFormat(extensionOrPath, format)` | The format: its name, extensions (the first is its key) and `FileSaveSettingSpec`s |
+| `GetSaveSettings(extensionOrPath)` | Every setting's value: the user's where they set it, the default elsewhere |
+| `HasStoredSaveSettings(extensionOrPath)` | The user has set any of them |
+| `SetSaveSettings(settings)` / `ResetSaveSettings(extensionOrPath)` | Store (merged over what was there; a value is clamped or replaced by the default when it is not one the setting can hold, and a key the format lacks is dropped) / forget |
+| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens |
+| `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
+| `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings |
+
+Built in are the bitmap formats the image writer takes options for, each with
+only the settings that writer honours: PNG (compression, colours, interlace,
+transparency), JPEG (quality, progressive, optimised coding, subsampling),
+WebP, AVIF, HEIF, JPEG XL and JPEG 2000 (quality, lossless, effort or speed,
+bit depth), GIF (colours, dither, interlace), TIFF and OpenEXR (compression),
+Netpbm (binary), TGA, PCX, SGI and Photoshop (RLE), DPX and Cineon (bit
+depth). BMP, ICO, QOI, HDR, FITS and Farbfeld are written without options.
+
+A writer reads them back. `UCRasterDocument::SaveToFile` does so itself when
+the caller passes no options and the user has stored settings for the format
+(until then it keeps the writer's own defaults), so UltraPaint's Save honours
+the button with no change of its own. Any other writer asks:
+
+<!-- doc-check: void WriteMyFormat(const std::string& path, int level, bool fast); -->
+```cpp
+// Once, at start-up: the format and what its writer can be told.
+FileSaveFormat mine;
+mine.name = "My format";
+mine.extensions = {"myf"};
+mine.settings = {
+    FileSaveSettingSpec::Number("level", "Compression", 1, 9, 6, "9 writes the smallest file"),
+    FileSaveSettingSpec::Toggle("fast", "Fast mode", false),
+    FileSaveSettingSpec::Choice("profile", "Profile",
+                                {{"web", "For the web"}, {"print", "For print"}}, "web")};
+UltraCanvasFileLoader::RegisterSaveFormat(mine);
+
+// When writing: whatever the Save dialog's Settings button stored.
+auto write = [](const std::string& path) {
+    const FileSaveSettings settings = UltraCanvasFileLoader::GetSaveSettings(path);
+    WriteMyFormat(path, settings.GetInt("level", 6), settings.GetBool("fast"));
+};
+write("drawing.myf");
+```
+
+A setting key is letters, digits, `-` and `_`; a key with anything else could
+not be read back from the file and is left out with a debug message. A caller
+whose writer ignores the settings turns the button off
+(`FileDialogOptions::SetSaveSettingsButton(false)`), so the dialog does not
+offer a choice that changes nothing.
+
 ## Filter toggles
 
 For an Open dialog whose filters are *kinds* of file rather than one format
@@ -218,7 +346,8 @@ leaves out a kind the build cannot show.
 
 The view, the window size, the Details column widths and the last used folder
 are kept between showings in `FileDialog.conf` in the UltraCanvas settings
-folder (`UltraCanvasFileDialogSettings.h`). That folder is
+folder (`UltraCanvasFileDialogSettings.h`); the [save settings](#save-settings)
+are in `SaveSettings.conf` beside it. That folder is
 `%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas`
 on macOS, and `$XDG_CONFIG_HOME/UltraCanvas` (else `~/.config/UltraCanvas`)
 elsewhere. Every application shares the file. The last used folder is either
@@ -239,3 +368,6 @@ application: message boxes and `UltraCanvasFileLoader`'s file dialogs follow
 it together. An application that wants this dialog for files but the
 platform's message boxes builds the dialog itself as above. UltraViewer,
 UltraCleaner, UltraAIApp and UltraAuthenticator leave native dialogs off.
+The platforms' save dialogs have neither the file icon nor the Settings
+button; the save settings still apply to what is written, and an application
+can offer `UltraCanvasFileLoader::ShowSaveSettingsDialog` itself.

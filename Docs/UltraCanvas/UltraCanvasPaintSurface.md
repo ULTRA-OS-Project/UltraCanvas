@@ -74,7 +74,8 @@ doc->ApplyFilter("Colour to Alpha", [](const PixelFX::PFXImage& img) {
 
 doc->Undo();
 std::string err;
-doc->SaveToFile("out.png", err);               // flattened, format by extension
+doc->SaveToFile("out.png", err);               // flattened, format by extension, with the
+                                               // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
 ```
 

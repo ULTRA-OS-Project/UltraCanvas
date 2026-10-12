@@ -289,6 +289,14 @@ bool DragIconUntil(UltraCanvasApplication& app, const std::shared_ptr<UltraCanva
     return false;
 }
 
+// The folder the dialog shows, as its path field has it. (Not the dialog's
+// GetCurrentDirectory: windows.h renames that, and new callers are not added.)
+std::string ShownFolder(const SaveRun& run) {
+    auto* field = run.dialog ? dynamic_cast<UltraCanvasTextInput*>(run.dialog->FindChildById("FileDialogPath"))
+                             : nullptr;
+    return field ? field->GetText() : std::string();
+}
+
 std::string Canonical(const std::filesystem::path& p) {
     std::error_code ec;
     const std::filesystem::path c = std::filesystem::canonical(p, ec);
@@ -745,7 +753,7 @@ int main() {
                 }
                 SendMouse(app, run.dialog, UCEventType::MouseUp, at);
                 TEST("Dropped on a folder of the listing, the dialog opens it",
-                     Canonical(PathFromUtf8(run.dialog->GetCurrentDirectory())) == target);
+                     Canonical(PathFromUtf8(ShownFolder(run))) == target);
                 TEST("... and the drag is over", !icon->IsDragging() && listing->GetIncomingDropFolder().empty());
                 PressEnter(run, "inside");
                 TEST("... so the file is saved there",
@@ -759,7 +767,7 @@ int main() {
             listing = dynamic_cast<UltraCanvasFilerWidget*>(run.dialog->FindChildById("FileDialogListing"));
             tree = dynamic_cast<UltraCanvasTreeView*>(run.dialog->FindChildById("FileDialogFolders"));
             if (icon && listing) {
-                const std::string start = run.dialog->GetCurrentDirectory();
+                const std::string start = ShownFolder(run);
                 Point2Di at;
                 DragIconUntil(app, run.dialog, *icon, listing->GetBoundsInWindow(),
                               [&]() { return !listing->GetIncomingDropFolder().empty(); }, at);
@@ -767,18 +775,18 @@ int main() {
                 TEST("Escape ends the drag", !icon->IsDragging());
                 TEST("... and leaves the dialog open", run.dialog->IsWindowVisible() && run.accepted->empty());
                 SendMouse(app, run.dialog, UCEventType::MouseUp, at);
-                TEST("... and the release after it drops nothing", run.dialog->GetCurrentDirectory() == start);
+                TEST("... and the release after it drops nothing", ShownFolder(run) == start);
             }
             // Dropped on a row of the folder tree: that folder.
             if (icon && tree) {
-                const std::string start = run.dialog->GetCurrentDirectory();
+                const std::string start = ShownFolder(run);
                 Point2Di at;
                 const bool over = DragIconUntil(app, run.dialog, *icon, tree->GetBoundsInWindow(),
                         [&]() { return tree->GetDropTargetNode() != nullptr; }, at);
                 TEST("Dragged over the folder tree, a folder row takes the drop", over);
                 SendMouse(app, run.dialog, UCEventType::MouseUp, at);
                 std::error_code dec;
-                const std::string now = run.dialog->GetCurrentDirectory();
+                const std::string now = ShownFolder(run);
                 TEST("Dropped on it, the dialog opens that folder",
                      over && now != start && std::filesystem::is_directory(PathFromUtf8(now), dec));
                 TEST("... and the row is no longer highlighted", tree->GetDropTargetNode() == nullptr);
