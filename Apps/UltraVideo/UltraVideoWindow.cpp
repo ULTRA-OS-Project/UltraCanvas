@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.2.7 - the draft settings come from the document
 // Version: 0.2.6 - the dialogs take no palette
 // Version: 0.2.5 - the labels follow the theme by variant
 // Version: 0.2.4 - the buttons follow the theme by variant; ApplyPalette keeps the timeline
@@ -1106,15 +1107,7 @@ void UltraVideoWindow::RenderDraft() {
     if (!draftPath_.empty() && draftRevision_ == documentRevision_) return;
     std::vector<VideoFXSegment> segments = document_.SegmentsForEngine();
     if (segments.empty()) return;
-    // 360 lines at the project's shape: a height alone would take the width
-    // from the first segment, and a 4:3 photo first made a 4:3 draft of a
-    // 16:9 project, letterboxed inside and smaller than the frame surface
-    VideoFXExportSettings settings = VideoFXExportSettings::Draft(360);
-    const int projectW = std::max(1, document_.Width()), projectH = std::max(1, document_.Height());
-    settings.width = std::max(16, static_cast<int>(std::lround(360.0 * projectW / projectH / 2.0)) * 2);
-    settings.music = document_.project.settings.music;
-    settings.fitMode = document_.project.settings.fitMode;
-    settings.frameRate = document_.FrameRate();
+    const VideoFXExportSettings settings = document_.DraftSettings();
     std::error_code ec;
     const fs::path dir = fs::temp_directory_path(ec);
     if (ec) {

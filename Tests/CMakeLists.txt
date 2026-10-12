@@ -2934,6 +2934,35 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
     message(STATUS "    Test registered: UltraVideoDocumentTest")
 endif()
 
+# ===== ULTRAVIDEO DRAFT TEST =====
+# The draft the viewer plays with sound, without a display: rendered with
+# the app's settings, its sound steps in at the document's cut (the decoded
+# envelope against the cut time), and the framework's player reports a
+# position that matches the frames it shows. Skips itself without the
+# engine; the player part skips itself without GStreamer plugins.
+if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
+    message(STATUS "  Building UltraVideoDraftTest...")
+    add_executable(UltraVideoDraftTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraVideoDraftTest.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoDocument.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoMapping.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoHistory.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoPresets.cpp
+    )
+    target_include_directories(UltraVideoDraftTest PRIVATE
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo
+        ${ULTRACANVAS_INCLUDE_DIR}
+    )
+    target_link_libraries(UltraVideoDraftTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_compile_features(UltraVideoDraftTest PRIVATE cxx_std_20)
+    set_target_properties(UltraVideoDraftTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraVideoDraftTest COMMAND UltraVideoDraftTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraVideoDraftTest")
+endif()
+
 # ===== VIRTUALFS DELETE TEST =====
 # Regression test for batched archive-entry deletion (single rewrite pass).
 # Needs libarchive; the vendored miniz additionally enables the ZIP raw-copy

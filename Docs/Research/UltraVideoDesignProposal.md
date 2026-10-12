@@ -874,6 +874,7 @@ Apps/UltraVideo/
 Docs/UltraVideo/CHANGELOG.md    "#### <date> *0.1.0*" is the version
 Docs/UltraVideo/README.md       how to use it
 Tests/UltraVideoDocumentTest.cpp  the document, mapping and history, headless
+Tests/UltraVideoDraftTest.cpp   the draft's sound against the cut, the player's position against its frames
 media/icons/ultravideo/         the interface icon set, loaded at run time
 media/appicon/UltraVideo.{png,svg}
 ```
@@ -1107,7 +1108,9 @@ that writing it showed:
   the frame surface does (`VideoPlayerStyle::videoFit` and `videoInset`,
   player element 0.1.5), so nothing moves when it takes over. The sound was
   measured through a PulseAudio null sink: present for the whole play,
-  the clip's sound joining at its cut, half the level at half volume.
+  the clip's sound joining at its cut, half the level at half volume;
+  `UltraVideoDraftTest` pins the sound to the cut and the player's
+  position to its frames headless, within a frame.
 - **Drag from the bin** (§6.2): the framework has no drag source API, and
   the album's own drag is a reorder; `UltraCanvasAlbum` 1.9.0 gained
   `onItemDraggedOut`, which fires once when a tile crosses the album's

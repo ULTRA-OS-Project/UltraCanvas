@@ -34,7 +34,12 @@
   on such a desktop. The sound itself was then measured through a
   PulseAudio null sink: it starts and stops with playback, the music's
   fade and the clip's own sound arrive where the timeline has them, and
-  the volume slider at half halves the level.
+  the volume slider at half halves the level. `UltraVideoDraftTest` pins
+  it without a recorder: the draft (`Document::DraftSettings`, the
+  settings the app renders with) decoded shows its sound stepping in at
+  the document's cut within a frame, and the framework's player, playing
+  it headless, reports a position within two frames of the frame it
+  shows and reads the cut when the clip's first frame appears.
 - **The draft in the frame's place.** The draft is rendered at the
   project's shape, 360 lines high: with only a height given the engine took
   the width from the first segment, and a 4:3 photo first made a 4:3 draft

@@ -38,7 +38,9 @@ preview planned again, the inspector, the app bar). The timeline element
 never applies an edit itself: it reports one, `ApplyChange` writes it into
 the document, and `SetModel` shows the result.
 
-The test: `Tests/UltraVideoDocumentTest.cpp` (headless, the engine needed).
+The tests: `Tests/UltraVideoDocumentTest.cpp` and `Tests/UltraVideoDraftTest.cpp`
+(headless, the engine needed; the draft test's player part skips itself
+without GStreamer plugins).
 
 ## The design
 

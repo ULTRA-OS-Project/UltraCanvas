@@ -206,7 +206,11 @@ starts but can read no media. The icon set the window uses is
 
 Tests: `UltraVideoDocumentTest` (the document, the mapping onto the
 timeline model and back, the history, the file round trip; headless, needs
-the engine).
+the engine) and `UltraVideoDraftTest` (the draft played with sound: rendered
+with the app's settings, its sound steps in at the document's cut within a
+frame, and the framework's player reports a position that matches the
+frames it shows and reads the cut when the clip's first frame appears;
+headless, the player part skips itself without GStreamer plugins).
 
 ## Not yet
 
