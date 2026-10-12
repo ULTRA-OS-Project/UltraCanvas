@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.21.0 - form controls are inline-block, as in browsers (the builder
+//                  still draws a display-only control on a line of its own)
 // Version: 1.20.0 - <template> is not rendered (display: none, as in browsers)
 // Version: 1.19.0 - flex and grid: display: flex / grid / inline-flex / inline-grid set
 //                  BoxLayoutMode; flex, flex-*, order, gap, justify-* / align-* /
@@ -446,9 +448,10 @@ void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle
     }
     else if (tag == "input" || tag == "textarea" || tag == "select" ||
              tag == "button") {
-        // Display-only form controls render as their own block box (emails
-        // wrap them in a <div>); the builder shows the value/label inside.
-        s.display = DisplayMode::Block;
+        // inline-block, as in browsers: real widgets sit on the line with
+        // their text. The builder still gives a control drawn for display
+        // only (mail) a line of its own.
+        s.display = DisplayMode::InlineBlock;
     }
     else if (tag == "option" || tag == "optgroup" || tag == "datalist") {
         // A <select> reads its option text directly; keep raw option text from

@@ -1,6 +1,7 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules - and the two pieces of
 // selector matching that are not about the tree (attribute operators, an+b).
+// Version: 1.7.0 - ParseImports: the @import rules at the head of a sheet
 // Version: 1.6.0 - AttributeValueMatches / NthPositionMatches: the matcher's
 //                  tree-independent halves, moved here from the style resolver
 //                  so the SVG reader's elements match through the same code
@@ -23,6 +24,7 @@
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
+#include <cstring>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -611,6 +613,91 @@ bool StyleSheet::MediaMatches(const std::string& query, float widthPx) {
         if (ok != negate) return true;
     }
     return false;
+}
+
+std::vector<StyleImport> StyleSheet::ParseImports(const std::string& css) {
+    std::vector<StyleImport> imports;
+    const std::string text = StripComments(css);
+    auto startsWithWord = [&](size_t at, const char* word) {
+        const size_t n = std::strlen(word);
+        if (text.size() < at + n) return false;
+        for (size_t k = 0; k < n; ++k)
+            if (std::tolower(static_cast<unsigned char>(text[at + k])) != word[k]) return false;
+        return at + n == text.size() || !(std::isalnum(static_cast<unsigned char>(text[at + n])) ||
+                                          text[at + n] == '-');
+    };
+    size_t i = 0;
+    while (i < text.size()) {
+        while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) ++i;
+        if (i >= text.size()) break;
+        if (text.compare(i, 4, "<!--") == 0) { i += 4; continue; }
+        if (text.compare(i, 3, "-->") == 0)  { i += 3; continue; }
+        if (text[i] != '@') break;                       // the first rule ends the imports
+        const bool isImport = startsWithWord(i + 1, "import");
+        if (!isImport && !startsWithWord(i + 1, "charset") && !startsWithWord(i + 1, "layer")) break;
+        const size_t semi = text.find(';', i);
+        const size_t brace = text.find('{', i);
+        if (semi == std::string::npos || (brace != std::string::npos && brace < semi)) break;   // @layer x { ... }
+        if (!isImport) { i = semi + 1; continue; }
+
+        // @import url("a.css") screen;  @import "a.css";  @import url(a.css) layer(x) supports(...) print;
+        size_t j = i + 7;
+        while (j < semi && std::isspace(static_cast<unsigned char>(text[j]))) ++j;
+        std::string href;
+        bool ok = false;
+        if (j + 4 <= semi && std::tolower(static_cast<unsigned char>(text[j])) == 'u' &&
+            std::tolower(static_cast<unsigned char>(text[j + 1])) == 'r' &&
+            std::tolower(static_cast<unsigned char>(text[j + 2])) == 'l' && text[j + 3] == '(') {
+            j += 4;
+            while (j < semi && std::isspace(static_cast<unsigned char>(text[j]))) ++j;
+            char quote = 0;
+            if (j < semi && (text[j] == '"' || text[j] == '\'')) quote = text[j++];
+            while (j < semi && (quote ? text[j] != quote : (text[j] != ')' && !std::isspace(static_cast<unsigned char>(text[j]))))) {
+                if (text[j] == '\\' && j + 1 < semi) ++j;
+                href += text[j++];
+            }
+            if (quote && j < semi) ++j;
+            while (j < semi && std::isspace(static_cast<unsigned char>(text[j]))) ++j;
+            if (j < semi && text[j] == ')') { ++j; ok = true; }
+        } else if (j < semi && (text[j] == '"' || text[j] == '\'')) {
+            const char quote = text[j++];
+            while (j < semi && text[j] != quote) {
+                if (text[j] == '\\' && j + 1 < semi) ++j;
+                href += text[j++];
+            }
+            if (j < semi) { ++j; ok = true; }
+        }
+        if (ok && !href.empty()) {
+            // What follows: layer / layer(...) / supports(...) and the media list.
+            std::string rest = text.substr(j, semi - j);
+            std::string media;
+            size_t k = 0;
+            while (k < rest.size()) {
+                while (k < rest.size() && std::isspace(static_cast<unsigned char>(rest[k]))) ++k;
+                size_t e = k;
+                while (e < rest.size() && (std::isalnum(static_cast<unsigned char>(rest[e])) || rest[e] == '-')) ++e;
+                std::string word = rest.substr(k, e - k);
+                for (char& c : word) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (word == "layer" || word == "supports") {
+                    k = e;
+                    if (k < rest.size() && rest[k] == '(') {
+                        int depth = 0;
+                        for (; k < rest.size(); ++k) {
+                            if (rest[k] == '(') ++depth;
+                            else if (rest[k] == ')' && --depth == 0) { ++k; break; }
+                        }
+                    }
+                    continue;
+                }
+                media = rest.substr(k);
+                break;
+            }
+            while (!media.empty() && std::isspace(static_cast<unsigned char>(media.back()))) media.pop_back();
+            imports.push_back({ href, media });
+        }
+        i = semi + 1;
+    }
+    return imports;
 }
 
 void StyleSheet::ParseAppend(const std::string& css) {

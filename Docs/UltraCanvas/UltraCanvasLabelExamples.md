@@ -203,6 +203,40 @@ whitespace separates them, a space of their font apart where the HTML has
 whitespace, standing on the line's bottom unless `vertical-align` puts them at
 its top or middle; `display:block` or `<br>` starts a new line.
 
+A placeholder with no `image` is room: it takes the frame's width
+(`frame.marginLeft`) and draws nothing. The HTML reader uses it for an inline
+element's horizontal margin, border and padding.
+
+### Inline boxes
+
+`SetTextBoxes` draws backgrounds and borders around byte ranges of the
+rendered text, behind it: CSS's box of an inline element (`<mark>`, a
+bordered `<span>`). Each `LabelTextBox` is a range `[startByte, endByte)`,
+a `background`, four border sides (`LabelInlineImageBorder`), the
+`paddingTop` / `paddingBottom` it reaches above and below the text, and a
+`borderRadius`.
+
+```cpp
+label->SetText("Some highlighted words here");
+LabelTextBox mark;
+mark.startByte = 5;                  // "highlighted words"
+mark.endByte = 22;
+mark.background = Color(255, 235, 59, 255);
+mark.paddingTop = mark.paddingBottom = 2;
+label->SetTextBoxes({ mark });
+```
+
+- A box is drawn in a piece per line it spans: as tall as its first real
+  character's text, plus its vertical padding and border, which do not
+  move the lines. Its left border is on the first piece and its right on the
+  last (CSS `box-decoration-break: slice`); a radius applies to a box on one
+  line, capped at half its height.
+- Horizontal padding is not added: put room in the text for it (a picture-
+  less `LabelInlineImage`), inside the range, so the sides fall at the
+  room's outer edges.
+- Boxes are drawn in order, so give an enclosing box before the ones inside
+  it. `TextBoxPieces(i)` returns box `i`'s pieces, label-local.
+
 ### Selectable text
 
 A label's text can be selected and copied the way text on a web page can.

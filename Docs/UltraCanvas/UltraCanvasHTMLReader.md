@@ -160,6 +160,17 @@ sheet, `@media` blocks (applied when their query holds at `SetMediaWidth`),
 and skips other at-rules whole. A selector it cannot read drops out of its
 rule alone; the rule's other selectors still apply.
 
+`@import` is skipped by `ParseAppend` and listed by
+`StyleSheet::ParseImports(css)`: the rules at the head of the sheet, each an
+`href` as written and its `media` (`layer()` and `supports()` dropped). Only
+those before the first other rule count, as in CSS. Whoever loads sheets
+fetches them: the element builder puts each imported sheet in front of the
+importing sheet's rules, in an `@media` block when the import names media,
+reading its address relative to the importing sheet (an EPUB's
+`css/book.css` importing `fonts.css` reads `css/fonts.css`), 8 deep and 64
+sheets at most, each sheet once. `HTML::PageLoader` fetches them before a
+page is ready.
+
 Selectors: type, `*`, `.class`, `#id`, attribute selectors (`[a]`, `[a=v]`,
 `~=` `^=` `$=` `*=` `|=`, the `i` flag), `:link` / `:any-link`, the
 structural pseudo-classes (`:first-child`, `:last-child`, `:only-child`,
@@ -191,6 +202,9 @@ for (const HTML::Rule& rule : sheet.rules)
 
 auto declarations = HTML::StyleSheet::ParseDeclarationList("fill: red; stroke-width: 2 !important");
 bool print = HTML::StyleSheet::MediaMatches("print, screen and (min-width: 600px)", 480);   // false
+
+for (const HTML::StyleImport& import : HTML::StyleSheet::ParseImports("@import url(a.css) print; p{}"))
+    ;   // import.href == "a.css", import.media == "print"
 ```
 
 ## Selector matching, on any tree
@@ -364,6 +378,26 @@ boxes on it, and at least the block's own: a `<span style="line-height:40px">`
 in a cell that sets none is a 40px line. Text where nothing sets a
 `line-height` keeps the font's own line spacing.
 
+An inline element's horizontal margin, border and padding are room in its
+line: `<nav><a style="margin-right:18px">About</a><a>Index</a></nav>` keeps
+the two links 18px apart. The room is a picture-less placeholder in the
+label's run, joined to the element's first or last letter by a word joiner,
+so a line does not break between a word and its margin. The margin lies
+outside the element's link and the padding inside it, and white space on
+either side of the room collapses to one space. Vertical margins do not move
+the line, as in CSS.
+
+Its background and border are drawn by the label around its text and
+padding (`LabelTextBox`), at any depth in a run (`<b><span
+style="border:...">`): a piece per line when it breaks across lines, the
+left border on the first piece and the right on the last, its vertical
+padding painted above and below the text without moving the lines. An
+inline element that has vertical padding as well as a background or a border
+- the mail button, `<a style="background:#07f;padding:12px 24px;color:#fff">Buy</a>`
+- is a box on the line instead, as an `inline-block` is, when it is a child of
+the block: the line grows to hold its padding, and it does not break. A space
+between a box and the text beside it stays: "Order now: [Buy] today".
+
 **Flex and grid containers** are laid out by the CSSLayout flex and grid
 engines. Their children are items, as in CSS. Each child element is a box of
 its own at its own size (a `<span>` or `<a>` item is "blockified"), with real
@@ -405,7 +439,9 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
 - **Style sheets:** linked sheets (up to 32) are fetched before the page is
   ready, so the first build has them. Each sheet's `url()`s are rewritten
   against the sheet's own URL (`RewriteCssUrls`), so they still mean the same
-  inside the page. `@import` is not followed yet.
+  inside the page. The sheets a linked sheet or a `<style>` imports
+  (`@import`, up to 4 deep, within the 32) are fetched before the page is
+  ready too, and their addresses rewritten to absolute ones.
 - **Other resources** load on demand. `GetResource(href)` is the builder's
   `resourceLoader`: it answers from a cache (64 MB, oldest out first),
   queues what it does not have, and `onResourcesArrived` says when to build
@@ -459,6 +495,58 @@ view->onTitleChanged = [](const std::string& title) { /* the window title */ };
 view->onExternalLink = [](const std::string& url) { /* the system's mail client */ };
 view->Navigate("https://example.org/");
 ```
+
+### Forms
+
+With `BuildOptions::interactiveForms` the builder makes a form's controls
+the framework's widgets, so the reader can fill it in: `<input>` text-like
+types and `password` are `UltraCanvasTextInput`s, `<textarea>` an
+`UltraCanvasTextArea`, checkboxes and radios `UltraCanvasCheckbox` /
+`UltraCanvasRadio` (radios with one name in one form are one
+`UltraCanvasRadioGroup`), `<select>` an `UltraCanvasDropdown` (`<optgroup>`s
+flattened), and buttons `UltraCanvasButton`s. They are `inline-block`, as in
+browsers: on the line with their labels, sized by CSS `width` / `height`,
+else by `size`, `cols` / `rows` and the font. A control can be a flex or
+grid item (a search bar). `disabled`, a disabled `<fieldset>`, `readonly`,
+`maxlength`, `placeholder` and `form="id"` are honoured. File, colour and
+range inputs are drawn for display only and not sent.
+
+Each `<form>` gets an `HTML::FormController` (`HTMLReader/HTMLForms.h`) in
+`BuildResult::forms`; keep them, since they hold the radio groups. A submit
+button, or Enter in a text field, calls `BuildOptions::onFormSubmit` with
+an `HTML::FormSubmission`: the form's action, method and enctype, and the
+entry list in tree order, as HTML builds it (named, enabled controls; a
+checkbox or radio only when checked, `on` without a value; the selected
+option's value; only the button that was clicked). `Encoded()`,
+`Multipart(boundary)` and `PlainText()` are its three encodings, and `Body`
+/ `ContentType` pick the one the form asks for. A reset button puts back
+what the page wrote. `Save()` / `Restore()` carry what was typed into a
+rebuilt page.
+
+```cpp
+HTML::BuildOptions opts;
+opts.interactiveForms = true;
+opts.onFormSubmit = [](const HTML::FormSubmission& form) {
+    if (form.method == "get") { /* open form.action + "?" + form.Encoded() */ }
+    else { /* POST form.Body(boundary) as form.ContentType(boundary) */ }
+};
+HTML::ElementBuilder builder;
+HTML::BuildResult r = builder.Build("<form action='/find'><input name='q'> <button>Go</button></form>", opts);
+for (const auto& form : r.forms) {
+    HTML::FormSubmission now = form->Collect();   // what it would send now
+    (void)now;
+}
+```
+
+`UltraCanvasWebView` turns forms on (`SetInteractiveForms(false)` turns them
+off) and sends them itself (`SubmitForm`): GET as a navigation to the
+action with the fields as its query, POST through
+`PageLoader::LoadPost` - the `post` service the host passes in - and back
+from the answer re-asks its address by GET. A rebuild of the page (a new
+width, pictures arriving) keeps what was typed and the focus. Mail keeps
+`interactiveForms` off: its controls are drawn for display only, the value
+as text on a line of its own. Not yet: file uploads; a click on a
+`<label>`'s text does not reach its control.
 
 ## HTML into an editable document
 
@@ -538,9 +626,10 @@ blocks new ones.
 | `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML` |
 | `include/HTMLReader/HTMLRichDocumentImporter.h` | `ImportHTMLToRichDocument`, `AppendHTMLToRichDocument`, `HTMLRichImportOptions` |
 | `include/HTMLReader/HTMLPageLoader.h` | `PageLoader`, `PageLoaderServices`, `PageLoaderLimits`, `FetchResult`, `LoadedPage`, `PageKind` |
+| `include/HTMLReader/HTMLForms.h` | `FormSubmission`, `FormController` (forms with real widgets) |
 | `include/UltraCanvasWebView.h` | `UltraCanvasWebView`, the element that shows pages from URLs |
 | `Tests/HTMLReaderTest.cpp` | parser, CSS, matcher and resolver, without the UI library |
-| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, the viewer |
+| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `HTMLInlineBoxTest.cpp`, `HTMLFormsTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, inline boxes, forms, the viewer |
 | `Tests/Fuzz/` | fuzz targets for the parser, the CSS, and the builder with the layout ([README](../../Tests/Fuzz/README.md)) |
 
 ## Fuzzing
