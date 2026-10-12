@@ -69,7 +69,9 @@ Docs/UltraCanvas/*.md but the changelog - and fails only on findings that
 are not in scripts/doc_examples_baseline.txt. The component docs all pass;
 the design documents (a name with Proposal, Plan or Investigation in it)
 describe APIs not written yet, so their code is listed there until the API
-exists, and an entry that stops being found says the doc has caught up:
+exists. An entry that stops being found says the doc has caught up, and
+fails the strict run until the file is rewritten, so the file is always the
+list of what the proposals still wait for:
 
     python3 scripts/check_doc_examples.py --all --strict
     python3 scripts/check_doc_examples.py --all --update-baseline   # after fixing some
@@ -78,6 +80,11 @@ A baseline entry is the doc and the message, without the line, so editing
 elsewhere in a doc does not disturb it. The file only shrinks: fix a doc's
 findings and rewrite it, never add to it to let a new one through.
 """
+# Version: 1.5.0 - a baseline entry no longer found fails --strict until the
+#                 file is rewritten (--all also for a doc that is gone); the
+#                 reported errors come from a -fno-spell-checking pass, so an
+#                 undeclared name is one finding, not a chain of them in the
+#                 terms of clang's guess at what was meant
 # Version: 1.4.0 - a name the checker declares is a member when a [this]
 #                 lambda uses it; a name clang misreads as a template's
 #                 (`name <`) is declared from the parse error that follows
@@ -96,7 +103,7 @@ findings and rewrite it, never add to it to let a new one through.
 #                 what the doc's own headers and doc-check comment declare;
 #                 `Name (` with a space is prose, not a call
 # Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
-# Last Modified: 2026-10-10
+# Last Modified: 2026-10-12
 # Author: UltraCanvas Framework
 
 import argparse
@@ -180,6 +187,19 @@ def base_flags():
     flags += ["-D" + d for d in DEFINES]
     flags += ["-I" + str(d) for d in INCLUDE_DIRS]
     return flags + pkg_cflags()
+
+
+# The flags of the pass whose errors are reported. Clang's spell-checking
+# "corrects" an undeclared name to a near-miss and goes on with that, so one
+# missing name fails again on every line below in the near-miss's terms
+# (`no member named 'Host' in 'PacketModel'` for a `PacketNodeRole` that does
+# not exist). Off, the name is one finding, and the finding's wording does
+# not change when a header gains a type of a similar name. The passes that
+# resolve a snippet's names (see Doc.check_examples) keep spell-checking on:
+# clang's `did you mean '__dc_b3::Name'` is how a snippet is tied to a name
+# an earlier snippet of the doc declared.
+def report_flags(flags):
+    return flags + ["-fno-spell-checking"]
 
 
 def public_headers():
@@ -812,6 +832,7 @@ class Doc:
         self.index = index
         self.args = args
         self.flags = flags
+        self.report_flags = report_flags(flags)
         self.pch = pch
         self.work = args.work / "docs"
         self.work.mkdir(parents=True, exist_ok=True)
@@ -866,7 +887,9 @@ class Doc:
         return '#line %d "%s"' % (n, GEN)
 
     def add(self, line, msg):
-        self.findings.append((line, msg))
+        # A snippet is compiled in a namespace of its own (__dc_b<n>), which
+        # clang names when a snippet misuses a name an earlier one declared.
+        self.findings.append((line, re.sub(r"__dc_b\d+::", "", msg)))
 
     # -- the parts of each block --------------------------------------------
 
@@ -1205,6 +1228,12 @@ class Doc:
                     changed = True
             if not changed:
                 break
+        if errors:
+            # What is reported is a pass without spell-checking: the names are
+            # resolved now, and a name still missing is to be one finding, not
+            # the chain clang's near-miss would fail with on the lines below.
+            errors = run_clang(self.args.clang, self.report_flags, self.pch,
+                               self.emit_examples(assumed, macros), self.work, self.tag + "_ex", self.rel)
         for f, line, msg in errors:
             if f == GEN:
                 what = self.gen_map.get(line)
@@ -1276,7 +1305,8 @@ class Doc:
         src.append("}")
         if not where:
             return
-        errors = run_clang(self.args.clang, self.flags, self.pch, "\n".join(src) + "\n", self.work, self.tag + "_c")
+        errors = run_clang(self.args.clang, self.report_flags, self.pch, "\n".join(src) + "\n", self.work,
+                           self.tag + "_c")
         failures = {}       # (copy index, candidate) -> [(doc line, member, message)]
         for f, line, msg in errors:
             if f == GEN and line in where and "protected" not in msg and "private" not in msg \
@@ -1331,7 +1361,8 @@ class Doc:
                 src.append('#line %d "%s"' % (n, GEN))
                 src.append("using ::%s::%s;" % (d.get("ns", "UltraCanvas"), d["name"]))
         src.append("}")
-        errors = run_clang(self.args.clang, self.flags, self.pch, "\n".join(src) + "\n", self.work, self.tag + "_m")
+        errors = run_clang(self.args.clang, self.report_flags, self.pch, "\n".join(src) + "\n", self.work,
+                           self.tag + "_m")
         bad = {}
         for f, line, msg in errors:
             if f != GEN:
@@ -1432,7 +1463,8 @@ class Doc:
                     src.append("namespace %s { struct __dc_s%d { %s }; }" % (ns, n, body))
         if n == 0:
             return
-        errors = run_clang(self.args.clang, self.flags, self.pch, "\n".join(src) + "\n", self.work, self.tag + "_s")
+        errors = run_clang(self.args.clang, self.report_flags, self.pch, "\n".join(src) + "\n", self.work,
+                           self.tag + "_s")
         failed = {line for f, line, msg in errors if f == GEN}
         ok, tried = set(), {}
         for num, (k, q) in where.items():
@@ -1496,7 +1528,7 @@ BASELINE_HEADER = """\
 # Investigation in it): their code is of APIs not written yet, so it cannot
 # compile until it is. The entries are the record of what each proposal
 # still waits for. When an API is written, its entries stop being found and
-# the strict run says so; rewrite the file then, and the doc has caught up:
+# the strict run fails until the file is rewritten, in the same change:
 #     python3 scripts/check_doc_examples.py --all --update-baseline
 """
 
@@ -1573,7 +1605,7 @@ def main():
         print("check_doc_examples: wrote %d entries to %s" % (len(keys), args.baseline.relative_to(ROOT)))
         return 0
     if args.strict:
-        return report_against_baseline(results, load_baseline(args.baseline))
+        return report_against_baseline(results, load_baseline(args.baseline), bool(args.all))
 
     total = 0
     for r in results:
@@ -1591,9 +1623,12 @@ def main():
     return 1 if total else 0
 
 
-def report_against_baseline(results, baseline):
-    """CI: print and fail on the findings beyond the baseline; name the
-    baseline entries no longer found, so the file can shrink."""
+def report_against_baseline(results, baseline, whole_tree):
+    """CI: print and fail on the findings beyond the baseline, and on the
+    baseline entries no longer found, so the file shrinks the moment a
+    proposal's API is written. A partial run cannot tell "fixed" from "not
+    looked at", so an entry of a doc not checked (or no longer there) is
+    reported only when the whole tree was (--all)."""
     left = collections.Counter(baseline)
     fresh = []
     known = 0
@@ -1606,19 +1641,21 @@ def report_against_baseline(results, baseline):
             else:
                 fresh.append((r["doc"], line, msg))
     checked = {finding_key(r["doc"], "") for r in results}
-    gone = sorted(k for k, n in left.items() if n > 0 and k.split("::", 1)[0] + "::" in checked)
+    gone = sorted(k for k, n in left.items()
+                  if n > 0 and (whole_tree or k.split("::", 1)[0] + "::" in checked))
     for doc, line, msg in fresh:
         print("%s:%d: %s" % (doc, line, msg) if line else "%s: %s" % (doc, msg))
     if gone:
-        print("\n%d baseline entr%s no longer found - fixed, so remove %s "
-              "(--all --update-baseline):" % (len(gone), "y is" if len(gone) == 1 else "ies are",
-                                                "it" if len(gone) == 1 else "them"))
+        print("\n%d baseline entr%s no longer found - the doc has caught up, so remove %s "
+              "in this change (python3 scripts/check_doc_examples.py --all --update-baseline):"
+              % (len(gone), "y is" if len(gone) == 1 else "ies are", "it" if len(gone) == 1 else "them"))
         for key in gone:
             print("  " + key)
     if fresh:
         print("\n%d new finding(s) in %d doc(s). Fix the snippet, or declare what it assumes in a "
               "<!-- doc-check: ... --> comment (see the top of scripts/check_doc_examples.py)."
               % (len(fresh), len(results)))
+    if fresh or gone:
         return 1
     print("check_doc_examples: no new findings (%d doc(s); %d baselined finding(s) still to fix - "
           "see %s)." % (len(results), known, BASELINE.name))

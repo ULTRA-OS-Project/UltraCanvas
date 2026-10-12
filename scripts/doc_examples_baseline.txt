@@ -12,7 +12,7 @@
 # Investigation in it): their code is of APIs not written yet, so it cannot
 # compile until it is. The entries are the record of what each proposal
 # still waits for. When an API is written, its entries stop being found and
-# the strict run says so; rewrite the file then, and the doc has caught up:
+# the strict run fails until the file is rewritten, in the same change:
 #     python3 scripts/check_doc_examples.py --all --update-baseline
 Docs/UltraCanvas/AndroidPortInvestigation.md::prose names `ALooper_pollOnce(`, which no header declares
 Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md::prose names `ConvertFile(`, which no header declares
@@ -79,8 +79,6 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::expected unqualified-id
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::member reference base type 'int' is not a structure or union
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::member reference base type 'long (long) noexcept(true)' is not a structure or union
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::prose names `AvailableChartTypes(`, which no header declares
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::prose names `CreateChart(`, which no header declares
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::prose names `CreateChart(`, which no header declares
@@ -101,8 +99,7 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::signature differs: `void Add
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'Size2Di': expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'UCPixmap': expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'ValueFormatter': expected expression
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartAxisSpec'; did you mean 'ChartAxisSet'?
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Both'; did you mean 'cosh'?
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Both'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Bottom'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'ChartBackgroundScope'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'ChartEasing'
@@ -113,12 +110,12 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Custom'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Discrete'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'DrawEmptyState'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'EnsureLabelPlan'; did you mean 'ChartLabelPlan'?
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'EnsureLabelPlan'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'EnsureLayout'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Inside'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'InvalidateLabels'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'LabelPriorityRule'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Minor'; did you mean 'Minus'?
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Minor'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'PinnedItems'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'SelectionMode'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'SizeLegend'
@@ -144,7 +141,7 @@ Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ImportMermaid
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ImportSql' in 'UltraCanvas::UltraCanvasERDiagram'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'Many' in 'UltraCanvas::ERCardinality'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'One' in 'UltraCanvas::ERCardinality'
-Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::use of undeclared identifier 'LoadTextFile'; did you mean 'LoadFile'?
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::use of undeclared identifier 'LoadTextFile'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::use of undeclared identifier 'SqlDialect'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::use of undeclared identifier 'SqlDialect'
 Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::expected unqualified-id
@@ -167,7 +164,7 @@ Docs/UltraCanvas/UltraCanvasFileAssociationsProposal.md::prose names `ShellExecu
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GetRowHeight' is not a member of UltraCanvasGitGraph
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GetRowTop' is not a member of UltraCanvasGitGraph
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GitGraphLayoutMode::TimeProportional' does not exist (no member named 'TimeProportional' in 'UltraCanvas::GitGraphLayoutMode')
-Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GitGraphLayoutResult::laneCount' does not exist (no member named 'laneCount' in 'UltraCanvas::GitGraphLayoutResult'; did you mean 'UltraCanvas::GitGraphLayoutResult::LaneCount'?)
+Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GitGraphLayoutResult::laneCount' does not exist (no member named 'laneCount' in 'UltraCanvas::GitGraphLayoutResult')
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GitGraphLayoutResult::passThroughLanes' does not exist (no member named 'passThroughLanes' in 'UltraCanvas::GitGraphLayoutResult')
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::prose names `CreateGitGraphExamples(`, which no header declares
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::prose names `PrependCommits(`, which no header declares
@@ -193,7 +190,7 @@ Docs/UltraCanvas/UltraCanvasMindMapProposal.md::prose names `MindMapIconPath(`, 
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::'BuildLinkPath' is not a member of UltraCanvasNodeDiagram, UltraCanvasPacketDiagram, UltraCanvasSequenceDiagram, UltraCanvasFlowChart, nor a free function
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::'GetLinkPointAt' is not a member of UltraCanvasNodeDiagram, UltraCanvasPacketDiagram, UltraCanvasSequenceDiagram, UltraCanvasFlowChart, nor a free function
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::'GetLinkTangentAt' is not a member of UltraCanvasNodeDiagram, UltraCanvasPacketDiagram, UltraCanvasSequenceDiagram, UltraCanvasFlowChart, nor a free function
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::constructor for '__dc_b3::UltraCanvasPacketSwitchingDiagram' must explicitly initialize the base class 'UltraCanvasNodeDiagram' which does not have a default constructor
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::constructor for 'UltraCanvasPacketSwitchingDiagram' must explicitly initialize the base class 'UltraCanvasNodeDiagram' which does not have a default constructor
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::expected ')'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::header "Plugins/Diagrams/UltraCanvasPacketSwitchingDiagram.h" does not exist
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'Alt' in 'UltraCanvas::SequenceFragment'
@@ -202,19 +199,14 @@ Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'CreatePac
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'CreateSequenceDiagram' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'CreateSequenceDiagram' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'CreateSequenceDiagram' in namespace 'UltraCanvas'
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'Host' in 'UltraCanvas::PacketModel'
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'Host' in 'UltraCanvas::PacketModel'
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'Host' in 'UltraCanvas::PacketModel'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketBitLaneMapping' in namespace 'UltraCanvas'
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketNodeRole' in namespace 'UltraCanvas'; did you mean 'PacketModel'?
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketNodeRole' in namespace 'UltraCanvas'; did you mean 'PacketModel'?
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketNodeRole' in namespace 'UltraCanvas'; did you mean 'PacketModel'?
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketNodeRole' in namespace 'UltraCanvas'; did you mean 'PacketModel'?
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketNodeRole' in namespace 'UltraCanvas'; did you mean 'PacketModel'?
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketNodeRole' in namespace 'UltraCanvas'
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketNodeRole' in namespace 'UltraCanvas'
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketNodeRole' in namespace 'UltraCanvas'
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketNodeRole' in namespace 'UltraCanvas'
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketNodeRole' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketPanelLayout' in namespace 'UltraCanvas'
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketRowIndex' in namespace 'UltraCanvas'; did you mean 'PacketRowIndexMode'?
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'Router' in 'UltraCanvas::PacketModel'
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'Router' in 'UltraCanvas::PacketModel'
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'PacketRowIndex' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'SequenceArrow' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'SequenceArrow' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'SequenceColorMode' in namespace 'UltraCanvas'
@@ -249,25 +241,20 @@ Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::too many arguments to func
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::too many arguments to function call, expected 5, have 6
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::too many arguments to function call, expected 5, have 6
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::too many arguments to function call, expected 5, have 6
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::unknown type name 'PacketNodeRole'; did you mean 'PacketModel'?
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::unknown type name 'PacketNodeRole'; did you mean 'PacketModel'?
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::use of undeclared identifier 'SetInteractionLocked'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::use of undeclared identifier 'SetShowControls'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPBrush::dimensionIndex' does not exist (no member named 'dimensionIndex' in 'UltraCanvas::PCPBrush')
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPBrush::inverted' does not exist (no member named 'inverted' in 'UltraCanvas::PCPBrush')
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'ColorBar' in 'UltraCanvas::PCPLineMode'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'DiscreteGroups' in 'UltraCanvas::PCPLineMode'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPScale' is not a class, namespace, or enumeration
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'FormatNumber' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPAxisTitlePosition' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPCurveType' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPHistogramSide' in namespace 'UltraCanvas'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendMode' in namespace 'UltraCanvas'; did you mean 'PCPLineMode'?
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendMode' in namespace 'UltraCanvas'; did you mean 'PCPLineMode'?
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendMode' in namespace 'UltraCanvas'; did you mean 'PCPLineMode'?
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendPosition' in namespace 'UltraCanvas'; did you mean 'CFDLegendPosition'?
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPScale' in namespace 'UltraCanvas'; did you mean simply 'PCPScale'?
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendMode' in namespace 'UltraCanvas'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendMode' in namespace 'UltraCanvas'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendMode' in namespace 'UltraCanvas'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendPosition' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PinRecords' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PinnedRecords' in 'UltraCanvas::PCPLineMode'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisFormatter' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisGapBands' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisGroupTitles' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
@@ -288,15 +275,13 @@ Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowAxisHistograms' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowAxisTicks' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowSharedValueAxis' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'TopLeft' in 'UltraCanvas::CFDLegendPosition'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AddComputedDimension(`, which no header declares
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AutoOrderAxes(`, which no header declares
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::use of undeclared identifier 'UpdateStatusBar'; did you mean 'UltraCanvas::ToolbarPresets::CreateStatusBar'?
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::use of undeclared identifier 'UpdateStatusBar'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::cannot initialize a parameter of type 'RequirementTraceDirection' with an rvalue of type 'int'
-Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'ContainmentTree' in 'UltraCanvas::RequirementCallout'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetLayout' in 'UltraCanvas::UltraCanvasRequirementDiagram'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::prose names `SetStrictSemantics(`, which no header declares
-Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::use of undeclared identifier 'RequirementLayout'; did you mean 'RequirementCallout'?
+Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::use of undeclared identifier 'RequirementLayout'
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineEntryKind::Marker' does not exist (no member named 'Marker' in 'UltraCanvas::TimelineEntryKind')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::date' does not exist (no member named 'date' in 'UltraCanvas::TimelineItem')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::iconImage' does not exist (no member named 'iconImage' in 'UltraCanvas::TimelineItem')
@@ -309,7 +294,7 @@ Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::signature differs: `int 
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'GetClipboardData' is not a member of UCRichDocument, UltraCanvasTextArea, UltraCanvasRichTextEdit, ITextLayout, nor a free function
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'RichDocPosition::cellIndex' does not exist (no member named 'cellIndex' in 'UltraCanvas::RichDocPosition')
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'SetClipboardData' is not a member of UCRichDocument, UltraCanvasTextArea, UltraCanvasRichTextEdit, ITextLayout, nor a free function
-Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'UltraCanvasRichTextEdit::BlockLayout::inlineMath' does not exist (no member named 'inlineMath' in 'UltraCanvas::UltraCanvasRichTextEdit::BlockLayout'; did you mean 'UltraCanvas::LineLayoutBase::inlineMath'?)
+Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'UltraCanvasRichTextEdit::BlockLayout::inlineMath' does not exist (no member named 'inlineMath' in 'UltraCanvas::UltraCanvasRichTextEdit::BlockLayout')
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'UltraCanvasRichTextEdit::BlockLayout::runByteRanges' does not exist (no member named 'runByteRanges' in 'UltraCanvas::UltraCanvasRichTextEdit::BlockLayout')
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::prose names `GetFormatAtSelection(`, which no header declares
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::prose names `Revert(`, which no header declares
