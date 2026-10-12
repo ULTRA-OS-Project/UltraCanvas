@@ -1063,8 +1063,9 @@ that writing it showed:
   toolbars, dropdowns, context menu, sliders and switches follow it (the
   ink handle and on-accent thumb as the `slider.handle` and `switch.thumb`
   element roles), as do the buttons by their variant (`ButtonVariant`:
-  ghost icons, standard and primary text buttons, the selected tool), and
-  `ApplyPalette` keeps only the timeline's token sizes and the labels.
+  ghost icons, standard and primary text buttons, the selected tool) and
+  the labels (`LabelVariant`: body, muted, faint, heading), and
+  `ApplyPalette` keeps only the timeline's token sizes.
 - **Effect presets** (§6.2, §6.4; app 0.2.0): `UltraVideoPresets` holds
   ten presets as lists of engine effects - *Warm film* is the table's
   temperature, saturation and vignette - and `ApplyEffectPreset` puts one

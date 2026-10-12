@@ -47,5 +47,10 @@
   `SetThemeVariant`, which re-styles a following button at once; the
   variants' colours are element roles (`button.primary`,
   `button.ghost-hover`, `button.selected` ...) over the shared ones. Every
-  UltraVideo button follows the theme by its variant; `ApplyPalette`
-  keeps the timeline alone. `Tests/UltraCanvasThemeTest.cpp`: 51 checks.
+  UltraVideo button follows the theme by its variant. `LabelStyle::FromTheme`
+  likewise takes the label's variant (`LabelVariant`: `Body` and `Heading`
+  - ink; `Muted` - muted ink; `Faint` - faint ink; the element roles
+  `label.muted`, `label.faint`, `label.heading`), set with
+  `SetThemeVariant`; every UltraVideo label follows the theme by its
+  variant and `ApplyPalette` keeps the timeline alone.
+  `Tests/UltraCanvasThemeTest.cpp`: 54 checks.

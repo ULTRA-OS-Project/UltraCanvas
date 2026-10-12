@@ -62,7 +62,6 @@ private:
 
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs;
     std::shared_ptr<Container> clipPage, audioPage, projectPage;
-    std::vector<std::shared_ptr<Label>> captions, headings;
     std::vector<std::shared_ptr<Dropdown>> dropdowns;
     std::vector<std::shared_ptr<Slider>> sliders;
     std::vector<std::shared_ptr<Switch>> switches;
@@ -82,7 +81,6 @@ private:
     std::shared_ptr<Container> effectRows, effectList;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> clearEffects;
     std::shared_ptr<Label> effectsEmpty;
-    std::vector<std::shared_ptr<Label>> effectLabels;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasButton>> effectButtons;
     const Palette* palette = nullptr;
     // a title span

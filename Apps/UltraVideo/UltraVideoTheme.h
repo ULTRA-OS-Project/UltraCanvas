@@ -7,6 +7,7 @@
 // playhead tokens - which the timeline and the timecode field read through
 // their FromTheme. Everything the window colours goes through here, so
 // switching the palette is one call per panel.
+// Version: 0.3.1 - FollowTheme for a label by its variant
 // Version: 0.3.0 - the buttons by ButtonVariant, following the theme; no palette in the factories
 // Version: 0.2.0
 // Last Modified: 2026-10-12
@@ -16,6 +17,7 @@
 #include "UltraVideoTokens.h"
 
 #include "UltraCanvasButton.h"
+#include "UltraCanvasLabel.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasTheme.h"
@@ -79,6 +81,13 @@ inline std::shared_ptr<UltraCanvas::UltraCanvasButton> MakeTextButton(const std:
     button->SetFollowTheme(true);
     button->layoutItem.SetFlexShrink(0);
     return button;
+}
+
+// A label coloured by the theme for its part - ink, muted, faint, a
+// heading - now and on every change
+inline void FollowTheme(const std::shared_ptr<UltraCanvas::UltraCanvasLabel>& label, UltraCanvas::LabelVariant variant) {
+    label->SetThemeVariant(variant);
+    label->SetFollowTheme(true);
 }
 
 // An active tool or toggle: the Selected variant, a ghost button otherwise

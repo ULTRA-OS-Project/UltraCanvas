@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoViewer.cpp
 // The viewer (UltraVideoViewer.h).
+// Version: 0.2.5 - the length label follows the theme
 // Version: 0.2.4 - the transport buttons follow the theme
 // Version: 0.2.3 - a percent zoom is of the project's pixels on the surface and in the player alike; the sliders follow the theme
 // Version: 0.2.2 - the player draws the title-safe guide too
@@ -195,6 +196,7 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
     transport->AddChild(readout);
     total = CreateLabel("uv.tr.total", 0, 0, 110, static_cast<int>(Tokens::ControlH), "/ 00:00:00:00");
     total->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
+    FollowTheme(total, LabelVariant::Muted);
     total->layoutItem.SetFlexShrink(0);
     transport->AddChild(total);
     transport->AddStretch();
@@ -237,7 +239,6 @@ void Viewer::ApplyPalette(const Palette& p) {
     }
     // the transport bar, its buttons and the fit dropdown follow the theme (Build)
     readout->SetStyle(TimecodeStyleFor(p));
-    total->SetTextColor(ToColor(p.InkMuted));
 }
 
 void Viewer::SetFit(int index) {

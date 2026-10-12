@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
+// Version: 0.2.3 - the labels follow the theme by variant
 // Version: 0.2.2 - the buttons follow the theme by variant
 // Version: 0.2.1 - the sliders and switches follow the theme too
 // Version: 0.2.0 - the tabs, dropdowns and fields follow the theme
@@ -97,7 +98,7 @@ std::shared_ptr<UltraCanvasLabel> Inspector::Heading(const std::shared_ptr<Conta
     label->SetFont(Tokens::Title.family, Tokens::Title.size * 0.75f, FontWeight::Bold);
     label->layoutItem.SetFlexShrink(0);
     page->AddChild(label);
-    headings.push_back(label);
+    FollowTheme(label, LabelVariant::Heading);
     return label;
 }
 
@@ -110,7 +111,7 @@ std::shared_ptr<UltraCanvasContainer> Inspector::Row(const std::shared_ptr<Conta
     auto label = CreateLabel(id + ".caption", 0, 0, kCaptionWidth, static_cast<int>(Tokens::ControlH), caption);
     label->SetFont(Tokens::Label.family, Tokens::Label.size * 0.75f);
     label->layoutItem.SetFlexShrink(0);
-    captions.push_back(label);
+    FollowTheme(label, LabelVariant::Muted);
     row->AddChild(label);
     field->layoutItem.SetFlexShrink(0);
     row->AddChild(field);
@@ -139,7 +140,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     clipEmpty->layout.SetFlexColumn();
     auto emptyText = CreateLabel("uv.insp.clip.emptyText", 0, 0, kPageWidth, 40, "Select a clip on the timeline to edit it.");
     emptyText->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
-    captions.push_back(emptyText);
+    FollowTheme(emptyText, LabelVariant::Muted);
     clipEmpty->AddChild(emptyText);
     clipPage->AddChild(clipEmpty);
 
@@ -152,7 +153,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     clipName = Heading(clipFields, "uv.insp.clip.name", "");
     clipKind = CreateLabel("uv.insp.clip.kind", 0, 0, kPageWidth, 18, "");
     clipKind->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
-    captions.push_back(clipKind);
+    FollowTheme(clipKind, LabelVariant::Muted);
     clipFields->AddChild(clipKind);
 
     fileRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.file", 0, 0, kPageWidth, 140);
@@ -204,7 +205,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     auto speedRow = Row(fileRows, "uv.insp.row.speed", "Speed", speed);
     speedValue = CreateLabel("uv.insp.speedValue", 0, 0, 44, ctl, "1.00\xC3\x97");
     speedValue->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
-    captions.push_back(speedValue);
+    FollowTheme(speedValue, LabelVariant::Muted);
     speedRow->AddChild(speedValue);
     clipFields->AddChild(fileRows);
 
@@ -222,7 +223,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
 
     clipDuration = CreateLabel("uv.insp.clip.duration", 0, 0, kPageWidth, 18, "");
     clipDuration->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
-    captions.push_back(clipDuration);
+    FollowTheme(clipDuration, LabelVariant::Muted);
     clipFields->AddChild(clipDuration);
 
     mute = UltraCanvasSwitch::Create("uv.insp.mute", 0, 0, "Mute", false);
@@ -247,7 +248,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     effectsHead->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(26));
     auto effectsTitle = CreateLabel("uv.insp.effects.heading", 0, 0, 160, 22, "Effects");
     effectsTitle->SetFont(Tokens::Title.family, Tokens::Title.size * 0.75f, FontWeight::Bold);
-    headings.push_back(effectsTitle);
+    FollowTheme(effectsTitle, LabelVariant::Heading);
     effectsHead->AddChild(effectsTitle);
     clearEffects = MakeTextButton("uv.insp.effects.clear", "Clear", 64);
     clearEffects->SetOnClick([this]() {
@@ -261,7 +262,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     effectsEmpty = CreateLabel("uv.insp.effects.empty", 0, 0, kPageWidth, 18, "None: the bin's Effects tab has the presets.");
     effectsEmpty->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
     effectsEmpty->layoutItem.SetFlexShrink(0);
-    captions.push_back(effectsEmpty);
+    FollowTheme(effectsEmpty, LabelVariant::Muted);
     effectRows->AddChild(effectsEmpty);
     effectList = std::make_shared<UltraCanvasContainer>("uv.insp.effects.list", 0, 0, kPageWidth, 0);
     effectList->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -382,7 +383,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     auto sizeRow = Row(titleRows, "uv.insp.row.titleSize", "Size", titleSize);
     titleSizeValue = CreateLabel("uv.insp.titleSizeValue", 0, 0, 44, ctl, "");
     titleSizeValue->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
-    captions.push_back(titleSizeValue);
+    FollowTheme(titleSizeValue, LabelVariant::Muted);
     sizeRow->AddChild(titleSizeValue);
     titleColor = CreateDropdown("uv.insp.titleColor", 0, 0, kFieldWidth, ctl);
     for (const NamedColor& c : kColors) titleColor->AddItem(c.label);
@@ -432,7 +433,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
         auto row = Row(titleRows, id + ".row", caption, out);
         value = CreateLabel(id + ".value", 0, 0, 50, ctl, "");
         value->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
-        captions.push_back(value);
+        FollowTheme(value, LabelVariant::Muted);
         row->AddChild(value);
         sliders.push_back(out);
         Label* valuePtr = value.get();
@@ -486,7 +487,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
         auto row = Row(overlayRows, id + ".row", caption, out);
         value = CreateLabel(id + ".value", 0, 0, 50, ctl, "");
         value->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
-        captions.push_back(value);
+        FollowTheme(value, LabelVariant::Muted);
         row->AddChild(value);
         sliders.push_back(out);
         Label* valuePtr = value.get();
@@ -542,7 +543,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     auto lengthRow = Row(transitionRows, "uv.insp.row.transitionLength", "Length", transitionLength);
     transitionMax = CreateLabel("uv.insp.transitionMax", 0, 0, 60, ctl, "");
     transitionMax->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
-    captions.push_back(transitionMax);
+    FollowTheme(transitionMax, LabelVariant::Muted);
     lengthRow->AddChild(transitionMax);
     clipFields->AddChild(transitionRows);
     clipPage->AddChild(clipFields);
@@ -553,7 +554,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     Heading(audioPage, "uv.insp.audio.heading", "Music");
     songs = CreateLabel("uv.insp.songs", 0, 0, kPageWidth, 40, "No music. Add a song, or drop one on the bin.");
     songs->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
-    captions.push_back(songs);
+    FollowTheme(songs, LabelVariant::Muted);
     audioPage->AddChild(songs);
     auto songButtons = std::make_shared<UltraCanvasContainer>("uv.insp.songButtons", 0, 0, kPageWidth, ctl + 4);
     songButtons->layout.SetFlexRow().SetFlexGap(static_cast<int>(Tokens::Space2));
@@ -578,7 +579,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
         auto row = Row(audioPage, id + ".row", caption, out);
         value = CreateLabel(id + ".value", 0, 0, 50, ctl, "");
         value->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
-        captions.push_back(value);
+        FollowTheme(value, LabelVariant::Muted);
         row->AddChild(value);
         sliders.push_back(out);
         Label* valuePtr = value.get();
@@ -684,15 +685,11 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
 void Inspector::StyleControls(const Palette& p) {
     // the dropdowns, text fields, sliders, switches and tabs follow the theme (Build)
     for (auto& t : timecodes) t->SetStyle(TimecodeStyleFor(p));
-    for (auto& c : captions) c->SetTextColor(ToColor(p.InkMuted));
-    for (auto& h : headings) h->SetTextColor(ToColor(p.Ink));
-    if (clipName) clipName->SetTextColor(ToColor(p.Ink));
 }
 
 void Inspector::ApplyPalette(const Palette& p) {
     palette = &p;
     if (!tabs) return;
-    for (auto& l : effectLabels) l->SetTextColor(ToColor(p.Ink));
     tabs->SetBackgroundColor(ToColor(p.Bg100));
     tabs->SetInactiveTabBorderColor(ToColor(p.Line));   // the theme leaves these transparent
     tabs->SetHoveredTabBorderColor(ToColor(p.Line));
@@ -794,7 +791,6 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
         const VideoFXSegment& s = doc.project.segments[static_cast<size_t>(index)];
         // the effects, a row each
         effectList->ClearChildren();
-        effectLabels.clear();
         effectButtons.clear();
         const int rowH = static_cast<int>(Tokens::ControlH);
         const int gap = static_cast<int>(Tokens::Space1);
@@ -805,8 +801,7 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
             auto name = CreateLabel("uv.insp.effect.name" + std::to_string(k), 0, 0, kPageWidth - rowH - 24, rowH, EffectName(s.effects[k]));
             name->layoutItem.SetFlexShrink(0);
             name->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
-            if (palette) name->SetTextColor(ToColor(palette->Ink));
-            effectLabels.push_back(name);
+            FollowTheme(name, LabelVariant::Body);
             row->AddChild(name);
             auto remove = MakeIconButton("uv.insp.effect.remove" + std::to_string(k), "trash", "Take this effect off");
             const int at = static_cast<int>(k);

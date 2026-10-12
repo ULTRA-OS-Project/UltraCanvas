@@ -52,8 +52,10 @@
   transport, the timeline tools, the preset buttons, *Export* and the
   dialogs' buttons are the framework's `Ghost`, `Standard` and `Primary`
   variants (button 2.9.0), the active tool its `Selected` one: the theme
-  colours them and a switch of the look reaches them on its own.
-  `ApplyPalette` keeps the timeline's token sizes and the labels.
+  colours them and a switch of the look reaches them on its own. The
+  labels too, by their variant (label 2.11.0): the project's name and the
+  section titles are headings, notes and captions muted, the preset hints
+  faint. `ApplyPalette` keeps the timeline's token sizes alone.
 
 #### 2026-10-11 *0.1.0*
 - **The first release: the editor's skeleton.** `Apps/UltraVideo`, on

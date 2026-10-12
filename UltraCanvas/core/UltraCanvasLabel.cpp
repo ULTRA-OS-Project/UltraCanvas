@@ -14,6 +14,7 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.15.0 - FromTheme by LabelVariant
 // Version: 2.14.0 - LabelStyle::FromTheme
 // Version: 2.13.0 - selectable text: a drag, a double-click (word) and a
 //                  triple-click (all) select through UltraCanvasTextSelection,
@@ -990,10 +991,15 @@ namespace UltraCanvas {
     }
 
 
-    LabelStyle LabelStyle::FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base) {
+    LabelStyle LabelStyle::FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base, LabelVariant variant) {
         LabelStyle s = base;
         const ThemeRoles& r = theme.roles;
-        s.textColor = r.ink;
+        switch (variant) {
+            case LabelVariant::Muted: s.textColor = theme.Role("label.muted", r.inkMuted); break;
+            case LabelVariant::Faint: s.textColor = theme.Role("label.faint", r.inkFaint); break;
+            case LabelVariant::Heading: s.textColor = theme.Role("label.heading", r.ink); break;
+            default: s.textColor = r.ink; break;
+        }
         s.disabledTextColor = r.inkFaint;
         s.selectionColor = r.accent.WithAlpha(100);
         return s;

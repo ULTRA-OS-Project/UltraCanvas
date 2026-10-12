@@ -4,6 +4,8 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.11.0 - LabelVariant (Body, Muted, Faint, Heading): FromTheme maps the theme's
+//                  ink onto a label's part; SetThemeVariant on the element
 // Version: 2.10.0 - LabelStyle::FromTheme, ApplyTheme
 // Version: 2.9.0 - selectable text: SetSelectable / SetTextSelection, a drag
 //                 selects, a double-click a word, a triple-click all of it,
@@ -36,6 +38,12 @@ namespace UltraCanvas {
     class UltraCanvasTextSelection;
 
 // ===== LABEL STYLE CONFIGURATION =====
+    // A label's part in the window, which FromTheme maps the theme's ink
+    // onto: Body - primary text; Muted - secondary text (a note, a caption,
+    // a status line); Faint - a hint, a placeholder; Heading - a panel or
+    // section title (ink; a theme may name "label.heading" for its own)
+    enum class LabelVariant { Body, Muted, Faint, Heading };
+
     struct LabelStyle {
         // Text appearance
         FontStyle fontStyle;
@@ -65,9 +73,13 @@ namespace UltraCanvas {
         Color shadowColor = Color(0, 0, 0, 128);
         Point2Di shadowOffset = Point2Di(1, 1);
 
-        // The theme's roles: ink, faint ink when disabled, the accent behind a selection
-        // over a base's own shape (sizes, fonts, flags), or a default one
-        static LabelStyle FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base);
+        // The theme's roles by the label's variant: ink (Body, Heading),
+        // muted ink (Muted) or faint ink (Faint) - "label.muted",
+        // "label.faint" and "label.heading" where a theme names them -
+        // faint ink when disabled, the accent behind a selection, over a
+        // base's own shape (font, alignment, wrap), or a default one
+        static LabelStyle FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base,
+                                    LabelVariant variant = LabelVariant::Body);
         static LabelStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, LabelStyle()); }
         static LabelStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
@@ -156,6 +168,7 @@ namespace UltraCanvas {
         // ===== LABEL PROPERTIES =====
         std::string text;
         LabelStyle style;
+        LabelVariant themeVariant = LabelVariant::Body;
         std::vector<LabelTextLink> textLinks;
         int hoveredLink = -1;
         bool showLinkTooltips = false;
@@ -317,7 +330,14 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
-        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(LabelStyle::FromTheme(theme, GetStyle())); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(LabelStyle::FromTheme(theme, GetStyle(), themeVariant)); }
+        // The label's part in the window for the theme (Body unless set); a
+        // following label re-styles at once
+        void SetThemeVariant(LabelVariant variant) {
+            themeVariant = variant;
+            if (GetFollowTheme()) ApplyTheme(UltraCanvasTheme::Current());
+        }
+        LabelVariant GetThemeVariant() const { return themeVariant; }
 
         // A selectable label takes the keyboard focus when it is pressed - the
         // one its selection last pressed, so a page of them is a single stop

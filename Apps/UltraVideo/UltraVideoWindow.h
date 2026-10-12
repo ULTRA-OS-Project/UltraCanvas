@@ -160,7 +160,6 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasAlbum> binAlbum_, musicAlbum_;
     std::shared_ptr<Label> binEmpty_, titlesNote_, effectsNote_, transitionsHeading_, transitionsNote_;
     std::vector<std::shared_ptr<Button>> titleButtons_, effectButtons_, transitionButtons_;
-    std::vector<std::shared_ptr<Label>> titleHints_, effectHints_;
     std::vector<size_t> binRows_;      // album row -> media index
     std::vector<size_t> musicRows_;
     Viewer viewer_;

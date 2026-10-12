@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.2.5 - the labels follow the theme by variant
 // Version: 0.2.4 - the buttons follow the theme by variant; ApplyPalette keeps the timeline
 // Version: 0.2.1 - the draft is rendered at the project's shape
 // Version: 0.2.0 - the panels follow the theme; a player that cannot start falls back
@@ -208,10 +209,12 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildAppBar() {
 
     title_ = CreateLabel("uv.title", 0, 0, 200, 28, "Untitled");
     title_->SetFont(Tokens::Title.family, Tokens::Title.size * 0.75f, FontWeight::Bold);
+    FollowTheme(title_, LabelVariant::Heading);
     title_->layoutItem.SetFlexShrink(0);
     appBar_->AddChild(title_);
     status_ = CreateLabel("uv.status", 0, 0, 400, 28, "");
     status_->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
+    FollowTheme(status_, LabelVariant::Muted);
     status_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     appBar_->AddChild(status_);
 
@@ -345,6 +348,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
                             "Drop clips here to start\n\nVideos, photos and songs. Or import them with the button above, "
                             "or make a story from photos with the picture button.");
     binEmpty_->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
+    FollowTheme(binEmpty_, LabelVariant::Muted);
     binEmpty_->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
     binEmpty_->layoutItem.SetFlexShrink(0);
     binEmpty_->SetPadding(static_cast<float>(Tokens::Space4));
@@ -365,6 +369,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     titlesNote_ = CreateLabel("uv.bin.titles", 0, 0, 240, 40,
                               "A title goes on the title lane at the playhead; drag it, trim it, and set its text in the inspector.");
     titlesNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    FollowTheme(titlesNote_, LabelVariant::Muted);
     titlesNote_->layoutItem.SetFlexShrink(0);
     titlesPage->AddChild(titlesNote_);
     for (const TitleStyle& st : TitleStyles()) {
@@ -380,7 +385,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
         auto hint = CreateLabel(std::string("uv.bin.titleHint.") + st.key, 0, 0, 240, 18, st.hint);
         hint->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
         hint->layoutItem.SetFlexShrink(0);
-        titleHints_.push_back(hint);
+        FollowTheme(hint, LabelVariant::Faint);
         titlesPage->AddChild(hint);
     }
     binTabs_->AddTab("Titles", titlesPage);
@@ -396,6 +401,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 40,
                                "Select a clip, then click a preset.");
     effectsNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    FollowTheme(effectsNote_, LabelVariant::Muted);
     effectsNote_->layoutItem.SetFlexShrink(0);
     effectsPage->AddChild(effectsNote_);
     for (const EffectPreset& preset : EffectPresets()) {
@@ -411,16 +417,18 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
         auto hint = CreateLabel(std::string("uv.bin.effectHint.") + preset.key, 0, 0, 240, 18, preset.hint);
         hint->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
         hint->layoutItem.SetFlexShrink(0);
-        effectHints_.push_back(hint);
+        FollowTheme(hint, LabelVariant::Faint);
         effectsPage->AddChild(hint);
     }
     transitionsHeading_ = CreateLabel("uv.bin.transitions", 0, 0, 240, 22, "Transitions");
     transitionsHeading_->SetFont(Tokens::Title.family, Tokens::Title.size * 0.75f, FontWeight::Bold);
+    FollowTheme(transitionsHeading_, LabelVariant::Heading);
     transitionsHeading_->layoutItem.SetFlexShrink(0);
     effectsPage->AddChild(transitionsHeading_);
     transitionsNote_ = CreateLabel("uv.bin.transitionsNote", 0, 0, 240, 36,
                                    "Into the selected clip, a second long; the inspector or the badge changes the length.");
     transitionsNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    FollowTheme(transitionsNote_, LabelVariant::Muted);
     transitionsNote_->layoutItem.SetFlexShrink(0);
     effectsPage->AddChild(transitionsNote_);
     for (const TransitionChoice& choice : TransitionChoices()) {
@@ -503,6 +511,7 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
     timelineBar_->AddChild(playheadField_);
     lengthLabel_ = CreateLabel("uv.length", 0, 0, 100, static_cast<int>(Tokens::ControlH), "/ 00:00:00:00");
     lengthLabel_->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
+    FollowTheme(lengthLabel_, LabelVariant::Muted);
     lengthLabel_->layoutItem.SetFlexShrink(0);
     timelineBar_->AddChild(lengthLabel_);
     timelineBar_->AddStretch();
@@ -663,8 +672,6 @@ void UltraVideoWindow::ApplyPalette() {
     window_->SetBackgroundColor(ToColor(p.Bg000));
     appBar_->SetBackgroundColor(ToColor(p.Bg100));
     appBar_->SetBorderBottom(1, ToColor(p.Line));
-    title_->SetTextColor(ToColor(p.Ink));
-    status_->SetTextColor(ToColor(p.InkMuted));
     theme_->SetIcon(IconPath(dark_ ? "eye" : "eyeOff"));
 
     binPanel_->SetBackgroundColor(ToColor(p.Bg100));
@@ -673,20 +680,12 @@ void UltraVideoWindow::ApplyPalette() {
     binTabs_->SetBackgroundColor(ToColor(p.Bg100));
     binTabs_->SetInactiveTabBorderColor(ToColor(p.Line));   // the theme leaves these transparent
     binTabs_->SetHoveredTabBorderColor(ToColor(p.Line));
-    binEmpty_->SetTextColor(ToColor(p.InkMuted));
     binEmpty_->SetBorders(1, ToColor(p.LineStrong), Tokens::RadiusLg, UCDashPattern({6.0, 4.0}));
-    titlesNote_->SetTextColor(ToColor(p.InkMuted));
-    for (auto& h : titleHints_) h->SetTextColor(ToColor(p.InkFaint));
-    effectsNote_->SetTextColor(ToColor(p.InkMuted));
-    for (auto& h : effectHints_) h->SetTextColor(ToColor(p.InkFaint));
-    transitionsHeading_->SetTextColor(ToColor(p.Ink));
-    transitionsNote_->SetTextColor(ToColor(p.InkMuted));
     viewer_.ApplyPalette(p);
     inspector_.ApplyPalette(p);
 
     dock_->SetBackgroundColor(ToColor(p.Bg100));
     playheadField_->SetStyle(TimecodeStyleFor(p));
-    lengthLabel_->SetTextColor(ToColor(p.InkMuted));
     timeline_->SetStyle(TimelineStyleFor(p));
     RefreshToolbarLooks();
     window_->RequestRedraw();

@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.4.0 - the label variants
 // Version: 1.3.0 - the button variants
 // Version: 1.2.0 - the slider's and the switch's element roles
 // Version: 1.1.0 - every FromTheme, the change handlers, elements that
@@ -89,6 +90,19 @@ int main() {
     const LabelStyle label = LabelStyle::FromTheme(own);
     CHECK(Same(label.textColor, r.ink) && Same(label.disabledTextColor, r.inkFaint) && label.selectionColor.r == r.accent.r && label.selectionColor.a == 100,
           "label: ink, faint ink, the accent behind a selection");
+    LabelStyle labelBase;
+    labelBase.lineHeightPx = 17.f;
+    CHECK(Same(LabelStyle::FromTheme(own, labelBase, LabelVariant::Muted).textColor, r.inkMuted) &&
+          Same(LabelStyle::FromTheme(own, labelBase, LabelVariant::Faint).textColor, r.inkFaint) &&
+          Same(LabelStyle::FromTheme(own, labelBase, LabelVariant::Heading).textColor, r.ink) &&
+          LabelStyle::FromTheme(own, labelBase, LabelVariant::Muted).lineHeightPx == 17.f,
+          "label: Muted and Faint take the muted and faint ink, Heading ink; the base's shape stays");
+    UltraCanvasTheme namedLabels = own;
+    namedLabels.SetRole("label.heading", Color(14, 14, 14));
+    namedLabels.SetRole("label.muted", Color(15, 15, 15));
+    CHECK(Same(LabelStyle::FromTheme(namedLabels, labelBase, LabelVariant::Heading).textColor, Color(14, 14, 14)) &&
+          Same(LabelStyle::FromTheme(namedLabels, labelBase, LabelVariant::Muted).textColor, Color(15, 15, 15)),
+          "label: the variants' element roles where a theme names them");
     const DropdownStyle dropdown = DropdownStyle::FromTheme(own);
     CHECK(Same(dropdown.normalColor, r.raised) && Same(dropdown.listBackgroundColor, r.raised) && Same(dropdown.itemSelectedColor, r.accentSoft) &&
           Same(dropdown.checkboxCheckedColor, r.accent) && Same(dropdown.checkmarkColor, r.onAccent) && Same(dropdown.focusBorderColor, r.focus),
@@ -215,6 +229,11 @@ int main() {
           "SetThemeVariant re-styles a following button at once");
     tool->SetThemeVariant(ButtonVariant::Ghost);
     CHECK(tool->GetStyle().normalColor.a == 0 && Same(tool->GetStyle().hoverColor, dark.roles.hover), "and back to a ghost");
+    auto note = std::make_shared<UltraCanvasLabel>("note", 0, 0, 80, 24, "Note");
+    note->SetFollowTheme(true);
+    note->SetThemeVariant(LabelVariant::Muted);
+    CHECK(note->GetThemeVariant() == LabelVariant::Muted && Same(note->GetStyle().textColor, dark.roles.inkMuted),
+          "SetThemeVariant re-styles a following label at once");
     UltraCanvasTheme::SetCurrent(light);
     follower->SetFollowTheme(false);
     panel->OnThemeChanged(light);

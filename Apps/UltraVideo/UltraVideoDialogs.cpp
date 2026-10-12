@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoDialogs.cpp
 // The export dialog and the unsaved-changes question (UltraVideoDialogs.h).
+// Version: 0.1.1 - the note follows the theme
 // Version: 0.1.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
@@ -135,7 +136,7 @@ void ShowExportDialog(UltraCanvasWindow* parent, const Document& doc, const Pale
 
     auto note = CreateLabel("uv.export.note", 0, 0, kContentWidth, 40,
                             "Music is mixed in under the clips' own sound. A cancelled or failed export leaves no file.");
-    note->SetTextColor(ToColor(p.InkMuted));
+    FollowTheme(note, LabelVariant::Muted);
 
     dialog->AddDialogElement(presetRow);
     dialog->AddDialogElement(pathRow);
