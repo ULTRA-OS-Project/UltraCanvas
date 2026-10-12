@@ -29,7 +29,7 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 | Tool | Key | Notes |
 |---|---|---|
 | Move | M | Drags the selected pixels (or the whole layer) |
-| Rectangle / Ellipse Select | R / E | Shift adds, Alt subtracts, Shift+Alt intersects, Ctrl constrains; feather in the options |
+| Rectangle / Ellipse Select | R / E | Shift adds, Alt subtracts, Shift+Alt intersects, Ctrl constrains; feather in the options. The rectangle shows the mouse pointer magnification glass (below) |
 | Lasso | L | Free-hand outline |
 | Magic Wand | W | Tolerance, contiguous / global, sample merged |
 | Crop | C | Drag, then Enter, double-click or *Image > Crop to Selection* (Escape cancels) |
@@ -83,10 +83,14 @@ transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
   Options (the framework's format dialog), Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
   as New Image, Paste Last Copied Image (Ctrl+Alt+V), Delete, Fill with
-  Foreground / Background. When Paste finds no picture on the clipboard -
-  text was copied after it - it offers the newest image of the clipboard
-  history UltraDesktop keeps, saying when it was copied; Paste Last Copied
-  Image takes it without asking.
+  Foreground / Background, Settings. When Paste finds no picture on the
+  clipboard - text was copied after it - it offers the newest image of the
+  clipboard history UltraDesktop keeps, saying when it was copied; Paste
+  Last Copied Image takes it without asking. Settings opens the settings
+  window: *Display > Mouse pointer magnification glass* - on or off, 2x /
+  3x / 4x, and the size of the glass (100-400 px); a change applies at once
+  and is saved to `~/.config/UltraCanvas/UltraPaint/config.ini` (the
+  platform's settings folder elsewhere).
 - **Image:** Scale Image, Canvas Size (with anchor), Crop to Selection
   (applies the Crop tool's rectangle when that tool is holding one,
   otherwise crops to the selection),
@@ -104,6 +108,16 @@ transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
   Sobel, Laplacian, Canny, Emboss, Find Edges; Add Noise, Despeckle;
   Pixelate, Oil Paint; Erode, Dilate.
 - **View:** zoom commands, pixel grid, selection outline.
+
+**The mouse pointer magnification glass.** While the Rectangle Select tool
+is active, a small square view sits in a corner of the canvas and shows the
+pixels around the pointer at two, three or four times the view's own zoom,
+with a translucent diagonal crosshair whose centre - the pixel under the
+pointer - is left clear, so a selection starts and ends on the exact pixel.
+The rubber band, the selection outline and the pixel grid show in it too.
+It keeps out of the way: when the pointer comes within 48 px of it, it moves
+to the corner farthest from the pointer, and it takes no clicks, so a drag
+can pass under it.
 
 Every adjustment and filter with parameters opens a dialog with sliders, a
 Preview toggle and OK / Cancel; the preview runs on the canvas itself and is

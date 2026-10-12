@@ -7,8 +7,8 @@
 // Tools are stateless between activations except for what their options
 // hold; PaintToolOptions is the shared, user-editable state (brush sizes,
 // tolerances, shape style, …) that survives tool switches.
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.1.0 - WantsMagnifier: a tool that places things to the pixel asks for the magnifying glass
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -122,6 +122,10 @@ public:
     // Radius of the brush outline to draw at the pointer (image pixels), 0 = none.
     virtual double CursorRadius(PaintToolContext&) const { return 0.0; }
     virtual bool CursorSquare(PaintToolContext&) const { return false; }
+    // True for a tool that places things to the pixel: while it is active
+    // the window shows the mouse pointer magnification glass (Settings >
+    // Display), a magnified view of the pixels around the pointer.
+    virtual bool WantsMagnifier() const { return false; }
 
     const PaintToolId id;
     const std::string name;

@@ -8,11 +8,13 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.2.0 - the mouse pointer magnification glass (a loupe over the canvas while the
+//                  rectangle selection is active) and Edit > Settings... with its page
 // Version: 1.1.3 - StartLayerRename / FinishLayerRename: a layer is renamed in the list
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -32,6 +34,8 @@
 #include "UltraPaintTools.h"
 #include "UltraPaintFilters.h"
 #include "UltraPaintDialogs.h"
+#include "UltraPaintSettings.h"
+#include "UltraPaintSettingsDialog.h"
 
 #include <memory>
 #include <string>
@@ -166,6 +170,7 @@ private:
     void CmdCurves();
     void CmdColourToAlpha();
     void CmdFilter(const PaintFilter& filter);
+    void CmdSettings();
     void CmdAbout();
     void CmdQuit();
 
@@ -184,6 +189,25 @@ private:
     void FinishLayerRename(bool keep, const std::string& name);
     PaintTool* ActiveTool() const;
     void PlaceText(double x, double y, const UltraPaintTextResult& r);
+
+    // ----- the mouse pointer magnification glass -----
+    // A loupe over a corner of the canvas (a UltraCanvasPaintSurface in loupe
+    // mode inside a framed container) that shows the pixels around the
+    // pointer at the view's zoom times the configured factor, with a
+    // crosshair on the pointer's pixel. Shown while the active tool asks for
+    // it (PaintTool::WantsMagnifier) and Settings > Display has it on.
+    void BuildMagnifier();
+    // Applies settings.magnifier*: size, zoom, and whether it shows at all.
+    void ApplySettings();
+    // Shows or hides it for the active tool and the settings.
+    void UpdateMagnifierVisibility();
+    // Follows the pointer: the view, and the corner when the pointer comes
+    // near. `view` is the pointer in the surface's own coordinates.
+    void UpdateMagnifier(double imageX, double imageY, const Point2Di& view);
+    // Moves the glass to `corner` (0 top-left, 1 top-right, 2 bottom-left,
+    // 3 bottom-right) of the canvas.
+    void PlaceMagnifier(int corner);
+    Rect2Df MagnifierRectForCorner(int corner) const;
 
     // ----- filters with preview -----
 #ifdef HAS_LIBVIPS
@@ -213,6 +237,12 @@ private:
     std::shared_ptr<UltraCanvasLabel>          statusPos, statusZoom, statusSize, statusHint;
     std::shared_ptr<UltraCanvasButton>         undoButton, redoButton;
     std::vector<std::shared_ptr<UltraCanvasButton>> toolButtons;
+    std::shared_ptr<UltraCanvasContainer>      magnifierFrame;   // the glass's border, over the canvas
+    std::shared_ptr<UltraCanvasPaintSurface>   magnifier;        // the loupe inside it
+    int magnifierCorner = 1;                                      // where it sits now
+    std::weak_ptr<UltraPaintSettingsDialog>    settingsDialog;   // raised instead of reopened
+
+    UltraPaintSettings settings;
 
     std::shared_ptr<UCRasterDocument> document;
     std::vector<std::unique_ptr<PaintTool>> tools;
