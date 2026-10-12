@@ -1409,6 +1409,21 @@ jobs:
             printf '%s' "$rows"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # How big each file-format plug-in is (Vector, CDR + libcdr, XAR, EPS,
+      # Models, OCR, Vectorizer + its Rust library). They are static, so each
+      # application that registers one carries a copy; the table is what a
+      # decision to make them shared libraries rests on. OCR and the
+      # Vectorizer build only where Tesseract and Rust are installed, which
+      # is here. Measurement only: it never fails the job.
+      - name: Format plug-in sizes
+        continue-on-error: true
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python || true)
+          [ -n "$py" ] || { echo "no Python: plug-in sizes skipped"; exit 0; }
+          "$py" scripts/report_plugin_sizes.py build \
+            --title "Format plug-in sizes (${{ runner.os }} ${{ matrix.arch_label }})" | tee -a "$GITHUB_STEP_SUMMARY"
+
       # Release builds only, so a pull request never decodes the signing
       # certificate onto a runner it does not need it on.
       - name: Import code signing certificate (macOS)
