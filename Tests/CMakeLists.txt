@@ -212,7 +212,9 @@ if(TARGET UltraCanvas AND TARGET UltraNet)
     set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
     add_executable(UltraWebDownloadsTest
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebDownloadsTest.cpp
-        ${_uw_dir}/host/UltraWebDownloads.cpp)
+        ${_uw_dir}/host/UltraWebDownloads.cpp
+        ${_uw_dir}/host/UltraWebDownloadList.cpp
+        ${_uw_dir}/ui/UltraWebDownloadsPanel.cpp)
     target_include_directories(UltraWebDownloadsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir})
     target_compile_features(UltraWebDownloadsTest PRIVATE cxx_std_20)
     target_link_libraries(UltraWebDownloadsTest PRIVATE UltraNet UltraCanvas)

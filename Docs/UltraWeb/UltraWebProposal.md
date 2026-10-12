@@ -410,7 +410,8 @@ and the eBook viewer can later delegate to it.
 - Keyboard: Ctrl+L, Ctrl+T, Ctrl+W, Ctrl+R / F5, Alt+Left / Alt+Right,
   Ctrl+F, and Ctrl+plus / minus / 0.
 - Downloads: the save dialog, then the bytes already fetched or a
-  streamed download through UltraNet (done in 0.5.0, without a list).
+  streamed download through UltraNet (done in 0.5.0), and a downloads
+  panel with Cancel, Open, Show folder and Remove (done in 0.6.0).
 - History and bookmarks as JSON (`UltraCanvasJSON`) in the settings
   directory.
 
@@ -752,8 +753,9 @@ Done in UltraWeb 0.3.0 ([`UltraWeb.md`](UltraWeb.md#web-pages)):
 - Tests: `HTMLPageLoaderTest` and `WebViewTest` against a fake web.
 
 Next:
-- Tabs, a history and bookmarks kept across runs; a downloads list
-  (downloads themselves are done since 2026-10-12, UltraWeb 0.5.0).
+- Tabs, a history and bookmarks kept across runs; the downloads list
+  kept across runs too (downloads are done since UltraWeb 0.5.0 and a
+  list of this run's since 0.6.0, both 2026-10-12).
 - (`@import`, inline elements' margins, padding, backgrounds and borders,
   and forms with file uploads and label clicks (§6.5) are done since
   2026-10-12.)

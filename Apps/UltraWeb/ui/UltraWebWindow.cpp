@@ -1,5 +1,6 @@
 // Apps/UltraWeb/ui/UltraWebWindow.cpp
 // The browser window (UltraWebWindow.h).
+// Version: 0.6.0 - a downloads list: a panel above the status bar
 // Version: 0.5.0 - downloads: a link to no page is saved through the save dialog
 // Version: 0.3.0 - web pages in an UltraCanvasWebView; back / forward
 // Version: 0.2.0
@@ -15,12 +16,14 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasUtils.h"
 #include "WasmHost/UltraCanvasWasmHost.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 
 #ifndef ULTRAWEB_VERSION
 #error "ULTRAWEB_VERSION is not defined: build through CMake, which reads it from Docs/UltraWeb/CHANGELOG.md"
@@ -85,7 +88,8 @@ UltraWebWindow::UltraWebWindow() : loader_(PostToUi), alive_(std::make_shared<bo
 // The guest first: it removes its elements from the app area, which must
 // still exist.
 UltraWebWindow::~UltraWebWindow() {
-    for (const auto& download : downloads_) download->Cancel();   // their part files go
+    for (const auto& download : downloads_) download.second->Cancel();   // their part files go
+    downloadList_.onChanged = nullptr;
     guest_.reset();
 }
 
@@ -133,6 +137,10 @@ bool UltraWebWindow::Initialize() {
         else if (!currentAddress_.empty()) Navigate(currentAddress_);
     });
     toolbar->AddChild(reloadButton_);
+    downloadsButton_ = CreateButton("uwDownloadsButton", 0, 0, 120, 28, "Downloads");
+    downloadsButton_->SetTooltip("Show or hide the downloads");
+    downloadsButton_->SetOnClick([this]() { ShowDownloads(!downloadsShown_); });
+    toolbar->AddChild(downloadsButton_);
     page_->AddChild(toolbar);
 
     // UC_ROOT_HANDLE: a flex column the app fills; how its children sit
@@ -151,12 +159,36 @@ bool UltraWebWindow::Initialize() {
     errorDetail_ = CreateLabel("uwErrorDetail", "");
     errorDetail_->SetWrap(TextWrap::WrapWord);
 
-    auto statusBar = MakeBar("uwStatusBar");
+    statusBar_ = MakeBar("uwStatusBar");
     status_ = CreateLabel("uwStatus", "");
     status_->layoutItem.SetFlexGrow(1);
     status_->layoutItem.SetFlexShrink(1);
-    statusBar->AddChild(status_);
-    page_->AddChild(statusBar);
+    statusBar_->AddChild(status_);
+    page_->AddChild(statusBar_);
+
+    // The downloads panel: it joins the page, above the status bar, when it
+    // is shown. Open opens the file with the system, Show folder its folder.
+    downloadsPanel_ = std::make_unique<UltraWebDownloadsPanel>(downloadList_, PostToUi);
+    downloadsPanel_->onClose = [this]() { ShowDownloads(false); };
+    downloadsPanel_->onCancel = [this](int id) {
+        auto it = downloads_.find(id);
+        if (it != downloads_.end()) it->second->Cancel();
+    };
+    // Open and Show folder go to the system's default application (no
+    // shell between, so any file name is safe).
+    auto openWithSystem = [this](const std::string& path) {
+        std::string error;
+        if (FileAssociations::OpenWithDefaultApplication({ path }, error)) SetStatus("Opened " + path);
+        else SetStatus("Cannot open " + path + ": " + error);
+    };
+    downloadsPanel_->onOpen = [openWithSystem](const DownloadEntry& entry) { openWithSystem(entry.path); };
+    downloadsPanel_->onShowFolder = [openWithSystem](const DownloadEntry& entry) {
+        openWithSystem(PathToUtf8(PathFromUtf8(entry.path).parent_path()));
+    };
+    downloadList_.onChanged = [this](int id, bool progressOnly) {
+        downloadsPanel_->Update(id, progressOnly);
+        if (!progressOnly) UpdateDownloadsButton();
+    };
 
     // Web pages: the HTML reader on UltraNet. The view lives here and joins
     // the app area while a page is shown.
@@ -346,33 +378,63 @@ void UltraWebWindow::SaveDownload(const HTML::LoadedPage& page) {
                 SetStatus("Not saved: " + name);
                 return;
             }
+            // The name it was saved under, which the dialog may have changed.
+            const std::string savedName = PathToUtf8(PathFromUtf8(path).filename());
             if (!truncated) {
                 // The loader already has all of it.
                 std::string error;
-                if (SaveBytes(path, *bytes, error)) SetStatus("Saved " + name + " (" + ByteSize(static_cast<int64_t>(bytes->size())) + ") to " + path);
-                else SetStatus("Could not save " + name + ": " + error);
+                const int64_t size = static_cast<int64_t>(bytes->size());
+                if (SaveBytes(path, *bytes, error)) {
+                    downloadList_.AddSaved(url, savedName, path, size);
+                    SetStatus("Saved " + savedName + " (" + ByteSize(size) + ") to " + path);
+                } else {
+                    const int id = downloadList_.Add(url, savedName, path);
+                    downloadList_.Finish(id, false, error);
+                    SetStatus("Could not save " + savedName + ": " + error);
+                }
                 return;
             }
-            // Over the page limit: fetched again, straight to disk.
-            SetStatus("Downloading " + name + " ...");
-            auto slot = std::make_shared<Download*>(nullptr);   // which one finished
+            // Over the page limit: fetched again, straight to disk, shown
+            // in the downloads panel as it goes.
+            const int id = downloadList_.Add(url, savedName, path);
+            ShowDownloads(true);
+            SetStatus("Downloading " + savedName + " ...");
             std::shared_ptr<Download> download = StartDownload(url, path, PostToUi,
-                [this, alive, name](int64_t received, int64_t total) {
+                [this, alive, id](int64_t received, int64_t total) {
                     if (alive.expired()) return;
-                    std::string text = "Downloading " + name + ": " + ByteSize(received);
-                    if (total > 0) text += " of " + ByteSize(total) + " (" + std::to_string(received * 100 / total) + "%)";
-                    SetStatus(text);
+                    downloadList_.Progress(id, received, total);
                 },
-                [this, alive, name, path, slot](bool ok, const std::string& error) {
+                [this, alive, id, savedName, path](bool ok, const std::string& error) {
                     if (alive.expired()) return;
-                    SetStatus(ok ? "Saved " + name + " to " + path : "Download of " + name + " failed: " + error);
-                    downloads_.erase(std::remove_if(downloads_.begin(), downloads_.end(),
-                                                    [&](const std::shared_ptr<Download>& d) { return d.get() == *slot; }),
-                                     downloads_.end());
+                    downloads_.erase(id);
+                    downloadList_.Finish(id, ok, error);
+                    SetStatus(ok ? "Saved " + savedName + " to " + path
+                                 : "Download of " + savedName + " " + (error == "cancelled" ? "cancelled" : "failed: " + error));
                 });
-            *slot = download.get();
-            downloads_.push_back(download);
+            downloads_[id] = download;
         });
+}
+
+void UltraWebWindow::ShowDownloads(bool show) {
+    if (show == downloadsShown_) return;
+    downloadsShown_ = show;
+    // The page's children are its column; the panel goes in before the
+    // status bar, so the bar comes out and back after it.
+    if (show) {
+        page_->RemoveChild(statusBar_);
+        page_->AddChild(downloadsPanel_->Root());
+        page_->AddChild(statusBar_);
+    } else {
+        page_->RemoveChild(downloadsPanel_->Root());
+    }
+    page_->InvalidateLayout();
+    page_->RequestRedraw();
+}
+
+void UltraWebWindow::UpdateDownloadsButton() {
+    const int running = downloadList_.RunningCount();
+    downloadsButton_->SetText(running > 0 ? "Downloads (" + std::to_string(running) + ")" : std::string("Downloads"));
+    downloadsButton_->RequestRedraw();
 }
 
 void UltraWebWindow::SetStatus(const std::string& text) {
