@@ -1,3 +1,36 @@
+#### 2026-10-12 *0.14*
+- **The window starts at the toolbar.** The line above it - the version,
+  the backend and the state of every source, cut off at the window's width
+  - is gone. The version stays in the title bar; the rest is under *Info…*
+  on the toolbar, a dialog that lists the backend and what it can see,
+  every name and event source with its count or the full error it failed
+  with, the notes from start-up and the activity store's path.
+- **Buttons are as wide as their label.** Every toolbar button is sized
+  from its text by the layout instead of a fixed width, so "All
+  applications", "Show recorded" and "Stop recording" are no longer cut to
+  "All applicati…", and a translation fits without a width to adjust. The
+  status text beside them gives way first.
+- **Each tab's bar sits clear of the frame.** The tab pages are padded, so
+  a bar is as far from the tab frame as its list is from the bar, instead
+  of touching the frame's top edge.
+- **Status lines say what, Info… says why.** The Names and Events tabs'
+  lines name each source with its count, or with one word - "stopped", a
+  name source's "failed", an event source's "idle" - and end in "details
+  under Info…" when one did; the error itself - "Starting
+  the ETW session: error 5 (an elevated token is needed to trace the DNS
+  client)" on the Names tab - is in the dialog and in the line's tooltip,
+  not on the line. The main status line keeps the headline of the
+  attribution note ("20 processes could not be opened in the last
+  snapshot") and puts the explanation in its tooltip.
+- **The Via column says "to" and "from", not "→" and "←".** The UI font
+  has no arrows, and on a Windows machine without a fallback font for them
+  each drew as a box before the process name. A client's flow to a local
+  proxy reads "to AVGSvc (5992)", the proxy's accepted side "from
+  thunderbird (4120)", and the proxy's own connections "for UltraMail
+  (3588)" as before. This follows the framework's rule of a word or a
+  character the font has, never a glyph it lacks (framework changelog,
+  *drawn marks*), rather than bundling an emoji font for two arrows.
+
 #### 2026-10-05 *0.13*
 - **The activity store opens in a Windows profile named in any script.**
   `%LOCALAPPDATA%\UltraNetMonitor\activity.db` was found through the narrow

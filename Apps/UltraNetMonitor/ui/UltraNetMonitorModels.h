@@ -123,8 +123,8 @@ private:
     std::vector<UltraCanvas::NetworkConnectionEvent> rows_;
 };
 
-// The loopback chain of a connection as one cell: "→ AvastSvc (4720)" for
-// a client of a local proxy, "← thunderbird (4120)" for the proxy's side,
+// The loopback chain of a connection as one cell: "to AvastSvc (4720)" for
+// a client of a local proxy, "from thunderbird (4120)" for the proxy's side,
 // "for thunderbird (4120)" on the proxy's own outbound connections.
 std::string ViaText(const UltraCanvas::NetworkConnection& connection);
 std::string ViaTooltip(const UltraCanvas::NetworkConnection& connection);
