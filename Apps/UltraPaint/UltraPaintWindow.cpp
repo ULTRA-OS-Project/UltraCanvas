@@ -567,7 +567,7 @@ namespace {
         static const std::vector<PaletteGroup> groups = {
             { "select",  { T::RectSelect, T::EllipseSelect, T::Lasso, T::MagicWand } },
             { "pen",     { T::Brush, T::Pencil, T::Airbrush } },
-            { "lines",   { T::Line } },
+            { "lines",   { T::Line, T::Polyline, T::Arrow, T::Curve } },
             { "shapes",  { T::Rectangle, T::Ellipse } },
             { "morph",   { T::Smudge, T::Clone } },          // reshape the pixels already there
             { "shading", { T::Dodge, T::Burn } },

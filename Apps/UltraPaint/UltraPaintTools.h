@@ -7,6 +7,7 @@
 // Tools are stateless between activations except for what their options
 // hold; PaintToolOptions is the shared, user-editable state (brush sizes,
 // tolerances, shape style, …) that survives tool switches.
+// Version: 1.2.0 - Polyline, Arrow and Curve, the Lines group's tools beside Line
 // Version: 1.1.0 - WantsMagnifier: a tool that places things to the pixel asks for the magnifying glass
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -27,7 +28,7 @@ namespace UltraCanvas {
 enum class PaintToolId {
     Move = 0, RectSelect, EllipseSelect, Lasso, MagicWand, Crop, Eyedropper,
     Pencil, Brush, Airbrush, Eraser, Clone, Smudge, Dodge, Burn,
-    Fill, Gradient, Line, Rectangle, Ellipse, Text, Zoom, Pan,
+    Fill, Gradient, Line, Polyline, Arrow, Curve, Rectangle, Ellipse, Text, Zoom, Pan,
     Count
 };
 
@@ -56,7 +57,9 @@ struct PaintToolOptions {
     RasterPaint::GradientKind gradientKind = RasterPaint::GradientKind::Linear;
     float gradientOpacity = 1.0f;
 
-    float shapeStrokeWidth = 2.0f;
+    float shapeStrokeWidth = 2.0f;      // also the Lines group's width
+    float arrowHeadSize = 16.0f;        // px; at least three times the line width
+    bool  arrowBothEnds = false;
     bool  shapeStroke = true;
     bool  shapeFill = false;
     bool  shapeAntialias = true;

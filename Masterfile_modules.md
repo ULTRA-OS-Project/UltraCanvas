@@ -1082,8 +1082,9 @@ engine; these classes hold the pixels being edited and hand them to it.
 - **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
-  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/DrawCurve/DrawArrow/
+  FillCoverage/StampMask/FloodFill/MagicWandMask/FillGradient/SampleColour`,
+  with `FlattenCubicBezier` and `ArrowShape` for previews (`FillCompositing`:
   Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,

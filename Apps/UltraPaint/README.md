@@ -35,7 +35,7 @@ in a button's corner marks a group. Top to bottom:
 |---|---|
 | Select | Rectangle Select, Ellipse Select, Lasso, Magic Wand |
 | Pen | Paintbrush, Pencil, Airbrush |
-| Lines | Line |
+| Lines | Line, Polyline, Arrow, Curve |
 | Shapes | Rectangle, Ellipse |
 | Morph | Smudge, Clone Stamp |
 | Shading | Dodge, Burn |
@@ -69,6 +69,9 @@ in `UltraPaintWindow.cpp`; the fold-out is the framework's
 | Fill | F | Flood fill: mode (Normal / Replace), tolerance, contiguous, sample merged, opacity |
 | Gradient | G | Foreground → background; linear, radial, reflected |
 | Line / Rectangle / Ellipse | D / Q / P | Outline in the foreground colour, fill in the background colour, anti-aliased, Shift constrains |
+| Polyline | Y | Click to add corners; double-click or Enter ends it, a click on the first corner closes it (filled in the background colour with *Fill a closed shape*). Backspace takes the last corner back, Escape cancels, Shift constrains each segment to 45° |
+| Arrow | V | Drag from the tail to the tip: a filled head at the tip, or at both ends. *Head size* in pixels, never less than three times the line width |
+| Curve | J | Drag a straight line, then drag or click twice to bend it - the first bend pulls the whole curve, the second its far half. Enter keeps it as it is, Escape cancels |
 | Text | T | Click, type, choose font / size / bold |
 | Zoom | Z | Click in, Alt/right-click out |
 | Pan | H | Space+drag works with every tool |

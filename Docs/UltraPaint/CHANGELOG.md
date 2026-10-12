@@ -1,13 +1,13 @@
 #### 2026-10-12 *0.2.16*
 - **The tool palette groups its tools.** Tools of a kind share one button,
-  so the palette shows 13 instead of 23 and fits a shorter window without
-  scrolling. Resting the pointer on a button folds out a bar beside it with
+  so the palette shows 13 buttons for its 26 tools, where it showed 23 for
+  23, and fits a shorter window without scrolling. Resting the pointer on a button folds out a bar beside it with
   the whole group, and a click there picks a tool; a click on the button
   itself still picks the tool it shows. A small triangle in a button's
   corner marks a group. The groups, top to bottom:
   - *Select* - Rectangle Select, Ellipse Select, Lasso, Magic Wand
   - *Pen* - Paintbrush, Pencil, Airbrush
-  - *Lines* - Line
+  - *Lines* - Line, Polyline, Arrow, Curve
   - *Shapes* - Rectangle, Ellipse
   - *Morph* - Smudge, Clone Stamp (they reshape the pixels already there)
   - *Shading* - Dodge, Burn
@@ -15,6 +15,24 @@
   then Move, Crop, Eyedropper, Eraser, *Fill* (Fill, Gradient), Text and
   *View* (Zoom, Pan). A tool's shortcut key picks it as before and shows it
   in its group's button.
+- **Three new line tools: Polyline, Arrow and Curve**, in the Lines group
+  beside Line, all in the foreground colour at the shared line width.
+  - *Polyline* (`Y`): click to add corners; double-click or Enter ends the
+    line, a click on the first corner closes it into a shape (filled in the
+    background colour with *Fill a closed shape*). Backspace takes the last
+    corner back, Escape cancels, Shift constrains a segment to 45°. The
+    first press can be dragged to pull out the first segment, as with Line.
+  - *Arrow* (`V`): drag from the tail to the tip; a filled head at the tip,
+    or at both ends. *Head size* in pixels, never less than three times the
+    line width.
+  - *Curve* (`J`): drag a straight line, then drag or click twice to bend
+    it - the first bend pulls the whole curve, the second its far half.
+    Enter keeps it as it is, Escape cancels.
+
+  A line in progress is kept when another tool is picked. Each is drawn in
+  one pass, so a translucent colour is no darker where a polyline turns or
+  where an arrow's shaft meets its head (framework changelog:
+  `raster-paint-curves-arrows`).
 - **Settings > Display > Tool palette: an adaptive or a static toolbar.**
   Adaptive (the default): a group's button shows the tool last picked from
   it. Static: it always shows the group's main tool, stays highlighted while
