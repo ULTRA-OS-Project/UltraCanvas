@@ -22,7 +22,7 @@
 // first start, both choices across a restart, and the files earlier releases
 // left behind - every one of which says "simple" under the old key, chosen or
 // not, and must take the new default rather than keep the old one forever.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -31,6 +31,9 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraFilerSettings.h"        // Apps/UltraFiler
 
+#include <cairo/cairo.h>
+
+#include <cstdint>
 #include <cstdlib>   // setenv
 #include <filesystem>
 #include <fstream>
@@ -267,6 +270,45 @@ int main() {
     auto again = LoadHostFileIconPixmap("/", true, 48);
     Check(again == nullptr || again->IsValid(),
           "the same question after a refresh answers the same way");
+
+    std::cout << "\n-- the size --\n";
+    // What a backend hands back is held at the size it is drawn: the
+    // Windows shell's jumbo list is 256 a side whatever was asked, and an
+    // .ico's nearest frame may be larger than wanted. A 256 canvas with a
+    // 192x128 picture in it, asked for at 128, comes back 128x128 with the
+    // picture halved; a smaller one is never scaled up.
+    {
+        auto big = std::make_shared<UCPixmap>(256, 256);
+        Check(big->IsValid(), "a 256-pixel pixmap can be made");
+        cairo_t* cr = cairo_create(big->GetSurface());
+        cairo_set_source_rgba(cr, 1, 0, 0, 1);
+        cairo_rectangle(cr, 32, 32, 192, 128);
+        cairo_fill(cr);
+        cairo_destroy(cr);
+        big->MarkDirty();
+        auto fit = FitHostIconToSize(big, 128);
+        Check(fit && fit->GetRawWidth() == 128 && fit->GetRawHeight() == 128,
+              "a 256-pixel icon asked for at 128 is held at 128");
+        auto same = FitHostIconToSize(fit, 256);
+        Check(same == fit, "a smaller icon is never scaled up");
+        Check(FitHostIconToSize(fit, 0) == fit && FitHostIconToSize(nullptr, 64) == nullptr,
+              "no size, or no icon, passes through");
+        if (fit) {
+            cairo_surface_t* surface = fit->GetSurface();
+            cairo_surface_flush(surface);
+            const uint32_t* row = reinterpret_cast<const uint32_t*>(
+                    cairo_image_surface_get_data(surface) +
+                    static_cast<size_t>(64) * cairo_image_surface_get_stride(surface));
+            // (64, 64) is inside the red block (which spans 16..112 after
+            // the halving); (64, 4) is in the transparent border.
+            Check((row[64] >> 24) == 0xff && ((row[64] >> 16) & 0xff) == 0xff,
+                  "the picture survives the resample");
+            const uint32_t* top = reinterpret_cast<const uint32_t*>(
+                    cairo_image_surface_get_data(surface) +
+                    static_cast<size_t>(4) * cairo_image_surface_get_stride(surface));
+            Check((top[64] >> 24) == 0, "and so does the transparent border");
+        }
+    }
 
     std::cout << "\n-- the setting --\n";
     UltraCanvasFilerWidget filer("host-icons-test", 0, 0, 800, 600);

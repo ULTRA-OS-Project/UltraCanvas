@@ -23,7 +23,6 @@
 #include <cairo/cairo.h>
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
@@ -138,39 +137,9 @@ namespace UltraCanvas {
         // The lists come in the shell's own sizes, and the jumbo one is 256
         // a side whatever was asked: a medium tile asking for 128 pixels got
         // a quarter-megabyte pixmap it drew at a quarter of the area, and a
-        // window full of distinct types held four times what it showed.
-        // Resampled down to the size asked for, after the trim above so the
-        // picture itself fills it. Never up: a type whose icon only exists
-        // at 48 stays 48, and the caller scales it, which is the blur the
-        // size chain exists to avoid where it can.
-        std::shared_ptr<UCPixmap> FitToSize(
-                const std::shared_ptr<UCPixmap>& pixmap, int desiredSize) {
-            if (!pixmap || !pixmap->IsValid() || desiredSize <= 0) return pixmap;
-            const int w = pixmap->GetRawWidth();
-            const int h = pixmap->GetRawHeight();
-            const int longest = std::max(w, h);
-            if (w <= 0 || h <= 0 || longest <= desiredSize) return pixmap;
-            const double factor = static_cast<double>(desiredSize) / longest;
-            const int outW = std::max(1, static_cast<int>(std::lround(w * factor)));
-            const int outH = std::max(1, static_cast<int>(std::lround(h * factor)));
-            cairo_surface_t* source = pixmap->GetSurface();
-            if (!source) return pixmap;
-            auto out = std::make_shared<UCPixmap>(outW, outH);
-            cairo_surface_t* outSurface = out->GetSurface();
-            if (!outSurface || !out->IsValid()) return pixmap;
-            cairo_surface_flush(source);
-            cairo_t* cr = cairo_create(outSurface);
-            cairo_scale(cr, static_cast<double>(outW) / w,
-                        static_cast<double>(outH) / h);
-            cairo_set_source_surface(cr, source, 0, 0);
-            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
-            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-            cairo_paint(cr);
-            cairo_destroy(cr);
-            cairo_surface_flush(outSurface);
-            out->MarkDirty();
-            return out;
-        }
+        // window full of distinct types held four times what it showed. So
+        // every answer goes through FitHostIconToSize, after the trim above
+        // so the picture itself fills the size asked for.
 
         // The shell's icon index for a file NAME - no disk access, and no
         // requirement that the file exists.
@@ -235,11 +204,11 @@ namespace UltraCanvas {
         if (SystemIconIndex(wide, isDirectory, index)) {
             for (int list : ListsForSize(desiredSize)) {
                 if (auto pixmap = IconFromImageList(list, index))
-                    return FitToSize(TrimTransparentBorder(pixmap), desiredSize);
+                    return FitHostIconToSize(TrimTransparentBorder(pixmap), desiredSize);
             }
         }
         if (auto pixmap = AssociatedIcon(wide, isDirectory, desiredSize))
-            return FitToSize(TrimTransparentBorder(pixmap), desiredSize);
+            return FitHostIconToSize(TrimTransparentBorder(pixmap), desiredSize);
         return nullptr;
     }
 

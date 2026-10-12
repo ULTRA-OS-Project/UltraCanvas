@@ -33,7 +33,7 @@
 // system image list, which is what Explorer itself draws from) and macOS
 // (NSWorkspace). Platforms with no desktop to ask — WebAssembly, Android —
 // report unavailable, and a caller then keeps its own drawn icons.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
@@ -86,5 +86,16 @@ namespace UltraCanvas {
     // package installs icons. The caller drops its own cached pixmaps; this
     // drops the lookups underneath them.
     void RefreshHostFileIcons();
+
+    // `pixmap` resampled so its longer edge is `desiredSize` pixels, when it
+    // is larger; returned as it is when it is not (never scaled up: a type
+    // whose icon only exists at 48 stays 48, and the caller scales it). What
+    // the backends hand back is held at the size it is drawn, because an
+    // icon source answers in its own sizes - the Windows shell's jumbo list
+    // is 256 a side whatever was asked, and an .ico's nearest frame may be
+    // larger than wanted - and a 256-pixel icon drawn in a 128-pixel tile
+    // held four times the memory it showed. Pure pixel work, no file access.
+    std::shared_ptr<UCPixmap> FitHostIconToSize(
+            const std::shared_ptr<UCPixmap>& pixmap, int desiredSize);
 
 } // namespace UltraCanvas

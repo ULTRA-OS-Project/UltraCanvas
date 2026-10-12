@@ -5,14 +5,17 @@
 // OS/Linux/UltraCanvasLinuxHostFileIcons.cpp (freedesktop icon themes),
 // OS/MSWindows/UltraCanvasWindowsHostFileIcons.cpp (the shell's system image
 // list) and OS/MacOS/UltraCanvasMacOSHostFileIcons.mm (NSWorkspace).
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasUtils.h"   // PathFromUtf8 / PathToUtf8
 
+#include <cairo/cairo.h>
+
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <string>
 
@@ -58,6 +61,37 @@ namespace UltraCanvas {
         if (dot == std::string::npos || dot + 1 >= name.size())
             return "name:" + name;
         return "ext:" + name.substr(dot + 1);
+    }
+
+    std::shared_ptr<UCPixmap> FitHostIconToSize(
+            const std::shared_ptr<UCPixmap>& pixmap, int desiredSize) {
+        if (!pixmap || !pixmap->IsValid() || desiredSize <= 0) return pixmap;
+        const int w = pixmap->GetRawWidth();
+        const int h = pixmap->GetRawHeight();
+        const int longest = std::max(w, h);
+        if (w <= 0 || h <= 0 || longest <= desiredSize) return pixmap;
+        const double factor = static_cast<double>(desiredSize) / longest;
+        const int outW = std::max(1, static_cast<int>(std::lround(w * factor)));
+        const int outH = std::max(1, static_cast<int>(std::lround(h * factor)));
+        cairo_surface_t* source = pixmap->GetSurface();
+        if (!source) return pixmap;
+        auto out = std::make_shared<UCPixmap>(outW, outH);
+        cairo_surface_t* outSurface = out->GetSurface();
+        if (!outSurface || !out->IsValid()) return pixmap;
+        cairo_surface_flush(source);
+        cairo_t* cr = cairo_create(outSurface);
+        cairo_scale(cr, static_cast<double>(outW) / w,
+                    static_cast<double>(outH) / h);
+        cairo_set_source_surface(cr, source, 0, 0);
+        // GOOD, not BEST: a box-filtered downsample is what a 256-to-128
+        // reduction wants, and it is what cairo's GOOD does for a shrink.
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+        cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+        cairo_paint(cr);
+        cairo_destroy(cr);
+        cairo_surface_flush(outSurface);
+        out->MarkDirty();
+        return out;
     }
 
 } // namespace UltraCanvas
