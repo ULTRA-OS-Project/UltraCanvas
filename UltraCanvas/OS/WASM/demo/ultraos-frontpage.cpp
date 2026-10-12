@@ -546,21 +546,22 @@ std::shared_ptr<UltraCanvasContainer> BuildHeader() {
         item->layoutItem.SetFlexShrink(0);
         if (dropdown) {
             // The site's drop-down: a popup menu under the item, one entry per page.
-            auto menu = std::make_shared<UltraCanvasMenu>("NavMenu" + std::to_string(i), 0, 0, 240, 0);
-            menu->SetMenuType(MenuType::PopupMenu);
+            auto popup = std::make_shared<UltraCanvasMenu>("NavMenu" + std::to_string(i), 0, 0, 240, 0);
+            popup->SetMenuType(MenuType::PopupMenu);
             for (const Link& link : nav.menu) {
                 const std::string url = Url(link.path);
-                menu->AddItem(MenuItemData::Action(link.title, [url]() { OpenURL(url); }));
+                popup->AddItem(MenuItemData::Action(link.title, [url]() { OpenURL(url); }));
             }
-            gMenus.push_back(menu);
+            gMenus.push_back(popup);
             item->SetTooltip(std::string(nav.title) + ": opens a menu");
-            UltraCanvasButton* anchor = item.get();
-            item->onClick = [menu, anchor]() {
+            // The button holds the callback, so it is captured raw; the popup
+            // is kept alive by gMenus and the capture.
+            item->onClick = [popup, anchor = item.get()]() {
                 if (auto* window = anchor->GetWindow()) {
                     const Rect2Df b = anchor->GetBoundsInWindow();
-                    menu->OpenMenuAnchored(Rect2Di(static_cast<int>(b.x), static_cast<int>(b.y),
-                                                   static_cast<int>(b.width), static_cast<int>(b.height)),
-                                           *window, PopupElementSettings(), 4);
+                    popup->OpenMenuAnchored(Rect2Di(static_cast<int>(b.x), static_cast<int>(b.y),
+                                                    static_cast<int>(b.width), static_cast<int>(b.height)),
+                                            *window, PopupElementSettings(), 4);
                 }
             };
         } else {
@@ -857,7 +858,8 @@ std::shared_ptr<UltraCanvasContainer> BuildFaq() {
         answer->SetVisible(i == 0);
         entry->AddChild(answer);
         const std::string text = kFaq[i].question;
-        question->onClick = [answer, question, text]() {
+        // The question holds the callback, so it is captured raw.
+        question->onClick = [answer, question = question.get(), text]() {
             const bool open = !answer->IsVisible();
             answer->SetVisible(open);
             question->SetText((open ? "-  " : "+  ") + text);
