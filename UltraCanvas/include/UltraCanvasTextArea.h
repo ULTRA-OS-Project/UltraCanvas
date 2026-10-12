@@ -1,5 +1,6 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.10.0 - ApplyTheme: the light or dark preset, the surfaces and ink from the theme roles
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
@@ -497,6 +498,10 @@ namespace UltraCanvas {
 
         // Event handling
         virtual bool OnEvent(const UCEvent& event) override;
+        // The theme's roles over the light or dark token colours: the well
+        // behind the text, ink, the hover fill for the current line, the
+        // accent behind a selection, faint ink for line numbers
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
 
         void Invalidate();
         void InvalidateAllLineLayouts();

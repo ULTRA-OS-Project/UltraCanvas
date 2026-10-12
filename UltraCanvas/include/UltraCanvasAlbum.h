@@ -2,6 +2,7 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
+// Version: 1.10.0 - AlbumConfig::FromTheme, ApplyTheme
 // Version: 1.9.0
 // Last Modified: 2026-10-10
 // V1.7.0: Automatic video poster frames (AlbumConfig::videoPosterFrames, on by
@@ -285,6 +286,14 @@ namespace UltraCanvas {
         bool  allowSelection = false;
         Color selectionColor = Color(0, 122, 224, 255);
 
+        // The theme's roles over a config's own layout (the sizes, the mode,
+        // the gaps stay): the panel behind the grid, the raised surface for a
+        // tile, hairlines, ink and muted ink for the captions, the accent for
+        // links and the selection
+        static AlbumConfig FromTheme(const UltraCanvasTheme& theme, const AlbumConfig& base);
+        static AlbumConfig FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, AlbumConfig()); }
+        static AlbumConfig FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
+
         // ----- Hover -----
         bool  hoverScrim   = true;         // darken a tile slightly on hover
         bool  hoverZoom    = false;        // subtle image zoom on hover (Crop/Zoom)
@@ -413,6 +422,8 @@ namespace UltraCanvas {
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
+        // The theme's colours over the album's own layout: the panel and raised surfaces, hairlines, ink, the accent
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetConfig(AlbumConfig::FromTheme(theme, GetConfig())); }
 
     private:
         // ===== STATE =====

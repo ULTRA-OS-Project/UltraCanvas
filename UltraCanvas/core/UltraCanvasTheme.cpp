@@ -1,8 +1,12 @@
 // core/UltraCanvasTheme.cpp
+// Version: 1.1.0 - change handlers
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraCanvasTheme.h"
+
+#include <utility>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -10,6 +14,15 @@ namespace {
 UltraCanvasTheme& CurrentStorage() {
     static UltraCanvasTheme current = UltraCanvasTheme::Light();
     return current;
+}
+struct Handler { int id; UltraCanvasTheme::ChangeHandler fn; };
+std::vector<Handler>& Handlers() {
+    static std::vector<Handler> handlers;
+    return handlers;
+}
+int& NextHandlerId() {
+    static int next = 1;
+    return next;
 }
 }
 
@@ -65,6 +78,24 @@ UltraCanvasTheme UltraCanvasTheme::Dark() {
 
 const UltraCanvasTheme& UltraCanvasTheme::Current() { return CurrentStorage(); }
 
-void UltraCanvasTheme::SetCurrent(const UltraCanvasTheme& theme) { CurrentStorage() = theme; }
+void UltraCanvasTheme::SetCurrent(const UltraCanvasTheme& theme) {
+    CurrentStorage() = theme;
+    // a copy: a handler may add or remove handlers
+    const std::vector<Handler> handlers = Handlers();
+    for (const Handler& h : handlers) if (h.fn) h.fn(CurrentStorage());
+}
+
+int UltraCanvasTheme::AddChangeHandler(ChangeHandler handler) {
+    const int id = NextHandlerId()++;
+    Handlers().push_back({id, std::move(handler)});
+    return id;
+}
+
+void UltraCanvasTheme::RemoveChangeHandler(int id) {
+    std::vector<Handler>& handlers = Handlers();
+    for (auto it = handlers.begin(); it != handlers.end(); ++it) {
+        if (it->id == id) { handlers.erase(it); return; }
+    }
+}
 
 } // namespace UltraCanvas

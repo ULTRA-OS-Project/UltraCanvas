@@ -1,5 +1,6 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.16.0 - MenuStyle::FromTheme, ApplyTheme
 // Version: 1.15.0 - OpenMenuAnchored: a menu opens below a widget, or above it when it
 //                  does not fit below, without the caller sizing it; menubar drop-downs
 //                  flip above their item; MenuStyle::iconTint paints symbolic (grey)
@@ -286,6 +287,13 @@ namespace UltraCanvas {
 
         static MenuStyle Default();
         static MenuStyle Dark();
+        // The theme's roles over Default(): the raised surface for the
+        // panel, hairlines, ink, muted ink for shortcuts and headers, faint
+        // ink when disabled, the hover and pressed fills, the accent tint
+        // behind the selected item. Dark() and Light differ in colour only.
+        static MenuStyle FromTheme(const UltraCanvasTheme& theme, const MenuStyle& base);
+        static MenuStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, theme.dark ? Dark() : Default()); }
+        static MenuStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
         static MenuStyle Flat();
     };
 
@@ -381,6 +389,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(MenuStyle::FromTheme(theme, GetStyle())); }
 
         // ===== MENU TYPE AND CONFIGURATION =====
         void SetMenuType(MenuType type);

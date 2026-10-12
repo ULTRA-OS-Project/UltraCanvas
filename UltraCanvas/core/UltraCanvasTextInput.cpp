@@ -1,5 +1,6 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
+// Version: 1.9.0 - TextInputStyle::FromTheme
 // Version: 1.8.1
 // Last Modified: 2026-10-08
 // V1.8.1: The caret and the selection cover the glyphs' last row. The line
@@ -1838,5 +1839,23 @@ namespace UltraCanvas {
         if (strength < 80.0f) return Color(163, 203, 56);  // Lime
         if (strength < 95.0f) return Color(40, 167, 69);   // Green
         return Color(25, 135, 84);                          // Dark Green
+    }
+
+    TextInputStyle TextInputStyle::FromTheme(const UltraCanvasTheme& theme, const TextInputStyle& base) {
+        TextInputStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.backgroundColor = r.well;
+        s.borderColor = r.lineStrong;
+        s.focusBorderColor = r.focus;
+        s.textColor = r.ink;
+        s.placeholderColor = r.inkFaint;
+        s.selectionColor = r.accent.WithAlpha(100);
+        s.caretColor = r.ink;
+        s.disabledBackgroundColor = r.panel;
+        s.disabledBorderColor = r.line;
+        s.disabledTextColor = r.inkFaint;
+        s.validBorderColor = r.lineStrong;
+        s.invalidBorderColor = r.danger;
+        return s;
     }
 }

@@ -1054,8 +1054,15 @@ that writing it showed:
   `TimecodeFieldStyle` gained `FromTheme`; the app's `ThemeFor` maps the 41
   token roles onto it (the timeline's clip, guide and playhead tokens as
   `video-timeline.<role>`) and the window sets it as the current theme
-  when the palette switches. The other elements keep their own presets
-  until each gains a `FromTheme`, which is the framework's work from here.
+  when the palette switches. `UltraCanvasTheme` 1.1.0 then gave every
+  panel element a `FromTheme` (the menu's and the tooltip's over their own
+  dark and light presets), an element the choice to follow the theme
+  (`SetFollowTheme`: styled from the current theme now and on every
+  change, over its own shape), and the application a change handler that
+  walks its windows: the app's split panes, tabs, fields, albums,
+  toolbars, dropdowns and context menu follow it, and `ApplyPalette` keeps
+  only the app's own looks (ghost and primary buttons, sliders, switches,
+  the timeline).
 - **Effect presets** (§6.2, §6.4; app 0.2.0): `UltraVideoPresets` holds
   ten presets as lists of engine effects - *Warm film* is the table's
   temperature, saturation and vignette - and `ApplyEffectPreset` puts one
@@ -1088,6 +1095,10 @@ that writing it showed:
   playhead, and Stop puts the frame surface back at the second the sound
   stopped. An edit invalidates the draft and falls back to frames at the
   same second. No sound device or player: frames, with a message.
+  Confirmed with the GStreamer plugins installed (no sound server: the
+  framework's backend now lets playbin pick a silent sink where PulseAudio
+  does not answer, so the picture plays at pace; a player that refuses to
+  start falls back to frames instead of a playhead at the end).
 - **Drag from the bin** (§6.2): the framework has no drag source API, and
   the album's own drag is a reorder; `UltraCanvasAlbum` 1.9.0 gained
   `onItemDraggedOut`, which fires once when a tile crosses the album's
@@ -1112,10 +1123,9 @@ that writing it showed:
   unsaved-changes question.
 - Not built, and left for the next phase: marker dragging, a real slip trim
   (the Slip tool trims for now), retiming by `Ctrl`-drag, vertical scrolling
-  of many tracks, resizing a track by its edge, and the mapping onto the
-  framework's theme roles (the element carries its colours in its style
-  struct, as the other elements do; the app fills it from
-  `UltraVideoTokens.h`).
+  of many tracks, and resizing a track by its edge. The mapping onto the
+  framework's theme roles came with `UltraCanvasTheme` (§14: *The theme
+  roles*).
 
 ## See also
 

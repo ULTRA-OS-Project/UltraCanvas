@@ -9,6 +9,7 @@
 // frame past the rate) shows a danger border until it is corrected. It is an
 // input element in its own right - four segments, no caret - so it owns its
 // entry buffer; it is not built over the text input.
+// Version: 1.1.0 - ApplyTheme
 // Version: 1.0.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
@@ -90,6 +91,7 @@ public:
     // ===== UIElement OVERRIDES =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(TimecodeFieldStyle::FromTheme(theme)); }
     bool AcceptsFocus() const override { return !readout; }
     AccessibleRole GetAccessibleRole() const override { return AccessibleRole::TextField; }
     std::string GetAccessibleValueText() const override { return GetText(); }

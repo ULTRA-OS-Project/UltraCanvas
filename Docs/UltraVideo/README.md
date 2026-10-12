@@ -74,8 +74,9 @@ in the background - a small, quick MP4 with the music and the clips' own
 sound (`VideoFXExportSettings::Draft`) - and plays frame by frame until it
 is ready; from then on Play runs the draft in the framework's player with
 sound, and the playhead follows it. An edit throws the draft away and the
-next Play renders a new one. Where no sound device or player is available
-playback stays frame by frame and the status line says so.
+next Play renders a new one. Where no sound server answers the picture
+still plays at pace, silently; where the player cannot play the draft at
+all, playback stays frame by frame and the status line says so.
 
 ### The timeline
 

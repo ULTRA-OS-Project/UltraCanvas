@@ -2,6 +2,7 @@
 // Toggle switch: pill-shaped track with a circular thumb that snaps between sides.
 // Supports horizontal/vertical orientation, optional thumb icons, and optional ON/OFF state labels
 // (inside the track, outside it, or one label on each side of the track).
+// Version: 1.5.0 - SwitchVisualStyle::FromTheme, ApplyTheme
 // Version: 1.4.0
 // Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
@@ -51,6 +52,13 @@ namespace UltraCanvas {
         Color thumbColor = Color(255, 255, 255, 255);
         Color thumbBorderColor = Colors::ButtonShadow;
         Color thumbDisabledColor = Color(240, 240, 240, 255);
+
+        // The theme's roles: the pressed fill for the track off, the accent
+        // on, the raised surface for the thumb, ink for the labels
+        // over a base's own shape (sizes, fonts, flags), or a default one
+        static SwitchVisualStyle FromTheme(const UltraCanvasTheme& theme, const SwitchVisualStyle& base);
+        static SwitchVisualStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SwitchVisualStyle()); }
+        static SwitchVisualStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
         // Layout
         SwitchOrientation orientation = SwitchOrientation::Horizontal;
@@ -173,6 +181,7 @@ namespace UltraCanvas {
 
         // Tracks the pointer position before the base class turns it into an activation.
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetVisualStyle(SwitchVisualStyle::FromTheme(theme, GetVisualStyle())); }
 
         // ===== APPEARANCE =====
         void SetVisualStyle(const SwitchVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }

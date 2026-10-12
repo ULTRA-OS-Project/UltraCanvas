@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.9.0 - Initialize installs the theme change handler: every window re-styles, the tooltips too
 // Version: 1.8.0 - when the system fonts arrive after the start, or a font file is
 //                  registered, every window is drawn again, not only laid out:
 //                  boxes drawn for characters the start's fonts lacked stayed
@@ -106,6 +107,8 @@ namespace UltraCanvas {
     }
 
     UltraCanvasApplicationBase::~UltraCanvasApplicationBase() {
+        if (themeHandler != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler);
+        themeHandler = 0;
         UltraCanvasApplicationBase* expected = this;
         g_currentApplication.compare_exchange_strong(
             expected, nullptr, std::memory_order_release);
@@ -812,6 +815,19 @@ namespace UltraCanvas {
 
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {
         appName = app;
+
+        // A theme change reaches every element of every window (the ones
+        // that follow the theme re-style themselves) and the tooltips
+        if (themeHandler == 0) {
+            themeHandler = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme& theme) {
+                UltraCanvasTooltipManager::SetStyle(TooltipStyle::FromTheme(theme, UltraCanvasTooltipManager::GetStyle()));
+                for (auto& window : windows) {
+                    if (!window) continue;
+                    window->OnThemeChanged(theme);
+                    window->RequestRedraw();
+                }
+            });
+        }
 
         // Each step's time, for GetStartupTimings(): a slow start is usually
         // one of these (a font cache rebuilt, a virus scanner reading every

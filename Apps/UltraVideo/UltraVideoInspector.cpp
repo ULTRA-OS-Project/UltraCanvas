@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
+// Version: 0.2.0 - the tabs, dropdowns and fields follow the theme
 // Version: 0.1.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
@@ -127,6 +128,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     tabs->SetCloseMode(TabCloseMode::NoClose);
     tabs->SetTabMinWidth(60);
     tabs->SetTabStyle(TabStyle::Flat);
+    tabs->SetFollowTheme(true);
     const int ctl = static_cast<int>(Tokens::ControlH);
 
     // ---- Clip ----
@@ -651,24 +653,26 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     Row(projectPage, "uv.insp.row.fitMode", "Clips that differ", fitMode);
     tabs->AddTab("Project", projectPage);
 
+    // The controls' shape once; their colours follow the theme
+    for (auto& d : dropdowns) {
+        DropdownStyle style = d->GetStyle();
+        style.cornerRadius = Tokens::RadiusSm;
+        d->SetStyle(style);
+        d->SetFollowTheme(true);
+    }
+    for (auto& field : {projectName, titleText}) {
+        TextInputStyle style = field->GetStyle();
+        style.borderRadius = static_cast<int>(Tokens::RadiusSm);
+        field->SetStyle(style);
+        field->SetFollowTheme(true);
+    }
+
     ApplyPalette(p);
     return tabs;
 }
 
 void Inspector::StyleControls(const Palette& p) {
-    DropdownStyle dropdown;
-    dropdown.normalColor = ToColor(p.Bg300);
-    dropdown.hoverColor = ToColor(p.Bg400);
-    dropdown.pressedColor = ToColor(p.Bg500);
-    dropdown.borderColor = ToColor(p.LineStrong);
-    dropdown.focusBorderColor = ToColor(p.Focus);
-    dropdown.normalTextColor = ToColor(p.Ink);
-    dropdown.listBackgroundColor = ToColor(p.Bg300);
-    dropdown.listBorderColor = ToColor(p.LineStrong);
-    dropdown.itemHoverColor = ToColor(p.Bg400);
-    dropdown.itemSelectedColor = ToColor(p.AccentSoft);
-    dropdown.cornerRadius = Tokens::RadiusSm;
-    for (auto& d : dropdowns) d->SetStyle(dropdown);
+    // the dropdowns, the text fields and the tabs follow the theme (Build)
     SliderVisualStyle slider;
     slider.trackColor = ToColor(p.Bg500);
     slider.activeTrackColor = ToColor(p.Accent);
@@ -689,16 +693,6 @@ void Inspector::StyleControls(const Palette& p) {
     for (auto& c : captions) c->SetTextColor(ToColor(p.InkMuted));
     for (auto& h : headings) h->SetTextColor(ToColor(p.Ink));
     if (clipName) clipName->SetTextColor(ToColor(p.Ink));
-    TextInputStyle input = projectName->GetStyle();
-    input.backgroundColor = ToColor(p.Bg200);
-    input.borderColor = ToColor(p.LineStrong);
-    input.focusBorderColor = ToColor(p.Focus);
-    input.textColor = ToColor(p.Ink);
-    input.placeholderColor = ToColor(p.InkFaint);
-    input.caretColor = ToColor(p.Ink);
-    input.borderRadius = static_cast<int>(Tokens::RadiusSm);
-    projectName->SetStyle(input);
-    titleText->SetStyle(input);
     addSong->SetStyle(PlainButtonStyle(p));
     removeSongs->SetStyle(PlainButtonStyle(p));
 }
@@ -710,20 +704,8 @@ void Inspector::ApplyPalette(const Palette& p) {
     for (auto& l : effectLabels) l->SetTextColor(ToColor(p.Ink));
     for (auto& b : effectButtons) b->SetStyle(GhostButtonStyle(p));
     tabs->SetBackgroundColor(ToColor(p.Bg100));
-    tabs->SetTabBarColor(ToColor(p.Bg100));
-    tabs->SetInactiveTabBackgroundColor(ToColor(p.Bg100));
-    tabs->SetActiveTabBackgroundColor(ToColor(p.Bg100));
-    tabs->SetHoveredTabBackgroundColor(ToColor(p.Bg400));
-    tabs->SetInactiveTabTextColor(ToColor(p.InkMuted));
-    tabs->SetActiveTabTextColor(ToColor(p.Ink));
-    tabs->SetActiveTabIndicatorColor(ToColor(p.Accent));
-    tabs->SetActiveTabBorderColor(ToColor(p.Line));
-    tabs->SetInactiveTabBorderColor(ToColor(p.Line));
+    tabs->SetInactiveTabBorderColor(ToColor(p.Line));   // the theme leaves these transparent
     tabs->SetHoveredTabBorderColor(ToColor(p.Line));
-    tabs->contentAreaColor = ToColor(p.Bg100);
-    tabs->tabContentBorderColor = ToColor(p.Line);
-    tabs->navButtonBackgroundColor = ToColor(p.Bg300);
-    tabs->navButtonIconColor = ToColor(p.Ink);
     for (auto& page : {clipPage, audioPage, projectPage}) page->SetBackgroundColor(ToColor(p.Bg100));
     StyleControls(p);
 }

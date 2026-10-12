@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
 // Last Modified: 2026-08-03
 // Author: UltraCanvas Framework
@@ -164,6 +165,7 @@ namespace UltraCanvas {
         void FireFdWatch(FdWatchId id);
 
         std::vector<std::shared_ptr<UltraCanvasWindowBase>> windows;
+        int themeHandler = 0;   // UltraCanvasTheme change handler, installed by Initialize
         std::vector<std::weak_ptr<UltraCanvasWindowBase>> activeModalWindows;
 
         // Non-owning references to transient UI state. Stored as weak_ptr so a

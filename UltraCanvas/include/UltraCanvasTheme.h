@@ -14,6 +14,7 @@
 // style is set (ElementStyle::FromTheme), and the application re-applies
 // the elements it built when it switches theme, as it re-applies anything
 // else that depends on the window's look.
+// Version: 1.1.0 - change handlers (AddChangeHandler / RemoveChangeHandler), called after SetCurrent
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -21,6 +22,7 @@
 
 #include "UltraCanvasCommonTypes.h"
 
+#include <functional>
 #include <string>
 #include <unordered_map>
 
@@ -68,9 +70,19 @@ public:
 
     // The theme in force: Light until an application sets another. Read it
     // where a style is built with no theme given; set it before building the
-    // window, and again (re-applying the elements) to switch.
+    // window, and again to switch: every change handler is called after it,
+    // and the application's walks its windows so that each element that
+    // follows the theme (UltraCanvasUIElement::SetFollowTheme) re-styles
+    // itself. An element styled by hand keeps its look.
     static const UltraCanvasTheme& Current();
     static void SetCurrent(const UltraCanvasTheme& theme);
+
+    // Called after SetCurrent with the new theme. The application installs
+    // one at start-up; an app with panels of its own may add another and
+    // remove it by the id returned.
+    using ChangeHandler = std::function<void(const UltraCanvasTheme&)>;
+    static int AddChangeHandler(ChangeHandler handler);
+    static void RemoveChangeHandler(int id);
 
 private:
     std::unordered_map<std::string, Color> elementRoles;

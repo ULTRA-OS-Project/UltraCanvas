@@ -1,5 +1,6 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
+// Version: 1.3.0 - TextInputStyle::FromTheme, ApplyTheme
 // Version: 1.9.0
 // Last Modified: 2026-10-08
 // V1.8.0: SetFormatter fills the placeholder only when the field has none
@@ -296,6 +297,13 @@ struct TextInputStyle {
     
     // Predefined styles
     static TextInputStyle Default();
+    // The theme's roles: the well behind the text, ink, faint ink for the
+    // placeholder, the control border, the focus ring, the accent behind a
+    // selection, the panel and hairline when disabled, danger when invalid
+    // over a base's own shape (radius, padding, font), or Default()
+    static TextInputStyle FromTheme(const UltraCanvasTheme& theme, const TextInputStyle& base);
+    static TextInputStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, Default()); }
+    static TextInputStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     static TextInputStyle Material();
     static TextInputStyle Flat();
     static TextInputStyle Outlined();
@@ -562,6 +570,7 @@ public:
 
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
     bool OnEvent(const UCEvent& event) override;
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(TextInputStyle::FromTheme(theme, GetStyle())); }
     
     // ===== EVENT CALLBACKS =====
     std::function<void(const std::string&)> onTextChanged;

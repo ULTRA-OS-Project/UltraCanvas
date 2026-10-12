@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoViewer.cpp
 // The viewer (UltraVideoViewer.h).
+// Version: 0.2.0 - the transport bar and the fit dropdown follow the theme; DraftPlay reports a refusal
 // Version: 0.1.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
@@ -123,6 +124,10 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
     fit = CreateDropdown("uv.viewer.fit", 0, 0, 96, static_cast<int>(Tokens::ControlH));
     for (const char* choice : {"Fit", "Fill", "50 %", "100 %", "200 %"}) fit->AddItem(choice);
     fit->SetSelectedIndex(0, false);
+    DropdownStyle fitStyle = fit->GetStyle();
+    fitStyle.cornerRadius = Tokens::RadiusSm;
+    fit->SetStyle(fitStyle);
+    fit->SetFollowTheme(true);
     fit->onSelectionChanged = [this](int index, const DropdownItem&) {
         if (!surface) return;
         switch (index) {
@@ -158,6 +163,13 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
     transport = std::make_shared<UltraCanvasToolbar>("uv.transport", 0, 0, 100, static_cast<int>(Tokens::ToolbarH));
     transport->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(Tokens::ToolbarH))
         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    ToolbarAppearance appearance;
+    appearance.style = ToolbarStyle::Flat;
+    appearance.showIconLabels = false;
+    appearance.hasShadow = false;
+    appearance.iconSize = ToolbarIconSize::Small;
+    transport->SetAppearance(appearance);
+    transport->SetFollowTheme(true);
     toStart = MakeIconButton("uv.tr.start", "toStart", "To start  Home", p);
     stepBack = MakeIconButton("uv.tr.back", "stepBack", "Back a frame  \xE2\x86\x90", p);
     play = MakeIconButton("uv.tr.play", "play", "Play  Space", p);
@@ -216,31 +228,8 @@ void Viewer::ApplyPalette(const Palette& p) {
         playerStyle.backgroundColor = ToColor(p.Bg000);
         player->SetStyle(playerStyle);
     }
-    ToolbarAppearance appearance;
-    appearance.style = ToolbarStyle::Flat;
-    appearance.backgroundColor = ToColor(p.Bg100);
-    appearance.foregroundColor = ToColor(p.Ink);
-    appearance.separatorColor = ToColor(p.Line);
-    appearance.hoverBackgroundColor = ToColor(p.Bg400);
-    appearance.activeBackgroundColor = ToColor(p.Bg500);
-    appearance.showIconLabels = false;
-    appearance.hasShadow = false;
-    appearance.iconSize = ToolbarIconSize::Small;
-    transport->SetAppearance(appearance);
+    // the transport bar and the fit dropdown follow the theme (Build)
     for (auto& b : {toStart, stepBack, play, stepForward, toEnd}) b->SetStyle(GhostButtonStyle(p));
-    DropdownStyle dropdown;
-    dropdown.normalColor = ToColor(p.Bg300);
-    dropdown.hoverColor = ToColor(p.Bg400);
-    dropdown.pressedColor = ToColor(p.Bg500);
-    dropdown.borderColor = ToColor(p.LineStrong);
-    dropdown.focusBorderColor = ToColor(p.Focus);
-    dropdown.normalTextColor = ToColor(p.Ink);
-    dropdown.listBackgroundColor = ToColor(p.Bg300);
-    dropdown.listBorderColor = ToColor(p.LineStrong);
-    dropdown.itemHoverColor = ToColor(p.Bg400);
-    dropdown.itemSelectedColor = ToColor(p.AccentSoft);
-    dropdown.cornerRadius = Tokens::RadiusSm;
-    fit->SetStyle(dropdown);
     readout->SetStyle(TimecodeStyleFor(p));
     total->SetTextColor(ToColor(p.InkMuted));
     SliderVisualStyle slider;
@@ -309,7 +298,11 @@ VideoPlaybackState Viewer::DraftState() const {
     return player && player->GetPlayer() ? player->GetPlayer()->GetState() : VideoPlaybackState::Idle;
 }
 
-void Viewer::DraftPlay() { if (player) player->Play(); }
+bool Viewer::DraftPlay() {
+    if (!player || !player->GetPlayer()) return false;
+    player->Play();
+    return player->GetPlayer()->GetState() == VideoPlaybackState::Playing;
+}
 void Viewer::DraftPause() { if (player) player->Pause(); }
 void Viewer::DraftSeek(double seconds) { if (player) player->Seek(std::max(0.0, seconds)); }
 double Viewer::DraftPosition() const {

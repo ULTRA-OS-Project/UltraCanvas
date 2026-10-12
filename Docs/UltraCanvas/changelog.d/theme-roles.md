@@ -11,6 +11,28 @@
   timeline's own `video-timeline.<role>` colours where the theme names them
   and its light or dark palette where it does not. UltraVideo maps its
   design tokens onto the theme (`ThemeFor`) and sets it as the current one,
-  so nothing is hard-coded in the element. Other elements keep their own
-  presets until each gains a `FromTheme`; nothing changes for them.
+  so nothing is hard-coded in the element.
   `Docs/UltraCanvas/UltraCanvasTheme.md`; `Tests/UltraCanvasThemeTest.cpp`.
+- **`UltraCanvasTheme` 1.1.0: the elements follow it.** `FromTheme` on every
+  style struct with colours - `ButtonStyle`, `LabelStyle`, `DropdownStyle`,
+  `SliderVisualStyle`, `SwitchVisualStyle`, `TextInputStyle`,
+  `ToolbarAppearance`, `SplitPaneStyle`, `AlbumConfig`, `MenuStyle`,
+  `TooltipStyle` - puts the roles over a base style whose shape (sizes,
+  fonts, flags) stays; the menu and the tooltip start from their `Dark()`
+  or `Light()` preset by the theme's `dark` flag, so a dark menu or tooltip
+  agrees with the rest of a dark window. `UltraCanvasUIElement` gained
+  `SetFollowTheme` / `GetFollowTheme`, `ApplyTheme` and `OnThemeChanged`:
+  an element that follows styles itself from the current theme at once
+  and again on every change, over its own style (a radius or a font set
+  before survives a switch); the tabbed container and the text area
+  (its light or dark token colours, the surfaces and ink from the roles)
+  override `ApplyTheme` directly; a container passes a change on to its
+  children. Off by default: an element styled by hand keeps its look.
+  `UltraCanvasTheme::AddChangeHandler` / `RemoveChangeHandler` are called
+  after `SetCurrent`; the application installs one in `Initialize` that
+  walks every window and sets `UltraCanvasTooltipManager::SetStyle` (now
+  static, the style every tooltip shown without one takes; `GetStyle`)
+  from the theme, so an application switches its look with one call.
+  UltraVideo's split panes, tabs, fields, albums, toolbars, dropdowns and
+  context menu follow the theme; its own looks stay in `ApplyPalette`.
+  `Tests/UltraCanvasThemeTest.cpp`: 43 checks.

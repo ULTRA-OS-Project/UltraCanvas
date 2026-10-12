@@ -1,7 +1,7 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-10-08 - default bodies mark unused parameters (void)
+// Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
 #pragma once
 
 #include "UltraCanvasUIElement.h"
@@ -69,6 +69,14 @@ namespace UltraCanvas {
         Color checkboxBorderColor = Color(180, 180, 180, 255);
         Color checkboxCheckedColor = Color(100, 150, 255, 255);
         Color checkmarkColor = Colors::White;
+
+        // The theme's roles: the raised surface for the field (a button at
+        // rest) and the list, hover and pressed fills, ink, control borders, the accent
+        // behind a selected or checked item, the focus ring
+        // over a base's own shape (sizes, fonts, flags), or a default one
+        static DropdownStyle FromTheme(const UltraCanvasTheme& theme, const DropdownStyle& base);
+        static DropdownStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, DropdownStyle()); }
+        static DropdownStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
         // Dimensions
         float borderWidth = 1.0f;
@@ -236,6 +244,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(DropdownStyle::FromTheme(theme, GetStyle())); }
 
     private:
         void CreatePopupListView();

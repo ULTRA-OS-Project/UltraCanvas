@@ -1,5 +1,6 @@
 // core/UltraCanvasSlider.cpp
 // Platform-independent slider component implementation
+// Version: 1.4.0 - SliderVisualStyle::FromTheme
 // Version: 1.3.0
 // Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
@@ -962,5 +963,23 @@ namespace UltraCanvas {
         } else {
             SetValue(newValue);
         }
+    }
+
+    SliderVisualStyle SliderVisualStyle::FromTheme(const UltraCanvasTheme& theme, const SliderVisualStyle& base) {
+        SliderVisualStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.trackColor = r.pressed;
+        s.activeTrackColor = r.accent;
+        s.disabledTrackColor = r.line;
+        s.disabledActiveTrackColor = r.inkFaint;
+        s.rangeTrackColor = r.accent.WithAlpha(180);
+        s.handleColor = r.raised;
+        s.handleBorderColor = r.lineStrong;
+        s.handleHoverColor = r.hover;
+        s.handlePressedColor = r.pressed;
+        s.handleDisabledColor = r.panel;
+        s.textColor = r.ink;
+        s.disabledTextColor = r.inkFaint;
+        return s;
     }
 } // namespace UltraCanvas

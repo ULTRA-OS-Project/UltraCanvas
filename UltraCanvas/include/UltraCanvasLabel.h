@@ -4,6 +4,7 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.10.0 - LabelStyle::FromTheme, ApplyTheme
 // Version: 2.9.0 - selectable text: SetSelectable / SetTextSelection, a drag
 //                 selects, a double-click a word, a triple-click all of it,
 //                 Ctrl+C copies (UltraCanvasTextSelection.h)
@@ -63,6 +64,12 @@ namespace UltraCanvas {
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 128);
         Point2Di shadowOffset = Point2Di(1, 1);
+
+        // The theme's roles: ink, faint ink when disabled, the accent behind a selection
+        // over a base's own shape (sizes, fonts, flags), or a default one
+        static LabelStyle FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base);
+        static LabelStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, LabelStyle()); }
+        static LabelStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
         static LabelStyle DefaultStyle() {
             return LabelStyle{};
@@ -310,6 +317,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(LabelStyle::FromTheme(theme, GetStyle())); }
 
         // A selectable label takes the keyboard focus when it is pressed - the
         // one its selection last pressed, so a page of them is a single stop

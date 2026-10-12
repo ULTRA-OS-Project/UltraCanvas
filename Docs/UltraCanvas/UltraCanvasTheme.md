@@ -1,6 +1,6 @@
 # UltraCanvas Theme
 
-<!-- doc-check: std::shared_ptr<UltraCanvasVideoTimeline> timeline; std::shared_ptr<UltraCanvasTimecodeField> field; -->
+<!-- doc-check: std::shared_ptr<UltraCanvasVideoTimeline> timeline; std::shared_ptr<UltraCanvasTimecodeField> field; std::shared_ptr<UltraCanvasButton> button; std::shared_ptr<UltraCanvasTextInput> input; std::shared_ptr<UltraCanvasMenu> menu; std::shared_ptr<UltraCanvasContainer> panel; -->
 
 `UltraCanvasTheme` — the framework's **colour roles**: the object a window's
 light or dark look lives in, which an element reads when its style is
@@ -12,21 +12,30 @@ like.
 **Namespace:** `UltraCanvas`
 **Header:** `include/UltraCanvasTheme.h`
 **Source:** `core/UltraCanvasTheme.cpp`
-**Readers:** `VideoTimelineStyle::FromTheme`, `TimecodeFieldStyle::FromTheme`
-(`include/UltraCanvasVideoTimeline.h`, `include/UltraCanvasTimecodeField.h`)
+**Readers:** `FromTheme` on `ButtonStyle`, `LabelStyle`, `DropdownStyle`,
+`SliderVisualStyle`, `SwitchVisualStyle`, `TextInputStyle`,
+`ToolbarAppearance`, `SplitPaneStyle`, `AlbumConfig`, `MenuStyle`,
+`TooltipStyle`, `VideoTimelineStyle`, `TimecodeFieldStyle`; `ApplyTheme` on
+those elements, the tabbed container and the text area
+(`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.0.0
+**Version:** 1.1.0 - change handlers; elements follow the theme; FromTheme for the panel elements, the menu and the tooltip
 **Last Modified:** 2026-10-12
 **Author:** UltraCanvas Framework
 
 ## Status
 
-The theme, its two presets and the current theme are in place; the video
-timeline and the timecode field read it. The other elements keep their own
-style structs and presets (`MenuStyle::Dark()`, `TooltipStyle::Light()`,
-the text area's `ApplyDarkTheme()`) until each gains a `FromTheme`; an
-application themes those as it did before.
+The theme, its two presets, the current theme and its change handlers are
+in place. Every panel element reads it: the button, label, dropdown,
+slider, switch, text input, toolbar, split pane and album through a
+`FromTheme` on their style struct and an `ApplyTheme` on the element; the
+tabbed container and the text area through `ApplyTheme` alone; the menu
+and the tooltip through `MenuStyle::FromTheme` and `TooltipStyle::FromTheme`,
+which put the roles over their own `Dark()` and `Light()` presets, so a
+dark menu or tooltip agrees with the rest of a dark window. An element
+follows the theme only when asked (`SetFollowTheme`); styled by hand it
+keeps its look, as before.
 
 ## The roles
 
@@ -92,13 +101,57 @@ bool named = theme.HasRole("video-timeline.playhead");                        //
 Color beat = theme.Role("video-timeline.beat", Color(255, 255, 255, 41));     // the fallback: not named
 ```
 
-**No automatic re-style.** An element takes its colours when its style is
-set. To switch theme at run time, set the new current theme and re-apply
-the elements the window built, as UltraVideo's `ApplyPalette` does for
-every panel: the theme is one object, the re-application is the
-application's.
+### Following the theme
+
+Every element's style struct that has colours gained a `FromTheme`: the
+roles mapped onto its fields, over a **base** style whose shape (sizes,
+fonts, flags) stays - the struct's default when none is given, so a
+`FromTheme()` with no arguments is a themed default. The menu and the
+tooltip start from their `Dark()` or `Light()` preset by the theme's
+`dark` flag; the text input from `Default()`.
+
+```cpp
+button->SetStyle(ButtonStyle::FromTheme());                 // the current theme over the default shape
+TextInputStyle rounded = input->GetStyle();
+rounded.borderRadius = 8;
+input->SetStyle(TextInputStyle::FromTheme(UltraCanvasTheme::Current(), rounded));   // its own shape kept
+menu->SetStyle(MenuStyle::FromTheme());                     // Dark() or Light() by the theme, the roles over it
+UltraCanvasTooltipManager::SetStyle(TooltipStyle::FromTheme());
+```
+
+An element asked to **follow the theme** styles itself from the current
+theme at once and again whenever it changes: `ApplyTheme` puts the theme's
+colours over the element's own style (`FromTheme(theme, GetStyle())`), so
+a radius, a font or a toolbar's icon size set before survive a switch. A
+container passes a change on to its children, a window to its whole tree.
+
+```cpp
+input->SetFollowTheme(true);                                // styled now, and on every change
+panel->SetFollowTheme(true);
+button->SetFollowTheme(false);                              // keeps the look it has
+bool follows = input->GetFollowTheme();
+```
+
+`SetCurrent` calls every **change handler** after the switch. The
+application installs one at start-up (`UltraCanvasApplicationBase::Initialize`)
+that walks its windows - every element that follows re-styles - and sets
+the tooltip manager's style from the theme, so an application switches
+its look with one call and re-applies by hand only what it styled by hand:
+
+```cpp
+int handler = UltraCanvasTheme::AddChangeHandler([](const UltraCanvasTheme& theme) {
+    // an application's own panels, drawn from the roles
+    (void)theme.roles.panel;
+});
+UltraCanvasTheme::SetCurrent(UltraCanvasTheme::Dark());     // the handlers run, the windows re-style
+UltraCanvasTheme::RemoveChangeHandler(handler);
+```
+
+A handler added during a change is not called for that change; one
+removed during a change is not called again.
 
 ## Related
 
-- `Docs/UltraCanvas/UltraCanvasVideoTimeline.md`, `UltraCanvasTimecodeField.md` — the two readers
+- `Docs/UltraCanvas/UltraCanvasVideoTimeline.md`, `UltraCanvasTimecodeField.md` — the two readers with element roles of their own
+- `Docs/UltraCanvas/UltraCanvasTooltipManager.md` — `TooltipStyle::FromTheme`, the manager's style
 - `Apps/UltraVideo/UltraVideoTheme.h` — a design's tokens mapped onto the theme (`ThemeFor`)

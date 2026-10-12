@@ -1,5 +1,6 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.8.0 - ButtonStyle::FromTheme, ApplyTheme
 // Version: 2.7.0 - onDoubleClick
 // Version: 2.6.0
 // Last Modified: 2026-10-11
@@ -117,6 +118,13 @@ namespace UltraCanvas {
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
         Point2Df shadowOffset = Point2Di(0, 0);
+
+        // The theme's roles: the raised surface at rest, the hover and
+        // pressed fills, ink, the control border, the focus ring
+        // over a base's own shape (sizes, fonts, flags), or a default one
+        static ButtonStyle FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base);
+        static ButtonStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ButtonStyle()); }
+        static ButtonStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
         // Split button style
         SplitButtonStyle splitStyle;
     };
@@ -291,6 +299,7 @@ namespace UltraCanvas {
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(ButtonStyle::FromTheme(theme, GetStyle())); }
         bool AcceptsFocus() const override { return canAcceptFocus; }
         void SetAcceptsFocus(bool accept) { canAcceptFocus = accept; }
 

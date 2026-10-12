@@ -16,8 +16,22 @@
   surfaces, lines, ink, accent, focus and danger tokens fill the shared
   roles, the clip kinds, waveform, transition badge, guides and playhead
   are the timeline's own roles, and the timeline and the timecode field
-  take their colours from it through `FromTheme`. The window sets the
-  theme when the palette switches and re-applies its panels as before.
+  take their colours from it through `FromTheme`. With `UltraCanvasTheme`
+  1.1.0 the split panes, the bin's and the inspector's tabs, the search
+  and text fields, the albums, the toolbars, the dropdowns and the clip's
+  context menu *follow* the theme (`SetFollowTheme`): the window sets the
+  theme when the palette switches and they re-style themselves, menus and
+  tooltips included; `ApplyPalette` keeps only the app's own looks - the
+  ghost and primary buttons, the sliders, the switches, the timeline.
+- **Playing with sound, confirmed.** The draft played in the framework's
+  player with the GStreamer plugins installed: the playhead follows the
+  player's position, the end of the draft stops playback at the end, Play
+  again starts over. Two fixes from that run: a player that cannot start
+  (no audio sink it can open) now falls back to frame-by-frame playback
+  with the message, where before the playhead jumped to the end; and the
+  framework's GStreamer backend no longer insists on a PulseAudio sink
+  where no PulseAudio server answers, so the picture plays at pace, silent,
+  on such a desktop.
 
 #### 2026-10-11 *0.1.0*
 - **The first release: the editor's skeleton.** `Apps/UltraVideo`, on

@@ -3,11 +3,24 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
-// Version: 1.0.0
+// Version: 1.1.0 - every FromTheme, the change handlers, elements that
+//                  follow the theme through a container
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraCanvasTheme.h"
+#include "UltraCanvasAlbum.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasMenu.h"
+#include "UltraCanvasSlider.h"
+#include "UltraCanvasSplitPane.h"
+#include "UltraCanvasSwitch.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasTimecodeField.h"
+#include "UltraCanvasToolbar.h"
+#include "UltraCanvasTooltipTypes.h"
 #include "UltraCanvasVideoTimeline.h"
 
 #include <cstdio>
@@ -63,6 +76,112 @@ int main() {
     CHECK(Same(field.ink, own.roles.ink) && Same(field.inkFaint, own.roles.inkFaint) && Same(field.selection, own.roles.accent) &&
           Same(field.onSelection, own.roles.onAccent) && Same(field.sign, own.roles.accent), "ink, the selected segment and the sign from the accent");
     CHECK(field.fontFamily == TimecodeFieldStyle().fontFamily && field.fontSize == TimecodeFieldStyle().fontSize, "fonts stay the defaults");
+
+    std::printf("FromTheme for the panel elements\n");
+    const ThemeRoles& r = own.roles;
+    const ButtonStyle button = ButtonStyle::FromTheme(own);
+    CHECK(Same(button.normalColor, r.raised) && Same(button.hoverColor, r.hover) && Same(button.pressedColor, r.pressed) &&
+          Same(button.disabledColor, r.panel) && Same(button.normalTextColor, r.ink) && Same(button.disabledTextColor, r.inkFaint) &&
+          Same(button.borderColor, r.lineStrong) && Same(button.focusedColor, r.focus), "button: raised at rest, hover, pressed, ink, border, focus");
+    CHECK(Same(button.iconMaskColor, Colors::Transparent), "button: icons keep following the text colour");
+    const LabelStyle label = LabelStyle::FromTheme(own);
+    CHECK(Same(label.textColor, r.ink) && Same(label.disabledTextColor, r.inkFaint) && label.selectionColor.r == r.accent.r && label.selectionColor.a == 100,
+          "label: ink, faint ink, the accent behind a selection");
+    const DropdownStyle dropdown = DropdownStyle::FromTheme(own);
+    CHECK(Same(dropdown.normalColor, r.raised) && Same(dropdown.listBackgroundColor, r.raised) && Same(dropdown.itemSelectedColor, r.accentSoft) &&
+          Same(dropdown.checkboxCheckedColor, r.accent) && Same(dropdown.checkmarkColor, r.onAccent) && Same(dropdown.focusBorderColor, r.focus),
+          "dropdown: the raised field and list, the accent tint and check");
+    const SliderVisualStyle slider = SliderVisualStyle::FromTheme(own);
+    CHECK(Same(slider.trackColor, r.pressed) && Same(slider.activeTrackColor, r.accent) && Same(slider.handleColor, r.raised) &&
+          Same(slider.handleBorderColor, r.lineStrong) && Same(slider.textColor, r.ink), "slider: track, accent, raised handle, ink");
+    const SwitchVisualStyle sw = SwitchVisualStyle::FromTheme(own);
+    CHECK(Same(sw.trackOffColor, r.pressed) && Same(sw.trackOnColor, r.accent) && Same(sw.thumbColor, r.raised) && Same(sw.onTextColor, r.onAccent) &&
+          Same(sw.base.textColor, r.ink) && Same(sw.sideLabelInactiveColor, r.inkFaint), "switch: track off and on, thumb, labels");
+    const TextInputStyle input = TextInputStyle::FromTheme(own);
+    CHECK(Same(input.backgroundColor, r.well) && Same(input.borderColor, r.lineStrong) && Same(input.focusBorderColor, r.focus) &&
+          Same(input.textColor, r.ink) && Same(input.placeholderColor, r.inkFaint) && Same(input.invalidBorderColor, r.danger) &&
+          Same(input.disabledBackgroundColor, r.panel), "text input: the well, borders, ink, placeholder, danger, disabled");
+    CHECK(input.borderRadius == TextInputStyle::Default().borderRadius, "text input: the default's shape");
+    TextInputStyle inputBase = TextInputStyle::Default();
+    inputBase.borderRadius = 11;
+    CHECK(TextInputStyle::FromTheme(own, inputBase).borderRadius == 11 && Same(TextInputStyle::FromTheme(own, inputBase).textColor, r.ink),
+          "text input: over a base, its shape stays");
+    ButtonStyle buttonBase;
+    buttonBase.cornerRadius = 13;
+    CHECK(ButtonStyle::FromTheme(own, buttonBase).cornerRadius == 13, "button: over a base, its shape stays");
+    const ToolbarAppearance toolbar = ToolbarAppearance::FromTheme(own);
+    CHECK(Same(toolbar.backgroundColor, r.panel) && Same(toolbar.foregroundColor, r.ink) && Same(toolbar.separatorColor, r.line) &&
+          Same(toolbar.hoverBackgroundColor, r.hover) && Same(toolbar.activeBackgroundColor, r.pressed) && Same(toolbar.disabledForegroundColor, r.inkFaint),
+          "toolbar: the panel, ink, separators, hover, active, disabled");
+    SplitPaneStyle paneBase;
+    paneBase.splitterThickness = 9;
+    const SplitPaneStyle pane = SplitPaneStyle::FromTheme(own, paneBase);
+    CHECK(Same(pane.splitterColor, r.ground) && Same(pane.splitterHoverColor, r.lineStrong) && Same(pane.splitterActiveColor, r.accent) && pane.splitterThickness == 9,
+          "split pane: ground, strong line, accent; the base's thickness");
+    AlbumConfig albumBase;
+    albumBase.mode = AlbumMode::UserEdit;
+    const AlbumConfig album = AlbumConfig::FromTheme(own, albumBase);
+    CHECK(Same(album.backgroundColor, r.panel) && Same(album.itemBackgroundColor, r.raised) && Same(album.borderColor, r.line) &&
+          Same(album.captionColor, r.ink) && Same(album.subtitleColor, r.inkMuted) && Same(album.linkColor, r.accent) &&
+          Same(album.selectionColor, r.accent) && album.mode == AlbumMode::UserEdit, "album: panel, raised tiles, hairlines, captions, accent; the base's mode");
+
+    std::printf("Menu and tooltip from the roles\n");
+    const MenuStyle menu = MenuStyle::FromTheme(own);
+    CHECK(Same(menu.backgroundColor, r.raised) && Same(menu.borderColor, r.line) && Same(menu.hoverColor, r.hover) && Same(menu.textColor, r.ink) &&
+          Same(menu.shortcutColor, r.inkMuted) && Same(menu.disabledTextColor, r.inkFaint) && Same(menu.selectedColor, r.accentSoft),
+          "menu: the raised panel, hairlines, hover, ink, shortcuts, disabled, selected");
+    CHECK(menu.itemHeight == MenuStyle::Default().itemHeight && menu.borderRadius == MenuStyle::Default().borderRadius, "menu: Default's shape");
+    const TooltipStyle tip = TooltipStyle::FromTheme(own);
+    CHECK(tip.backgroundColor.r == r.raised.r && tip.backgroundColor.a == TooltipStyle::Dark().backgroundColor.a && Same(tip.textColor, r.ink) &&
+          Same(tip.secondaryTextColor, r.inkMuted) && Same(tip.borderColor, r.line), "tooltip: the raised panel at Dark's translucency, ink, muted ink");
+    CHECK(Same(TooltipStyle::FromTheme(light).textColor, light.roles.ink) && TooltipStyle::FromTheme(light).backgroundColor.a == TooltipStyle::Light().backgroundColor.a,
+          "tooltip: a light theme starts from Light()");
+
+    std::printf("change handlers\n");
+    int calls = 0;
+    std::string seen;
+    const int handler = UltraCanvasTheme::AddChangeHandler([&](const UltraCanvasTheme& t) { ++calls; seen = t.name; });
+    UltraCanvasTheme::SetCurrent(dark);
+    CHECK(calls == 1 && seen == "Dark", "SetCurrent calls the handler with the new theme");
+    UltraCanvasTheme::RemoveChangeHandler(handler);
+    UltraCanvasTheme::SetCurrent(light);
+    CHECK(calls == 1, "a removed handler is not called");
+    int inner = 0;
+    const int outer = UltraCanvasTheme::AddChangeHandler([&](const UltraCanvasTheme&) {
+        UltraCanvasTheme::AddChangeHandler([&](const UltraCanvasTheme&) { ++inner; });
+    });
+    UltraCanvasTheme::SetCurrent(dark);
+    CHECK(inner == 0, "a handler added during a change is not called for that change");
+    UltraCanvasTheme::RemoveChangeHandler(outer);
+    UltraCanvasTheme::SetCurrent(light);
+    CHECK(inner == 1, "and is called for the next");
+
+    std::printf("elements that follow the theme\n");
+    auto panel = std::make_shared<UltraCanvasContainer>("panel", 0, 0, 200, 100);
+    auto follower = std::make_shared<UltraCanvasButton>("follow", 0, 0, 80, 24, "Follow");
+    auto styled = std::make_shared<UltraCanvasButton>("styled", 0, 0, 80, 24, "Styled");
+    auto text = std::make_shared<UltraCanvasLabel>("text", 0, 0, 80, 24, "Text");
+    panel->AddChild(follower);
+    panel->AddChild(styled);
+    panel->AddChild(text);
+    const Color ownRest = Color(9, 8, 7);
+    ButtonStyle byHand;
+    byHand.normalColor = ownRest;
+    styled->SetStyle(byHand);
+    CHECK(!follower->GetFollowTheme() && !Same(follower->GetStyle().normalColor, light.roles.raised), "an element does not follow the theme by default");
+    follower->SetFollowTheme(true);
+    text->SetFollowTheme(true);
+    CHECK(follower->GetFollowTheme() && Same(follower->GetStyle().normalColor, light.roles.raised) && Same(text->GetStyle().textColor, light.roles.ink),
+          "SetFollowTheme(true) styles the element from the current theme at once");
+    panel->OnThemeChanged(dark);
+    CHECK(Same(follower->GetStyle().normalColor, dark.roles.raised) && Same(follower->GetStyle().normalTextColor, dark.roles.ink) &&
+          Same(text->GetStyle().textColor, dark.roles.ink), "a theme change reaches the children through the container");
+    CHECK(Same(styled->GetStyle().normalColor, ownRest), "an element styled by hand keeps its look");
+    follower->SetFollowTheme(false);
+    panel->OnThemeChanged(light);
+    CHECK(Same(follower->GetStyle().normalColor, dark.roles.raised) && Same(text->GetStyle().textColor, light.roles.ink),
+          "SetFollowTheme(false) stops the re-styling");
+    panel->ClearChildren();
 
     UltraCanvasTheme::SetCurrent(light);
     std::printf("\n%d of %d checks passed\n", testCount - failCount, testCount);

@@ -6,6 +6,7 @@
 // end, the large timecode readout over the project length, the volume.
 // Playback itself is the window's: it moves the playhead and the viewer
 // shows what the engine renders for it.
+// Version: 0.2.0 - DraftPlay returns bool
 // Version: 0.1.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
@@ -79,7 +80,7 @@ public:
     void HideDraft();                                // back to the frame surface
     bool DraftShown() const { return draftShown; }
     UltraCanvas::VideoPlaybackState DraftState() const;
-    void DraftPlay();
+    bool DraftPlay();                 // false when the player could not start
     void DraftPause();
     void DraftSeek(double seconds);
     double DraftPosition() const;

@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.2.0 - the panels follow the theme; a player that cannot start falls back
 // Version: 0.1.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
@@ -103,6 +104,13 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
     // The three columns
     columns_ = CreateHorizontalSplitPane("uv.columns", 0, 0, 1440, 540);
     columns_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // the splitters' width once; their colours follow the theme
+    for (auto& pane : {rows_, columns_}) {
+        SplitPaneStyle split = pane->GetSplitPaneStyle();
+        split.splitterThickness = static_cast<int>(Tokens::SplitterW);
+        pane->SetSplitPaneStyle(split);
+        pane->SetFollowTheme(true);
+    }
     auto binPane = columns_->AddPane(static_cast<double>(Tokens::BinW));
     viewerPane_ = columns_->AddPane(1440.0 - Tokens::BinW - Tokens::InspectorW);
     inspectorPane_ = columns_->AddPane(static_cast<double>(Tokens::InspectorW));
@@ -249,6 +257,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     binTabs_->SetCloseMode(TabCloseMode::NoClose);
     binTabs_->SetTabMinWidth(52);
     binTabs_->SetTabStyle(TabStyle::Flat);
+    binTabs_->SetFollowTheme(true);
 
     // Media: the search field over the grid, or the empty state
     auto mediaPage = std::make_shared<UltraCanvasContainer>("uv.bin.media", 0, 0, static_cast<int>(Tokens::BinW), 480);
@@ -256,6 +265,10 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     mediaPage->SetPadding(static_cast<float>(Tokens::Space2));
     binSearch_ = CreateTextInput("uv.bin.search", 0, 0, 200, static_cast<int>(Tokens::ControlH));
     binSearch_->SetPlaceholder("Search media");
+    TextInputStyle search = binSearch_->GetStyle();
+    search.borderRadius = static_cast<int>(Tokens::RadiusSm);
+    binSearch_->SetStyle(search);
+    binSearch_->SetFollowTheme(true);
     binSearch_->onTextChanged = [this](const std::string&) { RefreshBin(); };
     binSearch_->layoutItem.SetFlexShrink(0);
     mediaPage->AddChild(binSearch_);
@@ -264,7 +277,19 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
         album = std::make_shared<UltraCanvasAlbum>(id, 0, 0, 260, 400);
         album->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        album->SetMode(AlbumMode::UserEdit);
+        AlbumConfig cfg;
+        cfg.layout = AlbumLayout::UniformGrid;
+        cfg.sizingMode = AlbumSizingMode::ItemsPerRow;
+        cfg.itemsPerRow = 2;
+        cfg.gap = static_cast<int>(Tokens::Space2);
+        cfg.outerPadding = 0;
+        cfg.imageDisplay = AlbumImageDisplay::Crop;
+        cfg.actionDisplay = AlbumActionDisplay::OnHover;
+        cfg.showBorder = false;
+        cfg.allowSelection = true;
+        cfg.mode = AlbumMode::UserEdit;      // tiles can be dragged (out to the timeline)
+        album->SetConfig(cfg);
+        album->SetFollowTheme(true);         // the panel, raised tiles, captions, the selection
         AlbumAction add;
         add.id = "add";
         add.label = music ? "Use as music" : "Add to the timeline";
@@ -417,6 +442,13 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
     timelineBar_ = std::make_shared<UltraCanvasToolbar>("uv.timelineBar", 0, 0, 1440, static_cast<int>(Tokens::ToolbarH));
     timelineBar_->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(Tokens::ToolbarH))
         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    ToolbarAppearance bar;
+    bar.style = ToolbarStyle::Flat;
+    bar.showIconLabels = false;
+    bar.hasShadow = false;
+    bar.iconSize = ToolbarIconSize::Small;
+    timelineBar_->SetAppearance(bar);
+    timelineBar_->SetFollowTheme(true);
 
     toolSelect_ = MakeIconButton("uv.tool.select", "select", "Select  V", p);
     toolSelect_->SetOnClick([this]() { SetTool(TimelineTool::Select); });
@@ -617,7 +649,10 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
 
 void UltraVideoWindow::ApplyPalette() {
     const Palette& p = *palette_;
-    UltraCanvasTheme::SetCurrent(ThemeFor(p));   // the framework's theme is the palette; the elements below are re-applied
+    // The framework's theme is the palette: the elements that follow it
+    // (split panes, tabs, fields, albums, toolbars, dropdowns, menus,
+    // tooltips) re-style themselves here; the app's own looks follow
+    UltraCanvasTheme::SetCurrent(ThemeFor(p));
     window_->SetBackgroundColor(ToColor(p.Bg000));
     appBar_->SetBackgroundColor(ToColor(p.Bg100));
     appBar_->SetBorderBottom(1, ToColor(p.Line));
@@ -627,60 +662,12 @@ void UltraVideoWindow::ApplyPalette() {
     export_->SetStyle(PrimaryButtonStyle(p));
     theme_->SetIcon(IconPath(dark_ ? "eye" : "eyeOff"));
 
-    SplitPaneStyle split = columns_->GetSplitPaneStyle();
-    split.splitterColor = ToColor(p.Bg000);
-    split.splitterHoverColor = ToColor(p.LineStrong);
-    split.splitterActiveColor = ToColor(p.Accent);
-    split.splitterThickness = static_cast<int>(Tokens::SplitterW);
-    columns_->SetSplitPaneStyle(split);
-    rows_->SetSplitPaneStyle(split);
-
     binPanel_->SetBackgroundColor(ToColor(p.Bg100));
     inspectorPane_->SetBackgroundColor(ToColor(p.Bg100));
     viewerPane_->SetBackgroundColor(ToColor(p.Bg000));
     binTabs_->SetBackgroundColor(ToColor(p.Bg100));
-    binTabs_->SetTabBarColor(ToColor(p.Bg100));
-    binTabs_->SetInactiveTabBackgroundColor(ToColor(p.Bg100));
-    binTabs_->SetActiveTabBackgroundColor(ToColor(p.Bg100));
-    binTabs_->SetHoveredTabBackgroundColor(ToColor(p.Bg400));
-    binTabs_->SetInactiveTabTextColor(ToColor(p.InkMuted));
-    binTabs_->SetActiveTabTextColor(ToColor(p.Ink));
-    binTabs_->SetActiveTabIndicatorColor(ToColor(p.Accent));
-    binTabs_->SetActiveTabBorderColor(ToColor(p.Line));
-    binTabs_->SetInactiveTabBorderColor(ToColor(p.Line));
+    binTabs_->SetInactiveTabBorderColor(ToColor(p.Line));   // the theme leaves these transparent
     binTabs_->SetHoveredTabBorderColor(ToColor(p.Line));
-    binTabs_->contentAreaColor = ToColor(p.Bg100);
-    binTabs_->tabContentBorderColor = ToColor(p.Line);
-    binTabs_->navButtonBackgroundColor = ToColor(p.Bg300);
-    binTabs_->navButtonIconColor = ToColor(p.Ink);
-    TextInputStyle search = binSearch_->GetStyle();
-    search.backgroundColor = ToColor(p.Bg200);
-    search.borderColor = ToColor(p.LineStrong);
-    search.focusBorderColor = ToColor(p.Focus);
-    search.textColor = ToColor(p.Ink);
-    search.placeholderColor = ToColor(p.InkFaint);
-    search.caretColor = ToColor(p.Ink);
-    search.borderRadius = static_cast<int>(Tokens::RadiusSm);
-    binSearch_->SetStyle(search);
-    for (auto& album : {binAlbum_, musicAlbum_}) {
-        AlbumConfig cfg;
-        cfg.layout = AlbumLayout::UniformGrid;
-        cfg.sizingMode = AlbumSizingMode::ItemsPerRow;
-        cfg.itemsPerRow = 2;
-        cfg.gap = static_cast<int>(Tokens::Space2);
-        cfg.outerPadding = 0;
-        cfg.imageDisplay = AlbumImageDisplay::Crop;
-        cfg.actionDisplay = AlbumActionDisplay::OnHover;
-        cfg.backgroundColor = ToColor(p.Bg100);
-        cfg.itemBackgroundColor = ToColor(p.Bg200);
-        cfg.showBorder = false;
-        cfg.captionColor = ToColor(p.Ink);
-        cfg.subtitleColor = ToColor(p.InkMuted);
-        cfg.allowSelection = true;
-        cfg.selectionColor = ToColor(p.Accent);
-        cfg.mode = AlbumMode::UserEdit;      // tiles can be dragged (out to the timeline)
-        album->SetConfig(cfg);
-    }
     binEmpty_->SetTextColor(ToColor(p.InkMuted));
     binEmpty_->SetBorders(1, ToColor(p.LineStrong), Tokens::RadiusLg, UCDashPattern({6.0, 4.0}));
     titlesNote_->SetTextColor(ToColor(p.InkMuted));
@@ -696,17 +683,6 @@ void UltraVideoWindow::ApplyPalette() {
     inspector_.ApplyPalette(p);
 
     dock_->SetBackgroundColor(ToColor(p.Bg100));
-    ToolbarAppearance bar;
-    bar.style = ToolbarStyle::Flat;
-    bar.backgroundColor = ToColor(p.Bg100);
-    bar.foregroundColor = ToColor(p.Ink);
-    bar.separatorColor = ToColor(p.Line);
-    bar.hoverBackgroundColor = ToColor(p.Bg400);
-    bar.activeBackgroundColor = ToColor(p.Bg500);
-    bar.showIconLabels = false;
-    bar.hasShadow = false;
-    bar.iconSize = ToolbarIconSize::Small;
-    timelineBar_->SetAppearance(bar);
     for (auto& b : {split_, delete_, marker_, magnet_, zoomOut_, zoomIn_, zoomFit_}) b->SetStyle(GhostButtonStyle(p));
     playheadField_->SetStyle(TimecodeStyleFor(p));
     lengthLabel_->SetTextColor(ToColor(p.InkMuted));
@@ -1167,8 +1143,20 @@ void UltraVideoWindow::PollDraft() {
         // the player has the file: start it once it is ready, give up if it
         // cannot (an error, or nothing loaded after a few seconds)
         const VideoPlaybackState state = viewer_.DraftState();
-        const bool failed = state == VideoPlaybackState::Error ||
-                            (state == VideoPlaybackState::Idle && ++draftStartTicks_ > 250);
+        bool failed = state == VideoPlaybackState::Error ||
+                      (state == VideoPlaybackState::Idle && ++draftStartTicks_ > 250);
+        if (!failed && state != VideoPlaybackState::Loading && state != VideoPlaybackState::Buffering &&
+            state != VideoPlaybackState::Idle) {
+            viewer_.DraftSeek(document_.view.playhead);
+            // the player may refuse (no audio sink it can open): then the
+            // frame-by-frame path, not a playhead that jumps to the end
+            if (viewer_.DraftPlay()) {
+                draftStarting_ = false;
+                draftPlaying_ = true;
+            } else {
+                failed = true;
+            }
+        }
         if (failed) {
             viewer_.HideDraft();
             draftStarting_ = false;
@@ -1178,12 +1166,6 @@ void UltraVideoWindow::PollDraft() {
             Message("The player cannot play the draft here: playing frame by frame, without sound.");
             playFrom_ = document_.view.playhead;
             playStarted_ = std::chrono::steady_clock::now();
-        } else if (state != VideoPlaybackState::Loading && state != VideoPlaybackState::Buffering &&
-                   state != VideoPlaybackState::Idle) {
-            viewer_.DraftSeek(document_.view.playhead);
-            viewer_.DraftPlay();
-            draftStarting_ = false;
-            draftPlaying_ = true;
         }
     }
     if (!draftJob_ || draftJob_->IsRunning()) return;
@@ -1513,6 +1495,7 @@ void UltraVideoWindow::AddMarker() {
 void UltraVideoWindow::ShowTimelineMenu(const std::string& trackId, double seconds, const std::string& clipId, int x, int y) {
     menu_ = std::make_shared<UltraCanvasMenu>("uv.timelineMenu", 0, 0, 240, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
+    menu_->SetFollowTheme(true);       // the raised panel, ink and hairlines of the current look
     const int index = SegmentOfClip(document_, clipId);
     const int titleIndex = document_.TitleIndex(clipId);
     const int overlayIndex = document_.OverlayIndex(clipId);

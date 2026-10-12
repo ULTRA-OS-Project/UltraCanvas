@@ -1,5 +1,6 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.7.0 - ToolbarAppearance::FromTheme
 // Version: 1.6.1 - a movable bar is dragged by its own surface only, in window
 //                  coordinates, with the mouse captured, and stays where it
 //                  is dropped (its CSS position moves, not just its bounds)
@@ -1113,4 +1114,17 @@ namespace UltraCanvas {
 
     } // namespace ToolbarPresets
 
+
+    ToolbarAppearance ToolbarAppearance::FromTheme(const UltraCanvasTheme& theme, const ToolbarAppearance& base) {
+        ToolbarAppearance a = base;
+        const ThemeRoles& r = theme.roles;
+        a.foregroundColor = r.ink;
+        a.backgroundColor = r.panel;
+        a.separatorColor = r.line;
+        a.hoverBackgroundColor = r.hover;
+        a.activeBackgroundColor = r.pressed;
+        a.disabledBackgroundColor = r.panel;
+        a.disabledForegroundColor = r.inkFaint;
+        return a;
+    }
 } // namespace UltraCanvas

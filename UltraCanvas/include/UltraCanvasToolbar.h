@@ -15,6 +15,7 @@
 // scrolls them with the mouse wheel instead of clipping them, and a chevron
 // at the edge the items continue past says so and scrolls a page when
 // clicked (SetScrollHints).
+// Version: 1.2.0 - ToolbarAppearance::FromTheme, ApplyTheme
 // Version: 1.7.0
 // Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
@@ -120,6 +121,13 @@ namespace UltraCanvas {
         // Foreground (icon/text) color for disabled/inactive items. Used to grey
         // out icons rather than reusing the background color for the foreground.
         Color disabledForegroundColor = Color(150, 150, 150, 255);
+
+        // The theme's roles: the panel behind the bar, ink, hairline
+        // separators, the hover and pressed fills, faint ink when disabled
+        // over a base's own shape (sizes, fonts, flags), or a default one
+        static ToolbarAppearance FromTheme(const UltraCanvasTheme& theme, const ToolbarAppearance& base);
+        static ToolbarAppearance FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ToolbarAppearance()); }
+        static ToolbarAppearance FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
 //        Color hoverForegroundColor = Colors::Black;
 //        Color activeForegroundColor = Colors::Black;
@@ -377,6 +385,7 @@ namespace UltraCanvas {
         // ===== RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetAppearance(ToolbarAppearance::FromTheme(theme, GetAppearance())); }
         // The reorder drag watches the window's pointer events (an item's
         // button consumes the press before this container would see it), so
         // the watch is installed when the toolbar reaches a window.

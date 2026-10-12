@@ -5,7 +5,7 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 
 **Header:** `UltraCanvasTextArea.h`  
 **Implementation:** `UltraCanvasTextArea.cpp`  
-**Version:** 2.0.2  
+**Version:** 2.1.0 - `ApplyTheme`  
 **Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework  
 
@@ -453,6 +453,17 @@ void SetCursorColor(const Color& color);
 void ApplyDarkTheme();
 ```
 Applies dark color scheme with syntax highlighting.
+
+#### ApplyTheme
+```cpp
+void ApplyTheme(const UltraCanvasTheme& theme);
+```
+The light or dark preset by the theme's `dark` flag (the token colours),
+then the theme's roles for the surfaces and ink: the well behind the text,
+ink, the hover fill on the current line, the accent behind a selection,
+faint ink for the line numbers over the panel. A text area asked to follow
+the theme (`SetFollowTheme(true)`) does this on every theme change; see
+`Docs/UltraCanvas/UltraCanvasTheme.md`.
 
 #### ApplyLightTheme
 ```cpp

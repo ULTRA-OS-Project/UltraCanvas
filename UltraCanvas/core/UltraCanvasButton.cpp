@@ -1,5 +1,6 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.10.0 - ButtonStyle::FromTheme
 // Version: 2.9.0 - onDoubleClick takes a left double-click instead of a second press
 // Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
 //                  centred half a pixel off was resampled and blurred
@@ -1157,4 +1158,20 @@ namespace UltraCanvas {
         return false;
     }
 
+
+    ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base) {
+        ButtonStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.normalColor = r.raised;
+        s.hoverColor = r.hover;
+        s.pressedColor = r.pressed;
+        s.disabledColor = r.panel;
+        s.focusedColor = r.focus;
+        s.normalTextColor = r.ink;
+        s.hoverTextColor = r.ink;
+        s.pressedTextColor = r.ink;
+        s.disabledTextColor = r.inkFaint;
+        s.borderColor = r.lineStrong;
+        return s;
+    }
 } // namespace UltraCanvas

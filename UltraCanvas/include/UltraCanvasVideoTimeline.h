@@ -14,6 +14,7 @@
 // track places clips freely. That is the shape of an engine whose export is
 // a list of segments (VideoFX) with free overlays and music beside it.
 //
+// Version: 1.1.0 - ApplyTheme
 // Version: 1.0.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
@@ -199,6 +200,7 @@ public:
     // ===== UIElement OVERRIDES =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(VideoTimelineStyle::FromTheme(theme)); }
     bool AcceptsFocus() const override { return true; }
     UCMouseCursor GetMouseCursor() const override;
     AccessibleRole GetAccessibleRole() const override { return AccessibleRole::List; }
