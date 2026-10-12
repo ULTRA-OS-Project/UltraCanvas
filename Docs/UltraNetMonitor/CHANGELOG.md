@@ -30,6 +30,9 @@
   (3588)" as before. This follows the framework's rule of a word or a
   character the font has, never a glyph it lacks (framework changelog,
   *drawn marks*), rather than bundling an emoji font for two arrows.
+- **No version literal outside the changelog.** The sources carried stale
+  `// Version: 0.10.0` header comments; they are gone, as the versioning
+  rule asks.
 
 #### 2026-10-05 *0.13*
 - **The activity store opens in a Windows profile named in any script.**

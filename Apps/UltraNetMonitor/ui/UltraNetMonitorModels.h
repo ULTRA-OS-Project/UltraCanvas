@@ -7,7 +7,6 @@
 // and filters them; the numeric columns answer SortRole with the number, so
 // "10" sorts after "9". A peer's name shows in a *Host* column, with a
 // trailing "?" when it is a weak one (reverse DNS), never as a fact.
-// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
