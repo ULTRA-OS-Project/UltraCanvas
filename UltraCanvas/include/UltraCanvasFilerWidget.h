@@ -1166,6 +1166,20 @@ namespace UltraCanvas {
         // the user changes desktop theme, or installs an application that
         // brings icons with it.
         void RefreshHostIcons();
+        // Draws, into `rect` (the context's coordinates), the icon this
+        // display gives the TYPE of `path` - a file name or a whole path,
+        // which need not exist - or a folder: the type glyph, or this
+        // desktop's icon under File icons = Host OS. Never a thumbnail or a
+        // preview of content, since there may be no file to take one from.
+        // For a host element that shows a file type the way the listing does
+        // (the file dialog's Save icon, UltraCanvasFileDragIcon).
+        void DrawTypeIcon(IRenderContext* ctx, const std::string& path, bool isFolder,
+                          const Rect2Di& rect);
+        // The colours this display gives that type (see EntryColorOf): the
+        // family colour of its glyph's band, and the ink for text on it - for
+        // a host that draws the type its own way in the listing's colours
+        // (the file dialog's big Save icon).
+        void GetTypeColors(const std::string& path, bool isFolder, Color& fill, Color& ink) const;
 
         // The name of `e` as this display draws it — the full name, or the
         // name without its extension while the names carry none. What a host
@@ -2807,6 +2821,12 @@ namespace UltraCanvas {
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);
+        // The widget's own drawing of a type, what the icons fall back to:
+        // the folder shape, or the sheet with the extension on its band.
+        void DrawTypeGlyph(IRenderContext* ctx, const FilerEntry& e, const Rect2Di& rect);
+        // An entry of `path`'s type and nothing else (DrawTypeIcon,
+        // GetTypeColors): name, extension, category, no file read.
+        FilerEntry TypeEntryFor(const std::string& path, bool isFolder) const;
         // The small arrow badge in the corner of a shortcut's icon - the one
         // mark that tells a shortcut apart from the file it points at, whose
         // icon it otherwise wears exactly.

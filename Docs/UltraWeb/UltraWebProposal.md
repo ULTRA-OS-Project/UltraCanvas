@@ -488,6 +488,11 @@ the affected subtree when the pointer or focus changes.
 
 ### 6.5 Forms
 
+*Done 2026-10-12 (UltraWeb 0.4.0): `BuildOptions::interactiveForms`,
+`HTML::FormController` / `FormSubmission` (`HTMLReader/HTMLForms.h`),
+`PageLoader::LoadPost`, `UltraCanvasWebView::SubmitForm`; file uploads and
+label clicks in 0.4.1.*
+
 `ElementBuilder::BuildFormControl` draws controls for display only. A
 browser needs the framework's real elements (`UltraCanvasTextInput`,
 `UltraCanvasButton`, `UltraCanvasDropdown`, `UltraCanvasCheckbox`,
@@ -747,7 +752,9 @@ Done in UltraWeb 0.3.0 ([`UltraWeb.md`](UltraWeb.md#web-pages)):
 
 Next:
 - Tabs, downloads, a history and bookmarks kept across runs.
-- `@import`; forms (§6.5); inline margins and padding.
+- (`@import`, inline elements' margins, padding, backgrounds and borders,
+  and forms with file uploads and label clicks (§6.5) are done since
+  2026-10-12.)
 - Windows and macOS.
 
 **Done when:** Wikipedia articles, the repository's `Docs/` read from

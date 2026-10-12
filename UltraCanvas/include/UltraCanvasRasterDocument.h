@@ -201,6 +201,10 @@ public:
     bool LoadFromFile(const std::string& path, std::string& error);
     // Save the flattened image through PixelFX with format from the
     // extension (`options` for the format-specific knobs when given).
+    // Without `options`, the user's save settings for the format
+    // (UltraCanvasFileLoader::GetImageExportOptions - the Save dialog's
+    // Settings button) once they have set any; until then the writer's own
+    // defaults.
     bool SaveToFile(const std::string& path, std::string& error,
                     const UCImageSave::ImageExportOptions* options = nullptr);
     // Layered project file (*.ucraster): a ZIP holding document.json and one

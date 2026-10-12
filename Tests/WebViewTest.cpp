@@ -16,13 +16,18 @@
 #include "UltraCanvasWebView.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasRenderContext.h"
 #include "CSSLayout/CSSLayout.h"
 
 #include <cstdio>
 #include <deque>
+#include <filesystem>
 #include <functional>
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -82,8 +87,15 @@ struct Web {
             else Answer(url, done);
         };
         s.resolve = Resolve;
+        s.post = [this](const std::string& url, const std::string& type, const std::string& body,
+                        std::function<void(HTML::FetchResult)> done) {
+            asked.push_back("POST " + url);
+            posted.push_back({ type, body });
+            Answer(url, done);
+        };
         return s;
     }
+    std::vector<std::pair<std::string, std::string>> posted;   // content type, body
     // Answers what is held now; what those answers ask for waits.
     void Release() {
         auto now = std::move(held);
@@ -300,12 +312,184 @@ static void TestResourcesRebuild() {
     Check(images(f.view.get()) >= 1, "with the picture in it");
 }
 
+static void TestImportedStyleSheets() {
+    std::printf("@import: imported sheets style the page, in cascade order\n");
+    Fixture f;
+    f.web.Add("https://x.org/doc/page",
+              "<html><head><title>Import</title><link rel='stylesheet' href='css/site.css'>"
+              "<style>@import 'inline.css';</style></head><body>"
+              "<p>One <span class='x'>imported</span> two <span class='z'>overridden</span>"
+              " three <span class='p'>printonly</span> four <span class='i'>fromstyle</span></p>"
+              "</body></html>");
+    f.web.Add("https://x.org/doc/css/site.css",
+              "@import \"base.css\";\n@import url(print.css) print;\n.z { color: #222222 }", "text/css");
+    f.web.Add("https://x.org/doc/css/base.css", ".x { color: #FF0000 } .z { color: #111111 }", "text/css");
+    f.web.Add("https://x.org/doc/css/print.css", ".p { color: #0000FF }", "text/css");
+    f.web.Add("https://x.org/doc/inline.css", ".i { color: #00AA00 }", "text/css");
+    f.view->Navigate("https://x.org/doc/page");
+    f.Settle();
+    UltraCanvasLabel* label = f.Label("imported");
+    Check(label != nullptr, "the page is built");
+    const std::string markup = label ? label->GetText() : std::string();
+    Check(markup.find("foreground=\"#FF0000\">imported") != std::string::npos, "an imported sheet's rule applies");
+    Check(markup.find("foreground=\"#222222\">overridden") != std::string::npos,
+          "the importing sheet's rule wins over the imported one");
+    Check(markup.find("#0000FF") == std::string::npos, "a print-only import does not apply on screen");
+    Check(markup.find("foreground=\"#00AA00\">fromstyle") != std::string::npos,
+          "a <style>'s import is read against the page");
+}
+
+static void TestImportsWithoutLoader() {
+    std::printf("@import in the builder alone: relative to the importing sheet (an EPUB's folders)\n");
+    std::map<std::string, std::string> files = {
+        { "OEBPS/css/book.css", "@import 'fonts/faces.css'; @import url(../shared/base.css); .b { color: #333333 }" },
+        { "OEBPS/css/fonts/faces.css", "@import '../book.css'; .f { color: #444444 }" },   // a cycle back
+        { "OEBPS/shared/base.css", ".s { color: #555555 }" },
+    };
+    std::vector<std::string> asked;
+    HTML::BuildOptions opts;
+    opts.resourceLoader = [&](const std::string& href) {
+        asked.push_back(href);
+        auto it = files.find(href);
+        return it == files.end() ? std::vector<uint8_t>{} : std::vector<uint8_t>(it->second.begin(), it->second.end());
+    };
+    HTML::ElementBuilder builder;
+    HTML::BuildResult r = builder.Build(
+        "<html><head><link rel='stylesheet' href='OEBPS/css/book.css'></head><body>"
+        "<p>a <span class='f'>face</span> b <span class='s'>shared</span> c <span class='b'>book</span></p>"
+        "</body></html>", opts);
+    std::string markup;
+    std::function<void(UltraCanvasUIElement*)> collect = [&](UltraCanvasUIElement* e) {
+        if (auto* l = dynamic_cast<UltraCanvasLabel*>(e)) markup += l->GetText();
+        if (auto* c = dynamic_cast<UltraCanvasContainer*>(e))
+            for (auto& child : c->GetChildren()) collect(child.get());
+    };
+    if (r.root) collect(r.root.get());
+    Check(markup.find("foreground=\"#444444\">face") != std::string::npos, "an import in a subfolder");
+    Check(markup.find("foreground=\"#555555\">shared") != std::string::npos, "an import through ..");
+    Check(markup.find("foreground=\"#333333\">book") != std::string::npos, "the importing sheet's own rules");
+    Check(std::count(asked.begin(), asked.end(), "OEBPS/css/book.css") == 1, "a cycle reads no sheet twice");
+}
+
+template <typename T> static T* FindWidget(UltraCanvasUIElement* e) {
+    if (auto* t = dynamic_cast<T*>(e)) return t;
+    if (auto* c = dynamic_cast<UltraCanvasContainer*>(e))
+        for (auto& child : c->GetChildren())
+            if (auto* found = FindWidget<T>(child.get())) return found;
+    return nullptr;
+}
+
+static void TestForms() {
+    std::printf("forms: GET as a navigation, POST through the post service\n");
+    Fixture f;
+    f.web.Add("https://x.org/form",
+              "<title>Form</title><form action='/find?old=1#top'><p>Find <input name='q'> <button>Go</button></p></form>"
+              "<form action='https://x.org/send' method='post'><input name='msg' value='a b'>"
+              "<input type='submit' name='s' value='Send'></form>");
+    f.web.Add("https://x.org/find?q=caf%C3%A9+au+lait", "<title>Found</title><p>results</p>");
+    f.web.Add("https://x.org/send", "<title>Sent</title><p>thanks</p>");
+    f.view->Navigate("https://x.org/form");
+    f.Settle();
+    auto* input = FindWidget<UltraCanvasTextInput>(f.view.get());
+    Check(input != nullptr, "the field is a text input");
+    if (!input) return;
+    input->SetText("caf\xC3\xA9 au lait");
+    Check(input->onEnterPressed && input->onEnterPressed("x"), "Enter submits");
+    f.Settle();
+    Check(f.view->GetUrl() == "https://x.org/find?q=caf%C3%A9+au+lait",
+          "GET: the fields replace the action's query - " + f.view->GetUrl());
+    Check(f.view->GetTitle() == "Found", "and the answer is shown");
+    f.view->GoBack();
+    f.Settle();
+    Check(f.view->GetTitle() == "Form", "back to the form");
+
+    // The second form's button: a POST.
+    std::vector<UltraCanvasButton*> buttons;
+    std::function<void(UltraCanvasUIElement*)> collect = [&](UltraCanvasUIElement* e) {
+        if (auto* b = dynamic_cast<UltraCanvasButton*>(e)) buttons.push_back(b);
+        if (auto* c = dynamic_cast<UltraCanvasContainer*>(e))
+            for (auto& child : c->GetChildren()) collect(child.get());
+    };
+    collect(f.view.get());
+    Check(buttons.size() == 2, "two buttons");
+    if (buttons.size() != 2) return;
+    buttons[1]->onClick();
+    f.Settle();
+    Check(!f.web.posted.empty() && f.web.posted.back().first == "application/x-www-form-urlencoded" &&
+          f.web.posted.back().second == "msg=a+b&s=Send", "POST: the body, urlencoded, with the button");
+    Check(f.view->GetTitle() == "Sent", "the answer is shown");
+    Check(f.view->GetUrl() == "https://x.org/send", "at the action's address");
+
+    std::printf("what was typed survives a rebuild (pictures arriving)\n");
+    Fixture g;
+    const unsigned char png[] = {
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+        0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0xF8, 0xCF, 0xC0, 0xF0,
+        0x1F, 0x00, 0x05, 0x00, 0x01, 0xFF, 0x89, 0x99, 0x3D, 0x1D, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+        0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82 };
+    g.web.Add("https://x.org/typed", "<title>T</title><form><input name='q'></form><img src='dot.png' width='9' height='9'>");
+    g.web.Add("https://x.org/dot.png", std::string(reinterpret_cast<const char*>(png), sizeof(png)), "image/png");
+    g.web.hold = true;
+    g.view->Navigate("https://x.org/typed");
+    g.web.Release();
+    g.Settle();
+    auto* before = FindWidget<UltraCanvasTextInput>(g.view.get());
+    Check(before != nullptr, "the field");
+    if (before) before->SetText("half-typed");
+    g.web.Release();                    // the picture: the page is built again
+    g.Settle();
+    auto* after = FindWidget<UltraCanvasTextInput>(g.view.get());
+    Check(after && after != before, "a new field after the rebuild");
+    Check(after && after->GetText() == "half-typed", "with the text that was typed");
+}
+
+static void TestFileUpload() {
+    std::printf("a file upload through the view: multipart POST with the file's bytes\n");
+    const std::string path = PathToUtf8(std::filesystem::temp_directory_path() / "ucwebview-upload-test.txt");
+    { std::FILE* out = OpenFileUtf8(path, "wb"); if (out) { std::fputs("file body", out); std::fclose(out); } }
+    Fixture f;
+    f.view->onChooseFiles = [path](bool, const std::string&, std::function<void(std::vector<std::string>)> done) {
+        done({ path });
+    };
+    f.web.Add("https://x.org/up", "<title>Up</title><form action='/recv' method='post' enctype='multipart/form-data'>"
+              "<label for='f'>File:</label> <input type='file' id='f' name='upload'> <button>Send</button></form>");
+    f.web.Add("https://x.org/recv", "<title>Received</title><p>ok</p>");
+    f.view->Navigate("https://x.org/up");
+    f.Settle();
+    std::vector<UltraCanvasButton*> buttons;
+    std::function<void(UltraCanvasUIElement*)> collect = [&](UltraCanvasUIElement* e) {
+        if (auto* b = dynamic_cast<UltraCanvasButton*>(e)) buttons.push_back(b);
+        if (auto* c = dynamic_cast<UltraCanvasContainer*>(e))
+            for (auto& child : c->GetChildren()) collect(child.get());
+    };
+    collect(f.view.get());
+    Check(buttons.size() == 2, "the chooser and the send button");
+    if (buttons.size() != 2) return;
+    buttons[0]->onClick();                // choose
+    buttons[1]->onClick();                // send
+    f.Settle();
+    Check(!f.web.posted.empty(), "posted");
+    if (f.web.posted.empty()) return;
+    const auto& [type, body] = f.web.posted.back();
+    Check(type.rfind("multipart/form-data; boundary=", 0) == 0, "as multipart");
+    Check(body.find("name=\"upload\"; filename=\"ucwebview-upload-test.txt\"\r\nContent-Type: text/plain\r\n\r\nfile body\r\n")
+              != std::string::npos, "with the file's name, type and bytes");
+    Check(f.view->GetTitle() == "Received", "and the answer is shown");
+    std::error_code ec;
+    std::filesystem::remove(PathFromUtf8(path), ec);
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("WebViewTest");
     TestLoadAndLinks();
     TestFragmentsAndScroll();
     TestErrorsAndOther();
     TestResourcesRebuild();
+    TestImportedStyleSheets();
+    TestImportsWithoutLoader();
+    TestForms();
+    TestFileUpload();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

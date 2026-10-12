@@ -1,3 +1,364 @@
+#### 2026-10-12 *0.9.264*
+- **Rendering: SetAlpha fades fills, strokes and text, not only images.** The
+  Cairo context applied the global alpha to pictures alone: a fill, a stroke
+  or a line of text set the source back to its colour at the colour's own
+  alpha, so whatever a caller dimmed with `SetAlpha` came out as a faded
+  picture beside full-strength shapes and text. A colour's alpha is now
+  scaled by the global alpha, and a gradient (or any pattern) is painted
+  through a group laid down at it. What that puts right: the file display's
+  dimmed entries (a file the type filter does not ask for) grey out their
+  name and columns as well as the icon, as their comment always said;
+  slideshow transitions fade the letterbox and the caption; a locked or
+  hidden video timeline track, a dragged Kanban card and the album's drag
+  marker are translucent; a connection's opacity and a vector drawing's
+  group, layer and object opacity apply to its shapes and text. The
+  CorelDRAW painter folded an object's opacity into its fill and stroke
+  colours and also set it with `SetAlpha`; the colours now carry only their
+  fill / stroke opacity, so an object is not faded twice. `RenderAlphaTest`
+  reads the pixels of a fill, a stroke, a gradient and text under
+  `SetAlpha`, and the render suites (vector, XAR, CDR, EPS, SVG, models,
+  Filer, image, screenshots) pass as before.
+- **Image export dialog: the save settings, the file's format, the colour
+  depth.** `UltraCanvasImageExportDialog` opens every format on the user's
+  save settings for it (`UltraCanvasFileLoader::GetImageExportOptions`, the
+  values the Save dialog's Settings button edits) and its Save stores what it
+  was left on back as that format's settings
+  (`UltraCanvasFileLoader::SetImageExportOptions`, new: the image writer's
+  options turned back into a format's settings; the size is not stored).
+  `SetFileName` picks the format the name's extension names - the dialog
+  stayed on PNG whatever it was given, so UltraPaint's Export wrote
+  "photo.jpg" as a PNG. `SetOptions` now moves the controls (they showed
+  their construction defaults whatever the options said), the colour depth
+  list is applied (choosing a depth changed nothing), JPEG XL's quality
+  slider is applied, and `SetTargetSize` with a size in another shape than
+  the picture's turns Keep proportions off, so the size is met exactly.
+- **FileLoader docs compile, and CI keeps them so.** The eight examples of
+  `Docs/Modules/FileLoader/README.md` that did not compile (`{ ... }`
+  placeholders, two plugin registrations without their headers, an undefined
+  plugin class, helpers the reader writes) are fixed, and
+  `scripts/check_doc_examples.py --all` - CI's doc check - now covers the
+  module docs listed in `CHECKED_MODULE_DOCS`, FileLoader's first. A module
+  joins once its examples compile; its findings are fixed, never baselined.
+
+#### 2026-10-12 *0.9.263*
+- **Save dialog: a big logo of the file's type, dragged onto a folder to save
+  there.** The framework's Save dialog shows, at the left of the name and type
+  rows with "Drag to Folder" under it, a 64-pixel logo of the file it is about
+  to write - the type the name has with the chosen type's extension: a page
+  with a folded corner and the extension on a band in the colour the listing
+  gives the type (`UltraCanvasFileDragIcon::DrawDocumentGlyph`,
+  `UltraCanvasFilerWidget::GetTypeColors`), or this desktop's icon for the
+  type when the listing shows those - and it follows the name as it is typed
+  and the type as it is switched. As in the RISC OS save box, the icon is
+  picked up and dropped on a folder: a folder of the listing is framed while
+  it is under the pointer (over empty space, the folder the listing shows), a
+  place or drive of the folder tree is highlighted, and the release opens that
+  folder, so OK then saves into it. A release anywhere else, over a file or
+  onto a folder inside a browsed archive changes nothing; Escape ends the drag
+  and leaves the dialog open. The icon is a new element,
+  `UltraCanvasFileDragIcon` (`UltraCanvasFileDragIcon.h`, in the element
+  catalogue), for any other save box: it carries a name rather than a file,
+  sends `DragEnter` / `DragOver` / `DragLeave` with its own mime type and no
+  files - so nothing that takes files copies anything - and hands the release
+  to `onDropped` while the target still shows where it lands.
+  `UltraCanvasFilerWidget::DrawTypeIcon` draws the icon a listing gives a type
+  (glyph or host icon, never a thumbnail), and
+  `UltraCanvasTreeView::GetDropTargetNode` answers which row a drag would drop
+  on.
+- **Save settings per file format, through UltraCanvasFileLoader, and a
+  Settings button at the end of the type row.** How a format is written - JPEG
+  quality, PNG compression and colours, TIFF and EXR codecs, WebP / AVIF /
+  HEIF / JPEG XL / JPEG 2000 quality, lossless and effort, GIF colours and
+  dithering, RLE for TGA / PCX / SGI / PSD, Netpbm binary, DPX / Cineon bit
+  depth - is now described per format (`UltraCanvasFileSaveSettings.h`:
+  `FileSaveFormat`, `FileSaveSettingSpec`, `FileSaveSettings`) and kept for
+  every application, between runs, in `SaveSettings.conf` in the UltraCanvas
+  settings folder. `UltraCanvasFileLoader` gains `HasSaveSettings`,
+  `FindSaveFormat`, `GetSaveSettings`, `HasStoredSaveSettings`,
+  `SetSaveSettings`, `ResetSaveSettings`, `RegisterSaveFormat` (a plugin's or
+  an application's own format), `ShowSaveSettingsDialog` (a checkbox, slider
+  or list per setting, with Defaults) and `GetImageExportOptions` (the image
+  writer's options from them). The Save dialog's Settings button opens that
+  dialog for the type being saved and is greyed out for a type without
+  settings; `FileDialogConfig::saveSettingsButton` /
+  `FileDialogOptions::SetSaveSettingsButton(false)` leaves it out for a writer
+  that ignores them. `UCRasterDocument::SaveToFile` without options writes
+  with the user's settings once any are stored for the format (until then, the
+  writer's own defaults as before), so UltraPaint's Save follows the button
+  with no change of its own.
+- **The picture's size in a bitmap type's Settings, for one save.** A caller
+  that tells the Save dialog how big the picture is
+  (`FileDialogOptions::SetImageSize` / `FileDialogConfig::imageWidth`,
+  `imageHeight`) gets a Size row at the top of a bitmap type's Settings: width
+  x height in pixels (`UltraCanvasSpinner`s), opened on the picture's size,
+  and Keep proportions, which makes one side follow the other. Every pixel
+  format offers it - `FileSaveFormat::bitmap`, set for the built-in image
+  formats, BMP, ICO, QOI, HDR, FITS and Farbfeld included, which have no
+  settings of their own and so get a dialog with the size alone. The size is
+  not stored with the settings: it comes back with that save as a
+  `FileSaveImageSize`, through a new `SaveFileDialog` overload whose callback
+  takes it, `UltraCanvasFileDialog::GetSaveImageSize()`, and the
+  `ShowSaveSettingsDialog` overload that takes the picture's size.
+  `GetImageExportOptions(path, size, options)` turns it into the image
+  writer's target size. UltraPaint's Save As uses it. `FileDialogTest` covers
+  the store, the button, a drop on the listing and on the tree, Escape, a JPEG
+  written at two stored qualities, the Size row (both sides following,
+  Defaults, free sides, a type that is not a bitmap, BMP), the size coming
+  back through the loader and a picture written at the size chosen.
+- **File dialog: typing a name filters the listing.** While the name field
+  holds text the user typed, the listing shows only the files and folders
+  whose name has it in, in any case - through the file display's own
+  filter-as-you-type (`UltraCanvasFilerWidget::SetNameFilter`), so no
+  keystroke reads the folder again. A typed path narrows by its last part; the
+  filter holds in every folder the dialog goes to, a name the dialog puts in
+  itself (the file clicked, the type's extension) leaves it as typed, and an
+  emptied field lists everything again. Open and Save dialogs alike.
+
+#### 2026-10-12 *0.9.262*
+- **HTML reader: file uploads and label clicks in forms.**
+  - **File inputs** were drawn for display only. Now one is a "Choose file…"
+    button beside the names chosen.
+    - The button asks the host through the new
+      `BuildOptions::onChooseFiles` (several with `multiple`, the `accept`
+      list as written); without it the button is disabled.
+    - The files are read when the form is sent into the new
+      `FormSubmission::files`: file name, a type from the extension, and the
+      bytes. They go out as multipart file parts, and as their names outside
+      multipart. With nothing chosen, one empty part is sent, as browsers do.
+    - Over 64 MB together (`FormController::kMaxUploadBytes`), or
+      unreadable, a file goes empty and is named in
+      `FormSubmission::warnings`.
+    - A choice survives a rebuild; reset clears it.
+    - `UltraCanvasWebView::onChooseFiles` passes the request to the host,
+      and UltraWeb answers with the file dialog, filtered by `accept`.
+  - **Labels:** a click on a `<label>`'s text acts on its control - the one
+    its `for="id"` names, else the first inside it (new
+    `FormController::ActivateControl`).
+    - A checkbox toggles, a radio is chosen through its group, a button is
+      pressed, a file input opens its chooser, any other control takes the
+      focus.
+    - The text is a new *quiet* link (`LabelTextLink::quiet`), with no
+      tooltip and no hover report.
+  - Tests in `HTMLFormsTest` (file parts, choosing, reset, rebuild, label
+    clicks) and `WebViewTest` (an upload end to end).
+
+#### 2026-10-12 *0.9.261*
+- **WebAssembly: the front-page demo is the real ultraos.eu page.** The
+  first version of `UltraCanvas/OS/WASM/demo/ultraos-frontpage.cpp` was
+  reconstructed from search snippets; it now follows the published page,
+  top to bottom: the header with the site's drop-down navigation as popup
+  menus anchored under their buttons, the hero, the desktop and mobile
+  cards, the eight reasons for ULTRA OS, the newsletter form with its
+  privacy checkbox, the status with the three audiences, the two pre-order
+  offers, the donation links, the social networks, the ULTRA OS variants
+  with the picture alternating sides, the eight purpose-based editions, the
+  FAQ as an accordion that opens and closes its answers, the contact form
+  with a text area, and the footer with its columns and a second newsletter
+  form. The page's own texts are tables at the top of the file. The site's
+  photos are placeholder tiles except three the repository now carries in
+  `media/images/ultraos/`: the ULTRA OS logo, the UltraCanvas logo and the
+  chip photo, as PNG because the wasm sysroot decodes neither JPEG nor WebP.
+  Checked as a desktop application under Xvfb at 1280 px wide; the browser
+  build preloads the three pictures beside the fonts.
+
+#### 2026-10-12 *0.9.260*
+- **HTML reader: `@import` in style sheets.** Imported sheets were skipped,
+  so a site whose `site.css` imports its theme lost the theme.
+  - `HTML::StyleSheet::ParseImports(css)` lists the `@import` rules at the
+    head of a sheet: `url("x")` or `"x"`, the media list after it, `layer()`
+    and `supports()` dropped. Those after the first other rule are ignored,
+    as in CSS.
+  - The element builder puts each imported sheet in front of the importing
+    sheet's rules (in an `@media` block when the import names media), with
+    its address read relative to the importing sheet. At most 8 deep and 64
+    sheets, each sheet once, so a cycle ends.
+  - `HTML::PageLoader` fetches the sheets that linked sheets and `<style>`
+    blocks import before the page is ready (up to 4 deep, within the 32
+    sheets per page; the mixed-content rules apply). `RewriteCssUrls` turns
+    `@import "x.css"` into an absolute `@import url(...)`.
+  - The CSS fuzz target covers `ParseImports`. Tests in `HTMLReaderTest`,
+    `HTMLPageLoaderTest` and `WebViewTest`.
+- **HTML reader: forms with real widgets (`BuildOptions::interactiveForms`).**
+  A form's controls were drawn for display only, as text in a box. With the
+  option on they are the framework's widgets, so the reader can fill a form
+  in and send it (caret, selection, clipboard, focus).
+  - **Widgets:**
+    - text-like `<input>`s and `password` are `UltraCanvasTextInput`s;
+    - `<textarea>` is an `UltraCanvasTextArea`;
+    - checkboxes and radios are `UltraCanvasCheckbox` / `UltraCanvasRadio`, with one radio group per name in a form;
+    - `<select>` is an `UltraCanvasDropdown`;
+    - buttons are `UltraCanvasButton`s.
+  - **Placement and size:** controls are `inline-block`, as in browsers (the
+    user-agent style said `block`): on the line with their labels, or flex
+    and grid items. They are sized by CSS, else by `size`, `cols` / `rows`
+    and the font.
+  - **Attributes:** `disabled`, a disabled `<fieldset>`, `readonly`,
+    `maxlength`, `placeholder` and `form="id"` are honoured.
+  - **`HTML::FormController`** (new `HTMLReader/HTMLForms.h`, one per
+    `<form>`, in `BuildResult::forms`) builds HTML's entry list
+    (`Collect`), submits (`Submit`, from a submit button or Enter in a
+    field) to `BuildOptions::onFormSubmit`, resets, and saves / restores
+    what was typed across a rebuild.
+  - **`HTML::FormSubmission`** encodes the entry list urlencoded,
+    multipart or as plain text.
+  - **`PageLoader::LoadPost`** and `PageLoaderServices::post` load the page
+    a form's POST answers with.
+  - **`UltraCanvasWebView`** turns forms on (`SetInteractiveForms`) and
+    sends them (`SubmitForm`): GET as a navigation with the fields as the
+    query, POST through the loader. A rebuild of the page keeps what was
+    typed and the focus.
+  - Mail keeps the option off: its controls stay display-only, each on a
+    line of its own.
+  - Not yet: file uploads; a click on a `<label>`'s text does not reach its
+    control.
+  - New `HTMLFormsTest`; form round trips in `WebViewTest`.
+- **HTML reader: a plain inline element's box - margin, padding, border and
+  background - is drawn.** `<nav><a style="margin-right:18px">About</a><a>Index</a></nav>`
+  showed "AboutIndex", and the mail button
+  `<a style="background:#07f;padding:12px 24px;color:#fff">Buy</a>` was white
+  text on white: inline elements went into the label's Pango markup with no
+  box, so their margins were dropped and their backgrounds not painted.
+  - **Margin, border and padding** on the left and right are room in the
+    line: a picture-less U+FFFC placeholder of that width in the run. A word
+    joiner (U+2060) glues it to the element's first or last letter, so a line
+    does not break between a word and its margin. The margin lies outside the
+    element's link and the padding inside it; white space collapses across
+    the room; negative margins take none; vertical margins move nothing, as
+    in CSS; an empty element with a margin builds no line.
+  - **Background and border:** drawn by the label around the element's text
+    and padding, at any depth in a run (`<b><span style="border:...">`). The
+    new `LabelTextBox` (`UltraCanvasLabel::SetTextBoxes`) is a range of the
+    text with a background, four border sides, vertical padding and a
+    radius. It is drawn a piece per line, so a long bordered element breaks
+    across lines like in a browser: the left border on its first piece, the
+    right on its last. Its vertical padding is painted without moving the
+    lines.
+  - **Vertical padding with a background or a border** (the mail button):
+    the element is a box on the line, as an `inline-block` is, with its
+    padding painted all round and its line grown to hold it.
+  - A space between an inline box and the text beside it is kept ("Order
+    now: [Buy] today" read "Order now:[Buy]today"). This applies to
+    `inline-block` buttons too.
+  - `UltraCanvasLabel` leaves word joiners out of copied text.
+  - New `HTMLInlineBoxTest`: room, line breaks, links, and painted pixels for
+    backgrounds, the button, borders (nested and across lines) and radii.
+- **The brush engine draws curves and arrows, and a path's stroke costs its
+  length.** `RasterPaint::DrawCurve` strokes a cubic Bezier curve, and
+  `FlattenCubicBezier` gives the points it passes through (at most 2 px
+  apart by default, 8 to 4096 segments) for a preview to draw.
+  `RasterPaint::DrawArrow` draws a shaft with a filled triangular head at
+  the tip - and at the tail with `headAtTail` - shaft and heads in one
+  coverage pass, so a translucent arrow has no darker seam; `ArrowShape`
+  returns that geometry (the shaft between the heads' bases, the heads'
+  corners) for the preview. A head is never narrower than the shaft plus
+  2 px nor longer than the arrow, and a wide shaft stops at the head's base
+  instead of poking out past the point. The stroke of `DrawPolygon` - and of
+  `DrawCurve` - is now one coverage map that each segment marks near itself
+  only: it tested every segment at every sample of the path's bounding box,
+  which for a curve of a few hundred segments across a canvas cost seconds;
+  the samples and the inside test are unchanged, so a polyline looks the
+  same, its joins still painted once. `RasterEditingTest` checks a
+  translucent polyline's corner and arrow seam, a curve's bend and an
+  arrow's heads. UltraPaint's Polyline, Arrow and Curve tools draw with them
+  (UltraPaint 0.2.16).
+- **`UltraCanvasTextArea` 3.7.5: a console that appends shows whole lines.**
+  Scrolling down to the caret - what `AppendText` does on every line of
+  output - set the offset so the caret's bottom met the view's bottom, which
+  left the tail of a line cut off at the top of the view. The offset now
+  lands on a line top, the lowest one at or past the minimal offset while the
+  caret's line still fits, so the first visible line is a whole one and the
+  gap at the bottom is less than a line. The line ending exactly at the
+  viewport's top edge was drawn too, and its descenders, which reach below
+  the line's box, showed on the first row of the view; it is skipped. The
+  clip at the padded edge was never at fault: nothing is drawn in the
+  padding. UltraCanvasStart's Install and Build consoles showed both.
+- **Tool groups: several tools in one toolbar slot, with a fold-out bar.**
+  `UltraCanvasToolGroupButton` (new, `UltraCanvasToolGroupButton.h`) is a
+  slot of a tool palette or toolbar holding a group of tools - the
+  selections, the brushes, the shapes. It shows one of them, and a click on
+  it picks that tool; resting the pointer on it for 150 ms
+  (`SetFoldOutDelay`) folds out a bar beside it with the whole group - to
+  the right of a slot in a vertical toolbar as a row, below one in a
+  horizontal toolbar as a column, on the opposite side where the window has
+  no room - and a click there picks a tool (`onItemSelected`). The bar
+  folds back when the pointer leaves the slot and the bar, on Escape and on
+  a click elsewhere. A small triangle in the slot's corner marks a group;
+  a group of one tool is a plain toggle button. The slot shows the tool last
+  picked - an adaptive toolbar - or, with `SetSlotShowsLastPicked(false)`,
+  always the group's first, main tool - a static one; either way the bar
+  marks the tool in use while the slot is pressed. `SetCurrentItem` tells
+  the group which of its tools became active some other way (a shortcut
+  key) without firing anything. The bar's buttons copy the slot's size,
+  icon size and style, so a flat palette folds out a flat bar.
+  `UltraCanvasToolbar::AddToolGroup` (and the builder's) adds one with the
+  toolbar's button appearance, as `AddToggleButton` does a single tool, and
+  `UltraCanvasButton` reports its icon size (`GetIconWidth` /
+  `GetIconHeight`). `Tests/ToolGroupButtonTest` drives the window's real
+  pointer dispatch under Xvfb: folding out, crossing into the bar, picking,
+  folding back, the static slot, the horizontal and the window-edge cases.
+  Doc: `Docs/UltraCanvas/UltraCanvasToolGroupButton.md`. UltraPaint's tool
+  palette is the first to use it (UltraPaint 0.2.16).
+
+#### 2026-10-12 *0.9.259*
+- **WebAssembly: the ultraos.eu front page as a demo app.**
+  `UltraCanvas/OS/WASM/demo/ultraos-frontpage.cpp` builds the
+  https://ultraos.eu front page out of UltraCanvas elements - a header with
+  the navigation and the logo, a hero with two call-to-action buttons, the
+  "For desktops" / "For mobile" cards, the reasons for ULTRA OS, the three
+  ways to support the project, the status timeline, a newsletter form and a
+  footer - in one scrollable page that fills the browser viewport. It is the
+  second browser validation app beside `wasm-demo` and the first that
+  exercises what a real application does in the browser: the layout engine
+  (Block for the stacked sections, so wrapped text gets its real height;
+  Flex rows that wrap for the cards and the navigation), hover states, an
+  image preloaded into the virtual FS, a text input with Enter, wheel
+  scrolling, and `OpenURL()` on every link, which opens the real page in a
+  new tab. The texts are tables at the top of the file.
+  - Both demos build as desktop applications too: `-DBUILD_WASM_DEMOS=ON`
+    at the repository root adds `wasm-demo` and `ultraos-frontpage` as
+    native targets, so a page can be looked at before the hour-long wasm
+    pipeline runs. The demo's `CMakeLists.txt` serves both ways: standalone
+    under `emcmake` it adds the library itself, as a subdirectory it uses the
+    one already configured.
+  - The `WebAssembly build` workflow builds both pages and uploads them with
+    `serve.py` in the `wasm-demo` artifact, so the download runs as it is:
+    unzip, `python3 serve.py 8080`, open either page.
+
+#### 2026-10-12 *0.9.258*
+- **CI reports how big the file-format plug-ins are.** A new "Format plug-in
+  sizes" table in each build row's job summary lists Vector, CDR (with its
+  bundled libcdr), XAR, EPS, Models, OCR and the Vectorizer (with its Rust
+  library). Each row gives the archive's code and data, which is what one
+  copy adds to an application that registers the plug-in, and its file size.
+  The plug-ins are static, so each such application carries its own copy.
+  The table is the measurement for deciding whether to make them shared
+  libraries; OCR and the Vectorizer build only in CI.
+  `scripts/report_plugin_sizes.py [build-dir]` prints the same table
+  locally. The step only measures and never fails a job.
+- **VideoFX 0.11.0: proxy media.** Large clips, such as 4K phone footage,
+  can now be edited through small stand-ins. A proxy is the clip at 540 lines,
+  H.264 with a keyframe every half second, the same sound and the same
+  timing. The editor previews and plays from the proxies, and the export
+  reads the originals.
+  - New: `VideoFXProxySettings`, `VideoFX_CreateProxy`,
+    `VideoFX_CreateProxies` (every clip of a timeline once, one progress),
+    `VideoFX_UseProxies` (the timeline switched to them), `VideoFX_ProxyPath`,
+    `VideoFX_HasProxy`, `VideoFX_ClearProxies` and
+    `VideoFX_GetDefaultProxyDirectory`.
+  - Proxies go in the user's cache folder (`~/.cache`, `~/Library/Caches`,
+    `%LOCALAPPDATA%`, then `VideoFX/Proxies`) or a folder the app names.
+    Each is named after the clip and a hash of its path, size and
+    modification time, so an edited clip gets a new proxy.
+  - A proxy is written under a temporary name and renamed when whole, so a
+    crash or cancel never leaves a half one. Clips no taller than a proxy,
+    and sound files, get none.
+  - Switching keeps trims, speed and overlays and scales a `Crop` to the
+    proxy's pixels.
+  - New export setting `VideoFXExportSettings::keyframeInterval` (seconds
+    between keyframes), also saved in project files.
+  - `videofx proxy <clips>|<project>`, `videofx proxy --clear`, and
+    `--proxies` on `videofx render` and `videofx preview` for a quick draft.
+
 #### 2026-10-12 *0.9.257*
 - **`HTML::PageLoader`: a URL to a page the HTML reader can show**
   (`HTMLReader/HTMLPageLoader.h`). It fetches the document and reads its

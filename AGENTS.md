@@ -627,9 +627,11 @@ number anywhere else, and never introduce a new literal copy of one:
    it compiles the doc's C++ against the headers and reports each function,
    field or signature the headers don't have (Linux, clang++). All
    `*Examples.md` docs pass it. CI runs it over every doc under
-   `Docs/UltraCanvas/` but the changelog (`--all --strict`,
-   `doc-examples.yml`) whenever a doc or a public header changes, and fails
-   on any finding a component doc has. The design documents (a Proposal,
+   `Docs/UltraCanvas/` but the changelog, and over the module docs listed in
+   `CHECKED_MODULE_DOCS` in the script (`Docs/Modules/FileLoader/` so far)
+   (`--all --strict`, `doc-examples.yml`) whenever a doc or a public header
+   changes, and fails on any finding a component doc has. A module doc
+   joins that list once its examples compile, and is fixed, not baselined. The design documents (a Proposal,
    Plan or Investigation) describe APIs not written yet, so their findings
    are listed in `scripts/doc_examples_baseline.txt` until the API exists;
    a component doc must never be added there.

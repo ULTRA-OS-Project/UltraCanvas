@@ -1,6 +1,7 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-08 - default bodies mark unused parameters (void)
+// Last Modified: 2026-10-12 - GetDropTargetNode, the row a drag would drop on
+//                (2026-10-08: default bodies mark unused parameters (void))
 //                (2026-10-02: GetRequiredWidth, the width the widest row on show needs)
 #pragma once
 
@@ -299,6 +300,11 @@ public:
     std::function<bool(TreeNode* target)> onFilesDragAccept;
     std::function<bool(TreeNode* target,
                        const std::vector<std::string>& files)> onFilesDroppedOnNode;
+    // The row a drag over the tree would drop on right now - the one drawn
+    // highlighted, which onFilesDragAccept accepted - or null. For a drag
+    // that carries no files and so ends without a Drop (the file dialog's
+    // Save icon, UltraCanvasFileDragIcon): its owner asks here on release.
+    TreeNode* GetDropTargetNode() const { return dropTargetNode; }
     // Right mouse button released over a node. The event is passed along so a
     // handler can open a context menu at the pointer (event.pointerWindow).
     // A right press never changes the selection — the menu acts on the node

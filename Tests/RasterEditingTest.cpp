@@ -5,6 +5,7 @@
 // UCRasterDocument layers / undo / redo / selection-aware filters, colour
 // keying (Colour to Alpha), and the PNG and .ucraster round trips (the last
 // three only with libvips).
+// Version: 1.2.0 - TestLinesCurvesArrows: polylines in one pass, curves, arrows
 // Version: 1.1.0 - TestListeners: several observers of one document
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -320,6 +321,77 @@ static void TestRasterPaint() {
     UCRasterLayer m(2, 2, RasterPixel(255, 255, 255, 255));
     RasterPaint::StampMask(m, nullptr, mask, 2, 2, 0, 0, RasterPixel(0, 0, 0, 255));
     CHECK(m.GetPixel(0, 0).r == 0 && m.GetPixel(1, 0).r == 255 && m.GetPixel(1, 1).r == 0);
+}
+
+// The Lines group's primitives: a polyline's corner and an arrow's shaft
+// under its head are painted once (a translucent colour shows it), a curve
+// bends where its control points say, an arrow's head is there and a wide
+// shaft stops at it.
+static void TestLinesCurvesArrows() {
+    const RasterPixel clear(0, 0, 0, 0);
+    RasterPaint::ShapeStyle half;
+    half.stroke = RasterPixel(255, 0, 0, 128);
+    half.strokeWidth = 4;
+
+    // polyline: one pass, so the corner is no darker than the rest
+    UCRasterLayer pl(40, 40, clear);
+    const std::vector<Point2Df> corner = {Point2Df(5, 20), Point2Df(20, 20), Point2Df(20, 5)};
+    Rect2Di r = RasterPaint::DrawPolygon(pl, nullptr, corner, false, half);
+    CHECK(r.width > 0);
+    CHECK_NEAR(pl.GetPixel(10, 20).a, 128, 2);
+    CHECK_NEAR(pl.GetPixel(19, 19).a, 128, 2);   // the corner, covered by both segments
+    CHECK(pl.GetPixel(12, 12).a == 0);           // open: no segment back to the start
+    UCRasterLayer closedPl(40, 40, clear);
+    RasterPaint::DrawPolygon(closedPl, nullptr, corner, true, half);
+    CHECK(closedPl.GetPixel(12, 12).a > 100);    // closed: the third side runs through it
+
+    // curve: bends towards the control points, not along the chord
+    UCRasterLayer cv(60, 40, RasterPixel(255, 255, 255, 255));
+    RasterPaint::ShapeStyle black;
+    black.stroke = RasterPixel(0, 0, 0, 255);
+    black.strokeWidth = 2;
+    const std::vector<Point2Df> flat = RasterPaint::FlattenCubicBezier(
+            Point2Df(5, 30), Point2Df(30, 0), Point2Df(30, 0), Point2Df(55, 30));
+    CHECK(flat.size() >= 9);
+    CHECK(flat.front().x == 5 && flat.front().y == 30 && flat.back().x == 55 && flat.back().y == 30);
+    RasterPaint::DrawCurve(cv, nullptr, Point2Df(5, 30), Point2Df(30, 0), Point2Df(30, 0), Point2Df(55, 30), black);
+    CHECK(cv.GetPixel(30, 7).r < 128);           // B(0.5) = (30, 7.5)
+    CHECK(cv.GetPixel(30, 29).r == 255);         // the chord's middle stays white
+
+    // arrow: the head, the shaft, nothing past the tip
+    UCRasterLayer ar(60, 40, RasterPixel(255, 255, 255, 255));
+    RasterPaint::DrawArrow(ar, nullptr, Point2Df(5, 20), Point2Df(55, 20), 12, 12, false, black);
+    CHECK(ar.GetPixel(50, 21).r == 0);           // in the head
+    CHECK(ar.GetPixel(44, 24).r == 0);           // in the head, off the 2 px shaft
+    CHECK(ar.GetPixel(20, 19).r == 0);           // the shaft
+    CHECK(ar.GetPixel(20, 23).r == 255);
+    CHECK(ar.GetPixel(56, 20).r == 255);         // nothing past the tip
+    CHECK(ar.GetPixel(12, 21).r == 255);         // no head at the tail
+    UCRasterLayer both(60, 40, RasterPixel(255, 255, 255, 255));
+    RasterPaint::DrawArrow(both, nullptr, Point2Df(5, 20), Point2Df(55, 20), 12, 12, true, black);
+    CHECK(both.GetPixel(12, 21).r == 0);         // the head at the tail
+
+    // a shaft wider than the point stops at the head's base
+    UCRasterLayer wide(60, 40, RasterPixel(255, 255, 255, 255));
+    RasterPaint::ShapeStyle thick = black;
+    thick.strokeWidth = 10;
+    RasterPaint::DrawArrow(wide, nullptr, Point2Df(5, 20), Point2Df(55, 20), 12, 12, false, thick);
+    CHECK(wide.GetPixel(30, 16).r == 0);         // the 10 px shaft
+    CHECK(wide.GetPixel(53, 15).r == 255);       // beside the point: the shaft does not reach it
+
+    // a translucent arrow: shaft and head meet without a darker seam
+    UCRasterLayer seam(60, 40, clear);
+    RasterPaint::DrawArrow(seam, nullptr, Point2Df(5, 20), Point2Df(55, 20), 12, 12, false, half);
+    CHECK_NEAR(seam.GetPixel(42, 19).a, 128, 2);
+    CHECK_NEAR(seam.GetPixel(44, 19).a, 128, 2);
+
+    // a head longer than the arrow is the arrow; a zero-length one is nothing
+    UCRasterLayer stub(20, 40, RasterPixel(255, 255, 255, 255));
+    RasterPaint::DrawArrow(stub, nullptr, Point2Df(5, 20), Point2Df(10, 20), 50, 12, false, black);
+    CHECK(stub.GetPixel(8, 20).r == 0);
+    CHECK(stub.GetPixel(2, 20).r == 255);
+    CHECK(!RasterPaint::ArrowShape(Point2Df(5, 5), Point2Df(5, 5), 10, 10, false, 2).valid);
+    CHECK(RasterPaint::DrawArrow(stub, nullptr, Point2Df(5, 5), Point2Df(5, 5), 10, 10, false, black).width == 0);
 }
 
 static void TestDocument() {
@@ -673,6 +745,7 @@ int main() {
     TestSelectionFollowsTheCanvas();
     TestBrush();
     TestRasterPaint();
+    TestLinesCurvesArrows();
     TestDocument();
 #ifdef HAS_LIBVIPS
     TestPixelFXAndFiles();

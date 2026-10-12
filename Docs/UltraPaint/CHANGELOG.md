@@ -1,3 +1,72 @@
+#### 2026-10-12 *0.2.18*
+- **Export opens on what was chosen.** The image export dialog after Export's
+  file dialog now opens on the format of the name given there (it opened on
+  PNG whatever the name, and "photo.jpg" was written as a PNG under a .jpg
+  name), with that format's save settings - the ones the Save dialog's
+  Settings button edits, and which Export's Save stores back - and at the
+  size chosen in those Settings, since Export now tells the Save dialog the
+  picture's size too (framework, pending changelog entry
+  "save-settings-followups").
+
+#### 2026-10-12 *0.2.17*
+- **Save As can write the picture at another size.** The Save dialog is told
+  the picture's size, so the Settings button on the type row - new in the
+  framework's Save dialog - opens a bitmap type's settings with a Size
+  row first: width x height in pixels, opened on the picture's own size, with
+  Keep proportions. The file is written at the size chosen there; the open
+  picture keeps its own size, and the next Save As starts on it again. The
+  rest of the type's settings (JPEG quality, PNG compression ...) are the
+  framework's per-format save settings, which a plain Save already follows
+  (framework, pending changelog entry "save-dialog-file-icon-and-settings").
+
+#### 2026-10-12 *0.2.16*
+- **The tool palette groups its tools.** Tools of a kind share one button,
+  so the palette shows 13 buttons for its 26 tools, where it showed 23 for
+  23, and fits a shorter window without scrolling. Resting the pointer on a button folds out a bar beside it with
+  the whole group, and a click there picks a tool; a click on the button
+  itself still picks the tool it shows. A small triangle in a button's
+  corner marks a group. The groups, top to bottom:
+  - *Select* - Rectangle Select, Ellipse Select, Lasso, Magic Wand
+  - *Pen* - Paintbrush, Pencil, Airbrush
+  - *Lines* - Line, Polyline, Arrow, Curve
+  - *Shapes* - Rectangle, Ellipse
+  - *Morph* - Smudge, Clone Stamp (they reshape the pixels already there)
+  - *Shading* - Dodge, Burn
+
+  then Move, Crop, Eyedropper, Eraser, *Fill* (Fill, Gradient), Text and
+  *View* (Zoom, Pan). A tool's shortcut key picks it as before and shows it
+  in its group's button.
+- **Three new line tools: Polyline, Arrow and Curve**, in the Lines group
+  beside Line, all in the foreground colour at the shared line width.
+  - *Polyline* (`Y`): click to add corners; double-click or Enter ends the
+    line, a click on the first corner closes it into a shape (filled in the
+    background colour with *Fill a closed shape*). Backspace takes the last
+    corner back, Escape cancels, Shift constrains a segment to 45°. The
+    first press can be dragged to pull out the first segment, as with Line.
+  - *Arrow* (`V`): drag from the tail to the tip; a filled head at the tip,
+    or at both ends. *Head size* in pixels, never less than three times the
+    line width.
+  - *Curve* (`J`): drag a straight line, then drag or click twice to bend
+    it - the first bend pulls the whole curve, the second its far half.
+    Enter keeps it as it is, Escape cancels.
+
+  A line in progress is kept when another tool is picked. Each is drawn in
+  one pass, so a translucent colour is no darker where a polyline turns or
+  where an arrow's shaft meets its head (framework changelog:
+  `raster-paint-curves-arrows`).
+- **Shift+X picks the Eraser.** The README promised it, but the Eraser had
+  no working shortcut at all: plain `X` is the colour swap, and the tool
+  keys ignored any letter pressed with Shift. A tool's key can now ask for
+  Shift, and the Eraser's tooltip says *Shift+X*.
+- **Settings > Display > Tool palette: an adaptive or a static toolbar.**
+  Adaptive (the default): a group's button shows the tool last picked from
+  it. Static: it always shows the group's main tool, stays highlighted while
+  any tool of the group is in use, and the bar marks which one. The choice
+  applies at once and is saved (`palette.toolbar = adaptive | static` in
+  `config.ini`). *Restore defaults* restores the page shown. The fold-out
+  is the framework's new tool group (framework changelog:
+  `toolbar-tool-groups`).
+
 #### 2026-10-12 *0.2.15*
 - **A magnifying glass for the rectangle selection.** While the Rectangle
   Select tool is active a small view sits in a corner of the canvas and shows

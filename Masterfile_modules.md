@@ -400,9 +400,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Image / Other / Error, final URL, base, charset, the parsed `Document`,
   warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
   (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
-  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`. Fetch, URL resolution and
-  charset conversion are services the caller passes in, so it is
-  framework-independent; linked style sheets load before a page is ready;
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`; `LoadPost` for a form's
+  POST. Fetch, POST, URL resolution and charset conversion are services the
+  caller passes in, so it is framework-independent; linked style sheets and
+  their `@import`s load before a page is ready;
   mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
   `EscapeText` (`HTMLDocument.h`) is DecodeEntities' inverse.
 - **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
@@ -411,7 +412,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
   `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
   `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
-  JavaScript (`<noscript>` shown).
+  JavaScript (`<noscript>` shown). Forms the reader fills in and sends
+  (`SetInteractiveForms`, `SubmitForm`: GET as a navigation, POST through
+  `PageLoader::LoadPost`), what was typed kept across a rebuild.
+- **HTMLForms** (`HTMLReader/HTMLForms.h`) - `FormSubmission` (action, method,
+  enctype, the entry list; `Encoded`, `Multipart`, `PlainText`, `Body`,
+  `ContentType`) and `FormController`, one per `<form>` built with
+  `BuildOptions::interactiveForms`: its widgets (held weakly), radio groups,
+  `Collect`, `Submit`, `Reset`, `Save` / `Restore`; file inputs (`SetFiles`,
+  `BuildOptions::onChooseFiles`, multipart file parts in
+  `FormSubmission::files`) and `ActivateControl` for a `<label>`'s click.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
   `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
@@ -838,6 +848,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `WindowType::Desktop` (`UltraCanvasWindow.h`) is
   the screen-sized window at the bottom of the stack a desktop draws into.
 
+- **UltraCanvasToolGroupButton** (`UltraCanvasToolGroupButton.h`) — several
+  tools sharing one slot of a palette or toolbar: the slot shows one of them,
+  a bar of the whole group folds out beside it while the pointer rests on it
+  (`SetFoldOutDelay`, `SetFoldOutSide`, `OpenFoldOut` / `CloseFoldOut`), and a
+  click there picks a tool (`onItemSelected`). `SetItems` / `AddItem`,
+  `SetCurrentItem` (the tool in use, set without firing), `GetSlotItem`,
+  `SetSlotShowsLastPicked` (adaptive: the tool last picked; static: always
+  the first). `UltraCanvasToolbar::AddToolGroup` adds one with the toolbar's
+  button look. See `Docs/UltraCanvas/UltraCanvasToolGroupButton.md`.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.
@@ -1072,8 +1092,9 @@ engine; these classes hold the pixels being edited and hand them to it.
 - **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
-  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/DrawCurve/DrawArrow/
+  FillCoverage/StampMask/FloodFill/MagicWandMask/FillGradient/SampleColour`,
+  with `FlattenCubicBezier` and `ArrowShape` for previews (`FillCompositing`:
   Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
@@ -1221,6 +1242,20 @@ folder - shared by all applications or per application) is
 file `FileDialog.conf` in the UltraCanvas settings folder; the ULTRA OS
 settings application (UOS-Settings, `Apps/UOSSettings`) edits the last used
 folder scope. Every write goes through `FileDialogSettings::Update()`.
+
+Save settings - how each format is written (JPEG quality, PNG compression,
+TIFF codec ...) - are described per format (`UltraCanvasFileSaveSettings.h`:
+`FileSaveFormat`, `FileSaveSettingSpec`, `FileSaveSettings`) and kept for every
+application in `SaveSettings.conf` in the same folder.
+`UltraCanvasFileLoader::HasSaveSettings` / `FindSaveFormat` /
+`GetSaveSettings` / `HasStoredSaveSettings` / `SetSaveSettings` /
+`ResetSaveSettings` / `RegisterSaveFormat` / `ShowSaveSettingsDialog` /
+`GetImageExportOptions` are the surface; the framework Save dialog's Settings
+button edits them, its file icon (`UltraCanvasFileDragIcon`) is dropped on a
+folder to save there, and `UCRasterDocument::SaveToFile` reads them. A
+picture's size for one save (`FileSaveImageSize`, offered when the caller
+passes `FileDialogOptions::SetImageSize`) comes back through the
+`SaveFileDialog` overload that reports it, never stored.
 
 ### **4. Plug-ins for File Types**
 
@@ -2067,11 +2102,13 @@ song lists crossfading into each other), beat detection and slideshows
 changing on the beat, project files (`.vfxproj`, JSON, media paths relative
 to the project, missing media reported), waveforms (loudness envelopes
 for timelines and players), a preview (any frame of a timeline rendered
-as the export would make it, for an editor's viewer),
+as the export would make it, for an editor's viewer), proxy media (small
+stand-ins for large clips, made once into a cache folder and switched in
+for previews and drafts),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
-command-line tool. Planned: picture-in-picture, keyframed parameters,
+command-line tool. Planned: keyframed parameters,
 several free audio tracks, hardware encoders beyond the platform ones picked
-automatically (VideoToolbox, Media Foundation), proxy media.
+automatically (VideoToolbox, Media Foundation).
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
@@ -2084,7 +2121,8 @@ automatically (VideoToolbox, Media Foundation), proxy media.
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
   `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
-  `VideoFXProject`, `VideoFXProjectKind`
+  `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`
+  (`VideoFXExportSettings::keyframeInterval`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2107,6 +2145,9 @@ automatically (VideoToolbox, Media Foundation), proxy media.
 - Project files: `VideoFX_SaveProject`, `VideoFX_LoadProject`,
   `VideoFX_ProjectToJson`, `VideoFX_ProjectFromJson`,
   `VideoFX_RenderProject`, `kVideoFXProjectFormatVersion`
+- Proxy media: `VideoFX_GetDefaultProxyDirectory`, `VideoFX_ProxyPath`,
+  `VideoFX_HasProxy`, `VideoFX_CreateProxy`, `VideoFX_CreateProxies`,
+  `VideoFX_UseProxies`, `VideoFX_ClearProxies`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -2133,7 +2174,12 @@ automatically (VideoToolbox, Media Foundation), proxy media.
   TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
   FocusBounds, FitMotionToFocus, KeepFocusInView, DetectFacesGray,
   DetectFaces, ProjectToJsonText, ProjectFromJsonText, SaveProjectFile,
-  LoadProjectFile, ProjectMedia}` (`core/VideoFXProject.h` - on the vendored
+  LoadProjectFile, ProjectMedia, UserCacheDir, DefaultProxyDirectory,
+  ProxyDirectory, ValidateProxySettings, ProxyFileName, ProxyPathFor,
+  IsProxyFileName, ProxyableClips, ScaleCrop, CreateProxy, CreateProxies,
+  UseProxies, ClearProxies}` (`core/VideoFXProxy.h` - no FFmpeg dependency of
+  its own, it makes proxies through the public API;
+  `core/VideoFXProject.h` - on the vendored
   nlohmann/json, no FFmpeg dependency; `core/VideoFXFaces.h` - the cascade compiled in as
   `core/VideoFXFaceCascade.inc`, generated by `scripts/generate_face_cascade.py`
   from `UltraCanvas/third_party/opencv_haarcascade/`)

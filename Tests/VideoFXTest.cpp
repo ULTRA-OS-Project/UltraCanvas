@@ -10,8 +10,8 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.7.0
-// Last Modified: 2026-10-08
+// Version: 0.11.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -21,6 +21,7 @@
 #include "VideoFXKenBurns.h"
 #include "VideoFXMusic.h"
 #include "VideoFXProject.h"
+#include "VideoFXProxy.h"
 #include "VideoFXPlatform.h"
 
 #include "UltraCanvasPathUtf8.h"
@@ -737,6 +738,7 @@ static VideoFXProject RichTimeline(const std::string& dir) {
     settings.quality = 77;
     settings.videoBitRate = 4000000;
     settings.encoderPreset = "slow";
+    settings.keyframeInterval = 1.5;
     settings.sampleRate = 44100;
     settings.channels = 1;
     settings.audioBitRate = 96000;
@@ -821,7 +823,8 @@ static void TestProjectFiles() {
     const VideoFXExportSettings& st = loaded.settings;
     CHECK(st.container == VideoFXContainer::WebM && st.videoCodec == VideoFXVideoCodec::VP9 && st.width == 1280 &&
           Near(st.frameRate, 29.97, 1e-12) && st.fitMode == VideoFXFitMode::Fill && st.quality == 77 &&
-          st.videoBitRate == 4000000 && st.encoderPreset == "slow" && st.channels == 1 && st.threads == 3,
+          st.videoBitRate == 4000000 && st.encoderPreset == "slow" && st.channels == 1 && st.threads == 3 &&
+          Near(st.keyframeInterval, 1.5, 1e-12),
           "export settings");
     CHECK(st.music.Songs().size() == 3 && Near(st.music.crossfade, 4.5, 1e-12) && !st.music.loop &&
           Near(st.music.duckingThresholdDb, -15.0, 1e-12) && Near(st.music.duckingLevel, 0.2, 1e-12),
@@ -894,6 +897,153 @@ static void TestProjectFiles() {
     stdfs::remove_all(tmp, ec);
 }
 
+// Proxies without the engine: names, what may be cleared, which clips, the
+// crop, and switching a timeline to proxies that exist
+static void TestProxyFiles() {
+    std::printf("Proxies: names, cache folder, switching, clearing\n");
+    namespace stdfs = std::filesystem;
+    VideoFXProxySettings ps;
+
+    // ---- the name: readable stem, a hash of everything that matters ----
+    const std::string a = ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, ps);
+    CHECK(a.rfind("Trip_2026_final-", 0) == 0 && a.size() == std::string("Trip_2026_final-").size() + 16 + 4 &&
+          a.compare(a.size() - 4, 4, ".mp4") == 0, "\"Trip_2026_final-<16 hex>.mp4\"");
+    CHECK(ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, ps) == a, "the same clip, the same name");
+    VideoFXProxySettings taller = ps;
+    taller.height = 720;
+    VideoFXProxySettings sharper = ps;
+    sharper.quality = 80;
+    VideoFXProxySettings sparser = ps;
+    sparser.keyframeInterval = 2.0;
+    VideoFXProxySettings elsewhere = ps;
+    elsewhere.cacheDirectory = "/tmp/somewhere";
+    CHECK(ProxyFileName("/v/Trip 2026 (final).MOV", 1001, 42, ps) != a &&
+          ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 43, ps) != a &&
+          ProxyFileName("/w/Trip 2026 (final).MOV", 1000, 42, ps) != a,
+          "a new name when the clip's size, time or folder differs");
+    CHECK(ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, taller) != a &&
+          ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, sharper) != a &&
+          ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, sparser) != a,
+          "and when the height, quality or keyframe interval does");
+    CHECK(ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, elsewhere) == a, "the folder is not part of the name");
+    CHECK(ProxyFileName("/v/\xC3\x9C" "ber-See.mp4", 1, 1, ps).rfind("ber-See-", 0) == 0, "UTF-8 letters become '_', trimmed");
+    CHECK(ProxyFileName("/v/\xE6\x97\xA5\xE6\x9C\xAC.mp4", 1, 1, ps).rfind("clip-", 0) == 0, "nothing ASCII left: \"clip\"");
+    CHECK(ProxyFileName("C:\\Videos\\Day One.mov", 1, 1, ps).rfind("Day_One-", 0) == 0, "Windows separators");
+    CHECK(ProxyFileName("/v/" + std::string(90, 'x') + ".mp4", 1, 1, ps).size() == 40 + 1 + 16 + 4, "a long stem is cut to 40");
+
+    // ---- what Clear may delete ----
+    CHECK(IsProxyFileName(a), "its own names are proxies");
+    const std::string part = a.substr(0, a.size() - 4) + ".0badc0de.part.mp4";
+    CHECK(IsProxyFileName(part), "and its half-made ones");
+    CHECK(!IsProxyFileName("holiday.mp4") && !IsProxyFileName("x-0123456789ABCDEF.mp4") &&
+          !IsProxyFileName("x-0123456789abcdef.mov") && !IsProxyFileName(a.substr(0, a.size() - 4) + ".xyz.part.mp4") &&
+          !IsProxyFileName("notes.txt"), "nothing else");
+
+    // ---- settings ----
+    std::string error;
+    VideoFXProxySettings bad = ps;
+    bad.height = 8;
+    CHECK(!ValidateProxySettings(bad, error) && !error.empty(), "a height under 16 refused");
+    bad = ps;
+    bad.quality = 101;
+    CHECK(!ValidateProxySettings(bad, error), "quality over 100 refused");
+    bad = ps;
+    bad.keyframeInterval = -1.0;
+    CHECK(!ValidateProxySettings(bad, error), "a negative keyframe interval refused");
+    CHECK(ValidateProxySettings(ps, error), "the defaults are valid");
+
+    // ---- which clips a timeline plays ----
+    VideoFXSegment one = VideoFXSegment::FromFile("/v/a.mp4");
+    VideoFXSegment again = VideoFXSegment::FromFile("/v/a.mp4", 2.0, 3.0);
+    again.overlays = {VideoFXOverlay::Video("/v/pip.mp4", VideoFXAnchor::TopRight, 0.3),
+                      VideoFXOverlay::Video("/v/own-size.mp4", VideoFXAnchor::TopRight, 0.0)};
+    const std::vector<std::string> clips =
+        ProxyableClips({one, VideoFXSegment::FromImage("/v/photo.jpg"), again, VideoFXSegment::SolidColor(0, 1.0)});
+    CHECK(clips.size() == 2 && clips[0] == "/v/a.mp4" && clips[1] == "/v/pip.mp4",
+          "each clip once; no photos, colours or own-size picture-in-picture");
+
+    // ---- the crop, in the proxy's pixels ----
+    const VideoFXEffect half = ScaleCrop(VideoFXEffect::Crop(480, 270, 960, 540), 0.5, 0.5, 960, 540);
+    CHECK(half.x == 240 && half.y == 135 && half.width == 480 && half.height == 270, "a crop of a 1080p clip on its 540p proxy");
+    const VideoFXEffect edge = ScaleCrop(VideoFXEffect::Crop(1900, 1070, 20, 10), 0.25, 0.25, 480, 270);
+    CHECK(edge.x + edge.width <= 480 && edge.y + edge.height <= 270 && edge.width >= 1 && edge.height >= 1,
+          "a crop at the edge stays inside, never empty");
+
+    // ---- on disk: paths, switching, clearing ----
+    const stdfs::path dir = stdfs::temp_directory_path() /
+        ("videofx-proxy-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    stdfs::create_directories(dir / "cache");
+    ps.cacheDirectory = UltraCanvas::PathToUtf8(dir / "cache");
+    const std::string clip = UltraCanvas::PathToUtf8(dir / UltraCanvas::PathFromUtf8("Reise \xC3\xBC.mp4"));
+    const std::string pipClip = UltraCanvas::PathToUtf8(dir / "pip.mp4");
+    for (const std::string& f : {clip, pipClip}) {
+        std::ofstream(UltraCanvas::PathFromUtf8(f), std::ios::binary) << "not really a video";
+    }
+    CHECK(ProxyPathFor(UltraCanvas::PathToUtf8(dir / "gone.mp4"), ps).empty(), "no proxy path for a missing clip");
+    const std::string proxy = VideoFX_ProxyPath(clip, ps);
+    CHECK(!proxy.empty() && UltraCanvas::PathFromUtf8(proxy).parent_path() == dir / "cache", "the proxy goes in the cache folder");
+    CHECK(!VideoFX_HasProxy(clip, ps), "not made yet");
+    VideoFXSegment withCrop = VideoFXSegment::FromFile(clip);
+    withCrop.effects = {VideoFXEffect::Crop(0, 0, 4, 4)};
+    VideoFXSegment withPip = VideoFXSegment::FromFile(clip, 1.0, 2.0);
+    withPip.overlays = {VideoFXOverlay::Video(pipClip, VideoFXAnchor::TopRight, 0.3),
+                        VideoFXOverlay::Video(pipClip, VideoFXAnchor::TopLeft, 0.0)};
+    const std::vector<VideoFXSegment> timeline = {VideoFXSegment::FromFile(clip), withPip, withCrop};
+    int replaced = -1;
+    std::vector<VideoFXSegment> used = VideoFX_UseProxies(timeline, ps, &replaced);
+    CHECK(replaced == 0 && used.size() == 3 && used[0].path == clip, "without proxies the timeline is unchanged");
+
+    // a stand-in for a made proxy: Use switches by the file being there
+    std::ofstream(UltraCanvas::PathFromUtf8(proxy), std::ios::binary) << "proxy";
+    std::ofstream(UltraCanvas::PathFromUtf8(VideoFX_ProxyPath(pipClip, ps)), std::ios::binary) << "proxy";
+    CHECK(VideoFX_HasProxy(clip, ps), "made: HasProxy");
+    used = VideoFX_UseProxies(timeline, ps, &replaced);
+    CHECK(used.size() == 3 && used[0].path == proxy && used[1].path == proxy, "file segments switched to the proxy");
+    CHECK(used.size() == 3 && used[1].start == 1.0 && used[1].end == 2.0, "their trim kept: proxies keep the clip's timing");
+    CHECK(used.size() == 3 && used[1].overlays.size() == 2 && used[1].overlays[0].videoPath == VideoFX_ProxyPath(pipClip, ps) &&
+          used[1].overlays[1].videoPath == pipClip, "a sized picture-in-picture switched, an own-size one kept");
+    CHECK(used.size() == 3 && used[2].path == clip, "a cropped clip whose sizes cannot be read stays the original");
+    CHECK(replaced == 3, "three switched");
+
+    // changing the clip moves its proxy name: the old proxy is no longer used
+    std::ofstream(UltraCanvas::PathFromUtf8(clip), std::ios::binary | std::ios::app) << " - edited";
+    CHECK(VideoFX_ProxyPath(clip, ps) != proxy && !VideoFX_HasProxy(clip, ps), "an edited clip needs a new proxy");
+
+    // clearing: proxies and half-made ones go, nothing else
+    std::ofstream(dir / "cache" / UltraCanvas::PathFromUtf8(part), std::ios::binary) << "half";
+    std::ofstream(dir / "cache" / "notes.txt") << "keep me";
+    std::ofstream(dir / "cache" / "holiday.mp4", std::ios::binary) << "keep me too";
+    int files = 0;
+    uint64_t bytes = 0;
+    CHECK_OK(VideoFX_ClearProxies(ps, &files, &bytes), "clear the cache");
+    CHECK(files == 3 && bytes == 5 + 5 + 4, "two proxies and a half-made one, and their bytes");
+    CHECK(stdfs::exists(dir / "cache" / "notes.txt") && stdfs::exists(dir / "cache" / "holiday.mp4") &&
+          !stdfs::exists(UltraCanvas::PathFromUtf8(proxy)), "other files untouched");
+    VideoFXProxySettings none = ps;
+    none.cacheDirectory = UltraCanvas::PathToUtf8(dir / "never-made");
+    CHECK_OK(VideoFX_ClearProxies(none, &files), "clearing a folder that does not exist");
+    CHECK(files == 0, "removes nothing");
+#ifndef _WIN32
+    // the default folder follows XDG_CACHE_HOME
+    const std::string xdg = UltraCanvas::PathToUtf8(dir / "xdg");
+    ::setenv("XDG_CACHE_HOME", xdg.c_str(), 1);
+#ifdef __APPLE__
+    CHECK(VideoFX_GetDefaultProxyDirectory().find("/Library/Caches/VideoFX/Proxies") != std::string::npos,
+          "the default: ~/Library/Caches/VideoFX/Proxies");
+#else
+    CHECK(VideoFX_GetDefaultProxyDirectory() == xdg + "/VideoFX/Proxies", "the default: $XDG_CACHE_HOME/VideoFX/Proxies");
+#endif
+    ::unsetenv("XDG_CACHE_HOME");
+#endif
+#ifndef VIDEOFX_HAS_FFMPEG
+    std::string editPath;
+    CHECK(VideoFX_CreateProxy(clip, ps, {}, &editPath) == VideoFXResult::NotAvailable,
+          "without the engine a proxy cannot be made");
+#endif
+    std::error_code ec;
+    stdfs::remove_all(dir, ec);
+}
+
 #ifdef VIDEOFX_HAS_FFMPEG
 
 namespace fs = std::filesystem;
@@ -940,6 +1090,7 @@ static void TestTransitionsAndOverlays(const VideoFXExportSettings& base);
 static void TestStillImages(const VideoFXExportSettings& base);
 static void TestMusic(const VideoFXExportSettings& base);
 static void TestPreview(const VideoFXExportSettings& base);
+static void TestProxies(const VideoFXExportSettings& base);
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -1150,6 +1301,7 @@ static void TestEngine() {
     TestStillImages(base);
     TestMusic(base);
     TestPreview(base);
+    TestProxies(base);
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -2143,6 +2295,146 @@ static void TestPreview(const VideoFXExportSettings& base) {
     CHECK(VideoFX_PlanSlideshow({}, options, {}, plan, planned) == VideoFXResult::InvalidArgument, "no photos");
 }
 
+// Mean absolute difference of two RGBA frames of one size, 0..255; -1 when they differ in size
+static double MeanDifference(const VideoFXFrame& a, const VideoFXFrame& b) {
+    if (a.width != b.width || a.height != b.height || a.pixels.size() != b.pixels.size()) return -1.0;
+    double sum = 0.0;
+    size_t n = 0;
+    for (size_t i = 0; i < a.pixels.size(); ++i) {
+        if (i % 4 == 3) continue;
+        sum += std::abs(static_cast<int>(a.pixels[i]) - static_cast<int>(b.pixels[i]));
+        ++n;
+    }
+    return n ? sum / n : 0.0;
+}
+
+static void TestProxies(const VideoFXExportSettings& base) {
+    std::printf("\n-- proxies --\n");
+    VideoFXProxySettings ps;
+    ps.height = 180;
+    ps.cacheDirectory = TempPath("proxies");
+
+    // a 640x360 clip with sound, under a UTF-8 name
+    const std::string clip = TempPath("Reise \xC3\xBC.mkv");
+    {
+        VideoFXExportSettings s = base;
+        s.width = 640; s.height = 360; s.frameRate = 25.0;
+        CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(3.0)}, clip, s), "a 640x360 clip");
+    }
+
+    std::string editPath;
+    double last = -1.0;
+    bool rising = true;
+    CHECK_OK(VideoFX_CreateProxy(clip, ps, [&](double f) { rising = rising && f >= last; last = f; return true; }, &editPath),
+             "make its proxy");
+    CHECK(editPath == VideoFX_ProxyPath(clip, ps) && Exists(editPath) && VideoFX_HasProxy(clip, ps), "the proxy is made where it belongs");
+    CHECK(rising && last > 0.9, "progress rises to the end");
+    CHECK(VideoFX_GetLastError().empty(), "no error left behind");
+    VideoFXMediaInfo info, orig;
+    CHECK_OK(VideoFX_Probe(editPath, info), "probe the proxy");
+    CHECK_OK(VideoFX_Probe(clip, orig), "probe the clip");
+    CHECK(info.width == 320 && info.height == 180, "320x180: the clip's shape at the proxy height");
+    CHECK(Near(info.frameRate, 25.0, 0.01) && info.HasAudio(), "its frame rate, and its sound");
+    CHECK(Near(info.duration, orig.duration, 0.1), "as long as the clip");
+    {
+        // the same picture at the same time: the clip scaled down vs the proxy
+        VideoFXFrame a, b, c;
+        CHECK_OK(VideoFX_ExtractFrame(clip, 1.2, a, 320, 180), "the clip's frame at 1.2 s");
+        CHECK_OK(VideoFX_ExtractFrame(editPath, 1.2, b), "the proxy's frame at 1.2 s");
+        CHECK_OK(VideoFX_ExtractFrame(editPath, 2.4, c), "and at 2.4 s");
+        const double same = MeanDifference(a, b), other = MeanDifference(a, c);
+        std::printf("        difference: same time %.1f, 1.2 s later %.1f\n", same, other);
+        CHECK(same >= 0.0 && same < 12.0, "the proxy shows the clip's picture at that time");
+        CHECK(other > same, "and not another moment's");
+    }
+
+    // made once
+    const auto before = fs::last_write_time(UltraCanvas::PathFromUtf8(editPath));
+    std::string again;
+    CHECK_OK(VideoFX_CreateProxy(clip, ps, {}, &again), "asked again");
+    CHECK(again == editPath && fs::last_write_time(UltraCanvas::PathFromUtf8(editPath)) == before, "the proxy is not made again");
+
+    // nothing to gain: a small clip, a sound file
+    const std::string small = TempPath("small.mkv");
+    const std::string wav = TempPath("tone.wav");
+    {
+        VideoFXExportSettings s = base;
+        s.width = 160; s.height = 120; s.frameRate = 25.0;
+        CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(1.0)}, small, s), "a 160x120 clip");
+        CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(1.0)}, wav, VideoFXExportSettings::AudioOnlyWAV()), "a WAV");
+    }
+    std::string edit;
+    CHECK_OK(VideoFX_CreateProxy(small, ps, {}, &edit), "a clip no taller than a proxy");
+    CHECK(edit == small && !VideoFX_HasProxy(small, ps), "is edited as it is: no proxy made");
+    CHECK_OK(VideoFX_CreateProxy(wav, ps, {}, &edit), "a sound file");
+    CHECK(edit == wav && !VideoFX_HasProxy(wav, ps), "is edited as it is too");
+
+    // refused and cancelled
+    CHECK(VideoFX_CreateProxy(TempPath("gone.mkv"), ps) == VideoFXResult::FileNotFound, "a missing clip: FileNotFound");
+    VideoFXProxySettings bad = ps;
+    bad.height = 0;
+    CHECK(VideoFX_CreateProxy(clip, bad) == VideoFXResult::InvalidArgument, "a height of 0: InvalidArgument");
+    VideoFXProxySettings other = ps;
+    other.height = 120;
+    CHECK(VideoFX_CreateProxy(clip, other, [](double) { return false; }) == VideoFXResult::Cancelled, "cancelled");
+    bool leftovers = false;
+    for (const auto& e : fs::directory_iterator(UltraCanvas::PathFromUtf8(ps.cacheDirectory)))
+        leftovers = leftovers || UltraCanvas::PathToUtf8(e.path().filename()).find(".part") != std::string::npos;
+    CHECK(!VideoFX_HasProxy(clip, other) && !leftovers, "a cancelled proxy leaves no file, whole or half");
+
+    // a timeline: every clip once, then played from the proxies
+    const std::string pipClip = TempPath("pip-source.mkv");
+    {
+        VideoFXExportSettings s = base;
+        s.width = 480; s.height = 270; s.frameRate = 25.0;
+        CHECK_OK(VideoFX_Export({VideoFXSegment::SolidColor(0xFF0000, 2.0)}, pipClip, s), "a 480x270 red clip");
+    }
+    VideoFXSegment first = VideoFXSegment::FromFile(clip, 0.0, 1.5);
+    VideoFXSegment second = VideoFXSegment::FromFile(clip, 1.0, 2.5);
+    second.effects = {VideoFXEffect::Crop(160, 90, 320, 180)};
+    VideoFXOverlay pip = VideoFXOverlay::Video(pipClip, VideoFXAnchor::TopLeft, 0.25);
+    pip.margin = 0.0;
+    second.overlays = {pip};
+    const std::vector<VideoFXSegment> timeline = {first, VideoFXSegment::FromFile(small), second};
+    CHECK_OK(VideoFX_ClearProxies(ps), "start from an empty cache");
+    CHECK(!VideoFX_HasProxy(clip, ps), "emptied");
+    double seen = -1.0;
+    bool monotone = true;
+    CHECK_OK(VideoFX_CreateProxies(timeline, ps, [&](double f) { monotone = monotone && f >= seen - 1e-9; seen = f; return true; }),
+             "proxies for a whole timeline");
+    CHECK(monotone && Near(seen, 1.0, 1e-9), "one progress from 0 to 1 over all of them");
+    CHECK(VideoFX_HasProxy(clip, ps) && VideoFX_HasProxy(pipClip, ps) && !VideoFX_HasProxy(small, ps),
+          "the clip and the picture-in-picture source; not the small clip");
+    int replaced = 0;
+    const std::vector<VideoFXSegment> proxied = VideoFX_UseProxies(timeline, ps, &replaced);
+    CHECK(replaced == 3, "two segments and the overlay switched");
+    CHECK(proxied[1].path == small, "the small clip plays itself");
+    CHECK(proxied[2].effects.size() == 1 && proxied[2].effects[0].x == 80 && proxied[2].effects[0].y == 45 &&
+          proxied[2].effects[0].width == 160 && proxied[2].effects[0].height == 90, "the crop scaled to the proxy");
+
+    // the preview over proxies matches the preview over the originals
+    VideoFXExportSettings s = base;
+    s.width = 320; s.height = 180; s.frameRate = 25.0;
+    for (double t : {0.6, 3.0}) {         // the first segment; the cropped one with its overlay
+        VideoFXFrame a, b;
+        CHECK_OK(VideoFX_RenderFrame(timeline, t, a, s), "a frame of the originals");
+        CHECK_OK(VideoFX_RenderFrame(proxied, t, b, s), "the same frame from the proxies");
+        const double d = MeanDifference(a, b);
+        std::printf("        at %.1f s: difference %.1f\n", t, d);
+        CHECK(d >= 0.0 && d < 14.0, "the proxies show the same picture");
+    }
+
+    // the keyframe interval of an export
+    VideoFXExportSettings k = base;
+    k.keyframeInterval = -1.0;
+    CHECK(VideoFX_Export({VideoFXSegment::TestPattern(0.5)}, TempPath("k.mkv"), k) == VideoFXResult::InvalidArgument,
+          "a negative keyframe interval: InvalidArgument");
+
+    int files = 0;
+    CHECK_OK(VideoFX_ClearProxies(ps, &files), "clear the proxies");
+    CHECK(files == 2 && !VideoFX_HasProxy(clip, ps), "both gone");
+}
+
 #else
 
 static void TestEngine() {
@@ -2166,6 +2458,7 @@ int main() {
     TestBeatMath();
     TestFaceDetector();
     TestProjectFiles();
+    TestProxyFiles();
     TestEngine();
     if (failures) {
         std::printf("\n%d check(s) FAILED\n", failures);

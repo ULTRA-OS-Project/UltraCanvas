@@ -480,6 +480,10 @@ namespace UltraCanvas {
 
         // ===== STYLE MANAGEMENT =====
 //        virtual void SetDrawingStyle(const DrawingStyle& style) = 0;
+        // Fades everything drawn after it in this state - fills, strokes,
+        // text and images alike - to `alpha` (0..1) of what it would be:
+        // a colour's own alpha is scaled by it, a gradient and an image are
+        // painted at it. PushState / PopState keep and restore it.
         virtual void SetAlpha(double alpha) = 0;
         virtual double GetAlpha() const = 0;
 //        virtual const DrawingStyle& GetDrawingStyle() const = 0;

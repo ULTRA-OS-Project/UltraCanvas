@@ -27,7 +27,7 @@ OS/WASM/
 │                                      # import/export, image/font loading, URL, ...)
 ├── build-wasm-sysroot.sh              # Cross-compiles the dependency stack
 ├── patches/                           # wasm fixes applied to the deps by the script
-└── demo/                              # Minimal browser validation app
+└── demo/                              # Browser validation apps: wasm-demo, ultraos-frontpage
 ```
 
 Every `OS/<Platform>/` directory must define the per-platform symbols the core
@@ -142,12 +142,38 @@ int main(int, char* argv[]) {
 Window objects are safe either way — the application's window registry holds
 owning references.
 
-## Validating in a headless browser
+## Validating in a browser
 
-`demo/` contains the minimal app used to validate the backend: build it with
-`emcmake cmake` as above, serve `build/` with `serve.py`, and open
-`wasm-demo.html`. The window canvas (`<canvas id="ultracanvas-window-N">`)
-should show pango-rendered text and a clickable button.
+`demo/` contains two apps used to validate the backend. Build them with
+`emcmake cmake` as above, serve `build/` with `serve.py`, and open:
+
+- `wasm-demo.html` - the minimal app: the window canvas
+  (`<canvas id="ultracanvas-window-N">`) shows pango-rendered text and a
+  clickable button.
+- `ultraos-frontpage.html` - the https://ultraos.eu front page built out of
+  UltraCanvas elements (`demo/ultraos-frontpage.cpp`): the site's header
+  with its drop-down navigation (popup menus), the hero, the desktop and
+  mobile cards, the reasons for ULTRA OS, the newsletter form, the status,
+  the two pre-order offers, the donation links, the social networks, the
+  ULTRA OS variants, the purpose-based editions, the FAQ accordion, the
+  contact form and the footer, in a scrolling page that fills the browser
+  viewport. It exercises the layout engine (Block for the stacked sections,
+  wrapping Flex rows for the cards and the navigation), wrapped text, hover
+  states, images preloaded into the virtual FS, text inputs, a text area, a
+  checkbox, popup menus, wheel scrolling and `OpenURL()` (every link opens
+  the real page in a new tab). The texts are the page's, in tables at the
+  top of the file; the photos the page shows are placeholder tiles except
+  the three in `media/images/ultraos/`.
+
+The manually dispatched `wasm-build.yml` workflow builds both and uploads
+them, with `serve.py`, as the `wasm-demo` artifact: unzip it into a folder,
+run `python3 serve.py 8080` there and open either page.
+
+The same two sources build as desktop applications - configure the
+repository root with `-DBUILD_WASM_DEMOS=ON` and run `build/ultraos-frontpage`
+or `build/wasm-demo` - so a page can be checked on the desktop before the
+wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
+`Maximize()` that fills the viewport.
 
 ## Known limitations
 

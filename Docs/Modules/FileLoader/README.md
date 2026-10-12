@@ -53,15 +53,23 @@ listing of the current folder (an `UltraCanvasFilerWidget`, the UltraFiler
 display), and the file-name field and file-type dropdown
 below them.
 
+<!-- doc-check: FileDialogOptions opts; void ShowPicture(std::shared_ptr<UCImage> image); void Play(std::shared_ptr<UCAudio> audio); void ShowDocument(std::shared_ptr<UCRichDocument> document); void ShowError(const std::string& message); -->
 ```cpp
 // Decode an image into a UCImage
-UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) { ... });
+UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) {
+    if (r.IsSuccess()) ShowPicture(img);
+    else if (!r.loadError.empty()) ShowError(r.loadError);   // empty: cancelled
+});
 
 // Decode audio into a UCAudio PCM buffer (WAV/MP3/FLAC always; OGG/Opus with codec libs)
-UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) { ... });
+UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) {
+    if (r.IsSuccess()) Play(audio);
+});
 
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/Markdown/TXT)
-UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) { ... });
+UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
+    if (r.IsSuccess()) ShowDocument(doc);
+});
 ```
 
 ### Editable Vector Documents
@@ -73,6 +81,8 @@ writers are the Vector plugin's converters (SVG, XAR, EMF, WMF, DXF, DWG, AI,
 EPS, CDR, PDF), installed by `RegisterVectorFormatsPlugin()`:
 
 ```cpp
+#include "UltraCanvasVectorFormatsPlugin.h"          // the Vector plugin
+
 RegisterVectorFormatsPlugin();                       // once, at start-up
 
 std::string error;
@@ -88,6 +98,33 @@ opts.AddFilter("Drawings", UltraCanvasFileLoader::GetVectorLoadExtensions());
 `UCImage` also opens `.svg` (through librsvg), but as pixels — right for a
 viewer, useless to an editor. Use `LoadVectorDocument` whenever the drawing
 is to be changed or written back.
+
+### Save Settings
+How a format is written - JPEG's quality, PNG's compression, TIFF's codec - is
+described per format (`UltraCanvasFileSaveSettings.h`), so one dialog can offer
+the settings of any of them, and the values the user chose are kept for every
+application, between runs. The framework's Save dialog has a **Settings**
+button on its type row that edits the chosen type's settings, and the
+writers read them back - `UCRasterDocument::SaveToFile` does so on its own:
+
+```cpp
+if (UltraCanvasFileLoader::HasSaveSettings("photo.jpg"))
+    UltraCanvasFileLoader::ShowSaveSettingsDialog("photo.jpg", window.get());
+
+FileSaveSettings jpeg = UltraCanvasFileLoader::GetSaveSettings("jpg");
+int quality = jpeg.GetInt("quality", 85);
+
+UCImageSave::ImageExportOptions options;                 // the image writer's, ready made
+UltraCanvasFileLoader::GetImageExportOptions("out.webp", options);
+```
+
+The bitmap formats the image writer takes options for are built in; a plugin
+or an application adds its own with `RegisterSaveFormat`. A caller that passes
+the picture's size (`FileDialogOptions::SetImageSize`) also gets a Size row in
+a bitmap type's settings, for that save only: the size comes back through the
+`SaveFileDialog` overload whose callback takes a `FileSaveImageSize`, and
+`GetImageExportOptions(path, size, options)` writes at it. See *Save settings*
+in [the file dialog's documentation](../../UltraCanvas/UltraCanvasFileDialog.md#save-settings).
 
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
@@ -137,12 +174,15 @@ Add support for proprietary or specialized graphics formats without modifying
 core code. Register an `IGraphicsPlugin` with the graphics plugin registry and
 its extensions immediately show up in the format inventory:
 
+<!-- doc-check: std::shared_ptr<IGraphicsPlugin> myFormatPlugin; -->
 ```cpp
+#include "Models/STL/UltraCanvasSTLPlugin.h"
+
 // Register a graphics plugin (e.g. the built-in STL model plugin)
 RegisterSTLPlugin();
 
-// ...or your own
-UltraCanvasGraphicsPluginRegistry::RegisterPlugin(std::make_shared<MyFormatPlugin>());
+// ...or your own: an IGraphicsPlugin implementation
+UltraCanvasGraphicsPluginRegistry::RegisterPlugin(myFormatPlugin);
 ```
 
 ---
@@ -201,6 +241,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 FileLoader is part of the core library — no separate initialization is needed
 beyond creating the application. Load a file and check the result:
 
+<!-- doc-check: void ProcessBytes(const std::vector<uint8_t>& bytes); -->
 ```cpp
 auto result = UltraCanvasFileLoader::LoadFile("any_file.ext");
 if (result.success) {

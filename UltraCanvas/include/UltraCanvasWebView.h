@@ -14,6 +14,9 @@
 // Without a scheduler the view uses the running application's.
 //
 // No JavaScript: <script> is not run, <noscript> content is shown.
+// Version: 1.2.0 - onChooseFiles: file uploads
+// Version: 1.1.0 - SetInteractiveForms / SubmitForm: forms with real widgets,
+//                  sent by GET or POST
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -45,6 +48,15 @@ public:
     // resource loader and the link callbacks are the view's own and are
     // replaced.
     void SetBuildOptions(const HTML::BuildOptions& options);
+    // Forms the reader can fill in and send (on by default): real widgets
+    // (BuildOptions::interactiveForms), sent by GET as a navigation or by
+    // POST through PageLoaderServices::post. What was typed survives a
+    // rebuild of the page (a new width, pictures arriving). Off: forms are
+    // drawn for display only.
+    void SetInteractiveForms(bool on) { interactiveForms = on; }
+    // Send a form as its submit button would: GET appends the fields to the
+    // action as a query, POST sends them in the form's enctype.
+    void SubmitForm(const HTML::FormSubmission& submission);
 
     // ===== NAVIGATION =====
     void Navigate(const std::string& url);
@@ -74,6 +86,12 @@ public:
     std::function<void(const std::string& url)> onLinkHovered;
     // A link the view does not follow itself: mailto:, tel:, another scheme.
     std::function<void(const std::string& url)> onExternalLink;
+    // A file input's button: show a file dialog (several files when
+    // `multiple`; `accept` is the input's accept="" list as written) and
+    // call `done` with the chosen UTF-8 paths, none when cancelled. Unset,
+    // file inputs cannot choose (their button is disabled).
+    std::function<void(bool multiple, const std::string& accept,
+                       std::function<void(std::vector<std::string> paths)> done)> onChooseFiles;
     // A navigation that found no page (PageKind::Other - an app, a file to
     // download): the host decides what to do with it.
     std::function<void(const HTML::LoadedPage& page)> onNonHtml;
@@ -103,6 +121,12 @@ private:
     std::shared_ptr<UltraCanvasContainer> content;      // the scrolling pane
     std::shared_ptr<HTML::LoadedPage> page;
     std::unordered_map<std::string, std::shared_ptr<UltraCanvasUIElement>> anchors;
+    // The page's forms, and which document they were built from (a rebuild
+    // of the same document puts back what was typed).
+    std::vector<std::shared_ptr<HTML::FormController>> forms;
+    const HTML::Document* formsDocument = nullptr;
+    bool interactiveForms = true;
+    unsigned formCounter = 0;
     std::vector<HistoryEntry> history;
     int historyIndex = -1;
     bool loading = false;

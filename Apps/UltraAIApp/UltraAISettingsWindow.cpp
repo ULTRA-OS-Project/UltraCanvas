@@ -14,19 +14,27 @@
 #include "UltraAISettingsWindow.h"
 
 #include "UltraAIAppSettings.h"
-#include "UltraAISettingsDialog.h"
+#include "UltraAI.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+#include <UltraVault/UltraVault.h>
+#endif
+
+#include <algorithm>
+#include <cstring>
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,6 +42,7 @@
 namespace UltraAIApp {
 
 using namespace UltraCanvas;
+using namespace UltraAI;
 
 namespace {
 
@@ -71,8 +80,13 @@ namespace {
     constexpr const char* kPageDefaultProviders = "services/default-providers";
     constexpr const char* kPageLocalAndCloud    = "services/local-and-cloud";
     constexpr const char* kPageAccounts         = "accounts";
-    constexpr const char* kPageEndpoints        = "accounts/endpoints";
+    constexpr const char* kPageEndpointEditor   = "accounts/editor";
     constexpr const char* kPageStart            = "start";
+
+    // Tree node ids for the Accounts > endpoint list. "New endpoint" is the
+    // first child; each configured endpoint is kNodeEndpointPrefix + its id.
+    constexpr const char* kNodeNewEndpoint      = "accounts/new";
+    constexpr const char* kNodeEndpointPrefix   = "accounts/ep/";
 
     struct PageReset {
         std::string           label;
@@ -101,10 +115,26 @@ namespace {
 
         std::vector<ServiceRow>               serviceRows;
         std::shared_ptr<UltraCanvasCheckbox>  cloudFallbackBox;
-        std::shared_ptr<UltraCanvasLabel>     endpointsSummary;
+
+        // Inline endpoint editor (the one reusable "accounts/editor" page).
+        std::shared_ptr<UltraCanvasTextInput> epName;
+        std::shared_ptr<UltraCanvasDropdown>  epProvider;
+        std::shared_ptr<UltraCanvasTextInput> epBaseUrl;
+        std::shared_ptr<UltraCanvasTextInput> epModel;
+        std::shared_ptr<UltraCanvasTextInput> epKey;
+        std::map<AICapability, std::shared_ptr<UltraCanvasCheckbox>> epModes;
+        std::shared_ptr<UltraCanvasLabel>     epStatus;
+        std::string                           epEditingId;   // "" => New endpoint
+        bool                                  rebuildingNodes = false;
     };
 
     std::shared_ptr<DialogState> g_dialog;
+
+    // Inline endpoint editor helpers (defined further down).
+    void LoadEndpointIntoEditor(DialogState* d, const Endpoint* e);
+    void SaveEndpoint(DialogState* d);
+    void DeleteEndpoint(DialogState* d);
+    void RebuildEndpointNodes(DialogState* d, const std::string& selectNodeId);
 
     // ===== TEXT =====
 
@@ -225,6 +255,50 @@ namespace {
             if (onChange) onChange(now == CheckedState::Checked);
         };
         return box;
+    }
+
+    // A "label above input" field group for the endpoint editor; the input is
+    // handed back through `out`.
+    std::shared_ptr<UltraCanvasContainer> MakeField(
+            const std::string& id, const std::string& label,
+            const std::string& placeholder,
+            std::shared_ptr<UltraCanvasTextInput>& out) {
+        auto col = std::make_shared<UltraCanvasContainer>(id + "-grp");
+        col->layout.SetFlexColumn().SetFlexGap(4)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        col->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        col->size.height = CSSLayout::Dimension::Px(50);
+
+        auto lbl = MakeLabel(id + "-lbl", label);
+        lbl->size.height = CSSLayout::Dimension::Px(18);
+        col->AddChild(lbl);
+
+        out = std::make_shared<UltraCanvasTextInput>(id, 0, 0, 0, 28);
+        out->SetPlaceholder(placeholder);
+        out->size.height = CSSLayout::Dimension::Px(28);
+        out->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        col->AddChild(out);
+        return col;
+    }
+
+    // Union of every capability's registered providers, de-duplicated and
+    // sorted — the choices for the editor's Provider dropdown.
+    std::vector<std::string> AllKnownProviders() {
+        std::set<std::string> uniq;
+        auto merge = [&](const std::vector<std::string>& v) {
+            for (const auto& s : v) uniq.insert(s);
+        };
+        merge(ListTextLLMProviders());
+        merge(ListEmbeddingsProviders());
+        merge(ListSpeechToTextProviders());
+        merge(ListTextToSpeechProviders());
+        merge(ListTranslatorProviders());
+        merge(ListImageGenProviders());
+        merge(ListVisionAnalyzerProviders());
+        merge(ListVideoGenProviders());
+        merge(ListMusicGenProviders());
+        merge(ListCodeAssistProviders());
+        return {uniq.begin(), uniq.end()};
     }
 
     // ===== APPLYING =====
@@ -381,37 +455,146 @@ namespace {
         return parts.page;
     }
 
-    std::string EndpointsSummaryText() {
-        const auto& all = EndpointStore::Instance().All();
-        if (all.empty()) return "No endpoints are configured yet.";
-        std::string text = std::to_string(all.size()) +
-                           (all.size() == 1 ? " endpoint: " : " endpoints: ");
-        for (size_t i = 0; i < all.size(); ++i) {
-            if (i) text += ", ";
-            text += all[i].name.empty() ? all[i].id : all[i].name;
+    // Fill the editor widgets from `e` (nullptr => an empty "New endpoint"
+    // form). The API key is never surfaced — the field always starts blank.
+    void LoadEndpointIntoEditor(DialogState* d, const Endpoint* e) {
+        d->epEditingId = e ? e->id : "";
+
+        if (d->epName)    d->epName->SetText(e ? e->name : "");
+        if (d->epBaseUrl) d->epBaseUrl->SetText(e ? e->baseUrl : "");
+        if (d->epModel)   d->epModel->SetText(e ? e->defaultModel : "");
+        if (d->epKey)     d->epKey->SetText("");
+
+        if (d->epProvider && e && !e->providerId.empty()) {
+            for (int i = 0; i < d->epProvider->GetItemCount(); ++i) {
+                if (const auto* item = d->epProvider->GetItem(i);
+                    item && item->text == e->providerId) {
+                    d->epProvider->SetSelectedIndex(i, false);
+                    break;
+                }
+            }
+        } else if (d->epProvider && d->epProvider->GetItemCount() > 0) {
+            d->epProvider->SetSelectedIndex(0, false);
         }
-        return text;
+
+        for (auto& [cap, cb] : d->epModes) {
+            cb->SetChecked(e ? e->Supports(cap) : false);
+        }
+
+        if (d->epStatus) {
+            d->epStatus->SetText(
+                e ? "" : "Editing a new endpoint — fill in the form and Save.");
+        }
     }
 
-    std::shared_ptr<UltraCanvasContainer> BuildEndpointsPage(DialogState* d) {
-        PageParts parts = MakePage("uai-set-page-endpoints", "Endpoints",
+    std::shared_ptr<UltraCanvasContainer> BuildEndpointEditorPage(DialogState* d) {
+        PageParts parts = MakePage("uai-set-page-endpoint-editor", "Endpoints",
                 "Providers set up once — base URL, default model, API key — "
                 "and the services each one may serve:");
 
-        d->endpointsSummary = MakeText("uai-set-endpoints-summary",
-                                       EndpointsSummaryText());
-        parts.body->AddChild(d->endpointsSummary);
-        parts.body->AddChild(MakeButton("uai-set-endpoints-edit",
-                "Edit endpoints...", 150, [d]() {
-            auto dlg = std::make_shared<UltraAISettingsDialog>();
-            dlg->CreateSettingsDialog();
-            dlg->onResult = [d](DialogResult) {
-                if (d->endpointsSummary) {
-                    d->endpointsSummary->SetText(EndpointsSummaryText());
-                }
-            };
-            dlg->ShowModal(d->window.get());
-        }));
+        // The form is a fixed-width column so its inputs line up like the
+        // controls on the sibling pages.
+        auto form = std::make_shared<UltraCanvasContainer>("uai-ep-form");
+        form->layout.SetFlexColumn().SetFlexGap(8)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        form->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        form->size.width = CSSLayout::Dimension::Px(kTextWidth);
+
+        form->AddChild(MakeField("uai-ep-name", "Name", "e.g. My OpenAI account",
+                                 d->epName));
+
+        // Provider.
+        auto provCol = std::make_shared<UltraCanvasContainer>("uai-ep-prov-grp");
+        provCol->layout.SetFlexColumn().SetFlexGap(4)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        provCol->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        provCol->size.height = CSSLayout::Dimension::Px(50);
+        auto provLbl = MakeLabel("uai-ep-prov-lbl", "Provider");
+        provLbl->size.height = CSSLayout::Dimension::Px(18);
+        provCol->AddChild(provLbl);
+        d->epProvider = std::make_shared<UltraCanvasDropdown>("uai-ep-provider",
+                                                              0, 0, 0, 28);
+        d->epProvider->size.height = CSSLayout::Dimension::Px(28);
+        d->epProvider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        for (const auto& p : AllKnownProviders()) d->epProvider->AddItem(p);
+        if (d->epProvider->GetItemCount() > 0)
+            d->epProvider->SetSelectedIndex(0, false);
+        provCol->AddChild(d->epProvider);
+        form->AddChild(provCol);
+
+        form->AddChild(MakeText("uai-ep-localhint",
+            "Local server? Pick \"openai\", set Base URL http://127.0.0.1:8080, "
+            "leave the key empty.", kTextWidth, kNoteFontSize, kNoteTextColor));
+
+        form->AddChild(MakeField("uai-ep-baseurl",
+            "Base URL (optional, for self-hosted)",
+            "https://... — leave empty for the provider default", d->epBaseUrl));
+        form->AddChild(MakeField("uai-ep-model",
+            "Default model (id, GGUF path or checkpoint)",
+            "provider default", d->epModel));
+        form->AddChild(MakeField("uai-ep-key",
+            "API key — cloud providers only; leave empty for local/self-hosted",
+            "leave empty to keep the stored key", d->epKey));
+
+        // Mode checkboxes in a fixed two-column grid (as the former dialog).
+        form->AddChild(MakeLabel("uai-ep-modes-lbl",
+                                 "Modes this endpoint can serve"));
+        auto modesCol = std::make_shared<UltraCanvasContainer>("uai-ep-modes");
+        const auto& caps = AllCapabilities();
+        constexpr int kCols   = 2;
+        constexpr int kRowH   = 24;
+        constexpr int kRowGap = 4;
+        const int rows = static_cast<int>((caps.size() + kCols - 1) / kCols);
+        {
+            using namespace CSSLayout;
+            std::vector<GridTrackSize> colTracks(
+                kCols, {GridTrackSizeKind::Fr, Dimension::Fr(1)});
+            std::vector<GridTrackSize> rowTracks(
+                static_cast<size_t>(std::max(0, rows)),
+                {GridTrackSizeKind::Fixed, Dimension::Px(kRowH)});
+            modesCol->layout.SetGrid()
+                            .SetGridColumns(colTracks)
+                            .SetGridRows(rowTracks)
+                            .SetGridGap(kRowGap, 8)   // rowGap, columnGap
+                            .SetGridJustifyItems(JustifyItems::Stretch)
+                            .SetGridAlignItems(AlignItems::Stretch);
+        }
+        modesCol->size.height = CSSLayout::Dimension::Px(
+            static_cast<float>(rows * kRowH + std::max(0, rows - 1) * kRowGap));
+        modesCol->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        for (size_t i = 0; i < caps.size(); ++i) {
+            auto cb = std::make_shared<UltraCanvasCheckbox>(
+                std::string("uai-ep-mode-") + caps[i].id, 0, 0, 0, 24,
+                caps[i].label);
+            cb->SetFontSize(kTextFontSize);
+            CheckboxVisualStyle style = cb->GetVisualStyle();
+            style.base.textColor      = kTextColor;
+            style.base.textHoverColor = kTextColor;
+            cb->SetVisualStyle(style);
+            cb->size.height = CSSLayout::Dimension::Px(24);
+            d->epModes[caps[i].cap] = cb;
+            modesCol->AddChild(cb);
+            cb->layoutItem.SetGridRowColSimplified(
+                static_cast<int>(i / kCols), static_cast<int>(i % kCols));
+        }
+        form->AddChild(modesCol);
+
+        // Footer: Save + status + Delete (the window keeps its own Close).
+        auto footer = std::make_shared<UltraCanvasContainer>("uai-ep-footer");
+        footer->layout.SetFlexRow().SetFlexGap(8)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        footer->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        footer->size.height = CSSLayout::Dimension::Px(34);
+        footer->AddChild(MakeButton("uai-ep-save", "Save endpoint", 150,
+                                    [d]() { SaveEndpoint(d); }));
+        d->epStatus = MakeLabel("uai-ep-status", "", kTextFontSize, kNoteTextColor);
+        d->epStatus->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        footer->AddChild(d->epStatus);
+        footer->AddChild(MakeButton("uai-ep-delete", "Delete", 110,
+                                    [d]() { DeleteEndpoint(d); }));
+        form->AddChild(footer);
+
+        parts.body->AddChild(form);
 
         AddNote(parts, "uai-set-endpoints-note1",
                 "API keys are kept in UltraVault, never in the settings "
@@ -467,9 +650,6 @@ namespace {
         }
         d->shownPage = target;
         for (auto& [id, page] : d->pages) page->SetVisible(id == target);
-        if (target == kPageEndpoints && d->endpointsSummary) {
-            d->endpointsSummary->SetText(EndpointsSummaryText());
-        }
         UpdateRestoreButton(d);
     }
 
@@ -499,11 +679,114 @@ namespace {
         d->tree->AddNode(parentId, data);
     }
 
+    // Rebuild the Accounts section's children — "New endpoint" first, then one
+    // node per stored endpoint — and, when `selectNodeId` is given, reveal and
+    // select that node (which reloads the editor through onNodeSelected). Only
+    // the Accounts subtree is touched; Services is left alone.
+    void RebuildEndpointNodes(DialogState* d, const std::string& selectNodeId) {
+        if (!d->tree) return;
+        TreeNode* accounts = d->tree->FindNode(kPageAccounts);
+        if (!accounts) return;
+
+        d->rebuildingNodes = true;
+        std::vector<std::string> childIds;
+        for (const auto& child : accounts->children)
+            childIds.push_back(child->data.nodeId);
+        for (const auto& id : childIds) d->tree->RemoveNode(id);
+
+        AddTreeNode(d, kPageAccounts, kNodeNewEndpoint, "New endpoint");
+        for (const auto& e : EndpointStore::Instance().All()) {
+            TreeNodeData data;
+            data.nodeId = std::string(kNodeEndpointPrefix) + e.id;
+            data.text   = e.name.empty() ? e.id : e.name;
+            d->tree->AddNode(kPageAccounts, data);
+        }
+        d->rebuildingNodes = false;
+
+        if (!selectNodeId.empty()) {
+            if (TreeNode* node = d->tree->FindNode(selectNodeId)) {
+                for (TreeNode* p = node->parent; p; p = p->parent)
+                    d->tree->ExpandNode(p);
+                d->tree->SelectNode(node);
+            }
+        }
+    }
+
+    void SaveEndpoint(DialogState* d) {
+        const std::string name = d->epName ? d->epName->GetText() : "";
+        std::string provider;
+        if (d->epProvider) {
+            if (const auto* item = d->epProvider->GetSelectedItem())
+                provider = item->text;
+        }
+        if (provider.empty()) {
+            if (d->epStatus) d->epStatus->SetText("Pick a provider first.");
+            return;
+        }
+
+        Endpoint e;
+        auto& store = EndpointStore::Instance();
+        if (!d->epEditingId.empty()) {
+            if (const auto* existing = store.FindById(d->epEditingId)) e = *existing;
+        }
+        if (e.id.empty()) e.id = store.MakeId(name.empty() ? provider : name);
+
+        e.name         = name.empty() ? e.id : name;
+        e.providerId   = provider;
+        e.baseUrl      = d->epBaseUrl ? d->epBaseUrl->GetText() : "";
+        e.defaultModel = d->epModel ? d->epModel->GetText() : "";
+        e.modes.clear();
+        for (auto& [cap, cb] : d->epModes) {
+            if (cb->IsChecked()) e.modes.insert(cap);
+        }
+
+        // Store a freshly-typed API key in the vault, then blank the field.
+        if (d->epKey && !d->epKey->GetText().empty()) {
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+            if (!UltraVault::IsAvailable()) UltraVault::Initialize();
+            auto stored = UltraVault::Put(
+                e.VaultRef(),
+                UltraVault::SecretValue::FromString(d->epKey->GetText()));
+            if (!stored.IsOk()) {
+                if (d->epStatus)
+                    d->epStatus->SetText("Could not store the key: " + stored.message);
+                return;
+            }
+#endif
+            d->epKey->SetText("");
+        }
+
+        store.Upsert(e);
+        if (!store.Save()) {
+            if (d->epStatus)
+                d->epStatus->SetText("Saved in memory, but writing " +
+                                     EndpointStore::ConfigPath() + " failed.");
+            return;
+        }
+        d->epEditingId = e.id;
+        // Reselecting the saved node reloads the editor and clears the status,
+        // so the confirmation is set afterwards.
+        RebuildEndpointNodes(d, std::string(kNodeEndpointPrefix) + e.id);
+        if (d->epStatus) d->epStatus->SetText("Saved \"" + e.name + "\".");
+    }
+
+    void DeleteEndpoint(DialogState* d) {
+        if (d->epEditingId.empty()) {
+            if (d->epStatus) d->epStatus->SetText("Nothing to delete.");
+            return;
+        }
+        EndpointStore::Instance().Remove(d->epEditingId);
+        EndpointStore::Instance().Save();
+        d->epEditingId.clear();
+        RebuildEndpointNodes(d, kNodeNewEndpoint);
+        if (d->epStatus) d->epStatus->SetText("Endpoint deleted.");
+    }
+
     void BuildWindow(DialogState* d, UltraCanvasWindowBase* parent) {
         WindowConfig wc;
         wc.title = "UltraAI - Settings";
         wc.width = 720;
-        wc.height = 660;
+        wc.height = 800;
         wc.resizable = true;
         wc.type = WindowType::Dialog;
         wc.parentWindow = parent;
@@ -542,7 +825,10 @@ namespace {
         AddTreeNode(d, kPageServices, kPageDefaultProviders, "Default providers");
         AddTreeNode(d, kPageServices, kPageLocalAndCloud, "Local & cloud");
         AddTreeNode(d, "settings", kPageAccounts, "Accounts");
-        AddTreeNode(d, kPageAccounts, kPageEndpoints, "Endpoints");
+        // Accounts' children — "New endpoint" plus one node per endpoint — are
+        // built dynamically (and rebuilt after every Save/Delete). No selection
+        // here: the window opens on the start page.
+        RebuildEndpointNodes(d, "");
 
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
@@ -557,7 +843,7 @@ namespace {
 
         AddPage(d, kPageDefaultProviders, BuildDefaultProvidersPage(d));
         AddPage(d, kPageLocalAndCloud, BuildLocalAndCloudPage(d));
-        AddPage(d, kPageEndpoints, BuildEndpointsPage(d));
+        AddPage(d, kPageEndpointEditor, BuildEndpointEditorPage(d));
         AddPage(d, kPageStart, BuildStartPage(d));
 
         d->window->AddChild(content);
@@ -591,6 +877,25 @@ namespace {
 
         d->tree->onNodeSelected = [d](TreeNode* node) {
             if (!node) return;
+            if (d->rebuildingNodes) return;
+            const std::string& id = node->data.nodeId;
+
+            // Accounts' endpoint nodes all share the one editor page; selecting
+            // one loads that endpoint (or an empty form for "New endpoint").
+            if (id == kNodeNewEndpoint) {
+                ShowPage(d, kPageEndpointEditor);
+                LoadEndpointIntoEditor(d, nullptr);
+                return;
+            }
+            if (id.rfind(kNodeEndpointPrefix, 0) == 0) {
+                ShowPage(d, kPageEndpointEditor);
+                const std::string epId =
+                    id.substr(std::strlen(kNodeEndpointPrefix));
+                LoadEndpointIntoEditor(d,
+                                       EndpointStore::Instance().FindById(epId));
+                return;
+            }
+
             // A section has no page of its own: selecting one moves on to
             // its first page.
             TreeNode* leaf = node;
@@ -627,7 +932,7 @@ void UltraAISettingsWindow::Show(UltraCanvasWindowBase* parent, Page page) {
     switch (page) {
         case Page::DefaultProviders: pageId = kPageDefaultProviders; break;
         case Page::LocalAndCloud:    pageId = kPageLocalAndCloud; break;
-        case Page::Endpoints:        pageId = kPageEndpoints; break;
+        case Page::Endpoints:        pageId = kNodeNewEndpoint; break;
         default: break;
     }
     if (g_dialog && g_dialog->window && !g_dialog->closed) {

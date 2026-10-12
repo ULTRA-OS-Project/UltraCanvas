@@ -1,4 +1,6 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
+// Version: 0.4.0 - step 6, Build: the skeleton compiled from the window (StartBuild),
+//                  the first prompt and the report after it
 // Version: 0.3.1 - the Tools step: a row per check with a switch for whether
 //                  it is there, and what Install will do above them
 // Version: 0.3.0 - the stepper: five steps, Back / Next, the Guide and the
@@ -70,7 +72,8 @@ const char* kStepHints[kStepCount] = {
     "Which features the application needs, and which assistant you work with.",
     "Whether the tools and libraries are there; what is missing can be installed from here.",
     "Where find_package(UltraCanvas) will look: the prebuilt SDK, or a clone built from source.",
-    "The application: its name and folder, then the files are written."
+    "The application: its name and folder, then the files are written.",
+    "The proof: the project compiled the way a programmer does. Then the hand-over to the assistant."
 };
 
 std::string Join(const std::vector<std::string>& lines, const char* bullet = "") {
@@ -128,7 +131,7 @@ bool UltraCanvasStartWindow::Initialize() {
     paneHost_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     paneHost_->SetContainerStyle(PlainContainer());
     panes_ = { BuildComputerStep(), BuildFeaturesStep(), BuildToolsStep(),
-               BuildFrameworkStep(), BuildProjectStep() };
+               BuildFrameworkStep(), BuildProjectStep(), BuildCompileStep() };
     for (auto& pane : panes_) {
         pane->SetVisible(false);
         paneHost_->AddChild(pane);
@@ -159,7 +162,7 @@ bool UltraCanvasStartWindow::Initialize() {
 
     RefreshPlan();
     ShowStepPane(0);
-    SetStatus("Step 1 of 5: this is what was found. Next goes on to the features.");
+    SetStatus("Step 1 of 6: this is what was found. Next goes on to the features.");
     return true;
 }
 
@@ -179,7 +182,7 @@ bool UltraCanvasStartWindow::ShowStep(int number) {
 bool UltraCanvasStartWindow::ShowPage(const std::string& name) {
     static const std::map<std::string, int> kPages = {
         { "platform", 1 }, { "system", 1 }, { "choices", 2 }, { "ai", 2 },
-        { "install", 3 }, { "framework", 4 }, { "project", 5 }
+        { "install", 3 }, { "framework", 4 }, { "project", 5 }, { "build", 6 }
     };
     if (name == "guide")  { ShowGuideDialog();  return true; }
     if (name == "report") { ShowReportDialog(); return true; }
@@ -270,6 +273,7 @@ std::shared_ptr<UltraCanvasStepper> UltraCanvasStartWindow::BuildStepper() {
         { "Tools",         "checks and install" },
         { "Framework",     "SDK or source" },
         { "Project",       "name, folder, create" },
+        { "Build",         "compile, hand over" },
     });
     stepper->SetNavigation(StepperNavigation::Linear);
     stepper->SetMarkerStyle(StepMarkerStyle::NumberedCircle);
@@ -654,24 +658,54 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildProjectStep()
     Theme::GrowCard(previewCard_);
     pane->AddChild(previewCard_);
 
-    // ----- Done: shown instead of the two cards above once the project exists -----
-    doneCard_ = Theme::MakeCard("ucsDoneCard", "Done");
+    // ----- Written: shown instead of the two cards above once the project exists -----
+    doneCard_ = Theme::MakeCard("ucsDoneCard", "The project");
     doneView_ = Theme::MakeMarkdownView("ucsDoneView", 200);
     Theme::Grow(doneView_);
     doneCard_->AddChild(doneView_);
-    auto doneRow = Theme::MakeRow("ucsDoneRow");
-    auto copyReport = Theme::MakeButton("ucsCopyReport", "Copy the report", false, 130);
-    copyReport->onClick = [this]() { CopyReport(); };
-    doneRow->AddChild(copyReport);
-    auto doneHint = Theme::MakeText("ucsDoneHint",
-        "The system, the checks, the plan and the notes as text - for a colleague, an issue or the assistant.",
-        Theme::kSizeBody, Theme::kTextSecondary);
-    doneHint->layoutItem.SetFlexGrow(1);
-    doneRow->AddChild(doneHint);
-    doneCard_->AddChild(doneRow);
     Theme::GrowCard(doneCard_);
     doneCard_->SetVisible(false);
     pane->AddChild(doneCard_);
+    return pane;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildCompileStep() {
+    auto pane = NewPane("ucsBuildStep");
+
+    buildCard_ = Theme::MakeCard("ucsBuildCard", "Compile the project");
+    auto intro = Theme::MakeHint("ucsBuildIntro",
+        "The two commands a programmer runs, in the project folder. When they succeed, the toolchain, "
+        "the framework and the skeleton work together on this computer, and the application is in build/.");
+    intro->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    buildCard_->AddChild(intro);
+    buildCommands_ = Theme::MakeHint("ucsBuildCommands", "");
+    buildCommands_->SetFont("monospace", Theme::kSizeBody);
+    buildCommands_->SetTextColor(Theme::kCodeText);
+    buildCommands_->SetWrap(TextWrap::WrapWordChar);
+    buildCommands_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    buildCard_->AddChild(buildCommands_);
+    auto row = Theme::MakeRow("ucsBuildRow");
+    buildButton_ = Theme::MakeButton("ucsBuild", "Build the project", true, 150);
+    buildButton_->onClick = [this]() { StartBuild(); };
+    row->AddChild(buildButton_);
+    buildBadge_ = Theme::MakeStatusBadge("ucsBuildBadge", false, "not built yet");
+    buildBadge_->SetVariant(BadgeVariant::Neutral);
+    row->AddChild(buildBadge_);
+    auto copyReport = Theme::MakeButton("ucsCopyReport", "Copy the report", false, 130);
+    copyReport->onClick = [this]() { CopyReport(); };
+    row->AddChild(copyReport);
+    auto reportHint = Theme::MakeText("ucsReportHint",
+        "The report: the system, the checks, the plan and the notes as text - for a colleague, an issue or the assistant.",
+        Theme::kSizeBody, Theme::kTextSecondary);
+    reportHint->layoutItem.SetFlexGrow(1);
+    row->AddChild(reportHint);
+    buildCard_->AddChild(row);
+    buildOutput_ = Theme::MakeConsole("ucsBuildOutput", 160);
+    buildOutput_->SetPlaceholder("cmake's output appears here.");
+    Theme::Grow(buildOutput_);
+    buildCard_->AddChild(buildOutput_);
+    Theme::GrowCard(buildCard_);
+    pane->AddChild(buildCard_);
 
     promptCard_ = Theme::MakeCard("ucsPromptCard", "The first prompt");
     auto promptRow = Theme::MakeRow("ucsPromptRow");
@@ -731,6 +765,9 @@ void UltraCanvasStartWindow::OnLeaveStep(int index) {
     } else if (index == static_cast<int>(Step::Framework)) {
         const bool unset = choices_.useSdk && (!sdkPrefixInput_ || sdkPrefixInput_->GetText().empty());
         stepper_->SetStepError(index, unset);
+    } else if (index == static_cast<int>(Step::Project)) {
+        // The Build step has nothing to compile without a project.
+        stepper_->SetStepError(index, !projectCreated_);
     }
 }
 
@@ -743,19 +780,24 @@ void UltraCanvasStartWindow::OnEnterStep(int index) {
         ReadChoicesFromPanes();
         RefreshPlan();
     }
-    if (index == static_cast<int>(Step::Project) && doneCard_ && promptCard_) {
+    if (index == static_cast<int>(Step::Project) && doneCard_) {
         doneCard_->SetVisible(projectCreated_);
-        promptCard_->SetVisible(projectCreated_ && choices_.useAi);
         projectCard_->SetVisible(!projectCreated_);
         previewCard_->SetVisible(!projectCreated_);
     }
+    if (index == static_cast<int>(Step::Build)) RefreshBuildStep();
     static const char* kStatus[kStepCount] = {
-        "Step 1 of 5: this is what was found. Next goes on to the features.",
-        "Step 2 of 5: tick what the application needs and pick your assistant.",
-        "Step 3 of 5: the checks run now; Install what is missing runs the package manager.",
-        "Step 4 of 5: fetch the SDK here, or choose to build the framework from source.",
-        "Step 5 of 5: name the application and create it."
+        "Step 1 of 6: this is what was found. Next goes on to the features.",
+        "Step 2 of 6: tick what the application needs and pick your assistant.",
+        "Step 3 of 6: the checks run now; Install what is missing runs the package manager.",
+        "Step 4 of 6: fetch the SDK here, or choose to build the framework from source.",
+        "Step 5 of 6: name the application and create it.",
+        "Step 6 of 6: build the project to prove the installation, then hand it to the assistant."
     };
+    if (index == static_cast<int>(Step::Build) && !projectCreated_) {
+        SetStatus("Step 6 of 6: there is no project yet - go back and create it in step 5.");
+        return;
+    }
     SetStatus(kStatus[index]);
 }
 
@@ -987,24 +1029,75 @@ void UltraCanvasStartWindow::CreateProject() {
     for (auto& step : plan_.steps) if (step.kind == StepKind::Scaffold) step.done = true;
     projectCreated_ = true;
 
-    // The Done page: what was written, the commands, the assistant.
+    projectBuilt_ = false;
+    buildFailed_ = false;
+    if (stepper_) stepper_->SetStepError(static_cast<int>(Step::Project), false);
+
+    // What was written, and what the Build step does with it.
     std::string done = "### Written\n\n";
     for (const auto& path : result.written) done += "- `" + path + "`\n";
     done += "\n### Next\n\n";
-    done += "1. `cd \"" + options.folder + "\"`\n";
-    done += "2. `cmake --preset default`\n";
-    done += "3. `cmake --build --preset default`\n";
+    done += "The Build step compiles the project with `cmake --preset default` and "
+            "`cmake --build --preset default`, the way you would from a terminal.\n";
     if (options.useSdk && options.sdkPrefix.empty()) {
-        done += "\nThe SDK prefix is empty: unpack the SDK (step 4) and set `CMAKE_PREFIX_PATH` in `CMakePresets.json`.\n";
+        done += "\nThe SDK prefix is empty: unpack the SDK (step 4) and set `CMAKE_PREFIX_PATH` in `CMakePresets.json` first.\n";
     }
     if (choices_.useAi) {
-        done += "\nThen open the folder with **" + AssistantName(choices_.assistant) +
-                "** and paste the first prompt below as the first message.\n";
+        done += "\nAfter the build, open the folder with **" + AssistantName(choices_.assistant) +
+                "** and paste the first prompt as the first message.\n";
     }
     if (doneView_) doneView_->SetText(done, false);
     OnEnterStep(static_cast<int>(Step::Project));
     if (paneHost_) paneHost_->InvalidateLayout();
-    SetStatus("Project created in " + options.folder + ". That was the last step.");
+    SetStatus("Project created in " + options.folder + ". Next compiles it.");
+}
+
+void UltraCanvasStartWindow::StartBuild() {
+    if (working_) return;
+    ReadChoicesFromPanes();
+    if (!projectCreated_ || choices_.projectFolder.empty()) {
+        UltraCanvasDialogManager::ShowError("Create the project in step 5 first.", "No project", nullptr, window_.get());
+        return;
+    }
+    if (worker_.joinable()) worker_.join();
+    working_ = true;
+    buildFailed_ = false;
+    SetBusy(true);
+    if (buildBadge_) { buildBadge_->SetText("building..."); buildBadge_->SetVariant(BadgeVariant::Neutral); }
+    if (buildOutput_) buildOutput_->SetText("");
+    SetStatus("Building... the first build takes a minute.");
+    const std::string folder = choices_.projectFolder;
+    const SystemProfile profile = profile_;
+    worker_ = std::thread([this, folder, profile]() {
+        // Each command's line and output reach the console as it finishes.
+        const BuildResult result = BuildProject(folder, profile, [this](const std::string& text) {
+            RunOnUiThread([this, text]() { if (buildOutput_) buildOutput_->AppendText(text); });
+        });
+        RunOnUiThread([this, result, folder]() {
+            working_ = false;
+            projectBuilt_ = result.Succeeded();
+            buildFailed_ = !projectBuilt_;
+            if (buildOutput_) {
+                if (!result.started && !result.error.empty() && result.output.find(result.error) == std::string::npos) {
+                    buildOutput_->AppendText(result.error + "\n");
+                }
+                buildOutput_->AppendText(projectBuilt_ ? "\n[built]\n"
+                                         : "\n[failed, exit " + std::to_string(result.exitCode) + "]\n");
+            }
+            if (stepper_) stepper_->SetStepError(static_cast<int>(Step::Build), buildFailed_);
+            SetBusy(false);
+            RefreshBuildStep();
+            if (projectBuilt_) {
+                SetStatus("Built. The application is in " + folder + "/build. That was the last step.");
+            } else if (!result.started) {
+                SetStatus(result.error);
+            } else if (!result.configured) {
+                SetStatus("cmake could not configure the project; see the output. The SDK prefix in CMakePresets.json is the usual cause.");
+            } else {
+                SetStatus("The compiler reported an error; see the output.");
+            }
+        });
+    });
 }
 
 void UltraCanvasStartWindow::CopyReport() {
@@ -1223,6 +1316,25 @@ void UltraCanvasStartWindow::RefreshFrameworkStep() {
     if (paneHost_) paneHost_->InvalidateLayout();
 }
 
+void UltraCanvasStartWindow::RefreshBuildStep() {
+    ReadChoicesFromPanes();
+    if (buildCommands_) {
+        // The commands for the folder; nothing to show without a project (the
+        // badge and the status line say so).
+        buildCommands_->SetText(projectCreated_ ? BuildCommandsText(choices_.projectFolder) : "");
+        buildCommands_->SetVisible(projectCreated_);
+    }
+    if (buildButton_) buildButton_->SetDisabled(working_ || !projectCreated_);
+    if (buildBadge_) {
+        if (working_) { buildBadge_->SetText("building..."); buildBadge_->SetVariant(BadgeVariant::Neutral); }
+        else if (projectBuilt_) { buildBadge_->SetText("built"); buildBadge_->SetVariant(BadgeVariant::Successful); }
+        else if (buildFailed_) { buildBadge_->SetText("failed"); buildBadge_->SetVariant(BadgeVariant::Warning); }
+        else { buildBadge_->SetText(projectCreated_ ? "not built yet" : "no project yet"); buildBadge_->SetVariant(BadgeVariant::Neutral); }
+    }
+    if (promptCard_) promptCard_->SetVisible(choices_.useAi);
+    if (paneHost_) paneHost_->InvalidateLayout();
+}
+
 void UltraCanvasStartWindow::RefreshPlan() {
     const std::vector<CheckResult> checks = choices_.platform == profile_.platform ? checks_
                                                                                   : std::vector<CheckResult>();
@@ -1252,6 +1364,7 @@ void UltraCanvasStartWindow::SetBusy(bool busy) {
     if (downloadButton_) downloadButton_->SetDisabled(busy);
     if (findButton_) findButton_->SetDisabled(busy);
     if (createButton_) createButton_->SetDisabled(busy);
+    if (buildButton_) buildButton_->SetDisabled(busy || !projectCreated_);
     UpdateNavigation();
 }
 
