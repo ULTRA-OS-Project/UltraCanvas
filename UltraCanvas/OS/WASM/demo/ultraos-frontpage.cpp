@@ -29,9 +29,11 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -63,6 +65,12 @@ std::string Url(const std::string& path) {
 }
 std::string Picture(const char* file) {
     return GetResourcesDir() + "media/images/ultraos/" + file;
+}
+// A picture of the page the repository carries: media/images/ultraos/<stem>.png.
+// Those the repository does not have (yet) draw as a tile with their name,
+// so adding one is dropping the file in, no code change.
+bool HasPicture(const std::string& stem) {
+    return !stem.empty() && std::filesystem::exists(PathFromUtf8(Picture((stem + ".png").c_str())));
 }
 
 // ---- texts: the page, top to bottom -------------------------------------------
@@ -159,12 +167,12 @@ const std::vector<Link> kSocial = {
     {"Bluesky", "https://bsky.app/profile/ultra-os.bsky.social"},
 };
 
-// A variant: a picture beside a heading and its paragraphs. `picture` names a
-// file in media/images/ultraos/ when the repository carries it, else the
-// caption of a placeholder tile.
-struct Variant { const char* title; const char* picture; bool pictureIsFile; const char* text; };
+// A variant: a picture beside a heading and its paragraphs. `picture` is the
+// stem of the page's picture in media/images/ultraos/ (shown when the file is
+// there), `caption` the tile's text until it is.
+struct Variant { const char* title; const char* picture; const char* caption; const char* text; };
 const std::vector<Variant> kVariants = {
-    {"ULTRA Mobile OS", "Mobile phone", false,
+    {"ULTRA Mobile OS", "Mobile-phone", "Mobile phone",
      "Google\xE2\x80\x99s Android operating system dominates the global mobile market with an estimated 70% "
      "share, while Apple\xE2\x80\x99s iOS holds around 27%. This leaves an open opportunity for a strong "
      "alternative \xE2\x80\x94 ULTRA OS \xE2\x80\x94 to emerge as a viable third option. The mobile market "
@@ -178,7 +186,7 @@ const std::vector<Variant> kVariants = {
      "In 2025, global mobile phone sales alone reached about $500 billion USD. This means that capturing "
      "just 1% of the combined mobile hardware and software market could translate to a potential $5\xE2\x80\x93"
      "6 billion USD in annual turnover for ULTRA OS."},
-    {"ULTRA OS Mobile Desktop", "Mobile PC", false,
+    {"ULTRA OS Mobile Desktop", "Mobile-PC", "Mobile PC",
      "There are an estimated 6 billion mobile phones in use worldwide in 2025. Modern smartphones are "
      "20,000 to 100,000 times more powerful than the original ARM-based computers developed by Acorn "
      "Computers Ltd. back in 1987. Remarkably, even the 8 MHz ARM chip in the Acorn A3010 was fast enough "
@@ -194,13 +202,13 @@ const std::vector<Variant> kVariants = {
      "people buy a separate desktop computer when their smartphone could handle the same daily tasks?\n\n"
      "ULTRA OS aims to change this by unlocking the full potential of modern smartphones \xE2\x80\x94 "
      "transforming them into fully capable PCs for everyday work and productivity."},
-    {"ULTRA OS INTEL/AMD", "INTEL.png", true,
+    {"ULTRA OS INTEL/AMD", "INTEL", "INTEL chip",
      "The majority of PCs and laptops in use today still rely on Intel\xE2\x80\x99s x86 architecture. To "
      "achieve widespread adoption and appeal to general users, ULTRA OS must be fully compatible with x86 "
      "processors \xE2\x80\x94 ensuring smooth performance on the vast installed base of existing desktops "
      "and notebooks. Supporting x86 alongside ARM and RISC-V will make ULTRA OS a truly universal "
      "operating system, ready to run on mainstream hardware without compromise."},
-    {"ULTRA OS RiscV", "RISC-V chip", false,
+    {"ULTRA OS RiscV", "RiscV-OS", "RISC-V chip",
      "The RISC-V processor architecture was developed as a fully open-source alternative to proprietary "
      "designs like ARM. It delivers comparable performance and cost efficiency while offering developers "
      "and manufacturers complete freedom from licensing restrictions and vendor lock-in.\n\n"
@@ -208,7 +216,7 @@ const std::vector<Variant> kVariants = {
      "natural match for the RISC-V ecosystem. Supporting RISC-V would broaden ULTRA OS\xE2\x80\x99s reach "
      "and help strengthen the adoption of open hardware and software standards \xE2\x80\x94 empowering "
      "innovation without barriers."},
-    {"ULTRA OS Raspberry PI", "Raspberry Pi", false,
+    {"ULTRA OS Raspberry PI", "Raspberry", "Raspberry Pi",
      "The popular Raspberry Pi is an excellent candidate for running ULTRA OS as a lightweight and "
      "efficient operating system. Its popularity stems from its affordability and versatility \xE2\x80\x94 "
      "it can serve as a media center, a development and gaming platform, a web server, a desktop "
@@ -218,52 +226,52 @@ const std::vector<Variant> kVariants = {
      "Currently, there are an estimated 23 million Raspberry Pi 3 units, 20 million Pi 4 units, and "
      "5 million Pi 5 units in circulation. If each board owner contributed just 0.05 \xE2\x82\xAC per Pi, it "
      "would generate enough funding to fully support the development of ULTRA OS for this entire ecosystem."},
-    {"ULTRA OS Local AI", "Local AI", false,
+    {"ULTRA OS Local AI", "Local-AI-OS", "Local AI",
      "Instead of using internet AI services turn your local computer into an AI station.\n\n"
      "Turn your computer into a powerful AI workstation\xE2\x80\x94no internet needed. With local AI, your "
      "data stays private, your research remains secure, and you cut out recurring service fees. Enjoy "
      "faster performance, full control, and total independence from cloud providers.\n\n"
      "Low-cost AI mini computers can start from 300 Euro. Mid-size AI system can be offered from 900 Euro."},
-    {"ULTRA OS Kids", "Kids", false,
+    {"ULTRA OS Kids", "Kids", "Kids",
      "Our vision includes dedicated ULTRA OS versions tailored for families, featuring parental controls, "
      "curated educational content, and games designed for creativity and learning\xE2\x80\x94not violence. "
      "With increasing concerns over social media, messaging apps, cyberbullying, and manipulative "
      "content, ULTRA OS aims to give parents the tools they need to protect their children and ensure a "
      "healthy relationship with technology."},
-    {"ULTRA OS Fortress", "Fortress", false,
+    {"ULTRA OS Fortress", "Fortress", "Fortress",
      "Your company need a hacker-safe operating system or you don't trust the current mobile phone "
      "suppliers with your data anymore. Then we could developpe an OS for you a special OS version of "
      "ULTRA OS that suits your needs."},
-    {"ULTRA OS Smart TV Workstation", "Smart TV", false,
+    {"ULTRA OS Smart TV Workstation", "SmartTV", "Smart TV",
      "Suppliers from Smart TVs can turn their TV with ULTRA OS in a real ALL-in-one PC."},
-    {"ULTRA OS Smart Home", "Smart Home", false,
+    {"ULTRA OS Smart Home", "SmartHome", "Smart Home",
      "Control your home with a save OS that doesn't share your data with the rest of the world."},
 };
 
-struct Purpose { const char* title; const char* picture; const char* text; };
+struct Purpose { const char* title; const char* picture; const char* caption; const char* text; };
 const std::vector<Purpose> kPurposes = {
-    {"ULTRA OS for investors", "Investor",
+    {"ULTRA OS for investors", "investor", "Investor",
      "You want to market a computer/mobile solution that is not based on Google Android or Apple IOS or Linux."},
-    {"ULTRA for companies", "Factory",
+    {"ULTRA for companies", "Factory", "Factory",
      "Your company need a low maintenance cost or a super save (unhackable) OS. Then ULTRA OS is a valid option."},
-    {"ULTRA for countries", "Countries",
+    {"ULTRA for countries", "countries", "Countries",
      "Your country wants to get independent from the USA or save licensing fees and maintenance cost. "
      "Then ULTRA OS is a valid option."},
-    {"ULTRA OS for OEMS", "OEM",
+    {"ULTRA OS for OEMS", "OEM", "OEM",
      "you want to offer an inexpensive user friendly solution for your PC, laptop, mobiles and tablets or Smart TVs."},
-    {"ULTRA OS for administrations", "Admin",
+    {"ULTRA OS for administrations", "Administration", "Admin",
      "Your country or city is still not based on computerized solutions? We can built your customized "
      "systems to streamline your administration, increase effectiveness and service quality for your citizens."},
-    {"ULTRA OS for education", "Education",
+    {"ULTRA OS for education", "education", "Education",
      "With ULTRA OS schools have an affordable choice for their class rooms. ULTRA OS will provide the full "
      "scope of computing technologies to teach their students. This include operating modern computers "
      "user interface, Word processor, spread sheets, database, image processing, vector graphics, Desktop "
      "publishing, programming in C/C++, Python, PHP, Javascript etc. and last but not least AI technologies."},
-    {"ULTRA OS for users", "User",
+    {"ULTRA OS for users", "user", "User",
      "User friendly, open and low cost. ULTRA OS for tinkerers: the philosophy that ULTRA OS will provide "
      "all major functionality as OS modules offers programmers and tinkerers the opportunity to "
      "concentrate on the real task that they have planned to solve."},
-    {"ULTRA OS for parents", "Parents",
+    {"ULTRA OS for parents", "Parents", "Parents",
      "Family-Friendly Computing. ULTRA OS is committed to creating a safe digital environment for "
      "children\xE2\x80\x94on both desktop and mobile platforms. We believe that children should be able to "
      "explore, learn, and play on their devices without exposure to harmful content."},
@@ -435,12 +443,12 @@ std::shared_ptr<UltraCanvasContainer> Gap(float height) {
     return spacer;
 }
 
-// A picture: the file when the repository carries it, else a tile with the
-// caption of the photo the page shows there.
+// A picture: media/images/ultraos/<stem>.png when the repository carries it,
+// else a tile with the caption of the photo the page shows there.
 std::shared_ptr<UltraCanvasUIElement> PictureBox(const std::string& id, float w, float h,
-                                                 const std::string& fileOrCaption, bool isFile) {
-    if (isFile) {
-        auto image = CreateImageFromFile(id, 0, 0, w, h, Picture(fileOrCaption.c_str()));
+                                                 const std::string& stem, const std::string& caption) {
+    if (HasPicture(stem)) {
+        auto image = CreateImageFromFile(id, 0, 0, w, h, Picture((stem + ".png").c_str()));
         image->SetFitMode(ImageFitMode::Contain);
         image->SetBorderRadius(10);
         image->layoutItem.SetFlexShrink(0);
@@ -452,10 +460,10 @@ std::shared_ptr<UltraCanvasUIElement> PictureBox(const std::string& id, float w,
     tile->layout.SetFlexRow().SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     tile->layoutItem.SetFlexShrink(0);
-    auto caption = CreateLabel(id + "Caption", fileOrCaption);
-    caption->SetFont(kFont, 15, FontWeight::Bold);
-    caption->SetTextColor(kInkSoft);
-    tile->AddChild(caption);
+    auto label = CreateLabel(id + "Caption", caption);
+    label->SetFont(kFont, 15, FontWeight::Bold);
+    label->SetTextColor(kInkSoft);
+    tile->AddChild(label);
     return tile;
 }
 
@@ -595,7 +603,7 @@ std::shared_ptr<UltraCanvasContainer> BuildIntro() {
     for (int i = 0; i < 2; ++i) {
         auto card = Card("Platform" + std::to_string(i), 400, kPaperSoft, false);
         auto inner = Row("PlatformRow" + std::to_string(i), 22, CSSLayout::AlignItems::Center);
-        inner->AddChild(PictureBox("PlatformPicture" + std::to_string(i), 150, 150, pictures[i], false));
+        inner->AddChild(PictureBox("PlatformPicture" + std::to_string(i), 150, 150, pictures[i], pictures[i]));
         auto title = Text("PlatformTitle" + std::to_string(i), titles[i], 26, kInk, FontWeight::Bold);
         title->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
         title->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
@@ -665,7 +673,7 @@ std::shared_ptr<UltraCanvasContainer> BuildNewsletter() {
 std::shared_ptr<UltraCanvasContainer> BuildStatus() {
     auto band = MakeBand("Status", kPaper, 72);
     auto row = Row("StatusRow", 48, CSSLayout::AlignItems::Center);
-    row->AddChild(PictureBox("StatusPicture", 330, 440, "ULTRA OS", false));
+    row->AddChild(PictureBox("StatusPicture", 330, 440, "Status", "ULTRA OS"));
     auto column = Column("StatusColumn", 420);
     column->AddChild(Kicker("StatusKicker", "check the current status", TextAlignment::Left));
     column->AddChild(Gap(8));
@@ -782,7 +790,7 @@ std::shared_ptr<UltraCanvasContainer> BuildVariants() {
         auto row = Row(id, 40, CSSLayout::AlignItems::Center);
         row->SetPadding(28, 0);
         if (i + 1 < kVariants.size()) row->SetBorderBottom(1, kRule);
-        auto picture = PictureBox(id + "Picture", 300, 300, variant.picture, variant.pictureIsFile);
+        auto picture = PictureBox(id + "Picture", 300, 300, variant.picture, variant.caption);
         auto column = Column(id + "Column", 480);
         column->AddChild(Text(id + "Title", variant.title, 28, kInk, FontWeight::Bold));
         column->AddChild(Gap(12));
@@ -806,7 +814,7 @@ std::shared_ptr<UltraCanvasContainer> BuildPurposes() {
     for (size_t i = 0; i < kPurposes.size(); ++i) {
         const std::string id = "Purpose" + std::to_string(i);
         auto card = Card(id, 240, kPaperSoft, false);
-        card->AddChild(PictureBox(id + "Picture", 110, 110, kPurposes[i].picture, false));
+        card->AddChild(PictureBox(id + "Picture", 110, 110, kPurposes[i].picture, kPurposes[i].caption));
         card->AddChild(Gap(14));
         card->AddChild(Text(id + "Title", kPurposes[i].title, 20, kInk, FontWeight::Bold));
         card->AddChild(Gap(8));
