@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
+// Version: 0.2.1 - the sliders and switches follow the theme too
 // Version: 0.2.0 - the tabs, dropdowns and fields follow the theme
 // Version: 0.1.0
 // Last Modified: 2026-10-11
@@ -666,29 +667,21 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
         field->SetStyle(style);
         field->SetFollowTheme(true);
     }
+    for (auto& s : sliders) {
+        SliderVisualStyle style = s->GetStyle();
+        style.trackHeight = 4.0f;
+        style.handleSize = 12.0f;
+        s->SetStyle(style);
+        s->SetFollowTheme(true);           // the colours, with the slider.handle roles
+    }
+    for (auto& s : switches) s->SetFollowTheme(true);   // with the switch.thumb roles
 
     ApplyPalette(p);
     return tabs;
 }
 
 void Inspector::StyleControls(const Palette& p) {
-    // the dropdowns, the text fields and the tabs follow the theme (Build)
-    SliderVisualStyle slider;
-    slider.trackColor = ToColor(p.Bg500);
-    slider.activeTrackColor = ToColor(p.Accent);
-    slider.handleColor = ToColor(p.Ink);
-    slider.handleBorderColor = ToColor(p.Bg100);
-    slider.trackHeight = 4.0f;
-    slider.handleSize = 12.0f;
-    for (auto& s : sliders) s->SetStyle(slider);
-    SwitchVisualStyle sw;
-    sw.base.textColor = ToColor(p.Ink);
-    sw.trackOffColor = ToColor(p.Bg500);
-    sw.trackOnColor = ToColor(p.Accent);
-    sw.trackBorderColor = ToColor(p.LineStrong);
-    sw.thumbColor = ToColor(p.OnAccent);
-    sw.thumbBorderColor = ToColor(p.LineStrong);
-    for (auto& s : switches) s->SetVisualStyle(sw);
+    // the dropdowns, text fields, sliders, switches and tabs follow the theme (Build)
     for (auto& t : timecodes) t->SetStyle(TimecodeStyleFor(p));
     for (auto& c : captions) c->SetTextColor(ToColor(p.InkMuted));
     for (auto& h : headings) h->SetTextColor(ToColor(p.Ink));

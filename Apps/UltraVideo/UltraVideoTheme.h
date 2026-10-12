@@ -141,6 +141,11 @@ inline UltraCanvas::UltraCanvasTheme ThemeFor(const Palette& p) {
     r.onAccent = ToColor(p.OnAccent);
     r.focus = ToColor(p.Focus);
     r.danger = ToColor(p.Danger);
+    // the controls' own roles: an ink handle on the slider, the on-accent thumb on the switch
+    t.SetRole("slider.handle", ToColor(p.Ink));
+    t.SetRole("slider.handle-border", ToColor(p.Bg100));
+    t.SetRole("switch.thumb", ToColor(p.OnAccent));
+    t.SetRole("switch.thumb-border", ToColor(p.LineStrong));
     t.SetRole("video-timeline.playhead", ToColor(p.Playhead));
     t.SetRole("video-timeline.clip-video", ToColor(p.ClipVideo));
     t.SetRole("video-timeline.clip-video-edge", ToColor(p.ClipVideoEdge));

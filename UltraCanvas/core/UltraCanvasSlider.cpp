@@ -1,5 +1,6 @@
 // core/UltraCanvasSlider.cpp
 // Platform-independent slider component implementation
+// Version: 1.5.0 - slider.handle, slider.handle-border
 // Version: 1.4.0 - SliderVisualStyle::FromTheme
 // Version: 1.3.0
 // Last Modified: 2026-10-08
@@ -973,8 +974,9 @@ namespace UltraCanvas {
         s.disabledTrackColor = r.line;
         s.disabledActiveTrackColor = r.inkFaint;
         s.rangeTrackColor = r.accent.WithAlpha(180);
-        s.handleColor = r.raised;
-        s.handleBorderColor = r.lineStrong;
+        // the element's own roles, for a design whose handle is not a raised surface
+        s.handleColor = theme.Role("slider.handle", r.raised);
+        s.handleBorderColor = theme.Role("slider.handle-border", r.lineStrong);
         s.handleHoverColor = r.hover;
         s.handlePressedColor = r.pressed;
         s.handleDisabledColor = r.panel;

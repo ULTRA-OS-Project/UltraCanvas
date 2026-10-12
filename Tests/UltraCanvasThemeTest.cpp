@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.2.0 - the slider's and the switch's element roles
 // Version: 1.1.0 - every FromTheme, the change handlers, elements that
 //                  follow the theme through a container
 // Last Modified: 2026-10-12
@@ -97,6 +98,16 @@ int main() {
     const SwitchVisualStyle sw = SwitchVisualStyle::FromTheme(own);
     CHECK(Same(sw.trackOffColor, r.pressed) && Same(sw.trackOnColor, r.accent) && Same(sw.thumbColor, r.raised) && Same(sw.onTextColor, r.onAccent) &&
           Same(sw.base.textColor, r.ink) && Same(sw.sideLabelInactiveColor, r.inkFaint), "switch: track off and on, thumb, labels");
+    UltraCanvasTheme named = own;
+    named.SetRole("slider.handle", Color(7, 7, 7));
+    named.SetRole("slider.handle-border", Color(8, 8, 8));
+    named.SetRole("switch.thumb", Color(9, 9, 9));
+    named.SetRole("switch.thumb-border", Color(10, 10, 10));
+    CHECK(Same(SliderVisualStyle::FromTheme(named).handleColor, Color(7, 7, 7)) && Same(SliderVisualStyle::FromTheme(named).handleBorderColor, Color(8, 8, 8)) &&
+          Same(SwitchVisualStyle::FromTheme(named).thumbColor, Color(9, 9, 9)) && Same(SwitchVisualStyle::FromTheme(named).thumbBorderColor, Color(10, 10, 10)),
+          "slider and switch: the handle and thumb element roles where a theme names them");
+    CHECK(Same(SliderVisualStyle::FromTheme(own).handleBorderColor, r.lineStrong) && Same(SwitchVisualStyle::FromTheme(own).thumbBorderColor, r.lineStrong),
+          "slider and switch: the shared roles where it does not");
     const TextInputStyle input = TextInputStyle::FromTheme(own);
     CHECK(Same(input.backgroundColor, r.well) && Same(input.borderColor, r.lineStrong) && Same(input.focusBorderColor, r.focus) &&
           Same(input.textColor, r.ink) && Same(input.placeholderColor, r.inkFaint) && Same(input.invalidBorderColor, r.danger) &&

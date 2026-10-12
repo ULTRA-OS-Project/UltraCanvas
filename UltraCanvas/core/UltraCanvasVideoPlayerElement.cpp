@@ -1,7 +1,9 @@
 // core/UltraCanvasVideoPlayerElement.cpp
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.9
+// Version: 0.1.10
 // Last Modified: 2026-10-12
+// V0.1.10: The title-safe guide (VideoPlayerStyle::showSafeArea), dashed over
+//   the picture; a Pixels zoom relative to zoomReferenceHeight.
 // V0.1.9: The picture is placed by VideoPlayerStyle::videoFit (Contain, Cover,
 //   Pixels with zoomPercent) inside videoInset; Cover and Pixels are clipped to
 //   the element.
@@ -359,7 +361,8 @@ void UltraCanvasVideoPlayerElement::DrawVideoSurface(IRenderContext* ctx) {
                 break;
             }
             case VideoPlayerFit::Pixels: {
-                const double z = std::max(1.0f, style.zoomPercent) / 100.0;
+                double z = std::max(1.0f, style.zoomPercent) / 100.0;
+                if (style.zoomReferenceHeight > 0 && frameH > 0) z *= static_cast<double>(style.zoomReferenceHeight) / frameH;
                 const int w = static_cast<int>(frameW * z), h = static_cast<int>(frameH * z);
                 fit = Rect2Di(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h);
                 break;
@@ -373,6 +376,15 @@ void UltraCanvasVideoPlayerElement::DrawVideoSurface(IRenderContext* ctx) {
         ctx->ClipRect(Rect2Dd(videoRect.x, videoRect.y, videoRect.width, videoRect.height));
         ctx->DrawPixmap(*framePixmap, Rect2Dd(fit.x, fit.y, fit.width, fit.height),
                         ImageFitMode::Fill);
+        if (style.showSafeArea && fit.width > 0 && fit.height > 0) {
+            const double inset = std::clamp(static_cast<double>(style.safeAreaInset), 0.0, 0.45);
+            const double dx = fit.width * inset, dy = fit.height * inset;
+            ctx->SetStrokePaint(style.safeAreaColor);
+            ctx->SetStrokeWidth(1.0);
+            ctx->SetLineDash(UCDashPattern({4.0, 4.0}));
+            ctx->DrawRectangle(Rect2Dd(fit.x + dx, fit.y + dy, fit.width - 2 * dx, fit.height - 2 * dy));
+            ctx->SetLineDash(UCDashPattern());
+        }
         ctx->PopState();
     } else {
         // No-signal placeholder

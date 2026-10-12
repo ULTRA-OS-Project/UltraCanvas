@@ -160,9 +160,13 @@ transport bar: play/pause, seek, mute, volume, time labels.
 `ShowOpenDialog()` opens the native file picker. `VideoPlayerStyle::videoFit`
 places the picture: `Contain` (fitted whole, letterboxed; the default),
 `Cover` (filling the element, cropped) or `Pixels` (its own pixels at
-`zoomPercent`), inside `videoInset` from the element's edges - a host that
+`zoomPercent`, or those of a picture `zoomReferenceHeight` high, so a
+proxy file zooms as the original would), inside `videoInset` from the
+element's edges - a host that
 shows the player in place of a frame surface of its own gives it the same
-inset and fit, and the picture stays put.
+inset and fit, and the picture stays put. `showSafeArea` draws a dashed
+title-safe guide over the picture, `safeAreaInset` (5 % by default) of its
+width and height in from each edge, in `safeAreaColor`.
 
 `UltraCanvasVideoRecorderElement` — live camera preview with a REC/stop button,
 elapsed-time readout, blinking record indicator, and a camera picker popup.

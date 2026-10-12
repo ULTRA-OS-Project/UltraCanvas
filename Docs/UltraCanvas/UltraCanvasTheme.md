@@ -20,7 +20,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.1.0 - change handlers; elements follow the theme; FromTheme for the panel elements, the menu and the tooltip
+**Version:** 1.2.0 - the slider's and the switch's element roles
 **Last Modified:** 2026-10-12
 **Author:** UltraCanvas Framework
 
@@ -71,7 +71,11 @@ for `image`, `card`, `title` and `audio`, `video-timeline.waveform`,
 `video-timeline.transition-fill`, `video-timeline.on-transition`,
 `video-timeline.beat`, `video-timeline.trim-overflow`,
 `video-timeline.drop-soft`, `video-timeline.range-fill`,
-`video-timeline.muted-hatch` and `video-timeline.scrollbar`.
+`video-timeline.muted-hatch` and `video-timeline.scrollbar`. The slider's
+are `slider.handle` and `slider.handle-border` (the raised surface and the
+control border otherwise), the switch's `switch.thumb` and
+`switch.thumb-border`: a design whose handle is ink or whose thumb is the
+text-on-accent colour names them and the controls follow the theme too.
 
 ## Using it
 

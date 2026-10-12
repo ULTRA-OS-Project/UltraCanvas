@@ -38,7 +38,17 @@
   of a 16:9 project that sat letterboxed and smaller than the frame
   surface. The player keeps the surface's 12 px inset and follows the
   viewer's *Fit* menu (fit, fill, 50, 100, 200 %) as the surface does, so
-  the picture does not move when the draft takes over.
+  the picture does not move when the draft takes over; the title-safe
+  guide stays on over the draft too. A percent zoom is of the project's
+  pixels on both sides (the surface asks the engine for a frame of that
+  size; the player scales the 360-line draft by the project's height), so
+  *100 %* shows the same picture before and during playback.
+- **Sliders and switches follow the theme.** The zoom, volume and
+  inspector sliders and the inspector's switches follow the theme like
+  the other controls: the design's ink handle and on-accent thumb are the
+  theme's `slider.handle` and `switch.thumb` element roles (framework
+  slider 3.7.0, switch 1.6.0). `ApplyPalette` keeps only the ghost and
+  primary buttons and the timeline.
 
 #### 2026-10-11 *0.1.0*
 - **The first release: the editor's skeleton.** `Apps/UltraVideo`, on

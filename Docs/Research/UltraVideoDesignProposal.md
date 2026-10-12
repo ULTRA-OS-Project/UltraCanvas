@@ -1060,9 +1060,10 @@ that writing it showed:
   (`SetFollowTheme`: styled from the current theme now and on every
   change, over its own shape), and the application a change handler that
   walks its windows: the app's split panes, tabs, fields, albums,
-  toolbars, dropdowns and context menu follow it, and `ApplyPalette` keeps
-  only the app's own looks (ghost and primary buttons, sliders, switches,
-  the timeline).
+  toolbars, dropdowns, context menu, sliders and switches follow it (the
+  ink handle and on-accent thumb as the `slider.handle` and `switch.thumb`
+  element roles), and `ApplyPalette` keeps only the app's own looks (ghost
+  and primary buttons, the timeline).
 - **Effect presets** (§6.2, §6.4; app 0.2.0): `UltraVideoPresets` holds
   ten presets as lists of engine effects - *Warm film* is the table's
   temperature, saturation and vignette - and `ApplyEffectPreset` puts one

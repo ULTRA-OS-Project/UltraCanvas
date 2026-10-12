@@ -6,6 +6,7 @@
 // end, the large timecode readout over the project length, the volume.
 // Playback itself is the window's: it moves the playhead and the viewer
 // shows what the engine renders for it.
+// Version: 0.2.2 - SetProjectSize
 // Version: 0.2.1 - SetFit
 // Version: 0.2.0 - DraftPlay returns bool
 // Version: 0.1.0
@@ -43,7 +44,14 @@ public:
     static constexpr double kMargin = 12.0;   // the picture's distance from the surface's edges
     // 0 = fit the frame to the surface; else a percentage of the frame's own pixels
     void SetZoomPercent(double percent, bool fill = false);
-    void SetAspect(double widthOverHeight) { aspect = widthOverHeight; RequestRedraw(); }
+    // The project's frame: its shape when no frame is shown, its pixels for a percent zoom
+    void SetProjectSize(int width, int height) {
+        if (width <= 0 || height <= 0) return;
+        projectWidth = width;
+        projectHeight = height;
+        aspect = static_cast<double>(width) / height;
+        RequestRedraw();
+    }
     void SetColors(const UltraCanvas::Color& ground, const UltraCanvas::Color& guide, const UltraCanvas::Color& frameLine);
     void Render(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Rect2Df& dirtyRect) override;
 
@@ -54,6 +62,8 @@ private:
     double zoomPercent = 0.0;
     bool fillSurface = false;
     double aspect = 16.0 / 9.0;
+    int projectWidth = 0;
+    int projectHeight = 0;
     UltraCanvas::Color ground{22, 22, 24};
     UltraCanvas::Color guide{255, 255, 255, 60};
     UltraCanvas::Color frameLine{80, 80, 84};
@@ -68,7 +78,7 @@ public:
     void ClearFrame();
     void SetTime(double seconds, double total);      // the readout and the length
     void SetFrameRate(double frameRate);
-    void SetAspect(double widthOverHeight);
+    void SetProjectSize(int width, int height);   // the frame's shape, and what a percent zoom is of
     void SetFit(int index);                 // the Fit menu's choice: fit, fill, 50, 100, 200 %
     void SetPlaying(bool playing);
     // The size to ask the engine for: the surface in logical pixels
@@ -101,6 +111,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> fit;
     std::shared_ptr<FrameSurface> surface;
     std::shared_ptr<UltraCanvas::UltraCanvasVideoPlayerElement> player;
+    int projectWidth = 0;
+    int projectHeight = 0;
+    double zoomPercent = 0.0;             // the Fit menu's percent, 0 = fit or fill
     bool draftShown = false;
     float volumeLevel = 1.0f;
     std::shared_ptr<UltraCanvas::UltraCanvasToolbar> transport;

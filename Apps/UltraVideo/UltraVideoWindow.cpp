@@ -515,6 +515,11 @@ std::shared_ptr<UltraCanvasToolbar> UltraVideoWindow::BuildTimelineToolbar() {
     zoom_->SetValueDisplay(SliderValueDisplay::NoDisplay);
     zoom_->onValueChanged = [this](float v) { if (timeline_) timeline_->SetPixelsPerSecond(SliderToZoom(v)); };
     zoom_->layoutItem.SetFlexShrink(0);
+    SliderVisualStyle zoomStyle = zoom_->GetStyle();
+    zoomStyle.trackHeight = 4.0f;
+    zoomStyle.handleSize = 12.0f;
+    zoom_->SetStyle(zoomStyle);
+    zoom_->SetFollowTheme(true);           // the colours, with the slider.handle roles
     timelineBar_->AddChild(zoom_);
     zoomIn_ = MakeIconButton("uv.zoom.in", "zoomIn", "Zoom in  =", p);
     zoomIn_->SetOnClick([this]() { if (timeline_) timeline_->ZoomBy(1.25, document_.view.playhead); });
@@ -687,14 +692,6 @@ void UltraVideoWindow::ApplyPalette() {
     for (auto& b : {split_, delete_, marker_, magnet_, zoomOut_, zoomIn_, zoomFit_}) b->SetStyle(GhostButtonStyle(p));
     playheadField_->SetStyle(TimecodeStyleFor(p));
     lengthLabel_->SetTextColor(ToColor(p.InkMuted));
-    SliderVisualStyle slider;
-    slider.trackColor = ToColor(p.Bg500);
-    slider.activeTrackColor = ToColor(p.Accent);
-    slider.handleColor = ToColor(p.Ink);
-    slider.handleBorderColor = ToColor(p.Bg100);
-    slider.trackHeight = 4.0f;
-    slider.handleSize = 12.0f;
-    zoom_->SetStyle(slider);
     timeline_->SetStyle(TimelineStyleFor(p));
     RefreshToolbarLooks();
     window_->RequestRedraw();
@@ -816,7 +813,7 @@ void UltraVideoWindow::RefreshTimeline() {
     playheadField_->SetMaximumFrames(static_cast<long long>(length * fps));
     lengthLabel_->SetText("/ " + TimelineTimecode(length, fps));
     viewer_.SetFrameRate(fps);
-    viewer_.SetAspect(static_cast<double>(document_.Width()) / std::max(1, document_.Height()));
+    viewer_.SetProjectSize(document_.Width(), document_.Height());
     viewer_.SetTime(document_.view.playhead, length);
     if (document_.view.playhead > length) SetPlayhead(length, false);
 }

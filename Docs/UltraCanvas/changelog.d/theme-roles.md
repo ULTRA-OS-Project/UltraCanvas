@@ -35,4 +35,8 @@
   from the theme, so an application switches its look with one call.
   UltraVideo's split panes, tabs, fields, albums, toolbars, dropdowns and
   context menu follow the theme; its own looks stay in `ApplyPalette`.
-  `Tests/UltraCanvasThemeTest.cpp`: 43 checks.
+  The slider's handle (`slider.handle`, `slider.handle-border`) and the
+  switch's thumb (`switch.thumb`, `switch.thumb-border`) are element
+  roles, the raised surface and the control border where a theme does not
+  name them, so UltraVideo's ink handle and on-accent thumb follow the
+  theme as well. `Tests/UltraCanvasThemeTest.cpp`: 45 checks.

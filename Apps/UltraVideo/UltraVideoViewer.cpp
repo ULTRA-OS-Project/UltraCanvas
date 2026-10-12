@@ -1,5 +1,7 @@
 // Apps/UltraVideo/UltraVideoViewer.cpp
 // The viewer (UltraVideoViewer.h).
+// Version: 0.2.3 - a percent zoom is of the project's pixels on the surface and in the player alike; the sliders follow the theme
+// Version: 0.2.2 - the player draws the title-safe guide too
 // Version: 0.2.1 - SetFit places the picture in the surface and the player alike
 // Version: 0.2.0 - the transport bar and the fit dropdown follow the theme; DraftPlay reports a refusal
 // Version: 0.1.0
@@ -81,8 +83,12 @@ void FrameSurface::Render(IRenderContext* ctx, const Rect2Df&) {
     const double availH = std::max(1.0, b.height - 2 * margin);
     double w, h;
     if (pixmap && zoomPercent > 0.0) {
-        w = frameWidth * zoomPercent / 100.0;
-        h = frameHeight * zoomPercent / 100.0;
+        // percent of the project's pixels, not of the preview rendered for
+        // the surface (the draft player's zoom is read the same way)
+        const double refW = projectWidth > 0 ? projectWidth : frameWidth;
+        const double refH = projectHeight > 0 ? projectHeight : frameHeight;
+        w = refW * zoomPercent / 100.0;
+        h = refH * zoomPercent / 100.0;
     } else if (fillSurface) {
         if (availW / availH > shape) { w = availW; h = availW / shape; }
         else { h = availH; w = availH * shape; }
@@ -148,6 +154,7 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
     playerStyle.showControls = false;
     playerStyle.autoHideControls = false;
     playerStyle.videoInset = static_cast<int>(FrameSurface::kMargin);   // the picture where the surface has it
+    playerStyle.showSafeArea = true;                                     // and the surface's title-safe guide
     player->SetStyle(playerStyle);
     player->SetVisible(false);
     panel->AddChild(player);
@@ -197,6 +204,11 @@ std::shared_ptr<UltraCanvasContainer> Viewer::Build(const Palette& p) {
     volume->SetRange(0.0f, 1.0f);
     volume->SetValue(1.0f);
     volume->SetValueDisplay(SliderValueDisplay::NoDisplay);
+    SliderVisualStyle volumeStyle = volume->GetStyle();
+    volumeStyle.trackHeight = 4.0f;
+    volumeStyle.handleSize = 12.0f;
+    volume->SetStyle(volumeStyle);
+    volume->SetFollowTheme(true);          // the colours, with the slider.handle roles
     volume->onValueChanged = [this](float v) {
         volumeLevel = v;
         if (player && player->GetPlayer()) player->GetPlayer()->SetVolume(v);
@@ -219,20 +231,13 @@ void Viewer::ApplyPalette(const Palette& p) {
     if (player) {
         VideoPlayerStyle playerStyle = player->GetStyle();
         playerStyle.backgroundColor = ToColor(p.Bg000);
+        playerStyle.safeAreaColor = ToColor(p.LineStrong);   // the surface's guide colour
         player->SetStyle(playerStyle);
     }
     // the transport bar and the fit dropdown follow the theme (Build)
     for (auto& b : {toStart, stepBack, play, stepForward, toEnd}) b->SetStyle(GhostButtonStyle(p));
     readout->SetStyle(TimecodeStyleFor(p));
     total->SetTextColor(ToColor(p.InkMuted));
-    SliderVisualStyle slider;
-    slider.trackColor = ToColor(p.Bg500);
-    slider.activeTrackColor = ToColor(p.Accent);
-    slider.handleColor = ToColor(p.Ink);
-    slider.handleBorderColor = ToColor(p.Bg100);
-    slider.trackHeight = 4.0f;
-    slider.handleSize = 12.0f;
-    volume->SetStyle(slider);
 }
 
 void Viewer::SetFit(int index) {
@@ -246,6 +251,7 @@ void Viewer::SetFit(int index) {
         case 4: zoom = 200.0; break;
         default: break;
     }
+    zoomPercent = zoom;
     if (surface) surface->SetZoomPercent(zoom, fill);
     if (player) {
         VideoPlayerStyle style = player->GetStyle();
@@ -273,8 +279,18 @@ void Viewer::SetFrameRate(double fps) {
     if (readout) readout->SetFrameRate(frameRate);
 }
 
-void Viewer::SetAspect(double widthOverHeight) {
-    if (surface && widthOverHeight > 0.0) surface->SetAspect(widthOverHeight);
+void Viewer::SetProjectSize(int width, int height) {
+    if (width <= 0 || height <= 0) return;
+    projectWidth = width;
+    projectHeight = height;
+    if (surface) surface->SetProjectSize(width, height);
+    if (player) {
+        // a percent zoom means the project's pixels on both sides, whatever
+        // size the draft was rendered at
+        VideoPlayerStyle style = player->GetStyle();
+        style.zoomReferenceHeight = height;
+        player->SetStyle(style);
+    }
 }
 
 void Viewer::SetPlaying(bool on) {
@@ -322,11 +338,15 @@ double Viewer::DraftPosition() const {
     return player && player->GetPlayer() ? player->GetPlayer()->GetPosition() : 0.0;
 }
 
+// The size to ask the engine for: the surface, or at a percent zoom the
+// project at that zoom (capped), so the pixels shown are real ones
 int Viewer::SurfaceWidth() const {
+    if (zoomPercent > 0.0 && projectWidth > 0) return std::clamp(static_cast<int>(std::lround(projectWidth * zoomPercent / 100.0)), 16, 4096);
     return surface ? std::max(16, static_cast<int>(std::lround(surface->GetBounds().width))) : 640;
 }
 
 int Viewer::SurfaceHeight() const {
+    if (zoomPercent > 0.0 && projectHeight > 0) return std::clamp(static_cast<int>(std::lround(projectHeight * zoomPercent / 100.0)), 9, 4096);
     return surface ? std::max(9, static_cast<int>(std::lround(surface->GetBounds().height))) : 360;
 }
 

@@ -1,7 +1,11 @@
 // include/UltraCanvasVideoPlayerElement.h
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
-// Version: 0.1.5
+// Version: 0.1.6
 // Last Modified: 2026-10-12
+// V0.1.6: VideoPlayerStyle::showSafeArea draws a dashed title-safe guide
+//   (safeAreaInset of the picture in from each edge, safeAreaColor) over it;
+//   zoomReferenceHeight makes a Pixels zoom relative to a picture of that
+//   height (a proxy file's zoom agrees with the original's).
 // V0.1.5: VideoPlayerStyle::videoFit (Contain, Cover, Pixels with zoomPercent)
 //   and videoInset place the picture as a host's own frame surface does, so a
 //   player shown in its place puts the picture where the surface had it.
@@ -35,7 +39,13 @@ struct VideoPlayerStyle {
     Color backgroundColor = Color(16, 16, 16);          // letterbox / no-signal fill
     VideoPlayerFit videoFit = VideoPlayerFit::Contain;
     float zoomPercent = 100.0f;                         // Pixels: the frame's own pixels, in percent
+    int   zoomReferenceHeight = 0;                      // Pixels: percent of a picture this high instead (0 = the frame's own)
     int   videoInset = 0;                               // the picture's distance from the element's edges
+    // A dashed title-safe guide over the picture, safeAreaInset of its
+    // width and height in from each edge: what an editor's viewer shows
+    bool  showSafeArea = false;
+    float safeAreaInset = 0.05f;
+    Color safeAreaColor = Color(255, 255, 255, 60);
     Color controlBarColor = Color(0, 0, 0, 160);        // translucent overlay
     Color progressTrackColor = Color(90, 90, 90);
     Color progressFillColor = Color(0, 150, 230);

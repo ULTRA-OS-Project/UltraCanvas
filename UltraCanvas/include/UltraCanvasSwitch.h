@@ -2,6 +2,7 @@
 // Toggle switch: pill-shaped track with a circular thumb that snaps between sides.
 // Supports horizontal/vertical orientation, optional thumb icons, and optional ON/OFF state labels
 // (inside the track, outside it, or one label on each side of the track).
+// Version: 1.6.0 - the thumb as element roles (switch.thumb, switch.thumb-border)
 // Version: 1.5.0 - SwitchVisualStyle::FromTheme, ApplyTheme
 // Version: 1.4.0
 // Last Modified: 2026-10-08
@@ -54,7 +55,9 @@ namespace UltraCanvas {
         Color thumbDisabledColor = Color(240, 240, 240, 255);
 
         // The theme's roles: the pressed fill for the track off, the accent
-        // on, the raised surface for the thumb, ink for the labels
+        // on, the raised surface for the thumb, ink for the labels; the
+        // element roles "switch.thumb" and "switch.thumb-border" where a
+        // theme names them
         // over a base's own shape (sizes, fonts, flags), or a default one
         static SwitchVisualStyle FromTheme(const UltraCanvasTheme& theme, const SwitchVisualStyle& base);
         static SwitchVisualStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SwitchVisualStyle()); }
