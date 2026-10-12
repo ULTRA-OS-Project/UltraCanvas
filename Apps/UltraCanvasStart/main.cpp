@@ -10,6 +10,7 @@
 // or --plan it runs headless, which is what CI uses to smoke-test it, and
 // --create writes the project skeleton headless, which CI builds against
 // the SDK it just installed, so the skeleton is known to compile.
+// Version: 0.2.2 - --step reaches 6 (Build); --page build
 // Version: 0.2.1 - --create <folder> (--name, --sdk) writes the skeleton headless
 // Version: 0.2.0 - --step <n>; --page maps the old names to steps
 // Version: 0.1.2 - --assistant <ai> chooses the assistant
@@ -70,11 +71,11 @@ void PrintUsage(const char* programName) {
         "                    (in the window: preselect that platform's guide)\n"
         "  --all             Check every feature group, not only the toolchain\n"
         "                    and the framework core\n"
-        "  --step <n>        Open the window on step 1 to 5 (your computer, features,\n"
-        "                    tools, framework, project)\n"
+        "  --step <n>        Open the window on step 1 to 6 (your computer, features,\n"
+        "                    tools, framework, project, build)\n"
         "  --page <name>     The page names before 0.3.0 (platform, system, choices,\n"
-        "                    install, project, ai) mapped to their step; guide and\n"
-        "                    report open those dialogs\n"
+        "                    install, project, ai) and build, mapped to their step;\n"
+        "                    guide and report open those dialogs\n"
         "  --assistant <ai>  claude, codex, copilot, gemini or other: the assistant\n"
         "                    the plan and the project are for (default claude)\n"
         "  --create <folder> Write the project skeleton into the folder (as the\n"
@@ -157,14 +158,14 @@ int main(int argc, char* argv[]) {
                 choices.Set(group, true);
             }
         } else if (arg == "--step") {
-            if (i + 1 >= argc || (step = std::atoi(argv[i + 1])) < 1 || step > 5) {
-                std::printf("--step needs a number from 1 to 5\n");
+            if (i + 1 >= argc || (step = std::atoi(argv[i + 1])) < 1 || step > 6) {
+                std::printf("--step needs a number from 1 to 6\n");
                 return EXIT_FAILURE;
             }
             ++i;
         } else if (arg == "--page") {
             if (i + 1 >= argc) {
-                std::printf("--page needs platform, system, choices, install, project, ai or report\n");
+                std::printf("--page needs platform, system, choices, install, project, build, ai, guide or report\n");
                 return EXIT_FAILURE;
             }
             page = argv[++i];

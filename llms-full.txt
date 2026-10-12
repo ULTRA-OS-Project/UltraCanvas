@@ -81083,7 +81083,7 @@ and would not reduce it, is measured in
 
 ## Steps
 
-The window is a stepper (`Docs/UltraCanvasStart/WorkflowProposal.md`): five
+The window is a stepper (`Docs/UltraCanvasStart/WorkflowProposal.md`): six
 steps in the order the work happens, Back and Next below the pane, and the
 Guide and the Report as dialogs from the header at any time. It is styled
 like UltraMail (`ui/UltraCanvasStartTheme.h` carries UltraMail's colours,
@@ -81099,7 +81099,8 @@ as `code`, and each numbered step of a guide is one action.
 | **2 Features** | The feature groups (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options). The assistant: Claude Code, Codex, Copilot, Gemini or another in a segmented control; whether its instruction file goes into the project and the first prompt is prepared; whether the work goes through GitHub alone. For the chosen assistant: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, and the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../GettingStarted-Cloud.md). | Which packages step 3 checks; which file the project gets. |
 | **3 Tools** | The checks run on entering: every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need, each on a row with a switch that shows whether it is there (on, green: installed; off: missing or not checkable), the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* or *everything installed*, and the line under the buttons says what *Install what is missing* will do - the package manager, how many and the exact command - or why it cannot run. *Install what is missing* (enabled only while something is missing) runs the package manager after a confirmation that shows the command again: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree. The output is shown in a console and the checks run again. Next goes on even with something missing; the step keeps the error marker until the checks pass. | Whether the toolchain and libraries are there. |
 | **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its download address, the release page, the workflow artifacts while a release is still building; *Download and unpack...* fetches the archive from the release into a folder you pick, unpacks it and fills the prefix in; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
-| **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then the **Done** page: what was written, the three build commands, the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | The application. |
+| **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then what was written. The step carries the error marker while no project exists. | The application. |
+| **6 Build** | The proof that the installation works: the two commands a programmer runs (`cmake --preset default`, `cmake --build --preset default`) shown for the project folder, *Build the project* runs them (`engine/StartBuild`: cmake with `-S` and the preset, then the preset's `build/` directory; on Windows the MSYS2 bin directories on the child's PATH), cmake's output in a console, a badge that says *not built yet*, *building...*, *built* or *failed*; the step carries the error marker after a failed build. Under it the hand-over: the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | Whether the application compiles here. |
 
 **Guide** (header): the way in for any platform, the same guide as step 1,
 in a dialog. **Report** (header): the system, the checks, the plan and the
@@ -81112,7 +81113,7 @@ UltraCanvasStart --check            # detect, check, print the report; exit 2 if
 UltraCanvasStart --plan             # ...and the install plan
 UltraCanvasStart --plan --for macos # the plan for another platform
 UltraCanvasStart --check --all      # every feature group
-UltraCanvasStart --step 3           # open the window on a step (for screenshots and support)
+UltraCanvasStart --step 6           # open the window on a step, 1 to 6 (for screenshots and support)
 UltraCanvasStart --page report      # ...or open the Report (or Guide) dialog; the old page names map to steps
 UltraCanvasStart --for windows      # ...with that platform's guide preselected
 UltraCanvasStart --plan --assistant codex   # the plan and the project for another assistant
@@ -81124,7 +81125,11 @@ UltraCanvasStart --version
 `--check`, `--plan` and `--create` open no window, so they work over ssh and
 in CI, which runs `--check` on every platform leg and builds the skeleton
 `--create` writes against the SDK the leg just installed, so the files the
-Project step writes are known to compile.
+Project step writes are known to compile. The engine tests compile it too,
+through `StartBuild` (what the Build step runs), when `ULTRACANVAS_SDK_PREFIX`
+names an installed SDK; CI sets it on every leg, and locally
+`ULTRACANVAS_SDK_PREFIX=/path/to/sdk ctest -R UltraCanvasStartEngine` is the
+earlier guard.
 
 ## Engine
 

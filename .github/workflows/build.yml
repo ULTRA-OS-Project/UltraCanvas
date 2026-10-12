@@ -1077,17 +1077,23 @@ jobs:
       - name: UltraCanvasStart engine tests and --check smoke run
         run: |
           set -eu
+          # The engine tests compile the skeleton against the SDK installed
+          # above when ULTRACANVAS_SDK_PREFIX names it (test_project.cpp,
+          # BuildProject): the same guard a developer gets locally from
+          # ctest with the variable set, through the code the Build step
+          # runs. The prefix goes into CMakePresets.json as text, so on
+          # Windows it is the D:/... form (cygpath -m), see below.
+          sdk="$PWD/$SDK_NAME"
+          if command -v cygpath > /dev/null 2>&1; then sdk=$(cygpath -m "$sdk"); fi
+          export ULTRACANVAS_SDK_PREFIX="$sdk"
           (cd build && ctest --output-on-failure --no-tests=error -R "^UltraCanvasStartEngine$")
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version
           "$exe" --check
           "$exe" --plan --for ${{ runner.os == 'Linux' && 'windows' || 'linux' }} > /dev/null
-          # The prefix goes into the skeleton's CMakePresets.json as text, so
-          # on Windows it has to be the D:/... form cmake reads, not the
-          # /d/... form of the MSYS2 shell (which converts arguments, not files).
-          sdk="$PWD/$SDK_NAME"
-          if command -v cygpath > /dev/null 2>&1; then sdk=$(cygpath -m "$sdk"); fi
+          # The same skeleton once more with the programmer's own two commands
+          # (the test above runs the engine's argv for them).
           "$exe" --create scaffold-smoke --name "Smoke App" --sdk "$sdk"
           test -f scaffold-smoke/main.cpp
           (cd scaffold-smoke && cmake --preset default && cmake --build --preset default --parallel 2)

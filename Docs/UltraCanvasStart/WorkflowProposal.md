@@ -1,11 +1,12 @@
 # UltraCanvasStart: a stepper instead of tabs — Proposal
 
 **Status:** Implemented in UltraCanvasStart 0.3.0, as written below, with
-the three open questions decided as §5 records. Kept as the design note for
-the window (`ui/UltraCanvasStartWindow.cpp`).
+the three open questions decided as §5 records. 0.4.0 added a sixth step,
+**Build**, after Project (§6). Kept as the design note for the window
+(`ui/UltraCanvasStartWindow.cpp`).
 **Scope:** `Apps/UltraCanvasStart/ui/`. The engine (`engine/`) stays as it
 is: it already produces the plan as steps.
-**Last Modified:** 2026-10-10 (implemented)
+**Last Modified:** 2026-10-12 (step 6 added)
 
 ## 1. What the tabs hide
 
@@ -117,3 +118,17 @@ check (`xvfb-run` and `--step`, as 0.2.0's screenshots were made).
    at any time, and the Done page (step 5 after the project is written)
    carries *Copy the report* next to the first prompt, which is where a
    hand-over happens.
+
+## 6. Added in 0.4.0: a sixth step, Build
+
+The five steps ended with the files written and the build commands shown as
+text, so the one thing the whole workflow exists for - an application that
+compiles on this computer - was left to the reader, and a skeleton that did
+not compile (0.3.0's) went unnoticed until a user tried. **Build** is step 6:
+the two commands for the project folder, *Build the project* runs them
+(`engine/StartBuild`) with the output in a console and a badge for the
+outcome, the error marker on a failed build. The hand-over (the first
+prompt, *Copy the report*) moves there, after the proof, and step 5 keeps
+what was written. The same engine function compiles the skeleton in the
+tests when `ULTRACANVAS_SDK_PREFIX` names an SDK, so the guard runs before
+CI's SDK step.

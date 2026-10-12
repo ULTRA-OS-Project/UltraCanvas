@@ -12,6 +12,7 @@
 #                           so the CLI modes and the test suite use it headless.
 #   UltraCanvasStart        the GUI application on top of it.
 #
+# Version: 0.1.2 - StartBuild (the skeleton compiled, for the Build step and the tests)
 # Version: 0.1.1 - StartGuide (the pages' prose as Markdown)
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -31,6 +32,7 @@ add_library(UltraCanvasStartEngine STATIC
     engine/StartAi.cpp
     engine/StartGuide.cpp
     engine/StartRunner.cpp
+    engine/StartBuild.cpp
 )
 set_target_properties(UltraCanvasStartEngine PROPERTIES
     POSITION_INDEPENDENT_CODE ON
