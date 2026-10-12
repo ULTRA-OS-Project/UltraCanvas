@@ -334,7 +334,7 @@ and CSS, under `UltraCanvas/{include,core}/HTMLReader/`, always built, in
 it and nowhere else (AGENTS.md, *Core conventions*; `scripts/check_html_reuse.py`
 blocks a new tag stripper, entity table, `style=""` splitter or selector
 matcher). Used by the eBook viewer and engines, UltraMail, the Vector
-plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
+plugin's SVG reader and UltraWeb's web pages. Doc:
 `Docs/UltraCanvas/UltraCanvasHTMLReader.md`.
 
 - **HTMLParser / HTMLDocument** (`HTMLReader/HTMLParser.h`,
@@ -395,6 +395,23 @@ plugin's SVG reader and, by plan, UltraWeb's page reader. Doc:
   own scrollbars are off, the host scrolls. Fuzz targets for the parser, the
   CSS and the builder with the layout: `Tests/Fuzz` (ctest smoke runs,
   libFuzzer with `ULTRACANVAS_BUILD_FUZZERS`).
+- **HTMLPageLoader** (`HTMLReader/HTMLPageLoader.h`) - `PageLoader(PageLoaderServices,
+  PageLoaderLimits)`: `Load(url, onReady)` → `LoadedPage` (kind Html / Text /
+  Image / Other / Error, final URL, base, charset, the parsed `Document`,
+  warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
+  (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`. Fetch, URL resolution and
+  charset conversion are services the caller passes in, so it is
+  framework-independent; linked style sheets load before a page is ready;
+  mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
+  `EscapeText` (`HTMLDocument.h`) is DecodeEntities' inverse.
+- **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
+  page from a URL: `SetServices`, `SetScheduler`, `SetBuildOptions`,
+  `Navigate`, `Reload`, `Stop`, `GoBack` / `GoForward` (scroll positions kept),
+  `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
+  `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
+  `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
+  JavaScript (`<noscript>` shown).
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
   `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
@@ -1276,6 +1293,8 @@ future.
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
 - `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_ResolveUrl` (RFC 3986
   reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
+- `UltraNet_ConvertToUtf8` (bytes in a named charset to UTF-8, through iconv
+  where the build has it; what mail bodies and web pages are read with)
 - `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 

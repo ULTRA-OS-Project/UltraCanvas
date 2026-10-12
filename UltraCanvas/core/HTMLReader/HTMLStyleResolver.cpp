@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.20.0 - <template> is not rendered (display: none, as in browsers)
 // Version: 1.19.0 - flex and grid: display: flex / grid / inline-flex / inline-grid set
 //                  BoxLayoutMode; flex, flex-*, order, gap, justify-* / align-* /
 //                  place-*, grid-template-columns / -rows / -areas (repeat(),
@@ -51,7 +52,7 @@
 //                  default to a browser's 1px padding; `inherit` for
 //                  color, font and text properties; background images and
 //                  size, margin: auto, max-width.
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -461,7 +462,7 @@ void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle
         s.display = DisplayMode::Inline;
     }
     else if (tag == "head" || tag == "script" || tag == "style" || tag == "meta" ||
-             tag == "link" || tag == "title" || tag == "base") {
+             tag == "link" || tag == "title" || tag == "base" || tag == "template") {
         s.display = DisplayMode::Hidden;
     }
     // Unknown tags stay Inline, matching browser behavior.

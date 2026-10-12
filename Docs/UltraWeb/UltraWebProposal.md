@@ -1,12 +1,12 @@
 # UltraWeb — WebAssembly Apps on UltraCanvas, Then the Web
 
-**Status:** Proposal, with Phase 1 under way. UltraWeb 0.2.0 runs WebAssembly
-apps on Linux, with timers, fetch, storage and the clipboard
-([`UltraWeb.md`](UltraWeb.md)). Everything else in this document — the
-feasibility study, the architecture and the phase plan — is not implemented
-yet.
+**Status:** Proposal, with Phases 1 and 2 under way. UltraWeb 0.3.0 runs
+WebAssembly apps on Linux, with timers, fetch, storage and the clipboard,
+and shows web pages through the HTML reader, without JavaScript
+([`UltraWeb.md`](UltraWeb.md)). The rest of this document — the feasibility
+study, the architecture and the later phases — is not implemented yet.
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-10-06
+**Last Modified:** 2026-10-12
 
 **Decision (2026-10-06).** UltraWeb starts as a **host for WebAssembly
 applications written against UltraCanvas**: a URL loads a `.wasm` module,
@@ -57,7 +57,7 @@ native DOM work is (§7.3).
 | Load a `.wasm` app from a file or URL and run it sandboxed | 1 | wasmtime behind `UltraCanvasWasmHost`, §4.1 — **started** |
 | App UI from UltraCanvas elements through the element ABI | 1 | element ABI v2 and guest SDK, §4.2 — **started** |
 | fetch, timers, storage, clipboard for apps; per-app permissions | 1 | UltraNet and new host services, §4.3 — **done but permissions** |
-| Fetch and render HTML + CSS pages; links, images, history, downloads | 2 | HTMLReader + CSSLayout + `HTML::PageLoader`, §5 |
+| Fetch and render HTML + CSS pages; links, images, history, downloads | 2 | HTMLReader + CSSLayout + `HTML::PageLoader`, §5 — **started** |
 | Flex, grid, `position`, viewport units, `calc()` | 3 | CSSLayout has the layouts; the resolver does not map them, §6.2 |
 | Live DOM, incremental patching, layout queries, DOM events | 4 | new, §7.3 |
 | JavaScript: React and Angular apps | 5 | QuickJS-ng in WebAssembly plus DOM bindings, §7 |
@@ -729,14 +729,26 @@ a list of 10,000 rows, a fetch from its origin) loads from an `https` URL
 and runs on Linux, Windows and macOS, and a trapping or looping guest
 cannot hang or crash UltraWeb.
 
-### Phase 2 — HTML reader browser
+### Phase 2 — HTML reader browser (started)
 
-- `UltraNet_ResolveUrl` and `UltraNet_ConvertToUtf8`.
-- `HTML::PageLoader`.
-- `UltraCanvasWebView`: history, fragments, error pages.
-- `<noscript>` rendered.
-- Tabs, downloads, history and bookmarks.
-- Fuzz targets.
+Done in UltraWeb 0.3.0 ([`UltraWeb.md`](UltraWeb.md#web-pages)):
+- `UltraNet_ResolveUrl` (0.2.0) and `UltraNet_ConvertToUtf8`.
+- `HTML::PageLoader`: charsets, `<base>`, style sheets before the page
+  (their `url()`s made absolute), resources on demand with a cache, the
+  mixed-content and file rules, text and picture pages.
+- `UltraCanvasWebView`: history with scroll positions, fragments, error
+  pages, rebuilds on a new width and on arriving pictures.
+- `<noscript>` rendered, `<template>` not.
+- In UltraWeb: pages and apps from one address bar, back and forward,
+  `--page` for headless checks.
+- Fuzz targets for the parser and the CSS (with the flex / grid work), and
+  a nesting cap against hostile pages.
+- Tests: `HTMLPageLoaderTest` and `WebViewTest` against a fake web.
+
+Next:
+- Tabs, downloads, a history and bookmarks kept across runs.
+- `@import`; forms (§6.5); inline margins and padding.
+- Windows and macOS.
 
 **Done when:** Wikipedia articles, the repository's `Docs/` read from
 `file://`, blogs and documentation sites render readably, and links,

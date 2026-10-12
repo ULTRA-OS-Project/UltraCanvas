@@ -1,41 +1,83 @@
 # UltraWeb
 
-**Status:** Phase 1 under way — UltraWeb 0.2.0 runs WebAssembly apps on
-Linux, with timers, fetch, storage and the clipboard.
-**Last Modified:** 2026-10-06
+**Status:** Phases 1 and 2 under way. UltraWeb 0.3.0 runs WebAssembly
+apps on Linux, with timers, fetch, storage and the clipboard, and shows web
+pages through the HTML reader, without JavaScript.
+**Last Modified:** 2026-10-12
 **Author:** UltraCanvas Framework / ULTRA OS
 
-UltraWeb is the ULTRA OS browser. This first version runs **WebAssembly apps
+UltraWeb is the ULTRA OS browser. It shows **web pages** - HTML and CSS
+laid out as native UltraCanvas elements by the framework's HTML reader, with
+links, pictures, back and forward, and no JavaScript yet ([Web
+pages](#web-pages)) - and it runs **WebAssembly apps
 that build their UI out of UltraCanvas elements**: a URL or a file names a
 `.wasm` module, UltraWeb runs it in a sandbox, and the module creates real
 UltraCanvas elements — containers, labels, buttons, text inputs, checkboxes —
 through the *element ABI*, holding only handles to them. Beside its
 elements an app may start timers, fetch from the network under a browser's
-rules, keep data across runs and copy text to the clipboard. HTML pages, and
-React or Angular apps through a JavaScript engine compiled to WebAssembly,
-come in later phases: the plan, the measurements behind it and the
+rules, keep data across runs and copy text to the clipboard. React or
+Angular apps, through a JavaScript engine compiled to WebAssembly, come in
+later phases: the plan, the measurements behind it and the
 architecture are in [`UltraWebProposal.md`](UltraWebProposal.md).
 
 ## Running it
 
 ```bash
 UltraWeb                      # opens about:demo
+UltraWeb https://example.org/ # a web page
+UltraWeb ~/docs/index.html    # a local page (or a folder, listed)
 UltraWeb ~/apps/counter.wasm  # a local app (binary .wasm or WebAssembly text)
 UltraWeb https://example.org/app.wasm
 UltraWeb --check about:demo   # start an app without a window, print what it built
+UltraWeb --page example.org   # load a page without a window, print its text
 ```
 
-The address bar takes the same: `about:demo`, a path, a `file://` URL, or an
-`http(s)://` address (`example.org/app.wasm` is read as `https://`). An app
-fetched over the network comes through UltraNet with TLS verification on;
-an HTML page is refused with a message until the reader exists. The status
-bar shows what is running, how many elements it holds and the engine.
+The address bar takes the same: a web address (`example.org` is read as
+`https://`), a path, a `file://` URL, `about:demo`, or the address of an
+app. An address ending in `.wasm` or `.wat`, and `about:` ones, are apps;
+everything else opens as a page, and a page address that turns out to serve
+`application/wasm` runs as an app. Pages and apps fetched over the network
+come through UltraNet with TLS verification on. The status bar shows the
+page's address (or the link under the pointer), or what app is running, how
+many elements it holds and the engine.
 
 `--check` loads local addresses only (about:, paths, `file://`), starts the
 app with an invisible root, and exits 0 when it started — useful for an app's
 own build checks. It runs `uc_main` as a first visit would, offline: storage
 starts empty and is not kept, timers are accepted and never fire, and fetch
 and the clipboard answer `UC_ERR_DENIED`.
+
+`--page` loads a page the way the window does, without a window, and prints
+its title, final address, status, charset, warnings and text. It exits 1 for
+a failed load or an HTTP error status.
+
+## Web pages
+
+A page is fetched by `HTML::PageLoader` and shown by `UltraCanvasWebView`,
+both framework pieces (`Docs/UltraCanvas/UltraCanvasHTMLReader.md`):
+
+- **Loading.** The page's charset is read from its BOM, its `Content-Type`,
+  or a `<meta charset>`, else it is taken to be UTF-8 when it is and
+  Windows-1252 when it is not. Every charset UltraNet's iconv knows is read.
+  `<base href>` is honoured. Linked style sheets (up to 32) are fetched
+  before the page is shown, with their `url()`s made absolute. Pictures
+  load after it, and the page is built again as they arrive.
+- **What a page may load.** An http(s) page loads http(s) and `data:`
+  resources, an https page no http ones (mixed content), and only a local
+  page loads local files. Pages, style sheets and pictures are limited to
+  16 MB each, and to 512 resources per page. No cookies are sent or kept.
+- **Links.** A `#fragment` scrolls without a reload. http(s) links open in
+  the view. A local page may open local files. `mailto:`, `tel:` and other
+  schemes go to the system's handler. `javascript:` does nothing.
+- **History.** Back and forward keep each page's scroll position.
+- **Other content.** Plain text shows as text, a picture on a page of its
+  own, a folder as a list of its files, and an answer that is neither
+  HTML nor an app says so in the status bar. A page that cannot be loaded
+  shows an error page saying why.
+- **No JavaScript.** `<script>` is not run, `<noscript>` is shown.
+- **Layout** is the HTML reader's: blocks, inline text, tables, floats,
+  flex and grid, backgrounds, `@media` at the window's width (the page is
+  built again when the width changes). See the reader's doc for its limits.
 
 ### The sandbox
 
@@ -268,13 +310,14 @@ full length returned.
 
 ```
 Apps/UltraWeb/
-├── main.cpp                  window, --check, --version
-├── ui/UltraWebWindow.*       address bar, app area (UC_ROOT_HANDLE), error view, status bar
+├── main.cpp                  window, --check, --page, --version
+├── ui/UltraWebWindow.*       address bar, back / forward, app area (UC_ROOT_HANDLE) or web view, status bar
 └── host/
     ├── UltraWebGuest.*       the bridge: handle table, the imports, events → uc_event, timers, fetches
     ├── UltraWebFetch.*       the fetch rules (origin, mixed content, CORS) and the UltraNet service
     ├── UltraWebStorage.*     the per-origin store and its file
     ├── UltraWebLoader.*      address → module bytes (about:, file, file://, http(s) via UltraNet)
+    ├── UltraWebPages.*       the page services (UltraNet, files, URLs, charsets); app or page?
     ├── UltraWebDemoApp.h     about:demo (generated by generate_demo_app.py)
     └── generate_demo_app.py
 UltraWeb/guest/ultraweb.h     the ABI, shared by host and guests
@@ -301,7 +344,8 @@ UltraCanvas/{include,core}/WasmHost/   the WebAssembly runner (Masterfile_module
   `Tests/UltraWebGuestTest.cpp` (the bridge, the fetch rules, the store and
   the loader, against inline guests and `about:demo`, with fake timers,
   network and clipboard); neither needs a display, a network or a wasm
-  toolchain.
+  toolchain. Pages: `Tests/HTMLPageLoaderTest.cpp` and
+  `Tests/WebViewTest.cpp`, against a fake web.
 
 ## Not yet
 
@@ -311,5 +355,6 @@ a compiled-module cache; per-app permissions — with them reading the
 clipboard, fetching beyond the app's origin without CORS, a larger store,
 and keeping a private-network address from a public app; CORS preflight
 requests; C++ element proxies generated from the framework headers; the
-macOS, Windows and packaging builds; then the HTML reader, the live DOM, and
-JavaScript.
+macOS, Windows and packaging builds. For pages (Phase 2): tabs, downloads,
+bookmarks and a history kept across runs, `@import` in style sheets, forms;
+then modern layout beyond flex and grid, the live DOM, and JavaScript.

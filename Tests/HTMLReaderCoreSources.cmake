@@ -6,8 +6,9 @@
 # and the fuzz targets (Tests/Fuzz/CMakeLists.txt), which compile it again
 # with coverage instrumentation. A new HTMLReader source is added here.
 # Expects ULTRACANVAS_CORE_DIR.
+# Version: 1.1.0 - HTMLPageLoader.cpp
 # Version: 1.0.0
-# Last Modified: 2026-10-08
+# Last Modified: 2026-10-12
 # Author: UltraCanvas Framework
 
 set(HTMLREADER_CORE_SOURCES
@@ -15,5 +16,6 @@ set(HTMLREADER_CORE_SOURCES
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLStyleResolver.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLPageLoader.cpp
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )

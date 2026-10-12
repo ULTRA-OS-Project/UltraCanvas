@@ -7,11 +7,13 @@
 //
 // Built as a libFuzzer target (ULTRACANVAS_BUILD_FUZZERS, clang) and as a
 // deterministic smoke run in ctest (FuzzSmokeMain.cpp). See Tests/Fuzz/README.md.
+// Version: 1.1.0 - the page loader's charset sniffing; EscapeText
 // Version: 1.0.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLDocument.h"
+#include "HTMLReader/HTMLPageLoader.h"
 #include "HTMLReader/HTMLParser.h"
 #include "HTMLReader/HTMLStyleResolver.h"
 
@@ -50,5 +52,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     (void)DecodeEntities(html);
     (void)ExtractPlainText(html);
+    (void)EscapeText(html);
+    // The page loader's charset sniffing reads the same untrusted bytes.
+    (void)PageLoader::DetectCharset(std::vector<uint8_t>(data, data + size), html.substr(0, 64));
     return 0;
 }
