@@ -151,12 +151,19 @@ owning references.
   (`<canvas id="ultracanvas-window-N">`) shows pango-rendered text and a
   clickable button.
 - `ultraos-frontpage.html` - the https://ultraos.eu front page built out of
-  UltraCanvas elements (`demo/ultraos-frontpage.cpp`): a header with the
-  navigation, a hero, card rows, the status timeline, a newsletter form and
-  a footer, in a scrolling page that fills the browser viewport. It
-  exercises the layout engine (Block for the stacked sections, Flex for the
-  rows), wrapped text, hover states, an image, a text input, wheel
-  scrolling and `OpenURL()` (every link opens the real page in a new tab).
+  UltraCanvas elements (`demo/ultraos-frontpage.cpp`): the site's header
+  with its drop-down navigation (popup menus), the hero, the desktop and
+  mobile cards, the reasons for ULTRA OS, the newsletter form, the status,
+  the two pre-order offers, the donation links, the social networks, the
+  ULTRA OS variants, the purpose-based editions, the FAQ accordion, the
+  contact form and the footer, in a scrolling page that fills the browser
+  viewport. It exercises the layout engine (Block for the stacked sections,
+  wrapping Flex rows for the cards and the navigation), wrapped text, hover
+  states, images preloaded into the virtual FS, text inputs, a text area, a
+  checkbox, popup menus, wheel scrolling and `OpenURL()` (every link opens
+  the real page in a new tab). The texts are the page's, in tables at the
+  top of the file; the photos the page shows are placeholder tiles except
+  the three in `media/images/ultraos/`.
 
 The manually dispatched `wasm-build.yml` workflow builds both and uploads
 them, with `serve.py`, as the `wasm-demo` artifact: unzip it into a folder,

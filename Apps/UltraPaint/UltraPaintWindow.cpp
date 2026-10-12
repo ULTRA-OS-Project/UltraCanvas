@@ -1189,15 +1189,25 @@ void UltraPaintWindow::ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dial
     dialog->Show();
 }
 
-bool UltraPaintWindow::SaveToPath(const std::string& path) {
+bool UltraPaintWindow::SaveToPath(const std::string& path, const FileSaveImageSize& size) {
     if (!document) return false;
     std::string error;
-    if (!document->SaveToFile(path, error)) {
+    // Another size than the picture's: the image writer's options at that
+    // size (and the format's save settings). Without one, SaveToFile takes
+    // the settings itself.
+    UCImageSave::ImageExportOptions options;
+    const bool resized = !size.IsOriginal() && !UCRasterDocument::IsProjectFile(path) &&
+                         UltraCanvasFileLoader::GetImageExportOptions(path, size, options);
+    if (!document->SaveToFile(path, error, resized ? &options : nullptr)) {
         UltraCanvasDialogManager::ShowError("Could not save " + path + "\n" + ShortError(error), "Save", nullptr, window.get());
         return false;
     }
     UpdateTitle();
-    if (statusHint) statusHint->SetText("Saved " + FileNameOf(path));
+    if (statusHint) {
+        statusHint->SetText(resized ? "Saved " + FileNameOf(path) + " at " + std::to_string(size.width) +
+                                              " x " + std::to_string(size.height) + " px"
+                                    : "Saved " + FileNameOf(path));
+    }
     return true;
 }
 
@@ -1642,11 +1652,15 @@ void UltraPaintWindow::CmdSaveAs() {
         .AddFilter("UltraPaint project (layers kept)", std::vector<std::string>{ "ucraster" })
         .AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(def)
+        // The picture's size, so the Settings of a bitmap type offer to write
+        // it at another size.
+        .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
+                                                       const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
-        SaveToPath(path);
+        SaveToPath(path, size);
     });
 }
 

@@ -58,4 +58,4 @@ endfunction()
 
 uc_wasm_demo(wasm-demo wasm-demo.cpp)
 uc_wasm_demo(ultraos-frontpage ultraos-frontpage.cpp
-    "media/images/UOS_logo_white.png@/share/media/images/UOS_logo_white.png")
+    "media/images/ultraos@/share/media/images/ultraos")

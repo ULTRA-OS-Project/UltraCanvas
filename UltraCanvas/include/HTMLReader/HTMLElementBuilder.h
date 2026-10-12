@@ -6,6 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.17.0 - onChooseFiles (file uploads); a <label>'s text acts on its
+//                   control
 // Version: 1.16.0 - BuildOptions::interactiveForms / onFormSubmit and
 //                   BuildResult::forms: real form widgets and FormController
 // Version: 1.15.0 - runBoxes: inline elements' backgrounds and borders drawn by
@@ -99,6 +101,12 @@ struct BuildOptions {
     // for display only, its value as text.
     bool interactiveForms = false;
     std::function<void(const FormSubmission& submission)> onFormSubmit;
+    // An <input type=file>'s button asks for files here: the host shows its
+    // file dialog (several when `multiple`, filtered by the input's accept=""
+    // list as written) and calls `done` with the chosen UTF-8 paths, none
+    // when cancelled. Without it the button is disabled.
+    std::function<void(bool multiple, const std::string& accept,
+                       std::function<void(std::vector<std::string> paths)> done)> onChooseFiles;
 };
 
 struct BuildResult {
@@ -239,6 +247,17 @@ private:
     FormController& FormFor(const Node& control);
     static bool IsFormControl(const Node& node);
     bool ContainsFormControl(const Node& node) const;
+    // The controls the <label>s of this build act on: a label's text is a
+    // quiet link to "#ucform-label:<n>", n indexing `targets`; a click looks
+    // its control up in `controls` (filled as the widgets are built).
+    struct LabelTargets {
+        std::vector<const Node*> targets;
+        std::unordered_map<const Node*, std::pair<std::weak_ptr<FormController>, int>> controls;
+    };
+    std::shared_ptr<LabelTargets> labelTargets;
+    // The control a <label> is for (its for="id", else the first control in
+    // it); -1 when none. The index is into labelTargets->targets.
+    int LabelTargetIndex(const Node& label);
     Document* currentDocument = nullptr;
     std::vector<std::shared_ptr<FormController>> builtForms;
     std::unordered_map<const Node*, std::shared_ptr<FormController>> formByNode;

@@ -79,7 +79,9 @@ both framework pieces (`Docs/UltraCanvas/UltraCanvasHTMLReader.md`):
   groups, dropdowns and buttons are real widgets. A submit button or Enter
   sends the form: GET opens the action with the fields as its query, POST
   sends them (urlencoded, multipart or plain text) and shows the answer.
-  What was typed survives a rebuild of the page. No file uploads yet.
+  What was typed survives a rebuild of the page. A file input opens the
+  file dialog and its files are uploaded as multipart parts; a click on a
+  `<label>`'s text acts on its control.
 - **No JavaScript.** `<script>` is not run, `<noscript>` is shown.
 - **Layout** is the HTML reader's: blocks, inline text, tables, floats,
   flex and grid, backgrounds, `@media` at the window's width (the page is
@@ -362,5 +364,5 @@ clipboard, fetching beyond the app's origin without CORS, a larger store,
 and keeping a private-network address from a public app; CORS preflight
 requests; C++ element proxies generated from the framework headers; the
 macOS, Windows and packaging builds. For pages (Phase 2): tabs, downloads,
-bookmarks and a history kept across runs, file uploads in forms;
+bookmarks and a history kept across runs;
 then modern layout beyond flex and grid, the live DOM, and JavaScript.

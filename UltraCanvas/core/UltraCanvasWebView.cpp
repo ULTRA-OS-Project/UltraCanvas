@@ -1,6 +1,7 @@
 // core/UltraCanvasWebView.cpp
 // A web page as an element: PageLoader + ElementBuilder + history.
 // See include/UltraCanvasWebView.h.
+// Version: 1.2.0 - file inputs choose through onChooseFiles
 // Version: 1.1.0 - forms the reader fills in and sends: SetInteractiveForms,
 //                  SubmitForm (GET as a navigation, POST through LoadPost); what
 //                  was typed survives a rebuild
@@ -279,6 +280,12 @@ void UltraCanvasWebView::Build() {
     options.onFormSubmit = [this](const HTML::FormSubmission& submission) {
         Post([this, submission]() { SubmitForm(submission); });
     };
+    if (onChooseFiles) {
+        options.onChooseFiles = [this](bool multiple, const std::string& accept,
+                                       std::function<void(std::vector<std::string>)> done) {
+            if (onChooseFiles) onChooseFiles(multiple, accept, std::move(done));
+        };
+    }
 
     // The same document built again: keep what the reader typed.
     std::vector<HTML::FormController::State> typed;

@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.33.0 - file uploads (a chooser button, BuildOptions::onChooseFiles);
+//                   a <label>'s text acts on its control
 // Version: 1.32.0 - BuildOptions::interactiveForms: real form widgets on the line
 //                   with their text, held by a FormController per <form>
 // Version: 1.31.0 - an inline element's background and border, at any depth in
@@ -118,6 +120,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 
 namespace UltraCanvas {
 namespace HTML {
@@ -779,6 +782,7 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     elementCount = 0;
     nextId = 0;
     currentDocument = &document;
+    labelTargets = std::make_shared<LabelTargets>();
     builtForms.clear();
     formByNode.clear();
     formless.reset();
@@ -1665,6 +1669,16 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
         if (end > start) {
             std::string href = AncestorLink(*node);
             if (!href.empty()) runLinks.push_back({ start, end, href });
+            // Inside a <label> the builder looked through (it holds its
+            // control): a click on the text acts on the control.
+            else if (opts.interactiveForms)
+                for (const Node* a = node->parent; a && a != blockNode; a = a->parent)
+                    if (a->IsElement("label")) {
+                        const int target = LabelTargetIndex(*a);
+                        if (target >= 0)
+                            runLinks.push_back({ start, end, "#ucform-label:" + std::to_string(target), true });
+                        break;
+                    }
         }
     }
     const bool runNoWrap = blockStyle.noWrap || (anyText && allNoWrap);
@@ -1730,9 +1744,29 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
 
     // Attach the link byte ranges; the label hit-tests clicks against the
     // rendered text, so only the link actually under the pointer activates.
-    if (!runLinks.empty() && opts.onLinkActivated) {
+    const bool labelLinks = std::any_of(runLinks.begin(), runLinks.end(),
+                                        [](const LabelTextLink& l) { return l.quiet; });
+    if (!runLinks.empty() && (opts.onLinkActivated || labelLinks)) {
         label->SetTextLinks(runLinks);
-        label->onLinkActivated = opts.onLinkActivated;
+        if (labelLinks) {
+            // A <label>'s text acts on its control; any other link is the page's.
+            auto targets = labelTargets;
+            auto follow = opts.onLinkActivated;
+            label->onLinkActivated = [targets, follow](const std::string& href) {
+                static const std::string kLabel = "#ucform-label:";
+                if (href.compare(0, kLabel.size(), kLabel) == 0) {
+                    const size_t n = static_cast<size_t>(std::strtoul(href.c_str() + kLabel.size(), nullptr, 10));
+                    if (!targets || n >= targets->targets.size()) return;
+                    auto it = targets->controls.find(targets->targets[n]);
+                    if (it == targets->controls.end()) return;
+                    if (auto form = it->second.first.lock()) form->ActivateControl(it->second.second);
+                    return;
+                }
+                if (follow) follow(href);
+            };
+        } else {
+            label->onLinkActivated = opts.onLinkActivated;
+        }
         label->onLinkHovered = opts.onLinkHovered;
         label->SetShowLinkTooltips(opts.linkTooltips);
     }
@@ -1928,6 +1962,12 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
         if (linkEnd > linkStart) {
             runLinks.push_back({linkStart, linkEnd, style.href});
         }
+    } else if (node.tag == "label" && opts.interactiveForms) {
+        // <label for="id">Name</label>: a click on its text acts on the control.
+        const int linkEnd = static_cast<int>(runPlain.size());
+        const int target = LabelTargetIndex(node);
+        if (target >= 0 && linkEnd > linkStart)
+            runLinks.push_back({ linkStart, linkEnd, "#ucform-label:" + std::to_string(target), true });
     }
     // After the link's range: a click on the margin is not a click on it.
     AppendInlineSpace(marginAfter, /*glueAfter=*/false, out);
@@ -2144,6 +2184,40 @@ bool ElementBuilder::ContainsFormControl(const Node& node) const {
     return false;
 }
 
+int ElementBuilder::LabelTargetIndex(const Node& label) {
+    if (!labelTargets) return -1;
+    const Node* target = nullptr;
+    const std::string forId = TrimAscii(label.GetAttribute("for"));
+    if (!forId.empty()) {
+        if (currentDocument && currentDocument->root)
+            currentDocument->root->ForEachElement([&](Node& n) {
+                if (n.GetAttribute("id") == forId) { target = IsFormControl(n) ? &n : nullptr; return false; }
+                return true;
+            });
+    } else {
+        std::function<const Node*(const Node&)> first = [&](const Node& n) -> const Node* {
+            for (const auto& c : n.children) {
+                if (!c->IsElement()) continue;
+                if (IsFormControl(*c)) {
+                    std::string type = c->GetAttribute("type");
+                    std::transform(type.begin(), type.end(), type.begin(), [](unsigned char ch) { return char(std::tolower(ch)); });
+                    if (TrimAscii(type) != "hidden") return c.get();
+                    continue;
+                }
+                if (const Node* found = first(*c)) return found;
+            }
+            return nullptr;
+        };
+        target = first(label);
+    }
+    if (!target) return -1;
+    auto& targets = labelTargets->targets;
+    for (size_t i = 0; i < targets.size(); ++i)
+        if (targets[i] == target) return static_cast<int>(i);
+    targets.push_back(target);
+    return static_cast<int>(targets.size()) - 1;
+}
+
 FormController& ElementBuilder::FormFor(const Node& control) {
     // form="id" names the form; else the nearest <form> around the control.
     const Node* form = nullptr;
@@ -2190,6 +2264,7 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildFormWidget(Node& elem
     for (const auto& f : builtForms) if (f.get() == &form) formRef = f;
     if (!form.inForm) formRef = formless;
     const int index = static_cast<int>(form.controls.size());
+    if (labelTargets) labelTargets->controls[&element] = { formRef, index };
 
     FormController::Control control;
     control.name = element.GetAttribute("name");
@@ -2314,8 +2389,55 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildFormWidget(Node& elem
         control.value = element.GetAttribute("value");
         form.controls.push_back(std::move(control));
         return nullptr;
-    } else if (type == "file" || type == "color" || type == "range") {
-        // Shown as the page wrote it, not sent (no file upload yet).
+    } else if (type == "file") {
+        // A button that asks the host for files, and the names chosen.
+        control.kind = FormController::Kind::File;
+        control.multiple = element.HasAttribute("multiple");
+        control.accept = element.GetAttribute("accept");
+        auto row = MakeContainer("file");
+        row->layout.SetFlex(CSSLayout::FlexDirection::Row, CSSLayout::FlexWrap::NoWrap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        const std::string buttonText = control.multiple ? "Choose files\xE2\x80\xA6" : "Choose file\xE2\x80\xA6";
+        auto button = std::make_shared<UltraCanvasButton>(MakeId("choose"), buttonText);
+        button->size.width = CSSLayout::Dimension::Px(std::round(13.f * fs * 0.6f + 24.f));
+        button->size.height = CSSLayout::Dimension::Px(lineHeight);
+        button->layoutItem.SetFlexShrink(0.f);
+        auto names = std::make_shared<UltraCanvasLabel>(MakeId("files"));
+        ConfigureLabel(*names, style);
+        names->SetText(control.multiple ? "No files chosen" : "No file chosen");
+        names->box.margin.left = CSSLayout::Dimension::Px(6.f);
+        names->layoutItem.SetFlexShrink(1.f);
+        row->AddChild(button);
+        row->AddChild(names);
+        control.fileNames = names;
+        const bool multiple = control.multiple;
+        const std::string accept = control.accept;
+        if (opts.onChooseFiles) {
+            auto choose = opts.onChooseFiles;
+            control.openChooser = [formRef, index, choose, multiple, accept]() {
+                choose(multiple, accept, [formRef, index](std::vector<std::string> paths) {
+                    if (paths.empty()) return;                  // cancelled: the choice stays
+                    if (auto f = formRef.lock()) f->SetFiles(index, std::move(paths));
+                });
+            };
+            button->onClick = [formRef, index]() {
+                auto f = formRef.lock();
+                if (f && index < static_cast<int>(f->controls.size()) && f->controls[static_cast<size_t>(index)].openChooser)
+                    f->controls[static_cast<size_t>(index)].openChooser();
+            };
+        } else {
+            button->SetDisabled(true);                          // nowhere to choose files from
+        }
+        if (control.disabled) button->SetDisabled(true);
+        row->box.margin.left = CSSLayout::Dimension::Px(std::max(0.f, style.marginLeft));
+        row->box.margin.right = CSSLayout::Dimension::Px(std::max(0.f, style.marginRight));
+        row->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+        control.element = row;
+        form.controls.push_back(std::move(control));
+        RegisterAnchors(element, row);
+        return row;
+    } else if (type == "color" || type == "range") {
+        // Shown as the page wrote it, not sent.
         control.kind = FormController::Kind::Other;
         form.controls.push_back(std::move(control));
         return BuildFormControl(element);
