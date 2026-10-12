@@ -1,3 +1,27 @@
+#### 2026-10-12 *0.2.15*
+- **A magnifying glass for the rectangle selection.** While the Rectangle
+  Select tool is active a small view sits in a corner of the canvas and shows
+  the pixels around the pointer at two, three or four times the view's own
+  zoom, with a translucent diagonal crosshair that leaves the centre pixel -
+  the one under the pointer - clear, so a selection can be started and ended
+  on the exact pixel. The rubber band and the selection outline show in it
+  too, and the pixel grid from 8x. It keeps out of the way: when the pointer
+  comes within 48 px of it, it moves to the corner farthest from the pointer.
+  It takes no clicks, so a drag can pass under it. The framework's paint
+  surface grew a loupe mode for it, and the raster document takes several
+  observers now - the editing view, the glass and the window's panels each
+  listen on their own instead of chaining behind one another's slot
+  (framework changelog: `paint-surface-loupe-mode`,
+  `raster-document-listeners`).
+- **Edit > Settings...** opens UltraPaint's settings window: a tree of pages
+  on the left, so far *Display > Mouse pointer magnification glass* - on or
+  off, the magnification (2x / 3x / 4x) and the window size (100-400 px). A
+  change applies at once and is saved to
+  `UltraCanvasSettingsFolder()/UltraPaint/config.ini`
+  (`~/.config/UltraCanvas/UltraPaint/config.ini` on Linux); *Restore
+  defaults* puts the three back. The menu entry has a 16 px icon like the
+  rest (`media/icons/ultrapaint/16/settings.svg`).
+
 #### 2026-10-11 *0.2.14*
 - **Sharp, clearer tool icons.** The palette's icons were drawn on a 24-unit
   grid with thin 1.8-unit strokes and shown at 22 px, half a pixel off: every

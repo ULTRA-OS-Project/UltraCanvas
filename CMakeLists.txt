@@ -1475,6 +1475,7 @@ if (BUILD_ULTRAPAINT_APP)
             Apps/UltraPaint/UltraPaintTools.cpp
             Apps/UltraPaint/UltraPaintFilters.cpp
             Apps/UltraPaint/UltraPaintDialogs.cpp
+            Apps/UltraPaint/UltraPaintSettingsDialog.cpp
     )
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
