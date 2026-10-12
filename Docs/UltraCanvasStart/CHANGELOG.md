@@ -1,3 +1,14 @@
+#### 2026-10-11 *0.3.2*
+- **The project skeleton builds again.** Its `main.cpp` called
+  `app.CreateWindow(config)`, a method the application class does not
+  have, so `cmake --build` failed on the first line that mattered; it calls
+  the framework's `CreateWindow(config)` now, as `Docs/GettingStarted.md`
+  does. `test_project.cpp` pins the line.
+- **`--create <folder>` writes the skeleton headless** (`--name <app>`,
+  `--sdk <prefix>`, `--assistant <ai>`), and CI builds what it writes
+  against the SDK of every leg with `cmake --preset default`, the way a
+  programmer does, so the skeleton cannot stop compiling unnoticed again.
+
 #### 2026-10-10 *0.3.1*
 - **The Tools step shows each check with a switch, not a mark.** The list
   wrote a check mark or a cross before each tool and library, characters the
