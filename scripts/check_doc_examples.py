@@ -65,7 +65,8 @@ builds a precompiled header of all public headers in --work (about 1 min).
 Exit status 1 when a doc has findings.
 
 CI (.github/workflows/doc-examples.yml) checks every doc - all of
-Docs/UltraCanvas/*.md but the changelog - and fails only on findings that
+Docs/UltraCanvas/*.md but the changelog, and the module docs listed in
+CHECKED_MODULE_DOCS (Docs/Modules/<Name>/*.md) - and fails only on findings that
 are not in scripts/doc_examples_baseline.txt. The component docs all pass;
 the design documents (a name with Proposal, Plan or Investigation in it)
 describe APIs not written yet, so their code is listed there until the API
@@ -1501,12 +1502,24 @@ BASELINE_HEADER = """\
 """
 
 
+# The module docs (Docs/Modules/<Name>/*.md) --all checks along with the
+# component docs. A module joins once its examples compile: its findings are
+# mistakes in a description of an API that exists, not a design document's
+# unwritten one, so they are fixed, never baselined. The FileLoader README had
+# eight broken examples for months because nothing compiled it.
+CHECKED_MODULE_DOCS = ["FileLoader"]
+
+
 def component_docs():
-    """Every doc --all checks: Docs/UltraCanvas/*.md but the changelog. The
-    design documents are in, with their findings baselined; the changelog
-    is a record of what shipped, not a description of an API."""
-    return sorted(p for p in (ROOT / "Docs" / "UltraCanvas").glob("*.md")
-                  if p.name != "CHANGELOG.md")
+    """Every doc --all checks: Docs/UltraCanvas/*.md but the changelog, and
+    the docs of the modules in CHECKED_MODULE_DOCS. The design documents are
+    in, with their findings baselined; the changelog is a record of what
+    shipped, not a description of an API."""
+    docs = [p for p in (ROOT / "Docs" / "UltraCanvas").glob("*.md")
+            if p.name != "CHANGELOG.md"]
+    for module in CHECKED_MODULE_DOCS:
+        docs += (ROOT / "Docs" / "Modules" / module).glob("*.md")
+    return sorted(docs)
 
 
 def finding_key(doc, message):

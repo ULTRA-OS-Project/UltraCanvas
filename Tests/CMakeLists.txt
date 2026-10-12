@@ -4648,6 +4648,25 @@ else()
     message(STATUS "  BusyIndicatorRenderTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== RENDER ALPHA TEST =====
+# IRenderContext::SetAlpha fades fills, strokes, gradients and text, not only
+# images. Offscreen, no display needed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building RenderAlphaTest...")
+    add_executable(RenderAlphaTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/RenderAlphaTest.cpp
+    )
+    target_include_directories(RenderAlphaTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(RenderAlphaTest PRIVATE cxx_std_20)
+    target_link_libraries(RenderAlphaTest PRIVATE UltraCanvas)
+    set_target_properties(RenderAlphaTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME RenderAlphaTest COMMAND RenderAlphaTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: RenderAlphaTest")
+endif()
+
 # ===== RICH TEXT PRINT TEST =====
 # A word-processing document's pages for the printers that cannot take its
 # PDF: drawn into a render context and placed as an image on a device with an

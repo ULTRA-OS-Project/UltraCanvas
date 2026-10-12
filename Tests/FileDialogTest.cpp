@@ -64,6 +64,9 @@
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
+#ifdef HAS_LIBVIPS
+#include "../dialogs/UltraCanvasImageExportDialog.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -516,6 +519,36 @@ int main() {
                  reopened.GetWidth() == 32 && reopened.GetHeight() == 16);
         }
 #endif
+
+        // The other way: an image writer's options stored as the format's
+        // settings, as the image export dialog does on Save.
+        {
+            UCImageSave::ImageExportOptions tiff;
+            tiff.format = UCImageSaveFormat::TIFF;
+            tiff.tiff.compression = UCImageSave::TiffCompression::DeflateCompression;
+            tiff.preserveTransparency = false;
+            UCImageSave::ImageExportOptions back;
+            TEST("Image writer options are stored as the format's settings",
+                 UltraCanvasFileLoader::SetImageExportOptions(tiff) &&
+                 UltraCanvasFileLoader::GetSaveSettings("tiff").Get("compression") == "deflate" &&
+                 !UltraCanvasFileLoader::GetSaveSettings("tif").GetBool("transparency", true));
+            TEST("... and read back as they were",
+                 UltraCanvasFileLoader::GetImageExportOptions("x.tif", back) &&
+                 back.tiff.compression == UCImageSave::TiffCompression::DeflateCompression &&
+                 !back.preserveTransparency);
+            UCImageSave::ImageExportOptions gif;
+            gif.format = UCImageSaveFormat::GIF;
+            gif.gif.colorDepth = UCImageSave::ColorDepth::Indexed_4bit;
+            TEST("A GIF's colour depth is its colours",
+                 UltraCanvasFileLoader::SetImageExportOptions(gif) &&
+                 UltraCanvasFileLoader::GetSaveSettings("gif").Get("colours") == "16");
+            UCImageSave::ImageExportOptions bmp;
+            bmp.format = UCImageSaveFormat::BMP;
+            TEST("A format written without options has nothing to store",
+                 !UltraCanvasFileLoader::SetImageExportOptions(bmp));
+            UltraCanvasFileLoader::ResetSaveSettings("tif");
+            UltraCanvasFileLoader::ResetSaveSettings("gif");
+        }
         fs::remove_all(store, ec);
     }
 
@@ -1056,6 +1089,58 @@ int main() {
             if (open && open != dialog) open->CloseDialog(DialogResult::Cancel);
         }
     }
+
+#ifdef HAS_LIBVIPS
+    std::cerr << "\n--- Image export dialog ---" << std::endl;
+    {
+        // It opens on the format of the name it is given and on that
+        // format's save settings, and stores them back on Save.
+        FileSaveSettings jpeg;
+        jpeg.format = "jpg";
+        jpeg.SetInt("quality", 42);
+        jpeg.SetBool("progressive", true);
+        UltraCanvasFileLoader::SetSaveSettings(jpeg);
+
+        vips::VImage picture = vips::VImage::black(64, 32, vips::VImage::option()->set("bands", 3));
+        auto exportDialog = std::make_shared<UltraCanvasImageExportDialog>(picture);
+        exportDialog->Create();
+        exportDialog->Show();
+        exportDialog->SetFileName(PathToUtf8(scratch / "holiday.jpg"));
+        for (int frame = 0; frame < 2; ++frame) exportDialog->UpdateAndRender();
+        TEST("The export dialog takes the format from the file name",
+             exportDialog->GetFormat() == UCImageSaveFormat::JPEG);
+        const UCImageSave::ImageExportOptions opened = exportDialog->GetOptions();
+        TEST("... and opens on that format's save settings",
+             opened.jpeg.quality == 42 && opened.jpeg.progressive);
+        auto* quality = dynamic_cast<UltraCanvasSlider*>(exportDialog->FindChildById("QualitySlider"));
+        auto* progressive = dynamic_cast<UltraCanvasCheckbox*>(exportDialog->FindChildById("JpegProgressive"));
+        TEST("... which its controls show",
+             quality && std::lround(quality->GetValue()) == 42 && progressive && progressive->IsChecked());
+
+        exportDialog->SetTargetSize(20, 20);   // not the picture's 2:1
+        TEST("A size in another shape turns Keep proportions off",
+             !exportDialog->GetOptions().maintainAspectRatio);
+
+        auto saved = std::make_shared<UCImageSave::ImageExportOptions>();
+        exportDialog->onSave = [saved](const UCImageSave::ImageExportOptions& o) { *saved = o; };
+        if (quality) quality->SetValue(77);
+        auto* save = dynamic_cast<UltraCanvasButton*>(exportDialog->FindChildById("SaveButton"));
+        if (save && save->onClick) save->onClick();
+        TEST("Save hands the options on, at the size chosen",
+             saved->format == UCImageSaveFormat::JPEG && saved->jpeg.quality == 77 &&
+             saved->targetWidth == 20 && saved->targetHeight == 20);
+        const FileSaveSettings stored = UltraCanvasFileLoader::GetSaveSettings("jpg");
+        TEST("... and stores the format's settings for the next save",
+             stored.GetInt("quality") == 77 && stored.GetBool("progressive") &&
+             stored.values.count("width") == 0);
+        UltraCanvasFileLoader::ResetSaveSettings("jpg");
+
+        auto other = std::make_shared<UltraCanvasImageExportDialog>(picture);
+        other->SetFileName("notes.xyz");
+        TEST("A name of no format the dialog offers leaves the format alone",
+             other->GetFormat() == UCImageSaveFormat::PNG);
+    }
+#endif
 
     if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
         WritePpm(dialog.get(), static_cast<int>(dialog->GetWidth()), static_cast<int>(dialog->GetHeight()),

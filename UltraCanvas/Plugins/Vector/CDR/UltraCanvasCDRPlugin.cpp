@@ -1,5 +1,8 @@
 // Plugins/Vector/CDR/UltraCanvasCDRPlugin.cpp
 // CorelDRAW CDR/CMX file format plugin implementation
+// Version: 1.2.3 - an object's opacity is applied once, by SetAlpha, now that the
+//                  context fades fills and strokes with it: the colours carry only
+//                  their fill / stroke opacity (they carried both and were faded twice)
 // Version: 1.2.2 - the recorded draw commands reach the document, not the
 //                  painter: the painter is a local of ParseCDRFile and was gone
 //                  when a page was drawn (a gradient fill read freed memory)
@@ -153,14 +156,16 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
         // Apply fill - handled in FillAndStroke with bounds
         if (style.hasFill && style.fillGradientId.empty()) {
             Color fillColor = style.fillColor;
-            fillColor.a = static_cast<uint8_t>(fillColor.a * style.fillOpacity * style.opacity);
+            // The object's opacity is SetAlpha's below, which fades the
+            // fill, the stroke and a gradient alike.
+            fillColor.a = static_cast<uint8_t>(fillColor.a * style.fillOpacity);
             ctx->SetFillPaint(fillColor);
         }
 
         // Apply stroke - handled in FillAndStroke with bounds for gradients
         if (style.hasStroke && style.strokeGradientId.empty()) {
             Color strokeColor = style.strokeColor;
-            strokeColor.a = static_cast<uint8_t>(strokeColor.a * style.strokeOpacity * style.opacity);
+            strokeColor.a = static_cast<uint8_t>(strokeColor.a * style.strokeOpacity);
             ctx->SetStrokePaint(strokeColor);
         }
 
