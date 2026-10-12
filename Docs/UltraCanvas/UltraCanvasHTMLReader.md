@@ -364,6 +364,16 @@ boxes on it, and at least the block's own: a `<span style="line-height:40px">`
 in a cell that sets none is a 40px line. Text where nothing sets a
 `line-height` keeps the font's own line spacing.
 
+An inline element's horizontal margin, border and padding are room in its
+line: `<nav><a style="margin-right:18px">About</a><a>Index</a></nav>` keeps
+the two links 18px apart, and `padding: 0 8px` makes room inside a tag. The
+room is a picture-less placeholder in the label's run, joined to the
+element's first or last letter by a word joiner, so a line does not break
+between a word and its margin. It lies outside the element's link, and white
+space on either side of it collapses to one space. Vertical margins do not
+move the line, as in CSS. The element's background and border are not
+drawn: only their width counts.
+
 **Flex and grid containers** are laid out by the CSSLayout flex and grid
 engines. Their children are items, as in CSS. Each child element is a box of
 its own at its own size (a `<span>` or `<a>` item is "blockified"), with real

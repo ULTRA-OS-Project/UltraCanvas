@@ -14,6 +14,8 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.14.0 - copied text leaves out word joiners (U+2060), which the
+//                  HTML reader glues room to its text with
 // Version: 2.13.0 - selectable text: a drag, a double-click (word) and a
 //                  triple-click (all) select through UltraCanvasTextSelection,
 //                  drawn under the text; Ctrl+C copies, Ctrl+A selects all
@@ -468,12 +470,14 @@ namespace UltraCanvas {
         }
 
         // The selected text as a reader copies it: no picture placeholders
-        // (U+FFFC) or soft hyphens, a no-break space as a space.
+        // (U+FFFC), word joiners (U+2060) or soft hyphens, a no-break space
+        // as a space.
         std::string TextForCopy(const std::string& text) {
             std::string out;
             out.reserve(text.size());
             for (size_t i = 0; i < text.size(); ) {
                 if (text.compare(i, 3, "\xEF\xBF\xBC") == 0) { i += 3; continue; }   // U+FFFC
+                if (text.compare(i, 3, "\xE2\x81\xA0") == 0) { i += 3; continue; }   // U+2060
                 if (text.compare(i, 2, "\xC2\xAD") == 0) { i += 2; continue; }       // soft hyphen
                 if (text.compare(i, 2, "\xC2\xA0") == 0) { out += ' '; i += 2; continue; }
                 out += text[i++];

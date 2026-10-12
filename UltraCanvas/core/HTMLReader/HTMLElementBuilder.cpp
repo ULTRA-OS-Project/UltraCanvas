@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.28.0 - an inline element's horizontal margin, border and padding
+//                   keep its text apart from its neighbours (placeholders of
+//                   that width in the label's run)
 // Version: 1.27.0 - display: flex / grid (and inline-flex / inline-grid) lay their
 //                   children out on the CSSLayout flex and grid engines: elements
 //                   are items of their own size with real margins, text between
@@ -617,6 +620,23 @@ void FixBackwardSpan(CSSLayout::GridLine& start, CSSLayout::GridLine& end) {
         start.index = first;
         if (end.index <= first) end.index = first + 1;
     }
+}
+
+// True when the run's text is nothing but room (picture-less placeholders,
+// their word joiners) and white space: empty inline elements with margins.
+bool OnlyRoom(const std::string& plain, const std::vector<LabelInlineImage>& images) {
+    for (const auto& image : images) {
+        if (image.image) return false;
+    }
+    for (size_t i = 0; i < plain.size(); ) {
+        if (plain.compare(i, 3, "\xEF\xBF\xBC") == 0 || plain.compare(i, 3, "\xE2\x81\xA0") == 0) {
+            i += 3;
+            continue;
+        }
+        if (!std::isspace(static_cast<unsigned char>(plain[i]))) return false;
+        ++i;
+    }
+    return true;
 }
 
 bool MarkupHasVisibleText(const std::string& markup) {
@@ -1435,6 +1455,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     runPlain.clear();
     runLinks.clear();
     runImages.clear();
+    runRoomEnd = std::string::npos;
     runLineHeightPx = 0.f;
     runLineHeightSet = false;
     if (!markerPrefix.empty()) {
@@ -1511,7 +1532,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
                                   }),
                    runLinks.end());
 
-    if (!MarkupHasVisibleText(markup)) return nullptr;
+    if (!MarkupHasVisibleText(markup) || OnlyRoom(runPlain, runImages)) return nullptr;
     // The block's own letter-spacing: around the whole run (its inline
     // elements' own spacing, where it differs, is a span inside).
     if (std::fabs(blockStyle.letterSpacingPx) > 0.01f) {
@@ -1590,8 +1611,11 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
         for (unsigned char c : node.text) {
             if (!std::isspace(c)) { NoteRunLineHeight(runStyle); break; }
         }
+        // Right after room, white space collapses against the text before it.
+        const bool afterRoom = runRoomEnd == runPlain.size();
         std::string plain = preserveWhitespace
-            ? node.text : CollapseWhitespace(node.text, runPlain);
+            ? node.text
+            : CollapseWhitespace(node.text, afterRoom ? std::string(1, runBeforeRoom) : runPlain);
         out += EscapeMarkup(plain);
         runPlain += plain;
         return;
@@ -1673,6 +1697,16 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
     std::string prefix, suffix;
     StyleWrap(style, runStyle, prefix, suffix, node.tag);
 
+    // Its margin, border and padding on the left and the right: room before
+    // its first letter and after its last (CSS 2 §10.3.1 - an inline box's
+    // vertical ones do not move its line). Its background is not drawn in
+    // running text, so the three are all just room.
+    const float before = std::max(0.f, style.marginLeft) + style.borderLeft.Width() +
+                         std::max(0.f, style.paddingLeft);
+    const float after = std::max(0.f, style.marginRight) + style.borderRight.Width() +
+                        std::max(0.f, style.paddingRight);
+
+    AppendInlineSpace(before, /*glueAfter=*/true, out);
     out += prefix;
     const int linkStart = static_cast<int>(runPlain.size());
     bool childPre = preserveWhitespace || style.preserveWhitespace;
@@ -1687,6 +1721,24 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
             runLinks.push_back({linkStart, linkEnd, style.href});
         }
     }
+    // After the link's range: a click on the margin is not a click on it.
+    AppendInlineSpace(after, /*glueAfter=*/false, out);
+}
+
+void ElementBuilder::AppendInlineSpace(float px, bool glueAfter, std::string& out) {
+    if (!(px >= 0.5f)) return;
+    static const char kPlaceholder[] = "\xEF\xBF\xBC";   // U+FFFC
+    static const char kWordJoiner[] = "\xE2\x81\xA0";   // U+2060
+    if (runRoomEnd != runPlain.size()) runBeforeRoom = runPlain.empty() ? '\n' : runPlain.back();
+    if (!glueAfter) { out += kWordJoiner; runPlain += kWordJoiner; }
+    LabelInlineImage room;
+    room.byteOffset = static_cast<int>(runPlain.size());
+    room.frame.marginLeft = std::min(px, 10000.f);   // no picture: only the width counts
+    runImages.push_back(std::move(room));
+    out += kPlaceholder;
+    runPlain += kPlaceholder;
+    if (glueAfter) { out += kWordJoiner; runPlain += kWordJoiner; }
+    runRoomEnd = runPlain.size();
 }
 
 // ============================================================================

@@ -6,6 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.13.0 - AppendInlineSpace: an inline element's horizontal margin,
+//                   border and padding as room in its run
 // Version: 1.12.0 - flex and grid containers on the CSSLayout flex / grid engines:
 //                  BuildContentInto, BuildItemsInto, BuildItem, EstimateContentWidth
 // Version: 1.11.0 - BuildOptions::selectableText: the text can be selected across
@@ -124,7 +126,12 @@ private:
     std::string runPlain;
     std::vector<LabelTextLink> runLinks;
     // Images flowing in the current run, at U+FFFC placeholders of runPlain.
+    // A picture-less one is room (AppendInlineSpace).
     std::vector<LabelInlineImage> runImages;
+    // Where the last room ends in runPlain, and the text's last character
+    // before it: white space collapses across room as if it were not there.
+    size_t runRoomEnd = std::string::npos;
+    char runBeforeRoom = '\n';
     // The tallest line-height of the run's text - CSS makes a line as tall as
     // the tallest inline box on it, so <span style="line-height:40px"> in a
     // cell is a 40px line - and whether any of that text sets one. A run
@@ -201,6 +208,11 @@ private:
 
     void AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
                             bool preserveWhitespace, std::string& out);
+    // `px` of empty room in the run (an inline element's margin, border and
+    // padding on one side): a picture-less U+FFFC placeholder that wide,
+    // joined to the text after it (glueAfter) or before it by a WORD JOINER,
+    // so a line does not break between the room and its element.
+    void AppendInlineSpace(float px, bool glueAfter, std::string& out);
     // Pango markup that turns `runStyle` text into `style` text (bold, size,
     // color, ...); `tag` adds <sub>/<sup>.
     static void StyleWrap(const ComputedStyle& style, const ComputedStyle& runStyle,
