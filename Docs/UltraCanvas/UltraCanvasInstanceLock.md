@@ -60,5 +60,6 @@ condition in the top-level `CMakeLists.txt`; the library and
 
 ## Who uses it
 
-UltraMail (`Apps/UltraMail/ui/UltraMailSingleInstance.h`): a second start asks
-the running copy, over UltraMessage, to bring its window forward, and quits.
+`UltraCanvasSingleInstance` (`Docs/UltraCanvas/UltraCanvasSingleInstance.md`),
+which adds the hand-off to the running copy and bringing its window forward.
+An application normally uses that, not the lock directly.

@@ -25,6 +25,11 @@
 // screen (AuthenticatorWindow.h). Both timings live in a settings file beside
 // the vault (Preferences.h); nothing about them is secret.
 //
+// One UltraAuthenticator per user: a second start brings the running one
+// forward and quits (UltraCanvasSingleInstance.h).
+//
+// Version: 0.3.0 - one UltraAuthenticator per user: a second start brings the
+//                  first one's window forward instead of opening another copy
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -36,6 +41,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCrypt/UltraCryptCore.h"
 
@@ -207,6 +213,12 @@ int main(int argc, char* argv[]) {
     std::signal(SIGTERM, OnSignal);
 #endif
 
+    // One UltraAuthenticator per user, decided before any window opens: two
+    // copies would hold the same vault open and could each write it.
+    UltraCanvasSingleInstance instance("org.ultraos.ultraauthenticator", "UltraAuthenticator");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;
+
     UltraCanvasApplication app;
 
     AccountStore store;
@@ -216,6 +228,12 @@ int main(int argc, char* argv[]) {
         if (!app.Initialize("UltraAuthenticator")) {
             std::cerr << "Failed to initialize UltraCanvas application\n";
             return EXIT_FAILURE;
+        }
+
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning) {
+            // The other copy holds the lock but did not answer: say so
+            // rather than vanish without a word.
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraAuthenticator");
         }
 
         // One icon, everywhere the app is drawn: the window and the taskbar
@@ -231,13 +249,20 @@ int main(int argc, char* argv[]) {
 
         OpenVaultThen(app, store, vaultPath, window);
 
+        // A later start asks this copy to come forward: the account list, or
+        // the unlock / new-vault dialog in front of it.
+        instance.ListenRaise();
+
         app.Run();
+        instance.Close();   // no request reaches the window once it starts to go
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << "\n";
+        instance.Close();
         store.Close();
         return EXIT_FAILURE;
     } catch (...) {
         std::cerr << "Fatal: unknown exception\n";
+        instance.Close();
         store.Close();
         return EXIT_FAILURE;
     }

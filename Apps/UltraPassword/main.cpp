@@ -1,11 +1,14 @@
 // Apps/UltraPassword/main.cpp
 // Entry point: find the vault file, then hand over to the main window, which
 // shows the start page — "Create password vault" on first run, the master
-// password field once a vault exists.
+// password field once a vault exists. One UltraPassword per user: a second
+// start brings the running one forward and quits (UltraCanvasSingleInstance.h).
 //
 // There is no "skip" and no "remember me": a vault that opens without the
 // password opens for anyone holding the file.
 //
+// Version: 0.2.0 - one UltraPassword per user: a second start brings the
+//                  first one's window forward instead of opening another copy
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/PasswordApp.h"
@@ -14,6 +17,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCrypt/UltraCryptCore.h"
 
@@ -96,6 +100,13 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
+    // One copy per user whatever the vault: a second start, with or without
+    // --vault, only brings the running one forward - its window, on the vault
+    // it already has open. Outlives app.Run(), so it sits outside the try.
+    UltraCanvasSingleInstance instance("org.ultraos.ultrapassword", "UltraPassword");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy came forward
+
 #ifdef __linux__
     if (!XInitThreads()) std::cerr << "warning: XInitThreads failed\n";
     std::signal(SIGINT,  OnSignal);
@@ -109,6 +120,8 @@ int main(int argc, char* argv[]) {
             std::cerr << "Failed to initialize UltraCanvas application\n";
             return EXIT_FAILURE;
         }
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraPassword");
         app.SetDefaultWindowIcon(
             NormalizePath(GetResourcesDir() + "media/appicon/UltraPassword.png"));
         // The framework's own dialogs: native ones cannot hold a password
@@ -121,7 +134,9 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         window->Show();
+        instance.ListenRaise();   // a later start brings this window forward
         app.Run();
+        instance.Close();         // no request reaches the window once it starts to go
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << "\n";
         return EXIT_FAILURE;

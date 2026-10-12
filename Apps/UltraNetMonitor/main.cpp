@@ -18,6 +18,12 @@
 // Connection events come from the event sources: the snapshot differ
 // unless --no-diff, and the platform's own (nf_conntrack as root on
 // Linux, the kernel network ETW provider elevated on Windows).
+//
+// One window per user: a second start brings the running one forward and
+// quits (UltraCanvasSingleInstance.h). The headless modes are not windows
+// and run alongside it.
+// Version: 0.11.0 - one UltraNetMonitor per user: a second start brings the
+//                   first one's window forward instead of opening another copy
 // Version: 0.10.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -37,6 +43,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 
 #include <atomic>
@@ -835,6 +842,18 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Only the window claims the one copy per user, and before the name
+    // sources start, so a second start never runs a DNS proxy of its own.
+    // --capabilities prints and exits even without a mode, so it does not
+    // claim. Declared before the name sources: the lock is kept until they
+    // have stopped.
+    UltraCanvasSingleInstance instance("org.ultraos.ultranetmonitor", "UltraNetMonitor");
+    UltraCanvasSingleInstance::Start start = UltraCanvasSingleInstance::Start::First;
+    if (mode == Mode::Window && !capabilities) {
+        start = instance.Claim();
+        if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy came forward
+    }
+
     // The name sources run in every mode; a store reader has no use for
     // them, so those modes skip the start.
     NameSourcesScope sourcesScope;
@@ -889,6 +908,8 @@ int main(int argc, char* argv[]) {
             debugOutput << "Failed to initialize the UltraCanvas application" << std::endl;
             return EXIT_FAILURE;
         }
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraNetMonitor");
         // One icon, everywhere the app is drawn: the window and the taskbar
         // entry that follows it read this file; the .ico embedded in the
         // Windows binary and the desktop entry's theme icon are rendered from
@@ -904,7 +925,9 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         window.Show();
+        instance.ListenRaise();   // a later start brings this window forward
         app.Run();
+        instance.Close();         // no request reaches the window once it starts to go
     } catch (const std::exception& e) {
         debugOutput << "Unhandled exception: " << e.what() << std::endl;
         return EXIT_FAILURE;

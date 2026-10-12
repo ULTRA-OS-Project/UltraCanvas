@@ -7,8 +7,9 @@
   it) and quits. A copy that is still starting is waited for for up to ten
   seconds; one that does not answer at all is reported with *"UltraMail is
   already running"* instead of a silent exit. Decided by the framework's new
-  instance lock on `instance.lock` in the data folder (framework changelog:
-  `instance-lock`), which the system releases when UltraMail ends - a crash
+  single-instance helper (`UltraCanvasSingleInstance`) and its lock on
+  `instance.lock` in the data folder (framework changelog: `instance-lock`),
+  which the system releases when UltraMail ends - a crash
   never stops the next start. The request to come forward travels over
   UltraMessage (`org.ultraos.ultramail.show`); the timing trace says which
   way a start went.

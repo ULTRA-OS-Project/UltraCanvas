@@ -1,3 +1,14 @@
+#### 2026-10-12 *0.62*
+- **One UltraCleaner at a time.** Starting UltraCleaner while it is already
+  running brings the open window forward (restored if minimised; an open
+  dialog comes forward with it) instead of opening a second copy - also when
+  the second start names an album folder. Two starts at the same moment
+  cannot both stay, and a copy that does not answer is reported with
+  *"UltraCleaner is already running"*. Command-line modes (`--help`,
+  `--version`, `--rules`, `--scan`, `--clean`, `--album`) are unaffected.
+  Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
 #### 2026-10-09 *0.61*
 - **New app icon.** The trash can is filled with a white-to-green gradient,
   with ribs down its side and the red cross drawn straight on it in place of

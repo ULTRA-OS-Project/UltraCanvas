@@ -1065,6 +1065,8 @@ if(BUILD_ULTRAWIN_MANAGER AND TARGET UltraWin)
         Apps/UltraWinManager/main.cpp
         Apps/UltraWinManager/UltraWinManagerWindow.cpp
     )
+    # One copy per user (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraWinManager)
     target_include_directories(UltraWinManager PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraWinManager
@@ -1656,6 +1658,8 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
     )
+    # One copy per user (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraAIApp)
 
     target_include_directories(UltraAIApp PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}
