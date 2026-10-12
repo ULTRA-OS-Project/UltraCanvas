@@ -782,31 +782,18 @@ void UltraPaintWindow::InstallShortcuts() {
 
 void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const std::string& title) {
     (void)title;
+    if (document && documentListener) document->RemoveListener(documentListener);
     document = std::move(doc);
     renamingLayer = -1;
-    document->onStateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
+    // The window's own listener beside the surfaces' (the editing view and
+    // the magnifying glass each add theirs in SetDocument): the panels and
+    // the title follow the document without chaining behind anyone's slot.
+    UCRasterDocument::Listener l;
+    l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
+    l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); };
+    documentListener = document->AddListener(std::move(l));
     surface->SetDocument(document);
     if (magnifier) magnifier->SetDocument(document);
-    // the surface installed its own hooks; chain the panel refresh, and the
-    // magnifying glass, which shows the same pixels and selection but leaves
-    // the document's single slots to the editing view
-    auto surfaceStructure = document->onStructureChanged;
-    document->onStructureChanged = [this, surfaceStructure]() {
-        if (surfaceStructure) surfaceStructure();
-        ScheduleLayerPanelRebuild();
-        UpdateStatus();
-        if (magnifier && magnifier->IsVisible()) magnifier->Refresh();
-    };
-    auto surfacePixels = document->onPixelsChanged;
-    document->onPixelsChanged = [this, surfacePixels](const Rect2Di& r) {
-        if (surfacePixels) surfacePixels(r);
-        if (magnifier && magnifier->IsVisible()) magnifier->Refresh();
-    };
-    auto surfaceSelection = document->onSelectionChanged;
-    document->onSelectionChanged = [this, surfaceSelection]() {
-        if (surfaceSelection) surfaceSelection();
-        if (magnifier && magnifier->IsVisible()) magnifier->Refresh();
-    };
     surface->ZoomToFit();
     RebuildLayerPanel();
     UpdateUndoButtons();

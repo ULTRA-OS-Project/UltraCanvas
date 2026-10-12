@@ -245,6 +245,7 @@ private:
     UltraPaintSettings settings;
 
     std::shared_ptr<UCRasterDocument> document;
+    UCRasterDocument::ListenerId documentListener = 0;   // the panels' and title's
     std::vector<std::unique_ptr<PaintTool>> tools;
     PaintToolOptions toolOptions;
     PaintToolContext toolContext;

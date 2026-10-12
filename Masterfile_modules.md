@@ -1042,7 +1042,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
   `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
-  notifications.
+  notifications (single slots) and `AddListener/RemoveListener` for several
+  observers of one document.
 - **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot

@@ -1221,7 +1221,8 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
   `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
-  notifications.
+  notifications (single slots) and `AddListener/RemoveListener` for several
+  observers of one document.
 - **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
@@ -43842,6 +43843,8 @@ FILE: Docs/UltraCanvas/UltraCanvasPaintSurface.md
 
 # UltraCanvas Raster Editing: PaintSurface, RasterDocument, Brush Engine
 
+<!-- doc-check: void RebuildLayerPanel(); void UpdateUndoButtons(); -->
+
 ## Overview
 
 The **raster-editing layer** is what a bitmap editor needs on top of the
@@ -43952,9 +43955,27 @@ rather than installing a mask of the wrong shape.
 | `onSelectionChanged()` | the selection changed, including when a canvas-geometry change dropped it |
 | `onStateChanged()` | modified flag or undo / redo availability changed |
 
-`UltraCanvasPaintSurface::SetDocument()` installs the first three; a host
-that needs them too chains its own handler after the surface's (see
-`UltraPaintWindow::SetDocument`).
+Those four are single slots, for the one-observer case. Several observers -
+an editing view, a magnifying glass on the same document, the window's
+panels - each add a **listener** of their own and remove it when they let
+the document go, so none has to chain itself behind another's slot:
+
+```cpp
+UCRasterDocument::Listener l;
+l.pixelsChanged    = [&](const Rect2Di& r) { view->InvalidateRect(r); };
+l.structureChanged = [&]() { RebuildLayerPanel(); };
+l.selectionChanged = [&]() { /* ... */ };
+l.stateChanged     = [&]() { UpdateUndoButtons(); };
+const UCRasterDocument::ListenerId id = doc->AddListener(std::move(l));
+// ...
+doc->RemoveListener(id);    // an id that is not listening is ignored
+```
+
+Every notification fires the slot first, then every listener, on the list
+as it was when the notification began - a callback may remove its own
+listener. `UltraCanvasPaintSurface::SetDocument()` adds the surface's
+listener and `SetDocument(nullptr)` or the surface's destruction removes
+it; `UltraPaintWindow::SetDocument` adds the window's beside it.
 
 ## The brush engine
 
@@ -44066,14 +44087,11 @@ loupe->SetLoupeCrosshair(true, 8.0);   // the default: two diagonals, 8 px clear
   `gap` pixels short of the centre, so the pixel under the pointer stays
   clear; a light line under a dark one reads on dark and light pixels alike.
   `SetLoupeCrosshair(false)` hides it; it is never drawn outside loupe mode.
-- The document's notification slots (`onPixelsChanged` and the others) are
-  single, so a loupe leaves them to the editing view: the host chains its own
-  handlers onto the editing view's and calls `Refresh()` on the loupe from
-  them. The selection outline is drawn, but static - the ants timer is the
-  editing view's.
+- A loupe listens to the document like the editing view does
+  (`UCRasterDocument::AddListener`), so pixels, the selection and its
+  marching ants, and the layers follow by themselves.
 - The checkerboard, the pixel grid from 8x and `onDrawOverlay` work as in
   the editing view, in the loupe's own transform.
-- Leaving loupe mode takes the document's slots, as `SetDocument()` would.
 
 UltraPaint shows one in a corner of the canvas while the rectangle selection
 is active (Settings > Display > Mouse pointer magnification glass: size and

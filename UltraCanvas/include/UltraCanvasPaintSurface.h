@@ -101,11 +101,11 @@ public:
     // nothing else moves it: the view is never clamped or fitted, the
     // pointer, wheel and keyboard are ignored and the element takes neither
     // focus nor hit-tests (SetInteractive(false)), so it can lie over the
-    // editing view without taking its events. The document's notification
-    // slots are single, so a loupe leaves them to the editing view: the host
-    // calls Refresh() when the pixels or the selection change. onDrawOverlay
-    // still runs, in the loupe's own transform, so a tool's rubber band
-    // appears magnified too; the selection outline is drawn, but static.
+    // editing view without taking its events. It listens to the document
+    // like the editing view does (UCRasterDocument::AddListener), so pixels,
+    // selection and layers follow by themselves. onDrawOverlay still runs,
+    // in the loupe's own transform, so a tool's rubber band appears
+    // magnified too.
     void SetLoupeMode(bool on);
     bool IsLoupeMode() const { return loupeMode; }
     // The zoom and the image point shown at the centre of the element.
@@ -153,6 +153,7 @@ private:
     void UnhookDocument();
 
     std::shared_ptr<UCRasterDocument> document;
+    UCRasterDocument::ListenerId documentListener = 0;
     PaintViewTransform view;
     bool fitPending = true;
 

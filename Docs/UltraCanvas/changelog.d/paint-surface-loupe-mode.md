@@ -5,7 +5,5 @@
   pointer, wheel and keyboard are ignored, and the element takes neither
   focus nor hit-tests, so it can lie over the editing view without taking
   its events. A translucent diagonal crosshair (`SetLoupeCrosshair`) marks
-  the centre and leaves the pixel there clear. The document's single
-  notification slots stay the editing view's; the host refreshes the loupe
-  from its own chained handlers. UltraPaint's mouse pointer magnification
-  glass is the first user.
+  the centre and leaves the pixel there clear. UltraPaint's mouse pointer
+  magnification glass is the first user.

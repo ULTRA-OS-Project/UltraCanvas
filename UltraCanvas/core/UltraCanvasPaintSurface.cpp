@@ -38,26 +38,25 @@ UltraCanvasPaintSurface::~UltraCanvasPaintSurface() {
 // ===========================================================================
 
 void UltraCanvasPaintSurface::HookDocument() {
-    // The document's slots are single: a loupe leaves them to the editing
-    // view and is refreshed by its host.
-    if (!document || loupeMode) return;
-    document->onPixelsChanged = [this](const Rect2Di& r) {
+    if (!document || documentListener) return;
+    UCRasterDocument::Listener l;
+    l.pixelsChanged = [this](const Rect2Di& r) {
         const Rect2Dd v = view.ImageToView(Rect2Dd(r.x, r.y, r.width, r.height));
         InvalidateRect(Rect2Df(static_cast<float>(std::floor(v.x)) - 2.0f, static_cast<float>(std::floor(v.y)) - 2.0f,
                                static_cast<float>(std::ceil(v.width)) + 4.0f, static_cast<float>(std::ceil(v.height)) + 4.0f));
     };
-    document->onStructureChanged = [this]() { ClampView(); RequestRedraw(); };
-    document->onSelectionChanged = [this]() {
+    l.structureChanged = [this]() { ClampView(); RequestRedraw(); };
+    l.selectionChanged = [this]() {
         if (document->GetSelection().IsActive()) StartAntsTimer(); else StopAntsTimer();
         RequestRedraw();
     };
+    documentListener = document->AddListener(std::move(l));
 }
 
 void UltraCanvasPaintSurface::UnhookDocument() {
-    if (!document || loupeMode) return;
-    document->onPixelsChanged = nullptr;
-    document->onStructureChanged = nullptr;
-    document->onSelectionChanged = nullptr;
+    if (!document || !documentListener) return;
+    document->RemoveListener(documentListener);
+    documentListener = 0;
 }
 
 void UltraCanvasPaintSurface::SetDocument(std::shared_ptr<UCRasterDocument> doc) {
@@ -65,7 +64,7 @@ void UltraCanvasPaintSurface::SetDocument(std::shared_ptr<UCRasterDocument> doc)
     document = std::move(doc);
     HookDocument();
     fitPending = !loupeMode;
-    if (document && document->GetSelection().IsActive() && !loupeMode) StartAntsTimer(); else StopAntsTimer();
+    if (document && document->GetSelection().IsActive()) StartAntsTimer(); else StopAntsTimer();
     RequestRedraw();
 }
 
@@ -163,22 +162,14 @@ void UltraCanvasPaintSurface::ScrollToImagePoint(double ix, double iy) {
 
 void UltraCanvasPaintSurface::SetLoupeMode(bool on) {
     if (loupeMode == on) return;
-    // Entering the mode gives the document's slots up, so the editing view
-    // can take them; leaving it takes them, as SetDocument would.
-    UnhookDocument();
     loupeMode = on;
-    HookDocument();
     SetInteractive(!on);
     if (on) {
-        fitPending = false;
         hasHover = false;
         panning = false;
         toolDragging = false;
-        StopAntsTimer();
-    } else {
-        fitPending = true;
-        if (document && document->GetSelection().IsActive()) StartAntsTimer();
     }
+    fitPending = !on;
     RequestRedraw();
 }
 

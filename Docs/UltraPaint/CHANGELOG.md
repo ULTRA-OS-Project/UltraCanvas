@@ -8,8 +8,11 @@
   too, and the pixel grid from 8x. It keeps out of the way: when the pointer
   comes within 48 px of it, it moves to the corner farthest from the pointer.
   It takes no clicks, so a drag can pass under it. The framework's paint
-  surface grew a loupe mode for it (framework changelog:
-  `paint-surface-loupe-mode`).
+  surface grew a loupe mode for it, and the raster document takes several
+  observers now - the editing view, the glass and the window's panels each
+  listen on their own instead of chaining behind one another's slot
+  (framework changelog: `paint-surface-loupe-mode`,
+  `raster-document-listeners`).
 - **Edit > Settings...** opens UltraPaint's settings window: a tree of pages
   on the left, so far *Display > Mouse pointer magnification glass* - on or
   off, the magnification (2x / 3x / 4x) and the window size (100-400 px). A

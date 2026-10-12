@@ -1,3 +1,15 @@
+#### 2026-10-12 *1.72.4*
+- **The settings live in the shared UltraCanvas settings folder.** Every
+  newer UltraCanvas application keeps its settings under
+  `UltraCanvasSettingsFolder()` (`~/.config/UltraCanvas` on Linux,
+  `%APPDATA%\UltraCanvas` on Windows, `~/Library/Application
+  Support/UltraCanvas` on macOS); UltraFiler had a folder of its own beside
+  it, built from a narrow `getenv("HOME")`. Its folder is
+  `UltraCanvas/UltraFiler` now - `config.ini`, the history, favorites, folder
+  views, folder icons and the remote drive list with it. The first run moves
+  the old folder there, whole, so nothing is lost; where a move is not
+  possible (another file system) it is copied and the old one left behind.
+
 #### 2026-10-11 *1.72.3*
 - **Menus follow the theme and stay clear of their buttons.** The context
   menu's line icons are painted in the entry's text colour - light on a dark
