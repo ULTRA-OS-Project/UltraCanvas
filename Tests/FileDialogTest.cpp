@@ -26,23 +26,37 @@
 // files. The dialog now refuses such a name (InvalidFileNameReason) and adds
 // what it accepts to the recent files itself.
 //
-// The naming rule is checked on its own and always runs; the dialog itself
-// is read back from the composited pixels, so that part runs under Xvfb and
-// skips - rather than fails - without a display.
-// Version: 1.4.0
-// Last Modified: 2026-10-07
+// A Save dialog puts the icon of the type being saved in front of the name.
+// Dragged onto a folder of the listing or of the folder tree, it opens that
+// folder - the one the file is saved in. A Settings button after the name
+// edits the type's save settings (UltraCanvasFileLoader's SAVE SETTINGS):
+// greyed out for a type that has none, and stored on OK where every
+// application's writer reads them - UCRasterDocument::SaveToFile among them.
+//
+// The naming rule and the settings store are checked on their own and always
+// run; the dialog itself is read back from the composited pixels, so that
+// part runs under Xvfb and skips - rather than fails - without a display.
+// Version: 1.5.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasFileDragIcon.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasFilerWidget.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasSlider.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTreeView.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -220,6 +234,67 @@ void PressEnter(SaveRun& run, const std::string& name) {
     run.nameField->onEnterPressed(name);
 }
 
+// The name typed into the field: SetText, then what an edit fires.
+void TypeName(SaveRun& run, const std::string& name) {
+    if (!run.nameField) return;
+    run.nameField->SetText(name);
+    if (run.nameField->onTextChanged) run.nameField->onTextChanged(name);
+}
+
+// A pointer or key event delivered to `window` through the application's own
+// dispatch, as the backend delivers it.
+void SendMouse(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>& window,
+               UCEventType type, const Point2Di& p) {
+    UCEvent e;
+    e.type = type;
+    e.button = UCMouseButton::Left;
+    e.targetWindow = window;
+    e.nativeWindowHandle = window->GetNativeHandle();
+    e.pointerWindow = p;
+    e.pointer = p;
+    app.DispatchEvent(e);
+}
+
+void SendKey(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>& window,
+             UCKeys key) {
+    UCEvent e;
+    e.type = UCEventType::KeyDown;
+    e.virtualKey = key;
+    e.targetWindow = window;
+    e.nativeWindowHandle = window->GetNativeHandle();
+    app.DispatchEvent(e);
+}
+
+Point2Di CentreOf(const UltraCanvasUIElement& element) {
+    const Rect2Df r = element.GetBoundsInWindow();
+    return Point2Di(static_cast<int>(r.x + r.width / 2), static_cast<int>(r.y + r.height / 2));
+}
+
+// Picks the Save icon up and carries it over `area` in steps until `found`
+// says the pointer is where it should be; the button stays down. True when
+// it got there.
+bool DragIconUntil(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>& window,
+                   const UltraCanvasFileDragIcon& icon, const Rect2Df& area,
+                   const std::function<bool()>& found, Point2Di& at) {
+    const Point2Di from = CentreOf(icon);
+    SendMouse(app, window, UCEventType::MouseDown, from);
+    SendMouse(app, window, UCEventType::MouseMove, Point2Di(from.x + 12, from.y - 12));   // past the slop
+    for (int y = static_cast<int>(area.y) + 6; y < static_cast<int>(area.y + area.height) - 6; y += 5) {
+        for (int x = static_cast<int>(area.x) + 8; x < static_cast<int>(area.x + area.width) - 8; x += 12) {
+            at = Point2Di(x, y);
+            SendMouse(app, window, UCEventType::MouseMove, at);
+            if (found()) return true;
+        }
+    }
+    return false;
+}
+
+std::string Canonical(const std::filesystem::path& p) {
+    std::error_code ec;
+    const std::filesystem::path c = std::filesystem::canonical(p, ec);
+    return PathToUtf8(ec ? p : c);
+}
+
 } // namespace
 
 int main() {
@@ -287,6 +362,118 @@ int main() {
         std::string thai;   // 100 Thai letters: 300 bytes, 100 UTF-16 units
         for (int i = 0; i < 100; ++i) thai += "ก";
         TEST("Windows counts characters, POSIX bytes", !refused(thai, win) && refused(thai, posix));
+    }
+
+    std::cerr << "\n--- Save settings ---" << std::endl;
+    {
+        // Kept away from the user's SaveSettings.conf.
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        const fs::path store = fs::temp_directory_path(ec) / "FileDialogTest-settings";
+        fs::remove_all(store, ec);
+        fs::create_directories(store, ec);
+        RedirectSettingsFolder(store);
+
+        TEST("JPEG has save settings, by any of its extensions",
+             UltraCanvasFileLoader::HasSaveSettings("jpg") &&
+             UltraCanvasFileLoader::HasSaveSettings(".JPEG") &&
+             UltraCanvasFileLoader::HasSaveSettings("/home/me/my.pictures/photo.jpe"));
+        TEST("BMP is written without options, so it has none",
+             !UltraCanvasFileLoader::HasSaveSettings("picture.bmp"));
+        TEST("Neither has a type the framework does not write",
+             !UltraCanvasFileLoader::HasSaveSettings("notes.txt") &&
+             !UltraCanvasFileLoader::HasSaveSettings("noextension"));
+
+        FileSaveSettings jpeg = UltraCanvasFileLoader::GetSaveSettings("photo.jpeg");
+        TEST("The settings are kept under the format's first extension", jpeg.format == "jpg");
+        TEST("Unset, they are the defaults",
+             jpeg.GetInt("quality") == 85 && jpeg.GetBool("optimize") && !jpeg.GetBool("progressive"));
+        TEST("... and nothing is stored", !UltraCanvasFileLoader::HasStoredSaveSettings("jpg"));
+
+        FileSaveSettings change;
+        change.format = "Joint Photographic";   // a name, not an extension
+        TEST("Settings naming no format are refused", !UltraCanvasFileLoader::SetSaveSettings(change));
+        change.format = "jpeg";
+        change.Set("quality", "150");      // out of range
+        change.Set("progressive", "yes");
+        change.Set("bogus", "1");          // no such setting
+        TEST("Settings are stored by any extension of the format",
+             UltraCanvasFileLoader::SetSaveSettings(change));
+        jpeg = UltraCanvasFileLoader::GetSaveSettings("jpg");
+        TEST("A number is clamped into its range", jpeg.GetInt("quality") == 100);
+        TEST("An on/off is read as one", jpeg.GetBool("progressive"));
+        TEST("A key the format does not have is dropped", jpeg.values.count("bogus") == 0);
+        TEST("... and what was not set keeps its default", jpeg.GetBool("optimize"));
+        TEST("The format now has stored settings", UltraCanvasFileLoader::HasStoredSaveSettings("jpe"));
+        {
+            std::ifstream in(UltraCanvasSettingsFolder() / "SaveSettings.conf");
+            const std::string conf((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            TEST("They are in SaveSettings.conf, one line each",
+                 conf.find("jpg.quality=100\n") != std::string::npos &&
+                 conf.find("jpg.progressive=true\n") != std::string::npos);
+        }
+
+        UCImageSave::ImageExportOptions options;
+        TEST("The image writer's options come from them",
+             UltraCanvasFileLoader::GetImageExportOptions("/tmp/out.JPG", options) &&
+             options.format == UCImageSaveFormat::JPEG && options.jpeg.quality == 100 &&
+             options.jpeg.progressive && options.jpeg.optimizeHuffman);
+        TEST("A format without settings still has the writer's format",
+             UltraCanvasFileLoader::GetImageExportOptions("x.bmp", options) &&
+             options.format == UCImageSaveFormat::BMP);
+        TEST("A type the image writer does not write has no options",
+             !UltraCanvasFileLoader::GetImageExportOptions("notes.txt", options));
+
+        // A plugin's own format.
+        FileSaveFormat custom;
+        custom.name = "Test format";
+        custom.extensions = {"TST", ".ts2"};
+        custom.settings = {
+                FileSaveSettingSpec::Number("level", "Level", 1, 5, 9),     // default clamped to 5
+                FileSaveSettingSpec::Choice("mode", "Mode", {{"a", "A"}, {"b", "B"}}, "c"),
+                FileSaveSettingSpec::Toggle("bad.key", "Bad", true)};       // a dot cannot be stored
+        UltraCanvasFileLoader::RegisterSaveFormat(custom);
+        FileSaveFormat found;
+        TEST("A registered format is found by any of its extensions",
+             UltraCanvasFileLoader::FindSaveFormat("file.TS2", found) && found.Key() == "tst");
+        TEST("... with a key that cannot be stored left out",
+             found.settings.size() == 2 && !found.FindSetting("bad.key"));
+        const FileSaveSettings fresh = UltraCanvasFileLoader::GetSaveSettings("tst");
+        TEST("... and defaults that fit their settings",
+             fresh.GetInt("level") == 5 && fresh.Get("mode") == "a");
+
+        TEST("Resetting forgets what was stored", UltraCanvasFileLoader::ResetSaveSettings("jpg") &&
+             !UltraCanvasFileLoader::HasStoredSaveSettings("jpg") &&
+             UltraCanvasFileLoader::GetSaveSettings("jpg").GetInt("quality") == 85);
+
+#ifdef HAS_LIBVIPS
+        // The raster writer uses the stored settings when the caller passes
+        // none: the same picture at quality 5 and at 100.
+        {
+            UCRasterDocument doc(64, 64, RasterPixel(30, 60, 90, 255));
+            for (int y = 0; y < 64; ++y)
+                for (int x = 0; x < 64; ++x)
+                    doc.GetLayer(0)->SetPixel(x, y, RasterPixel(static_cast<uint8_t>(x * 4),
+                                                               static_cast<uint8_t>(y * 4),
+                                                               static_cast<uint8_t>((x * y) & 255), 255));
+            auto sizeAt = [&](int quality) -> uintmax_t {
+                FileSaveSettings q;
+                q.format = "jpg";
+                q.SetInt("quality", quality);
+                UltraCanvasFileLoader::SetSaveSettings(q);
+                const fs::path file = store / ("q" + std::to_string(quality) + ".jpg");
+                std::string error;
+                if (!doc.SaveToFile(PathToUtf8(file), error)) return 0;
+                std::error_code sec;
+                return fs::file_size(file, sec);
+            };
+            const uintmax_t low = sizeAt(5);
+            const uintmax_t high = sizeAt(100);
+            TEST("SaveToFile writes with the stored settings", low > 0 && high > low);
+            UltraCanvasFileLoader::ResetSaveSettings("jpg");
+        }
+#endif
+        fs::remove_all(store, ec);
     }
 
     std::cerr << "\n--- Icon buttons ---" << std::endl;
@@ -497,6 +684,153 @@ int main() {
             }
             TEST("... which gives a bare name FileDialogOptions' default extension",
                  *saved == expect("loader.png"));
+        }
+
+        // ----- the icon in front of the name, the Settings button after it -----
+        {
+            run = ShowSave(folder, "untitled.png");
+            for (int frame = 0; frame < 3; ++frame) run.dialog->UpdateAndRender();
+            auto* icon = dynamic_cast<UltraCanvasFileDragIcon*>(run.dialog->FindChildById("FileDialogFileIcon"));
+            auto* settings = dynamic_cast<UltraCanvasButton*>(run.dialog->FindChildById("FileDialogSaveSettings"));
+            auto* listing = dynamic_cast<UltraCanvasFilerWidget*>(run.dialog->FindChildById("FileDialogListing"));
+            auto* tree = dynamic_cast<UltraCanvasTreeView*>(run.dialog->FindChildById("FileDialogFolders"));
+            TEST("A Save dialog has the file icon and the Settings button", icon && settings);
+            if (icon && settings && run.nameField) {
+                const Rect2Df iconBox = icon->GetBoundsInWindow();
+                const Rect2Df nameBox = run.nameField->GetBoundsInWindow();
+                const Rect2Df buttonBox = settings->GetBoundsInWindow();
+                TEST("... the icon in front of the name, the button after it",
+                     iconBox.x + iconBox.width <= nameBox.x && nameBox.x + nameBox.width <= buttonBox.x);
+                TEST("... on the name's line", std::fabs(iconBox.y - nameBox.y) <= 1.0f &&
+                                               std::fabs(buttonBox.y - nameBox.y) <= 1.0f);
+                TEST("The icon is the type being saved", icon->GetFileName() == "untitled.png");
+                TEST("PNG has settings, so the button can be used", !settings->IsDisabled());
+                TypeName(run, "photo");
+                TEST("The icon follows the name, with the type's extension",
+                     icon->GetFileName() == "photo.png");
+                if (auto* types = dynamic_cast<UltraCanvasDropdown*>(run.dialog->FindChildById("FileDialogType"))) {
+                    types->SetSelectedIndex(3);                 // All files
+                    TypeName(run, "notes.txt");
+                    TEST("A type without settings greys the button out", settings->IsDisabled());
+                    TypeName(run, "photo.jpg");
+                    TEST("... and a name's own type is the one that counts",
+                         !settings->IsDisabled() && icon->GetFileName() == "photo.jpg");
+                    TypeName(run, "noext");
+                    TEST("... a name of no type has none", settings->IsDisabled());
+                    types->SetSelectedIndex(0);
+                }
+                if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+                    TypeName(run, "holiday photo");
+                    for (int frame = 0; frame < 3; ++frame) run.dialog->UpdateAndRender();
+                    WritePpm(run.dialog.get(), static_cast<int>(run.dialog->GetWidth()),
+                             static_cast<int>(run.dialog->GetHeight()),
+                             std::string(shotDir) + "/save-dialog.ppm");
+                }
+            }
+
+            // Dropped on "A folder" in the listing: that is where the file goes.
+            if (icon && listing) {
+                const std::string target = Canonical(scratch / "listing" / "A folder");
+                Point2Di at;
+                const bool over = DragIconUntil(app, run.dialog, *icon, listing->GetBoundsInWindow(),
+                        [&]() { return Canonical(PathFromUtf8(listing->GetIncomingDropFolder())) == target; },
+                        at);
+                TEST("Dragged over the listing, the icon frames the folder under it", over);
+                TEST("... while the icon is being dragged", icon->IsDragging());
+                if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+                    for (int frame = 0; frame < 2; ++frame) run.dialog->UpdateAndRender();
+                    WritePpm(run.dialog.get(), static_cast<int>(run.dialog->GetWidth()),
+                             static_cast<int>(run.dialog->GetHeight()),
+                             std::string(shotDir) + "/save-dialog-drag.ppm");
+                }
+                SendMouse(app, run.dialog, UCEventType::MouseUp, at);
+                TEST("Dropped on a folder of the listing, the dialog opens it",
+                     Canonical(PathFromUtf8(run.dialog->GetCurrentDirectory())) == target);
+                TEST("... and the drag is over", !icon->IsDragging() && listing->GetIncomingDropFolder().empty());
+                PressEnter(run, "inside");
+                TEST("... so the file is saved there",
+                     Canonical(PathFromUtf8(*run.accepted).parent_path()) == target);
+            }
+
+            // Escape ends the drag, not the dialog.
+            run = ShowSave(folder, "untitled.png");
+            for (int frame = 0; frame < 3; ++frame) run.dialog->UpdateAndRender();
+            icon = dynamic_cast<UltraCanvasFileDragIcon*>(run.dialog->FindChildById("FileDialogFileIcon"));
+            listing = dynamic_cast<UltraCanvasFilerWidget*>(run.dialog->FindChildById("FileDialogListing"));
+            tree = dynamic_cast<UltraCanvasTreeView*>(run.dialog->FindChildById("FileDialogFolders"));
+            if (icon && listing) {
+                const std::string start = run.dialog->GetCurrentDirectory();
+                Point2Di at;
+                DragIconUntil(app, run.dialog, *icon, listing->GetBoundsInWindow(),
+                              [&]() { return !listing->GetIncomingDropFolder().empty(); }, at);
+                SendKey(app, run.dialog, UCKeys::Escape);
+                TEST("Escape ends the drag", !icon->IsDragging());
+                TEST("... and leaves the dialog open", run.dialog->IsWindowVisible() && run.accepted->empty());
+                SendMouse(app, run.dialog, UCEventType::MouseUp, at);
+                TEST("... and the release after it drops nothing", run.dialog->GetCurrentDirectory() == start);
+            }
+            // Dropped on a row of the folder tree: that folder.
+            if (icon && tree) {
+                const std::string start = run.dialog->GetCurrentDirectory();
+                Point2Di at;
+                const bool over = DragIconUntil(app, run.dialog, *icon, tree->GetBoundsInWindow(),
+                        [&]() { return tree->GetDropTargetNode() != nullptr; }, at);
+                TEST("Dragged over the folder tree, a folder row takes the drop", over);
+                SendMouse(app, run.dialog, UCEventType::MouseUp, at);
+                std::error_code dec;
+                const std::string now = run.dialog->GetCurrentDirectory();
+                TEST("Dropped on it, the dialog opens that folder",
+                     over && now != start && std::filesystem::is_directory(PathFromUtf8(now), dec));
+                TEST("... and the row is no longer highlighted", tree->GetDropTargetNode() == nullptr);
+            }
+            run.dialog->CloseDialog(DialogResult::Cancel);
+
+            // The Settings button: the type's settings, stored on OK.
+            run = ShowSave(folder, "untitled.jpg", 1);
+            for (int frame = 0; frame < 3; ++frame) run.dialog->UpdateAndRender();
+            settings = dynamic_cast<UltraCanvasButton*>(run.dialog->FindChildById("FileDialogSaveSettings"));
+            const size_t before = UltraCanvasDialogManager::GetActiveDialogs().size();
+            if (settings && settings->onClick) settings->onClick();
+            const auto open = UltraCanvasDialogManager::GetActiveDialogs();
+            auto top = open.size() > before ? open.back() : nullptr;
+            TEST("The Settings button opens the type's settings",
+                 top && top->GetDialogTitle() == "JPEG settings");
+            if (top) {
+                auto* quality = dynamic_cast<UltraCanvasSlider*>(top->FindChildById("SaveSetting_quality"));
+                auto* progressive = dynamic_cast<UltraCanvasCheckbox*>(top->FindChildById("SaveSetting_progressive"));
+                TEST("... one control per setting", quality && progressive);
+                if (!quality || !progressive)
+                    std::cerr << "      quality " << top->FindChildById("SaveSetting_quality")
+                              << ", progressive " << top->FindChildById("SaveSetting_progressive") << std::endl;
+                if (quality && progressive) {
+                    TEST("... showing the current values", std::lround(quality->GetValue()) == 85 &&
+                                                          !progressive->IsChecked());
+                    quality->SetValue(42);
+                    progressive->SetChecked(true);
+                    if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+                        for (int frame = 0; frame < 3; ++frame) top->UpdateAndRender();
+                        WritePpm(top.get(), static_cast<int>(top->GetWidth()),
+                                 static_cast<int>(top->GetHeight()),
+                                 std::string(shotDir) + "/save-settings.ppm");
+                    }
+                    top->ActivateButton(DialogButton::OK);
+                    const FileSaveSettings stored = UltraCanvasFileLoader::GetSaveSettings("jpg");
+                    TEST("OK stores them for every application",
+                         stored.GetInt("quality") == 42 && stored.GetBool("progressive"));
+                }
+            }
+            UltraCanvasFileLoader::ResetSaveSettings("jpg");
+            run.dialog->CloseDialog(DialogResult::Cancel);
+
+            // A caller whose writer does not read the settings turns it off.
+            run = ShowSave(folder, "untitled.png", 0, "",
+                           [](FileDialogConfig& c) { c.saveSettingsButton = false; });
+            TEST("saveSettingsButton off leaves the button out",
+                 run.dialog->FindChildById("FileDialogSaveSettings") == nullptr &&
+                 run.dialog->FindChildById("FileDialogFileIcon") != nullptr);
+            run.dialog->CloseDialog(DialogResult::Cancel);
+            TEST("An Open dialog has neither", dialog->FindChildById("FileDialogFileIcon") == nullptr &&
+                                               dialog->FindChildById("FileDialogSaveSettings") == nullptr);
         }
 
         run = ShowSave(folder, "holiday.jpg");

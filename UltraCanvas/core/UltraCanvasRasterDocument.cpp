@@ -8,13 +8,15 @@
 // place — they replace it with a new object — so unchanged layers are shared
 // between the snapshots and cost nothing. Attribute edits (name, opacity,
 // visibility, blend, lock) record just the attribute set.
-// Version: 1.1.0 - AddListener / RemoveListener: several observers of one document
+// Version: 1.2.0 - SaveToFile without options writes with the user's save
+//                 settings for the format (UltraCanvasFileLoader), once set
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasZipPackage.h"
 #include "DataFormats/UltraCanvasJSON.h"
+#include "UltraCanvasFileLoader.h"   // the user's save settings per format
 
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
@@ -871,6 +873,14 @@ bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
         // it is complete. A failure - no space left, a codec error, a
         // destination another program holds - therefore leaves the image the
         // user had, not the remains of the write.
+        // No options from the caller: the user's save settings for the
+        // format, once they have chosen any (the Save dialog's Settings
+        // button). Until then the writer keeps its own defaults.
+        UCImageSave::ImageExportOptions stored;
+        if (!options && UltraCanvasFileLoader::HasStoredSaveSettings(path) &&
+            UltraCanvasFileLoader::GetImageExportOptions(path, stored)) {
+            options = &stored;
+        }
         if (options) {
             const std::string err = ExportVImage(img, path, *options);
             if (!err.empty()) { error = err; return false; }

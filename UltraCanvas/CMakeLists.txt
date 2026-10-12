@@ -565,6 +565,12 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
+        # Per-format save settings (JPEG quality, PNG compression ...) kept
+        # for every application, the dialog that edits them, and the Save
+        # dialog's draggable file icon.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileSaveSettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileSaveSettingsDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDragIcon.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
         # "Is this file in use by another program" - the question behind

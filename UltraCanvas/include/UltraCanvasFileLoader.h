@@ -2,13 +2,16 @@
 // Facade for native file selection dialogs and typed file loaders (e.g. images).
 // Owns FileDialogOptions/FileLoadResult and delegates raw dialog calls to
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
-// Version: 1.1.0
-// Last Modified: 2026-09-26
+// Save settings (SAVE SETTINGS below): what each format's writer can be
+// told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasModalDialog.h"   // FileFilter, DialogResult, UltraCanvasWindowBase
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasFileSaveSettings.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -21,6 +24,7 @@ namespace UltraCanvas {
     class UCAudio;
     class UCRichDocument;
     namespace VectorStorage { class VectorDocument; }
+    namespace UCImageSave { struct ImageExportOptions; }
 
     struct FileDialogOptions {
         std::string title;
@@ -46,6 +50,11 @@ namespace UltraCanvas {
         // dialog, framework or native, applies it.
         std::string defaultExtension;
         bool registerAsRecent = true;          // opt-out for NotifyRecentFile
+        // Save: the framework dialog's Settings button beside the file name,
+        // which edits the chosen type's save settings (GetSaveSettings below;
+        // FileDialogConfig::saveSettingsButton). Turn it off when the file is
+        // written by a writer that does not read them.
+        bool saveSettingsButton = true;
         UltraCanvasWindowBase* parentWindow = nullptr;
 
         FileDialogOptions() = default;
@@ -67,6 +76,7 @@ namespace UltraCanvas {
         FileDialogOptions& SetHoverIconMenu(bool v)     { hoverIconMenu = v; return *this; }
         FileDialogOptions& SetDefaultExtension(const std::string& e) { defaultExtension = e; return *this; }
         FileDialogOptions& SetRegisterAsRecent(bool v)  { registerAsRecent = v; return *this; }
+        FileDialogOptions& SetSaveSettingsButton(bool v) { saveSettingsButton = v; return *this; }
         FileDialogOptions& SetParentWindow(UltraCanvasWindowBase* p) { parentWindow = p; return *this; }
     };
 
@@ -203,6 +213,56 @@ namespace UltraCanvas {
         static std::vector<MediaFormatInfo> GetSupportedFormats(MediaFormatCategory category);
         static std::vector<std::string> GetSupportedLoadExtensions(MediaFormatCategory category);
         static std::vector<std::string> GetSupportedSaveExtensions(MediaFormatCategory category);
+
+        // ===== SAVE SETTINGS =====
+        // What each format's writer can be told (JPEG quality, PNG
+        // compression, TIFF codec ...) and what the user chose, per format,
+        // shared by every application and remembered between runs - see
+        // UltraCanvasFileSaveSettings.h. `extensionOrPath` is "jpg", ".JPG",
+        // "photo.jpeg" or a whole path: whichever of the format's extensions
+        // it ends in.
+        //
+        // The formats: the bitmap formats the image writer takes options for
+        // are built in; a plugin or an application adds its own (or replaces
+        // a built-in one: same first extension) with RegisterSaveFormat.
+        static void RegisterSaveFormat(const FileSaveFormat& format);
+        static std::vector<FileSaveFormat> GetSaveFormats();
+        // The format `extensionOrPath` is saved as, when it has settings.
+        static bool FindSaveFormat(const std::string& extensionOrPath, FileSaveFormat& out);
+        static bool HasSaveSettings(const std::string& extensionOrPath);
+
+        // The values: every setting of the format, the user's where they set
+        // it and the default elsewhere. Empty (no format) for a type without
+        // settings.
+        static FileSaveSettings GetSaveSettings(const std::string& extensionOrPath);
+        // Whether the user has set any of the format's settings. Until then a
+        // writer that has defaults of its own keeps them.
+        static bool HasStoredSaveSettings(const std::string& extensionOrPath);
+        // Remembers `settings` for the format they name (FileSaveSettings::
+        // format, or any of its extensions): every value is normalized to
+        // what its setting can hold, and a key the format does not have is
+        // dropped. False when there is no such format or the file could not
+        // be written.
+        static bool SetSaveSettings(const FileSaveSettings& settings);
+        // Forgets what the user set for the format: back to its defaults.
+        static bool ResetSaveSettings(const std::string& extensionOrPath);
+
+        // A dialog with the format's settings - a checkbox, a slider or a
+        // list per setting - which stores them on OK. `onClosed` gets OK or
+        // Cancel. Does nothing but call `onClosed` with Cancel for a type
+        // without settings. The framework Save dialog's Settings button opens
+        // this for the type being saved.
+        static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
+                                           UltraCanvasWindowBase* parent = nullptr,
+                                           std::function<void(DialogResult)> onClosed = nullptr);
+
+        // The image writer's options (UCImageRaster::Save, ExportVImage) for
+        // `path`: its format from the extension, and that format's save
+        // settings. False when the image writer does not write that
+        // extension; `out` is then untouched. UCRasterDocument::SaveToFile
+        // uses this when the user has stored settings for the format.
+        static bool GetImageExportOptions(const std::string& path,
+                                          UCImageSave::ImageExportOptions& out);
     };
 
 } // namespace UltraCanvas

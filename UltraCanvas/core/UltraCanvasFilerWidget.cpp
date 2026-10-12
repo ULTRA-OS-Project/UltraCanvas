@@ -12510,15 +12510,7 @@ namespace UltraCanvas {
                 DrawFolderWithPreviews(ctx, rect, color, previews);
                 return;
             }
-            // Folder shape: a tab above the body.
-            double tabW = rect.width * 0.45, tabH = std::max(2.0, rect.height * 0.18);
-            ctx->SetFillPaint(color);
-            ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y, tabW, tabH * 2), 2);
-            Color body(std::min(255, color.r + 20), std::min(255, color.g + 20),
-                       std::min(255, color.b + 25), 255);
-            ctx->SetFillPaint(body);
-            ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y + tabH,
-                                              rect.width, rect.height - tabH), 2);
+            DrawTypeGlyph(ctx, e, rect);
             return;
         }
 
@@ -12533,6 +12525,24 @@ namespace UltraCanvas {
             return;
         }
 
+        DrawTypeGlyph(ctx, e, rect);
+    }
+
+    void UltraCanvasFilerWidget::DrawTypeGlyph(IRenderContext* ctx, const FilerEntry& e,
+                                               const Rect2Di& rect) {
+        const Color color = EntryColorOf(e);
+        if (e.isDirectory) {
+            // Folder shape: a tab above the body.
+            double tabW = rect.width * 0.45, tabH = std::max(2.0, rect.height * 0.18);
+            ctx->SetFillPaint(color);
+            ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y, tabW, tabH * 2), 2);
+            Color body(std::min(255, color.r + 20), std::min(255, color.g + 20),
+                       std::min(255, color.b + 25), 255);
+            ctx->SetFillPaint(body);
+            ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y + tabH,
+                                              rect.width, rect.height - tabH), 2);
+            return;
+        }
         // Generic file glyph: a colored "sheet" with the extension on it.
         ctx->SetFillPaint(Color(252, 252, 253, 255));
         ctx->FillRoundedRectangle(Rect2Dd(rect), 2);
@@ -12557,6 +12567,34 @@ namespace UltraCanvas {
             ctx->DrawText(ext, Point2Dd(rect.x + (rect.width - ts.width) / 2.0,
                                         rect.y + (rect.height - bandH - ts.height) / 2.0));
         }
+    }
+
+    void UltraCanvasFilerWidget::DrawTypeIcon(IRenderContext* ctx, const std::string& path,
+                                              bool isFolder, const Rect2Di& rect) {
+        if (!ctx || rect.width <= 2 || rect.height <= 2) return;
+        // An entry with nothing but a name: no file is read, so there is no
+        // thumbnail, content preview or folder preview to show - the type.
+        FilerEntry e;
+        e.path = path;
+        std::string name = path;
+        while (name.size() > 1 && (name.back() == '/' || name.back() == '\\')) name.pop_back();
+        const size_t slash = name.find_last_of("/\\");
+        e.name = slash == std::string::npos ? name : name.substr(slash + 1);
+        e.isDirectory = isFolder;
+        if (!isFolder) {
+            const size_t dot = e.name.find_last_of('.');
+            if (dot != std::string::npos && dot > 0 && dot + 1 < e.name.size()) {
+                e.extension = e.name.substr(dot + 1);
+                std::transform(e.extension.begin(), e.extension.end(), e.extension.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            }
+        }
+        ApplyEntryTypeInfo(e);
+        if (auto hostIcon = AcquireHostIcon(e, rect, ctx->GetDeviceScale())) {
+            ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
+            return;
+        }
+        DrawTypeGlyph(ctx, e, rect);
     }
 
     void UltraCanvasFilerWidget::DrawShortcutOverlay(IRenderContext* ctx,
