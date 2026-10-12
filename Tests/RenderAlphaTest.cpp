@@ -10,7 +10,7 @@
 // down at it.
 //
 // Draws into an offscreen surface and reads the pixels back; needs no display.
-// Version: 1.0.0
+// Version: 1.0.1
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -63,11 +63,15 @@ struct Canvas {
         return Color((px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF, 255);
     }
 
-    // The darkest grey level inside a rectangle (0 black .. 255 white).
+    // The darkest grey level inside a rectangle (0 black .. 255 white),
+    // clipped to the surface.
     int Darkest(int x0, int y0, int x1, int y1) const {
+        cairo_surface_t* s = cairo_get_target(cr);
+        x1 = std::min(x1, cairo_image_surface_get_width(s));
+        y1 = std::min(y1, cairo_image_surface_get_height(s));
         int darkest = 255;
-        for (int y = y0; y < y1; ++y)
-            for (int x = x0; x < x1; ++x) {
+        for (int y = std::max(y0, 0); y < y1; ++y)
+            for (int x = std::max(x0, 0); x < x1; ++x) {
                 const Color c = At(x, y);
                 darkest = std::min(darkest, (c.r + c.g + c.b) / 3);
             }
@@ -87,7 +91,7 @@ void Report(const char* what, int value) {
 
 int main() {
     std::cout << "RenderAlphaTest\n";
-    Canvas canvas(200, 120);
+    Canvas canvas(200, 220);
     if (!canvas.ctx || !canvas.cr) {
         std::cout << "SKIP: no offscreen render context\n";
         return 0;
@@ -141,21 +145,29 @@ int main() {
     Report("gradient at 0.5", gradient.r);
     Check(Near(gradient.r, 128), "a gradient fill is faded by SetAlpha");
 
-    // Text: full strength reaches black, a quarter never gets near it.
+    // Text: full strength reaches black, a quarter never gets near it. Each
+    // on a row of its own, read within the text's measured size: how wide
+    // "MM" is depends on the font the system has (74 px in DejaVu Sans Bold,
+    // 70 in Inter), and the edge of the strong line must not be read as part
+    // of the faded one.
     FontStyle font;
     font.fontSize = 28;
     font.fontWeight = FontWeight::Bold;
     ctx->SetFontStyle(font);
+    const Size2Di text = ctx->GetTextLineDimensions("MM");
+    const int strongTop = 90, fadedTop = strongTop + text.height + 10;
     ctx->SetTextPaint(Colors::Black);
-    ctx->DrawText("MM", Point2Dd(60, 50));
-    const int strong = canvas.Darkest(60, 50, 120, 95);
+    ctx->DrawText("MM", Point2Dd(10, strongTop));
+    const int strong = canvas.Darkest(10, strongTop, 10 + text.width, strongTop + text.height);
     ctx->PushState();
     ctx->SetAlpha(0.25);
     ctx->SetFontStyle(font);
     ctx->SetTextPaint(Colors::Black);
-    ctx->DrawText("MM", Point2Dd(130, 50));
+    ctx->DrawText("MM", Point2Dd(10, fadedTop));
     ctx->PopState();
-    const int faded = canvas.Darkest(130, 50, 199, 95);
+    const int faded = canvas.Darkest(10, fadedTop, 10 + text.width, fadedTop + text.height);
+    Report("text width", text.width);
+    Report("text height", text.height);
     Report("darkest text at 1.0", strong);
     Report("darkest text at 0.25", faded);
     Check(strong < 40, "text at full strength is black");
