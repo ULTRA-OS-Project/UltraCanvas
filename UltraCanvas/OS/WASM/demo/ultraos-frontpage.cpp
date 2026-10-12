@@ -492,6 +492,14 @@ int main(int argc, char* argv[]) {
     // against the width it really gets.
     auto page = CreateScrollableContainer("Page", 0, 0, 0, 0, true, false);
     page->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Pct(100));
+    {
+        // The page reflows to its width, so it never scrolls sideways: the
+        // vertical bar narrows the viewport by its track, and a horizontal
+        // bar would only ever show that track's worth of fabricated overflow.
+        ContainerStyle style = page->GetContainerStyle();
+        style.autoShowHorizontalScrollbar = false;
+        page->SetContainerStyle(style);
+    }
     page->SetBackgroundColor(kPaper);
     page->layout.SetDisplay(CSSLayout::DisplayType::Block);
     page->AddChild(BuildHeader());
