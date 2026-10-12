@@ -19,8 +19,9 @@ the tree on this date (`main` at 0.9.261); file references are to that tree.
 Everything said about browsers, search engines and payment providers is
 from their published behaviour as known to the author; what could not be
 checked from this environment is marked **[unverified]** rather than
-guessed. Nothing below was measured: the one measurement the decision
-hinges on, the size of a published page, is the first task of Phase 0.
+guessed. One thing was measured, on this date, by the `wasm-build.yml`
+workflow's new *Demo sizes* step: what a visitor downloads for the front
+page demo (§4.3). Time to first paint, and the leaner builds, are Phase 0.
 
 ---
 
@@ -46,7 +47,7 @@ is the evidence:
 
 | Decision | Reason |
 |---|---|
-| One pre-built renderer `.wasm` + content as data, not one `.wasm` per site (§4) | The Emscripten build compiles cairo, pango, glib, fontconfig, libvips and the fonts into the module. That is a download of many megabytes [unverified, Phase 0 measures it] and a cross-compile of minutes. Paying it once per framework release is fine; paying it on every "Publish" click, and making every visitor download a different copy per site, is not. WordPress separates theme code from content for the same reason. |
+| One pre-built renderer `.wasm` + content as data, not one `.wasm` per site (§4) | The Emscripten build compiles cairo, pango, glib, fontconfig, libvips and the fonts into the module. That is a download of 3.9 MB Brotli-compressed (11.2 MB raw) for the front page demo, measured on this date (§4.3), and a cross-compile of minutes. Paying it once per framework release is fine; paying it on every "Publish" click, and making every visitor download a different copy per site, is not. WordPress separates theme code from content for the same reason. |
 | The renderer is the ultraos.eu front page, generalised (§3.1) | `UltraCanvas/OS/WASM/demo/ultraos-frontpage.cpp` already is a website as UltraCanvas elements in a browser: navigation with popup menus, hero, card rows, forms, FAQ accordion, footer. It is hand-written C++ per page; UltraPress is the same thing driven by a page description. |
 | An HTML shadow of every page, emitted from the same content (§4.4) | Google, Bing, link previews, mail clients, screen readers and `curl` read HTML. A canvas is invisible to all of them. "SEO tracking" (feature 6) and the newsletter (feature 10) cannot exist without an HTML emitter, so the emitter is built anyway; using it as the no-WebAssembly fallback is free. |
 | Native UltraWeb output through the element ABI, as a second target (§4.5) | On ULTRA OS, a site should be a UltraWeb app: kilobytes, the host's theme, fonts and accessibility, no cairo in the download. The content model and block renderer are the same; only the element factory differs. It waits on UltraWeb's generated C++ proxies, which that plan lists as next. |
@@ -229,7 +230,7 @@ the line the brief draws, and the port draws it in the same place today.
 
 | Cost | What it means for a website | Answer |
 |---|---|---|
-| **Download size** | The module carries cairo, pango, glib, fontconfig, harfbuzz, freetype, libvips and the bundled Ubuntu fonts. No figure exists in the repository yet: `wasm-build.yml` now writes each demo's raw, gzip and Brotli sizes into its job summary (its *Demo sizes* step), but the workflow is dispatched by hand and has not run since. Comparable Emscripten builds of libvips alone run to several MB compressed [unverified]. | Phase 0 dispatches `wasm-build.yml` and reads the table, then measures time to first paint on a mid-range laptop and a phone. A build without libvips (pictures decoded by the browser, handed in as pixels through `WASMBrowser::LoadImage`) and with a subset of the fonts is the first thing to try. The renderer is served with a one-year cache and a content hash in its name, so it is paid once per release. |
+| **Download size** | The module carries cairo, pango, glib, fontconfig, harfbuzz, freetype, libvips and the bundled Ubuntu fonts. Measured on 2026-10-12 by `wasm-build.yml`'s *Demo sizes* step (emsdk 6.0.11, `-O2`, with threads), the ultraos.eu front page demo is: `ultraos-frontpage.wasm` 6.52 MB raw, 2.59 MB gzip, 2.05 MB Brotli; `.data` (the Ubuntu fonts and three pictures) 4.57 MB raw, 2.46 MB gzip, 1.79 MB Brotli; the loader `.js` 0.15 MB raw, 0.03 MB Brotli. **11.24 MB raw, 3.9 MB over Brotli, 5.1 MB over gzip.** The minimal `wasm-demo` is 10.01 MB raw (5.69 MB of module), so about 90% of the front page's weight is the framework and its libraries, not the page. | Once per release, cached by content hash, 3.9 MB is a large picture, not a disqualifying download; on a slow mobile connection it is seconds before the first paint, which the HTML shadow covers. Phase 0 tries the levers: a build without libvips (pictures decoded by the browser through `WASMBrowser::LoadImage`), a font subset instead of the full Ubuntu family (the `.data` is 40% of the total), `-Os`, and `wasm-opt`; and measures time to first paint on a mid-range laptop and a phone. A build without libvips (pictures decoded by the browser, handed in as pixels through `WASMBrowser::LoadImage`) and with a subset of the fonts is the first thing to try. The renderer is served with a one-year cache and a content hash in its name, so it is paid once per release. |
 | **Cross-origin isolation** | Threads need `SharedArrayBuffer`, which needs `COOP: same-origin` and `COEP: require-corp`. Under `require-corp` the page cannot embed a cross-origin resource that does not opt in — a payment provider's iframe, a YouTube embed, a map. | Build the renderer **single-threaded** if the framework allows it (the core passes `-pthread` PUBLIC; what inside the framework needs a worker on a website is the question Phase 0 answers). If it does not, keep threads and use hosted checkout *redirects* instead of embedded widgets (§7.5), and no third-party embeds. Either way, a static host that cannot set headers (many cannot) is served the single-threaded build or nothing. |
 | **Search engines, previews, accessibility** | A canvas has no text. Google indexes nothing, a shared link shows no title and picture, a screen reader announces "canvas", the browser's find-in-page and translate do nothing, printing prints a bitmap. | The HTML shadow, §4.4. |
 | **Navigation** | One module shows many pages, so the URL must change on a click and the back button must work, or the site is one URL. | Done: `WASMURL::PushUrl` / `ReplaceUrl` and `SetOnNavigate` (`popstate`) in `UltraCanvasWASMSupport.h`. The renderer reads `GetPath()` on start and on every navigation callback and shows that page. |
@@ -725,10 +726,10 @@ produces that model.
 
 ## 9. Phases
 
-**Phase 0 — measure, decide (short).** Build the ultraos.eu demo in
-`wasm-build.yml` and record: the renderer's size raw and compressed, with
-and without libvips and with a font subset; time to first paint on a laptop
-and a phone; whether a single-threaded build links and runs; Firefox and
+**Phase 0 — measure, decide (short).** The baseline is recorded (§4.3:
+11.24 MB raw, 3.9 MB Brotli for the front page demo). Build the demo
+without libvips and with a font subset, and record those; time to first
+paint on a laptop and a phone; whether a single-threaded build links and runs; Firefox and
 Safari; whether an Emscripten side module loads. (The History API,
 `PushUrl` and `SetOnNavigate`, is already in `UltraCanvasWASMSupport.h`.)
 Decide the HTML shadow with the user (§11, question 1). Deliverable: the numbers in this document's §4.3,
@@ -779,7 +780,7 @@ system is only worth building for a product that exists.
 
 | Risk | Mitigation |
 |---|---|
-| The renderer is too big or too slow for a public website (the unmeasured number) | Phase 0 measures before anything is built; the no-libvips and font-subset builds are the first levers; the shadow page paints text at once; caching by content hash means one download per release. If the number is unacceptable, the fallback is C-first: UltraWeb-native on ULTRA OS, the shadow on the open web, until the port is leaner. |
+| The renderer is too big or too slow for a public website | Measured: 3.9 MB Brotli for the front page demo (§4.3); the no-libvips and font-subset builds are the first levers; the shadow page paints text at once; caching by content hash means one download per release. If the number is unacceptable, the fallback is C-first: UltraWeb-native on ULTRA OS, the shadow on the open web, until the port is leaner. |
 | Threads force isolation headers the site cannot set, or block payment and embed widgets | A single-threaded renderer build; hosted checkout by redirect; no cross-origin embeds in v1. |
 | A canvas site is invisible to crawlers and assistive technology | The shadow (§4.4); a DOM mirror later. Decided with the user before Phase 1. |
 | No HTTP server in the framework; writing one is security-sensitive | A deliberately small HTTP/1.1 server behind a reverse proxy that terminates TLS; body and header limits; fuzzing of the request parser as the HTMLReader is fuzzed; no TLS termination in v1. |
@@ -838,7 +839,8 @@ renderer a release artefact, and the editor the renderer itself. The
 output is WebAssembly in the sense the brief means: no page content,
 layout, styling or behaviour is HTML, CSS or JavaScript. One plain HTML
 shadow per page is recommended so that search engines, mail clients and
-screen readers still see the site. Phase 0 measures the one number this
-rests on, the size of the renderer; Phase 1 ships a static website builder
+screen readers still see the site. The one number this rests on is measured:
+the front page demo is 3.9 MB Brotli-compressed, once per release, and
+Phase 0 tries the levers that shrink it; Phase 1 ships a static website builder
 that migrates ultraos.eu; Phases 2 and 3 add the server and the shop;
 Phase 4 the plugins and the native UltraWeb output.

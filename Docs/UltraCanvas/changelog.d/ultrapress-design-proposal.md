@@ -26,7 +26,10 @@
   step writes each demo's `.wasm`, `.js`, `.data` and worker file into the
   job summary, raw, gzip-compressed and Brotli-compressed, the way the
   packaging jobs report the desktop package sizes. Measurement only; it
-  never fails the job.
+  never fails the job. First run (emsdk 6.0.11): the ultraos.eu front page
+  demo is 11.24 MB raw and 3.9 MB over Brotli, 6.52 MB of it the module
+  and 4.57 MB the fonts and pictures; the minimal demo 10.01 MB raw. The
+  proposal's §4.3 carries the table.
 - `Masterfile_modules.md` §6 said UltraDatabase was "Concept / design only";
   it has had the SQLite core, migrations and the PostgreSQL driver since
   UltraFIBU's multi-user mode was built on them. The registry line now says
