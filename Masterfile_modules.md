@@ -515,6 +515,18 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
 
+- **UltraCanvasInstanceLock** (`UltraCanvasInstanceLock.h`) — one running
+  copy of an application per user. `InstanceLock::Acquire(path)` answers
+  `Acquired`, `HeldElsewhere` (another copy runs), `Failed` or `Unsupported`;
+  the operating system drops the lock when the process ends, so a crash never
+  leaves a stale one. Backends: `OS/Linux/UltraCanvasLinuxInstanceLock.cpp`
+  and `OS/MacOS/UltraCanvasMacOSInstanceLock.cpp` (`flock`),
+  `OS/MSWindows/UltraCanvasWindowsInstanceLock.cpp` (`LockFileEx`); Android and
+  WebAssembly get the `Unsupported` fallback in
+  `core/UltraCanvasInstanceLock.cpp` (`ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK`
+  unset). `Tests/InstanceLockTest.cpp`. Used by UltraMail. See
+  `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
+
 - **UltraCanvasArchiveRun** (`UltraCanvasArchiveRun.h`) — "Extract and
   run": what it takes to start a program that is inside an archive, whose
   virtual path no system can execute. The run folders and the rule for which

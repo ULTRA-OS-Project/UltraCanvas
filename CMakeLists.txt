@@ -382,6 +382,14 @@ if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
 endif()
 
+# Which platforms can hold a single-instance lock (UltraCanvasInstanceLock:
+# flock() on Linux, the BSDs and macOS, LockFileEx on Windows). Same reason as
+# above: the core file compiles an "Unsupported" fallback unless this is set,
+# and the library and Tests/ must agree about which side defines the backend.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK ON)
+endif()
+
 # Which platforms have a trash UltraCanvasTrash can move files into: the
 # Recycle Bin (Windows), the Finder's Trash (macOS) and the freedesktop.org
 # trash (Linux, the BSDs). Android and WebAssembly have none; there the core

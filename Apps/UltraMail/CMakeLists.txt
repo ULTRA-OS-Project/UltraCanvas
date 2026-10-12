@@ -191,6 +191,7 @@ set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailServerSettingsDialog.cpp
     ui/UltraMailSettingsDialog.cpp
     ui/UltraMailSignatureDialog.cpp
+    ui/UltraMailSingleInstance.cpp
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})
