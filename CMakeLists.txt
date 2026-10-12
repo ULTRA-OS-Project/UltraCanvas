@@ -402,6 +402,19 @@ endif()
 
 add_subdirectory(UltraCanvas)
 
+# ===== WEBASSEMBLY DEMOS, NATIVELY =====
+# The browser validation apps under UltraCanvas/OS/WASM/demo/ (wasm-demo and
+# the ultraos.eu front page) are ordinary UltraCanvas applications: built here
+# they run on the desktop, so a page can be looked at before the hour-long
+# wasm pipeline (wasm-build.yml) runs. Off by default; emcmake builds them
+# from their own directory instead (see UltraCanvas/OS/WASM/README.md).
+option(BUILD_WASM_DEMOS "Build the WebAssembly demo apps as desktop applications" OFF)
+if(BUILD_WASM_DEMOS AND NOT EMSCRIPTEN)
+    message(STATUS "")
+    message(STATUS "── Building WebAssembly demos (native) ──")
+    add_subdirectory(UltraCanvas/OS/WASM/demo)
+endif()
+
 # ===== BUILD ULTRAAI MODULE =====
 # Sibling module — capability interfaces + registry + adapters. Built on
 # its own switch so libraries and apps can link UltraAI_Core without

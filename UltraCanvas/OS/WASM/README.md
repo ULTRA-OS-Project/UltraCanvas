@@ -27,7 +27,7 @@ OS/WASM/
 │                                      # import/export, image/font loading, URL, ...)
 ├── build-wasm-sysroot.sh              # Cross-compiles the dependency stack
 ├── patches/                           # wasm fixes applied to the deps by the script
-└── demo/                              # Minimal browser validation app
+└── demo/                              # Browser validation apps: wasm-demo, ultraos-frontpage
 ```
 
 Every `OS/<Platform>/` directory must define the per-platform symbols the core
@@ -142,12 +142,31 @@ int main(int, char* argv[]) {
 Window objects are safe either way — the application's window registry holds
 owning references.
 
-## Validating in a headless browser
+## Validating in a browser
 
-`demo/` contains the minimal app used to validate the backend: build it with
-`emcmake cmake` as above, serve `build/` with `serve.py`, and open
-`wasm-demo.html`. The window canvas (`<canvas id="ultracanvas-window-N">`)
-should show pango-rendered text and a clickable button.
+`demo/` contains two apps used to validate the backend. Build them with
+`emcmake cmake` as above, serve `build/` with `serve.py`, and open:
+
+- `wasm-demo.html` - the minimal app: the window canvas
+  (`<canvas id="ultracanvas-window-N">`) shows pango-rendered text and a
+  clickable button.
+- `ultraos-frontpage.html` - the https://ultraos.eu front page built out of
+  UltraCanvas elements (`demo/ultraos-frontpage.cpp`): a header with the
+  navigation, a hero, card rows, the status timeline, a newsletter form and
+  a footer, in a scrolling page that fills the browser viewport. It
+  exercises the layout engine (Block for the stacked sections, Flex for the
+  rows), wrapped text, hover states, an image, a text input, wheel
+  scrolling and `OpenURL()` (every link opens the real page in a new tab).
+
+The manually dispatched `wasm-build.yml` workflow builds both and uploads
+them, with `serve.py`, as the `wasm-demo` artifact: unzip it into a folder,
+run `python3 serve.py 8080` there and open either page.
+
+The same two sources build as desktop applications - configure the
+repository root with `-DBUILD_WASM_DEMOS=ON` and run `build/ultraos-frontpage`
+or `build/wasm-demo` - so a page can be checked on the desktop before the
+wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
+`Maximize()` that fills the viewport.
 
 ## Known limitations
 
