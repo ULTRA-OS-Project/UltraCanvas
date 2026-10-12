@@ -11,8 +11,13 @@
   per row to take it off, *Clear* for all; the clip's context menu offers
   *Remove the effects*. The timeline's *Fx* badge marks a clip with effects.
   The viewer and the export render them as before.
-- Not yet: the mapping of the design's tokens onto the framework's theme
-  roles (the app colours its elements from the tokens directly).
+- **The theme roles.** The design's palette is now the framework's theme
+  (`UltraCanvasTheme` 1.0.0, `ThemeFor` in `UltraVideoTheme.h`): the
+  surfaces, lines, ink, accent, focus and danger tokens fill the shared
+  roles, the clip kinds, waveform, transition badge, guides and playhead
+  are the timeline's own roles, and the timeline and the timecode field
+  take their colours from it through `FromTheme`. The window sets the
+  theme when the palette switches and re-applies its panels as before.
 
 #### 2026-10-11 *0.1.0*
 - **The first release: the editor's skeleton.** `Apps/UltraVideo`, on

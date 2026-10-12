@@ -617,6 +617,7 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
 
 void UltraVideoWindow::ApplyPalette() {
     const Palette& p = *palette_;
+    UltraCanvasTheme::SetCurrent(ThemeFor(p));   // the framework's theme is the palette; the elements below are re-applied
     window_->SetBackgroundColor(ToColor(p.Bg000));
     appBar_->SetBackgroundColor(ToColor(p.Bg100));
     appBar_->SetBorderBottom(1, ToColor(p.Line));

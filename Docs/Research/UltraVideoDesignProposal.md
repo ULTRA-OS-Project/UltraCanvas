@@ -77,7 +77,7 @@ evidence:
 | The viewer scrubs the *rendered* frame through a new `VideoFX_RenderFrame` (§5.5, §8.2) | Today the engine can pull a frame from a *source* file, not the output frame at a timeline time with effects, overlays and transitions applied. A draft export played in the player is the fallback, not the design: it is seconds stale after every edit. |
 | The application saves a `.ultravideo` JSON file that embeds the VideoFX project (§5.6, §9.2) | `.vfxproj` holds exactly what the engine renders and nothing else; `VideoFX_SaveProject` writes every field, so app keys would be dropped on a round trip. The app's file holds the lanes, markers, media bin, zoom and the embedded `.vfxproj` text from `VideoFX_ProjectToJson`, so `videofx render` can still render what the app saved. |
 | A "story" mode in front of the timeline (§5.9, §6.11) | The brief is *impressive videos with little effort*. The engine's automatic features — photos with pan and zoom that keep faces in shot, slideshows cut on the beat, music that dips under speech — produce that from a folder and a song in one call (`VideoFX_CreateSlideshow`). The timeline is for the user who then wants to change something. |
-| The design's tokens map onto the framework theme; nothing is hard-coded in the element (§5.8) | The brand book says so itself. The framework themes every element; a second colour system in one app would break the dark theme and the DPI scaling the rest of the suite gets for free. |
+| The design's tokens map onto the framework theme; nothing is hard-coded in the element (§5.8) | The brand book says so itself. The framework had no theme when this was written - every element carried its own style struct - so §14 adds one (`UltraCanvasTheme`): the tokens fill its roles, the element reads them, and a second app gets a dark timeline by switching the theme. |
 | The overlay video track is in the model from day one and disabled in the app until the engine renders it (§5.3, §8.3) | Picture-in-picture is planned, not built, in VideoFX. Leaving the lane out of the element's model would cost an API change later; leaving it visible would promise what the export cannot do. |
 
 ---
@@ -1046,6 +1046,16 @@ that writing it showed:
   menu, a bin tile's action or a drop; the inspector's place, size, opacity
   and fades. A picture on the lane becomes an image overlay: a logo. The
   lane is no longer hidden; the table of §5.3 names the mapping.
+- **The theme roles** (§5.8): the framework had no theme - each element a
+  style struct with its own light and dark presets - so `UltraCanvasTheme`
+  1.0.0 adds one: the shared roles (surfaces, lines, ink, accent, focus,
+  danger), two presets, a current theme, and named element roles for the
+  colours an element has beyond the shared ones. `VideoTimelineStyle` and
+  `TimecodeFieldStyle` gained `FromTheme`; the app's `ThemeFor` maps the 41
+  token roles onto it (the timeline's clip, guide and playhead tokens as
+  `video-timeline.<role>`) and the window sets it as the current theme
+  when the palette switches. The other elements keep their own presets
+  until each gains a `FromTheme`, which is the framework's work from here.
 - **Effect presets** (§6.2, §6.4; app 0.2.0): `UltraVideoPresets` holds
   ten presets as lists of engine effects - *Warm film* is the table's
   temperature, saturation and vignette - and `ApplyEffectPreset` puts one

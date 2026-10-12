@@ -1088,6 +1088,20 @@ add_test(NAME VideoTimelineModelTest COMMAND VideoTimelineModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VideoTimelineModelTest")
 
+# ===== THEME TEST =====
+# UltraCanvasTheme without a display: the presets, element roles, the
+# current theme, and the timeline's and the timecode field's FromTheme.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraCanvasThemeTest...")
+    add_executable(UltraCanvasThemeTest ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasThemeTest.cpp)
+    target_include_directories(UltraCanvasThemeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_link_libraries(UltraCanvasThemeTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(UltraCanvasThemeTest PRIVATE cxx_std_20)
+    set_target_properties(UltraCanvasThemeTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME UltraCanvasThemeTest COMMAND UltraCanvasThemeTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraCanvasThemeTest")
+endif()
+
 # ===== VIDEO TIMELINE ELEMENT TEST =====
 # UltraCanvasVideoTimeline in a real window: geometry, hit testing and the
 # edits that mouse and key events turn into reported changes (trim with

@@ -19,6 +19,7 @@
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
@@ -105,6 +106,14 @@ struct VideoTimelineStyle {
 
     static VideoTimelineStyle LightPalette();
     static VideoTimelineStyle DarkPalette();
+    // The colours from a theme: the shared roles for the surfaces, lines,
+    // ink, accent, focus and danger, and the element's own roles - named
+    // "video-timeline.<role>", one per colour below from `playhead` on
+    // ("video-timeline.playhead", "video-timeline.clip-video-edge",
+    // "video-timeline.beat" ...) - where the theme names them, else the
+    // light or dark palette's. Sizes and fonts are the defaults.
+    static VideoTimelineStyle FromTheme(const UltraCanvasTheme& theme);
+    static VideoTimelineStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // A thumbnail provider: `frames` pictures spread over seconds `in`..`out` of

@@ -1,11 +1,14 @@
 // Apps/UltraVideo/UltraVideoTheme.h
 // The design's tokens (UltraVideoTokens.h) applied to framework elements:
 // colours as UltraCanvas::Color, the ghost and primary buttons of the brand
-// book, the toggle look of an active tool, and the timeline's and the
-// timecode field's styles filled from a palette. Everything the window
-// colours goes through here, so switching the palette is one call per panel.
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// book, the toggle look of an active tool, and the palette as a framework
+// theme (ThemeFor) - the shared roles from the surfaces, ink, accent, focus
+// and danger tokens, the timeline's own roles from the clip, guide and
+// playhead tokens - which the timeline and the timecode field read through
+// their FromTheme. Everything the window colours goes through here, so
+// switching the palette is one call per panel.
+// Version: 0.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -14,6 +17,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasTimecodeField.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasVideoTimeline.h"
@@ -110,57 +114,69 @@ inline void SetToggleLook(UltraCanvas::UltraCanvasButton& button, bool on, const
     button.SetStyle(s);
 }
 
+// The palette as the framework theme (proposal §5.8): the surfaces, lines,
+// ink, accent, focus and danger tokens fill the shared roles every themed
+// element reads; the clip kinds, waveform, transition badge, guides and
+// playhead are the timeline's own roles, named as its FromTheme reads them.
+// The window sets it as the current theme and re-applies its elements.
+inline UltraCanvas::UltraCanvasTheme ThemeFor(const Palette& p) {
+    UltraCanvas::UltraCanvasTheme t;
+    t.name = &p == &Tokens::Dark ? "UltraVideo dark" : "UltraVideo light";
+    t.dark = &p == &Tokens::Dark;
+    UltraCanvas::ThemeRoles& r = t.roles;
+    r.ground = ToColor(p.Bg000);
+    r.panel = ToColor(p.Bg100);
+    r.well = ToColor(p.Bg200);
+    r.raised = ToColor(p.Bg300);
+    r.hover = ToColor(p.Bg400);
+    r.pressed = ToColor(p.Bg500);
+    r.line = ToColor(p.Line);
+    r.lineStrong = ToColor(p.LineStrong);
+    r.ink = ToColor(p.Ink);
+    r.inkMuted = ToColor(p.InkMuted);
+    r.inkFaint = ToColor(p.InkFaint);
+    r.accent = ToColor(p.Accent);
+    r.accentHover = ToColor(p.AccentHover);
+    r.accentSoft = ToColor(p.AccentSoft);
+    r.onAccent = ToColor(p.OnAccent);
+    r.focus = ToColor(p.Focus);
+    r.danger = ToColor(p.Danger);
+    t.SetRole("video-timeline.playhead", ToColor(p.Playhead));
+    t.SetRole("video-timeline.clip-video", ToColor(p.ClipVideo));
+    t.SetRole("video-timeline.clip-video-edge", ToColor(p.ClipVideoEdge));
+    t.SetRole("video-timeline.clip-image", ToColor(p.ClipImage));
+    t.SetRole("video-timeline.clip-image-edge", ToColor(p.ClipImageEdge));
+    t.SetRole("video-timeline.clip-card", ToColor(p.ClipCard));
+    t.SetRole("video-timeline.clip-card-edge", ToColor(p.ClipCardEdge));
+    t.SetRole("video-timeline.clip-title", ToColor(p.ClipTitle));
+    t.SetRole("video-timeline.clip-title-edge", ToColor(p.ClipTitleEdge));
+    t.SetRole("video-timeline.clip-audio", ToColor(p.ClipAudio));
+    t.SetRole("video-timeline.clip-audio-edge", ToColor(p.ClipAudioEdge));
+    t.SetRole("video-timeline.waveform", ToColor(p.Waveform));
+    t.SetRole("video-timeline.transition-fill", ToColor(p.TransitionFill));
+    t.SetRole("video-timeline.on-transition", ToColor(p.OnTransition));
+    t.SetRole("video-timeline.beat", ToColor(p.Beat));
+    t.SetRole("video-timeline.trim-overflow", ToColor(p.TrimOverflow));
+    t.SetRole("video-timeline.drop-soft", ToColor(p.DropSoft));
+    t.SetRole("video-timeline.range-fill", ToColor(p.RangeFill));
+    t.SetRole("video-timeline.muted-hatch", ToColor(p.MutedHatch));
+    t.SetRole("video-timeline.scrollbar", ToColor(p.LineStrong));
+    return t;
+}
+
+// The timeline's and the timecode field's styles: the theme's colours, the
+// design's type sizes
 inline UltraCanvas::VideoTimelineStyle TimelineStyleFor(const Palette& p) {
-    UltraCanvas::VideoTimelineStyle s;
-    s.background = ToColor(p.Bg100);
-    s.lane = ToColor(p.Bg200);
-    s.laneAlternate = ToColor(p.Bg200);
-    s.header = ToColor(p.Bg300);
-    s.headerSelected = ToColor(p.AccentSoft);
-    s.line = ToColor(p.Line);
-    s.lineStrong = ToColor(p.LineStrong);
-    s.ink = ToColor(p.Ink);
-    s.inkMuted = ToColor(p.InkMuted);
-    s.inkFaint = ToColor(p.InkFaint);
-    s.accent = ToColor(p.Accent);
-    s.accentSoft = ToColor(p.AccentSoft);
-    s.onAccent = ToColor(p.OnAccent);
-    s.playhead = ToColor(p.Playhead);
-    s.focus = ToColor(p.Focus);
-    s.danger = ToColor(p.Danger);
-    s.clipVideo = ToColor(p.ClipVideo);
-    s.clipVideoEdge = ToColor(p.ClipVideoEdge);
-    s.clipImage = ToColor(p.ClipImage);
-    s.clipImageEdge = ToColor(p.ClipImageEdge);
-    s.clipCard = ToColor(p.ClipCard);
-    s.clipCardEdge = ToColor(p.ClipCardEdge);
-    s.clipTitle = ToColor(p.ClipTitle);
-    s.clipTitleEdge = ToColor(p.ClipTitleEdge);
-    s.clipAudio = ToColor(p.ClipAudio);
-    s.clipAudioEdge = ToColor(p.ClipAudioEdge);
-    s.waveform = ToColor(p.Waveform);
-    s.transitionFill = ToColor(p.TransitionFill);
-    s.onTransition = ToColor(p.OnTransition);
-    s.beat = ToColor(p.Beat);
-    s.trimOverflow = ToColor(p.TrimOverflow);
-    s.dropSoft = ToColor(p.DropSoft);
-    s.rangeFill = ToColor(p.RangeFill);
-    s.mutedHatch = ToColor(p.MutedHatch);
-    s.scrollbar = ToColor(p.LineStrong);
+    UltraCanvas::VideoTimelineStyle s = UltraCanvas::VideoTimelineStyle::FromTheme(ThemeFor(p));
+    s.labelSize = Tokens::Label.size;
+    s.captionSize = Tokens::Caption.size;
+    s.rulerSize = Tokens::TimecodeSm.size;
+    s.readoutSize = Tokens::Timecode.size;
     return s;
 }
 
 inline UltraCanvas::TimecodeFieldStyle TimecodeStyleFor(const Palette& p) {
-    UltraCanvas::TimecodeFieldStyle s;
-    s.background = ToColor(p.Bg200);
-    s.border = ToColor(p.LineStrong);
-    s.borderFocused = ToColor(p.Focus);
-    s.borderInvalid = ToColor(p.Danger);
-    s.ink = ToColor(p.Ink);
-    s.inkFaint = ToColor(p.InkFaint);
-    s.selection = ToColor(p.Accent);
-    s.onSelection = ToColor(p.OnAccent);
-    s.sign = ToColor(p.Accent);
+    UltraCanvas::TimecodeFieldStyle s = UltraCanvas::TimecodeFieldStyle::FromTheme(ThemeFor(p));
     s.fontSize = Tokens::Timecode.size;
     s.readoutSize = Tokens::TimecodeLg.size;
     return s;

@@ -209,6 +209,5 @@ the engine).
 
 ## Not yet
 
-The mapping of the design's tokens onto the framework's theme roles (the
-app colours its elements from the tokens directly). The proposal's roadmap
-(§11) has the order.
+Nothing of the proposal's list for the app. The free audio lanes, keyframes
+and proxy media wait for the engine (roadmap §11, phases 5 and 6).
