@@ -561,7 +561,7 @@ int main() {
 
     std::printf("\n-- proxies --\n");
     {
-        // a 640x360 clip: taller than a 180-line proxy; the 320x240 one is not
+        // a 640x360 clip: taller than a 240-line proxy; the 320x240 one is not
         const std::string big = TempPath("media/big.mkv");
         VideoFXExportSettings s;
         s.container = VideoFXContainer::MKV;
@@ -570,7 +570,7 @@ int main() {
         s.width = 640; s.height = 360; s.frameRate = 25.0;
         CHECK(VideoFX_Export({VideoFXSegment::TestPattern(2.0)}, big, s) == VideoFXResult::Ok, "a 640x360 clip");
         VideoFXProxySettings ps;
-        ps.height = 180;
+        ps.height = 240;
         ps.cacheDirectory = TempPath("proxies");
         std::vector<std::pair<std::string, ProxyMaker::State>> done;
         auto waitFor = [&](ProxyMaker& m, size_t count) {
