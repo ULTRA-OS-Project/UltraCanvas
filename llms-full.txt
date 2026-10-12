@@ -32575,13 +32575,20 @@ The keys:
 | What | Key | Why |
 |---|---|---|
 | a directory | `dir` | every folder is one icon |
-| a file that carries its own icon | `file:<path>` | not a type at all — two programs must never share an icon |
 | a name with no extension | `name:<lowercased name>` | the freedesktop database matches `makefile` and `README` by name |
 | everything else | `ext:<suffix chain>` | `archive.tar.gz` keys as `tar.gz`, not `gz` — a tarball and a gzip file are different types and are drawn differently |
 
 The suffix chain runs from the **first** dot, which is the finest distinction
 the type databases make. A leading dot is part of the name (`.bashrc` is a
 name, not a `bashrc` file).
+
+A program, a shortcut or a bundle keys by its extension like everything else.
+The icon such a file carries of its own is `UltraCanvasNativeFileIcons`'s
+answer, read out of the file; what *this* module answers for it is the host's
+icon for `.exe` or `.lnk`, resolved from the name alone on every backend, and
+so the same for every file of the kind. (Until October 2026 those were keyed
+per file, which made a folder of ninety DLLs hold ninety copies of one
+picture.)
 
 ## The three backends
 

@@ -5,11 +5,10 @@
 // OS/Linux/UltraCanvasLinuxHostFileIcons.cpp (freedesktop icon themes),
 // OS/MSWindows/UltraCanvasWindowsHostFileIcons.cpp (the shell's system image
 // list) and OS/MacOS/UltraCanvasMacOSHostFileIcons.mm (NSWorkspace).
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+// Version: 1.1.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraCanvasHostFileIcons.h"
-#include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasUtils.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
@@ -34,12 +33,16 @@ namespace UltraCanvas {
         // slot. A folder the host gave an icon of its own never gets here:
         // that is the caller's choice and wins before the type is asked.
         if (isDirectory) return "dir";
-        // A file that carries its own icon is not a type at all — a program
-        // is drawn as itself. Those belong to UltraCanvasNativeFileIcons; the
-        // key is per file so that a caller which does route them here (a
-        // build where the native module found nothing, say) cannot hand every
-        // ".exe" in the folder the icon of the first one.
-        if (NativeFileIconAvailable(path)) return "file:" + path;
+        // A program, a shortcut or a bundle is drawn as itself - but that
+        // icon is read out of the file by UltraCanvasNativeFileIcons, and is
+        // never what THIS module answers: every backend resolves the host's
+        // icon from the name alone (the shell is asked with
+        // SHGFI_USEFILEATTRIBUTES, the desktops by MIME type or UTType), so
+        // two ".exe" files get the same answer here whatever either carries.
+        // They therefore key by type like everything else. Until October 2026
+        // they were keyed per file, which made a ".dll" the one type that
+        // cost a slot per file: a maximised window of ninety of them held
+        // ninety copies of one picture, three times the whole budget.
 
         std::error_code ec;
         std::string name = PathToUtf8(PathFromUtf8(path).filename());

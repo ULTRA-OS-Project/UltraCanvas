@@ -22,8 +22,8 @@
 // first start, both choices across a restart, and the files earlier releases
 // left behind - every one of which says "simple" under the old key, chosen or
 // not, and must take the new default rather than keep the old one forever.
-// Version: 1.1.0
-// Last Modified: 2026-10-06
+// Version: 1.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
@@ -235,12 +235,19 @@ int main() {
     Check(FileKey("/a/.bashrc") != FileKey("/a/config.bashrc"),
           "a leading dot is part of the name, not a suffix");
 
-    // A file that carries its own icon is not a type at all - two programs
-    // must never share a key, or a folder of them would draw one icon.
-    Check(FileKey("/a/first.exe") != FileKey("/a/second.exe"),
-          "programs key per file, not per extension");
-    Check(FileKey("/a/link.lnk") != FileKey("/a/other.lnk"),
-          "shortcuts key per file, not per extension");
+    // A program's own icon is the native module's answer; what the host
+    // says for ".exe" is per type like anything else, so a folder of ninety
+    // DLLs asks once and holds one picture - not ninety, which was three
+    // times the cache's budget and kept a maximised window re-resolving
+    // them for as long as it was open.
+    Check(FileKey("/a/first.exe") == FileKey("/a/second.exe"),
+          "programs key per extension, like every other type");
+    Check(FileKey("/a/libaom.dll") == FileKey("/b/libcurl-4.dll"),
+          "libraries key per extension, like every other type");
+    Check(FileKey("/a/link.lnk") == FileKey("/a/other.lnk"),
+          "shortcuts key per extension, like every other type");
+    Check(FileKey("/a/first.exe") != FileKey("/a/first.dll"),
+          "a program and a library key differently");
 
     std::cout << "\n-- asking the host --\n";
     // Available or not, a lookup answers rather than throws, and an answer of

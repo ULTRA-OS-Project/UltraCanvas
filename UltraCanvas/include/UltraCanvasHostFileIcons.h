@@ -33,8 +33,8 @@
 // system image list, which is what Explorer itself draws from) and macOS
 // (NSWorkspace). Platforms with no desktop to ask — WebAssembly, Android —
 // report unavailable, and a caller then keeps its own drawn icons.
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+// Version: 1.1.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -57,13 +57,14 @@ namespace UltraCanvas {
     // not four thousand. Pure string work, no file access:
     //
     //   a directory                     → "dir"
-    //   a file carrying its own icon    → "file:<path>"  (.exe / .lnk / … —
-    //                                     those belong to the native module,
-    //                                     and are per file, not per type)
     //   a named file with no extension  → "name:<lowercased file name>"
     //                                     (the freedesktop database matches
     //                                     "makefile" and "README" by name)
     //   everything else                 → "ext:<lowercased extension>"
+    //
+    // A program, a shortcut or a bundle keys by its extension too: the icon
+    // it carries of its own is the native module's answer, not this one's,
+    // and what the host says for ".exe" is the same for every ".exe".
     std::string HostFileIconKey(const std::string& path, bool isDirectory);
 
     // The host's icon for `path`, rasterized at roughly `desiredSize` pixels.
