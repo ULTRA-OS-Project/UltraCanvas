@@ -67344,8 +67344,13 @@ forms with text inputs, a text area and a checkbox, a footer). The second
 is the pattern for a web-page-like application: one scrollable container
 filling the window, sections stacked by Block layout so wrapped text gets
 its real height, Flex rows for the horizontal pieces, popup menus anchored
-under their buttons, and `Maximize()` under `__EMSCRIPTEN__` to fill the
-viewport. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
+under their buttons, `Maximize()` under `__EMSCRIPTEN__` to fill the
+viewport, and several pages from one module through the History API: a
+link into the site pushes `?page=<site path>` and rebuilds the page's
+sections, `SetOnNavigate` rebuilds them for the back and forward buttons,
+and the address read at start decides the first page, so a reload keeps it.
+The rebuild is posted to the UI thread (`PostToUIThread`), never done inside
+the click of a button the rebuild removes. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
 at the repository root).
 
 ## Known limitations

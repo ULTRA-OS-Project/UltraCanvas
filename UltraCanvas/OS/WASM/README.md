@@ -160,10 +160,13 @@ owning references.
   viewport. It exercises the layout engine (Block for the stacked sections,
   wrapping Flex rows for the cards and the navigation), wrapped text, hover
   states, images preloaded into the virtual FS, text inputs, a text area, a
-  checkbox, popup menus, wheel scrolling and `OpenURL()` (every link opens
-  the real page in a new tab). The texts are the page's, in tables at the
-  top of the file; the photos the page shows are placeholder tiles except
-  the three in `media/images/ultraos/`.
+  checkbox, popup menus, wheel scrolling, and the History API: a link into
+  the site opens a page of the demo under `?page=<site path>` (`PushUrl`),
+  the back button returns to the front page (`SetOnNavigate`), and a reload
+  opens the same page again; links to other sites, `mailto:` and `tel:` go
+  through `OpenURL()`. The texts are the page's, in tables at the top of the
+  file; the photos the page shows are placeholder tiles except the three in
+  `media/images/ultraos/`.
 
 The manually dispatched `wasm-build.yml` workflow builds both and uploads
 them, with `serve.py`, as the `wasm-demo` artifact: unzip it into a folder,

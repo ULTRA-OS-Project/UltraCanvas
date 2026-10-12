@@ -17,7 +17,11 @@
   reads it, and `SetOnNavigate` hears the back and forward buttons (every
   `popstate`) with the new URL - so an application that shows several pages
   from one module is no longer one URL (`UltraCanvasWASMSupport.h`,
-  `Docs/UltraCanvas/UltraCanvasWebAssembly.md`).
+  `Docs/UltraCanvas/UltraCanvasWebAssembly.md`). The ultraos.eu front page
+  demo uses it: a link into the site opens a page of the demo under
+  `?page=<site path>` instead of leaving for the real site, the back button
+  returns, and a reload keeps the page; the demo's CMake adds the
+  `UltraCanvas/` directory to its include path for the header.
 - **`wasm-build.yml` records what a visitor downloads:** a *Demo sizes*
   step writes each demo's `.wasm`, `.js`, `.data` and worker file into the
   job summary, raw, gzip-compressed and Brotli-compressed, the way the

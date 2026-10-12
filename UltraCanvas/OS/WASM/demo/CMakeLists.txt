@@ -45,6 +45,9 @@ function(uc_wasm_demo target source)
     target_link_libraries(${target} PRIVATE UltraCanvas)
     if(EMSCRIPTEN)
         set_target_properties(${target} PROPERTIES SUFFIX ".html")
+        # OS/WASM/UltraCanvasWASMSupport.h (the History API) is not on the
+        # library's public include path; see UltraCanvasWebAssembly.md.
+        target_include_directories(${target} PRIVATE ${UC_LIB_DIR})
         # GetResourcesDir() resolves to ./share/ (cwd is / in MEMFS), so the
         # bundled fonts must be preloaded at /share/media/fonts.
         target_link_options(${target} PRIVATE
