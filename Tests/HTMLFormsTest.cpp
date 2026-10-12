@@ -16,12 +16,15 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -76,7 +79,14 @@ void Collect(UltraCanvasUIElement* e, float ox, float oy,
         for (auto& child : c->GetChildren()) Collect(child.get(), ox + b.x, oy + b.y, out);
 }
 
-std::unique_ptr<Built> Build(const std::string& body, bool interactive = true) {
+// The file chooser the tests stand in for the host's dialog: it answers with
+// these paths and counts how often it was asked.
+std::vector<std::string> g_chosen;
+int g_chooserCalls = 0;
+bool g_lastMultiple = false;
+std::string g_lastAccept;
+
+std::unique_ptr<Built> Build(const std::string& body, bool interactive = true, bool chooser = true) {
     auto built = std::make_unique<Built>();
     built->host = std::make_shared<Host>();
     built->host->Adopt(CreateRenderContext(Size2Di(600, 800), nullptr));
@@ -86,6 +96,14 @@ std::unique_ptr<Built> Build(const std::string& body, bool interactive = true) {
     opts.interactiveForms = interactive;
     Built* raw = built.get();
     opts.onFormSubmit = [raw](const HTML::FormSubmission& s) { raw->sent.push_back(s); };
+    if (chooser)
+        opts.onChooseFiles = [](bool multiple, const std::string& accept,
+                                std::function<void(std::vector<std::string>)> done) {
+            ++g_chooserCalls;
+            g_lastMultiple = multiple;
+            g_lastAccept = accept;
+            done(g_chosen);
+        };
     HTML::ElementBuilder builder;
     built->result = builder.Build("<!DOCTYPE html><html><body style='margin:0'>" + body + "</body></html>", opts);
     auto& root = built->result.root;
@@ -261,6 +279,163 @@ void TestFlexItems() {
     }
 }
 
+
+void TestFileEncodings() {
+    std::printf("file parts\n");
+    HTML::FormSubmission s;
+    s.fields = { { "a", "1" }, { "b", "2" } };
+    HTML::FormSubmission::File f;
+    f.position = 1;
+    f.name = "doc";
+    f.fileName = "n\"ote.txt";
+    f.contentType = "text/plain";
+    f.bytes = { 'h', 'i', 0, '\n' };
+    s.files.push_back(f);
+    Check(s.Encoded() == "a=1&doc=n%22ote.txt&b=2", "urlencoded: a file is its name, in place - " + s.Encoded());
+    s.enctype = "multipart/form-data";
+    const std::string body = s.Body("B");
+    const std::string part = std::string("--B\r\nContent-Disposition: form-data; name=\"doc\"; filename=\"n%22ote.txt\"\r\n"
+                                         "Content-Type: text/plain\r\n\r\nhi") + std::string(1, '\0') + "\n\r\n";
+    Check(body.find(part) != std::string::npos, "multipart: a file part with its name, type and bytes (a NUL kept)");
+    Check(body.find("name=\"a\"") < body.find("name=\"doc\"") && body.find("name=\"doc\"") < body.find("name=\"b\""),
+          "between the fields around it");
+    s.enctype = "text/plain";
+    Check(s.Body("") == "a=1\r\ndoc=n\"ote.txt\r\nb=2\r\n", "text/plain: its name");
+}
+
+void TestFileUploads() {
+    std::printf("file inputs: choose, send, reset, rebuild\n");
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ucforms-test";
+    std::filesystem::create_directories(dir);
+    const std::string one = PathToUtf8(dir / "caf\xC3\xA9.txt");
+    const std::string two = PathToUtf8(dir / "pic.PNG");
+    { std::ofstream(PathFromUtf8(one), std::ios::binary) << "hello"; }
+    { std::ofstream(PathFromUtf8(two), std::ios::binary) << std::string("\x89PNG\0x", 6); }
+
+    auto b = Build("<form method='post' enctype='multipart/form-data'><input name='t' value='x'>"
+                   "<input type='file' name='docs' multiple accept='.txt,image/*'></form>");
+    if (b->result.forms.empty()) { Check(false, "built"); return; }
+    HTML::FormController& form = *b->result.forms[0];
+    auto buttons = b->All<UltraCanvasButton>();
+    Check(buttons.size() == 1 && !buttons[0]->IsDisabled(), "a chooser button");
+    Check(b->LabelRect("No files chosen").width > 0.f, "\"No files chosen\" beside it");
+
+    HTML::FormSubmission none = form.Collect();
+    Check(none.files.size() == 1 && none.files[0].fileName.empty() && none.files[0].bytes.empty(),
+          "nothing chosen: one empty file part, as browsers send");
+
+    g_chosen = { one, two };
+    const int calls = g_chooserCalls;
+    if (!buttons.empty()) buttons[0]->onClick();
+    Check(g_chooserCalls == calls + 1 && g_lastMultiple && g_lastAccept == ".txt,image/*",
+          "the button asks the host, with multiple and accept");
+    auto names = std::dynamic_pointer_cast<UltraCanvasLabel>(form.controls[1].fileNames.lock());
+    Check(form.controls[1].files.size() == 2 && names && names->GetText() == "2 files",
+          "two files chosen, and the label says so");
+    HTML::FormSubmission sent = form.Collect();
+    Check(sent.files.size() == 2, "two file parts");
+    if (sent.files.size() == 2) {
+        Check(sent.files[0].fileName == "caf\xC3\xA9.txt" && sent.files[0].contentType == "text/plain" &&
+              std::string(sent.files[0].bytes.begin(), sent.files[0].bytes.end()) == "hello",
+              "the first: its name, type and bytes");
+        Check(sent.files[1].contentType == "image/png" && sent.files[1].bytes.size() == 6,
+              "the second: by its extension, NUL bytes kept");
+        Check(sent.files[0].position == 1, "after the text field");
+    }
+
+    g_chosen = {};
+    if (!buttons.empty()) buttons[0]->onClick();
+    Check(form.controls[1].files.size() == 2, "a cancelled dialog keeps the choice");
+
+    // Across a rebuild, and reset.
+    auto again = Build("<form method='post' enctype='multipart/form-data'><input name='t' value='x'>"
+                       "<input type='file' name='docs' multiple accept='.txt,image/*'></form>");
+    again->result.forms[0]->Restore(form.Save());
+    Check(again->result.forms[0]->controls[1].files.size() == 2, "the files survive a rebuild");
+    form.Reset();
+    Check(form.controls[1].files.empty(), "reset clears them");
+
+    // One file only without multiple.
+    auto single = Build("<form><input type='file' name='f'></form>");
+    g_chosen = { one, two };
+    auto singleButtons = single->All<UltraCanvasButton>();
+    if (!singleButtons.empty()) singleButtons[0]->onClick();
+    Check(single->result.forms[0]->controls[0].files.size() == 1 && !g_lastMultiple, "one file without multiple");
+
+    // A file that cannot be read goes empty, with a warning.
+    single->result.forms[0]->SetFiles(0, { PathToUtf8(dir / "missing.bin") });
+    HTML::FormSubmission missing = single->result.forms[0]->Collect();
+    Check(missing.files.size() == 1 && missing.files[0].bytes.empty() && !missing.warnings.empty(),
+          "a missing file is sent empty and warned about");
+
+    auto noChooser = Build("<form><input type='file' name='f'></form>", true, /*chooser=*/false);
+    auto disabled = noChooser->All<UltraCanvasButton>();
+    Check(!disabled.empty() && disabled[0]->IsDisabled(), "no host chooser: the button is disabled");
+    std::filesystem::remove_all(dir);
+}
+
+// The quiet link a <label>'s text carries, and the label holding it.
+std::pair<UltraCanvasLabel*, std::string> LabelLink(const Built& b, const std::string& text) {
+    for (const auto& [e, r] : b.all)
+        if (auto* l = dynamic_cast<UltraCanvasLabel*>(e))
+            if (l->GetText().find(text) != std::string::npos)
+                for (const auto& link : l->GetTextLinks())
+                    if (link.quiet) return { l, link.href };
+    return { nullptr, std::string() };
+}
+
+void TestLabelClicks() {
+    std::printf("a click on a <label> acts on its control\n");
+    auto b = Build("<form><p><label for='agree'>I agree</label> <input type='checkbox' id='agree' name='agree'></p>"
+                   "<p><label><input type='radio' name='s' value='a'> Small</label>"
+                   " <label><input type='radio' name='s' value='b' checked> Big</label></p>"
+                   "<p><label for='up'>Attach</label> <input type='file' id='up' name='up'></p>"
+                   "<p><label for='go'>Send it</label> <button id='go' name='go' value='1'>Go</button></p>"
+                   "<p><label for='nothing'>Nowhere</label> <span id='nothing'>x</span></p>"
+                   "<p><a href='/x'>a link</a></p></form>");
+    if (b->result.forms.empty()) { Check(false, "built"); return; }
+    HTML::FormController& form = *b->result.forms[0];
+    auto boxes = b->All<UltraCanvasCheckbox>();
+    auto radios = b->All<UltraCanvasRadio>();
+
+    auto [agreeLabel, agreeHref] = LabelLink(*b, "I agree");
+    Check(agreeLabel != nullptr, "for=\"id\": the label's text is a quiet link");
+    if (agreeLabel && agreeLabel->onLinkActivated && !boxes.empty()) {
+        agreeLabel->onLinkActivated(agreeHref);
+        Check(boxes[0]->IsChecked(), "a click checks the box");
+        agreeLabel->onLinkActivated(agreeHref);
+        Check(!boxes[0]->IsChecked(), "a second unchecks it");
+    }
+
+    auto [smallLabel, smallHref] = LabelLink(*b, "Small");
+    Check(smallLabel != nullptr, "a label around its control too");
+    if (smallLabel && smallLabel->onLinkActivated && radios.size() == 2) {
+        smallLabel->onLinkActivated(smallHref);
+        Check(radios[0]->IsChecked() && !radios[1]->IsChecked(), "a click chooses the radio, its group follows");
+        Check(Fields(form.Collect()).find("s=a") != std::string::npos, "and the form sends it");
+    }
+
+    auto [attachLabel, attachHref] = LabelLink(*b, "Attach");
+    g_chosen = { "/dev/null" };
+    const int calls = g_chooserCalls;
+    if (attachLabel && attachLabel->onLinkActivated) attachLabel->onLinkActivated(attachHref);
+    Check(g_chooserCalls == calls + 1, "a file input's label opens the chooser");
+
+    auto [sendLabel, sendHref] = LabelLink(*b, "Send it");
+    const size_t sentBefore = b->sent.size();
+    if (sendLabel && sendLabel->onLinkActivated) sendLabel->onLinkActivated(sendHref);
+    Check(b->sent.size() == sentBefore + 1 && Fields(b->sent.back()).find("go=1") != std::string::npos,
+          "a button's label presses it");
+
+    Check(LabelLink(*b, "Nowhere").first == nullptr, "a label for no control is plain text");
+    bool plainLinkQuiet = false;
+    for (const auto& [e, r] : b->all)
+        if (auto* l = dynamic_cast<UltraCanvasLabel*>(e))
+            for (const auto& link : l->GetTextLinks())
+                if (link.href == "/x") plainLinkQuiet = link.quiet;
+    Check(!plainLinkQuiet, "a real link stays a link");
+}
+
 } // namespace
 
 int main() {
@@ -270,6 +445,9 @@ int main() {
     TestSaveRestore();
     TestFormAttribute();
     TestFlexItems();
+    TestFileEncodings();
+    TestFileUploads();
+    TestLabelClicks();
     if (g_failures) {
         std::printf("%d check(s) failed\n", g_failures);
         return 1;

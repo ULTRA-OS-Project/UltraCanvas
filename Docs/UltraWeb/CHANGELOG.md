@@ -1,3 +1,12 @@
+#### 2026-10-12 *0.4.1*
+- **File uploads.** A form's file input is a "Choose file…" button that
+  opens the file dialog (filtered by the input's `accept` list), and the
+  chosen files are sent as multipart file parts with their names, types
+  and bytes.
+- **Labels.** A click on a `<label>`'s text acts on its control: a checkbox
+  toggles, a radio is chosen, a file input opens the dialog, a field takes
+  the focus.
+
 #### 2026-10-12 *0.4.0*
 - **Forms.** A page's form can be filled in and sent. Its controls are the
   framework's widgets: text and password fields, text areas, checkboxes,

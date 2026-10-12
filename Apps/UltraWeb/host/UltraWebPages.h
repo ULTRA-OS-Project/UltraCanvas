@@ -7,6 +7,7 @@
 //
 // Also the address-bar decision: which addresses are WebAssembly apps and
 // which are pages.
+// Version: 0.4.0 - AcceptExtensions (file uploads)
 // Version: 0.3.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
@@ -16,6 +17,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace UltraWeb {
 
@@ -27,6 +29,11 @@ UltraCanvas::HTML::PageLoaderServices MakePageServices(std::function<void(std::f
 // True for an address that names a WebAssembly app rather than a page:
 // about: addresses, and paths and URLs ending in .wasm or .wat.
 bool IsAppAddress(const std::string& address);
+
+// The file extensions (undotted, lower case) an <input accept=""> list
+// names: ".pdf,.txt" -> pdf, txt; image/*, audio/*, video/* -> their common
+// extensions. Empty when it names none (any file).
+std::vector<std::string> AcceptExtensions(const std::string& accept);
 
 // A local path as a file:// URL (absolute, '/' separators, the bytes a URL
 // may not carry percent-encoded). A URL comes back as it is.

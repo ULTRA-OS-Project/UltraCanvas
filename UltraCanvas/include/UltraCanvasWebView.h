@@ -14,6 +14,7 @@
 // Without a scheduler the view uses the running application's.
 //
 // No JavaScript: <script> is not run, <noscript> content is shown.
+// Version: 1.2.0 - onChooseFiles: file uploads
 // Version: 1.1.0 - SetInteractiveForms / SubmitForm: forms with real widgets,
 //                  sent by GET or POST
 // Version: 1.0.0
@@ -85,6 +86,12 @@ public:
     std::function<void(const std::string& url)> onLinkHovered;
     // A link the view does not follow itself: mailto:, tel:, another scheme.
     std::function<void(const std::string& url)> onExternalLink;
+    // A file input's button: show a file dialog (several files when
+    // `multiple`; `accept` is the input's accept="" list as written) and
+    // call `done` with the chosen UTF-8 paths, none when cancelled. Unset,
+    // file inputs cannot choose (their button is disabled).
+    std::function<void(bool multiple, const std::string& accept,
+                       std::function<void(std::vector<std::string> paths)> done)> onChooseFiles;
     // A navigation that found no page (PageKind::Other - an app, a file to
     // download): the host decides what to do with it.
     std::function<void(const HTML::LoadedPage& page)> onNonHtml;

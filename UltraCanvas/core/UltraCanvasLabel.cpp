@@ -14,6 +14,7 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.16.0 - a quiet LabelTextLink shows no tooltip and reports no hover
 // Version: 2.15.0 - LabelTextBox: an inline element's background and border
 //                  drawn around a byte range, one piece per line
 // Version: 2.14.0 - copied text leaves out word joiners (U+2060), which the
@@ -871,9 +872,10 @@ namespace UltraCanvas {
                         const int was = hoveredLink;
                         hoveredLink = LinkIndexAtPoint(event.pointer);
                         if (hoveredLink != was) {
-                            const std::string href = hoveredLink >= 0
-                                ? textLinks[static_cast<size_t>(hoveredLink)].href
-                                : std::string();
+                            const std::string href =
+                                hoveredLink >= 0 && !textLinks[static_cast<size_t>(hoveredLink)].quiet
+                                    ? textLinks[static_cast<size_t>(hoveredLink)].href
+                                    : std::string();
                             if (onLinkHovered) onLinkHovered(href);
                             if (showLinkTooltips) {
                                 if (!href.empty() && GetWindow())
