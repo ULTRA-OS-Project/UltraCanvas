@@ -1,6 +1,7 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.7.0 - ModalDialogStyle::FromTheme, ApplyTheme
 // Version: 3.6.1
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
@@ -2808,5 +2809,36 @@ namespace UltraCanvas {
         // No filters: the caller names the files it wants, and a file dialog
         // left without any lists everything (CreateFileDialog adds "All
         // Files"). A sample list here showed types the caller never asked for.
+    }
+
+    ModalDialogStyle ModalDialogStyle::FromTheme(const UltraCanvasTheme& theme, const ModalDialogStyle& base) {
+        ModalDialogStyle s = base;
+        s.messageTextColor = theme.roles.ink;
+        s.detailsTextColor = theme.roles.inkMuted;
+        return s;
+    }
+
+    void UltraCanvasModalDialog::ApplyTheme(const UltraCanvasTheme& theme) {
+        const Color panel = theme.roles.panel;
+        dialogConfig.backgroundColor = panel;
+        SetBackgroundColor(panel);
+        for (auto& section : {contentSection, footerSection, messageContainer}) if (section) section->SetBackgroundColor(panel);
+        if (messageArea) messageArea->SetBackgroundColor(panel);
+        SetStyle(ModalDialogStyle::FromTheme(theme, style));
+        for (auto& entry : dialogButtons) {
+            if (!entry.button) continue;
+            switch (entry.role) {
+                case DialogButtonRole::Default:
+                    entry.button->SetStyle(ButtonStyle::FromTheme(theme, entry.button->GetStyle(), ButtonVariant::Primary));
+                    break;
+                case DialogButtonRole::Cancel:
+                case DialogButtonRole::Normal:
+                    entry.button->SetStyle(ButtonStyle::FromTheme(theme, entry.button->GetStyle(), ButtonVariant::Standard));
+                    break;
+                default:
+                    break;   // a destructive answer keeps its red
+            }
+        }
+        RequestRedraw();
     }
 } // namespace UltraCanvas

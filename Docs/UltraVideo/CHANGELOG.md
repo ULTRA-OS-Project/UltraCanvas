@@ -55,7 +55,11 @@
   colours them and a switch of the look reaches them on its own. The
   labels too, by their variant (label 2.11.0): the project's name and the
   section titles are headings, notes and captions muted, the preset hints
-  faint. `ApplyPalette` keeps the timeline's token sizes alone.
+  faint. `ApplyPalette` keeps the timeline's token sizes alone. The export
+  dialog, the unsaved-changes question and the story wizard take no
+  palette any more: the dialogs follow the theme (modal dialog 3.7.0) -
+  their surface, message, captions and footer buttons - and the wizard's
+  tabs and album like the window's.
 
 #### 2026-10-11 *0.1.0*
 - **The first release: the editor's skeleton.** `Apps/UltraVideo`, on

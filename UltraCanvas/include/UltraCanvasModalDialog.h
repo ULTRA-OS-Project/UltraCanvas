@@ -1,6 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.7.0 - ModalDialogStyle::FromTheme; ApplyTheme colours the dialog's surface, message
+//                  and footer buttons (by role) from the theme, so a dialog can follow it
 // Version: 3.6.0
 // Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
@@ -251,6 +253,11 @@ namespace UltraCanvas {
         Color detailsTextColor = Colors::DarkGray;
 
         static ModalDialogStyle Default() { return ModalDialogStyle(); }
+        // The theme's ink for the message and muted ink for the details,
+        // over a base's own sizes (or the default)
+        static ModalDialogStyle FromTheme(const UltraCanvasTheme& theme, const ModalDialogStyle& base);
+        static ModalDialogStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ModalDialogStyle()); }
+        static ModalDialogStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== DIALOG CONFIGURATION =====
@@ -493,6 +500,13 @@ namespace UltraCanvas {
         void SetDialogButtons(DialogButtons buttons);
         void SetDefaultButton(DialogButton button);
         void SetStyle(const ModalDialogStyle& dialogStyle);
+        // The theme over the dialog: the panel role behind its sections, the
+        // message in ink, the footer buttons by their role (the default
+        // answer Primary, the others Standard; a destructive one keeps its
+        // red). SetFollowTheme(true) after the buttons are added applies it
+        // and keeps the dialog with the theme while it is open; the
+        // elements the host added follow on their own.
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
 
         std::string GetDialogTitle() const;
         std::string GetMessage() const;

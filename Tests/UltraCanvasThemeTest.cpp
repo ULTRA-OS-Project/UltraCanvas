@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.5.0 - the modal dialog style
 // Version: 1.4.0 - the label variants
 // Version: 1.3.0 - the button variants
 // Version: 1.2.0 - the slider's and the switch's element roles
@@ -17,6 +18,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasSwitch.h"
@@ -167,6 +169,12 @@ int main() {
     CHECK(Same(album.backgroundColor, r.panel) && Same(album.itemBackgroundColor, r.raised) && Same(album.borderColor, r.line) &&
           Same(album.captionColor, r.ink) && Same(album.subtitleColor, r.inkMuted) && Same(album.linkColor, r.accent) &&
           Same(album.selectionColor, r.accent) && album.mode == AlbumMode::UserEdit, "album: panel, raised tiles, hairlines, captions, accent; the base's mode");
+
+    ModalDialogStyle dialogBase;
+    dialogBase.messageFontSize = 19.f;
+    const ModalDialogStyle dialogStyle = ModalDialogStyle::FromTheme(own, dialogBase);
+    CHECK(Same(dialogStyle.messageTextColor, r.ink) && Same(dialogStyle.detailsTextColor, r.inkMuted) && dialogStyle.messageFontSize == 19.f,
+          "modal dialog: the message in ink, the details muted; the base's sizes stay");
 
     std::printf("Menu and tooltip from the roles\n");
     const MenuStyle menu = MenuStyle::FromTheme(own);

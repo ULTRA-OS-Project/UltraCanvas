@@ -20,7 +20,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.4.0 - the label's variants
+**Version:** 1.5.0 - the modal dialog follows the theme
 **Last Modified:** 2026-10-12
 **Author:** UltraCanvas Framework
 
@@ -83,7 +83,10 @@ The button's variants (`ButtonVariant`: `Standard`, `Ghost`, `Primary`,
 `button.on-selected`, the shared hover, pressed, accent, accent-hover,
 on-accent and soft-accent roles otherwise. The label's variants
 (`LabelVariant`: `Body`, `Muted`, `Faint`, `Heading`) read `label.muted`,
-`label.faint` and `label.heading`, the shared ink roles otherwise.
+`label.faint` and `label.heading`, the shared ink roles otherwise. A modal
+dialog follows the theme too (`ModalDialogStyle::FromTheme`, the dialog's
+`ApplyTheme`): the panel role behind its sections, ink for the message,
+its footer buttons by their role.
 
 ## Using it
 

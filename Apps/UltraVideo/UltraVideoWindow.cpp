@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.2.6 - the dialogs take no palette
 // Version: 0.2.5 - the labels follow the theme by variant
 // Version: 0.2.4 - the buttons follow the theme by variant; ApplyPalette keeps the timeline
 // Version: 0.2.1 - the draft is rendered at the project's shape
@@ -924,7 +925,7 @@ void UltraVideoWindow::MakeStory() {
         std::vector<std::string> files;
         for (const MediaItem& m : document_.media) if (m.error.empty()) files.push_back(m.path);
         const bool dark = dark_;
-        ShowStoryWizard(window_.get(), *palette_, files, [this, dark](const StoryChoice& choice) {
+        ShowStoryWizard(window_.get(), files, [this, dark](const StoryChoice& choice) {
             Message("Planning the story\xE2\x80\xA6");
             auto segments = std::make_shared<std::vector<VideoFXSegment>>();
             auto settings = std::make_shared<VideoFXExportSettings>();
@@ -1660,7 +1661,7 @@ void UltraVideoWindow::Export() {
         Message("An export is already running.");
         return;
     }
-    ShowExportDialog(window_.get(), document_, *palette_, [this](const ExportChoice& choice) { StartExport(choice); });
+    ShowExportDialog(window_.get(), document_, [this](const ExportChoice& choice) { StartExport(choice); });
 }
 
 void UltraVideoWindow::StartExport(const ExportChoice& choice) {
