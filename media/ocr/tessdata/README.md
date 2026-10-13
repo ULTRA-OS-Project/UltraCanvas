@@ -50,6 +50,10 @@ Downloaded packs are cached in a writable per-user directory
 | macOS   | `~/Library/Application Support/UltraCanvas/ocr/tessdata` |
 | Windows | `%LOCALAPPDATA%\UltraCanvas\ocr\tessdata` |
 
+`$XDG_DATA_HOME`, when set, wins on every platform: the folder is the
+framework's machine-local data root (`UltraCanvasDataFolder.h`) plus
+`UltraCanvas/ocr/tessdata`.
+
 Packs come from the upstream tessdata repositories, selected by `OCRDataTier`:
 `Fast` → `tessdata_fast` (default), `Standard` → `tessdata`, `Best` →
 `tessdata_best`. Downloading requires network support (UltraNet); on a build

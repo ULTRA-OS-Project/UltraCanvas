@@ -20,12 +20,13 @@
 // where an earlier version of it kept the data (its own LegacyDataDirs),
 // which AdoptLegacyDataFolder moves into place once.
 //
-// Two deliberate exceptions, on Windows only: the desktop's clipboard history
-// (UltraCanvasClipboardHistory::DefaultDirectory) and the UltraMessage journal
-// (UltraMsg_GetDefaultJournalPath) keep %LOCALAPPDATA%. Both are machine-local
-// stores - copied blobs, this machine's record of the bus - not data that
-// should roam with the profile, and moving them would gain nothing. On every
-// other platform, and under $XDG_DATA_HOME, they follow this rule too.
+// Machine-local data has the same rule with one difference: %LOCALAPPDATA%
+// instead of %APPDATA% on Windows, because it should not roam with the
+// profile - the desktop's clipboard history (copied blobs), the UltraMessage
+// journal (this machine's record of the bus) and the OCR language packs (a
+// cache of downloads). That is LocalDataFolderRootFor /
+// UltraCanvasLocalDataFolderRoot below; on every other platform, and under
+// $XDG_DATA_HOME, the two roots are the same folder.
 //
 // The settings, as opposed to the data, have their own root:
 // UltraCanvasSettingsFolder.h.
@@ -45,6 +46,7 @@
 //   const std::string movedFrom = UltraCanvas::AdoptLegacyDataFolder(
 //       dataDir, {"/Users/erika/.local/share/UltraMail"}, {"mail.db"}, error);
 //
+// Version: 1.1.0 - the machine-local root (LocalDataFolderRootFor); USERPROFILE stands in for HOME on Windows
 // Version: 1.0.0 - the per-user data folder, and moving an old one into place
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
@@ -93,11 +95,41 @@ namespace UltraCanvas {
                    : PathFromUtf8(home) / ".local" / "share";
     }
 
+    // The machine-local data root: as DataFolderRootFor, with %LOCALAPPDATA%
+    // (without it, HOME\AppData\Local) in place of %APPDATA% on Windows. Pure.
+    inline std::filesystem::path LocalDataFolderRootFor(DataFolderPlatform platform,
+                                                        const std::string& xdgDataHome,
+                                                        const std::string& localAppData,
+                                                        const std::string& home) {
+        if (platform != DataFolderPlatform::Windows)
+            return DataFolderRootFor(platform, xdgDataHome, std::string(), home);
+        if (!xdgDataHome.empty()) return PathFromUtf8(xdgDataHome);
+        if (!localAppData.empty()) return PathFromUtf8(localAppData);
+        if (!home.empty()) return PathFromUtf8(home) / "AppData" / "Local";
+        return {};
+    }
+
+    // The home folder as the environment names it, read as UTF-8: HOME, and
+    // on Windows, where HOME is normally unset, USERPROFILE.
+    inline std::string DataFolderHome() {
+        std::string home = GetEnvUtf8("HOME");
+        if (home.empty() && CurrentDataFolderPlatform() == DataFolderPlatform::Windows)
+            home = GetEnvUtf8("USERPROFILE");
+        return home;
+    }
+
     // DataFolderRootFor on this platform, reading XDG_DATA_HOME, APPDATA and
-    // HOME as UTF-8 (GetEnvUtf8).
+    // the home (DataFolderHome) as UTF-8 (GetEnvUtf8).
     inline std::filesystem::path UltraCanvasDataFolderRoot() {
         return DataFolderRootFor(CurrentDataFolderPlatform(), GetEnvUtf8("XDG_DATA_HOME"),
-                                 GetEnvUtf8("APPDATA"), GetEnvUtf8("HOME"));
+                                 GetEnvUtf8("APPDATA"), DataFolderHome());
+    }
+
+    // LocalDataFolderRootFor on this platform, reading XDG_DATA_HOME,
+    // LOCALAPPDATA and the home as UTF-8.
+    inline std::filesystem::path UltraCanvasLocalDataFolderRoot() {
+        return LocalDataFolderRootFor(CurrentDataFolderPlatform(), GetEnvUtf8("XDG_DATA_HOME"),
+                                      GetEnvUtf8("LOCALAPPDATA"), DataFolderHome());
     }
 
     // <root>/<appName>, which need not exist yet. Empty when the environment

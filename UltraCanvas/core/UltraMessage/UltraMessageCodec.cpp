@@ -2,6 +2,9 @@
 // The codec half of UltraMessageInternal.h: identifiers, base64, the JSON
 // forms of every public type, frame encoding and decoding, topic matching and
 // the per-platform default paths.
+// Version: 0.1.2 - the journal folder is UltraMessage on every platform (the Linux
+//                  ultramessage folder is moved into it once), from the framework's
+//                  machine-local data root
 // Version: 0.1.1 - the journal folder follows the framework's data folder rule
 //                  (UltraCanvasDataFolder.h); $XDG_DATA_HOME wins on every platform
 // Version: 0.1.0 (Phase 1)
@@ -725,26 +728,28 @@ std::string DefaultBusPath() {
 #endif
 }
 
-// The journal's folder: the framework's data folder rule
-// (UltraCanvasDataFolder.h), so $XDG_DATA_HOME wins on every platform and the
-// rest is Application Support on macOS and ~/.local/share elsewhere - under
-// the names the journal has always had there (UltraMessage, ultramessage).
-// Windows keeps %LOCALAPPDATA% (then %TEMP%) on purpose: the journal is this
-// machine's record of the bus, not data that should roam with the profile.
+// The journal's folder: UltraMessage under the framework's machine-local data
+// root (UltraCanvasDataFolder.h) - %LOCALAPPDATA% on Windows (then %TEMP%),
+// since the journal is this machine's record of the bus, not data that should
+// roam with the profile; Application Support on macOS; ~/.local/share
+// elsewhere; $XDG_DATA_HOME first everywhere. Up to 0.1.1 the Linux folder was
+// spelt ultramessage; the first broker start moves it, journal and SQLite
+// side files together, into UltraMessage.
 std::string DefaultJournalPath() {
     using UltraCanvas::DataFolderPlatform;
-    const std::string xdg = EnvOrEmpty("XDG_DATA_HOME");
+    std::filesystem::path base = UltraCanvas::UltraCanvasLocalDataFolderRoot();
 #ifdef _WIN32
-    std::filesystem::path base = PathFromUtf8(xdg);
-    if (base.empty()) base = PathFromUtf8(EnvOrEmpty("LOCALAPPDATA"));
     if (base.empty()) base = PathFromUtf8(EnvOrEmpty("TEMP"));
-    return PathToUtf8(base / "UltraMessage" / "journal.db");
 #else
-    const DataFolderPlatform platform = UltraCanvas::CurrentDataFolderPlatform();
-    const std::filesystem::path base = UltraCanvas::DataFolderRootFor(platform, xdg, "", HomeDirectory());
-    return PathToUtf8(base / (platform == DataFolderPlatform::MacOS ? "UltraMessage" : "ultramessage") /
-                      "journal.db");
+    if (base.empty()) base = PathFromUtf8(HomeDirectory()) / ".local" / "share";
 #endif
+    const std::filesystem::path folder = base / "UltraMessage";
+    if (UltraCanvas::CurrentDataFolderPlatform() == DataFolderPlatform::Unix) {
+        std::string error;   // a failed move leaves the old folder, and the new empty one is used
+        UltraCanvas::AdoptLegacyDataFolder(PathToUtf8(folder), {PathToUtf8(base / "ultramessage")},
+                                           {"journal.db"}, error);
+    }
+    return PathToUtf8(folder / "journal.db");
 }
 
 } // namespace Internal

@@ -9,11 +9,14 @@
 // means in practice: every catalogue language is selectable and is fetched the
 // first time it is used, then cached forever.
 //
+// Version: 0.1.1 - the pack folder is the framework's machine-local data root
+//                  (UltraCanvasLocalDataFolderRoot); every variable read as UTF-8
 // Version: 0.1.0
 // Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasOCRPlugin.h"
+#include "UltraCanvasDataFolder.h"   // UltraCanvasLocalDataFolderRoot
 #include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_OCR_SUPPORT
@@ -172,31 +175,22 @@ const std::vector<OCRLanguageInfo>& Catalogue() {
     return kCatalogue;
 }
 
-// First non-empty environment variable value, else empty.
+// First non-empty environment variable value, read as UTF-8, else empty.
 std::string EnvOr(std::initializer_list<const char*> names) {
     for (const char* n : names) {
-        if (const char* v = std::getenv(n); v && *v) return v;
+        if (std::string v = UltraCanvas::GetEnvUtf8(n); !v.empty()) return v;
     }
     return {};
 }
 
-// The user's platform data root, without the UltraCanvas suffix.
+// The user's platform data root, without the UltraCanvas suffix: the
+// framework's machine-local root (UltraCanvasDataFolder.h), since the packs
+// are a cache of downloads - %LOCALAPPDATA% on Windows, Application Support
+// on macOS, ~/.local/share elsewhere, $XDG_DATA_HOME first everywhere. The
+// working directory when the environment names no home.
 std::string PlatformDataRoot() {
-#if defined(_WIN32)
-    if (std::string v = EnvOr({"LOCALAPPDATA", "APPDATA"}); !v.empty()) return v;
-    if (std::string h = EnvOr({"USERPROFILE"}); !h.empty())
-        return PathToUtf8(PathFromUtf8(h) / "AppData" / "Local");
-    return ".";
-#elif defined(__APPLE__)
-    if (std::string h = EnvOr({"HOME"}); !h.empty())
-        return PathToUtf8(PathFromUtf8(h) / "Library" / "Application Support");
-    return ".";
-#else
-    if (std::string v = EnvOr({"XDG_DATA_HOME"}); !v.empty()) return v;
-    if (std::string h = EnvOr({"HOME"}); !h.empty())
-        return PathToUtf8(PathFromUtf8(h) / ".local" / "share");
-    return ".";
-#endif
+    const std::filesystem::path root = UltraCanvas::UltraCanvasLocalDataFolderRoot();
+    return root.empty() ? std::string(".") : PathToUtf8(root);
 }
 
 // Directories that may hold "*.traineddata", most-preferred first. The

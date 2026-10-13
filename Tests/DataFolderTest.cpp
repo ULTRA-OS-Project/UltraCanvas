@@ -81,6 +81,25 @@ static void TestRule() {
     Check(DataFolderRootFor(DataFolderPlatform::MacOS, "", "", "").empty(), "no home on macOS: nothing");
     Check(DataFolderRootFor(DataFolderPlatform::Windows, "", "", "").empty(), "no profile on Windows: nothing");
 
+    // The machine-local root: %LOCALAPPDATA% in place of %APPDATA% on Windows,
+    // the same folder everywhere else, XDG_DATA_HOME still first.
+    Check(SamePath(LocalDataFolderRootFor(DataFolderPlatform::Windows, "", "C:/Users/erika/AppData/Local", "C:/Users/erika"),
+                   fs::path("C:/Users/erika/AppData/Local")), "local on Windows: LOCALAPPDATA");
+    Check(SamePath(LocalDataFolderRootFor(DataFolderPlatform::Windows, "", "", "C:/Users/erika"),
+                   fs::path("C:/Users/erika/AppData/Local")), "local on Windows without LOCALAPPDATA: under HOME");
+    Check(SamePath(LocalDataFolderRootFor(DataFolderPlatform::Windows, "D:/portable", "C:/Local", "C:/Users/erika"),
+                   fs::path("D:/portable")), "XDG_DATA_HOME wins for local data too");
+    Check(LocalDataFolderRootFor(DataFolderPlatform::Windows, "", "", "").empty(), "local on Windows without a profile: nothing");
+    Check(SamePath(LocalDataFolderRootFor(DataFolderPlatform::MacOS, "", "C:/Local", "/Users/erika"),
+                   fs::path("/Users/erika/Library/Application Support")), "local on macOS: Application Support");
+    Check(SamePath(LocalDataFolderRootFor(DataFolderPlatform::Unix, "", "", "/home/erika"),
+                   fs::path("/home/erika/.local/share")), "local on Linux: ~/.local/share");
+    Check(LocalDataFolderRootFor(DataFolderPlatform::Unix, "/data", "", "/home/erika") ==
+              DataFolderRootFor(DataFolderPlatform::Unix, "/data", "", "/home/erika"),
+          "the two roots agree outside Windows");
+    Check(UltraCanvasLocalDataFolderRoot().empty() == UltraCanvasDataFolderRoot().empty(),
+          "the live roots are empty together");
+
     // The folders the rule moved away from.
     Check(LegacyUnixDataFolders(DataFolderPlatform::Unix, "/home/erika", "UltraMail").empty(),
           "Linux kept its folder");
