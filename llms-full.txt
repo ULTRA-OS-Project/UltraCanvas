@@ -83665,10 +83665,12 @@ FILE: Docs/UltraPress/README.md
 
 # UltraPress
 
-**Status:** Phase 1 started. UltraPress 0.1.0 is the headless engine and the
-`ultrapress` command line: a site as a folder of JSON files, the block
-registry, the HTML shadow of every page, and the static publish. The editor,
-the element renderer and the WebAssembly output follow
+**Status:** Phase 1 under way. UltraPress 0.2.0 is the headless engine, the
+`ultrapress` command line and the block renderer on real elements with a
+window that shows a site: a site as a folder of JSON files, the block
+registry, the HTML shadow of every page, the static publish, and every
+block as UltraCanvas elements. Editing, the WordPress importer and the
+WebAssembly output follow
 ([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
 **Last Modified:** 2026-10-13
 **Author:** UltraCanvas Framework / ULTRA OS
@@ -83679,6 +83681,28 @@ framework itself, compiled to WebAssembly, with a plain HTML shadow of every
 page for search engines, link previews, mail clients and screen readers.
 
 This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
+
+## The window
+
+```bash
+UltraPress mysite             # the site: pages on the left, the page on the right
+UltraPress mysite --check     # render every page without a window; element counts and warnings
+```
+
+The page is rendered on real UltraCanvas elements by the block renderer
+(`Apps/UltraPress/render/UltraPressRender.h`, target `UltraPressRender`),
+built the way the ultraos.eu front page demo is: bands whose centred
+column is Block-laid-out so wrapped text measures, wrapping Flex rows for
+columns and buttons. The hero and call to action sit on the theme's night
+colours, FAQs are an accordion, forms are real inputs whose fields reach
+`RenderOptions::onFormSubmit`, the newsletter calls
+`onNewsletterSubscribe`, links call `onLink` with a page's path or a URL,
+rich text and HTML blocks go through the HTML reader's element builder,
+and a picture the site folder lacks is a captioned tile. The theme's
+colours (`accent`, `ink`, `inkSoft`, `paper`, `paperSoft`, `rule`,
+`night`, `nightSoft`, `onDark`, `tile`) and `fontFamily` reach it through
+`PaletteFromTheme`. Under Emscripten the same renderer is the published
+page; on the desktop it is the editor's preview, pixel for pixel.
 
 ## The command line
 
@@ -83776,9 +83800,9 @@ publish the example site into a temporary folder.
 
 ## Not yet
 
-The editor with the live preview (the block renderer on real elements), the
-WebAssembly renderer release and its reference from the shadow, the WordPress
-WXR importer, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
+Editing in the window (the block palette, moving blocks, properties, text
+in place), the WebAssembly renderer release and its reference from the
+shadow, the WordPress WXR importer, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
 the newsletter's e-mail mode of the emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
 static site need a form service until then.

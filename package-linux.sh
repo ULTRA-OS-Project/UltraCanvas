@@ -56,10 +56,11 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # UltraCanvasStart, the setup application, is in the bundle like every app;
 # scripts/package-ultracanvasstart.sh cuts it out of the bundle on its own.
 # `ultrapress` is the UltraPress command line (Apps/UltraPress): a starter
-# site, the check, a page's HTML shadow, the static publish; output to bin/.
+# site, the check, a page's HTML shadow, the static publish; `UltraPress`
+# the window that shows a site on real elements. Both output to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress)
+      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress UltraPress)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.

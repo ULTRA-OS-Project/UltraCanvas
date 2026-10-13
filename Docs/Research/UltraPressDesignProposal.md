@@ -756,9 +756,12 @@ blocks and the validator, the theme model, the HTML emitter (shadow,
 sitemap, robots, feed, with the renderer and UltraWeb hooks), the static
 publisher to a folder, the starter site, the `ultrapress` command line and
 the engine tests; `Apps/UltraPress/examples/ultraos` is the front page as a
-site. Still to do: the block renderer with the desktop factory, the editor
-with live preview, two themes, the WXR importer, the publisher onto
-UltraCloud providers, and the renderer release build. Done when ultraos.eu
+site. Done in 0.2.0: the block renderer on real elements for every block,
+with the theme's palette, links, forms and the FAQ accordion, and the
+UltraPress window that shows a site (the editor's preview; the Emscripten
+build of it is the published page). Still to do: editing in the window,
+two themes, the WXR importer, the publisher onto UltraCloud providers, and
+the renderer release build. Done when ultraos.eu
 is imported, edited, published to a test host and renders in Chromium,
 Firefox and Safari as the demo does, with the shadow indexed by a crawler.
 

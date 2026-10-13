@@ -38,4 +38,28 @@ set_source_files_properties(cli/UltraPressCli.cpp PROPERTIES
 set_target_properties(ultrapress PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-message(STATUS "  [✓] UltraPress engine and command line - ENABLED (targets: UltraPressEngine, ultrapress)")
+# ── UltraPressRender: the page on real elements ─────────────────────────────
+# The block renderer builds UltraCanvas elements, so it needs the UI library;
+# the editor's preview and the Emscripten page share it. The engine above
+# stays headless.
+add_library(UltraPressRender STATIC render/UltraPressRender.cpp)
+set_target_properties(UltraPressRender PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    OUTPUT_NAME "ultrapress_render")
+target_compile_features(UltraPressRender PUBLIC cxx_std_20)
+target_include_directories(UltraPressRender PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/render)
+target_link_libraries(UltraPressRender PUBLIC UltraPressEngine ${ULTRACANVAS_LIBRARY})
+
+# ── UltraPress: the window ──────────────────────────────────────────────────
+add_executable(UltraPress ui/main.cpp)
+target_compile_features(UltraPress PRIVATE cxx_std_20)
+target_link_libraries(UltraPress PRIVATE UltraPressRender)
+# ULTRAPRESS_VERSION (the first line of Docs/UltraPress/CHANGELOG.md) is shown
+# in the window title; UCAPP_ICON_PATH is the window and taskbar icon.
+target_compile_definitions(UltraPress PRIVATE
+    ULTRAPRESS_VERSION="${ULTRAPRESS_VERSION}"
+    UCAPP_ICON_PATH="media/appicon/UltraWeb.png")
+set_target_properties(UltraPress PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+message(STATUS "  [✓] UltraPress - ENABLED (targets: UltraPressEngine, UltraPressRender, ultrapress, UltraPress)")
