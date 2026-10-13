@@ -4,9 +4,11 @@
 // the format's description, so it needs to know nothing about the format.
 // The Save dialog's Settings button opens it. See UltraCanvasFileSaveSettings.h.
 // For a picture of known size a bitmap format's dialog starts with a Size row:
-// width x height and Keep proportions, for this save only.
-// Version: 1.1.0
-// Last Modified: 2026-10-12
+// width x height and Keep proportions, for this save only. A drawing has no
+// pixel size of its own: its row opens on the size it is drawn at and says it
+// is drawn sharp at any.
+// Version: 1.2.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -17,6 +19,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasSeparator.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSpinner.h"
 
@@ -25,14 +28,23 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace UltraCanvas {
 
     namespace {
         constexpr int kRowHeight = 28;
-        constexpr float kRowGap = 8.0f;
-        constexpr float kColumnGap = 12.0f;
+        constexpr float kRowGap = 10.0f;
+        constexpr float kColumnGap = 16.0f;
+        // Every control is this wide and starts where the captions end, so
+        // the sliders, lists and size fields make one straight column; a
+        // slider's value sits right beside it rather than at the far edge.
+        constexpr int kControlWidth = 260;
+        constexpr int kValueWidth = 36;
+        constexpr float kSliderGap = 10.0f;
+        constexpr int kSliderWidth = kControlWidth - kValueWidth - static_cast<int>(kSliderGap);
+        constexpr int kSpinnerWidth = 92;
 
         // The element id of a setting's control, which a test (or an
         // application driving the dialog) finds it by.
@@ -88,11 +100,25 @@ namespace UltraCanvas {
             const std::string& extensionOrPath, int pictureWidth, int pictureHeight,
             const FileSaveImageSize& size, UltraCanvasWindowBase* parent,
             std::function<void(DialogResult, const FileSaveImageSize&)> onClosed) {
+        FileSavePicture picture;
+        picture.width = pictureWidth;
+        picture.height = pictureHeight;
+        ShowSaveSettingsDialog(extensionOrPath, picture, size, parent, std::move(onClosed));
+    }
+
+    void UltraCanvasFileLoader::ShowSaveSettingsDialog(
+            const std::string& extensionOrPath, const FileSavePicture& picture,
+            const FileSaveImageSize& size, UltraCanvasWindowBase* parent,
+            std::function<void(DialogResult, const FileSaveImageSize&)> onClosed) {
+        const int pictureWidth = picture.width;
+        const int pictureHeight = picture.height;
         FileSaveFormat format;
         const bool found = FindSaveFormat(extensionOrPath, format);
         // The size is offered for a picture of known size in a pixel format,
-        // even one with no settings of its own (BMP).
-        const bool offerSize = found && format.bitmap && pictureWidth > 0 && pictureHeight > 0;
+        // even one with no settings of its own (BMP); a drawing's is the size
+        // it is drawn at.
+        const bool offerSize = found && format.bitmap && picture.HasSize();
+        const bool drawing = offerSize && picture.drawing;
         if (!found || (format.settings.empty() && !offerSize)) {
             if (onClosed) onClosed(DialogResult::Cancel, size);
             return;
@@ -109,38 +135,34 @@ namespace UltraCanvas {
 
         DialogConfig config;
         config.title = format.name + " settings";
-        if (!offerSize) {
-            config.message = "How " + format.name + " files are written. Every application "
-                             "saving a " + format.name + " file uses these.";
-        } else if (format.settings.empty()) {
-            config.message = "The size this " + format.name + " file is written at, for this "
-                             "save only.";
-        } else {
-            config.message = "How this " + format.name + " file is written. The size is for this "
-                             "save only; the other settings are used by every application saving "
-                             "a " + format.name + " file.";
-        }
+        // No text above the controls: the title names the format, and what a
+        // setting does is its tooltip.
         // Information builds the message column the form goes into (Custom
         // builds nothing); the severity icon is left off.
         config.dialogType = DialogType::Information;
         config.buttons = DialogButtons::OKCancel;
         config.defaultButton = DialogButton::OK;
         config.showIcon = false;
-        config.width = 460;
-        config.height = 220;
+        config.width = 420;
+        config.height = 160;
         auto dialog = UltraCanvasDialogManager::CreateDialog(config);
         if (!dialog) {
             if (onClosed) onClosed(DialogResult::Cancel, size);
             return;
         }
+        if (auto message = dialog->FindChildById("MessageArea")) message->SetVisible(false);
         const float fontSize = dialog->GetStyle().messageFontSize;
 
-        // "caption: control", one row per setting. The grid carries its own
-        // height so the dialog is sized for it before anything is measured.
+        // "caption: control", one row per setting; a rule between the size,
+        // which is this save's, and the format's own settings. The grid
+        // carries its own height so the dialog is sized for it before
+        // anything is measured.
         auto form = CreateFormGrid("SaveSettingsForm", kRowGap, kColumnGap);
+        const bool rule = offerSize && !format.settings.empty();
         const int rows = static_cast<int>(format.settings.size()) + (offerSize ? 2 : 0);
+        const int gaps = rows - 1 + (rule ? 1 : 0);
         form->size.height = CSSLayout::Dimension::Px(
-                static_cast<float>(rows * kRowHeight) + kRowGap * static_cast<float>(rows - 1));
+                static_cast<float>(rows * kRowHeight + (rule ? 1 : 0)) + kRowGap * static_cast<float>(gaps));
 
         // Sets every control from `values` (and the size from `chosen`)
         // again: the Defaults button.
@@ -148,17 +170,20 @@ namespace UltraCanvas {
 
         if (offerSize) {
             // "Size: [ 1920 ] x [ 1080 ] px", and Keep proportions under it.
-            auto cell = CreateFormCellRow("SaveSize-row", 8.0f, kRowHeight);
-            auto width = CreateIntSpinner("SaveSizeWidth", 0, 0, 96, kRowHeight,
+            auto cell = CreateFormCellRow("SaveSize-row", 6.0f, kRowHeight);
+            cell->size.width = CSSLayout::Dimension::Px(kControlWidth);
+            auto width = CreateIntSpinner("SaveSizeWidth", 0, 0, kSpinnerWidth, kRowHeight,
                                           1, kMaxSide, chosen->width, 1);
-            auto height = CreateIntSpinner("SaveSizeHeight", 0, 0, 96, kRowHeight,
+            auto height = CreateIntSpinner("SaveSizeHeight", 0, 0, kSpinnerWidth, kRowHeight,
                                            1, kMaxSide, chosen->height, 1);
-            width->SetTooltip("Width in pixels");
-            height->SetTooltip("Height in pixels");
+            width->SetTooltip(drawing ? "Width in pixels: the drawing is drawn sharp at any"
+                                      : "Width in pixels");
+            height->SetTooltip(drawing ? "Height in pixels: the drawing is drawn sharp at any"
+                                       : "Height in pixels");
             width->layoutItem.SetFlexShrink(0);
             height->layoutItem.SetFlexShrink(0);
-            auto times = std::make_shared<UltraCanvasLabel>("SaveSize-times", 0, 0, 12, kRowHeight, "\u00D7");
-            auto unit = std::make_shared<UltraCanvasLabel>("SaveSize-unit", 0, 0, 24, kRowHeight, "px");
+            auto times = std::make_shared<UltraCanvasLabel>("SaveSize-times", 0, 0, 14, kRowHeight, "\u00D7");
+            auto unit = std::make_shared<UltraCanvasLabel>("SaveSize-unit", 0, 0, 22, kRowHeight, "px");
             for (const auto& label : {times, unit}) {
                 label->SetFontSize(fontSize);
                 label->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -174,7 +199,9 @@ namespace UltraCanvas {
             auto keep = UltraCanvasCheckbox::CreateCheckbox("SaveSizeKeepProportions", 0, 0, -1, kRowHeight,
                                                             "Keep proportions", chosen->keep);
             keep->SetFontSize(fontSize);
-            keep->SetTooltip("Change one side and the other follows, as the picture is shaped");
+            keep->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Start);
+            keep->SetTooltip(drawing ? "Change one side and the other follows, as the drawing is shaped"
+                                     : "Change one side and the other follows, as the picture is shaped");
             auto keepCaption = AddFormRow(form, "SaveSizeKeep", "", keep);
             if (keepCaption) keepCaption->SetFontSize(fontSize);
 
@@ -218,6 +245,13 @@ namespace UltraCanvas {
                 keepRaw->SetChecked(true);
                 chosen->syncing = false;
             });
+
+            if (rule) {
+                auto line = std::make_shared<UltraCanvasSeparator>(false, 1, kControlWidth);
+                line->size.width = CSSLayout::Dimension::Auto();
+                line->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Stretch);
+                AddFormWideRow(form, line);
+            }
         }
 
         for (const FileSaveSettingSpec& spec : format.settings) {
@@ -230,6 +264,7 @@ namespace UltraCanvas {
                     auto box = UltraCanvasCheckbox::CreateCheckbox(id, 0, 0, -1, kRowHeight, spec.label,
                                                                    values->GetBool(key));
                     box->SetFontSize(fontSize);
+                    box->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Start);
                     if (!spec.help.empty()) box->SetTooltip(spec.help);
                     box->onStateChanged = [values, key](CheckedState, CheckedState now) {
                         values->SetBool(key, now == CheckedState::Checked);
@@ -241,17 +276,18 @@ namespace UltraCanvas {
                     break;
                 }
                 case FileSaveSettingKind::Number: {
-                    auto cell = CreateFormCellRow(id + "-row", 10.0f, kRowHeight);
-                    auto slider = std::make_shared<UltraCanvasSlider>(id, 0, 0, 200, 24);
+                    auto cell = CreateFormCellRow(id + "-row", kSliderGap, kRowHeight);
+                    cell->size.width = CSSLayout::Dimension::Px(kControlWidth);
+                    auto slider = std::make_shared<UltraCanvasSlider>(id, 0, 0, kSliderWidth, 24);
                     slider->SetRange(static_cast<float>(spec.minimum), static_cast<float>(spec.maximum));
                     slider->SetStep(1.0f);
                     slider->SetValue(static_cast<float>(values->GetInt(key, spec.minimum)));
-                    slider->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+                    slider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                     if (!spec.help.empty()) slider->SetTooltip(spec.help);
-                    auto number = std::make_shared<UltraCanvasLabel>(id + "-value", 0, 0, 40, 24,
+                    auto number = std::make_shared<UltraCanvasLabel>(id + "-value", 0, 0, kValueWidth, 24,
                             std::to_string(values->GetInt(key, spec.minimum)));
                     number->SetFontSize(fontSize);
-                    number->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+                    number->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
                     number->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                     UltraCanvasLabel* numberRaw = number.get();
                     slider->onValueChanged = [values, key, numberRaw](float v) {
@@ -273,7 +309,9 @@ namespace UltraCanvas {
                     break;
                 }
                 case FileSaveSettingKind::Choice: {
-                    auto list = std::make_shared<UltraCanvasDropdown>(id, 0, 0, 220, kRowHeight);
+                    auto list = std::make_shared<UltraCanvasDropdown>(id, 0, 0, kControlWidth, kRowHeight);
+                    list->size.width = CSSLayout::Dimension::Px(kControlWidth);
+                    list->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Start);
                     for (const FileSaveChoice& choice : spec.choices) list->AddItem(choice.label, choice.value);
                     list->SetSelectedIndex(ChoiceIndex(spec, values->Get(key)), false);
                     if (!spec.help.empty()) list->SetTooltip(spec.help);
@@ -300,7 +338,8 @@ namespace UltraCanvas {
         auto defaults = std::make_shared<UltraCanvasButton>("SaveSettingsDefaults", 0, 0, 90, 28);
         defaults->SetText("Defaults");
         defaults->SetTooltip(offerSize ? "Put every setting back to " + format.name +
-                                         "'s default, and the size back to the picture's"
+                                         "'s default, and the size back to the " +
+                                         (drawing ? "drawing's" : "picture's")
                                        : "Put every setting back to " + format.name + "'s default");
         defaults->size.width = CSSLayout::Dimension::Px(90);
         defaults->size.height = CSSLayout::Dimension::Px(28);

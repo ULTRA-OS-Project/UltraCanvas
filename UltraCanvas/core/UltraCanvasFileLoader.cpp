@@ -1,8 +1,8 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
-// Version: 1.2.0
-// Last Modified: 2026-10-12
+// Version: 1.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -171,6 +171,7 @@ namespace UltraCanvas {
         config.saveSettingsButton = opts.saveSettingsButton;
         config.imageWidth       = opts.imageWidth;
         config.imageHeight      = opts.imageHeight;
+        config.imageIsDrawing   = opts.imageIsDrawing;
         // A folder has no file filter; a file dialog takes the caller's (the
         // dialog lists every file when there are none).
         if (type != FileDialogType::SelectFolder) config.filters = opts.filters;

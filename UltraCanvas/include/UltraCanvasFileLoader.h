@@ -4,8 +4,8 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
-// Version: 1.2.0
-// Last Modified: 2026-10-12
+// Version: 1.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -62,6 +62,10 @@ namespace UltraCanvas {
         // (FileDialogConfig::imageWidth / imageHeight).
         int imageWidth = 0;
         int imageHeight = 0;
+        // ... and that picture is a drawing (SetDrawingSize): it has no pixel
+        // size of its own, so imageWidth x imageHeight is only the size it is
+        // drawn at unless another is chosen, and any size is drawn sharp.
+        bool imageIsDrawing = false;
         UltraCanvasWindowBase* parentWindow = nullptr;
 
         FileDialogOptions() = default;
@@ -84,7 +88,15 @@ namespace UltraCanvas {
         FileDialogOptions& SetDefaultExtension(const std::string& e) { defaultExtension = e; return *this; }
         FileDialogOptions& SetRegisterAsRecent(bool v)  { registerAsRecent = v; return *this; }
         FileDialogOptions& SetSaveSettingsButton(bool v) { saveSettingsButton = v; return *this; }
-        FileDialogOptions& SetImageSize(int w, int h)   { imageWidth = w; imageHeight = h; return *this; }
+        FileDialogOptions& SetImageSize(int w, int h) {
+            imageWidth = w; imageHeight = h; imageIsDrawing = false; return *this;
+        }
+        // A drawing - SVG, a page of shapes - saved as a bitmap: `w` x `h` is
+        // the size it is drawn at unless the user picks another (its size on
+        // the page at 96 DPI, say). The caller draws it at the size chosen.
+        FileDialogOptions& SetDrawingSize(int w, int h) {
+            imageWidth = w; imageHeight = h; imageIsDrawing = true; return *this;
+        }
         FileDialogOptions& SetParentWindow(UltraCanvasWindowBase* p) { parentWindow = p; return *this; }
     };
 
@@ -279,6 +291,15 @@ namespace UltraCanvas {
         // IsOriginal() when it is the picture's own.
         static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
                                            int pictureWidth, int pictureHeight,
+                                           const FileSaveImageSize& size,
+                                           UltraCanvasWindowBase* parent,
+                                           std::function<void(DialogResult,
+                                                              const FileSaveImageSize&)> onClosed);
+        // The same for a picture that may be a drawing (FileSavePicture::
+        // drawing): its Size row opens on the size it is drawn at and says
+        // that a drawing is drawn sharp at whatever size is set.
+        static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
+                                           const FileSavePicture& picture,
                                            const FileSaveImageSize& size,
                                            UltraCanvasWindowBase* parent,
                                            std::function<void(DialogResult,

@@ -5321,6 +5321,28 @@ else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== MEDIA VIEWER SAVE TEST =====
+# Save image as at another size and with the type's save settings: a bitmap
+# resized, an SVG drawn again at the size chosen (sharp), the stored JPEG
+# quality applied. Headless; the settings go to a scratch folder.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MediaViewerSaveTest...")
+    add_executable(MediaViewerSaveTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerSaveTest.cpp
+    )
+    target_include_directories(MediaViewerSaveTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MediaViewerSaveTest PRIVATE cxx_std_20)
+    target_link_libraries(MediaViewerSaveTest PRIVATE UltraCanvas)
+    set_target_properties(MediaViewerSaveTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MediaViewerSaveTest COMMAND MediaViewerSaveTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MediaViewerSaveTest")
+else()
+    message(STATUS "  MediaViewerSaveTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TAB PILL STYLE SCREENSHOT TEST =====
 # TabStyle::Pill read back from composited pixels: a one-pixel accent outline
 # round the open capsule, none round an inactive tab. It is also the

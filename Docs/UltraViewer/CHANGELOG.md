@@ -1,3 +1,15 @@
+#### 2026-10-13 *1.0.6*
+- **Save image as at another size, with the type's settings.** The Settings
+  button of the Save dialog showed no size field here: the viewer never told
+  it how big the picture was. A bitmap type's Settings (PNG, JPEG, WebP, TIFF,
+  AVIF, BMP) now start with the picture's size - as shown, so a picture turned
+  a quarter starts on its turned sides - and the file is written at the size
+  chosen, with the type's settings (JPEG quality, PNG compression ...), which
+  the viewer ignored before. A drawing (SVG) has no pixel size of its own: it
+  is offered at its size on the page and drawn again at the size chosen, so it
+  stays sharp at any size instead of being stretched (framework changelog,
+  pending entry `save-size-for-drawings-and-the-viewer`).
+
 #### 2026-10-10 *1.0.5*
 - **`--help` and `--version` print again.** Both wrote to the framework's
   debug log, which a Release build keeps off, so `UltraViewer --help` printed

@@ -1460,8 +1460,11 @@ application in `SaveSettings.conf` in the same folder.
 button edits them, its file icon (`UltraCanvasFileDragIcon`) is dropped on a
 folder to save there, and `UCRasterDocument::SaveToFile` reads them. A
 picture's size for one save (`FileSaveImageSize`, offered when the caller
-passes `FileDialogOptions::SetImageSize`) comes back through the
-`SaveFileDialog` overload that reports it, never stored.
+passes `FileDialogOptions::SetImageSize`, or `SetDrawingSize` for a drawing,
+which has no pixel size and is drawn sharp at any) comes back through the
+`SaveFileDialog` overload that reports it, never stored. The media viewer's
+Save image as (UltraViewer) offers it and draws an SVG again at the size
+chosen.
 
 ### **4. Plug-ins for File Types**
 
@@ -23313,8 +23316,8 @@ options say `SetRegisterAsRecent(false)` - by the framework dialog itself
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
 `SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu`,
-`SetDefaultExtension`, `SetSaveSettingsButton`, `SetImageSize` and the parent
-window.
+`SetDefaultExtension`, `SetSaveSettingsButton`, `SetImageSize` (or
+`SetDrawingSize` for a drawing) and the parent window.
 
 ### Building it yourself
 
@@ -23351,6 +23354,7 @@ A config starts without filters: the dialog then lists every file under an
 | `addToRecent` | Open, Open multiple and Save add what they accept to the system's recent files (default `true`; `UltraCanvasFileLoader` sets it from `SetRegisterAsRecent`) |
 | `saveSettingsButton` | Save: the Settings button at the end of the type row, for the chosen type's [save settings](#save-settings) (default `true`; `FileDialogOptions::SetSaveSettingsButton`). Off for a caller whose writer does not read them |
 | `imageWidth`, `imageHeight` | Save: the size of the picture being saved (`FileDialogOptions::SetImageSize`). A bitmap type's Settings then offer [another size](#the-pictures-size) for this save; `GetSaveImageSize()` is the size chosen |
+| `imageIsDrawing` | Save: that picture is a drawing (`FileDialogOptions::SetDrawingSize`) - no pixel size of its own, `imageWidth` x `imageHeight` the size it is drawn at, and it is [drawn sharp at any](#a-drawing) |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -23513,7 +23517,10 @@ A press that is released without moving is a click (`onClick`).
 How a file is written is often a choice: JPEG's quality, PNG's compression,
 whether a TIFF is LZW or Deflate. The **Settings** button at the end of a
 Save dialog's type row (after "Files of type") shows the settings of the type being saved - a checkbox, a slider
-or a list per setting - and stores them on OK. For a picture of known size a
+or a list per setting - and stores them on OK. The dialog is the controls
+alone: its title names the format ("PNG settings"), each setting's tooltip
+says what it does, the controls make one column with a slider's value beside
+it, and a rule parts the size (this save's) from the format's settings. For a picture of known size a
 bitmap type's dialog also has the picture's size for this save
 ([The picture's size](#the-pictures-size)). The button is greyed out while
 the type has nothing to set ("notes.txt", a name of no type, BMP without a
@@ -23534,7 +23541,7 @@ the types):
 | `GetSaveSettings(extensionOrPath)` | Every setting's value: the user's where they set it, the default elsewhere |
 | `HasStoredSaveSettings(extensionOrPath)` | The user has set any of them |
 | `SetSaveSettings(settings)` / `ResetSaveSettings(extensionOrPath)` | Store (merged over what was there; a value is clamped or replaced by the default when it is not one the setting can hold, and a key the format lacks is dropped) / forget |
-| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
+| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` - or a `FileSavePicture`, which may be [a drawing](#a-drawing) - also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
 | `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
 | `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings; `GetImageExportOptions(path, size, options)` at a [chosen size](#the-pictures-size) too |
 | `SetImageExportOptions(options)` | The other way: `options.format`'s quality, compression, colour depth ... and transparency stored as that format's settings (not the size) |
@@ -23628,7 +23635,37 @@ which has no Settings. A dialog built directly reports it with
 `UltraCanvasFileDialog::GetSaveImageSize()`, and
 `ShowSaveSettingsDialog(extensionOrPath, pictureWidth, pictureHeight, size,
 parent, onClosed)` offers the same row anywhere else. UltraPaint's Save As
-passes its picture's size.
+passes its picture's size, and the media viewer's Save image as (UltraViewer)
+its picture's.
+
+#### A drawing
+
+A drawing - an SVG, a page of shapes - has **no pixel size** of its own, so
+`SetImageSize` has nothing to give; yet that is when a size is wanted most,
+since it can be drawn at any. `SetDrawingSize(width, height)` gives the size
+it is drawn at unless another is chosen (its size on the page at 96 DPI,
+say): the Size row opens on it, Keep proportions keeps the drawing's shape,
+and the tooltips say it is drawn sharp at any size. The caller draws it at
+the size that comes back, not its picture stretched:
+
+<!-- doc-check: int pageWidth = 0, pageHeight = 0; void DrawAt(const std::string& path, int width, int height); -->
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Export drawing")
+    .AddFilter("PNG", std::string("png"))
+    .SetDrawingSize(pageWidth, pageHeight)
+    .SetParentWindow(window.get());
+const int w = pageWidth, h = pageHeight;
+UltraCanvasFileLoader::SaveFileDialog(opts, [w, h](DialogResult r, const std::string& path,
+                                                   const FileSaveImageSize& size) {
+    if (r != DialogResult::OK) return;
+    DrawAt(path, size.IsOriginal() ? w : size.width, size.IsOriginal() ? h : size.height);
+});
+```
+
+`ShowSaveSettingsDialog(extensionOrPath, picture, size, parent, onClosed)`
+takes the same as a `FileSavePicture` (`width`, `height`, `drawing`). The
+media viewer offers an SVG this way and draws it again at the size chosen.
 
 ## Filter toggles
 
@@ -39345,6 +39382,26 @@ The adjustments panel (the `settings-sliders` toolbar toggle) drives `MediaAdjus
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
+
+*Save as* tells the Save dialog how big the picture is, so the **Settings**
+of a bitmap type (PNG, JPEG, WebP, TIFF, AVIF, BMP) offer
+[another size](UltraCanvasFileDialog.md#the-pictures-size) for that save, and
+writes with the type's save settings (JPEG quality, PNG compression ...) once
+the user has stored any. An SVG has no pixel size of its own: it is offered as
+[a drawing](UltraCanvasFileDialog.md#a-drawing), at its size on the page, and
+written by drawing it again at the size chosen - sharp at any size, where the
+picture shown would blur when stretched. The surface does it:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+```cpp
+UltraCanvasMediaSurface* surface = viewer->GetSurface();
+const FileSavePicture picture = surface->GetSavePicture();   // turned as shown
+FileSaveImageSize size;
+size.width = picture.width * 2;
+size.height = picture.height * 2;
+std::string error;
+surface->SaveProcessed("twice.png", size, error);   // a drawing drawn again at that size
+```
 
 Each slider is **continuous over its whole range** and carries its live value in
 its caption (`Gamma  1.37`), so an edit can be read off and repeated. The
@@ -70837,7 +70894,10 @@ or an application adds its own with `RegisterSaveFormat`. A caller that passes
 the picture's size (`FileDialogOptions::SetImageSize`) also gets a Size row in
 a bitmap type's settings, for that save only: the size comes back through the
 `SaveFileDialog` overload whose callback takes a `FileSaveImageSize`, and
-`GetImageExportOptions(path, size, options)` writes at it. See *Save settings*
+`GetImageExportOptions(path, size, options)` writes at it. A drawing (SVG,
+a page of shapes) has no pixel size of its own: `SetDrawingSize` gives the
+size it is drawn at, offers the same row, and the caller draws it again at the
+size chosen. See *Save settings*
 in [the file dialog's documentation](../../UltraCanvas/UltraCanvasFileDialog.md#save-settings).
 
 ### Transparent Decompression

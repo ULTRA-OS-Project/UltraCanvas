@@ -1,8 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.7.0
-// Last Modified: 2026-10-12
+// Version: 3.8.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -392,6 +392,10 @@ namespace UltraCanvas {
         // the size chosen is GetSaveImageSize().
         int imageWidth = 0;
         int imageHeight = 0;
+        // ... and it is a drawing (a vector picture): it has no pixel size of
+        // its own, imageWidth x imageHeight is the size it is drawn at unless
+        // another is chosen, and the Size row says it is drawn sharp at any.
+        bool imageIsDrawing = false;
 
         FileDialogConfig();
 
