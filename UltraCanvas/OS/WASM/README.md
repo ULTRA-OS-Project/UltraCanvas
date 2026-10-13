@@ -4,8 +4,11 @@
 backend + wasm-compiled cairo/pango/fontconfig/glib/libvips) links with
 Emscripten 6.0 and runs in Chromium: windows render through the shared
 Cairo/Pango pipeline with the bundled Ubuntu fonts, and mouse input drives
-widget callbacks (see [demo/](demo/)). Not yet exercised: broad widget
-coverage, touch devices, Firefox/Safari.
+widget callbacks (see [demo/](demo/)). The framework's demo application
+builds as a page too (`UltraCanvasDemo.html`, from the repository root), so
+the element catalogue, the charts and diagrams and the format readers have
+been seen rendering in the browser. Not yet exercised: touch devices,
+Firefox/Safari.
 
 ## Architecture
 
@@ -64,6 +67,12 @@ glib and libvips branches. pango gets a small local patch
 (`patches/pango-1.52-wasm-function-pointers.patch`) fixing one-argument
 callbacks cast to `GInterfaceInitFunc`/`GFunc`: native ABIs tolerate the
 arity mismatch, wasm's strict indirect-call signature checking traps on it.
+glib gets one of the same kind (`patches/glib-2.89-wasm-free-full-casts.patch`):
+`g_slist_free_full`, `g_list_free_full`, `g_queue_free_full` and
+`g_queue_clear_full` called the `GDestroyNotify` through the two-argument
+`GFunc` of their foreach helpers, which the branch's own fixes had not
+covered, and the first pango markup a page laid out (the demo's tree view)
+trapped in `g_markup_parse_context_free`.
 
 ```bash
 source /path/to/emsdk/emsdk_env.sh   # Emscripten 6.0.11 - the version CI builds with
@@ -92,6 +101,17 @@ emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release
 cmake --build build-wasm
 ```
 
+Configured at the repository root like that, the build is the core library
+and the framework's demo application as a page, `build-wasm/UltraCanvasDemo.html`
+(with `.js`, `.wasm`, `.ww.js` and the `.data` bundle beside it): the root
+CMakeLists.txt's *WebAssembly defaults* block leaves every other
+application and the sibling modules off, as the Android block does, and the
+demo's `EMSCRIPTEN` block gives the page its suffix, its shell
+(`Apps/DemoApp/wasm-shell.html`) and its resources. `-DBUILD_WASM_DEMOS=ON`
+adds the two validation apps below to the same build. What the demo leaves
+out in the browser is listed in
+[`Docs/UltraCanvas/UltraCanvasWebAssembly.md`](../../../Docs/UltraCanvas/UltraCanvasWebAssembly.md).
+
 Application executables additionally need the bundled fonts in the virtual
 FS at `/share/media/fonts`:
 
@@ -104,8 +124,10 @@ FS at `/share/media/fonts`:
 **not** the `/usr/share/...` path desktop packages use.)
 
 The core library propagates `-pthread -fwasm-exceptions
--sPTHREAD_POOL_SIZE=8 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB
--sNO_EXIT_RUNTIME=1` to executables, plus the exports the backend's
+-sPTHREAD_POOL_SIZE=8 -sALLOW_MEMORY_GROWTH=1 -sGROWABLE_ARRAYBUFFERS=1
+-sSTACK_SIZE=5MB -sNO_EXIT_RUNTIME=1` to executables (the growable
+SharedArrayBuffer, where the browser has it, spares every JavaScript-side
+heap access the check that memory growth with threads otherwise costs), plus the exports the backend's
 JavaScript bridges call (`-sEXPORTED_FUNCTIONS=_main,_malloc,_free` and
 `-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,stringToNewUTF8,lengthBytesUTF8,HEAPU8,FS`).
 An application that sets `EXPORTED_FUNCTIONS` itself must keep these.
@@ -148,9 +170,18 @@ owning references.
 
 ## Validating in a browser
 
-`demo/` contains two apps used to validate the backend. Build them with
-`emcmake cmake` as above, serve `build/` with `serve.py`, and open:
+`demo/` contains two apps used to validate the backend, and the repository
+root builds the demo application. Build them with `emcmake cmake` as above,
+serve the build directory with `serve.py`, and open:
 
+- `UltraCanvasDemo.html` - the framework's demo application
+  (`Apps/DemoApp/`), the same page tree as the desktop build less the pages
+  whose backend the browser has not got (audio, video, the 25 MB STL
+  sample). `?component=<page id>` opens a page directly and `?about=0`
+  skips the About window, as `--component` and `--no-about` do on the
+  desktop. Its `.data` bundle is the fonts, icons, images, vector samples,
+  the smaller 3D models, the docs and the demo's own sources - about
+  50 MB, downloaded once before the page starts.
 - `wasm-demo.html` - the minimal app: the window canvas
   (`<canvas id="ultracanvas-window-N">`) shows pango-rendered text and a
   clickable button.
@@ -172,15 +203,17 @@ owning references.
   file; the photos the page shows are placeholder tiles except the three in
   `media/images/ultraos/`.
 
-The manually dispatched `wasm-build.yml` workflow builds both in five
-variants - `baseline`, `min-size` (`-Os`), `no-vips`, `four-fonts`
-(`-DUC_WASM_FONTS=...`, the four the front page uses) and `single-thread` -
-writes each variant's download sizes (raw, gzip, Brotli) into its job
-summary, and uploads each as the `wasm-demo-<variant>` artifact: unzip one
-into a folder, run `python3 serve.py 8080` there and open either page. The
-browser console then shows `first frame presented N ms after navigation
-start`, the port's time to first paint on that machine. The last three
-variants are measurements that may fail to build; they never fail the run.
+The manually dispatched `wasm-build.yml` workflow configures the repository
+root with `-DBUILD_WASM_DEMOS=ON`, so one library build gives all three
+pages, in five variants - `baseline`, `min-size` (`-Os`), `no-vips`,
+`four-fonts` (`-DUC_WASM_FONTS=...`, the four the front page uses) and
+`single-thread` - writes each variant's download sizes (raw, gzip, Brotli)
+into its job summary, and uploads each as the `wasm-demo-<variant>`
+artifact, one folder with the three pages and `serve.py`: unzip one, run
+`python3 serve.py 8080` there and open any of the pages. The browser
+console then shows `first frame presented N ms after navigation start`,
+the port's time to first paint on that machine. The last three variants
+are measurements that may fail to build; they never fail the run.
 
 The same two sources build as desktop applications - configure the
 repository root with `-DBUILD_WASM_DEMOS=ON` and run `build/ultraos-frontpage`
@@ -190,6 +223,12 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
 
 ## Known limitations
 
+- **SVG needs the Vector plugin registered**: the sysroot's libvips has no
+  SVG loader (librsvg / resvg are not built), so `UCImage` reads an .svg
+  through the vector preview seam the Vector plugin installs
+  (`RegisterVectorFormatsPlugin()`, as the demo's `main.cpp` does) and
+  renders it with the core's vector renderer. An application that registers
+  no plugins gets "format not supported" for every SVG icon.
 - **Clipboard**: text only, and paste depends on the browser firing a
   `paste` event for Ctrl/Cmd+V. Shift+Insert and menu-driven Paste use the
   last text `navigator.clipboard.readText()` returned, which Chromium allows

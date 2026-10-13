@@ -1,8 +1,9 @@
 name: WebAssembly build
 
-# Builds the WebAssembly backend's demo apps (wasm-demo and the ultraos.eu
-# front page) with Emscripten, so OS/WASM/ and the core's __EMSCRIPTEN__
-# branches get compiled somewhere other than one developer's machine.
+# Builds the demo application (UltraCanvasDemo.html) and the WebAssembly
+# backend's validation apps (wasm-demo and the ultraos.eu front page) with
+# Emscripten, so OS/WASM/, the core's __EMSCRIPTEN__ branches and the demo's
+# get compiled somewhere other than one developer's machine.
 #
 # Five variants, one job each, so the "Demo sizes" tables answer what a
 # visitor downloads and which lever shrinks it (Phase 0 of
@@ -145,31 +146,37 @@ jobs:
       # workflow built the whole sysroot and then found no cairo. So the
       # sysroot goes on PKG_CONFIG_PATH, and PKG_CONFIG_LIBDIR keeps the
       # host's own .pc files out of a wasm build.
-      - name: Configure demo
-        working-directory: UltraCanvas/OS/WASM/demo
+      #
+      # The repository root, not OS/WASM/demo: under emcmake the root's
+      # WebAssembly defaults block leaves the core library and
+      # UltraCanvasDemo.html, and BUILD_WASM_DEMOS adds the two validation
+      # apps to the same build, so the library is compiled once for all three.
+      - name: Configure
         env:
           EM_PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
           PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
           PKG_CONFIG_LIBDIR: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
-        run: emcmake cmake -B build -S . ${{ matrix.configure }}
+        run: emcmake cmake -B build-wasm -S . ${{ matrix.configure }} -DBUILD_WASM_DEMOS=ON
 
       # A job count, not a bare --parallel: under the Makefile generator that
       # is `make -j` with no limit, and run 3 of this workflow had hundreds of
       # emcc processes going at once until the kernel killed them for memory.
-      - name: Build demo
-        working-directory: UltraCanvas/OS/WASM/demo
-        run: cmake --build build --parallel "$(nproc)"
+      - name: Build
+        run: cmake --build build-wasm --parallel "$(nproc)"
 
-      # What a visitor downloads: each demo's .wasm, .js, .data and worker
-      # file, raw and as a server would compress them (gzip, and Brotli when
-      # the runner has it). The .wasm carries the framework with cairo, pango,
-      # glib, fontconfig, libvips and the bundled fonts in the .data, so this
+      # What a visitor downloads: each page's .wasm, .js and .data, raw and
+      # as a server would compress them (gzip, and Brotli when the runner
+      # has it). The .wasm carries the framework with cairo, pango, glib,
+      # fontconfig, libvips and the bundled fonts in the .data, so this
       # table is the number every "UltraCanvas as a web page" decision rests
-      # on (Docs/Research/UltraPressDesignProposal.md §4.3). Measurement
-      # only: it never fails the job.
+      # on (Docs/Research/UltraPressDesignProposal.md §4.3). UltraCanvasDemo
+      # is the whole element catalogue with its samples; the two validation
+      # apps are what a small page costs. Measurement only: it never fails
+      # the job. No separate worker file (<page>.ww.js): emsdk 6.0.11 puts
+      # the pthread worker into the .js, as run 11 of this workflow showed.
       - name: Demo sizes
         continue-on-error: true
-        working-directory: UltraCanvas/OS/WASM/demo/build
+        working-directory: build-wasm
         env:
           # Through the environment, not interpolated into the script: the
           # four-fonts configure string holds semicolons, which the shell
@@ -185,7 +192,7 @@ jobs:
             echo ""
             echo "| File | Raw | gzip -9 | brotli -q 11 |"
             echo "|---|---:|---:|---:|"
-            for demo in wasm-demo ultraos-frontpage; do
+            for demo in UltraCanvasDemo wasm-demo ultraos-frontpage; do
               total=0
               for f in "$demo".wasm "$demo".js "$demo".data "$demo".ww.js; do
                 [ -f "$f" ] || continue
@@ -196,26 +203,25 @@ jobs:
             done
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # Both demos, with serve.py: unzip the artifact into a folder, run
-      # `python3 serve.py 8080` there and open wasm-demo.html or
-      # ultraos-frontpage.html (the pages need the server's cross-origin
-      # isolation headers, see UltraCanvas/OS/WASM/README.md). No separate
-      # worker file (<demo>.ww.js): emsdk 6.0.11 puts the pthread worker
-      # into the .js, as run 11 of this workflow showed (9 of 11 listed
-      # files uploaded). An emsdk that emits one again needs it listed, or
-      # the threads do not start.
-      - name: Upload demos
+      # One folder with the three pages and serve.py, so the artifact works
+      # as unzipped: run `python3 serve.py 8080` in it and open
+      # UltraCanvasDemo.html, wasm-demo.html or ultraos-frontpage.html (the
+      # pages need the server's cross-origin isolation headers, see
+      # UltraCanvas/OS/WASM/README.md). A worker file is copied when an
+      # emsdk emits one again; without it the threads would not start.
+      - name: Collect the pages
+        run: |
+          mkdir wasm-demo
+          cp UltraCanvas/OS/WASM/demo/serve.py wasm-demo/
+          for page in UltraCanvasDemo wasm-demo ultraos-frontpage; do
+            cp "build-wasm/$page".{html,js,wasm,data} wasm-demo/
+            [ -f "build-wasm/$page.ww.js" ] && cp "build-wasm/$page.ww.js" wasm-demo/
+          done
+          ls -l wasm-demo
+
+      - name: Upload the pages
         uses: actions/upload-artifact@v6
         with:
           name: wasm-demo-${{ matrix.variant }}
-          path: |
-            UltraCanvas/OS/WASM/demo/serve.py
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.html
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.js
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.wasm
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.data
-            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.html
-            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.js
-            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.wasm
-            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.data
+          path: wasm-demo
           if-no-files-found: error

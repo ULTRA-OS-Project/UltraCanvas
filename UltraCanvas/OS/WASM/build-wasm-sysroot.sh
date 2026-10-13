@@ -155,6 +155,14 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   [ -d $DEPS/glib ] || git clone --depth 1 --branch wasm-vips-2.89.3 https://github.com/kleisauke/glib.git $DEPS/glib
   cd $DEPS/glib
   [ -d subprojects/gvdb/.git ] || git clone --depth 1 https://github.com/GNOME/gvdb.git subprojects/gvdb
+  # g_slist_free_full, g_list_free_full, g_queue_free_full and
+  # g_queue_clear_full call a one-argument GDestroyNotify through the
+  # two-argument GFunc of the foreach helpers; the branch's own function-
+  # pointer fixes do not cover them, and the trap surfaced the first time a
+  # page used pango markup (pango_parse_markup frees its tag stack that way).
+  grep -q 'wasm: a GDestroyNotify' glib/gslist.c || \
+    patch -p1 < "$SCRIPT_DIR/patches/glib-2.89-wasm-free-full-casts.patch"
+  rm -rf _build
   meson setup _build $MESON_ARGS --force-fallback-for=gvdb \
     -Dintrospection=disabled -Dselinux=disabled -Dxattr=false -Dlibmount=disabled \
     -Dsysprof=disabled -Dnls=disabled -Dglib_debug=disabled -Dtests=false \
