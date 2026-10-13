@@ -473,6 +473,14 @@ UltraNetHandle UltraNet_HttpServe(const UltraNetHttpServerOptions& options, Ultr
 UltraNetResult UltraNet_HttpServeStop(UltraNetHandle server);
 ```
 
+It is the first server of the stack, and not only UltraPress's: UltraWeb
+has no server side (its fetch and storage are the visitor's), UltraFIBU's
+multi-user mode is a shared PostgreSQL, not a service, and the ULTRA OS
+cloud that `UltraCalendarDesignProposal.md` §8 and UltraCloud's roadmap
+name — a CalDAV / CardDAV / WebDAV server behind one ULTRA account — needs
+exactly this module underneath. Build it once, in UltraNet, and both
+products are handlers on it.
+
 HTTP/1.1 with keep-alive and chunked bodies, on the existing TCP and TLS
 layers; no HTTP/2 and no TLS termination of its own in the first version —
 the documented deployment puts Caddy or nginx in front for certificates
