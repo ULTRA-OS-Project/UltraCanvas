@@ -11,13 +11,17 @@
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
 #include "UltraPressRender.h"
+#include "UltraPressWindow.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextInput.h"
 
+#include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <functional>
 #include <string>
 #include <vector>
@@ -239,10 +243,65 @@ static void TestPaletteAndExample() {
     Check(FindButton(home.root, "Details") != nullptr && FindButton(home.root, "Donate") != nullptr, "the header and footer menus");
 }
 
+static void TestEditor() {
+    std::printf("The editor without a window\n");
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() /
+        ("ultrapress-editor-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    std::vector<std::string> errors;
+    Check(SaveSite(UltraCanvas::PathToUtf8(dir), CreateStarterSite("Edit", "https://edit.example"), errors), "a site to edit");
+
+    Site site;
+    Check(LoadSite(UltraCanvas::PathToUtf8(dir), site, errors), "it loads");
+    EditorWindow editor(site, UltraCanvas::PathToUtf8(dir));
+    editor.ShowPage("home");
+    Check(editor.CurrentPage() == "home" && editor.SelectedBlock() == -1, "the front page is shown, no block selected");
+    Check(editor.CurrentSite().FindPage("home")->blocks.size() == 5, "five blocks to start");
+
+    editor.AddBlock("quote");
+    Check(editor.CurrentSite().FindPage("home")->blocks.size() == 6 && editor.SelectedBlock() == 5 &&
+              editor.CurrentSite().FindPage("home")->blocks[5].type == "quote",
+          "a block is appended and selected when none was selected");
+    editor.SelectBlock(0);
+    editor.AddBlock("cta");
+    const Page* home = editor.CurrentSite().FindPage("home");
+    Check(home->blocks.size() == 7 && home->blocks[1].type == "cta" && editor.SelectedBlock() == 1,
+          "a block is inserted after the selected one");
+    Check(ValidateSite(editor.CurrentSite()).empty(), "new blocks carry defaults that validate");
+    editor.AddBlock("no-such-block");
+    Check(editor.CurrentSite().FindPage("home")->blocks.size() == 7, "an unknown type adds nothing");
+
+    editor.MoveBlock(1, 1);
+    home = editor.CurrentSite().FindPage("home");
+    Check(home->blocks[2].type == "cta" && home->blocks[1].type == "text" && editor.SelectedBlock() == 2, "a block moves down and stays selected");
+    editor.MoveBlock(0, -1);
+    Check(editor.CurrentSite().FindPage("home")->blocks[0].type == "hero", "the first block cannot move up");
+    editor.RemoveBlock(2);
+    home = editor.CurrentSite().FindPage("home");
+    Check(home->blocks.size() == 6 && home->blocks[2].type == "features", "a block is removed");
+    editor.RemoveBlock(99);
+    Check(editor.CurrentSite().FindPage("home")->blocks.size() == 6, "an index past the end removes nothing");
+
+    Check(editor.Save(), "the site saves");
+    Site saved;
+    Check(LoadSite(UltraCanvas::PathToUtf8(dir), saved, errors) && saved.FindPage("home")->blocks.size() == 6 &&
+              saved.FindPage("home")->blocks[5].type == "quote",
+          "the saved site has the edits");
+    editor.ShowPage("about");
+    Check(editor.CurrentPage() == "about", "another page can be shown");
+    editor.ShowPage("missing");
+    editor.AddBlock("text");
+    Check(editor.CurrentPage() == "missing" && ValidateSite(editor.CurrentSite()).empty(), "a page that does not exist takes no block");
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     TestStarterSite();
     TestEveryBlock();
     TestPaletteAndExample();
+    TestEditor();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

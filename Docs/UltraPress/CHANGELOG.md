@@ -1,3 +1,17 @@
+#### 2026-10-13 *0.3.0*
+- **Editing.** The window's left column lists the current page's blocks
+  with their first words; a block is selected, moved up or down, removed,
+  or added after the selection from a drop-down of every registered type,
+  with defaults that validate. The right column is the property pane,
+  generated from the block registry: a text input for a line, a text area
+  for paragraphs and HTML, a checkbox for a flag, an integer field for a
+  number, and the links, items and lists as JSON in a text area that is
+  applied as soon as it parses. With no block selected it edits the page's
+  title, description, status and pinning. Every change goes into the
+  content model and re-renders the preview; *Save site* writes the folder.
+  The status line says what is unsaved, what was added, and when JSON is
+  not valid yet. The editor's model side is tested without a window.
+
 #### 2026-10-13 *0.2.0*
 - **The block renderer on real elements, and the UltraPress window.**
   `Apps/UltraPress/render/UltraPressRender.h` turns a page of the content

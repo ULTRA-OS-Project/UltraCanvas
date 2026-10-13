@@ -1,11 +1,12 @@
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.2.0 is the headless engine, the
-`ultrapress` command line and the block renderer on real elements with a
-window that shows a site: a site as a folder of JSON files, the block
-registry, the HTML shadow of every page, the static publish, and every
-block as UltraCanvas elements. Editing, the WordPress importer and the
-WebAssembly output follow
+**Status:** Phase 1 under way. UltraPress 0.3.0 is the headless engine, the
+`ultrapress` command line, the block renderer on real elements and the
+editor window: a site as a folder of JSON files, the block registry, the
+HTML shadow of every page, the static publish, every block as UltraCanvas
+elements, and blocks added, moved, removed and edited with the page
+re-rendered live. The WordPress importer and the WebAssembly output
+follow
 ([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
 **Last Modified:** 2026-10-13
 **Author:** UltraCanvas Framework / ULTRA OS
@@ -20,9 +21,19 @@ This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
 ## The window
 
 ```bash
-UltraPress mysite             # the site: pages on the left, the page on the right
+UltraPress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
 UltraPress mysite --check     # render every page without a window; element counts and warnings
 ```
+
+The left column lists the pages and the current page's blocks: select one,
+move it with the arrows, remove it, or add one after the selection from
+the drop-down of every registered type. The right column is the selected
+block's properties, generated from the registry - a text input for a
+line, a text area for paragraphs and HTML, a checkbox for a flag, an
+integer for a number, and links, items and lists as JSON applied as soon
+as it parses - or, with no block selected, the page's title, description,
+status and pinning. Every change re-renders the page in the middle;
+*Save site* writes the folder (`ui/UltraPressWindow.h`).
 
 The page is rendered on real UltraCanvas elements by the block renderer
 (`Apps/UltraPress/render/UltraPressRender.h`, target `UltraPressRender`),
@@ -135,9 +146,9 @@ publish the example site into a temporary folder.
 
 ## Not yet
 
-Editing in the window (the block palette, moving blocks, properties, text
-in place), the WebAssembly renderer release and its reference from the
-shadow, the WordPress WXR importer, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
+Text edited in place on the page, a picture picker and the media library,
+new pages and menus from the window, undo, the WebAssembly renderer release
+and its reference from the shadow, the WordPress WXR importer, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
 the newsletter's e-mail mode of the emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
 static site need a form service until then.

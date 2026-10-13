@@ -1,18 +1,21 @@
 // Apps/UltraPress/ui/main.cpp
-// UltraPress: the site in a window - the page list on the left, the page
-// rendered on real elements on the right, the same renderer that becomes
-// the published page under Emscripten. 0.2.0 shows; editing follows.
+// UltraPress: the site in a window - the pages and the current page's
+// blocks on the left, the page rendered on real elements in the middle,
+// the selected block's properties on the right (ui/UltraPressWindow.h).
+// The renderer is the one that becomes the published page under Emscripten.
 //
 //   UltraPress <site-dir>            open a site folder
 //   UltraPress <site-dir> --check    render every page without a window and
 //                                    print the element counts and warnings
 //   UltraPress --version
+// Version: 0.3.0 - editing: blocks added, moved, removed and their properties changed; Save
 // Version: 0.2.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressBlocks.h"
 #include "UltraPressModel.h"
 #include "UltraPressRender.h"
+#include "UltraPressWindow.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -35,10 +38,7 @@ using namespace UltraCanvas;
 
 namespace {
 
-const Color kNight(13, 12, 34, 255);
 const Color kPaper(255, 255, 255, 255);
-const Color kOnDark(208, 208, 220, 255);
-const Color kAccent(169, 7, 7, 255);
 
 int Usage() {
     std::fprintf(stderr,
@@ -67,45 +67,6 @@ int RunCheck(const UltraPress::Site& site, const std::string& siteDir) {
     return failures == 0 ? 0 : 1;
 }
 
-// The window: a dark column with the site's name and one button per page,
-// and the page beside it, rebuilt when another is chosen.
-struct Viewer {
-    UltraPress::Site site;
-    std::string siteDir;
-    std::shared_ptr<UltraCanvasContainer> pageArea;
-    UltraPress::RenderedPage shown;
-    std::string current;
-
-    void Show(const std::string& slug) {
-        const UltraPress::Page* page = site.FindPage(slug);
-        if (!page || !pageArea) return;
-        current = slug;
-        pageArea->ClearChildren();
-        UltraPress::RenderOptions options;
-        options.mediaRoot = siteDir;
-        options.onLink = [this](const std::string& href) {
-            // A site path opens that page here; anything else leaves for the browser.
-            if (!href.empty() && href[0] == '/') {
-                const std::string target = href == "/" ? "home" : href.substr(1, href.size() - 2);
-                if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
-                    app->PostToUIThread([this, target]() { Show(target); });
-                }
-            } else {
-                OpenURL(href);
-            }
-        };
-        options.onFormSubmit = [](const std::string& id, const std::vector<std::pair<std::string, std::string>>& fields) {
-            std::printf("form %s: %zu fields (no server tier yet)\n", id.c_str(), fields.size());
-        };
-        options.onNewsletterSubscribe = [](const std::string& list, const std::string& email) {
-            std::printf("newsletter %s: %s (no server tier yet)\n", list.c_str(), email.c_str());
-        };
-        UltraPress::PageRenderer renderer(site, options);
-        shown = renderer.Render(*page);
-        pageArea->AddChild(shown.root);
-    }
-};
-
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -122,10 +83,7 @@ int main(int argc, char* argv[]) {
         else return Usage();
     }
 
-    // Static lifetime: under Emscripten Run() never returns and unwinds
-    // main()'s frame while the loop keeps ticking.
-    static Viewer viewer;
-    viewer.siteDir = siteDir;
+    struct { UltraPress::Site site; } viewer;
     std::vector<std::string> errors;
     if (!UltraPress::LoadSite(siteDir, viewer.site, errors)) {
         for (const std::string& error : errors) std::fprintf(stderr, "%s\n", error.c_str());
@@ -141,71 +99,16 @@ int main(int argc, char* argv[]) {
 
     WindowConfig cfg;
     cfg.title = viewer.site.name + " - UltraPress " ULTRAPRESS_VERSION;
-    cfg.width = 1400;
-    cfg.height = 900;
+    cfg.width = 1500;
+    cfg.height = 920;
     cfg.backgroundColor = kPaper;
     auto window = CreateWindow(cfg);
     if (!window) return 1;
 
-    auto frame = CreateContainer("Frame");
-    frame->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Pct(100));
-    frame->layout.SetFlexRow();
-
-    auto side = CreateContainer("Side");
-    side->SetBackgroundColor(kNight);
-    side->SetElementSize(CSSLayout::Dimension::Px(240), CSSLayout::Dimension::Pct(100));
-    side->layout.SetDisplay(CSSLayout::DisplayType::Block);
-    side->SetPadding(16);
-    side->layoutItem.SetFlexShrink(0);
-    auto title = CreateLabel("SideTitle", viewer.site.name);
-    title->SetFont("Ubuntu", 18, FontWeight::Bold);
-    title->SetTextColor(kPaper);
-    title->SetWrap(TextWrap::WrapWord);
-    title->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
-    side->AddChild(title);
-    auto subtitle = CreateLabel("SideSubtitle", "Pages");
-    subtitle->SetFont("Ubuntu", 12, FontWeight::Bold);
-    subtitle->SetTextColor(kAccent);
-    subtitle->SetMargin(18, 0, 6, 0);
-    side->AddChild(subtitle);
-    for (const UltraPress::Page* page : UltraPress::SortedPages(viewer.site, UltraPress::PageOrder::Stored)) {
-        auto button = CreateButton("Page" + page->slug, 0, 0, 0, 32,
-                                   (page->pinned ? "\xE2\x98\x85 " : "") + page->title +
-                                       (page->IsPublished() ? "" : " (" + page->status + ")"));
-        button->SetFont("Ubuntu", 14);
-        button->SetColors(Colors::Transparent, Color(255, 255, 255, 24));
-        button->SetTextColors(kOnDark, kPaper);
-        button->SetBorder(0, Colors::Transparent);
-        button->SetCornerRadius(6);
-        button->SetTextAlign(TextAlignment::Left);
-        button->SetPadding(0, 8);
-        button->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(32));
-        button->SetMouseCursor(UCMouseCursor::Hand);
-        const std::string slug = page->slug;
-        button->onClick = [slug]() {
-            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
-                app->PostToUIThread([slug]() { viewer.Show(slug); });
-            }
-        };
-        side->AddChild(button);
-    }
-    frame->AddChild(side);
-
-    auto pageArea = CreateScrollableContainer("PageArea", 0, 0, 0, 0, true, false);
-    pageArea->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Pct(100));
-    pageArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
-    {
-        ContainerStyle style = pageArea->GetContainerStyle();
-        style.autoShowHorizontalScrollbar = false;
-        pageArea->SetContainerStyle(style);
-    }
-    pageArea->SetBackgroundColor(kPaper);
-    pageArea->layout.SetDisplay(CSSLayout::DisplayType::Block);
-    frame->AddChild(pageArea);
-    viewer.pageArea = pageArea;
-    window->AddChild(frame);
-
-    viewer.Show(viewer.site.FindPage("home") ? "home" : viewer.site.pages.empty() ? "" : viewer.site.pages.front().slug);
+    // Static lifetime: under Emscripten Run() never returns and unwinds
+    // main()'s frame while the loop keeps ticking.
+    static UltraPress::EditorWindow editor(std::move(viewer.site), siteDir);
+    editor.Build(window);
 #if defined(__EMSCRIPTEN__)
     window->Maximize();
 #endif

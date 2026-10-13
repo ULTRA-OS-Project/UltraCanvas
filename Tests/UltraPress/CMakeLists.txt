@@ -17,10 +17,15 @@ add_test(NAME UltraPressEngine COMMAND UltraPressEngineTests
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # The renderer: pages on real elements, built without a window.
-add_executable(UltraPressRenderTests UltraPressRenderTests.cpp)
+# The editor window's model side (ui/UltraPressWindow.cpp) is compiled in
+# too: without Build() it edits the site and saves, and that is tested.
+add_executable(UltraPressRenderTests UltraPressRenderTests.cpp
+    ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressWindow.cpp)
 target_compile_features(UltraPressRenderTests PRIVATE cxx_std_20)
 target_link_libraries(UltraPressRenderTests PRIVATE UltraPressRender ${ULTRACANVAS_LIBRARY})
-target_include_directories(UltraPressRenderTests PRIVATE ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
+target_include_directories(UltraPressRenderTests PRIVATE
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+    ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui)
 target_compile_definitions(UltraPressRenderTests PRIVATE
     ULTRAPRESS_EXAMPLE_DIR="${CMAKE_SOURCE_DIR}/Apps/UltraPress/examples/ultraos")
 set_target_properties(UltraPressRenderTests PROPERTIES

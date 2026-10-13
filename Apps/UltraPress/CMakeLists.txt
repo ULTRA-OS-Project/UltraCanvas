@@ -51,8 +51,9 @@ target_include_directories(UltraPressRender PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/r
 target_link_libraries(UltraPressRender PUBLIC UltraPressEngine ${ULTRACANVAS_LIBRARY})
 
 # ── UltraPress: the window ──────────────────────────────────────────────────
-add_executable(UltraPress ui/main.cpp)
+add_executable(UltraPress ui/main.cpp ui/UltraPressWindow.cpp)
 target_compile_features(UltraPress PRIVATE cxx_std_20)
+target_include_directories(UltraPress PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ui)
 target_link_libraries(UltraPress PRIVATE UltraPressRender)
 # ULTRAPRESS_VERSION (the first line of Docs/UltraPress/CHANGELOG.md) is shown
 # in the window title; UCAPP_ICON_PATH is the window and taskbar icon.
