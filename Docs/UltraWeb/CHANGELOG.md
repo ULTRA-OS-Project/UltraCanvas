@@ -1,3 +1,18 @@
+#### 2026-10-12 *0.6.0*
+- **The downloads list.** A **Downloads** button on the toolbar shows or
+  hides a panel above the status bar. It reads "Downloads (2)" while two
+  run, and the panel opens by itself when a large download starts.
+  - Each download of this run has a row: its name, then its progress
+    ("5.3 MB of 20.0 MB (26%)", rewritten as it goes) or how it ended
+    ("Saved", "Failed: why", "Cancelled").
+  - A running download can be cancelled. A saved one can be opened, or its
+    folder shown, with the system's default application. A finished one
+    can be removed from the list (the file stays), and **Clear finished**
+    removes them all.
+  - New `host/UltraWebDownloadList` (the list, no UI) and
+    `ui/UltraWebDownloadsPanel`. `UltraWebDownloadsTest` covers both,
+    clicking the panel's buttons.
+
 #### 2026-10-12 *0.5.0*
 - **Downloads.** A link to anything that is no page - a PDF, a zip, an
   answer the server marks `Content-Disposition: attachment` - opens the

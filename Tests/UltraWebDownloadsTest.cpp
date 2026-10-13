@@ -3,12 +3,18 @@
 // through a part file, a local file copied, sizes shown dot-decimal, and an
 // http download streamed to disk from a loopback server - whole, a 404 that
 // leaves no file, and a cancelled one that leaves no part file either.
+// Then the downloads list (host/UltraWebDownloadList) and its panel
+// (ui/UltraWebDownloadsPanel): states, sizes, the buttons each row offers
+// and what they do.
 // The http part needs POSIX sockets and is skipped on Windows.
+// Version: 1.1.0 - the downloads list and panel
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
+#include "host/UltraWebDownloadList.h"
 #include "host/UltraWebDownloads.h"
+#include "ui/UltraWebDownloadsPanel.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include "UltraNet/UltraNetCore.h"
@@ -106,6 +112,108 @@ void TestSaveBytesAndCopy(const std::filesystem::path& dir) {
     Check(ByteSize(2048) == "2 KB", "kilobytes");
     Check(ByteSize(int64_t(1536) * 1024) == "1.5 MB", "megabytes, dot-decimal");
     Check(ByteSize(int64_t(3) * 1024 * 1024 * 1024) == "3.0 GB", "gigabytes");
+}
+
+void TestList() {
+    std::printf("the downloads list\n");
+    DownloadList list;
+    std::vector<std::pair<int, bool>> changes;
+    list.onChanged = [&](int id, bool progressOnly) { changes.emplace_back(id, progressOnly); };
+
+    const int saved = list.AddSaved("http://x/a.zip", "a.zip", "/d/a.zip", 2048);
+    const int big = list.Add("http://x/big.iso", "big.iso", "/d/big.iso");
+    Check(list.Entries().size() == 2 && list.Entries()[0].id == big, "newest first");
+    Check(list.RunningCount() == 1, "one running");
+    Check(DownloadList::Describe(*list.Find(saved)) == "Saved - 2 KB", "a saved one: " + DownloadList::Describe(*list.Find(saved)));
+    Check(DownloadList::Describe(*list.Find(big)) == "Starting ...", "nothing yet");
+
+    list.Progress(big, int64_t(5) * 1024 * 1024, int64_t(20) * 1024 * 1024);
+    Check(DownloadList::Describe(*list.Find(big)) == "5.0 MB of 20.0 MB (25%)", "progress: " + DownloadList::Describe(*list.Find(big)));
+    Check(!changes.empty() && changes.back() == std::make_pair(big, true), "progress is reported as progress only");
+    list.Progress(big, 3 * 1024, -1);
+    Check(DownloadList::Describe(*list.Find(big)) == "3 KB so far", "no total: " + DownloadList::Describe(*list.Find(big)));
+
+    Check(!list.Remove(big), "a running download cannot be removed");
+    list.Finish(big, true, "");
+    Check(list.Find(big)->state == DownloadEntry::State::Saved && list.RunningCount() == 0, "finished: saved");
+    Check(DownloadList::Describe(*list.Find(big)) == "Saved - 3 KB", "its size is what came: " + DownloadList::Describe(*list.Find(big)));
+    list.Progress(big, 1, 1);
+    Check(list.Find(big)->received == 3 * 1024, "late progress is ignored");
+
+    const int failed = list.Add("http://x/gone", "gone", "/d/gone");
+    list.Finish(failed, false, "the server answered 404");
+    Check(DownloadList::Describe(*list.Find(failed)) == "Failed: the server answered 404", "failed, saying why");
+    const int stopped = list.Add("http://x/s", "s", "/d/s");
+    list.Finish(stopped, false, "cancelled");
+    Check(list.Find(stopped)->state == DownloadEntry::State::Cancelled && DownloadList::Describe(*list.Find(stopped)) == "Cancelled",
+          "cancelled is not failed");
+
+    const int running = list.Add("http://x/r", "r", "/d/r");
+    Check(list.Remove(saved) && !list.Find(saved), "a finished one is removed");
+    Check(!list.Remove(12345), "an unknown id is not");
+    changes.clear();
+    list.ClearFinished();
+    Check(list.Entries().size() == 1 && list.Entries()[0].id == running, "clear finished keeps the running one");
+    Check(changes.size() == 1 && changes[0].first == -1, "and says the list changed once");
+    changes.clear();
+    list.ClearFinished();
+    Check(changes.empty(), "clearing nothing says nothing");
+}
+
+void TestPanel() {
+    std::printf("the downloads panel\n");
+    DownloadList list;
+    UltraWebDownloadsPanel panel(list, Post);
+    list.onChanged = [&](int id, bool progressOnly) { panel.Update(id, progressOnly); };
+    auto drain = [] { Pump([] { std::lock_guard<std::mutex> guard(g_lock); return g_tasks.empty(); }, 2); };
+
+    Check(panel.ClearButton()->IsDisabled(), "nothing to clear at first");
+    const int saved = list.AddSaved("http://x/a.zip", "a.zip", "/d/a.zip", 10);
+    const int running = list.Add("http://x/b.iso", "b.iso", "/d/b.iso");
+    Check(!panel.RowFor(running), "rows are rebuilt on a later turn");
+    drain();
+    const auto* runRow = panel.RowFor(running);
+    const auto* savedRow = panel.RowFor(saved);
+    Check(runRow && savedRow, "a row for each");
+    if (!runRow || !savedRow) return;
+    Check(runRow->name->GetText() == "b.iso" && runRow->state->GetText() == "Starting ...", "name and state");
+    Check(runRow->cancel && !runRow->open && !runRow->remove, "a running one can be cancelled, nothing else");
+    Check(savedRow->open && savedRow->showFolder && savedRow->remove && !savedRow->cancel, "a saved one: open, show folder, remove");
+    Check(!panel.ClearButton()->IsDisabled(), "something to clear");
+
+    list.Progress(running, 512 * 1024, 1024 * 1024);
+    Check(panel.RowFor(running) == runRow && runRow->state->GetText() == "512 KB of 1.0 MB (50%)",
+          "progress rewrites the state in place: " + runRow->state->GetText());
+
+    int cancelled = 0;
+    panel.onCancel = [&](int id) { cancelled = id; };
+    runRow->cancel->onClick();
+    Check(cancelled == running, "Cancel asks the window to cancel that download");
+    std::string opened, folder;
+    panel.onOpen = [&](const DownloadEntry& e) { opened = e.path; };
+    panel.onShowFolder = [&](const DownloadEntry& e) { folder = e.path; };
+    savedRow->open->onClick();
+    savedRow->showFolder->onClick();
+    Check(opened == "/d/a.zip" && folder == "/d/a.zip", "Open and Show folder name the file");
+
+    list.Finish(running, false, "cancelled");
+    drain();
+    runRow = panel.RowFor(running);
+    Check(runRow && runRow->state->GetText() == "Cancelled" && !runRow->cancel && runRow->remove, "cancelled: only remove");
+
+    auto removeButton = panel.RowFor(saved)->remove;
+    removeButton->onClick();
+    Check(!list.Find(saved) && panel.RowFor(saved), "Remove drops it from the list; the row goes on a later turn");
+    drain();
+    Check(!panel.RowFor(saved), "and then the row");
+    panel.ClearButton()->onClick();
+    drain();
+    Check(list.Entries().empty() && !panel.RowFor(running), "Clear finished empties it");
+    Check(panel.ClearButton()->IsDisabled(), "and nothing is left to clear");
+    bool closed = false;
+    panel.onClose = [&] { closed = true; };
+    panel.CloseButton()->onClick();
+    Check(closed, "Close");
 }
 
 #ifndef _WIN32
@@ -223,6 +331,8 @@ int main() {
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     TestSaveBytesAndCopy(dir);
+    TestList();
+    TestPanel();
 #ifndef _WIN32
     TestHttp(dir);
 #else
