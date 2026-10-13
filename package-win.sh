@@ -4,7 +4,9 @@
 #
 # Usage:
 #   ./package-win.sh [--no-sign] [--installer] [package-name.zip]
-#     --no-sign     Skip Authenticode signing of the EXEs
+#     --no-sign     Skip Authenticode signing of the EXEs. Signing reads the
+#                   certificate's password from ULTRACANVAS_SIGN_PFX_PASSWORD
+#                   (SignUltraDemo.ps1 / SignUltraTexter.ps1)
 #     --installer   Also build the installer from the same folder:
 #                   UltraCanvas-Setup-Windows-<version>-<arch>.exe beside the
 #                   zip (scripts/build-windows-installer.sh; needs NSIS -
@@ -434,6 +436,7 @@ if $DO_INSTALLER; then
     echo "Building the installer..."
     "$SCRIPT_DIR/scripts/build-windows-installer.sh" "$DIST_DIR" "$VERSION" "$ARCH" "$SETUP_EXE"
     if $DO_SIGN; then
-        powershell -ExecutionPolicy Bypass -File SignUltraDemo.ps1 -Mode Sign -ExePath "$SETUP_EXE"
+        powershell -ExecutionPolicy Bypass -File SignUltraDemo.ps1 -Mode Sign -ExePath "$SETUP_EXE" \
+            -Description "UltraCanvas Setup"
     fi
 fi

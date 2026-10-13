@@ -611,7 +611,10 @@ UltraDesktop as the Windows desktop. The uninstaller gives the Windows desktop
 back first, then removes exactly the files it installed.
 `--no-sign` skips Authenticode signing when no certificate is present;
 `SignUltraDemo.ps1` and `SignUltraTexter.ps1` are the signing scripts the
-release uses. The version in the `.exe` resource and the manifest comes from
+release uses. They read the certificate's password from
+`ULTRACANVAS_SIGN_PFX_PASSWORD` - set it in the shell, or as a secret on a
+build machine - and stop, saying so, when it is not set. The `.pfx` they
+export next to themselves is ignored by git: it holds the private key. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
 copy, because `windres` reads them from disk: run `./set-version.sh` after
 bumping the version, and the CMake configure warns when they are stale.

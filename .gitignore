@@ -19,6 +19,10 @@ CMakeFiles/
 # build-android, ...) is the usual way to keep several around at once.
 /build-*/
 /dist/
+# The code-signing certificate SignUltraDemo.ps1 / SignUltraTexter.ps1 export
+# next to themselves: a private key, which never belongs in the repository.
+*.pfx
+*.p12
 # package-win.sh: the zip and the installer it builds from /dist/
 /UCDemo-Windows-*.zip
 /UltraCanvas-Setup-Windows-*.exe
