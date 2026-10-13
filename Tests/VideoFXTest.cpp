@@ -10,7 +10,7 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.11.0
+// Version: 0.12.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -739,6 +739,7 @@ static VideoFXProject RichTimeline(const std::string& dir) {
     settings.videoBitRate = 4000000;
     settings.encoderPreset = "slow";
     settings.keyframeInterval = 1.5;
+    settings.acceleration = VideoFXAcceleration::QuickSync;
     settings.sampleRate = 44100;
     settings.channels = 1;
     settings.audioBitRate = 96000;
@@ -824,7 +825,7 @@ static void TestProjectFiles() {
     CHECK(st.container == VideoFXContainer::WebM && st.videoCodec == VideoFXVideoCodec::VP9 && st.width == 1280 &&
           Near(st.frameRate, 29.97, 1e-12) && st.fitMode == VideoFXFitMode::Fill && st.quality == 77 &&
           st.videoBitRate == 4000000 && st.encoderPreset == "slow" && st.channels == 1 && st.threads == 3 &&
-          Near(st.keyframeInterval, 1.5, 1e-12),
+          Near(st.keyframeInterval, 1.5, 1e-12) && st.acceleration == VideoFXAcceleration::QuickSync,
           "export settings");
     CHECK(st.music.Songs().size() == 3 && Near(st.music.crossfade, 4.5, 1e-12) && !st.music.loop &&
           Near(st.music.duckingThresholdDb, -15.0, 1e-12) && Near(st.music.duckingLevel, 0.2, 1e-12),
@@ -1091,6 +1092,7 @@ static void TestStillImages(const VideoFXExportSettings& base);
 static void TestMusic(const VideoFXExportSettings& base);
 static void TestPreview(const VideoFXExportSettings& base);
 static void TestProxies(const VideoFXExportSettings& base);
+static void TestEncoders(const VideoFXExportSettings& base);
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -1302,6 +1304,7 @@ static void TestEngine() {
     TestMusic(base);
     TestPreview(base);
     TestProxies(base);
+    TestEncoders(base);
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -2435,6 +2438,96 @@ static void TestProxies(const VideoFXExportSettings& base) {
     CHECK(files == 2 && !VideoFX_HasProxy(clip, ps), "both gone");
 }
 
+// Software, hardware, or one hardware family. The machine running the tests
+// may have no graphics hardware at all, so what is checked is that every
+// answer is consistent, a missing family fails cleanly, Hardware falls back,
+// and - where some hardware encoder does work - that it really encodes.
+static void TestEncoders(const VideoFXExportSettings& base) {
+    std::printf("\n-- encoders: software and hardware --\n");
+    const auto t0 = std::chrono::steady_clock::now();
+    const std::vector<VideoFXEncoderInfo> h264 = VideoFX_ListVideoEncoders(VideoFXVideoCodec::H264);
+    const double firstMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    bool allH264 = true, kindsMatch = true;
+    for (const VideoFXEncoderInfo& e : h264) {
+        std::printf("        %-20s %-16s %s\n", e.name.c_str(), VideoFX_AccelerationName(e.acceleration),
+                    e.works ? "works" : "not here");
+        allH264 = allH264 && e.codec == VideoFXVideoCodec::H264;
+        kindsMatch = kindsMatch && (e.acceleration == VideoFXAcceleration::Software) ==
+                     (e.name.rfind("lib", 0) == 0);
+    }
+    CHECK(allH264, "only H.264 encoders listed for H.264");
+    CHECK(kindsMatch, "software ones are the lib* encoders, the rest hardware");
+    const auto t1 = std::chrono::steady_clock::now();
+    const std::vector<VideoFXEncoderInfo> again = VideoFX_ListVideoEncoders(VideoFXVideoCodec::H264);
+    const double secondMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+    bool same = again.size() == h264.size();
+    for (size_t i = 0; same && i < again.size(); ++i) same = again[i].name == h264[i].name && again[i].works == h264[i].works;
+    std::printf("        first list %.0f ms, second %.1f ms\n", firstMs, secondMs);
+    CHECK(same && secondMs < 50.0, "each encoder tried once: the second answer is the same, at once");
+
+    const std::vector<VideoFXEncoderInfo> all = VideoFX_ListVideoEncoders();
+    bool mpeg4 = false;
+    for (const VideoFXEncoderInfo& e : all) mpeg4 = mpeg4 || (e.name == "mpeg4" && e.works);
+    CHECK(all.size() >= h264.size() && mpeg4, "all codecs: FFmpeg's own MPEG-4 among them, working");
+
+    // the choice follows the list
+    const std::string sw = VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::MPEG4, VideoFXAcceleration::Software);
+    CHECK(sw == "mpeg4", "Software MPEG-4: FFmpeg's encoder");
+    CHECK(VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::MPEG4, VideoFXAcceleration::Software), "available as software");
+    CHECK(!VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::MPEG4, VideoFXAcceleration::NVENC) &&
+          VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::MPEG4, VideoFXAcceleration::NVENC).empty(),
+          "no NVENC MPEG-4 exists: none chosen");
+    CHECK(VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::MPEG4, VideoFXAcceleration::Hardware) == "mpeg4",
+          "Hardware with no hardware encoder falls back to software");
+    std::string workingHw;
+    VideoFXAcceleration workingKind = VideoFXAcceleration::Software;
+    for (const VideoFXEncoderInfo& e : h264)
+        if (e.works && e.acceleration != VideoFXAcceleration::Software && workingHw.empty()) {
+            workingHw = e.name;
+            workingKind = e.acceleration;
+        }
+    const std::string hw = VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware);
+    CHECK(workingHw.empty() ? (hw.empty() || hw.rfind("lib", 0) == 0) : hw == workingHw,
+          "Hardware H.264: the first working hardware encoder, else software");
+    CHECK(VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware) == !workingHw.empty(),
+          "\"is hardware available\" agrees with the list");
+
+    // exports
+    const std::string out = TempPath("encoder.mkv");
+    VideoFXExportSettings s = base;
+    s.width = 320; s.height = 240; s.frameRate = 25.0;
+    s.acceleration = VideoFXAcceleration::Software;
+    CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(0.5)}, out, s), "export with Software");
+    s.acceleration = VideoFXAcceleration::Hardware;
+    CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(0.5)}, out, s), "export with Hardware (MPEG-4 has none: software)");
+    s.acceleration = VideoFXAcceleration::NVENC;
+    CHECK(VideoFX_Export({VideoFXSegment::TestPattern(0.5)}, out, s) == VideoFXResult::EncoderNotAvailable &&
+          VideoFX_GetLastError().find("NVENC") != std::string::npos, "a family that cannot encode it: EncoderNotAvailable, named");
+
+    // a hardware encoder that works here: a real file from it
+    if (!workingHw.empty()) {
+        VideoFXExportSettings h;
+        h.container = VideoFXContainer::MP4;
+        h.videoCodec = VideoFXVideoCodec::H264;
+        h.audioCodec = VideoFXAudioCodec::AAC;
+        h.width = 640; h.height = 360; h.frameRate = 25.0;
+        h.acceleration = workingKind;
+        const std::string hwOut = TempPath("hardware.mp4");
+        CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(2.0)}, hwOut, h), "export through the hardware encoder");
+        VideoFXMediaInfo info;
+        CHECK_OK(VideoFX_Probe(hwOut, info), "probe it");
+        CHECK(info.width == 640 && info.height == 360 && Near(info.duration, 2.0, 0.2), "640x360, two seconds");
+        VideoFXFrame a, b;
+        CHECK_OK(VideoFX_ExtractFrame(hwOut, 1.0, a), "a frame of it");
+        CHECK_OK(VideoFX_RenderFrame({VideoFXSegment::TestPattern(2.0)}, 1.0, b, h), "the same frame rendered");
+        const double d = MeanDifference(a, b);
+        std::printf("        %s: difference %.1f\n", workingHw.c_str(), d);
+        CHECK(d >= 0.0 && d < 20.0, "the hardware encoder's picture is the timeline's");
+    } else {
+        std::printf("        (no hardware encoder works on this machine: the hardware export is not tried)\n");
+    }
+}
+
 #else
 
 static void TestEngine() {
@@ -2442,6 +2535,10 @@ static void TestEngine() {
     VideoFXMediaInfo info;
     CHECK(!VideoFX_IsAvailable(), "stub says unavailable");
     CHECK(VideoFX_Probe("x.mp4", info) == VideoFXResult::NotAvailable, "stub returns NotAvailable");
+    CHECK(VideoFX_ListVideoEncoders().empty() &&
+          !VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware) &&
+          VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Software).empty(),
+          "stub: no encoders of any kind");
 }
 
 #endif

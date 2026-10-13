@@ -1,8 +1,8 @@
 // VideoFX/core/VideoFXBackend.cpp
 // Errors, backend setup, version shims, codec selection and the module-level
 // VideoFX_* functions.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.12.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -16,6 +16,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <initializer_list>
+#include <map>
+#include <string>
+#include <vector>
 #include <mutex>
 
 namespace VideoFX {
@@ -272,22 +275,219 @@ namespace {
         }
         return nullptr;
     }
+
+    // The automatic order of 0.11 and before: software, then the platform's
+    // own encoder (never probed: VideoToolbox and Media Foundation are the
+    // system's, and present wherever FFmpeg built them)
+    const AVCodec* AutoEncoder(VideoFXVideoCodec codec) {
+        switch (codec) {
+            case VideoFXVideoCodec::H264:   return FirstEncoder({"libx264", "h264_videotoolbox", "h264_mf", "libopenh264"});
+            case VideoFXVideoCodec::H265:   return FirstEncoder({"libx265", "hevc_videotoolbox", "hevc_mf"});
+            case VideoFXVideoCodec::VP8:    return FirstEncoder({"libvpx"});
+            case VideoFXVideoCodec::VP9:    return FirstEncoder({"libvpx-vp9"});
+            case VideoFXVideoCodec::AV1:    return FirstEncoder({"libsvtav1", "libaom-av1", "librav1e"});
+            case VideoFXVideoCodec::MPEG4:  return FirstEncoder({"mpeg4"});
+            case VideoFXVideoCodec::MJPEG:  return FirstEncoder({"mjpeg"});
+            case VideoFXVideoCodec::ProRes: return FirstEncoder({"prores_ks", "prores", "prores_videotoolbox"});
+            case VideoFXVideoCodec::FFV1:   return FirstEncoder({"ffv1"});
+            case VideoFXVideoCodec::GIF:    return FirstEncoder({"gif"});
+            default:                        return nullptr;
+        }
+    }
+
+    bool IsHardwareFormat(AVPixelFormat f) {
+        const AVPixFmtDescriptor* d = av_pix_fmt_desc_get(f);
+        return d && (d->flags & AV_PIX_FMT_FLAG_HWACCEL);
+    }
+
+    // One small frame through the encoder: does it run on this machine?
+    bool TryEncoder(const AVCodec* codec) {
+        CodecContextPtr ctx(avcodec_alloc_context3(codec));
+        if (!ctx) return false;
+        AVCodecContext* c = ctx.get();
+        c->width = 320;                         // above every encoder's minimum (NVENC: 145)
+        c->height = 240;
+        c->time_base = AVRational{1, 25};
+        c->framerate = AVRational{25, 1};
+        c->bit_rate = 1000000;
+        c->gop_size = 25;
+        c->max_b_frames = 0;
+
+        AVPixelFormat hwFormat = AV_PIX_FMT_NONE;
+        BufferRefPtr device, frames;
+        AVPixelFormat swFormat = AV_PIX_FMT_NV12;
+        if (NeedsHardwareFrames(codec, &hwFormat)) {
+            if (SetUpHardwareFrames(c, hwFormat, device, frames) < 0) return false;
+            c->pix_fmt = hwFormat;
+        } else {
+            const AVPixelFormat* fmts = SupportedPixelFormats(codec);
+            swFormat = AV_PIX_FMT_NONE;
+            for (const AVPixelFormat* p = fmts; p && *p != AV_PIX_FMT_NONE; ++p) {
+                if (*p == AV_PIX_FMT_NV12 || *p == AV_PIX_FMT_YUV420P) { swFormat = *p; break; }
+            }
+            for (const AVPixelFormat* p = fmts; swFormat == AV_PIX_FMT_NONE && p && *p != AV_PIX_FMT_NONE; ++p) {
+                if (!IsHardwareFormat(*p)) swFormat = *p;
+            }
+            if (swFormat == AV_PIX_FMT_NONE) swFormat = AV_PIX_FMT_YUV420P;
+            c->pix_fmt = swFormat;
+        }
+        // FFmpeg's own log for a missing device is noise here: this is a question
+        const int level = av_log_get_level();
+        av_log_set_level(AV_LOG_QUIET);
+        bool ok = avcodec_open2(c, codec, nullptr) >= 0;
+        if (ok) {
+            FramePtr frame(av_frame_alloc());
+            FramePtr hw(av_frame_alloc());
+            PacketPtr pkt(av_packet_alloc());
+            ok = frame && hw && pkt;
+            if (ok) {
+                frame->format = swFormat;
+                frame->width = c->width;
+                frame->height = c->height;
+                ok = av_frame_get_buffer(frame.get(), 0) >= 0;
+            }
+            if (ok) {
+                ptrdiff_t lines[4];
+                for (int i = 0; i < 4; ++i) lines[i] = frame->linesize[i];
+                av_image_fill_black(frame->data, lines, swFormat, AVCOL_RANGE_MPEG, c->width, c->height);
+                frame->pts = 0;
+                AVFrame* send = frame.get();
+                if (frames) {
+                    ok = av_hwframe_get_buffer(frames.get(), hw.get(), 0) >= 0 &&
+                         av_hwframe_transfer_data(hw.get(), frame.get(), 0) >= 0;
+                    hw->pts = 0;
+                    send = hw.get();
+                }
+                ok = ok && avcodec_send_frame(c, send) >= 0 && avcodec_send_frame(c, nullptr) >= 0;
+                bool gotPacket = false;
+                while (ok) {
+                    const int err = avcodec_receive_packet(c, pkt.get());
+                    if (err == AVERROR_EOF) break;
+                    if (err < 0) { ok = false; break; }
+                    gotPacket = true;
+                    av_packet_unref(pkt.get());
+                }
+                ok = ok && gotPacket;
+            }
+        }
+        av_log_set_level(level);
+        return ok;
+    }
+
+    std::mutex workingMutex;
+    std::map<std::string, bool> workingEncoders;     // name -> works here, tried once
 }
 
-const AVCodec* FindVideoEncoder(VideoFXVideoCodec codec) {
-    EnsureBackendInitialised();
+std::vector<EncoderCandidate> VideoEncoderCandidates(VideoFXVideoCodec codec) {
+    using A = VideoFXAcceleration;
     switch (codec) {
-        case VideoFXVideoCodec::H264:   return FirstEncoder({"libx264", "h264_videotoolbox", "h264_mf", "libopenh264"});
-        case VideoFXVideoCodec::H265:   return FirstEncoder({"libx265", "hevc_videotoolbox", "hevc_mf"});
-        case VideoFXVideoCodec::VP8:    return FirstEncoder({"libvpx"});
-        case VideoFXVideoCodec::VP9:    return FirstEncoder({"libvpx-vp9"});
-        case VideoFXVideoCodec::AV1:    return FirstEncoder({"libsvtav1", "libaom-av1", "librav1e"});
-        case VideoFXVideoCodec::MPEG4:  return FirstEncoder({"mpeg4"});
-        case VideoFXVideoCodec::MJPEG:  return FirstEncoder({"mjpeg"});
-        case VideoFXVideoCodec::ProRes: return FirstEncoder({"prores_ks", "prores", "prores_videotoolbox"});
-        case VideoFXVideoCodec::FFV1:   return FirstEncoder({"ffv1"});
-        case VideoFXVideoCodec::GIF:    return FirstEncoder({"gif"});
-        default:                        return nullptr;
+        case VideoFXVideoCodec::H264:
+            return {{"libx264", A::Software}, {"libopenh264", A::Software}, {"h264_nvenc", A::NVENC},
+                    {"h264_qsv", A::QuickSync}, {"h264_amf", A::AMF}, {"h264_vaapi", A::VAAPI},
+                    {"h264_videotoolbox", A::VideoToolbox}, {"h264_mf", A::MediaFoundation}};
+        case VideoFXVideoCodec::H265:
+            return {{"libx265", A::Software}, {"hevc_nvenc", A::NVENC}, {"hevc_qsv", A::QuickSync},
+                    {"hevc_amf", A::AMF}, {"hevc_vaapi", A::VAAPI}, {"hevc_videotoolbox", A::VideoToolbox},
+                    {"hevc_mf", A::MediaFoundation}};
+        case VideoFXVideoCodec::AV1:
+            return {{"libsvtav1", A::Software}, {"libaom-av1", A::Software}, {"librav1e", A::Software},
+                    {"av1_nvenc", A::NVENC}, {"av1_qsv", A::QuickSync}, {"av1_amf", A::AMF},
+                    {"av1_vaapi", A::VAAPI}, {"av1_mf", A::MediaFoundation}};
+        case VideoFXVideoCodec::VP9:
+            return {{"libvpx-vp9", A::Software}, {"vp9_qsv", A::QuickSync}, {"vp9_vaapi", A::VAAPI}};
+        case VideoFXVideoCodec::VP8:    return {{"libvpx", A::Software}, {"vp8_vaapi", A::VAAPI}};
+        case VideoFXVideoCodec::MPEG4:  return {{"mpeg4", A::Software}};
+        case VideoFXVideoCodec::MJPEG:
+            return {{"mjpeg", A::Software}, {"mjpeg_qsv", A::QuickSync}, {"mjpeg_vaapi", A::VAAPI}};
+        case VideoFXVideoCodec::ProRes:
+            return {{"prores_ks", A::Software}, {"prores", A::Software}, {"prores_videotoolbox", A::VideoToolbox}};
+        case VideoFXVideoCodec::FFV1:   return {{"ffv1", A::Software}};
+        case VideoFXVideoCodec::GIF:    return {{"gif", A::Software}};
+        default:                        return {};
+    }
+}
+
+VideoFXAcceleration AccelerationOfEncoder(const std::string& name) {
+    auto ends = [&](const char* tail) {
+        const size_t n = std::char_traits<char>::length(tail);
+        return name.size() >= n && name.compare(name.size() - n, n, tail) == 0;
+    };
+    if (ends("_nvenc")) return VideoFXAcceleration::NVENC;
+    if (ends("_qsv")) return VideoFXAcceleration::QuickSync;
+    if (ends("_vaapi")) return VideoFXAcceleration::VAAPI;
+    if (ends("_amf")) return VideoFXAcceleration::AMF;
+    if (ends("_videotoolbox")) return VideoFXAcceleration::VideoToolbox;
+    if (ends("_mf")) return VideoFXAcceleration::MediaFoundation;
+    return VideoFXAcceleration::Software;
+}
+
+bool NeedsHardwareFrames(const AVCodec* codec, AVPixelFormat* hwFormat) {
+    const AVPixelFormat* fmts = SupportedPixelFormats(codec);
+    if (!fmts) return false;
+    AVPixelFormat hw = AV_PIX_FMT_NONE;
+    for (const AVPixelFormat* p = fmts; *p != AV_PIX_FMT_NONE; ++p) {
+        if (!IsHardwareFormat(*p)) return false;        // takes system memory: it uploads itself
+        if (hw == AV_PIX_FMT_NONE) hw = *p;
+    }
+    if (hw == AV_PIX_FMT_NONE) return false;
+    if (hwFormat) *hwFormat = hw;
+    return true;
+}
+
+int SetUpHardwareFrames(AVCodecContext* c, AVPixelFormat hwFormat, BufferRefPtr& device, BufferRefPtr& frames) {
+    // The device type has the hardware format's name ("vaapi", "qsv", "cuda", ...)
+    const char* name = av_get_pix_fmt_name(hwFormat);
+    const AVHWDeviceType type = name ? av_hwdevice_find_type_by_name(name) : AV_HWDEVICE_TYPE_NONE;
+    if (type == AV_HWDEVICE_TYPE_NONE) return AVERROR(ENOSYS);
+    AVBufferRef* dev = nullptr;
+    int err = av_hwdevice_ctx_create(&dev, type, nullptr, nullptr, 0);
+    if (err < 0) return err;
+    device.reset(dev);
+    AVBufferRef* fr = av_hwframe_ctx_alloc(device.get());
+    if (!fr) return AVERROR(ENOMEM);
+    frames.reset(fr);
+    auto* fc = reinterpret_cast<AVHWFramesContext*>(frames->data);
+    fc->format = hwFormat;
+    fc->sw_format = AV_PIX_FMT_NV12;
+    fc->width = c->width;
+    fc->height = c->height;
+    fc->initial_pool_size = 20;
+    if ((err = av_hwframe_ctx_init(frames.get())) < 0) return err;
+    c->hw_frames_ctx = av_buffer_ref(frames.get());
+    return c->hw_frames_ctx ? 0 : AVERROR(ENOMEM);
+}
+
+bool EncoderWorks(const AVCodec* codec) {
+    if (!codec) return false;
+    if (AccelerationOfEncoder(codec->name) == VideoFXAcceleration::Software) return true;
+    std::lock_guard<std::mutex> lock(workingMutex);
+    auto it = workingEncoders.find(codec->name);
+    if (it != workingEncoders.end()) return it->second;
+    const bool works = TryEncoder(codec);
+    workingEncoders.emplace(codec->name, works);
+    return works;
+}
+
+const AVCodec* FindVideoEncoder(VideoFXVideoCodec codec, VideoFXAcceleration acceleration) {
+    EnsureBackendInitialised();
+    if (acceleration == VideoFXAcceleration::Auto) return AutoEncoder(codec);
+    const std::vector<EncoderCandidate> candidates = VideoEncoderCandidates(codec);
+    auto first = [&](auto&& wanted) -> const AVCodec* {
+        for (const EncoderCandidate& e : candidates) {
+            if (!wanted(e.kind)) continue;
+            const AVCodec* c = avcodec_find_encoder_by_name(e.name);
+            if (c && EncoderWorks(c)) return c;
+        }
+        return nullptr;
+    };
+    const auto software = [](VideoFXAcceleration k) { return k == VideoFXAcceleration::Software; };
+    switch (acceleration) {
+        case VideoFXAcceleration::Software: return first(software);
+        case VideoFXAcceleration::Hardware: {
+            const AVCodec* hw = first([](VideoFXAcceleration k) { return k != VideoFXAcceleration::Software; });
+            return hw ? hw : first(software);
+        }
+        default: return first([acceleration](VideoFXAcceleration k) { return k == acceleration; });
     }
 }
 
@@ -322,8 +522,40 @@ bool VideoFX_IsAvailable() { return true; }
 
 std::string VideoFX_GetLastError() { return Internal::lastError; }
 
-bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec codec) {
-    return Internal::FindVideoEncoder(codec) != nullptr;
+bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec codec, VideoFXAcceleration acceleration) {
+    const AVCodec* c = Internal::FindVideoEncoder(codec, acceleration);
+    if (!c) return false;
+    // Hardware asks for a hardware encoder, not the software one it falls back to
+    return acceleration != VideoFXAcceleration::Hardware ||
+           Internal::AccelerationOfEncoder(c->name) != VideoFXAcceleration::Software;
+}
+
+std::vector<VideoFXEncoderInfo> VideoFX_ListVideoEncoders(VideoFXVideoCodec codec) {
+    Internal::EnsureBackendInitialised();
+    static const VideoFXVideoCodec all[] = {VideoFXVideoCodec::H264, VideoFXVideoCodec::H265, VideoFXVideoCodec::AV1,
+                                            VideoFXVideoCodec::VP9, VideoFXVideoCodec::VP8, VideoFXVideoCodec::MPEG4,
+                                            VideoFXVideoCodec::MJPEG, VideoFXVideoCodec::ProRes,
+                                            VideoFXVideoCodec::FFV1, VideoFXVideoCodec::GIF};
+    std::vector<VideoFXEncoderInfo> out;
+    for (VideoFXVideoCodec c : all) {
+        if (codec != VideoFXVideoCodec::Auto && codec != c) continue;
+        for (const Internal::EncoderCandidate& e : Internal::VideoEncoderCandidates(c)) {
+            const AVCodec* enc = avcodec_find_encoder_by_name(e.name);
+            if (!enc) continue;                         // not in this FFmpeg build
+            VideoFXEncoderInfo info;
+            info.name = e.name;
+            info.codec = c;
+            info.acceleration = e.kind;
+            info.works = Internal::EncoderWorks(enc);
+            out.push_back(std::move(info));
+        }
+    }
+    return out;
+}
+
+std::string VideoFX_ChooseVideoEncoder(VideoFXVideoCodec codec, VideoFXAcceleration acceleration) {
+    const AVCodec* c = Internal::FindVideoEncoder(codec, acceleration);
+    return c ? c->name : "";
 }
 
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec codec) {

@@ -2,7 +2,7 @@
 // Proxy media: see VideoFXProxy.h. Built in every configuration; making a
 // proxy goes through VideoFX_Probe / VideoFX_Export, which the stub answers
 // with NotAvailable.
-// Version: 0.11.0
+// Version: 0.12.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -250,6 +250,7 @@ VideoFXResult CreateProxy(const std::string& clip, const VideoFXProxySettings& s
     s.quality = settings.quality;
     s.encoderPreset = "veryfast";
     s.keyframeInterval = settings.keyframeInterval;
+    s.acceleration = settings.acceleration;
     s.audioBitRate = 128000;
     r = VideoFX_Export({VideoFXSegment::FromFile(clip)}, UltraCanvas::PathToUtf8(part), s, progress);
     if (r != VideoFXResult::Ok) {

@@ -1,7 +1,7 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.11.0
+// Version: 0.12.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
@@ -67,8 +67,25 @@ std::string VideoFX_GetLastError();
 // Readable name of a result code ("Ok", "Encoder not available", ...)
 const char* VideoFX_ResultToString(VideoFXResult result);
 
-// Whether this build can encode the codec (e.g. H.265 needs libx265)
-bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec codec);
+// Whether this build can encode the codec (e.g. H.265 needs libx265) - with
+// an acceleration, whether an encoder of that kind works on this machine
+// (Hardware: any hardware encoder, not the software fallback)
+bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec codec,
+                                     VideoFXAcceleration acceleration = VideoFXAcceleration::Auto);
+
+// Every encoder this build has for a codec (Auto = for every codec),
+// software and hardware, each tried once on this machine: what a settings
+// dialog offers. The first call takes a moment (each hardware encoder
+// encodes a frame); the answers are kept.
+std::vector<VideoFXEncoderInfo> VideoFX_ListVideoEncoders(VideoFXVideoCodec codec = VideoFXVideoCodec::Auto);
+
+// The encoder an export with this codec and acceleration would use, e.g.
+// "h264_nvenc"; "" when there is none
+std::string VideoFX_ChooseVideoEncoder(VideoFXVideoCodec codec, VideoFXAcceleration acceleration);
+
+// "NVENC", "Quick Sync", ... - for a settings dialog
+const char* VideoFX_AccelerationName(VideoFXAcceleration acceleration);
+
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec codec);
 
 // Whether text overlays can be drawn (FFmpeg built with libfreetype)

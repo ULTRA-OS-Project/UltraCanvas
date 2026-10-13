@@ -2284,11 +2284,12 @@ to the project, missing media reported), waveforms (loudness envelopes
 for timelines and players), a preview (any frame of a timeline rendered
 as the export would make it, for an editor's viewer), proxy media (small
 stand-ins for large clips, made once into a cache folder and switched in
-for previews and drafts),
+for previews and drafts), hardware encoders by choice (software, any that
+works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media
+Foundation, each tried on the machine before it is used),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: keyframed parameters,
-several free audio tracks, hardware encoders beyond the platform ones picked
-automatically (VideoToolbox, Media Foundation).
+several free audio tracks.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
@@ -2301,7 +2302,8 @@ automatically (VideoToolbox, Media Foundation).
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
   `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
-  `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`
+  `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
+  `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
   (`VideoFXExportSettings::keyframeInterval`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
@@ -2328,6 +2330,9 @@ automatically (VideoToolbox, Media Foundation).
 - Proxy media: `VideoFX_GetDefaultProxyDirectory`, `VideoFX_ProxyPath`,
   `VideoFX_HasProxy`, `VideoFX_CreateProxy`, `VideoFX_CreateProxies`,
   `VideoFX_UseProxies`, `VideoFX_ClearProxies`
+- Encoders: `VideoFX_IsVideoEncoderAvailable(codec, acceleration)`,
+  `VideoFX_ListVideoEncoders`, `VideoFX_ChooseVideoEncoder`,
+  `VideoFX_AccelerationName`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -2347,6 +2352,8 @@ automatically (VideoToolbox, Media Foundation).
   TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
+  FindVideoEncoder, VideoEncoderCandidates, AccelerationOfEncoder,
+  EncoderWorks, NeedsHardwareFrames, SetUpHardwareFrames,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
   MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
@@ -79072,7 +79079,8 @@ segments.
 > zoom ("Ken Burns"), one-call slideshows, background music that dips under
 > speech, project files, waveforms for timelines and players, a preview
 > that renders any frame of a timeline without an export, proxy media for
-> smooth editing of large clips, GIF and
+> smooth editing of large clips, hardware encoders (NVENC, Quick Sync,
+> VA-API, AMF, VideoToolbox, Media Foundation) by choice, GIF and
 > audio-only output, lossless cut, the background job and the `videofx`
 > command-line tool work today, on FFmpeg 4.4 to 8.x.
 > Keyframed parameters and several free audio tracks are planned (see
@@ -79762,6 +79770,7 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `videoBitRate`, `audioBitRate` | 0 | Set to use a bit rate instead of quality |
 | `encoderPreset` | — | e.g. `"veryfast"` for x264 / x265 |
 | `keyframeInterval` | encoder default | Seconds between keyframes; short = quick to seek (proxies use 0.5) |
+| `acceleration` | `Auto` | Software, any hardware encoder (`Hardware`), or one family; see *Hardware encoders* |
 | `sampleRate`, `channels` | first audio source / stereo | Mono only when every source is mono |
 
 Presets: `WebMP4(height)`, `WebM(height)`, `AnimatedGif(width, fps)`,
@@ -79781,6 +79790,55 @@ if (!VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H265))
 H.264 uses libx264, then the platform encoder (VideoToolbox on macOS, Media
 Foundation on Windows), then OpenH264; H.265, AV1 and ProRes likewise try the
 software encoder first.
+
+### Hardware encoders
+
+The graphics hardware can encode too: several times faster than software,
+with the processor left free, at some cost in quality for the same file
+size. `VideoFXExportSettings::acceleration` chooses:
+
+| Value | Encoder |
+|---|---|
+| `Auto` (default) | As before: software, then the platform's encoder (VideoToolbox, Media Foundation) |
+| `Software` | Software only: libx264, libx265, libvpx, SVT-AV1, ... |
+| `Hardware` | The first hardware encoder that works on this machine; software when none does |
+| `NVENC` | NVIDIA (`h264_nvenc`, `hevc_nvenc`, `av1_nvenc`) |
+| `QuickSync` | Intel (`h264_qsv`, `hevc_qsv`, `av1_qsv`, `vp9_qsv`) |
+| `VAAPI` | VA-API on Linux, Intel and AMD graphics (`h264_vaapi`, `hevc_vaapi`, `av1_vaapi`, `vp9_vaapi`) |
+| `AMF` | AMD on Windows (`h264_amf`, `hevc_amf`, `av1_amf`) |
+| `VideoToolbox` | macOS (`h264_videotoolbox`, `hevc_videotoolbox`, `prores_videotoolbox`) |
+| `MediaFoundation` | Windows (`h264_mf`, `hevc_mf`, `av1_mf`) |
+
+An FFmpeg build often carries hardware encoders the machine cannot run:
+Ubuntu's has `h264_nvenc` whether or not the computer has an NVIDIA card.
+So VideoFX tries each hardware encoder once, by encoding one small frame,
+before it chooses one, and keeps the answer for the rest of the process.
+`Hardware` never lands on an encoder that does not run here. A named family
+that cannot run fails with `EncoderNotAvailable`, and the error says
+whether FFmpeg lacks the encoder or the machine lacks the hardware.
+
+```cpp
+VideoFXExportSettings s = VideoFXExportSettings::WebMP4(1080);
+s.acceleration = VideoFXAcceleration::Hardware;           // fast where it can be
+
+// a settings dialog: what this machine can do
+for (const VideoFXEncoderInfo& e : VideoFX_ListVideoEncoders(VideoFXVideoCodec::H264))
+    if (e.works) encoderChoice->AddItem(VideoFX_AccelerationName(e.acceleration));
+
+std::string name = VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware);
+// "h264_nvenc" on an NVIDIA machine, "libx264" on one without hardware encoding
+```
+
+`VideoFX_IsVideoEncoderAvailable(codec, acceleration)` asks the same for one
+choice; with `Hardware` it means a hardware encoder, not the software one
+the export would fall back to. The first list takes a moment, typically
+under a second, because each hardware encoder is tried once; later lists
+answer at once. VA-API takes frames only in graphics memory, so each frame
+is uploaded before it is encoded. The other families take ordinary frames.
+Hardware encoders are driven by bit rate (`videoBitRate`, or one derived from
+`quality` and the picture size); `encoderPreset` and `keyframeInterval`
+reach them too. Proxies can be made on the hardware as well
+(`VideoFXProxySettings::acceleration`).
 
 ---
 
@@ -79965,6 +80023,8 @@ videofx project trip.vfxproj                             # what it holds, missin
 videofx render trip.vfxproj                              # render a saved project
 videofx proxy trip.vfxproj                               # proxies of its clips, for editing
 videofx render trip.vfxproj draft.mp4 --proxies          # a quick draft from the proxies
+videofx encoders h264                                    # the H.264 encoders, and which work here
+videofx transcode talk.mov talk.mp4 --hw hardware        # on the graphics hardware where there is one
 ```
 
 ---
@@ -80016,7 +80076,7 @@ generates its own clips, so it needs no media files.
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
 | 4c | Preview: any frame of a timeline rendered as the export would make it, without an export (`VideoFXPreview`); a slideshow's plan as segments | **Done** |
 | 4d | Proxy media: small stand-ins for large clips, made once into a cache folder, switched in for previews and drafts, the originals exported | **Done** |
-| 4 | Explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
+| 4e | Hardware encoders by choice: software, any that works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media Foundation, each tried on the machine before it is used | **Done** |
 | 5 | A timeline editor element in UltraCanvas on top of the engine (`UltraCanvasVideoTimeline`, in the core) | **Done** |
 
 *VideoFX — part of the UltraCanvas framework.*
