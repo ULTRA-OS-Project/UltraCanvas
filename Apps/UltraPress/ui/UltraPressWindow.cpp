@@ -1,11 +1,13 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.6.0 - the media library
 // Version: 0.5.1 - Publish prunes
 // Version: 0.5.0 - Publish and Host...
 // Version: 0.3.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressWindow.h"
+#include "UltraPressMediaDialog.h"
 
 #include "UltraPressBlocks.h"
 #include "UltraPressPublish.h"
@@ -344,6 +346,56 @@ void EditorWindow::ChooseHost() {
 #endif
 }
 
+std::vector<MediaFile> EditorWindow::Media() const {
+    return ListMedia(siteDir, &site);
+}
+
+bool EditorWindow::AddMedia(const std::string& sourcePath, std::string& mediaPath, std::string& error) {
+    if (!ImportMedia(siteDir, sourcePath, mediaPath, error)) return false;
+    SetStatus("Added " + mediaPath);
+    return true;
+}
+
+bool EditorWindow::RemoveMediaFile(const std::string& mediaPath, std::string& error) {
+    if (!RemoveMedia(siteDir, mediaPath, error, &site)) return false;
+    SetStatus("Removed " + mediaPath);
+    RenderPreview();
+    return true;
+}
+
+bool EditorWindow::SetProperty(const std::string& name, JSONValue value) {
+    Page* page = CurrentPageMutable();
+    if (!page || selected < 0 || selected >= static_cast<int>(page->blocks.size())) return false;
+    page->blocks[static_cast<size_t>(selected)].Set(name, std::move(value));
+    dirty = true;
+    RenderPreview();
+    return true;
+}
+
+void EditorWindow::ShowMediaLibrary() {
+    std::shared_ptr<UltraCanvasWindow> window = windowRef.lock();
+    if (!window) return;
+    UltraPress::ShowMediaLibrary(window.get(), siteDir, site, false, nullptr, [this]() { Later([this]() { RenderPreview(); }); });
+}
+
+void EditorWindow::PickImage(const std::string& name) {
+    std::shared_ptr<UltraCanvasWindow> window = windowRef.lock();
+    if (!window) return;
+    const Page* page = CurrentPageMutable();
+    const std::string current = page && selected >= 0 && selected < static_cast<int>(page->blocks.size())
+                                    ? page->blocks[static_cast<size_t>(selected)].Text(name) : std::string();
+    UltraPress::ShowMediaLibrary(
+        window.get(), siteDir, site, true,
+        [this, name](const std::string& mediaPath) {
+            Later([this, name, mediaPath]() {
+                SetProperty(name, mediaPath);
+                RebuildProperties();
+                SetStatus(name + " = " + mediaPath);
+            });
+        },
+        [this]() { Later([this]() { RenderPreview(); }); }, current);
+}
+
 void EditorWindow::RenderPreview() {
     if (!pageArea) return;
     pageArea->ClearChildren();
@@ -404,6 +456,10 @@ void EditorWindow::RebuildSide() {
     host->SetFont(kFont, 12);
     host->onClick = [this]() { Later([this]() { ChooseHost(); }); };
     side->AddChild(host);
+    auto media = SideButton("MediaLibrary", "Media library\xE2\x80\xA6", false);
+    media->SetFont(kFont, 12);
+    media->onClick = [this]() { Later([this]() { ShowMediaLibrary(); }); };
+    side->AddChild(media);
 
     side->AddChild(Gap(18));
     side->AddChild(Caption("PagesTitle", "PAGES", kAccent));
@@ -557,9 +613,35 @@ void EditorWindow::RebuildProperties() {
         switch (property.kind) {
             case PropertyKind::Text:
             case PropertyKind::Url:
-            case PropertyKind::Image:
                 input(id, value.GetString(), [setProperty, name](const std::string& text) { setProperty(name, text); });
                 break;
+            case PropertyKind::Image: {
+                // The path, typed or picked from the media library.
+                auto row = CreateContainer(id + "Row", 0, 0, 0, 32);
+                row->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+                row->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(32));
+                auto edit = CreateTextInput(id, 0, 0, 0, 32);
+                edit->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(32));
+                edit->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+                edit->SetFontSize(14);
+                edit->SetText(value.GetString());
+                edit->onTextChanged = [setProperty, name](const std::string& text) { setProperty(name, text); };
+                row->AddChild(edit);
+                auto pick = CreateButton(id + "Pick", 0, 0, 70, 32, "Pick\xE2\x80\xA6");
+                pick->SetFont(kFont, 13);
+                pick->SetColors(kPaperSoft, kRule);
+                pick->SetTextColors(kInk);
+                pick->SetBorder(1, kRule);
+                pick->SetCornerRadius(6);
+                pick->SetElementSize(CSSLayout::Dimension::Px(70), CSSLayout::Dimension::Px(32));
+                pick->layoutItem.SetFlexShrink(0);
+                pick->SetMouseCursor(UCMouseCursor::Hand);
+                pick->onClick = [this, name]() { Later([this, name]() { PickImage(name); }); };
+                row->AddChild(pick);
+                properties->AddChild(row);
+                properties->AddChild(Gap(10));
+                break;
+            }
             case PropertyKind::LongText:
                 area(id, value.GetString(), 120, [setProperty, name](const std::string& text) { setProperty(name, text); });
                 break;

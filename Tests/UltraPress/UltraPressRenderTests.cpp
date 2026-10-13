@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <string>
 #include <vector>
@@ -283,6 +284,29 @@ static void TestEditor() {
     Check(home->blocks.size() == 6 && home->blocks[2].type == "features", "a block is removed");
     editor.RemoveBlock(99);
     Check(editor.CurrentSite().FindPage("home")->blocks.size() == 6, "an index past the end removes nothing");
+
+    std::printf("The editor's media library\n");
+    Check(editor.Media().empty(), "no media to start");
+    const fs::path source = dir / "A Photo.PNG";
+    {
+        std::ofstream png(source, std::ios::binary);
+        const unsigned char bytes[] = {0x89, 'P', 'N', 'G', 0, 1, 2, 3};
+        png.write(reinterpret_cast<const char*>(bytes), sizeof bytes);
+    }
+    std::string mediaPath, error;
+    Check(editor.AddMedia(UltraCanvas::PathToUtf8(source), mediaPath, error) && mediaPath == "media/a-photo.png",
+          "a picture is added under a clean name: " + mediaPath + " " + error);
+    Check(editor.Media().size() == 1 && editor.Media()[0].usedBy == 0, "it is listed, unused");
+    editor.SelectBlock(0);
+    Check(editor.SetProperty("picture", mediaPath), "the hero's picture is set to it");
+    Check(editor.Media()[0].usedBy == 1 && editor.CurrentSite().FindPage("home")->blocks[0].Text("picture") == mediaPath,
+          "and the library counts the use");
+    Check(!editor.RemoveMediaFile(mediaPath, error) && error.find("is used by home") != std::string::npos,
+          "a used picture is not removed: " + error);
+    Check(editor.SetProperty("picture", "") && editor.RemoveMediaFile(mediaPath, error) && editor.Media().empty(),
+          "unused, it is: " + error);
+    editor.SelectBlock(-1);
+    Check(!editor.SetProperty("picture", "x"), "no block selected, nothing set");
 
     Check(editor.Save(), "the site saves");
     Site saved;

@@ -1,5 +1,6 @@
 // Apps/UltraPress/cli/UltraPressCli.cpp
 // The commands: new, check, page, publish, import, hosts, help, --version.
+// Version: 0.6.0 - media: the library listed, files added and removed; check finds missing media
 // Version: 0.5.1 - publish --prune; hosts add --key
 // Version: 0.5.0 - hosts: the UltraCloud accounts a site is published to; publish --to
 // Version: 0.4.1 - help names the window, the same program since there is one
@@ -12,6 +13,7 @@
 #include "UltraPressBlocks.h"
 #include "UltraPressHtml.h"
 #include "UltraPressImport.h"
+#include "UltraPressMedia.h"
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
 #include "UltraPressDeploy.h"
@@ -46,7 +48,11 @@ void PrintHelp() {
         "  ultrapress new <site-dir> [--name <name>] [--url <url>] [--language <code>]\n"
         "      a starter site: site.json, theme.json, menus.json, pages/\n"
         "  ultrapress check <site-dir>\n"
-        "      load the site and report every problem; exit 1 when there is one\n"
+        "      load the site and report every problem, a picture the site does not have included;\n"
+        "      exit 1 when there is one\n"
+        "  ultrapress media <site-dir> [add <file>... | remove <media-path>...]\n"
+        "      the media library: every file under media/ with its kind, size and uses;\n"
+        "      add copies files in under a clean name, remove deletes unused ones\n"
         "  ultrapress page <site-dir> <slug>\n"
         "      print the page's HTML shadow\n"
         "  ultrapress publish <site-dir> <out-dir> [--renderer <script.js>] [--drafts]\n"
@@ -122,10 +128,51 @@ int CommandCheck(const std::vector<std::string>& args) {
     if (args.empty()) { PrintHelp(); return 2; }
     Site site;
     if (!Load(args[0], site)) return 1;
-    const std::vector<ValidationIssue> issues = ValidateSite(site);
+    std::vector<ValidationIssue> issues = ValidateSite(site);
+    const std::vector<ValidationIssue> media = ValidateMedia(site, args[0]);
+    issues.insert(issues.end(), media.begin(), media.end());
     PrintIssues(issues);
     std::printf("%s: %zu pages, %zu issues\n", site.name.c_str(), site.pages.size(), issues.size());
     return issues.empty() ? 0 : 1;
+}
+
+int CommandMedia(const std::vector<std::string>& args) {
+    if (args.empty()) { PrintHelp(); return 2; }
+    const std::string dir = args[0];
+    Site site;
+    if (!Load(dir, site)) return 1;
+    if (args.size() == 1) {
+        const std::vector<MediaFile> files = ListMedia(dir, &site);
+        for (const MediaFile& file : files) {
+            std::printf("%-40s %-9s %8s  %s\n", file.path.c_str(), file.kind.c_str(), HumanSize(file.size).c_str(),
+                        file.usedBy == 0 ? "unused" : ("used " + std::to_string(file.usedBy) + "x").c_str());
+        }
+        std::printf("%zu file(s) in %s/media\n", files.size(), dir.c_str());
+        return 0;
+    }
+    const std::string verb = args[1];
+    if (verb == "add") {
+        if (args.size() < 3) { std::fprintf(stderr, "ultrapress media <site-dir> add <file>...\n"); return 2; }
+        int failures = 0;
+        for (size_t i = 2; i < args.size(); ++i) {
+            std::string path, error;
+            if (ImportMedia(dir, args[i], path, error)) std::printf("%s\n", path.c_str());
+            else { std::fprintf(stderr, "%s\n", error.c_str()); ++failures; }
+        }
+        return failures == 0 ? 0 : 1;
+    }
+    if (verb == "remove") {
+        if (args.size() < 3) { std::fprintf(stderr, "ultrapress media <site-dir> remove <media-path>...\n"); return 2; }
+        int failures = 0;
+        for (size_t i = 2; i < args.size(); ++i) {
+            std::string error;
+            if (RemoveMedia(dir, args[i], error, &site)) std::printf("removed %s\n", args[i].c_str());
+            else { std::fprintf(stderr, "%s\n", error.c_str()); ++failures; }
+        }
+        return failures == 0 ? 0 : 1;
+    }
+    std::fprintf(stderr, "unknown media command '%s'\n", verb.c_str());
+    return 2;
 }
 
 int CommandPage(const std::vector<std::string>& args) {
@@ -354,6 +401,7 @@ int CommandLine(int argc, char** argv) {
     if (command == "publish") return CommandPublish(args);
     if (command == "import") return CommandImport(args);
     if (command == "hosts") return CommandHosts(args);
+    if (command == "media") return CommandMedia(args);
     std::fprintf(stderr, "unknown command '%s'\n", command.c_str());
     PrintHelp();
     return 2;

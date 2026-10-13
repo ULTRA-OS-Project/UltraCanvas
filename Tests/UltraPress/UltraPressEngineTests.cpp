@@ -7,6 +7,7 @@
 // is loaded as a real site. The deploy sends a published folder through a
 // recording uploader and, where UltraCloud is built, through the hosts onto
 // the in-memory provider.
+// Version: 0.6.0 - the media library
 // Version: 0.5.0 - the deploy and the hosts
 // Version: 0.1.0
 // Last Modified: 2026-10-13
@@ -15,6 +16,7 @@
 #include "UltraPressDeploy.h"
 #include "UltraPressHtml.h"
 #include "UltraPressImport.h"
+#include "UltraPressMedia.h"
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
 #if ULTRAPRESS_HAS_ULTRACLOUD
@@ -650,6 +652,90 @@ static void TestDeploy() {
     fs::remove_all(out, ec);
 }
 
+static void TestMedia() {
+    std::printf("The media library\n");
+    Check(MediaKind("Launch.PNG") == "image" && MediaKind("a.pdf") == "document" && MediaKind("clip.mp4") == "video" &&
+              MediaKind("song.ogg") == "audio" && MediaKind("setup.zip") == "archive" && MediaKind("noext") == "other",
+          "kinds from the extension, whatever its case");
+    Check(HumanSize(512) == "512 B" && HumanSize(12 * 1024) == "12 KB" && HumanSize(3 * 1024 * 1024 + 400 * 1024) == "3.4 MB",
+          "sizes for people");
+
+    const fs::path dir = TempDir("media-site");
+    const fs::path elsewhere = TempDir("media-source");
+    std::error_code ec;
+    std::vector<std::string> errors;
+    Site site = CreateStarterSite("Pictures", "https://pictures.example");
+    Check(SaveSite(UltraCanvas::PathToUtf8(dir), site, errors), "a site without media");
+    Check(ListMedia(UltraCanvas::PathToUtf8(dir)).empty(), "an empty library");
+
+    WriteTextFile(UltraCanvas::PathToUtf8(elsewhere / "My Launch Photo.PNG"), "not really a png");
+    WriteTextFile(UltraCanvas::PathToUtf8(elsewhere / "Prospekt 2026.pdf"), "%PDF-1.7 pretend");
+    std::string path, error;
+    Check(ImportMedia(UltraCanvas::PathToUtf8(dir), UltraCanvas::PathToUtf8(elsewhere / "My Launch Photo.PNG"), path, error) &&
+              path == "media/my-launch-photo.png" && fs::exists(dir / "media" / "my-launch-photo.png", ec),
+          "a file is copied in under a clean name: " + path + " " + error);
+    std::string second;
+    Check(ImportMedia(UltraCanvas::PathToUtf8(dir), UltraCanvas::PathToUtf8(elsewhere / "My Launch Photo.PNG"), second, error) &&
+              second == "media/my-launch-photo-2.png",
+          "a second copy of the same name gets a number: " + second);
+    std::string own;
+    Check(ImportMedia(UltraCanvas::PathToUtf8(dir), UltraCanvas::PathToUtf8(dir / "media" / "my-launch-photo.png"), own, error) &&
+              own == "media/my-launch-photo.png" && ListMedia(UltraCanvas::PathToUtf8(dir)).size() == 2,
+          "a file already in the library is named, not copied again: " + own);
+    std::string pdf;
+    Check(ImportMedia(UltraCanvas::PathToUtf8(dir), UltraCanvas::PathToUtf8(elsewhere / "Prospekt 2026.pdf"), pdf, error) &&
+              pdf == "media/prospekt-2026.pdf", "a document too: " + pdf);
+    Check(!ImportMedia(UltraCanvas::PathToUtf8(dir), UltraCanvas::PathToUtf8(elsewhere / "missing.png"), path, error) && Contains(error, "not a file"),
+          "a missing source is an error");
+
+    std::vector<MediaFile> files = ListMedia(UltraCanvas::PathToUtf8(dir));
+    Check(files.size() == 3 && files[0].path == "media/my-launch-photo-2.png" && files[1].name == "my-launch-photo.png" &&
+              files[1].kind == "image" && files[1].size == 16 && files[2].kind == "document",
+          "the list is in path order with name, kind and size");
+
+    // References: the hero's picture, a downloads item, the social card.
+    Page& home = site.pages[0];
+    home.blocks[0].Set("picture", "media/my-launch-photo.png");
+    home.seo.image = "media/my-launch-photo.png";
+    Block downloads{"downloads"};
+    downloads.Set("title", "Files");
+    downloads.Set("items", JSONValue::MakeArray()
+                               .Append(JSONValue::MakeObject().Set("title", "Prospekt").Set("file", "media/prospekt-2026.pdf"))
+                               .Append(JSONValue::MakeObject().Set("title", "Elsewhere").Set("file", "https://example.org/x.zip")));
+    home.blocks.push_back(downloads);
+    Block columns{"columns"};
+    Block inner{"picture"};
+    inner.Set("src", "media/nowhere.png");
+    columns.children.push_back(inner);
+    home.blocks.push_back(columns);
+    const std::vector<MediaReference> refs = MediaReferences(site);
+    Check(refs.size() == 4 && refs[0].at == "seo.image" && refs[1].at == "blocks[0].picture" &&
+              refs[2].at == "blocks[5].items[0].file" && Contains(refs[3].at, "children[0].src") && refs[3].file == "media/nowhere.png",
+          "every media reference is found, children included, absolute URLs left out: " + std::to_string(refs.size()));
+    files = ListMedia(UltraCanvas::PathToUtf8(dir), &site);
+    Check(files[1].usedBy == 2 && files[2].usedBy == 1 && files[0].usedBy == 0, "the list counts the uses");
+    const std::vector<ValidationIssue> issues = ValidateMedia(site, UltraCanvas::PathToUtf8(dir));
+    Check(issues.size() == 1 && issues[0].page == "home" && Contains(issues[0].message, "media/nowhere.png"),
+          "a reference to a file the site does not have is an issue");
+    home.blocks[0].Set("picture", "pictures/outside.png");
+    Check(ValidateMedia(site, UltraCanvas::PathToUtf8(dir)).size() == 2 &&
+              Contains(ValidateMedia(site, UltraCanvas::PathToUtf8(dir))[0].message, "outside media/"),
+          "a path outside media/ is an issue too");
+    home.blocks[0].Set("picture", "media/my-launch-photo.png");
+
+    Check(!RemoveMedia(UltraCanvas::PathToUtf8(dir), "media/my-launch-photo.png", error, &site) && Contains(error, "is used by home"),
+          "a used file is not removed: " + error);
+    Check(RemoveMedia(UltraCanvas::PathToUtf8(dir), "media/my-launch-photo-2.png", error, &site) &&
+              ListMedia(UltraCanvas::PathToUtf8(dir)).size() == 2,
+          "an unused one is");
+    Check(!RemoveMedia(UltraCanvas::PathToUtf8(dir), "pages/home.json", error) && Contains(error, "not a file of the library") &&
+              !RemoveMedia(UltraCanvas::PathToUtf8(dir), "media/../site.json", error),
+          "nothing outside media/ can be removed through the library");
+    Check(!RemoveMedia(UltraCanvas::PathToUtf8(dir), "media/gone.png", error) && Contains(error, "no such file"), "a missing file says so");
+    fs::remove_all(dir, ec);
+    fs::remove_all(elsewhere, ec);
+}
+
 int main() {
     TestStarterRoundTrip();
     TestValidation();
@@ -658,6 +744,7 @@ int main() {
     TestPublishAndExample();
     TestWordPressImport();
     TestDeploy();
+    TestMedia();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

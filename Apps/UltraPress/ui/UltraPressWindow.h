@@ -5,12 +5,14 @@
 // model and re-renders the preview; Save writes the site folder; Publish
 // writes the static site and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.6.0 - the media library: Pick... on a picture property, Media library... in the side column
 // Version: 0.5.0 - Publish and Host...
 // Version: 0.3.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraPressMedia.h"
 #include "UltraPressModel.h"
 #include "UltraPressRender.h"
 
@@ -53,6 +55,19 @@ public:
     // added becomes the site's, and is saved.
     void ChooseHost();
     bool IsPublishing() const { return publishing; }
+
+    // The media library. `Media()` lists the site's media folder with the
+    // uses; AddMedia copies a file in and names it; RemoveMediaFile removes
+    // an unused one. ShowMediaLibrary opens the dialog (browse), PickImage
+    // opens it for the selected block's picture property `name`.
+    std::vector<MediaFile> Media() const;
+    bool AddMedia(const std::string& sourcePath, std::string& mediaPath, std::string& error);
+    bool RemoveMediaFile(const std::string& mediaPath, std::string& error);
+    void ShowMediaLibrary();
+    void PickImage(const std::string& name);
+    // Sets a property of the selected block and re-renders; false when no
+    // block is selected.
+    bool SetProperty(const std::string& name, UltraCanvas::JSONValue value);
 
     const Site& CurrentSite() const { return site; }
     const std::string& CurrentPage() const { return current; }

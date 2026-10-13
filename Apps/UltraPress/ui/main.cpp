@@ -1,6 +1,6 @@
 // Apps/UltraPress/ui/main.cpp
 // ultrapress: the one UltraPress program - the commands and the window.
-// A command word first (new, check, page, publish, import, hosts, help) runs that
+// A command word first (new, check, page, publish, import, hosts, media, help) runs that
 // command without a window (cli/UltraPressCli.h); a site folder opens it in
 // the editor - the pages and the current page's blocks on the left, the
 // page rendered on real elements in the middle, the selected block's
@@ -10,12 +10,13 @@
 //   ultrapress <site-dir>            open a site folder in the editor
 //   ultrapress <site-dir> --check    render every page without a window and
 //                                    print the element counts and warnings
-//   ultrapress <command> ...         new, check, page, publish, import, hosts, help
+//   ultrapress <command> ...         new, check, page, publish, import, hosts, media, help
 //   ultrapress --version
 //
 // There were two programs, ultrapress and UltraPress, until the macOS build
 // showed that two names differing only in case are one name on a
 // case-insensitive filesystem. One program, like ultrafibu.
+// Version: 0.6.0 - media
 // Version: 0.5.0 - hosts
 // Version: 0.4.1 - one program: the commands and the window
 // Version: 0.3.0 - editing: blocks added, moved, removed and their properties changed; Save
@@ -56,7 +57,7 @@ int Usage() {
                  "UltraPress %s\n"
                  "  ultrapress <site-dir>           open a site folder in the editor\n"
                  "  ultrapress <site-dir> --check   render every page without a window, print what was built\n"
-                 "  ultrapress <command> ...        new, check, page, publish, import, hosts; `ultrapress help` lists them\n"
+                 "  ultrapress <command> ...        new, check, page, publish, import, hosts, media; `ultrapress help` lists them\n"
                  "  ultrapress --version\n",
                  ULTRAPRESS_VERSION);
     return 2;
@@ -65,7 +66,7 @@ int Usage() {
 // Whether the first argument is a command word rather than a site folder.
 // A folder that happens to be called `check` is opened as `./check`.
 bool IsCommand(const std::string& word) {
-    static const char* const kCommands[] = {"new", "check", "page", "publish", "import", "hosts",
+    static const char* const kCommands[] = {"new", "check", "page", "publish", "import", "hosts", "media",
                                             "help", "--help", "-h"};
     for (const char* command : kCommands) {
         if (word == command) return true;

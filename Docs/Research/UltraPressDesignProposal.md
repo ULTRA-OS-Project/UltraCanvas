@@ -775,8 +775,10 @@ Done in 0.5.0: the publisher of §6.1 onto UltraCloud's FTP / SFTP /
 WebDAV / Nextcloud providers (`ultrapress hosts`, `publish --to`, the
 window's Publish), with a per-host manifest so only what changed is
 uploaded, run end to end against a local FTP and a local WebDAV server.
-Still to do: text edited in place, pictures and the media library, pages
-and menus from the window, two themes, and the renderer release build. Done when ultraos.eu
+Done in 0.6.0: pictures and the media library (`ultrapress media`, the
+window's Pick… and Media library…). Still to do: text edited in place,
+pages and menus from the window, two themes, and the renderer release
+build. Done when ultraos.eu
 is imported, edited, published to a test host and renders in Chromium,
 Firefox and Safari as the demo does, with the shadow indexed by a crawler.
 

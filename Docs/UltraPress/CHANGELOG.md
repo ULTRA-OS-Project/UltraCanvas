@@ -1,3 +1,24 @@
+#### 2026-10-13 *0.6.0*
+- **Pictures and the media library.** The site's `media/` folder has a
+  model (`engine/UltraPressMedia.h`): `ListMedia` lists every file with
+  its kind (from the extension), size and how many places in the site name
+  it; `MediaReferences` finds those places - every picture property of
+  every block, children included, a downloads item's file, a page's social
+  card picture - and `ValidateMedia` reports the ones naming a file the
+  site does not have, or outside `media/`; `ImportMedia` copies a file in
+  under a clean name (the name slugged, the extension lower-case, `-2`
+  when taken; a file already in the folder is named, not copied twice);
+  `RemoveMedia` deletes one, never a used one, never anything outside
+  `media/`. The command line: `ultrapress media <site>` lists, `media
+  <site> add <file>...` copies in, `media <site> remove <path>...`
+  deletes; `ultrapress check` reports missing pictures. The window: a
+  picture property has **Pick…** beside its path, which opens the library
+  to choose from - thumbnails, kind, size, uses - with **Add file…**
+  (the file dialog; the file is copied into `media/`) and **Remove**; the
+  side column's **Media library…** opens the same dialog to browse. The
+  preview re-renders as pictures arrive. Tests: the library model (kinds,
+  naming, references, validation, removal) and the editor's calls.
+
 #### 2026-10-13 *0.5.1*
 - **Pruning.** `ultrapress publish --to ... --prune` deletes on the host
   what an earlier publish put there and the site no longer has - a removed

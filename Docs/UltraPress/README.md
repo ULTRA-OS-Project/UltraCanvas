@@ -1,14 +1,15 @@
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.5.0 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.6.0 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
-renderer on real elements, the WordPress importer and the publisher onto
-web hosts: a site as a folder of JSON files, the block registry, the HTML
-shadow of every page, the static publish, every block as UltraCanvas
-elements, blocks added, moved, removed and edited with the page re-rendered
-live, a WordPress export read into a site, and the published folder
-uploaded onto an FTP, SFTP, WebDAV or Nextcloud host through UltraCloud,
-only what changed. The WebAssembly output follows
+renderer on real elements, the WordPress importer, the publisher onto
+web hosts and the media library: a site as a folder of JSON files, the
+block registry, the HTML shadow of every page, the static publish, every
+block as UltraCanvas elements, blocks added, moved, removed and edited
+with the page re-rendered live, a WordPress export read into a site, the
+published folder uploaded onto an FTP, SFTP, WebDAV or Nextcloud host
+through UltraCloud, only what changed, and pictures and downloads brought
+into the site's media folder and picked from it. The WebAssembly output follows
 ([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
 **Last Modified:** 2026-10-13
 **Author:** UltraCanvas Framework / ULTRA OS
@@ -82,6 +83,9 @@ ultrapress publish mysite out --to site                           # write, then 
 ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
 ultrapress publish mysite out --to site --prune                   # and delete on the host what the site no longer has
 ultrapress hosts add ftp --server sftp://my.example --user me --key ~/.ssh/id_ed25519   # SFTP with a key (the password: its passphrase)
+ultrapress media mysite                                           # every file under media/: kind, size, uses
+ultrapress media mysite add ~/Pictures/launch.png                 # copied in as media/launch.png
+ultrapress media mysite remove media/launch.png                   # deleted, unless a page uses it
 ```
 
 `import` reads a WordPress export (Tools > Export in WordPress, the WXR
@@ -176,6 +180,10 @@ against it.
   what an earlier publish wrote and this one does not is removed, the
   deploy manifest excepted; `removeStale` turns it off) and
   `CreateStarterSite`.
+- `UltraPressMedia.h` - the media library: `ListMedia` (kind, size, uses),
+  `MediaReferences`, `ValidateMedia`, `ImportMedia` (a clean, unique name
+  under `media/`), `RemoveMedia` (never a used file), `MediaKind`,
+  `HumanSize`.
 - `UltraPressDeploy.h` - `DeployFolder`: the published folder onto a host
   through an `Uploader` (two functions: make a folder, put a file), the
   root's folders created first, only the files whose `Fingerprint` changed
@@ -220,13 +228,22 @@ MKCOL, outermost first). A site names its host and the folder on it in
 An `sftp://` host signs in with a password or a private key (`--key`, or
 the dialog's *Private key* row; the password is then the key's passphrase).
 The window's Publish prunes; the command line prunes with `--prune`.
+
+**Pictures.** A picture property (the hero's and the card's `picture`, the
+picture block's `src`) has **Pick…** beside its path. It opens the media
+library: every file under `media/` with a thumbnail, its kind, size and
+how many places use it; **Add file…** opens the file dialog and copies the
+chosen file into `media/` under a clean name; **Remove** deletes a file
+nothing uses; **Choose** puts the path into the property and the preview
+shows the picture. **Media library…** in the side column opens the same
+dialog to browse.
 Without UltraCloud the program says so, and `ultrapress publish` still
 writes the folder to upload by other means.
 
 ## Not yet
 
-Text edited in place on the page, a picture picker and the media library,
-new pages and menus from the window, undo, the WebAssembly renderer release
+Text edited in place on the page, new pages and menus from the window,
+undo, the WebAssembly renderer release
 and its reference from the shadow, the newsletter's e-mail mode of the
 emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a

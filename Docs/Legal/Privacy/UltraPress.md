@@ -55,7 +55,7 @@ required to [confirm with legal review].
 
 | Data | What it is | Where |
 |---|---|---|
-| The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you | the folder you name, e.g. `ultrapress new mysite` |
+| The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you; a file you add through the media library (`ultrapress media add`, the window's Add file…) is copied into `media/` | the folder you name, e.g. `ultrapress new mysite` |
 | The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out`; the window uses `<site>/.ultrapress/publish` |
 | The upload record | `.ultrapress-deploy.json`: for each host, the name and a fingerprint (size and a hash of the content, not the content) of every file uploaded, so the next publish sends only what changed | beside the published site |
 | The host list | the hosts you added: the kind (FTP, WebDAV, Nextcloud), the server address, your user name, the folder, a display name | `hosts.db` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere) |
