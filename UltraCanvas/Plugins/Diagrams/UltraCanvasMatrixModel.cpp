@@ -710,7 +710,11 @@ namespace UltraCanvas {
             return false;
         };
 
-        std::istringstream in(csv);
+        // Excel starts a UTF-8 CSV with a byte-order mark. It would land in
+        // the corner field, which is ignored; dropping it here keeps it from
+        // ever reaching a label should the layout of the sheet change.
+        const bool bom = csv.size() >= 3 && csv.compare(0, 3, "\xEF\xBB\xBF") == 0;
+        std::istringstream in(bom ? csv.substr(3) : csv);
         std::string line;
         if (!std::getline(in, line)) return failWith("the table is empty");
 

@@ -376,6 +376,10 @@ importances. Numbers are dot-decimal whatever the locale.
 
 <!-- doc-check: std::string sheetCsv; -->
 
+A leading UTF-8 byte-order mark, as Excel writes, is skipped. The DemoApp's
+**Import table...** button reads a sheet this way, trying each built-in scale
+until one reads every mark; `media/diagrams/matrix/` holds two sample sheets.
+
 ```cpp
 MatrixModel imported;
 std::string error;

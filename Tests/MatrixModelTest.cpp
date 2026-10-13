@@ -655,6 +655,14 @@ static void TestImportTable() {
     CHECK(!ImportMatrixTable(",A,A\nRow,strong,weak\n", MatrixScale::QFD(), model, "R", "C", &error),
           "a repeated column label fails");
 
+    // Excel writes a UTF-8 byte-order mark first; the sheet must read the same.
+    MatrixModel withBom;
+    CHECK(ImportMatrixTable("\xEF\xBB\xBF,Importance,A\nRow,2,strong\n", MatrixScale::QFD(),
+                            withBom, "R", "C", &error) &&
+          withBom.sets[1].items[0].label == "A" &&
+          NearlyEqual(withBom.sets[0].items[0].importance, 2.0),
+          "a sheet starting with a byte-order mark imports unchanged");
+
     // The tabular form is what ExportMatrixCsv writes, so the two round-trip.
     MatrixModel tools = MakeToolsMatrix();
     MatrixModel reread;

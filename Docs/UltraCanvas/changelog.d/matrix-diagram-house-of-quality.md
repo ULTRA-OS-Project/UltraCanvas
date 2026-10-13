@@ -19,5 +19,8 @@
   in every locale.
 - Matrix diagram: a label wrapped onto its last line dropped the words that did
   not fit without a trace; the last line now ends in "..." instead.
-- DemoApp: a House of Quality tab on the Matrix Diagram page, and a control
-  that switches the column totals between bars and numbers.
+- DemoApp: a House of Quality tab on the Matrix Diagram page, a control that
+  switches the column totals between bars and numbers, and an **Import
+  table...** button that reads a CSV sheet into an "Imported" tab, trying each
+  built-in scale until one reads every mark. Two sample sheets ship in
+  `media/diagrams/matrix/`; a leading UTF-8 byte-order mark is skipped.
