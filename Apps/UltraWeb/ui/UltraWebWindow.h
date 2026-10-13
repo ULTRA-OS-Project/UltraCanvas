@@ -3,6 +3,7 @@
 // a WebAssembly app builds its UI into (UC_ROOT_HANDLE of the element ABI) or
 // a web page is shown in (UltraCanvasWebView), and a status bar. One app or
 // page at a time in this version; tabs come next.
+// Version: 0.5.0 - downloads: a link to no page is saved through the save dialog
 // Version: 0.3.0 - web pages: addresses that are not apps open in a web view
 // Version: 0.1.0
 // Last Modified: 2026-10-12
@@ -10,6 +11,7 @@
 #pragma once
 
 #include "../host/UltraWebGuest.h"
+#include "../host/UltraWebDownloads.h"
 #include "../host/UltraWebLoader.h"
 
 #include "UltraCanvasButton.h"
@@ -21,6 +23,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraWeb {
 
@@ -43,6 +46,9 @@ private:
     void ShowError(const std::string& title, const std::string& detail);
     void ClearAppArea();
     void SetStatus(const std::string& text);
+    // A link that led to no page: ask where to save it, then save the bytes
+    // the loader has, or download it again to disk when it was too large.
+    void SaveDownload(const UltraCanvas::HTML::LoadedPage& page);
     void SetTitleFor(const std::string& address);
     void LayoutForSize(float width, float height);
 
@@ -63,6 +69,8 @@ private:
     // Web pages; in the app area while one is shown (showingPage_).
     std::shared_ptr<UltraCanvas::UltraCanvasWebView> webView_;
     bool showingPage_ = false;
+    // Downloads in progress, each until it finishes.
+    std::vector<std::shared_ptr<Download>> downloads_;
     std::string currentAddress_;
     // Deferred work (a guest failure reported on a later turn) checks this
     // before touching the window.

@@ -1,6 +1,7 @@
 // core/HTMLReader/HTMLPageLoader.cpp
 // URL -> decoded, parsed page with its style sheets; subresources on demand.
 // See include/HTMLReader/HTMLPageLoader.h.
+// Version: 1.3.0 - downloads (LoadedPage body / fileName, DownloadFileName)
 // Version: 1.2.0 - LoadPost: a form's POST
 // Version: 1.1.0 - @import sheets fetched before the page is ready
 // Version: 1.0.0
@@ -198,14 +199,32 @@ void PageLoader::Finish(const std::shared_ptr<Navigation>& nav, FetchResult resu
         current_.reset();
         nav->onReady(std::move(page));
     };
+    const std::string mediaType = MediaType(result.contentType);
+    const bool attachment = Lower(Trim(result.contentDisposition)).rfind("attachment", 0) == 0;
+    const bool showable = mediaType.empty() || mediaType == "text/html" || mediaType == "application/xhtml+xml" ||
+                          mediaType == "text/plain" || mediaType.rfind("image/", 0) == 0;
+    // A download: the server says to save it, or it is no page and over the
+    // limit (the host fetches it again, streaming, to disk).
+    auto download = [&](bool truncated) {
+        page.kind = PageKind::Other;
+        page.attachment = attachment;
+        page.truncated = truncated;
+        page.fileName = DownloadFileName(result.contentDisposition, page.url, result.contentType);
+        if (!truncated) page.body = std::move(result.body);
+        current_.reset();
+        nav->onReady(std::move(page));
+    };
     if (!result.ok) {
+        if (result.tooLarge && (attachment || !showable)) { download(true); return; }
         fail(result.error.empty() ? std::string("the page could not be loaded") : result.error);
         return;
     }
     if (result.body.size() > limits_.maxDocumentBytes) {
+        if (attachment || !showable) { download(true); return; }
         fail("the page is larger than " + std::to_string(limits_.maxDocumentBytes / (1024 * 1024)) + " MB");
         return;
     }
+    if (attachment) { download(false); return; }
 
     // What it is: the media type, else a guess from the bytes (file: has none).
     std::string type = MediaType(result.contentType);
@@ -254,9 +273,7 @@ void PageLoader::Finish(const std::shared_ptr<Navigation>& nav, FetchResult resu
                "</title></head><body style='margin:0;text-align:center'><img src=\"" +
                EscapeText(page.url) + "\" style='max-width:100%'></body></html>";
     } else {
-        page.kind = PageKind::Other;
-        current_.reset();
-        nav->onReady(std::move(page));
+        download(false);
         return;
     }
 
@@ -579,6 +596,89 @@ std::string PageLoader::RewriteCssUrls(
         i = j + 1;
     }
     return out;
+}
+
+std::string PageLoader::DownloadFileName(const std::string& contentDisposition, const std::string& url,
+                                         const std::string& contentType) {
+    auto percentDecode = [](const std::string& s) {
+        std::string out;
+        for (size_t i = 0; i < s.size(); ++i) {
+            if (s[i] == '%' && i + 2 < s.size() && HexValue(s[i + 1]) >= 0 && HexValue(s[i + 2]) >= 0) {
+                out += static_cast<char>(HexValue(s[i + 1]) * 16 + HexValue(s[i + 2]));
+                i += 2;
+            } else {
+                out += s[i];
+            }
+        }
+        return out;
+    };
+    // A parameter of the header: name=value, name="quoted value".
+    auto param = [&](const std::string& name) -> std::string {
+        const std::string lower = Lower(contentDisposition);
+        size_t at = 0;
+        while ((at = lower.find(name, at)) != std::string::npos) {
+            const bool starts = at == 0 || lower[at - 1] == ';' || std::isspace(static_cast<unsigned char>(lower[at - 1]));
+            size_t eq = at + name.size();
+            while (eq < lower.size() && std::isspace(static_cast<unsigned char>(lower[eq]))) ++eq;
+            if (!starts || eq >= lower.size() || lower[eq] != '=') { at += name.size(); continue; }
+            size_t v = eq + 1;
+            while (v < contentDisposition.size() && std::isspace(static_cast<unsigned char>(contentDisposition[v]))) ++v;
+            std::string value;
+            if (v < contentDisposition.size() && contentDisposition[v] == '"') {
+                for (++v; v < contentDisposition.size() && contentDisposition[v] != '"'; ++v) {
+                    if (contentDisposition[v] == '\\' && v + 1 < contentDisposition.size()) ++v;
+                    value += contentDisposition[v];
+                }
+            } else {
+                const size_t end = contentDisposition.find(';', v);
+                value = Trim(contentDisposition.substr(v, end == std::string::npos ? std::string::npos : end - v));
+            }
+            return value;
+        }
+        return std::string();
+    };
+    std::string name;
+    // filename*=UTF-8''caf%C3%A9.pdf wins over filename=.
+    const std::string extended = param("filename*");
+    if (!extended.empty()) {
+        const size_t quote = extended.find("''");
+        if (quote != std::string::npos) {
+            const std::string charset = Lower(extended.substr(0, quote));
+            if (charset == "utf-8" || charset.empty()) name = percentDecode(extended.substr(quote + 2));
+        }
+    }
+    if (name.empty()) name = param("filename");
+    if (name.empty()) {
+        std::string path = WithoutFragment(url);
+        path = path.substr(0, path.find('?'));
+        const size_t scheme = path.find("://");
+        const size_t start = scheme == std::string::npos ? 0 : path.find('/', scheme + 3);
+        if (start != std::string::npos) {
+            const size_t slash = path.rfind('/');
+            if (slash != std::string::npos && slash >= start) name = percentDecode(path.substr(slash + 1));
+        }
+    }
+    // Only a name: no folders, control characters or names that hide.
+    std::string clean;
+    for (unsigned char c : name) {
+        if (c < 0x20 || c == 0x7F) continue;
+        clean += (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' ||
+                  c == '<' || c == '>' || c == '|') ? '_' : static_cast<char>(c);
+    }
+    clean = Trim(clean);
+    while (!clean.empty() && clean[0] == '.') clean.erase(0, 1);
+    if (clean.size() > 200) clean = clean.substr(clean.size() - 200);
+    if (!clean.empty()) return clean;
+    static const std::pair<const char*, const char*> kExtensions[] = {
+        { "application/pdf", ".pdf" }, { "application/zip", ".zip" }, { "application/gzip", ".gz" },
+        { "application/json", ".json" }, { "text/csv", ".csv" }, { "text/plain", ".txt" },
+        { "text/html", ".html" }, { "image/png", ".png" }, { "image/jpeg", ".jpg" },
+        { "audio/mpeg", ".mp3" }, { "video/mp4", ".mp4" }, { "application/wasm", ".wasm" },
+    };
+    const std::string type = MediaType(contentType);
+    for (const auto& [t, ext] : kExtensions)
+        if (type == t) return std::string("download") + ext;
+    return "download";
 }
 
 bool PageLoader::DecodeDataUrl(const std::string& url, std::vector<uint8_t>& out) {

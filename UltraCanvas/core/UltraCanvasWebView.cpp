@@ -1,6 +1,7 @@
 // core/UltraCanvasWebView.cpp
 // A web page as an element: PageLoader + ElementBuilder + history.
 // See include/UltraCanvasWebView.h.
+// Version: 1.3.0 - a download keeps the page on show, its address and history
 // Version: 1.2.0 - file inputs choose through onChooseFiles
 // Version: 1.1.0 - forms the reader fills in and sends: SetInteractiveForms,
 //                  SubmitForm (GET as a navigation, POST through LoadPost); what
@@ -135,7 +136,7 @@ void UltraCanvasWebView::Navigate(const std::string& url) {
     history.resize(static_cast<size_t>(historyIndex + 1));
     history.push_back({ url, std::string(), 0 });
     ++historyIndex;
-    StartLoad(url, 0);
+    StartLoad(url, 0, /*pushedHistory=*/true);
 }
 
 void UltraCanvasWebView::Reload() {
@@ -191,7 +192,8 @@ void UltraCanvasWebView::RememberScroll() {
     history[static_cast<size_t>(historyIndex)].scrollY = content->GetVerticalScrollPosition();
 }
 
-void UltraCanvasWebView::StartLoad(const std::string& url, int restoreScrollY) {
+void UltraCanvasWebView::StartLoad(const std::string& url, int restoreScrollY, bool pushedHistory) {
+    loadPushedHistory = pushedHistory;
     if (onUrlChanged) onUrlChanged(url);
     if (!loader) {
         ShowErrorPage(url, "This view has no way to fetch pages (no services were set).");
@@ -206,6 +208,14 @@ void UltraCanvasWebView::StartLoad(const std::string& url, int restoreScrollY) {
 void UltraCanvasWebView::OnPage(HTML::LoadedPage loaded, int restoreScrollY) {
     SetLoading(false);
     if (loaded.kind == HTML::PageKind::Other) {
+        // A download: the page on show stays, and so does its address -
+        // the history keeps no entry for the file.
+        if (loadPushedHistory && historyIndex > 0 && page) {
+            history.erase(history.begin() + historyIndex);
+            --historyIndex;
+        }
+        loadPushedHistory = false;
+        if (page && onUrlChanged) onUrlChanged(GetUrl());
         if (onNonHtml) onNonHtml(loaded);
         return;
     }

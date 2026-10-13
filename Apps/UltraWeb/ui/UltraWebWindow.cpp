@@ -1,5 +1,6 @@
 // Apps/UltraWeb/ui/UltraWebWindow.cpp
 // The browser window (UltraWebWindow.h).
+// Version: 0.5.0 - downloads: a link to no page is saved through the save dialog
 // Version: 0.3.0 - web pages in an UltraCanvasWebView; back / forward
 // Version: 0.2.0
 // Last Modified: 2026-10-12
@@ -8,6 +9,7 @@
 #include "UltraWebWindow.h"
 
 #include "../host/UltraWebFetch.h"
+#include "../host/UltraWebDownloads.h"
 #include "../host/UltraWebPages.h"
 #include "../host/UltraWebStorage.h"
 
@@ -82,7 +84,10 @@ UltraWebWindow::UltraWebWindow() : loader_(PostToUi), alive_(std::make_shared<bo
 
 // The guest first: it removes its elements from the app area, which must
 // still exist.
-UltraWebWindow::~UltraWebWindow() { guest_.reset(); }
+UltraWebWindow::~UltraWebWindow() {
+    for (const auto& download : downloads_) download->Cancel();   // their part files go
+    guest_.reset();
+}
 
 bool UltraWebWindow::Initialize() {
     WindowConfig config;
@@ -207,11 +212,10 @@ bool UltraWebWindow::Initialize() {
         }
     };
     webView_->onNonHtml = [this](const HTML::LoadedPage& page) {
-        // An app served without .wasm in its address, say; anything else is
-        // not something UltraWeb shows (downloads come later).
-        if (page.contentType.find("application/wasm") != std::string::npos) RunApp(page.url);
-        else SetStatus(page.url + " is not a page (" +
-                       (page.contentType.empty() ? std::string("unknown type") : page.contentType) + ")");
+        // An app served without .wasm in its address runs; anything else
+        // that is no page is a file to save.
+        if (!page.attachment && page.contentType.find("application/wasm") != std::string::npos) RunApp(page.url);
+        else SaveDownload(page);
     };
 
     window_->AddChild(page_);
@@ -319,6 +323,56 @@ void UltraWebWindow::ClearAppArea() {
     appArea_->ClearChildren();
     appArea_->InvalidateLayout();
     appArea_->RequestRedraw();
+}
+
+void UltraWebWindow::SaveDownload(const HTML::LoadedPage& page) {
+    // Where to: the save dialog, in the Downloads folder, named as the
+    // server or the address says.
+    FileDialogOptions options;
+    options.title = "Save " + page.fileName;
+    options.defaultFileName = page.fileName;
+    options.initialDirectory = DefaultDownloadFolder();
+    options.filters.emplace_back("All files", std::vector<std::string>{ "*" });
+    std::weak_ptr<bool> alive = alive_;
+    const std::string url = page.url;
+    const std::string name = page.fileName;
+    const bool truncated = page.truncated;
+    auto bytes = std::make_shared<std::vector<uint8_t>>(page.body);
+    SetStatus("Save " + name + "?");
+    UltraCanvasFileLoader::SaveFileDialog(options,
+        [this, alive, url, name, truncated, bytes](DialogResult result, const std::string& path) {
+            if (alive.expired()) return;
+            if (result != DialogResult::OK || path.empty()) {
+                SetStatus("Not saved: " + name);
+                return;
+            }
+            if (!truncated) {
+                // The loader already has all of it.
+                std::string error;
+                if (SaveBytes(path, *bytes, error)) SetStatus("Saved " + name + " (" + ByteSize(static_cast<int64_t>(bytes->size())) + ") to " + path);
+                else SetStatus("Could not save " + name + ": " + error);
+                return;
+            }
+            // Over the page limit: fetched again, straight to disk.
+            SetStatus("Downloading " + name + " ...");
+            auto slot = std::make_shared<Download*>(nullptr);   // which one finished
+            std::shared_ptr<Download> download = StartDownload(url, path, PostToUi,
+                [this, alive, name](int64_t received, int64_t total) {
+                    if (alive.expired()) return;
+                    std::string text = "Downloading " + name + ": " + ByteSize(received);
+                    if (total > 0) text += " of " + ByteSize(total) + " (" + std::to_string(received * 100 / total) + "%)";
+                    SetStatus(text);
+                },
+                [this, alive, name, path, slot](bool ok, const std::string& error) {
+                    if (alive.expired()) return;
+                    SetStatus(ok ? "Saved " + name + " to " + path : "Download of " + name + " failed: " + error);
+                    downloads_.erase(std::remove_if(downloads_.begin(), downloads_.end(),
+                                                    [&](const std::shared_ptr<Download>& d) { return d.get() == *slot; }),
+                                     downloads_.end());
+                });
+            *slot = download.get();
+            downloads_.push_back(download);
+        });
 }
 
 void UltraWebWindow::SetStatus(const std::string& text) {

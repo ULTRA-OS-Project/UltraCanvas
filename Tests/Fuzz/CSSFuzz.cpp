@@ -68,6 +68,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         return !ref.empty();
     };
     (void)PageLoader::RewriteCssUrls(css, "https://x.org/a/sheet.css", resolve);
+    // A server's Content-Disposition and an address, as a download's name.
+    (void)PageLoader::DownloadFileName(css, "https://x.org/" + css, css);
     std::vector<uint8_t> decoded;
     (void)PageLoader::DecodeDataUrl("data:" + css, decoded);
 

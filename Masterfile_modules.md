@@ -400,8 +400,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Image / Other / Error, final URL, base, charset, the parsed `Document`,
   warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
   (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
-  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`; `LoadPost` for a form's
-  POST. Fetch, POST, URL resolution and charset conversion are services the
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`, `DownloadFileName`;
+  `LoadPost` for a form's POST; a non-page answer keeps its bytes and file
+  name for the host to save. Fetch, POST, URL resolution and charset conversion are services the
   caller passes in, so it is framework-independent; linked style sheets and
   their `@import`s load before a page is ready;
   mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
