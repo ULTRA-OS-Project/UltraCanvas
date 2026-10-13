@@ -84290,13 +84290,15 @@ FILE: Docs/UltraPress/README.md
 
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.4.1 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.5.0 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
-renderer on real elements and the WordPress importer: a site as a folder of JSON files, the
-block registry, the HTML shadow of every page, the static publish, every
-block as UltraCanvas elements, blocks added, moved, removed and edited
-with the page re-rendered live, and a WordPress export read into a site.
-The publisher onto web hosts and the WebAssembly output follow
+renderer on real elements, the WordPress importer and the publisher onto
+web hosts: a site as a folder of JSON files, the block registry, the HTML
+shadow of every page, the static publish, every block as UltraCanvas
+elements, blocks added, moved, removed and edited with the page re-rendered
+live, a WordPress export read into a site, and the published folder
+uploaded onto an FTP, SFTP, WebDAV or Nextcloud host through UltraCloud,
+only what changed. The WebAssembly output follows
 ([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
 **Last Modified:** 2026-10-13
 **Author:** UltraCanvas Framework / ULTRA OS
@@ -84316,9 +84318,18 @@ ultrapress mysite --check     # render every page without a window; element coun
 ```
 
 `ultrapress` is one program: a command word first (`new`, `check`, `page`,
-`publish`, `import`, `help`) runs that command without a window, a site
-folder opens the editor. There is no second `UltraPress` binary: two names
-that differ only in case are one name on macOS and Windows.
+`publish`, `import`, `hosts`, `help`) runs that command without a window, a
+site folder opens the editor. There is no second `UltraPress` binary: two
+names that differ only in case are one name on macOS and Windows.
+
+**Publish** writes the static site under `<site>/.ultrapress/publish` and
+uploads it onto the site's host on a worker thread; the status line under
+the site's name follows file by file. **Host…** opens UltraCloud's
+add-account dialog, limited to the web hosts - FTP / FTPS / SFTP, WebDAV,
+Nextcloud - and the host added becomes the site's (`hosting` in
+`site.json`, with the dialog's upload folder as the site's root on the
+host). Without a host of its own the site publishes to the default host;
+without any, Publish opens the dialog.
 
 The left column lists the pages and the current page's blocks: select one,
 move it with the arrows, remove it, or add one after the selection from
@@ -84354,6 +84365,11 @@ ultrapress page mysite home                                       # the front pa
 ultrapress publish mysite out                                     # the static tier, into out/
 ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the renderer referenced (later)
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
+ultrapress hosts                                                  # the hosts a site can be published to
+ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
+ultrapress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
+ultrapress publish mysite out --to site                           # write, then upload what changed onto the site's host
+ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
 ```
 
 `import` reads a WordPress export (Tools > Export in WordPress, the WXR
@@ -84445,6 +84461,12 @@ against it.
   Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
   blocks are the owner's own HTML and pass through.
 - `UltraPressPublish.h` - `PublishStatic` and `CreateStarterSite`.
+- `UltraPressDeploy.h` - `DeployFolder`: the published folder onto a host
+  through an `Uploader` (two functions: make a folder, put a file), the
+  root's folders created first, only the files whose `Fingerprint` changed
+  since the last upload to that host (`.ultrapress-deploy.json` beside the
+  output remembers them per host), stopping after three failures in a row.
+  Headless and free of UltraCloud; `--force` sends everything.
 - `UltraPressImport.h` - `ImportWordPress` / `ImportWordPressFile` with
   `ImportOptions` (the front page, a media fetcher, drafts) and
   `ImportReport`; `BlocksFromWordPressContent` maps the block editor's
@@ -84453,15 +84475,40 @@ against it.
 It links the core library for `UltraCanvasJSON` and the HTMLReader's
 `EscapeText`, and opens no window. Tests: `Tests/UltraPress/UltraPressEngineTests.cpp`,
 built with `-DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON`; they save and reload a
-site, validate a broken one, parse the shadow back with `HTML::Parser`, and
-publish the example site into a temporary folder.
+site, validate a broken one, parse the shadow back with `HTML::Parser`,
+publish the example site into a temporary folder, and deploy a folder
+through a recording uploader and through the hosts onto UltraCloud's
+in-memory provider.
+
+### The hosts
+
+`Apps/UltraPress/hosting/UltraPressHosting.h`, target `UltraPressHosting`,
+built where UltraCloud is (`-DBUILD_ULTRACLOUD=ON`, the default): `Hosts`
+opens the program's host list - UltraCloud accounts in `hosts.db` under
+`<settings folder>/UltraPress` (`UltraCanvasSettingsFolder()`), their
+passwords in the credential vault beside it, the way UltraFiler keeps its
+remote drives - and gives `DeployFolder` an `Uploader` onto one of them
+(`UploaderFor`). The providers are UltraCloud's: `ftp` (an `ftp://`,
+`ftps://`, `ftpes://` or `sftp://` server; the upload creates missing
+folders itself), `webdav` and `nextcloud` (`https://`; folders through
+MKCOL, outermost first). A site names its host and the folder on it in
+`site.json`:
+
+```json
+"hosting": { "account": "ftp-me-my-example", "path": "/public_html" }
+```
+
+`ultrapress hosts use` writes it; the window's Host… button does the same.
+Without UltraCloud the program says so, and `ultrapress publish` still
+writes the folder to upload by other means.
 
 ## Not yet
 
 Text edited in place on the page, a picture picker and the media library,
 new pages and menus from the window, undo, the WebAssembly renderer release
-and its reference from the shadow, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
-the newsletter's e-mail mode of the emitter, the Markdown block, and
+and its reference from the shadow, a sign-in prompt for an SFTP key (the FTP
+provider signs in with a password), deleting on the host what a publish no
+longer writes, the newsletter's e-mail mode of the emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
 static site need a form service until then.
 
@@ -85224,13 +85271,14 @@ FILE: Docs/Legal/Privacy/UltraPress.md
 
 # Privacy declaration — UltraPress
 
-**Version 0.1 (draft for legal review) · 13 October 2026**
+**Version 0.2 (draft for legal review) · 13 October 2026**
 
 This declaration explains what personal data the **UltraPress** application
 processes, where that processing happens, which third parties it contacts and
 why, and what rights you have under the General Data Protection Regulation
-(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.1 - the
-`ultrapress` command line - on Linux, Windows, macOS and ULTRA OS. It does
+(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.5 - the
+`ultrapress` program, its commands and its editor window - on Linux,
+Windows, macOS and ULTRA OS. It does
 not cover the website itself, other ULTRA OS applications, any ULTRA OS
 online service, or **the websites you build with UltraPress**: a site you
 publish is yours, served by the host you chose, and needs a declaration of
@@ -85260,11 +85308,14 @@ required to [confirm with legal review].
 
 ## 2. The short version
 
-- UltraPress 0.1 is a command-line program that runs **on your own
-  computer**. It reads a site folder you give it and writes files into a
-  folder you name. Nothing leaves your device.
-- It contacts **no server at all**: not ours, not anyone's. It has no
-  account, no sign-in, no update check, no telemetry and no advertising.
+- UltraPress runs **on your own computer**. It reads a site folder you
+  give it and writes files into a folder you name. Nothing leaves your
+  device unless you publish.
+- It contacts **one kind of server, and only when you ask**: the web host
+  you add with `ultrapress hosts add` or the window's Host… button - your
+  own FTP, SFTP, WebDAV or Nextcloud server - to upload the site you
+  publish. It contacts no server of ours. It has no account with us, no
+  update check, no telemetry and no advertising.
 - The pages it writes contain only what you put into the site folder. Where
   the pages reference a server - a contact form, a newsletter sign-up - that
   server is one you will run or choose; this version runs none.
@@ -85276,10 +85327,14 @@ required to [confirm with legal review].
 | Data | What it is | Where |
 |---|---|---|
 | The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you | the folder you name, e.g. `ultrapress new mysite` |
-| The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out` |
+| The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out`; the window uses `<site>/.ultrapress/publish` |
+| The upload record | `.ultrapress-deploy.json`: for each host, the name and a fingerprint (size and a hash of the content, not the content) of every file uploaded, so the next publish sends only what changed | beside the published site |
+| The host list | the hosts you added: the kind (FTP, WebDAV, Nextcloud), the server address, your user name, the folder, a display name | `hosts.db` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere) |
+| The host passwords | the password of each host | the encrypted credential vault `vault/` beside `hosts.db`, opened with a key file the program writes on your device (UltraVault) |
+| The site's host | the id of the host the site publishes to and the folder on it; no password | `hosting` in `site.json` |
 
-UltraPress writes no settings, caches, logs or history files of its own. Its
-messages go to the terminal it was started from.
+UltraPress writes no caches, logs or history files of its own. Its messages
+go to the terminal it was started from, or to the window's status line.
 
 The site folder and the published site contain whatever you wrote into
 them. If you put personal data there - your own name and address in the
@@ -85290,9 +85345,14 @@ purpose but writing the pages.
 
 ### 3.1 How sensitive data is protected
 
-UltraPress stores no passwords, keys or tokens. The files it writes are
-protected by your operating system's file permissions and nothing else; they
-are meant to be published.
+The host passwords are the one secret UltraPress stores. They are kept in
+an encrypted vault (UltraVault) under the settings folder; the key that
+opens it is a file the program writes beside the vault with permissions for
+your user alone, so the program can sign in to your host without asking
+again. Anyone who can read your user's files can open the vault. The site
+folder and the published site are protected by your operating system's file
+permissions and nothing else; they are meant to be published, and they
+never hold a password - `site.json` names the host by an id only.
 
 ### 3.2 Who can read this data
 
@@ -85309,11 +85369,23 @@ its own terms.
 
 ## 4. Data UltraPress sends to servers
 
-None. UltraPress 0.1 opens no network connection.
+Only to the web host you configured, and only when you publish (`ultrapress
+publish --to`, or the window's Publish button): the files of the published
+site, your user name and password to sign in, and the folder names it
+creates. The connection is to the address you entered; with `sftp://`,
+`ftps://`, `ftpes://` or `https://` it is encrypted, with plain `ftp://` or
+`http://` it is not, and the program says so in the error details when a
+sign-in fails. Verifying a new host (`ultrapress hosts add` without
+`--no-verify`, or the dialog) signs in once and lists a folder. Nothing is
+sent to ULTRA OS Development GmbH, and nothing is sent to any host you did
+not add.
 
 ## 5. Other servers UltraPress contacts, and why
 
-None.
+None besides the host above. `ultrapress import --media` fetches the
+attachments a WordPress export names, from the addresses in that export,
+when you ask for it with `--media`; that is your old site's server, or
+wherever it kept its pictures.
 
 The HTML pages UltraPress writes reference, by address only, three things a
 visitor's browser may request once the site is online: the site's own

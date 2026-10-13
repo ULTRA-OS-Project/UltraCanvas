@@ -1,3 +1,32 @@
+#### 2026-10-13 *0.5.0*
+- **The publisher onto web hosts.** A site is published through UltraCloud's
+  providers - FTP / FTPS / SFTP, WebDAV, Nextcloud - onto a host the
+  program keeps: `ultrapress hosts add ftp --server sftp://my.example
+  --user me --folder /public_html` stores the account (verified against the
+  server first; the password from `--password` or `ULTRAPRESS_HOST_PASSWORD`,
+  into the credential vault under the settings folder, the list into
+  `hosts.db` beside it), `ultrapress hosts` lists them, `hosts remove`
+  forgets one, and `hosts use <site> <host>` writes the host and the folder
+  into `site.json` as `hosting`. `ultrapress publish <site> <out> --to
+  site` (or `--to <host>`, `--path <folder>`) then writes the static site
+  and uploads it: the root's folders are created first, only the files
+  whose fingerprint changed since the last upload to that host are sent
+  (`.ultrapress-deploy.json` beside the output remembers them per host;
+  `--force` sends everything), a file that fails does not stop the others,
+  and three failures in a row - a host that is down - end the run with the
+  rest left for next time. The window has **Publish**, which writes the
+  site under `<site>/.ultrapress/publish` and uploads it on a worker thread
+  with the status line following file by file, and **Host…**, UltraCloud's
+  add-account dialog limited to the web hosts; the host added becomes the
+  site's. Engine: `UltraPressDeploy.h` (`DeployFolder`, `Uploader`,
+  `Fingerprint`, `JoinRemote`), headless and free of UltraCloud; the module
+  side is `hosting/UltraPressHosting.h` (`Hosts`), target
+  `UltraPressHosting`, built where UltraCloud is. Tests: the deploy through
+  a recording uploader (first upload, nothing the second time, a changed
+  page, another host, `--force`, a refused file tried again, a host that is
+  down) and through the hosts onto UltraCloud's in-memory provider; run
+  here end to end against a local FTP server and a local WebDAV server.
+
 #### 2026-10-13 *0.4.1*
 - **One program.** `ultrapress` is the commands and the editor window: a
   command word first (`new`, `check`, `page`, `publish`, `import`, `help`)

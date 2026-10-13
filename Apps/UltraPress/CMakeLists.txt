@@ -5,6 +5,7 @@
 # emitter and the static publisher - and `ultrapress` on top of it: the
 # commands and, given a site folder, the editor window on the element
 # renderer.
+# Version: 0.5.0 - UltraPressHosting: the hosts, over UltraCloud
 # Version: 0.4.1 - one program: the commands and the window
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
@@ -15,6 +16,7 @@ set(ULTRAPRESS_ENGINE_SOURCES
     engine/UltraPressHtml.cpp
     engine/UltraPressPublish.cpp
     engine/UltraPressImport.cpp
+    engine/UltraPressDeploy.cpp
 )
 
 add_library(UltraPressEngine STATIC ${ULTRAPRESS_ENGINE_SOURCES})
@@ -54,6 +56,27 @@ target_compile_features(UltraPressRender PUBLIC cxx_std_20)
 target_include_directories(UltraPressRender PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/render)
 target_link_libraries(UltraPressRender PUBLIC UltraPressEngine ${ULTRACANVAS_LIBRARY})
 
+# ── UltraPressHosting: the hosts a site is published to ─────────────────────
+# UltraCloud accounts (FTP, SFTP, WebDAV, Nextcloud) kept by the program, and
+# the Uploader the engine's deploy sends the files through. Only where the
+# module is built; without it `ultrapress publish --to` says so.
+if(TARGET UltraCloud)
+    add_library(UltraPressHosting STATIC hosting/UltraPressHosting.cpp)
+    set_target_properties(UltraPressHosting PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultrapress_hosting")
+    target_compile_features(UltraPressHosting PUBLIC cxx_std_20)
+    target_include_directories(UltraPressHosting PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/hosting)
+    # UltraCloud before the engine and the core: it pulls UltraCanvasJSON out
+    # of the core library, and GNU ld resolves static archives left to right
+    # (the reason Apps/UltraMail/CMakeLists.txt gives).
+    target_link_libraries(UltraPressHosting PUBLIC UltraCloud UltraPressEngine)
+    target_compile_definitions(UltraPressHosting PUBLIC ULTRAPRESS_HAS_ULTRACLOUD=1)
+    if(TARGET UltraNet)
+        target_compile_definitions(UltraPressHosting PRIVATE ULTRAPRESS_HAS_ULTRANET=1)
+    endif()
+endif()
+
 # ── ultrapress: the one program - the commands and the window ──────────────
 # `ultrapress new|check|page|publish|import ...` runs a command; given a site
 # folder it opens the editor window. There were two programs, `ultrapress`
@@ -67,6 +90,16 @@ target_compile_features(ultrapress PRIVATE cxx_std_20)
 target_include_directories(ultrapress PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ui
     ${CMAKE_CURRENT_SOURCE_DIR}/cli)
+# The hosts and, for the window's "Host..." button, UltraCloud's shared
+# add-account dialog - both ahead of the render library and the core on the
+# link line, for the archive-order reason above.
+if(TARGET UltraPressHosting)
+    target_link_libraries(ultrapress PRIVATE UltraPressHosting)
+    if(TARGET UltraCloudUI)
+        target_link_libraries(ultrapress PRIVATE UltraCloudUI)
+        target_compile_definitions(ultrapress PRIVATE ULTRAPRESS_HAS_ULTRACLOUD_UI=1)
+    endif()
+endif()
 target_link_libraries(ultrapress PRIVATE UltraPressRender)
 # `ultrapress import --media` fetches the export's attachments through
 # UltraNet, where the build has it; without it the command lists them.
@@ -95,4 +128,8 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraPress.svg DESTINATION share/icons/hicolor/scalable/apps)
 endif()
 
-message(STATUS "  [✓] UltraPress - ENABLED, commands and window (targets: UltraPressEngine, UltraPressRender, ultrapress)")
+if(TARGET UltraPressHosting)
+    message(STATUS "  [✓] UltraPress - ENABLED, commands, window and hosts (targets: UltraPressEngine, UltraPressRender, UltraPressHosting, ultrapress)")
+else()
+    message(STATUS "  [✓] UltraPress - ENABLED, commands and window; no hosts, UltraCloud not built (targets: UltraPressEngine, UltraPressRender, ultrapress)")
+endif()

@@ -2,7 +2,10 @@
 // The UltraPress window: the site's pages and the current page's blocks on
 // the left, the page rendered on real elements in the middle, the selected
 // block's properties on the right. Every change goes into the content
-// model and re-renders the preview; Save writes the site folder.
+// model and re-renders the preview; Save writes the site folder; Publish
+// writes the static site and uploads it onto the site's host (an UltraCloud
+// account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.5.0 - Publish and Host...
 // Version: 0.3.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -15,14 +18,19 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasWindow.h"
 
+#include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 
 namespace UltraPress {
+
+class Hosts;
 
 class EditorWindow {
 public:
     EditorWindow(Site site, std::string siteDirectory);
+    ~EditorWindow();
 
     // Builds the three columns into `window`; call once.
     void Build(const std::shared_ptr<UltraCanvas::UltraCanvasWindow>& window);
@@ -36,6 +44,15 @@ public:
     void MoveBlock(int index, int delta);
     void RemoveBlock(int index);
     bool Save();
+    // Writes the static site under <site>/.ultrapress/publish and uploads
+    // it onto the host site.json names - the hosts' default when it names
+    // none - on a worker thread; the status line follows. Without a host,
+    // ChooseHost. False when nothing was started.
+    bool Publish();
+    // UltraCloud's add-account dialog, limited to the web hosts; the host
+    // added becomes the site's, and is saved.
+    void ChooseHost();
+    bool IsPublishing() const { return publishing; }
 
     const Site& CurrentSite() const { return site; }
     const std::string& CurrentPage() const { return current; }
@@ -60,6 +77,11 @@ private:
     Container side, pageArea, properties;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status;
     RenderedPage shown;
+
+    std::weak_ptr<UltraCanvas::UltraCanvasWindow> windowRef;
+    std::shared_ptr<Hosts> hosts;          // opened on the first Publish or Host...
+    std::thread publishWorker;
+    std::atomic<bool> publishing{false};
 };
 
 } // namespace UltraPress

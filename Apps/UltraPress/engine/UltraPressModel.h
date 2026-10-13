@@ -4,6 +4,7 @@
 // ordered tree of blocks. Everything here is data; the renderers (the HTML
 // emitter, later the element renderer) read it and never change it.
 // Design: Docs/Research/UltraPressDesignProposal.md §5.1.
+// Version: 0.5.0 - the hosting target (where Publish uploads to)
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -76,6 +77,15 @@ struct Theme {
     std::string fontFamily = "Ubuntu";
 };
 
+// Where "Publish" puts the site: an UltraPress host account (an UltraCloud
+// account id - FTP, SFTP, WebDAV, Nextcloud - kept by the ultrapress program
+// under the settings folder, never in the site) and the folder on it that
+// is the site's root, "/public_html" on a classic web host.
+struct Hosting {
+    std::string account;
+    std::string path = "/";
+};
+
 struct Site {
     std::string name;
     std::string tagline;
@@ -86,6 +96,7 @@ struct Site {
     Theme theme;
     std::vector<Menu> menus;
     std::vector<Page> pages;
+    Hosting hosting;
 
     const Page* FindPage(const std::string& slug) const;
     const Menu* FindMenu(const std::string& name) const;

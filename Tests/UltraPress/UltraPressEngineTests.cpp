@@ -4,15 +4,22 @@
 // well-formed HTML that carries the text, the metadata and the structured
 // data, the sitemap and feed list what they should, and a static publish
 // writes the files. The example site under Apps/UltraPress/examples/ultraos
-// is loaded as a real site.
+// is loaded as a real site. The deploy sends a published folder through a
+// recording uploader and, where UltraCloud is built, through the hosts onto
+// the in-memory provider.
+// Version: 0.5.0 - the deploy and the hosts
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressBlocks.h"
+#include "UltraPressDeploy.h"
 #include "UltraPressHtml.h"
 #include "UltraPressImport.h"
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
+#if ULTRAPRESS_HAS_ULTRACLOUD
+#include "UltraPressHosting.h"
+#endif
 
 #include "HTMLReader/HTMLDocument.h"
 #include "HTMLReader/HTMLParser.h"
@@ -21,7 +28,9 @@
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -369,6 +378,203 @@ static void TestWordPressImport() {
     Check(!ImportWordPress("<rss><channel>", {}, none, bad), "broken XML is refused");
 }
 
+// A folder the deploy tests send: two pages, a picture, the .htaccess.
+static fs::path MakeOutput(const std::string& name) {
+    const fs::path out = TempDir(name);
+    std::error_code ec;
+    fs::create_directories(out / "the-plan", ec);
+    fs::create_directories(out / "media" / "2026", ec);
+    WriteTextFile(UltraCanvas::PathToUtf8(out / "index.html"), "<html>home</html>");
+    WriteTextFile(UltraCanvas::PathToUtf8(out / "the-plan" / "index.html"), "<html>plan</html>");
+    WriteTextFile(UltraCanvas::PathToUtf8(out / ".htaccess"), "AddType application/wasm .wasm");
+    std::ofstream png(out / "media" / "2026" / "a.png", std::ios::binary);
+    const unsigned char bytes[] = {0x89, 'P', 'N', 'G', 0, 1, 2, 3, 0xff};
+    png.write(reinterpret_cast<const char*>(bytes), sizeof bytes);
+    return out;
+}
+
+// Records what the deploy asked for, and fails the files it is told to.
+struct Recorder {
+    std::vector<std::string> uploads;      // remote paths, in order
+    std::vector<std::string> folders;
+    std::set<std::string> failing;         // remote paths that refuse
+    Uploader AsUploader() {
+        Uploader uploader;
+        uploader.makeDirectory = [this](const std::string& remote, std::string&) {
+            folders.push_back(remote);
+            return true;
+        };
+        uploader.upload = [this](const std::string& local, const std::string& remote, std::string& error) {
+            if (failing.count(remote)) { error = "refused"; return false; }
+            std::string text;
+            if (!ReadTextFile(local, text)) { error = "unreadable"; return false; }
+            uploads.push_back(remote);
+            return true;
+        };
+        return uploader;
+    }
+};
+
+static bool Has(const std::vector<std::string>& list, const std::string& item) {
+    for (const std::string& entry : list) if (entry == item) return true;
+    return false;
+}
+
+static void TestDeploy() {
+    std::printf("The deploy\n");
+    Check(JoinRemote("/", "index.html") == "/index.html" && JoinRemote("public_html/", "a/b") == "/public_html/a/b" &&
+              JoinRemote("", "x") == "/x" && JoinRemote("/www", "") == "/www" && JoinRemote("/", "") == "/",
+          "remote paths join under the root");
+    const fs::path out = MakeOutput("deploy");
+    const std::string fp = Fingerprint(UltraCanvas::PathToUtf8(out / "index.html"));
+    Check(!fp.empty() && fp == Fingerprint(UltraCanvas::PathToUtf8(out / "index.html")) &&
+              fp != Fingerprint(UltraCanvas::PathToUtf8(out / "the-plan" / "index.html")) &&
+              Fingerprint(UltraCanvas::PathToUtf8(out / "missing")).empty(),
+          "a fingerprint is stable, differs between files and is empty for a missing one");
+
+    Recorder recorder;
+    DeployOptions options;
+    options.remoteRoot = "/public_html";
+    size_t progress = 0;
+    options.onProgress = [&progress](const std::string&, size_t, size_t) { ++progress; };
+    const std::string host = "ftp-demo:/public_html";
+    DeployResult first = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, options);
+    for (const std::string& error : first.errors) std::printf("  error: %s\n", error.c_str());
+    Check(first.ok && first.uploaded.size() == 4 && first.unchanged.empty() && first.failed.empty() && progress == 4,
+          "the first deploy uploads every file: " + first.Summary());
+    Check(Has(recorder.uploads, "/public_html/index.html") && Has(recorder.uploads, "/public_html/.htaccess") &&
+              Has(recorder.uploads, "/public_html/the-plan/index.html") && Has(recorder.uploads, "/public_html/media/2026/a.png"),
+          "under the remote root, with '/' between the parts");
+    Check(recorder.folders.size() == 4 && recorder.folders[0] == "/public_html" && recorder.folders[1] == "/public_html/media" &&
+              recorder.folders[2] == "/public_html/media/2026" && recorder.folders[3] == "/public_html/the-plan",
+          "the root and each folder under it are created once, outermost first");
+    Check(fs::exists(out / kDeployManifestName) && !Has(recorder.uploads, std::string("/public_html/") + kDeployManifestName),
+          "the manifest is written beside the output and never uploaded");
+
+    recorder = Recorder();
+    DeployResult second = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, options);
+    Check(second.ok && second.uploaded.empty() && second.unchanged.size() == 4 && recorder.uploads.empty() && recorder.folders.empty(),
+          "the second deploy uploads nothing: " + second.Summary());
+
+    WriteTextFile(UltraCanvas::PathToUtf8(out / "the-plan" / "index.html"), "<html>plan, revised</html>");
+    recorder = Recorder();
+    DeployResult third = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, options);
+    Check(third.ok && third.uploaded.size() == 1 && third.uploaded[0] == "the-plan/index.html" && third.unchanged.size() == 3,
+          "a changed page is uploaded, the rest not: " + third.Summary());
+
+    recorder = Recorder();
+    DeployOptions slash = options;
+    slash.remoteRoot = "/";
+    DeployResult other = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), "webdav-other:/", slash);
+    Check(other.ok && other.uploaded.size() == 4 && recorder.folders.size() == 3 && recorder.folders[0] == "/media",
+          "another host gets everything; a root of '/' is not created");
+    recorder = Recorder();
+    DeployOptions deep = options;
+    deep.remoteRoot = "/home/me/public_html/";
+    DeployResult nested = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), "deep:/home/me/public_html", deep);
+    Check(nested.ok && recorder.folders.size() == 6 && recorder.folders[0] == "/home" && recorder.folders[1] == "/home/me" &&
+              recorder.folders[2] == "/home/me/public_html" && Has(recorder.uploads, "/home/me/public_html/index.html"),
+          "a root several levels deep is created level by level");
+
+    recorder = Recorder();
+    DeployOptions forced = options;
+    forced.force = true;
+    DeployResult all = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, forced);
+    Check(all.ok && all.uploaded.size() == 4 && all.unchanged.empty(), "--force uploads everything again");
+
+    WriteTextFile(UltraCanvas::PathToUtf8(out / "index.html"), "<html>home, revised</html>");
+    recorder = Recorder();
+    recorder.failing.insert("/public_html/index.html");
+    DeployResult failed = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, options);
+    Check(!failed.ok && failed.failed.size() == 1 && failed.failed[0] == "index.html" && failed.errors.size() == 1 &&
+              Contains(failed.errors[0], "refused") && failed.unchanged.size() == 3,
+          "a refused upload is reported and the others go on: " + failed.Summary());
+    recorder = Recorder();
+    DeployResult retry = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, options);
+    Check(retry.ok && retry.uploaded.size() == 1 && retry.uploaded[0] == "index.html", "the failed file is tried again next time");
+
+    recorder = Recorder();
+    recorder.failing = {"/public_html/.htaccess", "/public_html/index.html", "/public_html/media/2026/a.png"};
+    DeployOptions patient = forced;
+    patient.stopAfterFailures = 2;
+    DeployResult down = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, patient);
+    Check(!down.ok && down.failed.size() == 2 && down.notTried.size() == 2 && recorder.uploads.empty() &&
+              Contains(down.Summary(), "2 not tried") && Contains(down.errors.back(), "stopped after 2"),
+          "a host that is down stops the run after the failures in a row: " + down.Summary());
+    patient.stopAfterFailures = 0;
+    recorder = Recorder();
+    recorder.failing = {"/public_html/.htaccess", "/public_html/index.html", "/public_html/media/2026/a.png"};
+    DeployResult stubborn = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, patient);
+    Check(!stubborn.ok && stubborn.failed.size() == 3 && stubborn.notTried.empty() && stubborn.uploaded.size() == 1,
+          "0 never stops: " + stubborn.Summary());
+
+    DeployResult nowhere = DeployFolder(UltraCanvas::PathToUtf8(out / "nope"), recorder.AsUploader(), host, options);
+    Check(!nowhere.ok && !nowhere.errors.empty(), "a missing folder is an error");
+
+    std::printf("The hosting target in site.json\n");
+    Site site = CreateStarterSite("Hosted", "https://hosted.example");
+    site.hosting.account = "ftp-me-ftp-example-org";
+    site.hosting.path = "/public_html";
+    const fs::path dir = TempDir("hosting");
+    std::vector<std::string> errors;
+    Check(SaveSite(UltraCanvas::PathToUtf8(dir), site, errors), "a site with a host saves");
+    Site back;
+    Check(LoadSite(UltraCanvas::PathToUtf8(dir), back, errors) && back.hosting.account == site.hosting.account &&
+              back.hosting.path == "/public_html",
+          "and loads with its host and folder");
+    back.hosting = Hosting();
+    Check(SaveSite(UltraCanvas::PathToUtf8(dir), back, errors), "a site without a host saves");
+    std::string siteJson;
+    ReadTextFile(UltraCanvas::PathToUtf8(dir / "site.json"), siteJson);
+    Check(!Contains(siteJson, "hosting"), "and writes no hosting member");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+
+#if ULTRAPRESS_HAS_ULTRACLOUD
+    std::printf("The hosts, over the in-memory provider\n");
+    Hosts hosts;
+    Check(hosts.OpenInMemory() && hosts.IsOpen() && hosts.List().empty(), "the host list opens in memory, empty");
+    Check(Hosts::IsHostProvider("ftp") && Hosts::IsHostProvider("webdav") && Hosts::IsHostProvider("nextcloud") &&
+              !Hosts::IsHostProvider("dropbox") && !Hosts::IsHostProvider("memory"),
+          "the web hosts are the providers that take a folder of files");
+    UltraCloud::Account demo;
+    demo.providerId = "memory";
+    demo.displayName = "Demo host";
+    demo.username = "demo";
+    demo.remoteFolder = "/www";
+    UltraCloud::Credentials credentials;
+    credentials.password = "secret";
+    const UltraCloud::Result added = hosts.Add(demo, credentials, true);
+    Check(added.IsOk() && !demo.accountId.empty() && hosts.List().size() == 1 && hosts.List()[0].isDefault,
+          "a host is added, verified, and the first is the default: " + added.message);
+    UltraCloud::Account found;
+    Check(hosts.Find(demo.accountId, found).IsOk() && hosts.Find("Demo host", found).IsOk() && found.accountId == demo.accountId &&
+              !hosts.Find("nobody", found).IsOk(),
+          "a host is found by id or by name");
+    Check(Contains(DescribeHost(found), demo.accountId) && Contains(DescribeHost(found), "(default)"), "the list line names it");
+
+    DeployOptions onto;
+    onto.remoteRoot = "/www";
+    const DeployResult sent = DeployFolder(UltraCanvas::PathToUtf8(out), hosts.UploaderFor(demo.accountId), demo.accountId + ":/www", onto);
+    for (const std::string& error : sent.errors) std::printf("  error: %s\n", error.c_str());
+    Check(sent.ok && sent.uploaded.size() == 4, "the deploy goes through the host: " + sent.Summary());
+    const fs::path back2 = TempDir("downloaded") / "index.html";
+    fs::create_directories(back2.parent_path(), ec);
+    const UltraCloud::Result got = hosts.Service().Download(demo.accountId, "/www/the-plan/index.html", UltraCanvas::PathToUtf8(back2));
+    std::string text;
+    Check(got.IsOk() && ReadTextFile(UltraCanvas::PathToUtf8(back2), text) && text == "<html>plan, revised</html>",
+          "and the file on the host is the file: " + got.message);
+    const DeployResult again = DeployFolder(UltraCanvas::PathToUtf8(out), hosts.UploaderFor(demo.accountId), demo.accountId + ":/www", onto);
+    Check(again.ok && again.uploaded.empty() && again.unchanged.size() == 4, "a second publish to the host sends nothing");
+    std::string error;
+    const Uploader closed = Hosts().UploaderFor("x");
+    Check(!closed.upload("a", "/b", error) && Contains(error, "not open"), "an uploader of an unopened list refuses");
+    Check(hosts.Remove(demo.accountId).IsOk() && hosts.List().empty(), "a host is removed");
+    fs::remove_all(back2.parent_path(), ec);
+#endif
+    fs::remove_all(out, ec);
+}
+
 int main() {
     TestStarterRoundTrip();
     TestValidation();
@@ -376,6 +582,7 @@ int main() {
     TestSitemapAndFeed();
     TestPublishAndExample();
     TestWordPressImport();
+    TestDeploy();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -1,5 +1,6 @@
 // Apps/UltraPress/engine/UltraPressModel.cpp
 // The content model: JSON in and out, the site folder, addresses, the page list.
+// Version: 0.5.0 - "hosting" in site.json
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -192,6 +193,9 @@ JSONValue SiteToJson(const Site& site) {
     for (const std::string& language : site.languages) languages.Append(language);
     json.Set("languages", languages);
     json.Set("owner", site.owner);
+    if (!site.hosting.account.empty()) {
+        json.Set("hosting", JSONValue::MakeObject().Set("account", site.hosting.account).Set("path", site.hosting.path));
+    }
     return json;
 }
 
@@ -206,6 +210,12 @@ void SiteFromJson(const JSONValue& json, Site& site) {
         site.languages.push_back(language.GetString());
     }
     site.owner = json["owner"].GetString();
+    site.hosting = Hosting();
+    if (json.Contains("hosting")) {
+        site.hosting.account = json["hosting"]["account"].GetString();
+        site.hosting.path = json["hosting"]["path"].GetString("/");
+        if (site.hosting.path.empty()) site.hosting.path = "/";
+    }
 }
 
 // ----- The site folder --------------------------------------------------------------

@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.5.0 - Publish and Host...
 // Version: 0.3.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -15,9 +16,21 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasPathUtf8.h"
+
+// The hosts and their dialog: module headers after the UI headers (X11
+// macro ordering), and only where the build has them.
+#include "UltraPressDeploy.h"
+#if ULTRAPRESS_HAS_ULTRACLOUD
+#include "UltraPressHosting.h"
+#endif
+#if ULTRAPRESS_HAS_ULTRACLOUD_UI
+#include "UltraCloudAccountDialog.h"
+#endif
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 
 using namespace UltraCanvas;
 
@@ -108,6 +121,10 @@ JSONValue DefaultFor(const BlockType& type, const BlockProperty& property) {
 EditorWindow::EditorWindow(Site siteModel, std::string siteDirectory)
     : site(std::move(siteModel)), siteDir(std::move(siteDirectory)) {}
 
+EditorWindow::~EditorWindow() {
+    if (publishWorker.joinable()) publishWorker.join();
+}
+
 Page* EditorWindow::CurrentPageMutable() {
     for (Page& page : site.pages) {
         if (page.slug == current) return &page;
@@ -125,6 +142,7 @@ void EditorWindow::SetStatus(const std::string& text) {
 }
 
 void EditorWindow::Build(const std::shared_ptr<UltraCanvasWindow>& window) {
+    windowRef = window;
     auto frame = CreateContainer("Frame");
     frame->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Pct(100));
     frame->layout.SetFlexRow();
@@ -230,6 +248,100 @@ bool EditorWindow::Save() {
     return ok;
 }
 
+bool EditorWindow::Publish() {
+#if ULTRAPRESS_HAS_ULTRACLOUD
+    if (publishing) {
+        SetStatus("Still uploading");
+        return false;
+    }
+    if (dirty && !Save()) return false;
+    if (!hosts) hosts = std::make_shared<Hosts>();
+    std::string error;
+    if (!hosts->Open(error)) {
+        SetStatus(error);
+        return false;
+    }
+    UltraCloud::Account host;
+    if (site.hosting.account.empty()) {
+        if (!hosts->Service().Accounts().GetDefault(host)) {
+            ChooseHost();
+            return false;
+        }
+        site.hosting.account = host.accountId;
+        site.hosting.path = host.remoteFolder.empty() ? "/" : host.remoteFolder;
+        dirty = true;
+        if (!Save()) return false;
+        RebuildSide();
+    } else if (!hosts->Find(site.hosting.account, host)) {
+        SetStatus("No host '" + site.hosting.account + "' on this computer: choose one");
+        ChooseHost();
+        return false;
+    }
+    const std::string out = PathToUtf8(PathFromUtf8(siteDir) / ".ultrapress" / "publish");
+    const PublishResult written = PublishStatic(site, siteDir, out);
+    for (const std::string& line : written.errors) std::fprintf(stderr, "%s\n", line.c_str());
+    if (!written.ok) {
+        SetStatus("Not published: " + (written.errors.empty() ? std::string("cannot write the site") : written.errors.front()));
+        return false;
+    }
+    if (publishWorker.joinable()) publishWorker.join();
+    publishing = true;
+    SetStatus("Uploading to " + host.accountId + JoinRemote(site.hosting.path, "") + "\xE2\x80\xA6");
+    const std::string accountId = host.accountId;
+    const std::string root = site.hosting.path;
+    std::shared_ptr<Hosts> theHosts = hosts;
+    publishWorker = std::thread([this, out, accountId, root, theHosts]() {
+        DeployOptions deploy;
+        deploy.remoteRoot = root;
+        deploy.onProgress = [this](const std::string& relative, size_t index, size_t total) {
+            Later([this, relative, index, total]() {
+                SetStatus("Uploading " + std::to_string(index) + "/" + std::to_string(total) + ": " + relative);
+            });
+        };
+        const DeployResult sent = DeployFolder(out, theHosts->UploaderFor(accountId),
+                                               accountId + ":" + JoinRemote(root, ""), deploy);
+        for (const std::string& line : sent.errors) std::fprintf(stderr, "%s\n", line.c_str());
+        Later([this, sent, accountId]() {
+            publishing = false;
+            SetStatus(sent.ok ? "Published to " + accountId + ": " + sent.Summary()
+                              : "Publish failed: " + sent.Summary() +
+                                    (sent.errors.empty() ? std::string() : " - " + sent.errors.front()));
+        });
+    });
+    return true;
+#else
+    SetStatus("This build has no UltraCloud: `ultrapress publish` writes the folder to upload yourself");
+    return false;
+#endif
+}
+
+void EditorWindow::ChooseHost() {
+#if ULTRAPRESS_HAS_ULTRACLOUD_UI
+    if (!hosts) hosts = std::make_shared<Hosts>();
+    std::string error;
+    if (!hosts->Open(error)) {
+        SetStatus(error);
+        return;
+    }
+    std::shared_ptr<UltraCanvasWindow> window = windowRef.lock();
+    if (!window) return;
+    UltraCloud::ShowAddAccountDialog(
+        window.get(), hosts->Service(),
+        [this](const UltraCloud::Account& added) {
+            site.hosting.account = added.accountId;
+            site.hosting.path = added.remoteFolder.empty() ? "/" : added.remoteFolder;
+            dirty = true;
+            Save();
+            Later([this]() { RebuildSide(); });
+            SetStatus("Publishes to " + site.hosting.account + JoinRemote(site.hosting.path, ""));
+        },
+        [](const std::string& providerId) { return Hosts::IsHostProvider(providerId); },
+        "Add a web host");
+#else
+    SetStatus("This build has no host dialog: `ultrapress hosts add` and `ultrapress hosts use`");
+#endif
+}
+
 void EditorWindow::RenderPreview() {
     if (!pageArea) return;
     pageArea->ClearChildren();
@@ -273,6 +385,23 @@ void EditorWindow::RebuildSide() {
     save->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(32));
     save->onClick = [this]() { Save(); };
     side->AddChild(save);
+    side->AddChild(Gap(6));
+    auto publish = CreateButton("Publish", 0, 0, 0, 32, "Publish");
+    publish->SetFont(kFont, 14, FontWeight::Bold);
+    publish->SetColors(Color(255, 255, 255, 36), Color(255, 255, 255, 60));
+    publish->SetTextColors(kPaper);
+    publish->SetBorder(0, Colors::Transparent);
+    publish->SetCornerRadius(6);
+    publish->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(32));
+    publish->onClick = [this]() { Later([this]() { Publish(); }); };
+    side->AddChild(publish);
+    auto host = SideButton("Host", site.hosting.account.empty()
+                                       ? std::string("Host\xE2\x80\xA6 (none yet)")
+                                       : "Host\xE2\x80\xA6 " + site.hosting.account + JoinRemote(site.hosting.path, ""),
+                           false);
+    host->SetFont(kFont, 12);
+    host->onClick = [this]() { Later([this]() { ChooseHost(); }); };
+    side->AddChild(host);
 
     side->AddChild(Gap(18));
     side->AddChild(Caption("PagesTitle", "PAGES", kAccent));

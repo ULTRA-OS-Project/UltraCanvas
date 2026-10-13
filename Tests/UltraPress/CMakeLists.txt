@@ -6,6 +6,10 @@ cmake_minimum_required(VERSION 3.16)
 
 add_executable(UltraPressEngineTests UltraPressEngineTests.cpp)
 target_compile_features(UltraPressEngineTests PRIVATE cxx_std_20)
+# The hosts over UltraCloud's in-memory provider, where the module is built.
+if(TARGET UltraPressHosting)
+    target_link_libraries(UltraPressEngineTests PRIVATE UltraPressHosting)
+endif()
 target_link_libraries(UltraPressEngineTests PRIVATE UltraPressEngine ${ULTRACANVAS_LIBRARY})
 target_include_directories(UltraPressEngineTests PRIVATE ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
 target_compile_definitions(UltraPressEngineTests PRIVATE

@@ -771,9 +771,12 @@ from the registry, the page re-rendered live, Save. Done in 0.4.0: the
 WXR importer of §7.1 (`ultrapress import`), with the block editor's
 markers mapped onto the registry, classic content as rich text,
 attachments rewritten and fetched, menus nested, redirects reported.
+Done in 0.5.0: the publisher of §6.1 onto UltraCloud's FTP / SFTP /
+WebDAV / Nextcloud providers (`ultrapress hosts`, `publish --to`, the
+window's Publish), with a per-host manifest so only what changed is
+uploaded, run end to end against a local FTP and a local WebDAV server.
 Still to do: text edited in place, pictures and the media library, pages
-and menus from the window, two themes, the publisher onto UltraCloud
-providers, and the renderer release build. Done when ultraos.eu
+and menus from the window, two themes, and the renderer release build. Done when ultraos.eu
 is imported, edited, published to a test host and renders in Chromium,
 Firefox and Safari as the demo does, with the shadow indexed by a crawler.
 
