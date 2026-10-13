@@ -3,6 +3,7 @@
 // (SaveSettings.conf) and the image writer's options made from them. See
 // UltraCanvasFileSaveSettings.h. The dialog that edits them is in
 // UltraCanvasFileSaveSettingsDialog.cpp.
+// Version: 1.2.0 - SetImageExportOptions: the image writer's options stored back
 // Version: 1.1.0 - bitmap formats, and the image writer's options at a chosen size
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -381,6 +382,49 @@ namespace UltraCanvas {
             return UCImageSave::TiffCompression::LZWCompression;
         }
 
+        // The reverse of DepthFor, for each setting that holds a depth.
+        std::string DepthValue(UCImageSave::ColorDepth depth) {
+            switch (depth) {
+                case UCImageSave::ColorDepth::Monochrome_1bit: return "1bit";
+                case UCImageSave::ColorDepth::Indexed_4bit:    return "4bit";
+                case UCImageSave::ColorDepth::Indexed_8bit:    return "8bit-indexed";
+                case UCImageSave::ColorDepth::RGB_16bit:       return "16bit";
+                default:                                       return "8bit";
+            }
+        }
+
+        std::string GifColoursValue(UCImageSave::ColorDepth depth) {
+            switch (depth) {
+                case UCImageSave::ColorDepth::Monochrome_1bit: return "2";
+                case UCImageSave::ColorDepth::Indexed_4bit:    return "16";
+                default:                                       return "256";
+            }
+        }
+
+        std::string TiffCompressionValue(UCImageSave::TiffCompression compression) {
+            switch (compression) {
+                case UCImageSave::TiffCompression::NoCompression:       return "none";
+                case UCImageSave::TiffCompression::DeflateCompression:  return "deflate";
+                case UCImageSave::TiffCompression::PackBitsCompression: return "packbits";
+                case UCImageSave::TiffCompression::JPEGCompression:     return "jpeg";
+                case UCImageSave::TiffCompression::ZSTDCompression:     return "zstd";
+                case UCImageSave::TiffCompression::WEBPCompression:     return "webp";
+                default:                                                return "lzw";
+            }
+        }
+
+        std::string ExrCompressionValue(UCImageSave::ExrExportOptions::Compression compression) {
+            using C = UCImageSave::ExrExportOptions::Compression;
+            switch (compression) {
+                case C::NoCompression: return "none";
+                case C::RLE:           return "rle";
+                case C::PIZ:           return "piz";
+                case C::PXR24:         return "pxr24";
+                case C::B44:           return "b44";
+                default:               return "zip";
+            }
+        }
+
         UCImageSave::ExrExportOptions::Compression ExrCompressionFor(const std::string& value) {
             using C = UCImageSave::ExrExportOptions::Compression;
             if (value == "none") return C::NoCompression;
@@ -615,6 +659,107 @@ namespace UltraCanvas {
         StoredValues stored = LoadStore();
         if (!stored.erase(format.Key())) return true;
         return SaveStore(stored);
+    }
+
+    bool UltraCanvasFileLoader::SetImageExportOptions(const UCImageSave::ImageExportOptions& opts) {
+        // The format's key: the first extension of its built-in settings.
+        FileSaveSettings s;
+        switch (opts.format) {
+            case UCImageSaveFormat::PNG:
+                s.format = "png";
+                s.SetInt("compression", opts.png.compressionLevel);
+                s.Set("depth", DepthValue(opts.png.colorDepth));
+                s.SetBool("interlace", opts.png.interlace);
+                break;
+            case UCImageSaveFormat::JPEG:
+                s.format = "jpg";
+                s.SetInt("quality", opts.jpeg.quality);
+                s.SetBool("progressive", opts.jpeg.progressive);
+                s.SetBool("optimize", opts.jpeg.optimizeHuffman);
+                s.SetBool("subsample", opts.jpeg.subsampling);
+                break;
+            case UCImageSaveFormat::WEBP:
+                s.format = "webp";
+                s.SetInt("quality", opts.webp.quality);
+                s.SetBool("lossless", opts.webp.lossless);
+                s.SetInt("effort", opts.webp.effort);
+                s.SetInt("alphaQuality", opts.webp.alphaQuality);
+                break;
+            case UCImageSaveFormat::AVIF:
+                s.format = "avif";
+                s.SetInt("quality", opts.avif.quality);
+                s.SetBool("lossless", opts.avif.lossless);
+                s.SetInt("speed", opts.avif.speed);
+                s.Set("depth", opts.avif.colorDepth == UCImageSave::ColorDepth::RGB_16bit ? "16bit" : "8bit");
+                break;
+            case UCImageSaveFormat::HEIF:
+                s.format = "heif";
+                s.SetInt("quality", opts.heif.quality);
+                s.SetBool("lossless", opts.heif.lossless);
+                s.Set("depth", opts.heif.colorDepth == UCImageSave::ColorDepth::RGB_16bit ? "16bit" : "8bit");
+                break;
+            case UCImageSaveFormat::GIF:
+                s.format = "gif";
+                s.Set("colours", GifColoursValue(opts.gif.colorDepth));
+                s.SetBool("dither", opts.gif.dithering);
+                s.SetBool("interlace", opts.gif.interlace);
+                break;
+            case UCImageSaveFormat::TIFF:
+                s.format = "tif";
+                s.Set("compression", TiffCompressionValue(opts.tiff.compression));
+                break;
+            case UCImageSaveFormat::JXL:
+                s.format = "jxl";
+                s.SetInt("quality", opts.jxl.quality);
+                s.SetBool("lossless", opts.jxl.lossless);
+                s.SetInt("effort", opts.jxl.effort);
+                break;
+            case UCImageSaveFormat::JPEG2000:
+                s.format = "jp2";
+                s.SetInt("quality", opts.jpeg2000.quality);
+                s.SetBool("lossless", opts.jpeg2000.lossless);
+                break;
+            case UCImageSaveFormat::PPM:
+            case UCImageSaveFormat::PGM:
+            case UCImageSaveFormat::PBM:
+            case UCImageSaveFormat::PFM:
+                s.format = "ppm";
+                s.SetBool("binary", opts.pnm.binary);
+                break;
+            case UCImageSaveFormat::TGA:
+                s.format = "tga";
+                s.SetBool("rle", opts.tga.rleCompression);
+                break;
+            case UCImageSaveFormat::PCX:
+                s.format = "pcx";
+                s.SetBool("rle", opts.pcx.rleCompression);
+                break;
+            case UCImageSaveFormat::EXR:
+                s.format = "exr";
+                s.Set("compression", ExrCompressionValue(opts.exr.compression));
+                break;
+            case UCImageSaveFormat::DPX:
+                s.format = "dpx";
+                s.SetInt("bitDepth", opts.dpx.bitDepth);
+                break;
+            case UCImageSaveFormat::CIN:
+                s.format = "cin";
+                s.SetInt("bitDepth", opts.cin.bitDepth);
+                break;
+            case UCImageSaveFormat::PSD:
+                s.format = "psd";
+                s.SetBool("compressed", opts.psd.compressed);
+                break;
+            case UCImageSaveFormat::SGI:
+                s.format = "sgi";
+                s.SetBool("rle", opts.sgi.rleCompression);
+                break;
+            default:
+                return false;   // written without options: nothing to keep
+        }
+        // Dropped by SetSaveSettings for a format that has no such setting.
+        s.SetBool("transparency", opts.preserveTransparency);
+        return SetSaveSettings(s);
     }
 
     bool UltraCanvasFileLoader::GetImageExportOptions(const std::string& path,

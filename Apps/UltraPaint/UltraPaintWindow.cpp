@@ -1672,14 +1672,20 @@ void UltraPaintWindow::CmdExport() {
         .AddFilter("Images", kImageExtensions)
         .AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath()))
+        .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
+                                                       const FileSaveImageSize& size) {
         if (r != DialogResult::OK || path.empty()) return;
         try {
             auto flat = document->Flatten();
             vips::VImage vimg = flat->ToPixelFX();
+            // The export dialog opens on the format the name has, with that
+            // format's save settings, and on the size chosen in the Save
+            // dialog's Settings, if one was.
             auto dlg = std::make_shared<UltraCanvasImageExportDialog>(vimg);
             dlg->SetFileName(path);
+            if (!size.IsOriginal()) dlg->SetTargetSize(size.width, size.height);
             dlg->onSave = [this, path](const UCImageSave::ImageExportOptions& options) {
                 std::string error;
                 if (!document->SaveToFile(path, error, &options))
