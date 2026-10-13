@@ -10,8 +10,17 @@
 //
 // A disc outlives the window: it stays until the user ejects it (or the
 // machine restarts), and List() finds it again when UltraFiler starts.
-// Version: 1.0.1 - MaxNameLength
-// Last Modified: 2026-10-05
+//
+// Available(), TrueRamAvailable() and SizeIsEnforced() ask the system which
+// backing a disc would get. That is asked once per process and the answer
+// kept (VirtualFS_GetPreferredRamDiskBacking): on Windows and macOS the
+// probe launches a shell (`where imdisk`, `command -v hdiutil`) and takes
+// seconds on a loaded machine. The window therefore makes the first call on
+// a worker thread at start-up (UltraFilerWindow::StartRamDiskProbe), and
+// until that answer is in uses BuiltIn(), which costs nothing, to decide
+// what the "+ Drive" menu offers.
+// Version: 1.1.0 - BuiltIn; the probe is paid for once
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -34,8 +43,14 @@ struct RamDisc {
     bool trueRam = false;
 };
 
-// Whether this build can make RAM discs at all (it was built with VirtualFS,
-// and the platform has a way to make one).
+// Whether this build of UltraFiler has the RAM disc facility at all (it was
+// built with VirtualFS). Answers from the build, without asking the system,
+// so it is free - what the menu goes by until the probe below has answered.
+bool BuiltIn();
+
+// Whether this build can make RAM discs at all (BuiltIn(), and the platform
+// has a way to make one). The first call asks the system and can take
+// seconds (see the header comment); every later call answers at once.
 bool Available();
 
 // Whether a disc made now would really live in memory. False on Windows

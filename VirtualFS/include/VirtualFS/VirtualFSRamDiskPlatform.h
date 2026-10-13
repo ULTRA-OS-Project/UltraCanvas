@@ -3,8 +3,8 @@
 //
 // Not part of the public API - applications include VirtualFSRamDisk.h.
 // Exactly one OS/<Platform>/VirtualFSRamDiskPlatform.cpp implements these.
-// Version: 1.1.0 - PlatformMaxNameLength
-// Last Modified: 2026-10-05
+// Version: 1.2.0 - PlatformPreferredBacking, asked once by the core
+// Last Modified: 2026-10-13
 // Author: ULTRA OS Framework
 #pragma once
 
@@ -64,6 +64,17 @@ VirtualFSResult PlatformDestroy(const VirtualFSRamDisk& disk);
  * @brief Lists this user's VirtualFS discs currently mounted.
  */
 std::vector<VirtualFSRamDisk> PlatformList();
+
+/**
+ * @brief Asks the system which backing a disc made now would get.
+ *
+ * This is the probe itself, and it can be slow: on Windows it launches
+ * `where imdisk` and on macOS `command -v hdiutil` through a shell, which
+ * takes seconds on a loaded machine. The core calls it once per process
+ * from VirtualFS_GetPreferredRamDiskBacking() and keeps the answer; the
+ * back ends read that, not this, when they need it again.
+ */
+VirtualFSRamDiskBacking PlatformPreferredBacking();
 
 } // namespace RamDiskDetail
 } // namespace VirtualFS
