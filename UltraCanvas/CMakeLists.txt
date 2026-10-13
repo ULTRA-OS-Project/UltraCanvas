@@ -778,6 +778,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSWOTDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasParliamentDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCircleDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTickerBoard.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneDiagram.cpp

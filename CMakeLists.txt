@@ -716,6 +716,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasTickerBoardExamples.cpp
             Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSequenceDiagramExamples.cpp
