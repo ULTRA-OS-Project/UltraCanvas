@@ -468,8 +468,8 @@ namespace UltraCanvas {
         void OpenCardEditor(int cardId);
         void CloseCardEditor(bool save);
         // Opens the inline rename of a column's title, as double-clicking
-        // its header does, and takes the keyboard focus (Enter keeps,
-        // Esc cancels). `startEmpty` begins with no text instead of the
+        // its header does, scrolls it into view and takes the keyboard focus
+        // (Enter keeps, Esc cancels). `startEmpty` begins with no text instead of the
         // current title, for a column just added; confirming it empty
         // keeps the title. Works on read-only boards too.
         void BeginColumnRename(int columnId, bool startEmpty = false);
@@ -478,6 +478,9 @@ namespace UltraCanvas {
         int GetSelectedCardId() const { return selectedCardId; }
         void SelectCard(int cardId);             // -1 clears
         void ScrollToCard(int cardId);
+        // Scrolls the board sideways just far enough to show the whole column
+        // (applied at the next layout, so it works right after AddColumn).
+        void ScrollToColumn(int columnId);
         // Id of the column under a point in the element's own coordinates
         // (the gap between two columns belongs to the nearer one); -1 = none.
         int ColumnIdAt(const Point2Di& pos) const;
@@ -572,6 +575,7 @@ namespace UltraCanvas {
         // Largest horizontal scroll the columns allow, refreshed by the layout
         // pass so the wheel's glide knows its range.
         float maxScrollX = 0.0f;
+        int pendingScrollColumnId = -1;      // ScrollToColumn, for the next layout
         UltraCanvasSmoothScroll scrollAnimX;
         UltraCanvasSmoothScroll columnScrollAnim;
         int columnScrollAnimKey = 0;   // column id columnScrollAnim is bound to

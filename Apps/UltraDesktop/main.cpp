@@ -1,7 +1,7 @@
 // Apps/UltraDesktop/main.cpp
 // UltraDesktop - the ULTRA OS desktop: the taskbar with the running
 // applications, the desktop organiser with the virtual desktops, the
-// Stickerboard, the clipboard and the screenshot, and the info panel with
+// Sticker board, the notes, the clipboard and the screenshot, and the info panel with
 // the devices and services - on one screen-sized window under everything
 // else, built from UltraCanvas elements on the UltraCanvasDesktopShell
 // module.

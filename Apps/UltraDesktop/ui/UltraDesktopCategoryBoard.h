@@ -9,7 +9,8 @@
 // The board is the framework's UltraCanvasKanbanBoardElement; the bar above
 // it is a label to drag the panel by, an UltraCanvasDropdown for the display
 // style (Sticky notes, Poster, Schematic, Dark) and an "Add category" button.
-// The board, its style and the panel's place live in the desktop settings.
+// A grip label in the bottom-right corner resizes the panel. The board, its
+// style and the panel's place and size live in the desktop settings.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -65,13 +66,15 @@ private:
     UltraDesktopWindow* desktop_;   // owns this board through the window tree
     std::shared_ptr<UltraCanvasContainer> panel_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> grip_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> resizeGrip_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> designPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasKanbanBoardElement> board_;
     std::shared_ptr<UltraCanvas::KanbanDataSource> data_;
 
-    // Dragging the panel by its title.
+    // Dragging the panel by its title, or resizing it by the corner grip.
     bool dragging_ = false;
-    UltraCanvas::Point2Df dragOffset_;
+    bool resizing_ = false;
+    UltraCanvas::Point2Df dragOffset_;   // pointer to the panel's corner it holds
 };
 
 } // namespace UltraDesktop

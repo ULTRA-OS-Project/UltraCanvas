@@ -31,6 +31,8 @@ constexpr float kPanelMinWidth = 360;
 constexpr float kPanelMinHeight = 220;
 // The part of the bar the drag answers on: the title, left of the picker.
 constexpr float kGripWidth = 150;
+// The resize grip in the panel's bottom-right corner.
+constexpr float kResizeGrip = 18;
 
 struct DesignChoice {
     const char* key;
@@ -164,6 +166,19 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     // board opened for it.
     board_->onCardDoubleClick = [this](int cardId) { OpenCardFile(cardId); };
     panel_->AddChild(board_);
+
+    // The resize grip: a label over the board's corner, out of the flow. It
+    // takes no events, so a press on it bubbles here (see OnEvent).
+    resizeGrip_ = CreateLabel("CategoryBoard.Resize", kResizeGrip, kResizeGrip, "◢");
+    resizeGrip_->SetFontSize(12);
+    resizeGrip_->SetTextColor(Color(0, 0, 0, 110));
+    resizeGrip_->SetAlignment(TextAlignment::Center);
+    resizeGrip_->SetTooltip("Drag to resize");
+    if (!resizeGrip_->layoutItem.position) resizeGrip_->layoutItem.position = CSSLayout::Position();
+    resizeGrip_->layoutItem.position->right = CSSLayout::Dimension::Px(1);
+    resizeGrip_->layoutItem.position->bottom = CSSLayout::Dimension::Px(1);
+    resizeGrip_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+    panel_->AddChild(resizeGrip_);
     SetDesign(kDesigns[0].key);
 
     AddChild(panel_);
@@ -202,6 +217,8 @@ void UltraDesktopCategoryBoard::SetDesign(const std::string& design) {
 
 void UltraDesktopCategoryBoard::AddCategory() {
     const int columnId = data_->AddColumn("New category");
+    // Renaming scrolls the board to the new category when it is too wide to
+    // show them all.
     board_->BeginColumnRename(columnId, /*startEmpty=*/true);
     SaveBoard();
 }
@@ -272,14 +289,25 @@ bool UltraDesktopCategoryBoard::Contains(const Point2Df& point) {
 }
 
 bool UltraDesktopCategoryBoard::OnEvent(const UCEvent& event) {
-    // Moving the panel by its title: the press lands on the label (it takes
-    // no events, so it bubbles here), the moves follow the pointer, the
-    // release writes the place into the settings.
+    // Moving the panel by its title, resizing it by the corner grip: the
+    // press lands on a label (they take no events, so it bubbles here), the
+    // moves follow the pointer, the release writes the result into the
+    // settings.
     auto* app = UltraCanvasApplication::GetInstance();
     switch (event.type) {
         case UCEventType::MouseDown:
             if (event.button == UCMouseButton::Left && panel_) {
                 const Rect2Df panel = panel_->GetBounds();
+                const Rect2Df corner(panel.x + panel.width - kResizeGrip - 2,
+                                     panel.y + panel.height - kResizeGrip - 2,
+                                     kResizeGrip + 2, kResizeGrip + 2);
+                if (corner.Contains(event.pointer)) {
+                    resizing_ = true;
+                    dragOffset_ = Point2Df(panel.x + panel.width - event.pointer.x,
+                                           panel.y + panel.height - event.pointer.y);
+                    if (app) app->CaptureMouse(this);
+                    return true;
+                }
                 const Rect2Df grip(panel.x, panel.y, kGripWidth + 8, kBarHeight);
                 if (grip.Contains(event.pointer)) {
                     dragging_ = true;
@@ -290,10 +318,19 @@ bool UltraDesktopCategoryBoard::OnEvent(const UCEvent& event) {
             }
             break;
         case UCEventType::MouseMove:
-            if (dragging_ && desktop_) {
+            if ((dragging_ || resizing_) && desktop_) {
                 CategoryBoardSettings& cb = desktop_->Settings().categoryBoard;
-                cb.x = std::max(0.0f, event.pointer.x - dragOffset_.x);
-                cb.y = std::max(0.0f, event.pointer.y - dragOffset_.y);
+                if (resizing_) {
+                    // Never past the work area: the grip must stay reachable.
+                    const Rect2Df area = GetBounds();
+                    const float maxWidth = std::max(kPanelMinWidth, area.width - cb.x);
+                    const float maxHeight = std::max(kPanelMinHeight, area.height - cb.y);
+                    cb.width = std::clamp(event.pointer.x + dragOffset_.x - cb.x, kPanelMinWidth, maxWidth);
+                    cb.height = std::clamp(event.pointer.y + dragOffset_.y - cb.y, kPanelMinHeight, maxHeight);
+                } else {
+                    cb.x = std::max(0.0f, event.pointer.x - dragOffset_.x);
+                    cb.y = std::max(0.0f, event.pointer.y - dragOffset_.y);
+                }
                 PlacePanel();
                 InvalidateLayout();
                 RequestRedraw();
@@ -301,8 +338,9 @@ bool UltraDesktopCategoryBoard::OnEvent(const UCEvent& event) {
             }
             break;
         case UCEventType::MouseUp:
-            if (dragging_) {
+            if (dragging_ || resizing_) {
                 dragging_ = false;
+                resizing_ = false;
                 if (app) app->ReleaseMouse();
                 if (desktop_) desktop_->SaveSettings();
                 return true;

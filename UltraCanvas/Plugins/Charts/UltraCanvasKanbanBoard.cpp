@@ -1358,6 +1358,16 @@ void UltraCanvasKanbanBoardElement::ScrollToCard(int cardId) {
     RequestRedraw();
 }
 
+void UltraCanvasKanbanBoardElement::ScrollToColumn(int columnId) {
+    auto ds = GetKanbanDataSource();
+    if (!ds || ds->ColumnIndexOf(columnId) < 0) return;
+    // The column may have been added a moment ago and have no layout yet, so
+    // the scroll is worked out by the next layout pass.
+    scrollAnimX.Cancel();
+    pendingScrollColumnId = columnId;
+    RequestRedraw();
+}
+
 // =============================================================================
 // ELEMENT — COLOR / FORMAT HELPERS
 // =============================================================================
@@ -1554,6 +1564,17 @@ void UltraCanvasKanbanBoardElement::ComputeLayout(IRenderContext* ctx) {
     double contentW = n * colW + (n - 1) * style.columnGap;
     // Kept for the wheel's glide, which needs the range outside the layout pass.
     maxScrollX = static_cast<float>(std::max(0.0, contentW - columnsWidth));
+    if (pendingScrollColumnId >= 0) {
+        // ScrollToColumn: move only as far as it takes to show the column.
+        int index = ds->ColumnIndexOf(pendingScrollColumnId);
+        if (index >= 0) {
+            double left = index * (colW + style.columnGap);
+            double right = left + colW;
+            if (left < scrollX) scrollX = static_cast<float>(left);
+            else if (right > scrollX + columnsWidth) scrollX = static_cast<float>(right - columnsWidth);
+        }
+        pendingScrollColumnId = -1;
+    }
     scrollX = std::clamp(scrollX, 0.0f, maxScrollX);
 
     double footerH = style.footerHeight;
@@ -2921,6 +2942,19 @@ bool UltraCanvasKanbanBoardElement::HandleDoubleClick(const UCEvent& event) {
     return false;
 }
 
+// The platform backends deliver typed characters on the KeyDown itself
+// (event.text, or event.character for one byte) - none of them sends a
+// separate TextInput - so a key that types something is text, unless a
+// shortcut modifier makes it a command.
+static bool IsTypedText(const UCEvent& event) {
+    if (event.ctrl || event.meta || event.alt) return false;
+    // Tab, Delete and the like carry their control byte as text too.
+    const unsigned char first = !event.text.empty()
+            ? static_cast<unsigned char>(event.text[0])
+            : static_cast<unsigned char>(event.character);
+    return first >= 32 && first != 127;
+}
+
 bool UltraCanvasKanbanBoardElement::HandleKeyDown(const UCEvent& event) {
     // Inline column rename.
     if (renamingColumnId >= 0) {
@@ -2930,6 +2964,7 @@ bool UltraCanvasKanbanBoardElement::HandleKeyDown(const UCEvent& event) {
             PopUtf8(renameBuffer);
             RequestRedraw();
         }
+        else if (IsTypedText(event)) HandleTextInput(event);
         return true;
     }
 
@@ -2960,6 +2995,7 @@ bool UltraCanvasKanbanBoardElement::HandleKeyDown(const UCEvent& event) {
                 RequestRedraw();
                 return true;
             default:
+                if (IsTypedText(event)) HandleTextInput(event);
                 return true;
         }
     }
@@ -3054,6 +3090,7 @@ void UltraCanvasKanbanBoardElement::BeginColumnRename(int columnId, bool startEm
     CommitRename(true);
     renamingColumnId = col->id;
     renameBuffer = startEmpty ? std::string() : col->title;
+    ScrollToColumn(col->id);
     SetFocus(true);
     RequestRedraw();
 }

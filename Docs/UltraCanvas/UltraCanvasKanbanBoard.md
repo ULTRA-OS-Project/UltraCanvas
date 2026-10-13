@@ -184,7 +184,9 @@ lists Overdue plus every priority actually used on the board.
   under the pointer; the column is highlighted while they hover it. What the
   files become is the host's decision. Unset, file drops pass on to the
   parent elements.
-- `ScrollToCard(id)` / `SelectCard(id)` from code; `ColumnIdAt(point)` is the
+- `ScrollToCard(id)` / `SelectCard(id)` from code; `ScrollToColumn(id)`
+  scrolls the board sideways just far enough to show a column (works right
+  after `AddColumn`; renaming a column scrolls to it too); `ColumnIdAt(point)` is the
   column under a point in the element's coordinates (-1 = none);
   `BeginColumnRename(columnId, startEmpty)` opens a column title's inline
   rename, for an "add column" button of the host's own.

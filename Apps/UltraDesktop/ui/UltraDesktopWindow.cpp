@@ -369,10 +369,12 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
                      [this, i](bool) { SwitchToDesktop(i); });
     }
     organiser_->AddSeparator();
-    AddBarToggle(organiser_, "stickerboard", "Stickerboard", IconPath("pinboard.svg"), "",
-                 [this](bool on) { ToggleStickerboard(on); });
+    // The pinboard is the Sticker board; the free-form notes keep a note
+    // of their own.
     AddBarToggle(organiser_, "categoryboard", "Sticker board: drop files into categories",
-                 IconPath("categoryboard.svg"), "", [this](bool on) { ToggleCategoryBoard(on); });
+                 IconPath("pinboard.svg"), "", [this](bool on) { ToggleCategoryBoard(on); });
+    AddBarToggle(organiser_, "stickerboard", "Notes on the wallpaper", IconPath("notes.svg"), "",
+                 [this](bool on) { ToggleStickerboard(on); });
     auto clipboard = AddBarButton(organiser_, "clipboard", "Clipboard history (Super+V)",
                                   IconPath("clipboard.svg"), nullptr);
     clipboardButton_ = clipboard.get();

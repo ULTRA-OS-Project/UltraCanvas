@@ -6,7 +6,8 @@
 // as a window would, and then handed the events the platform backends make
 // of a file drag: DragOver while the files hover, Drop with the paths. The
 // files must reach onFilesDropped with the column under the pointer; with no
-// callback the drop must pass on. The desktop's settings must keep the
+// callback the drop must pass on. ScrollToColumn must bring a column that is
+// off to the side into view. The desktop's settings must keep the
 // Sticker board - its style, its place and the board itself - across a save.
 // Version: 1.0.0
 // Last Modified: 2026-10-13
@@ -54,6 +55,16 @@ struct Board {
             if (element->ColumnIdAt(Point2Di(x, 200)) == columnId) return Point2Di(x + 20, 200);
         }
         return Point2Di(-1, -1);
+    }
+
+    // Whether the whole column is on the board, not a sliver at an edge:
+    // columns are at least 150 px wide (the style's minColumnWidth).
+    bool Shows(int columnId) const {
+        int span = 0;
+        for (int x = 0; x < 720; ++x) {
+            if (element->ColumnIdAt(Point2Di(x, 200)) == columnId) ++span;
+        }
+        return span >= 150;
     }
 };
 
@@ -131,6 +142,51 @@ void TestRenameFromCode() {
     board.element->OnEvent(enter);
     column = board.data->FindColumn(added);
     Check(column && column->title == "Ideas", "and confirming it empty keeps the title");
+
+    // What the platforms really send: the typed text on the KeyDown itself.
+    board.element->BeginColumnRename(added, /*startEmpty=*/true);
+    for (const char* typed : {"T", "r", "\t", "a", "v", "e", "l"}) {
+        UCEvent key;
+        key.type = UCEventType::KeyDown;
+        key.text = typed;
+        key.character = typed[0];
+        if (typed[0] == '\t') key.virtualKey = UCKeys::Tab;
+        board.element->OnEvent(key);
+    }
+    UCEvent shortcut;
+    shortcut.type = UCEventType::KeyDown;
+    shortcut.ctrl = true;
+    shortcut.text = "x";
+    shortcut.character = 'x';
+    board.element->OnEvent(shortcut);
+    board.element->OnEvent(enter);
+    column = board.data->FindColumn(added);
+    Check(column && column->title == "Travel",
+          "keys that type become the name; Tab and Ctrl+X do not");
+}
+
+void TestScrollToColumn() {
+    std::cout << "\nA board too narrow for its columns\n";
+    Board board;   // 720 px wide: four columns of 150 px or more do not fit with "+"
+    std::vector<int> extra;
+    for (const char* name : {"Ideas", "Travel", "Bills"}) extra.push_back(board.data->AddColumn(name));
+    auto ctx = CreateRenderContext(Size2Di(720, 360), nullptr);
+    auto draw = [&] { if (ctx) board.element->Render(ctx.get(), Rect2Df(0, 0, 720, 360)); };
+    draw();
+    const int last = extra.back();
+    Check(!board.Shows(last), "does not show the last column to begin with");
+    board.element->ScrollToColumn(last);
+    draw();
+    Check(board.Shows(last), "shows it after ScrollToColumn");
+    Check(!board.Shows(board.docs), "having scrolled the first one out of view");
+    board.element->ScrollToColumn(board.docs);
+    draw();
+    Check(board.Shows(board.docs), "and scrolls back for the first one");
+
+    const int added = board.data->AddColumn("Added");
+    board.element->BeginColumnRename(added, true);
+    draw();
+    Check(board.Shows(added), "a column opened for renaming is scrolled into view");
 }
 
 void TestSettingsKeepTheBoard() {
@@ -176,6 +232,7 @@ int main() {
     TestDropReachesTheColumn();
     TestDropWithoutCallbackPassesOn();
     TestRenameFromCode();
+    TestScrollToColumn();
     TestSettingsKeepTheBoard();
     std::cout << "\n" << (g_failures == 0 ? "All passed" : std::to_string(g_failures) + " failed") << "\n";
     return g_failures == 0 ? 0 : 1;
