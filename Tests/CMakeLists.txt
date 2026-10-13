@@ -5307,3 +5307,26 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  TabPillStyleScreenshotTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== TREE VIEW KEYBOARD TEST =====
+# The tree view takes the keyboard focus and the arrow keys move its
+# selection: every key the doc lists, with a hidden root, under "jump to
+# first entry", and before any row was focused. Headless: the keys are sent
+# to the element as the application sends them to the focused element.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewKeyboardTest...")
+    add_executable(TreeViewKeyboardTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewKeyboardTest.cpp
+    )
+    target_include_directories(TreeViewKeyboardTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewKeyboardTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewKeyboardTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewKeyboardTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewKeyboardTest COMMAND TreeViewKeyboardTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewKeyboardTest")
+else()
+    message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
+endif()

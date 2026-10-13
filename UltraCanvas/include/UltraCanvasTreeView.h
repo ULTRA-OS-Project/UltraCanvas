@@ -1,6 +1,8 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-12 - GetDropTargetNode, the row a drag would drop on
+// Last Modified: 2026-10-13 - the tree takes the keyboard focus; arrows, Page Up/Down,
+//                Home, End, Enter and Space act on the focused tree (UCKeys, every platform)
+//                (2026-10-12: GetDropTargetNode, the row a drag would drop on)
 //                (2026-10-08: default bodies mark unused parameters (void))
 //                (2026-10-02: GetRequiredWidth, the width the widest row on show needs)
 #pragma once
@@ -347,6 +349,9 @@ public:
     void ClearSelection();
     const std::vector<TreeNode*>& GetSelectedNodes() const { return selectedNodes; }
     TreeNode* GetFirstSelectedNode() const { return selectedNodes.empty() ? nullptr : selectedNodes[0]; }
+    // The row the arrow keys continue from: the last row clicked or reached by
+    // key. Null until a row was clicked or a key moved into the tree.
+    TreeNode* GetFocusedNode() const { return focusedNode; }
     
     // ===== EXPANSION MANAGEMENT =====
     void ExpandNode(TreeNode* node);
@@ -512,6 +517,16 @@ public:
 
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override;
+    // The tree takes the keyboard focus - by Tab, or by a click on it - and
+    // while it holds it the arrow keys move the selection: Up / Down to the
+    // previous / next row, Left collapses or goes to the parent, Right expands
+    // or goes to the first child, Page Up / Page Down move a page of rows,
+    // Home / End go to the first / last row, Enter toggles a parent (and fires
+    // onNodeDoubleClicked), Space toggles the check flag or selects the row.
+    // With no row focused yet, Down / Home start at the first row and Up / End
+    // at the last. A handled key returns true so a scrolling parent does not
+    // act on it too.
+    bool AcceptsFocus() const override { return true; }
     
     // ===== RENDERING =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -658,17 +673,29 @@ private:
     bool HandleMouseUp(const UCEvent& event);
     bool HandleMouseDoubleClick(const UCEvent& event);
     bool HandleMouseWheel(const UCEvent& event);
-    void HandleKeyDown(const UCEvent& event);
+    bool HandleKeyDown(const UCEvent& event);
     bool HandleDragOver(const UCEvent& event);
     bool HandleDrop(const UCEvent& event);
     
     void NavigateUp();
     void NavigateDown();
+    // Page Up / Page Down: as many rows as the view shows at once, clamped to
+    // the first / last row.
+    void NavigatePageUp();
+    void NavigatePageDown();
+    // Select `node`, make it the row the keys continue from, scroll it into
+    // view and, with SetAutoExpandSelectedNode(true), open it. Every key that
+    // moves the selection ends here.
+    void MoveFocusTo(TreeNode* node);
     // An open parent the arrow keys pass over under "jump to first entry".
     bool IsSteppedOverByKeys(const TreeNode* node) const;
     
+    // The rows on show, top to bottom: the hidden root is not one of them, and
+    // neither is anything under a collapsed parent.
+    std::vector<TreeNode*> GetVisibleNodeList();
     TreeNode* GetPreviousVisibleNode(TreeNode* current);
     TreeNode* GetNextVisibleNode(TreeNode* current);
+    TreeNode* GetFirstVisibleNode();
     TreeNode* GetLastVisibleNode();
 
     // When a parent node (one that has children) is the bottom-most visible row,

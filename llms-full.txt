@@ -63504,8 +63504,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 
 The `UltraCanvasTreeView` is a hierarchical tree view control component that provides a powerful and flexible way to display tree-structured data with support for icons, custom styling, selection modes, and interactive features. It is part of the UltraCanvas cross-platform UI framework.
 
-**Version:** 1.2.1  
-**Last Modified:** 2026-10-07  
+**Version:** 1.3.0  
+**Last Modified:** 2026-10-13  
 **Files:** 
 - Header: `include/UltraCanvasTreeView.h` (columns variant: `include/UltraCanvasColumnsTreeView.h`)
 - Implementation: `core/UltraCanvasTreeView.cpp`, `core/UltraCanvasColumnsTreeView.cpp`
@@ -63521,7 +63521,7 @@ The `UltraCanvasTreeView` is a hierarchical tree view control component that pro
 - **Visual Customization**: Colors, fonts, line styles, and spacing
 - **Scrolling**: Automatic scrollbar when content exceeds viewport
 - **Scroll-to-Top Button**: Floating "move to the top" affordance for long trees
-- **Keyboard Navigation**: Full keyboard support with arrow keys
+- **Keyboard Navigation**: The tree takes the focus, and the arrow keys move the selection
 - **Mouse Interaction**: Click, double-click, drag & drop support
 - **Dynamic Updates**: Add, remove, expand, collapse nodes at runtime
 - **Event System**: Comprehensive event callbacks for user interactions
@@ -64296,20 +64296,45 @@ The builder also offers `SetShowRootLines()`, `SetShowCheckboxes()`,
 
 ## Keyboard Navigation
 
-The tree view supports comprehensive keyboard navigation:
+The tree view takes the keyboard focus (`AcceptsFocus()` is true): a click on
+it focuses it, and so does Tab from the element before it. While it holds the
+focus the keys below act on it. Every key that moves the selection selects the
+row it lands on, scrolls it into view, fires `onNodeSelected`, and - with
+`SetAutoExpandSelectedNode(true)` - opens it, exactly as a click would.
 
 | Key | Action |
 |-----|--------|
-| **↑** (Up Arrow) | Navigate to previous visible node |
-| **↓** (Down Arrow) | Navigate to next visible node |
-| **←** (Left Arrow) | Collapse node or navigate to parent |
-| **→** (Right Arrow) | Expand node or navigate to first child |
-| **Enter** | Toggle node expansion |
+| **↑** (Up Arrow) | Select the previous visible row |
+| **↓** (Down Arrow) | Select the next visible row |
+| **←** (Left Arrow) | Collapse an open parent; on a closed row or a leaf, go to the parent |
+| **→** (Right Arrow) | Expand a closed parent; on an open one, go to its first child |
+| **Enter** | Toggle a parent's expansion and fire `onNodeDoubleClicked` |
 | **Space** | Toggle the row's check flag, or select the row when the tree has none |
-| **Home** | Navigate to first node |
-| **End** | Navigate to last visible node |
-| **Page Up** | Scroll up one page |
-| **Page Down** | Scroll down one page |
+| **Home** | Select the first row |
+| **End** | Select the last visible row |
+| **Page Up** | Select the row one page of rows up (clamped to the first) |
+| **Page Down** | Select the row one page of rows down (clamped to the last) |
+
+Before any row was clicked or reached by key, **↓**, **→**, **Page Down** and
+**Home** start at the first row and **↑**, **Page Up** and **End** at the
+last, so a tree reached by Tab answers the first arrow. A hidden root
+(`SetRootVisible(false)`) is never a row: **↑** from the first top-level row
+stays there, and **←** on a top-level row does nothing. With
+[Jump to first entry](#jump-to-first-entry) on, open parents are stepped
+over. `GetFocusedNode()` returns the row the keys continue from.
+
+The tree reads `UCEvent::virtualKey` (`UCKeys::Up`, `UCKeys::Down`, ...), which
+every backend fills, and returns true from `OnEvent` for a key it acted on, so
+a scrolling container above it does not scroll on the same arrow. A test or an
+application sends a key to a focused tree the way the application does:
+
+```cpp
+UCEvent key;
+key.type = UCEventType::KeyDown;
+key.virtualKey = UCKeys::Down;
+treeView->OnEvent(key);              // selects the next row
+TreeNode* current = treeView->GetFocusedNode();
+```
 
 ## Mouse Interaction
 
