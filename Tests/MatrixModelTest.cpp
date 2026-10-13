@@ -10,8 +10,9 @@
 // tools" matrix that drove the 5/3/1 preset: its printed row totals are the
 // arithmetic these tests pin down.
 //
+// Version: 1.1.0 - X and Y panel validation, form header fields, the X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
@@ -379,6 +380,120 @@ static void TestSamples() {
           "the ranking is in descending score order");
 }
 
+// Four sets in the order the X places them: left, top, right, bottom.
+static MatrixModel MakeXModel() {
+    MatrixModel model;
+    model.shape = MatrixShape::X;
+    model.AddSet("left", "Left", {"L1", "L2"});
+    model.AddSet("top", "Top", {"T1", "T2", "T3"});
+    model.AddSet("right", "Right", {"R1"});
+    model.AddSet("bottom", "Bottom", {"B1", "B2"});
+    return model;
+}
+
+static void TestXValidation() {
+    std::printf("\n[X shape]\n");
+
+    MatrixModel model = MakeXModel();
+    model.AddPanel("top", "left", MatrixScale::Presence());
+    model.AddPanel("top", "right", MatrixScale::Presence());
+    model.AddPanel("bottom", "right", MatrixScale::Presence());
+    model.AddPanel("bottom", "left", MatrixScale::Presence());
+    CHECK(model.Validate().valid, "four panels, one per quadrant, validate");
+
+    // Which set is the row set is the caller's choice: the layout turns the
+    // panel to fit its quadrant, so the model must accept either order.
+    MatrixModel turned = MakeXModel();
+    turned.AddPanel("left", "top", MatrixScale::Presence());
+    turned.AddPanel("top", "right", MatrixScale::Presence());
+    turned.AddPanel("right", "bottom", MatrixScale::Presence());
+    turned.AddPanel("bottom", "left", MatrixScale::Presence());
+    CHECK(turned.Validate().valid, "a panel may name its side set as the row set");
+    CHECK(turned.SetCell(0, "L2", "T3", "yes"), "a turned panel addresses its own rows");
+    CHECK(turned.LevelAt(0, 1, 2) == "yes", "and stores the mark at (row, col) as given");
+
+    MatrixModel sameAxis = MakeXModel();
+    sameAxis.AddPanel("left", "right", MatrixScale::Presence());
+    sameAxis.AddPanel("top", "right", MatrixScale::Presence());
+    sameAxis.AddPanel("bottom", "right", MatrixScale::Presence());
+    sameAxis.AddPanel("bottom", "left", MatrixScale::Presence());
+    CHECK(!sameAxis.Validate().valid,
+          "a panel crossing left with right has no quadrant and is rejected");
+
+    MatrixModel twice = MakeXModel();
+    twice.AddPanel("top", "left", MatrixScale::Presence());
+    twice.AddPanel("left", "top", MatrixScale::Presence());
+    twice.AddPanel("bottom", "right", MatrixScale::Presence());
+    twice.AddPanel("bottom", "left", MatrixScale::Presence());
+    CHECK(!twice.Validate().valid, "two panels claiming one quadrant are rejected");
+
+    MatrixModel extra = MakeXModel();
+    extra.AddSet("fifth", "Fifth", {"F1"});
+    extra.AddPanel("top", "left", MatrixScale::Presence());
+    extra.AddPanel("top", "right", MatrixScale::Presence());
+    extra.AddPanel("bottom", "right", MatrixScale::Presence());
+    extra.AddPanel("fifth", "left", MatrixScale::Presence());
+    CHECK(!extra.Validate().valid, "a panel on a fifth set, which the X cannot place, is rejected");
+
+    // The same panels under an L are not the X's business.
+    sameAxis.shape = MatrixShape::L;
+    CHECK(sameAxis.Validate().valid, "the X placement rules apply only to the X");
+}
+
+static void TestYValidation() {
+    std::printf("\n[Y shape]\n");
+
+    MatrixModel model;
+    model.shape = MatrixShape::Y;
+    model.AddSet("a", "A", {"a1", "a2"});
+    model.AddSet("b", "B", {"b1"});
+    model.AddSet("c", "C", {"c1", "c2", "c3"});
+    model.AddPanel("a", "b", MatrixScale::QFD());
+    model.AddPanel("b", "c", MatrixScale::QFD());
+    model.AddPanel("c", "a", MatrixScale::QFD());
+    CHECK(model.Validate().valid, "A x B, B x C, C x A validates");
+
+    MatrixModel self = model;
+    self.panels[2] = MatrixPanel("c", "c", MatrixScale::QFD());
+    CHECK(!self.Validate().valid, "a Y panel crossing a set with itself is rejected");
+
+    MatrixModel repeat = model;
+    repeat.panels[2] = MatrixPanel("b", "a", MatrixScale::QFD());
+    CHECK(!repeat.Validate().valid, "a Y relating the same two sets twice is rejected");
+}
+
+static void TestHeaderFields() {
+    std::printf("\n[header fields]\n");
+
+    MatrixModel model = MatrixSamples::SupplyChain();
+    CHECK(model.headerFields.size() == 5, "the supply-chain sample fills the form header");
+    CHECK(model.headerFields[0].label == "PROJECT", "fields keep their order");
+    model.Clear();
+    CHECK(model.headerFields.empty(), "Clear() drops the header fields too");
+}
+
+static void TestPhase2Samples() {
+    std::printf("\n[X and Y samples]\n");
+
+    MatrixModel x = MatrixSamples::SupplyChain();
+    MatrixValidation xv = x.Validate();
+    CHECK(xv.valid, "the supply-chain sample validates");
+    CHECK(x.shape == MatrixShape::X, "it is X-shaped");
+    CHECK(x.sets.size() == 4 && x.panels.size() == 4, "four sets, four panels");
+    CHECK(x.panels[0].rowSetId == "suppliers",
+          "one of its panels is turned, so the demo exercises both orientations");
+    CHECK(x.cells.size() == 32, "every listed mark landed");
+
+    MatrixModel y = MatrixSamples::DesignTraceability();
+    CHECK(y.Validate().valid, "the design-traceability sample validates");
+    CHECK(y.shape == MatrixShape::Y, "it is Y-shaped");
+    CHECK(y.panels.size() == 3, "a Y carries three panels");
+    CHECK(y.cells.size() == 22, "every listed mark landed");
+    // The motor carries the quiet requirement strongly and battery life
+    // moderately: 9 + 3.
+    CHECK(NearlyEqual(y.RowScore(2, 0), 12.0), "the closing panel rolls up like any other");
+}
+
 // =============================================================================
 
 int main() {
@@ -395,6 +510,10 @@ int main() {
     TestCsvRoundTrip();
     TestCsvQuoting();
     TestSamples();
+    TestXValidation();
+    TestYValidation();
+    TestHeaderFields();
+    TestPhase2Samples();
 
     std::printf("\n================================\n");
     if (g_failures == 0) {

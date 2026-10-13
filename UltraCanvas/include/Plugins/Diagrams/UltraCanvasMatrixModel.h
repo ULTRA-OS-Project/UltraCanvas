@@ -1,7 +1,8 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixModel.h
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 //
 // This is the semantic model behind the matrix diagram feature. Like
@@ -45,7 +46,10 @@ namespace UltraCanvas {
         L,      // A x B                                  (2 sets, 1 panel)
         T,      // B x A and A x C, A is the shared spine (3 sets, 2 panels)
         Y,      // A x B, B x C, C x A                    (3 sets, 3 panels)
+                // sets[0..2] run up, down-right and down-left from the centre
         X,      // A x B, B x C, C x D, D x A             (4 sets, 4 panels)
+                // sets[0..3] go left, top, right, bottom; each panel pairs a
+                // left/right set with a top/bottom one
         House   // L + correlation roof + targets         (QFD composite)
     };
     // There is no standalone symmetric ("roof") shape: the only symmetric half
@@ -199,6 +203,21 @@ namespace UltraCanvas {
     };
 
 // =============================================================================
+// FORM HEADER
+// =============================================================================
+
+    // One box of the form-style header band printed above many matrix
+    // diagrams: PROJECT / AREA / TITLE / TEAM / DATE and their values.
+    struct MatrixHeaderField {
+        std::string label;
+        std::string value;
+
+        MatrixHeaderField() = default;
+        MatrixHeaderField(const std::string& fieldLabel, const std::string& fieldValue)
+                : label(fieldLabel), value(fieldValue) {}
+    };
+
+// =============================================================================
 // VALIDATION
 // =============================================================================
 
@@ -219,6 +238,7 @@ namespace UltraCanvas {
         std::vector<MatrixItemSet> sets;
         std::vector<MatrixPanel>   panels;
         std::vector<MatrixCell>    cells;
+        std::vector<MatrixHeaderField> headerFields;   // empty = no header band
 
         // ---- Sets ----
         MatrixItemSet*       FindSet(const std::string& setId);
@@ -272,7 +292,9 @@ namespace UltraCanvas {
 
         // ---- Validation ----
         // Checks set count against the shape, panel set references, cell
-        // indices and level ids. Cheap enough to call before every render.
+        // indices and level ids, and that an X or Y panel crosses two sets the
+        // shape can actually place side by side. Cheap enough to call before
+        // every render.
         MatrixValidation Validate() const;
 
         void Clear();
@@ -313,6 +335,14 @@ namespace UltraCanvas {
         // technical requirements, on the 9/3/1 scale. The column totals are
         // the ranking a QFD exercise exists to produce.
         MatrixModel QualityFunctionDeployment();
+
+        // X-shaped: suppliers, storage areas, customers and production lines
+        // pinwheeled round a hub, with the form header band filled in.
+        MatrixModel SupplyChain();
+
+        // Y-shaped: customer requirements, product functions and components,
+        // each related to the other two - a design traceability loop.
+        MatrixModel DesignTraceability();
 
     } // namespace MatrixSamples
 

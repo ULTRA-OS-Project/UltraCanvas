@@ -224,7 +224,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two item sets crossed in an L or T, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |

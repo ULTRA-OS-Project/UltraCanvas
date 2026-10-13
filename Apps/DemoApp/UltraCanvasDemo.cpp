@@ -1242,23 +1242,6 @@ namespace UltraCanvas {
                 .AddVariant("timelinechart", "Dark")
                 .AddVariant("timelinechart", "Swimlanes");
 
-        chartBuilder.AddItem("kanbanboards", "Kanban Board",
-                             "Workflow boards with WIP limits, swimlanes, drag & drop, "
-                             "a built-in card editor, Mermaid text definitions and "
-                             "design presets",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateKanbanBoardExamples(); },
-                             "DemoApp/UltraCanvasKanbanBoardExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasKanbanBoard.md")
-                .AddVariant("kanbanboards", "Interactive Editor")
-                .AddVariant("kanbanboards", "Sticky Notes")
-                .AddVariant("kanbanboards", "Poster")
-                .AddVariant("kanbanboards", "Schematic")
-                .AddVariant("kanbanboards", "Timeline / Swimlanes")
-                .AddVariant("kanbanboards", "Dark Theme")
-                .AddVariant("kanbanboards", "Text Definition")
-                .AddVariant("kanbanboards", "Cumulative Flow");
-
         chartBuilder.AddItem("polarcharts", "Polar Chart",
                              "Angle/radius plots: scatter, line, spline, area and "
                              "column series with categorical or numeric angle axes, "
@@ -1377,22 +1360,6 @@ namespace UltraCanvas {
                 .AddVariant("funnel", "Presentation Infographic")
                 .AddVariant("funnel", "Horizontal Funnel")
                 .AddVariant("funnel", "Playground");
-
-        chartBuilder.AddItem("pyramid", "Pyramid Diagram",
-                             "Level hierarchies - extruded 3D tiers, colour ribbon and icon "
-                             "callouts, outlined and flat presentation layouts, and "
-                             "area-proportional data pyramids with a reference shape",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreatePyramidChartExamples(); },
-                             "DemoApp/UltraCanvasPyramidChartExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasPyramidChart.md")
-                .AddVariant("pyramid", "3D Ribbon Pyramid")
-                .AddVariant("pyramid", "Spectrum 3D")
-                .AddVariant("pyramid", "Outline Hierarchy")
-                .AddVariant("pyramid", "Flat & Minimal")
-                .AddVariant("pyramid", "Alternating Infographic")
-                .AddVariant("pyramid", "Data Pyramid")
-                .AddVariant("pyramid", "Playground");
 
         chartBuilder.AddItem("bubblecharts", "Bubble Chart",
                              "Scatter bubbles, packed bubbles, bubble matrix and an "
@@ -1621,7 +1588,7 @@ namespace UltraCanvas {
                 .AddVariant("requirementdiagram", "ReqIF + overlays");
 
     diagramBuilder.AddItem("matrixdiagram", "Matrix Diagram",
-                           "Relationships between two or three ordered lists, marked from a "
+                           "Relationships between two to four ordered lists, marked from a "
                            "named scale and rolled up into weighted row and column totals",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateMatrixDiagramExamples(); },
@@ -1629,7 +1596,42 @@ namespace UltraCanvas {
                            "Docs/UltraCanvas/UltraCanvasMatrixDiagram.md")
                 .AddVariant("matrixdiagram", "L-Shaped")
                 .AddVariant("matrixdiagram", "T-Shaped")
-                .AddVariant("matrixdiagram", "Weighted (QFD)");
+                .AddVariant("matrixdiagram", "Weighted (QFD)")
+                .AddVariant("matrixdiagram", "X-Shaped")
+                .AddVariant("matrixdiagram", "Y-Shaped");
+
+        diagramBuilder.AddItem("kanbanboards", "Kanban Board",
+                               "Workflow boards with WIP limits, swimlanes, drag & drop, "
+                               "a built-in card editor, Mermaid text definitions and "
+                               "design presets",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateKanbanBoardExamples(); },
+                               "DemoApp/UltraCanvasKanbanBoardExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasKanbanBoard.md")
+                .AddVariant("kanbanboards", "Interactive Editor")
+                .AddVariant("kanbanboards", "Sticky Notes")
+                .AddVariant("kanbanboards", "Poster")
+                .AddVariant("kanbanboards", "Schematic")
+                .AddVariant("kanbanboards", "Timeline / Swimlanes")
+                .AddVariant("kanbanboards", "Dark Theme")
+                .AddVariant("kanbanboards", "Text Definition")
+                .AddVariant("kanbanboards", "Cumulative Flow");
+
+        diagramBuilder.AddItem("pyramid", "Pyramid Diagram",
+                               "Level hierarchies - extruded 3D tiers, colour ribbon and icon "
+                               "callouts, outlined and flat presentation layouts, and "
+                               "area-proportional data pyramids with a reference shape",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePyramidChartExamples(); },
+                               "DemoApp/UltraCanvasPyramidChartExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasPyramidChart.md")
+                .AddVariant("pyramid", "3D Ribbon Pyramid")
+                .AddVariant("pyramid", "Spectrum 3D")
+                .AddVariant("pyramid", "Outline Hierarchy")
+                .AddVariant("pyramid", "Flat & Minimal")
+                .AddVariant("pyramid", "Alternating Infographic")
+                .AddVariant("pyramid", "Data Pyramid")
+                .AddVariant("pyramid", "Playground");
 
     diagramBuilder.AddItem("tickerboard", "Ticker Board",
                            "Labels, values and changes crawling across a band: set in a font, "
