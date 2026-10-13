@@ -6,8 +6,8 @@
 // size, frame rate, fit. Every field reports an edit as a closure over the
 // document; the window applies it through the undo history and shows the
 // document again, so the inspector never writes the document itself.
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -44,6 +44,9 @@ public:
     // An edit of the document, named for the history
     std::function<void(const std::string& label, std::function<void(Document&)> edit)> onEdit;
     std::function<void()> onAddMusic;      // the Audio tab's Add song: a file dialog, the window's
+    // The Project tab's "Preview from proxies": a view setting, not an edit
+    // (no undo step), the window's to apply
+    std::function<void(bool on)> onUseProxies;
 
 private:
     using Label = UltraCanvas::UltraCanvasLabel;
@@ -104,6 +107,7 @@ private:
     // Project
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> projectName;
     std::shared_ptr<Dropdown> size, frameRate, fitMode;
+    std::shared_ptr<Switch> useProxies;
 
     int segment = -1;
     int title = -1;

@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
 #include "UltraVideoMapping.h"
@@ -117,6 +117,9 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
     inspectorTabs_ = inspector_.Build(*palette_);
     inspector_.onEdit = [this](const std::string& label, std::function<void(Document&)> edit) { Edit(label, edit); };
     inspector_.onAddMusic = [this]() { ImportMedia(); };
+    inspector_.onUseProxies = [this](bool on) { SetUseProxies(on); };
+    proxies_.onDone = [this](const std::string& clip, ProxyMaker::State state) { ProxyDone(clip, state); };
+    proxies_.onProgress = [this]() { RefreshBin(); };
     inspectorPane_->AddChild(inspectorTabs_);
     work->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     work->AddChild(columns_);
@@ -734,12 +737,24 @@ void UltraVideoWindow::RefreshBin() {
     std::vector<AlbumItem> items, songs;
     binRows_.clear();
     musicRows_.clear();
+    // every readable video gets a proxy while proxies are on; ones gone from
+    // the bin stop being made
+    std::vector<std::string> videos;
+    for (const MediaItem& m : document_.media)
+        if (m.kind == MediaKind::Video && m.error.empty()) videos.push_back(m.path);
+    if (!document_.view.useProxies) videos.clear();
+    proxies_.Keep(videos);
+    for (const std::string& v : videos) proxies_.Want(v);
     for (size_t i = 0; i < document_.media.size(); ++i) {
         const MediaItem& m = document_.media[i];
         AlbumItem item;
         item.mediaPath = m.path;
         item.title = m.name;
         item.subtitle = m.Badge();
+        if (m.kind == MediaKind::Video && document_.view.useProxies) {
+            const std::string proxy = proxies_.Badge(m.path);
+            if (!proxy.empty()) item.subtitle += " \xC2\xB7 " + proxy;
+        }
         item.id = m.path;
         if (m.kind == MediaKind::Audio) {
             item.mediaType = AlbumMediaType::Music;
@@ -804,7 +819,7 @@ void UltraVideoWindow::RefreshPreview() {
     settings.width = document_.Width();
     settings.height = document_.Height();
     settings.frameRate = document_.FrameRate();
-    preview_.Open(document_.SegmentsForEngine(), settings);
+    preview_.Open(SegmentsToPlay(), settings);
     if (document_.project.segments.empty()) viewer_.ClearFrame();
 }
 
@@ -1085,7 +1100,7 @@ void UltraVideoWindow::RenderDraft() {
     if (draftUnavailable_) return;
     if (draftJob_ && draftJob_->IsRunning()) return;
     if (!draftPath_.empty() && draftRevision_ == documentRevision_) return;
-    std::vector<VideoFXSegment> segments = document_.SegmentsForEngine();
+    std::vector<VideoFXSegment> segments = SegmentsToPlay();
     if (segments.empty()) return;
     VideoFXExportSettings settings = VideoFXExportSettings::Draft(360);
     settings.music = document_.project.settings.music;
@@ -1214,8 +1229,50 @@ void UltraVideoWindow::RemoveDraftFile(const std::string& path) {
     fs::remove(PathFromUtf8(path), ec);
 }
 
+std::vector<VideoFXSegment> UltraVideoWindow::SegmentsToPlay() const {
+    std::vector<VideoFXSegment> segments = document_.SegmentsForEngine();
+    return document_.view.useProxies ? proxies_.Use(segments) : segments;
+}
+
+void UltraVideoWindow::ProxyDone(const std::string& clip, ProxyMaker::State state) {
+    RefreshBin();
+    if (state == ProxyMaker::State::Failed) {
+        const MediaItem* m = document_.FindMedia(clip);
+        Message("No proxy for " + (m ? m->name : clip) + " (" + proxies_.Error(clip) +
+                "): it plays from the original.");
+    }
+    if (state != ProxyMaker::State::Ready) return;
+    ++proxiesMade_;
+    // a clip on the timeline: the viewer plays from the proxy from now on;
+    // a draft already rendered stays (it is the same picture)
+    bool used = false;
+    for (const VideoFXSegment& s : document_.project.segments) used = used || s.path == clip;
+    for (const OverlaySpan& o : document_.overlays) used = used || o.path == clip;
+    if (used) {
+        RefreshPreview();
+        RequestFrame();
+    }
+    if (proxies_.Pending() == 0) {
+        Message(proxiesMade_ == 1 ? "A proxy is ready: the viewer plays the clip from it."
+                                  : std::to_string(proxiesMade_) + " proxies are ready: the viewer plays the clips from them.");
+        proxiesMade_ = 0;
+    }
+}
+
+void UltraVideoWindow::SetUseProxies(bool on) {
+    if (document_.view.useProxies == on) return;
+    document_.view.useProxies = on;
+    InvalidateDraft();
+    RefreshBin();
+    RefreshPreview();
+    RequestFrame();
+    Message(on ? "The viewer plays clips from their proxies (the export uses the originals)."
+               : "The viewer plays the original clips.");
+}
+
 void UltraVideoWindow::Tick() {
     preview_.Pump();
+    proxies_.Pump();
     PollDraft();
     if (playing_ && draftPlaying_) {
         const double at = viewer_.DraftPosition();
