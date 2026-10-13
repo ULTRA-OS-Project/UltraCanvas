@@ -400,8 +400,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Image / Other / Error, final URL, base, charset, the parsed `Document`,
   warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
   (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
-  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`; `LoadPost` for a form's
-  POST. Fetch, POST, URL resolution and charset conversion are services the
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`, `DownloadFileName`;
+  `LoadPost` for a form's POST; a non-page answer keeps its bytes and file
+  name for the host to save. Fetch, POST, URL resolution and charset conversion are services the
   caller passes in, so it is framework-independent; linked style sheets and
   their `@import`s load before a page is ready;
   mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
@@ -419,7 +420,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   enctype, the entry list; `Encoded`, `Multipart`, `PlainText`, `Body`,
   `ContentType`) and `FormController`, one per `<form>` built with
   `BuildOptions::interactiveForms`: its widgets (held weakly), radio groups,
-  `Collect`, `Submit`, `Reset`, `Save` / `Restore`.
+  `Collect`, `Submit`, `Reset`, `Save` / `Restore`; file inputs (`SetFiles`,
+  `BuildOptions::onChooseFiles`, multipart file parts in
+  `FormSubmission::files`) and `ActivateControl` for a `<label>`'s click.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
   `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
@@ -1240,6 +1243,20 @@ folder - shared by all applications or per application) is
 file `FileDialog.conf` in the UltraCanvas settings folder; the ULTRA OS
 settings application (UOS-Settings, `Apps/UOSSettings`) edits the last used
 folder scope. Every write goes through `FileDialogSettings::Update()`.
+
+Save settings - how each format is written (JPEG quality, PNG compression,
+TIFF codec ...) - are described per format (`UltraCanvasFileSaveSettings.h`:
+`FileSaveFormat`, `FileSaveSettingSpec`, `FileSaveSettings`) and kept for every
+application in `SaveSettings.conf` in the same folder.
+`UltraCanvasFileLoader::HasSaveSettings` / `FindSaveFormat` /
+`GetSaveSettings` / `HasStoredSaveSettings` / `SetSaveSettings` /
+`ResetSaveSettings` / `RegisterSaveFormat` / `ShowSaveSettingsDialog` /
+`GetImageExportOptions` are the surface; the framework Save dialog's Settings
+button edits them, its file icon (`UltraCanvasFileDragIcon`) is dropped on a
+folder to save there, and `UCRasterDocument::SaveToFile` reads them. A
+picture's size for one save (`FileSaveImageSize`, offered when the caller
+passes `FileDialogOptions::SetImageSize`) comes back through the
+`SaveFileDialog` overload that reports it, never stored.
 
 ### **4. Plug-ins for File Types**
 

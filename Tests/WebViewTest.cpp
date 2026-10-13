@@ -18,12 +18,14 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasRenderContext.h"
 #include "CSSLayout/CSSLayout.h"
 
 #include <cstdio>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <algorithm>
 #include <map>
@@ -442,6 +444,64 @@ static void TestForms() {
     Check(after && after->GetText() == "half-typed", "with the text that was typed");
 }
 
+static void TestFileUpload() {
+    std::printf("a file upload through the view: multipart POST with the file's bytes\n");
+    const std::string path = PathToUtf8(std::filesystem::temp_directory_path() / "ucwebview-upload-test.txt");
+    { std::FILE* out = OpenFileUtf8(path, "wb"); if (out) { std::fputs("file body", out); std::fclose(out); } }
+    Fixture f;
+    f.view->onChooseFiles = [path](bool, const std::string&, std::function<void(std::vector<std::string>)> done) {
+        done({ path });
+    };
+    f.web.Add("https://x.org/up", "<title>Up</title><form action='/recv' method='post' enctype='multipart/form-data'>"
+              "<label for='f'>File:</label> <input type='file' id='f' name='upload'> <button>Send</button></form>");
+    f.web.Add("https://x.org/recv", "<title>Received</title><p>ok</p>");
+    f.view->Navigate("https://x.org/up");
+    f.Settle();
+    std::vector<UltraCanvasButton*> buttons;
+    std::function<void(UltraCanvasUIElement*)> collect = [&](UltraCanvasUIElement* e) {
+        if (auto* b = dynamic_cast<UltraCanvasButton*>(e)) buttons.push_back(b);
+        if (auto* c = dynamic_cast<UltraCanvasContainer*>(e))
+            for (auto& child : c->GetChildren()) collect(child.get());
+    };
+    collect(f.view.get());
+    Check(buttons.size() == 2, "the chooser and the send button");
+    if (buttons.size() != 2) return;
+    buttons[0]->onClick();                // choose
+    buttons[1]->onClick();                // send
+    f.Settle();
+    Check(!f.web.posted.empty(), "posted");
+    if (f.web.posted.empty()) return;
+    const auto& [type, body] = f.web.posted.back();
+    Check(type.rfind("multipart/form-data; boundary=", 0) == 0, "as multipart");
+    Check(body.find("name=\"upload\"; filename=\"ucwebview-upload-test.txt\"\r\nContent-Type: text/plain\r\n\r\nfile body\r\n")
+              != std::string::npos, "with the file's name, type and bytes");
+    Check(f.view->GetTitle() == "Received", "and the answer is shown");
+    std::error_code ec;
+    std::filesystem::remove(PathFromUtf8(path), ec);
+}
+
+static void TestDownloadKeepsPage() {
+    std::printf("a link to a file to save leaves the page, its address and history\n");
+    Fixture f;
+    f.web.Add("https://x.org/list", "<title>List</title><p><a href='files/r.zip'>report</a></p>");
+    f.web.Add("https://x.org/files/r.zip", std::string("PK\x03\x04", 4), "application/zip");
+    std::vector<HTML::LoadedPage> downloads;
+    f.view->onNonHtml = [&](const HTML::LoadedPage& p) { downloads.push_back(p); };
+    f.view->Navigate("https://x.org/list");
+    f.Settle();
+    UltraCanvasLabel* link = f.Label("report");
+    Check(link && link->onLinkActivated, "the link");
+    if (!link || !link->onLinkActivated) return;
+    link->onLinkActivated("files/r.zip");
+    f.Settle();
+    Check(downloads.size() == 1 && downloads[0].fileName == "r.zip" && downloads[0].body.size() == 4,
+          "the host gets the file, named, with its bytes");
+    Check(f.view->GetUrl() == "https://x.org/list", "the address is the page's again");
+    Check(f.view->GetTitle() == "List" && f.Label("report") != nullptr, "the page stays");
+    Check(!f.view->CanGoForward() && !f.view->CanGoBack(), "and the history has no entry for the file");
+    Check(!f.urls.empty() && f.urls.back() == "https://x.org/list", "onUrlChanged said so");
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("WebViewTest");
     TestLoadAndLinks();
@@ -451,6 +511,8 @@ int main() {
     TestImportedStyleSheets();
     TestImportsWithoutLoader();
     TestForms();
+    TestFileUpload();
+    TestDownloadKeepsPage();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

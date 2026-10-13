@@ -1,3 +1,36 @@
+#### 2026-10-12 *0.2.19*
+- **Sharp toolbar and layer-panel icons.** Fit to Window, Actual Pixels, New
+  Layer and Export in the toolbar, and the seven buttons above the layer list,
+  were still the old 24-unit drawings with 1.8-unit strokes, shown at 20 px:
+  every line blurred, Actual Pixels read "100", and New Layer, Delete Layer
+  and Merge Down were a plus, a bin and an arrow with nothing of a layer about
+  them. They are redrawn like the tools, with 2 px strokes on whole pixels:
+  the layer buttons show a layer with a plus, a minus, an arrow up or down, a
+  copy, a merge or its settings, Actual Pixels reads "1:1", and the toolbars
+  draw them at the 24 px they are drawn for (framework changelog:
+  `toolbar-icon-size`).
+
+#### 2026-10-12 *0.2.18*
+- **Export opens on what was chosen.** The image export dialog after Export's
+  file dialog now opens on the format of the name given there (it opened on
+  PNG whatever the name, and "photo.jpg" was written as a PNG under a .jpg
+  name), with that format's save settings - the ones the Save dialog's
+  Settings button edits, and which Export's Save stores back - and at the
+  size chosen in those Settings, since Export now tells the Save dialog the
+  picture's size too (framework, pending changelog entry
+  "save-settings-followups").
+
+#### 2026-10-12 *0.2.17*
+- **Save As can write the picture at another size.** The Save dialog is told
+  the picture's size, so the Settings button on the type row - new in the
+  framework's Save dialog - opens a bitmap type's settings with a Size
+  row first: width x height in pixels, opened on the picture's own size, with
+  Keep proportions. The file is written at the size chosen there; the open
+  picture keeps its own size, and the next Save As starts on it again. The
+  rest of the type's settings (JPEG quality, PNG compression ...) are the
+  framework's per-format save settings, which a plain Save already follows
+  (framework, pending changelog entry "save-dialog-file-icon-and-settings").
+
 #### 2026-10-12 *0.2.16*
 - **The tool palette groups its tools.** Tools of a kind share one button,
   so the palette shows 13 buttons for its 26 tools, where it showed 23 for

@@ -8,7 +8,9 @@
 // operation on its own thread (or splits it across timer ticks) and pushes the
 // numbers in from the UI thread as they arrive.
 //
-//   auto dlg = UltraCanvasProgressDialog::Show(window, "Compressing",
+// doc-check: std::function<void()> onCancel;
+// doc-check: example
+//   auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Compressing",
 //                                              "Creating photos.zip", onCancel);
 //   dlg->SetProgress(0.42);              // 42 %
 //   dlg->SetDetail("DSC_0042.jpg");

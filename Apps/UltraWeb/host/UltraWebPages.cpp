@@ -1,5 +1,7 @@
 // Apps/UltraWeb/host/UltraWebPages.cpp
 // The page services and the app-or-page decision (UltraWebPages.h).
+// Version: 0.5.0 - downloads: Content-Disposition and the size limit reported
+// Version: 0.4.1 - AcceptExtensions for file uploads
 // Version: 0.4.0 - forms: POST through UltraNet
 // Version: 0.3.0
 // Last Modified: 2026-10-12
@@ -87,6 +89,7 @@ HTML::FetchResult ReadFile(const std::string& url) {
     std::fclose(file);
     if (static_cast<int64_t>(result.body.size()) > kMaxPageBytes) {
         result.body.clear();
+        result.tooLarge = true;
         result.error = path + " is larger than " + std::to_string(kMaxPageBytes / (1024 * 1024)) + " MB.";
         return result;
     }
@@ -123,10 +126,14 @@ HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void(
             result.status = response.statusCode;
             result.finalUrl = response.finalUrl;
             result.contentType = response.contentType;
+            result.contentDisposition = response.headers.Get("Content-Disposition");
             if (response.statusCode == 0) {
                 result.error = "Could not load " + url +
                                (response.statusMessage.empty() ? std::string(" (no answer).") : ": " + response.statusMessage);
             } else if (response.exceededReceiveLimit) {
+                // A file to download, perhaps: the loader decides, and the
+                // window fetches it again, streaming, to disk.
+                result.tooLarge = true;
                 result.error = url + " is larger than " + std::to_string(kMaxPageBytes / (1024 * 1024)) + " MB.";
             } else if (!response.IsComplete()) {
                 result.error = "Could not load " + url + ": " + response.transferError;
@@ -194,6 +201,30 @@ bool IsAppAddress(const std::string& address) {
         return path.size() >= e.size() && path.compare(path.size() - e.size(), e.size(), e) == 0;
     };
     return endsWith(".wasm") || endsWith(".wat");
+}
+
+std::vector<std::string> AcceptExtensions(const std::string& accept) {
+    std::vector<std::string> out;
+    auto add = [&](const std::string& ext) {
+        if (!ext.empty() && std::find(out.begin(), out.end(), ext) == out.end()) out.push_back(ext);
+    };
+    size_t start = 0;
+    while (start <= accept.size()) {
+        size_t comma = accept.find(',', start);
+        if (comma == std::string::npos) comma = accept.size();
+        std::string item = Lower(accept.substr(start, comma - start));
+        item.erase(0, item.find_first_not_of(" \t"));
+        item.erase(item.find_last_not_of(" \t") + 1);
+        if (!item.empty() && item[0] == '.') add(item.substr(1));
+        else if (item == "image/*") for (const char* e : { "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif" }) add(e);
+        else if (item == "audio/*") for (const char* e : { "mp3", "ogg", "wav", "flac", "m4a" }) add(e);
+        else if (item == "video/*") for (const char* e : { "mp4", "webm", "mkv", "mov" }) add(e);
+        else if (item == "application/pdf") add("pdf");
+        else if (item == "text/plain") add("txt");
+        else if (!item.empty()) return {};           // a type we cannot map: any file
+        start = comma + 1;
+    }
+    return out;
 }
 
 std::string ToPageUrl(const std::string& address) {

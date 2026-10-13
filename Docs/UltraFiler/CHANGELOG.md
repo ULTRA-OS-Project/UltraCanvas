@@ -1,3 +1,14 @@
+#### 2026-10-12 *1.72.5*
+- **Icons no longer flicker in a maximised window.** With *Display > File
+  icons = Host OS* and a folder of DLLs, a window large enough to show more
+  files than the icon cache held never settled: every tile switched between
+  the system's icon and the simple one, back and forth, for as long as the
+  window was open, while a smaller window on the same folder was fine. The
+  framework's icon cache evicted icons that were still on screen and then
+  re-resolved them, and kept one copy of the library icon per file rather
+  than per type (framework changelog, pending entry
+  `filer-host-icons-thrash`).
+
 #### 2026-10-12 *1.72.4*
 - **The settings live in the shared UltraCanvas settings folder.** Every
   newer UltraCanvas application keeps its settings under

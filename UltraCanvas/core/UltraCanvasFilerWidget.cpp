@@ -50,6 +50,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.38.3 - host icons that are on screen are never evicted from the
+//                  icon cache, and a program or library keys by type: a
+//                  maximised window of DLLs no longer flickers forever
 // Version: 1.38.2 - the details header's sort direction is a drawn triangle, not
 //                  "▲" / "▼", which the bundled UI font lacks
 // Version: 1.38.1 - a picture saved over gets a new thumbnail: the workers ask
@@ -10151,6 +10154,8 @@ namespace UltraCanvas {
         // moved a different file under a standing cursor, the hover follows it
         // here, before anything is drawn with it.
         RefreshHoverState();
+        // What this frame asks the host-icon cache for is what is on screen.
+        BeginHostIconFrame();
 
         auto lb = GetLocalBounds();
         Rect2Di bounds(static_cast<int>(lb.x), static_cast<int>(lb.y),
@@ -12288,6 +12293,12 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    void UltraCanvasFilerWidget::BeginHostIconFrame() {
+        std::lock_guard<std::mutex> lk(hostIconMutex);
+        hostIconPreviousFrameTick = hostIconFrameTick;
+        hostIconFrameTick = hostIconTick;
+    }
+
     void UltraCanvasFilerWidget::StartHostIconWorkerLocked() {
         if (hostIconWorker.joinable() || hostIconShutdown) return;
         hostIconWorker = std::thread([this]() { HostIconWorkerMain(); });
@@ -12368,13 +12379,18 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::EvictHostIconsLocked(const std::string& keepKey) {
         if (hostIconBytes <= kHostIconBudget) return;
-        // Least recently drawn first, so what is on screen survives. Only
-        // finished slots are droppable: a pending one has a lookup in flight
-        // that would land in a slot that is no longer there.
+        // Least recently drawn first, so what is on screen survives - and
+        // what was drawn in this frame or the last is not droppable at all,
+        // however far over budget the screen puts the cache: an icon that
+        // is still drawn would only be asked for again on the next frame,
+        // and its answer would evict the next drawn icon, without end. Only
+        // finished slots are droppable either: a pending one has a lookup in
+        // flight that would land in a slot that is no longer there.
         std::vector<std::pair<uint64_t, std::string>> droppable;
         droppable.reserve(hostIconSlots.size());
         for (const auto& [key, slot] : hostIconSlots) {
             if (key == keepKey || slot.state != ThumbState::Ready) continue;
+            if (slot.tick > hostIconPreviousFrameTick) continue;   // on screen
             droppable.emplace_back(slot.tick, key);
         }
         std::sort(droppable.begin(), droppable.end());
@@ -12392,6 +12408,7 @@ namespace UltraCanvas {
         hostIconSlots.clear();
         hostIconQueue.clear();
         hostIconBytes = 0;
+        // The LRU clock keeps running, so the frame marks stay valid.
         // Anything already in flight belongs to the cache just thrown away.
         ++hostIconGeneration;
     }
@@ -12510,15 +12527,7 @@ namespace UltraCanvas {
                 DrawFolderWithPreviews(ctx, rect, color, previews);
                 return;
             }
-            // Folder shape: a tab above the body.
-            double tabW = rect.width * 0.45, tabH = std::max(2.0, rect.height * 0.18);
-            ctx->SetFillPaint(color);
-            ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y, tabW, tabH * 2), 2);
-            Color body(std::min(255, color.r + 20), std::min(255, color.g + 20),
-                       std::min(255, color.b + 25), 255);
-            ctx->SetFillPaint(body);
-            ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y + tabH,
-                                              rect.width, rect.height - tabH), 2);
+            DrawTypeGlyph(ctx, e, rect);
             return;
         }
 
@@ -12533,6 +12542,24 @@ namespace UltraCanvas {
             return;
         }
 
+        DrawTypeGlyph(ctx, e, rect);
+    }
+
+    void UltraCanvasFilerWidget::DrawTypeGlyph(IRenderContext* ctx, const FilerEntry& e,
+                                               const Rect2Di& rect) {
+        const Color color = EntryColorOf(e);
+        if (e.isDirectory) {
+            // Folder shape: a tab above the body.
+            double tabW = rect.width * 0.45, tabH = std::max(2.0, rect.height * 0.18);
+            ctx->SetFillPaint(color);
+            ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y, tabW, tabH * 2), 2);
+            Color body(std::min(255, color.r + 20), std::min(255, color.g + 20),
+                       std::min(255, color.b + 25), 255);
+            ctx->SetFillPaint(body);
+            ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y + tabH,
+                                              rect.width, rect.height - tabH), 2);
+            return;
+        }
         // Generic file glyph: a colored "sheet" with the extension on it.
         ctx->SetFillPaint(Color(252, 252, 253, 255));
         ctx->FillRoundedRectangle(Rect2Dd(rect), 2);
@@ -12557,6 +12584,46 @@ namespace UltraCanvas {
             ctx->DrawText(ext, Point2Dd(rect.x + (rect.width - ts.width) / 2.0,
                                         rect.y + (rect.height - bandH - ts.height) / 2.0));
         }
+    }
+
+    void UltraCanvasFilerWidget::DrawTypeIcon(IRenderContext* ctx, const std::string& path,
+                                              bool isFolder, const Rect2Di& rect) {
+        if (!ctx || rect.width <= 2 || rect.height <= 2) return;
+        // An entry with nothing but a name: no file is read, so there is no
+        // thumbnail, content preview or folder preview to show - the type.
+        const FilerEntry e = TypeEntryFor(path, isFolder);
+        if (auto hostIcon = AcquireHostIcon(e, rect, ctx->GetDeviceScale())) {
+            ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
+            return;
+        }
+        DrawTypeGlyph(ctx, e, rect);
+    }
+
+    void UltraCanvasFilerWidget::GetTypeColors(const std::string& path, bool isFolder,
+                                               Color& fill, Color& ink) const {
+        const FilerEntry e = TypeEntryFor(path, isFolder);
+        fill = EntryColorOf(e);
+        ink = EntryCaptionInkOf(e);
+    }
+
+    FilerEntry UltraCanvasFilerWidget::TypeEntryFor(const std::string& path, bool isFolder) const {
+        FilerEntry e;
+        e.path = path;
+        std::string name = path;
+        while (name.size() > 1 && (name.back() == '/' || name.back() == '\\')) name.pop_back();
+        const size_t slash = name.find_last_of("/\\");
+        e.name = slash == std::string::npos ? name : name.substr(slash + 1);
+        e.isDirectory = isFolder;
+        if (!isFolder) {
+            const size_t dot = e.name.find_last_of('.');
+            if (dot != std::string::npos && dot > 0 && dot + 1 < e.name.size()) {
+                e.extension = e.name.substr(dot + 1);
+                std::transform(e.extension.begin(), e.extension.end(), e.extension.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            }
+        }
+        ApplyEntryTypeInfo(e);
+        return e;
     }
 
     void UltraCanvasFilerWidget::DrawShortcutOverlay(IRenderContext* ctx,

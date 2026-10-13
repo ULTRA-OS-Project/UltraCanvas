@@ -1,3 +1,307 @@
+#### 2026-10-13 *0.9.268*
+- **A header's usage example can be compiled too, when it opts in.**
+  `scripts/check_doc_examples.py` checked the component docs, but the
+  sketch at the top of a header had nothing reading it: the DesktopShell
+  header's example called `AddToggleButton` with `...` until someone
+  noticed by eye. A
+  `// doc-check: example` line above such an example now puts it in the
+  same check, reported at the header's own lines. The example is the
+  comment lines after the marker indented two spaces or more past the
+  `//`, so the prose after it is not read as code, and a
+  `// doc-check: <declarations>` line declares the names it takes from the
+  application, as a doc's `<!-- doc-check: ... -->` comment does. `--all`,
+  which CI runs, checks every marked header under `UltraCanvas/include`,
+  `UltraCanvas/Plugins` and `VirtualFS/include`. Marking is a choice, not a
+  rule: a sketch with `...` in it stays unmarked.
+  - **Ten headers are marked**, the ones whose example compiled as
+    written: DesktopShell, FileLock, FormLayout, ListSortFilterProxy (two
+    examples), PathUtf8, ProgressDialog, RichTextPrint, WaveSeparator,
+    UltraDatabase and UltraMessageUltraCanvas.
+  - **Declaring their names found two stale examples.** The ProgressDialog
+    and RichTextPrint headers passed a `std::shared_ptr` window where
+    `UltraCanvasProgressDialog::Show` and `PrintDocumentWithDialog` take an
+    `UltraCanvasWindowBase*`; they pass `window.get()` now, as their docs
+    do. Until the names were declared, the undeclared `onCancel` and
+    `richEdit` had stopped clang before it reached the window argument.
+- **macOS release builds: the notarization ticket is stapled and validated
+  with retries.** Every release build from 0.9.253 to 0.9.265 failed at
+  `xcrun stapler` with "The network connection was lost" from Apple's
+  CloudKit ticket service (exit 68), each after a notarization Apple had
+  already accepted; in each run some bundles stapled and a later one did
+  not, and once a staple went through and the validate right after it did
+  not. No release carried those thirteen versions. `package-macos.sh` now
+  tries the staple and then the validate up to `STAPLE_ATTEMPTS` times
+  (default 5), 20 s apart, the way it already resumes the notary wait; a
+  staple that worked is not repeated, only its validate, and only a lookup
+  that fails every time ends the run.
+- **NetworkMonitor (Windows): the two ETW sources say what to do when they
+  are refused.** Started unelevated, the DNS client source and the kernel
+  network event source reported "Starting the ETW session: error 5 (an
+  elevated token is needed ...)". The access-denied case now reads "Needs an
+  elevated run: Windows lets only an administrator trace the DNS client, so
+  no process can be put to its queries until the monitor is run as
+  administrator" (and the kernel source's counterpart, naming the snapshot
+  differ as what still reports); any other failure keeps its error number.
+- **Toolbar icons are drawn at the size the toolbar asks for.**
+  `ToolbarAppearance::iconSize` is documented as Small 16, Medium 24 (the
+  default), Large 32, ExtraLarge 48 and Huge 64 px, but every toolbar button
+  got 20 px whatever it said, and a later `SetAppearance()` reset buttons that
+  had their own size to 20 again. A line icon is drawn on the pixel grid of
+  one size, so the 24 px sets most toolbars use (`media/icons/menu/`,
+  `media/icons/texter/`, ArtCreator's, UltraPaint's, the media viewer's) were
+  scaled to 5/6 and blurred, and UltraVideo's 16 px set was blown up to 20.
+  `UltraCanvasToolbar` now gives its buttons the size the appearance names
+  (`ToolbarAppearance::IconPixelSize()`, Custom is `customIconWidth` x
+  `customIconHeight`), when they are added and again on `SetAppearance()`.
+  Toolbars with the default Medium size - Texter, UltraPaint, ArtCreator, the
+  media viewer and UltraViewer, the DemoApp's - draw 24 px icons now, and
+  UltraVideo's Small bars 16 px; a toolbar grows to fit them as before.
+  A tool group (`AddToolGroup`) takes the same size for its slot and its
+  fold-out bar. `ToolbarThicknessTest` checks
+  each size, for buttons added before and after the appearance changes.
+
+#### 2026-10-13 *0.9.267*
+- **Host OS file icons no longer flicker in a window that shows more types
+  than the icon cache holds.** With *Display > File icons = Host OS*, a
+  maximised UltraFiler window on a folder of DLLs never settled: every tile
+  flipped between the shell's icon and the simple one for as long as the
+  window was open, while a smaller window on the same folder was fine. Two
+  causes, both in the framework. The cache's eviction dropped the least
+  recently *drawn* icons once over budget, without knowing they were still
+  on screen - an icon dropped while drawn is asked for again on the next
+  frame, and its answer evicts the next drawn one, without end. Eviction
+  now keeps whatever this frame or the last one drew, however far over
+  budget a screen full of distinct types puts the cache (the ceiling is met
+  again when they scroll away). And `HostFileIconKey` keyed programs,
+  libraries and shortcuts per *file* rather than per type, so ninety DLLs
+  held ninety copies of one 256-pixel picture - three times the budget.
+  Every backend resolves the host's icon from the name alone (the shell with
+  `SHGFI_USEFILEATTRIBUTES`, the desktops by MIME type or UTType), so a
+  `.dll` keys as `ext:dll` like any other type now; a program's own icon is
+  still the native module's answer and is unaffected.
+- **A host icon is held at the size it is drawn.** The Windows shell's
+  jumbo list answers 256 pixels a side whatever was asked, so a medium tile
+  asking for 128 held a quarter-megabyte pixmap and drew it at a quarter of
+  the area; a Linux theme's `.ico` came back at its nearest frame, which can
+  be the larger one. `FitHostIconToSize` (UltraCanvasHostFileIcons) resamples
+  a backend's answer down to the size asked for, never up, and the Windows
+  and Linux backends go through it - macOS already drew into a bitmap of
+  that size. Four times as many types fit the same cache.
+- **A stale Windows version resource fails CI.** `UltraTexter.rc` /
+  `.manifest` and `UltraFiler.rc` / `.manifest` carry a literal copy of the
+  version that `set-version.sh` writes, and the configure-time warning for
+  one that fell behind its changelog was not enough: UltraFiler 1.72.4
+  shipped with a 1.72.3 version resource. `scripts/check_changelog.py`
+  compares them now and `changelog.yml` runs on a change to them.
+
+#### 2026-10-13 *0.9.266*
+- **VideoFX 0.12.0: hardware encoders by choice.** The new
+  `VideoFXExportSettings::acceleration` chooses the video encoder:
+  - `Auto` keeps the old order (software, then VideoToolbox or Media
+    Foundation).
+  - `Software` uses software encoders only.
+  - `Hardware` takes the first hardware encoder that works on the machine,
+    and falls back to software.
+  - `NVENC`, `QuickSync`, `VAAPI`, `AMF`, `VideoToolbox` and
+    `MediaFoundation` name one family. If it does not work, the export fails
+    with `EncoderNotAvailable` and says whether FFmpeg lacks the encoder or
+    the machine lacks the hardware.
+  - Each hardware encoder is tried once, with one small frame, before it is
+    chosen, since FFmpeg builds often carry encoders the computer cannot run.
+    The answers are kept for the rest of the process.
+  - VA-API frames are uploaded to graphics memory before they are encoded.
+  - New: `VideoFXAcceleration`, `VideoFXEncoderInfo`,
+    `VideoFX_ListVideoEncoders` (every encoder of the build and whether it
+    works here, for a settings dialog), `VideoFX_ChooseVideoEncoder`,
+    `VideoFX_AccelerationName`, and an acceleration argument on
+    `VideoFX_IsVideoEncoderAvailable`.
+  - Saved in project files. Proxies can use it too
+    (`VideoFXProxySettings::acceleration`).
+  - `videofx encoders [codec]`, and `--hw software|hardware|nvenc|qsv|vaapi|amf|videotoolbox|mf`
+    on every export command.
+
+#### 2026-10-13 *0.9.265*
+- **HTML reader: downloads.** A navigation that found no page
+  (`PageKind::Other`) told its host only the address and type.
+  - **Bytes and name:** `HTML::PageLoader` now hands over the bytes
+    (`LoadedPage::body`) and the name to save the file as (`fileName`).
+  - **`PageLoader::DownloadFileName`** picks that name:
+    Content-Disposition's `filename*` (RFC 5987) or `filename`, else the
+    address's last segment, cleaned of folders, control characters and
+    leading dots, else `download` with an extension for its type.
+  - **Attachments:** `Content-Disposition: attachment` makes even an HTML
+    answer a download (`LoadedPage::attachment`); the fetch reports the
+    header in `FetchResult::contentDisposition`.
+  - **Large files:** a non-page answer over the fetch's size limit
+    (`FetchResult::tooLarge`) is a download marked `truncated`, for the
+    host to fetch again streaming, instead of an error page.
+  - **`UltraCanvasWebView`:** a download keeps the page on show, its
+    address and its history, which no longer gains an entry for the file.
+  - Tests in `HTMLPageLoaderTest` and `WebViewTest`.
+
+#### 2026-10-12 *0.9.264*
+- **Rendering: SetAlpha fades fills, strokes and text, not only images.** The
+  Cairo context applied the global alpha to pictures alone: a fill, a stroke
+  or a line of text set the source back to its colour at the colour's own
+  alpha, so whatever a caller dimmed with `SetAlpha` came out as a faded
+  picture beside full-strength shapes and text. A colour's alpha is now
+  scaled by the global alpha, and a gradient (or any pattern) is painted
+  through a group laid down at it. What that puts right: the file display's
+  dimmed entries (a file the type filter does not ask for) grey out their
+  name and columns as well as the icon, as their comment always said;
+  slideshow transitions fade the letterbox and the caption; a locked or
+  hidden video timeline track, a dragged Kanban card and the album's drag
+  marker are translucent; a connection's opacity and a vector drawing's
+  group, layer and object opacity apply to its shapes and text. The
+  CorelDRAW painter folded an object's opacity into its fill and stroke
+  colours and also set it with `SetAlpha`; the colours now carry only their
+  fill / stroke opacity, so an object is not faded twice. `RenderAlphaTest`
+  reads the pixels of a fill, a stroke, a gradient and text under
+  `SetAlpha`, and the render suites (vector, XAR, CDR, EPS, SVG, models,
+  Filer, image, screenshots) pass as before.
+- **Image export dialog: the save settings, the file's format, the colour
+  depth.** `UltraCanvasImageExportDialog` opens every format on the user's
+  save settings for it (`UltraCanvasFileLoader::GetImageExportOptions`, the
+  values the Save dialog's Settings button edits) and its Save stores what it
+  was left on back as that format's settings
+  (`UltraCanvasFileLoader::SetImageExportOptions`, new: the image writer's
+  options turned back into a format's settings; the size is not stored).
+  `SetFileName` picks the format the name's extension names - the dialog
+  stayed on PNG whatever it was given, so UltraPaint's Export wrote
+  "photo.jpg" as a PNG. `SetOptions` now moves the controls (they showed
+  their construction defaults whatever the options said), the colour depth
+  list is applied (choosing a depth changed nothing), JPEG XL's quality
+  slider is applied, and `SetTargetSize` with a size in another shape than
+  the picture's turns Keep proportions off, so the size is met exactly.
+- **FileLoader docs compile, and CI keeps them so.** The eight examples of
+  `Docs/Modules/FileLoader/README.md` that did not compile (`{ ... }`
+  placeholders, two plugin registrations without their headers, an undefined
+  plugin class, helpers the reader writes) are fixed, and
+  `scripts/check_doc_examples.py --all` - CI's doc check - now covers the
+  module docs listed in `CHECKED_MODULE_DOCS`, FileLoader's first. A module
+  joins once its examples compile; its findings are fixed, never baselined.
+
+#### 2026-10-12 *0.9.263*
+- **Save dialog: a big logo of the file's type, dragged onto a folder to save
+  there.** The framework's Save dialog shows, at the left of the name and type
+  rows with "Drag to Folder" under it, a 64-pixel logo of the file it is about
+  to write - the type the name has with the chosen type's extension: a page
+  with a folded corner and the extension on a band in the colour the listing
+  gives the type (`UltraCanvasFileDragIcon::DrawDocumentGlyph`,
+  `UltraCanvasFilerWidget::GetTypeColors`), or this desktop's icon for the
+  type when the listing shows those - and it follows the name as it is typed
+  and the type as it is switched. As in the RISC OS save box, the icon is
+  picked up and dropped on a folder: a folder of the listing is framed while
+  it is under the pointer (over empty space, the folder the listing shows), a
+  place or drive of the folder tree is highlighted, and the release opens that
+  folder, so OK then saves into it. A release anywhere else, over a file or
+  onto a folder inside a browsed archive changes nothing; Escape ends the drag
+  and leaves the dialog open. The icon is a new element,
+  `UltraCanvasFileDragIcon` (`UltraCanvasFileDragIcon.h`, in the element
+  catalogue), for any other save box: it carries a name rather than a file,
+  sends `DragEnter` / `DragOver` / `DragLeave` with its own mime type and no
+  files - so nothing that takes files copies anything - and hands the release
+  to `onDropped` while the target still shows where it lands.
+  `UltraCanvasFilerWidget::DrawTypeIcon` draws the icon a listing gives a type
+  (glyph or host icon, never a thumbnail), and
+  `UltraCanvasTreeView::GetDropTargetNode` answers which row a drag would drop
+  on.
+- **Save settings per file format, through UltraCanvasFileLoader, and a
+  Settings button at the end of the type row.** How a format is written - JPEG
+  quality, PNG compression and colours, TIFF and EXR codecs, WebP / AVIF /
+  HEIF / JPEG XL / JPEG 2000 quality, lossless and effort, GIF colours and
+  dithering, RLE for TGA / PCX / SGI / PSD, Netpbm binary, DPX / Cineon bit
+  depth - is now described per format (`UltraCanvasFileSaveSettings.h`:
+  `FileSaveFormat`, `FileSaveSettingSpec`, `FileSaveSettings`) and kept for
+  every application, between runs, in `SaveSettings.conf` in the UltraCanvas
+  settings folder. `UltraCanvasFileLoader` gains `HasSaveSettings`,
+  `FindSaveFormat`, `GetSaveSettings`, `HasStoredSaveSettings`,
+  `SetSaveSettings`, `ResetSaveSettings`, `RegisterSaveFormat` (a plugin's or
+  an application's own format), `ShowSaveSettingsDialog` (a checkbox, slider
+  or list per setting, with Defaults) and `GetImageExportOptions` (the image
+  writer's options from them). The Save dialog's Settings button opens that
+  dialog for the type being saved and is greyed out for a type without
+  settings; `FileDialogConfig::saveSettingsButton` /
+  `FileDialogOptions::SetSaveSettingsButton(false)` leaves it out for a writer
+  that ignores them. `UCRasterDocument::SaveToFile` without options writes
+  with the user's settings once any are stored for the format (until then, the
+  writer's own defaults as before), so UltraPaint's Save follows the button
+  with no change of its own.
+- **The picture's size in a bitmap type's Settings, for one save.** A caller
+  that tells the Save dialog how big the picture is
+  (`FileDialogOptions::SetImageSize` / `FileDialogConfig::imageWidth`,
+  `imageHeight`) gets a Size row at the top of a bitmap type's Settings: width
+  x height in pixels (`UltraCanvasSpinner`s), opened on the picture's size,
+  and Keep proportions, which makes one side follow the other. Every pixel
+  format offers it - `FileSaveFormat::bitmap`, set for the built-in image
+  formats, BMP, ICO, QOI, HDR, FITS and Farbfeld included, which have no
+  settings of their own and so get a dialog with the size alone. The size is
+  not stored with the settings: it comes back with that save as a
+  `FileSaveImageSize`, through a new `SaveFileDialog` overload whose callback
+  takes it, `UltraCanvasFileDialog::GetSaveImageSize()`, and the
+  `ShowSaveSettingsDialog` overload that takes the picture's size.
+  `GetImageExportOptions(path, size, options)` turns it into the image
+  writer's target size. UltraPaint's Save As uses it. `FileDialogTest` covers
+  the store, the button, a drop on the listing and on the tree, Escape, a JPEG
+  written at two stored qualities, the Size row (both sides following,
+  Defaults, free sides, a type that is not a bitmap, BMP), the size coming
+  back through the loader and a picture written at the size chosen.
+- **File dialog: typing a name filters the listing.** While the name field
+  holds text the user typed, the listing shows only the files and folders
+  whose name has it in, in any case - through the file display's own
+  filter-as-you-type (`UltraCanvasFilerWidget::SetNameFilter`), so no
+  keystroke reads the folder again. A typed path narrows by its last part; the
+  filter holds in every folder the dialog goes to, a name the dialog puts in
+  itself (the file clicked, the type's extension) leaves it as typed, and an
+  emptied field lists everything again. Open and Save dialogs alike.
+
+#### 2026-10-12 *0.9.262*
+- **HTML reader: file uploads and label clicks in forms.**
+  - **File inputs** were drawn for display only. Now one is a "Choose file…"
+    button beside the names chosen.
+    - The button asks the host through the new
+      `BuildOptions::onChooseFiles` (several with `multiple`, the `accept`
+      list as written); without it the button is disabled.
+    - The files are read when the form is sent into the new
+      `FormSubmission::files`: file name, a type from the extension, and the
+      bytes. They go out as multipart file parts, and as their names outside
+      multipart. With nothing chosen, one empty part is sent, as browsers do.
+    - Over 64 MB together (`FormController::kMaxUploadBytes`), or
+      unreadable, a file goes empty and is named in
+      `FormSubmission::warnings`.
+    - A choice survives a rebuild; reset clears it.
+    - `UltraCanvasWebView::onChooseFiles` passes the request to the host,
+      and UltraWeb answers with the file dialog, filtered by `accept`.
+  - **Labels:** a click on a `<label>`'s text acts on its control - the one
+    its `for="id"` names, else the first inside it (new
+    `FormController::ActivateControl`).
+    - A checkbox toggles, a radio is chosen through its group, a button is
+      pressed, a file input opens its chooser, any other control takes the
+      focus.
+    - The text is a new *quiet* link (`LabelTextLink::quiet`), with no
+      tooltip and no hover report.
+  - Tests in `HTMLFormsTest` (file parts, choosing, reset, rebuild, label
+    clicks) and `WebViewTest` (an upload end to end).
+
+#### 2026-10-12 *0.9.261*
+- **WebAssembly: the front-page demo is the real ultraos.eu page.** The
+  first version of `UltraCanvas/OS/WASM/demo/ultraos-frontpage.cpp` was
+  reconstructed from search snippets; it now follows the published page,
+  top to bottom: the header with the site's drop-down navigation as popup
+  menus anchored under their buttons, the hero, the desktop and mobile
+  cards, the eight reasons for ULTRA OS, the newsletter form with its
+  privacy checkbox, the status with the three audiences, the two pre-order
+  offers, the donation links, the social networks, the ULTRA OS variants
+  with the picture alternating sides, the eight purpose-based editions, the
+  FAQ as an accordion that opens and closes its answers, the contact form
+  with a text area, and the footer with its columns and a second newsletter
+  form. The page's own texts are tables at the top of the file. The site's
+  photos are placeholder tiles except three the repository now carries in
+  `media/images/ultraos/`: the ULTRA OS logo, the UltraCanvas logo and the
+  chip photo, as PNG because the wasm sysroot decodes neither JPEG nor WebP.
+  Checked as a desktop application under Xvfb at 1280 px wide; the browser
+  build preloads the three pictures beside the fonts.
+
 #### 2026-10-12 *0.9.260*
 - **HTML reader: `@import` in style sheets.** Imported sheets were skipped,
   so a site whose `site.css` imports its theme lost the theme.

@@ -447,8 +447,19 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
   queues what it does not have, and `onResourcesArrived` says when to build
   again.
 - **Kinds:** HTML and XHTML. Plain text becomes a `<pre>` page, a picture a
-  page of its own. Anything else (`PageKind::Other`, say `application/wasm`)
-  goes back to the caller undecided, and a failed fetch is `PageKind::Error`.
+  page of its own. Anything else (`PageKind::Other`, say `application/wasm`
+  or a zip) goes back to the caller undecided, and a failed fetch is
+  `PageKind::Error`.
+- **Downloads:** an Other answer keeps its bytes (`LoadedPage::body`) and
+  the name to save it as (`fileName`, from `DownloadFileName`:
+  Content-Disposition's `filename*` or `filename`, else the address's last
+  segment, cleaned of folders, control characters and leading dots). A
+  `Content-Disposition: attachment` answer is Other even when it is HTML
+  (`attachment`). A non-page over the fetch's size limit (the fetch sets
+  `FetchResult::tooLarge`) is Other with `truncated` set and no bytes, for
+  the host to fetch again streaming; a page that large is still an error.
+  `UltraCanvasWebView` hands it to `onNonHtml` and keeps the page on show,
+  its address and its history.
 - **Rules:** an http(s) page loads http(s) and `data:` resources, an https
   page no http ones, and only a `file:` page loads `file:` resources.
 - **Limits:** 16 MB per document, 32 style sheets, 512 resources a page.
@@ -508,8 +519,25 @@ flattened), and buttons `UltraCanvasButton`s. They are `inline-block`, as in
 browsers: on the line with their labels, sized by CSS `width` / `height`,
 else by `size`, `cols` / `rows` and the font. A control can be a flex or
 grid item (a search bar). `disabled`, a disabled `<fieldset>`, `readonly`,
-`maxlength`, `placeholder` and `form="id"` are honoured. File, colour and
-range inputs are drawn for display only and not sent.
+`maxlength`, `placeholder` and `form="id"` are honoured. Colour and range
+inputs are drawn for display only and not sent.
+
+**File inputs** are a "Choose file…" button and the names chosen. The
+button asks the host through `BuildOptions::onChooseFiles` (several files
+with `multiple`, the input's `accept` list as written), and stays disabled
+without it. The files are read when the form is sent: in
+`FormSubmission::files`, each with its file name, a type from its
+extension and its bytes, sent as multipart file parts; with nothing chosen,
+one empty part, as browsers send it. Outside multipart a file is its name.
+Files over `FormController::kMaxUploadBytes` (64 MB together), or that
+cannot be read, go empty and are named in the submission's `warnings`.
+
+**Labels.** A click on a `<label>`'s text acts on its control - the one
+its `for="id"` names, else the first control inside it: a checkbox toggles,
+a radio is chosen (its group follows), a button is pressed, a file input
+opens its chooser, any other control takes the focus
+(`FormController::ActivateControl`). The text is a *quiet* link
+(`LabelTextLink::quiet`): clickable, with no tooltip and no hover report.
 
 Each `<form>` gets an `HTML::FormController` (`HTMLReader/HTMLForms.h`) in
 `BuildResult::forms`; keep them, since they hold the radio groups. A submit
@@ -545,8 +573,8 @@ action with the fields as its query, POST through
 from the answer re-asks its address by GET. A rebuild of the page (a new
 width, pictures arriving) keeps what was typed and the focus. Mail keeps
 `interactiveForms` off: its controls are drawn for display only, the value
-as text on a line of its own. Not yet: file uploads; a click on a
-`<label>`'s text does not reach its control.
+as text on a line of its own. The view passes its own `onChooseFiles` on to
+file inputs; UltraWeb answers it with the file dialog.
 
 ## HTML into an editable document
 

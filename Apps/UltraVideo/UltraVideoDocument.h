@@ -5,8 +5,8 @@
 // `.ultravideo` file that holds all of it (Docs/Research/UltraVideoDesignProposal.md
 // §5.6, §9.2). The project inside the file is what VideoFX_ProjectToJson
 // writes, so `videofx render` works on it once extracted.
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -47,6 +47,7 @@ struct ViewState {
     int binWidth = 280;
     int inspectorWidth = 300;
     int dockPercent = 35;           // the timeline dock's share of the height
+    bool useProxies = true;         // the viewer and the playback draft play from proxies
 };
 
 // A title on the title lane (Docs/Research/UltraVideoDesignProposal.md §5.3):

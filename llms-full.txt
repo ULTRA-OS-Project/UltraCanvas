@@ -579,8 +579,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Image / Other / Error, final URL, base, charset, the parsed `Document`,
   warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
   (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
-  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`; `LoadPost` for a form's
-  POST. Fetch, POST, URL resolution and charset conversion are services the
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`, `DownloadFileName`;
+  `LoadPost` for a form's POST; a non-page answer keeps its bytes and file
+  name for the host to save. Fetch, POST, URL resolution and charset conversion are services the
   caller passes in, so it is framework-independent; linked style sheets and
   their `@import`s load before a page is ready;
   mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
@@ -598,7 +599,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   enctype, the entry list; `Encoded`, `Multipart`, `PlainText`, `Body`,
   `ContentType`) and `FormController`, one per `<form>` built with
   `BuildOptions::interactiveForms`: its widgets (held weakly), radio groups,
-  `Collect`, `Submit`, `Reset`, `Save` / `Restore`.
+  `Collect`, `Submit`, `Reset`, `Save` / `Restore`; file inputs (`SetFiles`,
+  `BuildOptions::onChooseFiles`, multipart file parts in
+  `FormSubmission::files`) and `ActivateControl` for a `<label>`'s click.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
   `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
@@ -1419,6 +1422,20 @@ folder - shared by all applications or per application) is
 file `FileDialog.conf` in the UltraCanvas settings folder; the ULTRA OS
 settings application (UOS-Settings, `Apps/UOSSettings`) edits the last used
 folder scope. Every write goes through `FileDialogSettings::Update()`.
+
+Save settings - how each format is written (JPEG quality, PNG compression,
+TIFF codec ...) - are described per format (`UltraCanvasFileSaveSettings.h`:
+`FileSaveFormat`, `FileSaveSettingSpec`, `FileSaveSettings`) and kept for every
+application in `SaveSettings.conf` in the same folder.
+`UltraCanvasFileLoader::HasSaveSettings` / `FindSaveFormat` /
+`GetSaveSettings` / `HasStoredSaveSettings` / `SetSaveSettings` /
+`ResetSaveSettings` / `RegisterSaveFormat` / `ShowSaveSettingsDialog` /
+`GetImageExportOptions` are the surface; the framework Save dialog's Settings
+button edits them, its file icon (`UltraCanvasFileDragIcon`) is dropped on a
+folder to save there, and `UCRasterDocument::SaveToFile` reads them. A
+picture's size for one save (`FileSaveImageSize`, offered when the caller
+passes `FileDialogOptions::SetImageSize`) comes back through the
+`SaveFileDialog` overload that reports it, never stored.
 
 ### **4. Plug-ins for File Types**
 
@@ -4479,7 +4496,8 @@ collects every application with the DLLs it needs into one standalone zip.
 release uses. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
 copy, because `windres` reads them from disk: run `./set-version.sh` after
-bumping the version, and the CMake configure warns when they are stale.
+bumping the version; the CMake configure warns when they are stale and
+`scripts/check_changelog.py` fails CI on it.
 
 </details>
 
@@ -13247,6 +13265,7 @@ void SetPadding(float all);                                      // inherited fr
 void SetPadding(float vertical, float horizontal);
 void SetPadding(float top, float right, float bottom, float left);
 void SetIconSpacing(int spacing);
+void SetIconSize(int width, int height);   // the size the icon is drawn at
 void SetCornerRadius(float radius);
 
 // The icon's size as set with SetIconSize - what a twin of the button
@@ -23225,7 +23244,12 @@ every platform:
   the file under the pointer): a picker chooses files rather than managing
   them. `hoverIconMenu` below brings it back;
 - the file-name field, and below it the file-type filter: a dropdown, or a row
-  of toggle buttons (see [Filter toggles](#filter-toggles)).
+  of toggle buttons (see [Filter toggles](#filter-toggles)). Typing a name
+  narrows the listing to the entries that have it in their name. In a Save
+  dialog a big **logo of the type being saved** sits left of the two rows,
+  "Drag to Folder" under it - drag it onto a folder to save there
+  ([The file icon](#the-file-icon)) - and a **Settings** button ends the type
+  row, for how that type is written ([Save settings](#save-settings)).
 
 ## Opening one
 
@@ -23265,7 +23289,8 @@ options say `SetRegisterAsRecent(false)` - by the framework dialog itself
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
 `SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu`,
-`SetDefaultExtension` and the parent window.
+`SetDefaultExtension`, `SetSaveSettingsButton`, `SetImageSize` and the parent
+window.
 
 ### Building it yourself
 
@@ -23300,6 +23325,8 @@ A config starts without filters: the dialog then lists every file under an
 | `hoverIconMenu` | The listing shows the Filer's hover icon menu (default `false`) |
 | `validateNames` | Save refuses a name the file system cannot hold, saying why, and stays open (default `true`) - see [Save names](#save-names) |
 | `addToRecent` | Open, Open multiple and Save add what they accept to the system's recent files (default `true`; `UltraCanvasFileLoader` sets it from `SetRegisterAsRecent`) |
+| `saveSettingsButton` | Save: the Settings button at the end of the type row, for the chosen type's [save settings](#save-settings) (default `true`; `FileDialogOptions::SetSaveSettingsButton`). Off for a caller whose writer does not read them |
+| `imageWidth`, `imageHeight` | Save: the size of the picture being saved (`FileDialogOptions::SetImageSize`). A bitmap type's Settings then offer [another size](#the-pictures-size) for this save; `GetSaveImageSize()` is the size chosen |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -23315,6 +23342,14 @@ between folders.
   listing. A typed folder name opens that folder instead of accepting it. A
   typed name that is not a file gets a **File Not Found** notice and the
   dialog stays open on it, as the platforms' open dialogs do.
+- **Typing a name filters the listing**: while the name field holds text the
+  user typed, the listing shows only the files and folders whose name has it
+  in (any case) - the file display's own filter-as-you-type
+  (`UltraCanvasFilerWidget::SetNameFilter`), which narrows what was already
+  read without reading the folder again. A path narrows by its last part. It
+  holds in every folder the dialog then goes to, a name the dialog puts in
+  itself (the file clicked, the type's extension) leaves it as typed, and
+  emptying the field lists everything again.
 - **Save** accepts any name in a folder that exists (a path typed into a
   folder that is not there gets a **Folder Not Found** notice), with the
   chosen file type's extension - see [Save names](#save-names). A name that is already a
@@ -23389,6 +23424,188 @@ offered:
   adds it and asks itself. Android's document picker is offered the
   suggested name with the default extension added.
 
+## The file icon
+
+A Save dialog shows, big (64 pixels) at the left of the name and type rows
+and with **Drag to Folder** written under it, the logo of the file it is
+about to write - the type the name has with the chosen type's extension
+(`GetSaveTypeName()`): a page with a folded corner and the extension on a
+band in the colour the listing gives that type
+(`UltraCanvasFileDragIcon::DrawDocumentGlyph`,
+`UltraCanvasFilerWidget::GetTypeColors`), or this desktop's own icon for the
+type while the listing shows those (Display > File icons = Host OS,
+`DrawTypeIcon`). It changes as the name is typed and as the type is
+switched: "photo" with JPEG chosen is a JPEG, and "notes.txt" under All files
+a text file.
+
+The icon is what RISC OS's save box has always had: **drag it onto a folder**
+and that folder is where the file goes. While it is dragged, a badge with the
+icon and the name follows the pointer, and the folder a release would choose
+is shown the way a file drag shows it - framed in the listing (a folder entry,
+or over empty space the folder the listing shows), highlighted in the folder
+tree (a place or a drive). Released there, the dialog opens that folder; the
+name stays as it was, so OK (or Return) then saves into it. A release over
+anything else, over a file, or onto a folder inside an archive the listing is
+browsing changes nothing, and Escape ends the drag without closing the
+dialog. The drag stays inside the dialog: there is no file yet to hand to
+another window.
+
+The icon is an element of its own, `UltraCanvasFileDragIcon`
+(`UltraCanvasFileDragIcon.h`), for any other save box that wants one. It
+carries a name, not a file: the elements under it are sent `DragEnter` /
+`DragOver` / `DragLeave` with `dragMimeType` set to
+`UltraCanvasFileDragIcon::kDragMimeType` and no `droppedFiles`, so nothing
+that accepts files copies anything, and the release goes to `onDropped`,
+which asks the target where the drop lands while it still shows it:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> row; std::shared_ptr<UltraCanvasFilerWidget> listing; std::shared_ptr<UltraCanvasTreeView> tree; void SaveInto(const std::string& folder); -->
+```cpp
+auto icon = CreateFileDragIcon("SaveIcon", "report.pdf", 0, 0, 32, 32);
+icon->SetIconPainter([listing = listing.get()](IRenderContext* ctx, const std::string& name,
+                                               bool isFolder, const Rect2Di& rect) {
+    listing->DrawTypeIcon(ctx, name, isFolder, rect);
+});
+// The tree highlights the rows a drop can land on.
+tree->onFilesDragAccept = [icon = icon.get()](TreeNode* node) {
+    return node != nullptr && icon->IsDragging();
+};
+icon->onDropped = [listing = listing.get(), tree = tree.get()](UltraCanvasUIElement* target,
+                                                               const Point2Di&) {
+    for (UltraCanvasUIElement* e = target; e; e = e->GetParentContainer()) {
+        if (e == listing) { SaveInto(listing->GetIncomingDropFolder()); return; }
+        if (e == tree) {
+            if (TreeNode* node = tree->GetDropTargetNode()) SaveInto(node->data.nodeId);
+            return;
+        }
+    }
+};
+row->AddChild(icon);
+```
+
+A press that is released without moving is a click (`onClick`).
+
+## Save settings
+
+How a file is written is often a choice: JPEG's quality, PNG's compression,
+whether a TIFF is LZW or Deflate. The **Settings** button at the end of a
+Save dialog's type row (after "Files of type") shows the settings of the type being saved - a checkbox, a slider
+or a list per setting - and stores them on OK. For a picture of known size a
+bitmap type's dialog also has the picture's size for this save
+([The picture's size](#the-pictures-size)). The button is greyed out while
+the type has nothing to set ("notes.txt", a name of no type, BMP without a
+picture size), and its tooltip names the type. The dialog's **Defaults** button puts every setting back to
+the format's default; Cancel keeps what was there.
+
+The settings belong to the format, not to the dialog: they are kept per
+format for **every application**, between runs, in `SaveSettings.conf` in the
+UltraCanvas settings folder ([What it remembers](#what-it-remembers)), one
+`<format>.<setting>=<value>` line for each setting the user has set. They are
+reached through `UltraCanvasFileLoader` (`UltraCanvasFileSaveSettings.h` holds
+the types):
+
+| Call | |
+|---|---|
+| `HasSaveSettings(extensionOrPath)` | The type has settings. `"jpg"`, `".JPEG"`, `"photo.jpe"` and a whole path all name JPEG |
+| `FindSaveFormat(extensionOrPath, format)` | The format: its name, extensions (the first is its key) and `FileSaveSettingSpec`s |
+| `GetSaveSettings(extensionOrPath)` | Every setting's value: the user's where they set it, the default elsewhere |
+| `HasStoredSaveSettings(extensionOrPath)` | The user has set any of them |
+| `SetSaveSettings(settings)` / `ResetSaveSettings(extensionOrPath)` | Store (merged over what was there; a value is clamped or replaced by the default when it is not one the setting can hold, and a key the format lacks is dropped) / forget |
+| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
+| `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
+| `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings; `GetImageExportOptions(path, size, options)` at a [chosen size](#the-pictures-size) too |
+| `SetImageExportOptions(options)` | The other way: `options.format`'s quality, compression, colour depth ... and transparency stored as that format's settings (not the size) |
+
+Built in are the bitmap formats the image writer takes options for, each with
+only the settings that writer honours: PNG (compression, colours, interlace,
+transparency), JPEG (quality, progressive, optimised coding, subsampling),
+WebP, AVIF, HEIF, JPEG XL and JPEG 2000 (quality, lossless, effort or speed,
+bit depth), GIF (colours, dither, interlace), TIFF and OpenEXR (compression),
+Netpbm (binary), TGA, PCX, SGI and Photoshop (RLE), DPX and Cineon (bit
+depth). BMP, ICO, QOI, HDR, FITS and Farbfeld are written without options.
+
+The bitmap export dialog (`UltraCanvasImageExportDialog`) is the other
+place these values are edited: it opens every format on its save settings,
+and on the format of the file name it is given, and its Save stores the
+format's options back (`SetImageExportOptions`) - so it and the Save dialog's
+Settings never disagree.
+
+A writer reads them back. `UCRasterDocument::SaveToFile` does so itself when
+the caller passes no options and the user has stored settings for the format
+(until then it keeps the writer's own defaults), so UltraPaint's Save honours
+the button with no change of its own. Any other writer asks:
+
+<!-- doc-check: void WriteMyFormat(const std::string& path, int level, bool fast); -->
+```cpp
+// Once, at start-up: the format and what its writer can be told.
+FileSaveFormat mine;
+mine.name = "My format";
+mine.extensions = {"myf"};
+mine.settings = {
+    FileSaveSettingSpec::Number("level", "Compression", 1, 9, 6, "9 writes the smallest file"),
+    FileSaveSettingSpec::Toggle("fast", "Fast mode", false),
+    FileSaveSettingSpec::Choice("profile", "Profile",
+                                {{"web", "For the web"}, {"print", "For print"}}, "web")};
+UltraCanvasFileLoader::RegisterSaveFormat(mine);
+
+// When writing: whatever the Save dialog's Settings button stored.
+auto write = [](const std::string& path) {
+    const FileSaveSettings settings = UltraCanvasFileLoader::GetSaveSettings(path);
+    WriteMyFormat(path, settings.GetInt("level", 6), settings.GetBool("fast"));
+};
+write("drawing.myf");
+```
+
+A setting key is letters, digits, `-` and `_`; a key with anything else could
+not be read back from the file and is left out with a debug message. A caller
+whose writer ignores the settings turns the button off
+(`FileDialogOptions::SetSaveSettingsButton(false)`), so the dialog does not
+offer a choice that changes nothing.
+
+### The picture's size
+
+A bitmap is often wanted at another size than the picture has - a smaller
+copy for the web, an icon. When the caller tells the Save dialog how big the
+picture is (`FileDialogOptions::SetImageSize(width, height)`, or
+`FileDialogConfig::imageWidth` / `imageHeight`), the Settings of a **bitmap
+type** start with a **Size** row: width × height in pixels, opened on the
+picture's own size, and **Keep proportions** under it (on: change one side
+and the other follows the picture's shape; off: both are free). The row is
+there for every pixel format, so BMP, ICO and QOI - which have no settings of
+their own - get a Settings dialog with the size alone. Defaults puts the
+picture's size back with the rest.
+
+The size is **not** a setting of the format: it belongs to this picture, so
+it is not stored and the next Save starts on the next picture's own size. It
+comes back with the save instead:
+
+<!-- doc-check: std::shared_ptr<UCRasterDocument> doc; -->
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Save image as")
+    .AddFilter("PNG", std::string("png"))
+    .AddFilter("JPEG", std::vector<std::string>{ "jpg", "jpeg" })
+    .SetImageSize(doc->GetWidth(), doc->GetHeight())
+    .SetParentWindow(window.get());
+UltraCanvasFileLoader::SaveFileDialog(opts, [doc](DialogResult r, const std::string& path,
+                                                  const FileSaveImageSize& size) {
+    if (r != DialogResult::OK) return;
+    UCImageSave::ImageExportOptions options;   // the format's settings, at that size
+    std::string error;
+    if (!size.IsOriginal() && UltraCanvasFileLoader::GetImageExportOptions(path, size, options))
+        doc->SaveToFile(path, error, &options);
+    else
+        doc->SaveToFile(path, error);           // the stored settings, if any
+});
+```
+
+`FileSaveImageSize` is the picture's own size while `IsOriginal()` - nothing
+chosen, a type that is not a bitmap format, or the platform's save dialog,
+which has no Settings. A dialog built directly reports it with
+`UltraCanvasFileDialog::GetSaveImageSize()`, and
+`ShowSaveSettingsDialog(extensionOrPath, pictureWidth, pictureHeight, size,
+parent, onClosed)` offers the same row anywhere else. UltraPaint's Save As
+passes its picture's size.
+
 ## Filter toggles
 
 For an Open dialog whose filters are *kinds* of file rather than one format
@@ -23430,7 +23647,8 @@ leaves out a kind the build cannot show.
 
 The view, the window size, the Details column widths and the last used folder
 are kept between showings in `FileDialog.conf` in the UltraCanvas settings
-folder (`UltraCanvasFileDialogSettings.h`). That folder is
+folder (`UltraCanvasFileDialogSettings.h`); the [save settings](#save-settings)
+are in `SaveSettings.conf` beside it. That folder is
 `%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas`
 on macOS, and `$XDG_CONFIG_HOME/UltraCanvas` (else `~/.config/UltraCanvas`)
 elsewhere. Every application shares the file. The last used folder is either
@@ -23451,6 +23669,9 @@ application: message boxes and `UltraCanvasFileLoader`'s file dialogs follow
 it together. An application that wants this dialog for files but the
 platform's message boxes builds the dialog itself as above. UltraViewer,
 UltraCleaner, UltraAIApp and UltraAuthenticator leave native dialogs off.
+The platforms' save dialogs have neither the file icon nor the Settings
+button; the save settings still apply to what is written, and an application
+can offer `UltraCanvasFileLoader::ShowSaveSettingsDialog` itself.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFileLock.md
@@ -23860,6 +24081,22 @@ icons away and asks again, for a host that notices the user changing desktop
 theme. Switching the style fires `onDisplayFormatsChanged`, the same hook the
 other Display switches use, so an application persists it from one place
 (UltraFiler: `Settings > Display > File icons`).
+
+A host element that shows a file **type** the way the listing does asks the
+widget to draw it: `DrawTypeIcon(ctx, path, isFolder, rect)` draws the icon
+this display gives the type of `path` - a name or a whole path, which need not
+exist - under the current style, and never a thumbnail, since there may be no
+file to take one from. The file dialog's Save icon
+([`UltraCanvasFileDragIcon`](UltraCanvasFileDialog.md#the-file-icon)) is drawn
+this way, so it matches the listing beside it. `GetTypeColors(path, isFolder,
+fill, ink)` gives the colours the display uses for that type - the band of its
+glyph and the ink for text on it - for a host that draws the type its own way
+in the listing's colours (the Save dialog's big type logo).
+
+<!-- doc-check: UltraCanvasFilerWidget* filer; IRenderContext* ctx; -->
+```cpp
+filer->DrawTypeIcon(ctx, "holiday.jpg", false, Rect2Di(4, 4, 24, 24));
+```
 
 ## Name tooltips
 
@@ -31731,8 +31968,19 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
   queues what it does not have, and `onResourcesArrived` says when to build
   again.
 - **Kinds:** HTML and XHTML. Plain text becomes a `<pre>` page, a picture a
-  page of its own. Anything else (`PageKind::Other`, say `application/wasm`)
-  goes back to the caller undecided, and a failed fetch is `PageKind::Error`.
+  page of its own. Anything else (`PageKind::Other`, say `application/wasm`
+  or a zip) goes back to the caller undecided, and a failed fetch is
+  `PageKind::Error`.
+- **Downloads:** an Other answer keeps its bytes (`LoadedPage::body`) and
+  the name to save it as (`fileName`, from `DownloadFileName`:
+  Content-Disposition's `filename*` or `filename`, else the address's last
+  segment, cleaned of folders, control characters and leading dots). A
+  `Content-Disposition: attachment` answer is Other even when it is HTML
+  (`attachment`). A non-page over the fetch's size limit (the fetch sets
+  `FetchResult::tooLarge`) is Other with `truncated` set and no bytes, for
+  the host to fetch again streaming; a page that large is still an error.
+  `UltraCanvasWebView` hands it to `onNonHtml` and keeps the page on show,
+  its address and its history.
 - **Rules:** an http(s) page loads http(s) and `data:` resources, an https
   page no http ones, and only a `file:` page loads `file:` resources.
 - **Limits:** 16 MB per document, 32 style sheets, 512 resources a page.
@@ -31792,8 +32040,25 @@ flattened), and buttons `UltraCanvasButton`s. They are `inline-block`, as in
 browsers: on the line with their labels, sized by CSS `width` / `height`,
 else by `size`, `cols` / `rows` and the font. A control can be a flex or
 grid item (a search bar). `disabled`, a disabled `<fieldset>`, `readonly`,
-`maxlength`, `placeholder` and `form="id"` are honoured. File, colour and
-range inputs are drawn for display only and not sent.
+`maxlength`, `placeholder` and `form="id"` are honoured. Colour and range
+inputs are drawn for display only and not sent.
+
+**File inputs** are a "Choose file…" button and the names chosen. The
+button asks the host through `BuildOptions::onChooseFiles` (several files
+with `multiple`, the input's `accept` list as written), and stays disabled
+without it. The files are read when the form is sent: in
+`FormSubmission::files`, each with its file name, a type from its
+extension and its bytes, sent as multipart file parts; with nothing chosen,
+one empty part, as browsers send it. Outside multipart a file is its name.
+Files over `FormController::kMaxUploadBytes` (64 MB together), or that
+cannot be read, go empty and are named in the submission's `warnings`.
+
+**Labels.** A click on a `<label>`'s text acts on its control - the one
+its `for="id"` names, else the first control inside it: a checkbox toggles,
+a radio is chosen (its group follows), a button is pressed, a file input
+opens its chooser, any other control takes the focus
+(`FormController::ActivateControl`). The text is a *quiet* link
+(`LabelTextLink::quiet`): clickable, with no tooltip and no hover report.
 
 Each `<form>` gets an `HTML::FormController` (`HTMLReader/HTMLForms.h`) in
 `BuildResult::forms`; keep them, since they hold the radio groups. A submit
@@ -31829,8 +32094,8 @@ action with the fields as its query, POST through
 from the answer re-asks its address by GET. A rebuild of the page (a new
 width, pictures arriving) keeps what was typed and the focus. Mail keeps
 `interactiveForms` off: its controls are drawn for display only, the value
-as text on a line of its own. Not yet: file uploads; a click on a
-`<label>`'s text does not reach its control.
+as text on a line of its own. The view passes its own `onChooseFiles` on to
+file inputs; UltraWeb answers it with the file dialog.
 
 ## HTML into an editable document
 
@@ -32568,6 +32833,7 @@ if (UltraCanvas::HostFileIconsAvailable()) {
 | `HostFileIconKey(path, isDirectory)` | what the answer depends on — the cache key, pure string work |
 | `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` | the icon as a `UCPixmap`, or null |
 | `RefreshHostFileIcons()` | forget the lookups — after a theme change |
+| `FitHostIconToSize(pixmap, desiredSize)` | the answer resampled down to the size it is drawn at; never scaled up |
 
 ## The key is the whole design
 
@@ -32584,13 +32850,32 @@ The keys:
 | What | Key | Why |
 |---|---|---|
 | a directory | `dir` | every folder is one icon |
-| a file that carries its own icon | `file:<path>` | not a type at all — two programs must never share an icon |
 | a name with no extension | `name:<lowercased name>` | the freedesktop database matches `makefile` and `README` by name |
 | everything else | `ext:<suffix chain>` | `archive.tar.gz` keys as `tar.gz`, not `gz` — a tarball and a gzip file are different types and are drawn differently |
 
 The suffix chain runs from the **first** dot, which is the finest distinction
 the type databases make. A leading dot is part of the name (`.bashrc` is a
 name, not a `bashrc` file).
+
+A program, a shortcut or a bundle keys by its extension like everything else.
+The icon such a file carries of its own is `UltraCanvasNativeFileIcons`'s
+answer, read out of the file; what *this* module answers for it is the host's
+icon for `.exe` or `.lnk`, resolved from the name alone on every backend, and
+so the same for every file of the kind. (Until October 2026 those were keyed
+per file, which made a folder of ninety DLLs hold ninety copies of one
+picture.)
+
+## Held at the size it is drawn
+
+An icon source answers in its own sizes: the Windows shell's jumbo list is
+256 pixels a side whatever was asked, and an `.ico`'s nearest frame can be
+the larger one. A 256-pixel icon drawn in a 128-pixel tile holds four times
+the memory it shows, which is what let a window full of distinct types run
+over the filer's icon budget. So every backend hands back what
+`FitHostIconToSize` makes of its answer: resampled so the longer edge is the
+size asked for when it is larger, untouched when it is not (a type whose icon
+only exists at 48 stays 48, and the caller scales it up). macOS draws the
+`NSImage` straight into a bitmap of that size and needs no resample.
 
 ## The three backends
 
@@ -34967,6 +35252,7 @@ struct LabelTextLink {
     int startByte = 0;
     int endByte = 0;      // exclusive
     std::string href;
+    bool quiet = false;   // clickable, but no tooltip and no hover report
 };
 void SetTextLinks(std::vector<LabelTextLink> links);
 const std::vector<LabelTextLink>& GetTextLinks() const;
@@ -34975,7 +35261,10 @@ int LinkIndexAtPoint(const Point2Di& localPoint);
 ```
 
 Byte offsets refer to the text as laid out: markup parsed, entities decoded.
-A click on a link fires `onLinkActivated` with its `href`.
+A click on a link fires `onLinkActivated` with its `href`. A `quiet` link
+is clickable without showing it: no tooltip, and `onLinkHovered` hears an
+empty href over it (the HTML reader's `<label>` text, which acts on its
+form control).
 
 ### Inline Images
 
@@ -44275,7 +44564,8 @@ doc->ApplyFilter("Colour to Alpha", [](const PixelFX::PFXImage& img) {
 
 doc->Undo();
 std::string err;
-doc->SaveToFile("out.png", err);               // flattened, format by extension
+doc->SaveToFile("out.png", err);               // flattened, format by extension, with the
+                                               // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
 ```
 
@@ -62023,7 +62313,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.8.0
+**Version:** 1.8.1
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -62265,6 +62555,26 @@ enum class ToolbarIconSize {
     Huge,       // 64x64
     Custom      // user-defined
 };
+```
+
+Every button the toolbar adds draws its icon at this size, and
+`SetAppearance()` applies it again to the buttons already there:
+`ToolbarAppearance::IconPixelSize()` gives the pixels (Custom is
+`customIconWidth` x `customIconHeight`; a button's `GetIconWidth()` /
+`GetIconHeight()` read it back). Pick the size the icon set is drawn
+for. A line icon is drawn on the pixel grid of one size, and at any other
+size its lines fall between two pixels and blur: the shared 24 px sets
+(`media/icons/menu/`, `media/icons/artcreator/`) want `Medium`, a 16 px set
+`Small`. A button that needs another size sets it with `SetIconSize()` after
+it is added, and again after a later `SetAppearance()`.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasToolbar>("tools", 0, 0, 0, 38);
+ToolbarAppearance look = bar->GetAppearance();
+look.iconSize = ToolbarIconSize::Small;   // a set drawn on a 16 px grid
+bar->SetAppearance(look);
+auto play = bar->AddButton("play", "", "media/icons/ultravideo/play.svg", [] {});
+int drawn = play->GetIconWidth();         // 16
 ```
 
 ## ToolbarAppearance Structure
@@ -63858,6 +64168,10 @@ std::function<void(TreeNode*, TreeCheckState)> onNodeCheckChanged;
 std::function<bool(TreeNode* target)> onFilesDragAccept;
 std::function<bool(TreeNode* target,
                    const std::vector<std::string>& files)> onFilesDroppedOnNode;
+// The row a drag over the tree would drop on right now (the highlighted one
+// onFilesDragAccept accepted), or null - for a drag that carries no files and
+// ends without a Drop, such as the file dialog's Save icon.
+TreeNode* GetDropTargetNode() const;
 // Right mouse button released over a node; the event carries the pointer
 // position (event.pointerWindow) for placing a context menu. A right press
 // never changes the selection.
@@ -64303,8 +64617,10 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
 | Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
+| The icon of a file about to be saved, dragged onto a folder of the window to choose where it goes (the RISC OS save box's icon; the Save dialog has a big one left of its name and type, "Drag to Folder" under it) | `UltraCanvasFileDragIcon` (`CreateFileDragIcon`; [doc](UltraCanvasFileDialog.md#the-file-icon)) | `UltraCanvasFileDragIcon.h` |
+| One file format's save settings (JPEG quality, PNG compression, TIFF codec ...), kept for every application - and, for a picture, the size to write it at this once | `UltraCanvasFileLoader::ShowSaveSettingsDialog` ([doc](UltraCanvasFileDialog.md#save-settings)) | `UltraCanvasFileLoader.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
-| Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
+| Save a bitmap with per-format options - opened on the format's save settings (and the format the file name has), which Save stores back | `UltraCanvasImageExportDialog` ([save settings](UltraCanvasFileDialog.md#save-settings)) | `dialogs/UltraCanvasImageExportDialog.h` |
 | Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog`, `ShowMetadataDialog()` — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
 | Turn a 3D model into a bitmap, letting the user frame the view first | `UltraCanvasModelViewDialog`, `ShowModelViewDialog()` ([doc](UltraCanvasModelViewDialog.md)) | `dialogs/UltraCanvasModelViewDialog.h` |
 | A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
@@ -67331,12 +67647,14 @@ preloads its logo at `/share/media/images/...` the same way.
 Two sample applications live in `UltraCanvas/OS/WASM/demo/`: `wasm-demo.cpp`,
 a window with labels and a button, and `ultraos-frontpage.cpp`, the
 https://ultraos.eu front page as a scrolling page of UltraCanvas elements
-(navigation, hero, card rows, a status list, a newsletter form, a footer).
-The second is the pattern for a web-page-like application: one scrollable
-container filling the window, sections stacked by Block layout so wrapped
-text gets its real height, Flex rows for the horizontal pieces, and
-`Maximize()` under `__EMSCRIPTEN__` to fill the viewport. Both also build as
-desktop applications (`-DBUILD_WASM_DEMOS=ON` at the repository root).
+(a navigation with popup menus, hero, card rows, offers, an FAQ accordion,
+forms with text inputs, a text area and a checkbox, a footer). The second
+is the pattern for a web-page-like application: one scrollable container
+filling the window, sections stacked by Block layout so wrapped text gets
+its real height, Flex rows for the horizontal pieces, popup menus anchored
+under their buttons, and `Maximize()` under `__EMSCRIPTEN__` to fill the
+viewport. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
+at the repository root).
 
 ## Known limitations
 
@@ -70264,15 +70582,23 @@ listing of the current folder (an `UltraCanvasFilerWidget`, the UltraFiler
 display), and the file-name field and file-type dropdown
 below them.
 
+<!-- doc-check: FileDialogOptions opts; void ShowPicture(std::shared_ptr<UCImage> image); void Play(std::shared_ptr<UCAudio> audio); void ShowDocument(std::shared_ptr<UCRichDocument> document); void ShowError(const std::string& message); -->
 ```cpp
 // Decode an image into a UCImage
-UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) { ... });
+UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) {
+    if (r.IsSuccess()) ShowPicture(img);
+    else if (!r.loadError.empty()) ShowError(r.loadError);   // empty: cancelled
+});
 
 // Decode audio into a UCAudio PCM buffer (WAV/MP3/FLAC always; OGG/Opus with codec libs)
-UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) { ... });
+UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) {
+    if (r.IsSuccess()) Play(audio);
+});
 
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/Markdown/TXT)
-UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) { ... });
+UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
+    if (r.IsSuccess()) ShowDocument(doc);
+});
 ```
 
 ### Editable Vector Documents
@@ -70284,6 +70610,8 @@ writers are the Vector plugin's converters (SVG, XAR, EMF, WMF, DXF, DWG, AI,
 EPS, CDR, PDF), installed by `RegisterVectorFormatsPlugin()`:
 
 ```cpp
+#include "UltraCanvasVectorFormatsPlugin.h"          // the Vector plugin
+
 RegisterVectorFormatsPlugin();                       // once, at start-up
 
 std::string error;
@@ -70299,6 +70627,33 @@ opts.AddFilter("Drawings", UltraCanvasFileLoader::GetVectorLoadExtensions());
 `UCImage` also opens `.svg` (through librsvg), but as pixels — right for a
 viewer, useless to an editor. Use `LoadVectorDocument` whenever the drawing
 is to be changed or written back.
+
+### Save Settings
+How a format is written - JPEG's quality, PNG's compression, TIFF's codec - is
+described per format (`UltraCanvasFileSaveSettings.h`), so one dialog can offer
+the settings of any of them, and the values the user chose are kept for every
+application, between runs. The framework's Save dialog has a **Settings**
+button on its type row that edits the chosen type's settings, and the
+writers read them back - `UCRasterDocument::SaveToFile` does so on its own:
+
+```cpp
+if (UltraCanvasFileLoader::HasSaveSettings("photo.jpg"))
+    UltraCanvasFileLoader::ShowSaveSettingsDialog("photo.jpg", window.get());
+
+FileSaveSettings jpeg = UltraCanvasFileLoader::GetSaveSettings("jpg");
+int quality = jpeg.GetInt("quality", 85);
+
+UCImageSave::ImageExportOptions options;                 // the image writer's, ready made
+UltraCanvasFileLoader::GetImageExportOptions("out.webp", options);
+```
+
+The bitmap formats the image writer takes options for are built in; a plugin
+or an application adds its own with `RegisterSaveFormat`. A caller that passes
+the picture's size (`FileDialogOptions::SetImageSize`) also gets a Size row in
+a bitmap type's settings, for that save only: the size comes back through the
+`SaveFileDialog` overload whose callback takes a `FileSaveImageSize`, and
+`GetImageExportOptions(path, size, options)` writes at it. See *Save settings*
+in [the file dialog's documentation](../../UltraCanvas/UltraCanvasFileDialog.md#save-settings).
 
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
@@ -70348,12 +70703,15 @@ Add support for proprietary or specialized graphics formats without modifying
 core code. Register an `IGraphicsPlugin` with the graphics plugin registry and
 its extensions immediately show up in the format inventory:
 
+<!-- doc-check: std::shared_ptr<IGraphicsPlugin> myFormatPlugin; -->
 ```cpp
+#include "Models/STL/UltraCanvasSTLPlugin.h"
+
 // Register a graphics plugin (e.g. the built-in STL model plugin)
 RegisterSTLPlugin();
 
-// ...or your own
-UltraCanvasGraphicsPluginRegistry::RegisterPlugin(std::make_shared<MyFormatPlugin>());
+// ...or your own: an IGraphicsPlugin implementation
+UltraCanvasGraphicsPluginRegistry::RegisterPlugin(myFormatPlugin);
 ```
 
 ---
@@ -70412,6 +70770,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 FileLoader is part of the core library — no separate initialization is needed
 beyond creating the application. Load a file and check the result:
 
+<!-- doc-check: void ProcessBytes(const std::vector<uint8_t>& bytes); -->
 ```cpp
 auto result = UltraCanvasFileLoader::LoadFile("any_file.ext");
 if (result.success) {
@@ -83622,6 +83981,23 @@ sound, and the playhead follows it. An edit throws the draft away and the
 next Play renders a new one. Where no sound device or player is available
 playback stays frame by frame and the status line says so.
 
+**Proxies.** Large clips, such as 4K phone videos, are slow to scrub. So
+every video in the bin gets a *proxy* in the background: the same clip at
+540 lines, quick to seek in (VideoFX's proxy media). The bin tile shows its
+progress, *proxy waiting*, *proxy 40 %*, and *proxy* when it is ready. From
+then on the viewer and the playback draft play that clip from its proxy.
+The **export always reads the originals**, at full quality.
+- Proxies are made one at a time on a thread of their own, so scrubbing
+  never waits behind one.
+- A clip no taller than a proxy, which is already quick, gets none.
+- Proxies are kept in the user's cache folder (`~/.cache/VideoFX/Proxies`
+  and the like), so a project opened again plays from them at once.
+- A clip removed from the bin before its proxy is made is dropped from the
+  queue.
+- *Preview from proxies*, in the inspector's Project tab, turns them off
+  and on for the project. It is saved with the project, and is not an
+  undo step.
+
 ### The timeline
 
 The `UltraCanvasVideoTimeline` element with four lanes: **T1 Titles**, a
@@ -83708,11 +84084,13 @@ are offered first; a song in the bin becomes the music.
   under the clips' own sound by preset (speech, outdoor, loud event) and
   level.
 - **Project**: the name, the output size (from the first clip, Full HD, HD,
-  4K, portrait, square), the frame rate, and how clips of another shape are
-  fitted.
+  4K, portrait, square), the frame rate, how clips of another shape are
+  fitted, and *Preview from proxies* (on by default; see *Proxies* above).
 
 Every field is an edit like any other: it goes through undo and shows on
-the timeline and in the viewer at once.
+the timeline and in the viewer at once. *Preview from proxies* is the one
+exception: it changes how the project is previewed, not the project, so it
+is no undo step.
 
 ## Undo, projects and export
 

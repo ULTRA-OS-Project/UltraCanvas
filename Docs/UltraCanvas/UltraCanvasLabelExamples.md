@@ -137,6 +137,7 @@ struct LabelTextLink {
     int startByte = 0;
     int endByte = 0;      // exclusive
     std::string href;
+    bool quiet = false;   // clickable, but no tooltip and no hover report
 };
 void SetTextLinks(std::vector<LabelTextLink> links);
 const std::vector<LabelTextLink>& GetTextLinks() const;
@@ -145,7 +146,10 @@ int LinkIndexAtPoint(const Point2Di& localPoint);
 ```
 
 Byte offsets refer to the text as laid out: markup parsed, entities decoded.
-A click on a link fires `onLinkActivated` with its `href`.
+A click on a link fires `onLinkActivated` with its `href`. A `quiet` link
+is clickable without showing it: no tooltip, and `onLinkHovered` hears an
+empty href over it (the HTML reader's `<label>` text, which acts on its
+form control).
 
 ### Inline Images
 

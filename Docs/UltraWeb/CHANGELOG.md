@@ -1,3 +1,42 @@
+#### 2026-10-12 *0.6.0*
+- **The downloads list.** A **Downloads** button on the toolbar shows or
+  hides a panel above the status bar. It reads "Downloads (2)" while two
+  run, and the panel opens by itself when a large download starts.
+  - Each download of this run has a row: its name, then its progress
+    ("5.3 MB of 20.0 MB (26%)", rewritten as it goes) or how it ended
+    ("Saved", "Failed: why", "Cancelled").
+  - A running download can be cancelled. A saved one can be opened, or its
+    folder shown, with the system's default application. A finished one
+    can be removed from the list (the file stays), and **Clear finished**
+    removes them all.
+  - New `host/UltraWebDownloadList` (the list, no UI) and
+    `ui/UltraWebDownloadsPanel`. `UltraWebDownloadsTest` covers both,
+    clicking the panel's buttons.
+
+#### 2026-10-12 *0.5.0*
+- **Downloads.** A link to anything that is no page - a PDF, a zip, an
+  answer the server marks `Content-Disposition: attachment` - opens the
+  save dialog in the Downloads folder, named as the server or the address
+  says. Before, the status bar only said it was not a page.
+  - Up to 16 MB, the file is saved from what was fetched. A larger one is
+    fetched again and streamed to disk, with its progress in the status
+    bar.
+  - It is written as `<name>.part` and renamed when complete. A failed or
+    cancelled download leaves no file, and closing the window cancels
+    the ones still running.
+  - The page stays on show, with its address and history.
+  - New `host/UltraWebDownloads` and its `UltraWebDownloadsTest`, which
+    downloads from a loopback server.
+
+#### 2026-10-12 *0.4.1*
+- **File uploads.** A form's file input is a "Choose file…" button that
+  opens the file dialog (filtered by the input's `accept` list), and the
+  chosen files are sent as multipart file parts with their names, types
+  and bytes.
+- **Labels.** A click on a `<label>`'s text acts on its control: a checkbox
+  toggles, a radio is chosen, a file input opens the dialog, a field takes
+  the focus.
+
 #### 2026-10-12 *0.4.0*
 - **Forms.** A page's form can be filled in and sent. Its controls are the
   framework's widgets: text and password fields, text areas, checkboxes,

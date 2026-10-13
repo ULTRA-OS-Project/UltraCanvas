@@ -8,8 +8,8 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -18,6 +18,7 @@
 #include "UltraVideoHistory.h"
 #include "UltraVideoInspector.h"
 #include "UltraVideoPreview.h"
+#include "UltraVideoProxies.h"
 #include "UltraVideoStory.h"
 #include "UltraVideoTheme.h"
 #include "UltraVideoViewer.h"
@@ -76,6 +77,11 @@ private:
     void RefreshAll();                 // after any change of the document
     void RefreshAppBar();
     void RefreshBin();
+    // The segments the viewer and the draft play: the engine's segments,
+    // through the proxies when the project says so (the export never is)
+    std::vector<VideoFX::VideoFXSegment> SegmentsToPlay() const;
+    void ProxyDone(const std::string& clip, ProxyMaker::State state);
+    void SetUseProxies(bool on);
     void RefreshTimeline();
     void RefreshInspector();
     void RefreshPreview();             // plan the timeline again in the engine
@@ -142,6 +148,8 @@ private:
     Document document_;
     History history_;
     Preview preview_;
+    ProxyMaker proxies_;               // the bin's videos as small stand-ins for the viewer
+    int proxiesMade_ = 0;              // since the queue last ran dry: for one message, not one per clip
     bool dark_ = true;
     const Palette* palette_ = &Tokens::Dark;
 
