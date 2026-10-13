@@ -749,10 +749,15 @@ Safari; whether an Emscripten side module loads. (The History API,
 Decide the HTML shadow with the user (§11, question 1). Deliverable: the numbers in this document's §4.3,
 and a go / no-go on B.
 
-**Phase 1 — websites, static tier.** The content model, the block
-registry and the first fifteen blocks, the block renderer with the desktop
-factory, the editor with live preview, the theme model and two themes, the
-HTML emitter (shadow, sitemap, feed), the WXR importer, the publisher onto
+**Phase 1 — websites, static tier. Started 2026-10-13, with the HTML
+shadow decided.** Done in UltraPress 0.1.0 (`Docs/UltraPress/README.md`):
+the content model and the site folder, the block registry with seventeen
+blocks and the validator, the theme model, the HTML emitter (shadow,
+sitemap, robots, feed, with the renderer and UltraWeb hooks), the static
+publisher to a folder, the starter site, the `ultrapress` command line and
+the engine tests; `Apps/UltraPress/examples/ultraos` is the front page as a
+site. Still to do: the block renderer with the desktop factory, the editor
+with live preview, two themes, the WXR importer, the publisher onto
 UltraCloud providers, and the renderer release build. Done when ultraos.eu
 is imported, edited, published to a test host and renders in Chromium,
 Firefox and Safari as the demo does, with the shadow indexed by a crawler.

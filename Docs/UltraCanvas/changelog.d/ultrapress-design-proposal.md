@@ -43,6 +43,13 @@
   fonts instead of all fourteen. The window logs its first presented frame
   to the browser console with its time since navigation start, so a tester
   reads the port's time to first paint on any browser.
+- **New application: UltraPress 0.1.0**, the website and shop builder that
+  publishes WebAssembly - its headless engine and `ultrapress` command line,
+  Phase 1 of the proposal (`Apps/UltraPress`, `Docs/UltraPress/`, its own
+  changelog). Framework side: the product declaration in
+  `cmake/UltraCanvasVersion.cmake`, `BUILD_ULTRAPRESS` and
+  `ULTRACANVAS_BUILD_ULTRAPRESS_TESTS` in the root CMake, and
+  `Docs/UltraPress` in the docs index.
 - `Masterfile_modules.md` §6 said UltraDatabase was "Concept / design only";
   it has had the SQLite core, migrations and the PostgreSQL driver since
   UltraFIBU's multi-user mode was built on them. The registry line now says

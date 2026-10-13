@@ -495,6 +495,17 @@ if(BUILD_ULTRAFIBU AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraFIBU)
 endif()
 
+# ===== ULTRAPRESS =====
+# The website and shop builder that publishes WebAssembly
+# (Docs/Research/UltraPressDesignProposal.md). Phase 1 begins with the
+# headless engine and the `ultrapress` command line; the editor and the
+# renderer follow. The engine links the core for UltraCanvasJSON and the
+# HTMLReader, so it is built wherever the core is.
+option(BUILD_ULTRAPRESS "Build the UltraPress engine and command line" ON)
+if(BUILD_ULTRAPRESS AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_subdirectory(Apps/UltraPress)
+endif()
+
 # ===== ULTRACLEANER =====
 # Removes the files macOS, Windows and Linux leave behind: temporary files,
 # application and browser caches, logs, crash reports, thumbnail databases,
@@ -1184,6 +1195,17 @@ if(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS AND TARGET UltraDatabase)
     add_subdirectory(Tests/UltraFIBU)
     message(STATUS "")
     message(STATUS "── UltraFIBU engine test suite enabled (target: UltraFIBUEngineTests) ──")
+endif()
+
+# ===== ULTRAPRESS ENGINE TESTS =====
+# The content model, the validator, the HTML shadow, the sitemap and feed,
+# the static publish of the example site. Headless; needs the core library.
+option(ULTRACANVAS_BUILD_ULTRAPRESS_TESTS "Build the UltraPress engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAPRESS_TESTS AND TARGET UltraPressEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraPress)
+    message(STATUS "")
+    message(STATUS "── UltraPress engine test suite enabled (target: UltraPressEngineTests) ──")
 endif()
 
 # ===== ULTRACLEANER ENGINE TESTS =====
