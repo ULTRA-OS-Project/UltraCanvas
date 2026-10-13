@@ -142,7 +142,7 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     };
     bar->AddChild(designPicker_);
 
-    auto add = CreateButton("CategoryBoard.AddCategory", 0, 0, 120, 24, "+ Add category");
+    auto add = CreateButton("CategoryBoard.AddCategory", 0, 0, 140, 24, "+ Add category");
     add->SetTooltip("Add a category");
     add->layoutItem.SetFlexShrink(0.0f);
     add->onClick = [this]() { AddCategory(); };
