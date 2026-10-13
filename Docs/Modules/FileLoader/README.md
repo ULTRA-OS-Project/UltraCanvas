@@ -129,6 +129,37 @@ size it is drawn at, offers the same row, and the caller draws it again at the
 size chosen. See *Save settings*
 in [the file dialog's documentation](../../UltraCanvas/UltraCanvasFileDialog.md#save-settings).
 
+### A Drawing Saved as a Bitmap
+Every file a user loads or saves in an UltraCanvas application goes through
+FileLoader - only a program's own internal files (settings, caches, logs) are
+read and written directly. That is what puts every format this build reads
+and writes in front of the user, and the conversions between them. A
+drawing's Export is two calls: the Save dialog's types for it - every vector
+writer and every bitmap type this build writes, with the page's size as a
+drawing so a bitmap type's Settings offer any size - and the save, which
+draws the page at the size chosen (a drawing has no pixel size of its own,
+so it is sharp at any) and writes it with the format's save settings:
+
+<!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> drawing; void ShowError(const std::string&); -->
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Export drawing");
+UltraCanvasFileLoader::AddVectorDocumentSaveTypes(opts, *drawing);
+UltraCanvasFileLoader::SaveFileDialog(opts, [drawing](DialogResult r, const std::string& path,
+                                                      const FileSaveImageSize& size) {
+    if (r != DialogResult::OK) return;
+    std::string error;
+    if (!UltraCanvasFileLoader::SaveVectorDocument(*drawing, path, size, error))
+        ShowError(error);
+});
+```
+
+`GetVectorDocumentPixelSize(document)` is the size a page starts at (96 DPI;
+the model is in points), and `CanSaveImage(extensionOrPath)` says whether
+this build writes a bitmap type. Windows icons and QOI are read and written
+by the framework's own libvips plugins, and an AVIF or HEIC type is offered
+only where libheif can encode it.
+
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
 with. Compressed content (gzip, zlib, Zstandard, LZ4) is detected by

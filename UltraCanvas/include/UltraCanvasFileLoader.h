@@ -4,6 +4,8 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
+//                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes
 // Version: 1.3.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
@@ -231,6 +233,34 @@ namespace UltraCanvas {
         // True when LoadVectorDocument reads this extension (or path; a path
         // also lets a content-decided format such as a DWG .bak claim it).
         static bool CanLoadVectorDocument(const std::string& extensionOrPath);
+
+        // ----- a drawing saved as a bitmap -----
+        // SaveVectorDocument writes a bitmap type too (CanSaveImage: PNG,
+        // JPEG, WebP, AVIF, HEIC, TIFF, GIF, QOI, ICO ... - whatever this
+        // build writes): the page is drawn at the size asked for - a drawing
+        // has no pixel size of its own, so it is sharp at any - and written
+        // with the format's save settings; a format without transparency
+        // (JPEG) gets it on white. The overload without a size draws it at
+        // GetVectorDocumentPixelSize. An application's Save / Export of a
+        // drawing is this call and AddVectorDocumentSaveTypes, so every
+        // format this build reads and writes is on offer, never a list of the
+        // application's own.
+        static bool SaveVectorDocument(const VectorStorage::VectorDocument& document,
+                                       const std::string& filePath, const FileSaveImageSize& size,
+                                       std::string& outError, std::vector<std::string>* notes = nullptr);
+        // The pixel size a drawing's page starts at as a bitmap: the page
+        // (its view box, else its Size) at 96 DPI - the model is in points.
+        static Size2Di GetVectorDocumentPixelSize(const VectorStorage::VectorDocument& document);
+        // A bitmap format this build writes (GetSupportedFormats: canSave).
+        static bool CanSaveImage(const std::string& extensionOrPath);
+        // The Save dialog's file types for a drawing: every vector writer this
+        // build has, then - `withBitmaps` - every bitmap type it writes, each
+        // with its name, and the drawing's size (SetDrawingSize), so a bitmap
+        // type's Settings offer any size. Hand SaveFileDialog's path and size
+        // to the SaveVectorDocument above.
+        static void AddVectorDocumentSaveTypes(FileDialogOptions& opts,
+                                               const VectorStorage::VectorDocument& document,
+                                               bool withBitmaps = true);
 
         // ===== SUPPORTED FORMAT INVENTORY =====
         // Runtime snapshot of every file format this build can load and/or

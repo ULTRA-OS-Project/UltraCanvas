@@ -48,3 +48,46 @@
   it. ArtCreator's Export writes PNG and JPEG with it. `VectorRasterTest`
   checks a page twenty times its size with a hard edge, the sizes, the
   backgrounds and the refusals.
+- **Windows icons read and written by the framework's own libvips plugin;
+  QOI written by ours too.** An `.ico` was read and written through
+  ImageMagick, which many builds lack - there the export encoder could write
+  no icon at all - and QOI was written through it as well, though the
+  framework's QOI plugin read it. `VipsIcoPlugin` (new, beside
+  `VipsQoiLoader`) registers `icoload` / `icoload_buffer` - the file's largest
+  picture, a PNG entry or a bitmap one (32-bit with alpha; 24, 8, 4 or 1-bit
+  with the AND mask), cursors too - and `icosave`: one PNG picture per size
+  (16, 32, 48 and 256 unless told, `ImageExportOptions::ico.sizes`), the
+  picture fitted into the square on transparency and never blown up past its
+  own size. `VipsQoiLoader` gains `qoisave` through the bundled codec. Both
+  register when the image subsystem starts, so `new_from_file` /
+  `write_to_file` - PixelFX, `UCRasterDocument::SaveToFile`, the export
+  encoder - take them like any other format. `ImageIcoQoiTest` (new) round
+  trips QOI, checks an icon's sizes and PNG pictures, reads bitmap icons
+  made by hand (32-bit, 24-bit with a mask, a 4-bit palette) and saves both
+  from a raster document.
+- **A format listed as saveable can be encoded.** libvips has an AVIF and a
+  HEIC saver wherever libheif is installed, but they write nothing ("heifsave:
+  Unsupported compression") without libheif's AV1 / HEVC encoder.
+  `VipsCanEncode` (`ImageCairo.h`) answers for those by encoding a 2 x 2
+  picture once; `UltraCanvasFileLoader::GetSupportedFormats` reports a bitmap
+  format's `canSave` with it, and names the framework's own plugins as the
+  ICO and QOI providers. `UltraCanvasImageExportDialog` lists only formats
+  that can be encoded, so it offers ICO and QOI everywhere and AVIF / HEIC
+  only where they work.
+- **FileLoader saves a drawing as a bitmap, and every application loads and
+  saves through FileLoader.** `UltraCanvasFileLoader::SaveVectorDocument`
+  writes bitmap types too: the page drawn at a size (a new overload takes a
+  `FileSaveImageSize`; without one, `GetVectorDocumentPixelSize` - the page at
+  96 DPI), sharp at any, with the format's save settings, a JPEG on white.
+  `CanSaveImage` says whether this build writes a bitmap type, and
+  `AddVectorDocumentSaveTypes` fills a Save dialog with every vector writer
+  and every bitmap type it writes, and the page's size as a drawing.
+  ArtCreator's Export is those calls, so it offers PNG, JPEG, WebP, AVIF,
+  HEIC, TIFF, GIF, QOI, ICO and whatever else this build writes.
+  `AGENTS.md` (*Core conventions*) now says it for every application: what a
+  user loads or saves goes through FileLoader - its dialogs, readers and
+  writers, format inventory and save settings - and only a program's own
+  internal files are read and written directly; what FileLoader cannot do
+  yet is added to it, not worked around. `FileLoaderDrawingSaveTest` (new)
+  checks the page size, the types, a PNG drawn at ten times its size with a
+  hard edge, a JPEG on white and an icon.

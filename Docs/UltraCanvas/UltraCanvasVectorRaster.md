@@ -137,9 +137,11 @@ if (!page) ShowStatus(error);         // no page size, or too large
 - Null comes back with `error` set for a document with no page size or a
   size larger than `options.maxPixels` (256 Mpx by default).
 
-ArtCreator's Export offers PNG and JPEG this way: the Save dialog is told the
-page's size at 96 DPI as a drawing (`FileDialogOptions::SetDrawingSize`), its
-Settings offer any other, and the page is drawn at the size chosen.
+An application does not call it to export: `UltraCanvasFileLoader::
+SaveVectorDocument(document, path, size, ...)` does, for every bitmap type
+this build writes, with the types from `AddVectorDocumentSaveTypes` - see
+[FileLoader](../Modules/FileLoader/README.md#a-drawing-saved-as-a-bitmap).
+ArtCreator's Export is those two calls.
 
 ## What it is not
 
@@ -162,8 +164,10 @@ comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
 `UltraPaintImportDialog`).
 
 ArtCreator: *Copy* puts the selection on the system clipboard as a PNG made
-by `RasterizeVectorElements`, and *Export* writes PNG and JPEG through
-`RasterizeVectorDocument` (`Apps/ArtCreator/ArtCreatorWindow.cpp`).
+by `RasterizeVectorElements`, and *Export* writes PNG, JPEG and the other
+bitmap types through `UltraCanvasFileLoader::SaveVectorDocument`, which
+draws the page with `RasterizeVectorDocument`
+(`Apps/ArtCreator/ArtCreatorWindow.cpp`, `core/UltraCanvasFileLoader.cpp`).
 
 ## Tests
 

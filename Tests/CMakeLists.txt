@@ -5343,6 +5343,50 @@ else()
     message(STATUS "  MediaViewerSaveTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ICO / QOI TEST =====
+# The framework's own libvips loaders and savers for Windows icons and QOI:
+# written without ImageMagick, read back pixel for pixel, bitmap icons made by
+# hand, and UCRasterDocument saving both. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageIcoQoiTest...")
+    add_executable(ImageIcoQoiTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageIcoQoiTest.cpp
+    )
+    target_include_directories(ImageIcoQoiTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageIcoQoiTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageIcoQoiTest PRIVATE UltraCanvas)
+    set_target_properties(ImageIcoQoiTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageIcoQoiTest COMMAND ImageIcoQoiTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageIcoQoiTest")
+else()
+    message(STATUS "  ImageIcoQoiTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILELOADER DRAWING SAVE TEST =====
+# UltraCanvasFileLoader saving a drawing as a bitmap: the page's pixel size,
+# the bitmap types it writes, the page drawn at the size asked for (sharp),
+# JPEG on white, an icon. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FileLoaderDrawingSaveTest...")
+    add_executable(FileLoaderDrawingSaveTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FileLoaderDrawingSaveTest.cpp
+    )
+    target_include_directories(FileLoaderDrawingSaveTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FileLoaderDrawingSaveTest PRIVATE cxx_std_20)
+    target_link_libraries(FileLoaderDrawingSaveTest PRIVATE UltraCanvas)
+    set_target_properties(FileLoaderDrawingSaveTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FileLoaderDrawingSaveTest COMMAND FileLoaderDrawingSaveTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FileLoaderDrawingSaveTest")
+else()
+    message(STATUS "  FileLoaderDrawingSaveTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TAB PILL STYLE SCREENSHOT TEST =====
 # TabStyle::Pill read back from composited pixels: a one-pixel accent outline
 # round the open capsule, none round an inactive tab. It is also the
