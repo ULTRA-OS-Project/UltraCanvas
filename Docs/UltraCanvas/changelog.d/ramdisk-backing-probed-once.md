@@ -12,3 +12,11 @@
   platform contract gains `RamDiskDetail::PlatformPreferredBacking()`, the
   raw probe the core calls once. `VirtualFSRamDiskTest` checks that the
   second answer is the kept one (UltraFiler changelog 1.72.6).
+- **VirtualFS on Windows looks for ImDisk discs on local drives only.**
+  `VirtualFS_ListRamDisks()` and creating a disc read the volume label of
+  every drive letter, and `GetVolumeInformationW` on a mapped network drive
+  whose server is away, or on a CD or floppy drive with nothing in it,
+  blocks for as long as the redirector or the drive takes to give up. The
+  back end now asks `GetDriveTypeW`, which answers from the mount table, and
+  reads only fixed, removable and RAM drives from D: to Z: - the letters it
+  hands out itself, and the only kinds an ImDisk volume can be.

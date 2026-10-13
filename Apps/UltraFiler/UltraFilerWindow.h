@@ -363,6 +363,7 @@ private:
     bool RamDisksOffered() const;
     // "+ Drive > RAM disc...": asks for a name and a size, creates the disc
     // (UltraFilerRamDisks, over VirtualFS) and opens it in the folder view.
+    // What the dialog shows about the machine is read on a worker first.
     void AddRamDisk();
     // Brings the "RAM Discs" rows in line with the discs mounted now - ones
     // made by an earlier run included, since a disc stays until it is
@@ -1146,6 +1147,11 @@ private:
     std::thread ramDiskProbeWorker;
     bool ramDiskProbed = false;
     bool ramDiskAvailable = false;
+    // The worker reading what the New RAM disc dialog shows (AddRamDisk),
+    // and whether its answer is still awaited - a second click meanwhile
+    // does nothing rather than opening two dialogs.
+    std::thread ramDiskFactsWorker;
+    bool ramDiskDialogPending = false;
     // The last failure reported for a drive operation. Deleting five entries
     // queues five operations, and five identical "permission denied" dialogs
     // in a row tell the user nothing the first one did not - so a repeat of

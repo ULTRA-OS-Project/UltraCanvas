@@ -15,6 +15,20 @@
   moment waits for the answer in the dialog, once, rather than the menu
   waiting for it every time. The sweep of *Extract and Run*'s leftover
   folders, which needs the list of discs too, rides on the same worker.
+- **Listing RAM discs no longer waits on a network drive.** On Windows the
+  *RAM Discs* section, refreshed on every mount and unmount, read the volume
+  label of every drive letter to find ImDisk discs - a mapped network drive
+  whose server is away, or an empty CD drive, held the window for as long as
+  Windows took to give up. Only local fixed, removable and RAM drives from
+  D: to Z: are read now; nothing else can hold an ImDisk disc (framework
+  changelog, pending entry `ramdisk-backing-probed-once`).
+- **The *New RAM disc* dialog reads the machine on a worker.** How much
+  memory is free, which decides the sizes offered, and a name no disc uses
+  yet were read on the UI thread when the dialog opened - a hardware
+  information capture and a pass over the mounted discs. Both are read on a
+  worker now and the dialog opens when they are in, with the busy pointer
+  shown if that takes longer than a moment; a second click meanwhile does
+  nothing rather than opening two dialogs.
 
 #### 2026-10-12 *1.72.5*
 - **Icons no longer flicker in a maximised window.** With *Display > File

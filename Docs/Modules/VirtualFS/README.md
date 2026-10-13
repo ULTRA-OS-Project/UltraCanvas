@@ -298,7 +298,10 @@ name, so an ImDisk disc keeps it in its NTFS volume label - that is how
 `VirtualFS_ListRamDisks()` finds it again - and a label holds 32 characters,
 nine of them the `ultravfs-` prefix. The fallback directory takes the same
 limit, so a name does not work on one machine and fail on the next only
-because ImDisk is installed there.
+because ImDisk is installed there. The label is read from local fixed,
+removable and RAM drives on D: to Z: only: a mapped network drive whose
+server is away, or an empty CD drive, would otherwise hold every listing for
+as long as Windows takes to give up, and neither can carry an ImDisk disc.
 
 ### Privacy and lifetime
 

@@ -929,6 +929,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     // Short - one question to the system - and its callback is already
     // neutralised by the flag above.
     if (ramDiskProbeWorker.joinable()) ramDiskProbeWorker.join();
+    if (ramDiskFactsWorker.joinable()) ramDiskFactsWorker.join();
     StopCloudStorageDiscovery();
     // Its worker posts into this window, so it has to be joined here like the
     // others - and before the widgets its callback touches are destroyed. The
@@ -2380,22 +2381,55 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
 
 void UltraFilerWindow::AddRamDisk() {
     if (!window) return;
-    ShowRamDiskDialog([this](const std::string& name, uint64_t sizeBytes) {
-        UltraFilerRamDisks::RamDisc disc;
-        std::string error;
-        if (!UltraFilerRamDisks::Create(name, sizeBytes, disc, error)) {
-            UltraCanvasAlert::Error(error, "New RAM disc", nullptr, window.get());
-            return;
+    if (ramDiskDialogPending) return;   // a click while the facts are read
+    ramDiskDialogPending = true;
+    // What the dialog shows about the machine - the memory free now, a name
+    // no disc uses - is a hardware-information capture and a pass over the
+    // mounted discs: read on a worker, and the dialog opens when it is in.
+    // Normally a moment; when it is not (a drive that answers slowly), the
+    // busy pointer says so and the window stays alive. The worker holds only
+    // the alive flag: a window closed meanwhile drops the answer.
+    window->ShowBusyPointer(UltraCanvasWindowBase::kBusyPointerDelayMs,
+                            UltraCanvasWindowBase::kBusyPointerHoldMs);
+    // Joined here, not detached: the previous one is done, since the flag
+    // above is cleared only by its posted callback.
+    if (ramDiskFactsWorker.joinable()) ramDiskFactsWorker.join();
+    auto alive = probeAlive;
+    ramDiskFactsWorker = std::thread([this, alive]() {
+        RamDiskDialogFacts facts;
+        try {
+            facts = GatherRamDiskDialogFacts();
+        } catch (const std::exception&) {
+            // An exception leaving a std::thread ends the process; without
+            // the facts every size is offered and the name field is empty.
+            facts = RamDiskDialogFacts();
         }
-        RefreshRamDiskNodes();
-        // The disc was made to be used: open it, like a folder just created.
-        NavigateTo(disc.mountPath);
-        if (statusLabel) {
-            statusLabel->SetText("RAM disc \"" + disc.name + "\" created" +
-                    (disc.trueRam ? std::string()
-                                  : std::string(" - on disk, not in memory")));
-        }
-    }, window.get());
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, alive, facts]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            ramDiskDialogPending = false;
+            if (!window) return;
+            window->HideBusyPointer();
+            ShowRamDiskDialog(facts, [this](const std::string& name, uint64_t sizeBytes) {
+                UltraFilerRamDisks::RamDisc disc;
+                std::string error;
+                if (!UltraFilerRamDisks::Create(name, sizeBytes, disc, error)) {
+                    UltraCanvasAlert::Error(error, "New RAM disc", nullptr, window.get());
+                    return;
+                }
+                RefreshRamDiskNodes();
+                // The disc was made to be used: open it, like a folder just
+                // created.
+                NavigateTo(disc.mountPath);
+                if (statusLabel) {
+                    statusLabel->SetText("RAM disc \"" + disc.name + "\" created" +
+                            (disc.trueRam ? std::string()
+                                          : std::string(" - on disk, not in memory")));
+                }
+            }, window.get());
+        });
+    });
 }
 
 void UltraFilerWindow::RefreshRamDiskNodes() {
