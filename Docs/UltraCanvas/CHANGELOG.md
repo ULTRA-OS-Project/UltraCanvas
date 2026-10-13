@@ -1,3 +1,65 @@
+#### 2026-10-13 *0.9.268*
+- **A header's usage example can be compiled too, when it opts in.**
+  `scripts/check_doc_examples.py` checked the component docs, but the
+  sketch at the top of a header had nothing reading it: the DesktopShell
+  header's example called `AddToggleButton` with `...` until someone
+  noticed by eye. A
+  `// doc-check: example` line above such an example now puts it in the
+  same check, reported at the header's own lines. The example is the
+  comment lines after the marker indented two spaces or more past the
+  `//`, so the prose after it is not read as code, and a
+  `// doc-check: <declarations>` line declares the names it takes from the
+  application, as a doc's `<!-- doc-check: ... -->` comment does. `--all`,
+  which CI runs, checks every marked header under `UltraCanvas/include`,
+  `UltraCanvas/Plugins` and `VirtualFS/include`. Marking is a choice, not a
+  rule: a sketch with `...` in it stays unmarked.
+  - **Ten headers are marked**, the ones whose example compiled as
+    written: DesktopShell, FileLock, FormLayout, ListSortFilterProxy (two
+    examples), PathUtf8, ProgressDialog, RichTextPrint, WaveSeparator,
+    UltraDatabase and UltraMessageUltraCanvas.
+  - **Declaring their names found two stale examples.** The ProgressDialog
+    and RichTextPrint headers passed a `std::shared_ptr` window where
+    `UltraCanvasProgressDialog::Show` and `PrintDocumentWithDialog` take an
+    `UltraCanvasWindowBase*`; they pass `window.get()` now, as their docs
+    do. Until the names were declared, the undeclared `onCancel` and
+    `richEdit` had stopped clang before it reached the window argument.
+- **macOS release builds: the notarization ticket is stapled and validated
+  with retries.** Every release build from 0.9.253 to 0.9.265 failed at
+  `xcrun stapler` with "The network connection was lost" from Apple's
+  CloudKit ticket service (exit 68), each after a notarization Apple had
+  already accepted; in each run some bundles stapled and a later one did
+  not, and once a staple went through and the validate right after it did
+  not. No release carried those thirteen versions. `package-macos.sh` now
+  tries the staple and then the validate up to `STAPLE_ATTEMPTS` times
+  (default 5), 20 s apart, the way it already resumes the notary wait; a
+  staple that worked is not repeated, only its validate, and only a lookup
+  that fails every time ends the run.
+- **NetworkMonitor (Windows): the two ETW sources say what to do when they
+  are refused.** Started unelevated, the DNS client source and the kernel
+  network event source reported "Starting the ETW session: error 5 (an
+  elevated token is needed ...)". The access-denied case now reads "Needs an
+  elevated run: Windows lets only an administrator trace the DNS client, so
+  no process can be put to its queries until the monitor is run as
+  administrator" (and the kernel source's counterpart, naming the snapshot
+  differ as what still reports); any other failure keeps its error number.
+- **Toolbar icons are drawn at the size the toolbar asks for.**
+  `ToolbarAppearance::iconSize` is documented as Small 16, Medium 24 (the
+  default), Large 32, ExtraLarge 48 and Huge 64 px, but every toolbar button
+  got 20 px whatever it said, and a later `SetAppearance()` reset buttons that
+  had their own size to 20 again. A line icon is drawn on the pixel grid of
+  one size, so the 24 px sets most toolbars use (`media/icons/menu/`,
+  `media/icons/texter/`, ArtCreator's, UltraPaint's, the media viewer's) were
+  scaled to 5/6 and blurred, and UltraVideo's 16 px set was blown up to 20.
+  `UltraCanvasToolbar` now gives its buttons the size the appearance names
+  (`ToolbarAppearance::IconPixelSize()`, Custom is `customIconWidth` x
+  `customIconHeight`), when they are added and again on `SetAppearance()`.
+  Toolbars with the default Medium size - Texter, UltraPaint, ArtCreator, the
+  media viewer and UltraViewer, the DemoApp's - draw 24 px icons now, and
+  UltraVideo's Small bars 16 px; a toolbar grows to fit them as before.
+  A tool group (`AddToolGroup`) takes the same size for its slot and its
+  fold-out bar. `ToolbarThicknessTest` checks
+  each size, for buttons added before and after the appearance changes.
+
 #### 2026-10-13 *0.9.267*
 - **Host OS file icons no longer flicker in a window that shows more types
   than the icon cache holds.** With *Display > File icons = Host OS*, a
