@@ -1,3 +1,14 @@
+#### 2026-10-13 *0.3.1*
+- **An icon of its own, and the app packaged everywhere.**
+  `media/appicon/UltraPress.svg` - a page of blocks: the dark header band,
+  the red hero, lines of text and a button - with its 256 px PNG; the
+  window, the taskbar and the Windows executable carry it, the Linux
+  install rules place it with `UltraPress.desktop`, and `package-macos.sh`
+  builds the app bundle beside the command line.
+- **The page and block lists are flush left.** The framework's button drew
+  its text centred whatever `SetTextAlign` said (framework fix, see its
+  changelog), so short labels sat in the middle of their buttons.
+
 #### 2026-10-13 *0.3.0*
 - **Editing.** The window's left column lists the current page's blocks
   with their first words; a block is selected, moved up or down, removed,

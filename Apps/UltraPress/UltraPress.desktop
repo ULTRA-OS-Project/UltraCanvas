@@ -1,0 +1,22 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraPress: the application menu entry, and
+# the name the icon is resolved by. `Icon=UltraPress` is an icon *name*,
+# looked up through the installed icon themes; the install rules put
+# media/appicon/UltraPress.png into share/icons/hicolor/256x256/apps and
+# media/appicon/UltraPress.svg into share/icons/hicolor/scalable/apps. The
+# window and taskbar icon come from the same PNG through UCAPP_ICON_PATH.
+#
+# Exec takes the site folder to open; --check is for the command line.
+Type=Application
+Version=1.5
+Name=UltraPress
+GenericName=Website Builder
+Comment=Build websites and shops that publish WebAssembly
+Exec=UltraPress %f
+TryExec=UltraPress
+Icon=UltraPress
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraPress
+Categories=Development;WebDevelopment;Office;
+Keywords=website;shop;cms;wasm;webassembly;

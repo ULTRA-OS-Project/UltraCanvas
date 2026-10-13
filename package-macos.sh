@@ -1607,9 +1607,16 @@ package_if_built "UltraCanvasStart" build_app_bundle \
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 package_if_built "ultramsg" build_cli_tool "ultramsg"
 
-# Package the UltraPress command line (Apps/UltraPress): a starter site, the
-# check, a page's HTML shadow, the static publish. The editor comes later and
-# joins as an app bundle then.
+# Package UltraPress (Apps/UltraPress): the editor window as an app bundle,
+# and the command line beside it - a starter site, the check, a page's HTML
+# shadow, the static publish.
+package_if_built "UltraPress" build_app_bundle \
+    "UltraPress" \
+    "UltraPress" \
+    "com.cloverleaf.UltraPress" \
+    "media/appicon/UltraPress.png" \
+    "public.app-category.developer-tools" \
+    ""
 package_if_built "ultrapress" build_cli_tool "ultrapress"
 
 # ── What was packaged ───────────────────────────────────────────────────────

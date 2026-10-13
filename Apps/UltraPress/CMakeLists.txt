@@ -56,11 +56,21 @@ target_compile_features(UltraPress PRIVATE cxx_std_20)
 target_include_directories(UltraPress PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ui)
 target_link_libraries(UltraPress PRIVATE UltraPressRender)
 # ULTRAPRESS_VERSION (the first line of Docs/UltraPress/CHANGELOG.md) is shown
-# in the window title; UCAPP_ICON_PATH is the window and taskbar icon.
+# in the window title; UCAPP_ICON_PATH is the window and taskbar icon - the
+# 256 px render of media/appicon/UltraPress.svg, embedded in the Windows
+# executable as well, where Explorer and the taskbar read it off the binary.
 target_compile_definitions(UltraPress PRIVATE
     ULTRAPRESS_VERSION="${ULTRAPRESS_VERSION}"
-    UCAPP_ICON_PATH="media/appicon/UltraWeb.png")
+    UCAPP_ICON_PATH="media/appicon/UltraPress.png")
 set_target_properties(UltraPress PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+ultracanvas_embed_windows_manifest(UltraPress)
+ultracanvas_embed_app_icon(UltraPress "${CMAKE_SOURCE_DIR}/media/appicon/UltraPress.png")
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    install(TARGETS UltraPress ultrapress RUNTIME DESTINATION bin)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/UltraPress.desktop DESTINATION share/applications)
+    install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraPress.png DESTINATION share/icons/hicolor/256x256/apps)
+    install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraPress.svg DESTINATION share/icons/hicolor/scalable/apps)
+endif()
 
 message(STATUS "  [✓] UltraPress - ENABLED (targets: UltraPressEngine, UltraPressRender, ultrapress, UltraPress)")
