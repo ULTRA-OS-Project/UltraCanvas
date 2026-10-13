@@ -5,16 +5,23 @@
 // the .ultravideo file round trip with relative media paths and missing
 // media reported. Needs the VideoFX engine (FFmpeg) for the probes and the
 // clips it generates; without it the suite skips itself.
+// Version: 0.3.0 - the files it takes are FileLoader's lists, as the engine reads them
 // Version: 0.2.1
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
+#include "UltraVideoFormats.h"
 #include "UltraVideoHistory.h"
 #include "UltraVideoMapping.h"
 #include "UltraVideoProxies.h"
 
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasImage.h"
+#include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasPathUtf8.h"
 #include "VideoFX/VideoFX.h"
+
+#include <algorithm>
 
 #include <chrono>
 #include <cmath>
@@ -635,6 +642,59 @@ int main() {
                   !maker.Error(TempPath("media/gone.mkv")).empty(), "a missing clip fails, with the reason");
         }
         VideoFX_ClearProxies(ps);
+    }
+
+    std::printf("\n-- the files it takes: FileLoader's lists --\n");
+    {
+        UCImage::InitializeImageSubsysterm("UltraVideoDocumentTest");
+        RegisterEngineFormats();
+        RegisterEngineFormats();     // once is once
+        auto holds = [](const std::vector<std::string>& list, const std::string& ext) {
+            return std::find(list.begin(), list.end(), ext) != list.end();
+        };
+        const std::vector<std::string> films = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Video);
+        const std::vector<std::string> sounds = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Audio);
+        const std::vector<std::string> filmsOut = UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCategory::Video);
+        const std::vector<std::string> soundsOut = UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCategory::Audio);
+        bool listed = true;
+        std::string missing;
+        for (const VideoFXFileFormat& f : VideoFX_GetFileFormats()) {
+            if (f.kind == VideoFXFileKind::Picture) continue;
+            const bool audio = f.kind == VideoFXFileKind::Audio;
+            const bool in = !f.canRead || holds(audio ? sounds : films, f.extension);
+            const bool out = !f.canWrite || holds(audio ? soundsOut : filmsOut, f.extension);
+            if (!in || !out) { listed = false; missing += " " + f.extension; }
+        }
+        if (!missing.empty()) std::printf("        not in FileLoader's lists:%s\n", missing.c_str());
+        CHECK(listed, "every film and sound file the engine reads or writes is in FileLoader's lists");
+
+        const std::vector<std::string> offered = ImportExtensions(true, true, true);
+        bool engineReadsAll = true;
+        for (const std::string& ext : offered) {
+            bool reads = false;
+            for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
+                if (f.canRead && (f.extension == ext || std::find(f.aliases.begin(), f.aliases.end(), ext) != f.aliases.end()))
+                    reads = true;
+            engineReadsAll = engineReadsAll && reads;
+        }
+        CHECK(holds(offered, "mkv") && holds(offered, "mp4") && holds(offered, "png") && holds(offered, "jpg") &&
+              holds(offered, "wav") && holds(offered, "mp3"),
+              "an import offers films, pictures and sound");
+        CHECK(engineReadsAll, "... each one a file the engine reads - nothing offered and then refused");
+        const std::vector<std::string> pictures = ImportExtensions(false, true, false);
+        CHECK(!pictures.empty() && !holds(pictures, "mp4") && !holds(pictures, "wav") && !holds(pictures, "txt"),
+              "pictures alone are pictures alone");
+        FileDialogOptions opts;
+        AddImportTypes(opts, "Music", false, false, true);
+        CHECK(opts.filters.size() == 1 && opts.filters[0].description == "Music" && holds(opts.filters[0].extensions, "flac") &&
+              !holds(opts.filters[0].extensions, "png"),
+              "AddImportTypes: one filter of them, under its label");
+        CHECK(FormatName("mp4") == "MPEG-4 container" && FormatName(".MOV") == "QuickTime movie" && FormatName("xyz") == "XYZ",
+              "a type's name is FileLoader's; an unknown one its extension");
+        CHECK(Document::KindOfPath("a/holiday.HEIC") == MediaKind::Image && Document::KindOfPath("x.jxl") == MediaKind::Image &&
+              Document::KindOfPath("x.opus") == MediaKind::Audio && Document::KindOfPath("x.m2ts") == MediaKind::Unknown &&
+              Document::KindOfPath("notes.txt") == MediaKind::Unknown,
+              "what a file is goes by its type, readable here or not: a HEIC is a photo, an Opus file sound");
     }
 
     fs::remove_all(PathFromUtf8(TempPath("")), ec);

@@ -1,8 +1,9 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
+// Version: 0.13.0 - VideoFX_GetFileFormats: what this build reads and writes
 // Version: 0.12.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -87,6 +88,14 @@ std::string VideoFX_ChooseVideoEncoder(VideoFXVideoCodec codec, VideoFXAccelerat
 const char* VideoFX_AccelerationName(VideoFXAcceleration acceleration);
 
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec codec);
+
+// The files this build reads and writes, asked of the FFmpeg it is linked
+// against: the video and sound containers (an import reads them, an export
+// writes those whose muxer and usual encoder are here) and the still
+// pictures its decoders open. An application's file dialogs - through its
+// framework's format registry - offer these, never a list of their own.
+// Empty when the module was built without its backend.
+std::vector<VideoFXFileFormat> VideoFX_GetFileFormats();
 
 // Whether text overlays can be drawn (FFmpeg built with libfreetype)
 bool VideoFX_IsTextOverlayAvailable();

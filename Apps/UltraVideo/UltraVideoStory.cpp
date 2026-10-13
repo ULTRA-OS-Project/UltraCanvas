@@ -1,9 +1,11 @@
 // Apps/UltraVideo/UltraVideoStory.cpp
 // The story wizard (UltraVideoStory.h).
+// Version: 0.2.0 - the photos, clips and songs offered are FileLoader's types the engine reads
 // Version: 0.1.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoStory.h"
+#include "UltraVideoFormats.h"
 
 #include "UltraCanvasAlbum.h"
 #include "UltraCanvasAlert.h"
@@ -32,12 +34,6 @@ namespace {
 constexpr int kDialogWidth = 620;
 constexpr int kContentWidth = 570;
 constexpr int kControl = static_cast<int>(Tokens::ControlH);
-
-const std::vector<std::string>& StoryExtensions() {
-    static const std::vector<std::string> exts = {"jpg", "jpeg", "png", "webp", "heic", "heif", "tif", "tiff", "bmp", "avif",
-                                                  "mp4", "mov", "mkv", "webm", "avi", "m4v", "mpg", "mpeg", "mts", "ts"};
-    return exts;
-}
 
 struct TransitionPick { const char* label; VideoFXTransitionType type; };
 const TransitionPick kTransitions[] = {
@@ -156,7 +152,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     add->SetOnClick([wiz]() {
         FileDialogOptions opts;
         opts.SetTitle("Photos and clips for the story").SetParentWindow(wiz->parent);
-        opts.AddFilter("Photos and video", StoryExtensions());
+        AddImportTypes(opts, "Photos and video", true, true, false);
         UltraCanvasFileLoader::OpenMultipleFilesDialog(opts, [wiz](DialogResult result, const std::vector<std::string>& chosen) {
             if (result != DialogResult::OK) return;
             for (const std::string& f : chosen) {
@@ -225,7 +221,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     choose->SetOnClick([wiz]() {
         FileDialogOptions opts;
         opts.SetTitle("A song for the story").SetParentWindow(wiz->parent);
-        opts.AddFilter("Music", std::vector<std::string>{"mp3", "m4a", "aac", "wav", "flac", "ogg", "opus"});
+        AddImportTypes(opts, "Music", false, false, true);
         UltraCanvasFileLoader::OpenMultipleFilesDialog(opts, [wiz](DialogResult result, const std::vector<std::string>& chosen) {
             if (result != DialogResult::OK || chosen.empty()) return;
             wiz->choice.songs = chosen;

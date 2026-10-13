@@ -10,6 +10,7 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
+// Version: 0.14.0 - VideoFX_GetFileFormats: every type it writes written and read back
 // Version: 0.13.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
@@ -1142,6 +1143,7 @@ static void TestPreview(const VideoFXExportSettings& base);
 static void TestProxies(const VideoFXExportSettings& base);
 static void TestEncoders(const VideoFXExportSettings& base);
 static void TestAudioClips(const VideoFXExportSettings& base);
+static void TestFileFormats();
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -1355,6 +1357,7 @@ static void TestEngine() {
     TestProxies(base);
     TestEncoders(base);
     TestAudioClips(base);
+    TestFileFormats();
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -2492,6 +2495,71 @@ static void TestProxies(const VideoFXExportSettings& base) {
 // may have no graphics hardware at all, so what is checked is that every
 // answer is consistent, a missing family fails cleanly, Hardware falls back,
 // and - where some hardware encoder does work - that it really encodes.
+static const VideoFXFileFormat* FindFormat(const std::vector<VideoFXFileFormat>& formats, const std::string& ext) {
+    for (const VideoFXFileFormat& f : formats) {
+        if (f.extension == ext) return &f;
+        for (const std::string& a : f.aliases) if (a == ext) return &f;
+    }
+    return nullptr;
+}
+
+static void TestFileFormats() {
+    std::printf("\n-- the files this build reads and writes --\n");
+    const std::vector<VideoFXFileFormat> formats = VideoFX_GetFileFormats();
+    std::string reads, writes;
+    for (const VideoFXFileFormat& f : formats) {
+        if (f.canRead) reads += " " + f.extension;
+        if (f.canWrite) writes += " " + f.extension;
+    }
+    std::printf("        reads:%s\n        writes:%s\n", reads.c_str(), writes.c_str());
+
+    const VideoFXFileFormat* mp4 = FindFormat(formats, "m4v");
+    CHECK(mp4 && mp4->extension == "mp4" && mp4->kind == VideoFXFileKind::Video && mp4->description == "MPEG-4 container",
+          "MP4 is a film, found by its alias too, under the registry's name");
+    CHECK(mp4 && mp4->canRead && mp4->canWrite && mp4->container == VideoFXContainer::MP4,
+          "... read, and written as the MP4 container (MPEG-4 and AAC are always here)");
+    const VideoFXFileFormat* mpg = FindFormat(formats, "mpeg");
+    CHECK(mpg && mpg->canRead && !mpg->canWrite && mpg->container == VideoFXContainer::Auto,
+          "MPEG program streams are read, and no export writes them");
+    const VideoFXFileFormat* wav = FindFormat(formats, "wav");
+    CHECK(wav && wav->kind == VideoFXFileKind::Audio && wav->canRead && wav->canWrite,
+          "WAV is sound, read and written");
+    const VideoFXFileFormat* png = FindFormat(formats, "png");
+    const VideoFXFileFormat* jpg = FindFormat(formats, "jpeg");
+    CHECK(png && jpg && png->kind == VideoFXFileKind::Picture && png->canRead && jpg->canRead && !png->canWrite,
+          "PNG and JPEG pictures are read; an export does not write a still");
+    const VideoFXFileFormat* gif = FindFormat(formats, "gif");
+    CHECK(gif && gif->canRead && gif->canWrite && gif->container == VideoFXContainer::GIF,
+          "a GIF is read, and an export writes one: the animation");
+
+    // Every type it says it writes, written and read back: no claim untested
+    int written = 0;
+    bool allOk = true;
+    for (const VideoFXFileFormat& f : formats) {
+        if (!f.canWrite) continue;
+        VideoFXExportSettings s;
+        s.container = f.container;
+        s.width = 64; s.height = 48; s.frameRate = 10.0;
+        const std::string out = TempPath("format." + f.extension);
+        const bool ok = VideoFX_Export({VideoFXSegment::TestPattern(0.5)}, out, s) == VideoFXResult::Ok;
+        VideoFXMediaInfo info;
+        const bool back = ok && VideoFX_Probe(out, info) == VideoFXResult::Ok &&
+                          (f.kind == VideoFXFileKind::Audio ? info.HasAudio() : info.HasVideo());
+        if (!back) std::printf("        %s: %s\n", f.extension.c_str(), VideoFX_GetLastError().c_str());
+        allOk = allOk && back;
+        ++written;
+    }
+    CHECK(written >= 4 && allOk, "every type it writes is written, and read back");
+
+    // Every picture it reads, read: one saved through FFmpeg's own writer
+    VideoFXFrame frame;
+    CHECK_OK(VideoFX_ExtractFrame(TempPath("format.mp4"), 0.1, frame), "a frame for the pictures");
+    const std::string still = TempPath("format-still.png");
+    CHECK_OK(VideoFX_SaveFrameImage(frame, still), "... saved as PNG");
+    VideoFXMediaInfo info;
+    CHECK(VideoFX_Probe(still, info) == VideoFXResult::Ok && info.HasVideo(), "... which it reads as a picture");
+}
+
 static void TestEncoders(const VideoFXExportSettings& base) {
     std::printf("\n-- encoders: software and hardware --\n");
     const auto t0 = std::chrono::steady_clock::now();
@@ -2673,6 +2741,7 @@ static void TestEngine() {
           !VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware) &&
           VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Software).empty(),
           "stub: no encoders of any kind");
+    CHECK(VideoFX_GetFileFormats().empty(), "stub: no file it reads or writes");
 }
 
 #endif

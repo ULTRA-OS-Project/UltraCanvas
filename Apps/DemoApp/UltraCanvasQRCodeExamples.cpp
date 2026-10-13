@@ -8,8 +8,9 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasImageElement.h"
-#include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasPathUtf8.h"
+#include <algorithm>
 #include <array>
 #include <sstream>
 #include <vector>
@@ -81,24 +82,12 @@ namespace UltraCanvas {
             { "Geo",   []() { return QRCodeUtils::CreateGeoContent(37.7749, -122.4194); } },
         };
 
-        struct FormatChoice {
-            const char* label;
-            QRImageFormat format;
-            const char* extension;
-        };
-        const FormatChoice kFormats[] = {
-            { "PNG  (.png)",  QRImageFormat::PNG,  "png"  },
-            { "JPEG (.jpg)",  QRImageFormat::JPEG, "jpg"  },
-            { "QOI  (.qoi)",  QRImageFormat::QOI,  "qoi"  },
-            { "WebP (.webp)", QRImageFormat::WebP, "webp" },
-            { "AVIF (.avif)", QRImageFormat::AVIF, "avif" },
-        };
-
+        // Every picture type this build reads - FileLoader's list
         FileDialogOptions ImageOpenFilters(const std::string& title) {
             FileDialogOptions opts;
-            opts.SetTitle(title)
-                .AddFilter("Images", { "png", "jpg", "jpeg", "webp", "qoi", "avif", "bmp", "tiff", "gif" })
-                .AddFilter("All files", "*");
+            opts.SetTitle(title);
+            UltraCanvasFileLoader::AddLoadTypes(opts, "Images", {MediaFormatCategory::Bitmap});
+            opts.AddFilter("All files", "*");
             return opts;
         }
 
@@ -498,23 +487,25 @@ namespace UltraCanvas {
                 uploadBtn->SetOnClick([qrPtr, statusPtr, thumbPtr, nameLblPtr,
                                        zoomPtr, marginPtr, stylePtr,
                                        styleFromIndex, baseName]() {
-                    auto opts = ImageOpenFilters("Choose a logo");
-                    std::string path = UltraCanvasNativeDialogs::OpenFile(opts);
-                    if (path.empty()) return;
-                    auto img = UCImage::Get(path);
-                    if (!img || !img->IsValid()) {
-                        statusPtr->SetText("Failed to load logo: " + path);
-                        return;
-                    }
-                    auto cfg = qrPtr->GetStyleConfig();
-                    cfg.logoImage       = img;
-                    cfg.logoScale       = zoomPtr->GetValue() / 100.0f;
-                    cfg.logoBorderWidth = marginPtr->GetValue();
-                    cfg.logoStyle       = styleFromIndex(stylePtr->GetSelectedIndex());
-                    qrPtr->SetStyleConfig(cfg);
-                    thumbPtr->LoadFromImage(img);
-                    nameLblPtr->SetText(baseName(path));
-                    statusPtr->SetText("Logo loaded: " + path);
+                    UltraCanvasFileLoader::OpenFileDialog(ImageOpenFilters("Choose a logo"),
+                        [qrPtr, statusPtr, thumbPtr, nameLblPtr, zoomPtr, marginPtr, stylePtr,
+                         styleFromIndex, baseName](DialogResult result, const std::string& path) {
+                        if (result != DialogResult::OK || path.empty()) return;
+                        auto img = UCImage::Get(path);
+                        if (!img || !img->IsValid()) {
+                            statusPtr->SetText("Failed to load logo: " + path);
+                            return;
+                        }
+                        auto cfg = qrPtr->GetStyleConfig();
+                        cfg.logoImage       = img;
+                        cfg.logoScale       = zoomPtr->GetValue() / 100.0f;
+                        cfg.logoBorderWidth = marginPtr->GetValue();
+                        cfg.logoStyle       = styleFromIndex(stylePtr->GetSelectedIndex());
+                        qrPtr->SetStyleConfig(cfg);
+                        thumbPtr->LoadFromImage(img);
+                        nameLblPtr->SetText(baseName(path));
+                        statusPtr->SetText("Logo loaded: " + path);
+                    });
                 });
 
                 clearBtn->SetOnClick([qrPtr, statusPtr, thumbPtr, nameLblPtr]() {
@@ -529,46 +520,31 @@ namespace UltraCanvas {
 
             header("Save as image");
             {
-                auto formatDD = std::make_shared<UltraCanvasDropdown>(
-                    "save_fmt", ctrlX, ctrlY, 180, 30);
-                for (const auto& f : kFormats) formatDD->AddItem(f.label);
-                formatDD->SetSelectedIndex(0, false);
-                page->AddChild(formatDD);
-
+                // Every picture type this build writes (FileLoader's list), and
+                // SVG through the code's own vector writer
                 auto saveBtn = std::make_shared<UltraCanvasButton>(
-                    "save_btn", ctrlX + 190, ctrlY, 110, 30, "Save\u2026");
+                    "save_btn", ctrlX, ctrlY, 110, 30, "Save\u2026");
                 saveBtn->SetFontSize(11);
-                auto* fmtPtr = formatDD.get();
-                saveBtn->SetOnClick([qrPtr, fmtPtr, statusPtr, activeSlug]() {
-                    int idx = fmtPtr->GetSelectedIndex();
-                    if (idx < 0 || idx >= static_cast<int>(std::size(kFormats))) return;
-                    const auto& f = kFormats[idx];
+                saveBtn->SetOnClick([qrPtr, statusPtr, activeSlug]() {
                     FileDialogOptions opts;
                     opts.SetTitle("Save QR code")
-                        .SetDefaultFileName(std::string("ultracanvas_") + *activeSlug + "." + f.extension)
-                        .AddFilter(f.label, f.extension);
-                    std::string path = UltraCanvasNativeDialogs::SaveFile(opts);
-                    if (path.empty()) return;
-                    std::string err;
-                    bool ok = qrPtr->ExportToImage(path, f.format, 12, &err);
-                    statusPtr->SetText(ok ? ("Saved: " + path) : ("Save failed: " + err));
+                        .SetDefaultFileName(std::string("ultracanvas_") + *activeSlug + ".png");
+                    UltraCanvasFileLoader::AddImageSaveTypes(opts);
+                    opts.AddFilter("SVG image", "svg");
+                    UltraCanvasFileLoader::SaveFileDialog(opts,
+                        [qrPtr, statusPtr](DialogResult result, const std::string& path) {
+                        if (result != DialogResult::OK || path.empty()) return;
+                        std::string ext = PathToUtf8(PathFromUtf8(path).extension());
+                        std::transform(ext.begin(), ext.end(), ext.begin(),
+                                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                        std::string err;
+                        const bool ok = ext == ".svg" ? qrPtr->ExportToSVG(path, 10)
+                                                      : qrPtr->ExportToImage(path, 12, &err);
+                        statusPtr->SetText(ok ? ("Saved: " + path)
+                                              : ("Save failed: " + (err.empty() ? std::string("SVG export failed") : err)));
+                    });
                 });
                 page->AddChild(saveBtn);
-
-                auto svgBtn = std::make_shared<UltraCanvasButton>(
-                    "save_svg", ctrlX + 310, ctrlY, 110, 30, "Save SVG\u2026");
-                svgBtn->SetFontSize(11);
-                svgBtn->SetOnClick([qrPtr, statusPtr, activeSlug]() {
-                    FileDialogOptions opts;
-                    opts.SetTitle("Save QR code (SVG)")
-                        .SetDefaultFileName(std::string("ultracanvas_") + *activeSlug + ".svg")
-                        .AddFilter("SVG", "svg");
-                    std::string path = UltraCanvasNativeDialogs::SaveFile(opts);
-                    if (path.empty()) return;
-                    bool ok = qrPtr->ExportToSVG(path, 10);
-                    statusPtr->SetText(ok ? ("Saved: " + path) : "SVG export failed");
-                });
-                page->AddChild(svgBtn);
                 ctrlY += 40;
             }
 
@@ -639,38 +615,39 @@ namespace UltraCanvas {
             auto* statusPtr = status.get();
 
             openBtn->SetOnClick([previewPtr, resultsPtr, statusPtr]() {
-                auto opts = ImageOpenFilters("Open image to scan");
-                std::string path = UltraCanvasNativeDialogs::OpenFile(opts);
-                if (path.empty()) return;
+                UltraCanvasFileLoader::OpenFileDialog(ImageOpenFilters("Open image to scan"),
+                    [previewPtr, resultsPtr, statusPtr](DialogResult result, const std::string& path) {
+                    if (result != DialogResult::OK || path.empty()) return;
 
-                previewPtr->LoadFromFile(path);
+                    previewPtr->LoadFromFile(path);
 
-                if (!QRCodeUtils::IsDecoderAvailable()) {
-                    resultsPtr->SetText("Decoder not built in.\nInstall libzbar and rebuild.");
-                    statusPtr->SetText("Loaded image: " + path);
-                    return;
-                }
+                    if (!QRCodeUtils::IsDecoderAvailable()) {
+                        resultsPtr->SetText("Decoder not built in.\nInstall libzbar and rebuild.");
+                        statusPtr->SetText("Loaded image: " + path);
+                        return;
+                    }
 
-                std::string err;
-                auto results = QRCodeUtils::ScanQRCodeFile(path, &err);
-                if (results.empty()) {
-                    if (err.empty()) {
-                        resultsPtr->SetText("No QR codes detected in this image.");
+                    std::string err;
+                    auto results = QRCodeUtils::ScanQRCodeFile(path, &err);
+                    if (results.empty()) {
+                        if (err.empty()) {
+                            resultsPtr->SetText("No QR codes detected in this image.");
+                        } else {
+                            resultsPtr->SetText("Scan error:\n" + err);
+                        }
                     } else {
-                        resultsPtr->SetText("Scan error:\n" + err);
+                        std::ostringstream ss;
+                        ss << "Detected " << results.size()
+                           << (results.size() == 1 ? " code:" : " codes:") << "\n\n";
+                        int i = 1;
+                        for (const auto& r : results) {
+                            ss << "#" << i++ << "  [" << r.type << "]\n";
+                            ss << r.data << "\n\n";
+                        }
+                        resultsPtr->SetText(ss.str());
                     }
-                } else {
-                    std::ostringstream ss;
-                    ss << "Detected " << results.size()
-                       << (results.size() == 1 ? " code:" : " codes:") << "\n\n";
-                    int i = 1;
-                    for (const auto& r : results) {
-                        ss << "#" << i++ << "  [" << r.type << "]\n";
-                        ss << r.data << "\n\n";
-                    }
-                    resultsPtr->SetText(ss.str());
-                }
-                statusPtr->SetText("Scanned: " + path);
+                    statusPtr->SetText("Scanned: " + path);
+                });
             });
 
             return page;

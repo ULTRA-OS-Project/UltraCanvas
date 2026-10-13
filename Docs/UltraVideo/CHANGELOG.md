@@ -1,3 +1,26 @@
+#### 2026-10-13 *0.2.2*
+- **Import and Export offer FileLoader's file types.** UltraVideo kept lists
+  of its own, so its dialogs offered types the engine could not read and
+  missed ones it could.
+  - At start-up UltraVideo now tells the framework's codec registry which
+    films and sound VideoFX (FFmpeg) reads and writes
+    (`VideoFX_GetFileFormats`). FileLoader's lists then include them; on
+    macOS, for example, the registry alone knew only MP4, MOV and 3GP.
+  - Import media, the file over the picture, and the story's photos, clips
+    and songs offer FileLoader's types that the engine reads. A picture type
+    FFmpeg cannot decode is no longer offered and then refused: HEIC is left
+    out before FFmpeg 7.1, and so are a camera's raw files.
+  - Whether a file is a picture or sound is decided by the same lists, so a
+    HEIC still shows as a photo, marked unreadable, where it cannot be
+    opened.
+  - Export's Browse offers the presets' types under FileLoader's names.
+    Picking a type there selects the preset that writes it, so an MP4 can
+    no longer be saved under a `.wav` name.
+  - The bare `.ts` extension is no longer offered: the framework decides it
+    by the file's contents, since it is far more often TypeScript. `.mts` and
+    `.m2ts` are offered.
+  - New file `UltraVideoFormats.{h,cpp}`, checked in `UltraVideoDocumentTest`.
+
 #### 2026-10-13 *0.2.1*
 - **Proxies are made on the graphics hardware.** UltraVideo now makes its
   proxies with VideoFX's `Hardware` acceleration (VideoFX 0.12.0). Each

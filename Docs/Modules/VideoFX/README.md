@@ -123,6 +123,31 @@ without sound fails with `NoMediaStreams`; a range beginning after the sound
 ends with `InvalidArgument`. `videofx waveform <file> [blocksPerSecond] [start [end]]`
 prints the same, one block a line.
 
+**Which files.** `VideoFX_GetFileFormats()` lists the files this build reads
+and writes, asking the FFmpeg it is linked against rather than a list kept
+by hand:
+
+- Films and sound (`VideoFXFileKind::Video` / `Audio`) are the containers it
+  knows by name: MP4, MOV, MKV, WebM, AVI, MPEG, transport streams, WMV, FLV,
+  Ogg, 3GP, MP3, M4A, AAC, WAV, FLAC, Opus, WMA, AIFF and others. Each is
+  `canRead` when FFmpeg has its demuxer, and `canWrite` when an export writes
+  it: the muxer and the container's usual encoders are there. `container`
+  then names the `VideoFXContainer` an export to it uses.
+- Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
+  FFmpeg 6 and HEIC FFmpeg 7.1. GIF is also written, as the animation.
+
+The descriptions match the UltraCanvas codec registry's, so an application
+that brings VideoFX hands the films and sound to `RegisterMediaCodec`, and
+FileLoader's lists, and the dialogs built from them, then offer exactly what
+the engine handles. UltraVideo does this (`UltraVideoFormats.cpp`). The
+module built without FFmpeg returns an empty list.
+
+```cpp
+for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
+    if (f.kind == VideoFXFileKind::Video && f.canWrite)
+        std::printf("%s (%s) - an export writes it\n", f.description.c_str(), f.extension.c_str());
+```
+
 ---
 
 ## The timeline: segments

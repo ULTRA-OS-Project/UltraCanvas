@@ -9,8 +9,9 @@
 //                 choose an effect from the category tree in the middle, tune
 //                 its options on the right and hear / see the processed result
 //                 in the waveform + player on the left.
+// Version: 1.1.0 - the sample tracks are the sound types FileLoader reads
 // Version: 1.0.0
-// Last Modified: 2026-07-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -623,11 +624,12 @@ namespace {
         return buf;
     }
 
-    // Audio extensions offered in the sample dropdown.
+    // Sound this build decodes (FileLoader's list): what the sample
+    // dropdown lists from media/audios.
     bool IsSampleAudioExtension(std::string ext) {
         for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         static const std::vector<std::string> exts =
-            { "mp3", "wav", "flac", "ogg", "opus", "aac", "m4a", "aiff", "aif" };
+            UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Audio);
         return std::find(exts.begin(), exts.end(), ext) != exts.end();
     }
 
