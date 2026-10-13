@@ -43,3 +43,21 @@
   attribute list copied (the About window).
   Docs: `Docs/UltraCanvas/UltraCanvasWebAssembly.md` (*The demo application
   in the browser*), `UltraCanvas/OS/WASM/README.md`.
+- **SVG in a build whose libvips has no `svgload`.** `UCImage` now reads an
+  SVG through the vector preview seam (`UltraCanvasVectorPreview.h`, the one
+  `RegisterVectorFormatsPlugin()` installs) when libvips has no SVG loader or
+  refuses the file, keeps the parsed document and renders it with the core's
+  vector renderer at each requested size, fitted by the image's fit mode as
+  the libvips path is. The WebAssembly sysroot's libvips is such a build, so
+  the browser demo's SVG page and its SVG icons - toolbars, flat buttons, the
+  tree - render as on the desktop. An application that registers no Vector
+  plugin is unchanged.
+- The core's WebAssembly link options add `-sGROWABLE_ARRAYBUFFERS=1`: with
+  threads and memory growth, every JavaScript-side heap access otherwise
+  checks whether the buffer was replaced; the browser's growable
+  SharedArrayBuffer removes that where it exists, the checked path stays
+  elsewhere.
+- The demo's pages all name their source as `DemoApp/<file>.cpp`, the path
+  the packages ship the sources at (`share/DemoApp/`): six pages said
+  `Apps/DemoApp/...`, which resolved nowhere, so their source button opened
+  nothing.

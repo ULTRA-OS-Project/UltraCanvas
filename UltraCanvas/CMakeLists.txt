@@ -1995,6 +1995,13 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
             -fwasm-exceptions
             -sPTHREAD_POOL_SIZE=8
             -sALLOW_MEMORY_GROWTH=1
+            # Growth with threads otherwise costs every JS-side heap access
+            # a check that the buffer was not replaced (Emscripten warns
+            # "-pthread + ALLOW_MEMORY_GROWTH may run non-wasm code
+            # slowly"). 1 uses the browser's growable SharedArrayBuffer
+            # where it exists (Chromium, Safari; Firefox from 154) and keeps
+            # the checked path elsewhere; 2 would require it.
+            -sGROWABLE_ARRAYBUFFERS=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1
             # The backend's EM_ASM bridges (clipboard, dialogs, downloads,

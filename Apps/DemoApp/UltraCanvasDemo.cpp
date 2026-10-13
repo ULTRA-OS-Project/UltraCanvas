@@ -1993,7 +1993,7 @@ namespace UltraCanvas {
         toolsBuilder.AddItem("ocr", "OCR", "Optical Character Recognition",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateOCRExamples(); },
-                             "Apps/DemoApp/UltraCanvasOCRExamples.cpp",
+                             "DemoApp/UltraCanvasOCRExamples.cpp",
                              "Docs/Modules/OCR/README.md");
 #else
         toolsBuilder.AddItem("ocr", "OCR", "Optical Character Recognition",
@@ -2005,7 +2005,7 @@ namespace UltraCanvas {
         toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image to SVG vector tracer",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateVectorizerExamples(); },
-                             "Apps/DemoApp/UltraCanvasVectorizerExamples.cpp",
+                             "DemoApp/UltraCanvasVectorizerExamples.cpp",
                              "Docs/Modules/Vectorizer/README.md");
 #else
         toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image to SVG vector tracer",
@@ -2026,13 +2026,13 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateAudioFXExamples(); },
-                               "Apps/DemoApp/UltraCanvasAudioFXExamples.cpp",
+                               "DemoApp/UltraCanvasAudioFXExamples.cpp",
                                "Docs/Modules/AudioFX/README.md");
 #endif
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateFileLoaderExamples(); },
-                               "Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp",
+                               "DemoApp/UltraCanvasFileLoaderExamples.cpp",
                                "Docs/Modules/FileLoader/README.md");
         // Specification only — no IODeviceManager sources, no build target, and no
         // application consumes the scanner / camera / printer API described in
@@ -2045,7 +2045,7 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreatePixelFXExamples(); },
-                               "Apps/DemoApp/UltraCanvasPixelFXExamples.cpp",
+                               "DemoApp/UltraCanvasPixelFXExamples.cpp",
                                "Docs/Modules/PixelFX/README.md");
 #else
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
@@ -2067,7 +2067,7 @@ namespace UltraCanvas {
                                "Print, messages and input, as ULTRA OS or native dialogs",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateSystemDialogsExamples(); },
-                               "Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp",
+                               "DemoApp/UltraCanvasSystemDialogsExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasSystemDialogs.md")
                 .AddVariant("systemdialogs", "File Open / Open multiple")
                 .AddVariant("systemdialogs", "File Save")
@@ -2125,7 +2125,7 @@ namespace UltraCanvas {
                                "UltraNet_HttpGet + UCImageRaster::LoadFromMemory)",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateNetworkingExamples(); },
-                               "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp",
+                               "DemoApp/UltraCanvasNetworkingExamples.cpp",
                                "Docs/Modules/UltraNet/README.md");
         // Built module (target UltraVault) used by UltraAIApp for provider API
         // keys and by UltraMail for account credentials.

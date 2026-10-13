@@ -120,8 +120,10 @@ FS at `/share/media/fonts`:
 **not** the `/usr/share/...` path desktop packages use.)
 
 The core library propagates `-pthread -fwasm-exceptions
--sPTHREAD_POOL_SIZE=8 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB
--sNO_EXIT_RUNTIME=1` to executables, plus the exports the backend's
+-sPTHREAD_POOL_SIZE=8 -sALLOW_MEMORY_GROWTH=1 -sGROWABLE_ARRAYBUFFERS=1
+-sSTACK_SIZE=5MB -sNO_EXIT_RUNTIME=1` to executables (the growable
+SharedArrayBuffer, where the browser has it, spares every JavaScript-side
+heap access the check that memory growth with threads otherwise costs), plus the exports the backend's
 JavaScript bridges call (`-sEXPORTED_FUNCTIONS=_main,_malloc,_free` and
 `-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,stringToNewUTF8,lengthBytesUTF8,HEAPU8,FS`).
 An application that sets `EXPORTED_FUNCTIONS` itself must keep these.
@@ -207,11 +209,12 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
 
 ## Known limitations
 
-- **SVG images do not load**: the sysroot's libvips has no SVG loader
-  (librsvg / resvg are not built), so an `UltraCanvasImageElement` on an
-  .svg file - every SVG icon, the demo's SVG page - reports the format
-  unsupported. PNG and the other raster formats are fine. wasm-vips builds
-  resvg for this; the Vector plugin's own SVG reader is the other way in.
+- **SVG needs the Vector plugin registered**: the sysroot's libvips has no
+  SVG loader (librsvg / resvg are not built), so `UCImage` reads an .svg
+  through the vector preview seam the Vector plugin installs
+  (`RegisterVectorFormatsPlugin()`, as the demo's `main.cpp` does) and
+  renders it with the core's vector renderer. An application that registers
+  no plugins gets "format not supported" for every SVG icon.
 - **Clipboard**: text only, and paste depends on the browser firing a
   `paste` event for Ctrl/Cmd+V. Shift+Insert and menu-driven Paste use the
   last text `navigator.clipboard.readText()` returned, which Chromium allows

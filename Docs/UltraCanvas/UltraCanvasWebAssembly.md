@@ -180,13 +180,14 @@ what the browser has no backend for:
 | STL 3D Models | its one sample is a 25 MB file; the model formats page shows the other readers from the smaller samples |
 | OpenGL, CDR, XAR, EPS, PDF, OCR, Vectorizer, LaTeX, Ultra Net | compiled out by `UltraCanvas/CMakeLists.txt` for every WebAssembly build, so their pages are absent or say so, as on a desktop build without them |
 
-Still shown but not working yet: **SVG images**. The image loader rasterizes
-SVG through libvips (or librsvg, when found), and the wasm sysroot's libvips
-is built without an SVG loader, so the SVG page's drawings and every
-SVG icon - the toolbars' and the flat buttons' - come up as "format not
-supported" or empty; the PNG icons (the tree, the header, the About window)
-are fine. Giving the sysroot an SVG loader (wasm-vips builds resvg) or
-routing SVG through the Vector plugin's own reader would close that gap.
+**SVG** takes a different road in the browser: the wasm sysroot's libvips has
+no SVG loader, so `UCImage` reads an .svg through the vector preview seam
+the Vector plugin installs and renders it with the core's vector renderer
+(`UltraCanvasVectorConverters.md`, *the vector preview provider*). The
+demo registers the plugin in its `main.cpp`, so its SVG page and every SVG
+icon - the toolbars', the flat buttons', the tree's - render as on the
+desktop; an application that registers no plugins gets "format not
+supported" for them.
 
 The pages' files - the fonts, icons, images, vector samples, the smaller 3D
 models, the docs and the demo's own sources for the source button - are
