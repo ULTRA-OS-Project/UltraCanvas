@@ -761,9 +761,12 @@ with the theme's palette, links, forms and the FAQ accordion, and the
 UltraPress window that shows a site (the editor's preview; the Emscripten
 build of it is the published page). Done in 0.3.0: editing - blocks
 added, moved, removed and their properties edited in a pane generated
-from the registry, the page re-rendered live, Save. Still to do: text
-edited in place, pictures and the media library, pages and menus from the
-window, two themes, the WXR importer, the publisher onto UltraCloud
+from the registry, the page re-rendered live, Save. Done in 0.4.0: the
+WXR importer of §7.1 (`ultrapress import`), with the block editor's
+markers mapped onto the registry, classic content as rich text,
+attachments rewritten and fetched, menus nested, redirects reported.
+Still to do: text edited in place, pictures and the media library, pages
+and menus from the window, two themes, the publisher onto UltraCloud
 providers, and the renderer release build. Done when ultraos.eu
 is imported, edited, published to a test host and renders in Chromium,
 Firefox and Safari as the demo does, with the shadow indexed by a crawler.

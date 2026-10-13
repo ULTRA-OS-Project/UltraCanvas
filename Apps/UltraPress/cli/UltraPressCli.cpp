@@ -1,5 +1,6 @@
 // Apps/UltraPress/cli/UltraPressCli.cpp
 // The commands: new, check, page, publish, help, --version.
+// Version: 0.4.0 - import: a WordPress export as a site
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -7,11 +8,19 @@
 
 #include "UltraPressBlocks.h"
 #include "UltraPressHtml.h"
+#include "UltraPressImport.h"
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
 
+#include "UltraCanvasPathUtf8.h"
+#if ULTRAPRESS_HAS_ULTRANET
+#include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetHttp.h"
+#endif
+
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -36,6 +45,9 @@ void PrintHelp() {
         "  ultrapress publish <site-dir> <out-dir> [--renderer <script.js>] [--drafts]\n"
         "      the static tier: one HTML page per published page, sitemap.xml,\n"
         "      robots.txt, feed.xml, .htaccess and the media, into <out-dir>\n"
+        "  ultrapress import <export.xml> <site-dir> [--front <slug>] [--media] [--no-drafts]\n"
+        "      a WordPress export (Tools > Export) as a site: pages, posts, menus,\n"
+        "      the bodies as blocks; --media fetches the attachments into media/\n"
         "  ultrapress --version\n",
         ULTRAPRESS_VERSION);
 }
@@ -121,6 +133,54 @@ int CommandPublish(const std::vector<std::string>& args) {
     return result.ok ? 0 : 1;
 }
 
+int CommandImport(const std::vector<std::string>& args) {
+    if (args.size() < 2) { PrintHelp(); return 2; }
+    const std::string exportPath = args[0];
+    const std::string dir = args[1];
+    ImportOptions options;
+    options.frontPage = Option(args, "--front", "");
+    options.includeDrafts = !HasFlag(args, "--no-drafts");
+    const bool media = HasFlag(args, "--media");
+#if ULTRAPRESS_HAS_ULTRANET
+    if (media) {
+        const UltraNetResult net = UltraNet_Initialize();
+        if (!net.success) std::fprintf(stderr, "UltraNet: %s - the attachments are listed, not fetched\n", net.message.c_str());
+        else {
+            options.fetchMedia = [&dir](const std::string& url, const std::string& local) {
+                const std::filesystem::path target = UltraCanvas::PathFromUtf8(dir) / UltraCanvas::PathFromUtf8(local);
+                std::error_code ec;
+                std::filesystem::create_directories(target.parent_path(), ec);
+                const UltraNetResult result = UltraNet_HttpDownloadFile(url, UltraCanvas::PathToUtf8(target));
+                if (!result.success) std::fprintf(stderr, "%s: %s\n", url.c_str(), result.message.c_str());
+                return result.success;
+            };
+        }
+    }
+#else
+    if (media) std::fprintf(stderr, "this build has no UltraNet: the attachments are listed, not fetched\n");
+#endif
+    Site site;
+    ImportReport report;
+    const bool ok = ImportWordPressFile(exportPath, options, site, report);
+    for (const std::string& warning : report.warnings) std::fprintf(stderr, "%s\n", warning.c_str());
+    if (!ok) return 1;
+    std::vector<std::string> errors;
+    if (!SaveSite(dir, site, errors)) {
+        for (const std::string& error : errors) std::fprintf(stderr, "%s\n", error.c_str());
+        return 1;
+    }
+    if (!options.fetchMedia && !report.media.empty()) {
+        std::printf("%zu attachments to fetch into %s (or run with --media):\n", report.media.size(), dir.c_str());
+        for (const auto& [url, local] : report.media) std::printf("  %s -> %s\n", url.c_str(), local.c_str());
+    }
+    for (const auto& [from, to] : report.redirects) std::printf("redirect %s -> %s\n", from.c_str(), to.c_str());
+    std::printf("%s: %s\n", site.name.c_str(), report.Summary().c_str());
+#if ULTRAPRESS_HAS_ULTRANET
+    if (options.fetchMedia) UltraNet_Shutdown();
+#endif
+    return 0;
+}
+
 } // namespace
 
 int CommandLine(int argc, char** argv) {
@@ -140,6 +200,7 @@ int CommandLine(int argc, char** argv) {
     if (command == "check") return CommandCheck(args);
     if (command == "page") return CommandPage(args);
     if (command == "publish") return CommandPublish(args);
+    if (command == "import") return CommandImport(args);
     std::fprintf(stderr, "unknown command '%s'\n", command.c_str());
     PrintHelp();
     return 2;

@@ -1,12 +1,12 @@
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.3.0 is the headless engine, the
-`ultrapress` command line, the block renderer on real elements and the
-editor window: a site as a folder of JSON files, the block registry, the
-HTML shadow of every page, the static publish, every block as UltraCanvas
-elements, and blocks added, moved, removed and edited with the page
-re-rendered live. The WordPress importer and the WebAssembly output
-follow
+**Status:** Phase 1 under way. UltraPress 0.4.0 is the headless engine, the
+`ultrapress` command line, the block renderer on real elements, the editor
+window and the WordPress importer: a site as a folder of JSON files, the
+block registry, the HTML shadow of every page, the static publish, every
+block as UltraCanvas elements, blocks added, moved, removed and edited
+with the page re-rendered live, and a WordPress export read into a site.
+The publisher onto web hosts and the WebAssembly output follow
 ([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
 **Last Modified:** 2026-10-13
 **Author:** UltraCanvas Framework / ULTRA OS
@@ -58,7 +58,20 @@ ultrapress check mysite                                           # every proble
 ultrapress page mysite home                                       # the front page's HTML shadow, to stdout
 ultrapress publish mysite out                                     # the static tier, into out/
 ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the renderer referenced (later)
+ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
 ```
+
+`import` reads a WordPress export (Tools > Export in WordPress, the WXR
+file): the site's name, address, language and owner, every page and post
+with its slug, status and date, the front page (the page named home, or
+`--front <slug>`), the menus with their nesting, and the bodies as blocks.
+The block editor's markers map onto the registry where a block exists -
+paragraphs, headings, images, covers, quotes, buttons, columns, galleries,
+lists, spacers, HTML - and everything else, and classic content, becomes
+rich text; the report says what was kept that way. Attachment URLs are
+rewritten to `media/<year>/<month>/<file>` and fetched with `--media`
+(through UltraNet) or listed. A post's dated WordPress address is reported
+as a redirect to its new path. `--no-drafts` leaves drafts out.
 
 `publish` writes `index.html` for the front page and `<slug>/index.html` for
 every other published page, `sitemap.xml`, `robots.txt`, `feed.xml` (the
@@ -137,6 +150,10 @@ against it.
   Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
   blocks are the owner's own HTML and pass through.
 - `UltraPressPublish.h` - `PublishStatic` and `CreateStarterSite`.
+- `UltraPressImport.h` - `ImportWordPress` / `ImportWordPressFile` with
+  `ImportOptions` (the front page, a media fetcher, drafts) and
+  `ImportReport`; `BlocksFromWordPressContent` maps the block editor's
+  markup. TinyXML2 reads the export, privately.
 
 It links the core library for `UltraCanvasJSON` and the HTMLReader's
 `EscapeText`, and opens no window. Tests: `Tests/UltraPress/UltraPressEngineTests.cpp`,
@@ -148,7 +165,7 @@ publish the example site into a temporary folder.
 
 Text edited in place on the page, a picture picker and the media library,
 new pages and menus from the window, undo, the WebAssembly renderer release
-and its reference from the shadow, the WordPress WXR importer, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
+and its reference from the shadow, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
 the newsletter's e-mail mode of the emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
 static site need a form service until then.

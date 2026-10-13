@@ -1,3 +1,23 @@
+#### 2026-10-13 *0.4.0*
+- **The WordPress importer.** `ultrapress import <export.xml> <site-dir>`
+  reads a WordPress export (Tools > Export, the WXR file) into a site: the
+  site's name, address, language, tagline and owner; every page and post
+  with its slug, status (published, draft, scheduled), date and excerpt as
+  its description; the front page (the page named home, or `--front`);
+  the menus with their nesting, the first as `main`, one named footer as
+  `footer`; and the bodies as blocks. The block editor's markers map onto
+  the registry - paragraphs (plain ones merged into a text block, ones
+  with links or formatting kept as rich text), headings, images with their
+  alt and caption, covers as heroes, quotes with their source, buttons
+  (a link into the site names the page), columns, galleries, lists,
+  spacers, HTML - and every other block and classic content become rich
+  text, with the report naming what was kept that way and the shortcodes
+  left in classic text. Attachment URLs, sized variants included, are
+  rewritten to `media/<year>/<month>/<file>`; `--media` fetches them
+  through UltraNet, else they are listed. A post's dated WordPress address
+  is reported as a redirect to its new path. Tested against a small export
+  in `Tests/UltraPress/data`.
+
 #### 2026-10-13 *0.3.1*
 - **An icon of its own, and the app packaged everywhere.**
   `media/appicon/UltraPress.svg` - a page of blocks: the dark header band,

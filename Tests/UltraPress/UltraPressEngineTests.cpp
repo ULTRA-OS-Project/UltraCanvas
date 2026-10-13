@@ -10,6 +10,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressBlocks.h"
 #include "UltraPressHtml.h"
+#include "UltraPressImport.h"
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
 
@@ -275,12 +276,106 @@ static void TestPublishAndExample() {
     Check(MakeSlug("The Development Plan!") == "the-development-plan" && MakeSlug("  ") == "page", "slugs");
 }
 
+static void TestWordPressImport() {
+    std::printf("The WordPress importer\n");
+    Site site;
+    ImportReport report;
+    std::vector<std::pair<std::string, std::string>> fetched;
+    ImportOptions options;
+    options.fetchMedia = [&](const std::string& url, const std::string& local) {
+        fetched.emplace_back(url, local);
+        return url.find("hero") != std::string::npos;   // one succeeds, one fails
+    };
+    const std::string path = std::string(ULTRAPRESS_TEST_DATA_DIR) + "/wordpress-export.xml";
+    Check(ImportWordPressFile(path, options, site, report), "the export imports");
+    for (const std::string& warning : report.warnings) std::printf("  warning: %s\n", warning.c_str());
+
+    Check(site.name == "ULTRA OS & Friends" && site.url == "https://example.org" && site.language == "en" &&
+              site.tagline == "Europe\xE2\x80\x99s open source operating system" && site.owner == "Stefan",
+          "the site's name, address, language, tagline and owner");
+    Check(report.pages == 2 && report.posts == 2 && report.drafts == 1 && report.attachments == 2 && report.menus == 2,
+          "the counts: " + report.Summary());
+    const Page* home = site.FindPage("home");
+    const Page* plan = site.FindPage("the-plan");
+    const Page* release = site.FindPage("release-0-9");
+    const Page* notes = site.FindPage("notes");
+    Check(home && home->pinned && home->kind == "page" && home->IsPublished() && home->date == "2026-09-01", "the front page is home, pinned and dated");
+    Check(home && home->seo.description == "The front page of ULTRA OS.", "the excerpt is the description, as text");
+    Check(plan && plan->IsPublished() && release && release->kind == "post", "the other page and the post");
+    Check(notes && notes->status == "draft" && notes->title == "Notes", "the draft keeps its status and gets a slug from its title");
+
+    // The blocks of the front page.
+    Check(home && home->blocks.size() >= 10, "the front page has its blocks: " + std::to_string(home ? home->blocks.size() : 0));
+    if (home && home->blocks.size() >= 10) {
+        const auto& b = home->blocks;
+        Check(b[0].type == "hero" && b[0].Text("title") == "It\xE2\x80\x99s time to build on what we\xE2\x80\x99ve learned" &&
+                  b[0].Text("text") == "Unlike fragmented solutions, ULTRA OS unifies desktop and mobile." &&
+                  b[0].Text("picture") == "media/2026/09/hero.jpg",
+              "a cover is a hero with its title, lead and picture at the media path");
+        Check(b[1].type == "heading" && b[1].Text("text") == "What ULTRA OS is" && b[1].Number("level") == 2, "a heading");
+        Check(b[2].type == "text" && b[2].Text("text") == "A next-generation operating system project.\nOpen source, for everyone.\n\nOur goal is a compelling alternative.",
+              "plain paragraphs merge into one text block, a break kept as a line");
+        Check(b[3].type == "richtext" && b[3].Text("html").find("<a href=\"https://example.org/the-plan/\">") != std::string::npos,
+              "a paragraph with a link stays rich text");
+        Check(b[4].type == "picture" && b[4].Text("src") == "media/2026/09/desktop.png" && b[4].Text("alt") == "The desktop" &&
+                  b[4].Text("caption") == "The ULTRA OS desktop",
+              "an image with a sized file name becomes a picture of the original at the media path");
+        Check(b[5].type == "quote" && b[5].Text("text") == "Build on what we have learned." && b[5].Text("cite") == "The team", "a quote with its source");
+        Check(b[6].type == "buttons" && b[6].Items("items").GetSize() == 2 && b[6].Items("items")[0]["page"].GetString() == "the-plan" &&
+                  b[6].Items("items")[0]["primary"].GetBoolean(false) && b[6].Items("items")[1]["url"].GetString() == "https://github.com/ULTRA-OS-Project",
+              "buttons: a link into the site names the page, another keeps its URL");
+        Check(b[7].type == "columns" && b[7].children.size() == 2 && b[7].children[0].type == "heading" && b[7].children[1].type == "richtext",
+              "columns: one block becomes that block, several become rich text");
+        Check(b[8].type == "richtext" && b[8].Text("html").find("<li>One</li>") != std::string::npos && b[8].Text("html").find("wp:") == std::string::npos,
+              "a list is rich text without markers");
+        Check(b[9].type == "spacer" && b[9].Number("height") == 80, "a spacer with its height");
+        Check(b.size() == 11 && b[10].type == "richtext" && b[10].Text("html").find("Slides") != std::string::npos, "an unknown block is kept as rich text");
+    }
+    bool unknownWarned = false, shortcodeWarned = false;
+    for (const std::string& warning : report.warnings) {
+        if (warning.find("wp:some-plugin/carousel") != std::string::npos) unknownWarned = true;
+        if (warning.find("shortcode") != std::string::npos) shortcodeWarned = true;
+    }
+    Check(unknownWarned && shortcodeWarned, "the report names the unknown block and the shortcodes");
+    Check(notes && notes->blocks.size() == 1 && notes->blocks[0].type == "richtext" &&
+              notes->blocks[0].Text("html").find("[caption") == std::string::npos &&
+              notes->blocks[0].Text("html").find("/media/2026/09/desktop.png") != std::string::npos,
+          "classic content is one rich-text block, captions unwrapped, the sized picture rewritten");
+
+    // Menus.
+    const Menu* main = site.FindMenu("main");
+    const Menu* footer = site.FindMenu("footer");
+    Check(main && main->items.size() == 2 && main->items[0].title == "Home" && main->items[0].page == "home", "the main menu's first item is the front page");
+    Check(main && main->items[1].title == "Details" && main->items[1].url == "#" && main->items[1].children.size() == 1 &&
+              main->items[1].children[0].page == "the-plan" && main->items[1].children[0].title == "The development plan",
+          "a nested item under a custom one, titled from its page");
+    Check(footer && footer->items.size() == 1 && footer->items[0].url == "https://github.com/ULTRA-OS-Project", "the footer menu");
+
+    // Media and redirects.
+    Check(report.media.size() == 2 && report.media[1].second == "media/2026/09/desktop.png", "the attachments and their media paths");
+    Check(fetched.size() == 2 && report.fetched.size() == 1 && report.fetched[0].second == "media/2026/09/hero.jpg", "the fetcher is asked for each, and what succeeded is listed");
+    bool redirected = false;
+    for (const auto& [from, to] : report.redirects) {
+        if (from == "/2026/10/05/release-0-9/" && to == "/release-0-9/") redirected = true;
+    }
+    Check(redirected, "a post's dated address gets a redirect to its new path");
+    Check(ValidateSite(site).empty(), "the imported site validates clean");
+
+    // Not an export.
+    Site none;
+    ImportReport bad;
+    Check(!ImportWordPress("<html><body>no</body></html>", {}, none, bad) && !bad.warnings.empty(), "a page is refused");
+    Check(!ImportWordPress("<rss><channel><title>x</title></channel></rss>", {}, none, bad), "an RSS feed without items is refused");
+    Check(!ImportWordPress("<rss><channel>", {}, none, bad), "broken XML is refused");
+}
+
 int main() {
     TestStarterRoundTrip();
     TestValidation();
     TestShadowPage();
     TestSitemapAndFeed();
     TestPublishAndExample();
+    TestWordPressImport();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

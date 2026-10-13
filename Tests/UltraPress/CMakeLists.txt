@@ -9,7 +9,8 @@ target_compile_features(UltraPressEngineTests PRIVATE cxx_std_20)
 target_link_libraries(UltraPressEngineTests PRIVATE UltraPressEngine ${ULTRACANVAS_LIBRARY})
 target_include_directories(UltraPressEngineTests PRIVATE ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
 target_compile_definitions(UltraPressEngineTests PRIVATE
-    ULTRAPRESS_EXAMPLE_DIR="${CMAKE_SOURCE_DIR}/Apps/UltraPress/examples/ultraos")
+    ULTRAPRESS_EXAMPLE_DIR="${CMAKE_SOURCE_DIR}/Apps/UltraPress/examples/ultraos"
+    ULTRAPRESS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 set_target_properties(UltraPressEngineTests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 include(CTest)

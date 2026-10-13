@@ -12,6 +12,7 @@ set(ULTRAPRESS_ENGINE_SOURCES
     engine/UltraPressBlocks.cpp
     engine/UltraPressHtml.cpp
     engine/UltraPressPublish.cpp
+    engine/UltraPressImport.cpp
 )
 
 add_library(UltraPressEngine STATIC ${ULTRAPRESS_ENGINE_SOURCES})
@@ -24,6 +25,16 @@ target_include_directories(UltraPressEngine PUBLIC
 # UltraCanvasJSON (the site files) and HTMLReader's EscapeText (every piece
 # of text in a page) live in the core library. The engine opens no window.
 target_link_libraries(UltraPressEngine PUBLIC ${ULTRACANVAS_LIBRARY})
+# The WordPress export is XML: tinyxml2 is a REQUIRED core dependency
+# (UltraCanvas/CMakeLists.txt), re-exported by the core; the include path is
+# named here too where the configure step knows it, as UltraFIBU does.
+if(TINYXML2_FOUND)
+    target_include_directories(UltraPressEngine PRIVATE ${TINYXML2_INCLUDE_DIRS})
+    target_link_libraries(UltraPressEngine PUBLIC ${TINYXML2_LIBRARIES})
+    if(TINYXML2_LIBRARY_DIRS)
+        target_link_directories(UltraPressEngine PUBLIC ${TINYXML2_LIBRARY_DIRS})
+    endif()
+endif()
 
 # The version comes from the first line of Docs/UltraPress/CHANGELOG.md
 # through cmake/UltraCanvasVersion.cmake - never a literal in the source.
@@ -33,6 +44,12 @@ add_executable(ultrapress cli/main.cpp cli/UltraPressCli.cpp)
 target_compile_features(ultrapress PRIVATE cxx_std_20)
 target_include_directories(ultrapress PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cli)
 target_link_libraries(ultrapress PRIVATE UltraPressEngine)
+# `ultrapress import --media` fetches the export's attachments through
+# UltraNet, where the build has it; without it the command lists them.
+if(TARGET UltraNet)
+    target_link_libraries(ultrapress PRIVATE UltraNet)
+    target_compile_definitions(ultrapress PRIVATE ULTRAPRESS_HAS_ULTRANET=1)
+endif()
 set_source_files_properties(cli/UltraPressCli.cpp PROPERTIES
     COMPILE_DEFINITIONS "ULTRAPRESS_VERSION=\"${ULTRAPRESS_VERSION}\"")
 set_target_properties(ultrapress PROPERTIES
