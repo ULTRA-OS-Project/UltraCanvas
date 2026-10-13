@@ -61293,7 +61293,7 @@ UltraCanvasUIElement
 struct TickerItem {
     std::string label;          // "AAPL", "Platform 4", a headline
     std::string value;          // "189.30" - already formatted
-    std::string change;         // "+1.25 (0.67%)" - drawn in the trend colour
+    std::string change;         // "+1.25 (+0.66%)" - drawn in the trend colour
     TickerTrend trend = TickerTrend::Flat;
     Color labelColor = Color(0, 0, 0, 0);   // transparent = the style's colour
     Color valueColor = Color(0, 0, 0, 0);
@@ -61310,7 +61310,7 @@ message, and `TickerItem(label, value, change = "", trend = Flat)`.
 #include "Plugins/Diagrams/UltraCanvasTickerBoard.h"
 
 auto board = CreateTickerBoard("Prices", 0, 0, 800, 44, TickerBoardFace::Text);
-board->AddItem(MakeTickerQuote("UCNV", 189.30, 1.25));   // "189.30", "+1.25 (+0.67%)", Up
+board->AddItem(MakeTickerQuote("UCNV", 189.30, 1.25));   // "189.30", "+1.25 (+0.66%)", Up
 board->AddItem(MakeTickerQuote("VFX", 42.18, -0.64));    // "42.18", "-0.64 (-1.49%)", Down
 board->AddItem(TickerItem("Platform 4", "12:45"));       // a label and a value
 board->onItemClick = [](size_t index) {
@@ -61414,7 +61414,7 @@ item: between items `GetItemAt()` returns `SIZE_MAX`.
 ## Accessibility
 
 The board reads as a label (`AccessibleRole::Label`) whose value text is the
-items in order - `"UCNV 189.30 +1.25 (+0.67%); VFX 42.18 -0.64 (-1.49%)"` -
+items in order - `"UCNV 189.30 +1.25 (+0.66%); VFX 42.18 -0.64 (-1.49%)"` -
 so a screen reader gets the content once, not the animation.
 
 ## Quote formatting
@@ -61448,6 +61448,7 @@ void SetRunning(bool running);
 bool IsRunning() const;
 void SetOffset(double pixels);
 double GetOffset() const;
+double GetStripLength() const;   // one pass of the strip in px, from the last frame drawn
 
 TickerBoardStyle& GetStyle();
 void SetStyle(const TickerBoardStyle& s);
