@@ -14,7 +14,10 @@
   controls make one column of one width: a slider is no longer stretched
   across the dialog with its value at the far edge but sits at the list's
   width with the value beside it, the lists and size fields line up under it,
-  and a rule parts the size (this save's) from the format's own settings.
+  and a rule parts the size (this save's) from the format's own settings. A
+  slider sat 3 px below its caption - a horizontal `UltraCanvasSlider` draws
+  along its bottom edge, leaving room above for a value - and is now exactly
+  as tall as its handle, so the row centres it level with the caption.
 - **A dialog of controls has no empty room above its buttons.**
   `UltraCanvasModalDialog` sized itself for its message area even when that
   was hidden, so a dialog without a message - the save settings, among
@@ -34,3 +37,14 @@
   `MediaViewerSaveTest` (new) saves a bitmap larger and in another shape, an
   SVG at twenty times its size with a hard edge, and a JPEG at two stored
   qualities.
+- **`RasterizeVectorDocument`: a loaded drawing's page at any size.**
+  `UltraCanvasVectorRaster.h` drew a file at a chosen size
+  (`RasterizeVectorFile`) and chosen elements of an open drawing cropped to
+  what they paint (`RasterizeVectorElements`), but not the whole page of an
+  open drawing - what a drawing program exports as a bitmap. It now does:
+  the view box drawn at the pixel size asked for (one side 0 follows the
+  page's shape; both given stretch it), sharp at any size, with the
+  document's background colour and `VectorRasterOptions::background` under
+  it. ArtCreator's Export writes PNG and JPEG with it. `VectorRasterTest`
+  checks a page twenty times its size with a hard edge, the sizes, the
+  backgrounds and the refusals.

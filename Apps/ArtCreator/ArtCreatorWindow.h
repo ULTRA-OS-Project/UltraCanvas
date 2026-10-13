@@ -7,9 +7,10 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.5.0 - ExportBitmap / PagePixelSize: Export writes PNG and JPEG at any size
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -26,6 +27,7 @@
 #include "UltraCanvasVectorCanvas.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
+#include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
 
 #include "ArtCreatorTools.h"
 #include "ArtCreatorDialogs.h"
@@ -84,6 +86,12 @@ private:
     void SetDocument(std::shared_ptr<VectorStorage::VectorDocument> doc, const std::string& path);
     bool OpenFile(const std::string& path);
     bool SaveToPath(const std::string& path);
+    // The page as a bitmap (PNG, JPEG): drawn at `size` (IsOriginal: the
+    // page at 96 DPI, PagePixelSize) - a drawing has no pixel size, so it is
+    // drawn sharp at whatever size is asked - and written with the format's
+    // save settings. False, after saying why, when it could not be.
+    bool ExportBitmap(const std::string& path, const FileSaveImageSize& size);
+    Size2Di PagePixelSize() const;
     void ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dialog);
     void ConfirmDiscard(const std::string& question, const std::function<void()>& proceed);
     void OnDocumentChanged();

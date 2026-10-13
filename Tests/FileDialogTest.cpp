@@ -1091,6 +1091,21 @@ int main() {
                         std::cerr << "      settings form to buttons: " << gap << " px" << std::endl;
                         TEST("... and no empty room between the settings and the buttons", gap >= 0 && gap <= 32);
                     }
+                    // A horizontal slider draws along its bottom edge: sized
+                    // to its handle, it sits level with its caption.
+                    auto* slider = dynamic_cast<UltraCanvasSlider*>(settingsDialog->FindChildById("SaveSetting_compression"));
+                    auto* sliderCaption = settingsDialog->FindChildById("SaveSetting_compression-caption");
+                    if (slider && sliderCaption) {
+                        const Rect2Df s = slider->GetBoundsInWindow(), c = sliderCaption->GetBoundsInWindow();
+                        const SliderVisualStyle& look = slider->GetStyle();
+                        const float handleRow = std::ceil(std::max(look.handleSize,
+                                                                   look.trackHeight + 2.0f * look.borderWidth));
+                        const float off = (s.y + s.height / 2) - (c.y + c.height / 2);
+                        std::cerr << "      slider " << s.height << " px tall (handle row " << handleRow
+                                  << "), centre to caption centre " << off << " px" << std::endl;
+                        TEST("A slider is level with its caption: as tall as its handle, centred on the row",
+                             std::abs(s.height - handleRow) <= 0.5f && std::abs(off) <= 1.0f);
+                    }
                     if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
                         WritePpm(settingsDialog.get(), static_cast<int>(settingsDialog->GetWidth()),
                                  static_cast<int>(settingsDialog->GetHeight()),

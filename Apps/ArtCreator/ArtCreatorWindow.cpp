@@ -2,6 +2,10 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.6.0 - Export writes PNG and JPEG: the page drawn at the size the
+//                 Save dialog's Settings give (SetDrawingSize: the page at 96 DPI
+//                 unless another is chosen), sharp at any, with the format's
+//                 save settings
 // Version: 1.5.0 - icons redrawn on pixel grids, in three sets: the palette's tools at
 //                 28 px (media/icons/artcreator/28) in 36 px buttons, the toolbar and
 //                 panel icons on a 24 px grid (toolbars draw them at 24 px now),
@@ -11,7 +15,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -22,6 +26,7 @@
 #include "UltraCanvasClipboardDib.h"   // ClipboardDib::EncodePng
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasRasterDocument.h"   // ExportBitmap writes through it
 #include "UltraCanvasTextUtils.h"      // Base64Encode
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModalDialog.h"
@@ -814,6 +819,53 @@ bool ArtCreatorWindow::SaveToPath(const std::string& path) {
     return true;
 }
 
+// The bitmap types Export writes by drawing the page (ExportBitmap); every
+// other type goes to the vector writers.
+static bool IsBitmapExport(const std::string& path) {
+    const std::string ext = ExtensionOf(path);
+    return ext == "png" || ext == "jpg" || ext == "jpeg";
+}
+
+Size2Di ArtCreatorWindow::PagePixelSize() const {
+    if (!document) return Size2Di(0, 0);
+    // The page is in points; a bitmap starts at 96 pixels an inch, the size
+    // the page has on a screen at 100 %.
+    Rect2Dd page = document->ViewBox;
+    if (!(page.width > 0) || !(page.height > 0)) page = Rect2Dd(0, 0, document->Size.width, document->Size.height);
+    constexpr double kPixelsPerPoint = 96.0 / 72.0;
+    return Size2Di(std::max(1, static_cast<int>(std::lround(page.width * kPixelsPerPoint))),
+                   std::max(1, static_cast<int>(std::lround(page.height * kPixelsPerPoint))));
+}
+
+bool ArtCreatorWindow::ExportBitmap(const std::string& path, const FileSaveImageSize& size) {
+    if (!document) return false;
+    const Size2Di page = PagePixelSize();
+    VectorRasterOptions options;
+    options.width = size.IsOriginal() ? page.width : size.width;
+    options.height = size.IsOriginal() ? page.height : size.height;
+    std::string error;
+    // Drawn at that size, not drawn small and stretched: it is as sharp at
+    // 8000 pixels as at 800. A PNG keeps what the page leaves transparent; a
+    // JPEG, which has no transparency, is laid on white by the writer.
+    auto layer = RasterizeVectorDocument(*document, options, error);
+    if (layer) {
+        UCRasterDocument picture(layer->GetWidth(), layer->GetHeight(), RasterPixel(0, 0, 0, 0));
+        picture.AddLayer(layer);
+        // With the format's save settings (the Save dialog's Settings: JPEG
+        // quality, PNG compression ...), as UltraPaint's Save writes.
+        if (picture.SaveToFile(path, error)) {
+            if (statusHint) {
+                statusHint->SetText("Exported " + FileNameOf(path) + " at " + std::to_string(layer->GetWidth()) +
+                                    " x " + std::to_string(layer->GetHeight()) + " px");
+            }
+            return true;
+        }
+    }
+    UltraCanvasDialogManager::ShowError("Could not export " + FileNameOf(path) + "\n" + error, "Export",
+                                        nullptr, window.get());
+    return false;
+}
+
 void ArtCreatorWindow::ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dialog) {
     if (!dialog) return;
     dialog->Create();
@@ -975,13 +1027,20 @@ void ArtCreatorWindow::CmdExport() {
         .AddFilter("DXF", std::vector<std::string>{ "dxf" })
         .AddFilter("EMF", std::vector<std::string>{ "emf" })
         .AddFilter("WMF", std::vector<std::string>{ "wmf" })
+        .AddFilter("PNG image", std::vector<std::string>{ "png" })
+        .AddFilter("JPEG image", std::vector<std::string>{ "jpg", "jpeg" })
         .AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(def)
+        // A drawing has no pixel size: the page at 96 DPI is where a PNG or
+        // a JPEG starts, and their Settings offer any other size.
+        .SetDrawingSize(PagePixelSize().width, PagePixelSize().height)
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
+                                                       const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
-        SaveToPath(path);
+        if (IsBitmapExport(path)) ExportBitmap(path, size);
+        else SaveToPath(path);
     });
 }
 

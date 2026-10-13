@@ -106,8 +106,13 @@ stop, text, transparency ramps and mixes, shadows and feathers, clip
 views, contours, blends, moulds and bevels all round trip as Xara's own
 records; Xara's own arrowheads as Xara arrowheads, the rest of the line
 gallery as plain shapes that read back as strokes), SVG (shapes, fills,
-text - no effects), DXF, EMF, WMF; exports PDF, AI, EPS and CDR too. What
-a reader or writer had to drop is reported in the status bar. Without
+text - no effects), DXF, EMF, WMF; exports PDF, AI, EPS and CDR too, and the
+page as a PNG or JPEG at any size: the Export dialog's Settings for those
+types open on the page at 96 DPI and take any other size, and the page is
+drawn at that size - as sharp at 8000 pixels as at 800 - with the format's
+save settings (JPEG quality, PNG compression ...). A PNG keeps what the page
+leaves transparent; a JPEG is laid on white. What a reader or writer had to
+drop is reported in the status bar. Without
 the Vector plugin (`-DULTRACANVAS_PLUGIN_VECTOR=ON`) the editor draws but
 has no file formats.
 

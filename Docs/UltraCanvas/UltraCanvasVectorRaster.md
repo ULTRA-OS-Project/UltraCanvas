@@ -109,6 +109,38 @@ if (!layer) ShowStatus(error);   // nothing visible, or too large
   are no elements, nothing visible, a scale that is not positive, or a result
   larger than `maxPixels` (64 Mpx by default - a clipboard copy, not a print).
 
+## A loaded drawing's page
+
+`RasterizeVectorDocument` draws the whole page of an open `VectorDocument` -
+what a drawing program's *Export* writes as a PNG or a JPEG. A drawing has no
+pixel size of its own, so it is drawn **at** the size asked for, sharp at any
+size, never drawn small and stretched:
+
+<!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> drawing; void ShowStatus(const std::string&); -->
+```cpp
+#include "UltraCanvasVectorRaster.h"
+
+VectorRasterOptions options;
+options.width = 3200;                 // the height follows the page's shape
+std::string error;
+auto page = RasterizeVectorDocument(*drawing, options, error);
+if (!page) ShowStatus(error);         // no page size, or too large
+```
+
+- **The page** is the document's view box (0,0 to its `Size` where it has
+  none). Both sides 0 give a pixel a document unit; one side 0 follows the
+  page's shape; both given scale each side on its own, so a size in another
+  shape stretches the page to it.
+- **Background**: the document's own `BackgroundColor` is drawn, and
+  `options.background` under it - transparent by default, so a PNG keeps
+  what the page leaves empty.
+- Null comes back with `error` set for a document with no page size or a
+  size larger than `options.maxPixels` (256 Mpx by default).
+
+ArtCreator's Export offers PNG and JPEG this way: the Save dialog is told the
+page's size at 96 DPI as a drawing (`FileDialogOptions::SetDrawingSize`), its
+Settings offer any other, and the page is drawn at the size chosen.
+
 ## What it is not
 
 - **Not a vector editor.** The document model, the converters between vector
@@ -130,7 +162,8 @@ comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
 `UltraPaintImportDialog`).
 
 ArtCreator: *Copy* puts the selection on the system clipboard as a PNG made
-by `RasterizeVectorElements` (`Apps/ArtCreator/ArtCreatorWindow.cpp`).
+by `RasterizeVectorElements`, and *Export* writes PNG and JPEG through
+`RasterizeVectorDocument` (`Apps/ArtCreator/ArtCreatorWindow.cpp`).
 
 ## Tests
 
@@ -141,7 +174,10 @@ drawing, and an absurd size is refused rather than allocated. It reports
 `[SKIP]` on a build with no SVG rasterizer instead of failing. Its
 `RasterizeVectorElements` checks need no file rasterizer and run on every
 build: the crop to what is painted, a stroke past the bounds, the scale, an
-ancestor's transform, and the refusals.
+ancestor's transform, and the refusals. So do its `RasterizeVectorDocument`
+checks: the natural size, a page twenty times larger with a hard edge, one
+side following the page's shape, a size in another shape, both backgrounds,
+and the refusals.
 
 ## See also
 

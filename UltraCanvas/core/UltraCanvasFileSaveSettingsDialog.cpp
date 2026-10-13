@@ -279,6 +279,14 @@ namespace UltraCanvas {
                     auto cell = CreateFormCellRow(id + "-row", kSliderGap, kRowHeight);
                     cell->size.width = CSSLayout::Dimension::Px(kControlWidth);
                     auto slider = std::make_shared<UltraCanvasSlider>(id, 0, 0, kSliderWidth, 24);
+                    // A horizontal slider draws its track and handle along its
+                    // bottom edge (the room above is for a value shown over
+                    // it). Exactly as tall as the handle, the row centres it
+                    // on the caption and the value beside it.
+                    const SliderVisualStyle& look = slider->GetStyle();
+                    const float sliderHeight = std::ceil(std::max(look.handleSize,
+                                                                  look.trackHeight + 2.0f * look.borderWidth));
+                    slider->size.height = CSSLayout::Dimension::Px(sliderHeight);
                     slider->SetRange(static_cast<float>(spec.minimum), static_cast<float>(spec.maximum));
                     slider->SetStep(1.0f);
                     slider->SetValue(static_cast<float>(values->GetInt(key, spec.minimum)));

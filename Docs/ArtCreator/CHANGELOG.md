@@ -1,3 +1,16 @@
+#### 2026-10-13 *0.6.11*
+- **Export as PNG or JPEG, at any size.** File > Export offers PNG and JPEG
+  beside the vector formats. A drawing has no pixel size of its own, so the
+  Export dialog's Settings for them open on the page at 96 DPI (an A4 page at
+  794 x 1123 pixels) and take any other size, Keep proportions keeping the
+  page's shape; the page is then drawn at that size, not drawn small and
+  stretched, so it is as sharp at 8000 pixels as at 800. The format's save
+  settings apply (JPEG quality, PNG compression ...). A PNG keeps what the
+  page leaves transparent; a JPEG is laid on white. The status bar says the
+  size written (framework changelog, pending entry
+  `save-size-for-drawings-and-the-viewer`: `SetDrawingSize`,
+  `RasterizeVectorDocument`).
+
 #### 2026-10-12 *0.6.10*
 - **Sharp icons, drawn for the size they are shown at.** The icons were drawn
   on a 24-unit grid with 1.8-unit strokes and shown at 22 px in the tool
