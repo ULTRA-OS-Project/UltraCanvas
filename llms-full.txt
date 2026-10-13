@@ -1928,9 +1928,10 @@ the OAuth client id is configuration in UltraNet's shared app registry —
 `SetOAuthApp`, `ULTRACLOUD_<PROVIDER>_CLIENT_ID`, or the client UltraMail
 registered, since `googledrive` falls back to `google` and `onedrive` to
 `microsoft`), FTP / FTPS / SFTP over UltraNet's FTP
-surface (the one provider that can also delete and rename, so a file manager
-can carry an FTP server as a drive; no share links, and SFTP authenticates
-with a password only), and an in-memory demo provider. Providers
+surface (delete and rename too, so a file manager can carry an FTP server
+as a drive; no share links; SFTP signs in with a password or a private
+key), WebDAV and Nextcloud delete and rename as well (DELETE, MOVE), and an
+in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
 Accounts persist on UltraDatabase (`AccountStore`), secrets go to the
@@ -75165,11 +75166,13 @@ same default.
 
 > **Status (2026-09, v0.2):** engine and dialogs implemented for
 > **Nextcloud / ownCloud** (WebDAV + OCS share links), **generic WebDAV**
-> (browse and upload; links only through a public web-folder URL),
+> (browse, upload, delete and rename; links only through a public
+> web-folder URL),
 > **Dropbox**, **OneDrive** and **Google Drive** (OAuth2 + PKCE through the
 > system browser, tokens refreshed automatically), **FTP / FTPS / SFTP**
-> (browse, upload, download, and - alone among the providers - delete and
-> rename, so a file manager can carry a server as a drive; no share links)
+> (browse, upload, download, delete and rename, so a file manager can carry
+> a server as a drive; SFTP with a password or a private key; no share
+> links)
 > and an **in-memory demo provider**. iCloud Drive cannot mint links from an app at all. Providers
 > can also ship as plug-in libraries. Sources under
 > `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud` (headless)
@@ -75204,11 +75207,11 @@ What already existed and stays where it is:
 | Provider | Upload | Link comes from | Auth | Link shape |
 |---|---|---|---|---|
 | Nextcloud / ownCloud | WebDAV PUT under `/remote.php/dav/files/<user>/` | OCS Share API (`shareType=3`), with password, expiry, label | app password (Basic) | `https://cloud.example.com/s/<token>` |
-| WebDAV server | WebDAV PUT | `publicBaseUrl` + path, when the DAV root is also served as a web folder | Basic | `https://files.example.org/pub/<path>` |
+| WebDAV server | WebDAV PUT; DELETE and MOVE, so it is a drive too | `publicBaseUrl` + path, when the DAV root is also served as a web folder | Basic | `https://files.example.org/pub/<path>` |
 | Dropbox | `files/upload` up to 150 MB, an upload session (`upload_session/start` → `append_v2` → `finish`) in 8 MiB chunks above | `sharing/create_shared_link_with_settings` (password + expiry on paid plans); an existing link is reused | OAuth2 + PKCE, offline access | `https://www.dropbox.com/scl/fi/…` |
 | OneDrive | Graph `PUT …:/content` up to 4 MB, an upload session in 10 MiB chunks above | Graph `createLink` (anonymous view; password + expiry on personal accounts) | OAuth2 + PKCE, `offline_access` | `https://1drv.ms/…` |
 | Google Drive | multipart `files.create` (or a media update when the name exists) up to 5 MB, a resumable upload in 8 MiB chunks above | `permissions.create` (anyone with the link) + the file's `webViewLink`; no password / expiry | OAuth2 + PKCE, `access_type=offline` | `https://drive.google.com/file/d/<id>/view` |
-| FTP / FTPS / SFTP | `UltraNet_FtpUpload`, missing folders created on the way | — (no FTP request mints a link) | user + password (`CURLOPT_USERNAME` / `CURLOPT_PASSWORD`); implicit TLS on `ftps://`, explicit on `ftpes://` | not possible from an app |
+| FTP / FTPS / SFTP | `UltraNet_FtpUpload`, missing folders created on the way | — (no FTP request mints a link) | user + password (`CURLOPT_USERNAME` / `CURLOPT_PASSWORD`); on `sftp://` a private key too (`Credentials::privateKeyFile`, the password as its passphrase); implicit TLS on `ftps://`, explicit on `ftpes://` | not possible from an app |
 | iCloud Drive | — | Finder / share sheet only | — | not possible from an app |
 | Demo (in memory) | in process | in process | — | `https://demo.ultra-os.local/s/<n>` |
 
@@ -75376,7 +75379,7 @@ providers.
 
 | Header | Contents |
 |---|---|
-| `UltraCloudTypes.h` | `Result` / `ResultCode` (a failure carries `diagnostics`, the transport's connection chain - the FTP provider fills it from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
+| `UltraCloudTypes.h` | `Result` / `ResultCode` (a failure carries `diagnostics`, the transport's connection chain - the FTP provider fills it from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry, and the SFTP private key's path), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
@@ -75387,7 +75390,7 @@ providers.
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
-| `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
+| `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
 | `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (with an optional provider filter and title), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
@@ -84370,6 +84373,8 @@ ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_h
 ultrapress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
 ultrapress publish mysite out --to site                           # write, then upload what changed onto the site's host
 ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
+ultrapress publish mysite out --to site --prune                   # and delete on the host what the site no longer has
+ultrapress hosts add ftp --server sftp://my.example --user me --key ~/.ssh/id_ed25519   # SFTP with a key (the password: its passphrase)
 ```
 
 `import` reads a WordPress export (Tools > Export in WordPress, the WXR
@@ -84460,13 +84465,19 @@ against it.
   `Block`; `HtmlOptions` names the renderer script and the UltraWeb app.
   Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
   blocks are the owner's own HTML and pass through.
-- `UltraPressPublish.h` - `PublishStatic` and `CreateStarterSite`.
+- `UltraPressPublish.h` - `PublishStatic` (the output mirrors the site:
+  what an earlier publish wrote and this one does not is removed, the
+  deploy manifest excepted; `removeStale` turns it off) and
+  `CreateStarterSite`.
 - `UltraPressDeploy.h` - `DeployFolder`: the published folder onto a host
   through an `Uploader` (two functions: make a folder, put a file), the
   root's folders created first, only the files whose `Fingerprint` changed
   since the last upload to that host (`.ultrapress-deploy.json` beside the
   output remembers them per host), stopping after three failures in a row.
-  Headless and free of UltraCloud; `--force` sends everything.
+  With `prune`, what the manifest knew and the output no longer has is
+  deleted, then the folders that left empty, innermost first; never
+  anything the deploy did not upload itself. Headless and free of
+  UltraCloud; `--force` sends everything.
 - `UltraPressImport.h` - `ImportWordPress` / `ImportWordPressFile` with
   `ImportOptions` (the front page, a media fetcher, drafts) and
   `ImportReport`; `BlocksFromWordPressContent` maps the block editor's
@@ -84499,6 +84510,9 @@ MKCOL, outermost first). A site names its host and the folder on it in
 ```
 
 `ultrapress hosts use` writes it; the window's Host… button does the same.
+An `sftp://` host signs in with a password or a private key (`--key`, or
+the dialog's *Private key* row; the password is then the key's passphrase).
+The window's Publish prunes; the command line prunes with `--prune`.
 Without UltraCloud the program says so, and `ultrapress publish` still
 writes the folder to upload by other means.
 
@@ -84506,9 +84520,8 @@ writes the folder to upload by other means.
 
 Text edited in place on the page, a picture picker and the media library,
 new pages and menus from the window, undo, the WebAssembly renderer release
-and its reference from the shadow, a sign-in prompt for an SFTP key (the FTP
-provider signs in with a password), deleting on the host what a publish no
-longer writes, the newsletter's e-mail mode of the emitter, the Markdown block, and
+and its reference from the shadow, the newsletter's e-mail mode of the
+emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
 static site need a form service until then.
 
@@ -84548,7 +84561,7 @@ every statement in it is true of both.
 |---|---|---|
 | `UltraMail.md` | UltraMail, English | draft 1.0, needs the bracketed items and legal review |
 | `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.0, same |
-| `UltraPress.md` | UltraPress, English - the command line of 0.1.0, which contacts no server | draft 0.1, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
+| `UltraPress.md` | UltraPress, English - the program of 0.5, which contacts the web host the user configures and nothing else | draft 0.2, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change
@@ -85330,7 +85343,7 @@ required to [confirm with legal review].
 | The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out`; the window uses `<site>/.ultrapress/publish` |
 | The upload record | `.ultrapress-deploy.json`: for each host, the name and a fingerprint (size and a hash of the content, not the content) of every file uploaded, so the next publish sends only what changed | beside the published site |
 | The host list | the hosts you added: the kind (FTP, WebDAV, Nextcloud), the server address, your user name, the folder, a display name | `hosts.db` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere) |
-| The host passwords | the password of each host | the encrypted credential vault `vault/` beside `hosts.db`, opened with a key file the program writes on your device (UltraVault) |
+| The host passwords | the password of each host, and for an SFTP host the path of the private key file you named (the key itself stays where it is) | the encrypted credential vault `vault/` beside `hosts.db`, opened with a key file the program writes on your device (UltraVault) |
 | The site's host | the id of the host the site publishes to and the folder on it; no password | `hosting` in `site.json` |
 
 UltraPress writes no caches, logs or history files of its own. Its messages
@@ -85375,7 +85388,9 @@ site, your user name and password to sign in, and the folder names it
 creates. The connection is to the address you entered; with `sftp://`,
 `ftps://`, `ftpes://` or `https://` it is encrypted, with plain `ftp://` or
 `http://` it is not, and the program says so in the error details when a
-sign-in fails. Verifying a new host (`ultrapress hosts add` without
+sign-in fails. With `--prune` (the window's Publish always) the program
+also deletes on the host the files an earlier publish of yours put there
+and the site no longer has; it never deletes anything else. Verifying a new host (`ultrapress hosts add` without
 `--no-verify`, or the dialog) signs in once and lists a folder. Nothing is
 sent to ULTRA OS Development GmbH, and nothing is sent to any host you did
 not add.

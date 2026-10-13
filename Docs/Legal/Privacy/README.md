@@ -30,7 +30,7 @@ every statement in it is true of both.
 |---|---|---|
 | `UltraMail.md` | UltraMail, English | draft 1.0, needs the bracketed items and legal review |
 | `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.0, same |
-| `UltraPress.md` | UltraPress, English - the command line of 0.1.0, which contacts no server | draft 0.1, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
+| `UltraPress.md` | UltraPress, English - the program of 0.5, which contacts the web host the user configures and nothing else | draft 0.2, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change

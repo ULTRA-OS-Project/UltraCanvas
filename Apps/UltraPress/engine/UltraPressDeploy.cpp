@@ -1,5 +1,6 @@
 // Apps/UltraPress/engine/UltraPressDeploy.cpp
 // See UltraPressDeploy.h.
+// Version: 0.5.1 - prune
 // Version: 0.5.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -27,6 +28,8 @@ std::string DeployResult::Summary() const {
     std::string summary = std::to_string(uploaded.size()) + " uploaded, " + std::to_string(unchanged.size()) +
                           " unchanged, " + std::to_string(failed.size()) + " failed";
     if (!notTried.empty()) summary += ", " + std::to_string(notTried.size()) + " not tried";
+    if (!removed.empty() || !notRemoved.empty()) summary += ", " + std::to_string(removed.size()) + " removed";
+    if (!notRemoved.empty()) summary += ", " + std::to_string(notRemoved.size()) + " not removed";
     return summary;
 }
 
@@ -186,11 +189,60 @@ DeployResult DeployFolder(const std::string& outputDirectory, const Uploader& up
                                 " failures in a row; " + std::to_string(result.notTried.size()) +
                                 " file(s) left for the next publish");
     }
+    // What the host still has from an earlier upload and the output no
+    // longer writes: pruned, or remembered until it is.
+    std::set<std::string> present;
+    for (const auto& [relative, fingerprint] : files) present.insert(relative);
+    std::vector<std::string> stale;
+    for (const auto& [relative, fingerprint] : known) {
+        if (!present.count(relative)) stale.push_back(relative);
+    }
+    for (const std::string& relative : result.notTried) {
+        if (known.count(relative)) current[relative] = known.at(relative);
+    }
+    if (options.prune && uploader.remove) {
+        std::set<std::string> emptied;    // folders a removed file lived in
+        for (const std::string& relative : stale) {
+            std::string error;
+            if (uploader.remove(JoinRemote(options.remoteRoot, relative), false, error)) {
+                result.removed.push_back(relative);
+                for (size_t slash = relative.rfind('/'); slash != std::string::npos; slash = relative.rfind('/', slash - 1)) {
+                    emptied.insert(relative.substr(0, slash));
+                    if (slash == 0) break;
+                }
+            } else {
+                result.notRemoved.push_back(relative);
+                result.errors.push_back(relative + ": not removed: " + (error.empty() ? std::string("the host refused") : error));
+                current[relative] = known.at(relative);
+            }
+        }
+        // A folder is removed when no file of the output lives in it any
+        // more, innermost first; one the host will not remove (not empty
+        // after all, or a provider without the verb) is left without a word.
+        std::vector<std::string> folders(emptied.begin(), emptied.end());
+        std::sort(folders.begin(), folders.end(), [](const std::string& a, const std::string& b) { return a.size() > b.size(); });
+        for (const std::string& folder : folders) {
+            bool inUse = false;
+            for (const std::string& relative : present) {
+                if (relative.compare(0, folder.size() + 1, folder + "/") == 0) { inUse = true; break; }
+            }
+            if (inUse) continue;
+            std::string error;
+            uploader.remove(JoinRemote(options.remoteRoot, folder), true, error);
+        }
+    } else {
+        for (const std::string& relative : stale) current[relative] = known.at(relative);
+        if (options.prune && !stale.empty()) {
+            result.notRemoved = stale;
+            result.errors.push_back("this host cannot delete: " + std::to_string(stale.size()) +
+                                    " file(s) the site no longer has are still on it");
+        }
+    }
     if (!WriteManifest(manifestFile, hostKey, current)) {
         result.errors.push_back("cannot write " + UltraCanvas::PathToUtf8(manifestFile) +
                                 " - the next publish uploads everything again");
     }
-    result.ok = result.failed.empty() && result.notTried.empty();
+    result.ok = result.failed.empty() && result.notTried.empty() && result.notRemoved.empty();
     return result;
 }
 

@@ -1,3 +1,24 @@
+#### 2026-10-13 *0.5.1*
+- **Pruning.** `ultrapress publish --to ... --prune` deletes on the host
+  what an earlier publish put there and the site no longer has - a removed
+  page's file and its folder once it is empty, innermost first - and
+  nothing else: only what the manifest remembers uploading is ever touched.
+  Without `--prune` such a file stays and is remembered, so a later prune
+  finds it. The window's Publish prunes. A host that cannot delete (the
+  in-memory demo provider) says what is left on it; FTP, WebDAV and
+  Nextcloud can, WebDAV and Nextcloud having gained the verb in the
+  framework today. For that to mean anything the static output now mirrors
+  the site: `PublishStatic` removes from the output folder what an earlier
+  publish wrote and this one does not (a removed page's folder, a picture no
+  longer in `media/`; the deploy manifest stays), `removeStale` in
+  `PublishOptions` turns it off. Run end to end against the local FTP and
+  WebDAV servers: a page removed from the site left both hosts.
+- **SFTP with a key.** `ultrapress hosts add ftp --server sftp://... --key
+  ~/.ssh/id_ed25519` signs in with that private key, the password (when
+  given) as its passphrase; the dialog behind Host… has the same row. The
+  key file stays where it is; its path goes into the vault with the
+  password.
+
 #### 2026-10-13 *0.5.0*
 - **The publisher onto web hosts.** A site is published through UltraCloud's
   providers - FTP / FTPS / SFTP, WebDAV, Nextcloud - onto a host the

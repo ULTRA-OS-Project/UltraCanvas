@@ -80,6 +80,8 @@ ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_h
 ultrapress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
 ultrapress publish mysite out --to site                           # write, then upload what changed onto the site's host
 ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
+ultrapress publish mysite out --to site --prune                   # and delete on the host what the site no longer has
+ultrapress hosts add ftp --server sftp://my.example --user me --key ~/.ssh/id_ed25519   # SFTP with a key (the password: its passphrase)
 ```
 
 `import` reads a WordPress export (Tools > Export in WordPress, the WXR
@@ -170,13 +172,19 @@ against it.
   `Block`; `HtmlOptions` names the renderer script and the UltraWeb app.
   Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
   blocks are the owner's own HTML and pass through.
-- `UltraPressPublish.h` - `PublishStatic` and `CreateStarterSite`.
+- `UltraPressPublish.h` - `PublishStatic` (the output mirrors the site:
+  what an earlier publish wrote and this one does not is removed, the
+  deploy manifest excepted; `removeStale` turns it off) and
+  `CreateStarterSite`.
 - `UltraPressDeploy.h` - `DeployFolder`: the published folder onto a host
   through an `Uploader` (two functions: make a folder, put a file), the
   root's folders created first, only the files whose `Fingerprint` changed
   since the last upload to that host (`.ultrapress-deploy.json` beside the
   output remembers them per host), stopping after three failures in a row.
-  Headless and free of UltraCloud; `--force` sends everything.
+  With `prune`, what the manifest knew and the output no longer has is
+  deleted, then the folders that left empty, innermost first; never
+  anything the deploy did not upload itself. Headless and free of
+  UltraCloud; `--force` sends everything.
 - `UltraPressImport.h` - `ImportWordPress` / `ImportWordPressFile` with
   `ImportOptions` (the front page, a media fetcher, drafts) and
   `ImportReport`; `BlocksFromWordPressContent` maps the block editor's
@@ -209,6 +217,9 @@ MKCOL, outermost first). A site names its host and the folder on it in
 ```
 
 `ultrapress hosts use` writes it; the window's Host… button does the same.
+An `sftp://` host signs in with a password or a private key (`--key`, or
+the dialog's *Private key* row; the password is then the key's passphrase).
+The window's Publish prunes; the command line prunes with `--prune`.
 Without UltraCloud the program says so, and `ultrapress publish` still
 writes the folder to upload by other means.
 
@@ -216,8 +227,7 @@ writes the folder to upload by other means.
 
 Text edited in place on the page, a picture picker and the media library,
 new pages and menus from the window, undo, the WebAssembly renderer release
-and its reference from the shadow, a sign-in prompt for an SFTP key (the FTP
-provider signs in with a password), deleting on the host what a publish no
-longer writes, the newsletter's e-mail mode of the emitter, the Markdown block, and
+and its reference from the shadow, the newsletter's e-mail mode of the
+emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
 static site need a form service until then.

@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.5.1 - Publish prunes
 // Version: 0.5.0 - Publish and Host...
 // Version: 0.3.0
 // Last Modified: 2026-10-13
@@ -293,6 +294,7 @@ bool EditorWindow::Publish() {
     publishWorker = std::thread([this, out, accountId, root, theHosts]() {
         DeployOptions deploy;
         deploy.remoteRoot = root;
+        deploy.prune = true;      // what the site no longer has goes, where the host can delete
         deploy.onProgress = [this](const std::string& relative, size_t index, size_t total) {
             Later([this, relative, index, total]() {
                 SetStatus("Uploading " + std::to_string(index) + "/" + std::to_string(total) + ": " + relative);

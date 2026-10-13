@@ -1,5 +1,6 @@
 // Apps/UltraPress/hosting/UltraPressHosting.cpp
 // See UltraPressHosting.h.
+// Version: 0.5.1 - the remove verb for pruning
 // Version: 0.5.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -138,6 +139,12 @@ Uploader Hosts::UploaderFor(const std::string& accountId) {
                                            std::string& error) {
         if (!service) { error = "the host list is not open"; return false; }
         const UltraCloud::Result r = service->Upload(accountId, localPath, remotePath);
+        if (!r) error = r.message;
+        return r.IsOk();
+    };
+    uploader.remove = [service, accountId](const std::string& remotePath, bool isDirectory, std::string& error) {
+        if (!service) { error = "the host list is not open"; return false; }
+        const UltraCloud::Result r = service->Delete(accountId, remotePath, isDirectory);
         if (!r) error = r.message;
         return r.IsOk();
     };

@@ -9,6 +9,7 @@
 //
 // The engine stays headless and free of UltraCloud: the seam is two
 // functions, and the host code that fills them lives beside the program.
+// Version: 0.5.1 - prune: what the manifest knew and the output no longer has is deleted
 // Version: 0.5.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -29,6 +30,10 @@ struct Uploader {
     // the upload decide. FTP creates the missing folders of an upload itself.
     std::function<bool(const std::string& remotePath, std::string& error)> makeDirectory;
     std::function<bool(const std::string& localPath, const std::string& remotePath, std::string& error)> upload;
+    // For pruning: delete a file, or a folder once it is empty. Unset, or
+    // failing, when the host cannot (the deploy then leaves the file and
+    // says so).
+    std::function<bool(const std::string& remotePath, bool isDirectory, std::string& error)> remove;
 };
 
 struct DeployOptions {
@@ -38,6 +43,12 @@ struct DeployOptions {
     // publish: a host that is down is one failure, not one per file. 0 never
     // stops.
     int stopAfterFailures = 3;
+    // Delete on the host what the manifest knew for it and the output no
+    // longer has - a removed page's folder - after the uploads; then the
+    // folders left empty by that, innermost first. Only what this deploy
+    // once uploaded is ever touched. Off, the manifest keeps remembering
+    // such files so a later prune finds them.
+    bool prune = false;
     // Called before each upload: the file, its number and how many there are.
     std::function<void(const std::string& relative, size_t index, size_t total)> onProgress;
 };
@@ -48,10 +59,12 @@ struct DeployResult {
     std::vector<std::string> unchanged;    // skipped: the manifest had the same fingerprint
     std::vector<std::string> failed;
     std::vector<std::string> notTried;     // left for next time after the failures in a row
+    std::vector<std::string> removed;      // pruned: files the output no longer has
+    std::vector<std::string> notRemoved;   // pruned, but the host refused; remembered for next time
     std::vector<std::string> errors;       // one line per failure, and the manifest's
     int directoriesCreated = 0;
 
-    std::string Summary() const;           // "12 uploaded, 30 unchanged, 0 failed", "... 3 failed, 40 not tried"
+    std::string Summary() const;           // "12 uploaded, 30 unchanged, 0 failed", "... 3 failed, 40 not tried", "... 2 removed"
 };
 
 // A file's fingerprint: its size and FNV-1a 64 over its content, as hex.

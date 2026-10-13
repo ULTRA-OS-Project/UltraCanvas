@@ -1,4 +1,5 @@
 // UltraCloud/providers/UltraCloudWebDav.cpp
+// Version: 0.3.0 - Delete and Rename, so a WebDAV server is a drive and a publish target that can prune
 // Version: 0.2.1 - an href's entities decoded by the HTMLReader module (HTML::DecodeEntities)
 // Version: 0.2.0
 // Last Modified: 2026-10-08
@@ -179,6 +180,7 @@ std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& f
 ProviderCapabilities WebDavProvider::Capabilities() const {
     ProviderCapabilities c;
     c.browse = true; c.upload = true;
+    c.modify = true;                 // DELETE and MOVE are plain WebDAV
     c.shareLinks = true;             // only with a public base URL; see CreateShareLink
     c.needsServerUrl = true;
     return c;
@@ -243,6 +245,40 @@ Result WebDavProvider::Upload(const Account& account, const Credentials& credent
     UltraNetResponse resp;
     UltraNetResult net = Send(credentials, req, resp);
     return FromHttp(net, resp, "upload " + remotePath);
+}
+
+Result WebDavProvider::Delete(const Account& account, const Credentials& credentials,
+                              const std::string& path, bool isDirectory) {
+    const std::string normalized = NormalizePath(path);
+    if (normalized == "/")
+        return Result::Error(ResultCode::InvalidArgument, "refusing to delete the root");
+    UltraNetHttpRequest req;
+    req.url = DavUrl(account, normalized);
+    if (isDirectory) req.url.push_back('/');
+    req.method = UltraNetHttpMethod::Custom;
+    req.customMethod = "DELETE";
+    UltraNetResponse resp;
+    UltraNetResult net = Send(credentials, req, resp);
+    return FromHttp(net, resp, "delete " + normalized);
+}
+
+Result WebDavProvider::Rename(const Account& account, const Credentials& credentials,
+                              const std::string& path, const std::string& newName) {
+    const std::string normalized = NormalizePath(path);
+    if (normalized == "/")
+        return Result::Error(ResultCode::InvalidArgument, "refusing to rename the root");
+    if (newName.empty() || newName.find('/') != std::string::npos)
+        return Result::Error(ResultCode::InvalidArgument, "a new name, not a path");
+    const std::string folder = normalized.substr(0, normalized.rfind('/'));
+    UltraNetHttpRequest req;
+    req.url = DavUrl(account, normalized);
+    req.method = UltraNetHttpMethod::Custom;
+    req.customMethod = "MOVE";
+    req.headers.Set("Destination", DavUrl(account, folder + "/" + newName));
+    req.headers.Set("Overwrite", "F");
+    UltraNetResponse resp;
+    UltraNetResult net = Send(credentials, req, resp);
+    return FromHttp(net, resp, "rename " + normalized);
 }
 
 Result WebDavProvider::Download(const Account& account, const Credentials& credentials,

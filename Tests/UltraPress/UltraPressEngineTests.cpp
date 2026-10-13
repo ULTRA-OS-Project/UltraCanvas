@@ -25,6 +25,7 @@
 #include "HTMLReader/HTMLParser.h"
 #include "UltraCanvasPathUtf8.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -276,6 +277,25 @@ static void TestPublishAndExample() {
     Check(ReadTextFile(UltraCanvas::PathToUtf8(out / "index.html"), home), "the front page can be read back");
     Check(Contains(home, "Introducing ULTRA OS") && Contains(home, "<a href=\"/the-plan/\""), "the front page carries the site's text and links");
     std::error_code ec;
+    // The output mirrors the site: a page removed from the site leaves the
+    // folder on the next publish, a stray file too, the deploy manifest not.
+    WriteTextFile(UltraCanvas::PathToUtf8(out / "stray" / "old.html"), "old");
+    fs::create_directories(out / "stray", ec);
+    WriteTextFile(UltraCanvas::PathToUtf8(out / "stray" / "old.html"), "old");
+    WriteTextFile(UltraCanvas::PathToUtf8(out / ".ultrapress-deploy.json"), "{}");
+    Site smaller = site;
+    smaller.pages.erase(std::remove_if(smaller.pages.begin(), smaller.pages.end(),
+                                       [](const Page& page) { return page.slug == "the-plan"; }),
+                        smaller.pages.end());
+    const PublishResult again = PublishStatic(smaller, ULTRAPRESS_EXAMPLE_DIR, UltraCanvas::PathToUtf8(out));
+    Check(again.ok && again.removed.size() == 2 && !fs::exists(out / "the-plan", ec) && !fs::exists(out / "stray", ec) &&
+              fs::exists(out / ".ultrapress-deploy.json", ec) && fs::exists(out / "index.html", ec),
+          "the output mirrors the site: the removed page and a stray file go, the manifest stays");
+    PublishOptions keep;
+    keep.removeStale = false;
+    WriteTextFile(UltraCanvas::PathToUtf8(out / "kept.txt"), "kept");
+    const PublishResult kept = PublishStatic(smaller, ULTRAPRESS_EXAMPLE_DIR, UltraCanvas::PathToUtf8(out), keep);
+    Check(kept.ok && kept.removed.empty() && fs::exists(out / "kept.txt", ec), "removeStale off leaves everything");
     fs::remove_all(out, ec);
 
     std::printf("The page list\n");
@@ -397,9 +417,18 @@ static fs::path MakeOutput(const std::string& name) {
 struct Recorder {
     std::vector<std::string> uploads;      // remote paths, in order
     std::vector<std::string> folders;
+    std::vector<std::string> removals;     // "<remote>" for a file, "<remote>/" for a folder
     std::set<std::string> failing;         // remote paths that refuse
+    bool canRemove = true;
     Uploader AsUploader() {
         Uploader uploader;
+        if (canRemove) {
+            uploader.remove = [this](const std::string& remote, bool isDirectory, std::string& error) {
+                if (failing.count(remote)) { error = "kept"; return false; }
+                removals.push_back(isDirectory ? remote + "/" : remote);
+                return true;
+            };
+        }
         uploader.makeDirectory = [this](const std::string& remote, std::string&) {
             folders.push_back(remote);
             return true;
@@ -508,6 +537,47 @@ static void TestDeploy() {
     Check(!stubborn.ok && stubborn.failed.size() == 3 && stubborn.notTried.empty() && stubborn.uploaded.size() == 1,
           "0 never stops: " + stubborn.Summary());
 
+    std::printf("Pruning\n");
+    std::error_code ec;
+    recorder = Recorder();
+    DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, options);   // the manifest settled: all four
+    fs::remove_all(out / "the-plan", ec);
+    recorder = Recorder();
+    DeployResult kept = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, options);
+    Check(kept.ok && recorder.removals.empty() && kept.removed.empty() && kept.unchanged.size() == 3,
+          "without prune a removed page stays on the host, and is remembered: " + kept.Summary());
+    DeployOptions pruning = options;
+    pruning.prune = true;
+    recorder = Recorder();
+    DeployResult pruned = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, pruning);
+    Check(pruned.ok && pruned.removed.size() == 1 && pruned.removed[0] == "the-plan/index.html" && recorder.removals.size() == 2 &&
+              recorder.removals[0] == "/public_html/the-plan/index.html" && recorder.removals[1] == "/public_html/the-plan/" &&
+              Contains(pruned.Summary(), "1 removed"),
+          "with prune the page and its emptied folder are removed: " + pruned.Summary());
+    recorder = Recorder();
+    DeployResult prunedAgain = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, pruning);
+    Check(prunedAgain.ok && prunedAgain.removed.empty() && recorder.removals.empty(), "and the manifest forgot it");
+    fs::remove(out / "media" / "2026" / "a.png", ec);
+    recorder = Recorder();
+    recorder.failing.insert("/public_html/media/2026/a.png");
+    DeployResult refused = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, pruning);
+    Check(!refused.ok && refused.notRemoved.size() == 1 && Contains(refused.errors.back(), "not removed") &&
+              Contains(refused.Summary(), "1 not removed"),
+          "a host that keeps the file is reported: " + refused.Summary());
+    recorder = Recorder();
+    DeployResult retried = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, pruning);
+    Check(retried.ok && retried.removed.size() == 1 && recorder.removals.size() == 3 &&
+              recorder.removals[1] == "/public_html/media/2026/" && recorder.removals[2] == "/public_html/media/",
+          "it is tried again next time, and the folders go innermost first: " + retried.Summary());
+    WriteTextFile(UltraCanvas::PathToUtf8(out / "gone.txt"), "soon gone");
+    DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, options);
+    fs::remove(out / "gone.txt", ec);
+    recorder = Recorder();
+    recorder.canRemove = false;
+    DeployResult cannot = DeployFolder(UltraCanvas::PathToUtf8(out), recorder.AsUploader(), host, pruning);
+    Check(!cannot.ok && cannot.notRemoved.size() == 1 && Contains(cannot.errors.back(), "cannot delete"),
+          "a host without the verb says what is left on it: " + cannot.Summary());
+
     DeployResult nowhere = DeployFolder(UltraCanvas::PathToUtf8(out / "nope"), recorder.AsUploader(), host, options);
     Check(!nowhere.ok && !nowhere.errors.empty(), "a missing folder is an error");
 
@@ -527,7 +597,6 @@ static void TestDeploy() {
     std::string siteJson;
     ReadTextFile(UltraCanvas::PathToUtf8(dir / "site.json"), siteJson);
     Check(!Contains(siteJson, "hosting"), "and writes no hosting member");
-    std::error_code ec;
     fs::remove_all(dir, ec);
 
 #if ULTRAPRESS_HAS_ULTRACLOUD
@@ -557,15 +626,21 @@ static void TestDeploy() {
     onto.remoteRoot = "/www";
     const DeployResult sent = DeployFolder(UltraCanvas::PathToUtf8(out), hosts.UploaderFor(demo.accountId), demo.accountId + ":/www", onto);
     for (const std::string& error : sent.errors) std::printf("  error: %s\n", error.c_str());
-    Check(sent.ok && sent.uploaded.size() == 4, "the deploy goes through the host: " + sent.Summary());
+    Check(sent.ok && sent.uploaded.size() == 2, "the deploy goes through the host (the two files the pruning left): " + sent.Summary());
     const fs::path back2 = TempDir("downloaded") / "index.html";
     fs::create_directories(back2.parent_path(), ec);
-    const UltraCloud::Result got = hosts.Service().Download(demo.accountId, "/www/the-plan/index.html", UltraCanvas::PathToUtf8(back2));
+    const UltraCloud::Result got = hosts.Service().Download(demo.accountId, "/www/index.html", UltraCanvas::PathToUtf8(back2));
     std::string text;
-    Check(got.IsOk() && ReadTextFile(UltraCanvas::PathToUtf8(back2), text) && text == "<html>plan, revised</html>",
+    Check(got.IsOk() && ReadTextFile(UltraCanvas::PathToUtf8(back2), text) && text == "<html>home, revised</html>",
           "and the file on the host is the file: " + got.message);
     const DeployResult again = DeployFolder(UltraCanvas::PathToUtf8(out), hosts.UploaderFor(demo.accountId), demo.accountId + ":/www", onto);
-    Check(again.ok && again.uploaded.empty() && again.unchanged.size() == 4, "a second publish to the host sends nothing");
+    Check(again.ok && again.uploaded.empty() && again.unchanged.size() == 2, "a second publish to the host sends nothing");
+    fs::remove(out / "index.html", ec);
+    DeployOptions pruneOnto = onto;
+    pruneOnto.prune = true;
+    const DeployResult cannotPrune = DeployFolder(UltraCanvas::PathToUtf8(out), hosts.UploaderFor(demo.accountId), demo.accountId + ":/www", pruneOnto);
+    Check(!cannotPrune.ok && cannotPrune.notRemoved.size() == 1 && Contains(cannotPrune.errors.back(), "cannot delete"),
+          "the in-memory provider cannot delete, and the prune says so: " + cannotPrune.Summary());
     std::string error;
     const Uploader closed = Hosts().UploaderFor("x");
     Check(!closed.upload("a", "/b", error) && Contains(error, "not open"), "an uploader of an unopened list refuses");

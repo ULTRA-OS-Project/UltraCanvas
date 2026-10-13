@@ -59,7 +59,7 @@ required to [confirm with legal review].
 | The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out`; the window uses `<site>/.ultrapress/publish` |
 | The upload record | `.ultrapress-deploy.json`: for each host, the name and a fingerprint (size and a hash of the content, not the content) of every file uploaded, so the next publish sends only what changed | beside the published site |
 | The host list | the hosts you added: the kind (FTP, WebDAV, Nextcloud), the server address, your user name, the folder, a display name | `hosts.db` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere) |
-| The host passwords | the password of each host | the encrypted credential vault `vault/` beside `hosts.db`, opened with a key file the program writes on your device (UltraVault) |
+| The host passwords | the password of each host, and for an SFTP host the path of the private key file you named (the key itself stays where it is) | the encrypted credential vault `vault/` beside `hosts.db`, opened with a key file the program writes on your device (UltraVault) |
 | The site's host | the id of the host the site publishes to and the folder on it; no password | `hosting` in `site.json` |
 
 UltraPress writes no caches, logs or history files of its own. Its messages
@@ -104,7 +104,9 @@ site, your user name and password to sign in, and the folder names it
 creates. The connection is to the address you entered; with `sftp://`,
 `ftps://`, `ftpes://` or `https://` it is encrypted, with plain `ftp://` or
 `http://` it is not, and the program says so in the error details when a
-sign-in fails. Verifying a new host (`ultrapress hosts add` without
+sign-in fails. With `--prune` (the window's Publish always) the program
+also deletes on the host the files an earlier publish of yours put there
+and the site no longer has; it never deletes anything else. Verifying a new host (`ultrapress hosts add` without
 `--no-verify`, or the dialog) signs in once and lists a folder. Nothing is
 sent to ULTRA OS Development GmbH, and nothing is sent to any host you did
 not add.

@@ -1,4 +1,5 @@
 // UltraCloud/core/UltraCloudSecrets.cpp
+// Version: 0.3.1 - "keyfile": the SFTP private key path beside the password
 // Version: 0.3.0 - file store replaced by the vault + a one-way migration
 // Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
@@ -45,6 +46,8 @@ bool VaultSecretStore::Store(const std::string& accountId, const Credentials& cr
                          UltraVault::SecretValue::FromString(credentials.refreshToken)) && ok;
     ok = UltraVault::Put(VaultKey(accountId, "expires"),
                          UltraVault::SecretValue::FromString(std::to_string(credentials.tokenExpiresAt))) && ok;
+    ok = UltraVault::Put(VaultKey(accountId, "keyfile"),
+                         UltraVault::SecretValue::FromString(credentials.privateKeyFile)) && ok;
     return ok;
 }
 
@@ -59,13 +62,14 @@ bool VaultSecretStore::Retrieve(const std::string& accountId, Credentials& out) 
     if (UltraVault::Get(VaultKey(accountId, "refresh"), v))  { out.refreshToken = v.AsString(); any = true; }
     if (UltraVault::Get(VaultKey(accountId, "expires"), v))
         out.tokenExpiresAt = std::strtoll(v.AsString().c_str(), nullptr, 10);
+    if (UltraVault::Get(VaultKey(accountId, "keyfile"), v)) out.privateKeyFile = v.AsString();
     return any;
 }
 
 bool VaultSecretStore::Remove(const std::string& accountId) {
     if (accountId.empty() || !UltraVault::IsAvailable()) return false;
     bool any = false;
-    for (const char* what : {"username", "password", "token", "refresh", "expires"})
+    for (const char* what : {"username", "password", "token", "refresh", "expires", "keyfile"})
         any = static_cast<bool>(UltraVault::Delete(VaultKey(accountId, what))) || any;
     return any;
 }

@@ -2,6 +2,7 @@
 // Core data types of the UltraCloud module: results, accounts, credentials,
 // remote entries and share links. Provider-independent; every provider and
 // every app-facing call speaks in these.
+// Version: 0.4.0 - Credentials::privateKeyFile (SFTP with a key)
 // Version: 0.3.0 - Result::diagnostics
 // Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
@@ -65,6 +66,11 @@ struct Credentials {
     std::string token;          // OAuth2 access token (Bearer auth)
     std::string refreshToken;   // OAuth2 refresh token (empty = none issued)
     int64_t     tokenExpiresAt = 0;   // epoch seconds the access token dies; 0 = unknown
+    // SFTP only: the private key file the account signs in with (a path,
+    // UTF-8; the file stays where it is, only the path is stored). With a
+    // key, `password` is the key's passphrase, and the server's password
+    // after it when the key is refused.
+    std::string privateKeyFile;
 
     bool HasToken() const { return !token.empty(); }
     bool TokenExpired(int64_t now) const { return HasToken() && tokenExpiresAt > 0 && now >= tokenExpiresAt; }

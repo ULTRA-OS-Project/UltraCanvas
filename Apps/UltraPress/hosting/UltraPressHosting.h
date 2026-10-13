@@ -6,6 +6,7 @@
 // (`hosting`); the engine's deploy (engine/UltraPressDeploy.h) gets an
 // Uploader onto it from here. Built only where UltraCloud is; the program
 // says so when it is not.
+// Version: 0.5.1 - the remove verb for pruning
 // Version: 0.5.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS

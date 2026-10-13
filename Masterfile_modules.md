@@ -1749,9 +1749,10 @@ the OAuth client id is configuration in UltraNet's shared app registry —
 `SetOAuthApp`, `ULTRACLOUD_<PROVIDER>_CLIENT_ID`, or the client UltraMail
 registered, since `googledrive` falls back to `google` and `onedrive` to
 `microsoft`), FTP / FTPS / SFTP over UltraNet's FTP
-surface (the one provider that can also delete and rename, so a file manager
-can carry an FTP server as a drive; no share links, and SFTP authenticates
-with a password only), and an in-memory demo provider. Providers
+surface (delete and rename too, so a file manager can carry an FTP server
+as a drive; no share links; SFTP signs in with a password or a private
+key), WebDAV and Nextcloud delete and rename as well (DELETE, MOVE), and an
+in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
 Accounts persist on UltraDatabase (`AccountStore`), secrets go to the

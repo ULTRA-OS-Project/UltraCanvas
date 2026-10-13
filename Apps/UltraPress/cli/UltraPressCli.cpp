@@ -1,5 +1,6 @@
 // Apps/UltraPress/cli/UltraPressCli.cpp
 // The commands: new, check, page, publish, import, hosts, help, --version.
+// Version: 0.5.1 - publish --prune; hosts add --key
 // Version: 0.5.0 - hosts: the UltraCloud accounts a site is published to; publish --to
 // Version: 0.4.1 - help names the window, the same program since there is one
 // Version: 0.4.0 - import: a WordPress export as a site
@@ -49,17 +50,19 @@ void PrintHelp() {
         "  ultrapress page <site-dir> <slug>\n"
         "      print the page's HTML shadow\n"
         "  ultrapress publish <site-dir> <out-dir> [--renderer <script.js>] [--drafts]\n"
-        "                                          [--to <host>|--to site [--path <remote-folder>] [--force]]\n"
+        "                                          [--to <host>|--to site [--path <remote-folder>] [--force] [--prune]]\n"
         "      the static tier: one HTML page per published page, sitemap.xml,\n"
         "      robots.txt, feed.xml, .htaccess and the media, into <out-dir>;\n"
         "      --to uploads it onto a host (what changed since the last upload),\n"
-        "      `--to site` onto the host site.json names; --force uploads everything\n"
+        "      `--to site` onto the host site.json names; --force uploads everything;\n"
+        "      --prune deletes on the host what an earlier publish put there and the site no longer has\n"
         "  ultrapress hosts\n"
         "      the hosts a site can be published to: FTP, FTPS, SFTP, WebDAV, Nextcloud\n"
         "  ultrapress hosts add <ftp|webdav|nextcloud> --server <url> --user <name> [--password <p>]\n"
-        "                      [--name <label>] [--folder <remote-folder>] [--no-verify]\n"
+        "                      [--key <private-key-file>] [--name <label>] [--folder <remote-folder>] [--no-verify]\n"
         "      a host; the password from --password or ULTRAPRESS_HOST_PASSWORD; the\n"
-        "      server is ftp://, ftps://, ftpes:// or sftp:// for ftp, https:// otherwise\n"
+        "      server is ftp://, ftps://, ftpes:// or sftp:// for ftp, https:// otherwise;\n"
+        "      --key signs an sftp:// host in with that key, the password as its passphrase\n"
         "  ultrapress hosts remove <host>\n"
         "  ultrapress hosts use <site-dir> <host> [--path <remote-folder>]\n"
         "      remember the host and the folder in site.json, for the window's Publish\n"
@@ -175,6 +178,7 @@ int CommandPublish(const std::vector<std::string>& args) {
     DeployOptions deploy;
     deploy.remoteRoot = remotePath;
     deploy.force = HasFlag(args, "--force");
+    deploy.prune = HasFlag(args, "--prune");
     deploy.onProgress = [](const std::string& relative, size_t index, size_t total) {
         std::printf("  [%zu/%zu] %s\n", index, total, relative.c_str());
         std::fflush(stdout);
@@ -225,8 +229,13 @@ int CommandHosts(const std::vector<std::string>& args) {
         UltraCloud::Credentials credentials;
         credentials.username = account.username;
         credentials.password = Option(args, "--password", UltraCanvas::GetEnvUtf8("ULTRAPRESS_HOST_PASSWORD"));
-        if (credentials.password.empty()) {
-            std::fprintf(stderr, "a password: --password <p>, or ULTRAPRESS_HOST_PASSWORD in the environment\n");
+        credentials.privateKeyFile = Option(args, "--key", "");
+        if (credentials.password.empty() && credentials.privateKeyFile.empty()) {
+            std::fprintf(stderr, "a password: --password <p>, or ULTRAPRESS_HOST_PASSWORD in the environment; or --key <file> for sftp://\n");
+            return 2;
+        }
+        if (!credentials.privateKeyFile.empty() && account.serverUrl.rfind("sftp://", 0) != 0) {
+            std::fprintf(stderr, "--key is for an sftp:// server\n");
             return 2;
         }
         const UltraCloud::Result added = hosts.Add(account, credentials, !HasFlag(args, "--no-verify"));
