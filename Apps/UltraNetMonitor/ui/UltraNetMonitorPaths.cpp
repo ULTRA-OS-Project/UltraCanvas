@@ -1,5 +1,4 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorPaths.cpp
-// Version: 0.5.1 - %LOCALAPPDATA% read as UTF-8
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorPaths.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8 / GetEnvUtf8

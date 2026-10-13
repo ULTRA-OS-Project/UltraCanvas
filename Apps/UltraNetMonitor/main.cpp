@@ -18,7 +18,6 @@
 // Connection events come from the event sources: the snapshot differ
 // unless --no-diff, and the platform's own (nf_conntrack as root on
 // Linux, the kernel network ETW provider elevated on Windows).
-// Version: 0.10.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 // Before the window header: on Linux that one reaches X11, whose `None`

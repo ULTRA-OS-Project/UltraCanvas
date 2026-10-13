@@ -7,7 +7,11 @@
 // as they open and close, from the event sources, live or as recorded. A
 // *Record* toggle on the toolbar writes every snapshot the worker takes,
 // every DNS observation and every connection event the sources report,
-// into the store at the platform's per-user data path. Nothing is painted
+// into the store at the platform's per-user data path, and an *Info…*
+// button opens a dialog with what this build can see: the backend and its
+// limits, every name and event source with its count or its error, the
+// notes from start-up and the store's path - the status lines only say
+// that something failed, the dialog says what. Nothing is painted
 // by hand: five UltraCanvasListViews over the models in
 // UltraNetMonitorModels, each behind an UltraCanvasListSortFilterProxy. A
 // right click on the process list opens an *Export* menu that writes the
@@ -22,7 +26,6 @@
 // queries share, so the single SQLite connection is never used from two
 // threads at once. The name and event sources themselves are started by
 // main.cpp before the window opens; the window only reports them.
-// Version: 0.10.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -90,6 +93,12 @@ private:
     void LogLayout();                  // --debug-layout, after each snapshot
     void SetPaused(bool paused);
 
+    // ===== INFO =====
+    // The Info… dialog: the backend, the sources, the notes and the store,
+    // as Markdown for the dialog's message area.
+    void ShowInfo();
+    std::string BuildInfoMarkdown();
+
     // ===== FILTERING =====
     // The connection list narrows to one PID when a process row is selected;
     // the selection is remembered by PID, not row, because every snapshot
@@ -117,14 +126,12 @@ private:
 
     // ===== NAMES =====
     void RefreshNames();
-    std::string NameSourcesSummary() const;
 
     // ===== EVENTS =====
     // Live shows the registry's ring; Recorded queries the store over the
     // History tab's range. The toggle switches, Refresh re-reads.
     void RefreshEvents();
     void ToggleEventsRecorded();
-    std::string EventSourcesSummary() const;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> page_;
@@ -135,7 +142,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> pauseButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> recordButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel_;
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel> subtitleLabel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> infoButton_;
 
     std::shared_ptr<ProcessListModel> processModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> processProxy_;
