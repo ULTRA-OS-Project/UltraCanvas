@@ -1,0 +1,64 @@
+<!doctype html>
+<!-- Apps/DemoApp/wasm-shell.html
+     The page Emscripten wraps UltraCanvasDemo in (CMakeLists.txt, the demo's
+     EMSCRIPTEN block: -\-shell-file). The WASM backend creates one absolutely
+     positioned <canvas> per window on the body and the demo maximizes its
+     main window to the viewport, so the page itself is a dark background,
+     one status line while the .data bundle downloads and the runtime starts,
+     and the script Emscripten substitutes for {{{ SCRIPT }}}. The pages
+     need the cross-origin isolation headers for threads: serve the build
+     with UltraCanvas/OS/WASM/demo/serve.py (UltraCanvas/OS/WASM/README.md). -->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>UltraCanvas Demo</title>
+    <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%;
+                     background: #202124; overflow: hidden;
+                     font: 14px/1.4 system-ui, sans-serif; color: #e8eaed; }
+        #uc-status { position: absolute; left: 0; right: 0; top: 45%;
+                     text-align: center; white-space: pre-line; }
+        #uc-status.hidden { display: none; }
+        #uc-status .bar { display: inline-block; width: 240px; height: 4px;
+                          margin-top: 12px; background: #3c4043; border-radius: 2px;
+                          overflow: hidden; }
+        #uc-status .bar span { display: block; height: 100%; width: 0;
+                               background: #8ab4f8; transition: width 0.2s; }
+    </style>
+</head>
+<body>
+    <div id="uc-status">Loading UltraCanvas Demo<div class="bar"><span id="uc-bar"></span></div></div>
+    <script>
+        // What the generated script reads: Module.setStatus gets the
+        // download / preload progress ("Downloading data... (12/40)"), and
+        // the status line goes away when the runtime is up - the demo's own
+        // windows take over the page from there.
+        var Module = {
+            print: function(text) { console.log(text); },
+            printErr: function(text) { console.error(text); },
+            setStatus: function(text) {
+                var status = document.getElementById('uc-status');
+                if (!status) return;
+                var m = text.match(/\(([0-9]+(?:\.[0-9]+)?)\/([0-9]+(?:\.[0-9]+)?)\)/);
+                if (m) {
+                    document.getElementById('uc-bar').style.width =
+                        Math.round(100 * parseFloat(m[1]) / parseFloat(m[2])) + '%';
+                }
+                status.firstChild.nodeValue = text || 'Starting';
+            },
+            onRuntimeInitialized: function() {
+                var status = document.getElementById('uc-status');
+                if (status) status.classList.add('hidden');
+            },
+            onAbort: function(what) {
+                var status = document.getElementById('uc-status');
+                if (!status) return;
+                status.classList.remove('hidden');
+                status.firstChild.nodeValue = 'UltraCanvas Demo could not start: ' + what;
+            }
+        };
+    </script>
+    {{{ SCRIPT }}}
+</body>
+</html>

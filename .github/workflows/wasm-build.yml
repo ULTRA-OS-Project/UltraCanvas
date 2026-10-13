@@ -1,8 +1,9 @@
 name: WebAssembly build
 
-# Builds the WebAssembly backend's demo apps (wasm-demo and the ultraos.eu
-# front page) with Emscripten, so OS/WASM/ and the core's __EMSCRIPTEN__
-# branches get compiled somewhere other than one developer's machine.
+# Builds the demo application (UltraCanvasDemo.html) and the WebAssembly
+# backend's validation apps (wasm-demo and the ultraos.eu front page) with
+# Emscripten, so OS/WASM/, the core's __EMSCRIPTEN__ branches and the demo's
+# get compiled somewhere other than one developer's machine.
 #
 # Manual dispatch only, on purpose: the wasm sysroot (glib, cairo, pango,
 # fontconfig, harfbuzz, libvips and their dependencies) takes the better part
@@ -105,39 +106,41 @@ jobs:
       # workflow built the whole sysroot and then found no cairo. So the
       # sysroot goes on PKG_CONFIG_PATH, and PKG_CONFIG_LIBDIR keeps the
       # host's own .pc files out of a wasm build.
-      - name: Configure demo
-        working-directory: UltraCanvas/OS/WASM/demo
+      #
+      # The repository root, not OS/WASM/demo: under emcmake the root's
+      # WebAssembly defaults block leaves the core library and
+      # UltraCanvasDemo.html, and BUILD_WASM_DEMOS adds the two validation
+      # apps to the same build, so the library is compiled once for all three.
+      - name: Configure
         env:
           EM_PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
           PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
           PKG_CONFIG_LIBDIR: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
-        run: emcmake cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+        run: emcmake cmake -B build-wasm -S . -DCMAKE_BUILD_TYPE=Release -DBUILD_WASM_DEMOS=ON
 
       # A job count, not a bare --parallel: under the Makefile generator that
       # is `make -j` with no limit, and run 3 of this workflow had hundreds of
       # emcc processes going at once until the kernel killed them for memory.
-      - name: Build demo
-        working-directory: UltraCanvas/OS/WASM/demo
-        run: cmake --build build --parallel "$(nproc)"
+      - name: Build
+        run: cmake --build build-wasm --parallel "$(nproc)"
 
-      # Both demos, with serve.py: unzip the artifact into a folder, run
-      # `python3 serve.py 8080` there and open wasm-demo.html or
-      # ultraos-frontpage.html (the pages need the server's cross-origin
-      # isolation headers, see UltraCanvas/OS/WASM/README.md).
-      - name: Upload demos
+      # One folder with the three pages and serve.py, so the artifact works
+      # as unzipped: run `python3 serve.py 8080` in it and open
+      # UltraCanvasDemo.html, wasm-demo.html or ultraos-frontpage.html (the
+      # pages need the server's cross-origin isolation headers, see
+      # UltraCanvas/OS/WASM/README.md).
+      - name: Collect the pages
+        run: |
+          mkdir wasm-demo
+          cp UltraCanvas/OS/WASM/demo/serve.py wasm-demo/
+          for page in UltraCanvasDemo wasm-demo ultraos-frontpage; do
+            cp "build-wasm/$page".{html,js,wasm,data,ww.js} wasm-demo/
+          done
+          ls -l wasm-demo
+
+      - name: Upload the pages
         uses: actions/upload-artifact@v6
         with:
           name: wasm-demo
-          path: |
-            UltraCanvas/OS/WASM/demo/serve.py
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.html
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.js
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.wasm
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.data
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.ww.js
-            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.html
-            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.js
-            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.wasm
-            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.data
-            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.ww.js
+          path: wasm-demo
           if-no-files-found: error

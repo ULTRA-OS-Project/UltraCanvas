@@ -1,7 +1,9 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
+//                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-13
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -1307,6 +1309,7 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasJitterPlotExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasJitterPlotExamples.md");
 
+#ifndef __EMSCRIPTEN__
         chartBuilder.AddItem("waveform", "Waveform Chart",
                              "Audio amplitude min/max envelope with RMS overlay, a "
                              "click-to-seek playhead, and a selectable display range",
@@ -1318,7 +1321,9 @@ namespace UltraCanvas {
                 .AddVariant("waveform", "RMS Overlay")
                 .AddVariant("waveform", "Display Range")
                 .AddVariant("waveform", "Click-to-seek Playhead");
+#endif
 
+#ifndef __EMSCRIPTEN__
         chartBuilder.AddItem("spectrogram", "Spectrogram Chart",
                              "STFT time x frequency analysis of audio signals with every "
                              "transform and display option adjustable live",
@@ -1331,7 +1336,9 @@ namespace UltraCanvas {
                 .AddVariant("spectrogram", "Window Functions")
                 .AddVariant("spectrogram", "Magnitude & Dynamic Range")
                 .AddVariant("spectrogram", "Frequency Cap & Colour Maps");
+#endif
 
+#ifndef __EMSCRIPTEN__
         chartBuilder.AddItem("audioanalysis", "Audio Analysis Charts",
                              "Spectrum plot, amplitude envelope and correlogram built with "
                              "the generic area / bar chart elements",
@@ -1342,6 +1349,7 @@ namespace UltraCanvas {
                 .AddVariant("audioanalysis", "Spectrum Plot (Averaged FFT)")
                 .AddVariant("audioanalysis", "Amplitude Envelope (RMS)")
                 .AddVariant("audioanalysis", "Correlogram (Autocorrelation)");
+#endif
 
         chartBuilder.AddItem("dumbbell", "Dumbbell Chart",
                              "Paired value comparison with connected dots - gender gaps, "
@@ -1741,11 +1749,14 @@ namespace UltraCanvas {
 
         // Outside the GL guard: UltraCanvasSTLElement falls back to a mesh summary
         // without GL, so the loader and its statistics stay demonstrable there.
+        // Not in the browser: the only sample is a 25 MB STL, left out of the page's bundle.
+#ifndef __EMSCRIPTEN__
         graphics3DBuilder.AddItem("stlmodels", "STL 3D Models", "Stereolithography meshes (ASCII and binary) read by the self-contained STL loader and shaded in an orbiting OpenGL view",
                                   ImplementationStatus::FullyImplemented,
                                   [this]() { return CreateSTLModelExamples(); },
                                   "DemoApp/UltraCanvasSTLExamples.cpp",
                                   "Docs/UltraCanvas/UltraCanvasSTLElement.md");
+#endif
 
 #ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
         // The rest of the 3D matrix, one entry per format the way STL has its
@@ -1795,6 +1806,8 @@ namespace UltraCanvas {
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);
 
+        // Not in the browser: no video backend (ULTRACANVAS_ENABLE_VIDEO is off).
+#ifndef __EMSCRIPTEN__
         videoBuilder.AddItem("video", "Video Player", "Video playback and recording",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateVideoExamples(); },
@@ -1803,6 +1816,7 @@ namespace UltraCanvas {
                 .AddVariant("video", "MP4 Playback")
                 .AddVariant("video", "Camera Recording")
                 .AddVariant("video", "Custom Controls");
+#endif
 
         videoBuilder.AddItem("videotimeline", "Video Timeline",
                              "A media timeline to edit: clips on tracks under a ruler, trim, reorder, "
@@ -1876,12 +1890,16 @@ namespace UltraCanvas {
                 .AddVariant("ebook", "Kindle (MOBI / AZW)")
                 .AddVariant("ebook", "Plain Text");
 
+// The page's source is only built with the plugin (CMakeLists.txt): its
+// CreateLaTeXView() comes from the on-demand loader the plugin brings.
+#ifdef ULTRACANVAS_PLUGIN_LATEX
         textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents",
                                "LaTeX documents typeset live from source by the UltraCanvas math "
                                "engine — rendered output and source per document",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateLaTeXExamples(); },
                                "DemoApp/UltraCanvasLaTeXExamples.cpp");
+#endif
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
         textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents",
@@ -1917,6 +1935,9 @@ namespace UltraCanvas {
 
 
         // ===== AUDIO ELEMENTS =====
+        // Not in the browser: no audio backend (ULTRACANVAS_ENABLE_AUDIO is off),
+        // so the players and meters would stay silent.
+#ifndef __EMSCRIPTEN__
         auto audioBuilder = DemoCategoryBuilder(this, DemoCategory::AudioElements);
 
         audioBuilder.AddItem("audio", "Audio Player", "Audio playback and waveform display",
@@ -1940,6 +1961,7 @@ namespace UltraCanvas {
                 .AddVariant("levelmeter", "Custom Colour Themes")
                 .AddVariant("levelmeter", "Live Playback Levels")
                 .AddVariant("levelmeter", "Manual Control & Reset");
+#endif
 
         auto toolsBuilder = DemoCategoryBuilder(this, DemoCategory::Tools);
 
@@ -1999,11 +2021,14 @@ namespace UltraCanvas {
                              "Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md");
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
+        // Not in the browser: no audio backend (ULTRACANVAS_ENABLE_AUDIO is off).
+#ifndef __EMSCRIPTEN__
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateAudioFXExamples(); },
                                "Apps/DemoApp/UltraCanvasAudioFXExamples.cpp",
                                "Docs/Modules/AudioFX/README.md");
+#endif
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateFileLoaderExamples(); },
@@ -2298,11 +2323,18 @@ namespace UltraCanvas {
 
         TreeNode* modulesNode = nullptr;
         for (const auto& [category, catName] : categoryNames) {
+            // A category with no pages in this build (the browser build
+            // leaves the audio pages out) gets no node: a childless folder
+            // in the tree is a page that cannot be opened.
+            const auto itemsIt = categoryItems.find(category);
+            if (itemsIt == categoryItems.end() || itemsIt->second.empty()) {
+                continue;
+            }
+            const auto& items = itemsIt->second;
             TreeNodeData categoryData(
                     "cat_" + std::to_string(static_cast<int>(category)),
                     catName
             );
-            auto items = categoryItems[category];
             categoryData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
             TreeNode* categoryNode = categoryTreeView->AddNode("root", categoryData);
             if (category == DemoCategory::Modules) {
@@ -2559,6 +2591,10 @@ namespace UltraCanvas {
         debugOutput << "Select items from the tree view to see implementation examples." << std::endl;
 
         if (mainWindow) {
+#ifdef __EMSCRIPTEN__
+            // The page is the screen: fill the browser viewport.
+            mainWindow->Maximize();
+#endif
             mainWindow->Show();
             // The application will handle the event loop
         }

@@ -1,6 +1,8 @@
 // UltraCanvas Framework Demonstration Program Entry Point
+// Version: 1.0.3 - Builds for the browser: the application object outlives
+//                 main(), and ?component= / ?about= stand in for the arguments
 // Version: 1.0.2 - --help prints to stdout, a bad argument to stderr
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include <iostream>
@@ -46,6 +48,11 @@
 #include <X11/Xlib.h>
 #include <signal.h>
 #include "UltraCanvasDebug.h"
+#endif
+
+#ifdef __EMSCRIPTEN__
+// The page's query string stands in for the command line (WASMURL).
+#include "OS/WASM/UltraCanvasWASMSupport.h"
 #endif
 
 using namespace UltraCanvas;
@@ -111,6 +118,8 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
 
 #elif __APPLE__
     debugOutput << "macOS";
+#elif __EMSCRIPTEN__
+    debugOutput << "WebAssembly";
     #else
         debugOutput << "Unknown";
 #endif
@@ -173,13 +182,33 @@ void ShutdownSystem() {
 // ===== MAIN APPLICATION ENTRY POINT =====
 int main(int argc, char* argv[]) {
     debugOutput << std::endl;
+#ifdef __EMSCRIPTEN__
+    // In the browser app.Run() never returns: emscripten_set_main_loop()
+    // unwinds main()'s frame while the loop keeps ticking, so a stack-local
+    // application would be destroyed under its own windows. Static storage
+    // keeps it alive for the page's lifetime (UltraCanvas/OS/WASM/README.md,
+    // "Application lifetime rule").
+    static UltraCanvasApplication g_app;
+#else
     UltraCanvasApplication g_app;
+#endif
     try {
         // Process command line arguments
         bool verboseMode = false;
         bool testMode = false;
         bool showAbout = true;
         std::string startupComponent = "";
+
+#ifdef __EMSCRIPTEN__
+        // A page has no command line; its query string carries the same two
+        // choices: UltraCanvasDemo.html?component=piecharts opens that page
+        // (and, like --component, leaves the About window out), and
+        // ?about=0 is --no-about.
+        startupComponent = WASMURL::GetQueryParameter("component");
+        if (!startupComponent.empty() || WASMURL::GetQueryParameter("about") == "0") {
+            showAbout = false;
+        }
+#endif
 
         for (int i = 1; i < argc; i++) {
             std::string arg = argv[i];

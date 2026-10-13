@@ -164,6 +164,42 @@ under their buttons, and `Maximize()` under `__EMSCRIPTEN__` to fill the
 viewport. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
 at the repository root).
 
+## The demo application in the browser
+
+The framework's demo application (`Apps/DemoApp/`) builds as a page too:
+`emcmake cmake` at the repository root produces `UltraCanvasDemo.html`, the
+whole page tree of the desktop demo - the elements, the layout system, the
+charts and diagrams, the vector and bitmap formats, the 3D model readers,
+the text documents, the Filer and Album widgets, the module pages - less
+what the browser has no backend for:
+
+| Left out | Why |
+|---|---|
+| Audio Player, Level Meter, Audio FX, and the Waveform, Spectrogram and Audio Analysis charts | `ULTRACANVAS_ENABLE_AUDIO` is off in the browser: no playback, and the sample tracks the charts analyse are decoded by the audio module |
+| Video Player | `ULTRACANVAS_ENABLE_VIDEO` is off: the null backend plays nothing (the Video Timeline, a pure element, stays) |
+| STL 3D Models | its one sample is a 25 MB file; the model formats page shows the other readers from the smaller samples |
+| OpenGL, CDR, XAR, EPS, PDF, OCR, Vectorizer, LaTeX, Ultra Net | compiled out by `UltraCanvas/CMakeLists.txt` for every WebAssembly build, so their pages are absent or say so, as on a desktop build without them |
+
+Still shown but not working yet: **SVG images**. The image loader rasterizes
+SVG through libvips (or librsvg, when found), and the wasm sysroot's libvips
+is built without an SVG loader, so the SVG page's drawings and every
+SVG icon - the toolbars' and the flat buttons' - come up as "format not
+supported" or empty; the PNG icons (the tree, the header, the About window)
+are fine. Giving the sysroot an SVG loader (wasm-vips builds resvg) or
+routing SVG through the Vector plugin's own reader would close that gap.
+
+The pages' files - the fonts, icons, images, vector samples, the smaller 3D
+models, the docs and the demo's own sources for the source button - are
+preloaded into the virtual filesystem at `/share/...` by the demo's CMake
+block, about 50 MB downloaded once. The page's query string replaces the
+command line: `UltraCanvasDemo.html?component=piecharts` opens that page
+(and, like `--component`, leaves the About window out), and `?about=0` is
+`--no-about`. The main window maximizes to the browser viewport. The source
+is three `__EMSCRIPTEN__` branches: the static application object in
+`main.cpp`, the query string there, and the page registrations left out in
+`UltraCanvasDemo.cpp`. `wasm-build.yml` builds the page in CI, with the two
+sample applications.
+
 ## Known limitations
 
 - Keyboard: no IME composition events (dead keys and CJK input methods are not
