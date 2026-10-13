@@ -50,6 +50,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.38.3 - host icons that are on screen are never evicted from the
+//                  icon cache, and a program or library keys by type: a
+//                  maximised window of DLLs no longer flickers forever
 // Version: 1.38.2 - the details header's sort direction is a drawn triangle, not
 //                  "▲" / "▼", which the bundled UI font lacks
 // Version: 1.38.1 - a picture saved over gets a new thumbnail: the workers ask
@@ -10151,6 +10154,8 @@ namespace UltraCanvas {
         // moved a different file under a standing cursor, the hover follows it
         // here, before anything is drawn with it.
         RefreshHoverState();
+        // What this frame asks the host-icon cache for is what is on screen.
+        BeginHostIconFrame();
 
         auto lb = GetLocalBounds();
         Rect2Di bounds(static_cast<int>(lb.x), static_cast<int>(lb.y),
@@ -12288,6 +12293,12 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    void UltraCanvasFilerWidget::BeginHostIconFrame() {
+        std::lock_guard<std::mutex> lk(hostIconMutex);
+        hostIconPreviousFrameTick = hostIconFrameTick;
+        hostIconFrameTick = hostIconTick;
+    }
+
     void UltraCanvasFilerWidget::StartHostIconWorkerLocked() {
         if (hostIconWorker.joinable() || hostIconShutdown) return;
         hostIconWorker = std::thread([this]() { HostIconWorkerMain(); });
@@ -12368,13 +12379,18 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::EvictHostIconsLocked(const std::string& keepKey) {
         if (hostIconBytes <= kHostIconBudget) return;
-        // Least recently drawn first, so what is on screen survives. Only
-        // finished slots are droppable: a pending one has a lookup in flight
-        // that would land in a slot that is no longer there.
+        // Least recently drawn first, so what is on screen survives - and
+        // what was drawn in this frame or the last is not droppable at all,
+        // however far over budget the screen puts the cache: an icon that
+        // is still drawn would only be asked for again on the next frame,
+        // and its answer would evict the next drawn icon, without end. Only
+        // finished slots are droppable either: a pending one has a lookup in
+        // flight that would land in a slot that is no longer there.
         std::vector<std::pair<uint64_t, std::string>> droppable;
         droppable.reserve(hostIconSlots.size());
         for (const auto& [key, slot] : hostIconSlots) {
             if (key == keepKey || slot.state != ThumbState::Ready) continue;
+            if (slot.tick > hostIconPreviousFrameTick) continue;   // on screen
             droppable.emplace_back(slot.tick, key);
         }
         std::sort(droppable.begin(), droppable.end());
@@ -12392,6 +12408,7 @@ namespace UltraCanvas {
         hostIconSlots.clear();
         hostIconQueue.clear();
         hostIconBytes = 0;
+        // The LRU clock keeps running, so the frame marks stay valid.
         // Anything already in flight belongs to the cache just thrown away.
         ++hostIconGeneration;
     }
