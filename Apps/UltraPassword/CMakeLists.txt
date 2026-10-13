@@ -4,7 +4,8 @@
 # Two targets:
 #   UltraPasswordCore  static lib: the group/entry model, the encrypted vault
 #                      file (also the export format), CSV exchange and the
-#                      password generator. Depends only on UltraCrypt, so the
+#                      password generator and the default vault location.
+#                      Depends only on UltraCrypt, so the
 #                      whole security-relevant surface builds and tests headless
 #                      (Tests/UltraPasswordTests.cpp).
 #   UltraPassword      the GUI, built only when the framework is available.
@@ -21,6 +22,7 @@ add_library(UltraPasswordCore STATIC
     core/VaultFile.cpp
     core/PasswordGenerator.cpp
     core/CsvExchange.cpp
+    core/VaultLocation.cpp
 )
 set_target_properties(UltraPasswordCore PROPERTIES
     POSITION_INDEPENDENT_CODE ON

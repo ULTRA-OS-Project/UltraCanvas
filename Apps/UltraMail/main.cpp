@@ -3,12 +3,14 @@
 // the local store under the user data directory, shows the main window (start
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop.
+// Version: 0.6.3 - the data folder is Application Support on macOS (UltraMailPaths.h),
+//                  and a folder left in ~/.local/share there is moved into place once
 // Version: 0.6.2 - WinMain: Windows Release builds have no console window
 // Version: 0.6.1 - says whether the system fonts were ready at the start
 // Version: 0.6.0 - the timing trace: each step of the start, with its time, on
 //                  the console and in trace.log (UltraMailTrace.h)
 // Version: 0.5.2 - the data folder's location is read as UTF-8
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraMailApp.h"
 #include "ui/UltraMailSettingsDialog.h"
@@ -19,6 +21,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasPathUtf8.h"   // GetEnvUtf8
+#include "UltraMailPaths.h"        // DefaultDataDir / AdoptLegacyDataDir
 
 #include <cstdio>
 #include <cstdlib>
@@ -27,23 +30,36 @@
 
 namespace {
 
-// Per-platform user data directory for UltraMail: XDG on Linux, %APPDATA% on
+// The per-user data folder (UltraMailPaths.h): %APPDATA%\UltraMail on
 // Windows (where HOME is normally unset, so without this the mailbox database
-// and the credential vault landed in whatever folder the app was started from).
-// Read as UTF-8 (GetEnvUtf8), which the databases, the vault and the
-// preferences file all take: on Windows a narrow getenv answers in the ANSI
-// code page and misses a profile folder named outside it.
-std::string UserDataDir() {
-    using UltraCanvas::GetEnvUtf8;
-    if (const std::string xdg = GetEnvUtf8("XDG_DATA_HOME"); !xdg.empty())
-        return xdg + "/UltraMail";
-#if defined(_WIN32) || defined(_WIN64)
-    if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty())
-        return appData + "/UltraMail";
-#endif
-    if (const std::string home = GetEnvUtf8("HOME"); !home.empty())
-        return home + "/.local/share/UltraMail";
-    return "./UltraMail";
+// and the credential vault landed in whatever folder the app was started
+// from), ~/Library/Application Support/UltraMail on macOS, $XDG_DATA_HOME or
+// ~/.local/share elsewhere - and $XDG_DATA_HOME wins everywhere. Read as
+// UTF-8 (GetEnvUtf8), which the databases, the vault and the preferences file
+// all take: on Windows a narrow getenv answers in the ANSI code page and
+// misses a profile folder named outside it.
+//
+// Worked out once: the first call also moves a folder an earlier version left
+// in ~/.local/share on macOS into place, whole, so the accounts and the vault
+// open as before.
+const std::string& UserDataDir() {
+    static const std::string dir = [] {
+        std::string resolved = UltraMail::DefaultDataDir();
+        if (resolved.empty()) return std::string("./UltraMail");
+        std::string error;
+        const std::string movedFrom = UltraMail::AdoptLegacyDataDir(
+            resolved,
+            UltraMail::LegacyDataDirs(UltraMail::CurrentDataDirPlatform(),
+                                      UltraCanvas::GetEnvUtf8("HOME")),
+            error);
+        if (!movedFrom.empty())
+            UltraMail::Trace::Line("Moved the mailbox, the settings and the credential vault from " +
+                                   movedFrom + " to " + resolved);
+        else if (!error.empty())
+            UltraMail::Trace::Line("Data folder: " + error);
+        return resolved;
+    }();
+    return dir;
 }
 
 // The timing trace (UltraMailTrace.h) is on unless ULTRAMAIL_TRACE says
