@@ -152,6 +152,7 @@ void SetPadding(float all);                                      // inherited fr
 void SetPadding(float vertical, float horizontal);
 void SetPadding(float top, float right, float bottom, float left);
 void SetIconSpacing(int spacing);
+void SetIconSize(int width, int height);   // the size the icon is drawn at
 void SetCornerRadius(float radius);
 
 // The icon's size as set with SetIconSize - what a twin of the button

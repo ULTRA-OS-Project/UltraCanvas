@@ -7,8 +7,9 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-09-22
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -67,8 +68,16 @@ private:
     void BuildRightPanel();
     void BuildStatusBar();
     void InstallShortcuts();
+    // The app's icons come in three sizes, each drawn on its own pixel grid
+    // so its lines land on whole pixels at the size it is shown at:
+    // media/icons/artcreator/ (24 px: toolbar and panel buttons), .../28/
+    // (the tool palette) and .../16/ (the menus).
     std::string IconPath(const std::string& file) const;
+    std::string ToolIconPath(const std::string& file) const;
     std::string MenuIconPath(const std::string& file) const;
+    // The framework's shared line icons (media/icons/menu/, 24 px): the
+    // toolbar's New, Open, Save, Undo, Redo and zoom buttons.
+    std::string SharedIconPath(const std::string& file) const;
 
     // ----- document -----
     void NewDrawing(const ArtCreatorPageResult& page);
