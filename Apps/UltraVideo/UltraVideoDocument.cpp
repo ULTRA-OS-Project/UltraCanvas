@@ -231,6 +231,29 @@ std::string DescribeEffect(const VideoFXEffect& e) {
     return "Effect";
 }
 
+EffectRange RangeOfEffect(VideoFXEffectType type) {
+    switch (type) {
+        case VideoFXEffectType::Brightness:
+        case VideoFXEffectType::Contrast:
+        case VideoFXEffectType::Saturation:
+        case VideoFXEffectType::Temperature: return {true, -1.0, 1.0, 0.05};
+        case VideoFXEffectType::Gamma: return {true, 0.1, 3.0, 0.05};
+        case VideoFXEffectType::Exposure: return {true, -3.0, 3.0, 0.1};
+        case VideoFXEffectType::Hue:
+        case VideoFXEffectType::Rotate: return {true, -180.0, 180.0, 1.0};
+        case VideoFXEffectType::LUT:
+        case VideoFXEffectType::Vignette: return {true, 0.0, 1.0, 0.05};
+        case VideoFXEffectType::Blur: return {true, 0.5, 50.0, 0.5};
+        case VideoFXEffectType::Sharpen: return {true, 0.0, 3.0, 0.1};
+        case VideoFXEffectType::Denoise: return {true, 0.0, 20.0, 0.5};
+        case VideoFXEffectType::FadeIn:
+        case VideoFXEffectType::FadeOut: return {true, 0.0, 5.0, 0.1};
+        case VideoFXEffectType::Volume: return {true, 0.0, 4.0, 0.05};
+        case VideoFXEffectType::NormalizeAudio: return {true, -30.0, -5.0, 1.0};
+        default: return {};
+    }
+}
+
 std::string MediaItem::Badge() const {
     if (!error.empty()) return "unreadable";
     if (kind == MediaKind::Image) return "photo";
@@ -309,6 +332,16 @@ bool Document::ApplyEffectPreset(size_t index, const std::string& key) {
         if (same) return false;
     }
     s.effects.insert(s.effects.end(), effects.begin(), effects.end());
+    return true;
+}
+
+bool Document::SetEffectAmount(size_t index, size_t effect, double amount) {
+    if (index >= project.segments.size()) return false;
+    std::vector<VideoFXEffect>& effects = project.segments[index].effects;
+    if (effect >= effects.size()) return false;
+    const EffectRange range = RangeOfEffect(effects[effect].type);
+    if (!range.adjustable) return false;
+    effects[effect].amount = std::clamp(amount, range.low, range.high);
     return true;
 }
 

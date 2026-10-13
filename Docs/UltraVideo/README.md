@@ -188,7 +188,8 @@ are offered first; a song in the bin becomes the music.
   *Length*, and for a photo the *Motion* (auto, still, zoom, pan), the
   *Framing* and *Keep faces in shot*; *Mute*; the clip's **Effects**, one
   row per effect by what it does (*Warmer 30 %*, *Blur 3.5 px*) with a
-  button that removes it, and *Remove all effects*; the **transition into** the
+  strength slider (none for a switch such as black and white or a flip)
+  and a button that removes it, and *Remove all effects*; the **transition into** the
   clip, by type and length with the maximum shown. For a title: its text
   (type it and press `Enter`), length, style, place, size, colour, shadow,
   band, fade in and fade out. For a voice-over or sound effect: volume,
@@ -252,7 +253,6 @@ the engine).
 ## Not yet
 
 Effect presets on overlay clips and stills of the overlay lane, effects
-dragged from the bin onto a clip, adjusting an effect's amount in the
-inspector, and the mapping of the design's tokens onto the framework's theme roles (the app colours
+dragged from the bin onto a clip, and the mapping of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.

@@ -14,11 +14,20 @@
     its effects badge on the timeline.
   - The inspector's Clip tab lists the clip's effects, one row per effect
     named by what it does (*Warmer 30 %*, *Blur 3.5 px*), each with a
-    button that removes it, plus *Remove all effects*. Every change is an
-    undo step.
-  - (`EffectPresets`, `Document::ApplyEffectPreset`, `DescribeEffect`;
-    tested in `UltraVideoDocumentTest`, which renders a frame with every
-    preset and checks that *Black and white* turns the picture grey.)
+    button that removes it, plus *Remove all effects*.
+  - **Each effect has a strength slider** on its row, so *Warm* can be made
+    warmer or gentler and a blur stronger. The name follows the slider as
+    it moves.
+    - The range is the engine's own units for that effect: -1 to 1 for a
+      look's amounts, up to 50 px for a blur, -180° to 180° for a hue.
+    - Switches (black and white, sepia, a flip, a quarter turn) and a crop
+      have no slider.
+  - Every change is an undo step.
+  - (`EffectPresets`, `Document::ApplyEffectPreset`, `DescribeEffect`,
+    `RangeOfEffect`, `Document::SetEffectAmount`; tested in
+    `UltraVideoDocumentTest`. The test renders a frame with every preset
+    and at both ends of every slider's range, and checks that *Black and
+    white* turns the picture grey.)
 
 #### 2026-10-13 *0.3.0*
 - **Voice-overs and sound effects at any time.** A new free lane on the

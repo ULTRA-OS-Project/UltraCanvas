@@ -134,6 +134,14 @@ const std::vector<EffectPreset>& EffectPresets();
 const EffectPreset* FindEffectPreset(const std::string& key);
 // What one effect does, for the inspector's list: "Warmer 30 %", "Blur 4 px"
 std::string DescribeEffect(const VideoFX::VideoFXEffect& effect);
+// How far the inspector's slider moves an effect's amount, in the engine's
+// own units; not adjustable for a switch (black and white, a flip, a
+// quarter turn) or a crop rectangle
+struct EffectRange {
+    bool adjustable = false;
+    double low = 0.0, high = 0.0, step = 0.0;
+};
+EffectRange RangeOfEffect(VideoFX::VideoFXEffectType type);
 
 class Document {
 public:
@@ -190,6 +198,9 @@ public:
     // there is no such segment or preset, or the segment ends with exactly
     // these effects already (a second click does not double a look).
     bool ApplyEffectPreset(size_t segment, const std::string& key);
+    // One effect's amount, clamped to RangeOfEffect. False when there is no
+    // such segment or effect, or its amount is not adjustable.
+    bool SetEffectAmount(size_t segment, size_t effect, double amount);
     // Timeline seconds of a segment: a file's range over its speed, a still's seconds
     double SegmentSeconds(size_t index) const;
     const MediaItem* FindMedia(const std::string& path) const;

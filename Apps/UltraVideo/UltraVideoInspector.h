@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoInspector.h
 // The inspector (Docs/Research/UltraVideoDesignProposal.md §6.4): three tabs
 // of catalogue elements. Clip - the selected clip's name, in and out, speed,
-// mute, its effects (each removable), the transition into it, a still's
+// mute, its effects (each with a strength slider, each removable), the transition into it, a still's
 // motion and framing; a title's
 // text and look, an overlay's place and size, a voice-over's or sound
 // effect's volume, fades and ducking. Audio - the
@@ -99,11 +99,16 @@ private:
     std::shared_ptr<Dropdown> overlayAnchor;
     std::shared_ptr<Slider> overlaySize, overlayOpacity, overlayFadeIn, overlayFadeOut;
     std::shared_ptr<Label> overlaySizeValue, overlayOpacityValue, overlayFadeInValue, overlayFadeOutValue;
-    // the effects on a main-track clip: a fixed set of rows, one per effect
+    // the effects on a main-track clip: a fixed set of rows, one per effect,
+    // each with its name, a strength slider (where the amount is adjustable)
+    // and a remove button
     static constexpr int kEffectRows = 8;
+    static constexpr int kEffectSliderWidth = 90;
     std::shared_ptr<Container> effectRows;
     std::vector<std::shared_ptr<Container>> effectRow;
     std::vector<std::shared_ptr<Label>> effectName;
+    std::vector<std::shared_ptr<Slider>> effectAmount;
+    std::vector<VideoFX::VideoFXEffect> shownEffects;   // as last shown, for the names while a slider moves
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasButton>> effectRemove;
     std::shared_ptr<Label> effectsNone, effectsMore;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> removeEffects;

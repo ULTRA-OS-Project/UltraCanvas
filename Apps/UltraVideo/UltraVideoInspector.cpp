@@ -570,11 +570,29 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
         auto row = std::make_shared<UltraCanvasContainer>(id, 0, 0, kPageWidth, ctl);
         row->layout.SetFlexRow().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Center);
         row->layoutItem.SetFlexShrink(0);
-        auto name = CreateLabel(id + ".name", 0, 0, kPageWidth - ctl - 8, ctl, "");
+        auto name = CreateLabel(id + ".name", 0, 0, kPageWidth - kEffectSliderWidth - ctl - 16, ctl, "");
         name->SetFont(Tokens::Label.family, Tokens::Label.size * 0.75f);
         name->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         captions.push_back(name);
         row->AddChild(name);
+        // How strong: the name follows the slider, the edit goes through undo
+        auto amount = CreateSlider(id + ".amount", 0, 0, kEffectSliderWidth, ctl);
+        amount->SetValueDisplay(SliderValueDisplay::NoDisplay);
+        amount->layoutItem.SetFlexShrink(0);
+        Label* namePtr = name.get();
+        amount->onValueChanged = [this, i, namePtr](float v) {
+            if (static_cast<size_t>(i) >= shownEffects.size()) return;
+            VideoFXEffect shown = shownEffects[static_cast<size_t>(i)];
+            shown.amount = v;
+            namePtr->SetText(DescribeEffect(shown));
+            const int index = segment;
+            const double value = v;
+            Edit("Set effect strength", [index, i, value](Document& d) {
+                if (index >= 0) d.SetEffectAmount(static_cast<size_t>(index), static_cast<size_t>(i), value);
+            });
+        };
+        sliders.push_back(amount);
+        row->AddChild(amount);
         auto remove = MakeIconButton(id + ".remove", "trash", "Remove this effect", p);
         remove->SetOnClick([this, i]() {
             const int index = segment;
@@ -587,6 +605,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
         row->AddChild(remove);
         effectRow.push_back(row);
         effectName.push_back(name);
+        effectAmount.push_back(amount);
         effectRemove.push_back(remove);
         effectRows->AddChild(row);
     }
@@ -833,11 +852,21 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
     effectRows->SetVisible(hasClip);
     if (hasClip) {
         const std::vector<VideoFXEffect>& effects = doc.project.segments[static_cast<size_t>(index)].effects;
+        shownEffects = effects;
         effectsNone->SetVisible(effects.empty());
         for (int i = 0; i < kEffectRows; ++i) {
-            const bool shown = static_cast<size_t>(i) < effects.size();
-            effectRow[static_cast<size_t>(i)]->SetVisible(shown);
-            if (shown) effectName[static_cast<size_t>(i)]->SetText(DescribeEffect(effects[static_cast<size_t>(i)]));
+            const size_t at = static_cast<size_t>(i);
+            const bool shown = at < effects.size();
+            effectRow[at]->SetVisible(shown);
+            if (!shown) continue;
+            const EffectRange range = RangeOfEffect(effects[at].type);
+            effectAmount[at]->SetVisible(range.adjustable);
+            if (range.adjustable) {
+                effectAmount[at]->SetRange(static_cast<float>(range.low), static_cast<float>(range.high));
+                effectAmount[at]->SetStep(static_cast<float>(range.step));
+                effectAmount[at]->SetValue(static_cast<float>(std::clamp(effects[at].amount, range.low, range.high)));
+            }
+            effectName[at]->SetText(DescribeEffect(effects[at]));   // after the slider, which may report as it is set
         }
         const size_t more = effects.size() > static_cast<size_t>(kEffectRows) ? effects.size() - kEffectRows : 0;
         effectsMore->SetVisible(more > 0);

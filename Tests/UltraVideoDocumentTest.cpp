@@ -4,7 +4,7 @@
 // from the document, every reported change written back, undo and redo, and
 // the .ultravideo file round trip with relative media paths and missing
 // media reported; the title, overlay and voice-and-sound lanes; the effect
-// presets. Needs the VideoFX engine (FFmpeg) for the probes and the
+// presets and their strength. Needs the VideoFX engine (FFmpeg) for the probes and the
 // clips it generates; without it the suite skips itself.
 // Version: 0.4.0
 // Last Modified: 2026-10-13
@@ -616,6 +616,43 @@ int main() {
         }
         for (size_t i = 0; i < plainFrame.pixels.size() && i < bwFrame.pixels.size() && !differs; ++i) differs = plainFrame.pixels[i] != bwFrame.pixels[i];
         CHECK(allGrey && differs, "Black and white turns the test pattern grey");
+
+        // the inspector's strength sliders
+        CHECK(RangeOfEffect(VideoFXEffectType::Temperature).adjustable && RangeOfEffect(VideoFXEffectType::Temperature).low == -1.0, "a look's amount runs from -1 to 1");
+        CHECK(RangeOfEffect(VideoFXEffectType::Blur).adjustable && RangeOfEffect(VideoFXEffectType::Blur).high == 50.0, "a blur up to 50 px");
+        CHECK(!RangeOfEffect(VideoFXEffectType::Grayscale).adjustable && !RangeOfEffect(VideoFXEffectType::Crop).adjustable &&
+              !RangeOfEffect(VideoFXEffectType::Rotate90).adjustable, "switches and the crop have no slider");
+        CHECK(ed.SetEffectAmount(0, 0, 0.6) && Near(ed.project.segments[0].effects[0].amount, 0.6, 1e-9) &&
+              DescribeEffect(ed.project.segments[0].effects[0]) == "Warmer 60 %", "Warm made warmer");
+        CHECK(ed.SetEffectAmount(0, 2, 500.0) && Near(ed.project.segments[0].effects[2].amount, 50.0, 1e-9), "held to the range");
+        CHECK(ed.SetEffectAmount(0, 2, 3.5) && !ed.SetEffectAmount(0, 9, 1.0) && !ed.SetEffectAmount(7, 0, 1.0), "no such effect or clip: nothing");
+        Document switches = plain;
+        switches.project.segments[0].effects = {VideoFXEffect::Grayscale()};
+        CHECK(!switches.SetEffectAmount(0, 0, 1.0) && switches.project.segments[0].effects[0].amount == 0.0, "a switch keeps its amount");
+        ed.SetEffectAmount(0, 0, 0.3);
+        // every adjustable amount renders at both ends of its range
+        bool ends = true;
+        std::string endsFailed;
+        for (VideoFXEffectType type : {VideoFXEffectType::Brightness, VideoFXEffectType::Contrast, VideoFXEffectType::Saturation,
+                                       VideoFXEffectType::Gamma, VideoFXEffectType::Exposure, VideoFXEffectType::Hue,
+                                       VideoFXEffectType::Temperature, VideoFXEffectType::Blur, VideoFXEffectType::Sharpen,
+                                       VideoFXEffectType::Denoise, VideoFXEffectType::Vignette, VideoFXEffectType::Rotate,
+                                       VideoFXEffectType::FadeIn, VideoFXEffectType::FadeOut, VideoFXEffectType::Volume}) {
+            const EffectRange range = RangeOfEffect(type);
+            for (double v : {range.low, range.high}) {
+                Document one = plain;
+                VideoFXEffect e;
+                e.type = type;
+                e.amount = v;
+                one.project.segments[0].effects = {e};
+                VideoFXFrame frame;
+                if (VideoFX_RenderFrame(one.SegmentsForEngine(), 1.0, frame, {}, 160, 120) != VideoFXResult::Ok || !frame.IsValid()) {
+                    ends = false;
+                    endsFailed += " " + DescribeEffect(e);
+                }
+            }
+        }
+        CHECK(ends, ("every slider's ends render a frame" + endsFailed).c_str());
 
         const std::string efile = TempPath("effects.ultravideo");
         std::string eerror;
