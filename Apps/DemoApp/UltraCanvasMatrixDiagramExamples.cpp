@@ -1,8 +1,9 @@
 // Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
-// Matrix diagram examples: L, T, X and Y arrangements with live presentation controls
+// Matrix diagram examples: L, T, X, Y and House arrangements with live presentation controls
+// Version: 1.2.0 - House of Quality tab; numbers-or-bars roll-up control
 // Version: 1.1.0 - X and Y tabs; hub, header band and cell tint controls
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -122,12 +123,17 @@ namespace UltraCanvas {
         hubSelector->AddItem("Blank", "blank");
         hubSelector->SetSelectedIndex(0);
 
-        auto swBands = addSwitch("matrixBands", "Row banding", 310);
-        auto swLabelFill = addSwitch("matrixLabelFill", "Filled label band", 338);
-        auto swValues = addSwitch("matrixValues", "Cell weights", 366);
-        auto swAxisTitles = addSwitch("matrixAxisTitles", "Axis titles", 394);
-        auto swTint = addSwitch("matrixTint", "Tint cells", 422);
-        auto swHeaderBand = addSwitch("matrixHeaderBand", "Form header", 450);
+        auto rollUpSelector = addDropdown("matrixRollUp", "Column totals as", 304);
+        rollUpSelector->AddItem("Bars with ranks", "bars");
+        rollUpSelector->AddItem("Numbers", "numbers");
+        rollUpSelector->SetSelectedIndex(0);
+
+        auto swBands = addSwitch("matrixBands", "Row banding", 362);
+        auto swLabelFill = addSwitch("matrixLabelFill", "Filled label band", 390);
+        auto swValues = addSwitch("matrixValues", "Cell weights", 418);
+        auto swAxisTitles = addSwitch("matrixAxisTitles", "Axis titles", 446);
+        auto swTint = addSwitch("matrixTint", "Tint cells", 474);
+        auto swHeaderBand = addSwitch("matrixHeaderBand", "Form header", 502);
 
         // ===== DIAGRAM TABS =====
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
@@ -145,6 +151,7 @@ namespace UltraCanvas {
                 {"matrixQfd",       "Weighted (QFD)",    &MatrixSamples::QualityFunctionDeployment},
                 {"matrixSupply",    "X-Shaped",          &MatrixSamples::SupplyChain},
                 {"matrixTrace",     "Y-Shaped",          &MatrixSamples::DesignTraceability},
+                {"matrixHouse",     "House of Quality",  &MatrixSamples::HouseOfQuality},
         };
 
         std::vector<std::shared_ptr<UltraCanvasMatrixDiagram>> allDiagrams;
@@ -153,6 +160,7 @@ namespace UltraCanvas {
             auto diagram = CreateMatrixDiagramElement(spec.id, 0, 0, 780, 506, spec.build());
             diagram->SetTotals(MatrixTotals::Both);
             diagram->SetHubMode(MatrixHubMode::Captions);
+            diagram->SetRollUp(MatrixRollUp::Bars);
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     std::string(spec.id) + "Tab", 0, 0, 790, 516);
@@ -315,6 +323,12 @@ namespace UltraCanvas {
             }
         };
 
+        rollUpSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
+            const MatrixRollUp presentation = (item.value == "numbers") ? MatrixRollUp::Numbers
+                                                                         : MatrixRollUp::Bars;
+            for (auto& diagram : allDiagrams) diagram->SetRollUp(presentation);
+        };
+
         hubSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
             const MatrixHubMode mode = (item.value == "blank") ? MatrixHubMode::Blank
                                                                : MatrixHubMode::Captions;
@@ -344,7 +358,7 @@ namespace UltraCanvas {
         swHeaderBand->SetChecked(true);
 
         // ===== ABOUT =====
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("matrixAboutTitle", PAD, 488, SIDEBAR_W, 20);
+        auto aboutTitle = std::make_shared<UltraCanvasLabel>("matrixAboutTitle", PAD, 536, SIDEBAR_W, 20);
         aboutTitle->SetText("ABOUT");
         aboutTitle->SetFontSize(11);
         aboutTitle->SetFontWeight(FontWeight::Bold);
@@ -352,14 +366,11 @@ namespace UltraCanvas {
         aboutTitle->SetAlignment(TextAlignment::Left);
         leftSidebar->AddChild(aboutTitle);
 
-        auto aboutText = std::make_shared<UltraCanvasLabel>("matrixAbout", PAD, 510, SIDEBAR_W, 150);
-        aboutText->SetText("One of the Seven Management and Planning Tools. Cells hold a "
-                           "named level, not a number - for continuous values use the "
-                           "Heatmap chart.\n\n"
-                           "Levels carry weights, so rows and columns roll up into totals "
-                           "(5/3/1 or QFD's 9/3/1).\n\n"
-                           "Hover a cell: its row and column light up in every panel that "
-                           "lists them.");
+        auto aboutText = std::make_shared<UltraCanvasLabel>("matrixAbout", PAD, 558, SIDEBAR_W, 104);
+        aboutText->SetText("Cells hold a named level, not a number - for continuous values "
+                           "use the Heatmap chart. Levels carry weights, so rows and columns "
+                           "roll up into totals and ranks. Hover a cell: its row and column "
+                           "light up in every panel that lists them.");
         aboutText->SetFontSize(10);
         aboutText->SetAlignment(TextAlignment::Left);
         aboutText->SetWrap(TextWrap::WrapWordChar);

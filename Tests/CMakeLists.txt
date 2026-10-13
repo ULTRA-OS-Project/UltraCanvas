@@ -2889,6 +2889,9 @@ target_include_directories(MatrixModelTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
 )
 target_compile_features(MatrixModelTest PRIVATE cxx_std_20)
+# ImportMatrixTable and the importance column read numbers through the
+# locale-independent parser, which lives in the UI-free text utilities.
+target_link_libraries(MatrixModelTest PRIVATE UltraCanvasTextUtils)
 set_target_properties(MatrixModelTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )

@@ -1,14 +1,16 @@
 // Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
-// Matrix diagram element: L, T, X and Y arrangements, ordinal cell marks, roll-ups
+// Matrix diagram element: L, T, X, Y and House arrangements, ordinal cell marks, roll-ups
+// Version: 1.2.0 - Phase 3: the House of Quality (roof, importance column, direction and target rows), roll-up bar strip with ranks
 // Version: 1.1.1 - rotated column headers get room on the right instead of being clipped; SetDarkTheme(false) keeps non-colour settings
 // Version: 1.1.0 - Phase 2: X (blank or captioned hub) and Y shapes on one cell lattice, form header band, cell tint, hover bands across panels
 // Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixDiagram.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasTextUtils.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>   // SIZE_MAX, uint8_t - transitive on libstdc++, not on MSVC
@@ -285,6 +287,20 @@ namespace UltraCanvas {
         if (showLegend == on) return;
         showLegend = on;
         if (legend) legend->SetVisible(on);
+        DropLayoutCache();
+        RequestRedraw();
+    }
+
+    void UltraCanvasMatrixDiagram::SetRollUp(MatrixRollUp presentation) {
+        if (rollUp == presentation) return;
+        rollUp = presentation;
+        DropLayoutCache();
+        RequestRedraw();
+    }
+
+    void UltraCanvasMatrixDiagram::SetShowImportance(bool on) {
+        if (showImportance == on) return;
+        showImportance = on;
         DropLayoutCache();
         RequestRedraw();
     }
@@ -607,9 +623,8 @@ namespace UltraCanvas {
         // is left once every row has its minimum and the totals gutter is
         // reserved. A fully legible header above a clipped grid is the wrong
         // trade - the marks are the data, the header is the caption.
-        const double gridFloor = pl.rows * style.minCellSize
-                                 + (colTotals ? style.totalsGutterSize : 0.0)
-                                 + axisTitleSpace;
+        const double colGutter = colTotals ? ColumnGutterHeight() : 0.0;
+        const double gridFloor = pl.rows * style.minCellSize + colGutter + axisTitleSpace;
         const double bandAllowance = ClampSafe(area.height - gridFloor,
                                                28.0, style.maxHeaderBandHeight);
         pl.fit = ResolveHeaderFit(ctx, model.ColSet(0), pl.cellWidth, bandAllowance);
@@ -628,8 +643,7 @@ namespace UltraCanvas {
         }
 
         const double gridTop = area.y + bandHeight + axisTitleSpace;
-        const double gridAvailH = area.y + area.height - gridTop
-                                  - (colTotals ? style.totalsGutterSize : 0.0);
+        const double gridAvailH = area.y + area.height - gridTop - colGutter;
         pl.cellHeight = FitCellSize(gridAvailH, pl.rows);
 
         pl.grid = Rect2Dd(gridLeft, gridTop,
@@ -646,10 +660,130 @@ namespace UltraCanvas {
         }
         if (colTotals) {
             pl.colTotals = Rect2Dd(pl.grid.x, pl.grid.y + pl.grid.height,
-                                   pl.grid.width, style.totalsGutterSize);
+                                   pl.grid.width, colGutter);
         }
 
         layout.panels.push_back(pl);
+    }
+
+    double UltraCanvasMatrixDiagram::ColumnGutterHeight() const {
+        return rollUp == MatrixRollUp::Bars ? style.barStripHeight : style.totalsGutterSize;
+    }
+
+    // The House of Quality: an L whose column header carries the correlation
+    // roof on top, with an importance column, a direction-of-improvement row
+    // and a target row added round the grid. Laid out in the L's single pass
+    // - cell width, header fit, band height, cell height - with the roof's
+    // height (half a cell per column) charged against the vertical space
+    // before the band is sized, and capped at maxRoofShare of it so a wide
+    // matrix cannot squeeze the grid out.
+    //
+    // The roof is the same lattice as every other panel, stepped at 45
+    // degrees: from the left end of its base, a row step of (w/2, w/2) and a
+    // column step of (w/2, -w/2) make every cell a diamond, and cell (r, c)
+    // sits above the boundary between columns r and c, (c - r) half-cells up.
+    // Only cells with c > r exist. (Proposal section 7.1.)
+    bool UltraCanvasMatrixDiagram::LayoutHouse(IRenderContext* ctx, const Rect2Dd& area) {
+        if (model.panels.empty() || model.panels[0].symmetric) return false;
+
+        PanelLayout pl = MeasurePanel(ctx, 0, false);
+        if (pl.rows == 0 || pl.cols == 0) return false;
+        const MatrixItemSet* cols = model.ColSet(0);
+
+        const bool rowTotals = (totals == MatrixTotals::Rows || totals == MatrixTotals::Both);
+        const bool colTotals = (totals == MatrixTotals::Columns || totals == MatrixTotals::Both);
+        const double colGutter = colTotals ? ColumnGutterHeight() : 0.0;
+        const double axisTitleSpace = showAxisTitles ? style.axisTitleFontSize + 8.0 : 0.0;
+        const double impW = showImportance ? style.importanceColumnWidth : 0.0;
+
+        bool anyDirection = false, anyTarget = false;
+        for (const MatrixItem& item : cols->items) {
+            anyDirection = anyDirection || item.improvement != MatrixImprovement::NoDirection;
+            anyTarget = anyTarget || !item.target.empty();
+        }
+        const double dirH = anyDirection ? style.improvementRowHeight : 0.0;
+        const double tgtH = anyTarget ? style.targetRowHeight : 0.0;
+
+        const double gridLeft = area.x + axisTitleSpace + pl.rowLabels.width + impW;
+        const double room = area.x + area.width - gridLeft;
+        const double gridAvailW = room - (rowTotals ? style.totalsGutterSize : 0.0);
+
+        // The roof's height is cols * w / 2, so capping it caps w.
+        const double roofCap = std::max(0.0, area.height * style.maxRoofShare);
+        pl.cellWidth = std::max(style.minCellSize,
+                std::min(FitCellSize(gridAvailW, pl.cols), roofCap * 2.0 / pl.cols));
+
+        const double gridFloor = pl.rows * style.minCellSize + dirH + tgtH + colGutter
+                                 + pl.cols * pl.cellWidth / 2.0;
+        const double bandAllowance = ClampSafe(area.height - gridFloor,
+                                               28.0, style.maxHeaderBandHeight);
+        pl.fit = ResolveHeaderFit(ctx, cols, pl.cellWidth, bandAllowance);
+        pl.headerLines = (pl.fit == MatrixHeaderFit::Wrapped) ? 3 : 1;
+        const double bandHeight = std::min(bandAllowance,
+                                           MeasureHeaderBand(ctx, cols, pl.fit, pl.cellWidth));
+
+        const std::vector<double> reach = RotatedHeaderReach(ctx, cols, pl.fit, bandHeight);
+        if (!reach.empty()) {
+            pl.cellWidth = std::max(style.minCellSize,
+                                    std::min(pl.cellWidth, CellWidthLimit(reach, room, 0)));
+        }
+
+        // Every cell of width w costs the roof w / 2 of height, so a wide
+        // cell starves the rows. When the rows would come out flatter than
+        // minRowAspect of the width, narrow the cells until roof and rows
+        // share what the header leaves: cols * w / 2 + rows * aspect * w.
+        const double fixedH = bandHeight + dirH + tgtH + colGutter;
+        const double rowsAtWidth = area.height - fixedH - pl.cols * pl.cellWidth / 2.0;
+        if (rowsAtWidth < pl.rows * pl.cellWidth * style.minRowAspect) {
+            const double balanced = (area.height - fixedH)
+                                    / (pl.cols / 2.0 + pl.rows * style.minRowAspect);
+            pl.cellWidth = std::max(style.minCellSize, std::min(pl.cellWidth, balanced));
+        }
+
+        const double roofH = pl.cols * pl.cellWidth / 2.0;
+        const double roofBase = area.y + roofH;
+        const double gridTop = roofBase + bandHeight + dirH;
+        pl.cellHeight = FitCellSize(area.y + area.height - gridTop - tgtH - colGutter, pl.rows);
+
+        pl.grid = Rect2Dd(gridLeft, gridTop, pl.cellWidth * pl.cols, pl.cellHeight * pl.rows);
+        SetAxisLattice(pl, false);
+        pl.rowLabels = Rect2Dd(gridLeft - impW - pl.rowLabels.width, gridTop,
+                               pl.rowLabels.width, pl.grid.height);
+        pl.colLabels = Rect2Dd(gridLeft, roofBase, pl.grid.width, bandHeight);
+        pl.colTitleInCorner = true;
+        if (impW > 0.0) pl.importance = Rect2Dd(gridLeft - impW, gridTop, impW, pl.grid.height);
+        if (dirH > 0.0) pl.improvementRow = Rect2Dd(gridLeft, gridTop - dirH, pl.grid.width, dirH);
+        if (tgtH > 0.0) {
+            pl.targetRow = Rect2Dd(gridLeft, pl.grid.y + pl.grid.height, pl.grid.width, tgtH);
+        }
+        if (rowTotals) {
+            pl.rowTotals = Rect2Dd(pl.grid.x + pl.grid.width, pl.grid.y,
+                                   style.totalsGutterSize, pl.grid.height);
+        }
+        if (colTotals) {
+            pl.colTotals = Rect2Dd(pl.grid.x, pl.grid.y + pl.grid.height + tgtH,
+                                   pl.grid.width, colGutter);
+        }
+        layout.panels.push_back(pl);
+
+        // ---- The roof ----
+        const int roofIndex = model.FindSymmetricPanel(model.panels[0].colSetId);
+        if (roofIndex >= 0) {
+            PanelLayout roof;
+            roof.panelIndex = roofIndex;
+            roof.rows = roof.cols = pl.cols;
+            roof.cellWidth = roof.cellHeight = pl.cellWidth;
+            roof.axisAligned = false;
+            roof.upperTriangle = true;
+            roof.origin = Point2Dd(gridLeft, roofBase);
+            roof.rowStep = Point2Dd(pl.cellWidth / 2.0, pl.cellWidth / 2.0);
+            roof.colStep = Point2Dd(pl.cellWidth / 2.0, -pl.cellWidth / 2.0);
+            roof.grid = Rect2Dd(gridLeft, area.y, pl.grid.width, roofH);
+            roof.rowLabels = Rect2Dd(0, 0, 0, 0);
+            roof.colLabels = Rect2Dd(0, 0, 0, 0);
+            layout.panels.push_back(roof);
+        }
+        return true;
     }
 
     void UltraCanvasMatrixDiagram::LayoutT(IRenderContext* ctx, const Rect2Dd& area) {
@@ -1214,12 +1348,11 @@ namespace UltraCanvas {
                 case MatrixShape::Y:
                     if (!LayoutY(ctx, area)) LayoutL(ctx, area);
                     break;
-                case MatrixShape::L:
                 case MatrixShape::House:
+                    if (!LayoutHouse(ctx, area)) LayoutL(ctx, area);
+                    break;
+                case MatrixShape::L:
                 default:
-                    // House is not implemented yet; it falls back to the L
-                    // layout of panel 0 rather than drawing nothing, so a
-                    // caller who sets it early still sees their data.
                     LayoutL(ctx, area);
                     break;
             }
@@ -1302,6 +1435,7 @@ namespace UltraCanvas {
         RenderRowLabels(ctx, pl);
         RenderColumnLabels(ctx, pl);
         RenderTotals(ctx, pl);
+        RenderHouseBands(ctx, pl);
         if (showAxisTitles) RenderAxisTitles(ctx, pl);
     }
 
@@ -1309,7 +1443,7 @@ namespace UltraCanvas {
         ctx->SetFillPaint(style.cellBackground);
         FillCells(ctx, pl, 0, 0, pl.rows, pl.cols);
 
-        if (style.alternateRowBands) {
+        if (style.alternateRowBands && !pl.upperTriangle) {
             ctx->SetFillPaint(style.cellAlternateBackground);
             for (int r = 1; r < pl.rows; r += 2) FillCells(ctx, pl, r, 0, 1, pl.cols);
         }
@@ -1333,6 +1467,16 @@ namespace UltraCanvas {
 
         ctx->SetStrokePaint(style.gridLineColor);
         ctx->SetStrokeWidth(style.gridLineWidth);
+        if (pl.upperTriangle) {
+            // A staircase of diamonds has no full-length lines to rule;
+            // outline each cell that exists.
+            for (int r = 0; r < pl.rows; ++r) {
+                for (int c = r + 1; c < pl.cols; ++c) {
+                    ctx->DrawLinePath(CellQuad(pl, r, c, 1, 1), true);
+                }
+            }
+            return;
+        }
         for (int c = 0; c <= pl.cols; ++c) {
             ctx->DrawLine(LatticeAt(pl.origin, 0, pl.rowStep, c, pl.colStep),
                           LatticeAt(pl.origin, pl.rows, pl.rowStep, c, pl.colStep));
@@ -1718,6 +1862,166 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasMatrixDiagram::RenderHouseBands(IRenderContext* ctx, const PanelLayout& pl) {
+        const MatrixItemSet* rows = model.RowSet(pl.panelIndex);
+        const MatrixItemSet* cols = model.ColSet(pl.panelIndex);
+        if (!rows || !cols) return;
+
+        // A caption for a band, right-aligned in the row-label column.
+        auto caption = [&](const std::string& text, const Rect2Dd& band) {
+            ctx->SetFontSize(style.totalsFontSize - 1.0f);
+            ctx->SetTextPaint(style.axisTitleColor);
+            Size2Di s = ctx->GetTextLineDimensions(text);
+            const double right = (pl.importance.width > 0.0 ? pl.importance.x : pl.grid.x) - 8.0;
+            ctx->DrawText(text, Point2Dd(right - s.width, band.y + (band.height - s.height) / 2.0));
+        };
+
+        if (pl.importance.width > 0.0) {
+            ctx->SetFillPaint(style.totalsBackground);
+            ctx->FillRectangle(pl.importance);
+            ctx->SetStrokePaint(style.gridLineColor);
+            ctx->SetStrokeWidth(style.gridLineWidth);
+            ctx->DrawRectangle(pl.importance);
+
+            ctx->SetFontSize(style.totalsFontSize);
+            ctx->SetTextPaint(style.totalsTextColor);
+            for (int r = 0; r < pl.rows && r < rows->Count(); ++r) {
+                // Read by people: up to two decimals, trailing zeros dropped.
+                const std::string text = FormatFloatClassic(rows->items[static_cast<size_t>(r)].importance, 3);
+                Size2Di s = ctx->GetTextLineDimensions(text);
+                ctx->DrawText(text, Point2Dd(pl.importance.x + (pl.importance.width - s.width) / 2.0,
+                                             pl.grid.y + r * pl.cellHeight + (pl.cellHeight - s.height) / 2.0));
+            }
+
+            // The column's own header, standing in the band above it.
+            ctx->SetFontSize(style.colLabelFontSize);
+            ctx->SetTextPaint(EffectiveLabelColor());
+            DrawColumnLabel(ctx, "Importance", pl.importance.x + pl.importance.width / 2.0,
+                            pl.colLabels.y + pl.colLabels.height, pl.colLabels.height,
+                            MatrixHeaderFit::Rotated90, pl.importance.width, 1);
+        }
+
+        if (pl.improvementRow.height > 0.0) {
+            ctx->SetFillPaint(style.cellAlternateBackground);
+            ctx->FillRectangle(pl.improvementRow);
+            ctx->SetStrokePaint(style.gridLineColor);
+            ctx->SetStrokeWidth(style.gridLineWidth);
+            ctx->DrawRectangle(pl.improvementRow);
+            caption("Direction", pl.improvementRow);
+
+            // Drawn, not typed: an arrow glyph is one the UI font may lack.
+            const double half = std::min(pl.cellWidth, pl.improvementRow.height) * 0.32;
+            for (int c = 0; c < pl.cols && c < cols->Count(); ++c) {
+                const Point2Dd mid(pl.grid.x + (c + 0.5) * pl.cellWidth,
+                                   pl.improvementRow.y + pl.improvementRow.height / 2.0);
+                switch (cols->items[static_cast<size_t>(c)].improvement) {
+                    case MatrixImprovement::Maximize:
+                        DrawArrow(ctx, Point2Dd(mid.x, mid.y + half), Point2Dd(mid.x, mid.y - half),
+                                  style.improvementColor);
+                        break;
+                    case MatrixImprovement::Minimize:
+                        DrawArrow(ctx, Point2Dd(mid.x, mid.y - half), Point2Dd(mid.x, mid.y + half),
+                                  style.improvementColor);
+                        break;
+                    case MatrixImprovement::Target:
+                        ctx->SetStrokePaint(style.improvementColor);
+                        ctx->SetStrokeWidth(1.6f);
+                        ctx->DrawCircle(mid, half * 0.75);
+                        ctx->SetFillPaint(style.improvementColor);
+                        ctx->FillCircle(mid, half * 0.25);
+                        break;
+                    case MatrixImprovement::NoDirection:
+                    default:
+                        break;
+                }
+            }
+        }
+
+        if (pl.targetRow.height > 0.0) {
+            ctx->SetFillPaint(style.cellBackground);
+            ctx->FillRectangle(pl.targetRow);
+            ctx->SetStrokePaint(style.gridLineColor);
+            ctx->SetStrokeWidth(style.gridLineWidth);
+            ctx->DrawRectangle(pl.targetRow);
+            for (int c = 1; c < pl.cols; ++c) {
+                const double x = pl.grid.x + c * pl.cellWidth;
+                ctx->DrawLine(Point2Dd(x, pl.targetRow.y),
+                              Point2Dd(x, pl.targetRow.y + pl.targetRow.height));
+            }
+            caption("Target", pl.targetRow);
+
+            ctx->SetFontSize(style.targetFontSize);
+            ctx->SetTextPaint(EffectiveLabelColor());
+            const double lineHeight = style.targetFontSize * 1.25;
+            for (int c = 0; c < pl.cols && c < cols->Count(); ++c) {
+                const std::vector<std::string> lines = WrapToLines(
+                        ctx, cols->items[static_cast<size_t>(c)].target, pl.cellWidth - 4.0, 2);
+                double y = pl.targetRow.y + (pl.targetRow.height - lines.size() * lineHeight) / 2.0;
+                for (const std::string& line : lines) {
+                    Size2Di s = ctx->GetTextLineDimensions(line);
+                    ctx->DrawText(line, Point2Dd(pl.grid.x + (c + 0.5) * pl.cellWidth - s.width / 2.0, y));
+                    y += lineHeight;
+                }
+            }
+        }
+    }
+
+    // The column scores as a strip of bars - the QFD presentation of the
+    // roll-up. Each column shows its bar, its score and its rank; the top
+    // three ranks stand out in their own colour.
+    void UltraCanvasMatrixDiagram::RenderColumnBars(IRenderContext* ctx, const PanelLayout& pl) {
+        const Rect2Dd& strip = pl.colTotals;
+        ctx->SetFillPaint(style.totalsBackground);
+        ctx->FillRectangle(strip);
+        ctx->SetStrokePaint(style.gridLineColor);
+        ctx->SetStrokeWidth(style.gridLineWidth);
+        ctx->DrawRectangle(strip);
+
+        std::vector<double> scores(static_cast<size_t>(pl.cols), 0.0);
+        double best = 0.0;
+        for (int c = 0; c < pl.cols; ++c) {
+            scores[static_cast<size_t>(c)] = model.ColumnScore(pl.panelIndex, c);
+            best = std::max(best, scores[static_cast<size_t>(c)]);
+        }
+        std::vector<int> rankOf(static_cast<size_t>(pl.cols), 0);
+        const std::vector<int> ranked = model.RankColumns(pl.panelIndex);
+        for (size_t i = 0; i < ranked.size(); ++i) {
+            if (ranked[i] >= 0 && ranked[i] < pl.cols) rankOf[static_cast<size_t>(ranked[i])] = static_cast<int>(i) + 1;
+        }
+
+        const double textH = style.totalsFontSize * 1.3;
+        const double rankY = strip.y + strip.height - textH - 2.0;
+        const double scoreY = rankY - textH;
+        const double barTop = strip.y + 6.0;
+        const double barSpan = std::max(0.0, scoreY - 2.0 - barTop);
+        const double barW = std::max(3.0, pl.cellWidth * 0.5);
+
+        for (int c = 0; c < pl.cols; ++c) {
+            const double cx = pl.grid.x + (c + 0.5) * pl.cellWidth;
+            const double score = scores[static_cast<size_t>(c)];
+            const int rank = rankOf[static_cast<size_t>(c)];
+
+            const double h = best > 0.0 ? barSpan * score / best : 0.0;
+            if (h > 0.0) {
+                ctx->SetFillPaint(rank >= 1 && rank <= 3 ? style.rollUpTopBarColor
+                                                         : style.rollUpBarColor);
+                ctx->FillRectangle(Rect2Dd(cx - barW / 2.0, scoreY - 2.0 - h, barW, h));
+            }
+
+            ctx->SetFontSize(style.totalsFontSize);
+            ctx->SetTextPaint(style.totalsTextColor);
+            const std::string scoreText = FormatTotal(score);
+            Size2Di s = ctx->GetTextLineDimensions(scoreText);
+            ctx->DrawText(scoreText, Point2Dd(cx - s.width / 2.0, scoreY));
+
+            ctx->SetFontSize(style.totalsFontSize - 1.0f);
+            ctx->SetTextPaint(style.rankTextColor);
+            const std::string rankText = "#" + std::to_string(rank);
+            Size2Di r = ctx->GetTextLineDimensions(rankText);
+            ctx->DrawText(rankText, Point2Dd(cx - r.width / 2.0, rankY));
+        }
+    }
+
     void UltraCanvasMatrixDiagram::RenderAxisTitles(IRenderContext* ctx, const PanelLayout& pl) {
         const MatrixItemSet* rows = model.RowSet(pl.panelIndex);
         const MatrixItemSet* cols = model.ColSet(pl.panelIndex);
@@ -1728,7 +2032,14 @@ namespace UltraCanvas {
 
         // X and Y panels have no bands of their own - their arms carry the
         // labels and the set titles - so they draw no axis titles here.
-        if (cols && !cols->title.empty() && pl.colLabels.width > 0.0) {
+        if (cols && !cols->title.empty() && pl.colLabels.width > 0.0 && pl.colTitleInCorner) {
+            // A House's roof stands where the title would go; put it in the
+            // empty corner to the roof's left, ending at the header band.
+            Size2Di s = ctx->GetTextLineDimensions(cols->title);
+            ctx->DrawText(cols->title,
+                          Point2Dd(pl.grid.x - 8.0 - s.width,
+                                   pl.colLabels.y - s.height - 4.0));
+        } else if (cols && !cols->title.empty() && pl.colLabels.width > 0.0) {
             Size2Di s = ctx->GetTextLineDimensions(cols->title);
             ctx->DrawText(cols->title,
                           Point2Dd(pl.grid.x + (pl.grid.width - s.width) / 2.0,
@@ -1770,7 +2081,9 @@ namespace UltraCanvas {
             }
         }
 
-        if (pl.colTotals.height > 0.0) {
+        if (pl.colTotals.height > 0.0 && rollUp == MatrixRollUp::Bars) {
+            RenderColumnBars(ctx, pl);
+        } else if (pl.colTotals.height > 0.0) {
             ctx->SetFillPaint(style.totalsBackground);
             ctx->FillRectangle(pl.colTotals);
             ctx->SetStrokePaint(style.gridLineColor);
@@ -1805,6 +2118,16 @@ namespace UltraCanvas {
     void UltraCanvasMatrixDiagram::FillCells(IRenderContext* ctx, const PanelLayout& pl,
                                              int row, int col, int rows, int cols) const {
         if (rows <= 0 || cols <= 0) return;
+        if (pl.upperTriangle) {
+            // The block may straddle the diagonal; fill only the cells that
+            // exist, one diamond at a time.
+            for (int r = row; r < row + rows; ++r) {
+                for (int c = std::max(col, r + 1); c < col + cols; ++c) {
+                    ctx->FillLinePath(CellQuad(pl, r, c, 1, 1));
+                }
+            }
+            return;
+        }
         const std::vector<Point2Dd> quad = CellQuad(pl, row, col, rows, cols);
         if (pl.axisAligned) {
             // A rectangle keeps pixel-aligned edges crisp where a path would
@@ -1865,7 +2188,8 @@ namespace UltraCanvas {
             // that serves an L, a turned X quadrant and a Y rhombus alike.
             double a = 0.0, b = 0.0;
             if (Unproject(Point2Dd(px, py), pl.origin, pl.rowStep, pl.colStep, a, b) &&
-                a >= 0.0 && a < pl.rows && b >= 0.0 && b < pl.cols) {
+                a >= 0.0 && a < pl.rows && b >= 0.0 && b < pl.cols &&
+                (!pl.upperTriangle || static_cast<int>(b) > static_cast<int>(a))) {
                 MatrixRef ref;
                 ref.panel = pl.panelIndex;
                 ref.row = std::clamp(static_cast<int>(a), 0, pl.rows - 1);
@@ -1878,9 +2202,12 @@ namespace UltraCanvas {
             const bool inGridY = py >= pl.grid.y && py < pl.grid.y + pl.grid.height;
 
 
-            // Row label band -> the whole row.
-            if (pl.rowLabels.width > 0.0 && inGridY &&
-                px >= pl.rowLabels.x && px < pl.rowLabels.x + pl.rowLabels.width) {
+            // Row label band, or a House's importance column -> the whole row.
+            const bool inRowLabels = pl.rowLabels.width > 0.0 &&
+                    px >= pl.rowLabels.x && px < pl.rowLabels.x + pl.rowLabels.width;
+            const bool inImportance = pl.importance.width > 0.0 &&
+                    px >= pl.importance.x && px < pl.importance.x + pl.importance.width;
+            if (inGridY && (inRowLabels || inImportance)) {
                 MatrixRef ref;
                 ref.panel = pl.panelIndex;
                 ref.row = std::clamp(static_cast<int>((py - pl.grid.y) / pl.cellHeight),
@@ -2046,6 +2373,7 @@ namespace UltraCanvas {
         std::string word;
         std::string current;
 
+        bool truncated = false;
         while (words >> word) {
             const std::string candidate = current.empty() ? word : current + " " + word;
             if (current.empty() || ctx->GetTextLineWidth(candidate) <= maxWidth) {
@@ -2054,7 +2382,10 @@ namespace UltraCanvas {
             }
             lines.push_back(current);
             current = word;
-            if (static_cast<int>(lines.size()) == maxLines) break;
+            if (static_cast<int>(lines.size()) == maxLines) {
+                truncated = true;
+                break;
+            }
         }
 
         if (!current.empty() && static_cast<int>(lines.size()) < maxLines) {
@@ -2062,9 +2393,11 @@ namespace UltraCanvas {
         }
 
         // Anything that did not fit is ellipsised into the last line rather
-        // than silently dropped.
+        // than silently dropped: the last line plus the next word is too wide
+        // by construction, so EllipsizeToWidth trims it and adds the marker.
         if (!lines.empty()) {
-            lines.back() = EllipsizeToWidth(ctx, lines.back(), maxWidth);
+            lines.back() = EllipsizeToWidth(
+                    ctx, truncated ? lines.back() + " " + current : lines.back(), maxWidth);
         }
         return lines;
     }
@@ -2101,6 +2434,17 @@ namespace UltraCanvas {
             const MatrixItem& item = cols->items[static_cast<size_t>(ref.col)];
             out << item.label << "\ntotal "
                 << FormatTotal(model.ColumnScore(ref.panel, ref.col));
+
+            // Where the column ranks, and its share of the panel's score -
+            // the two numbers a QFD exercise is run to produce.
+            const std::vector<int> ranked = model.RankColumns(ref.panel);
+            const std::vector<double> shares = model.RelativeColumnWeights(ref.panel);
+            const auto at = std::find(ranked.begin(), ranked.end(), ref.col);
+            if (at != ranked.end() && static_cast<size_t>(ref.col) < shares.size()) {
+                out << ", rank " << (at - ranked.begin() + 1) << " of " << ranked.size()
+                    << ", " << FormatFloatClassic(shares[static_cast<size_t>(ref.col)], 3) << "%";
+            }
+            if (!item.target.empty()) out << "\ntarget " << item.target;
             if (!item.note.empty()) out << "\n" << item.note;
         }
 

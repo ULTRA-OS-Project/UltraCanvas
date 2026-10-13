@@ -1,4 +1,4 @@
-**Status:** **Phases 1 and 2 are implemented** as `UltraCanvasMatrixDiagram` +
+**Status:** **Phases 1, 2 and 3 are implemented** as `UltraCanvasMatrixDiagram` +
 `UltraCanvasMatrixModel` — see
 [`UltraCanvasMatrixDiagram.md`](UltraCanvasMatrixDiagram.md) for the guide.
 Phase 1 delivered the model (C1–C3, C5, C7), the `L` and `T` shapes, the totals
@@ -29,8 +29,30 @@ How Phase 2 departs from the plan below, and why:
 * **No totals gutters on X or Y.** Their outer edges are other panels' arms or
   open space; the totals stay one call away on the model.
 
-Still open: Phase 3 (D6 `House` with the correlation roof, L8 bar strip, X1/X2
-interchange beyond the single-panel CSV that already exists) and Phase 4.
+Phase 3 (2026-10-14) delivered D6 `House` with the rotated correlation roof
+(L4), the importance column, a direction-of-improvement row and a target row;
+L8 the ranked bar strip (`MatrixRollUp::Bars`) with relative weights on the
+model; X1 the importance column in the CSV round trip; and X2
+`ImportMatrixTable`, which builds a model from a spreadsheet's tabular form.
+Departures from the plan below:
+
+* **The roof needed no rotation code either.** It is the Phase 2 lattice with
+  45° steps of half a cell — cell (r, c) lands over the boundary between
+  columns r and c by construction — plus an upper-triangle flag that drawing,
+  highlighting and hit testing respect. §7.1's "inverse transform on the
+  pointer" is the same inverse every panel already uses.
+* **Symmetric cells are normalised by the model**, not the renderer: a
+  symmetric panel stores each pair once, above the diagonal, whichever way
+  round it was set, and has no diagonal cell.
+* **Roof versus rows.** Every unit of cell width costs the roof half a unit of
+  height, so the layout caps the roof (`maxRoofShare`) and then trades width
+  for height until the rows are at least `minRowAspect` of the width.
+* **No competitive-assessment block.** §2 lists it as part of the classic
+  House, but it is new data (per-row ratings of competitors), not layout, and
+  D6 did not include it. It would be the natural next addition to `House`.
+
+Still open: Phase 4 (I5 pan/zoom, I6 keyboard navigation, X3 JSON, Q5 editing)
+and the competitive-assessment block.
 
 **Revision 3 (2026-08-10) — scope correction.** Reference images 1, 2 and 7 are
 architectural room-adjacency matrices, and adjacency data is already modelled by
