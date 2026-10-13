@@ -143,7 +143,12 @@ it registered:
   the process-wide font machinery);
 - the Filer's **Display > Thumbnails** and **Display > Detail view** settings
   pages stop greying the formats out, because `GetPreviewableFormats()` asks
-  the same seam.
+  the same seam;
+- `UltraCanvasImageElement` and `UCImage` show an SVG in a build whose libvips
+  has no `svgload` - the WebAssembly sysroot's - by reading it through the
+  seam and rendering the kept document with the core's vector renderer at
+  each requested size; every SVG icon of a WebAssembly page comes from here.
+  A libvips that refuses an SVG gets the same second reader on the desktop.
 
 ```cpp
 RegisterVectorFormatsPlugin();                    // once, at startup

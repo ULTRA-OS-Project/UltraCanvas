@@ -8,8 +8,8 @@
 //
 //   bin import ─ Want(clip) ─ queue ─ worker: VideoFX_CreateProxy ─ Pump() on
 //   the UI timer: onDone(clip) ─ the window plans the preview again
-// Version: 0.1.0
-// Last Modified: 2026-10-12
+// Version: 0.2.1
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -38,7 +38,15 @@ public:
         Failed          // could not be made (Error() says why): plays as it is
     };
 
-    explicit ProxyMaker(VideoFX::VideoFXProxySettings settings = {});
+    // What the editor makes its proxies with: VideoFX's defaults (540 lines,
+    // a keyframe every half second), encoded on the graphics hardware where
+    // one works (NVENC, Quick Sync, VA-API, AMF, VideoToolbox, Media
+    // Foundation) so making them leaves the processor to the editing, and in
+    // software where none does. The encoder is not part of a proxy's name:
+    // proxies made either way are the same proxies.
+    static VideoFX::VideoFXProxySettings EditorSettings();
+
+    explicit ProxyMaker(VideoFX::VideoFXProxySettings settings = EditorSettings());
     ~ProxyMaker();                                  // stops the proxy being made, joins
     ProxyMaker(const ProxyMaker&) = delete;
     ProxyMaker& operator=(const ProxyMaker&) = delete;

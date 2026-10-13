@@ -141,6 +141,7 @@ _ultracanvas_declare_product(ULTRASOCIAL         "Docs/UltraSocial/CHANGELOG.md"
 _ultracanvas_declare_product(ULTRAVIEWER         "Docs/UltraViewer/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAVIDEO          "Docs/UltraVideo/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAWEB            "Docs/UltraWeb/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRAPRESS          "Docs/UltraPress/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAPAINT          "Docs/UltraPaint/CHANGELOG.md")
 _ultracanvas_declare_product(ARTCREATOR         "Docs/ArtCreator/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAWIN            "Docs/Modules/UltraWin/CHANGELOG.md")

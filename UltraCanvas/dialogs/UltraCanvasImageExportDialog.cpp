@@ -1,11 +1,14 @@
 // dialogs/UltraCanvasImageExportDialog.cpp
 // The bitmap save dialog: format list, the knobs each format exposes, the
 // size estimate, and the metadata the image carries.
+// Version: 3.2.0 - lists only the formats this build can encode (VipsCanEncode:
+//                 no AVIF / HEIC without libheif's encoder; ICO and QOI through
+//                 the framework's own savers)
 // Version: 3.1.0 - opens on the user's save settings per format and stores them
 //                 on Save (UltraCanvasFileLoader); the file name picks the
 //                 format; the colour depth list applies; SetOptions moves the
 //                 controls
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 //
 // Every captioned row is a row of one two-column grid (see the header), so
@@ -517,12 +520,13 @@ namespace UltraCanvas {
                                                                static_cast<int>(style.controlHeight));
 
         // Filter the format list against the installed libvips build —
-        // hide entries whose saver isn't compiled in. PNG is always kept
+        // hide entries whose saver isn't compiled in, or cannot encode (an
+        // AVIF / HEIC saver without libheif's encoder). PNG is always kept
         // as a safe fallback so the dropdown is never empty.
         availableFormats.clear();
         for (const auto& fmt : ImageFormatInfo::GetAllFormats()) {
             const std::string dotExt = "." + fmt.extension;
-            if (VipsCanSave(dotExt) || fmt.format == UCImageSaveFormat::PNG) {
+            if (VipsCanEncode(dotExt) || fmt.format == UCImageSaveFormat::PNG) {
                 availableFormats.push_back(fmt);
             }
         }

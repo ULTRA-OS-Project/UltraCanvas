@@ -8,8 +8,8 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
-// Version: 0.2.0
-// Last Modified: 2026-10-12
+// Version: 0.2.1
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -148,7 +148,7 @@ private:
     Document document_;
     History history_;
     Preview preview_;
-    ProxyMaker proxies_;               // the bin's videos as small stand-ins for the viewer
+    ProxyMaker proxies_;               // the bin's videos as small stand-ins, made on the graphics hardware
     int proxiesMade_ = 0;              // since the queue last ran dry: for one message, not one per clip
     bool dark_ = true;
     const Palette* palette_ = &Tokens::Dark;

@@ -5,8 +5,8 @@
 // the .ultravideo file round trip with relative media paths and missing
 // media reported. Needs the VideoFX engine (FFmpeg) for the probes and the
 // clips it generates; without it the suite skips itself.
-// Version: 0.2.0
-// Last Modified: 2026-10-12
+// Version: 0.2.1
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoHistory.h"
@@ -569,7 +569,10 @@ int main() {
         s.audioCodec = VideoFXAudioCodec::AAC;
         s.width = 640; s.height = 360; s.frameRate = 25.0;
         CHECK(VideoFX_Export({VideoFXSegment::TestPattern(2.0)}, big, s) == VideoFXResult::Ok, "a 640x360 clip");
-        VideoFXProxySettings ps;
+        CHECK(ProxyMaker::EditorSettings().acceleration == VideoFXAcceleration::Hardware &&
+              ProxyMaker::EditorSettings().height == VideoFXProxySettings{}.height,
+              "the editor's proxies: VideoFX's size, on the graphics hardware where one works");
+        VideoFXProxySettings ps = ProxyMaker::EditorSettings();   // the editor's own, so its encoder is exercised
         ps.height = 240;
         ps.cacheDirectory = TempPath("proxies");
         std::vector<std::pair<std::string, ProxyMaker::State>> done;

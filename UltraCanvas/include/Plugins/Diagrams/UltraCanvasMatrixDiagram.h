@@ -1,9 +1,11 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixDiagram.h
-// Matrix diagram element: item sets crossed in L and T arrangements, cell marks
-// drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Matrix diagram element: item sets crossed in L, T, X and Y arrangements, cell
+// marks drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Version: 1.1.1 - rotated column headers get room on the right instead of being clipped; SetDarkTheme(false) keeps non-colour settings
+// Version: 1.1.0 - Phase 2: the X shape (blank or captioned hub), the Y shape, the form header band, cell tint by level, hover bands across panels
 // Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 //
 // The matrix diagram is one of the Seven Management and Planning Tools: it
@@ -25,8 +27,8 @@
 //   * Named relationship levels between two or three ordered lists, with
 //     totals -> this element.
 //
-// Phase 1 implements the L and T shapes. Y, X and the QFD House composite are
-// planned; see Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md.
+// Implemented: the L, T, X and Y shapes. The QFD House composite is planned;
+// see Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md.
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -35,6 +37,7 @@
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
 #include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -64,6 +67,13 @@ namespace UltraCanvas {
         Rows,
         Columns,
         Both
+    };
+
+    // What sits in the middle of an X-shaped diagram: nothing, or the four set
+    // titles in boxes with arrows out to the bands that list their items.
+    enum class MatrixHubMode {
+        Blank,
+        Captions
     };
 
 // =============================================================================
@@ -124,9 +134,35 @@ namespace UltraCanvas {
         // ---- T shape ----
         double  panelGap            = 26.0;     // between a T's two wings
 
-        // Applies the dark palette in place. Kept as a method rather than a
-        // second struct so callers can tweak a field afterwards.
+        // ---- X hub ----
+        Color   hubBackground       = Color(241, 243, 246, 255);
+        float   hubCaptionFontSize  = 11.0f;
+        Color   hubCaptionTextColor = Color(255, 255, 255, 255);
+        Color   hubArrowColor       = Color(90, 96, 106, 255);
+
+        // ---- Form header band ----
+        // Drawn above the grid when the model carries header fields
+        // (PROJECT / AREA / TEAM / DATE ...).
+        float   headerFieldLabelFontSize = 8.5f;
+        float   headerFieldValueFontSize = 11.5f;
+        Color   headerFieldLabelColor    = Color(110, 116, 126, 255);
+        Color   headerFieldValueColor    = Color(30, 34, 40, 255);
+        Color   headerBandBackground     = Color(255, 255, 255, 255);
+        Color   headerBandBorderColor    = Color(190, 196, 205, 255);
+
+        // ---- Cell tint ----
+        // Fill each populated cell with its level's colour at this alpha,
+        // under the mark - a heatmap look for readers who want one. Off by
+        // default: the mark alone is the datum.
+        bool    tintCellsByLevel    = false;
+        uint8_t cellTintAlpha       = 56;
+
+        // Apply the dark or the light palette in place. Only colours change:
+        // sizes, switches and fonts are left as the caller set them. Kept as
+        // methods rather than second structs so callers can tweak a field
+        // afterwards.
         void ApplyDarkTheme();
+        void ApplyLightTheme();
     };
 
 // =============================================================================
@@ -173,6 +209,17 @@ namespace UltraCanvas {
         MatrixTotals GetTotals() const { return totals; }
 
         void SetShowAxisTitles(bool on);
+
+        // X shape only: a blank hub, or the four set titles in captioned
+        // boxes. With captions the outer axis titles are left out - the hub
+        // already names every band.
+        void SetHubMode(MatrixHubMode mode);
+        MatrixHubMode GetHubMode() const { return hubMode; }
+
+        // The form header band of MatrixModel::headerFields. On by default; it
+        // draws nothing while the model has no fields.
+        void SetShowHeaderBand(bool on);
+        bool GetShowHeaderBand() const { return showHeaderBand; }
         void SetShowLegend(bool on);
         void SetLegendPosition(ChartLegendPosition position);
 
@@ -216,6 +263,8 @@ namespace UltraCanvas {
         bool            showAxisTitles  = true;
         bool            showLegend      = true;
         bool            showCellValues  = false;
+        bool            showHeaderBand  = true;
+        MatrixHubMode   hubMode         = MatrixHubMode::Blank;
         std::string     levelFilter;
 
         std::unique_ptr<ChartLegend> legend;
@@ -225,10 +274,24 @@ namespace UltraCanvas {
         MatrixRef selected;
 
         // ===== LAYOUT CACHE (element-local coordinates) =====
-        // One entry per model panel. A T shape produces two.
+        // One entry per model panel. A T shape produces two, an X four, a Y
+        // three.
+        //
+        // A panel is a lattice: cell (row, col) of the MODEL's row and column
+        // sets has its corner at origin + row * rowStep + col * colStep. An L
+        // or T steps down the rows and across the columns; an X panel whose
+        // model rows lie along a horizontal arm steps the other way round
+        // (transposed); a Y panel steps along two seams 120 degrees apart, so
+        // its cells are rhombi. Everything below - grid, marks, highlight,
+        // hit testing - goes through the lattice, so no shape needs its own
+        // copy of them.
         struct PanelLayout {
             int     panelIndex   = 0;
-            Rect2Dd grid;                       // the cell area only
+            Rect2Dd grid;                       // bounding box of the cell area
+            Point2Dd origin;
+            Point2Dd rowStep;
+            Point2Dd colStep;
+            bool    axisAligned  = true;
             Rect2Dd rowLabels;                  // band left of the grid
             Rect2Dd colLabels;                  // band above the grid
             Rect2Dd rowTotals;                  // gutter right of the grid
@@ -242,11 +305,47 @@ namespace UltraCanvas {
             bool    rowLabelsOnRight = false;   // the left wing of a T
         };
 
+        // A band listing one item set, used by the X and Y shapes, where the
+        // labels of a set serve two panels and so belong to neither. Item i
+        // occupies origin + dir * [i, i+1] * itemSize, across * [0, bandWidth].
+        struct ArmLayout {
+            int      setIndex   = -1;
+            Point2Dd origin;
+            Point2Dd dir;                       // unit: the way the items run
+            Point2Dd across;                    // unit: across the band
+            double   itemSize   = 0.0;
+            double   bandWidth  = 0.0;
+            int      count      = 0;
+            bool     itemsAreColumns = false;   // X's left/right arms
+            MatrixHeaderFit fit = MatrixHeaderFit::Horizontal;
+            int      headerLines = 1;
+            Point2Dd titleAnchor;               // centre of the set title
+            bool     titleVertical = false;
+        };
+
+        // A caption box in an X hub, with its arrow out to the band it names.
+        struct HubCaption {
+            int      setIndex = -1;
+            Rect2Dd  box;
+            Point2Dd arrowFrom;
+            Point2Dd arrowTo;
+        };
+
+        struct HeaderField {
+            Rect2Dd box;
+            int     field = 0;
+        };
+
         struct Layout {
             bool                     valid = false;
+            Rect2Dd                  headerBand;  // the form header, empty when absent
+            std::vector<HeaderField> headerFields;
             Rect2Dd                  legendArea;  // after the title, BEFORE the legend's bite
             Rect2Dd                  content;     // what the panels get, after both
             std::vector<PanelLayout> panels;
+            std::vector<ArmLayout>   arms;        // X and Y only
+            Rect2Dd                  hub;         // X only
+            std::vector<HubCaption>  hubCaptions;
         };
         Layout layout;
 
@@ -262,6 +361,14 @@ namespace UltraCanvas {
         void UpdateLayout(IRenderContext* ctx);
         void LayoutL(IRenderContext* ctx, const Rect2Dd& area);
         void LayoutT(IRenderContext* ctx, const Rect2Dd& area);
+        bool LayoutX(IRenderContext* ctx, const Rect2Dd& area);
+        bool LayoutY(IRenderContext* ctx, const Rect2Dd& area);
+        void LayoutHeaderBand(IRenderContext* ctx, Rect2Dd& area);
+        void LayoutHubCaptions(IRenderContext* ctx, double& minWidth, double& minHeight);
+        void PlaceHubCaptions();
+
+        // Fills in an axis-aligned panel's lattice from its grid rectangle.
+        static void SetAxisLattice(PanelLayout& pl, bool transposed);
 
         // Measures one panel's label bands and fills in everything but the
         // grid origin, which the caller places.
@@ -272,13 +379,22 @@ namespace UltraCanvas {
         // style's min/max.
         double FitCellSize(double available, int count) const;
 
-        MatrixHeaderFit ResolveHeaderFit(IRenderContext* ctx, int panelIndex,
+        MatrixHeaderFit ResolveHeaderFit(IRenderContext* ctx, const MatrixItemSet* cols,
                                          double cellWidth, double bandAllowance) const;
 
         // Height the header band needs to show every column label in full,
         // given a settled fit and cell width. Clamped to the style maximum.
-        double MeasureHeaderBand(IRenderContext* ctx, int panelIndex,
+        double MeasureHeaderBand(IRenderContext* ctx, const MatrixItemSet* cols,
                                  MatrixHeaderFit fit, double cellWidth) const;
+
+        // How far each column label of `cols` reaches right of its column's
+        // centre when drawn at `fit` in a band of `bandHeight`. Empty unless
+        // the fit is rotated: only a rotated label leans past its column.
+        std::vector<double> RotatedHeaderReach(IRenderContext* ctx, const MatrixItemSet* cols,
+                                               MatrixHeaderFit fit, double bandHeight) const;
+
+        double MeasureWidestLabel(IRenderContext* ctx, const MatrixItemSet* set,
+                                  float fontSize) const;
 
         // ===== RENDERING =====
         void RenderTitles(IRenderContext* ctx);
@@ -290,6 +406,16 @@ namespace UltraCanvas {
         void RenderMarks(IRenderContext* ctx, const PanelLayout& pl);
         void RenderTotals(IRenderContext* ctx, const PanelLayout& pl);
         void RenderHighlight(IRenderContext* ctx, const PanelLayout& pl);
+        void RenderArm(IRenderContext* ctx, const ArmLayout& arm);
+        void RenderArmTitle(IRenderContext* ctx, const ArmLayout& arm);
+        void RenderHub(IRenderContext* ctx);
+        void RenderHeaderBand(IRenderContext* ctx);
+
+        // One column label inside a header band of the given fit, centred on
+        // `centerX` and sitting on `bandBottom`.
+        void DrawColumnLabel(IRenderContext* ctx, const std::string& label,
+                             double centerX, double bandBottom, double bandHeight,
+                             MatrixHeaderFit fit, double cellWidth, int lines);
 
         void DrawMark(IRenderContext* ctx, const MatrixLevel& level,
                       const Rect2Dd& cell, bool dimmed) const;
@@ -304,7 +430,15 @@ namespace UltraCanvas {
         const PanelLayout* PanelAt(int panelIndex) const;
 
         // ===== HELPERS =====
-        Rect2Dd CellRect(const PanelLayout& pl, int row, int col) const;
+        // Corners of the block of cells [row, row + rows) x [col, col + cols).
+        std::vector<Point2Dd> CellQuad(const PanelLayout& pl, int row, int col,
+                                       int rows = 1, int cols = 1) const;
+        void FillCells(IRenderContext* ctx, const PanelLayout& pl, int row, int col,
+                       int rows, int cols) const;
+        // The box a mark is drawn in: the cell itself when axis-aligned, the
+        // square inscribed in the rhombus otherwise.
+        Rect2Dd MarkBox(const PanelLayout& pl, int row, int col) const;
+        MatrixRef ArmRef(int setIndex, int item) const;
         std::string FormatTotal(double value) const;
         std::string EllipsizeToWidth(IRenderContext* ctx, const std::string& text,
                                      double maxWidth) const;

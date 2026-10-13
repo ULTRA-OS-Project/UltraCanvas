@@ -2,14 +2,16 @@
 // UltraWeb's downloads (Apps/UltraWeb/host/UltraWebDownloads): bytes saved
 // through a part file, a local file copied, sizes shown dot-decimal, and an
 // http download streamed to disk from a loopback server - whole, a 404 that
-// leaves no file, and a cancelled one that leaves no part file either.
+// leaves no file, a cancelled one that leaves no part file either, and one
+// whose server stops sending, which ends as a stall rather than hanging.
 // Then the downloads list (host/UltraWebDownloadList) and its panel
 // (ui/UltraWebDownloadsPanel): states, sizes, the buttons each row offers
 // and what they do.
 // The http part needs POSIX sockets and is skipped on Windows.
+// Version: 1.2.0 - a stalled download ends
 // Version: 1.1.0 - the downloads list and panel
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "host/UltraWebDownloadList.h"
@@ -217,13 +219,15 @@ void TestPanel() {
 }
 
 #ifndef _WIN32
-// A loopback HTTP/1.0 server: /file answers `body` (slowly when asked),
-// anything else 404.
+// A loopback HTTP/1.0 server: /file answers `body` (slowly when asked, or
+// only its first piece and then nothing when `stall` is set), anything
+// else 404.
 struct Server {
     int listener = -1;
     int port = 0;
     std::string body;
     std::atomic<bool> slow{ false };
+    std::atomic<bool> stall{ false };
     std::atomic<bool> stop{ false };
     std::thread thread;
 
@@ -260,6 +264,11 @@ struct Server {
                     if (::send(client, body.data() + at, n, MSG_NOSIGNAL) <= 0) break;
                     at += n;
                     if (slow) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    if (stall) {
+                        // The connection stays open and silent until the test ends.
+                        while (!stop) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                        break;
+                    }
                 }
             } else {
                 const std::string head = "HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n";
@@ -316,6 +325,25 @@ void TestHttp(const std::filesystem::path& dir) {
     Check(finished && !ok, "a cancelled download ends, not saved");
     Check(!std::filesystem::exists(PathFromUtf8(cancelled)) && !std::filesystem::exists(PathFromUtf8(cancelled + ".part")),
           "and leaves no part file");
+
+    // A server that goes quiet: the download has no time limit of its own
+    // (a 30 s one used to end every large file), so it is the stall limit
+    // that ends it - shortened here so the test does not wait 30 s.
+    server.slow = false;
+    server.stall = true;
+    SetDownloadStallTimeout(1000);
+    finished = false;
+    const std::string stalled = PathToUtf8(dir / "stalled.bin");
+    const auto began = std::chrono::steady_clock::now();
+    StartDownload(base + "/file", stalled, Post, nullptr,
+                  [&](bool good, const std::string& why) { finished = true; ok = good; error = why; });
+    Pump([&] { return finished; }, 15);
+    const auto took = std::chrono::steady_clock::now() - began;
+    Check(finished && !ok, "a download whose server stops sending ends (" + error + ")");
+    Check(took < std::chrono::seconds(10), "within the stall limit, not a whole-transfer one");
+    Check(!std::filesystem::exists(PathFromUtf8(stalled)) && !std::filesystem::exists(PathFromUtf8(stalled + ".part")),
+          "and leaves no part file");
+    SetDownloadStallTimeout(0);
     server.Stop();
 }
 #endif

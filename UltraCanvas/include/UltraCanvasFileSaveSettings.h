@@ -25,11 +25,12 @@
 // A bitmap format (FileSaveFormat::bitmap) can also be written at another
 // pixel size (FileSaveImageSize). That is not one of its settings: it belongs
 // to the picture being saved, is chosen for one save - the settings dialog
-// shows it when the Save dialog was told the picture's size - and comes back
-// with that save, never remembered for the next one.
+// shows it when the Save dialog was told the picture's size, or a drawing's
+// (FileSavePicture: a drawing has no pixel size and is drawn sharp at any) -
+// and comes back with that save, never remembered for the next one.
 //
-// Version: 1.1.0
-// Last Modified: 2026-10-12
+// Version: 1.2.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -124,6 +125,21 @@ namespace UltraCanvas {
 
         bool IsOriginal() const { return width <= 0 || height <= 0; }
         bool operator==(const FileSaveImageSize&) const = default;
+    };
+
+    // What is being saved, for the size a bitmap format offers to write it
+    // at. A bitmap: `width` x `height` are its pixels. A drawing (`drawing`
+    // - a vector picture: SVG, a page of shapes) has no pixel size of its
+    // own; `width` x `height` is the size it is drawn at unless another is
+    // chosen (its size on the page at 96 DPI, say), and it is drawn sharp at
+    // whatever size that is. Either side 0: no picture, or not said.
+    struct FileSavePicture {
+        int width = 0;
+        int height = 0;
+        bool drawing = false;
+
+        bool HasSize() const { return width > 0 && height > 0; }
+        bool operator==(const FileSavePicture&) const = default;
     };
 
 } // namespace UltraCanvas

@@ -13,7 +13,12 @@
 //     on network I/O.
 //   - UltraNet_Shutdown drives StopAsync() via the internal hook below so
 //     the worker thread is joined before curl_global_cleanup runs.
-// Version: 0.2.0 (Stage 2)
+//   - Pause / resume: UltraNet_PauseRequest sets the request's wish and
+//     wakes the worker, which applies it between multi calls (curl_easy_pause
+//     wants the transfer's connection to exist, so a wish made before the
+//     connect is kept and applied on a later turn). The stall check is
+//     switched off while paused.
+// Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetCore.h"
@@ -53,8 +58,11 @@ struct AsyncRequest {
 
     std::function<void(const UltraNetResponse&)> onComplete;
     std::atomic<bool> cancelledBeforeStart{false};
+    std::atomic<bool> wantPaused{false};   // what the caller asked for
+    std::atomic<bool> paused{false};       // what libcurl was told
 
     ~AsyncRequest() {
+        sink.CloseFile();
         if (slist) curl_slist_free_all(slist);
         if (easy)  curl_easy_cleanup(easy);
     }
@@ -87,6 +95,21 @@ public:
         a->onComplete = std::move(cb);
         a->bodyOwned  = req.body;
         a->sink.body  = &a->response.body;
+
+        // The body goes to the file when the options name one; it is closed
+        // before onComplete fires, so the callback can open it.
+        const UltraNetResult opened =
+            ultranet_internal::OpenOutputFile(req.options, a->sink);
+        if (!opened) {
+            if (a->onComplete) {
+                UltraNetResponse r;
+                r.statusMessage = opened.message;
+                r.transferError = r.statusMessage;
+                a->onComplete(r);
+            }
+            return UltraNetInvalidHandle;
+        }
+        if (a->sink.ownsFile) a->sink.body = nullptr;
 
         const UltraNetConfig cfg = UltraNet_GetConfig();
         a->slist = ultranet_internal::ConfigureEasyHandle(
@@ -129,6 +152,34 @@ public:
         std::lock_guard<std::mutex> lk(mutex_);
         if (owned_.count(h)) return true;
         for (const auto& p : pendingAdd_) if (p && p->handle == h) return true;
+        return false;
+    }
+
+    UltraNetResult SetPaused(UltraNetHandle h, bool pause) {
+        std::lock_guard<std::mutex> lk(mutex_);
+        AsyncRequest* a = nullptr;
+        auto it = owned_.find(h);
+        if (it != owned_.end()) {
+            a = it->second.get();
+        } else {
+            for (auto& p : pendingAdd_) if (p && p->handle == h) { a = p.get(); break; }
+        }
+        if (!a) {
+            return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                         "no such request handle");
+        }
+        a->wantPaused.store(pause, std::memory_order_release);
+        if (multi_) curl_multi_wakeup(multi_);
+        return UltraNetResult::Ok();
+    }
+
+    bool IsPaused(UltraNetHandle h) {
+        std::lock_guard<std::mutex> lk(mutex_);
+        auto it = owned_.find(h);
+        if (it != owned_.end()) return it->second->paused.load(std::memory_order_acquire);
+        for (const auto& p : pendingAdd_) {
+            if (p && p->handle == h) return p->wantPaused.load(std::memory_order_acquire);
+        }
         return false;
     }
 
@@ -214,6 +265,33 @@ private:
                 InvokeCancelled(*victim);
             }
 
+            // Apply pause wishes. curl_easy_pause needs the connection to
+            // exist, so one that cannot be applied yet is tried again on
+            // the next turn; the stall check is off while paused.
+            {
+                std::vector<std::pair<AsyncRequest*, bool>> wishes;
+                {
+                    std::lock_guard<std::mutex> lk(mutex_);
+                    for (auto& [h, a] : owned_) {
+                        const bool want = a->wantPaused.load(std::memory_order_acquire);
+                        if (want != a->paused.load(std::memory_order_acquire)) {
+                            wishes.emplace_back(a.get(), want);
+                        }
+                    }
+                }
+                for (auto& [a, want] : wishes) {
+                    if (curl_easy_pause(a->easy, want ? CURLPAUSE_ALL : CURLPAUSE_CONT) != CURLE_OK) {
+                        continue;
+                    }
+                    if (a->sink.stallTimeoutMs > 0) {
+                        curl_easy_setopt(a->easy, CURLOPT_LOW_SPEED_TIME,
+                                         want ? 0L
+                                              : static_cast<long>((a->sink.stallTimeoutMs + 999) / 1000));
+                    }
+                    a->paused.store(want, std::memory_order_release);
+                }
+            }
+
             int running = 0;
             curl_multi_perform(multi_, &running);
 
@@ -238,8 +316,9 @@ private:
                     byEasy_.erase(eit);
                 }
 
+                done->sink.CloseFile();
                 UltraNetResult finalRes = ultranet_internal::FinalizeFromEasy(
-                    easy, rc, done->url, done->response, done->sink.exceededLimit);
+                    easy, rc, done->url, done->response, done->sink);
                 if (!finalRes && done->response.statusMessage.empty()) {
                     done->response.statusMessage = finalRes.message;
                 }
@@ -265,6 +344,7 @@ private:
     }
 
     void InvokeCancelled(AsyncRequest& a) {
+        a.sink.CloseFile();   // a partial file is closed before the caller hears
         UltraNetResponse r;
         r.statusCode    = 0;
         r.statusMessage = "Cancelled";
@@ -323,4 +403,25 @@ bool UltraNet_IsRequestActive(UltraNetHandle handle) {
 UltraNetTransferStats UltraNet_GetTransferStats(UltraNetHandle handle) {
     if (handle == UltraNetInvalidHandle) return {};
     return MultiWorker::Instance().GetStats(handle);
+}
+
+UltraNetResult UltraNet_PauseRequest(UltraNetHandle handle) {
+    if (handle == UltraNetInvalidHandle) {
+        return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                     "invalid handle");
+    }
+    return MultiWorker::Instance().SetPaused(handle, true);
+}
+
+UltraNetResult UltraNet_ResumeRequest(UltraNetHandle handle) {
+    if (handle == UltraNetInvalidHandle) {
+        return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                     "invalid handle");
+    }
+    return MultiWorker::Instance().SetPaused(handle, false);
+}
+
+bool UltraNet_IsRequestPaused(UltraNetHandle handle) {
+    if (handle == UltraNetInvalidHandle) return false;
+    return MultiWorker::Instance().IsPaused(handle);
 }

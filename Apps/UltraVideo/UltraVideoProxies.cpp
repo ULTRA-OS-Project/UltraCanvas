@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoProxies.cpp
 // Proxy media for the editor: see UltraVideoProxies.h.
-// Version: 0.1.0
-// Last Modified: 2026-10-12
+// Version: 0.2.1
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraVideoProxies.h"
@@ -13,6 +13,12 @@
 namespace UltraVideo {
 
 using namespace VideoFX;
+
+VideoFXProxySettings ProxyMaker::EditorSettings() {
+    VideoFXProxySettings s;
+    s.acceleration = VideoFXAcceleration::Hardware;
+    return s;
+}
 
 ProxyMaker::ProxyMaker(VideoFXProxySettings s) : settings(std::move(s)) {
     thread = std::thread([this]() { Loop(); });

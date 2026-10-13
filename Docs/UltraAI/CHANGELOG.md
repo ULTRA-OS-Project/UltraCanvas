@@ -1,4 +1,4 @@
-#### 2026-10-13 *0.1.13*
+#### 2026-10-13 *0.1.14*
 - **The endpoint settings are found in a profile named in any script.**
   `endpoints.json`'s folder was built by hand from `HOME` and
   `XDG_CONFIG_HOME` read through the narrow `getenv` on macOS and Linux; it
@@ -6,6 +6,14 @@
   (`UltraCanvasSettingsFolderRoot`, every variable read as UTF-8) and lands in
   the same folder as before on every platform (framework changelog:
   `settings-root-and-xdg-everywhere`).
+
+#### 2026-10-12 *0.1.13*
+- **One UltraAI at a time.** Starting UltraAI while it is already running brings
+  the open window forward (restored if minimised; an open dialog comes forward
+  with it) instead of opening a second copy. Two starts at the same moment
+  cannot both stay, and a copy that does not answer is reported with
+  *"UltraAI is already running"*. Command-line modes are unaffected.
+  Framework: `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
 
 #### 2026-10-09 *0.1.12*
 - **New dashboard icon.** The face is drawn larger and without the light blue

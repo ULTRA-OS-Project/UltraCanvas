@@ -19,11 +19,11 @@ segments.
 > speech, project files, waveforms for timelines and players, a preview
 > that renders any frame of a timeline without an export, proxy media for
 > smooth editing of large clips, hardware encoders (NVENC, Quick Sync,
-> VA-API, AMF, VideoToolbox, Media Foundation) by choice, GIF and
+> VA-API, AMF, VideoToolbox, Media Foundation) by choice, voice-overs and
+> sound effects placed at any time, GIF and
 > audio-only output, lossless cut, the background job and the `videofx`
 > command-line tool work today, on FFmpeg 4.4 to 8.x.
-> Keyframed parameters and several free audio tracks are planned (see
-> *Roadmap*).
+> Keyframed parameters are planned (see *Roadmap*).
 
 ---
 
@@ -561,6 +561,67 @@ correctly timed (if unusual) export, and so is music under silent clips.
 
 ---
 
+## Voice-overs and sound effects
+
+Besides the segments' own sound and the music, an export can hold any
+number of **free audio clips**: a voice-over, a sound effect, a sting. Each
+is a sound file placed at a time on the timeline, independent of the cuts,
+in `VideoFXExportSettings::audioClips`.
+
+```cpp
+VideoFXExportSettings s = VideoFXExportSettings::WebMP4(1080);
+s.music = VideoFXMusic::FromFile("song.mp3");
+
+VideoFXAudioClip voice = VideoFXAudioClip::VoiceOver("narration.wav", 2.0);   // at 2 s
+voice.fadeOut = 0.5;
+s.audioClips.push_back(voice);                                     // the music dips under it
+
+VideoFXAudioClip whoosh = VideoFXAudioClip::Sound("whoosh.wav", 7.5, 0.8);    // at 7.5 s, 80 %
+whoosh.start = 0.1;                                                // skip the file's first 0.1 s
+whoosh.end = 0.9;                                                  // and stop at 0.9 s of it
+s.audioClips.push_back(whoosh);                                    // over the music, not ducking it
+
+VideoFX_Export(timeline, "story.mp4", s);
+```
+
+| Field | Default | Notes |
+|---|---|---|
+| `path` | - | A sound file, or a video whose sound is wanted |
+| `at` | 0 | Seconds into the export where it starts |
+| `start`, `end` | 0, 0 | The part of the file played; `end` 0 = to the file's end |
+| `volume` | 1 | 0..4 |
+| `fadeIn`, `fadeOut` | 0 | Seconds at the clip's own ends; fades longer than the clip share it |
+| `ducksMusic` | false | The music dips under it as under the segments' sound (`VoiceOver` sets it) |
+
+- **Mixing.** The clips are mixed with the segments' sound before the
+  music is added. The ducker hears the voice-overs, so the music dips under
+  narration exactly as it does under speech in a clip. Sound effects come
+  in after the ducker, so a whoosh does not pull the music down.
+- **Placement.** Clips may overlap each other and the cuts. A clip that
+  runs past the end of the export is cut off there: the export is not
+  lengthened.
+- **Sound in a silent export.** A timeline of photos or silent clips with a
+  voice-over gets a sound track.
+- **Resources.** Each clip's file is opened when the timeline reaches it and
+  let go when it has played, so a hundred sound effects do not keep a
+  hundred files open.
+- **Refused before anything is written:** a missing file (`FileNotFound`),
+  one without sound (`NoMediaStreams`), and a start past the file's end or
+  a value out of range (`InvalidArgument`).
+- **Elsewhere.** The clips are saved in project files, play in slideshows
+  (through the settings) and in drafts. The preview is picture only, and
+  ignores them like the music.
+
+From the command line, `--sound FILE@SECONDS[:VOLUME]` places a sound
+effect and `--voice FILE@SECONDS[:VOLUME]` a voice-over. Both can be
+repeated:
+
+```
+videofx concat story.mp4 a.mp4 b.mp4 --music song.mp3 --voice intro.wav@1.5 --sound whoosh.wav@8:0.8
+```
+
+---
+
 ## Effects
 
 Effects are typed values made by the `VideoFXEffect::` factories; VideoFX
@@ -711,6 +772,8 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `keyframeInterval` | encoder default | Seconds between keyframes; short = quick to seek (proxies use 0.5) |
 | `acceleration` | `Auto` | Software, any hardware encoder (`Hardware`), or one family; see *Hardware encoders* |
 | `sampleRate`, `channels` | first audio source / stereo | Mono only when every source is mono |
+| `music` | none | Background music; see *Background music* |
+| `audioClips` | none | Voice-overs and sound effects at given times; see *Voice-overs and sound effects* |
 
 Presets: `WebMP4(height)`, `WebM(height)`, `AnimatedGif(width, fps)`,
 `MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`, and the draft
@@ -957,6 +1020,7 @@ videofx faces family.jpg                                 # the faces the detecto
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
+videofx concat story.mp4 a.mp4 b.mp4 --music song.mp3 --voice intro.wav@1.5 --sound boom.wav@8
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --save-project trip.vfxproj
 videofx project trip.vfxproj                             # what it holds, missing media
 videofx render trip.vfxproj                              # render a saved project
@@ -1010,7 +1074,8 @@ generates its own clips, so it needs no media files.
 | 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
-| 3 | Keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
+| 3g | Free audio clips: voice-overs and sound effects at given times, trimmed, faded, the music ducking under voice-overs | **Done** |
+| 3 | Keyframed effect and overlay parameters | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
 | 4c | Preview: any frame of a timeline rendered as the export would make it, without an export (`VideoFXPreview`); a slideshow's plan as segments | **Done** |

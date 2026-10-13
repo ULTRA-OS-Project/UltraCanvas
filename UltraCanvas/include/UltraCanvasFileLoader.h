@@ -4,8 +4,11 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
-// Version: 1.2.0
-// Last Modified: 2026-10-12
+// Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
+//                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
+//                  AddImageSaveTypes
+// Version: 1.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -62,6 +65,10 @@ namespace UltraCanvas {
         // (FileDialogConfig::imageWidth / imageHeight).
         int imageWidth = 0;
         int imageHeight = 0;
+        // ... and that picture is a drawing (SetDrawingSize): it has no pixel
+        // size of its own, so imageWidth x imageHeight is only the size it is
+        // drawn at unless another is chosen, and any size is drawn sharp.
+        bool imageIsDrawing = false;
         UltraCanvasWindowBase* parentWindow = nullptr;
 
         FileDialogOptions() = default;
@@ -84,7 +91,15 @@ namespace UltraCanvas {
         FileDialogOptions& SetDefaultExtension(const std::string& e) { defaultExtension = e; return *this; }
         FileDialogOptions& SetRegisterAsRecent(bool v)  { registerAsRecent = v; return *this; }
         FileDialogOptions& SetSaveSettingsButton(bool v) { saveSettingsButton = v; return *this; }
-        FileDialogOptions& SetImageSize(int w, int h)   { imageWidth = w; imageHeight = h; return *this; }
+        FileDialogOptions& SetImageSize(int w, int h) {
+            imageWidth = w; imageHeight = h; imageIsDrawing = false; return *this;
+        }
+        // A drawing - SVG, a page of shapes - saved as a bitmap: `w` x `h` is
+        // the size it is drawn at unless the user picks another (its size on
+        // the page at 96 DPI, say). The caller draws it at the size chosen.
+        FileDialogOptions& SetDrawingSize(int w, int h) {
+            imageWidth = w; imageHeight = h; imageIsDrawing = true; return *this;
+        }
         FileDialogOptions& SetParentWindow(UltraCanvasWindowBase* p) { parentWindow = p; return *this; }
     };
 
@@ -220,6 +235,39 @@ namespace UltraCanvas {
         // also lets a content-decided format such as a DWG .bak claim it).
         static bool CanLoadVectorDocument(const std::string& extensionOrPath);
 
+        // ----- a drawing saved as a bitmap -----
+        // SaveVectorDocument writes a bitmap type too (CanSaveImage: PNG,
+        // JPEG, WebP, AVIF, HEIC, TIFF, GIF, QOI, ICO ... - whatever this
+        // build writes): the page is drawn at the size asked for - a drawing
+        // has no pixel size of its own, so it is sharp at any - and written
+        // with the format's save settings; a format without transparency
+        // (JPEG) gets it on white. The overload without a size draws it at
+        // GetVectorDocumentPixelSize. An application's Save / Export of a
+        // drawing is this call and AddVectorDocumentSaveTypes, so every
+        // format this build reads and writes is on offer, never a list of the
+        // application's own.
+        static bool SaveVectorDocument(const VectorStorage::VectorDocument& document,
+                                       const std::string& filePath, const FileSaveImageSize& size,
+                                       std::string& outError, std::vector<std::string>* notes = nullptr);
+        // The pixel size a drawing's page starts at as a bitmap: the page
+        // (its view box, else its Size) at 96 DPI - the model is in points.
+        static Size2Di GetVectorDocumentPixelSize(const VectorStorage::VectorDocument& document);
+        // A bitmap format this build writes (GetSupportedFormats: canSave).
+        static bool CanSaveImage(const std::string& extensionOrPath);
+        // A Save dialog's file types for a picture: every bitmap type this
+        // build writes, each with its name, PNG first. An application's
+        // Save / Export of a picture offers these - plus its own project
+        // type, if it has one - never a list of its own.
+        static void AddImageSaveTypes(FileDialogOptions& opts);
+        // The Save dialog's file types for a drawing: every vector writer this
+        // build has, then - `withBitmaps` - every bitmap type it writes, each
+        // with its name, and the drawing's size (SetDrawingSize), so a bitmap
+        // type's Settings offer any size. Hand SaveFileDialog's path and size
+        // to the SaveVectorDocument above.
+        static void AddVectorDocumentSaveTypes(FileDialogOptions& opts,
+                                               const VectorStorage::VectorDocument& document,
+                                               bool withBitmaps = true);
+
         // ===== SUPPORTED FORMAT INVENTORY =====
         // Runtime snapshot of every file format this build can load and/or
         // save, per media category, including the library or plugin providing
@@ -279,6 +327,15 @@ namespace UltraCanvas {
         // IsOriginal() when it is the picture's own.
         static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
                                            int pictureWidth, int pictureHeight,
+                                           const FileSaveImageSize& size,
+                                           UltraCanvasWindowBase* parent,
+                                           std::function<void(DialogResult,
+                                                              const FileSaveImageSize&)> onClosed);
+        // The same for a picture that may be a drawing (FileSavePicture::
+        // drawing): its Size row opens on the size it is drawn at and says
+        // that a drawing is drawn sharp at whatever size is set.
+        static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
+                                           const FileSavePicture& picture,
                                            const FileSaveImageSize& size,
                                            UltraCanvasWindowBase* parent,
                                            std::function<void(DialogResult,

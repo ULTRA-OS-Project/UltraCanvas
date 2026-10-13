@@ -51,6 +51,8 @@ add_executable(UltraPassword
     ui/EntryCard.cpp
     ui/ExportDialog.cpp
 )
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraPassword)
 
 # The window title and --version read the release recorded in
 # Docs/UltraPassword/CHANGELOG.md.

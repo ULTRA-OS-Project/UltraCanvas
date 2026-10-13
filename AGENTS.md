@@ -112,6 +112,24 @@ before adding cross-module code.
   `scripts/locale_numbers_baseline.txt` lists the sites still to fix. A number
   a person typed or reads follows their locale on purpose and says so at the
   site with `// locale-ok: <why>`.
+- **Every file the user loads or saves goes through `UltraCanvasFileLoader`.**
+  An application built on UltraCanvas opens, saves, imports and exports
+  through FileLoader: its dialogs (`OpenFileDialog`, `SaveFileDialog`), its
+  readers and writers (`LoadVectorDocument` / `SaveVectorDocument`,
+  `LoadTextDocument`, the image writer it hands options to), its format
+  inventory (`GetSupportedFormats`, `CanSaveImage`) and its save settings
+  (`GetSaveSettings`, `GetImageExportOptions`, the Save dialog's Settings).
+  That is what gives the user every format this build reads and writes -
+  a plugin registered once is offered everywhere - and the conversions
+  between them: a drawing saved as a bitmap is
+  `SaveVectorDocument(document, path, size, ...)` with the types from
+  `AddVectorDocumentSaveTypes`, drawn at the size the Settings give. Never a
+  list of formats an application keeps for itself, a writer it calls
+  directly, or a raster step of its own for something FileLoader does. What
+  FileLoader cannot yet do is added to FileLoader, not worked around in the
+  application. The exception is the program's own internal files - its
+  settings, caches, logs, state, a temporary file - which it reads and writes
+  directly.
 - **File paths and names are UTF-8, on every platform, in every
   application.** Any file or folder name must work, whatever script it is
   in: Thai, CJK, Cyrillic, emoji, accents. Convert between
@@ -485,6 +503,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
 | `Docs/UltraVideo/CHANGELOG.md` | UltraVideo — the video editor |
 | `Docs/UltraWeb/CHANGELOG.md` | UltraWeb — the browser for WebAssembly apps |
+| `Docs/UltraPress/CHANGELOG.md` | UltraPress — the website and shop builder that publishes WebAssembly |
 
 Format: `#### YYYY-MM-DD *x.y.z*`. **For the framework changelog you do not
 write that line at all**: drop your bullets in a new file under

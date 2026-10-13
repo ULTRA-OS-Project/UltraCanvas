@@ -1,8 +1,11 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
-// Version: 1.2.0
-// Last Modified: 2026-10-12
+// Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
+//                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
+//                  AddImageSaveTypes
+// Version: 1.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -12,10 +15,14 @@
 #include "UltraCanvasUtils.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasVectorPreview.h"   // the Vector plugin's readers/writers, installed at start-up
+#include "UltraCanvasVectorRaster.h"    // RasterizeVectorDocument: a drawing saved as a bitmap
+#include "UltraCanvasRasterDocument.h"  // ... written through the image writer
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
+#include <map>
 #include <fstream>
 
 #include <algorithm>
@@ -171,6 +178,7 @@ namespace UltraCanvas {
         config.saveSettingsButton = opts.saveSettingsButton;
         config.imageWidth       = opts.imageWidth;
         config.imageHeight      = opts.imageHeight;
+        config.imageIsDrawing   = opts.imageIsDrawing;
         // A folder has no file filter; a file dialog takes the caller's (the
         // dialog lists every file when there are none).
         if (type != FileDialogType::SelectFolder) config.filters = opts.filters;
@@ -467,18 +475,64 @@ namespace UltraCanvas {
         return doc;
     }
 
+    namespace {
+        std::string LowerExtensionOf(const std::string& extensionOrPath) {
+            std::string ext = extensionOrPath;
+            if (ext.find('.') != std::string::npos || ext.find('/') != std::string::npos ||
+                ext.find('\\') != std::string::npos) {
+                ext = PathToUtf8(PathFromUtf8(extensionOrPath).extension());
+                if (ext.empty() && !extensionOrPath.empty() && extensionOrPath[0] == '.') ext = extensionOrPath;
+            }
+            if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+            for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return ext;
+        }
+
+        // A vector writer's type as the Save dialog lists it.
+        std::string VectorTypeName(const std::string& ext) {
+            static const std::map<std::string, std::string> names = {
+                {"pdf", "PDF"}, {"ai", "Adobe Illustrator"}, {"eps", "EPS"}, {"ps", "PostScript"},
+                {"cdr", "CorelDRAW"}, {"svg", "SVG"}, {"svgz", "SVG (compressed)"}, {"xar", "Xara XAR"},
+                {"dxf", "DXF"}, {"dwg", "DWG"}, {"emf", "EMF"}, {"wmf", "WMF"}};
+            auto it = names.find(ext);
+            if (it != names.end()) return it->second;
+            std::string upper = ext;
+            for (char& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            return upper;
+        }
+    }
+
     bool UltraCanvasFileLoader::SaveVectorDocument(const VectorStorage::VectorDocument& document,
                                                    const std::string& filePath, std::string& outError,
                                                    std::vector<std::string>* notes) {
+        return SaveVectorDocument(document, filePath, FileSaveImageSize(), outError, notes);
+    }
+
+    bool UltraCanvasFileLoader::SaveVectorDocument(const VectorStorage::VectorDocument& document,
+                                                   const std::string& filePath, const FileSaveImageSize& size,
+                                                   std::string& outError, std::vector<std::string>* notes) {
         outError.clear();
-        std::string ext = PathToUtf8(PathFromUtf8(filePath).extension());
-        if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
-        for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (notes) notes->clear();
+        const std::string ext = LowerExtensionOf(filePath);
         const auto writable = SavableVectorExtensions();
         if (std::find(writable.begin(), writable.end(), ext) == writable.end()) {
+            if (!ext.empty() && CanSaveImage(ext)) {
+                // A bitmap: the page drawn at the size asked for - a drawing
+                // has no pixel size of its own, so it is sharp at any - and
+                // written with the format's save settings.
+                const Size2Di natural = GetVectorDocumentPixelSize(document);
+                VectorRasterOptions options;
+                options.width = size.IsOriginal() ? natural.width : size.width;
+                options.height = size.IsOriginal() ? natural.height : size.height;
+                auto layer = RasterizeVectorDocument(document, options, outError);
+                if (!layer) return false;
+                UCRasterDocument picture(layer->GetWidth(), layer->GetHeight(), RasterPixel(0, 0, 0, 0));
+                picture.AddLayer(layer);
+                return picture.SaveToFile(filePath, outError);
+            }
             // The extension picks the format, so a name without one (saved
             // under "All files") has none to pick.
-            outError = writable.empty()
+            outError = writable.empty() && !CanSaveImage(ext)
                        ? "No vector file writers are installed (RegisterVectorFormatsPlugin was not called)."
                        : ext.empty()
                        ? "The file name has no extension, so there is no format to save it in. "
@@ -496,6 +550,42 @@ namespace UltraCanvas {
         }
         if (notes) *notes = std::move(collected);
         return ok;
+    }
+
+    Size2Di UltraCanvasFileLoader::GetVectorDocumentPixelSize(const VectorStorage::VectorDocument& document) {
+        Rect2Dd page = document.ViewBox;
+        if (!(page.width > 0) || !(page.height > 0)) page = Rect2Dd(0, 0, document.Size.width, document.Size.height);
+        if (!(page.width > 0) || !(page.height > 0)) return Size2Di(0, 0);
+        constexpr double kPixelsPerPoint = 96.0 / 72.0;
+        return Size2Di(std::max(1, static_cast<int>(std::lround(page.width * kPixelsPerPoint))),
+                       std::max(1, static_cast<int>(std::lround(page.height * kPixelsPerPoint))));
+    }
+
+    bool UltraCanvasFileLoader::CanSaveImage(const std::string& extensionOrPath) {
+        const std::string ext = LowerExtensionOf(extensionOrPath);
+        if (ext.empty()) return false;
+        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Bitmap))
+            if (format.canSave && format.MatchesExtension(ext)) return true;
+        return false;
+    }
+
+    void UltraCanvasFileLoader::AddImageSaveTypes(FileDialogOptions& opts) {
+        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Bitmap)) {
+            if (!format.canSave) continue;
+            std::vector<std::string> extensions = {format.extension};
+            extensions.insert(extensions.end(), format.aliases.begin(), format.aliases.end());
+            opts.AddFilter(format.description, extensions);
+        }
+    }
+
+    void UltraCanvasFileLoader::AddVectorDocumentSaveTypes(FileDialogOptions& opts,
+                                                           const VectorStorage::VectorDocument& document,
+                                                           bool withBitmaps) {
+        for (const std::string& ext : SavableVectorExtensions()) opts.AddFilter(VectorTypeName(ext), ext);
+        if (!withBitmaps) return;
+        AddImageSaveTypes(opts);
+        const Size2Di page = GetVectorDocumentPixelSize(document);
+        opts.SetDrawingSize(page.width, page.height);
     }
 
     std::vector<std::string> UltraCanvasFileLoader::GetVectorLoadExtensions() {

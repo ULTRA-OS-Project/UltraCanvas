@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.12.0
-// Last Modified: 2026-10-12
+// Version: 0.13.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -524,6 +524,38 @@ struct VideoFXMusic {
     }
 };
 
+// A sound placed on the timeline: a voice-over, a sound effect, a sting. It
+// plays from `at` seconds of the export, `start`..`end` of its file, mixed
+// with the segments' own sound and before the music - so a voice-over can
+// duck the music as the segments' speech does. Any number of them, at any
+// times, overlapping each other and the cuts; what lies past the end of the
+// export is cut off there.
+struct VideoFXAudioClip {
+    std::string path;               // a sound file, or a video whose sound is wanted
+    double at = 0.0;                // seconds into the export where it starts
+    double start = 0.0;             // first second of the file used
+    double end = 0.0;               // last second used, 0 = to the file's end
+    double volume = 1.0;            // 0..4 (1 = as recorded)
+    double fadeIn = 0.0;            // seconds, at the clip's own ends
+    double fadeOut = 0.0;
+    // The background music dips under it, as under the segments' sound:
+    // true for a voice-over, false for a sound effect over the music
+    bool ducksMusic = false;
+
+    static VideoFXAudioClip Sound(const std::string& path, double at, double volume = 1.0) {
+        VideoFXAudioClip c;
+        c.path = path;
+        c.at = at;
+        c.volume = volume;
+        return c;
+    }
+    static VideoFXAudioClip VoiceOver(const std::string& path, double at, double volume = 1.0) {
+        VideoFXAudioClip c = Sound(path, at, volume);
+        c.ducksMusic = true;
+        return c;
+    }
+};
+
 struct VideoFXExportSettings {
     VideoFXContainer container = VideoFXContainer::Auto;
     VideoFXVideoCodec videoCodec = VideoFXVideoCodec::Auto;
@@ -556,6 +588,7 @@ struct VideoFXExportSettings {
     int threads = 0;                // 0 = automatic
 
     VideoFXMusic music;             // background music under the whole export (none by default)
+    std::vector<VideoFXAudioClip> audioClips;   // voice-overs and sound effects at given times
 
     // Presets for common targets
     static VideoFXExportSettings WebMP4(int height = 1080);     // H.264 + AAC, 1080p default

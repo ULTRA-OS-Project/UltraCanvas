@@ -12,6 +12,11 @@ Quick pointers:
   editing a component doc, `python3 scripts/check_doc_examples.py <doc>`
   compiles its C++ against the headers (CI runs it over every component doc
   and fails on any finding)
+- Every file a user loads or saves goes through `UltraCanvasFileLoader`
+  (dialogs, readers / writers, format inventory, save settings - a drawing
+  to a bitmap is `SaveVectorDocument` with a size); only a program's own
+  internal files (settings, caches, logs) are read and written directly -
+  see *Core conventions* in `AGENTS.md`
 - File paths are UTF-8 in every application: convert with `PathToUtf8` /
   `PathFromUtf8` (`UltraCanvasPathUtf8.h`), never `p.string()` or
   `fs::path(str)` — see *Core conventions* in `AGENTS.md`

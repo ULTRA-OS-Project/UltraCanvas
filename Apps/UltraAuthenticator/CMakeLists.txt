@@ -68,6 +68,8 @@ add_executable(UltraAuthenticator
     SettingsDialog.cpp
     NewVaultDialog.cpp
 )
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraAuthenticator)
 
 # --version reports the release recorded in Docs/UltraAuthenticator/CHANGELOG.md.
 target_compile_definitions(UltraAuthenticator PRIVATE

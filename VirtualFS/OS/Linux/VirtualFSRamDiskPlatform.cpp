@@ -10,8 +10,8 @@
 // limit, so a per-disc quota is not available without root. capacityBytes
 // therefore reports the space free on the tmpfs, and the requested size is
 // only checked for feasibility up front.
-// Version: 1.1.0 - PlatformMaxNameLength
-// Last Modified: 2026-10-05
+// Version: 1.2.0 - PlatformPreferredBacking
+// Last Modified: 2026-10-13
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
@@ -163,11 +163,12 @@ std::size_t PlatformMaxNameLength() {
     return kMaxNameLength;
 }
 
-} // namespace RamDiskDetail
-
-VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking() {
-    return RamDiskDetail::ShmIsTmpfs() ? VirtualFSRamDiskBacking::Tmpfs
-                                       : VirtualFSRamDiskBacking::None;
+// One statfs, so cheap - but the core still asks once and keeps the answer,
+// the same as on the platforms where the probe launches a process.
+VirtualFSRamDiskBacking PlatformPreferredBacking() {
+    return ShmIsTmpfs() ? VirtualFSRamDiskBacking::Tmpfs
+                        : VirtualFSRamDiskBacking::None;
 }
 
+} // namespace RamDiskDetail
 } // namespace VirtualFS

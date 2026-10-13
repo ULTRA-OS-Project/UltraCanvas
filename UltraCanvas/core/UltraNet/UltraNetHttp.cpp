@@ -2,7 +2,7 @@
 // Synchronous HTTP verbs + UltraNetHttpHeaders. Uses ultranet_internal helpers
 // from UltraNetHttpEasy.h to keep option-setting logic in one place.
 // Async lives in UltraNetHttpAsync.cpp.
-// Version: 0.2.0 (Stage 2)
+// Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetHttp.h"
@@ -88,6 +88,13 @@ namespace {
                                          "curl_easy_init() failed");
         }
 
+        // The body goes to the file when the options name one, not to
+        // response.body as well; the file is closed before this returns.
+        const UltraNetResult opened =
+            ultranet_internal::OpenOutputFile(request.options, sink);
+        if (!opened) return opened;
+        if (sink.ownsFile) sink.body = nullptr;
+
         curl_slist* slist = ultranet_internal::ConfigureEasyHandle(
             easy.get(), request, cfg, &sink, &outResponse);
         std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
@@ -100,8 +107,9 @@ namespace {
         }
 
         CURLcode rc = curl_easy_perform(easy.get());
+        sink.CloseFile();
         return ultranet_internal::FinalizeFromEasy(
-            easy.get(), rc, request.url, outResponse, sink.exceededLimit);
+            easy.get(), rc, request.url, outResponse, sink);
     }
 }
 
@@ -174,21 +182,15 @@ UltraNetResult UltraNet_HttpDownloadFile(const std::string& url,
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                      "localPath is empty");
     }
-    std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "wb");
-    if (!fp) {
-        return UltraNetResult::Error(UltraNetResultCode::AccessDenied,
-                                     "cannot open local file for write");
-    }
+    // A GET into the file: the output-file path of PerformSync, with its
+    // download timeouts and the resume option, is the whole implementation.
     UltraNetHttpRequest req;
     req.url = url; req.method = UltraNetHttpMethod::Get; req.options = options;
+    req.options.outputFilePath = localPath;
 
     UltraNetResponse resp;
     ultranet_internal::WriteSink sink;
-    sink.file = fp;
-
-    UltraNetResult result = PerformSync(req, resp, sink, nullptr);
-    std::fclose(fp);
-    return result;
+    return PerformSync(req, resp, sink, nullptr);
 }
 
 namespace {
@@ -247,5 +249,5 @@ UltraNetResult UltraNet_HttpUploadFile(const std::string& url,
     CURLcode rc = curl_easy_perform(easy.get());
     std::fclose(fp);
     return ultranet_internal::FinalizeFromEasy(
-        easy.get(), rc, url, outResponse, sink.exceededLimit);
+        easy.get(), rc, url, outResponse, sink);
 }

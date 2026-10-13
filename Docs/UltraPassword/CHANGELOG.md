@@ -1,4 +1,4 @@
-#### 2026-10-13 *0.1.3*
+#### 2026-10-13 *0.1.4*
 - **The vault lives in `~/Library/Application Support/UltraPassword` on
   macOS.** macOS was treated like Linux, so the default vault went to
   `~/.local/share/UltraPassword` - while UltraMail, UltraSocial and the
@@ -12,6 +12,17 @@
   first start a vault folder an earlier version left in `~/.local/share` on
   macOS is moved into place whole and opens with its master password as
   before. `--vault PATH` is unaffected, as are Linux and Windows.
+
+#### 2026-10-12 *0.1.3*
+- **One UltraPassword at a time.** Starting UltraPassword while it is already
+  running brings the open window forward (restored if minimised; an open
+  dialog comes forward with it) instead of opening a second copy. Two starts
+  at the same moment cannot both stay, and a copy that does not answer is
+  reported with *"UltraPassword is already running"*. One copy per user
+  whatever the vault: a second start with `--vault` brings the running copy
+  forward, on the vault it already has open. Command-line modes (`--version`,
+  `--help`) are unaffected. Framework: `UltraCanvasSingleInstance` (framework
+  changelog: `instance-lock`).
 
 #### 2026-10-06 *0.1.2*
 - **A copied password stays out of clipboard histories.** It goes to the
