@@ -1,5 +1,8 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.6.0 - ICO and QOI written by the framework's own libvips savers
+//                  (VipsIcoPlugin, VipsQoiLoader), registered with the loaders;
+//                  no ImageMagick for either
 // Version: 2.5.0 - An SVG libvips cannot load is read through the vector preview seam
 //                 and rendered by the core's vector renderer (the WebAssembly build)
 // Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
@@ -21,6 +24,7 @@
 #include "qoi.h"
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
+#include "VipsIcoPlugin.h"
 #include "UltraCanvasGifEncoder.h"
 #endif
 #ifdef HAS_LIBRSVG
@@ -33,6 +37,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <mutex>
 #include <memory>
@@ -185,6 +190,7 @@ namespace UltraCanvas {
 #endif
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
+        vips_foreign_ico_init_types();
         return true;
     }
 
@@ -1220,14 +1226,20 @@ namespace UltraCanvas {
                             ->set("ascii", !opts.pnm.binary));
                     break;
 
-                case UCImageSaveFormat::ICO:
+                case UCImageSaveFormat::ICO: {
+                    // The framework's own icon saver (VipsIcoPlugin): one
+                    // PNG picture per size, no ImageMagick.
+                    auto icoOpts = vips::VImage::option()
+                            ->set("in", vImg)
+                            ->set("filename", imagePath.c_str());
+                    if (!opts.ico.sizes.empty()) icoOpts->set("sizes", opts.ico.sizes);
+                    vips::VImage::call("icosave", icoOpts);
+                    break;
+                }
+
                 case UCImageSaveFormat::BMP: {
                     auto magickOpts = vips::VImage::option();
-                    if (opts.format == UCImageSaveFormat::BMP) {
-                        magickOpts->set("format", "bmp");
-                    } else {
-                        magickOpts->set("format", "ico");
-                    }
+                    magickOpts->set("format", "bmp");
                     vImg.magicksave(imagePath.c_str(), magickOpts);
                     break;
                 }
@@ -1241,13 +1253,11 @@ namespace UltraCanvas {
                     break;
 
                 case UCImageSaveFormat::QOI: {
-                    // QOI export goes through ImageMagick. The custom
-                    // VipsQoiLoader plugin only registers a LOADER; if the
-                    // local libvips/ImageMagick build lacks QOI write
-                    // support the runtime probe filter in the dialog will
-                    // hide this option.
-                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
-                            ->set("format", "qoi"));
+                    // The framework's own QOI saver (VipsQoiLoader: the
+                    // bundled codec), no ImageMagick.
+                    vips::VImage::call("qoisave", vips::VImage::option()
+                            ->set("in", vImg)
+                            ->set("filename", imagePath.c_str()));
                     break;
                 }
 
@@ -1355,6 +1365,35 @@ namespace UltraCanvas {
         if (extensionWithDot.empty()) return false;
         const std::string dummy = std::string("probe") + extensionWithDot;
         return vips_foreign_find_save(dummy.c_str()) != nullptr;
+    }
+
+    bool VipsCanEncode(const std::string& extensionWithDot) {
+        if (!VipsCanSave(extensionWithDot)) return false;
+        std::string ext = extensionWithDot;
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const bool av1 = ext == ".avif";
+        const bool hevc = ext == ".heic" || ext == ".heif";
+        if (!av1 && !hevc) return true;
+        static std::mutex mutex;
+        static std::map<std::string, bool> known;
+        const std::string key = av1 ? "av1" : "hevc";
+        std::lock_guard<std::mutex> lock(mutex);
+        auto it = known.find(key);
+        if (it != known.end()) return it->second;
+        bool works = false;
+        try {
+            vips::VImage probe = vips::VImage::black(2, 2, vips::VImage::option()->set("bands", 3));
+            VipsBlob* blob = probe.heifsave_buffer(vips::VImage::option()->set(
+                    "compression", av1 ? VIPS_FOREIGN_HEIF_COMPRESSION_AV1 : VIPS_FOREIGN_HEIF_COMPRESSION_HEVC));
+            size_t length = 0;
+            works = blob && vips_blob_get(blob, &length) && length > 0;
+            if (blob) vips_area_unref(VIPS_AREA(blob));
+        } catch (...) {
+            works = false;
+        }
+        vips_error_clear();
+        known[key] = works;
+        return works;
     }
 
     namespace {

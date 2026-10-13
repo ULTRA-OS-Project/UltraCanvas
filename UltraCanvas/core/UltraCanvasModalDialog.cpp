@@ -1,8 +1,8 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.7.0
-// Last Modified: 2026-10-12
+// Version: 3.8.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
@@ -645,7 +645,11 @@ namespace UltraCanvas {
             }
         }
 
-        float textHeight = messageArea->MeasureContentHeight();
+        // A hidden message area - a dialog of controls only - takes no room:
+        // measured, its one empty line and the slack under it left a gap
+        // above the buttons.
+        const bool showsMessage = messageArea->IsVisible();
+        float textHeight = showsMessage ? messageArea->MeasureContentHeight() : 0.0f;
 
         // Everything AddDialogElement() put below the message — switches, radio
         // rows, an input label — sits in the same column and needs its own room.
@@ -671,7 +675,7 @@ namespace UltraCanvas {
         // an icon-less dialog is as tall as its own content needs.
         const float iconBlock = IsIconVisible() ? style.iconSize : 0.0f;
         float contentBlock = std::max(iconBlock,
-                                      textHeight + 10.0f + extrasHeight);
+                                      (showsMessage ? textHeight + 10.0f : 0.0f) + extrasHeight);
         int desired = static_cast<int>(std::ceil(
                 2.0f * style.padding + contentBlock + style.buttonAreaHeight));
 
@@ -2596,8 +2600,12 @@ namespace UltraCanvas {
     void UltraCanvasFileDialog::ShowSaveTypeSettings() {
         if (fileConfig.dialogType != FileDialogType::Save) return;
         std::weak_ptr<UltraCanvasUIElement> weak = weak_from_this();
+        FileSavePicture picture;
+        picture.width = fileConfig.imageWidth;
+        picture.height = fileConfig.imageHeight;
+        picture.drawing = fileConfig.imageIsDrawing;
         UltraCanvasFileLoader::ShowSaveSettingsDialog(
-                GetSaveTypeName(), fileConfig.imageWidth, fileConfig.imageHeight, saveImageSize, this,
+                GetSaveTypeName(), picture, saveImageSize, this,
                 [weak, this](DialogResult result, const FileSaveImageSize& size) {
                     if (weak.expired() || result != DialogResult::OK) return;
                     saveImageSize = size;

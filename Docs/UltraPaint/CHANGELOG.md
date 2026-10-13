@@ -1,3 +1,14 @@
+#### 2026-10-13 *0.2.20*
+- **Open, Save As and Export offer every format this build has.** The
+  editor kept lists of its own: Save As offered PNG, JPEG, WebP, TIFF, AVIF
+  and BMP, Export one "Images" entry, and Open a fixed set of extensions. They
+  are now the framework's FileLoader lists - every bitmap type this build
+  reads for Open, Import and a drop, and every type it writes, each named,
+  for Save As and Export (beside the UltraPaint project) - so GIF, HEIC,
+  QOI, icons and whatever a libvips build or plugin adds are offered, and a
+  type this build cannot write (an AVIF without libheif's encoder) is not
+  (framework changelog, pending entry `save-size-for-drawings-and-the-viewer`).
+
 #### 2026-10-12 *0.2.19*
 - **Sharp toolbar and layer-panel icons.** Fit to Window, Actual Pixels, New
   Layer and Export in the toolbar, and the seven buttons above the layer list,

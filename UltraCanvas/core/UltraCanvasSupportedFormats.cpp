@@ -2,7 +2,9 @@
 // Builds the runtime supported-format inventory. Sources of truth, per
 // category:
 //   Bitmap       — candidate table probed per-extension against the installed
-//                  libvips build (VipsCanLoad / VipsCanSave).
+//                  libvips build (VipsCanLoad / VipsCanEncode - a saver that
+//                  can encode here); ICO and QOI through the framework's own
+//                  libvips plugins.
 //   Vector       — svg/svgz through libvips+librsvg (probed); everything else
 //                  comes from the graphics plugin registry (CDR/XAR/... appear
 //                  once the host application registers the plugin).
@@ -22,8 +24,11 @@
 //                  means UltraCanvasFontFile can read the name records and
 //                  rasterize a specimen, not that the image pipeline decodes
 //                  it (CanImagePipelineLoad stays false for every font).
+// Version: 1.2.0 - a bitmap's canSave asks whether it can encode (no AVIF /
+//                  HEIC without libheif's encoder); ICO and QOI name the
+//                  framework's own plugins
 // Version: 1.1.0
-// Last Modified: 2026-09-06
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSupportedFormats.h"
@@ -96,6 +101,11 @@ namespace {
             { "psd",  {},                 "Adobe Photoshop document" },
             { "ico",  {},                 "Windows icon" },
             { "fits", {},                 "Flexible Image Transport System" },
+            // Camera raw: read where libvips' ImageMagick delegate is.
+            { "dng",  {},                 "Digital Negative (camera raw)" },
+            { "cr2",  {},                 "Canon raw" },
+            { "nef",  {},                 "Nikon raw" },
+            { "arw",  {},                 "Sony raw" },
         };
         return candidates;
     }
@@ -128,8 +138,13 @@ namespace {
             f.description = c.description;
             f.category    = MediaFormatCategory::Bitmap;
             f.canLoad     = VipsCanLoad(dotExt);
-            f.canSave     = VipsCanSave(dotExt);
-            f.provider    = "libvips";
+            // A saver that can encode here: an AVIF / HEIC saver is compiled
+            // in wherever libheif is, but writes nothing without its encoder.
+            f.canSave     = VipsCanEncode(dotExt);
+            // ICO and QOI are the framework's own libvips loaders and savers.
+            f.provider    = std::string(c.ext) == "ico" ? "UltraCanvas (VipsIcoPlugin)"
+                          : std::string(c.ext) == "qoi" ? "UltraCanvas (VipsQoiLoader)"
+                          : "libvips";
             if (!f.canLoad && magick) {
                 f.canLoad = true;
                 f.provider = "libvips (ImageMagick delegate)";

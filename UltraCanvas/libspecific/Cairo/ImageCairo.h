@@ -1,5 +1,7 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
+// Version: 1.6.0 - VipsCanEncode: a saver that can encode here (AVIF / HEIC need
+//                  libheif's encoder)
 // Version: 1.5.0 - An SVG libvips cannot load is read through the vector preview seam
 // Version: 1.4.0 - GetFresh: the cached image checked against the file
 // Last Modified: 2026-10-13
@@ -333,6 +335,12 @@ namespace VectorStorage { class VectorDocument; }
     // build has a saver/loader compiled in for that extension.
     bool VipsCanSave(const std::string& extensionWithDot);
     bool VipsCanLoad(const std::string& extensionWithDot);
+    // VipsCanSave, and the saver can encode here too: an AVIF or HEIC saver
+    // is compiled in wherever libheif is, but writes nothing without libheif's
+    // AV1 / HEVC encoder ("heifsave: Unsupported compression"). For those a
+    // 2 x 2 picture is encoded once and the answer kept. What a format list
+    // offering a save should ask.
+    bool VipsCanEncode(const std::string& extensionWithDot);
     // True when libvips has the ImageMagick load delegate. magickload
     // advertises no suffixes (it content-sniffs), so VipsCanLoad cannot see
     // it; for known raster extensions its presence means "will load".
