@@ -38466,12 +38466,13 @@ FILE: Docs/UltraCanvas/UltraCanvasMatrixDiagram.md
 <!-- doc-check: int row; int col; void Log(const std::string& line); -->
 
 A matrix diagram — one of the Seven Management and Planning Tools — makes the
-relationships between two or three ordered lists visible and countable. Rows and
+relationships between two to four ordered lists visible and countable. Rows and
 columns are things; each intersection carries a symbol from a small named scale,
 and the weights behind those symbols roll up into per-row and per-column totals.
 
-**Status:** Phase 1 — the `L` and `T` shapes. `Y`, `X` and the QFD `House`
-composite are planned; see
+**Status:** Phases 1 and 2 — the `L`, `T`, `X` and `Y` shapes, the form header
+band, cell tint and hover bands that run across panels. The QFD `House`
+composite is planned; see
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Which element do I want?
@@ -38481,7 +38482,7 @@ composite are planned; see
 | Continuous numeric cell values, a colour map, a colour bar | `UltraCanvasHeatmapChartElement` |
 | Items positioned at continuous (x, y) in a 2×2 space (BCG, Eisenhower, risk) | `UltraCanvasQuadrantChart` |
 | Rooms and their required adjacencies | `UltraCanvasAdjacencyDiagram` — it owns that data and draws its own matrix view |
-| Named relationship levels between two or three ordered lists, with totals | **this element** |
+| Named relationship levels between two to four ordered lists, with totals | **this element** |
 
 The distinction that matters is the cell datum. A heatmap cell holds a *number*
 and encodes it as a fill; a matrix diagram cell holds a *named level* and draws
@@ -38544,12 +38545,13 @@ Cells are stored **sparsely** — set the marks you have; the rest stay empty.
 |---|---|---|---|
 | `MatrixShape::L` | 2 | 1 | A × B — the basic form |
 | `MatrixShape::T` | 3 | 2 | B × A and A × C, A being the shared row axis |
-| `MatrixShape::Y` | 3 | 3 | *planned* |
-| `MatrixShape::X` | 4 | 4 | *planned* |
+| `MatrixShape::X` | 4 | 4 | A × B, B × C, C × D, D × A — four panels round a hub |
+| `MatrixShape::Y` | 3 | 3 | A × B, B × C, C × A — three rhombic panels between seams 120° apart |
 | `MatrixShape::House` | 2 | 2 | *planned* — QFD composite with the correlation roof |
 
-Unimplemented shapes fall back to the `L` layout of panel 0 rather than drawing
-nothing, so data set against them is still visible.
+`House` falls back to the `L` layout of panel 0 rather than drawing nothing, so
+data set against it is still visible. So does an `X` or `Y` whose model the
+shape cannot place (see *Validation*).
 
 A `T` shares its row axis between two wings. Panel 0 is the left wing, panel 1
 the right, and the shared row labels are drawn once between them:
@@ -38566,6 +38568,78 @@ model.AddPanel("employees", "skills",   MatrixScale::HighMediumLow());
 ```
 
 That is why the scale lives on the **panel** and not on the model.
+
+### The X shape
+
+An `X` puts its four sets on the arms of a cross, in model order: `sets[0]`
+left, `sets[1]` top, `sets[2]` right, `sets[3]` bottom. The top and bottom arms
+list their items as rows, the left and right arms as columns, and each panel
+fills the quadrant between its two arms — so every panel must pair a left/right
+set with a top/bottom one. Which of the two is the panel's row set is up to
+you: a panel whose rows are a side arm's items is turned to fit.
+
+```cpp
+MatrixModel x;
+x.shape = MatrixShape::X;
+x.AddSet("suppliers", "Suppliers",        {"Supplier A", "Supplier B"});   // left
+x.AddSet("storage",   "Storage areas",    {"W/H 1", "W/H 2"});             // top
+x.AddSet("customers", "Customers",        {"P-1042", "P-1187"});           // right
+x.AddSet("lines",     "Production lines", {"Line 1", "Line 2"});           // bottom
+
+x.AddPanel("suppliers", "storage",   MatrixScale::HighMediumLow());   // top-left, turned
+x.AddPanel("storage",   "customers", MatrixScale::HighMediumLow());   // top-right
+x.AddPanel("lines",     "customers", MatrixScale::HighMediumLow());   // bottom-right
+x.AddPanel("lines",     "suppliers", MatrixScale::HighMediumLow());   // bottom-left
+
+auto xDiagram = CreateMatrixDiagramElement("supply", 10, 10, 760, 560, x);
+xDiagram->SetHubMode(MatrixHubMode::Captions);
+```
+
+The middle of the cross is the **hub**. `MatrixHubMode::Blank` leaves it empty
+and draws each set's title at the outer end of its arm; `MatrixHubMode::Captions`
+puts the four titles in boxes in the hub with arrows out to their arms, and the
+hub grows to hold them. One cell width serves both left quadrants and both right
+ones, one cell height every row, so the quadrants always line up across the hub.
+
+### The Y shape
+
+A `Y` runs three seams out of a centre point, 120° apart — `sets[0]` straight
+up, `sets[1]` down-right, `sets[2]` down-left. Each seam is a band listing its
+set, and between two seams sits the panel crossing their sets, drawn as a
+rhombus whose cells step along both seams. A row starts at its label on one
+seam and runs parallel to the other.
+
+```cpp
+MatrixModel y;
+y.shape = MatrixShape::Y;
+y.AddSet("requirements", "Requirements", {"Quiet", "Compact"});
+y.AddSet("functions",    "Functions",    {"Generate suction", "Store energy"});
+y.AddSet("components",   "Components",   {"Motor", "Battery pack"});
+y.AddPanel("requirements", "functions",    MatrixScale::QFD());
+y.AddPanel("functions",    "components",   MatrixScale::QFD());
+y.AddPanel("components",   "requirements", MatrixScale::QFD());
+```
+
+The cell size is the largest that fits the whole figure, labels and titles
+included, between the style's `minCellSize` and `maxCellSize`.
+
+`X` and `Y` draw no totals gutters — their outer edges are other panels' arms or
+open space, and the totals are one call away on the model.
+
+### The form header band
+
+Many printed matrix diagrams carry a form header — PROJECT, AREA, TITLE, TEAM,
+DATE. Put the fields on the model and the element draws them as a row of boxes
+above the grid, in any shape:
+
+```cpp
+x.headerFields = {
+        {"PROJECT", "Warehouse consolidation"},
+        {"TEAM",    "Ops planning"},
+        {"DATE",    "2026-10-13"},
+};
+xDiagram->SetShowHeaderBand(true);   // the default; false hides it
+```
 
 ## Relationship scales
 
@@ -38656,8 +38730,14 @@ MatrixDiagramStyle style = diagram->GetStyle();
 style.alternateRowBands = true;
 style.fillLabelBands = false;      // the solid label band behind row labels
 style.markSize = 0.5;              // fraction of the cell's short side
+style.tintCellsByLevel = true;     // fill each marked cell with its level's colour
+style.cellTintAlpha = 56;          // ... this faintly, under the mark
 diagram->SetStyle(style);
 ```
+
+The tint gives a heatmap-like read of where the strong relationships cluster;
+the mark stays the datum, and a level filtered out through the legend fades its
+tint along with its mark.
 
 `SetDarkTheme(true)` applies the dark palette to the whole style; call it before
 your own overrides, since it replaces the struct.
@@ -38674,7 +38754,11 @@ diagram->onColumnClick = [](int panel, int index, const MatrixItem& item) { };
 click landed in a label band. `onCellClick` fires for empty cells too — check
 `GetModel().LevelAt(...)` to tell them apart.
 
-Hovering highlights the cell's row and column and shows a tooltip. Clicking a
+Hovering highlights the cell's row and column and shows a tooltip. The bands
+follow the *items*, not the panel: a T's shared row lights up in both wings, and
+an X's column lights up in both quadrants that list it. In an `X` or `Y`, a
+click on an arm label reports a whole row or column of the first panel that
+lists the item. Clicking a
 legend entry filters the marks to that level; `SetLevelFilter("")` clears it.
 
 ## Interchange
@@ -38692,9 +38776,11 @@ alone.
 
 ## Samples
 
-`MatrixSamples::ImprovementTools()`, `MatrixSamples::EmployeeAllocation()` and
-`MatrixSamples::QualityFunctionDeployment()` build the three models the demo
-shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
+`MatrixSamples::ImprovementTools()` (L), `MatrixSamples::EmployeeAllocation()`
+(T), `MatrixSamples::QualityFunctionDeployment()` (L, weighted),
+`MatrixSamples::SupplyChain()` (X, with a form header) and
+`MatrixSamples::DesignTraceability()` (Y) build the models the demo shows
+(`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
 
@@ -38706,7 +38792,10 @@ if (!result.valid) { for (const auto& e : result.errors) Log(e); }   // Log: you
 ```
 
 Checks the set count against the shape, panel set references, cell indices,
-level ids and duplicate cells. `warnings` collects things that are drawable but
+level ids and duplicate cells. For an `X` it also checks that every panel pairs
+a left/right set with a top/bottom one and that no two panels claim the same
+quadrant; for a `Y`, that every panel crosses two different sets among the first
+three and that no pair appears twice. `warnings` collects things that are drawable but
 suspicious, such as an empty item set.
 
 The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
@@ -64893,7 +64982,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two item sets crossed in an L or T, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |

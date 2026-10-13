@@ -4688,6 +4688,29 @@ else()
     message(STATUS "  OffscreenRenderTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== MATRIX DIAGRAM RENDER TEST =====
+# UltraCanvasMatrixDiagram drawn offscreen in the L, T, X and Y shapes, with its
+# hit test swept over the whole element: every cell of every panel must be
+# reachable over a comparable area, and an X panel named either way round must
+# put its cells in the same place. ULTRACANVAS_SCREENSHOT_DIR=<dir> writes PNGs.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MatrixDiagramRenderTest...")
+    add_executable(MatrixDiagramRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MatrixDiagramRenderTest.cpp
+    )
+    target_include_directories(MatrixDiagramRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MatrixDiagramRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(MatrixDiagramRenderTest PRIVATE UltraCanvas)
+    set_target_properties(MatrixDiagramRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MatrixDiagramRenderTest COMMAND MatrixDiagramRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MatrixDiagramRenderTest")
+else()
+    message(STATUS "  MatrixDiagramRenderTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== BUSY INDICATOR RENDER TEST =====
 # UltraCanvasBusyIndicator drawn offscreen, at rest: the DualRing's inner arc
 # in secondArcColor and the DotRing's NoFade / Fade / FadeRandomColor dots.

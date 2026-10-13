@@ -1621,7 +1621,7 @@ namespace UltraCanvas {
                 .AddVariant("requirementdiagram", "ReqIF + overlays");
 
     diagramBuilder.AddItem("matrixdiagram", "Matrix Diagram",
-                           "Relationships between two or three ordered lists, marked from a "
+                           "Relationships between two to four ordered lists, marked from a "
                            "named scale and rolled up into weighted row and column totals",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateMatrixDiagramExamples(); },
@@ -1629,7 +1629,9 @@ namespace UltraCanvas {
                            "Docs/UltraCanvas/UltraCanvasMatrixDiagram.md")
                 .AddVariant("matrixdiagram", "L-Shaped")
                 .AddVariant("matrixdiagram", "T-Shaped")
-                .AddVariant("matrixdiagram", "Weighted (QFD)");
+                .AddVariant("matrixdiagram", "Weighted (QFD)")
+                .AddVariant("matrixdiagram", "X-Shaped")
+                .AddVariant("matrixdiagram", "Y-Shaped");
 
 //        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
 //                               ImplementationStatus::NotImplemented,
