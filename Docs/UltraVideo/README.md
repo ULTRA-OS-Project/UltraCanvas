@@ -66,7 +66,9 @@ progress, *proxy waiting*, *proxy 40 %*, and *proxy* when it is ready. From
 then on the viewer and the playback draft play that clip from its proxy.
 The **export always reads the originals**, at full quality.
 - Proxies are made one at a time on a thread of their own, so scrubbing
-  never waits behind one.
+  never waits behind one. They are encoded on the graphics hardware where
+  one works (NVENC, Quick Sync, VA-API, AMF, VideoToolbox, Media
+  Foundation), and in software where none does.
 - A clip no taller than a proxy, which is already quick, gets none.
 - Proxies are kept in the user's cache folder (`~/.cache/VideoFX/Proxies`
   and the like), so a project opened again plays from them at once.

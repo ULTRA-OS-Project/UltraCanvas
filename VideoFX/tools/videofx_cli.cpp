@@ -37,6 +37,8 @@
 //                                        -36.5 dBFS, 0.12 s, 0.6 s, 0.8 s: tuned for speech)
 //          --duck-preset speech|outdoor|loud   all four for the kind of footage; the
 //                                        single values above refine it, in any order
+//          --sound FILE@SECONDS[:VOLUME] a sound effect at that time of the export; repeatable
+//          --voice FILE@SECONDS[:VOLUME] a voice-over there: the music ducks under it
 //          --fit-music                   slideshow: seconds per image chosen to end with the music
 //          --beat-sync                   slideshow: change images on the music's beats
 //          --beats-per-image N           slideshow: every image exactly N beats (implies --beat-sync)
@@ -61,8 +63,8 @@
 //          temperature=v grayscale sepia invert blur=r sharpen=v denoise=v
 //          vignette=v rotate90 rotate180 rotate270 rotate=deg hflip vflip
 //          crop=x:y:w:h fadein=s fadeout=s volume=g normalize[=lufs] lut=path
-// Version: 0.12.0
-// Last Modified: 2026-10-12
+// Version: 0.13.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include <VideoFX/VideoFX.h>
@@ -132,6 +134,7 @@ int Usage() {
         "         --save-project FILE   (write the edit as a project instead of rendering it)\n"
         "         --proxies             (render / preview from the clips' proxies: a quick draft)\n"
         "         [--duck-preset speech|outdoor|loud]\n"
+        "         --sound FILE@SECONDS[:VOLUME] --voice FILE@SECONDS[:VOLUME]   (repeatable)\n"
         "         [--duck-threshold DB] [--duck-attack S] [--duck-hold S] [--duck-release S]\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
         "         --hw auto|software|hardware|nvenc|qsv|vaapi|amf|videotoolbox|mf\n"
@@ -263,6 +266,25 @@ bool ParseTransition(const std::string& spec, VideoFXTransition& t) {
     return false;
 }
 
+// "FILE@SECONDS[:VOLUME]" - a sound placed on the timeline. The last '@'
+// splits, so a file name may hold one.
+bool ParseAudioClip(const std::string& spec, bool voice, VideoFXAudioClip& clip) {
+    const size_t atSign = spec.rfind('@');
+    if (atSign == std::string::npos || atSign == 0) return false;
+    std::string when = spec.substr(atSign + 1);
+    double volume = 1.0;
+    const size_t colon = when.find(':');
+    if (colon != std::string::npos) {
+        if (!ParseNumber(when.substr(colon + 1), volume)) return false;
+        when.resize(colon);
+    }
+    double at = 0.0;
+    if (!ParseNumber(when, at)) return false;
+    clip = voice ? VideoFXAudioClip::VoiceOver(spec.substr(0, atSign), at, volume)
+                 : VideoFXAudioClip::Sound(spec.substr(0, atSign), at, volume);
+    return true;
+}
+
 // Speed, overlays and (after the first) the transition, on every segment
 void Decorate(VideoFXSegment& s, const Options& o, bool first) {
     s.speed = o.speed;
@@ -323,6 +345,11 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--duck-hold" && next(v)) settings.music.duckingHold = NumberOr(v, kNotANumber);
         else if (a == "--duck-release" && next(v)) settings.music.duckingRelease = NumberOr(v, kNotANumber);
         else if (a == "--no-loop") settings.music.loop = false;
+        else if ((a == "--sound" || a == "--voice") && next(v)) {
+            VideoFXAudioClip clip;
+            if (!ParseAudioClip(v, a == "--voice", clip)) return false;
+            settings.audioClips.push_back(clip);
+        }
         else if (a == "--fit-music") o.slideshow.matchMusicLength = true;
         else if (a == "--beat-sync") o.slideshow.beatSync = true;
         else if (a == "--no-faces") o.slideshow.keepFacesInView = false;

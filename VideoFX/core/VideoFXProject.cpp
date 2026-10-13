@@ -10,8 +10,8 @@
 //     "title": "...", "output": "out.mp4", "settings": {...},
 //     "segments": [ {...}, ... ] }                       a timeline, or
 //     "slideshow": { "images": [...], "options": {...} } a slideshow
-// Version: 0.12.0
-// Last Modified: 2026-10-12
+// Version: 0.13.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "VideoFXProject.h"
@@ -323,6 +323,15 @@ Json MusicOut(const VideoFXMusic& m, const Paths& paths) {
                 {"duckingRelease", m.duckingRelease}};
 }
 
+Json AudioClipsOut(const std::vector<VideoFXAudioClip>& clips, const Paths& paths) {
+    Json out = Json::array();
+    for (const VideoFXAudioClip& c : clips)
+        out.push_back(Json{{"path", paths.Out(c.path)}, {"at", c.at}, {"start", c.start}, {"end", c.end},
+                           {"volume", c.volume}, {"fadeIn", c.fadeIn}, {"fadeOut", c.fadeOut},
+                           {"ducksMusic", c.ducksMusic}});
+    return out;
+}
+
 Json SettingsOut(const VideoFXExportSettings& s, const Paths& paths) {
     return Json{{"container", NameOf(MakeNames(kContainers, "container"), s.container)},
                 {"videoCodec", NameOf(MakeNames(kVideoCodecs, "video codec"), s.videoCodec)},
@@ -333,7 +342,8 @@ Json SettingsOut(const VideoFXExportSettings& s, const Paths& paths) {
                 {"keyframeInterval", s.keyframeInterval},
                 {"acceleration", NameOf(MakeNames(kAccelerations, "acceleration"), s.acceleration)},
                 {"sampleRate", s.sampleRate}, {"channels", s.channels}, {"audioBitRate", s.audioBitRate},
-                {"threads", s.threads}, {"music", MusicOut(s.music, paths)}};
+                {"threads", s.threads}, {"music", MusicOut(s.music, paths)},
+                {"audioClips", AudioClipsOut(s.audioClips, paths)}};
 }
 
 Json SlideshowOut(const VideoFXProject& p, const Paths& paths) {
@@ -451,6 +461,21 @@ void MusicIn(const Json& j, VideoFXMusic& m, const Paths& paths, const std::stri
     Get(j, "duckingRelease", m.duckingRelease, at);
 }
 
+void AudioClipsIn(const Json& list, std::vector<VideoFXAudioClip>& clips, const Paths& paths, const std::string& at) {
+    clips.clear();
+    for (size_t i = 0; i < list.size(); ++i) {
+        const std::string here = at + "[" + std::to_string(i) + "]";
+        if (!list[i].is_object()) throw ReadError{here + ": an object is needed"};
+        const Json& j = list[i];
+        VideoFXAudioClip c;
+        GetPath(j, "path", c.path, paths, here);
+        Get(j, "at", c.at, here); Get(j, "start", c.start, here); Get(j, "end", c.end, here);
+        Get(j, "volume", c.volume, here); Get(j, "fadeIn", c.fadeIn, here); Get(j, "fadeOut", c.fadeOut, here);
+        Get(j, "ducksMusic", c.ducksMusic, here);
+        clips.push_back(std::move(c));
+    }
+}
+
 void SettingsIn(const Json& j, VideoFXExportSettings& s, const Paths& paths, const std::string& at) {
     Get(j, "container", s.container, MakeNames(kContainers, "container"), at);
     Get(j, "videoCodec", s.videoCodec, MakeNames(kVideoCodecs, "video codec"), at);
@@ -463,6 +488,7 @@ void SettingsIn(const Json& j, VideoFXExportSettings& s, const Paths& paths, con
     Get(j, "sampleRate", s.sampleRate, at); Get(j, "channels", s.channels, at);
     Get(j, "audioBitRate", s.audioBitRate, at); Get(j, "threads", s.threads, at);
     MusicIn(Object(j, "music", at), s.music, paths, Where(at, "music"));
+    AudioClipsIn(Array(j, "audioClips", at), s.audioClips, paths, Where(at, "audioClips"));
 }
 
 void SlideshowIn(const Json& j, VideoFXProject& p, const Paths& paths) {
@@ -541,6 +567,7 @@ std::vector<std::string> ProjectMedia(const VideoFXProject& p) {
         music(p.slideshow.music);
     }
     music(p.settings.music);
+    for (const VideoFXAudioClip& c : p.settings.audioClips) add(c.path);
     return media;
 }
 

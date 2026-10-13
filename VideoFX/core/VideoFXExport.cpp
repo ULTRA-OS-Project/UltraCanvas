@@ -12,8 +12,8 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.12.0
-// Last Modified: 2026-10-12
+// Version: 0.13.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -523,6 +523,15 @@ private:
     VideoFXResult EndOfSong();
     VideoFXResult MixMusic(AVFrame* frame, int samples, int64_t firstSample);
 
+    // ---- free audio clips (voice-overs, sound effects), mixed in likewise ----
+    struct ClipSource;
+    VideoFXResult PlanAudioClips();
+    VideoFXResult OpenClip(ClipSource& c);
+    VideoFXResult ReadClipPacket(ClipSource& c);
+    // Add the clips that sound in this block: the ones that duck the music
+    // before it is mixed (so the ducker hears them), the others after
+    VideoFXResult MixClips(AVFrame* frame, int samples, int64_t firstSample, bool ducking);
+
     // ---- encoding ----
     VideoFXResult EncodeVideo(AVFrame* frame);
     VideoFXResult EncodeAudio(AVFrame* frame);
@@ -647,6 +656,27 @@ private:
     FramePtr musicTail;
     int musicTailPos = 0;
     std::unique_ptr<MusicDucker> ducker;
+
+    // free audio clips: each opened when the timeline reaches it, closed
+    // when it has played
+    struct ClipSource {
+        VideoFXAudioClip clip;
+        double length = 0.0;        // seconds it plays, 0 = unknown (to the file's end)
+        int64_t played = 0;         // its samples mixed so far
+        FormatInputPtr fmt;
+        CodecContextPtr dec;
+        Graph graph;
+        int stream = -1;
+        int64_t origin = 0;
+        int64_t nextPts = 0;
+        AudioFifoPtr fifo;
+        bool opened = false;
+        bool inputDone = false;
+        bool finished = false;
+    };
+    std::vector<std::unique_ptr<ClipSource>> clips;
+    int clipSampleRate = 0;         // the first clip's, for an export with no other sound
+    int clipChannels = 0;
     std::chrono::steady_clock::time_point lastReport{};
     bool cancelled = false;
 };
@@ -856,6 +886,7 @@ VideoFXResult Exporter::PlanOutput() {
         if (contributesAudio) anyAudio = true;
     }
     if (settings.music.IsSet()) anyAudio = true;     // background music is sound too
+    if (!settings.audioClips.empty()) anyAudio = true;   // and so are voice-overs and sound effects
     outVideo = anyVideo && !audioOnlyContainer && settings.videoCodec != VideoFXVideoCodec::Disabled;
     outAudio = anyAudio && !gif && settings.audioCodec != VideoFXAudioCodec::Disabled;
     if (audioOnlyContainer && !anyAudio)
@@ -924,6 +955,10 @@ VideoFXResult Exporter::PlanOutput() {
         if (settings.music.IsSet()) {
             if (rate <= 0) rate = musicSampleRate;
             maxChannels = std::max(maxChannels, musicChannels);
+        }
+        if (!clips.empty()) {
+            if (rate <= 0) rate = clipSampleRate;
+            maxChannels = std::max(maxChannels, clipChannels);
         }
         if (rate <= 0) rate = 48000;
         if (const int* rates = SupportedSampleRates(acodec)) {
@@ -1514,8 +1549,17 @@ VideoFXResult Exporter::DrainAudioFifo(bool final) {
         if (!frame) return Fail(VideoFXResult::EncodeError, "Out of memory");
         if (av_audio_fifo_read(fifo.get(), reinterpret_cast<void**>(frame->extended_data), n) < n)
             return Fail(VideoFXResult::EncodeError, "Audio buffer underrun");
+        // voice-overs first, so the music ducks under them; sound effects after
+        if (!clips.empty()) {
+            VideoFXResult m = MixClips(frame.get(), n, audioSamplesEncoded, true);
+            if (m != VideoFXResult::Ok) return m;
+        }
         if (musicOn) {
             VideoFXResult m = MixMusic(frame.get(), n, audioSamplesEncoded);
+            if (m != VideoFXResult::Ok) return m;
+        }
+        if (!clips.empty()) {
+            VideoFXResult m = MixClips(frame.get(), n, audioSamplesEncoded, false);
             if (m != VideoFXResult::Ok) return m;
         }
         frame->pts = audioSamplesEncoded;
@@ -1940,6 +1984,169 @@ VideoFXResult Exporter::MixMusic(AVFrame* frame, int samples, int64_t firstSampl
         const double g = g0 + (g1 - g0) * (i + 0.5) / samples;
         for (int c = 0; c < channels; ++c)
             AddSample(frame, i, c, channels, sampleFmt, ReadSample(music.get(), i, c, channels, sampleFmt) * g);
+    }
+    return VideoFXResult::Ok;
+}
+
+// ---------------------------------------------------------------------------
+// free audio clips
+// ---------------------------------------------------------------------------
+
+// Check every clip's values and file, and note the format of the first
+VideoFXResult Exporter::PlanAudioClips() {
+    clips.clear();
+    for (size_t i = 0; i < settings.audioClips.size(); ++i) {
+        const VideoFXAudioClip& c = settings.audioClips[i];
+        std::string error;
+        if (!ValidateAudioClip(c, error))
+            return Fail(VideoFXResult::InvalidArgument, "Audio clip " + std::to_string(i + 1) + ": " + error);
+        std::error_code ec;
+        if (std::filesystem::equivalent(UltraCanvas::PathFromUtf8(c.path), UltraCanvas::PathFromUtf8(outputPath), ec))
+            return Fail(VideoFXResult::InvalidArgument, "The output file is also an audio clip: " + c.path);
+        VideoFXMediaInfo info;
+        VideoFXResult r = VideoFX_Probe(c.path, info);
+        if (r != VideoFXResult::Ok) {
+            const std::string reason = VideoFX_GetLastError();
+            return Fail(r, "Audio clip " + c.path + ": " + reason);
+        }
+        if (!info.HasAudio()) return Fail(VideoFXResult::NoMediaStreams, "The audio clip has no sound: " + c.path);
+        if (info.duration > 0.0 && c.start >= info.duration)
+            return Fail(VideoFXResult::InvalidArgument, "Audio clip start lies after the end of " + c.path);
+        auto source = std::make_unique<ClipSource>();
+        source->clip = c;
+        source->length = AudioClipSeconds(c, info.duration);
+        if (clips.empty()) clipSampleRate = info.sampleRate;
+        clipChannels = std::max(clipChannels, std::min(2, info.channels));
+        clips.push_back(std::move(source));
+    }
+    return VideoFXResult::Ok;
+}
+
+VideoFXResult Exporter::OpenClip(ClipSource& s) {
+    s.opened = true;
+    s.fifo.reset(av_audio_fifo_alloc(sampleFmt, channels, 8192));
+    if (!s.fifo) return Fail(VideoFXResult::EncodeError, "Out of memory");
+    VideoFXResult r = OpenInput(s.clip.path, s.fmt);
+    if (r != VideoFXResult::Ok) return r;
+    s.stream = av_find_best_stream(s.fmt.get(), AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (s.stream < 0) return Fail(VideoFXResult::NoMediaStreams, "The audio clip has no sound: " + s.clip.path);
+    if ((r = OpenDecoder(s.fmt.get(), s.stream, s.dec)) != VideoFXResult::Ok) return r;
+    AVStream* st = s.fmt->streams[s.stream];
+    const int64_t start = s.fmt->start_time != AV_NOPTS_VALUE ? s.fmt->start_time : 0;
+    s.origin = av_rescale_q(start, AV_TIME_BASE_Q, st->time_base);
+    if (s.clip.start > 0.0)
+        av_seek_frame(s.fmt.get(), -1, start + static_cast<int64_t>(s.clip.start * AV_TIME_BASE), AVSEEK_FLAG_BACKWARD);
+    return VideoFXResult::Ok;
+}
+
+// One packet of the clip's file, trimmed and in the output's sample format,
+// into its FIFO (at the end of the file: the decoder's and filter's rest)
+VideoFXResult Exporter::ReadClipPacket(ClipSource& s) {
+    AVStream* st = s.fmt->streams[s.stream];
+    FramePtr decoded = MakeFrame();
+    FramePtr scratch = MakeFrame();
+    auto toFifo = [&](AVFrame* out) -> VideoFXResult {
+        if (av_audio_fifo_write(s.fifo.get(), reinterpret_cast<void**>(out->extended_data), out->nb_samples) <
+            out->nb_samples)
+            return Fail(VideoFXResult::EncodeError, "Audio clip buffer overflow");
+        return VideoFXResult::Ok;
+    };
+    auto feed = [&](AVFrame* f) -> VideoFXResult {
+        const AVRational tb{1, f->sample_rate};
+        if (!s.graph.graph) {
+            std::string desc = "[in]atrim=start=" + FormatNumber(s.clip.start);
+            if (s.clip.end > 0.0) desc += ":end=" + FormatNumber(s.clip.end);
+            desc += ",asetpts=PTS-STARTPTS";
+            AppendFilter(desc, AudioTail());
+            VideoFXResult br = BuildGraph(s.graph, false, {{"in", AudioBufferSourceArgs(f, tb)}}, desc + "[out]");
+            if (br != VideoFXResult::Ok) return br;
+        }
+        const int64_t ts = f->best_effort_timestamp;
+        f->pts = ts != AV_NOPTS_VALUE ? av_rescale_q(ts - s.origin, st->time_base, tb) : s.nextPts;
+        s.nextPts = f->pts + f->nb_samples;
+        int err = av_buffersrc_add_frame_flags(s.graph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the audio clip", err);
+        return PullGraph(s.graph, scratch.get(), toFifo);
+    };
+    auto receive = [&]() -> VideoFXResult {
+        while (true) {
+            int err = avcodec_receive_frame(s.dec.get(), decoded.get());
+            if (err == AVERROR(EAGAIN) || err == AVERROR_EOF) return VideoFXResult::Ok;
+            if (err < 0) return Fail(VideoFXResult::DecodeError, "Cannot decode the audio clip " + s.clip.path, err);
+            VideoFXResult fr = feed(decoded.get());
+            av_frame_unref(decoded.get());
+            if (fr != VideoFXResult::Ok) return fr;
+        }
+    };
+
+    PacketPtr pkt = MakePacket();
+    int err = av_read_frame(s.fmt.get(), pkt.get());
+    if (err >= 0) {
+        if (pkt->stream_index != s.stream) return VideoFXResult::Ok;
+        err = avcodec_send_packet(s.dec.get(), pkt.get());
+        if (err >= 0 || err == AVERROR(EAGAIN) || err == AVERROR_INVALIDDATA) return receive();
+        return Fail(VideoFXResult::DecodeError, "Cannot decode the audio clip " + s.clip.path, err);
+    }
+    avcodec_send_packet(s.dec.get(), nullptr);
+    VideoFXResult r = receive();
+    if (r != VideoFXResult::Ok) return r;
+    if (s.graph.src) {
+        err = av_buffersrc_add_frame_flags(s.graph.src, nullptr, 0);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the audio clip", err);
+        if ((r = PullGraph(s.graph, scratch.get(), toFifo)) != VideoFXResult::Ok) return r;
+    }
+    s.inputDone = true;
+    return VideoFXResult::Ok;
+}
+
+VideoFXResult Exporter::MixClips(AVFrame* frame, int samples, int64_t firstSample, bool ducking) {
+    const int64_t blockEnd = firstSample + samples;
+    for (const std::unique_ptr<ClipSource>& p : clips) {
+        ClipSource& s = *p;
+        if (s.finished || s.clip.ducksMusic != ducking) continue;
+        const int64_t first = std::llround(s.clip.at * sampleRate);
+        const int64_t last = s.length > 0.0 ? first + std::llround(s.length * sampleRate)
+                                            : std::numeric_limits<int64_t>::max();
+        if (blockEnd <= first) continue;                    // not yet
+        const int64_t from = std::max(firstSample, first + s.played);
+        const int64_t to = std::min(blockEnd, last);
+        if (from >= to) {
+            if (firstSample >= last) {                      // played out: let go of the file
+                s.finished = true;
+                s.fmt.reset();
+                s.dec.reset();
+                s.graph = Graph{};
+                s.fifo.reset();
+            }
+            continue;
+        }
+        if (!s.opened) {
+            VideoFXResult r = OpenClip(s);
+            if (r != VideoFXResult::Ok) return r;
+        }
+        const int want = static_cast<int>(to - from);
+        while (av_audio_fifo_size(s.fifo.get()) < want && !s.inputDone) {
+            VideoFXResult r = ReadClipPacket(s);
+            if (r != VideoFXResult::Ok) return r;
+        }
+        const int n = std::min(want, av_audio_fifo_size(s.fifo.get()));
+        if (n <= 0) {                                       // the file ended before its planned length
+            s.finished = true;
+            continue;
+        }
+        FramePtr block = MakeAudioFrame(n);
+        if (!block) return Fail(VideoFXResult::EncodeError, "Out of memory");
+        if (av_audio_fifo_read(s.fifo.get(), reinterpret_cast<void**>(block->extended_data), n) < n)
+            return Fail(VideoFXResult::EncodeError, "Audio clip buffer underrun");
+        const int offset = static_cast<int>(from - firstSample);
+        const int64_t into = from - first;                  // samples into the clip at block[0]
+        for (int i = 0; i < n; ++i) {
+            const double g = AudioClipGain(s.clip, static_cast<double>(into + i) / sampleRate, s.length);
+            if (g <= 0.0) continue;
+            for (int c = 0; c < channels; ++c)
+                AddSample(frame, offset + i, c, channels, sampleFmt, ReadSample(block.get(), i, c, channels, sampleFmt) * g);
+        }
+        s.played += n;
     }
     return VideoFXResult::Ok;
 }
@@ -2382,6 +2589,7 @@ VideoFXResult Exporter::Run(const std::vector<VideoFXSegment>& segments) {
     if (outputPath.empty()) return Fail(VideoFXResult::InvalidArgument, "No output file");
     VideoFXResult r = PlanSegments(segments);
     if (r == VideoFXResult::Ok) r = PlanMusic();
+    if (r == VideoFXResult::Ok) r = PlanAudioClips();
     if (r == VideoFXResult::Ok) r = PlanOutput();
     if (r != VideoFXResult::Ok) return r;      // nothing written yet
 
@@ -2394,6 +2602,7 @@ VideoFXResult Exporter::Run(const std::vector<VideoFXSegment>& segments) {
         musicSong = 0;
         r = musicFifo && musicHold ? OpenMusic() : Fail(VideoFXResult::EncodeError, "Out of memory");
     }
+    if (!outAudio) clips.clear();          // nothing to mix them into
     for (size_t i = 0; r == VideoFXResult::Ok && i < plans.size(); ++i) r = ProcessSegment(i);
     if (r == VideoFXResult::Ok) r = Finish();
 
