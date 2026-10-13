@@ -12,4 +12,8 @@
   never a row (Up from the first top-level row stays there); and a handled key
   returns true from `OnEvent`, so a scrolling parent does not scroll on the
   same arrow. `GetFocusedNode()` returns the row the keys continue from.
-  `Tests/TreeViewKeyboardTest.cpp` drives every key headless.
+  `Tests/TreeViewKeyboardTest.cpp` drives every key headless. While the tree
+  holds the focus the row the keys continue from carries a dashed one-pixel
+  focus ring (`SetFocusRingColor`; by default white on the selection
+  background, the selection colour elsewhere), so it is told from a row that
+  is merely selected.

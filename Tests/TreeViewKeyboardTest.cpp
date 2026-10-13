@@ -16,16 +16,24 @@
 // - With no row focused yet, Down starts at the first row and Up at the last.
 // - Under "jump to first entry" the keys step over open parents.
 // - A handled key returns true from OnEvent, an unhandled one false.
+// - With a DISPLAY, the focused row carries a dashed focus ring while the
+//   tree holds the focus (white on the selection background), and none once
+//   the focus leaves: read back from the composited window under Xvfb.
 //
 // Runs headless: keys are sent to the element as the application sends them
-// to the focused element.
+// to the focused element. The ring check opens a real window and skips
+// itself without a DISPLAY.
+// Version: 1.1.0 - the focus ring, on real pixels
 // Version: 1.0.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
+#include "DisplayTestSupport.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -256,6 +264,83 @@ void TestJumpToFirstEntry() {
     TEST("Down with no focused row skips an open parent too", f.Selected() == "a1");
 }
 
+// Is any pixel of the row's rectangle showing `colour`? The row is read
+// from the composited window.
+bool RowShows(const std::shared_ptr<UltraCanvasWindow>& window, const Rect2Di& row,
+              const Color& colour) {
+    auto close = [](uint8_t l, uint8_t r) {
+        return std::abs(static_cast<int>(l) - static_cast<int>(r)) <= 24;
+    };
+    for (int y = row.y; y < row.y + row.height; ++y) {
+        for (int x = row.x; x < row.x + row.width; ++x) {
+            Color px;
+            if (!window->GetPixelColor(x, y, px)) continue;
+            if (close(px.r, colour.r) && close(px.g, colour.g) && close(px.b, colour.b)) return true;
+        }
+    }
+    return false;
+}
+
+// The focus ring on real pixels: a real window under Xvfb, activated by hand
+// (DisplayTestSupport.h). Skips itself without a DISPLAY.
+void TestFocusRingOnScreen() {
+    if (!std::getenv("DISPLAY")) {
+        std::cerr << "SKIP: focus ring on screen (no DISPLAY)" << std::endl;
+        return;
+    }
+    UltraCanvasApplication app;
+    if (!app.Initialize("TreeViewKeyboardTest")) {
+        std::cerr << "SKIP: focus ring on screen (application would not initialise)" << std::endl;
+        return;
+    }
+    WindowConfig cfg;
+    cfg.title = "TreeViewKeyboardTest";
+    cfg.width = 300;
+    cfg.height = 200;
+    auto window = CreateWindow(cfg);
+    if (!window) {
+        std::cerr << "SKIP: focus ring on screen (window could not be created)" << std::endl;
+        return;
+    }
+    window->Show();
+
+    auto tree = std::make_shared<UltraCanvasTreeView>("tree", 0, 0, 300, 200);
+    tree->SetRowHeight(20);
+    tree->SetSelectionColor(Color(0, 120, 215));
+    window->AddChild(tree);
+    tree->SetRootNode(Node("root"));
+    tree->AddNode("root", Node("a"));
+    tree->AddNode("root", Node("b"));
+    tree->ExpandAll();
+
+    if (!DisplayTest::FocusElement(app, window, tree)) {
+        std::cerr << "SKIP: focus ring on screen (the window could not be activated)" << std::endl;
+        return;
+    }
+    tree->OnEvent(Key(UCKeys::Down));   // the first row: root
+    tree->OnEvent(Key(UCKeys::Down));   // then a, the second row
+    DisplayTest::Frame(window, {tree});
+
+    // The second row, inset to where the ring runs; the first row is plain.
+    const Rect2Di focusedRow(2, 21, 296, 18);
+    const Rect2Di otherRow(2, 1, 296, 18);
+    TEST("the focused row is drawn selected", RowShows(window, focusedRow, Color(0, 120, 215)));
+    TEST("the focused row carries a white focus ring while the tree is focused",
+         RowShows(window, focusedRow, Colors::White));
+    TEST("an unfocused row is not drawn selected", !RowShows(window, otherRow, Color(0, 120, 215)));
+
+    window->ClearFocus();
+    DisplayTest::Frame(window, {tree});
+    TEST("the ring goes when the focus leaves, the selection stays",
+         !RowShows(window, focusedRow, Colors::White) && RowShows(window, focusedRow, Color(0, 120, 215)));
+
+    tree->SetFocus(true);
+    tree->SetFocusRingColor(Color(255, 0, 255));
+    DisplayTest::Frame(window, {tree});
+    TEST("SetFocusRingColor picks the ring's colour", RowShows(window, focusedRow, Color(255, 0, 255)));
+    window->Close();
+}
+
 } // namespace
 
 int main() {
@@ -267,6 +352,7 @@ int main() {
     TestPages();
     TestEnterSpace();
     TestJumpToFirstEntry();
+    TestFocusRingOnScreen();
     std::cerr << testCount - failCount << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;
 }

@@ -251,6 +251,11 @@ private:
     Color checkboxBorderColor = Color(0x70, 0x70, 0x78);       // check flag box outline
     Color checkboxCheckColor = Color(0x21, 0x7A, 0x35);        // tick / mixed square
     Color dropTargetColor = Color(0x33, 0x99, 0xFF, 0x66); // drag-drop target row
+    // The dashed outline round the focused row while the tree holds the
+    // keyboard focus. Transparent (the default) picks a colour that shows on
+    // the row: white on the selection background, the selection colour on
+    // any other row.
+    Color focusRingColor = Colors::Transparent;
 
     // The node currently highlighted as a drag-and-drop target, if any.
     TreeNode* dropTargetNode = nullptr;
@@ -450,6 +455,10 @@ public:
     // ===== COLOR PROPERTIES =====
     void SetSelectionColor(const Color &color) { selectionColor = color; }
     void SetHoverColor(const Color &color) { hoverColor = color; }
+    // The focus ring's colour; Colors::Transparent restores the automatic
+    // choice (white on a selected row, the selection colour elsewhere).
+    void SetFocusRingColor(const Color &color) { focusRingColor = color; RequestRedraw(); }
+    const Color& GetFocusRingColor() const { return focusRingColor; }
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
     void SetExpandButtonColor(const Color &color) { expandButtonColor = color; }
@@ -523,6 +532,9 @@ public:
     // or goes to the first child, Page Up / Page Down move a page of rows,
     // Home / End go to the first / last row, Enter toggles a parent (and fires
     // onNodeDoubleClicked), Space toggles the check flag or selects the row.
+    // The row the keys continue from carries a dashed focus ring while the
+    // tree is focused (SetFocusRingColor), so it is told from a row that is
+    // merely selected.
     // With no row focused yet, Down / Home start at the first row and Up / End
     // at the last. A handled key returns true so a scrolling parent does not
     // act on it too.

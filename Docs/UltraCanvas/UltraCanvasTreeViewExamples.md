@@ -638,6 +638,7 @@ if (int need = tree->GetRequiredWidth(); need > 0)
 void SetBackgroundColor(const Color& color);
 void SetSelectionColor(const Color& color);
 void SetHoverColor(const Color& color);
+void SetFocusRingColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
@@ -823,7 +824,12 @@ last, so a tree reached by Tab answers the first arrow. A hidden root
 (`SetRootVisible(false)`) is never a row: **↑** from the first top-level row
 stays there, and **←** on a top-level row does nothing. With
 [Jump to first entry](#jump-to-first-entry) on, open parents are stepped
-over. `GetFocusedNode()` returns the row the keys continue from.
+over. `GetFocusedNode()` returns the row the keys continue from, and while
+the tree holds the focus that row carries a dashed one-pixel **focus ring**,
+so it is told from a row that is merely selected; a selected tree that lost
+the focus shows no ring. `SetFocusRingColor()` sets the ring's colour;
+`Colors::Transparent` (the default) picks one that shows on the row: white
+on the selection background, the selection colour on any other row.
 
 The tree reads `UCEvent::virtualKey` (`UCKeys::Up`, `UCKeys::Down`, ...), which
 every backend fills, and returns true from `OnEvent` for a key it acted on, so

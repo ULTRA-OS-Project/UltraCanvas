@@ -1,6 +1,6 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-13 - keys read UCKeys and work once the tree is focused
+// Last Modified: 2026-10-13 - keys read UCKeys and work once the tree is focused; focus ring
 //                (2026-10-02: GetRequiredWidth, the width the widest row on show needs)
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasApplication.h"
@@ -1102,6 +1102,25 @@ namespace UltraCanvas {
 
             if (bgColor != backgroundColor) {
                 ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 1, nodeY, nodeWidth - 2, rowHeight), bgColor);
+            }
+
+            // The focus ring: a dashed one-pixel outline round the row the keys
+            // continue from, only while the tree holds the keyboard focus - so
+            // a focused row is told from one that is merely selected, and a
+            // selected tree that lost the focus shows no ring. Drawn over the
+            // background and under the lines, icon and label. The automatic
+            // colour contrasts with the row it sits on: white on the selection
+            // background (the text there is black, so the blue would vanish),
+            // the selection colour on any other row.
+            if (node == focusedNode && IsFocused()) {
+                const Color ring = focusRingColor.a > 0 ? focusRingColor
+                                 : (bgColor == selectionColor ? Colors::White : selectionColor);
+                ctx->PushState();
+                ctx->SetLineDash(UCDashPattern({2.0, 2.0}));
+                ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 2, nodeY + 1, nodeWidth - 4, rowHeight - 2),
+                                         Colors::Transparent, 1.0f, ring);
+                ctx->SetLineDash(UCDashPattern::EMPTY);
+                ctx->PopState();
             }
 
             const bool hasExpander = showExpandButtons && node->HasChildren();
