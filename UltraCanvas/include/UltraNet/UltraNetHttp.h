@@ -1,7 +1,7 @@
 // include/UltraNet/UltraNetHttp.h
 // HTTP / HTTPS surface for UltraNet: synchronous variants plus async via a
 // curl_multi worker thread (see core/UltraNet/UltraNetHttpAsync.cpp).
-// Version: 0.2.0 (Stage 2)
+// Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -49,10 +49,24 @@ private:
 
 struct UltraNetHttpOptions {
     UltraNetHttpHeaders headers;
-    int timeoutMs = 0;              // 0 = use config default
+    // Whole-transfer limit. 0 = the config default (30 s), except for a
+    // transfer that writes a file (outputFilePath, UltraNet_HttpDownloadFile),
+    // which has no whole-transfer limit by default and a stall limit instead:
+    // a download is as long as the file is large. -1 = no limit at all.
+    int timeoutMs = 0;
+    // Fail with Timeout when no byte has moved for this long. 0 = off, except
+    // for a transfer that writes a file, where 0 = the config default (30 s).
+    // The check is suspended while the transfer is paused.
+    int stallTimeoutMs = 0;
     int connectTimeoutMs = 0;
     bool followRedirects = true;
     int maxRedirects = 10;
+    // Follow a redirect only to an https:// URL. A redirect to http:// (or
+    // any other scheme) ends the transfer with RedirectRefused and the 3xx
+    // status, so a download started over TLS cannot be bounced onto a plain
+    // connection. Off, a redirect may go to http:// or https:// - never to
+    // another scheme.
+    bool httpsOnlyRedirects = false;
     bool verifyTls = true;
     UltraNetAuthType authType = UltraNetAuthType::None;
     UltraNetCredentials credentials;
@@ -62,7 +76,26 @@ struct UltraNetHttpOptions {
     std::string clientKeyPassword;
     bool acceptInvalidCert = false; // dangerous; explicit opt-in
     int64_t maxReceiveSize = 0;     // 0 = use config default
-    std::string outputFilePath;     // if set, body streamed to disk
+    // When set, the body is streamed to this file (UTF-8 path) instead of
+    // into UltraNetResponse::body, on the sync and the async path alike;
+    // UltraNet_HttpDownloadFile is this with its localPath. The file is
+    // truncated first unless resumeOutputFile is set.
+    std::string outputFilePath;
+    // Resume into outputFilePath: the file's current size is the offset, the
+    // request asks for the bytes from there (Range: bytes=<size>-) and the
+    // reply is appended. The response's statusCode says what happened: 206,
+    // the rest arrived; 200, the server ignored the range and sent the whole
+    // body, which replaced the file; 416 with a Content-Range naming the
+    // file's size as the total, the file was already complete (reported as
+    // success). To make sure the file on the server is still the one the
+    // partial file came from, add an If-Range header with the ETag or
+    // Last-Modified of the first reply.
+    bool resumeOutputFile = false;
+    // Ask for the body from this byte on (Range: bytes=<offset>-), for a
+    // caller that keeps its own partial copy. 206 and the rest of the body,
+    // or 200 and the whole body when the server ignores the range. Ignored
+    // when resumeOutputFile sets the offset from the file.
+    int64_t resumeFromOffset = 0;
 
     // Accept the server only when its certificate carries this public key:
     // "sha256//<base64>" (UltraNet_PublicKeyPinOf; several may be joined with
@@ -78,6 +111,8 @@ struct UltraNetHttpOptions {
 
     static UltraNetHttpOptions Default() { return {}; }
 };
+
+struct UltraNetResponse;
 
 struct UltraNetHttpRequest {
     std::string url;
@@ -103,6 +138,15 @@ struct UltraNetHttpRequest {
     // (Content-Length) or -1 if unknown for downloads.
     std::function<void(int64_t bytesNow, int64_t bytesTotal)> onDownloadProgress;
     std::function<void(int64_t bytesNow, int64_t bytesTotal)> onUploadProgress;
+
+    // Optional. Fires once, when the final response's headers are complete
+    // and before any of its body: statusCode, headers, contentType and
+    // contentLength are filled, body is empty. Redirects being followed and
+    // 1xx interim responses do not fire it. Return false to end the transfer
+    // there (a Content-Length too large, a content type that is not the one
+    // expected): the result is Cancelled and the body is never read. Fires
+    // on the request thread, like onDataChunk.
+    std::function<bool(const UltraNetResponse&)> onHeaders;
 };
 
 struct UltraNetResponse {
@@ -184,7 +228,10 @@ UltraNetHandle UltraNet_HttpRequestAsync(
     std::function<void(const UltraNetResponse&)> onComplete);
 
 // File transfer helpers — both are streamed (constant memory regardless of
-// payload size). Implemented via libcurl's write/read callbacks.
+// payload size). Implemented via libcurl's write/read callbacks. The download
+// is a GET with options.outputFilePath = localPath: no whole-transfer timeout
+// unless options.timeoutMs says otherwise, a stall timeout instead, and
+// options.resumeOutputFile continues a partial file.
 UltraNetResult UltraNet_HttpDownloadFile(
     const std::string& url,
     const std::string& localPath,

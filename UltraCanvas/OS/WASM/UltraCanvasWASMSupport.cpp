@@ -6,8 +6,9 @@
 // given, and the trampoline finds the C++ callback in the matching registry.
 // Buffers that JavaScript fills for C++ are allocated through
 // UltraCanvasWasmAlloc() so the C++ side owns and frees them.
+// Version: 2.1.0 - the History API: PushUrl, ReplaceUrl, GetPath, SetOnNavigate
 // Version: 2.0.0
-// Last Modified: 2026-09-07
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWASMSupport.h"
@@ -64,6 +65,10 @@ namespace {
     }
     CallbackRegistry<WASMResourceLoader::ImageLoadCallback>& ImageCallbacks() {
         static CallbackRegistry<WASMResourceLoader::ImageLoadCallback> r; return r;
+    }
+    // The one popstate handler (WASMURL::SetOnNavigate); main thread only.
+    WASMURL::NavigateCallback& NavigateHandler() {
+        static WASMURL::NavigateCallback handler; return handler;
     }
 
     // Take ownership of a stringToNewUTF8() result.
@@ -154,6 +159,11 @@ EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmImageLoaded(int id, int ok, int width, 
     if (auto cb = UltraCanvas::ImageCallbacks().Take(id)) {
         cb(ok != 0 && !rgba.empty(), width, height, rgba);
     }
+}
+
+EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmPopState() {
+    // Copied first: the handler may replace itself while it runs.
+    if (auto cb = UltraCanvas::NavigateHandler()) cb(UltraCanvas::WASMURL::GetCurrentURL());
 }
 
 } // extern "C"
@@ -587,12 +597,44 @@ std::string WASMURL::GetHash() {
     })));
 }
 
+std::string WASMURL::GetPath() {
+    return TakeJsString(static_cast<char*>(EM_ASM_PTR({
+        return stringToNewUTF8(window.location.pathname || '/');
+    })));
+}
+
 void WASMURL::Navigate(const std::string& url) {
     EM_ASM({ window.location.href = UTF8ToString($0); }, url.c_str());
 }
 
 void WASMURL::Reload() {
     EM_ASM({ window.location.reload(); });
+}
+
+void WASMURL::PushUrl(const std::string& url) {
+    EM_ASM({
+        try { history.pushState(null, '', UTF8ToString($0)); }
+        catch (e) { console.error('UltraCanvas WASM: pushState failed:', e); }
+    }, url.c_str());
+}
+
+void WASMURL::ReplaceUrl(const std::string& url) {
+    EM_ASM({
+        try { history.replaceState(null, '', UTF8ToString($0)); }
+        catch (e) { console.error('UltraCanvas WASM: replaceState failed:', e); }
+    }, url.c_str());
+}
+
+void WASMURL::SetOnNavigate(NavigateCallback callback) {
+    NavigateHandler() = std::move(callback);
+    // The listener is added once and stays: with no handler set the
+    // trampoline does nothing, so there is nothing to remove.
+    static bool listening = false;
+    if (listening || !NavigateHandler()) return;
+    listening = true;
+    EM_ASM({
+        window.addEventListener('popstate', function() { _UltraCanvasWasmPopState(); });
+    });
 }
 
 } // namespace UltraCanvas

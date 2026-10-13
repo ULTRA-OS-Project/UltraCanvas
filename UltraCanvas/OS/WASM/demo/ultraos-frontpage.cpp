@@ -13,6 +13,15 @@
 // page shows are placeholders except the three the repository carries
 // (media/images/ultraos/). Edit the tables to keep the page in step with
 // the site.
+//
+// One module, several addresses: a link into the site (a navigation item, a
+// menu entry, a footer service, a hero button) opens a page of the demo
+// under `?page=<site path>` through the WebAssembly backend's History API,
+// so the address bar changes, the browser's back button returns to the front
+// page and a reload opens the same page again. The query form rather than a
+// path because a static server (serve.py) serves only the demo's own file.
+// On the desktop the same pages are shown without an address bar.
+// Version: 2.1.0 - pages of the demo under the History API (PushUrl, SetOnNavigate)
 // Version: 2.0.0 - the real page: navigation menus, offers, variants, FAQ, contact
 // Version: 1.0.0
 // Last Modified: 2026-10-12
@@ -30,6 +39,9 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasPathUtf8.h"
+#if defined(__EMSCRIPTEN__)
+#include "OS/WASM/UltraCanvasWASMSupport.h"   // WASMURL: the History API
+#endif
 
 #include <algorithm>
 #include <cstdlib>
@@ -59,9 +71,36 @@ const char* kFont = "Ubuntu";
 const float kContentWidth = 1140.f;
 const std::string kSiteUrl = "https://ultraos.eu/";
 
+// A path of the site ("the-plan/"), as opposed to an absolute URL, a mailto:
+// or a tel: link.
+bool IsSitePath(const std::string& path) {
+    return path.find("://") == std::string::npos && path.rfind("mailto:", 0) != 0 &&
+           path.rfind("tel:", 0) != 0;
+}
 std::string Url(const std::string& path) {
-    return path.find("://") != std::string::npos || path.rfind("mailto:", 0) == 0
-               ? path : kSiteUrl + path;
+    return IsSitePath(path) ? kSiteUrl + path : path;
+}
+
+// ---- pages: one module, several addresses -------------------------------------
+std::shared_ptr<UltraCanvasContainer> gPage;   // the scrolling page; its sections are rebuilt per address
+void ShowDemoPage(const std::string& sitePath);     // "" is the front page
+
+// Opens a page of the demo: the address bar first (in the browser), then the
+// page - deferred, because the click that brought us here came from a button
+// of the page being replaced, and that button must finish its callback first.
+void GoTo(const std::string& sitePath) {
+#if defined(__EMSCRIPTEN__)
+    WASMURL::PushUrl(sitePath.empty() ? WASMURL::GetPath() : "?page=" + sitePath);
+#endif
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+        app->PostToUIThread([sitePath]() { ShowDemoPage(sitePath); });
+    }
+}
+// A link's click: a page of the demo for a site path, the system browser for
+// everything else (another site, mailto:, tel:).
+std::function<void()> Open(const std::string& path) {
+    if (IsSitePath(path)) return [path]() { GoTo(path); };
+    return [path]() { OpenURL(path); };
 }
 std::string Picture(const char* file) {
     return GetResourcesDir() + "media/images/ultraos/" + file;
@@ -357,7 +396,7 @@ std::shared_ptr<UltraCanvasButton> Flat(const std::string& id, const std::string
 }
 
 std::shared_ptr<UltraCanvasButton> Action(const std::string& id, const std::string& text,
-                                          const std::string& url, bool primary, bool onDark = false) {
+                                          const std::string& path, bool primary, bool onDark = false) {
     auto button = CreateButton(id, 0, 0, 0, 44, text);
     button->SetFont(kFont, 15, FontWeight::Bold);
     button->SetCornerRadius(6);
@@ -376,7 +415,7 @@ std::shared_ptr<UltraCanvasButton> Action(const std::string& id, const std::stri
         button->SetBorder(1.5f, kRed);
     }
     button->SetMouseCursor(UCMouseCursor::Hand);
-    if (!url.empty()) button->onClick = [url]() { OpenURL(url); };
+    if (!path.empty()) button->onClick = Open(path);
     return button;
 }
 
@@ -525,7 +564,7 @@ std::shared_ptr<UltraCanvasContainer> BuildHeader() {
     logo->SetFitMode(ImageFitMode::Contain);
     logo->SetMouseCursor(UCMouseCursor::Hand);
     logo->SetTooltip("ULTRA OS - Home");
-    logo->onClick = []() { OpenURL(kSiteUrl); };
+    logo->onClick = []() { GoTo(""); };
     logo->layoutItem.SetFlexShrink(0);
     band.inner->AddChild(logo);
 
@@ -549,8 +588,7 @@ std::shared_ptr<UltraCanvasContainer> BuildHeader() {
             auto popup = std::make_shared<UltraCanvasMenu>("NavMenu" + std::to_string(i), 0, 0, 240, 0);
             popup->SetMenuType(MenuType::PopupMenu);
             for (const Link& link : nav.menu) {
-                const std::string url = Url(link.path);
-                popup->AddItem(MenuItemData::Action(link.title, [url]() { OpenURL(url); }));
+                popup->AddItem(MenuItemData::Action(link.title, Open(link.path)));
             }
             gMenus.push_back(popup);
             item->SetTooltip(std::string(nav.title) + ": opens a menu");
@@ -565,8 +603,7 @@ std::shared_ptr<UltraCanvasContainer> BuildHeader() {
                 }
             };
         } else {
-            const std::string url = Url(nav.path);
-            item->onClick = [url]() { OpenURL(url); };
+            item->onClick = Open(nav.path);
         }
         menu->AddChild(item);
     }
@@ -585,8 +622,8 @@ std::shared_ptr<UltraCanvasContainer> BuildHero() {
     band.inner->AddChild(lead);
     band.inner->AddChild(Gap(32));
     auto actions = Row("HeroActions", 14, CSSLayout::AlignItems::Center, CSSLayout::JustifyContent::Center);
-    actions->AddChild(Action("HeroLearn", "Learn More", Url("the-plan/"), true));
-    actions->AddChild(Action("HeroDownload", "Download", Url("download-file/"), false, true));
+    actions->AddChild(Action("HeroLearn", "Learn More", "the-plan/", true));
+    actions->AddChild(Action("HeroDownload", "Download", "download-file/", false, true));
     band.inner->AddChild(actions);
     return band.outer;
 }
@@ -648,7 +685,7 @@ std::shared_ptr<UltraCanvasContainer> BuildReasons() {
     band.inner->AddChild(row);
     band.inner->AddChild(Gap(28));
     auto actions = Row("ReasonActions", 14, CSSLayout::AlignItems::Center, CSSLayout::JustifyContent::Center);
-    actions->AddChild(Action("ReasonsAbout", "About Us", Url("the-plan/"), true));
+    actions->AddChild(Action("ReasonsAbout", "About Us", "the-plan/", true));
     band.inner->AddChild(actions);
     return band.outer;
 }
@@ -704,7 +741,7 @@ std::shared_ptr<UltraCanvasContainer> BuildStatus() {
     column->AddChild(chips);
     column->AddChild(Gap(22));
     auto actions = Row("StatusActions", 14, CSSLayout::AlignItems::Center);
-    actions->AddChild(Action("StatusButton", "current status", Url("status/"), true));
+    actions->AddChild(Action("StatusButton", "current status", "status/", true));
     column->AddChild(actions);
     row->AddChild(column);
     band.inner->AddChild(row);
@@ -886,7 +923,7 @@ std::shared_ptr<UltraCanvasContainer> BuildContact() {
     claimText->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
     claimText->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
     claimText->SetMouseCursor(UCMouseCursor::Hand);
-    claimText->onClick = []() { OpenURL(Url("ultracanvas/")); };
+    claimText->onClick = Open("ultracanvas/");
     claim->AddChild(claimText);
     column->AddChild(claim);
     column->AddChild(Gap(18));
@@ -962,8 +999,7 @@ std::shared_ptr<UltraCanvasContainer> BuildFooter() {
     auto social = Row("FooterSocial", 2, CSSLayout::AlignItems::Center);
     for (size_t i = 0; i < kFooterSocial.size(); ++i) {
         auto link = Flat("FooterSocial" + std::to_string(i), kFooterSocial[i].title, 14, kOnDark, kPaper);
-        const std::string url = Url(kFooterSocial[i].path);
-        link->onClick = [url]() { OpenURL(url); };
+        link->onClick = Open(kFooterSocial[i].path);
         social->AddChild(link);
     }
     brand->AddChild(social);
@@ -985,8 +1021,7 @@ std::shared_ptr<UltraCanvasContainer> BuildFooter() {
         auto link = Flat("FooterService" + std::to_string(i), kFooterServices[i].title, 15, kOnDark, kPaper);
         link->SetPadding(0, 0);
         link->SetTextAlign(TextAlignment::Left);
-        const std::string url = Url(kFooterServices[i].path);
-        link->onClick = [url]() { OpenURL(url); };
+        link->onClick = Open(kFooterServices[i].path);
         auto holder = Row("FooterServiceRow" + std::to_string(i), 0, CSSLayout::AlignItems::Center);
         holder->AddChild(link);
         services->AddChild(holder);
@@ -1013,10 +1048,81 @@ std::shared_ptr<UltraCanvasContainer> BuildFooter() {
     return band.outer;
 }
 
+// What the site calls that path, from the navigation tables.
+std::string TitleFor(const std::string& sitePath) {
+    for (const NavItem& nav : kNav) {
+        if (nav.menu.empty() && sitePath == nav.path) return nav.title;
+        for (const Link& link : nav.menu) {
+            if (sitePath == link.path) return link.title;
+        }
+    }
+    for (const Link& link : kFooterServices) {
+        if (sitePath == link.path) return link.title;
+    }
+    return sitePath;
+}
+
+// A page of the site other than the front page. The demo does not carry the
+// site's other pages; what it shows is the address working: the title the
+// site gives the path, where the real page is, and the way back.
+std::shared_ptr<UltraCanvasContainer> BuildSitePage(const std::string& sitePath) {
+    auto band = MakeBand("SitePage", kPaper, 84);
+    band.inner->AddChild(Kicker("SitePageKicker", kSiteUrl + sitePath));
+    band.inner->AddChild(Gap(16));
+    band.inner->AddChild(Text("SitePageTitle", TitleFor(sitePath), 40, kInk, FontWeight::Bold,
+                              TextAlignment::Center));
+    band.inner->AddChild(Gap(20));
+    auto lead = Text("SitePageText",
+                     "This page of ultraos.eu is not part of the demo. What the demo shows here is one "
+                     "WebAssembly module answering several addresses: the address bar changed to this page, "
+                     "the browser\xE2\x80\x99s back button returns to the front page, and a reload opens this "
+                     "page again.",
+                     19, kInkSoft, FontWeight::Normal, TextAlignment::Center);
+    lead->SetPadding(0, 90);
+    lead->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
+    band.inner->AddChild(lead);
+    band.inner->AddChild(Gap(32));
+    auto actions = Row("SitePageActions", 14, CSSLayout::AlignItems::Center, CSSLayout::JustifyContent::Center);
+    actions->AddChild(Action("SitePageOpen", "Open on ultraos.eu", Url(sitePath), true));   // absolute: the system browser
+    auto home = Action("SitePageHome", "Front page", "", false);
+    home->onClick = []() { GoTo(""); };
+    actions->AddChild(home);
+    band.inner->AddChild(actions);
+    return band.outer;
+}
+
+// Replaces the page's sections with those of `sitePath`: the front page, or
+// the site page for any other path. The header and footer are on every page.
+void ShowDemoPage(const std::string& sitePath) {
+    if (!gPage) return;
+    gMenus.clear();
+    gPage->ClearChildren();
+    gPage->AddChild(BuildHeader());
+    if (sitePath.empty()) {
+        gPage->AddChild(BuildHero());
+        gPage->AddChild(BuildIntro());
+        gPage->AddChild(BuildReasons());
+        gPage->AddChild(BuildNewsletter());
+        gPage->AddChild(BuildStatus());
+        gPage->AddChild(BuildOffers());
+        gPage->AddChild(BuildDonate());
+        gPage->AddChild(BuildSocial());
+        gPage->AddChild(BuildVariants());
+        gPage->AddChild(BuildPurposes());
+        gPage->AddChild(BuildFaq());
+        gPage->AddChild(BuildContact());
+    } else {
+        gPage->AddChild(BuildSitePage(sitePath));
+    }
+    gPage->AddChild(BuildFooter());
+}
+
 } // namespace
 
-// ultraos-frontpage [width height] - the window size on the desktop (the
-// browser build fills the viewport); a tall one shows more of the page at once.
+// ultraos-frontpage [width height [site path]] - the window size on the
+// desktop (the browser build fills the viewport); a tall one shows more of
+// the page at once. A site path ("the-plan/") opens that page of the demo
+// instead of the front page, as `?page=the-plan/` does in the browser.
 int main(int argc, char* argv[]) {
     // Static lifetime is required under Emscripten: Run() never returns -
     // emscripten_set_main_loop() unwinds main()'s frame (running destructors
@@ -1056,24 +1162,17 @@ int main(int argc, char* argv[]) {
     }
     page->SetBackgroundColor(kPaper);
     page->layout.SetDisplay(CSSLayout::DisplayType::Block);
-    page->AddChild(BuildHeader());
-    page->AddChild(BuildHero());
-    page->AddChild(BuildIntro());
-    page->AddChild(BuildReasons());
-    page->AddChild(BuildNewsletter());
-    page->AddChild(BuildStatus());
-    page->AddChild(BuildOffers());
-    page->AddChild(BuildDonate());
-    page->AddChild(BuildSocial());
-    page->AddChild(BuildVariants());
-    page->AddChild(BuildPurposes());
-    page->AddChild(BuildFaq());
-    page->AddChild(BuildContact());
-    page->AddChild(BuildFooter());
+    gPage = page;
     window->AddChild(page);
 
 #if defined(__EMSCRIPTEN__)
+    // The address decides the page: `?page=<site path>` now, and again on
+    // every back and forward (the History API's popstate).
+    ShowDemoPage(WASMURL::GetQueryParameter("page"));
+    WASMURL::SetOnNavigate([](const std::string&) { ShowDemoPage(WASMURL::GetQueryParameter("page")); });
     window->Maximize();   // fill the browser viewport
+#else
+    ShowDemoPage(argc >= 4 ? argv[3] : "");   // a site path on the command line opens that page
 #endif
     window->Show();
     app.Run(); // never returns in the browser; the main loop keeps ticking

@@ -1,3 +1,14 @@
+#### 2026-10-13 *0.2.1*
+- **Proxies are made on the graphics hardware.** UltraVideo now makes its
+  proxies with VideoFX's `Hardware` acceleration (VideoFX 0.12.0). Each
+  proxy is encoded by the first hardware encoder that works on the machine:
+  NVENC, Quick Sync, VA-API, AMF, VideoToolbox or Media Foundation. That
+  leaves the processor free for the editing while the bin's videos are
+  being made smaller. Where no hardware encoder works it falls back to
+  software, as before. The encoder is not part of a proxy's name, so
+  proxies already in the cache are used as they are.
+  (`ProxyMaker::EditorSettings()`, checked in `UltraVideoDocumentTest`.)
+
 #### 2026-10-12 *0.2.0*
 - **Proxies: large clips scrub smoothly.** Every video in the media bin gets
   a proxy in the background, made by VideoFX: the same clip at 540 lines,

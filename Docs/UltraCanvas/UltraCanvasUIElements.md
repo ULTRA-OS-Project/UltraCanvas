@@ -247,7 +247,8 @@ The vector format plugins (`UltraCanvasCDRElement`, `UltraCanvasEPSElement`,
 `UltraCanvasXARElement`) are **not** in these tables on purpose: they are
 decoders behind `UltraCanvasVectorElement` and `UltraCanvasImageElement`, which
 are what an application reaches for. An SVG has no element of its own either:
-`UltraCanvasImageElement` shows it (through librsvg). Same for
+`UltraCanvasImageElement` shows it (through librsvg, or the Vector plugin's
+reader where libvips has no SVG loader). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
 
 ## Creating them

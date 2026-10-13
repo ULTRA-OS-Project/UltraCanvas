@@ -1319,7 +1319,13 @@ future.
 - `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync` (an async response
   cut off after its status line carries `UltraNetResponse::transferError`,
   `IsComplete()` and `exceededReceiveLimit`)
-- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`
+- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`; any request writes
+  its body to a file through `UltraNetHttpOptions::outputFilePath`, resumes a
+  partial one with `resumeOutputFile` (`resumeFromOffset` for a caller's own
+  partial copy), follows redirects to https:// only with
+  `httpsOnlyRedirects`, has no whole-transfer timeout but a `stallTimeoutMs`
+  when it writes a file, and sees the final response's headers before the
+  body through `UltraNetHttpRequest::onHeaders`, which can veto the body
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
@@ -1361,7 +1367,8 @@ future.
   reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
 - `UltraNet_ConvertToUtf8` (bytes in a named charset to UTF-8, through iconv
   where the build has it; what mail bodies and web pages are read with)
-- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
+- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`,
+  `UltraNet_PauseRequest`, `UltraNet_ResumeRequest`, `UltraNet_IsRequestPaused`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 
 **Plugin Categories (Tier 2 / Tier 3, located under `Plugins/UltraNet/`):**
@@ -1383,7 +1390,8 @@ loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
 worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
-`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNet_GetTransferStats`, `UltraNet_PauseRequest` /
+`UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
 on libcurl. Remaining gaps are per-function and environment-dependent —
@@ -1435,11 +1443,17 @@ Store, and any other UltraCanvas-based application that needs local or
 networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
-**Implementation status (this branch):** Concept / design only. Public
-surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
-rollout is SQLite core + registry + query/transaction/migration API
-(Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
-remaining drivers and at-rest encryption (Stage 3).
+**Implementation status (this branch):** Stage 1 implemented, and the
+PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
+parameterized queries, prepared statements, transactions and versioned
+migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
+`Tests/UltraDatabase`); the PostgreSQL driver
+(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
+found, verifies TLS by default and reads its password from UltraVault, and
+UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
+networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
+queries, pooling, streaming cursors and at-rest encryption. Details in
+`Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
 
@@ -1513,9 +1527,9 @@ compatibility routing are planned for Stages 2-3. See
 ### **8. UltraCrypt**
 
 Cryptographic services — the single place where hashing, message
-authentication, authenticated encryption, key derivation and secure random
-generation are implemented, so no application, plugin or sibling module has
-to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
+authentication, authenticated encryption, digital signatures, key derivation
+and secure random generation are implemented, so no application, plugin or
+sibling module has to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
 see `Docs/Modules/UltraCrypt/README.md`.
 
 Scope is **data at rest and data integrity**. Transport security stays in
@@ -1550,6 +1564,10 @@ backing library is never visible in a public header.
   `UltraCrypt_IsAeadAvailable`
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`
+- `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
+  `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
+  `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
+  and the `UltraCrypt_GetSignature*Size` family (Ed25519, RFC 8032)
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
@@ -2136,10 +2154,11 @@ as the export would make it, for an editor's viewer), proxy media (small
 stand-ins for large clips, made once into a cache folder and switched in
 for previews and drafts), hardware encoders by choice (software, any that
 works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media
-Foundation, each tried on the machine before it is used),
+Foundation, each tried on the machine before it is used), free audio clips
+(voice-overs and sound effects at given times, the music ducking under
+voice-overs),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
-command-line tool. Planned: keyframed parameters,
-several free audio tracks.
+command-line tool. Planned: keyframed parameters.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
@@ -2150,6 +2169,7 @@ several free audio tracks.
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
+  `VideoFXAudioClip` (`VideoFXExportSettings::audioClips`; `Sound`, `VoiceOver`),
   `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
@@ -2207,7 +2227,7 @@ several free audio tracks.
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
   MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
-  CrossfadeGains, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
+  CrossfadeGains, ValidateAudioClip, AudioClipGain, AudioClipSeconds, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
   TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
   FocusBounds, FitMotionToFocus, KeepFocusInView, DetectFacesGray,
   DetectFaces, ProjectToJsonText, ProjectFromJsonText, SaveProjectFile,

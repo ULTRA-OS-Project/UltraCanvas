@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXMusic.cpp
 // Background music arithmetic: envelope, ducking, slideshow length.
-// Version: 0.5.0
-// Last Modified: 2026-10-07
+// Version: 0.13.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "VideoFXMusic.h"
@@ -39,6 +39,40 @@ bool ValidateMusic(const VideoFXMusic& m, std::string& error) {
         return false;
     }
     return true;
+}
+
+bool ValidateAudioClip(const VideoFXAudioClip& c, std::string& error) {
+    if (c.path.empty()) { error = "An audio clip has no file"; return false; }
+    if (!InRange(c.at, 0.0, 86400.0)) { error = "An audio clip's time must be 0..24 hours"; return false; }
+    if (!InRange(c.start, 0.0, 1e6)) { error = "An audio clip's start must be >= 0"; return false; }
+    if (!(c.end == 0.0 || (std::isfinite(c.end) && c.end > c.start))) {
+        error = "An audio clip's end must lie after its start (or be 0: to the file's end)";
+        return false;
+    }
+    if (!InRange(c.volume, 0.0, 4.0)) { error = "An audio clip's volume must be 0..4"; return false; }
+    if (!InRange(c.fadeIn, 0.0, 600.0) || !InRange(c.fadeOut, 0.0, 600.0)) {
+        error = "An audio clip's fades must be 0..600 seconds";
+        return false;
+    }
+    return true;
+}
+
+double AudioClipGain(const VideoFXAudioClip& c, double t, double length) {
+    if (t < 0.0 || (length > 0.0 && t > length)) return 0.0;
+    double fadeIn = c.fadeIn, fadeOut = c.fadeOut;
+    if (length > 0.0 && fadeIn + fadeOut > length) {
+        fadeIn = std::min(fadeIn, length / 2.0);
+        fadeOut = std::min(fadeOut, length / 2.0);
+    }
+    double g = c.volume;
+    if (fadeIn > 0.0) g *= std::clamp(t / fadeIn, 0.0, 1.0);
+    if (fadeOut > 0.0 && length > 0.0) g *= std::clamp((length - t) / fadeOut, 0.0, 1.0);
+    return g;
+}
+
+double AudioClipSeconds(const VideoFXAudioClip& c, double fileSeconds) {
+    if (c.end > 0.0) return std::max(0.0, (fileSeconds > 0.0 ? std::min(c.end, fileSeconds) : c.end) - c.start);
+    return fileSeconds > 0.0 ? std::max(0.0, fileSeconds - c.start) : 0.0;
 }
 
 double MusicEnvelope(const VideoFXMusic& m, double t, double total) {

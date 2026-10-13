@@ -1,7 +1,8 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
-// Version: 1.5.0 - VipsCanEncode: a saver that can encode here (AVIF / HEIC need
+// Version: 1.6.0 - VipsCanEncode: a saver that can encode here (AVIF / HEIC need
 //                  libheif's encoder)
+// Version: 1.5.0 - An SVG libvips cannot load is read through the vector preview seam
 // Version: 1.4.0 - GetFresh: the cached image checked against the file
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
@@ -25,6 +26,8 @@
 #undef Rect
 
 namespace UltraCanvas {
+
+namespace VectorStorage { class VectorDocument; }
 // ===== CROSS-PLATFORM IMAGE CLASS =====
     class UCImageError : public std::runtime_error {
     public:
@@ -146,6 +149,19 @@ namespace UltraCanvas {
         bool SourceChangedOnDisk() const;
 
         bool LoadFileToMemory(const std::string &imagePath);
+
+        // An SVG the image pipeline cannot rasterize - a libvips built
+        // without svgload, as the WebAssembly sysroot's is, or one that
+        // refused the file - is read through the vector preview seam instead
+        // (UltraCanvasVectorPreview.h), which the Vector plugin installs on
+        // registration. The parsed document is kept here, so every
+        // requested size pays for the render alone, as the librsvg path does;
+        // an application that registers no Vector plugin gets the pipeline's
+        // error as before. Set by Load(), read by CreatePixmap().
+        std::shared_ptr<VectorStorage::VectorDocument> vectorDocument;
+        bool LoadVectorDocument(const std::string& imagePath);
+        std::shared_ptr<UCPixmapCairo> CreatePixmapFromVectorDocument(int width, int height,
+                                                                     ImageFitMode fitMode, float scale);
 
 #ifdef HAS_LIBVIPS
         // Reads "n-pages" / "delay" metadata off a freshly loaded header.

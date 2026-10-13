@@ -575,6 +575,54 @@ void LoopbackServer::HandleConnection(UltraNetHandle conn) {
         } else if (path == "/redirect") {
             response = BuildResponse(302, "text/plain", "", {"Location: /hello"},
                                      keepAlive, !isHead);
+        } else if (path == "/redirect-http") {
+            response = BuildResponse(302, "text/plain", "",
+                                     {"Location: http://127.0.0.1:" +
+                                      std::to_string(port_) + "/hello"},
+                                     keepAlive, !isHead);
+        } else if (path.rfind("/range/", 0) == 0) {
+            // The ramp of /bytes/<n>, with Range honoured for a resume.
+            std::size_t n = 0;
+            try { n = static_cast<std::size_t>(std::stoul(path.substr(7))); }
+            catch (...) { n = 0; }
+            n = std::min<std::size_t>(n, 8u << 20);
+            const std::string range = req.Header("range");
+            std::size_t start = 0;
+            bool ranged = false;
+            if (range.rfind("bytes=", 0) == 0) {
+                try { start = static_cast<std::size_t>(std::stoul(range.substr(6))); ranged = true; }
+                catch (...) { ranged = false; }
+            }
+            if (ranged && start >= n) {
+                response = BuildResponse(416, "text/plain", "",
+                                         {"Content-Range: bytes */" + std::to_string(n)},
+                                         keepAlive, !isHead);
+            } else {
+                std::string payload(n - start, '\0');
+                for (std::size_t i = start; i < n; ++i) {
+                    payload[i - start] = static_cast<char>(i & 0xff);
+                }
+                std::vector<std::string> extra;
+                if (ranged) {
+                    extra.push_back("Content-Range: bytes " + std::to_string(start) + "-" +
+                                    std::to_string(n - 1) + "/" + std::to_string(n));
+                }
+                response = BuildResponse(ranged ? 206 : 200, "application/octet-stream",
+                                         payload, extra, keepAlive, !isHead);
+            }
+        } else if (path == "/stall") {
+            // Headers, then silence: the stall-timeout target.
+            keepAlive = false;
+            if (!c.WriteAll("HTTP/1.1 200 OK\r\n"
+                            "Content-Type: application/octet-stream\r\n"
+                            "Content-Length: 1000\r\n"
+                            "Connection: close\r\n\r\n")) {
+                break;
+            }
+            for (int i = 0; i < 400 && !stop_.load(std::memory_order_acquire); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            break;
         } else if (path.rfind("/status/", 0) == 0) {
             int code = 500;
             try { code = std::stoi(path.substr(8)); } catch (...) {}

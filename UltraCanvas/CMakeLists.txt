@@ -58,9 +58,12 @@ if (BUILD_DEMO_APP)
     # standard lcms2 and the PDF viewer SIGSEGVs.
     # Default ON here so a plain `cmake ..` matches CI (which passes
     # -DULTRACANVAS_BUILD_SHARED=ON on every row); an explicit -D...=OFF still
-    # wins. Android keeps a static core (no suite there). Windows forces it ON
+    # wins. Android keeps a static core (no suite there), and so does
+    # WebAssembly: a wasm "shared library" is a dynamic-linking side module,
+    # and the page is one statically linked program (the WASM block below
+    # forces it, whatever the cache holds). Windows forces it ON
     # below whenever the LaTeX plug-in is built, whatever this says.
-    if(ANDROID)
+    if(ANDROID OR EMSCRIPTEN)
         option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
     else()
         option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" ON)
@@ -95,6 +98,13 @@ option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires bac
 # (Android, WASM). Without it, raster image loading/saving and PixelFX compile
 # to their HAS_LIBVIPS-guarded fallbacks; the QOI codec keeps working.
 option(ULTRACANVAS_ENABLE_VIPS "Enable libvips-backed raster image processing" ON)
+# WebAssembly only. ON builds with -pthread (Web Workers; the page then needs
+# the cross-origin isolation headers for SharedArrayBuffer). OFF builds a
+# single-threaded program that any static host can serve; it must link
+# against a sysroot built with WASM_THREADS=0 (OS/WASM/build-wasm-sysroot.sh),
+# and std::thread fails at run time, so Album / Filer background scans do not
+# run. Measured against each other by the wasm-build workflow's variants.
+option(ULTRACANVAS_WASM_THREADS "WebAssembly: build with -pthread (Web Workers)" ON)
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
@@ -185,6 +195,12 @@ endif()
 # vips) must come from a wasm sysroot on PKG_CONFIG_PATH under emcmake —
 # see OS/WASM/README.md.
 if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
+    # The wasm sysroot on CMAKE_FIND_ROOT_PATH, for the find_package(ZLIB)
+    # of the Models plugin (FBX, .blend) and the VirtualFS bridge; a no-op
+    # when the root CMakeLists.txt included it already.
+    include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasWasmSysroot.cmake")
+    # One statically linked program: see the option above.
+    set(ULTRACANVAS_BUILD_SHARED OFF CACHE BOOL "Build shared library instead of static" FORCE)
     set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
     set(ULTRACANVAS_ENABLE_AUDIO OFF CACHE BOOL "Enable audio playback & recording (requires backend lib)" FORCE)
     set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)" FORCE)
@@ -1069,8 +1085,11 @@ endif()
 # CUPS is the printing system on both Linux and macOS, with the same library
 # and the same API, so the backend is one file in core/ rather than a copy
 # under each platform directory that would drift apart. Without CUPS the
-# module still builds and simply registers no printer backend.
-if(UNIX)
+# module still builds and simply registers no printer backend. Not in the
+# browser, which has no printing system: the toolchain finds host programs,
+# so the host's cups-config answered for the wasm build and the link asked
+# for a -lcups that does not exist there.
+if(UNIX AND NOT EMSCRIPTEN)
     pkg_check_modules(ULTRACANVAS_CUPS QUIET cups)
     if(NOT ULTRACANVAS_CUPS_FOUND)
         # Older CUPS installs ship cups-config instead of a .pc file.
@@ -1977,21 +1996,36 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
             ${FONTCONFIG_LIBRARIES}
     )
     # Core widgets (Album, Filer) spawn std::thread and libvips runs thread
-    # pools, so the whole program must be built with -pthread; exception
-    # handling must use the wasm EH instructions the sysroot libraries were
-    # compiled with (-fwasm-exceptions), not Emscripten's default
-    # abort-on-throw. PUBLIC so app executables inherit both.
+    # pools, so the whole program is built with -pthread unless
+    # ULTRACANVAS_WASM_THREADS is OFF (then against a sysroot built the same
+    # way); exception handling must use the wasm EH instructions the sysroot
+    # libraries were compiled with (-fwasm-exceptions), not Emscripten's
+    # default abort-on-throw. PUBLIC so app executables inherit both.
+    if(ULTRACANVAS_WASM_THREADS)
+        set(_uc_wasm_thread_compile -pthread)
+        set(_uc_wasm_thread_link -pthread -sPTHREAD_POOL_SIZE=8)
+    else()
+        set(_uc_wasm_thread_compile)
+        set(_uc_wasm_thread_link)
+        message(STATUS "WebAssembly: single-threaded build (ULTRACANVAS_WASM_THREADS=OFF)")
+    endif()
     target_compile_options(${ULTRACANVAS_LIB_NAME} PUBLIC
-            -pthread
+            ${_uc_wasm_thread_compile}
             -fwasm-exceptions
     )
     # PUBLIC so app executables linked against the static core inherit the
     # Emscripten runtime settings the backend depends on.
     target_link_options(${ULTRACANVAS_LIB_NAME} PUBLIC
-            -pthread
+            ${_uc_wasm_thread_link}
             -fwasm-exceptions
-            -sPTHREAD_POOL_SIZE=8
             -sALLOW_MEMORY_GROWTH=1
+            # Growth with threads otherwise costs every JS-side heap access
+            # a check that the buffer was not replaced (Emscripten warns
+            # "-pthread + ALLOW_MEMORY_GROWTH may run non-wasm code
+            # slowly"). 1 uses the browser's growable SharedArrayBuffer
+            # where it exists (Chromium, Safari; Firefox from 154) and keeps
+            # the checked path elsewhere; 2 would require it.
+            -sGROWABLE_ARRAYBUFFERS=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1
             # The backend's EM_ASM bridges (clipboard, dialogs, downloads,
@@ -2099,7 +2133,11 @@ endif()
 # dependencies (cairo/pango/glib/fontconfig/harfbuzz/freetype/tinyxml2/vips) are re-exported as
 # bare -l<name> usage requirements, so the -L dirs must propagate (PUBLIC) to every consumer (the
 # final .exe) exactly like on macOS above — otherwise lld-link reports "could not open 'cairo.lib'".
-if(WIN32)
+# And under Emscripten: the wasm sysroot's lib/ is no default search directory of wasm-ld either.
+# With libvips on, LIBVIPS_LIBRARY_DIRS (PUBLIC, above) happened to carry it for every library;
+# a -DULTRACANVAS_ENABLE_VIPS=OFF build then failed to find pango, cairo, glib and the rest
+# (wasm-build.yml's no-vips variant, 2026-10-13).
+if(WIN32 OR EMSCRIPTEN)
     target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${CAIRO_LIBRARY_DIRS}
             ${PANGO_LIBRARY_DIRS}

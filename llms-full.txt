@@ -1498,7 +1498,13 @@ future.
 - `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync` (an async response
   cut off after its status line carries `UltraNetResponse::transferError`,
   `IsComplete()` and `exceededReceiveLimit`)
-- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`
+- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`; any request writes
+  its body to a file through `UltraNetHttpOptions::outputFilePath`, resumes a
+  partial one with `resumeOutputFile` (`resumeFromOffset` for a caller's own
+  partial copy), follows redirects to https:// only with
+  `httpsOnlyRedirects`, has no whole-transfer timeout but a `stallTimeoutMs`
+  when it writes a file, and sees the final response's headers before the
+  body through `UltraNetHttpRequest::onHeaders`, which can veto the body
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
@@ -1540,7 +1546,8 @@ future.
   reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
 - `UltraNet_ConvertToUtf8` (bytes in a named charset to UTF-8, through iconv
   where the build has it; what mail bodies and web pages are read with)
-- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
+- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`,
+  `UltraNet_PauseRequest`, `UltraNet_ResumeRequest`, `UltraNet_IsRequestPaused`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 
 **Plugin Categories (Tier 2 / Tier 3, located under `Plugins/UltraNet/`):**
@@ -1562,7 +1569,8 @@ loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
 worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
-`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNet_GetTransferStats`, `UltraNet_PauseRequest` /
+`UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
 on libcurl. Remaining gaps are per-function and environment-dependent —
@@ -1614,11 +1622,17 @@ Store, and any other UltraCanvas-based application that needs local or
 networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
-**Implementation status (this branch):** Concept / design only. Public
-surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
-rollout is SQLite core + registry + query/transaction/migration API
-(Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
-remaining drivers and at-rest encryption (Stage 3).
+**Implementation status (this branch):** Stage 1 implemented, and the
+PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
+parameterized queries, prepared statements, transactions and versioned
+migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
+`Tests/UltraDatabase`); the PostgreSQL driver
+(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
+found, verifies TLS by default and reads its password from UltraVault, and
+UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
+networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
+queries, pooling, streaming cursors and at-rest encryption. Details in
+`Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
 
@@ -1692,9 +1706,9 @@ compatibility routing are planned for Stages 2-3. See
 ### **8. UltraCrypt**
 
 Cryptographic services — the single place where hashing, message
-authentication, authenticated encryption, key derivation and secure random
-generation are implemented, so no application, plugin or sibling module has
-to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
+authentication, authenticated encryption, digital signatures, key derivation
+and secure random generation are implemented, so no application, plugin or
+sibling module has to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
 see `Docs/Modules/UltraCrypt/README.md`.
 
 Scope is **data at rest and data integrity**. Transport security stays in
@@ -1729,6 +1743,10 @@ backing library is never visible in a public header.
   `UltraCrypt_IsAeadAvailable`
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`
+- `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
+  `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
+  `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
+  and the `UltraCrypt_GetSignature*Size` family (Ed25519, RFC 8032)
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
@@ -2315,10 +2333,11 @@ as the export would make it, for an editor's viewer), proxy media (small
 stand-ins for large clips, made once into a cache folder and switched in
 for previews and drafts), hardware encoders by choice (software, any that
 works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media
-Foundation, each tried on the machine before it is used),
+Foundation, each tried on the machine before it is used), free audio clips
+(voice-overs and sound effects at given times, the music ducking under
+voice-overs),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
-command-line tool. Planned: keyframed parameters,
-several free audio tracks.
+command-line tool. Planned: keyframed parameters.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
@@ -2329,6 +2348,7 @@ several free audio tracks.
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
+  `VideoFXAudioClip` (`VideoFXExportSettings::audioClips`; `Sound`, `VoiceOver`),
   `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
@@ -2386,7 +2406,7 @@ several free audio tracks.
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
   MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
-  CrossfadeGains, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
+  CrossfadeGains, ValidateAudioClip, AudioClipGain, AudioClipSeconds, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
   TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
   FocusBounds, FitMotionToFocus, KeepFocusInView, DetectFacesGray,
   DetectFaces, ProjectToJsonText, ProjectFromJsonText, SaveProjectFile,
@@ -51489,7 +51509,7 @@ SVG goes through three parts of the framework, each for one job:
 
 | Job | Component | Behind it |
 |---|---|---|
-| Show an SVG file on screen, or a thumbnail of one | `UltraCanvasImageElement`, `UltraCanvasMediaViewer`, `UCImage` | librsvg, through the parse-once `UCSvgDocument` cache (`libspecific/Cairo/SvgDocumentCairo.h`) |
+| Show an SVG file on screen, or a thumbnail of one | `UltraCanvasImageElement`, `UltraCanvasMediaViewer`, `UCImage` | librsvg, through the parse-once `UCSvgDocument` cache (`libspecific/Cairo/SvgDocumentCairo.h`); where libvips has no `svgload` (the WebAssembly sysroot) or refuses the file, the Vector plugin's reader through the vector preview seam (`UltraCanvasVectorPreview.h`), the parsed document kept and rendered by the core's vector renderer at each requested size |
 | Turn an SVG into pixels at a chosen size | `UltraCanvasVectorRaster` (`InspectVectorFile`, `RasterizeVectorFile`) | librsvg via libvips, so the result is rendered *at* the requested size |
 | Read an SVG into an editable drawing, or write one | `VectorConverter::SVGConverter` in the Vector plugin | tinyxml2 and the `VectorStorage::VectorDocument` model; `<style>` sheets through the HTMLReader's CSS parser |
 
@@ -64956,7 +64976,8 @@ The vector format plugins (`UltraCanvasCDRElement`, `UltraCanvasEPSElement`,
 `UltraCanvasXARElement`) are **not** in these tables on purpose: they are
 decoders behind `UltraCanvasVectorElement` and `UltraCanvasImageElement`, which
 are what an application reaches for. An SVG has no element of its own either:
-`UltraCanvasImageElement` shows it (through librsvg). Same for
+`UltraCanvasImageElement` shows it (through librsvg, or the Vector plugin's
+reader where libvips has no SVG loader). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
 
 ## Creating them
@@ -65803,7 +65824,12 @@ it registered:
   the process-wide font machinery);
 - the Filer's **Display > Thumbnails** and **Display > Detail view** settings
   pages stop greying the formats out, because `GetPreviewableFormats()` asks
-  the same seam.
+  the same seam;
+- `UltraCanvasImageElement` and `UCImage` show an SVG in a build whose libvips
+  has no `svgload` - the WebAssembly sysroot's - by reading it through the
+  seam and rendering the kept document with the core's vector renderer at
+  each requested size; every SVG icon of a WebAssembly page comes from here.
+  A libvips that refuses an SVG gets the same second reader on the desktop.
 
 ```cpp
 RegisterVectorFormatsPlugin();                    // once, at startup
@@ -67776,7 +67802,7 @@ FILE: Docs/UltraCanvas/UltraCanvasWebAssembly.md
 
 # UltraCanvas on WebAssembly
 
-<!-- doc-check: std::vector<uint8_t> documentBytes; -->
+<!-- doc-check: std::vector<uint8_t> documentBytes; void ShowPageFor(const std::string& url); -->
 
 **Status: experimental.** The framework builds with Emscripten and runs in
 Chromium: windows render through the same Cairo/Pango pipeline as the desktop
@@ -67811,7 +67837,7 @@ onto an HTML `<canvas>`.
 | Printing | Native print dialog | `ShowPrintDialog()` opens the text in a new window and calls `window.print()`. |
 | Folder watch, file lock, volume monitor, hardware info | Native probes | The core fallbacks: polling, "unknown", "null" backend. |
 | Spell checking | System service or Hunspell | Hunspell only, with dictionaries preloaded into the virtual FS. |
-| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. |
+| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. `-DULTRACANVAS_WASM_THREADS=OFF` builds single-threaded against a sysroot built with `WASM_THREADS=0`: no headers needed, and `std::thread` fails at run time. |
 | Networking (UltraNet), OpenGL, audio, video, most file-type plugins | Available | Compiled out (`UltraCanvas/CMakeLists.txt` forces them off for `EMSCRIPTEN`). |
 
 ### Application lifetime
@@ -67908,9 +67934,23 @@ WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::
 
 `WASMBrowser` also wraps `alert` / `confirm` / `prompt`, the console,
 `navigator.userAgent`, the screen size and `localStorage`. `WASMURL` reads the
-page URL, its query parameters (`GetQueryParameter`, `GetAllQueryParameters`)
-and hash, and can navigate or reload. `WASMTime` exposes `performance.now()`
-and performance marks.
+page URL, its path, its query parameters (`GetQueryParameter`,
+`GetAllQueryParameters`) and hash, and can navigate or reload. An application
+that shows several pages from one module uses its History API instead of
+navigating: `PushUrl` changes the address bar and adds an entry the back
+button returns to, `ReplaceUrl` rewrites the current entry, and
+`SetOnNavigate` hears the back and forward buttons (every `popstate`, a hash
+change included) with the new URL, on the main thread:
+
+```cpp
+WASMURL::SetOnNavigate([](const std::string& url) { ShowPageFor(url); });
+WASMURL::PushUrl("/the-plan/");          // on a click; does not call the callback
+```
+
+`WASMTime` exposes `performance.now()` and performance marks. The window logs
+its first presented frame to the browser console once, as `first frame
+presented N ms after navigation start`: the time to first paint including the
+download, compilation and start-up, from the browser's own clock.
 
 ## Serving an application
 
@@ -67936,9 +67976,51 @@ forms with text inputs, a text area and a checkbox, a footer). The second
 is the pattern for a web-page-like application: one scrollable container
 filling the window, sections stacked by Block layout so wrapped text gets
 its real height, Flex rows for the horizontal pieces, popup menus anchored
-under their buttons, and `Maximize()` under `__EMSCRIPTEN__` to fill the
-viewport. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
+under their buttons, `Maximize()` under `__EMSCRIPTEN__` to fill the
+viewport, and several pages from one module through the History API: a
+link into the site pushes `?page=<site path>` and rebuilds the page's
+sections, `SetOnNavigate` rebuilds them for the back and forward buttons,
+and the address read at start decides the first page, so a reload keeps it.
+The rebuild is posted to the UI thread (`PostToUIThread`), never done inside
+the click of a button the rebuild removes. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
 at the repository root).
+
+## The demo application in the browser
+
+The framework's demo application (`Apps/DemoApp/`) builds as a page too:
+`emcmake cmake` at the repository root produces `UltraCanvasDemo.html`, the
+whole page tree of the desktop demo - the elements, the layout system, the
+charts and diagrams, the vector and bitmap formats, the 3D model readers,
+the text documents, the Filer and Album widgets, the module pages - less
+what the browser has no backend for:
+
+| Left out | Why |
+|---|---|
+| Audio Player, Level Meter, Audio FX, and the Waveform, Spectrogram and Audio Analysis charts | `ULTRACANVAS_ENABLE_AUDIO` is off in the browser: no playback, and the sample tracks the charts analyse are decoded by the audio module |
+| Video Player | `ULTRACANVAS_ENABLE_VIDEO` is off: the null backend plays nothing (the Video Timeline, a pure element, stays) |
+| STL 3D Models | its one sample is a 25 MB file; the model formats page shows the other readers from the smaller samples |
+| OpenGL, CDR, XAR, EPS, PDF, OCR, Vectorizer, LaTeX, Ultra Net | compiled out by `UltraCanvas/CMakeLists.txt` for every WebAssembly build, so their pages are absent or say so, as on a desktop build without them |
+
+**SVG** takes a different road in the browser: the wasm sysroot's libvips has
+no SVG loader, so `UCImage` reads an .svg through the vector preview seam
+the Vector plugin installs and renders it with the core's vector renderer
+(`UltraCanvasVectorConverters.md`, *the vector preview provider*). The
+demo registers the plugin in its `main.cpp`, so its SVG page and every SVG
+icon - the toolbars', the flat buttons', the tree's - render as on the
+desktop; an application that registers no plugins gets "format not
+supported" for them.
+
+The pages' files - the fonts, icons, images, vector samples, the smaller 3D
+models, the docs and the demo's own sources for the source button - are
+preloaded into the virtual filesystem at `/share/...` by the demo's CMake
+block, about 50 MB downloaded once. The page's query string replaces the
+command line: `UltraCanvasDemo.html?component=piecharts` opens that page
+(and, like `--component`, leaves the About window out), and `?about=0` is
+`--no-about`. The main window maximizes to the browser viewport. The source
+is three `__EMSCRIPTEN__` branches: the static application object in
+`main.cpp`, the query string there, and the page registrations left out in
+`UltraCanvasDemo.cpp`. `wasm-build.yml` builds the page in CI, with the two
+sample applications.
 
 ## Known limitations
 
@@ -75544,15 +75626,15 @@ FILE: Docs/Modules/UltraCrypt/README.md
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
 **Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
-**Version:** 0.1.0
+**Version:** 0.2.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-08-10
+**Last Modified:** 2026-10-13
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
-authenticated encryption, key derivation and secure random generation are
-implemented, so that no application, plugin or sibling module ever has to
-write its own.
+authenticated encryption, digital signatures, key derivation and secure
+random generation are implemented, so that no application, plugin or sibling
+module ever has to write its own.
 
 It follows the same rules as UltraNet and UltraDatabase — clear structure,
 names understandable from the name itself, `UltraCryptResult` from every
@@ -75569,7 +75651,8 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation and HKDF-SHA-256/512. (The RFC 4648 Base32/Base64
+Argon2id key derivation, HKDF-SHA-256/512 and Ed25519 signatures (§5.8).
+(The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
 Base32 decoder.) First consumer: the UCD document encryption envelope
 (`UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, tested by
@@ -75587,8 +75670,8 @@ accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
 which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18.
 
-**Not yet implemented:** the public-key surface (§2, no consumer). BLAKE3-256,
-once listed as optional, has been dropped altogether (§9).
+**Not yet implemented:** key agreement and X.509 (§2, no consumer).
+BLAKE3-256, once listed as optional, has been dropped altogether (§9).
 
 ---
 
@@ -75666,9 +75749,9 @@ Two caveats stated plainly:
 ## 2. Scope
 
 **In scope** — data-at-rest and data-integrity primitives: hashing, HMAC,
-authenticated encryption (AEAD), password-based and key-derivation functions,
-cryptographically secure random generation, constant-time comparison, and
-secure (zeroizing) memory.
+authenticated encryption (AEAD), digital signatures (Ed25519), password-based
+and key-derivation functions, cryptographically secure random generation,
+constant-time comparison, and secure (zeroizing) memory.
 
 **Out of scope:**
 
@@ -75676,9 +75759,9 @@ secure (zeroizing) memory.
   UltraCrypt never opens a socket and never validates a certificate.
 - **Credential storage and policy.** That is UltraVault's job; UltraVault
   *consumes* UltraCrypt for its file-backed fallback backend.
-- **Public-key cryptography** (signatures, key agreement, X.509). No consumer
-  needs it yet. The surface is arranged so `UltraCrypt_Sign` /
-  `UltraCrypt_Verify` can be added later without disturbing anything here.
+- **Key agreement and X.509.** No consumer needs them. Signatures, the one
+  public-key operation a signed catalog or update needs, are in (§5.8); the
+  rest can be added the same way without disturbing anything here.
 - **Protocol-level constructions** (TOTP, the UCD envelope, SuperVault's
   request flow). Those live in their consumers and are built *from* these
   primitives.
@@ -76362,6 +76445,76 @@ different one.
 
 ---
 
+### 5.8 Digital signatures (Ed25519)
+
+One scheme, Ed25519 (RFC 8032): deterministic, 64-byte detached signatures,
+32-byte public keys, 64-byte secret keys in the backend's form (the 32-byte
+seed with the public key appended). The verifier holds nothing but a public
+key, so a signing key never leaves the machine that signs. This is what a
+signed catalog, manifest or update is checked with.
+
+```cpp
+enum class UltraCryptSignatureAlgorithm : uint8_t { Ed25519 };
+
+size_t UltraCrypt_GetSignaturePublicKeySize(UltraCryptSignatureAlgorithm); // 32
+size_t UltraCrypt_GetSignatureSecretKeySize(UltraCryptSignatureAlgorithm); // 64
+size_t UltraCrypt_GetSignatureSeedSize(UltraCryptSignatureAlgorithm);      // 32
+size_t UltraCrypt_GetSignatureSize(UltraCryptSignatureAlgorithm);          // 64
+bool   UltraCrypt_IsSignatureAvailable(UltraCryptSignatureAlgorithm);
+
+// A fresh pair from the CSPRNG.
+UltraCryptResult UltraCrypt_GenerateSignatureKeyPair(
+        UltraCryptSignatureAlgorithm, std::vector<uint8_t>& outPublicKey,
+        UltraCryptSecureBuffer& outSecretKey);
+
+// The pair a 32-byte seed determines; a seed kept in a vault is the whole
+// signing identity.
+UltraCryptResult UltraCrypt_SignatureKeyPairFromSeed(
+        UltraCryptSignatureAlgorithm, const UltraCryptSecureBuffer& seed,
+        std::vector<uint8_t>& outPublicKey, UltraCryptSecureBuffer& outSecretKey);
+
+// The public key a secret key carries.
+UltraCryptResult UltraCrypt_GetSignaturePublicKey(
+        UltraCryptSignatureAlgorithm, const UltraCryptSecureBuffer& secretKey,
+        std::vector<uint8_t>& outPublicKey);
+
+// Deterministic detached signature over the exact bytes given.
+UltraCryptResult UltraCrypt_Sign(UltraCryptSignatureAlgorithm,
+                                 const UltraCryptSecureBuffer& secretKey,
+                                 const void* data, size_t size,
+                                 std::vector<uint8_t>& outSignature);
+
+// SignatureInvalid when the signature does not match the message and key —
+// one code whether the message, the signature or the key is off.
+UltraCryptResult UltraCrypt_Verify(UltraCryptSignatureAlgorithm,
+                                   const std::vector<uint8_t>& publicKey,
+                                   const void* data, size_t size,
+                                   const std::vector<uint8_t>& signature);
+
+// The same over a file's bytes as they are on disk.
+UltraCryptResult UltraCrypt_SignFile(UltraCryptSignatureAlgorithm,
+                                     const UltraCryptSecureBuffer& secretKey,
+                                     const std::string& filePath,
+                                     std::vector<uint8_t>& outSignature);
+UltraCryptResult UltraCrypt_VerifyFile(UltraCryptSignatureAlgorithm,
+                                       const std::vector<uint8_t>& publicKey,
+                                       const std::string& filePath,
+                                       const std::vector<uint8_t>& signature);
+```
+
+Rules: a key or signature of the wrong length is refused with
+`InvalidKeySize` / `InvalidArgument` before anything is checked; a
+verification failure is `SignatureInvalid` and nothing else, since a verifier
+has no business telling a wrong key from a wrong byte. Signing is
+deterministic, so there is no nonce to store and no entropy failure at
+signing time. Covered by the RFC 8032 §7.1 vectors (TEST 1, 2, 3 and
+SHA(abc)) plus a flipped message bit, a flipped signature bit, a wrong key and
+a file with a byte appended.
+
+*Serves:* UltraStore's signed catalog, and any signed manifest or update.
+
+---
+
 ## 6. Usage sketches
 
 **UCD v2 section encryption (§4.3 pipeline):**
@@ -76419,7 +76572,8 @@ is part of the deliverable, not a follow-up:
 
 - **Published test vectors, all mandatory** (implemented in
   `Tests/UltraCryptTests.cpp`): FIPS 180-4 (SHA-1 and SHA-2), RFC 2202 / 4231
-  (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 4648 (Base32/64), RFC 8439
+  (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 4648 (Base32/64), RFC 8032
+  (Ed25519), RFC 8439
   (ChaCha20-Poly1305) plus the XChaCha20-Poly1305 vectors from
   draft-irtf-cfrg-xchacha and libsodium's own suite, NIST CAVP GCM for the
   interop-only AES path, and RFC 4226 App. D / RFC 6238 App. B once the OTP
@@ -76450,7 +76604,7 @@ is part of the deliverable, not a follow-up:
 | **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
-| **4** | Optional additions as needed: XChaCha20-Poly1305 at volume, public-key surface |
+| **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog. Still optional: XChaCha20-Poly1305 at volume, key agreement |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.
@@ -77922,9 +78076,33 @@ UltraNet_ResolveUrl("https://x.org/app/main.wasm", "../data/a.json", url);
 // url == "https://x.org/data/a.json"; a URL with a control character in it
 // (a CR or LF that would end the request line) is refused
 
-// File download streamed straight to disk
+// File download streamed straight to disk. No whole-transfer timeout (a
+// download is as long as the file is large), a 30 s stall timeout instead.
 UltraNet_HttpDownloadFile("https://cdn.example.com/big.zip",
                           "/tmp/big.zip");
+
+// A download that can be resumed, paused and checked before its body: any
+// request writes to a file through outputFilePath, on the async path too.
+UltraNetHttpRequest dl;
+dl.url = "https://cdn.example.com/big.zip";
+dl.options.outputFilePath     = "/tmp/big.zip.part";
+dl.options.resumeOutputFile   = true;   // the file's size is the Range start
+dl.options.httpsOnlyRedirects = true;   // never bounced onto http://
+dl.options.stallTimeoutMs     = 60000;  // Timeout when nothing moves for 60 s
+dl.onHeaders = [](const UltraNetResponse& head) {
+    // The final response's headers, before any body: 206 means the rest of
+    // the file is coming, 200 that the server sent it all and the partial
+    // file was replaced. Return false to end the transfer (Cancelled).
+    return head.contentLength <= kMaxPackageBytes;
+};
+dl.onDownloadProgress = [](int64_t now, int64_t total) {
+    // Figures of the whole file, the resumed bytes included.
+};
+UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetResponse& resp) {
+    // The file is closed and complete here when resp.IsComplete().
+});
+UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
+UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
 ```
 
 ```cpp
@@ -79445,11 +79623,11 @@ segments.
 > speech, project files, waveforms for timelines and players, a preview
 > that renders any frame of a timeline without an export, proxy media for
 > smooth editing of large clips, hardware encoders (NVENC, Quick Sync,
-> VA-API, AMF, VideoToolbox, Media Foundation) by choice, GIF and
+> VA-API, AMF, VideoToolbox, Media Foundation) by choice, voice-overs and
+> sound effects placed at any time, GIF and
 > audio-only output, lossless cut, the background job and the `videofx`
 > command-line tool work today, on FFmpeg 4.4 to 8.x.
-> Keyframed parameters and several free audio tracks are planned (see
-> *Roadmap*).
+> Keyframed parameters are planned (see *Roadmap*).
 
 ---
 
@@ -79987,6 +80165,67 @@ correctly timed (if unusual) export, and so is music under silent clips.
 
 ---
 
+## Voice-overs and sound effects
+
+Besides the segments' own sound and the music, an export can hold any
+number of **free audio clips**: a voice-over, a sound effect, a sting. Each
+is a sound file placed at a time on the timeline, independent of the cuts,
+in `VideoFXExportSettings::audioClips`.
+
+```cpp
+VideoFXExportSettings s = VideoFXExportSettings::WebMP4(1080);
+s.music = VideoFXMusic::FromFile("song.mp3");
+
+VideoFXAudioClip voice = VideoFXAudioClip::VoiceOver("narration.wav", 2.0);   // at 2 s
+voice.fadeOut = 0.5;
+s.audioClips.push_back(voice);                                     // the music dips under it
+
+VideoFXAudioClip whoosh = VideoFXAudioClip::Sound("whoosh.wav", 7.5, 0.8);    // at 7.5 s, 80 %
+whoosh.start = 0.1;                                                // skip the file's first 0.1 s
+whoosh.end = 0.9;                                                  // and stop at 0.9 s of it
+s.audioClips.push_back(whoosh);                                    // over the music, not ducking it
+
+VideoFX_Export(timeline, "story.mp4", s);
+```
+
+| Field | Default | Notes |
+|---|---|---|
+| `path` | - | A sound file, or a video whose sound is wanted |
+| `at` | 0 | Seconds into the export where it starts |
+| `start`, `end` | 0, 0 | The part of the file played; `end` 0 = to the file's end |
+| `volume` | 1 | 0..4 |
+| `fadeIn`, `fadeOut` | 0 | Seconds at the clip's own ends; fades longer than the clip share it |
+| `ducksMusic` | false | The music dips under it as under the segments' sound (`VoiceOver` sets it) |
+
+- **Mixing.** The clips are mixed with the segments' sound before the
+  music is added. The ducker hears the voice-overs, so the music dips under
+  narration exactly as it does under speech in a clip. Sound effects come
+  in after the ducker, so a whoosh does not pull the music down.
+- **Placement.** Clips may overlap each other and the cuts. A clip that
+  runs past the end of the export is cut off there: the export is not
+  lengthened.
+- **Sound in a silent export.** A timeline of photos or silent clips with a
+  voice-over gets a sound track.
+- **Resources.** Each clip's file is opened when the timeline reaches it and
+  let go when it has played, so a hundred sound effects do not keep a
+  hundred files open.
+- **Refused before anything is written:** a missing file (`FileNotFound`),
+  one without sound (`NoMediaStreams`), and a start past the file's end or
+  a value out of range (`InvalidArgument`).
+- **Elsewhere.** The clips are saved in project files, play in slideshows
+  (through the settings) and in drafts. The preview is picture only, and
+  ignores them like the music.
+
+From the command line, `--sound FILE@SECONDS[:VOLUME]` places a sound
+effect and `--voice FILE@SECONDS[:VOLUME]` a voice-over. Both can be
+repeated:
+
+```
+videofx concat story.mp4 a.mp4 b.mp4 --music song.mp3 --voice intro.wav@1.5 --sound whoosh.wav@8:0.8
+```
+
+---
+
 ## Effects
 
 Effects are typed values made by the `VideoFXEffect::` factories; VideoFX
@@ -80137,6 +80376,8 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `keyframeInterval` | encoder default | Seconds between keyframes; short = quick to seek (proxies use 0.5) |
 | `acceleration` | `Auto` | Software, any hardware encoder (`Hardware`), or one family; see *Hardware encoders* |
 | `sampleRate`, `channels` | first audio source / stereo | Mono only when every source is mono |
+| `music` | none | Background music; see *Background music* |
+| `audioClips` | none | Voice-overs and sound effects at given times; see *Voice-overs and sound effects* |
 
 Presets: `WebMP4(height)`, `WebM(height)`, `AnimatedGif(width, fps)`,
 `MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`, and the draft
@@ -80383,6 +80624,7 @@ videofx faces family.jpg                                 # the faces the detecto
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
+videofx concat story.mp4 a.mp4 b.mp4 --music song.mp3 --voice intro.wav@1.5 --sound boom.wav@8
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --save-project trip.vfxproj
 videofx project trip.vfxproj                             # what it holds, missing media
 videofx render trip.vfxproj                              # render a saved project
@@ -80436,7 +80678,8 @@ generates its own clips, so it needs no media files.
 | 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
-| 3 | Keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
+| 3g | Free audio clips: voice-overs and sound effects at given times, trimmed, faded, the music ducking under voice-overs | **Done** |
+| 3 | Keyframed effect and overlay parameters | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
 | 4c | Preview: any frame of a timeline rendered as the export would make it, without an export (`VideoFXPreview`); a slideshow's plan as segments | **Done** |
@@ -84246,7 +84489,9 @@ progress, *proxy waiting*, *proxy 40 %*, and *proxy* when it is ready. From
 then on the viewer and the playback draft play that clip from its proxy.
 The **export always reads the originals**, at full quality.
 - Proxies are made one at a time on a thread of their own, so scrubbing
-  never waits behind one.
+  never waits behind one. They are encoded on the graphics hardware where
+  one works (NVENC, Quick Sync, VA-API, AMF, VideoToolbox, Media
+  Foundation), and in software where none does.
 - A clip no taller than a proxy, which is already quick, gets none.
 - Proxies are kept in the user's cache folder (`~/.cache/VideoFX/Proxies`
   and the like), so a project opened again plays from them at once.
@@ -84396,6 +84641,187 @@ its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.
 
 ==============================================================================
+FILE: Docs/UltraPress/README.md
+==============================================================================
+
+# UltraPress
+
+**Status:** Phase 1 under way. UltraPress 0.4.1 is the headless engine, the
+`ultrapress` program - the commands and the editor window -, the block
+renderer on real elements and the WordPress importer: a site as a folder of JSON files, the
+block registry, the HTML shadow of every page, the static publish, every
+block as UltraCanvas elements, blocks added, moved, removed and edited
+with the page re-rendered live, and a WordPress export read into a site.
+The publisher onto web hosts and the WebAssembly output follow
+([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
+**Last Modified:** 2026-10-13
+**Author:** UltraCanvas Framework / ULTRA OS
+
+UltraPress is the website and shop builder of ULTRA OS: a WordPress-class
+system built on UltraCanvas whose published pages are rendered by the
+framework itself, compiled to WebAssembly, with a plain HTML shadow of every
+page for search engines, link previews, mail clients and screen readers.
+
+This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
+
+## The window
+
+```bash
+ultrapress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
+ultrapress mysite --check     # render every page without a window; element counts and warnings
+```
+
+`ultrapress` is one program: a command word first (`new`, `check`, `page`,
+`publish`, `import`, `help`) runs that command without a window, a site
+folder opens the editor. There is no second `UltraPress` binary: two names
+that differ only in case are one name on macOS and Windows.
+
+The left column lists the pages and the current page's blocks: select one,
+move it with the arrows, remove it, or add one after the selection from
+the drop-down of every registered type. The right column is the selected
+block's properties, generated from the registry - a text input for a
+line, a text area for paragraphs and HTML, a checkbox for a flag, an
+integer for a number, and links, items and lists as JSON applied as soon
+as it parses - or, with no block selected, the page's title, description,
+status and pinning. Every change re-renders the page in the middle;
+*Save site* writes the folder (`ui/UltraPressWindow.h`).
+
+The page is rendered on real UltraCanvas elements by the block renderer
+(`Apps/UltraPress/render/UltraPressRender.h`, target `UltraPressRender`),
+built the way the ultraos.eu front page demo is: bands whose centred
+column is Block-laid-out so wrapped text measures, wrapping Flex rows for
+columns and buttons. The hero and call to action sit on the theme's night
+colours, FAQs are an accordion, forms are real inputs whose fields reach
+`RenderOptions::onFormSubmit`, the newsletter calls
+`onNewsletterSubscribe`, links call `onLink` with a page's path or a URL,
+rich text and HTML blocks go through the HTML reader's element builder,
+and a picture the site folder lacks is a captioned tile. The theme's
+colours (`accent`, `ink`, `inkSoft`, `paper`, `paperSoft`, `rule`,
+`night`, `nightSoft`, `onDark`, `tile`) and `fontFamily` reach it through
+`PaletteFromTheme`. Under Emscripten the same renderer is the published
+page; on the desktop it is the editor's preview, pixel for pixel.
+
+## The command line
+
+```bash
+ultrapress new mysite --name "My site" --url https://my.example   # a starter site
+ultrapress check mysite                                           # every problem, exit 1 when there is one
+ultrapress page mysite home                                       # the front page's HTML shadow, to stdout
+ultrapress publish mysite out                                     # the static tier, into out/
+ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the renderer referenced (later)
+ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
+```
+
+`import` reads a WordPress export (Tools > Export in WordPress, the WXR
+file): the site's name, address, language and owner, every page and post
+with its slug, status and date, the front page (the page named home, or
+`--front <slug>`), the menus with their nesting, and the bodies as blocks.
+The block editor's markers map onto the registry where a block exists -
+paragraphs, headings, images, covers, quotes, buttons, columns, galleries,
+lists, spacers, HTML - and everything else, and classic content, becomes
+rich text; the report says what was kept that way. Attachment URLs are
+rewritten to `media/<year>/<month>/<file>` and fetched with `--media`
+(through UltraNet) or listed. A post's dated WordPress address is reported
+as a redirect to its new path. `--no-drafts` leaves drafts out.
+
+`publish` writes `index.html` for the front page and `<slug>/index.html` for
+every other published page, `sitemap.xml`, `robots.txt`, `feed.xml` (the
+posts), an `.htaccess` with the cache and type rules an Apache host needs,
+and copies `media/`. Upload the folder to any web host; the files are all it
+takes. Drafts are left out unless `--drafts` is given.
+
+## The site folder
+
+```
+mysite/
+├── site.json        name, tagline, url, language, languages, owner
+├── theme.json       name, colors (name → #rrggbb), fontFamily
+├── menus.json       {"main": [...], "footer": [...]}; an item has title and page (a slug) or url, and items
+├── pages/<slug>.json
+└── media/           pictures and downloads; a block names them by path
+```
+
+A page:
+
+```json
+{
+  "slug": "the-plan", "title": "The development plan", "kind": "page",
+  "status": "published", "date": "2026-10-13", "pinned": false,
+  "seo": {"description": "…", "image": "media/plan.png", "noindex": false},
+  "blocks": [
+    {"type": "hero", "props": {"kicker": "…", "title": "…", "text": "…",
+                               "buttons": [{"title": "Learn more", "page": "about", "primary": true}]}},
+    {"type": "faq", "props": {"items": [{"q": "…", "a": "…"}]}}
+  ]
+}
+```
+
+`slug` `home` is the front page, at `/`; every other page is at `/<slug>/`.
+`kind` is `page` or `post` (dated, in the feed, an `<article>`). `status` is
+`published`, `draft` or `scheduled`. A link is `{"page": "<slug>"}` or
+`{"url": "…"}`. `Apps/UltraPress/examples/ultraos` is a complete small site.
+
+## The blocks
+
+| Type | Properties |
+|---|---|
+| `heading` | `text`, `level` (2–4) |
+| `text` | `heading`, `text` (paragraphs separated by blank lines) |
+| `richtext` | `html` (what the editor wrote; passed through) |
+| `hero` | `kicker`, `title`, `text`, `buttons`, `picture` |
+| `picture` | `src`, `alt`, `caption` |
+| `columns` | `heading`; its children are the columns |
+| `card` | `title`, `text`, `picture`, `link`, `linkTitle` |
+| `features` | `heading`, `items` (strings) |
+| `cta` | `title`, `text`, `buttons` |
+| `faq` | `heading`, `items` (`q`, `a`); also emitted as `FAQPage` structured data |
+| `quote` | `text`, `cite` |
+| `buttons` | `items` |
+| `form` | `id`, `heading`, `text`, `fields` (`name`, `label`, `type`, `required`), `submit` - posts to `/api/form/<id>` on the server tier |
+| `newsletter` | `heading`, `text`, `list` - posts to `/api/newsletter/subscribe` |
+| `downloads` | `heading`, `items` (`title`, `file`, `version`, `size`, `description`) |
+| `html` | `html` (the owner's own, passed through) |
+| `spacer` | `height` |
+
+The registry is `BlockRegistry::BuiltIn()` in
+`Apps/UltraPress/engine/UltraPressBlocks.h`; `ValidateSite` checks a site
+against it.
+
+## The engine
+
+`Apps/UltraPress/engine/`, target `UltraPressEngine`, `namespace UltraPress`:
+
+- `UltraPressModel.h` - `Site`, `Page`, `Block`, `Menu`, `Theme`; JSON in and
+  out; `LoadSite` / `SaveSite`; `PagePath`, `PageUrl`, `LinkHref`;
+  `SortedPages` (pinned first; stored, alphabetic or most popular) and
+  `MakeSlug`.
+- `UltraPressBlocks.h` - the registry and `ValidateSite`.
+- `UltraPressHtml.h` - `HtmlEmitter`: `Page`, `Sitemap`, `Robots`, `Feed`,
+  `Block`; `HtmlOptions` names the renderer script and the UltraWeb app.
+  Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
+  blocks are the owner's own HTML and pass through.
+- `UltraPressPublish.h` - `PublishStatic` and `CreateStarterSite`.
+- `UltraPressImport.h` - `ImportWordPress` / `ImportWordPressFile` with
+  `ImportOptions` (the front page, a media fetcher, drafts) and
+  `ImportReport`; `BlocksFromWordPressContent` maps the block editor's
+  markup. TinyXML2 reads the export, privately.
+
+It links the core library for `UltraCanvasJSON` and the HTMLReader's
+`EscapeText`, and opens no window. Tests: `Tests/UltraPress/UltraPressEngineTests.cpp`,
+built with `-DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON`; they save and reload a
+site, validate a broken one, parse the shadow back with `HTML::Parser`, and
+publish the example site into a temporary folder.
+
+## Not yet
+
+Text edited in place on the page, a picture picker and the media library,
+new pages and menus from the window, undo, the WebAssembly renderer release
+and its reference from the shadow, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
+the newsletter's e-mail mode of the emitter, the Markdown block, and
+everything of the server tier (Phase 2): forms and newsletter sign-ups on a
+static site need a form service until then.
+
+==============================================================================
 FILE: Docs/Legal/Privacy/README.md
 ==============================================================================
 
@@ -84431,6 +84857,7 @@ every statement in it is true of both.
 |---|---|---|
 | `UltraMail.md` | UltraMail, English | draft 1.0, needs the bracketed items and legal review |
 | `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.0, same |
+| `UltraPress.md` | UltraPress, English - the command line of 0.1.0, which contacts no server | draft 0.1, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change
@@ -85145,4 +85572,159 @@ Since it collects no data for us, no age verification takes place.
 We update this declaration whenever UltraMail's data flows change, for example
 when a feature that contacts a server is added. The version and date at the
 top identify the current text; earlier versions are available in the project's
+source repository.
+
+==============================================================================
+FILE: Docs/Legal/Privacy/UltraPress.md
+==============================================================================
+
+# Privacy declaration — UltraPress
+
+**Version 0.1 (draft for legal review) · 13 October 2026**
+
+This declaration explains what personal data the **UltraPress** application
+processes, where that processing happens, which third parties it contacts and
+why, and what rights you have under the General Data Protection Regulation
+(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.1 - the
+`ultrapress` command line - on Linux, Windows, macOS and ULTRA OS. It does
+not cover the website itself, other ULTRA OS applications, any ULTRA OS
+online service, or **the websites you build with UltraPress**: a site you
+publish is yours, served by the host you chose, and needs a declaration of
+its own.
+
+> **Review status.** This text was drafted from UltraPress's source code
+> (`Apps/UltraPress`) and documentation. The items in square brackets (`[…]`)
+> must be filled in, and the whole text must be reviewed by a lawyer before it
+> is published. Later versions of UltraPress add features that contact
+> servers - the editor's publishing onto a web host, the server tier with
+> forms, members, shop and newsletter, the website-builder assistant - and
+> each of those changes this declaration before it ships.
+
+## 1. Who is responsible
+
+ULTRA OS Development GmbH
+An den Klippen 23
+57462 Olpe
+Germany
+
+E-mail: [privacy@ultraos.eu]
+Managing director(s): […]
+Commercial register: […]
+
+The company has not appointed a data protection officer, because it is not
+required to [confirm with legal review].
+
+## 2. The short version
+
+- UltraPress 0.1 is a command-line program that runs **on your own
+  computer**. It reads a site folder you give it and writes files into a
+  folder you name. Nothing leaves your device.
+- It contacts **no server at all**: not ours, not anyone's. It has no
+  account, no sign-in, no update check, no telemetry and no advertising.
+- The pages it writes contain only what you put into the site folder. Where
+  the pages reference a server - a contact form, a newsletter sign-up - that
+  server is one you will run or choose; this version runs none.
+- ULTRA OS Development GmbH receives no data from your use of UltraPress and
+  holds none.
+
+## 3. What UltraPress stores on your device
+
+| Data | What it is | Where |
+|---|---|---|
+| The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you | the folder you name, e.g. `ultrapress new mysite` |
+| The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out` |
+
+UltraPress writes no settings, caches, logs or history files of its own. Its
+messages go to the terminal it was started from.
+
+The site folder and the published site contain whatever you wrote into
+them. If you put personal data there - your own name and address in the
+site's owner field, a person's picture, an e-mail address on a contact page -
+it is in those files and in every copy of the published site, including the
+copy on your web host once you upload it. UltraPress does not read it for any
+purpose but writing the pages.
+
+### 3.1 How sensitive data is protected
+
+UltraPress stores no passwords, keys or tokens. The files it writes are
+protected by your operating system's file permissions and nothing else; they
+are meant to be published.
+
+### 3.2 Who can read this data
+
+You, and anyone you give the folders to. UltraPress does not send them
+anywhere.
+
+### 3.3 Our role
+
+All processing happens on your device under your control. ULTRA OS
+Development GmbH is not the controller of that processing within the meaning
+of Art. 4(7) GDPR; you are. For the website you publish, you are the
+controller towards its visitors, and your web host is your processor under
+its own terms.
+
+## 4. Data UltraPress sends to servers
+
+None. UltraPress 0.1 opens no network connection.
+
+## 5. Other servers UltraPress contacts, and why
+
+None.
+
+The HTML pages UltraPress writes reference, by address only, three things a
+visitor's browser may request once the site is online: the site's own
+pictures and downloads (from your host), a form endpoint at `/api/form/<id>`
+and a newsletter endpoint at `/api/newsletter/subscribe` (both on your host,
+and answered only by a server you run - this version includes none), and,
+when you ask for it with `--renderer`, a script file you name. None of these
+is a server of ULTRA OS Development GmbH, and none exists unless you put it
+there.
+
+## 6. What we do not do
+
+UltraPress does not:
+
+- create or require an account with ULTRA OS Development GmbH;
+- send usage statistics, analytics, crash reports or diagnostic data to us or
+  anyone else;
+- check for updates by contacting our servers;
+- show advertising or contain third-party advertising or tracking code, in
+  the program or in the pages it writes;
+- put analytics, tracking pixels, cookies or third-party scripts into the
+  pages it writes;
+- share, sell or otherwise disclose any of your data.
+
+Because no data reaches us, we hold no personal data about UltraPress users
+and cannot identify you from your use of the application.
+
+## 7. Your rights
+
+Under the GDPR you have the rights of access (Art. 15), rectification
+(Art. 16), erasure (Art. 17), restriction of processing (Art. 18), data
+portability (Art. 20) and objection (Art. 21), and the right to lodge a
+complaint with a supervisory authority (Art. 77). The authority responsible
+for us is the Landesbeauftragte für Datenschutz und Informationsfreiheit
+Nordrhein-Westfalen, Kavalleriestraße 2–4, 40213 Düsseldorf, Germany.
+
+Because UltraPress keeps your data only in folders on your own device, you
+exercise these rights directly: the files are plain JSON and HTML that you
+can read, change, copy and delete yourself. For the website you publish,
+your visitors exercise their rights towards you and your web host.
+
+For any question about this declaration, write to [privacy@ultraos.eu].
+
+## 8. Children
+
+UltraPress is a tool for building websites and is not directed at children.
+Since it collects no data for us, no age verification takes place.
+
+## 9. Changes to this declaration
+
+We update this declaration whenever UltraPress's data flows change: the next
+changes already planned are publishing onto a web host from the editor
+(your host's credentials, kept in the system's credential store), the server
+tier (visitors' form entries, member accounts, orders and newsletter
+subscriptions on a server you run) and the website-builder assistant (your
+answers sent to an AI provider you choose). The version and date at the top
+identify the current text; earlier versions are available in the project's
 source repository.
