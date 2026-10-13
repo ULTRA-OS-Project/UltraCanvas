@@ -1,3 +1,21 @@
+#### 2026-10-13 *1.72.6*
+- **The *+ Drive* menu opens at once.** Clicking *+ Drive* took several
+  seconds before the menu with *FTP / SFTP server...*, *Cloud storage...* and
+  *RAM disc...* appeared, on Windows and macOS: each click asked the system
+  whether it can make RAM discs, which launches a shell (`where imdisk`,
+  `command -v hdiutil`), and the same question was asked again when the
+  toolbar was built at start-up and twice more when the *New RAM disc*
+  dialog opened. The question is now put to the system once, on a worker
+  thread right after the window is created, together with the list of RAM
+  discs mounted now; the *+ Drive* button, its menu and the *RAM Discs*
+  section of the folder tree are brought in line when the answer arrives,
+  and every later question answers from it (framework changelog, pending
+  entry `ramdisk-backing-probed-once`). Until the answer is in, the menu
+  offers *RAM disc...* whenever the build has the facility; a click in that
+  moment waits for the answer in the dialog, once, rather than the menu
+  waiting for it every time. The sweep of *Extract and Run*'s leftover
+  folders, which needs the list of discs too, rides on the same worker.
+
 #### 2026-10-12 *1.72.5*
 - **Icons no longer flicker in a maximised window.** With *Display > File
   icons = Host OS* and a folder of DLLs, a window large enough to show more

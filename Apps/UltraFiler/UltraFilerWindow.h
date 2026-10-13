@@ -110,6 +110,7 @@
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
 #include "UltraFilerRemoteDrives.h"
+#include "UltraFilerRamDisks.h"
 
 #include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"   // the transfer bar
 #include "UltraFilerSettings.h"
@@ -340,13 +341,35 @@ private:
     // "Cloud Storage" above it.
     void RefreshRemoteDriveNodes();
     // ===== RAM DISCS =====
+    // Asks the system, on a worker thread, whether it can make RAM discs and
+    // which discs are mounted now, then brings the "+ Drive" button and the
+    // "RAM Discs" rows in line on the UI thread. The first such question
+    // launches a shell on Windows and macOS (`where imdisk`, `command -v
+    // hdiutil`) and took seconds - and it used to be asked on the UI thread
+    // when the toolbar was built and again every time the "+ Drive" menu
+    // opened, which is why that menu took seconds to appear. The answer is
+    // kept by VirtualFS for the life of the process, so once this worker
+    // has asked, every later call answers at once. Started from Create();
+    // the sweep of Extract and Run's leftover folders rides on it, since it
+    // needs the list of discs too.
+    void StartRamDiskProbe();
+    // Sets the "+ Drive" button's tooltip and enabled state from what the
+    // build has and what the probe has answered so far.
+    void UpdateAddDriveButton();
+    // What the "+ Drive" menu offers as a RAM disc: the probe's answer once
+    // it is in, else whether the build has the facility at all - a click
+    // before the answer waits for it, in the dialog, rather than the menu
+    // waiting for it every time.
+    bool RamDisksOffered() const;
     // "+ Drive > RAM disc...": asks for a name and a size, creates the disc
     // (UltraFilerRamDisks, over VirtualFS) and opens it in the folder view.
     void AddRamDisk();
     // Brings the "RAM Discs" rows in line with the discs mounted now - ones
     // made by an earlier run included, since a disc stays until it is
-    // ejected - and hides the section while there are none.
+    // ejected - and hides the section while there are none. Lists the discs
+    // itself; ApplyRamDiskList takes a list already made (by the probe).
     void RefreshRamDiskNodes();
+    void ApplyRamDiskList(const std::vector<UltraFilerRamDisks::RamDisc>& discs);
     // Asks, then unmounts the disc at `mountPath`: tabs inside it move to
     // Home first, and its row leaves the tree. Everything on it is lost,
     // which is why the question names the disc.
@@ -1118,6 +1141,11 @@ private:
     std::vector<std::string> treeRemoteDriveNodeIds;
     // Node ids (the mount paths) of the "RAM Discs" rows.
     std::vector<std::string> treeRamDiskNodeIds;
+    // The start-up probe (StartRamDiskProbe) and what it answered. Both
+    // flags are written on the UI thread only, by the callback it posts.
+    std::thread ramDiskProbeWorker;
+    bool ramDiskProbed = false;
+    bool ramDiskAvailable = false;
     // The last failure reported for a drive operation. Deleting five entries
     // queues five operations, and five identical "permission denied" dialogs
     // in a row tell the user nothing the first one did not - so a repeat of

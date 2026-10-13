@@ -23,9 +23,8 @@
 // the disc was then neither found by its name nor listed. The fallback
 // takes the same limit, so a name does not work on one machine and fail on
 // the next only because ImDisk is installed there.
-// Version: 1.2.0 - names fit the NTFS volume label; labels read wide,
-//                  foreign labels not listed
-// Last Modified: 2026-10-05
+// Version: 1.3.0 - PlatformPreferredBacking; create reads the kept answer
+// Last Modified: 2026-10-13
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
@@ -185,7 +184,10 @@ VirtualFSResult PlatformCreate(const std::string& name,
                                uint64_t sizeBytes,
                                VirtualFSRamDisk& outDisk) {
     // --- Preferred: a real RAM disc through ImDisk ---------------------
-    if (HaveImDisk()) {
+    // The once-per-process answer (VirtualFS_GetPreferredRamDiskBacking),
+    // not HaveImDisk() again: that spawns a shell for `where imdisk`, and
+    // the caller has usually asked already to decide what to offer.
+    if (VirtualFS_GetPreferredRamDiskBacking() == VirtualFSRamDiskBacking::ImDisk) {
         if (FindImDiskDrive(name) != '\0') {
             return VirtualFSResult::AlreadyExists;
         }
@@ -303,11 +305,12 @@ std::vector<VirtualFSRamDisk> PlatformList() {
     return discs;
 }
 
-} // namespace RamDiskDetail
-
-VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking() {
-    return RamDiskDetail::HaveImDisk() ? VirtualFSRamDiskBacking::ImDisk
-                                       : VirtualFSRamDiskBacking::DiskFallback;
+// A shell for `where imdisk` - seconds on a loaded machine, which is why
+// the core asks once and keeps the answer.
+VirtualFSRamDiskBacking PlatformPreferredBacking() {
+    return HaveImDisk() ? VirtualFSRamDiskBacking::ImDisk
+                        : VirtualFSRamDiskBacking::DiskFallback;
 }
 
+} // namespace RamDiskDetail
 } // namespace VirtualFS

@@ -4,8 +4,8 @@
 // Name validation, the secure wipe used by the Windows fallback, and the
 // VirtualFS integration point live here. Everything that actually talks to
 // a mount lives in OS/<Platform>/VirtualFSRamDiskPlatform.cpp.
-// Version: 1.1.0 - names are limited to what the back end can keep
-// Last Modified: 2026-10-05
+// Version: 1.2.0 - the preferred backing is probed once per process
+// Last Modified: 2026-10-13
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDisk.h"
@@ -110,6 +110,19 @@ const char* VirtualFSRamDiskBackingToString(VirtualFSRamDiskBacking backing) {
 
 std::size_t VirtualFS_GetMaxRamDiskNameLength() {
     return RamDiskDetail::PlatformMaxNameLength();
+}
+
+VirtualFSRamDiskBacking VirtualFS_GetPreferredRamDiskBacking() {
+    // Asked of the system exactly once. The probe launches a process on
+    // Windows and macOS (`where imdisk`, `command -v hdiutil`), which is
+    // seconds on a busy machine - and callers ask on every menu, dialog and
+    // tooltip. A function-local static is initialised once and thread-safe:
+    // a caller that arrives while another thread is still probing waits for
+    // that answer rather than probing again, so an application can pay for
+    // the probe on a background thread at start-up and read the answer on
+    // the UI thread afterwards.
+    static const VirtualFSRamDiskBacking backing = RamDiskDetail::PlatformPreferredBacking();
+    return backing;
 }
 
 bool VirtualFS_IsTrueRamDiskAvailable() {

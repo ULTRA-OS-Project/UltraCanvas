@@ -926,6 +926,9 @@ UltraFilerWindow::~UltraFilerWindow() {
     ReapSearchWorkers(true);    // now the search threads are waited for
     exportWindows.clear();      // each joins the walk building its text
     StopSubfolderProbeWorker();
+    // Short - one question to the system - and its callback is already
+    // neutralised by the flag above.
+    if (ramDiskProbeWorker.joinable()) ramDiskProbeWorker.join();
     StopCloudStorageDiscovery();
     // Its worker posts into this window, so it has to be joined here like the
     // others - and before the widgets its callback touches are destroyed. The
@@ -962,19 +965,10 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     window = CreateWindow(config);
     if (!window || !window->IsCreated()) return false;
 
-    // Programs started by Extract and Run in an earlier session whose
-    // folders could not be removed then (UltraFiler closed while they ran):
-    // gone now, unless they still run. Off the UI thread - it is a walk of
-    // folders that may be large - and on paths only, never on this window.
-    {
-        std::vector<std::string> runRoots{DefaultArchiveRunRoot()};
-        if (UltraFilerRamDisks::Available())
-            for (const auto& disc : UltraFilerRamDisks::List())
-                runRoots.push_back(RamDiscRunRoot(disc.mountPath));
-        std::thread([runRoots]() {
-            for (const std::string& root : runRoots) SweepArchiveRunFolders(root);
-        }).detach();
-    }
+    // Whether this system can make RAM discs, and which are mounted: asked
+    // on a worker, since the first question launches a shell on Windows and
+    // macOS. The sweep of Extract and Run's leftover folders rides on it.
+    StartRamDiskProbe();
 
     window->layout.SetFlexColumn()
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -2129,16 +2123,9 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     // entries of one folder.
     addDriveButton = MakeToolButton("ufl-add-drive", "Drive", "add-folder.svg", 0,
             [this]() { ShowAddDriveMenu(); });
-    {
-        const bool remote = UltraFilerRemoteDrives::Available();
-        const bool ram = UltraFilerRamDisks::Available();
-        addDriveButton->SetTooltip(
-                remote && ram ? "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc"
-                : remote      ? "Add a drive: an FTP / SFTP server or a cloud account"
-                : ram         ? "Add a drive: a RAM disc (FTP and cloud drives need UltraCloud)"
-                              : "Add a drive - not available in this build");
-        addDriveButton->SetDisabled(!remote && !ram);
-    }
+    // From what the build has: the system has not been asked yet, and is
+    // not asked here (see StartRamDiskProbe). Set again when it answers.
+    UpdateAddDriveButton();
     row->AddChild(addDriveButton);
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
@@ -2242,10 +2229,67 @@ void UltraFilerWindow::ShowNewEntryMenu() {
 
 // ===== REMOTE DRIVES =====
 
+void UltraFilerWindow::UpdateAddDriveButton() {
+    if (!addDriveButton) return;
+    const bool remote = UltraFilerRemoteDrives::Available();
+    const bool ram = RamDisksOffered();
+    addDriveButton->SetTooltip(
+            remote && ram ? "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc"
+            : remote      ? "Add a drive: an FTP / SFTP server or a cloud account"
+            : ram         ? "Add a drive: a RAM disc (FTP and cloud drives need UltraCloud)"
+                          : "Add a drive - not available in this build");
+    addDriveButton->SetDisabled(!remote && !ram);
+}
+
+bool UltraFilerWindow::RamDisksOffered() const {
+    return ramDiskProbed ? ramDiskAvailable : UltraFilerRamDisks::BuiltIn();
+}
+
+void UltraFilerWindow::StartRamDiskProbe() {
+    if (ramDiskProbeWorker.joinable()) return;   // once per window
+    auto alive = probeAlive;
+    ramDiskProbeWorker = std::thread([this, alive]() {
+        bool available = false;
+        std::vector<UltraFilerRamDisks::RamDisc> discs;
+        try {
+            // The first Available() is the slow one, and this is where it is
+            // paid for: VirtualFS keeps the answer, so every later call - the
+            // menu, the dialog, the tooltip - answers at once.
+            available = UltraFilerRamDisks::Available();
+            if (available) discs = UltraFilerRamDisks::List();
+        } catch (const std::exception&) {
+            // An exception leaving a std::thread ends the process; a system
+            // that cannot be asked is one without RAM discs.
+            available = false;
+            discs.clear();
+        }
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (app) {
+            app->PostToUIThread([this, alive, available, discs]() {
+                if (!alive->load()) return;   // window destroyed meanwhile
+                ramDiskProbed = true;
+                ramDiskAvailable = available;
+                UpdateAddDriveButton();
+                ApplyRamDiskList(discs);
+            });
+        }
+        // Programs started by Extract and Run in an earlier session whose
+        // folders could not be removed then (UltraFiler closed while they
+        // ran): gone now, unless they still run. A walk of folders that may
+        // be large, on paths only, never on this window - and on a thread of
+        // its own, so closing the window does not wait for it.
+        std::vector<std::string> runRoots{DefaultArchiveRunRoot()};
+        for (const auto& disc : discs) runRoots.push_back(RamDiscRunRoot(disc.mountPath));
+        std::thread([runRoots]() {
+            for (const std::string& root : runRoots) SweepArchiveRunFolders(root);
+        }).detach();
+    });
+}
+
 void UltraFilerWindow::ShowAddDriveMenu() {
     if (!window || !addDriveButton) return;
     const bool remote = UltraFilerRemoteDrives::Available();
-    const bool ram = UltraFilerRamDisks::Available();
+    const bool ram = RamDisksOffered();
     if (!remote && !ram) {
         // The button is disabled in such a build, so this is belt and braces -
         // but saying why beats a button that does nothing.
@@ -2355,11 +2399,19 @@ void UltraFilerWindow::AddRamDisk() {
 }
 
 void UltraFilerWindow::RefreshRamDiskNodes() {
+    if (!folderTree || !folderTree->FindNode(kRamNodeId)) return;
+    // Not before the probe has answered: List() would ask the system on the
+    // UI thread, which is what the probe exists to avoid, and the probe
+    // applies its own list when it is in.
+    if (!ramDiskProbed) return;
+    ApplyRamDiskList(UltraFilerRamDisks::List());
+}
+
+void UltraFilerWindow::ApplyRamDiskList(const std::vector<UltraFilerRamDisks::RamDisc>& discs) {
     if (!folderTree) return;
     TreeNode* section = folderTree->FindNode(kRamNodeId);
     if (!section) return;
 
-    const std::vector<UltraFilerRamDisks::RamDisc> discs = UltraFilerRamDisks::List();
     std::set<std::string> mounted;
     for (const auto& disc : discs) mounted.insert(disc.mountPath);
 
@@ -3475,7 +3527,8 @@ void UltraFilerWindow::BuildFolderTree() {
     treeChildrenLoaded.insert(kRamNodeId);
     if (TreeNode* ram = folderTree->FindNode(kRamNodeId))
         ram->data.visible = false;
-    RefreshRamDiskNodes();
+    // Its rows come from the start-up probe (StartRamDiskProbe), which lists
+    // the discs off the UI thread and applies them when it has them.
 
     // ListMountedVolumes() reads the mount table in one pass (the drive
     // letters on Windows, the directories volumes are mounted under
