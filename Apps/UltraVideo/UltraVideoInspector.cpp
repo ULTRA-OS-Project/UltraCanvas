@@ -1,6 +1,6 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
-// Version: 0.3.0
+// Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoInspector.h"
@@ -554,6 +554,58 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     captions.push_back(transitionMax);
     lengthRow->AddChild(transitionMax);
     clipFields->AddChild(transitionRows);
+
+    // ---- the effects on a main-track clip, from the bin's Effects tab ----
+    effectRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.effects", 0, 0, kPageWidth, 120);
+    effectRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    effectRows->layoutItem.SetFlexShrink(0);
+    Heading(effectRows, "uv.insp.effects.heading", "Effects");
+    effectsNone = CreateLabel("uv.insp.effects.none", 0, 0, kPageWidth, 32, "None. The bin's Effects tab puts a look or a blur on this clip.");
+    effectsNone->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    effectsNone->layoutItem.SetFlexShrink(0);
+    captions.push_back(effectsNone);
+    effectRows->AddChild(effectsNone);
+    for (int i = 0; i < kEffectRows; ++i) {
+        const std::string id = "uv.insp.effect." + std::to_string(i);
+        auto row = std::make_shared<UltraCanvasContainer>(id, 0, 0, kPageWidth, ctl);
+        row->layout.SetFlexRow().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexShrink(0);
+        auto name = CreateLabel(id + ".name", 0, 0, kPageWidth - ctl - 8, ctl, "");
+        name->SetFont(Tokens::Label.family, Tokens::Label.size * 0.75f);
+        name->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        captions.push_back(name);
+        row->AddChild(name);
+        auto remove = MakeIconButton(id + ".remove", "trash", "Remove this effect", p);
+        remove->SetOnClick([this, i]() {
+            const int index = segment;
+            Edit("Remove effect", [index, i](Document& d) {
+                if (index < 0 || static_cast<size_t>(index) >= d.project.segments.size()) return;
+                std::vector<VideoFXEffect>& effects = d.project.segments[static_cast<size_t>(index)].effects;
+                if (static_cast<size_t>(i) < effects.size()) effects.erase(effects.begin() + i);
+            });
+        });
+        row->AddChild(remove);
+        effectRow.push_back(row);
+        effectName.push_back(name);
+        effectRemove.push_back(remove);
+        effectRows->AddChild(row);
+    }
+    effectsMore = CreateLabel("uv.insp.effects.more", 0, 0, kPageWidth, 18, "");
+    effectsMore->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    effectsMore->layoutItem.SetFlexShrink(0);
+    captions.push_back(effectsMore);
+    effectRows->AddChild(effectsMore);
+    removeEffects = MakeTextButton("uv.insp.removeEffects", "Remove all effects", p, 150);
+    removeEffects->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
+    removeEffects->SetOnClick([this]() {
+        const int index = segment;
+        Edit("Remove effects", [index](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.project.segments.size())
+                d.project.segments[static_cast<size_t>(index)].effects.clear();
+        });
+    });
+    effectRows->AddChild(removeEffects);
+    clipFields->AddChild(effectRows);
     clipPage->AddChild(clipFields);
     tabs->AddTab("Clip", clipPage);
 
@@ -723,6 +775,8 @@ void Inspector::StyleControls(const Palette& p) {
     titleText->SetStyle(input);
     addSong->SetStyle(PlainButtonStyle(p));
     removeSongs->SetStyle(PlainButtonStyle(p));
+    removeEffects->SetStyle(PlainButtonStyle(p));
+    for (auto& b : effectRemove) b->SetStyle(GhostButtonStyle(p));
 }
 
 void Inspector::ApplyPalette(const Palette& p) {
@@ -776,6 +830,20 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
     titleRows->SetVisible(hasTitle);
     overlayRows->SetVisible(hasOverlay);
     soundRows->SetVisible(hasSound);
+    effectRows->SetVisible(hasClip);
+    if (hasClip) {
+        const std::vector<VideoFXEffect>& effects = doc.project.segments[static_cast<size_t>(index)].effects;
+        effectsNone->SetVisible(effects.empty());
+        for (int i = 0; i < kEffectRows; ++i) {
+            const bool shown = static_cast<size_t>(i) < effects.size();
+            effectRow[static_cast<size_t>(i)]->SetVisible(shown);
+            if (shown) effectName[static_cast<size_t>(i)]->SetText(DescribeEffect(effects[static_cast<size_t>(i)]));
+        }
+        const size_t more = effects.size() > static_cast<size_t>(kEffectRows) ? effects.size() - kEffectRows : 0;
+        effectsMore->SetVisible(more > 0);
+        if (more > 0) effectsMore->SetText("and " + std::to_string(more) + " more");
+        removeEffects->SetVisible(!effects.empty());
+    }
     if (hasSound) {
         const SoundSpan& a = doc.sounds[static_cast<size_t>(soundIndex)];
         clipName->SetText(a.Name());

@@ -1,6 +1,6 @@
 // Apps/UltraVideo/UltraVideoDocument.cpp
 // The document and the .ultravideo file (UltraVideoDocument.h).
-// Version: 0.3.0
+// Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
@@ -156,6 +156,81 @@ const TitleStyle* FindTitleStyle(const std::string& key) {
     return nullptr;
 }
 
+const std::vector<EffectPreset>& EffectPresets() {
+    static const std::vector<EffectPreset> presets = {
+        {"warm", "Warm", "Golden-hour warmth", false,
+         {VideoFXEffect::Temperature(0.3), VideoFXEffect::Saturation(0.1)}},
+        {"cool", "Cool", "A cooler, bluer cast", false,
+         {VideoFXEffect::Temperature(-0.3)}},
+        {"vivid", "Vivid", "Richer colour and more punch", false,
+         {VideoFXEffect::Saturation(0.35), VideoFXEffect::Contrast(0.15)}},
+        {"faded", "Faded", "Soft, washed-out film", false,
+         {VideoFXEffect::Contrast(-0.2), VideoFXEffect::Saturation(-0.25), VideoFXEffect::Brightness(0.05)}},
+        {"dramatic", "Dramatic", "Hard contrast, muted colour, dark corners", false,
+         {VideoFXEffect::Contrast(0.3), VideoFXEffect::Saturation(-0.2), VideoFXEffect::Vignette(0.5)}},
+        {"bw", "Black and white", "Greyscale with a little contrast", false,
+         {VideoFXEffect::Grayscale(), VideoFXEffect::Contrast(0.1)}},
+        {"sepia", "Sepia", "An old brown photograph", false,
+         {VideoFXEffect::Sepia()}},
+        {"vintage", "Vintage", "Faded warm film with dark corners", false,
+         {VideoFXEffect::Temperature(0.2), VideoFXEffect::Contrast(-0.1), VideoFXEffect::Saturation(-0.3), VideoFXEffect::Vignette(0.4)}},
+        {"brighter", "Brighter", "Half a stop more light", false,
+         {VideoFXEffect::Exposure(0.5)}},
+        {"softblur", "Soft blur", "A gentle blur, as a background", true,
+         {VideoFXEffect::Blur(0.004)}},
+        {"strongblur", "Strong blur", "Shapes and colour only", true,
+         {VideoFXEffect::Blur(0.015)}},
+        {"sharpen", "Sharpen", "Crisper edges", true,
+         {VideoFXEffect::Sharpen(0.8)}},
+        {"denoise", "Reduce noise", "Calms grain in dark shots", true,
+         {VideoFXEffect::Denoise(4.0)}},
+    };
+    return presets;
+}
+
+const EffectPreset* FindEffectPreset(const std::string& key) {
+    for (const EffectPreset& e : EffectPresets()) if (key == e.key) return &e;
+    return nullptr;
+}
+
+std::string DescribeEffect(const VideoFXEffect& e) {
+    auto percent = [](double v) {
+        const int n = static_cast<int>(std::lround(v * 100));
+        return (n > 0 ? "+" : "") + std::to_string(n) + " %";
+    };
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    switch (e.type) {
+        case VideoFXEffectType::Brightness: return "Brightness " + percent(e.amount);
+        case VideoFXEffectType::Contrast: return "Contrast " + percent(e.amount);
+        case VideoFXEffectType::Saturation: return "Saturation " + percent(e.amount);
+        case VideoFXEffectType::Gamma: out << "Gamma " << std::fixed << std::setprecision(2) << e.amount; return out.str();
+        case VideoFXEffectType::Exposure: out << "Exposure " << std::showpos << std::fixed << std::setprecision(1) << e.amount << " stops"; return out.str();
+        case VideoFXEffectType::Hue: out << "Hue " << static_cast<int>(std::lround(e.amount)) << "\xC2\xB0"; return out.str();
+        case VideoFXEffectType::Temperature: return std::string(e.amount < 0.0 ? "Cooler " : "Warmer ") + std::to_string(static_cast<int>(std::lround(std::fabs(e.amount) * 100))) + " %";
+        case VideoFXEffectType::Grayscale: return "Black and white";
+        case VideoFXEffectType::Sepia: return "Sepia";
+        case VideoFXEffectType::Invert: return "Inverted colours";
+        case VideoFXEffectType::LUT: return "Colour table " + PathToUtf8(PathFromUtf8(e.path).filename());
+        case VideoFXEffectType::Blur: out << "Blur " << std::fixed << std::setprecision(e.amount < 10.0 ? 1 : 0) << e.amount << " px"; return out.str();
+        case VideoFXEffectType::Sharpen: out << "Sharpen " << std::fixed << std::setprecision(1) << e.amount; return out.str();
+        case VideoFXEffectType::Denoise: out << "Reduce noise " << std::fixed << std::setprecision(0) << e.amount; return out.str();
+        case VideoFXEffectType::Vignette: return "Dark corners " + std::to_string(static_cast<int>(std::lround(e.amount * 100))) + " %";
+        case VideoFXEffectType::Rotate90: return "Rotate 90\xC2\xB0";
+        case VideoFXEffectType::Rotate180: return "Rotate 180\xC2\xB0";
+        case VideoFXEffectType::Rotate270: return "Rotate 270\xC2\xB0";
+        case VideoFXEffectType::Rotate: out << "Rotate " << std::fixed << std::setprecision(1) << e.amount << "\xC2\xB0"; return out.str();
+        case VideoFXEffectType::FlipHorizontal: return "Mirrored";
+        case VideoFXEffectType::FlipVertical: return "Upside down";
+        case VideoFXEffectType::Crop: out << "Crop " << e.width << " \xC3\x97 " << e.height; return out.str();
+        case VideoFXEffectType::FadeIn: out << "Fade in " << std::fixed << std::setprecision(1) << e.amount << " s"; return out.str();
+        case VideoFXEffectType::FadeOut: out << "Fade out " << std::fixed << std::setprecision(1) << e.amount << " s"; return out.str();
+        case VideoFXEffectType::Volume: return "Volume " + std::to_string(static_cast<int>(std::lround(e.amount * 100))) + " %";
+        case VideoFXEffectType::NormalizeAudio: out << "Even loudness " << std::fixed << std::setprecision(0) << e.amount << " LUFS"; return out.str();
+    }
+    return "Effect";
+}
+
 std::string MediaItem::Badge() const {
     if (!error.empty()) return "unreadable";
     if (kind == MediaKind::Image) return "photo";
@@ -211,6 +286,30 @@ std::string Document::Describe() const {
     else out << std::fixed << std::setprecision(2) << fps;
     out << " fps";
     return out.str();
+}
+
+bool Document::ApplyEffectPreset(size_t index, const std::string& key) {
+    const EffectPreset* preset = FindEffectPreset(key);
+    if (!preset || index >= project.segments.size()) return false;
+    VideoFXSegment& s = project.segments[index];
+    // The picture's height for a blur: the file's, else the output's
+    int height = 0;
+    if (const MediaItem* m = FindMedia(s.path)) height = m->height;
+    if (height <= 0) height = Height();
+    std::vector<VideoFXEffect> effects = preset->effects;
+    for (VideoFXEffect& e : effects)
+        if (e.type == VideoFXEffectType::Blur) e.amount = std::max(0.5, std::round(e.amount * height * 2.0) / 2.0);
+    if (s.effects.size() >= effects.size()) {
+        bool same = true;
+        const size_t from = s.effects.size() - effects.size();
+        for (size_t i = 0; i < effects.size() && same; ++i) {
+            const VideoFXEffect& a = s.effects[from + i];
+            same = a.type == effects[i].type && std::fabs(a.amount - effects[i].amount) < 1e-9;
+        }
+        if (same) return false;
+    }
+    s.effects.insert(s.effects.end(), effects.begin(), effects.end());
+    return true;
 }
 
 double Document::SegmentSeconds(size_t index) const {

@@ -3,9 +3,10 @@
 // media the engine probes, segments from media, the timeline model derived
 // from the document, every reported change written back, undo and redo, and
 // the .ultravideo file round trip with relative media paths and missing
-// media reported; the title, overlay and voice-and-sound lanes. Needs the VideoFX engine (FFmpeg) for the probes and the
+// media reported; the title, overlay and voice-and-sound lanes; the effect
+// presets. Needs the VideoFX engine (FFmpeg) for the probes and the
 // clips it generates; without it the suite skips itself.
-// Version: 0.3.0
+// Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
@@ -18,6 +19,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -558,6 +560,69 @@ int main() {
         CHECK(Document::Load(pfile, fromPlain, aerror, nullptr), ("load a plain project: " + aerror).c_str());
         CHECK(fromPlain.sounds.size() == 1 && fromPlain.sounds[0].id == "a1" && Near(fromPlain.sounds[0].start, 0.5, 1e-9) && !fromPlain.sounds[0].ducksMusic, "its audio clip becomes a sound span");
         CHECK(Near(fromPlain.sounds[0].duration, songSeconds, 1e-6) && Near(fromPlain.sounds[0].volume, 0.7, 1e-9) && fromPlain.project.settings.audioClips.empty(), "for the file's length, at its volume");
+    }
+
+    std::printf("\n-- effect presets --\n");
+    {
+        Document ed;
+        ed.Import(clip);
+        ed.Import(photo);
+        ed.AppendMedia(*ed.FindMedia(clip));          // 320 x 240
+        ed.AppendMedia(*ed.FindMedia(photo));
+        CHECK(EffectPresets().size() >= 10 && FindEffectPreset("warm") && FindEffectPreset("softblur") && !FindEffectPreset("nope"), "the presets, found by key");
+        bool looks = false, blurs = false;
+        for (const EffectPreset& e : EffectPresets()) { looks |= !e.blur; blurs |= e.blur; }
+        CHECK(looks && blurs, "colour looks and blurs");
+        CHECK(!ed.ApplyEffectPreset(0, "nope") && !ed.ApplyEffectPreset(5, "warm") && ed.project.segments[0].effects.empty(), "no preset or no clip: nothing");
+        CHECK(ed.ApplyEffectPreset(0, "warm") && ed.project.segments[0].effects.size() == 2, "Warm puts its two effects on the clip");
+        CHECK(ed.project.segments[0].effects[0].type == VideoFXEffectType::Temperature && Near(ed.project.segments[0].effects[0].amount, 0.3, 1e-9), "the engine's own effects");
+        CHECK(!ed.ApplyEffectPreset(0, "warm") && ed.project.segments[0].effects.size() == 2, "a second click does not double it");
+        CHECK(ed.ApplyEffectPreset(0, "strongblur") && ed.project.segments[0].effects.size() == 3, "a blur goes after the look");
+        CHECK(Near(ed.project.segments[0].effects[2].amount, 3.5, 1e-9), "its radius from the clip's 240 lines (1.5 % of the height, to half a pixel)");
+        CHECK(ed.ApplyEffectPreset(1, "softblur") && Near(ed.project.segments[1].effects[0].amount, 0.5, 1e-9), "a photo's blur from its own 120 lines, at least half a pixel");
+        CHECK(DescribeEffect(ed.project.segments[0].effects[0]) == "Warmer 30 %" && DescribeEffect(ed.project.segments[0].effects[1]) == "Saturation +10 %", "the inspector's names for them");
+        CHECK(DescribeEffect(ed.project.segments[0].effects[2]) == "Blur 3.5 px" && DescribeEffect(VideoFXEffect::Temperature(-0.3)) == "Cooler 30 %", "a blur in pixels, cool as cooler");
+        CHECK(DescribeEffect(VideoFXEffect::Grayscale()) == "Black and white" && DescribeEffect(VideoFXEffect::Vignette(0.5)) == "Dark corners 50 %", "and the others by what they do");
+        const TimelineModel em = BuildTimelineModel(ed);
+        CHECK(Main(em) && Main(em)->clips[0].hasEffects, "the clip shows the effects badge");
+
+        // every preset renders: the engine takes each one's effects
+        bool all = true;
+        std::string failed;
+        for (const EffectPreset& e : EffectPresets()) {
+            Document one;
+            one.Import(clip);
+            one.AppendMedia(*one.FindMedia(clip));
+            one.ApplyEffectPreset(0, e.key);
+            VideoFXFrame frame;
+            if (VideoFX_RenderFrame(one.SegmentsForEngine(), 1.0, frame, {}, 160, 120) != VideoFXResult::Ok || !frame.IsValid()) {
+                all = false;
+                failed += std::string(" ") + e.key;
+            }
+        }
+        CHECK(all, ("every preset renders a frame" + failed).c_str());
+        VideoFXFrame plainFrame, bwFrame;
+        Document plain;
+        plain.Import(clip);
+        plain.AppendMedia(*plain.FindMedia(clip));
+        Document grey = plain;
+        grey.ApplyEffectPreset(0, "bw");
+        CHECK(VideoFX_RenderFrame(plain.SegmentsForEngine(), 1.0, plainFrame, {}, 160, 120) == VideoFXResult::Ok &&
+              VideoFX_RenderFrame(grey.SegmentsForEngine(), 1.0, bwFrame, {}, 160, 120) == VideoFXResult::Ok, "a frame with and without a look");
+        bool allGrey = bwFrame.IsValid(), differs = false;
+        for (size_t i = 0; allGrey && i + 3 < bwFrame.pixels.size(); i += 4) {
+            const int r = bwFrame.pixels[i], g = bwFrame.pixels[i + 1], b = bwFrame.pixels[i + 2];
+            allGrey = std::abs(r - g) <= 6 && std::abs(g - b) <= 6;
+        }
+        for (size_t i = 0; i < plainFrame.pixels.size() && i < bwFrame.pixels.size() && !differs; ++i) differs = plainFrame.pixels[i] != bwFrame.pixels[i];
+        CHECK(allGrey && differs, "Black and white turns the test pattern grey");
+
+        const std::string efile = TempPath("effects.ultravideo");
+        std::string eerror;
+        CHECK(ed.Save(efile, eerror), ("save with effects: " + eerror).c_str());
+        Document back;
+        CHECK(Document::Load(efile, back, eerror, nullptr), ("load with effects: " + eerror).c_str());
+        CHECK(back.project.segments.size() == 2 && back.project.segments[0].effects.size() == 3 && Near(back.project.segments[0].effects[2].amount, 3.5, 1e-9), "the effects come back with the project");
     }
 
     std::printf("\n-- the story wizard --\n");

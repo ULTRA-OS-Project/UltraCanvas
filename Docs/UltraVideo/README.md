@@ -40,7 +40,16 @@ field filters the bin by name. The *Music* tab lists the songs, each with
 lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. *Effects* waits for a later release.
+playhead. The *Effects* tab holds one-click presets for the selected
+clip on the main track: the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
+*Dramatic*, *Black and white*, *Sepia*, *Vintage* and *Brighter*, and under
+*Blur and detail* *Soft blur*, *Strong blur*, *Sharpen* and *Reduce noise*.
+A preset is the engine's own effects (a look is a few of them: Warm is
+warmer colour and a little more saturation); they go after the clip's
+other effects, and a second click on the same preset does nothing. A
+blur's radius follows the clip's picture height, so it looks alike on a
+phone clip and a 4K one. The clip shows the effects badge on the
+timeline, and the viewer shows the look at once.
 
 ### The viewer
 
@@ -177,7 +186,9 @@ are offered first; a song in the bin becomes the music.
 - **Clip**: the selected clip's name and what it is; for a video its *In*
   and *Out* as timecode fields and its *Speed*; for a photo or a card its
   *Length*, and for a photo the *Motion* (auto, still, zoom, pan), the
-  *Framing* and *Keep faces in shot*; *Mute*; the **transition into** the
+  *Framing* and *Keep faces in shot*; *Mute*; the clip's **Effects**, one
+  row per effect by what it does (*Warmer 30 %*, *Blur 3.5 px*) with a
+  button that removes it, and *Remove all effects*; the **transition into** the
   clip, by type and length with the maximum shown. For a title: its text
   (type it and press `Enter`), length, style, place, size, colour, shadow,
   band, fade in and fade out. For a voice-over or sound effect: volume,
@@ -240,7 +251,8 @@ the engine).
 
 ## Not yet
 
-Effect presets, and the mapping
-of the design's tokens onto the framework's theme roles (the app colours
+Effect presets on overlay clips and stills of the overlay lane, effects
+dragged from the bin onto a clip, adjusting an effect's amount in the
+inspector, and the mapping of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.

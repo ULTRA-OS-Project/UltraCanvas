@@ -1,14 +1,15 @@
 // Apps/UltraVideo/UltraVideoInspector.h
 // The inspector (Docs/Research/UltraVideoDesignProposal.md §6.4): three tabs
 // of catalogue elements. Clip - the selected clip's name, in and out, speed,
-// mute, the transition into it, a still's motion and framing; a title's
+// mute, its effects (each removable), the transition into it, a still's
+// motion and framing; a title's
 // text and look, an overlay's place and size, a voice-over's or sound
 // effect's volume, fades and ducking. Audio - the
 // music: the songs, volume, fades, crossfade, loop, ducking. Project - name,
 // size, frame rate, fit. Every field reports an edit as a closure over the
 // document; the window applies it through the undo history and shows the
 // document again, so the inspector never writes the document itself.
-// Version: 0.3.0
+// Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
@@ -98,6 +99,14 @@ private:
     std::shared_ptr<Dropdown> overlayAnchor;
     std::shared_ptr<Slider> overlaySize, overlayOpacity, overlayFadeIn, overlayFadeOut;
     std::shared_ptr<Label> overlaySizeValue, overlayOpacityValue, overlayFadeInValue, overlayFadeOutValue;
+    // the effects on a main-track clip: a fixed set of rows, one per effect
+    static constexpr int kEffectRows = 8;
+    std::shared_ptr<Container> effectRows;
+    std::vector<std::shared_ptr<Container>> effectRow;
+    std::vector<std::shared_ptr<Label>> effectName;
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasButton>> effectRemove;
+    std::shared_ptr<Label> effectsNone, effectsMore;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> removeEffects;
     // a clip on the voice-and-sound lane (A2)
     std::shared_ptr<Container> soundRows;
     std::shared_ptr<Slider> soundVolume, soundFadeIn, soundFadeOut;

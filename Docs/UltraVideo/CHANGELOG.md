@@ -1,3 +1,25 @@
+#### 2026-10-13 *0.4.0*
+- **Effect presets in the bin.** The bin's *Effects* tab is no longer a
+  placeholder. It holds one-click presets for the selected main-track clip.
+  - Nine colour looks: *Warm*, *Cool*, *Vivid*, *Faded*, *Dramatic*,
+    *Black and white*, *Sepia*, *Vintage* and *Brighter*.
+  - Four presets under *Blur and detail*: *Soft blur*, *Strong blur*,
+    *Sharpen* and *Reduce noise*.
+  - A preset is made of the engine's own effects (temperature, saturation,
+    contrast, vignette, blur and so on). They are added after the clip's
+    other effects, and a second click on the same preset changes nothing.
+  - A blur's radius is a share of the clip's picture height, so it looks
+    the same on a phone clip and a 4K one.
+  - The viewer, the draft and the export show the look, and the clip gets
+    its effects badge on the timeline.
+  - The inspector's Clip tab lists the clip's effects, one row per effect
+    named by what it does (*Warmer 30 %*, *Blur 3.5 px*), each with a
+    button that removes it, plus *Remove all effects*. Every change is an
+    undo step.
+  - (`EffectPresets`, `Document::ApplyEffectPreset`, `DescribeEffect`;
+    tested in `UltraVideoDocumentTest`, which renders a frame with every
+    preset and checks that *Black and white* turns the picture grey.)
+
 #### 2026-10-13 *0.3.0*
 - **Voice-overs and sound effects at any time.** A new free lane on the
   timeline, **A2 Voice & sound**, sits between the main track and the

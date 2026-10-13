@@ -1,6 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
-// Version: 0.3.0
+// Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
@@ -378,12 +378,35 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     }
     binTabs_->AddTab("Titles", titlesPage);
 
+    // Effects: one button per preset, each putting it on the selected clip
     auto effectsPage = std::make_shared<UltraCanvasContainer>("uv.bin.effectsPage", 0, 0, static_cast<int>(Tokens::BinW), 480);
+    effectsPage->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     effectsPage->SetPadding(static_cast<float>(Tokens::Space3));
-    effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 80,
-                               "Effect presets come in a later release. Transitions are chosen on a cut: right-click it, or use the inspector.");
-    effectsNote_->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
+    effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 40,
+                               "A click puts the effect on the selected clip; the inspector lists the clip's effects and removes them.");
+    effectsNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    effectsNote_->layoutItem.SetFlexShrink(0);
     effectsPage->AddChild(effectsNote_);
+    for (const bool blurGroup : {false, true}) {
+        auto heading = CreateLabel(blurGroup ? "uv.bin.effects.detail" : "uv.bin.effects.looks", 0, 0, 240, 22,
+                                   blurGroup ? "Blur and detail" : "Colour looks");
+        heading->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+        heading->layoutItem.SetFlexShrink(0);
+        effectHeadings_.push_back(heading);
+        effectsPage->AddChild(heading);
+        for (const EffectPreset& e : EffectPresets()) {
+            if (e.blur != blurGroup) continue;
+            auto button = MakeTextButton(std::string("uv.bin.effect.") + e.key, e.label, p, 240);
+            button->SetIcon(IconPath("fx"));
+            button->SetIconSize(16, 16);
+            button->SetTooltip(e.hint);
+            button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
+            const std::string key = e.key;
+            button->SetOnClick([this, key]() { ApplyEffect(key); });
+            effectButtons_.push_back(button);
+            effectsPage->AddChild(button);
+        }
+    }
     binTabs_->AddTab("Effects", effectsPage);
 
     (void)p;
@@ -673,6 +696,8 @@ void UltraVideoWindow::ApplyPalette() {
     for (auto& b : titleButtons_) b->SetStyle(PlainButtonStyle(p));
     for (auto& h : titleHints_) h->SetTextColor(ToColor(p.InkFaint));
     effectsNote_->SetTextColor(ToColor(p.InkMuted));
+    for (auto& b : effectButtons_) b->SetStyle(PlainButtonStyle(p));
+    for (auto& h : effectHeadings_) h->SetTextColor(ToColor(p.InkFaint));
     viewer_.ApplyPalette(p);
     inspector_.ApplyPalette(p);
 
@@ -1451,6 +1476,24 @@ void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
         inspector_.ShowClipTab();
         Message("A title at the playhead: set its text in the inspector.");
     }
+}
+
+void UltraVideoWindow::ApplyEffect(const std::string& key) {
+    const EffectPreset* preset = FindEffectPreset(key);
+    if (!preset) return;
+    const int index = SegmentOfClip(document_, selectedClip_);
+    if (index < 0) {
+        Message("Select a clip on the main track first: an effect goes on a clip.");
+        return;
+    }
+    Document trial = document_;
+    if (!trial.ApplyEffectPreset(static_cast<size_t>(index), key)) {
+        Message(std::string(preset->label) + " is already on this clip.");
+        return;
+    }
+    Edit(std::string("Apply ") + preset->label, [index, key](Document& d) { d.ApplyEffectPreset(static_cast<size_t>(index), key); });
+    inspector_.ShowClipTab();
+    Message(std::string(preset->label) + " on " + ClipName(document_, static_cast<size_t>(index)) + ": the inspector lists its effects.");
 }
 
 void UltraVideoWindow::AddOverlay(const std::string& path, double at) {

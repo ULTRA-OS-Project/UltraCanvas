@@ -410,7 +410,9 @@ the name, a duration badge for video and audio, a *photo* badge for images.
 *Music* lists songs with their length and detected tempo. *Titles* lists
 title styles (opening title, lower third, logo). *Effects* lists effect
 presets ("Warm film" = temperature, saturation and a vignette) and the
-transition types by family. Everything in the bin is a drag source: media
+transition types by family (presets **built** in app 0.4.0: nine colour
+looks and four blur and detail presets, a click on the selected clip;
+transitions stay on the cut). Everything in the bin is a drag source: media
 to the main or overlay track, songs to the music lane, titles to the title
 lane, transitions to a cut, effects to a clip. Double-click opens the
 file in the viewer. A probe runs on import on a worker thread and the

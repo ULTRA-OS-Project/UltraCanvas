@@ -5,7 +5,7 @@
 // `.ultravideo` file that holds all of it (Docs/Research/UltraVideoDesignProposal.md
 // §5.6, §9.2). The project inside the file is what VideoFX_ProjectToJson
 // writes, so `videofx render` works on it once extracted.
-// Version: 0.3.0
+// Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
@@ -119,6 +119,22 @@ struct TitleStyle {
 const std::vector<TitleStyle>& TitleStyles();
 const TitleStyle* FindTitleStyle(const std::string& key);
 
+// The effect presets the bin offers (proposal §5.2): one click puts a colour
+// look or a blur on the selected clip as the engine's own effects, which
+// the inspector then lists one by one. A blur's radius is a share of the
+// clip's picture height, so it looks the same on a phone clip and a 4K one.
+struct EffectPreset {
+    const char* key;
+    const char* label;
+    const char* hint;
+    bool blur;                                  // the Blur and detail group, not a colour look
+    std::vector<VideoFX::VideoFXEffect> effects; // a Blur's amount: the share of the picture's height
+};
+const std::vector<EffectPreset>& EffectPresets();
+const EffectPreset* FindEffectPreset(const std::string& key);
+// What one effect does, for the inspector's list: "Warmer 30 %", "Blur 4 px"
+std::string DescribeEffect(const VideoFX::VideoFXEffect& effect);
+
 class Document {
 public:
     VideoFX::VideoFXProject project;        // segments, settings (with the music), title
@@ -170,6 +186,10 @@ public:
     int SoundIndex(const std::string& id) const;
     // The lane as the engine's audio clips (VideoFXExportSettings::audioClips)
     std::vector<VideoFX::VideoFXAudioClip> AudioClipsForEngine() const;
+    // Put a preset's effects on a segment, after the ones it has. False when
+    // there is no such segment or preset, or the segment ends with exactly
+    // these effects already (a second click does not double a look).
+    bool ApplyEffectPreset(size_t segment, const std::string& key);
     // Timeline seconds of a segment: a file's range over its speed, a still's seconds
     double SegmentSeconds(size_t index) const;
     const MediaItem* FindMedia(const std::string& path) const;
