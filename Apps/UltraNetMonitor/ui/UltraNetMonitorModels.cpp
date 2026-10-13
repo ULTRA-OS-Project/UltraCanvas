@@ -1,5 +1,4 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorModels.cpp
-// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorModels.h"
 
@@ -93,8 +92,10 @@ namespace {
 
 std::string ChainText(LoopbackRole role, const std::string& peer, const std::vector<std::string>& forProcesses) {
     if (!peer.empty()) {
-        if (role == LoopbackRole::Client) return "\u2192 " + peer;
-        if (role == LoopbackRole::Server) return "\u2190 " + peer;
+        // Words, not arrows: the UI font has no "\u2192" / "\u2190", and on a
+        // machine without a fallback font for them each drew as a box.
+        if (role == LoopbackRole::Client) return "to " + peer;
+        if (role == LoopbackRole::Server) return "from " + peer;
         return peer;
     }
     if (!forProcesses.empty()) return "for " + Join(forProcesses, 3, ", ");
@@ -228,7 +229,7 @@ ListColumnDef ConnectionListModel::GetColumnDef(int column) const {
         case Host:        return ListColumnDef("Host", 180, TextAlignment::Left,
                                                "The peer's domain name, where a name source saw it; a trailing ? marks a weak (reverse DNS) name");
         case Via:         return ListColumnDef("Via", 150, TextAlignment::Left,
-                                               "The loopback chain: the local process on the other end (→ a proxy this app talks through, ← a client this process serves), or the applications a proxy's outbound connection is for");
+                                               "The loopback chain: the local process on the other end (\"to\" a proxy this app talks through, \"from\" a client this process serves), or \"for\" the applications a proxy's outbound connection serves");
         case State:       return ListColumnDef("State", 100);
         case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right,
                                                "Bytes the peer acknowledged; a dash where the backend has no counter");
@@ -266,7 +267,7 @@ ListDataValue ProcessListModel::GetData(const ListIndex& index, ListDataRole rol
                 case Established: return std::to_string(p->establishedCount);
                 case Listening:   return std::to_string(p->listeningCount);
                 case Remotes:     return std::to_string(p->remoteAddresses.size());
-                case Via:         return !p->viaProcesses.empty() ? "\u2192 " + Join(p->viaProcesses, 2, ", ")
+                case Via:         return !p->viaProcesses.empty() ? "to " + Join(p->viaProcesses, 2, ", ")
                                        : !p->servesProcesses.empty() ? "for " + Join(p->servesProcesses, 2, ", ")
                                        : std::string();
                 case Sent:        return ByteText(p->bytesSent);
@@ -322,7 +323,7 @@ ListColumnDef ProcessListModel::GetColumnDef(int column) const {
         case Remotes:     return ListColumnDef("Peers", 58, TextAlignment::Right,
                                                "Distinct remote addresses");
         case Via:         return ListColumnDef("Via", 130, TextAlignment::Left,
-                                               "→ the local proxy this application talks through; \"for\" the applications this process serves over loopback");
+                                               "\"to\" the local proxy this application talks through; \"for\" the applications this process serves over loopback");
         case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right,
                                                "Total over the process's TCP connections; a dash when any is uncounted");
         case Received:    return ListColumnDef("Received", 80, TextAlignment::Right,

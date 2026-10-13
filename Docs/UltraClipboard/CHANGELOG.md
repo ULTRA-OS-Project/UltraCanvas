@@ -1,3 +1,14 @@
+#### 2026-10-12 *0.1.4*
+- **Two starts at the same moment no longer both stay.** One UltraClipboard
+  at a time was decided over the message bus alone, so two starts close
+  together - a double click on the panel - could each find no other copy and
+  both open a window; without a bus every start opened its own. An
+  operating-system lock now decides (framework `UltraCanvasSingleInstance`,
+  framework changelog: `instance-lock`), which the system drops when the
+  process ends, so a crashed UltraClipboard never blocks the next start. The
+  hand-off of the search or the entry to edit is unchanged; a copy that does
+  not answer is reported with *"UltraClipboard is already running"*.
+
 #### 2026-10-11 *0.1.3*
 - **Rest the pointer on an image's thumbnail and the image opens at full
   size beside it.** The preview covers the right 60 % of the list, in a

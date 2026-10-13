@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.10.0
-// Last Modified: 2026-10-11
+// Version: 0.13.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -401,6 +401,33 @@ enum class VideoFXVideoCodec {
     Disabled                        // no video stream in the output
 };
 
+// Which encoder makes the video: software, the graphics hardware, or one
+// hardware family by name. A hardware encoder is several times faster and
+// leaves the processor free, at some cost in quality for the same size.
+// Whether one works depends on the machine, not only on FFmpeg: the build
+// may carry h264_nvenc and the computer have no NVIDIA card. VideoFX tries
+// each one once (a frame through it) before choosing it, so a choice never
+// lands on an encoder that cannot run here.
+enum class VideoFXAcceleration {
+    Auto,               // as before: the software encoder, then the platform's (VideoToolbox, Media Foundation)
+    Software,           // software encoders only (libx264, libx265, ...)
+    Hardware,           // the first hardware encoder that works here; software when none does
+    NVENC,              // NVIDIA (h264_nvenc, hevc_nvenc, av1_nvenc)
+    QuickSync,          // Intel Quick Sync Video (h264_qsv, ...)
+    VAAPI,              // VA-API on Linux: Intel and AMD graphics (h264_vaapi, ...)
+    AMF,                // AMD on Windows (h264_amf, ...)
+    VideoToolbox,       // macOS (h264_videotoolbox, ...)
+    MediaFoundation     // Windows (h264_mf, ...)
+};
+
+// One encoder FFmpeg offers for a codec (VideoFX_ListVideoEncoders)
+struct VideoFXEncoderInfo {
+    std::string name;                                       // FFmpeg's name, e.g. "h264_nvenc"
+    VideoFXVideoCodec codec = VideoFXVideoCodec::Auto;
+    VideoFXAcceleration acceleration = VideoFXAcceleration::Software;   // Software or a hardware family
+    bool works = false;                                     // tried on this machine: it encodes
+};
+
 enum class VideoFXAudioCodec {
     Auto,                           // the container's usual codec (AAC for MP4, Opus for WebM ...)
     AAC, MP3, Opus, Vorbis, FLAC, PCM16,
@@ -497,6 +524,38 @@ struct VideoFXMusic {
     }
 };
 
+// A sound placed on the timeline: a voice-over, a sound effect, a sting. It
+// plays from `at` seconds of the export, `start`..`end` of its file, mixed
+// with the segments' own sound and before the music - so a voice-over can
+// duck the music as the segments' speech does. Any number of them, at any
+// times, overlapping each other and the cuts; what lies past the end of the
+// export is cut off there.
+struct VideoFXAudioClip {
+    std::string path;               // a sound file, or a video whose sound is wanted
+    double at = 0.0;                // seconds into the export where it starts
+    double start = 0.0;             // first second of the file used
+    double end = 0.0;               // last second used, 0 = to the file's end
+    double volume = 1.0;            // 0..4 (1 = as recorded)
+    double fadeIn = 0.0;            // seconds, at the clip's own ends
+    double fadeOut = 0.0;
+    // The background music dips under it, as under the segments' sound:
+    // true for a voice-over, false for a sound effect over the music
+    bool ducksMusic = false;
+
+    static VideoFXAudioClip Sound(const std::string& path, double at, double volume = 1.0) {
+        VideoFXAudioClip c;
+        c.path = path;
+        c.at = at;
+        c.volume = volume;
+        return c;
+    }
+    static VideoFXAudioClip VoiceOver(const std::string& path, double at, double volume = 1.0) {
+        VideoFXAudioClip c = Sound(path, at, volume);
+        c.ducksMusic = true;
+        return c;
+    }
+};
+
 struct VideoFXExportSettings {
     VideoFXContainer container = VideoFXContainer::Auto;
     VideoFXVideoCodec videoCodec = VideoFXVideoCodec::Auto;
@@ -514,6 +573,13 @@ struct VideoFXExportSettings {
     int quality = -1;
     int64_t videoBitRate = 0;       // bits per second, 0 = quality-driven
     std::string encoderPreset;      // e.g. "veryfast" for x264/x265; empty = default
+    // Seconds between keyframes, 0 = the encoder's default. Short intervals
+    // make a file quick to seek in (proxies use 0.5) at some cost in size.
+    double keyframeInterval = 0.0;
+    // Software, hardware, or one hardware family (see VideoFXAcceleration).
+    // A named family that does not work here fails with EncoderNotAvailable;
+    // Hardware falls back to software instead.
+    VideoFXAcceleration acceleration = VideoFXAcceleration::Auto;
 
     int sampleRate = 0;             // 0 = first audio segment's rate (48000 fallback)
     int channels = 0;               // 0 = stereo (mono if every source is mono)
@@ -522,6 +588,7 @@ struct VideoFXExportSettings {
     int threads = 0;                // 0 = automatic
 
     VideoFXMusic music;             // background music under the whole export (none by default)
+    std::vector<VideoFXAudioClip> audioClips;   // voice-overs and sound effects at given times
 
     // Presets for common targets
     static VideoFXExportSettings WebMP4(int height = 1080);     // H.264 + AAC, 1080p default
@@ -612,6 +679,24 @@ struct VideoFXWaveform {
         }
         return peak;
     }
+};
+
+// ============================================================================
+// PROXY MEDIA (VideoFX_CreateProxy / VideoFX_UseProxies)
+// ============================================================================
+// A proxy is a small stand-in for a large clip: the same picture and sound,
+// timed the same, at a low resolution, with a keyframe every half second.
+// An editor previews and scrubs over proxies, and the export reads the
+// originals. Proxies live in a cache folder, named after the clip's path,
+// size and modification time, so an edited or replaced clip gets a new one.
+struct VideoFXProxySettings {
+    int height = 540;               // picture height; width follows the clip's shape
+    int quality = 50;               // 0..100, as VideoFXExportSettings::quality
+    double keyframeInterval = 0.5;  // seconds between keyframes: what makes scrubbing fast
+    std::string cacheDirectory;     // "" = VideoFX_GetDefaultProxyDirectory()
+    // The encoder that makes them; Hardware frees the processor for editing
+    // while proxies are made, and falls back to software where none works
+    VideoFXAcceleration acceleration = VideoFXAcceleration::Auto;
 };
 
 // ============================================================================

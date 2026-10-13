@@ -617,7 +617,8 @@ build machine - and stop, saying so, when it is not set. The `.pfx` they
 export next to themselves is ignored by git: it holds the private key. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
 copy, because `windres` reads them from disk: run `./set-version.sh` after
-bumping the version, and the CMake configure warns when they are stale.
+bumping the version; the CMake configure warns when they are stale and
+`scripts/check_changelog.py` fails CI on it.
 
 </details>
 

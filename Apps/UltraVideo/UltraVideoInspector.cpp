@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
@@ -616,6 +616,15 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     };
     dropdowns.push_back(fitMode);
     Row(projectPage, "uv.insp.row.fitMode", "Clips that differ", fitMode);
+    // Proxies: small stand-ins the viewer plays while large clips are edited
+    useProxies = UltraCanvasSwitch::Create("uv.insp.proxies", 0, 0, "Preview from proxies", true);
+    useProxies->onStateChanged = [this](CheckedState, CheckedState now) {
+        if (updating || !onUseProxies) return;
+        onUseProxies(now == CheckedState::Checked);
+    };
+    useProxies->layoutItem.SetFlexShrink(0);
+    switches.push_back(useProxies);
+    projectPage->AddChild(useProxies);
     tabs->AddTab("Project", projectPage);
 
     ApplyPalette(p);
@@ -875,6 +884,7 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
     frameRate->SetSelectedIndex(rateIndex, false);
     fitMode->SetSelectedIndex(doc.project.settings.fitMode == VideoFXFitMode::Fill ? 1
                               : doc.project.settings.fitMode == VideoFXFitMode::Stretch ? 2 : 0, false);
+    useProxies->SetChecked(doc.view.useProxies);
     updating = false;
 }
 

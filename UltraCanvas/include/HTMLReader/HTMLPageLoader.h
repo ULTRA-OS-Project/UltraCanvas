@@ -18,6 +18,16 @@
 // Rules for subresources: http(s) pages load http(s) and data: resources, an
 // https page no http ones (mixed content), and only a file: page loads file:
 // resources. Anything else is refused and logged in the page's warnings.
+// Version: 1.3.0 - downloads: LoadedPage keeps an Other answer's bytes and the
+//                  name to save it as (DownloadFileName); Content-Disposition:
+//                  attachment is a download; a non-page over the size limit is
+//                  a truncated download, not an error
+// Version: 1.2.0 - LoadPost and PageLoaderServices::post: the page a form's POST
+//                  answers with
+// Version: 1.1.0 - @import: the sheets a linked sheet or a <style> imports
+//                  are fetched before the page is ready too (up to 4 deep,
+//                  within maxStyleSheets), and RewriteCssUrls makes their
+//                  addresses absolute
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -46,12 +56,23 @@ struct FetchResult {
     std::string contentType;
     std::vector<uint8_t> body;
     std::string error;
+    // The Content-Disposition header ("attachment; filename=..."), if any.
+    std::string contentDisposition;
+    // The answer went over the fetch's size limit: body is not all of it
+    // (ok is false). A page that big is refused; anything else is a download
+    // the host fetches again itself, streaming.
+    bool tooLarge = false;
 };
 
 struct PageLoaderServices {
     // Fetch `url` (http, https or file); call `done` exactly once, on the
     // loader's thread.
     std::function<void(const std::string& url, std::function<void(FetchResult)> done)> fetch;
+    // POST `body` (with `contentType`) to `url`, for a form; call `done`
+    // exactly once, on the loader's thread. Without it a page's forms can
+    // only send by GET.
+    std::function<void(const std::string& url, const std::string& contentType, const std::string& body,
+                       std::function<void(FetchResult)> done)> post;
     // `reference` read against `base` (RFC 3986); false when it cannot be.
     std::function<bool(const std::string& base, const std::string& reference,
                        std::string& absolute)> resolve;
@@ -62,7 +83,7 @@ struct PageLoaderServices {
 
 struct PageLoaderLimits {
     size_t maxDocumentBytes = 16u * 1024u * 1024u;   // larger documents are refused
-    size_t maxStyleSheets = 32;                       // <link rel=stylesheet> fetched per page
+    size_t maxStyleSheets = 32;                       // <link rel=stylesheet> and @import sheets per page
     size_t maxResources = 512;                        // subresources fetched per page
     size_t cacheBytes = 64u * 1024u * 1024u;          // resource cache, oldest out first
 };
@@ -89,6 +110,13 @@ struct LoadedPage {
     std::shared_ptr<Document> document;
     std::string charset;      // what the bytes were read as
     std::vector<std::string> warnings;
+    // Other - a download: its bytes, when they all arrived (`truncated`
+    // false), the name to save it as (DownloadFileName), and whether the
+    // server asked for it to be saved (Content-Disposition: attachment).
+    std::vector<uint8_t> body;
+    bool truncated = false;
+    std::string fileName;
+    bool attachment = false;
 };
 
 class PageLoader {
@@ -102,6 +130,10 @@ public:
     // answer never arrives. `onReady` is called once, with the page or the
     // error. Returns the navigation's number.
     uint64_t Load(const std::string& url, std::function<void(LoadedPage)> onReady);
+    // The page a form's POST answers with: `body` sent as `contentType` to
+    // `url` (PageLoaderServices::post), the answer read as Load reads one.
+    uint64_t LoadPost(const std::string& url, const std::string& contentType, const std::string& body,
+                      std::function<void(LoadedPage)> onReady);
     // Drops the navigation in progress (and the resources it queued).
     void Cancel();
     bool IsLoading() const;
@@ -124,11 +156,18 @@ public:
     // then "utf-8" when the bytes are valid UTF-8, else "windows-1252".
     static std::string DetectCharset(const std::vector<uint8_t>& bytes,
                                      const std::string& contentType);
-    // Every url(...) in a style sheet made absolute against the sheet's own
-    // URL, so it means the same once the sheet is part of the page.
+    // Every url(...) in a style sheet, and every @import "..." address,
+    // made absolute against the sheet's own URL, so it means the same once
+    // the sheet is part of the page.
     static std::string RewriteCssUrls(const std::string& css, const std::string& sheetUrl,
                                       const std::function<bool(const std::string&, const std::string&,
                                                                std::string&)>& resolve);
+    // The name to save a download as: Content-Disposition's filename*
+    // (RFC 5987, UTF-8) or filename, else the URL's last path segment
+    // (percent-decoded), else "download" with an extension for its type.
+    // Folders, control characters and leading dots are taken out.
+    static std::string DownloadFileName(const std::string& contentDisposition, const std::string& url,
+                                        const std::string& contentType);
     // A data: URL's bytes (base64 or percent-encoded); false when malformed.
     static bool DecodeDataUrl(const std::string& url, std::vector<uint8_t>& out);
 
@@ -139,8 +178,20 @@ private:
         std::vector<uint8_t> bytes;
     };
 
+    struct PostRequest {
+        std::string contentType;
+        std::string body;
+    };
+    uint64_t Start(const std::string& url, std::function<void(LoadedPage)> onReady, const PostRequest* post);
     void Finish(const std::shared_ptr<Navigation>& nav, FetchResult result);
     void FetchStyleSheets(const std::shared_ptr<Navigation>& nav);
+    // Fetch one sheet for the navigation (`depth` imports below the page),
+    // then the sheets it imports; the page is ready when none is pending.
+    void FetchSheet(const std::shared_ptr<Navigation>& nav, const std::string& url, int depth);
+    // Queue the sheets `css` imports, read against `sheetUrl`.
+    void FetchImports(const std::shared_ptr<Navigation>& nav, const std::string& css,
+                      const std::string& sheetUrl, int depth);
+    void SheetDone(const std::shared_ptr<Navigation>& nav);
     std::string ToUtf8(const std::vector<uint8_t>& bytes, const std::string& charset) const;
     bool Allowed(const std::string& absolute, std::string& why) const;
     void Store(const std::string& url, CacheEntry entry);

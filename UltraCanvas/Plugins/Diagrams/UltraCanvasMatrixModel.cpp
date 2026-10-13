@@ -1,13 +1,15 @@
 // Plugins/Diagrams/UltraCanvasMatrixModel.cpp
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
 #include <algorithm>
 #include <numeric>
 #include <sstream>
+#include <utility>
 
 namespace UltraCanvas {
 
@@ -341,6 +343,44 @@ namespace UltraCanvas {
             }
         }
 
+        // An X places sets[0] left, sets[1] top, sets[2] right, sets[3]
+        // bottom, so a panel is drawable only when it pairs a left/right set
+        // with a top/bottom one - that pair names its quadrant, and no two
+        // panels may claim the same quadrant. A Y has a panel between each two
+        // of its three seams, so it needs two different sets among the first
+        // three, each pair at most once.
+        if ((shape == MatrixShape::X && sets.size() >= 4) ||
+            (shape == MatrixShape::Y && sets.size() >= 3)) {
+            const int placed = (shape == MatrixShape::X) ? 4 : 3;
+            std::vector<std::pair<int, int>> claimed;
+            for (size_t p = 0; p < panels.size(); ++p) {
+                const std::string where = "panel " + std::to_string(p);
+                const int r = IndexOfSet(panels[p].rowSetId);
+                const int c = IndexOfSet(panels[p].colSetId);
+                if (r < 0 || c < 0) continue;   // already reported above
+                if (r >= placed || c >= placed) {
+                    fail(where + " uses a set beyond the " + std::to_string(placed)
+                         + " this shape places");
+                    continue;
+                }
+                if (shape == MatrixShape::X && (r % 2) == (c % 2)) {
+                    fail(where + " crosses two sets on the same axis of the X; pair a "
+                         "left/right set (0 or 2) with a top/bottom one (1 or 3)");
+                    continue;
+                }
+                if (shape == MatrixShape::Y && r == c) {
+                    fail(where + " crosses a set with itself, which a Y cannot place");
+                    continue;
+                }
+                const std::pair<int, int> key(std::min(r, c), std::max(r, c));
+                if (std::find(claimed.begin(), claimed.end(), key) != claimed.end()) {
+                    fail(where + " relates the same two sets as an earlier panel");
+                    continue;
+                }
+                claimed.push_back(key);
+            }
+        }
+
         for (size_t c = 0; c < cells.size(); ++c) {
             const MatrixCell& cell = cells[c];
             const std::string where = "cell " + std::to_string(c);
@@ -385,6 +425,7 @@ namespace UltraCanvas {
         sets.clear();
         panels.clear();
         cells.clear();
+        headerFields.clear();
     }
 
 // =============================================================================
@@ -664,6 +705,113 @@ namespace UltraCanvas {
                                   row.marks[c]);
                 }
             }
+            return model;
+        }
+
+        MatrixModel SupplyChain() {
+            MatrixModel model;
+            model.title = "Supply chain matrix";
+            model.subtitle = "Who supplies which store, which store serves which customer, "
+                             "and which line builds for whom";
+            model.shape = MatrixShape::X;
+
+            model.headerFields = {
+                    {"PROJECT", "Warehouse consolidation"},
+                    {"AREA",    "Logistics"},
+                    {"TITLE",   "Material flow review"},
+                    {"TEAM",    "Ops planning"},
+                    {"DATE",    "2026-10-13"},
+            };
+
+            // Left, top, right, bottom - the order the X places them in.
+            model.AddSet("suppliers", "Suppliers",
+                         {"Supplier A", "Supplier B", "Supplier C", "Supplier D", "Supplier E"});
+            model.AddSet("storage", "Storage areas",
+                         {"W/H 1", "W/H 2", "W/H 3", "W/H 4"});
+            model.AddSet("customers", "Customers",
+                         {"P-1042", "P-1187", "P-2210", "P-3005", "P-3311"});
+            model.AddSet("lines", "Production lines",
+                         {"Line 1", "Line 2", "Line 3", "Line 4"});
+
+            // A x B, B x C, C x D, D x A. Each panel names a left/right set
+            // and a top/bottom one; which of the two is the row set is up to
+            // the caller - the layout turns the panel to fit its quadrant.
+            model.AddPanel("suppliers", "storage", MatrixScale::HighMediumLow());   // turned: rows run across
+            model.AddPanel("storage", "customers", MatrixScale::HighMediumLow());
+            model.AddPanel("lines", "customers", MatrixScale::HighMediumLow());
+            model.AddPanel("lines", "suppliers", MatrixScale::HighMediumLow());
+
+            struct Mark { int panel; const char* row; const char* col; const char* level; };
+            static const Mark marks[] = {
+                {0, "Supplier A", "W/H 1", "high"},   {0, "Supplier C", "W/H 1", "low"},
+                {0, "Supplier B", "W/H 2", "high"},   {0, "Supplier D", "W/H 2", "medium"},
+                {0, "Supplier C", "W/H 3", "medium"}, {0, "Supplier E", "W/H 3", "high"},
+                {0, "Supplier A", "W/H 4", "low"},    {0, "Supplier D", "W/H 4", "high"},
+
+                {1, "W/H 1", "P-1042", "high"},   {1, "W/H 1", "P-2210", "medium"},
+                {1, "W/H 2", "P-1187", "high"},   {1, "W/H 2", "P-3311", "low"},
+                {1, "W/H 3", "P-3005", "high"},   {1, "W/H 3", "P-2210", "low"},
+                {1, "W/H 4", "P-3311", "medium"}, {1, "W/H 4", "P-1187", "low"},
+
+                {2, "Line 1", "P-1042", "high"},   {2, "Line 1", "P-1187", "medium"},
+                {2, "Line 2", "P-2210", "high"},   {2, "Line 2", "P-3005", "low"},
+                {2, "Line 3", "P-3005", "high"},   {2, "Line 3", "P-3311", "medium"},
+                {2, "Line 4", "P-3311", "high"},   {2, "Line 4", "P-1042", "low"},
+
+                {3, "Line 1", "Supplier A", "high"},   {3, "Line 1", "Supplier B", "low"},
+                {3, "Line 2", "Supplier C", "high"},   {3, "Line 2", "Supplier D", "medium"},
+                {3, "Line 3", "Supplier E", "high"},   {3, "Line 3", "Supplier B", "medium"},
+                {3, "Line 4", "Supplier D", "high"},   {3, "Line 4", "Supplier A", "low"},
+            };
+            for (const Mark& m : marks) model.SetCell(m.panel, m.row, m.col, m.level);
+            return model;
+        }
+
+        MatrixModel DesignTraceability() {
+            MatrixModel model;
+            model.title = "Design traceability";
+            model.subtitle = "Requirements to functions to components, and back to requirements";
+            model.shape = MatrixShape::Y;
+
+            model.AddSet("requirements", "Requirements",
+                         {"Quiet", "Long battery life", "Easy to clean", "Compact"});
+            model.AddSet("functions", "Functions",
+                         {"Generate suction", "Store energy", "Filter air", "Collect dust"});
+            model.AddSet("components", "Components",
+                         {"Motor", "Battery pack", "HEPA filter", "Dust bin", "Housing"});
+
+            model.AddPanel("requirements", "functions", MatrixScale::QFD());
+            model.AddPanel("functions", "components", MatrixScale::QFD());
+            model.AddPanel("components", "requirements", MatrixScale::QFD());
+
+            struct Mark { int panel; const char* row; const char* col; const char* level; };
+            static const Mark marks[] = {
+                {0, "Quiet", "Generate suction", "strong"},
+                {0, "Quiet", "Filter air", "weak"},
+                {0, "Long battery life", "Store energy", "strong"},
+                {0, "Long battery life", "Generate suction", "moderate"},
+                {0, "Easy to clean", "Collect dust", "strong"},
+                {0, "Easy to clean", "Filter air", "moderate"},
+                {0, "Compact", "Store energy", "moderate"},
+                {0, "Compact", "Collect dust", "weak"},
+
+                {1, "Generate suction", "Motor", "strong"},
+                {1, "Generate suction", "Housing", "weak"},
+                {1, "Store energy", "Battery pack", "strong"},
+                {1, "Filter air", "HEPA filter", "strong"},
+                {1, "Filter air", "Housing", "moderate"},
+                {1, "Collect dust", "Dust bin", "strong"},
+
+                {2, "Motor", "Quiet", "strong"},
+                {2, "Motor", "Long battery life", "moderate"},
+                {2, "Battery pack", "Long battery life", "strong"},
+                {2, "Battery pack", "Compact", "moderate"},
+                {2, "HEPA filter", "Easy to clean", "weak"},
+                {2, "Dust bin", "Easy to clean", "strong"},
+                {2, "Housing", "Compact", "strong"},
+                {2, "Housing", "Quiet", "moderate"},
+            };
+            for (const Mark& m : marks) model.SetCell(m.panel, m.row, m.col, m.level);
             return model;
         }
 

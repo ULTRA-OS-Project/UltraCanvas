@@ -579,9 +579,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Image / Other / Error, final URL, base, charset, the parsed `Document`,
   warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
   (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
-  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`. Fetch, URL resolution and
-  charset conversion are services the caller passes in, so it is
-  framework-independent; linked style sheets load before a page is ready;
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`, `DownloadFileName`;
+  `LoadPost` for a form's POST; a non-page answer keeps its bytes and file
+  name for the host to save. Fetch, POST, URL resolution and charset conversion are services the
+  caller passes in, so it is framework-independent; linked style sheets and
+  their `@import`s load before a page is ready;
   mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
   `EscapeText` (`HTMLDocument.h`) is DecodeEntities' inverse.
 - **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
@@ -590,7 +592,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
   `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
   `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
-  JavaScript (`<noscript>` shown).
+  JavaScript (`<noscript>` shown). Forms the reader fills in and sends
+  (`SetInteractiveForms`, `SubmitForm`: GET as a navigation, POST through
+  `PageLoader::LoadPost`), what was typed kept across a rebuild.
+- **HTMLForms** (`HTMLReader/HTMLForms.h`) - `FormSubmission` (action, method,
+  enctype, the entry list; `Encoded`, `Multipart`, `PlainText`, `Body`,
+  `ContentType`) and `FormController`, one per `<form>` built with
+  `BuildOptions::interactiveForms`: its widgets (held weakly), radio groups,
+  `Collect`, `Submit`, `Reset`, `Save` / `Restore`; file inputs (`SetFiles`,
+  `BuildOptions::onChooseFiles`, multipart file parts in
+  `FormSubmission::files`) and `ActivateControl` for a `<label>`'s click.
 - **HTMLRichDocumentImporter** (`HTMLReader/HTMLRichDocumentImporter.h`,
   `namespace UltraCanvas`) — `ImportHTMLToRichDocument(html,
   HTMLRichImportOptions)` / `AppendHTMLToRichDocument(document, html,
@@ -683,6 +694,32 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
+
+- **UltraCanvasInstanceLock** (`UltraCanvasInstanceLock.h`) — one running
+  copy of an application per user. `InstanceLock::Acquire(path)` answers
+  `Acquired`, `HeldElsewhere` (another copy runs), `Failed` or `Unsupported`;
+  the operating system drops the lock when the process ends, so a crash never
+  leaves a stale one. Backends: `OS/Linux/UltraCanvasLinuxInstanceLock.cpp`
+  and `OS/MacOS/UltraCanvasMacOSInstanceLock.cpp` (`flock`),
+  `OS/MSWindows/UltraCanvasWindowsInstanceLock.cpp` (`LockFileEx`); Android and
+  WebAssembly get the `Unsupported` fallback in
+  `core/UltraCanvasInstanceLock.cpp` (`ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK`
+  unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
+  `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
+
+- **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
+  copy of an application per user, built on UltraCanvasInstanceLock: a second
+  start asks the running copy over UltraMessage (`<appId>.show`) to come
+  forward and quits. `Claim()`, `ListenRaise()` / `Listen(handler)`,
+  `Close()`, `BringToFront()`, `RunAlreadyRunningAlert()`. Not in the core
+  library: `ultracanvas_single_instance(<target>)`
+  (`cmake/UltraCanvasSingleInstance.cmake`) compiles
+  `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
+  UltraMessage where present. Used by the single-window applications (UltraMail,
+  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
+  UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
+  UltraSocial, UltraFIBU, UltraWin Manager). See
+  `Docs/UltraCanvas/UltraCanvasSingleInstance.md`.
 
 - **UltraCanvasArchiveRun** (`UltraCanvasArchiveRun.h`) — "Extract and
   run": what it takes to start a program that is inside an archive, whose
@@ -1028,6 +1065,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `WindowType::Desktop` (`UltraCanvasWindow.h`) is
   the screen-sized window at the bottom of the stack a desktop draws into.
 
+- **UltraCanvasToolGroupButton** (`UltraCanvasToolGroupButton.h`) — several
+  tools sharing one slot of a palette or toolbar: the slot shows one of them,
+  a bar of the whole group folds out beside it while the pointer rests on it
+  (`SetFoldOutDelay`, `SetFoldOutSide`, `OpenFoldOut` / `CloseFoldOut`), and a
+  click there picks a tool (`onItemSelected`). `SetItems` / `AddItem`,
+  `SetCurrentItem` (the tool in use, set without firing), `GetSlotItem`,
+  `SetSlotShowsLastPicked` (adaptive: the tool last picked; static: always
+  the first). `UltraCanvasToolbar::AddToolGroup` adds one with the toolbar's
+  button look. See `Docs/UltraCanvas/UltraCanvasToolGroupButton.md`.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.
@@ -1262,8 +1309,9 @@ engine; these classes hold the pixels being edited and hand them to it.
 - **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
   strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
   pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
-  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
-  FloodFill/MagicWandMask/FillGradient/SampleColour` (`FillCompositing`:
+  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/DrawCurve/DrawArrow/
+  FillCoverage/StampMask/FloodFill/MagicWandMask/FillGradient/SampleColour`,
+  with `FlattenCubicBezier` and `ArrowShape` for previews (`FillCompositing`:
   Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
@@ -1412,6 +1460,23 @@ file `FileDialog.conf` in the UltraCanvas settings folder; the ULTRA OS
 settings application (UOS-Settings, `Apps/UOSSettings`) edits the last used
 folder scope. Every write goes through `FileDialogSettings::Update()`.
 
+Save settings - how each format is written (JPEG quality, PNG compression,
+TIFF codec ...) - are described per format (`UltraCanvasFileSaveSettings.h`:
+`FileSaveFormat`, `FileSaveSettingSpec`, `FileSaveSettings`) and kept for every
+application in `SaveSettings.conf` in the same folder.
+`UltraCanvasFileLoader::HasSaveSettings` / `FindSaveFormat` /
+`GetSaveSettings` / `HasStoredSaveSettings` / `SetSaveSettings` /
+`ResetSaveSettings` / `RegisterSaveFormat` / `ShowSaveSettingsDialog` /
+`GetImageExportOptions` are the surface; the framework Save dialog's Settings
+button edits them, its file icon (`UltraCanvasFileDragIcon`) is dropped on a
+folder to save there, and `UCRasterDocument::SaveToFile` reads them. A
+picture's size for one save (`FileSaveImageSize`, offered when the caller
+passes `FileDialogOptions::SetImageSize`, or `SetDrawingSize` for a drawing,
+which has no pixel size and is drawn sharp at any) comes back through the
+`SaveFileDialog` overload that reports it, never stored. The media viewer's
+Save image as (UltraViewer) offers it and draws an SVG again at the size
+chosen.
+
 ### **4. Plug-ins for File Types**
 
 Per-format plug-ins under `UltraCanvas/Plugins/` (Charts, Diagrams, Text,
@@ -1444,7 +1509,13 @@ future.
 - `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync` (an async response
   cut off after its status line carries `UltraNetResponse::transferError`,
   `IsComplete()` and `exceededReceiveLimit`)
-- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`
+- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`; any request writes
+  its body to a file through `UltraNetHttpOptions::outputFilePath`, resumes a
+  partial one with `resumeOutputFile` (`resumeFromOffset` for a caller's own
+  partial copy), follows redirects to https:// only with
+  `httpsOnlyRedirects`, has no whole-transfer timeout but a `stallTimeoutMs`
+  when it writes a file, and sees the final response's headers before the
+  body through `UltraNetHttpRequest::onHeaders`, which can veto the body
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
@@ -1486,7 +1557,8 @@ future.
   reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
 - `UltraNet_ConvertToUtf8` (bytes in a named charset to UTF-8, through iconv
   where the build has it; what mail bodies and web pages are read with)
-- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
+- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`,
+  `UltraNet_PauseRequest`, `UltraNet_ResumeRequest`, `UltraNet_IsRequestPaused`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 
 **Plugin Categories (Tier 2 / Tier 3, located under `Plugins/UltraNet/`):**
@@ -1508,7 +1580,8 @@ loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
 worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
-`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNet_GetTransferStats`, `UltraNet_PauseRequest` /
+`UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
 on libcurl. Remaining gaps are per-function and environment-dependent —
@@ -1560,11 +1633,17 @@ Store, and any other UltraCanvas-based application that needs local or
 networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
-**Implementation status (this branch):** Concept / design only. Public
-surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
-rollout is SQLite core + registry + query/transaction/migration API
-(Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
-remaining drivers and at-rest encryption (Stage 3).
+**Implementation status (this branch):** Stage 1 implemented, and the
+PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
+parameterized queries, prepared statements, transactions and versioned
+migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
+`Tests/UltraDatabase`); the PostgreSQL driver
+(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
+found, verifies TLS by default and reads its password from UltraVault, and
+UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
+networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
+queries, pooling, streaming cursors and at-rest encryption. Details in
+`Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
 
@@ -1638,9 +1717,9 @@ compatibility routing are planned for Stages 2-3. See
 ### **8. UltraCrypt**
 
 Cryptographic services — the single place where hashing, message
-authentication, authenticated encryption, key derivation and secure random
-generation are implemented, so no application, plugin or sibling module has
-to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
+authentication, authenticated encryption, digital signatures, key derivation
+and secure random generation are implemented, so no application, plugin or
+sibling module has to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
 see `Docs/Modules/UltraCrypt/README.md`.
 
 Scope is **data at rest and data integrity**. Transport security stays in
@@ -1675,6 +1754,10 @@ backing library is never visible in a public header.
   `UltraCrypt_IsAeadAvailable`
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`
+- `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
+  `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
+  `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
+  and the `UltraCrypt_GetSignature*Size` family (Ed25519, RFC 8032)
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
@@ -2257,11 +2340,15 @@ song lists crossfading into each other), beat detection and slideshows
 changing on the beat, project files (`.vfxproj`, JSON, media paths relative
 to the project, missing media reported), waveforms (loudness envelopes
 for timelines and players), a preview (any frame of a timeline rendered
-as the export would make it, for an editor's viewer),
+as the export would make it, for an editor's viewer), proxy media (small
+stand-ins for large clips, made once into a cache folder and switched in
+for previews and drafts), hardware encoders by choice (software, any that
+works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media
+Foundation, each tried on the machine before it is used), free audio clips
+(voice-overs and sound effects at given times, the music ducking under
+voice-overs),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
-command-line tool. Planned: picture-in-picture, keyframed parameters,
-several free audio tracks, hardware encoders beyond the platform ones picked
-automatically (VideoToolbox, Media Foundation), proxy media.
+command-line tool. Planned: keyframed parameters.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
@@ -2272,9 +2359,12 @@ automatically (VideoToolbox, Media Foundation), proxy media.
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
+  `VideoFXAudioClip` (`VideoFXExportSettings::audioClips`; `Sound`, `VoiceOver`),
   `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
-  `VideoFXProject`, `VideoFXProjectKind`
+  `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
+  `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
+  (`VideoFXExportSettings::keyframeInterval`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2297,6 +2387,12 @@ automatically (VideoToolbox, Media Foundation), proxy media.
 - Project files: `VideoFX_SaveProject`, `VideoFX_LoadProject`,
   `VideoFX_ProjectToJson`, `VideoFX_ProjectFromJson`,
   `VideoFX_RenderProject`, `kVideoFXProjectFormatVersion`
+- Proxy media: `VideoFX_GetDefaultProxyDirectory`, `VideoFX_ProxyPath`,
+  `VideoFX_HasProxy`, `VideoFX_CreateProxy`, `VideoFX_CreateProxies`,
+  `VideoFX_UseProxies`, `VideoFX_ClearProxies`
+- Encoders: `VideoFX_IsVideoEncoderAvailable(codec, acceleration)`,
+  `VideoFX_ListVideoEncoders`, `VideoFX_ChooseVideoEncoder`,
+  `VideoFX_AccelerationName`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -2316,14 +2412,21 @@ automatically (VideoToolbox, Media Foundation), proxy media.
   TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
+  FindVideoEncoder, VideoEncoderCandidates, AccelerationOfEncoder,
+  EncoderWorks, NeedsHardwareFrames, SetUpHardwareFrames,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
   MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
-  CrossfadeGains, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
+  CrossfadeGains, ValidateAudioClip, AudioClipGain, AudioClipSeconds, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
   TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
   FocusBounds, FitMotionToFocus, KeepFocusInView, DetectFacesGray,
   DetectFaces, ProjectToJsonText, ProjectFromJsonText, SaveProjectFile,
-  LoadProjectFile, ProjectMedia}` (`core/VideoFXProject.h` - on the vendored
+  LoadProjectFile, ProjectMedia, UserCacheDir, DefaultProxyDirectory,
+  ProxyDirectory, ValidateProxySettings, ProxyFileName, ProxyPathFor,
+  IsProxyFileName, ProxyableClips, ScaleCrop, CreateProxy, CreateProxies,
+  UseProxies, ClearProxies}` (`core/VideoFXProxy.h` - no FFmpeg dependency of
+  its own, it makes proxies through the public API;
+  `core/VideoFXProject.h` - on the vendored
   nlohmann/json, no FFmpeg dependency; `core/VideoFXFaces.h` - the cascade compiled in as
   `core/VideoFXFaceCascade.inc`, generated by `scripts/generate_face_cascade.py`
   from `UltraCanvas/third_party/opencv_haarcascade/`)
@@ -4462,7 +4565,8 @@ build machine - and stop, saying so, when it is not set. The `.pfx` they
 export next to themselves is ignored by git: it holds the private key. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
 copy, because `windres` reads them from disk: run `./set-version.sh` after
-bumping the version, and the CMake configure warns when they are stale.
+bumping the version; the CMake configure warns when they are stale and
+`scripts/check_changelog.py` fails CI on it.
 
 </details>
 
@@ -13080,8 +13184,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.0.5  
-**Last Modified:** 2026-10-11  
+**Version:** 1.0.6  
+**Last Modified:** 2026-10-12  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -13230,7 +13334,13 @@ void SetPadding(float all);                                      // inherited fr
 void SetPadding(float vertical, float horizontal);
 void SetPadding(float top, float right, float bottom, float left);
 void SetIconSpacing(int spacing);
+void SetIconSize(int width, int height);   // the size the icon is drawn at
 void SetCornerRadius(float radius);
+
+// The icon's size as set with SetIconSize - what a twin of the button
+// (a tool group's fold-out bar) copies
+int GetIconWidth() const;
+int GetIconHeight() const;
 
 // Shadow configuration
 void SetShadow(
@@ -13539,6 +13649,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
 | 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |
 | 1.0.3 | 2026-10-07 | Match the header: real `ButtonStyle` fields and `ButtonBuilder` methods, `ElementState`/`GetPrimaryState()` instead of a `ButtonState` enum, layout sizing instead of auto-resize, `SetDisabled()`, `SetPadding()` overloads |
@@ -23241,7 +23352,12 @@ every platform:
   the file under the pointer): a picker chooses files rather than managing
   them. `hoverIconMenu` below brings it back;
 - the file-name field, and below it the file-type filter: a dropdown, or a row
-  of toggle buttons (see [Filter toggles](#filter-toggles)).
+  of toggle buttons (see [Filter toggles](#filter-toggles)). Typing a name
+  narrows the listing to the entries that have it in their name. In a Save
+  dialog a big **logo of the type being saved** sits left of the two rows,
+  "Drag to Folder" under it - drag it onto a folder to save there
+  ([The file icon](#the-file-icon)) - and a **Settings** button ends the type
+  row, for how that type is written ([Save settings](#save-settings)).
 
 ## Opening one
 
@@ -23281,7 +23397,8 @@ options say `SetRegisterAsRecent(false)` - by the framework dialog itself
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
 `SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu`,
-`SetDefaultExtension` and the parent window.
+`SetDefaultExtension`, `SetSaveSettingsButton`, `SetImageSize` (or
+`SetDrawingSize` for a drawing) and the parent window.
 
 ### Building it yourself
 
@@ -23316,6 +23433,9 @@ A config starts without filters: the dialog then lists every file under an
 | `hoverIconMenu` | The listing shows the Filer's hover icon menu (default `false`) |
 | `validateNames` | Save refuses a name the file system cannot hold, saying why, and stays open (default `true`) - see [Save names](#save-names) |
 | `addToRecent` | Open, Open multiple and Save add what they accept to the system's recent files (default `true`; `UltraCanvasFileLoader` sets it from `SetRegisterAsRecent`) |
+| `saveSettingsButton` | Save: the Settings button at the end of the type row, for the chosen type's [save settings](#save-settings) (default `true`; `FileDialogOptions::SetSaveSettingsButton`). Off for a caller whose writer does not read them |
+| `imageWidth`, `imageHeight` | Save: the size of the picture being saved (`FileDialogOptions::SetImageSize`). A bitmap type's Settings then offer [another size](#the-pictures-size) for this save; `GetSaveImageSize()` is the size chosen |
+| `imageIsDrawing` | Save: that picture is a drawing (`FileDialogOptions::SetDrawingSize`) - no pixel size of its own, `imageWidth` x `imageHeight` the size it is drawn at, and it is [drawn sharp at any](#a-drawing) |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -23331,6 +23451,14 @@ between folders.
   listing. A typed folder name opens that folder instead of accepting it. A
   typed name that is not a file gets a **File Not Found** notice and the
   dialog stays open on it, as the platforms' open dialogs do.
+- **Typing a name filters the listing**: while the name field holds text the
+  user typed, the listing shows only the files and folders whose name has it
+  in (any case) - the file display's own filter-as-you-type
+  (`UltraCanvasFilerWidget::SetNameFilter`), which narrows what was already
+  read without reading the folder again. A path narrows by its last part. It
+  holds in every folder the dialog then goes to, a name the dialog puts in
+  itself (the file clicked, the type's extension) leaves it as typed, and
+  emptying the field lists everything again.
 - **Save** accepts any name in a folder that exists (a path typed into a
   folder that is not there gets a **Folder Not Found** notice), with the
   chosen file type's extension - see [Save names](#save-names). A name that is already a
@@ -23405,6 +23533,221 @@ offered:
   adds it and asks itself. Android's document picker is offered the
   suggested name with the default extension added.
 
+## The file icon
+
+A Save dialog shows, big (64 pixels) at the left of the name and type rows
+and with **Drag to Folder** written under it, the logo of the file it is
+about to write - the type the name has with the chosen type's extension
+(`GetSaveTypeName()`): a page with a folded corner and the extension on a
+band in the colour the listing gives that type
+(`UltraCanvasFileDragIcon::DrawDocumentGlyph`,
+`UltraCanvasFilerWidget::GetTypeColors`), or this desktop's own icon for the
+type while the listing shows those (Display > File icons = Host OS,
+`DrawTypeIcon`). It changes as the name is typed and as the type is
+switched: "photo" with JPEG chosen is a JPEG, and "notes.txt" under All files
+a text file.
+
+The icon is what RISC OS's save box has always had: **drag it onto a folder**
+and that folder is where the file goes. While it is dragged, a badge with the
+icon and the name follows the pointer, and the folder a release would choose
+is shown the way a file drag shows it - framed in the listing (a folder entry,
+or over empty space the folder the listing shows), highlighted in the folder
+tree (a place or a drive). Released there, the dialog opens that folder; the
+name stays as it was, so OK (or Return) then saves into it. A release over
+anything else, over a file, or onto a folder inside an archive the listing is
+browsing changes nothing, and Escape ends the drag without closing the
+dialog. The drag stays inside the dialog: there is no file yet to hand to
+another window.
+
+The icon is an element of its own, `UltraCanvasFileDragIcon`
+(`UltraCanvasFileDragIcon.h`), for any other save box that wants one. It
+carries a name, not a file: the elements under it are sent `DragEnter` /
+`DragOver` / `DragLeave` with `dragMimeType` set to
+`UltraCanvasFileDragIcon::kDragMimeType` and no `droppedFiles`, so nothing
+that accepts files copies anything, and the release goes to `onDropped`,
+which asks the target where the drop lands while it still shows it:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> row; std::shared_ptr<UltraCanvasFilerWidget> listing; std::shared_ptr<UltraCanvasTreeView> tree; void SaveInto(const std::string& folder); -->
+```cpp
+auto icon = CreateFileDragIcon("SaveIcon", "report.pdf", 0, 0, 32, 32);
+icon->SetIconPainter([listing = listing.get()](IRenderContext* ctx, const std::string& name,
+                                               bool isFolder, const Rect2Di& rect) {
+    listing->DrawTypeIcon(ctx, name, isFolder, rect);
+});
+// The tree highlights the rows a drop can land on.
+tree->onFilesDragAccept = [icon = icon.get()](TreeNode* node) {
+    return node != nullptr && icon->IsDragging();
+};
+icon->onDropped = [listing = listing.get(), tree = tree.get()](UltraCanvasUIElement* target,
+                                                               const Point2Di&) {
+    for (UltraCanvasUIElement* e = target; e; e = e->GetParentContainer()) {
+        if (e == listing) { SaveInto(listing->GetIncomingDropFolder()); return; }
+        if (e == tree) {
+            if (TreeNode* node = tree->GetDropTargetNode()) SaveInto(node->data.nodeId);
+            return;
+        }
+    }
+};
+row->AddChild(icon);
+```
+
+A press that is released without moving is a click (`onClick`).
+
+## Save settings
+
+How a file is written is often a choice: JPEG's quality, PNG's compression,
+whether a TIFF is LZW or Deflate. The **Settings** button at the end of a
+Save dialog's type row (after "Files of type") shows the settings of the type being saved - a checkbox, a slider
+or a list per setting - and stores them on OK. The dialog is the controls
+alone: its title names the format ("PNG settings"), each setting's tooltip
+says what it does, the controls make one column with a slider's value beside
+it, and a rule parts the size (this save's) from the format's settings. For a picture of known size a
+bitmap type's dialog also has the picture's size for this save
+([The picture's size](#the-pictures-size)). The button is greyed out while
+the type has nothing to set ("notes.txt", a name of no type, BMP without a
+picture size), and its tooltip names the type. The dialog's **Defaults** button puts every setting back to
+the format's default; Cancel keeps what was there.
+
+The settings belong to the format, not to the dialog: they are kept per
+format for **every application**, between runs, in `SaveSettings.conf` in the
+UltraCanvas settings folder ([What it remembers](#what-it-remembers)), one
+`<format>.<setting>=<value>` line for each setting the user has set. They are
+reached through `UltraCanvasFileLoader` (`UltraCanvasFileSaveSettings.h` holds
+the types):
+
+| Call | |
+|---|---|
+| `HasSaveSettings(extensionOrPath)` | The type has settings. `"jpg"`, `".JPEG"`, `"photo.jpe"` and a whole path all name JPEG |
+| `FindSaveFormat(extensionOrPath, format)` | The format: its name, extensions (the first is its key) and `FileSaveSettingSpec`s |
+| `GetSaveSettings(extensionOrPath)` | Every setting's value: the user's where they set it, the default elsewhere |
+| `HasStoredSaveSettings(extensionOrPath)` | The user has set any of them |
+| `SetSaveSettings(settings)` / `ResetSaveSettings(extensionOrPath)` | Store (merged over what was there; a value is clamped or replaced by the default when it is not one the setting can hold, and a key the format lacks is dropped) / forget |
+| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` - or a `FileSavePicture`, which may be [a drawing](#a-drawing) - also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
+| `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
+| `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings; `GetImageExportOptions(path, size, options)` at a [chosen size](#the-pictures-size) too |
+| `SetImageExportOptions(options)` | The other way: `options.format`'s quality, compression, colour depth ... and transparency stored as that format's settings (not the size) |
+
+Built in are the bitmap formats the image writer takes options for, each with
+only the settings that writer honours: PNG (compression, colours, interlace,
+transparency), JPEG (quality, progressive, optimised coding, subsampling),
+WebP, AVIF, HEIF, JPEG XL and JPEG 2000 (quality, lossless, effort or speed,
+bit depth), GIF (colours, dither, interlace), TIFF and OpenEXR (compression),
+Netpbm (binary), TGA, PCX, SGI and Photoshop (RLE), DPX and Cineon (bit
+depth). BMP, ICO, QOI, HDR, FITS and Farbfeld are written without options.
+
+The bitmap export dialog (`UltraCanvasImageExportDialog`) is the other
+place these values are edited: it opens every format on its save settings,
+and on the format of the file name it is given, and its Save stores the
+format's options back (`SetImageExportOptions`) - so it and the Save dialog's
+Settings never disagree.
+
+A writer reads them back. `UCRasterDocument::SaveToFile` does so itself when
+the caller passes no options and the user has stored settings for the format
+(until then it keeps the writer's own defaults), so UltraPaint's Save honours
+the button with no change of its own. Any other writer asks:
+
+<!-- doc-check: void WriteMyFormat(const std::string& path, int level, bool fast); -->
+```cpp
+// Once, at start-up: the format and what its writer can be told.
+FileSaveFormat mine;
+mine.name = "My format";
+mine.extensions = {"myf"};
+mine.settings = {
+    FileSaveSettingSpec::Number("level", "Compression", 1, 9, 6, "9 writes the smallest file"),
+    FileSaveSettingSpec::Toggle("fast", "Fast mode", false),
+    FileSaveSettingSpec::Choice("profile", "Profile",
+                                {{"web", "For the web"}, {"print", "For print"}}, "web")};
+UltraCanvasFileLoader::RegisterSaveFormat(mine);
+
+// When writing: whatever the Save dialog's Settings button stored.
+auto write = [](const std::string& path) {
+    const FileSaveSettings settings = UltraCanvasFileLoader::GetSaveSettings(path);
+    WriteMyFormat(path, settings.GetInt("level", 6), settings.GetBool("fast"));
+};
+write("drawing.myf");
+```
+
+A setting key is letters, digits, `-` and `_`; a key with anything else could
+not be read back from the file and is left out with a debug message. A caller
+whose writer ignores the settings turns the button off
+(`FileDialogOptions::SetSaveSettingsButton(false)`), so the dialog does not
+offer a choice that changes nothing.
+
+### The picture's size
+
+A bitmap is often wanted at another size than the picture has - a smaller
+copy for the web, an icon. When the caller tells the Save dialog how big the
+picture is (`FileDialogOptions::SetImageSize(width, height)`, or
+`FileDialogConfig::imageWidth` / `imageHeight`), the Settings of a **bitmap
+type** start with a **Size** row: width × height in pixels, opened on the
+picture's own size, and **Keep proportions** under it (on: change one side
+and the other follows the picture's shape; off: both are free). The row is
+there for every pixel format, so BMP, ICO and QOI - which have no settings of
+their own - get a Settings dialog with the size alone. Defaults puts the
+picture's size back with the rest.
+
+The size is **not** a setting of the format: it belongs to this picture, so
+it is not stored and the next Save starts on the next picture's own size. It
+comes back with the save instead:
+
+<!-- doc-check: std::shared_ptr<UCRasterDocument> doc; -->
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Save image as")
+    .AddFilter("PNG", std::string("png"))
+    .AddFilter("JPEG", std::vector<std::string>{ "jpg", "jpeg" })
+    .SetImageSize(doc->GetWidth(), doc->GetHeight())
+    .SetParentWindow(window.get());
+UltraCanvasFileLoader::SaveFileDialog(opts, [doc](DialogResult r, const std::string& path,
+                                                  const FileSaveImageSize& size) {
+    if (r != DialogResult::OK) return;
+    UCImageSave::ImageExportOptions options;   // the format's settings, at that size
+    std::string error;
+    if (!size.IsOriginal() && UltraCanvasFileLoader::GetImageExportOptions(path, size, options))
+        doc->SaveToFile(path, error, &options);
+    else
+        doc->SaveToFile(path, error);           // the stored settings, if any
+});
+```
+
+`FileSaveImageSize` is the picture's own size while `IsOriginal()` - nothing
+chosen, a type that is not a bitmap format, or the platform's save dialog,
+which has no Settings. A dialog built directly reports it with
+`UltraCanvasFileDialog::GetSaveImageSize()`, and
+`ShowSaveSettingsDialog(extensionOrPath, pictureWidth, pictureHeight, size,
+parent, onClosed)` offers the same row anywhere else. UltraPaint's Save As
+passes its picture's size, and the media viewer's Save image as (UltraViewer)
+its picture's.
+
+#### A drawing
+
+A drawing - an SVG, a page of shapes - has **no pixel size** of its own, so
+`SetImageSize` has nothing to give; yet that is when a size is wanted most,
+since it can be drawn at any. `SetDrawingSize(width, height)` gives the size
+it is drawn at unless another is chosen (its size on the page at 96 DPI,
+say): the Size row opens on it, Keep proportions keeps the drawing's shape,
+and the tooltips say it is drawn sharp at any size. The caller draws it at
+the size that comes back, not its picture stretched:
+
+<!-- doc-check: int pageWidth = 0, pageHeight = 0; void DrawAt(const std::string& path, int width, int height); -->
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Export drawing")
+    .AddFilter("PNG", std::string("png"))
+    .SetDrawingSize(pageWidth, pageHeight)
+    .SetParentWindow(window.get());
+const int w = pageWidth, h = pageHeight;
+UltraCanvasFileLoader::SaveFileDialog(opts, [w, h](DialogResult r, const std::string& path,
+                                                   const FileSaveImageSize& size) {
+    if (r != DialogResult::OK) return;
+    DrawAt(path, size.IsOriginal() ? w : size.width, size.IsOriginal() ? h : size.height);
+});
+```
+
+`ShowSaveSettingsDialog(extensionOrPath, picture, size, parent, onClosed)`
+takes the same as a `FileSavePicture` (`width`, `height`, `drawing`). The
+media viewer offers an SVG this way and draws it again at the size chosen.
+
 ## Filter toggles
 
 For an Open dialog whose filters are *kinds* of file rather than one format
@@ -23446,7 +23789,8 @@ leaves out a kind the build cannot show.
 
 The view, the window size, the Details column widths and the last used folder
 are kept between showings in `FileDialog.conf` in the UltraCanvas settings
-folder (`UltraCanvasFileDialogSettings.h`). That folder is
+folder (`UltraCanvasFileDialogSettings.h`); the [save settings](#save-settings)
+are in `SaveSettings.conf` beside it. That folder is
 `%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas`
 on macOS, and `$XDG_CONFIG_HOME/UltraCanvas` (else `~/.config/UltraCanvas`)
 elsewhere. Every application shares the file. The last used folder is either
@@ -23467,6 +23811,9 @@ application: message boxes and `UltraCanvasFileLoader`'s file dialogs follow
 it together. An application that wants this dialog for files but the
 platform's message boxes builds the dialog itself as above. UltraViewer,
 UltraCleaner, UltraAIApp and UltraAuthenticator leave native dialogs off.
+The platforms' save dialogs have neither the file icon nor the Settings
+button; the save settings still apply to what is written, and an application
+can offer `UltraCanvasFileLoader::ShowSaveSettingsDialog` itself.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFileLock.md
@@ -23876,6 +24223,22 @@ icons away and asks again, for a host that notices the user changing desktop
 theme. Switching the style fires `onDisplayFormatsChanged`, the same hook the
 other Display switches use, so an application persists it from one place
 (UltraFiler: `Settings > Display > File icons`).
+
+A host element that shows a file **type** the way the listing does asks the
+widget to draw it: `DrawTypeIcon(ctx, path, isFolder, rect)` draws the icon
+this display gives the type of `path` - a name or a whole path, which need not
+exist - under the current style, and never a thumbnail, since there may be no
+file to take one from. The file dialog's Save icon
+([`UltraCanvasFileDragIcon`](UltraCanvasFileDialog.md#the-file-icon)) is drawn
+this way, so it matches the listing beside it. `GetTypeColors(path, isFolder,
+fill, ink)` gives the colours the display uses for that type - the band of its
+glyph and the ink for text on it - for a host that draws the type its own way
+in the listing's colours (the Save dialog's big type logo).
+
+<!-- doc-check: UltraCanvasFilerWidget* filer; IRenderContext* ctx; -->
+```cpp
+filer->DrawTypeIcon(ctx, "holiday.jpg", false, Rect2Di(4, 4, 24, 24));
+```
 
 ## Name tooltips
 
@@ -31460,6 +31823,17 @@ sheet, `@media` blocks (applied when their query holds at `SetMediaWidth`),
 and skips other at-rules whole. A selector it cannot read drops out of its
 rule alone; the rule's other selectors still apply.
 
+`@import` is skipped by `ParseAppend` and listed by
+`StyleSheet::ParseImports(css)`: the rules at the head of the sheet, each an
+`href` as written and its `media` (`layer()` and `supports()` dropped). Only
+those before the first other rule count, as in CSS. Whoever loads sheets
+fetches them: the element builder puts each imported sheet in front of the
+importing sheet's rules, in an `@media` block when the import names media,
+reading its address relative to the importing sheet (an EPUB's
+`css/book.css` importing `fonts.css` reads `css/fonts.css`), 8 deep and 64
+sheets at most, each sheet once. `HTML::PageLoader` fetches them before a
+page is ready.
+
 Selectors: type, `*`, `.class`, `#id`, attribute selectors (`[a]`, `[a=v]`,
 `~=` `^=` `$=` `*=` `|=`, the `i` flag), `:link` / `:any-link`, the
 structural pseudo-classes (`:first-child`, `:last-child`, `:only-child`,
@@ -31491,6 +31865,9 @@ for (const HTML::Rule& rule : sheet.rules)
 
 auto declarations = HTML::StyleSheet::ParseDeclarationList("fill: red; stroke-width: 2 !important");
 bool print = HTML::StyleSheet::MediaMatches("print, screen and (min-width: 600px)", 480);   // false
+
+for (const HTML::StyleImport& import : HTML::StyleSheet::ParseImports("@import url(a.css) print; p{}"))
+    ;   // import.href == "a.css", import.media == "print"
 ```
 
 ## Selector matching, on any tree
@@ -31664,6 +32041,26 @@ boxes on it, and at least the block's own: a `<span style="line-height:40px">`
 in a cell that sets none is a 40px line. Text where nothing sets a
 `line-height` keeps the font's own line spacing.
 
+An inline element's horizontal margin, border and padding are room in its
+line: `<nav><a style="margin-right:18px">About</a><a>Index</a></nav>` keeps
+the two links 18px apart. The room is a picture-less placeholder in the
+label's run, joined to the element's first or last letter by a word joiner,
+so a line does not break between a word and its margin. The margin lies
+outside the element's link and the padding inside it, and white space on
+either side of the room collapses to one space. Vertical margins do not move
+the line, as in CSS.
+
+Its background and border are drawn by the label around its text and
+padding (`LabelTextBox`), at any depth in a run (`<b><span
+style="border:...">`): a piece per line when it breaks across lines, the
+left border on the first piece and the right on the last, its vertical
+padding painted above and below the text without moving the lines. An
+inline element that has vertical padding as well as a background or a border
+- the mail button, `<a style="background:#07f;padding:12px 24px;color:#fff">Buy</a>`
+- is a box on the line instead, as an `inline-block` is, when it is a child of
+the block: the line grows to hold its padding, and it does not break. A space
+between a box and the text beside it stays: "Order now: [Buy] today".
+
 **Flex and grid containers** are laid out by the CSSLayout flex and grid
 engines. Their children are items, as in CSS. Each child element is a box of
 its own at its own size (a `<span>` or `<a>` item is "blockified"), with real
@@ -31705,14 +32102,27 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
 - **Style sheets:** linked sheets (up to 32) are fetched before the page is
   ready, so the first build has them. Each sheet's `url()`s are rewritten
   against the sheet's own URL (`RewriteCssUrls`), so they still mean the same
-  inside the page. `@import` is not followed yet.
+  inside the page. The sheets a linked sheet or a `<style>` imports
+  (`@import`, up to 4 deep, within the 32) are fetched before the page is
+  ready too, and their addresses rewritten to absolute ones.
 - **Other resources** load on demand. `GetResource(href)` is the builder's
   `resourceLoader`: it answers from a cache (64 MB, oldest out first),
   queues what it does not have, and `onResourcesArrived` says when to build
   again.
 - **Kinds:** HTML and XHTML. Plain text becomes a `<pre>` page, a picture a
-  page of its own. Anything else (`PageKind::Other`, say `application/wasm`)
-  goes back to the caller undecided, and a failed fetch is `PageKind::Error`.
+  page of its own. Anything else (`PageKind::Other`, say `application/wasm`
+  or a zip) goes back to the caller undecided, and a failed fetch is
+  `PageKind::Error`.
+- **Downloads:** an Other answer keeps its bytes (`LoadedPage::body`) and
+  the name to save it as (`fileName`, from `DownloadFileName`:
+  Content-Disposition's `filename*` or `filename`, else the address's last
+  segment, cleaned of folders, control characters and leading dots). A
+  `Content-Disposition: attachment` answer is Other even when it is HTML
+  (`attachment`). A non-page over the fetch's size limit (the fetch sets
+  `FetchResult::tooLarge`) is Other with `truncated` set and no bytes, for
+  the host to fetch again streaming; a page that large is still an error.
+  `UltraCanvasWebView` hands it to `onNonHtml` and keeps the page on show,
+  its address and its history.
 - **Rules:** an http(s) page loads http(s) and `data:` resources, an https
   page no http ones, and only a `file:` page loads `file:` resources.
 - **Limits:** 16 MB per document, 32 style sheets, 512 resources a page.
@@ -31759,6 +32169,75 @@ view->onTitleChanged = [](const std::string& title) { /* the window title */ };
 view->onExternalLink = [](const std::string& url) { /* the system's mail client */ };
 view->Navigate("https://example.org/");
 ```
+
+### Forms
+
+With `BuildOptions::interactiveForms` the builder makes a form's controls
+the framework's widgets, so the reader can fill it in: `<input>` text-like
+types and `password` are `UltraCanvasTextInput`s, `<textarea>` an
+`UltraCanvasTextArea`, checkboxes and radios `UltraCanvasCheckbox` /
+`UltraCanvasRadio` (radios with one name in one form are one
+`UltraCanvasRadioGroup`), `<select>` an `UltraCanvasDropdown` (`<optgroup>`s
+flattened), and buttons `UltraCanvasButton`s. They are `inline-block`, as in
+browsers: on the line with their labels, sized by CSS `width` / `height`,
+else by `size`, `cols` / `rows` and the font. A control can be a flex or
+grid item (a search bar). `disabled`, a disabled `<fieldset>`, `readonly`,
+`maxlength`, `placeholder` and `form="id"` are honoured. Colour and range
+inputs are drawn for display only and not sent.
+
+**File inputs** are a "Choose file…" button and the names chosen. The
+button asks the host through `BuildOptions::onChooseFiles` (several files
+with `multiple`, the input's `accept` list as written), and stays disabled
+without it. The files are read when the form is sent: in
+`FormSubmission::files`, each with its file name, a type from its
+extension and its bytes, sent as multipart file parts; with nothing chosen,
+one empty part, as browsers send it. Outside multipart a file is its name.
+Files over `FormController::kMaxUploadBytes` (64 MB together), or that
+cannot be read, go empty and are named in the submission's `warnings`.
+
+**Labels.** A click on a `<label>`'s text acts on its control - the one
+its `for="id"` names, else the first control inside it: a checkbox toggles,
+a radio is chosen (its group follows), a button is pressed, a file input
+opens its chooser, any other control takes the focus
+(`FormController::ActivateControl`). The text is a *quiet* link
+(`LabelTextLink::quiet`): clickable, with no tooltip and no hover report.
+
+Each `<form>` gets an `HTML::FormController` (`HTMLReader/HTMLForms.h`) in
+`BuildResult::forms`; keep them, since they hold the radio groups. A submit
+button, or Enter in a text field, calls `BuildOptions::onFormSubmit` with
+an `HTML::FormSubmission`: the form's action, method and enctype, and the
+entry list in tree order, as HTML builds it (named, enabled controls; a
+checkbox or radio only when checked, `on` without a value; the selected
+option's value; only the button that was clicked). `Encoded()`,
+`Multipart(boundary)` and `PlainText()` are its three encodings, and `Body`
+/ `ContentType` pick the one the form asks for. A reset button puts back
+what the page wrote. `Save()` / `Restore()` carry what was typed into a
+rebuilt page.
+
+```cpp
+HTML::BuildOptions opts;
+opts.interactiveForms = true;
+opts.onFormSubmit = [](const HTML::FormSubmission& form) {
+    if (form.method == "get") { /* open form.action + "?" + form.Encoded() */ }
+    else { /* POST form.Body(boundary) as form.ContentType(boundary) */ }
+};
+HTML::ElementBuilder builder;
+HTML::BuildResult r = builder.Build("<form action='/find'><input name='q'> <button>Go</button></form>", opts);
+for (const auto& form : r.forms) {
+    HTML::FormSubmission now = form->Collect();   // what it would send now
+    (void)now;
+}
+```
+
+`UltraCanvasWebView` turns forms on (`SetInteractiveForms(false)` turns them
+off) and sends them itself (`SubmitForm`): GET as a navigation to the
+action with the fields as its query, POST through
+`PageLoader::LoadPost` - the `post` service the host passes in - and back
+from the answer re-asks its address by GET. A rebuild of the page (a new
+width, pictures arriving) keeps what was typed and the focus. Mail keeps
+`interactiveForms` off: its controls are drawn for display only, the value
+as text on a line of its own. The view passes its own `onChooseFiles` on to
+file inputs; UltraWeb answers it with the file dialog.
 
 ## HTML into an editable document
 
@@ -31838,9 +32317,10 @@ blocks new ones.
 | `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML` |
 | `include/HTMLReader/HTMLRichDocumentImporter.h` | `ImportHTMLToRichDocument`, `AppendHTMLToRichDocument`, `HTMLRichImportOptions` |
 | `include/HTMLReader/HTMLPageLoader.h` | `PageLoader`, `PageLoaderServices`, `PageLoaderLimits`, `FetchResult`, `LoadedPage`, `PageKind` |
+| `include/HTMLReader/HTMLForms.h` | `FormSubmission`, `FormController` (forms with real widgets) |
 | `include/UltraCanvasWebView.h` | `UltraCanvasWebView`, the element that shows pages from URLs |
 | `Tests/HTMLReaderTest.cpp` | parser, CSS, matcher and resolver, without the UI library |
-| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, the viewer |
+| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `HTMLInlineBoxTest.cpp`, `HTMLFormsTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, inline boxes, forms, the viewer |
 | `Tests/Fuzz/` | fuzz targets for the parser, the CSS, and the builder with the layout ([README](../../Tests/Fuzz/README.md)) |
 
 ## Fuzzing
@@ -32495,6 +32975,7 @@ if (UltraCanvas::HostFileIconsAvailable()) {
 | `HostFileIconKey(path, isDirectory)` | what the answer depends on — the cache key, pure string work |
 | `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` | the icon as a `UCPixmap`, or null |
 | `RefreshHostFileIcons()` | forget the lookups — after a theme change |
+| `FitHostIconToSize(pixmap, desiredSize)` | the answer resampled down to the size it is drawn at; never scaled up |
 
 ## The key is the whole design
 
@@ -32511,13 +32992,32 @@ The keys:
 | What | Key | Why |
 |---|---|---|
 | a directory | `dir` | every folder is one icon |
-| a file that carries its own icon | `file:<path>` | not a type at all — two programs must never share an icon |
 | a name with no extension | `name:<lowercased name>` | the freedesktop database matches `makefile` and `README` by name |
 | everything else | `ext:<suffix chain>` | `archive.tar.gz` keys as `tar.gz`, not `gz` — a tarball and a gzip file are different types and are drawn differently |
 
 The suffix chain runs from the **first** dot, which is the finest distinction
 the type databases make. A leading dot is part of the name (`.bashrc` is a
 name, not a `bashrc` file).
+
+A program, a shortcut or a bundle keys by its extension like everything else.
+The icon such a file carries of its own is `UltraCanvasNativeFileIcons`'s
+answer, read out of the file; what *this* module answers for it is the host's
+icon for `.exe` or `.lnk`, resolved from the name alone on every backend, and
+so the same for every file of the kind. (Until October 2026 those were keyed
+per file, which made a folder of ninety DLLs hold ninety copies of one
+picture.)
+
+## Held at the size it is drawn
+
+An icon source answers in its own sizes: the Windows shell's jumbo list is
+256 pixels a side whatever was asked, and an `.ico`'s nearest frame can be
+the larger one. A 256-pixel icon drawn in a 128-pixel tile holds four times
+the memory it shows, which is what let a window full of distinct types run
+over the filer's icon budget. So every backend hands back what
+`FitHostIconToSize` makes of its answer: resampled so the longer edge is the
+size asked for when it is larger, untouched when it is not (a type whose icon
+only exists at 48 stays 48, and the caller scales it up). macOS draws the
+`NSImage` straight into a bitmap of that size and needs no resample.
 
 ## The three backends
 
@@ -33278,6 +33778,76 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 - [UltraCanvasButton](UltraCanvasButtonExamples.md) — "Choose Image..." button
 - [UltraCanvasCheckbox](UltraCanvasCheckbox.md) — "Include BMP" toggle
 - [UltraCanvasContainer](UltraCanvasContainer.md) — Layout root for the benchmark
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasInstanceLock.md
+==============================================================================
+
+# UltraCanvasInstanceLock
+
+Lets an application run **one copy per user**: the lock a program takes at
+start so that a second start can tell the first one is still running.
+
+```cpp
+#include "UltraCanvasInstanceLock.h"
+
+InstanceLock lock;   // keep it alive as long as the application runs
+if (lock.Acquire(dataDir + "/instance.lock") == InstanceLockResult::HeldElsewhere) {
+    // Another copy is running: hand it whatever this start was asked to do
+    // (UltraMessage is the usual way), then quit.
+    return 0;
+}
+```
+
+<!-- doc-check: std::string dataDir -->
+
+## The lock is not the file
+
+The file only gives the lock somewhere to live. The lock itself is an
+operating-system lock on that file, and **the system drops it when the process
+ends, however it ends** — a normal exit, a crash, `kill -9`, a power cut. A
+crashed application therefore never leaves a stale lock that stops the next
+start, and nothing has to delete or clean up the file; it stays and is reused.
+On POSIX the file holds the holder's process id, for a person looking at it;
+nothing reads it back.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `InstanceLock::Acquire(path, error = nullptr)` | Tries, **without waiting**, to take the lock on the file at `path` (UTF-8), creating the file and its folder when missing. Returns an `InstanceLockResult`; `error` receives the reason on `Failed`. Again while held: `Acquired`. |
+| `InstanceLock::Release()` | Lets go. The destructor does the same. |
+| `InstanceLock::IsHeld()` | Whether this object holds the lock. |
+| `InstanceLockAvailable()` | Whether this build can lock at all. False means `Acquire()` always answers `Unsupported`. |
+
+| `InstanceLockResult` | Meaning |
+|---|---|
+| `Acquired` | This process holds the lock. |
+| `HeldElsewhere` | Another process holds it: another copy is running. |
+| `Failed` | The file could not be opened or locked (an unwritable folder). Usually best treated as "run anyway": better two copies than none. |
+| `Unsupported` | No backend on this platform. |
+
+The lock is per **file**, so it is per user exactly when the path is: put it
+in the user's data folder. Two `InstanceLock` objects in one process also
+exclude each other, which is what the test relies on.
+
+## Backends
+
+| Platform | Backend |
+|---|---|
+| Linux, the BSDs, macOS | `flock` with `LOCK_EX \| LOCK_NB` on the file opened `O_CLOEXEC`, so a program the application starts does not inherit the lock. |
+| Windows | `LockFileEx` with `LOCKFILE_EXCLUSIVE_LOCK \| LOCKFILE_FAIL_IMMEDIATELY` on the first byte. The file is opened sharing read, write and delete, so a virus scanner or backup program that opens it is never mistaken for a second copy. |
+| Android, WebAssembly | None: one process per application there anyway. `Acquire()` answers `Unsupported`. |
+
+The platform decision is the single `ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK`
+condition in the top-level `CMakeLists.txt`; the library and
+`Tests/InstanceLockTest.cpp` (ctest: `InstanceLockTest`) both follow it.
+
+## Who uses it
+
+`UltraCanvasSingleInstance` (`Docs/UltraCanvas/UltraCanvasSingleInstance.md`),
+which adds the hand-off to the running copy and bringing its window forward.
+An application normally uses that, not the lock directly.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasJSON.md
@@ -34894,6 +35464,7 @@ struct LabelTextLink {
     int startByte = 0;
     int endByte = 0;      // exclusive
     std::string href;
+    bool quiet = false;   // clickable, but no tooltip and no hover report
 };
 void SetTextLinks(std::vector<LabelTextLink> links);
 const std::vector<LabelTextLink>& GetTextLinks() const;
@@ -34902,7 +35473,10 @@ int LinkIndexAtPoint(const Point2Di& localPoint);
 ```
 
 Byte offsets refer to the text as laid out: markup parsed, entities decoded.
-A click on a link fires `onLinkActivated` with its `href`.
+A click on a link fires `onLinkActivated` with its `href`. A `quiet` link
+is clickable without showing it: no tooltip, and `onLinkHovered` hears an
+empty href over it (the HTML reader's `<label>` text, which acts on its
+form control).
 
 ### Inline Images
 
@@ -34959,6 +35533,40 @@ placed by `text-align`: side by side on one wrapping line while only
 whitespace separates them, a space of their font apart where the HTML has
 whitespace, standing on the line's bottom unless `vertical-align` puts them at
 its top or middle; `display:block` or `<br>` starts a new line.
+
+A placeholder with no `image` is room: it takes the frame's width
+(`frame.marginLeft`) and draws nothing. The HTML reader uses it for an inline
+element's horizontal margin, border and padding.
+
+### Inline boxes
+
+`SetTextBoxes` draws backgrounds and borders around byte ranges of the
+rendered text, behind it: CSS's box of an inline element (`<mark>`, a
+bordered `<span>`). Each `LabelTextBox` is a range `[startByte, endByte)`,
+a `background`, four border sides (`LabelInlineImageBorder`), the
+`paddingTop` / `paddingBottom` it reaches above and below the text, and a
+`borderRadius`.
+
+```cpp
+label->SetText("Some highlighted words here");
+LabelTextBox mark;
+mark.startByte = 5;                  // "highlighted words"
+mark.endByte = 22;
+mark.background = Color(255, 235, 59, 255);
+mark.paddingTop = mark.paddingBottom = 2;
+label->SetTextBoxes({ mark });
+```
+
+- A box is drawn in a piece per line it spans: as tall as its first real
+  character's text, plus its vertical padding and border, which do not
+  move the lines. Its left border is on the first piece and its right on the
+  last (CSS `box-decoration-break: slice`); a radius applies to a box on one
+  line, capped at half its height.
+- Horizontal padding is not added: put room in the text for it (a picture-
+  less `LabelInlineImage`), inside the range, so the sides fall at the
+  room's outer edges.
+- Boxes are drawn in order, so give an enclosing box before the ones inside
+  it. `TextBoxPieces(i)` returns box `i`'s pieces, label-local.
 
 ### Selectable text
 
@@ -37956,12 +38564,13 @@ FILE: Docs/UltraCanvas/UltraCanvasMatrixDiagram.md
 <!-- doc-check: int row; int col; void Log(const std::string& line); -->
 
 A matrix diagram — one of the Seven Management and Planning Tools — makes the
-relationships between two or three ordered lists visible and countable. Rows and
+relationships between two to four ordered lists visible and countable. Rows and
 columns are things; each intersection carries a symbol from a small named scale,
 and the weights behind those symbols roll up into per-row and per-column totals.
 
-**Status:** Phase 1 — the `L` and `T` shapes. `Y`, `X` and the QFD `House`
-composite are planned; see
+**Status:** Phases 1 and 2 — the `L`, `T`, `X` and `Y` shapes, the form header
+band, cell tint and hover bands that run across panels. The QFD `House`
+composite is planned; see
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Which element do I want?
@@ -37971,7 +38580,7 @@ composite are planned; see
 | Continuous numeric cell values, a colour map, a colour bar | `UltraCanvasHeatmapChartElement` |
 | Items positioned at continuous (x, y) in a 2×2 space (BCG, Eisenhower, risk) | `UltraCanvasQuadrantChart` |
 | Rooms and their required adjacencies | `UltraCanvasAdjacencyDiagram` — it owns that data and draws its own matrix view |
-| Named relationship levels between two or three ordered lists, with totals | **this element** |
+| Named relationship levels between two to four ordered lists, with totals | **this element** |
 
 The distinction that matters is the cell datum. A heatmap cell holds a *number*
 and encodes it as a fill; a matrix diagram cell holds a *named level* and draws
@@ -38034,12 +38643,13 @@ Cells are stored **sparsely** — set the marks you have; the rest stay empty.
 |---|---|---|---|
 | `MatrixShape::L` | 2 | 1 | A × B — the basic form |
 | `MatrixShape::T` | 3 | 2 | B × A and A × C, A being the shared row axis |
-| `MatrixShape::Y` | 3 | 3 | *planned* |
-| `MatrixShape::X` | 4 | 4 | *planned* |
+| `MatrixShape::X` | 4 | 4 | A × B, B × C, C × D, D × A — four panels round a hub |
+| `MatrixShape::Y` | 3 | 3 | A × B, B × C, C × A — three rhombic panels between seams 120° apart |
 | `MatrixShape::House` | 2 | 2 | *planned* — QFD composite with the correlation roof |
 
-Unimplemented shapes fall back to the `L` layout of panel 0 rather than drawing
-nothing, so data set against them is still visible.
+`House` falls back to the `L` layout of panel 0 rather than drawing nothing, so
+data set against it is still visible. So does an `X` or `Y` whose model the
+shape cannot place (see *Validation*).
 
 A `T` shares its row axis between two wings. Panel 0 is the left wing, panel 1
 the right, and the shared row labels are drawn once between them:
@@ -38056,6 +38666,78 @@ model.AddPanel("employees", "skills",   MatrixScale::HighMediumLow());
 ```
 
 That is why the scale lives on the **panel** and not on the model.
+
+### The X shape
+
+An `X` puts its four sets on the arms of a cross, in model order: `sets[0]`
+left, `sets[1]` top, `sets[2]` right, `sets[3]` bottom. The top and bottom arms
+list their items as rows, the left and right arms as columns, and each panel
+fills the quadrant between its two arms — so every panel must pair a left/right
+set with a top/bottom one. Which of the two is the panel's row set is up to
+you: a panel whose rows are a side arm's items is turned to fit.
+
+```cpp
+MatrixModel x;
+x.shape = MatrixShape::X;
+x.AddSet("suppliers", "Suppliers",        {"Supplier A", "Supplier B"});   // left
+x.AddSet("storage",   "Storage areas",    {"W/H 1", "W/H 2"});             // top
+x.AddSet("customers", "Customers",        {"P-1042", "P-1187"});           // right
+x.AddSet("lines",     "Production lines", {"Line 1", "Line 2"});           // bottom
+
+x.AddPanel("suppliers", "storage",   MatrixScale::HighMediumLow());   // top-left, turned
+x.AddPanel("storage",   "customers", MatrixScale::HighMediumLow());   // top-right
+x.AddPanel("lines",     "customers", MatrixScale::HighMediumLow());   // bottom-right
+x.AddPanel("lines",     "suppliers", MatrixScale::HighMediumLow());   // bottom-left
+
+auto xDiagram = CreateMatrixDiagramElement("supply", 10, 10, 760, 560, x);
+xDiagram->SetHubMode(MatrixHubMode::Captions);
+```
+
+The middle of the cross is the **hub**. `MatrixHubMode::Blank` leaves it empty
+and draws each set's title at the outer end of its arm; `MatrixHubMode::Captions`
+puts the four titles in boxes in the hub with arrows out to their arms, and the
+hub grows to hold them. One cell width serves both left quadrants and both right
+ones, one cell height every row, so the quadrants always line up across the hub.
+
+### The Y shape
+
+A `Y` runs three seams out of a centre point, 120° apart — `sets[0]` straight
+up, `sets[1]` down-right, `sets[2]` down-left. Each seam is a band listing its
+set, and between two seams sits the panel crossing their sets, drawn as a
+rhombus whose cells step along both seams. A row starts at its label on one
+seam and runs parallel to the other.
+
+```cpp
+MatrixModel y;
+y.shape = MatrixShape::Y;
+y.AddSet("requirements", "Requirements", {"Quiet", "Compact"});
+y.AddSet("functions",    "Functions",    {"Generate suction", "Store energy"});
+y.AddSet("components",   "Components",   {"Motor", "Battery pack"});
+y.AddPanel("requirements", "functions",    MatrixScale::QFD());
+y.AddPanel("functions",    "components",   MatrixScale::QFD());
+y.AddPanel("components",   "requirements", MatrixScale::QFD());
+```
+
+The cell size is the largest that fits the whole figure, labels and titles
+included, between the style's `minCellSize` and `maxCellSize`.
+
+`X` and `Y` draw no totals gutters — their outer edges are other panels' arms or
+open space, and the totals are one call away on the model.
+
+### The form header band
+
+Many printed matrix diagrams carry a form header — PROJECT, AREA, TITLE, TEAM,
+DATE. Put the fields on the model and the element draws them as a row of boxes
+above the grid, in any shape:
+
+```cpp
+x.headerFields = {
+        {"PROJECT", "Warehouse consolidation"},
+        {"TEAM",    "Ops planning"},
+        {"DATE",    "2026-10-13"},
+};
+xDiagram->SetShowHeaderBand(true);   // the default; false hides it
+```
 
 ## Relationship scales
 
@@ -38135,7 +38817,10 @@ diagram->SetShowCellValues(false);           // draw each cell's weight as text
 `MatrixHeaderFit::Auto` measures the column labels once and picks the cheapest
 form that fits — `Horizontal`, then `Wrapped`, then `Rotated45`, then
 `Rotated90`. It never iterates: the cell width settles first, the fit follows
-from the width, and the band height follows from the fit. The grid has first
+from the width, and the band height follows from the fit. A rotated header leans
+right past its column, so when the fit is rotated the cells are then narrowed
+just enough for the last label to end inside the element - which cannot change
+the fit, because a rotated label does not depend on the cell width. The grid has first
 claim on the vertical space, so a very long header is ellipsised rather than
 squeezing the rows out.
 
@@ -38146,11 +38831,20 @@ MatrixDiagramStyle style = diagram->GetStyle();
 style.alternateRowBands = true;
 style.fillLabelBands = false;      // the solid label band behind row labels
 style.markSize = 0.5;              // fraction of the cell's short side
+style.tintCellsByLevel = true;     // fill each marked cell with its level's colour
+style.cellTintAlpha = 56;          // ... this faintly, under the mark
 diagram->SetStyle(style);
 ```
 
-`SetDarkTheme(true)` applies the dark palette to the whole style; call it before
-your own overrides, since it replaces the struct.
+The tint gives a heatmap-like read of where the strong relationships cluster;
+the mark stays the datum, and a level filtered out through the legend fades its
+tint along with its mark.
+
+`SetDarkTheme(true)` and `SetDarkTheme(false)` swap the palette and nothing
+else: sizes, fonts and switches such as `alternateRowBands` or
+`tintCellsByLevel` survive a round trip. Colours you set yourself are replaced,
+so set them after choosing the theme. `MatrixDiagramStyle::ApplyDarkTheme()`
+and `ApplyLightTheme()` do the same to a style you hold.
 
 ## Interaction
 
@@ -38164,7 +38858,11 @@ diagram->onColumnClick = [](int panel, int index, const MatrixItem& item) { };
 click landed in a label band. `onCellClick` fires for empty cells too — check
 `GetModel().LevelAt(...)` to tell them apart.
 
-Hovering highlights the cell's row and column and shows a tooltip. Clicking a
+Hovering highlights the cell's row and column and shows a tooltip. The bands
+follow the *items*, not the panel: a T's shared row lights up in both wings, and
+an X's column lights up in both quadrants that list it. In an `X` or `Y`, a
+click on an arm label reports a whole row or column of the first panel that
+lists the item. Clicking a
 legend entry filters the marks to that level; `SetLevelFilter("")` clears it.
 
 ## Interchange
@@ -38182,9 +38880,11 @@ alone.
 
 ## Samples
 
-`MatrixSamples::ImprovementTools()`, `MatrixSamples::EmployeeAllocation()` and
-`MatrixSamples::QualityFunctionDeployment()` build the three models the demo
-shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
+`MatrixSamples::ImprovementTools()` (L), `MatrixSamples::EmployeeAllocation()`
+(T), `MatrixSamples::QualityFunctionDeployment()` (L, weighted),
+`MatrixSamples::SupplyChain()` (X, with a form header) and
+`MatrixSamples::DesignTraceability()` (Y) build the models the demo shows
+(`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
 
@@ -38196,7 +38896,10 @@ if (!result.valid) { for (const auto& e : result.errors) Log(e); }   // Log: you
 ```
 
 Checks the set count against the shape, panel set references, cell indices,
-level ids and duplicate cells. `warnings` collects things that are drawable but
+level ids and duplicate cells. For an `X` it also checks that every panel pairs
+a left/right set with a top/bottom one and that no two panels claim the same
+quadrant; for a `Y`, that every panel crosses two different sets among the first
+three and that no pair appears twice. `warnings` collects things that are drawable but
 suspicious, such as an empty item set.
 
 The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
@@ -38855,6 +39558,28 @@ The adjustments panel (the `settings-sliders` toolbar toggle) drives `MediaAdjus
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
+
+*Save as* offers FileLoader's types - every bitmap type this build writes
+(`UltraCanvasFileLoader::AddImageSaveTypes`: PNG first, then JPEG, WebP,
+AVIF, HEIC, TIFF, GIF, QOI, ICO, … as available) - and tells the Save dialog
+how big the picture is, so the **Settings** of a bitmap type offer
+[another size](UltraCanvasFileDialog.md#the-pictures-size) for that save, and
+writes with the type's save settings (JPEG quality, PNG compression ...) once
+the user has stored any. An SVG has no pixel size of its own: it is offered as
+[a drawing](UltraCanvasFileDialog.md#a-drawing), at its size on the page, and
+written by drawing it again at the size chosen - sharp at any size, where the
+picture shown would blur when stretched. The surface does it:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+```cpp
+UltraCanvasMediaSurface* surface = viewer->GetSurface();
+const FileSavePicture picture = surface->GetSavePicture();   // turned as shown
+FileSaveImageSize size;
+size.width = picture.width * 2;
+size.height = picture.height * 2;
+std::string error;
+surface->SaveProcessed("twice.png", size, error);   // a drawing drawn again at that size
+```
 
 Each slider is **continuous over its whole range** and carries its live value in
 its caption (`Gamma  1.37`), so an edit can be read off and repeated. The
@@ -44115,8 +44840,8 @@ them back. The first application built on it is **UltraPaint**
 | `UCBrushStroke`, `RasterPaint` | The brush engine: interactive strokes (dabs with spacing, hardness, opacity vs flow, paint / erase / clone / smudge / dodge / burn) and one-shot operations (anti-aliased shapes, flood fill, magic wand, gradients, mask stamping, eyedropper) | `include/UltraCanvasBrushEngine.h`, `core/UltraCanvasBrushEngine.cpp` |
 | `UltraCanvasPaintSurface` | The element: zoom / pan view of a document with checkerboard, pixel grid, selection ants and brush cursor; forwards pointer events in image coordinates to the tool the host installs | `include/UltraCanvasPaintSurface.h`, `core/UltraCanvasPaintSurface.cpp` |
 
-**Version**: 1.0.0
-**Last Modified**: 2026-09-06
+**Version**: 1.0.1 - `DrawCurve`, `DrawArrow`
+**Last Modified**: 2026-10-12
 **Author**: UltraCanvas Framework
 
 None of the model classes touch a window; `UltraCanvasPaintSurface` is the
@@ -44168,7 +44893,8 @@ doc->ApplyFilter("Colour to Alpha", [](const PixelFX::PFXImage& img) {
 
 doc->Undo();
 std::string err;
-doc->SaveToFile("out.png", err);               // flattened, format by extension
+doc->SaveToFile("out.png", err);               // flattened, format by extension, with the
+                                               // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
 ```
 
@@ -44260,7 +44986,11 @@ stroke.End();
 
 `RasterPaint` holds the one-shot operations: `DrawLine`, `DrawRectangle`,
 `DrawEllipse`, `DrawPolygon` (outline and fill, 4×4 supersampled
-anti-aliasing through `FillCoverage`), `FloodFill` (tolerance, contiguous or
+anti-aliasing through `FillCoverage`; open, it is a polyline whose joins are
+painted once), `DrawCurve` (a cubic Bezier curve; `FlattenCubicBezier` gives
+its points for a preview), `DrawArrow` (a shaft with a filled head at the
+tip, or at both ends, in one pass; `ArrowShape` gives its geometry),
+`FloodFill` (tolerance, contiguous or
 global, optionally sampling a merged layer; `FillCompositing::Replace` sets
 the region to the colour, alpha included, where the default `Blend` paints
 over it - the way to fill with transparency), `MagicWandMask` (the same
@@ -50935,7 +51665,7 @@ SVG goes through three parts of the framework, each for one job:
 
 | Job | Component | Behind it |
 |---|---|---|
-| Show an SVG file on screen, or a thumbnail of one | `UltraCanvasImageElement`, `UltraCanvasMediaViewer`, `UCImage` | librsvg, through the parse-once `UCSvgDocument` cache (`libspecific/Cairo/SvgDocumentCairo.h`) |
+| Show an SVG file on screen, or a thumbnail of one | `UltraCanvasImageElement`, `UltraCanvasMediaViewer`, `UCImage` | librsvg, through the parse-once `UCSvgDocument` cache (`libspecific/Cairo/SvgDocumentCairo.h`); where libvips has no `svgload` (the WebAssembly sysroot) or refuses the file, the Vector plugin's reader through the vector preview seam (`UltraCanvasVectorPreview.h`), the parsed document kept and rendered by the core's vector renderer at each requested size |
 | Turn an SVG into pixels at a chosen size | `UltraCanvasVectorRaster` (`InspectVectorFile`, `RasterizeVectorFile`) | librsvg via libvips, so the result is rendered *at* the requested size |
 | Read an SVG into an editable drawing, or write one | `VectorConverter::SVGConverter` in the Vector plugin | tinyxml2 and the `VectorStorage::VectorDocument` model; `<style>` sheets through the HTMLReader's CSS parser |
 
@@ -53746,6 +54476,97 @@ targets, non-Unicode strings, case-insensitive resolution inside a prefix, and
 the files that end in `.lnk` without being links.
 `Tests/FilerShortcutEntryTest.cpp` takes the same links through a folder scan
 and checks the entries the file display produces from them.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSingleInstance.md
+==============================================================================
+
+# UltraCanvasSingleInstance
+
+Lets an application run **one copy per user**. A second start does not open
+another window: it asks the copy already running to come forward, handing it
+whatever this start was asked for, and quits.
+
+```cpp
+#include "UltraCanvasSingleInstance.h"
+
+int main() {
+    UltraCanvasSingleInstance instance("org.ultraos.deviceexplorer", "DeviceExplorer");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return 0;   // the running copy came forward
+
+    UltraCanvasApplication app;
+    if (!app.Initialize("DeviceExplorer")) return 1;
+    if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+        return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "DeviceExplorer");
+
+    // ... create and show the main window ...
+    instance.ListenRaise();   // a later start brings the main window forward
+    app.Run();
+    instance.Close();         // before the windows go
+    return 0;
+}
+```
+
+And in the application's `CMakeLists.txt`, after its `add_executable`:
+
+```cmake
+ultracanvas_single_instance(DeviceExplorer)
+```
+
+## How it decides
+
+**Who runs** is decided by an operating-system lock
+([UltraCanvasInstanceLock](UltraCanvasInstanceLock.md)) on
+`<settings folder>/instances/<appId>.lock` — or in the folder `Claim()` is
+given, as UltraMail does with its data folder. The system drops the lock when
+the process ends, however it ends, so two starts at the same moment can never
+both stay, and a crash never blocks the next start.
+
+**Coming forward** travels over UltraMessage, the per-user message bus: a
+request on the topic `<appId>.show` to the running copy's endpoint
+`<appId>.instance`, which answers before it acts. The first copy hosts the bus
+when nothing else does. A copy started a moment earlier may not listen yet, so
+a later start keeps asking for up to ten seconds.
+
+| `Claim()` answers | Meaning |
+|---|---|
+| `First` | This process holds the lock: carry on. Also the answer when the lock cannot be taken for any other reason (an unwritable folder, a platform without locks) — better two copies than none. |
+| `HandedOff` | Another copy runs and took the request: quit. |
+| `AlreadyRunning` | Another copy holds the lock but did not answer (busy, or a build without UltraMessage): say so with `RunAlreadyRunningAlert`, then quit. |
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `UltraCanvasSingleInstance(appId, displayName)` | `appId` is reverse-DNS (`"org.ultraos.deviceexplorer"`); the lock file and the bus topic are named after it. `displayName` is what the alert says. |
+| `Claim(request = {}, lockDirectory = "")` | Takes the lock; when another copy holds it, offers it `request` (a JSON object). Call **after** the command line is read — a mode that prints and exits (`--help`, `--list`) must not claim — and **before** `Initialize`, so a second start costs no window system. |
+| `Listen(handler)` | A later start's request arrives in `handler(const JSONValue&)` on the UI thread. UltraClipboard reads `search` and `editId` from it. |
+| `ListenRaise()` | `Listen` with `BringToFront()` as the handler — what a single-window application needs. |
+| `Close()` | Stops listening. The lock stays until the object goes, so no second copy slips in while this one shuts down. |
+| `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. |
+| `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. |
+
+## Why it is compiled into the application
+
+The hand-off needs UltraMessage, a separate module the core library does not
+link. `ultracanvas_single_instance(<target>)`
+(`cmake/UltraCanvasSingleInstance.cmake`) therefore compiles
+`core/AppEntry/UltraCanvasSingleInstance.cpp` into the executable and links
+UltraMessage where the build has it. Without UltraMessage the lock still stops
+a second copy, and `Claim()` answers `AlreadyRunning` rather than `HandedOff`.
+
+## Who uses it
+
+UltraMail (lock in its data folder: one copy per mailbox), UltraClipboard
+(hands over the search and the entry to edit), DeviceExplorer, UOS-Settings,
+UltraNetMonitor, UltraPassword, UltraAuthenticator, UltraCleaner,
+EmailCleaner, UltraClaude, the UltraAI dashboard, UltraSocial, UltraFIBU and
+UltraWin Manager. Command-line tools (`ultramsg`, `anchorpoint`, `ultrafibu`)
+do not: scripts run several of them at once. Applications that open documents
+(Texter, UltraPaint, UltraViewer, UltraFiler, UltraVideo, ArtCreator,
+AnchorPoint) are not single-instance yet — they need the running copy to open
+the second start's files, which is a hook of their own.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
@@ -60823,6 +61644,273 @@ The setters are not thread-safe. Call them only from the UI thread.
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) — General 2D rendering pipeline
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasTickerBoard.md
+==============================================================================
+
+# UltraCanvasTickerBoard Documentation
+
+## Overview
+
+`UltraCanvasTickerBoard` is the **ticker board**: a strip of items - a label,
+a value, a change - crawling across a band without end. It is the stock
+ticker along the bottom of a news channel, the headline crawl, the departure
+board in a lobby and the LED sign over a shop door, in one element with two
+faces:
+
+- **Text** sets the strip in a font on a plain band.
+- **DotMatrix** lights it on a fixed grid of round LED dots, seven rows high,
+  glyphs five dots wide, and steps the text across the grid one column at a
+  time the way a real sign does.
+
+The board moves by itself from its first frame, pauses while the pointer
+rests on it, shows an item's tooltip, reports a click on an item, and lets a
+live feed re-price an item in place without the strip jumping.
+
+For a *still* LED readout of one value use
+[`UltraCanvasGaugeDiagramElement`](UltraCanvasGaugeExamples.md) in
+`GaugeMode::Digital`; this element exists to move.
+
+**Namespace:** `UltraCanvas`
+**Header:** `include/Plugins/Diagrams/UltraCanvasTickerBoard.h`
+**Base Class:** `UltraCanvasUIElement`
+**Version:** 1.0.0
+**Last Modified:** 2026-10-13
+**Author:** UltraCanvas Framework
+
+## Class Hierarchy
+
+```
+UltraCanvasUIElement
+    └── UltraCanvasTickerBoard
+```
+
+## Features
+
+- **Items with three fields:** a label, a value and a change, each drawn in
+  its own colour; any field may be empty, and an item with only a label is a
+  crawling message
+- **Trend colouring:** the change is drawn in `upColor`, `downColor` or
+  `flatColor` by the item's `TickerTrend`, with a triangle before it
+  (`showArrows`)
+- **Two faces:** `TickerBoardFace::Text` and `TickerBoardFace::DotMatrix`,
+  switchable at run time with `SetFace()`
+- **Dot-matrix font:** the classic 5x7 glyph set for ASCII, proportional
+  (blank edge columns dropped), with Latin-1 letters drawn as their base
+  letter and the arrows, bullet, degree, euro and pound signs added
+- **Self-driven motion:** a timer advances the strip at `pixelsPerSecond`
+  from the first frame; `Stop()` halts it where it is, `Start()` resumes;
+  `pauseOnHover` holds it still under the pointer
+- **Seamless loop:** the strip repeats without a gap; a strip shorter than
+  the band is drawn as many times as the band needs
+- **Live updates:** `UpdateItem()` replaces one item and keeps the strip's
+  position, so a feed can re-price while the board rolls
+- **Interaction:** per-item tooltips, `onItemClick`, `onItemHover`,
+  `GetItemAt()`
+- **Quote helper:** `MakeTickerQuote()` formats a price and a change into an
+  item with its sign, percentage and trend
+
+## Data Model
+
+```cpp
+struct TickerItem {
+    std::string label;          // "AAPL", "Platform 4", a headline
+    std::string value;          // "189.30" - already formatted
+    std::string change;         // "+1.25 (+0.66%)" - drawn in the trend colour
+    TickerTrend trend = TickerTrend::Flat;
+    Color labelColor = Color(0, 0, 0, 0);   // transparent = the style's colour
+    Color valueColor = Color(0, 0, 0, 0);
+    std::string tooltip;        // shown while the pointer rests on the item
+};
+```
+
+`TickerItem` has three constructors: default, `TickerItem(label)` for a
+message, and `TickerItem(label, value, change = "", trend = Flat)`.
+
+## Basic Usage
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasTickerBoard.h"
+
+auto board = CreateTickerBoard("Prices", 0, 0, 800, 44, TickerBoardFace::Text);
+board->AddItem(MakeTickerQuote("UCNV", 189.30, 1.25));   // "189.30", "+1.25 (+0.66%)", Up
+board->AddItem(MakeTickerQuote("VFX", 42.18, -0.64));    // "42.18", "-0.64 (-1.49%)", Down
+board->AddItem(TickerItem("Platform 4", "12:45"));       // a label and a value
+board->onItemClick = [](size_t index) {
+    // open the quote at `index`
+    (void)index;
+};
+container->AddChild(board);
+```
+
+The board starts rolling on its first frame; there is nothing to start.
+
+### A crawling message
+
+```cpp
+auto sign = CreateTickerBoard("Sign", 0, 0, 800, 64, TickerBoardFace::DotMatrix);
+sign->SetText("WELCOME - Next departure: Platform 4 at 12:45");
+```
+
+`SetText()` replaces the items with one label-only item.
+
+### Re-pricing while it rolls
+
+```cpp
+// Called from a feed callback: the strip keeps its position.
+board->UpdateItem(0, MakeTickerQuote("UCNV", 190.05, 2.00));
+```
+
+`SetItems()`, `AddItem()`, `RemoveItem()` and `ClearItems()` relay the whole
+strip; `UpdateItem()` is the one to call from a feed.
+
+## Motion
+
+```cpp
+board->Stop();                    // halts where it is
+board->Start();                   // resumes
+board->SetRunning(false);         // the same pair, as a flag
+board->SetSpeed(120.0f);          // pixels per second
+board->SetDirection(TickerDirection::Rightward);
+board->SetOffset(0.0);            // the first item's label at the left edge
+```
+
+Distance is computed from elapsed time, not counted per frame, so a late
+timer never slows the crawl down; the DotMatrix face rounds the position to
+whole columns and redraws only when a column boundary is crossed. While
+`pauseOnHover` is set (the default), the board holds still from `MouseEnter`
+to `MouseLeave` and the pause is not caught up afterwards.
+
+## Style
+
+```cpp
+TickerBoardStyle s = board->GetStyle();
+s.face = TickerBoardFace::DotMatrix;
+s.direction = TickerDirection::Leftward;
+s.pixelsPerSecond = 110.0f;
+s.pauseOnHover = true;
+s.backgroundColor = Color(12, 10, 8, 255);
+s.labelColor = Color(255, 170, 0, 255);   // amber
+s.upColor = Color(56, 214, 122, 255);
+s.downColor = Color(244, 84, 84, 255);
+s.separator = "\xE2\x80\xA2";             // a bullet between items; "" for a gap only
+s.cornerRadius = 6.0f;
+board->SetStyle(s);
+```
+
+| Field | Face | Meaning |
+|---|---|---|
+| `face` | - | `Text` or `DotMatrix` |
+| `direction` | - | `Leftward` (items enter at the right) or `Rightward` |
+| `pixelsPerSecond` | - | crawl speed; DotMatrix moves in whole columns |
+| `frameIntervalMs` | - | timer period, 33 ms by default |
+| `pauseOnHover` | - | hold still while the pointer is on the board |
+| `backgroundColor`, `cornerRadius` | - | the band |
+| `labelColor`, `valueColor` | - | the label and value fields (an item may override both) |
+| `upColor`, `downColor`, `flatColor` | - | the change field and its arrow, by trend |
+| `separatorColor`, `separator` | - | the glyph between items; empty for none |
+| `showArrows` | - | a triangle before the change when the trend is not `Flat` |
+| `fontFamily`, `fontSize` | Text | the font; empty family is the UI default, size 0 is sized from the band |
+| `labelWeight`, `valueWeight` | Text | weights of the label and of the other fields |
+| `fieldGap`, `itemGap` | Text | px between fields, and either side of the separator |
+| `dotPitch` | DotMatrix | dot centre to centre; 0 fits seven rows to the band height |
+| `dotFill` | DotMatrix | dot diameter as a share of the pitch (0.3..1) |
+| `showOffDots`, `offDotColor` | DotMatrix | the unlit grid behind the text |
+| `glyphGapColumns`, `fieldGapColumns`, `itemGapColumns` | DotMatrix | blank columns between glyphs, fields and items |
+
+A font family may be a comma-separated fallback list
+(`"DSEG14 Classic,Monospace"`), so a seven-segment face is one style field
+away when such a font is installed.
+
+## Interaction
+
+```cpp
+board->onItemClick = [](size_t index) { (void)index; };   // left button released on an item
+board->onItemHover = [](size_t index) { (void)index; };   // SIZE_MAX when the pointer left every item
+size_t under = board->GetItemAt(120);                      // board-local x, from the last frame drawn
+```
+
+An item's `tooltip` is shown through `UltraCanvasTooltipManager` while the
+pointer rests on it and hidden when it leaves. The separator belongs to no
+item: between items `GetItemAt()` returns `SIZE_MAX`.
+
+## Accessibility
+
+The board reads as a label (`AccessibleRole::Label`) whose value text is the
+items in order - `"UCNV 189.30 +1.25 (+0.66%); VFX 42.18 -0.64 (-1.49%)"` -
+so a screen reader gets the content once, not the animation.
+
+## Quote formatting
+
+```cpp
+TickerItem q = MakeTickerQuote("UCNV", 189.30, 1.25);          // decimals 2, with percent
+TickerItem r = MakeTickerQuote("BTC", 64123.5, -812.25, 1, false);
+```
+
+`MakeTickerQuote(symbol, price, change, decimals = 2, withPercent = true)`
+formats the value at `decimals` places, prefixes a positive change with `+`,
+appends the percentage against the previous price (`price - change`) when
+asked, and sets the trend from the sign of the change. The numbers are
+formatted for a reader, in the application's locale.
+
+## API Reference
+
+```cpp
+void SetItems(const std::vector<TickerItem>& newItems);
+size_t AddItem(const TickerItem& item);
+void UpdateItem(size_t index, const TickerItem& item);
+void RemoveItem(size_t index);
+void ClearItems();
+const std::vector<TickerItem>& GetItems() const;
+size_t GetItemCount() const;
+void SetText(const std::string& message);
+
+void Start();
+void Stop();
+void SetRunning(bool running);
+bool IsRunning() const;
+void SetOffset(double pixels);
+double GetOffset() const;
+double GetStripLength() const;   // one pass of the strip in px, from the last frame drawn
+
+TickerBoardStyle& GetStyle();
+void SetStyle(const TickerBoardStyle& s);
+void SetFace(TickerBoardFace face);
+void SetDirection(TickerDirection direction);
+void SetSpeed(float pixelsPerSecond);
+
+size_t GetItemAt(int localX) const;
+```
+
+```cpp
+std::function<void(size_t index)> onItemClick;
+std::function<void(size_t index)> onItemHover;
+```
+
+Factory and helper, free functions in `namespace UltraCanvas`:
+
+```cpp
+std::shared_ptr<UltraCanvasTickerBoard> CreateTickerBoard(
+        const std::string& identifier, float x, float y, float w, float h,
+        TickerBoardFace face = TickerBoardFace::Text);
+TickerItem MakeTickerQuote(const std::string& symbol, double price, double change,
+                           int decimals = 2, bool withPercent = true);
+```
+
+## Demo
+
+DemoApp, *Diagrams → Ticker Board*
+(`Apps/DemoApp/UltraCanvasTickerBoardExamples.cpp`): a market ticker in a
+font, an amber LED sign, dot-matrix quotes re-priced every 1.5 s in place, a
+rightward headline crawl on a light band, and buttons that pause, re-speed,
+reverse and re-face the first board while it rolls.
+
+## See Also
+
+- [`UltraCanvasUIElements.md`](UltraCanvasUIElements.md) - the element catalogue
+- [`UltraCanvasGaugeExamples.md`](UltraCanvasGaugeExamples.md) - `GaugeMode::Digital`, the still LED readout
+- [`UltraCanvasBusyIndicator`](UltraCanvasUIElements.md) - the other self-animating element, built on the same timer
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTimePicker.md
 ==============================================================================
 
@@ -61729,6 +62817,180 @@ the `Roadmap` design, item groups/phase brackets (A-D6), per-item images
 sequential entrance animation (A-I7).
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasToolGroupButton.md
+==============================================================================
+
+# UltraCanvasToolGroupButton
+
+Several tools sharing one slot of a tool palette or toolbar - the selection
+tools, the brushes, the shapes of a paint program.
+
+The slot shows one tool of the group, and a click on it picks that tool.
+Resting the pointer on the slot folds out a bar beside it with every tool of
+the group; a click in the bar picks that tool. A small triangle in the
+slot's corner says the slot holds more than one tool. The bar folds back when
+the pointer leaves both the slot and the bar, on Escape and on a click
+elsewhere. A group of one tool is an ordinary toggle button: no triangle and
+nothing to fold out.
+
+**Version:** 1.0.0
+**Header:** `include/UltraCanvasToolGroupButton.h`
+**Namespace:** `UltraCanvas`
+**Base Class:** `UltraCanvasButton`
+
+## Adaptive or static
+
+What the slot shows after a pick is the host's choice:
+
+| `SetSlotShowsLastPicked` | The slot shows | A click on the slot picks |
+|---|---|---|
+| `true` (default) - an *adaptive* toolbar | the tool last picked, from the bar or with `SetCurrentItem` | that tool |
+| `false` - a *static* toolbar | always the first item, the group's main tool | the main tool |
+
+Either way the bar marks the tool in use - the *current* item - while the slot
+is pressed. UltraPaint offers the choice as *Settings > Display > Tool
+palette*.
+
+## Adding one to a toolbar
+
+`UltraCanvasToolbar::AddToolGroup` creates the slot with the toolbar's button
+appearance, as `AddToggleButton` does for a single tool. In a vertical toolbar
+the bar folds out to the right of the slot as a row; in a horizontal one it
+folds out below as a column. Where the window has no room on that side it
+goes to the opposite one.
+
+```cpp
+#include "UltraCanvasToolbar.h"
+
+auto palette = std::make_shared<UltraCanvasToolbar>("palette", 0, 0, 48, 0);
+palette->SetOrientation(ToolbarOrientation::Vertical);
+
+auto selectGroup = palette->AddToolGroup("select", {
+        {"rect-select",    "media/icons/ultrapaint/28/select-rect.svg",    "Rectangle Select (R)"},
+        {"ellipse-select", "media/icons/ultrapaint/28/select-ellipse.svg", "Ellipse Select (E)"},
+        {"lasso",          "media/icons/ultrapaint/28/lasso.svg",          "Lasso (L)"},
+    },
+    [](const std::string& toolId) {
+        // Make toolId the active tool.
+        (void)toolId;
+    });
+selectGroup->SetIconSize(28, 28);
+selectGroup->SetElementSize(Size2Df(36, 36));
+```
+
+The bar's buttons copy the slot when the bar folds out - its size, its icon
+size and its `ButtonStyle` - so a flat palette gets a flat bar, and the tool
+in use wears the slot's `pressedColor`.
+
+## Keeping the palette in step
+
+The slot is a toggle button: a pick presses it. When the active tool changes
+some other way - a shortcut key, a command that switches tools - the host
+presses the slot of the new tool's group, lets every other slot go, and tells
+the group which of its tools it is:
+
+```cpp
+// slots: every group of the palette; toolId: the tool that just became active.
+for (const auto& slot : slots) {
+    const bool inGroup = slot->SetCurrentItem(toolId);   // false: not one of its tools
+    slot->SetPressed(inGroup);
+}
+```
+<!-- doc-check: std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> slots; std::string toolId; -->
+
+`SetCurrentItem` fires nothing, so this does not loop back into
+`onItemSelected`.
+
+## Class reference
+
+```cpp
+UltraCanvasToolGroupButton(const std::string& identifier, float x, float y, float w, float h);
+UltraCanvasToolGroupButton(const std::string& identifier, float w, float h);
+
+// Items - the group's tools, in the bar's order
+void SetItems(const std::vector<ToolGroupItem>& groupItems);
+void AddItem(const ToolGroupItem& item);
+const std::vector<ToolGroupItem>& GetItems() const;
+int GetItemCount() const;
+bool HasItem(const std::string& itemId) const;
+
+// The tool last picked or set, and the one the slot shows
+bool SetCurrentItem(const std::string& itemId);
+std::string GetCurrentItem() const;
+std::string GetSlotItem() const;
+void SetSlotShowsLastPicked(bool showLastPicked);
+bool GetSlotShowsLastPicked() const;
+
+// The fold-out bar
+void SetFoldOutSide(ToolGroupFoldOutSide side);
+ToolGroupFoldOutSide GetFoldOutSide() const;
+void SetFoldOutDelay(int milliseconds);
+int GetFoldOutDelay() const;
+void OpenFoldOut();
+void CloseFoldOut();
+bool IsFoldOutOpen() const;
+std::shared_ptr<UltraCanvasContainer> GetFoldOut() const;
+```
+
+```cpp
+std::function<void(const std::string& itemId)> onItemSelected;
+```
+
+`onItemSelected` fires on a click on the slot (with the tool it shows) and on
+a click in the bar (with that tool).
+
+`SetFoldOutDelay` is how long the pointer rests on the slot before the bar
+folds out: 150 ms by default, so a pointer crossing the palette on its way to
+the canvas does not flash every group's bar; 0 folds it out at once.
+`OpenFoldOut` and `CloseFoldOut` do it from code - a group of one, or a slot
+in no window, has nothing to fold out.
+
+`CreateToolGroupButton(identifier, x, y, w, h, items)` creates one outside a
+toolbar.
+
+### ToolGroupItem
+
+```cpp
+struct ToolGroupItem {
+    std::string id;          // handed back by onItemSelected
+    std::string iconPath;
+    std::string tooltip;     // its name (and shortcut)
+};
+```
+
+### ToolGroupFoldOutSide
+
+```cpp
+enum class ToolGroupFoldOutSide {
+    Auto = 0,     // right of a slot in a vertical toolbar, below one in any other
+    Right = 1,
+    Left = 2,
+    Bottom = 3,   // below the slot
+    Top = 4       // above it
+};
+```
+
+The bar runs along its side: a row to the right or left, a column below or
+above. The values are `Bottom` and `Top` rather than *Below* and *Above*
+because X11's headers `#define` those two words.
+
+## Implementation notes
+
+- The bar is a popup on the slot's window, with the slot as its owner. The
+  window hands an open popup every pointer event that is on neither it nor its
+  owner, which is how the bar sees the pointer leave and folds back. It
+  touches the slot, so the pointer never crosses a gap that belongs to neither
+  on its way from one to the other.
+- The bar's buttons do not take the keyboard focus: the canvas keeps it while
+  a tool is picked.
+- A focused slot picks its tool with Space or Return.
+
+## See Also
+
+- [UltraCanvasToolbarExamples.md](UltraCanvasToolbarExamples.md) - `AddToolGroup` and the rest of the toolbar
+- [UltraCanvasButtonExamples.md](UltraCanvasButtonExamples.md) - the button it is built on
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 ==============================================================================
 
@@ -61738,14 +63000,14 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.6.1
+**Version:** 1.8.1
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
 
 ## Features
 
-- **Item Types**: Button, ToggleButton, DropdownButton, Separator, Spacer (fixed and flex), Label, TextInput, SearchBox, Checkbox
+- **Item Types**: Button, ToggleButton, DropdownButton, ToolGroup (several tools in one slot, with a fold-out bar), Separator, Spacer (fixed and flex), Label, TextInput, SearchBox, Checkbox
 - **Multiple Styles**: Standard, Flat, Raised, Docked (macOS-like), Ribbon, StatusBar, Sidebar
 - **Orientation**: Horizontal or Vertical
 - **Overflow Handling**: Wrap, overflow menu, scroll, or hide
@@ -61845,6 +63107,10 @@ std::shared_ptr<UltraCanvasDropdown> AddDropdownButton(
         const std::vector<std::string>& items,
         std::function<void(const std::string&)> onSelect = nullptr);
 
+std::shared_ptr<UltraCanvasToolGroupButton> AddToolGroup(
+        const std::string& id, const std::vector<ToolGroupItem>& items,
+        std::function<void(const std::string&)> onSelect = nullptr);
+
 std::shared_ptr<UltraCanvasSeparator> AddSeparator(const std::string& id = "");
 std::shared_ptr<UltraCanvasSpacer> AddSpacer(int size = 8);
 std::shared_ptr<UltraCanvasSpacer> AddStretch(float stretch = 1.0f);
@@ -61855,6 +63121,27 @@ std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
 std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
         const std::string& id, const std::string& placeholder = "Search...",
         std::function<void(const std::string&)> onTextChange = nullptr);
+```
+
+### Tool Groups
+
+`AddToolGroup` puts several tools in one slot, as a paint program's palette
+groups its selection tools or its brushes. The slot shows one of them; resting
+the pointer on it folds out a bar with the whole group - to the right in a
+vertical toolbar, below in a horizontal one - and a click there picks a tool.
+`onSelect` gets the id of the tool picked, by a click on the slot or in the
+bar. The slot shows the tool last picked, or always the group's first tool
+with `SetSlotShowsLastPicked(false)`. A group of one item is a plain toggle
+button. See [UltraCanvasToolGroupButton.md](UltraCanvasToolGroupButton.md).
+
+```cpp
+auto palette = std::make_shared<UltraCanvasToolbar>("palette", 0, 0, 48, 0);
+palette->SetOrientation(ToolbarOrientation::Vertical);
+auto shapes = palette->AddToolGroup("shapes", {
+        {"rectangle", "media/icons/ultrapaint/28/rect.svg",    "Rectangle (Q)"},
+        {"ellipse",   "media/icons/ultrapaint/28/ellipse.svg", "Ellipse (P)"},
+    },
+    [](const std::string& toolId) { (void)toolId; /* make it the active tool */ });
 ```
 
 ### Auto-Hide
@@ -61955,6 +63242,26 @@ enum class ToolbarIconSize {
     Huge,       // 64x64
     Custom      // user-defined
 };
+```
+
+Every button the toolbar adds draws its icon at this size, and
+`SetAppearance()` applies it again to the buttons already there:
+`ToolbarAppearance::IconPixelSize()` gives the pixels (Custom is
+`customIconWidth` x `customIconHeight`; a button's `GetIconWidth()` /
+`GetIconHeight()` read it back). Pick the size the icon set is drawn
+for. A line icon is drawn on the pixel grid of one size, and at any other
+size its lines fall between two pixels and blur: the shared 24 px sets
+(`media/icons/menu/`, `media/icons/artcreator/`) want `Medium`, a 16 px set
+`Small`. A button that needs another size sets it with `SetIconSize()` after
+it is added, and again after a later `SetAppearance()`.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasToolbar>("tools", 0, 0, 0, 38);
+ToolbarAppearance look = bar->GetAppearance();
+look.iconSize = ToolbarIconSize::Small;   // a set drawn on a 16 px grid
+bar->SetAppearance(look);
+auto play = bar->AddButton("play", "", "media/icons/ultravideo/play.svg", [] {});
+int drawn = play->GetIconWidth();         // 16
 ```
 
 ## ToolbarAppearance Structure
@@ -62221,6 +63528,7 @@ running->ClearItemBadge("webcam");                                // off again
 ## See Also
 
 - [UltraCanvasButton](UltraCanvasButton.md) - Building block for toolbar buttons
+- [UltraCanvasToolGroupButton](UltraCanvasToolGroupButton.md) - Several tools in one slot, with a fold-out bar (`AddToolGroup`)
 - [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown buttons and overflow menus
 - [UltraCanvasContainer](UltraCanvasContainer.md) - Base container class
 - [UltraCanvasLayoutExamples](UltraCanvasLayoutExamples.md) - Layout managers used internally
@@ -63547,6 +64855,10 @@ std::function<void(TreeNode*, TreeCheckState)> onNodeCheckChanged;
 std::function<bool(TreeNode* target)> onFilesDragAccept;
 std::function<bool(TreeNode* target,
                    const std::vector<std::string>& files)> onFilesDroppedOnNode;
+// The row a drag over the tree would drop on right now (the highlighted one
+// onFilesDragAccept accepted), or null - for a drag that carries no files and
+// ends without a Drop, such as the file dialog's Save icon.
+TreeNode* GetDropTargetNode() const;
 // Right mouse button released over a node; the event carries the pointer
 // position (event.pointerWindow) for placing a context menu. A right press
 // never changes the selection.
@@ -63920,6 +65232,7 @@ from an external "Show password" checkbox. See
 |---|---|---|
 | Static text - selectable and copyable with `SetSelectable`, or across many labels with one `UltraCanvasTextSelection` | `UltraCanvasLabel` | `UltraCanvasLabel.h`, `UltraCanvasTextSelection.h` |
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
+| Text that scrolls past by itself (a marquee, a news crawl, a stock ticker, an LED sign) | `UltraCanvasTickerBoard` - see *Diagrams* below | `Plugins/Diagrams/UltraCanvasTickerBoard.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
@@ -63933,7 +65246,7 @@ from an external "Show password" checkbox. See
 | A timecode `HH:MM:SS:FF` to enter or show: segments stepped by the arrow keys, digits filling from the right, `+`/`-` offsets, a large read-only readout for a transport bar | `UltraCanvasTimecodeField` | `UltraCanvasTimecodeField.h` |
 | A gallery or a timed slideshow | `UltraCanvasAlbum`, `UltraCanvasSlideshow` | matching `*.h` |
 | eBooks | `UltraCanvasEBookViewer` | `UltraCanvasEBookViewer.h` |
-| A web page from a URL (http(s) or a file): fetched, laid out as native elements by the HTML reader, scrolled, with links, `#fragments`, back / forward and an error page; no JavaScript. The host gives it the network (`HTML::PageLoaderServices`). For HTML you already have in memory, build it with `HTML::ElementBuilder` | `UltraCanvasWebView` | `UltraCanvasWebView.h` (loading alone: `HTMLReader/HTMLPageLoader.h`) |
+| A web page from a URL (http(s) or a file): fetched, laid out as native elements by the HTML reader, scrolled, with links, `#fragments`, back / forward, forms the reader fills in and sends, and an error page; no JavaScript. The host gives it the network (`HTML::PageLoaderServices`). For HTML you already have in memory, build it with `HTML::ElementBuilder` | `UltraCanvasWebView` | `UltraCanvasWebView.h` (loading alone: `HTMLReader/HTMLPageLoader.h`) |
 | A LaTeX formula (equation, matrix, ...) as an element | `UltraCanvasLaTeXView` via `CreateLaTeXView()` | `Plugins/LaTeX/UltraCanvasLaTeXView.h` |
 | A LaTeX document (`article`: sections, lists, tables, figures, formulas) as a rich document | `UltraCanvasLaTeXDocumentReader` → `UCRichDocument` → `ToMarkdown()` into a `UltraCanvasTextArea` in Markdown mode; `UCWordDocumentIO::Load` and `UltraCanvasFileLoader::LoadTextDocument` dispatch to it for `.tex` | `Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h` |
 | A formula inside a line of text you lay out yourself | `UltraCanvasInlineMath` (typeset, measure, draw at a baseline); `UltraCanvasTextArea`'s Markdown mode already does this for `$...$` | `UltraCanvasInlineMath.h` |
@@ -63956,6 +65269,7 @@ formats, and does not re-decode on every frame the way an ad-hoc
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
 | A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page) | `UltraCanvasToolbar.h` |
+| Several tools sharing one slot of a palette or toolbar - the slot shows one, a bar of the whole group folds out while the pointer rests on it, the slot then shows the tool last picked (or always the main one) ([doc](UltraCanvasToolGroupButton.md)) | `UltraCanvasToolGroupButton` (`UltraCanvasToolbar::AddToolGroup`) | `UltraCanvasToolGroupButton.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
 | The S-curve between two groups on one bar (a taskbar's system group flowing into its running apps) — one group's colour up to the curve, the next group's after it ([doc](UltraCanvasWaveSeparator.md)) | `UltraCanvasWaveSeparator` | `UltraCanvasWaveSeparator.h` |
 
@@ -63991,8 +65305,10 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
 | Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
+| The icon of a file about to be saved, dragged onto a folder of the window to choose where it goes (the RISC OS save box's icon; the Save dialog has a big one left of its name and type, "Drag to Folder" under it) | `UltraCanvasFileDragIcon` (`CreateFileDragIcon`; [doc](UltraCanvasFileDialog.md#the-file-icon)) | `UltraCanvasFileDragIcon.h` |
+| One file format's save settings (JPEG quality, PNG compression, TIFF codec ...), kept for every application - and, for a picture, the size to write it at this once | `UltraCanvasFileLoader::ShowSaveSettingsDialog` ([doc](UltraCanvasFileDialog.md#save-settings)) | `UltraCanvasFileLoader.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
-| Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
+| Save a bitmap with per-format options - opened on the format's save settings (and the format the file name has), which Save stores back | `UltraCanvasImageExportDialog` ([save settings](UltraCanvasFileDialog.md#save-settings)) | `dialogs/UltraCanvasImageExportDialog.h` |
 | Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog`, `ShowMetadataDialog()` — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
 | Turn a 3D model into a bitmap, letting the user frame the view first | `UltraCanvasModelViewDialog`, `ShowModelViewDialog()` ([doc](UltraCanvasModelViewDialog.md)) | `dialogs/UltraCanvasModelViewDialog.h` |
 | A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
@@ -64060,7 +65376,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two item sets crossed in an L or T, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
@@ -64069,6 +65385,7 @@ Each takes its data through setters and renders itself; most have a
 | A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
 | A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |
 | A bit-accurate map of a protocol data unit | `UltraCanvasPacketDiagram` | `Plugins/Diagrams/UltraCanvasPacketDiagram.h` |
+| A ticker board: labels, values and changes crawling across a band without end, set in a font or lit on a 5x7 LED dot grid - a stock ticker, a headline crawl, an LED sign | `UltraCanvasTickerBoard` (`CreateTickerBoard`, `MakeTickerQuote`) | `Plugins/Diagrams/UltraCanvasTickerBoard.h` |
 | A gauge, **and the framework's progress bar** | `UltraCanvasGaugeDiagramElement` — see *Pickers, dialogs and feedback* above | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 
 ### Codes and documents
@@ -64084,7 +65401,8 @@ The vector format plugins (`UltraCanvasCDRElement`, `UltraCanvasEPSElement`,
 `UltraCanvasXARElement`) are **not** in these tables on purpose: they are
 decoders behind `UltraCanvasVectorElement` and `UltraCanvasImageElement`, which
 are what an application reaches for. An SVG has no element of its own either:
-`UltraCanvasImageElement` shows it (through librsvg). Same for
+`UltraCanvasImageElement` shows it (through librsvg, or the Vector plugin's
+reader where libvips has no SVG loader). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
 
 ## Creating them
@@ -64931,7 +66249,12 @@ it registered:
   the process-wide font machinery);
 - the Filer's **Display > Thumbnails** and **Display > Detail view** settings
   pages stop greying the formats out, because `GetPreviewableFormats()` asks
-  the same seam.
+  the same seam;
+- `UltraCanvasImageElement` and `UCImage` show an SVG in a build whose libvips
+  has no `svgload` - the WebAssembly sysroot's - by reading it through the
+  seam and rendering the kept document with the core's vector renderer at
+  each requested size; every SVG icon of a WebAssembly page comes from here.
+  A libvips that refuses an SVG gets the same second reader on the desktop.
 
 ```cpp
 RegisterVectorFormatsPlugin();                    // once, at startup
@@ -65151,6 +66474,40 @@ if (!layer) ShowStatus(error);   // nothing visible, or too large
   are no elements, nothing visible, a scale that is not positive, or a result
   larger than `maxPixels` (64 Mpx by default - a clipboard copy, not a print).
 
+## A loaded drawing's page
+
+`RasterizeVectorDocument` draws the whole page of an open `VectorDocument` -
+what a drawing program's *Export* writes as a PNG or a JPEG. A drawing has no
+pixel size of its own, so it is drawn **at** the size asked for, sharp at any
+size, never drawn small and stretched:
+
+<!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> drawing; void ShowStatus(const std::string&); -->
+```cpp
+#include "UltraCanvasVectorRaster.h"
+
+VectorRasterOptions options;
+options.width = 3200;                 // the height follows the page's shape
+std::string error;
+auto page = RasterizeVectorDocument(*drawing, options, error);
+if (!page) ShowStatus(error);         // no page size, or too large
+```
+
+- **The page** is the document's view box (0,0 to its `Size` where it has
+  none). Both sides 0 give a pixel a document unit; one side 0 follows the
+  page's shape; both given scale each side on its own, so a size in another
+  shape stretches the page to it.
+- **Background**: the document's own `BackgroundColor` is drawn, and
+  `options.background` under it - transparent by default, so a PNG keeps
+  what the page leaves empty.
+- Null comes back with `error` set for a document with no page size or a
+  size larger than `options.maxPixels` (256 Mpx by default).
+
+An application does not call it to export: `UltraCanvasFileLoader::
+SaveVectorDocument(document, path, size, ...)` does, for every bitmap type
+this build writes, with the types from `AddVectorDocumentSaveTypes` - see
+[FileLoader](../Modules/FileLoader/README.md#a-drawing-saved-as-a-bitmap).
+ArtCreator's Export is those two calls.
+
 ## What it is not
 
 - **Not a vector editor.** The document model, the converters between vector
@@ -65172,7 +66529,10 @@ comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
 `UltraPaintImportDialog`).
 
 ArtCreator: *Copy* puts the selection on the system clipboard as a PNG made
-by `RasterizeVectorElements` (`Apps/ArtCreator/ArtCreatorWindow.cpp`).
+by `RasterizeVectorElements`, and *Export* writes PNG, JPEG and the other
+bitmap types through `UltraCanvasFileLoader::SaveVectorDocument`, which
+draws the page with `RasterizeVectorDocument`
+(`Apps/ArtCreator/ArtCreatorWindow.cpp`, `core/UltraCanvasFileLoader.cpp`).
 
 ## Tests
 
@@ -65183,7 +66543,10 @@ drawing, and an absurd size is refused rather than allocated. It reports
 `[SKIP]` on a build with no SVG rasterizer instead of failing. Its
 `RasterizeVectorElements` checks need no file rasterizer and run on every
 build: the crop to what is painted, a stroke past the bounds, the scale, an
-ancestor's transform, and the refusals.
+ancestor's transform, and the refusals. So do its `RasterizeVectorDocument`
+checks: the natural size, a page twenty times larger with a hard edge, one
+side following the page's shape, a size in another shape, both backgrounds,
+and the refusals.
 
 ## See also
 
@@ -66864,7 +68227,7 @@ FILE: Docs/UltraCanvas/UltraCanvasWebAssembly.md
 
 # UltraCanvas on WebAssembly
 
-<!-- doc-check: std::vector<uint8_t> documentBytes; -->
+<!-- doc-check: std::vector<uint8_t> documentBytes; void ShowPageFor(const std::string& url); -->
 
 **Status: experimental.** The framework builds with Emscripten and runs in
 Chromium: windows render through the same Cairo/Pango pipeline as the desktop
@@ -66899,7 +68262,7 @@ onto an HTML `<canvas>`.
 | Printing | Native print dialog | `ShowPrintDialog()` opens the text in a new window and calls `window.print()`. |
 | Folder watch, file lock, volume monitor, hardware info | Native probes | The core fallbacks: polling, "unknown", "null" backend. |
 | Spell checking | System service or Hunspell | Hunspell only, with dictionaries preloaded into the virtual FS. |
-| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. |
+| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. `-DULTRACANVAS_WASM_THREADS=OFF` builds single-threaded against a sysroot built with `WASM_THREADS=0`: no headers needed, and `std::thread` fails at run time. |
 | Networking (UltraNet), OpenGL, audio, video, most file-type plugins | Available | Compiled out (`UltraCanvas/CMakeLists.txt` forces them off for `EMSCRIPTEN`). |
 
 ### Application lifetime
@@ -66996,9 +68359,23 @@ WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::
 
 `WASMBrowser` also wraps `alert` / `confirm` / `prompt`, the console,
 `navigator.userAgent`, the screen size and `localStorage`. `WASMURL` reads the
-page URL, its query parameters (`GetQueryParameter`, `GetAllQueryParameters`)
-and hash, and can navigate or reload. `WASMTime` exposes `performance.now()`
-and performance marks.
+page URL, its path, its query parameters (`GetQueryParameter`,
+`GetAllQueryParameters`) and hash, and can navigate or reload. An application
+that shows several pages from one module uses its History API instead of
+navigating: `PushUrl` changes the address bar and adds an entry the back
+button returns to, `ReplaceUrl` rewrites the current entry, and
+`SetOnNavigate` hears the back and forward buttons (every `popstate`, a hash
+change included) with the new URL, on the main thread:
+
+```cpp
+WASMURL::SetOnNavigate([](const std::string& url) { ShowPageFor(url); });
+WASMURL::PushUrl("/the-plan/");          // on a click; does not call the callback
+```
+
+`WASMTime` exposes `performance.now()` and performance marks. The window logs
+its first presented frame to the browser console once, as `first frame
+presented N ms after navigation start`: the time to first paint including the
+download, compilation and start-up, from the browser's own clock.
 
 ## Serving an application
 
@@ -67012,7 +68389,63 @@ Cross-Origin-Embedder-Policy: require-corp
 
 `UltraCanvas/OS/WASM/demo/serve.py` is a minimal server that sets both. The
 bundled fonts must be preloaded into the virtual FS at `/share/media/fonts`
-(`--preload-file media/fonts@/share/media/fonts`).
+(`--preload-file media/fonts@/share/media/fonts`), and so must any other
+file the application reads through `GetResourcesDir()` - the front-page demo
+preloads its logo at `/share/media/images/...` the same way.
+
+Two sample applications live in `UltraCanvas/OS/WASM/demo/`: `wasm-demo.cpp`,
+a window with labels and a button, and `ultraos-frontpage.cpp`, the
+https://ultraos.eu front page as a scrolling page of UltraCanvas elements
+(a navigation with popup menus, hero, card rows, offers, an FAQ accordion,
+forms with text inputs, a text area and a checkbox, a footer). The second
+is the pattern for a web-page-like application: one scrollable container
+filling the window, sections stacked by Block layout so wrapped text gets
+its real height, Flex rows for the horizontal pieces, popup menus anchored
+under their buttons, `Maximize()` under `__EMSCRIPTEN__` to fill the
+viewport, and several pages from one module through the History API: a
+link into the site pushes `?page=<site path>` and rebuilds the page's
+sections, `SetOnNavigate` rebuilds them for the back and forward buttons,
+and the address read at start decides the first page, so a reload keeps it.
+The rebuild is posted to the UI thread (`PostToUIThread`), never done inside
+the click of a button the rebuild removes. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
+at the repository root).
+
+## The demo application in the browser
+
+The framework's demo application (`Apps/DemoApp/`) builds as a page too:
+`emcmake cmake` at the repository root produces `UltraCanvasDemo.html`, the
+whole page tree of the desktop demo - the elements, the layout system, the
+charts and diagrams, the vector and bitmap formats, the 3D model readers,
+the text documents, the Filer and Album widgets, the module pages - less
+what the browser has no backend for:
+
+| Left out | Why |
+|---|---|
+| Audio Player, Level Meter, Audio FX, and the Waveform, Spectrogram and Audio Analysis charts | `ULTRACANVAS_ENABLE_AUDIO` is off in the browser: no playback, and the sample tracks the charts analyse are decoded by the audio module |
+| Video Player | `ULTRACANVAS_ENABLE_VIDEO` is off: the null backend plays nothing (the Video Timeline, a pure element, stays) |
+| STL 3D Models | its one sample is a 25 MB file; the model formats page shows the other readers from the smaller samples |
+| OpenGL, CDR, XAR, EPS, PDF, OCR, Vectorizer, LaTeX, Ultra Net | compiled out by `UltraCanvas/CMakeLists.txt` for every WebAssembly build, so their pages are absent or say so, as on a desktop build without them |
+
+**SVG** takes a different road in the browser: the wasm sysroot's libvips has
+no SVG loader, so `UCImage` reads an .svg through the vector preview seam
+the Vector plugin installs and renders it with the core's vector renderer
+(`UltraCanvasVectorConverters.md`, *the vector preview provider*). The
+demo registers the plugin in its `main.cpp`, so its SVG page and every SVG
+icon - the toolbars', the flat buttons', the tree's - render as on the
+desktop; an application that registers no plugins gets "format not
+supported" for them.
+
+The pages' files - the fonts, icons, images, vector samples, the smaller 3D
+models, the docs and the demo's own sources for the source button - are
+preloaded into the virtual filesystem at `/share/...` by the demo's CMake
+block, about 50 MB downloaded once. The page's query string replaces the
+command line: `UltraCanvasDemo.html?component=piecharts` opens that page
+(and, like `--component`, leaves the About window out), and `?about=0` is
+`--no-about`. The main window maximizes to the browser viewport. The source
+is three `__EMSCRIPTEN__` branches: the static application object in
+`main.cpp`, the query string there, and the page registrations left out in
+`UltraCanvasDemo.cpp`. `wasm-build.yml` builds the page in CI, with the two
+sample applications.
 
 ## Known limitations
 
@@ -69940,15 +71373,23 @@ listing of the current folder (an `UltraCanvasFilerWidget`, the UltraFiler
 display), and the file-name field and file-type dropdown
 below them.
 
+<!-- doc-check: FileDialogOptions opts; void ShowPicture(std::shared_ptr<UCImage> image); void Play(std::shared_ptr<UCAudio> audio); void ShowDocument(std::shared_ptr<UCRichDocument> document); void ShowError(const std::string& message); -->
 ```cpp
 // Decode an image into a UCImage
-UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) { ... });
+UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) {
+    if (r.IsSuccess()) ShowPicture(img);
+    else if (!r.loadError.empty()) ShowError(r.loadError);   // empty: cancelled
+});
 
 // Decode audio into a UCAudio PCM buffer (WAV/MP3/FLAC always; OGG/Opus with codec libs)
-UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) { ... });
+UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) {
+    if (r.IsSuccess()) Play(audio);
+});
 
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/Markdown/TXT)
-UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) { ... });
+UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
+    if (r.IsSuccess()) ShowDocument(doc);
+});
 ```
 
 ### Editable Vector Documents
@@ -69960,6 +71401,8 @@ writers are the Vector plugin's converters (SVG, XAR, EMF, WMF, DXF, DWG, AI,
 EPS, CDR, PDF), installed by `RegisterVectorFormatsPlugin()`:
 
 ```cpp
+#include "UltraCanvasVectorFormatsPlugin.h"          // the Vector plugin
+
 RegisterVectorFormatsPlugin();                       // once, at start-up
 
 std::string error;
@@ -69975,6 +71418,70 @@ opts.AddFilter("Drawings", UltraCanvasFileLoader::GetVectorLoadExtensions());
 `UCImage` also opens `.svg` (through librsvg), but as pixels — right for a
 viewer, useless to an editor. Use `LoadVectorDocument` whenever the drawing
 is to be changed or written back.
+
+### Save Settings
+How a format is written - JPEG's quality, PNG's compression, TIFF's codec - is
+described per format (`UltraCanvasFileSaveSettings.h`), so one dialog can offer
+the settings of any of them, and the values the user chose are kept for every
+application, between runs. The framework's Save dialog has a **Settings**
+button on its type row that edits the chosen type's settings, and the
+writers read them back - `UCRasterDocument::SaveToFile` does so on its own:
+
+```cpp
+if (UltraCanvasFileLoader::HasSaveSettings("photo.jpg"))
+    UltraCanvasFileLoader::ShowSaveSettingsDialog("photo.jpg", window.get());
+
+FileSaveSettings jpeg = UltraCanvasFileLoader::GetSaveSettings("jpg");
+int quality = jpeg.GetInt("quality", 85);
+
+UCImageSave::ImageExportOptions options;                 // the image writer's, ready made
+UltraCanvasFileLoader::GetImageExportOptions("out.webp", options);
+```
+
+The bitmap formats the image writer takes options for are built in; a plugin
+or an application adds its own with `RegisterSaveFormat`. A caller that passes
+the picture's size (`FileDialogOptions::SetImageSize`) also gets a Size row in
+a bitmap type's settings, for that save only: the size comes back through the
+`SaveFileDialog` overload whose callback takes a `FileSaveImageSize`, and
+`GetImageExportOptions(path, size, options)` writes at it. A drawing (SVG,
+a page of shapes) has no pixel size of its own: `SetDrawingSize` gives the
+size it is drawn at, offers the same row, and the caller draws it again at the
+size chosen. See *Save settings*
+in [the file dialog's documentation](../../UltraCanvas/UltraCanvasFileDialog.md#save-settings).
+
+### A Drawing Saved as a Bitmap
+Every file a user loads or saves in an UltraCanvas application goes through
+FileLoader - only a program's own internal files (settings, caches, logs) are
+read and written directly. That is what puts every format this build reads
+and writes in front of the user, and the conversions between them. A
+drawing's Export is two calls: the Save dialog's types for it - every vector
+writer and every bitmap type this build writes, with the page's size as a
+drawing so a bitmap type's Settings offer any size - and the save, which
+draws the page at the size chosen (a drawing has no pixel size of its own,
+so it is sharp at any) and writes it with the format's save settings:
+
+<!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> drawing; void ShowError(const std::string&); -->
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Export drawing");
+UltraCanvasFileLoader::AddVectorDocumentSaveTypes(opts, *drawing);
+UltraCanvasFileLoader::SaveFileDialog(opts, [drawing](DialogResult r, const std::string& path,
+                                                      const FileSaveImageSize& size) {
+    if (r != DialogResult::OK) return;
+    std::string error;
+    if (!UltraCanvasFileLoader::SaveVectorDocument(*drawing, path, size, error))
+        ShowError(error);
+});
+```
+
+`GetVectorDocumentPixelSize(document)` is the size a page starts at (96 DPI;
+the model is in points), and `CanSaveImage(extensionOrPath)` says whether
+this build writes a bitmap type. A picture's Save offers
+`AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
+and its Open `GetSupportedLoadExtensions(MediaFormatCategory::Bitmap)`, as
+UltraPaint and the media viewer do. Windows icons and QOI are read and written
+by the framework's own libvips plugins, and an AVIF or HEIC type is offered
+only where libheif can encode it.
 
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
@@ -70024,12 +71531,15 @@ Add support for proprietary or specialized graphics formats without modifying
 core code. Register an `IGraphicsPlugin` with the graphics plugin registry and
 its extensions immediately show up in the format inventory:
 
+<!-- doc-check: std::shared_ptr<IGraphicsPlugin> myFormatPlugin; -->
 ```cpp
+#include "Models/STL/UltraCanvasSTLPlugin.h"
+
 // Register a graphics plugin (e.g. the built-in STL model plugin)
 RegisterSTLPlugin();
 
-// ...or your own
-UltraCanvasGraphicsPluginRegistry::RegisterPlugin(std::make_shared<MyFormatPlugin>());
+// ...or your own: an IGraphicsPlugin implementation
+UltraCanvasGraphicsPluginRegistry::RegisterPlugin(myFormatPlugin);
 ```
 
 ---
@@ -70088,6 +71598,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 FileLoader is part of the core library — no separate initialization is needed
 beyond creating the application. Load a file and check the result:
 
+<!-- doc-check: void ProcessBytes(const std::vector<uint8_t>& bytes); -->
 ```cpp
 auto result = UltraCanvasFileLoader::LoadFile("any_file.ext");
 if (result.success) {
@@ -70279,7 +71790,7 @@ FILE: Docs/Modules/FileLoader/intro.md
 
 The unified one-stop loader for images, vector graphics, 3D models, audio, video, text, and spreadsheets. Instead of juggling separate libraries, programmers call one consistent interface that reuses each file plug-in's own save and load logic.
 The main benefit of FileLoader is that applications don't need to be updated to support new file formats. For example if there is a new image format only the plugin is loaded for FileLoader and the app is able to load and save the new format. This makes any app future proof. Also new functionality can be provided: when you download an image, audio or video file from a website, you can directly choose another format at save time.
-Because format availability depends on the libraries and plugins a build was compiled with, FileLoader also exposes a runtime inventory — `UltraCanvasFileLoader::GetSupportedFormats()` / `UltraCanvasSupportedFormats::GetAll()` — that reports exactly which formats the current build can load and save, and which library or plugin provides each. Loading and saving stay simple and predictable across formats.
+Because format availability depends on the libraries and plugins a build was compiled with, FileLoader also exposes a runtime inventory — `UltraCanvasFileLoader::GetSupportedFormats()` / `UltraCanvasSupportedFormats::GetAll()` — that reports exactly which formats the current build can load and save, and which library or plugin provides each. A bitmap format counts as saveable only where it can be encoded: libvips has an AVIF and a HEIC saver wherever libheif is installed, but they write nothing without libheif's AV1 / HEVC encoder, so a build without one does not list them. Windows icons (`.ico`, read from `.cur` too) and QOI are read and written by the framework's own libvips plugins, without ImageMagick, so every build with libvips has them. Loading and saving stay simple and predictable across formats.
 
 ==============================================================================
 FILE: Docs/Modules/IODeviceManager/Architecture.md
@@ -74540,15 +76051,15 @@ FILE: Docs/Modules/UltraCrypt/README.md
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
 **Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
-**Version:** 0.1.0
+**Version:** 0.2.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-08-10
+**Last Modified:** 2026-10-13
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
-authenticated encryption, key derivation and secure random generation are
-implemented, so that no application, plugin or sibling module ever has to
-write its own.
+authenticated encryption, digital signatures, key derivation and secure
+random generation are implemented, so that no application, plugin or sibling
+module ever has to write its own.
 
 It follows the same rules as UltraNet and UltraDatabase — clear structure,
 names understandable from the name itself, `UltraCryptResult` from every
@@ -74565,7 +76076,8 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation and HKDF-SHA-256/512. (The RFC 4648 Base32/Base64
+Argon2id key derivation, HKDF-SHA-256/512 and Ed25519 signatures (§5.8).
+(The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
 Base32 decoder.) First consumer: the UCD document encryption envelope
 (`UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, tested by
@@ -74583,8 +76095,8 @@ accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
 which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18.
 
-**Not yet implemented:** the public-key surface (§2, no consumer). BLAKE3-256,
-once listed as optional, has been dropped altogether (§9).
+**Not yet implemented:** key agreement and X.509 (§2, no consumer).
+BLAKE3-256, once listed as optional, has been dropped altogether (§9).
 
 ---
 
@@ -74662,9 +76174,9 @@ Two caveats stated plainly:
 ## 2. Scope
 
 **In scope** — data-at-rest and data-integrity primitives: hashing, HMAC,
-authenticated encryption (AEAD), password-based and key-derivation functions,
-cryptographically secure random generation, constant-time comparison, and
-secure (zeroizing) memory.
+authenticated encryption (AEAD), digital signatures (Ed25519), password-based
+and key-derivation functions, cryptographically secure random generation,
+constant-time comparison, and secure (zeroizing) memory.
 
 **Out of scope:**
 
@@ -74672,9 +76184,9 @@ secure (zeroizing) memory.
   UltraCrypt never opens a socket and never validates a certificate.
 - **Credential storage and policy.** That is UltraVault's job; UltraVault
   *consumes* UltraCrypt for its file-backed fallback backend.
-- **Public-key cryptography** (signatures, key agreement, X.509). No consumer
-  needs it yet. The surface is arranged so `UltraCrypt_Sign` /
-  `UltraCrypt_Verify` can be added later without disturbing anything here.
+- **Key agreement and X.509.** No consumer needs them. Signatures, the one
+  public-key operation a signed catalog or update needs, are in (§5.8); the
+  rest can be added the same way without disturbing anything here.
 - **Protocol-level constructions** (TOTP, the UCD envelope, SuperVault's
   request flow). Those live in their consumers and are built *from* these
   primitives.
@@ -75358,6 +76870,76 @@ different one.
 
 ---
 
+### 5.8 Digital signatures (Ed25519)
+
+One scheme, Ed25519 (RFC 8032): deterministic, 64-byte detached signatures,
+32-byte public keys, 64-byte secret keys in the backend's form (the 32-byte
+seed with the public key appended). The verifier holds nothing but a public
+key, so a signing key never leaves the machine that signs. This is what a
+signed catalog, manifest or update is checked with.
+
+```cpp
+enum class UltraCryptSignatureAlgorithm : uint8_t { Ed25519 };
+
+size_t UltraCrypt_GetSignaturePublicKeySize(UltraCryptSignatureAlgorithm); // 32
+size_t UltraCrypt_GetSignatureSecretKeySize(UltraCryptSignatureAlgorithm); // 64
+size_t UltraCrypt_GetSignatureSeedSize(UltraCryptSignatureAlgorithm);      // 32
+size_t UltraCrypt_GetSignatureSize(UltraCryptSignatureAlgorithm);          // 64
+bool   UltraCrypt_IsSignatureAvailable(UltraCryptSignatureAlgorithm);
+
+// A fresh pair from the CSPRNG.
+UltraCryptResult UltraCrypt_GenerateSignatureKeyPair(
+        UltraCryptSignatureAlgorithm, std::vector<uint8_t>& outPublicKey,
+        UltraCryptSecureBuffer& outSecretKey);
+
+// The pair a 32-byte seed determines; a seed kept in a vault is the whole
+// signing identity.
+UltraCryptResult UltraCrypt_SignatureKeyPairFromSeed(
+        UltraCryptSignatureAlgorithm, const UltraCryptSecureBuffer& seed,
+        std::vector<uint8_t>& outPublicKey, UltraCryptSecureBuffer& outSecretKey);
+
+// The public key a secret key carries.
+UltraCryptResult UltraCrypt_GetSignaturePublicKey(
+        UltraCryptSignatureAlgorithm, const UltraCryptSecureBuffer& secretKey,
+        std::vector<uint8_t>& outPublicKey);
+
+// Deterministic detached signature over the exact bytes given.
+UltraCryptResult UltraCrypt_Sign(UltraCryptSignatureAlgorithm,
+                                 const UltraCryptSecureBuffer& secretKey,
+                                 const void* data, size_t size,
+                                 std::vector<uint8_t>& outSignature);
+
+// SignatureInvalid when the signature does not match the message and key —
+// one code whether the message, the signature or the key is off.
+UltraCryptResult UltraCrypt_Verify(UltraCryptSignatureAlgorithm,
+                                   const std::vector<uint8_t>& publicKey,
+                                   const void* data, size_t size,
+                                   const std::vector<uint8_t>& signature);
+
+// The same over a file's bytes as they are on disk.
+UltraCryptResult UltraCrypt_SignFile(UltraCryptSignatureAlgorithm,
+                                     const UltraCryptSecureBuffer& secretKey,
+                                     const std::string& filePath,
+                                     std::vector<uint8_t>& outSignature);
+UltraCryptResult UltraCrypt_VerifyFile(UltraCryptSignatureAlgorithm,
+                                       const std::vector<uint8_t>& publicKey,
+                                       const std::string& filePath,
+                                       const std::vector<uint8_t>& signature);
+```
+
+Rules: a key or signature of the wrong length is refused with
+`InvalidKeySize` / `InvalidArgument` before anything is checked; a
+verification failure is `SignatureInvalid` and nothing else, since a verifier
+has no business telling a wrong key from a wrong byte. Signing is
+deterministic, so there is no nonce to store and no entropy failure at
+signing time. Covered by the RFC 8032 §7.1 vectors (TEST 1, 2, 3 and
+SHA(abc)) plus a flipped message bit, a flipped signature bit, a wrong key and
+a file with a byte appended.
+
+*Serves:* UltraStore's signed catalog, and any signed manifest or update.
+
+---
+
 ## 6. Usage sketches
 
 **UCD v2 section encryption (§4.3 pipeline):**
@@ -75415,7 +76997,8 @@ is part of the deliverable, not a follow-up:
 
 - **Published test vectors, all mandatory** (implemented in
   `Tests/UltraCryptTests.cpp`): FIPS 180-4 (SHA-1 and SHA-2), RFC 2202 / 4231
-  (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 4648 (Base32/64), RFC 8439
+  (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 4648 (Base32/64), RFC 8032
+  (Ed25519), RFC 8439
   (ChaCha20-Poly1305) plus the XChaCha20-Poly1305 vectors from
   draft-irtf-cfrg-xchacha and libsodium's own suite, NIST CAVP GCM for the
   interop-only AES path, and RFC 4226 App. D / RFC 6238 App. B once the OTP
@@ -75446,7 +77029,7 @@ is part of the deliverable, not a follow-up:
 | **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
-| **4** | Optional additions as needed: XChaCha20-Poly1305 at volume, public-key surface |
+| **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog. Still optional: XChaCha20-Poly1305 at volume, key agreement |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.
@@ -75945,7 +77528,7 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | The presenters' shared half: what a notification says, which update shows where, what a click publishes | `Internal::ReadPresentedContent`, `PresentedNotifications`, `PublishPresenterResponse` in `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h` |
 | UltraMail → `mail.message`, and its new-mail notification | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`, `Apps/UltraMail/engine/UltraMailNewMail.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
-| UltraClipboard's single-instance hand-off (`org.ultraos.ultraclipboard.show`, request / reply) | `Apps/UltraClipboard/SingleInstance.{h,cpp}` |
+| One copy per application: the single-instance hand-off (`<appId>.show`, request / reply, endpoint `<appId>.instance`) that UltraMail, UltraClipboard and the other single-window apps use | `UltraCanvas/include/UltraCanvasSingleInstance.h`, `UltraCanvas/core/AppEntry/UltraCanvasSingleInstance.cpp` (compiled into each app by `ultracanvas_single_instance()`) |
 | `UltraCanvasMessageCenter` element (target `UltraMessageCenter`) | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp` |
 | `UltraCanvasNotificationToast` element and `UltraCanvasNotificationToastHost` (target `UltraMessageCenter`): notifications on screen where nothing else draws them | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp` |
 | Tests (41 cases; the adapter and presenter ones on a private D-Bus session, the presenters' shared half on every platform; 11 more for the message centre and the toasts in-tree) | `Tests/UltraMessage/` |
@@ -76918,9 +78501,33 @@ UltraNet_ResolveUrl("https://x.org/app/main.wasm", "../data/a.json", url);
 // url == "https://x.org/data/a.json"; a URL with a control character in it
 // (a CR or LF that would end the request line) is refused
 
-// File download streamed straight to disk
+// File download streamed straight to disk. No whole-transfer timeout (a
+// download is as long as the file is large), a 30 s stall timeout instead.
 UltraNet_HttpDownloadFile("https://cdn.example.com/big.zip",
                           "/tmp/big.zip");
+
+// A download that can be resumed, paused and checked before its body: any
+// request writes to a file through outputFilePath, on the async path too.
+UltraNetHttpRequest dl;
+dl.url = "https://cdn.example.com/big.zip";
+dl.options.outputFilePath     = "/tmp/big.zip.part";
+dl.options.resumeOutputFile   = true;   // the file's size is the Range start
+dl.options.httpsOnlyRedirects = true;   // never bounced onto http://
+dl.options.stallTimeoutMs     = 60000;  // Timeout when nothing moves for 60 s
+dl.onHeaders = [](const UltraNetResponse& head) {
+    // The final response's headers, before any body: 206 means the rest of
+    // the file is coming, 200 that the server sent it all and the partial
+    // file was replaced. Return false to end the transfer (Cancelled).
+    return head.contentLength <= kMaxPackageBytes;
+};
+dl.onDownloadProgress = [](int64_t now, int64_t total) {
+    // Figures of the whole file, the resumed bytes included.
+};
+UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetResponse& resp) {
+    // The file is closed and complete here when resp.IsComplete().
+});
+UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
+UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
 ```
 
 ```cpp
@@ -78439,11 +80046,13 @@ segments.
 > still images with smooth pan and
 > zoom ("Ken Burns"), one-call slideshows, background music that dips under
 > speech, project files, waveforms for timelines and players, a preview
-> that renders any frame of a timeline without an export, GIF and
+> that renders any frame of a timeline without an export, proxy media for
+> smooth editing of large clips, hardware encoders (NVENC, Quick Sync,
+> VA-API, AMF, VideoToolbox, Media Foundation) by choice, voice-overs and
+> sound effects placed at any time, GIF and
 > audio-only output, lossless cut, the background job and the `videofx`
 > command-line tool work today, on FFmpeg 4.4 to 8.x.
-> Picture-in-picture, keyframes and several free audio tracks are planned
-> (see *Roadmap*).
+> Keyframed parameters are planned (see *Roadmap*).
 
 ---
 
@@ -78636,6 +80245,77 @@ VideoFX_RenderFrame(show, 3.0, frame, showSettings, 320, 180);   // the show at 
 
 `videofx preview <project.vfxproj> <seconds> <out.png|out.jpg> [maxWidth maxHeight]`
 writes the frame of a saved project.
+
+---
+
+## Proxy media
+
+A 4K phone clip is slow to scrub: every seek decodes a large frame, often
+from a keyframe seconds back. A **proxy** is a small stand-in for it - the
+same picture and sound, timed the same, at 540 lines, as H.264 with a
+keyframe every half second. The editor previews and plays the timeline from
+the proxies, and the export reads the originals.
+
+```cpp
+VideoFXProxySettings proxies;                     // 540 lines, the user's cache folder
+
+// once, in the background (a job of the app's own, or a worker thread)
+VideoFX_CreateProxies(timeline, proxies, [&](double f) { gauge->SetValue(f * 100.0); return !cancelled; });
+
+// the viewer plays the proxies...
+preview.Open(VideoFX_UseProxies(timeline, proxies), settings);
+
+// ...the export reads the originals
+VideoFX_Export(timeline, "final.mp4", settings);
+```
+
+- **Where they live.** In a cache folder: `VideoFXProxySettings::cacheDirectory`,
+  or by default `VideoFX_GetDefaultProxyDirectory()` - `$XDG_CACHE_HOME`
+  (else `~/.cache`) on Linux, `~/Library/Caches` on macOS and
+  `%LOCALAPPDATA%` on Windows, each followed by `VideoFX/Proxies`.
+- **Named after the clip.** A proxy's name is the clip's own name plus a hash
+  of its full path, size and modification time and of the proxy settings,
+  for example `Trip_2026-3f9a0c41d27be805.mp4`. A clip that is edited or replaced
+  gets a new proxy, and the stale one is simply never used again.
+  `VideoFX_ProxyPath(clip)` says where a clip's proxy is, and
+  `VideoFX_HasProxy(clip)` whether it has been made.
+- **Made once.** `VideoFX_CreateProxy(clip, settings, progress, &editPath)`
+  skips a proxy that exists. A clip with no picture, or one no taller than
+  a proxy, gets none: `editPath` is then the clip itself.
+  `VideoFX_CreateProxies(timeline)` makes them for every file segment and
+  every sized picture-in-picture video, each clip once, with one progress
+  for the lot.
+- **Never half made.** A proxy is written under a temporary name and renamed
+  when complete. A crash, a full disk or a cancel leaves nothing that could
+  be taken for a whole proxy.
+- **Switching.** `VideoFX_UseProxies(timeline)` returns the timeline with
+  every clip that has a proxy replaced by it; trims, speed, effects and
+  overlays are kept. A `Crop` effect, which is in the clip's pixels, is
+  scaled to the proxy's. A picture-in-picture video at its own pixel size
+  (`imageHeight` 0) keeps its original, since a proxy would shrink it.
+- **Give the output size.** With `width` and `height` 0 an export or preview
+  takes its size from the first segment, which over proxies is the proxy.
+  Set the size in the settings, as a project does, so the preview frame is
+  the export's.
+- **Clearing.** `VideoFX_ClearProxies(settings, &files, &bytes)` deletes
+  every proxy in the cache folder, and any half-made one, and touches
+  nothing else there.
+
+Proxies keep the clip's timing to the frame, so a trim made on a proxy is
+the same trim on the original. Keyframes come from the new export setting
+`VideoFXExportSettings::keyframeInterval` (seconds, 0 = the encoder's
+default), which any export can use.
+
+From the command line:
+
+```
+videofx proxy clip1.mov clip2.mov                  # make proxies; prints each one's path
+videofx proxy trip.vfxproj                         # for every clip of a project
+videofx proxy clip.mov --proxy-height 360 --proxy-dir ~/proxies
+videofx preview trip.vfxproj 12.5 shot.png --proxies   # the frame, from the proxies
+videofx render trip.vfxproj draft.mp4 --proxies    # a quick draft from the proxies
+videofx proxy --clear                              # delete them all
+```
 
 ---
 
@@ -78910,6 +80590,67 @@ correctly timed (if unusual) export, and so is music under silent clips.
 
 ---
 
+## Voice-overs and sound effects
+
+Besides the segments' own sound and the music, an export can hold any
+number of **free audio clips**: a voice-over, a sound effect, a sting. Each
+is a sound file placed at a time on the timeline, independent of the cuts,
+in `VideoFXExportSettings::audioClips`.
+
+```cpp
+VideoFXExportSettings s = VideoFXExportSettings::WebMP4(1080);
+s.music = VideoFXMusic::FromFile("song.mp3");
+
+VideoFXAudioClip voice = VideoFXAudioClip::VoiceOver("narration.wav", 2.0);   // at 2 s
+voice.fadeOut = 0.5;
+s.audioClips.push_back(voice);                                     // the music dips under it
+
+VideoFXAudioClip whoosh = VideoFXAudioClip::Sound("whoosh.wav", 7.5, 0.8);    // at 7.5 s, 80 %
+whoosh.start = 0.1;                                                // skip the file's first 0.1 s
+whoosh.end = 0.9;                                                  // and stop at 0.9 s of it
+s.audioClips.push_back(whoosh);                                    // over the music, not ducking it
+
+VideoFX_Export(timeline, "story.mp4", s);
+```
+
+| Field | Default | Notes |
+|---|---|---|
+| `path` | - | A sound file, or a video whose sound is wanted |
+| `at` | 0 | Seconds into the export where it starts |
+| `start`, `end` | 0, 0 | The part of the file played; `end` 0 = to the file's end |
+| `volume` | 1 | 0..4 |
+| `fadeIn`, `fadeOut` | 0 | Seconds at the clip's own ends; fades longer than the clip share it |
+| `ducksMusic` | false | The music dips under it as under the segments' sound (`VoiceOver` sets it) |
+
+- **Mixing.** The clips are mixed with the segments' sound before the
+  music is added. The ducker hears the voice-overs, so the music dips under
+  narration exactly as it does under speech in a clip. Sound effects come
+  in after the ducker, so a whoosh does not pull the music down.
+- **Placement.** Clips may overlap each other and the cuts. A clip that
+  runs past the end of the export is cut off there: the export is not
+  lengthened.
+- **Sound in a silent export.** A timeline of photos or silent clips with a
+  voice-over gets a sound track.
+- **Resources.** Each clip's file is opened when the timeline reaches it and
+  let go when it has played, so a hundred sound effects do not keep a
+  hundred files open.
+- **Refused before anything is written:** a missing file (`FileNotFound`),
+  one without sound (`NoMediaStreams`), and a start past the file's end or
+  a value out of range (`InvalidArgument`).
+- **Elsewhere.** The clips are saved in project files, play in slideshows
+  (through the settings) and in drafts. The preview is picture only, and
+  ignores them like the music.
+
+From the command line, `--sound FILE@SECONDS[:VOLUME]` places a sound
+effect and `--voice FILE@SECONDS[:VOLUME]` a voice-over. Both can be
+repeated:
+
+```
+videofx concat story.mp4 a.mp4 b.mp4 --music song.mp3 --voice intro.wav@1.5 --sound whoosh.wav@8:0.8
+```
+
+---
+
 ## Effects
 
 Effects are typed values made by the `VideoFXEffect::` factories; VideoFX
@@ -79057,7 +80798,11 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `quality` | codec default | 0..100 → CRF / qscale per encoder |
 | `videoBitRate`, `audioBitRate` | 0 | Set to use a bit rate instead of quality |
 | `encoderPreset` | — | e.g. `"veryfast"` for x264 / x265 |
+| `keyframeInterval` | encoder default | Seconds between keyframes; short = quick to seek (proxies use 0.5) |
+| `acceleration` | `Auto` | Software, any hardware encoder (`Hardware`), or one family; see *Hardware encoders* |
 | `sampleRate`, `channels` | first audio source / stereo | Mono only when every source is mono |
+| `music` | none | Background music; see *Background music* |
+| `audioClips` | none | Voice-overs and sound effects at given times; see *Voice-overs and sound effects* |
 
 Presets: `WebMP4(height)`, `WebM(height)`, `AnimatedGif(width, fps)`,
 `MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`, and the draft
@@ -79076,6 +80821,55 @@ if (!VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H265))
 H.264 uses libx264, then the platform encoder (VideoToolbox on macOS, Media
 Foundation on Windows), then OpenH264; H.265, AV1 and ProRes likewise try the
 software encoder first.
+
+### Hardware encoders
+
+The graphics hardware can encode too: several times faster than software,
+with the processor left free, at some cost in quality for the same file
+size. `VideoFXExportSettings::acceleration` chooses:
+
+| Value | Encoder |
+|---|---|
+| `Auto` (default) | As before: software, then the platform's encoder (VideoToolbox, Media Foundation) |
+| `Software` | Software only: libx264, libx265, libvpx, SVT-AV1, ... |
+| `Hardware` | The first hardware encoder that works on this machine; software when none does |
+| `NVENC` | NVIDIA (`h264_nvenc`, `hevc_nvenc`, `av1_nvenc`) |
+| `QuickSync` | Intel (`h264_qsv`, `hevc_qsv`, `av1_qsv`, `vp9_qsv`) |
+| `VAAPI` | VA-API on Linux, Intel and AMD graphics (`h264_vaapi`, `hevc_vaapi`, `av1_vaapi`, `vp9_vaapi`) |
+| `AMF` | AMD on Windows (`h264_amf`, `hevc_amf`, `av1_amf`) |
+| `VideoToolbox` | macOS (`h264_videotoolbox`, `hevc_videotoolbox`, `prores_videotoolbox`) |
+| `MediaFoundation` | Windows (`h264_mf`, `hevc_mf`, `av1_mf`) |
+
+An FFmpeg build often carries hardware encoders the machine cannot run:
+Ubuntu's has `h264_nvenc` whether or not the computer has an NVIDIA card.
+So VideoFX tries each hardware encoder once, by encoding one small frame,
+before it chooses one, and keeps the answer for the rest of the process.
+`Hardware` never lands on an encoder that does not run here. A named family
+that cannot run fails with `EncoderNotAvailable`, and the error says
+whether FFmpeg lacks the encoder or the machine lacks the hardware.
+
+```cpp
+VideoFXExportSettings s = VideoFXExportSettings::WebMP4(1080);
+s.acceleration = VideoFXAcceleration::Hardware;           // fast where it can be
+
+// a settings dialog: what this machine can do
+for (const VideoFXEncoderInfo& e : VideoFX_ListVideoEncoders(VideoFXVideoCodec::H264))
+    if (e.works) encoderChoice->AddItem(VideoFX_AccelerationName(e.acceleration));
+
+std::string name = VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware);
+// "h264_nvenc" on an NVIDIA machine, "libx264" on one without hardware encoding
+```
+
+`VideoFX_IsVideoEncoderAvailable(codec, acceleration)` asks the same for one
+choice; with `Hardware` it means a hardware encoder, not the software one
+the export would fall back to. The first list takes a moment, typically
+under a second, because each hardware encoder is tried once; later lists
+answer at once. VA-API takes frames only in graphics memory, so each frame
+is uploaded before it is encoded. The other families take ordinary frames.
+Hardware encoders are driven by bit rate (`videoBitRate`, or one derived from
+`quality` and the picture size); `encoderPreset` and `keyframeInterval`
+reach them too. Proxies can be made on the hardware as well
+(`VideoFXProxySettings::acceleration`).
 
 ---
 
@@ -79255,9 +81049,14 @@ videofx faces family.jpg                                 # the faces the detecto
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
+videofx concat story.mp4 a.mp4 b.mp4 --music song.mp3 --voice intro.wav@1.5 --sound boom.wav@8
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --save-project trip.vfxproj
 videofx project trip.vfxproj                             # what it holds, missing media
 videofx render trip.vfxproj                              # render a saved project
+videofx proxy trip.vfxproj                               # proxies of its clips, for editing
+videofx render trip.vfxproj draft.mp4 --proxies          # a quick draft from the proxies
+videofx encoders h264                                    # the H.264 encoders, and which work here
+videofx transcode talk.mov talk.mp4 --hw hardware        # on the graphics hardware where there is one
 ```
 
 ---
@@ -79304,11 +81103,13 @@ generates its own clips, so it needs no media files.
 | 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
-| 3 | Keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
+| 3g | Free audio clips: voice-overs and sound effects at given times, trimmed, faded, the music ducking under voice-overs | **Done** |
+| 3 | Keyframed effect and overlay parameters | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
 | 4c | Preview: any frame of a timeline rendered as the export would make it, without an export (`VideoFXPreview`); a slideshow's plan as segments | **Done** |
-| 4 | Proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
+| 4d | Proxy media: small stand-ins for large clips, made once into a cache folder, switched in for previews and drafts, the originals exported | **Done** |
+| 4e | Hardware encoders by choice: software, any that works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media Foundation, each tried on the machine before it is used | **Done** |
 | 5 | A timeline editor element in UltraCanvas on top of the engine (`UltraCanvasVideoTimeline`, in the core) | **Done** |
 
 *VideoFX — part of the UltraCanvas framework.*
@@ -79610,13 +81411,25 @@ if (!disk.IsTrueRam()) {
 Check `VirtualFS_IsTrueRamDiskAvailable()` before creating anything if the
 distinction matters, so you can warn up front rather than after the fact.
 
+That question - `VirtualFS_GetPreferredRamDiskBacking()` is the same one - is
+put to the system **once per process** and the answer kept: on Windows it
+launches `where imdisk` and on macOS `command -v hdiutil` through a shell,
+which takes seconds on a loaded machine. An application with a user interface
+asks the first time from a background thread at start-up, and every later
+call, on any thread, answers at once (a call made while the probe still runs
+waits for its answer rather than probing again). A driver installed while the
+process runs is seen at the next start.
+
 A disc's name is at most **23 characters on Windows** (64 elsewhere;
 `VirtualFS_GetMaxRamDiskNameLength()` says which). A drive letter carries no
 name, so an ImDisk disc keeps it in its NTFS volume label - that is how
 `VirtualFS_ListRamDisks()` finds it again - and a label holds 32 characters,
 nine of them the `ultravfs-` prefix. The fallback directory takes the same
 limit, so a name does not work on one machine and fail on the next only
-because ImDisk is installed there.
+because ImDisk is installed there. The label is read from local fixed,
+removable and RAM drives on D: to Z: only: a mapped network drive whose
+server is away, or an empty CD drive, would otherwise hold every listing for
+as long as Windows takes to give up, and neither can carry an ImDisk disc.
 
 ### Privacy and lifetime
 
@@ -80779,8 +82592,10 @@ there comes forward instead and keeps what is typed in it. The hand-off goes
 over UltraMessage, the per-user message bus: a request on the topic
 `org.ultraos.ultraclipboard.show` (`search`, `editId`) to the running
 instance, which answers before it acts; the first instance hosts the bus when
-nothing else does. Without the bus (a build without UltraDatabase, a bus that
-cannot be reached) every start opens its own window.
+nothing else does. Who runs is decided by an operating-system lock
+(`UltraCanvasSingleInstance`, `UltraCanvasInstanceLock`), so two starts at the
+same moment cannot both stay; without the bus a second start says that
+UltraClipboard is already running instead of opening a window of its own.
 
 ## Command line
 
@@ -81461,7 +83276,7 @@ and would not reduce it, is measured in
 
 ## Steps
 
-The window is a stepper (`Docs/UltraCanvasStart/WorkflowProposal.md`): five
+The window is a stepper (`Docs/UltraCanvasStart/WorkflowProposal.md`): six
 steps in the order the work happens, Back and Next below the pane, and the
 Guide and the Report as dialogs from the header at any time. It is styled
 like UltraMail (`ui/UltraCanvasStartTheme.h` carries UltraMail's colours,
@@ -81477,7 +83292,8 @@ as `code`, and each numbered step of a guide is one action.
 | **2 Features** | The feature groups (toolchain and framework core always; CDR, PDF, OCR, Vectorizer, audio, barcode, networking extras as options). The assistant: Claude Code, Codex, Copilot, Gemini or another in a segmented control; whether its instruction file goes into the project and the first prompt is prepared; whether the work goes through GitHub alone. For the chosen assistant: whether its command-line tool is installed and how to install and sign in, how it picks up the repository's guidance (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or pasted instructions and `llms-full.txt` for a chat), how an assistant works on an UltraCanvas application, and the no-local-compiler workflow of [`GettingStarted-Cloud.md`](../GettingStarted-Cloud.md). | Which packages step 3 checks; which file the project gets. |
 | **3 Tools** | The checks run on entering: every tool (`--version`) and library (`pkg-config --modversion`) the chosen groups need, each on a row with a switch that shows whether it is there (on, green: installed; off: missing or not checkable), the version found and, when missing, the package that provides it; a badge says *not checked yet*, *N missing* or *everything installed*, and the line under the buttons says what *Install what is missing* will do - the package manager, how many and the exact command - or why it cannot run. *Install what is missing* (enabled only while something is missing) runs the package manager after a confirmation that shows the command again: `apt-get` / `dnf` / `pacman` / `zypper` behind pkexec or sudo, `brew` as the user, MSYS2's `pacman` into the MSYS2 tree. The output is shown in a console and the checks run again. Next goes on even with something missing; the step keeps the error marker until the checks pass. | Whether the toolchain and libraries are there. |
 | **4 Framework** | *The prebuilt SDK* or *A clone, built from source*. For the SDK: the version, the matching archive, its download address, the release page, the workflow artifacts while a release is still building; *Download and unpack...* fetches the archive from the release into a folder you pick, unpacks it and fills the prefix in; *Find...* looks for `lib/cmake/UltraCanvas/UltraCanvasConfig.cmake` under a chosen folder. For the clone: the clone command and how the project finds the checkout. The step carries the error marker while the SDK is chosen and no prefix is set. | Where `find_package(UltraCanvas)` will look. |
-| **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then the **Done** page: what was written, the three build commands, the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | The application. |
+| **5 Project** | Application name and folder, the files previewed, *Create the project*, which writes `CMakeLists.txt`, `main.cpp`, `CMakePresets.json`, `README.md` and the chosen assistant's instruction file. Then what was written. The step carries the error marker while no project exists. | The application. |
+| **6 Build** | The proof that the installation works: the two commands a programmer runs (`cmake --preset default`, `cmake --build --preset default`) shown for the project folder, *Build the project* runs them (`engine/StartBuild`: cmake with `-S` and the preset, then the preset's `build/` directory; on Windows the MSYS2 bin directories on the child's PATH), cmake's output in a console, a badge that says *not built yet*, *building...*, *built* or *failed*; the step carries the error marker after a failed build. Under it the hand-over: the first prompt to give the assistant with *Copy the first prompt*, and *Copy the report*. | Whether the application compiles here. |
 
 **Guide** (header): the way in for any platform, the same guide as step 1,
 in a dialog. **Report** (header): the system, the checks, the plan and the
@@ -81490,7 +83306,7 @@ UltraCanvasStart --check            # detect, check, print the report; exit 2 if
 UltraCanvasStart --plan             # ...and the install plan
 UltraCanvasStart --plan --for macos # the plan for another platform
 UltraCanvasStart --check --all      # every feature group
-UltraCanvasStart --step 3           # open the window on a step (for screenshots and support)
+UltraCanvasStart --step 6           # open the window on a step, 1 to 6 (for screenshots and support)
 UltraCanvasStart --page report      # ...or open the Report (or Guide) dialog; the old page names map to steps
 UltraCanvasStart --for windows      # ...with that platform's guide preselected
 UltraCanvasStart --plan --assistant codex   # the plan and the project for another assistant
@@ -81502,7 +83318,11 @@ UltraCanvasStart --version
 `--check`, `--plan` and `--create` open no window, so they work over ssh and
 in CI, which runs `--check` on every platform leg and builds the skeleton
 `--create` writes against the SDK the leg just installed, so the files the
-Project step writes are known to compile.
+Project step writes are known to compile. The engine tests compile it too,
+through `StartBuild` (what the Build step runs), when `ULTRACANVAS_SDK_PREFIX`
+names an installed SDK; CI sets it on every leg, and locally
+`ULTRACANVAS_SDK_PREFIX=/path/to/sdk ctest -R UltraCanvasStartEngine` is the
+earlier guard.
 
 ## Engine
 
@@ -83161,6 +84981,25 @@ sound, and the playhead follows it. An edit throws the draft away and the
 next Play renders a new one. Where no sound device or player is available
 playback stays frame by frame and the status line says so.
 
+**Proxies.** Large clips, such as 4K phone videos, are slow to scrub. So
+every video in the bin gets a *proxy* in the background: the same clip at
+540 lines, quick to seek in (VideoFX's proxy media). The bin tile shows its
+progress, *proxy waiting*, *proxy 40 %*, and *proxy* when it is ready. From
+then on the viewer and the playback draft play that clip from its proxy.
+The **export always reads the originals**, at full quality.
+- Proxies are made one at a time on a thread of their own, so scrubbing
+  never waits behind one. They are encoded on the graphics hardware where
+  one works (NVENC, Quick Sync, VA-API, AMF, VideoToolbox, Media
+  Foundation), and in software where none does.
+- A clip no taller than a proxy, which is already quick, gets none.
+- Proxies are kept in the user's cache folder (`~/.cache/VideoFX/Proxies`
+  and the like), so a project opened again plays from them at once.
+- A clip removed from the bin before its proxy is made is dropped from the
+  queue.
+- *Preview from proxies*, in the inspector's Project tab, turns them off
+  and on for the project. It is saved with the project, and is not an
+  undo step.
+
 ### The timeline
 
 The `UltraCanvasVideoTimeline` element with four lanes: **T1 Titles**, a
@@ -83247,11 +85086,13 @@ are offered first; a song in the bin becomes the music.
   under the clips' own sound by preset (speech, outdoor, loud event) and
   level.
 - **Project**: the name, the output size (from the first clip, Full HD, HD,
-  4K, portrait, square), the frame rate, and how clips of another shape are
-  fitted.
+  4K, portrait, square), the frame rate, how clips of another shape are
+  fitted, and *Preview from proxies* (on by default; see *Proxies* above).
 
 Every field is an edit like any other: it goes through undo and shows on
-the timeline and in the viewer at once.
+the timeline and in the viewer at once. *Preview from proxies* is the one
+exception: it changes how the project is previewed, not the project, so it
+is no undo step.
 
 ## Undo, projects and export
 
@@ -83299,6 +85140,187 @@ its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.
 
 ==============================================================================
+FILE: Docs/UltraPress/README.md
+==============================================================================
+
+# UltraPress
+
+**Status:** Phase 1 under way. UltraPress 0.4.1 is the headless engine, the
+`ultrapress` program - the commands and the editor window -, the block
+renderer on real elements and the WordPress importer: a site as a folder of JSON files, the
+block registry, the HTML shadow of every page, the static publish, every
+block as UltraCanvas elements, blocks added, moved, removed and edited
+with the page re-rendered live, and a WordPress export read into a site.
+The publisher onto web hosts and the WebAssembly output follow
+([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
+**Last Modified:** 2026-10-13
+**Author:** UltraCanvas Framework / ULTRA OS
+
+UltraPress is the website and shop builder of ULTRA OS: a WordPress-class
+system built on UltraCanvas whose published pages are rendered by the
+framework itself, compiled to WebAssembly, with a plain HTML shadow of every
+page for search engines, link previews, mail clients and screen readers.
+
+This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
+
+## The window
+
+```bash
+ultrapress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
+ultrapress mysite --check     # render every page without a window; element counts and warnings
+```
+
+`ultrapress` is one program: a command word first (`new`, `check`, `page`,
+`publish`, `import`, `help`) runs that command without a window, a site
+folder opens the editor. There is no second `UltraPress` binary: two names
+that differ only in case are one name on macOS and Windows.
+
+The left column lists the pages and the current page's blocks: select one,
+move it with the arrows, remove it, or add one after the selection from
+the drop-down of every registered type. The right column is the selected
+block's properties, generated from the registry - a text input for a
+line, a text area for paragraphs and HTML, a checkbox for a flag, an
+integer for a number, and links, items and lists as JSON applied as soon
+as it parses - or, with no block selected, the page's title, description,
+status and pinning. Every change re-renders the page in the middle;
+*Save site* writes the folder (`ui/UltraPressWindow.h`).
+
+The page is rendered on real UltraCanvas elements by the block renderer
+(`Apps/UltraPress/render/UltraPressRender.h`, target `UltraPressRender`),
+built the way the ultraos.eu front page demo is: bands whose centred
+column is Block-laid-out so wrapped text measures, wrapping Flex rows for
+columns and buttons. The hero and call to action sit on the theme's night
+colours, FAQs are an accordion, forms are real inputs whose fields reach
+`RenderOptions::onFormSubmit`, the newsletter calls
+`onNewsletterSubscribe`, links call `onLink` with a page's path or a URL,
+rich text and HTML blocks go through the HTML reader's element builder,
+and a picture the site folder lacks is a captioned tile. The theme's
+colours (`accent`, `ink`, `inkSoft`, `paper`, `paperSoft`, `rule`,
+`night`, `nightSoft`, `onDark`, `tile`) and `fontFamily` reach it through
+`PaletteFromTheme`. Under Emscripten the same renderer is the published
+page; on the desktop it is the editor's preview, pixel for pixel.
+
+## The command line
+
+```bash
+ultrapress new mysite --name "My site" --url https://my.example   # a starter site
+ultrapress check mysite                                           # every problem, exit 1 when there is one
+ultrapress page mysite home                                       # the front page's HTML shadow, to stdout
+ultrapress publish mysite out                                     # the static tier, into out/
+ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the renderer referenced (later)
+ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
+```
+
+`import` reads a WordPress export (Tools > Export in WordPress, the WXR
+file): the site's name, address, language and owner, every page and post
+with its slug, status and date, the front page (the page named home, or
+`--front <slug>`), the menus with their nesting, and the bodies as blocks.
+The block editor's markers map onto the registry where a block exists -
+paragraphs, headings, images, covers, quotes, buttons, columns, galleries,
+lists, spacers, HTML - and everything else, and classic content, becomes
+rich text; the report says what was kept that way. Attachment URLs are
+rewritten to `media/<year>/<month>/<file>` and fetched with `--media`
+(through UltraNet) or listed. A post's dated WordPress address is reported
+as a redirect to its new path. `--no-drafts` leaves drafts out.
+
+`publish` writes `index.html` for the front page and `<slug>/index.html` for
+every other published page, `sitemap.xml`, `robots.txt`, `feed.xml` (the
+posts), an `.htaccess` with the cache and type rules an Apache host needs,
+and copies `media/`. Upload the folder to any web host; the files are all it
+takes. Drafts are left out unless `--drafts` is given.
+
+## The site folder
+
+```
+mysite/
+├── site.json        name, tagline, url, language, languages, owner
+├── theme.json       name, colors (name → #rrggbb), fontFamily
+├── menus.json       {"main": [...], "footer": [...]}; an item has title and page (a slug) or url, and items
+├── pages/<slug>.json
+└── media/           pictures and downloads; a block names them by path
+```
+
+A page:
+
+```json
+{
+  "slug": "the-plan", "title": "The development plan", "kind": "page",
+  "status": "published", "date": "2026-10-13", "pinned": false,
+  "seo": {"description": "…", "image": "media/plan.png", "noindex": false},
+  "blocks": [
+    {"type": "hero", "props": {"kicker": "…", "title": "…", "text": "…",
+                               "buttons": [{"title": "Learn more", "page": "about", "primary": true}]}},
+    {"type": "faq", "props": {"items": [{"q": "…", "a": "…"}]}}
+  ]
+}
+```
+
+`slug` `home` is the front page, at `/`; every other page is at `/<slug>/`.
+`kind` is `page` or `post` (dated, in the feed, an `<article>`). `status` is
+`published`, `draft` or `scheduled`. A link is `{"page": "<slug>"}` or
+`{"url": "…"}`. `Apps/UltraPress/examples/ultraos` is a complete small site.
+
+## The blocks
+
+| Type | Properties |
+|---|---|
+| `heading` | `text`, `level` (2–4) |
+| `text` | `heading`, `text` (paragraphs separated by blank lines) |
+| `richtext` | `html` (what the editor wrote; passed through) |
+| `hero` | `kicker`, `title`, `text`, `buttons`, `picture` |
+| `picture` | `src`, `alt`, `caption` |
+| `columns` | `heading`; its children are the columns |
+| `card` | `title`, `text`, `picture`, `link`, `linkTitle` |
+| `features` | `heading`, `items` (strings) |
+| `cta` | `title`, `text`, `buttons` |
+| `faq` | `heading`, `items` (`q`, `a`); also emitted as `FAQPage` structured data |
+| `quote` | `text`, `cite` |
+| `buttons` | `items` |
+| `form` | `id`, `heading`, `text`, `fields` (`name`, `label`, `type`, `required`), `submit` - posts to `/api/form/<id>` on the server tier |
+| `newsletter` | `heading`, `text`, `list` - posts to `/api/newsletter/subscribe` |
+| `downloads` | `heading`, `items` (`title`, `file`, `version`, `size`, `description`) |
+| `html` | `html` (the owner's own, passed through) |
+| `spacer` | `height` |
+
+The registry is `BlockRegistry::BuiltIn()` in
+`Apps/UltraPress/engine/UltraPressBlocks.h`; `ValidateSite` checks a site
+against it.
+
+## The engine
+
+`Apps/UltraPress/engine/`, target `UltraPressEngine`, `namespace UltraPress`:
+
+- `UltraPressModel.h` - `Site`, `Page`, `Block`, `Menu`, `Theme`; JSON in and
+  out; `LoadSite` / `SaveSite`; `PagePath`, `PageUrl`, `LinkHref`;
+  `SortedPages` (pinned first; stored, alphabetic or most popular) and
+  `MakeSlug`.
+- `UltraPressBlocks.h` - the registry and `ValidateSite`.
+- `UltraPressHtml.h` - `HtmlEmitter`: `Page`, `Sitemap`, `Robots`, `Feed`,
+  `Block`; `HtmlOptions` names the renderer script and the UltraWeb app.
+  Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
+  blocks are the owner's own HTML and pass through.
+- `UltraPressPublish.h` - `PublishStatic` and `CreateStarterSite`.
+- `UltraPressImport.h` - `ImportWordPress` / `ImportWordPressFile` with
+  `ImportOptions` (the front page, a media fetcher, drafts) and
+  `ImportReport`; `BlocksFromWordPressContent` maps the block editor's
+  markup. TinyXML2 reads the export, privately.
+
+It links the core library for `UltraCanvasJSON` and the HTMLReader's
+`EscapeText`, and opens no window. Tests: `Tests/UltraPress/UltraPressEngineTests.cpp`,
+built with `-DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON`; they save and reload a
+site, validate a broken one, parse the shadow back with `HTML::Parser`, and
+publish the example site into a temporary folder.
+
+## Not yet
+
+Text edited in place on the page, a picture picker and the media library,
+new pages and menus from the window, undo, the WebAssembly renderer release
+and its reference from the shadow, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
+the newsletter's e-mail mode of the emitter, the Markdown block, and
+everything of the server tier (Phase 2): forms and newsletter sign-ups on a
+static site need a form service until then.
+
+==============================================================================
 FILE: Docs/Legal/Privacy/README.md
 ==============================================================================
 
@@ -83334,6 +85356,7 @@ every statement in it is true of both.
 |---|---|---|
 | `UltraMail.md` | UltraMail, English | draft 1.0, needs the bracketed items and legal review |
 | `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.0, same |
+| `UltraPress.md` | UltraPress, English - the command line of 0.1.0, which contacts no server | draft 0.1, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change
@@ -84048,4 +86071,159 @@ Since it collects no data for us, no age verification takes place.
 We update this declaration whenever UltraMail's data flows change, for example
 when a feature that contacts a server is added. The version and date at the
 top identify the current text; earlier versions are available in the project's
+source repository.
+
+==============================================================================
+FILE: Docs/Legal/Privacy/UltraPress.md
+==============================================================================
+
+# Privacy declaration — UltraPress
+
+**Version 0.1 (draft for legal review) · 13 October 2026**
+
+This declaration explains what personal data the **UltraPress** application
+processes, where that processing happens, which third parties it contacts and
+why, and what rights you have under the General Data Protection Regulation
+(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.1 - the
+`ultrapress` command line - on Linux, Windows, macOS and ULTRA OS. It does
+not cover the website itself, other ULTRA OS applications, any ULTRA OS
+online service, or **the websites you build with UltraPress**: a site you
+publish is yours, served by the host you chose, and needs a declaration of
+its own.
+
+> **Review status.** This text was drafted from UltraPress's source code
+> (`Apps/UltraPress`) and documentation. The items in square brackets (`[…]`)
+> must be filled in, and the whole text must be reviewed by a lawyer before it
+> is published. Later versions of UltraPress add features that contact
+> servers - the editor's publishing onto a web host, the server tier with
+> forms, members, shop and newsletter, the website-builder assistant - and
+> each of those changes this declaration before it ships.
+
+## 1. Who is responsible
+
+ULTRA OS Development GmbH
+An den Klippen 23
+57462 Olpe
+Germany
+
+E-mail: [privacy@ultraos.eu]
+Managing director(s): […]
+Commercial register: […]
+
+The company has not appointed a data protection officer, because it is not
+required to [confirm with legal review].
+
+## 2. The short version
+
+- UltraPress 0.1 is a command-line program that runs **on your own
+  computer**. It reads a site folder you give it and writes files into a
+  folder you name. Nothing leaves your device.
+- It contacts **no server at all**: not ours, not anyone's. It has no
+  account, no sign-in, no update check, no telemetry and no advertising.
+- The pages it writes contain only what you put into the site folder. Where
+  the pages reference a server - a contact form, a newsletter sign-up - that
+  server is one you will run or choose; this version runs none.
+- ULTRA OS Development GmbH receives no data from your use of UltraPress and
+  holds none.
+
+## 3. What UltraPress stores on your device
+
+| Data | What it is | Where |
+|---|---|---|
+| The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you | the folder you name, e.g. `ultrapress new mysite` |
+| The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out` |
+
+UltraPress writes no settings, caches, logs or history files of its own. Its
+messages go to the terminal it was started from.
+
+The site folder and the published site contain whatever you wrote into
+them. If you put personal data there - your own name and address in the
+site's owner field, a person's picture, an e-mail address on a contact page -
+it is in those files and in every copy of the published site, including the
+copy on your web host once you upload it. UltraPress does not read it for any
+purpose but writing the pages.
+
+### 3.1 How sensitive data is protected
+
+UltraPress stores no passwords, keys or tokens. The files it writes are
+protected by your operating system's file permissions and nothing else; they
+are meant to be published.
+
+### 3.2 Who can read this data
+
+You, and anyone you give the folders to. UltraPress does not send them
+anywhere.
+
+### 3.3 Our role
+
+All processing happens on your device under your control. ULTRA OS
+Development GmbH is not the controller of that processing within the meaning
+of Art. 4(7) GDPR; you are. For the website you publish, you are the
+controller towards its visitors, and your web host is your processor under
+its own terms.
+
+## 4. Data UltraPress sends to servers
+
+None. UltraPress 0.1 opens no network connection.
+
+## 5. Other servers UltraPress contacts, and why
+
+None.
+
+The HTML pages UltraPress writes reference, by address only, three things a
+visitor's browser may request once the site is online: the site's own
+pictures and downloads (from your host), a form endpoint at `/api/form/<id>`
+and a newsletter endpoint at `/api/newsletter/subscribe` (both on your host,
+and answered only by a server you run - this version includes none), and,
+when you ask for it with `--renderer`, a script file you name. None of these
+is a server of ULTRA OS Development GmbH, and none exists unless you put it
+there.
+
+## 6. What we do not do
+
+UltraPress does not:
+
+- create or require an account with ULTRA OS Development GmbH;
+- send usage statistics, analytics, crash reports or diagnostic data to us or
+  anyone else;
+- check for updates by contacting our servers;
+- show advertising or contain third-party advertising or tracking code, in
+  the program or in the pages it writes;
+- put analytics, tracking pixels, cookies or third-party scripts into the
+  pages it writes;
+- share, sell or otherwise disclose any of your data.
+
+Because no data reaches us, we hold no personal data about UltraPress users
+and cannot identify you from your use of the application.
+
+## 7. Your rights
+
+Under the GDPR you have the rights of access (Art. 15), rectification
+(Art. 16), erasure (Art. 17), restriction of processing (Art. 18), data
+portability (Art. 20) and objection (Art. 21), and the right to lodge a
+complaint with a supervisory authority (Art. 77). The authority responsible
+for us is the Landesbeauftragte für Datenschutz und Informationsfreiheit
+Nordrhein-Westfalen, Kavalleriestraße 2–4, 40213 Düsseldorf, Germany.
+
+Because UltraPress keeps your data only in folders on your own device, you
+exercise these rights directly: the files are plain JSON and HTML that you
+can read, change, copy and delete yourself. For the website you publish,
+your visitors exercise their rights towards you and your web host.
+
+For any question about this declaration, write to [privacy@ultraos.eu].
+
+## 8. Children
+
+UltraPress is a tool for building websites and is not directed at children.
+Since it collects no data for us, no age verification takes place.
+
+## 9. Changes to this declaration
+
+We update this declaration whenever UltraPress's data flows change: the next
+changes already planned are publishing onto a web host from the editor
+(your host's credentials, kept in the system's credential store), the server
+tier (visitors' form entries, member accounts, orders and newsletter
+subscriptions on a server you run) and the website-builder assistant (your
+answers sent to an AI provider you choose). The version and date at the top
+identify the current text; earlier versions are available in the project's
 source repository.

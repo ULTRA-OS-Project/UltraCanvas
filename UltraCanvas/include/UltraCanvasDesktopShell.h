@@ -7,6 +7,8 @@
 // devices attached, battery level, keyboard layout), and the counts an
 // application publishes for the desktop to show beside its icon.
 //
+// doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar; std::atomic<bool> windowsDirty;
+// doc-check: example
 //   for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
 //       if (w.skipTaskbar) continue;
 //       const uint64_t id = w.id;

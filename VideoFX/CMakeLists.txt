@@ -5,14 +5,14 @@
 # VideoFX is a shared library of its own (libVideoFX.so, libVideoFX.dylib,
 # VideoFX.dll / libVideoFX.dll) - not absorbed into the UltraCanvas core, so an
 # application that does no video never loads it or FFmpeg.
-# Version: 0.10.0
-# Last Modified: 2026-10-11
+# Version: 0.13.0
+# Last Modified: 2026-10-13
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 
 project(VideoFX
-    VERSION 0.10.0
+    VERSION 0.13.0
     DESCRIPTION "VideoFX - video editing and conversion engine"
     LANGUAGES CXX
 )
@@ -74,8 +74,19 @@ set(VIDEOFX_SOURCES
     core/VideoFXFaceCascade.inc
     core/VideoFXProject.cpp
     core/VideoFXProject.h
+    core/VideoFXProxy.cpp
+    core/VideoFXProxy.h
+    core/VideoFXPlatform.h
     core/VideoFXJob.cpp
 )
+# The per-user cache folder, where proxies go - the stub has it too
+if(WIN32)
+    list(APPEND VIDEOFX_SOURCES OS/MSWindows/VideoFXCacheDir.cpp)
+elseif(APPLE)
+    list(APPEND VIDEOFX_SOURCES OS/MacOS/VideoFXCacheDir.cpp)
+else()
+    list(APPEND VIDEOFX_SOURCES OS/Linux/VideoFXCacheDir.cpp)
+endif()
 
 if(VIDEOFX_FFMPEG_FOUND)
     list(APPEND VIDEOFX_SOURCES
@@ -85,7 +96,6 @@ if(VIDEOFX_FFMPEG_FOUND)
         core/VideoFXExport.cpp
         core/VideoFXRemux.cpp
         core/VideoFXFonts.cpp
-        core/VideoFXPlatform.h
     )
     # The executable's directory, where bundled fonts are looked for
     if(WIN32)

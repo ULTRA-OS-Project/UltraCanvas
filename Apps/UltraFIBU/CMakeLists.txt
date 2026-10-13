@@ -152,6 +152,8 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
         ui/UltraFIBUBelegDialog.cpp
         ui/UltraFIBUStart.cpp
     )
+    # One copy per user (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(ultrafibu)
     target_compile_features(ultrafibu PRIVATE cxx_std_20)
     target_include_directories(ultrafibu PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/ui)

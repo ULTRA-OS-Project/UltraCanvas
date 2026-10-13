@@ -1,13 +1,18 @@
 // VideoFX/core/VideoFXUnavailable.cpp
 // Built instead of the FFmpeg sources when FFmpeg is not found: the API links,
 // VideoFX_IsAvailable() says false, and every operation returns NotAvailable.
-// Version: 0.10.0
-// Last Modified: 2026-10-11
+// Version: 0.12.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
 #include "VideoFXFaces.h"
 #include "VideoFXProject.h"
+#include "VideoFXProxy.h"
+
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"   // PathFromUtf8
+
+#include <filesystem>
 
 namespace VideoFX {
 
@@ -31,7 +36,9 @@ std::string VideoFX_GetVersion() { return VIDEOFX_VERSION_STRING; }
 std::string VideoFX_GetBackendVersion() { return "unavailable"; }
 bool VideoFX_IsAvailable() { return false; }
 std::string VideoFX_GetLastError() { return projectError.empty() ? kReason : projectError; }
-bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec) { return false; }
+bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec, VideoFXAcceleration) { return false; }
+std::vector<VideoFXEncoderInfo> VideoFX_ListVideoEncoders(VideoFXVideoCodec) { return {}; }
+std::string VideoFX_ChooseVideoEncoder(VideoFXVideoCodec, VideoFXAcceleration) { return ""; }
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec) { return false; }
 bool VideoFX_IsTextOverlayAvailable() { return false; }
 bool VideoFX_SetDefaultFontPath(const std::string& path) { return path.empty(); }
@@ -134,6 +141,38 @@ VideoFXResult VideoFX_ProjectFromJson(const std::string& json, VideoFXProject& p
 VideoFXResult VideoFX_RenderProject(const VideoFXProject&, const std::string&, const VideoFXProgressCallback&) {
     projectError.clear();
     return Unavailable();
+}
+
+// Proxies: where they are, switching to them and clearing them work here
+// too; making one needs the engine (its probe answers NotAvailable)
+std::string VideoFX_GetDefaultProxyDirectory() { return Internal::DefaultProxyDirectory(); }
+std::string VideoFX_ProxyPath(const std::string& clip, const VideoFXProxySettings& settings) {
+    return Internal::ProxyPathFor(clip, settings);
+}
+bool VideoFX_HasProxy(const std::string& clip, const VideoFXProxySettings& settings) {
+    const std::string proxy = Internal::ProxyPathFor(clip, settings);
+    std::error_code ec;
+    return !proxy.empty() && std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(proxy), ec);
+}
+VideoFXResult VideoFX_CreateProxy(const std::string& clip, const VideoFXProxySettings& settings,
+                                  const VideoFXProgressCallback& progress, std::string* editPath) {
+    projectError.clear();
+    std::string error;
+    return ProjectResult(Internal::CreateProxy(clip, settings, progress, editPath, error), error);
+}
+VideoFXResult VideoFX_CreateProxies(const std::vector<VideoFXSegment>& segments,
+                                    const VideoFXProxySettings& settings, const VideoFXProgressCallback& progress) {
+    projectError.clear();
+    std::string error;
+    return ProjectResult(Internal::CreateProxies(segments, settings, progress, error), error);
+}
+std::vector<VideoFXSegment> VideoFX_UseProxies(const std::vector<VideoFXSegment>& segments,
+                                               const VideoFXProxySettings& settings, int* replaced) {
+    return Internal::UseProxies(segments, settings, replaced);
+}
+VideoFXResult VideoFX_ClearProxies(const VideoFXProxySettings& settings, int* filesRemoved, uint64_t* bytesFreed) {
+    std::string error;
+    return ProjectResult(Internal::ClearProxies(settings, filesRemoved, bytesFreed, error), error);
 }
 
 // Pure C++: works without FFmpeg as well

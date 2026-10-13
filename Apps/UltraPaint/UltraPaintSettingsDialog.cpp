@@ -1,9 +1,11 @@
 // Apps/UltraPaint/UltraPaintSettingsDialog.cpp
-// UltraPaint's settings window. One page so far - Display > Mouse pointer
-// magnification glass - laid out the way UltraFiler's settings are: a bold
-// title, a caption, the controls, and a notes block at the foot that says
-// what the setting does. The tree's root row is hidden, so Display is the
-// top level; selecting it moves on to its first page.
+// UltraPaint's settings window. Two pages so far - Display > Mouse pointer
+// magnification glass and Display > Tool palette - laid out the way
+// UltraFiler's settings are: a bold title, a caption, the controls, and a
+// notes block at the foot that says what the setting does. The tree's root
+// row is hidden, so Display is the top level; selecting it moves on to its
+// first page.
+// Version: 1.1.0 - Display > Tool palette: an adaptive or a static toolbar
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -32,6 +34,7 @@ namespace {
     // Page ids double as tree node ids.
     constexpr const char* kPageDisplay   = "display";
     constexpr const char* kPageMagnifier = "display/magnifier";
+    constexpr const char* kPagePalette   = "display/palette";
 
     std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text,
                                                 float fontSize = kTextFontSize, const Color& color = kTextColor) {
@@ -110,6 +113,10 @@ UltraPaintSettingsDialog::UltraPaintSettingsDialog(UltraPaintSettings* s) : Ultr
     magnifier.nodeId = kPageMagnifier;
     magnifier.text = "Mouse pointer magnification glass";
     tree->AddNode(kPageDisplay, magnifier);
+    TreeNodeData palette;
+    palette.nodeId = kPagePalette;
+    palette.text = "Tool palette";
+    tree->AddNode(kPageDisplay, palette);
     // After the nodes: hiding the root promotes its children to the top
     // level, which it can only do once they exist.
     tree->SetRootVisible(false);
@@ -125,6 +132,10 @@ UltraPaintSettingsDialog::UltraPaintSettingsDialog(UltraPaintSettings* s) : Ultr
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     pages[kPageMagnifier] = page;
     pageArea->AddChild(page);
+    auto palettePage = BuildPalettePage();
+    palettePage->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    pages[kPagePalette] = palettePage;
+    pageArea->AddChild(palettePage);
     AddChild(content);
 
     // ----- bottom bar: [Restore defaults]            [Close] -----
@@ -138,10 +149,16 @@ UltraPaintSettingsDialog::UltraPaintSettingsDialog(UltraPaintSettings* s) : Ultr
     auto restore = std::make_shared<UltraCanvasButton>("ups-restore", 0, 0, 150, 28, "Restore defaults");
     restore->SetFontSize(kTextFontSize);
     restore->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // The page shown goes back to its defaults; the other pages keep theirs.
     restore->onClick = [this]() {
         if (!settings) return;
-        settings->RestoreMagnifierDefaults();
-        UpdateMagnifierControls();
+        if (currentPage == kPagePalette) {
+            settings->RestorePaletteDefaults();
+            UpdatePaletteControls();
+        } else {
+            settings->RestoreMagnifierDefaults();
+            UpdateMagnifierControls();
+        }
         Changed();
     };
     bottom->AddChild(restore);
@@ -160,7 +177,7 @@ UltraPaintSettingsDialog::UltraPaintSettingsDialog(UltraPaintSettings* s) : Ultr
         if (leaf && leaf != node) { tree->SelectNode(leaf); return; }
         ShowPage(node->data.nodeId);
     };
-    // The one page is up from the start, with its row selected.
+    // The first page is up from the start, with its row selected.
     if (TreeNode* node = tree->FindNode(kPageMagnifier)) {
         for (TreeNode* parent = node->parent; parent; parent = parent->parent) tree->ExpandNode(parent);
         tree->SelectNode(node);
@@ -292,8 +309,76 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildMagnifierPa
     return page;
 }
 
+std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildPalettePage() {
+    const std::string id = "ups-page-palette";
+    auto page = std::make_shared<UltraCanvasContainer>(id);
+    page->layout.SetFlexColumn().SetFlexGap(0).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+
+    auto title = MakeLabel(id + "-title", "Tool palette", kTitleFontSize);
+    title->SetFontWeight(FontWeight::Bold);
+    page->AddChild(title);
+    auto caption = MakeText(id + "-caption",
+            "Tools of a kind share one button of the palette - the selections, the pens, the "
+            "shapes, the shading tools. Resting the pointer on it folds out a bar with all of "
+            "them. The button shows:");
+    caption->SetMargin(6, 0, 0, 0);
+    page->AddChild(caption);
+
+    auto body = std::make_shared<UltraCanvasContainer>(id + "-body");
+    body->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    body->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    body->SetMargin(14, 0, 0, 0);
+    const bool adaptive = !settings || settings->paletteAdaptive;
+    adaptiveRadio = MakeChoice(id + "-adaptive", "Adaptive toolbar - the tool last picked from the bar", adaptive);
+    staticRadio = MakeChoice(id + "-static", "Static toolbar - always the group's main tool", !adaptive);
+    paletteGroup.AddRadioButton(adaptiveRadio);
+    paletteGroup.AddRadioButton(staticRadio);
+    body->AddChild(adaptiveRadio);
+    body->AddChild(staticRadio);
+    paletteGroup.onSelectionChanged = [this](std::shared_ptr<UltraCanvasRadio> selected) {
+        if (syncing || !selected || !settings) return;
+        settings->paletteAdaptive = (selected == adaptiveRadio);
+        Changed();
+    };
+    page->AddChild(body);
+
+    auto spacer = std::make_shared<UltraCanvasContainer>(id + "-spacer");
+    spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    spacer->size.height = CSSLayout::Dimension::Px(24);
+    page->AddChild(spacer);
+
+    auto notes = std::make_shared<UltraCanvasContainer>(id + "-notes");
+    notes->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    notes->SetBackgroundColor(kNoteBackground);
+    notes->SetBorderLeft(3, kNoteAccent);
+    notes->SetPadding(10, 12, 10, 12);
+    notes->AddChild(MakeText(id + "-note1",
+            "A small triangle in the corner of a button marks a group. A click on the button "
+            "picks the tool it shows; a click in the bar picks that tool. A tool's shortcut "
+            "key picks it as well.",
+            kTextWidth - 10, kNoteFontSize, kNoteTextColor));
+    notes->AddChild(MakeText(id + "-note2",
+            "With the static toolbar the button stays highlighted while any tool of its group "
+            "is in use, and the bar marks which one.",
+            kTextWidth - 10, kNoteFontSize, kNoteTextColor));
+    page->AddChild(notes);
+
+    UpdatePaletteControls();
+    return page;
+}
+
 void UltraPaintSettingsDialog::ShowPage(const std::string& pageId) {
+    currentPage = pageId;
     for (auto& [id, page] : pages) page->SetVisible(id == pageId);
+}
+
+void UltraPaintSettingsDialog::UpdatePaletteControls() {
+    if (!settings) return;
+    syncing = true;
+    if (adaptiveRadio && staticRadio) paletteGroup.SelectButton(settings->paletteAdaptive ? adaptiveRadio : staticRadio);
+    syncing = false;
 }
 
 void UltraPaintSettingsDialog::UpdateMagnifierControls() {

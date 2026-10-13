@@ -1,6 +1,11 @@
 // core/UltraCanvasWebView.cpp
 // A web page as an element: PageLoader + ElementBuilder + history.
 // See include/UltraCanvasWebView.h.
+// Version: 1.3.0 - a download keeps the page on show, its address and history
+// Version: 1.2.0 - file inputs choose through onChooseFiles
+// Version: 1.1.0 - forms the reader fills in and sends: SetInteractiveForms,
+//                  SubmitForm (GET as a navigation, POST through LoadPost); what
+//                  was typed survives a rebuild
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -9,6 +14,8 @@
 #include "UltraCanvasApplication.h"
 #include "HTMLReader/HTMLParser.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -129,7 +136,7 @@ void UltraCanvasWebView::Navigate(const std::string& url) {
     history.resize(static_cast<size_t>(historyIndex + 1));
     history.push_back({ url, std::string(), 0 });
     ++historyIndex;
-    StartLoad(url, 0);
+    StartLoad(url, 0, /*pushedHistory=*/true);
 }
 
 void UltraCanvasWebView::Reload() {
@@ -185,7 +192,8 @@ void UltraCanvasWebView::RememberScroll() {
     history[static_cast<size_t>(historyIndex)].scrollY = content->GetVerticalScrollPosition();
 }
 
-void UltraCanvasWebView::StartLoad(const std::string& url, int restoreScrollY) {
+void UltraCanvasWebView::StartLoad(const std::string& url, int restoreScrollY, bool pushedHistory) {
+    loadPushedHistory = pushedHistory;
     if (onUrlChanged) onUrlChanged(url);
     if (!loader) {
         ShowErrorPage(url, "This view has no way to fetch pages (no services were set).");
@@ -200,6 +208,14 @@ void UltraCanvasWebView::StartLoad(const std::string& url, int restoreScrollY) {
 void UltraCanvasWebView::OnPage(HTML::LoadedPage loaded, int restoreScrollY) {
     SetLoading(false);
     if (loaded.kind == HTML::PageKind::Other) {
+        // A download: the page on show stays, and so does its address -
+        // the history keeps no entry for the file.
+        if (loadPushedHistory && historyIndex > 0 && page) {
+            history.erase(history.begin() + historyIndex);
+            --historyIndex;
+        }
+        loadPushedHistory = false;
+        if (page && onUrlChanged) onUrlChanged(GetUrl());
         if (onNonHtml) onNonHtml(loaded);
         return;
     }
@@ -269,6 +285,22 @@ void UltraCanvasWebView::Build() {
     options.onLinkHovered = [this](const std::string& href) {
         if (onLinkHovered) onLinkHovered(href.empty() ? std::string() : ResolveLink(href));
     };
+    // A form is sent on the next turn too: sending rebuilds the page.
+    options.interactiveForms = interactiveForms && live;
+    options.onFormSubmit = [this](const HTML::FormSubmission& submission) {
+        Post([this, submission]() { SubmitForm(submission); });
+    };
+    if (onChooseFiles) {
+        options.onChooseFiles = [this](bool multiple, const std::string& accept,
+                                       std::function<void(std::vector<std::string>)> done) {
+            if (onChooseFiles) onChooseFiles(multiple, accept, std::move(done));
+        };
+    }
+
+    // The same document built again: keep what the reader typed.
+    std::vector<HTML::FormController::State> typed;
+    if (formsDocument == page->document.get())
+        for (const auto& form : forms) typed.push_back(form->Save());
 
     HTML::ElementBuilder builder;
     HTML::BuildResult result = builder.BuildDocument(*page->document, options);
@@ -279,6 +311,10 @@ void UltraCanvasWebView::Build() {
         content->AddChild(result.root);
         anchors = std::move(result.anchors);
     }
+    forms = std::move(result.forms);
+    formsDocument = page->document.get();
+    if (typed.size() == forms.size())
+        for (size_t i = 0; i < forms.size(); ++i) forms[i]->Restore(typed[i]);
     builtWidth = width;
     RequestRedraw();
 }
@@ -355,6 +391,40 @@ void UltraCanvasWebView::OnLink(const std::string& href) {
     }
     if (scheme == "javascript" || scheme == "data" || scheme.empty()) return;
     if (onExternalLink) onExternalLink(target);
+}
+
+void UltraCanvasWebView::SubmitForm(const HTML::FormSubmission& submission) {
+    if (!page || page->kind == HTML::PageKind::Error) return;
+    const std::string target = submission.action.empty() ? WithoutFragment(page->url)
+                                                         : ResolveLink(submission.action);
+    if (target.empty()) return;
+    const std::string scheme = SchemeOf(target);
+    if (scheme == "javascript" || scheme == "data" || scheme.empty()) return;
+    if (scheme != "http" && scheme != "https" && scheme != "file") {
+        if (onExternalLink) onExternalLink(target);   // mailto: and the like
+        return;
+    }
+    if (scheme == "file" && SchemeOf(page->url) != "file") return;   // only a local page opens local files
+
+    if (submission.method == "post" && scheme != "file") {
+        if (!loader) return;
+        RememberScroll();
+        history.resize(static_cast<size_t>(historyIndex + 1));
+        history.push_back({ target, std::string(), 0 });   // back to it is a GET, as browsers re-ask
+        ++historyIndex;
+        if (onUrlChanged) onUrlChanged(target);
+        SetLoading(true);
+        char boundary[64];
+        std::snprintf(boundary, sizeof(boundary), "----UltraCanvasForm%08x%08x",
+                      ++formCounter, static_cast<unsigned>(reinterpret_cast<uintptr_t>(this) & 0xFFFFFFFFu));
+        loader->LoadPost(target, submission.ContentType(boundary), submission.Body(boundary),
+                         [this](HTML::LoadedPage loaded) { OnPage(std::move(loaded), 0); });
+        return;
+    }
+    // GET: the fields replace the action's query; its fragment goes.
+    const std::string base = target.substr(0, target.find_first_of("?#"));
+    const std::string query = submission.Encoded();
+    Navigate(query.empty() ? base + "?" : base + "?" + query);
 }
 
 std::string UltraCanvasWebView::GetUrl() const {

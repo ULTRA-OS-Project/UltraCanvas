@@ -8,6 +8,7 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.3.0 - toolSlots: the palette's tools in groups, one slot each, with a fold-out bar
 // Version: 1.2.0 - the mouse pointer magnification glass (a loupe over the canvas while the
 //                  rectangle selection is active) and Edit > Settings... with its page
 // Version: 1.1.3 - StartLayerRename / FinishLayerRename: a layer is renamed in the list
@@ -30,6 +31,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasRasterDocument.h"
+#include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
 
 #include "UltraPaintTools.h"
 #include "UltraPaintFilters.h"
@@ -119,7 +121,9 @@ private:
     // Merges a document's flattened pixels into the open image as a new layer.
     void MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
                        const std::string& path, bool scaleToFit);
-    bool SaveToPath(const std::string& path);
+    // `size`: the pixel size chosen in the Save dialog's Settings for this
+    // save (Save As); the picture's own size otherwise.
+    bool SaveToPath(const std::string& path, const FileSaveImageSize& size = FileSaveImageSize());
     // Opens a dialog as this window's own: created, marked transient for the
     // editor and centred on it. A dialog that skips this is a top-level window
     // as far as the desktop is concerned, and gets placed like one — behind
@@ -236,7 +240,9 @@ private:
     std::shared_ptr<UltraCanvasContainer>      statusBar;
     std::shared_ptr<UltraCanvasLabel>          statusPos, statusZoom, statusSize, statusHint;
     std::shared_ptr<UltraCanvasButton>         undoButton, redoButton;
-    std::vector<std::shared_ptr<UltraCanvasButton>> toolButtons;
+    // The palette's slots, one per tool group (UltraPaintWindow.cpp:
+    // PaletteGroups), top to bottom.
+    std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
     std::shared_ptr<UltraCanvasContainer>      magnifierFrame;   // the glass's border, over the canvas
     std::shared_ptr<UltraCanvasPaintSurface>   magnifier;        // the loupe inside it
     int magnifierCorner = 1;                                      // where it sits now

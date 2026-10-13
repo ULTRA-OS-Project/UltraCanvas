@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
-// Matrix diagram examples: L and T arrangements with live presentation controls
+// Matrix diagram examples: L, T, X and Y arrangements with live presentation controls
+// Version: 1.1.0 - X and Y tabs; hub, header band and cell tint controls
 // Version: 1.0.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -42,7 +43,7 @@ namespace UltraCanvas {
         headerContainer->AddChild(mainTitle);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("matrixSubtitle", 30, 52, 1000, 30);
-        subtitle->SetText("Relationships between two or three ordered lists, marked from a named "
+        subtitle->SetText("Relationships between two to four ordered lists, marked from a named "
                           "scale and rolled up into weighted row and column totals");
         subtitle->SetFontSize(13);
         subtitle->SetAlignment(TextAlignment::Left);
@@ -116,10 +117,17 @@ namespace UltraCanvas {
         legendSelector->AddItem("Right", "right");
         legendSelector->SetSelectedIndex(0);
 
-        auto swBands = addSwitch("matrixBands", "Row banding", 258);
-        auto swLabelFill = addSwitch("matrixLabelFill", "Filled label band", 288);
-        auto swValues = addSwitch("matrixValues", "Cell weights", 318);
-        auto swAxisTitles = addSwitch("matrixAxisTitles", "Axis titles", 348);
+        auto hubSelector = addDropdown("matrixHub", "X hub", 252);
+        hubSelector->AddItem("Captions", "captions");
+        hubSelector->AddItem("Blank", "blank");
+        hubSelector->SetSelectedIndex(0);
+
+        auto swBands = addSwitch("matrixBands", "Row banding", 310);
+        auto swLabelFill = addSwitch("matrixLabelFill", "Filled label band", 338);
+        auto swValues = addSwitch("matrixValues", "Cell weights", 366);
+        auto swAxisTitles = addSwitch("matrixAxisTitles", "Axis titles", 394);
+        auto swTint = addSwitch("matrixTint", "Tint cells", 422);
+        auto swHeaderBand = addSwitch("matrixHeaderBand", "Form header", 450);
 
         // ===== DIAGRAM TABS =====
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
@@ -135,6 +143,8 @@ namespace UltraCanvas {
                 {"matrixTools",     "Improvement Tools", &MatrixSamples::ImprovementTools},
                 {"matrixEmployees", "T-Shaped",          &MatrixSamples::EmployeeAllocation},
                 {"matrixQfd",       "Weighted (QFD)",    &MatrixSamples::QualityFunctionDeployment},
+                {"matrixSupply",    "X-Shaped",          &MatrixSamples::SupplyChain},
+                {"matrixTrace",     "Y-Shaped",          &MatrixSamples::DesignTraceability},
         };
 
         std::vector<std::shared_ptr<UltraCanvasMatrixDiagram>> allDiagrams;
@@ -142,6 +152,7 @@ namespace UltraCanvas {
         for (const TabSpec& spec : specs) {
             auto diagram = CreateMatrixDiagramElement(spec.id, 0, 0, 780, 506, spec.build());
             diagram->SetTotals(MatrixTotals::Both);
+            diagram->SetHubMode(MatrixHubMode::Captions);
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     std::string(spec.id) + "Tab", 0, 0, 790, 516);
@@ -304,13 +315,36 @@ namespace UltraCanvas {
             }
         };
 
+        hubSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
+            const MatrixHubMode mode = (item.value == "blank") ? MatrixHubMode::Blank
+                                                               : MatrixHubMode::Captions;
+            for (auto& diagram : allDiagrams) diagram->SetHubMode(mode);
+        };
+
+        swTint->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
+            const bool on = (newState == CheckedState::Checked);
+            for (auto& diagram : allDiagrams) {
+                MatrixDiagramStyle style = diagram->GetStyle();
+                style.tintCellsByLevel = on;
+                diagram->SetStyle(style);
+            }
+        };
+
+        swHeaderBand->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
+            for (auto& diagram : allDiagrams) {
+                diagram->SetShowHeaderBand(newState == CheckedState::Checked);
+            }
+        };
+
         swBands->SetChecked(false);
         swLabelFill->SetChecked(true);
         swValues->SetChecked(false);
         swAxisTitles->SetChecked(true);
+        swTint->SetChecked(false);
+        swHeaderBand->SetChecked(true);
 
         // ===== ABOUT =====
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("matrixAboutTitle", PAD, 392, SIDEBAR_W, 20);
+        auto aboutTitle = std::make_shared<UltraCanvasLabel>("matrixAboutTitle", PAD, 488, SIDEBAR_W, 20);
         aboutTitle->SetText("ABOUT");
         aboutTitle->SetFontSize(11);
         aboutTitle->SetFontWeight(FontWeight::Bold);
@@ -318,15 +352,14 @@ namespace UltraCanvas {
         aboutTitle->SetAlignment(TextAlignment::Left);
         leftSidebar->AddChild(aboutTitle);
 
-        auto aboutText = std::make_shared<UltraCanvasLabel>("matrixAbout", PAD, 414, SIDEBAR_W, 240);
-        aboutText->SetText("One of the Seven Management and Planning Tools.\n\n"
-                           "Cells hold a named level from a small scale, not a number - "
-                           "for continuous values use the Heatmap chart instead.\n\n"
-                           "Each level carries a weight, so rows and columns roll up into "
-                           "totals. The 'Improvement Tools' tab uses a 5/3/1 scale; "
-                           "'Weighted (QFD)' uses 9/3/1 and real row importances.\n\n"
-                           "Room adjacency matrices belong to the Adjacency Diagram, "
-                           "which owns that data and draws its own matrix view.");
+        auto aboutText = std::make_shared<UltraCanvasLabel>("matrixAbout", PAD, 510, SIDEBAR_W, 150);
+        aboutText->SetText("One of the Seven Management and Planning Tools. Cells hold a "
+                           "named level, not a number - for continuous values use the "
+                           "Heatmap chart.\n\n"
+                           "Levels carry weights, so rows and columns roll up into totals "
+                           "(5/3/1 or QFD's 9/3/1).\n\n"
+                           "Hover a cell: its row and column light up in every panel that "
+                           "lists them.");
         aboutText->SetFontSize(10);
         aboutText->SetAlignment(TextAlignment::Left);
         aboutText->SetWrap(TextWrap::WrapWordChar);

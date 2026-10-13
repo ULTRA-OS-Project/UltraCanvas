@@ -1,3 +1,11 @@
+#### 2026-10-12 *0.4.7*
+- **One EmailCleaner at a time.** Starting EmailCleaner while it is already
+  running brings the open window forward (restored if minimised; an open
+  dialog comes forward with it) instead of opening a second copy. Two starts
+  at the same moment cannot both stay, and a copy that does not answer is
+  reported with *"EmailCleaner is already running"*. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
 #### 2026-10-09 *0.4.6*
 - **New app icon.** The trash can keeps its red @ and gains ribs down its side
   (`media/appicon/EmailCleaner.svg`, the uploaded artwork).

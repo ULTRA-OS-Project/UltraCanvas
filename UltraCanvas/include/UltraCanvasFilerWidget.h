@@ -98,8 +98,8 @@
 // TextPreviewLines gives the lines a document's preview page shows.
 // GetBottomStripsHeight says how much of the bottom edge the info bar and
 // the hidden-items notice take, for a host floating something in the corner.
-// Version: 1.39.0
-// Last Modified: 2026-10-09
+// Version: 1.39.1
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1166,6 +1166,20 @@ namespace UltraCanvas {
         // the user changes desktop theme, or installs an application that
         // brings icons with it.
         void RefreshHostIcons();
+        // Draws, into `rect` (the context's coordinates), the icon this
+        // display gives the TYPE of `path` - a file name or a whole path,
+        // which need not exist - or a folder: the type glyph, or this
+        // desktop's icon under File icons = Host OS. Never a thumbnail or a
+        // preview of content, since there may be no file to take one from.
+        // For a host element that shows a file type the way the listing does
+        // (the file dialog's Save icon, UltraCanvasFileDragIcon).
+        void DrawTypeIcon(IRenderContext* ctx, const std::string& path, bool isFolder,
+                          const Rect2Di& rect);
+        // The colours this display gives that type (see EntryColorOf): the
+        // family colour of its glyph's band, and the ink for text on it - for
+        // a host that draws the type its own way in the listing's colours
+        // (the file dialog's big Save icon).
+        void GetTypeColors(const std::string& path, bool isFolder, Color& fill, Color& ink) const;
 
         // The name of `e` as this display draws it — the full name, or the
         // name without its extension while the names carry none. What a host
@@ -2337,6 +2351,18 @@ namespace UltraCanvas {
         bool hostIconShutdown = false;
         size_t   hostIconBytes = 0;       // what the held pixmaps occupy
         uint64_t hostIconTick = 0;        // LRU clock for hostIconSlots
+        // The clock as the current frame began, and as the frame before it
+        // began. A slot asked for after the earlier of the two was drawn in
+        // this frame or the last one, so it is on screen, and an eviction
+        // never drops it: dropping an icon that is still drawn re-queues
+        // it on the next frame, whose answer then evicts another drawn
+        // icon - a maximised window of ninety DLLs never settled, each
+        // tile flipping between the host's icon and the simple one for as
+        // long as the window was open. Two frames rather than one because
+        // an answer can land while a frame is half painted, when the
+        // tiles not yet reached in this frame only carry last frame's tick.
+        uint64_t hostIconFrameTick = 0;
+        uint64_t hostIconPreviousFrameTick = 0;
         // Bumped whenever the cache is dropped, so an answer already being
         // looked up when the user switched theme cannot land in the cache
         // that replaced it — it would be an icon from the old theme, kept
@@ -2346,7 +2372,10 @@ namespace UltraCanvas {
         // largest tile size one icon is a quarter of a megabyte, and a long
         // session across many folders would otherwise hold every type it ever
         // saw. Small next to the thumbnail budgets — these are icons, and
-        // re-resolving one is a theme read rather than a decode.
+        // re-resolving one is a theme read rather than a decode. It bounds
+        // what is kept BEYOND the screen: what is on screen is held whatever
+        // it costs (see hostIconFrameTick), and the ceiling is met again as
+        // soon as those tiles scroll away.
         static constexpr size_t kHostIconBudget = 8 * 1024 * 1024;
 
         // The host's icon for `e` at `rect`, or null while it is being
@@ -2361,11 +2390,17 @@ namespace UltraCanvas {
         // pixel size a view happens to use, so re-sizing tiles re-uses what
         // is already held instead of resolving the same types again.
         static int HostIconEdgeFor(const Rect2Di& rect, float deviceScale);
+        // Called as a frame begins: everything asked for from now on is
+        // what this frame draws, and is safe from eviction (with last
+        // frame's) until the frame after next.
+        void BeginHostIconFrame();
         void StartHostIconWorkerLocked();
         void StopHostIconWorker();
         void HostIconWorkerMain();
         // Drop the least-recently-drawn icons until the budget is met again.
-        // `keepKey` (the one just stored) is never dropped.
+        // `keepKey` (the one just stored) is never dropped, and neither is
+        // anything drawn in this frame or the last - so with a screen full
+        // of distinct types the cache runs over budget rather than thrash.
         void EvictHostIconsLocked(const std::string& keepKey);
         // Drop the resolved icons (Display > File icons switched, or the host
         // asked for a refresh). Safe to call with no worker running.
@@ -2807,6 +2842,12 @@ namespace UltraCanvas {
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);
+        // The widget's own drawing of a type, what the icons fall back to:
+        // the folder shape, or the sheet with the extension on its band.
+        void DrawTypeGlyph(IRenderContext* ctx, const FilerEntry& e, const Rect2Di& rect);
+        // An entry of `path`'s type and nothing else (DrawTypeIcon,
+        // GetTypeColors): name, extension, category, no file read.
+        FilerEntry TypeEntryFor(const std::string& path, bool isFolder) const;
         // The small arrow badge in the corner of a shortcut's icon - the one
         // mark that tells a shortcut apart from the file it points at, whose
         // icon it otherwise wears exactly.

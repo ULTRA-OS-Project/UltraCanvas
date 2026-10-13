@@ -1,11 +1,15 @@
 // core/HTMLReader/HTMLPageLoader.cpp
 // URL -> decoded, parsed page with its style sheets; subresources on demand.
 // See include/HTMLReader/HTMLPageLoader.h.
+// Version: 1.3.0 - downloads (LoadedPage body / fileName, DownloadFileName)
+// Version: 1.2.0 - LoadPost: a form's POST
+// Version: 1.1.0 - @import sheets fetched before the page is ready
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLPageLoader.h"
+#include "HTMLReader/CSSStyleSheet.h"
 #include "HTMLReader/HTMLParser.h"
 #include "UltraCanvasTextUtils.h"
 
@@ -98,7 +102,13 @@ struct PageLoader::Navigation {
     std::function<void(LoadedPage)> onReady;
     LoadedPage page;
     size_t sheetsPending = 0;
+    std::vector<std::string> sheetUrls;   // every sheet asked for, links and imports
+    bool sheetsQueued = false;            // all of the page's own sheets are asked for
 };
+
+namespace {
+constexpr int kMaxImportDepth = 4;
+}
 
 PageLoader::PageLoader(PageLoaderServices services, PageLoaderLimits limits)
     : services_(std::move(services)), limits_(limits), generation_(std::make_shared<uint64_t>(0)) {}
@@ -109,14 +119,33 @@ bool PageLoader::IsLoading() const { return current_ != nullptr; }
 size_t PageLoader::PendingResources() const { return pending_; }
 const std::string& PageLoader::BaseUrl() const { return baseUrl_; }
 
+uint64_t PageLoader::LoadPost(const std::string& url, const std::string& contentType,
+                              const std::string& body, std::function<void(LoadedPage)> onReady) {
+    if (!services_.post) {
+        Cancel();
+        LoadedPage page;
+        page.url = url;
+        page.error = "this browser cannot send the form (no way to post)";
+        onReady(std::move(page));
+        return *generation_;
+    }
+    PostRequest request{ contentType, body };
+    return Start(url, std::move(onReady), &request);
+}
+
 uint64_t PageLoader::Load(const std::string& url, std::function<void(LoadedPage)> onReady) {
+    return Start(url, std::move(onReady), nullptr);
+}
+
+uint64_t PageLoader::Start(const std::string& url, std::function<void(LoadedPage)> onReady,
+                           const PostRequest* post) {
     Cancel();
     auto nav = std::make_shared<Navigation>();
     nav->id = *generation_;
     nav->onReady = std::move(onReady);
     nav->page.url = url;
     current_ = nav;
-    if (!services_.fetch) {
+    if (!services_.fetch && !post) {
         LoadedPage page;
         page.url = url;
         page.error = "no way to fetch pages";
@@ -130,13 +159,15 @@ uint64_t PageLoader::Load(const std::string& url, std::function<void(LoadedPage)
     // with the page's address (across a redirect too, as in browsers).
     const size_t hash = url.find('#');
     const std::string fragment = hash == std::string::npos ? std::string() : url.substr(hash);
-    services_.fetch(WithoutFragment(url), [this, alive, id, nav, fragment](FetchResult result) {
+    auto done = [this, alive, id, nav, fragment](FetchResult result) {
         auto gen = alive.lock();
         if (!gen || *gen != id) return;           // left, or the loader is gone
         if (!fragment.empty() && !result.finalUrl.empty() && result.finalUrl.find('#') == std::string::npos)
             result.finalUrl += fragment;
         Finish(nav, std::move(result));
-    });
+    };
+    if (post) services_.post(WithoutFragment(url), post->contentType, post->body, std::move(done));
+    else services_.fetch(WithoutFragment(url), std::move(done));
     return id;
 }
 
@@ -168,14 +199,32 @@ void PageLoader::Finish(const std::shared_ptr<Navigation>& nav, FetchResult resu
         current_.reset();
         nav->onReady(std::move(page));
     };
+    const std::string mediaType = MediaType(result.contentType);
+    const bool attachment = Lower(Trim(result.contentDisposition)).rfind("attachment", 0) == 0;
+    const bool showable = mediaType.empty() || mediaType == "text/html" || mediaType == "application/xhtml+xml" ||
+                          mediaType == "text/plain" || mediaType.rfind("image/", 0) == 0;
+    // A download: the server says to save it, or it is no page and over the
+    // limit (the host fetches it again, streaming, to disk).
+    auto download = [&](bool truncated) {
+        page.kind = PageKind::Other;
+        page.attachment = attachment;
+        page.truncated = truncated;
+        page.fileName = DownloadFileName(result.contentDisposition, page.url, result.contentType);
+        if (!truncated) page.body = std::move(result.body);
+        current_.reset();
+        nav->onReady(std::move(page));
+    };
     if (!result.ok) {
+        if (result.tooLarge && (attachment || !showable)) { download(true); return; }
         fail(result.error.empty() ? std::string("the page could not be loaded") : result.error);
         return;
     }
     if (result.body.size() > limits_.maxDocumentBytes) {
+        if (attachment || !showable) { download(true); return; }
         fail("the page is larger than " + std::to_string(limits_.maxDocumentBytes / (1024 * 1024)) + " MB");
         return;
     }
+    if (attachment) { download(false); return; }
 
     // What it is: the media type, else a guess from the bytes (file: has none).
     std::string type = MediaType(result.contentType);
@@ -224,9 +273,7 @@ void PageLoader::Finish(const std::shared_ptr<Navigation>& nav, FetchResult resu
                "</title></head><body style='margin:0;text-align:center'><img src=\"" +
                EscapeText(page.url) + "\" style='max-width:100%'></body></html>";
     } else {
-        page.kind = PageKind::Other;
-        current_.reset();
-        nav->onReady(std::move(page));
+        download(false);
         return;
     }
 
@@ -248,59 +295,95 @@ void PageLoader::Finish(const std::shared_ptr<Navigation>& nav, FetchResult resu
 
 void PageLoader::FetchStyleSheets(const std::shared_ptr<Navigation>& nav) {
     LoadedPage& page = nav->page;
-    std::vector<std::string> sheets;
+    // Counted pending while the page's own sheets are queued, so a sheet
+    // answered at once does not make the page ready before the rest are asked for.
+    ++nav->sheetsPending;
     for (const std::string& href : page.document->styleSheetLinks) {
-        if (sheets.size() >= limits_.maxStyleSheets) {
-            page.warnings.push_back("more than " + std::to_string(limits_.maxStyleSheets) +
-                                    " style sheets: the rest are not loaded");
-            break;
-        }
         const std::string absolute = Resolve(href);
         std::string why;
         if (absolute.empty() || !Allowed(absolute, why)) {
             page.warnings.push_back("style sheet not loaded: " + href + (why.empty() ? "" : " (" + why + ")"));
             continue;
         }
-        if (std::find(sheets.begin(), sheets.end(), absolute) == sheets.end()) sheets.push_back(absolute);
+        FetchSheet(nav, absolute, 0);
     }
-    auto ready = [this, nav]() {
-        current_.reset();
-        nav->onReady(std::move(nav->page));
-    };
-    if (sheets.empty()) { ready(); return; }
+    // The sheets a <style> imports, read against the page's base.
+    for (const std::string& css : page.document->styleSheets) FetchImports(nav, css, baseUrl_, 0);
+    nav->sheetsQueued = true;
+    SheetDone(nav);
+}
 
-    nav->sheetsPending = sheets.size();
-    std::weak_ptr<uint64_t> alive = generation_;
-    const uint64_t id = nav->id;
-    for (const std::string& url : sheets) {
-        if (url.rfind("data:", 0) == 0) {
-            CacheEntry entry;
-            entry.state = DecodeDataUrl(url, entry.bytes) ? CacheEntry::State::Done : CacheEntry::State::Failed;
-            Store(url, std::move(entry));
-            if (--nav->sheetsPending == 0) ready();
+void PageLoader::SheetDone(const std::shared_ptr<Navigation>& nav) {
+    if (--nav->sheetsPending != 0 || !nav->sheetsQueued) return;
+    if (current_ != nav) return;
+    current_.reset();
+    nav->onReady(std::move(nav->page));
+}
+
+void PageLoader::FetchImports(const std::shared_ptr<Navigation>& nav, const std::string& css,
+                              const std::string& sheetUrl, int depth) {
+    for (const StyleImport& import : StyleSheet::ParseImports(css)) {
+        std::string absolute;
+        if (!services_.resolve || !services_.resolve(sheetUrl, import.href, absolute)) absolute = import.href;
+        std::string why;
+        if (depth >= kMaxImportDepth) {
+            nav->page.warnings.push_back("style sheet not loaded: " + absolute + " (imports nested too deep)");
             continue;
         }
-        services_.fetch(url, [this, alive, id, nav, url, ready](FetchResult result) {
-            auto gen = alive.lock();
-            if (!gen || *gen != id) return;
-            CacheEntry entry;
-            if (result.ok && result.status < 400) {
-                const std::string sheetUrl = result.finalUrl.empty() ? url : result.finalUrl;
-                const std::string charset = CharsetParam(result.contentType);
-                const std::string css = ToUtf8(result.body, charset.empty() ? "utf-8" : charset);
-                const std::string rewritten = services_.resolve
-                    ? RewriteCssUrls(css, sheetUrl, services_.resolve) : css;
-                entry.state = CacheEntry::State::Done;
-                entry.bytes.assign(rewritten.begin(), rewritten.end());
-            } else {
-                entry.state = CacheEntry::State::Failed;
-                nav->page.warnings.push_back("style sheet not loaded: " + url +
-                                             (result.error.empty() ? "" : " (" + result.error + ")"));
-            }
-            Store(url, std::move(entry));
-            if (--nav->sheetsPending == 0) ready();
-        });
+        if (!Allowed(absolute, why)) {
+            nav->page.warnings.push_back("style sheet not loaded: " + absolute + (why.empty() ? "" : " (" + why + ")"));
+            continue;
+        }
+        FetchSheet(nav, absolute, depth + 1);
     }
+}
+
+void PageLoader::FetchSheet(const std::shared_ptr<Navigation>& nav, const std::string& url, int depth) {
+    const std::string key = WithoutFragment(url);
+    if (std::find(nav->sheetUrls.begin(), nav->sheetUrls.end(), key) != nav->sheetUrls.end()) return;   // once
+    if (nav->sheetUrls.size() >= limits_.maxStyleSheets) {
+        if (nav->sheetUrls.size() == limits_.maxStyleSheets) {
+            nav->page.warnings.push_back("more than " + std::to_string(limits_.maxStyleSheets) +
+                                         " style sheets: the rest are not loaded");
+            nav->sheetUrls.push_back(std::string());   // warn once
+        }
+        return;
+    }
+    nav->sheetUrls.push_back(key);
+    ++nav->sheetsPending;
+    if (key.rfind("data:", 0) == 0) {
+        CacheEntry entry;
+        entry.state = DecodeDataUrl(key, entry.bytes) ? CacheEntry::State::Done : CacheEntry::State::Failed;
+        const std::string css(entry.bytes.begin(), entry.bytes.end());
+        Store(key, std::move(entry));
+        FetchImports(nav, css, baseUrl_, depth);
+        SheetDone(nav);
+        return;
+    }
+    std::weak_ptr<uint64_t> alive = generation_;
+    const uint64_t id = nav->id;
+    services_.fetch(key, [this, alive, id, nav, key, depth](FetchResult result) {
+        auto gen = alive.lock();
+        if (!gen || *gen != id) return;
+        CacheEntry entry;
+        std::string rewritten;
+        std::string sheetUrl = key;
+        if (result.ok && result.status < 400) {
+            if (!result.finalUrl.empty()) sheetUrl = result.finalUrl;
+            const std::string charset = CharsetParam(result.contentType);
+            const std::string css = ToUtf8(result.body, charset.empty() ? "utf-8" : charset);
+            rewritten = services_.resolve ? RewriteCssUrls(css, sheetUrl, services_.resolve) : css;
+            entry.state = CacheEntry::State::Done;
+            entry.bytes.assign(rewritten.begin(), rewritten.end());
+        } else {
+            entry.state = CacheEntry::State::Failed;
+            nav->page.warnings.push_back("style sheet not loaded: " + key +
+                                         (result.error.empty() ? "" : " (" + result.error + ")"));
+        }
+        Store(key, std::move(entry));
+        if (!rewritten.empty()) FetchImports(nav, rewritten, sheetUrl, depth);
+        SheetDone(nav);
+    });
 }
 
 std::vector<uint8_t> PageLoader::GetResource(const std::string& href) {
@@ -452,6 +535,33 @@ std::string PageLoader::RewriteCssUrls(
             i = stop;
             continue;
         }
+        // @import "a.css": a string, not url(), names the sheet.
+        if (css[i] == '@' && i + 7 <= css.size() && Lower(css.substr(i + 1, 6)) == "import" &&
+            (i + 7 == css.size() || !(std::isalnum(static_cast<unsigned char>(css[i + 7])) || css[i + 7] == '-'))) {
+            size_t j = i + 7;
+            while (j < css.size() && std::isspace(static_cast<unsigned char>(css[j]))) ++j;
+            if (j < css.size() && (css[j] == '"' || css[j] == '\'')) {
+                const char quote = css[j];
+                size_t k = j + 1;
+                std::string ref;
+                while (k < css.size() && css[k] != quote) {
+                    if (css[k] == '\\' && k + 1 < css.size()) ++k;
+                    ref += css[k++];
+                }
+                if (k < css.size()) {
+                    std::string absolute;
+                    if (ref.rfind("data:", 0) == 0 || ref.empty() || !resolve(sheetUrl, ref, absolute)) absolute = ref;
+                    out += "@import url(\"";
+                    for (char c : absolute) {
+                        if (c == '"' || c == '\\') out += '\\';
+                        out += c;
+                    }
+                    out += "\")";
+                    i = k + 1;
+                    continue;
+                }
+            }
+        }
         const bool isUrl = i + 4 <= css.size() &&
                            std::tolower(static_cast<unsigned char>(css[i])) == 'u' &&
                            std::tolower(static_cast<unsigned char>(css[i + 1])) == 'r' &&
@@ -486,6 +596,89 @@ std::string PageLoader::RewriteCssUrls(
         i = j + 1;
     }
     return out;
+}
+
+std::string PageLoader::DownloadFileName(const std::string& contentDisposition, const std::string& url,
+                                         const std::string& contentType) {
+    auto percentDecode = [](const std::string& s) {
+        std::string out;
+        for (size_t i = 0; i < s.size(); ++i) {
+            if (s[i] == '%' && i + 2 < s.size() && HexValue(s[i + 1]) >= 0 && HexValue(s[i + 2]) >= 0) {
+                out += static_cast<char>(HexValue(s[i + 1]) * 16 + HexValue(s[i + 2]));
+                i += 2;
+            } else {
+                out += s[i];
+            }
+        }
+        return out;
+    };
+    // A parameter of the header: name=value, name="quoted value".
+    auto param = [&](const std::string& name) -> std::string {
+        const std::string lower = Lower(contentDisposition);
+        size_t at = 0;
+        while ((at = lower.find(name, at)) != std::string::npos) {
+            const bool starts = at == 0 || lower[at - 1] == ';' || std::isspace(static_cast<unsigned char>(lower[at - 1]));
+            size_t eq = at + name.size();
+            while (eq < lower.size() && std::isspace(static_cast<unsigned char>(lower[eq]))) ++eq;
+            if (!starts || eq >= lower.size() || lower[eq] != '=') { at += name.size(); continue; }
+            size_t v = eq + 1;
+            while (v < contentDisposition.size() && std::isspace(static_cast<unsigned char>(contentDisposition[v]))) ++v;
+            std::string value;
+            if (v < contentDisposition.size() && contentDisposition[v] == '"') {
+                for (++v; v < contentDisposition.size() && contentDisposition[v] != '"'; ++v) {
+                    if (contentDisposition[v] == '\\' && v + 1 < contentDisposition.size()) ++v;
+                    value += contentDisposition[v];
+                }
+            } else {
+                const size_t end = contentDisposition.find(';', v);
+                value = Trim(contentDisposition.substr(v, end == std::string::npos ? std::string::npos : end - v));
+            }
+            return value;
+        }
+        return std::string();
+    };
+    std::string name;
+    // filename*=UTF-8''caf%C3%A9.pdf wins over filename=.
+    const std::string extended = param("filename*");
+    if (!extended.empty()) {
+        const size_t quote = extended.find("''");
+        if (quote != std::string::npos) {
+            const std::string charset = Lower(extended.substr(0, quote));
+            if (charset == "utf-8" || charset.empty()) name = percentDecode(extended.substr(quote + 2));
+        }
+    }
+    if (name.empty()) name = param("filename");
+    if (name.empty()) {
+        std::string path = WithoutFragment(url);
+        path = path.substr(0, path.find('?'));
+        const size_t scheme = path.find("://");
+        const size_t start = scheme == std::string::npos ? 0 : path.find('/', scheme + 3);
+        if (start != std::string::npos) {
+            const size_t slash = path.rfind('/');
+            if (slash != std::string::npos && slash >= start) name = percentDecode(path.substr(slash + 1));
+        }
+    }
+    // Only a name: no folders, control characters or names that hide.
+    std::string clean;
+    for (unsigned char c : name) {
+        if (c < 0x20 || c == 0x7F) continue;
+        clean += (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' ||
+                  c == '<' || c == '>' || c == '|') ? '_' : static_cast<char>(c);
+    }
+    clean = Trim(clean);
+    while (!clean.empty() && clean[0] == '.') clean.erase(0, 1);
+    if (clean.size() > 200) clean = clean.substr(clean.size() - 200);
+    if (!clean.empty()) return clean;
+    static const std::pair<const char*, const char*> kExtensions[] = {
+        { "application/pdf", ".pdf" }, { "application/zip", ".zip" }, { "application/gzip", ".gz" },
+        { "application/json", ".json" }, { "text/csv", ".csv" }, { "text/plain", ".txt" },
+        { "text/html", ".html" }, { "image/png", ".png" }, { "image/jpeg", ".jpg" },
+        { "audio/mpeg", ".mp3" }, { "video/mp4", ".mp4" }, { "application/wasm", ".wasm" },
+    };
+    const std::string type = MediaType(contentType);
+    for (const auto& [t, ext] : kExtensions)
+        if (type == t) return std::string("download") + ext;
+    return "download";
 }
 
 bool PageLoader::DecodeDataUrl(const std::string& url, std::vector<uint8_t>& out) {

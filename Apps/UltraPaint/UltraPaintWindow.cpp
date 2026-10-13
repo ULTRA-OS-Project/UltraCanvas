@@ -3,6 +3,13 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.4.0 - Open / Import / Save As / Export offer FileLoader's format lists (every
+//                  bitmap type this build reads / writes), not the editor's own
+// Version: 1.3.1 - Shift+X picks the Eraser: a tool key can need Shift (it never matched with it)
+// Version: 1.3.0 - the tool palette groups its tools: tools of a kind share one slot
+//                  (UltraCanvasToolGroupButton) that shows the last one picked (adaptive)
+//                  or the group's main one (static, Settings > Display > Tool palette),
+//                  and a bar with the whole group folds out while the pointer rests on it
 // Version: 1.2.0 - the mouse pointer magnification glass: a loupe in a corner of the canvas
 //                  while the rectangle selection is active, that keeps out of the pointer's
 //                  way; Edit > Settings... (Display > Mouse pointer magnification glass)
@@ -17,7 +24,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -80,10 +87,13 @@ namespace {
     constexpr int   kStatusHeight  = 24;
     constexpr float kRowH          = 24.0f;
 
-    const std::vector<std::string> kImageExtensions = {
-        "png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif", "avif", "jxl",
-        "tga", "ppm", "pgm", "pbm", "pnm", "psd", "qoi", "ico", "svg", "exr", "hdr", "dng", "cr2", "nef", "arw"
-    };
+    // The bitmap formats this build reads, as FileLoader's format inventory
+    // says (UltraCanvasFileLoader::GetSupportedLoadExtensions) - not a list
+    // of the editor's own, so a format a plugin or a libvips build adds is
+    // opened too.
+    std::vector<std::string> ReadableImageExtensions() {
+        return UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+    }
 
     std::string FileNameOf(const std::string& path) {
         if (path.empty()) return "Untitled";
@@ -104,7 +114,8 @@ namespace {
     bool IsOpenablePath(const std::string& path) {
         if (UCRasterDocument::IsProjectFile(path)) return true;
         const std::string ext = LowerExtOf(path);
-        if (std::find(kImageExtensions.begin(), kImageExtensions.end(), ext) != kImageExtensions.end()) return true;
+        const std::vector<std::string> images = ReadableImageExtensions();
+        if (std::find(images.begin(), images.end(), ext) != images.end()) return true;
         return IsVectorGraphicsPath(path) || IsModelGraphicsPath(path);
     }
 
@@ -546,6 +557,44 @@ void UltraPaintWindow::BuildToolbar() {
     window->AddChild(toolbar);
 }
 
+namespace {
+    // The palette's groups, top to bottom: tools of a kind share one slot,
+    // the group's main tool first. The slot shows the tool last picked from
+    // its group (an adaptive toolbar) or always the main one (a static
+    // toolbar, Settings > Display > Tool palette), and resting the pointer
+    // on it folds out a bar with the whole group. A group of one tool is a
+    // plain button. A tool missing here still gets a slot of its own, after
+    // these, so a tool added to CreatePaintTools() never goes missing.
+    struct PaletteGroup {
+        const char* id;
+        std::vector<PaintToolId> tools;
+    };
+    const std::vector<PaletteGroup>& PaletteGroups() {
+        using T = PaintToolId;
+        static const std::vector<PaletteGroup> groups = {
+            { "select",  { T::RectSelect, T::EllipseSelect, T::Lasso, T::MagicWand } },
+            { "pen",     { T::Brush, T::Pencil, T::Airbrush } },
+            { "lines",   { T::Line, T::Polyline, T::Arrow, T::Curve } },
+            { "shapes",  { T::Rectangle, T::Ellipse } },
+            { "morph",   { T::Smudge, T::Clone } },          // reshape the pixels already there
+            { "shading", { T::Dodge, T::Burn } },
+            { "move",    { T::Move } },
+            { "crop",    { T::Crop } },
+            { "picker",  { T::Eyedropper } },
+            { "eraser",  { T::Eraser } },
+            { "fill",    { T::Fill, T::Gradient } },
+            { "text",    { T::Text } },
+            { "view",    { T::Zoom, T::Pan } },
+        };
+        return groups;
+    }
+
+    // A tool's id among the palette's group items.
+    std::string ToolItemId(PaintToolId id) {
+        return "tool-" + std::to_string(static_cast<int>(id));
+    }
+}
+
 void UltraPaintWindow::BuildToolPalette() {
     palette = std::make_shared<UltraCanvasToolbar>("up-palette", 0, 0, kPaletteWidth, 0);
     palette->SetOrientation(ToolbarOrientation::Vertical);
@@ -558,20 +607,49 @@ void UltraPaintWindow::BuildToolPalette() {
     // squeezing every icon into a button too small for it.
     palette->SetOverflowMode(ToolbarOverflowMode::Scroll);
     palette->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    toolButtons.clear();
+
+    auto findTool = [this](PaintToolId id) -> const PaintTool* {
+        for (const auto& t : tools) if (t->id == id) return t.get();
+        return nullptr;
+    };
+    auto itemOf = [this](const PaintTool& t) {
+        ToolGroupItem item;
+        item.id = ToolItemId(t.id);
+        item.iconPath = ToolIconPath(t.iconFile);
+        item.tooltip = t.name;
+        if (t.shortcutKey) item.tooltip += " (" + t.ShortcutLabel() + ")";
+        return item;
+    };
+
+    std::vector<std::pair<std::string, std::vector<ToolGroupItem>>> slots;
+    std::vector<PaintToolId> placed;
+    for (const auto& g : PaletteGroups()) {
+        std::vector<ToolGroupItem> items;
+        for (PaintToolId id : g.tools) {
+            if (const PaintTool* t = findTool(id)) { items.push_back(itemOf(*t)); placed.push_back(id); }
+        }
+        if (!items.empty()) slots.emplace_back(g.id, std::move(items));
+    }
     for (const auto& t : tools) {
-        const PaintToolId id = t->id;
-        auto b = palette->AddToggleButton("up-tool-" + std::to_string(static_cast<int>(id)), "",
-                                          ToolIconPath(t->iconFile), [this, id](bool) { SelectTool(id); });
-        std::string tip = t->name;
-        if (t->shortcutKey) tip += std::string(" (") + t->shortcutKey + ")";
-        b->SetTooltip(tip);
+        if (std::find(placed.begin(), placed.end(), t->id) != placed.end()) continue;
+        slots.emplace_back(ToolItemId(t->id), std::vector<ToolGroupItem>{ itemOf(*t) });
+    }
+
+    toolSlots.clear();
+    for (auto& [groupId, items] : slots) {
+        auto b = palette->AddToolGroup("up-tools-" + groupId, items, [this](const std::string& itemId) {
+            for (const auto& t : tools) {
+                if (ToolItemId(t->id) == itemId) { SelectTool(t->id); return; }
+            }
+        });
+        b->SetSlotShowsLastPicked(settings.paletteAdaptive);
         // The palette's icons are drawn on a 28-unit grid (media/icons/
         // ultrapaint/28) with 2-unit strokes on whole units: shown at 28 px
         // they land on whole pixels and stay sharp. The 24-unit set beside
         // them is the same tools for 24 px and smaller (menus). Shown at a
         // size of neither, every line falls between two pixels and blurs, as
-        // the old 24-unit icons did at 22 px.
+        // the old 24-unit icons did at 22 px. The fold-out bar's buttons
+        // take the slot's size, icon size and style.
         b->SetIconSize(kToolIcon, kToolIcon);
         b->SetElementSize(Size2Df(kToolButton, kToolButton));
         // Flat: no box around a tool; a soft grey under the pointer and the
@@ -583,7 +661,7 @@ void UltraPaintWindow::BuildToolPalette() {
         flat.hoverColor = Color(0, 0, 0, 18);
         flat.pressedColor = Color(0, 103, 192, 46);
         b->SetStyle(flat);
-        toolButtons.push_back(b);
+        toolSlots.push_back(b);
     }
     body->AddChild(palette);
 }
@@ -766,10 +844,16 @@ void UltraPaintWindow::InstallShortcuts() {
             colorPicker->SetBackgroundColor(background.ToColor());
             return true;
         }
-        // single-letter tool keys (not while a tool is mid-drag)
-        if (!e.alt && !e.shift && k >= UCKeys::A && k <= UCKeys::Z) {
+        // Single-letter tool keys, plain or with Shift as the tool says: the
+        // Eraser is Shift+X, plain X being the colour swap above. Matching the
+        // Shift as well is what makes it reachable - the loop used to skip any
+        // key pressed with Shift, so the Eraser had no working key at all.
+        if (!e.alt && k >= UCKeys::A && k <= UCKeys::Z) {
             for (const auto& t : tools) {
-                if (t->shortcutKey && t->shortcutKey == static_cast<char>(k)) { SelectTool(t->id); return true; }
+                if (t->shortcutKey && t->shortcutKey == static_cast<char>(k) && t->shortcutShift == e.shift) {
+                    SelectTool(t->id);
+                    return true;
+                }
             }
         }
         return false;
@@ -1111,15 +1195,25 @@ void UltraPaintWindow::ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dial
     dialog->Show();
 }
 
-bool UltraPaintWindow::SaveToPath(const std::string& path) {
+bool UltraPaintWindow::SaveToPath(const std::string& path, const FileSaveImageSize& size) {
     if (!document) return false;
     std::string error;
-    if (!document->SaveToFile(path, error)) {
+    // Another size than the picture's: the image writer's options at that
+    // size (and the format's save settings). Without one, SaveToFile takes
+    // the settings itself.
+    UCImageSave::ImageExportOptions options;
+    const bool resized = !size.IsOriginal() && !UCRasterDocument::IsProjectFile(path) &&
+                         UltraCanvasFileLoader::GetImageExportOptions(path, size, options);
+    if (!document->SaveToFile(path, error, resized ? &options : nullptr)) {
         UltraCanvasDialogManager::ShowError("Could not save " + path + "\n" + ShortError(error), "Save", nullptr, window.get());
         return false;
     }
     UpdateTitle();
-    if (statusHint) statusHint->SetText("Saved " + FileNameOf(path));
+    if (statusHint) {
+        statusHint->SetText(resized ? "Saved " + FileNameOf(path) + " at " + std::to_string(size.width) +
+                                              " x " + std::to_string(size.height) + " px"
+                                    : "Saved " + FileNameOf(path));
+    }
     return true;
 }
 
@@ -1172,9 +1266,12 @@ void UltraPaintWindow::SelectTool(PaintToolId id) {
     if (auto* old = ActiveTool()) { if (old->id != id) old->Deactivate(toolContext); }
     activeTool = id;
     PaintTool* t = ActiveTool();
-    for (size_t i = 0; i < tools.size() && i < toolButtons.size(); ++i) {
-        const bool on = tools[i]->id == id;
-        if (toolButtons[i]->IsPressed() != on) toolButtons[i]->SetPressed(on);
+    // The slot of the tool's group shows it (on an adaptive toolbar) and is
+    // pressed; every other slot is let go - however the tool was picked:
+    // in the palette, by its shortcut key or by a command (Paste picks Move).
+    for (const auto& slot : toolSlots) {
+        const bool on = slot->SetCurrentItem(ToolItemId(id));
+        if (slot->IsPressed() != on) slot->SetPressed(on);
     }
     if (!t) return;
     t->Activate(toolContext);
@@ -1230,6 +1327,7 @@ void UltraPaintWindow::BuildMagnifier() {
 }
 
 void UltraPaintWindow::ApplySettings() {
+    for (const auto& slot : toolSlots) slot->SetSlotShowsLastPicked(settings.paletteAdaptive);
     if (!magnifierFrame) return;
     const float size = static_cast<float>(std::clamp(settings.magnifierSize,
             UltraPaintSettings::kMinMagnifierSize, UltraPaintSettings::kMaxMagnifierSize));
@@ -1494,7 +1592,7 @@ void UltraPaintWindow::CmdNewWindow() {
 // formats, the editor's own projects, and whatever vector artwork it can
 // rasterize (which depends on libvips and on the registered plugins).
 std::vector<std::string> UltraPaintWindow::OpenableExtensions() {
-    std::vector<std::string> exts = kImageExtensions;
+    std::vector<std::string> exts = ReadableImageExtensions();
     exts.push_back("ucraster");
     for (const auto& v : GetVectorRasterExtensions()) {
         if (std::find(exts.begin(), exts.end(), v) == exts.end()) exts.push_back(v);
@@ -1550,21 +1648,22 @@ void UltraPaintWindow::CmdSaveAs() {
     if (!document) return;
     FileDialogOptions opts;
     std::string def = document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath());
-    opts.SetTitle("Save image as")
-        .AddFilter("PNG", std::vector<std::string>{ "png" })
-        .AddFilter("JPEG", std::vector<std::string>{ "jpg", "jpeg" })
-        .AddFilter("WebP", std::vector<std::string>{ "webp" })
-        .AddFilter("TIFF", std::vector<std::string>{ "tif", "tiff" })
-        .AddFilter("AVIF", std::vector<std::string>{ "avif" })
-        .AddFilter("BMP", std::vector<std::string>{ "bmp" })
-        .AddFilter("UltraPaint project (layers kept)", std::vector<std::string>{ "ucraster" })
+    opts.SetTitle("Save image as");
+    // FileLoader's types - every bitmap type this build writes - and the
+    // editor's own project, which keeps the layers.
+    UltraCanvasFileLoader::AddImageSaveTypes(opts);
+    opts.AddFilter("UltraPaint project (layers kept)", std::vector<std::string>{ "ucraster" })
         .AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(def)
+        // The picture's size, so the Settings of a bitmap type offer to write
+        // it at another size.
+        .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
+                                                       const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
-        SaveToPath(path);
+        SaveToPath(path, size);
     });
 }
 
@@ -1572,18 +1671,24 @@ void UltraPaintWindow::CmdExport() {
 #ifdef HAS_LIBVIPS
     if (!document) return;
     FileDialogOptions opts;
-    opts.SetTitle("Export image")
-        .AddFilter("Images", kImageExtensions)
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.SetTitle("Export image");
+    UltraCanvasFileLoader::AddImageSaveTypes(opts);   // every bitmap type this build writes
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath()))
+        .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
+                                                       const FileSaveImageSize& size) {
         if (r != DialogResult::OK || path.empty()) return;
         try {
             auto flat = document->Flatten();
             vips::VImage vimg = flat->ToPixelFX();
+            // The export dialog opens on the format the name has, with that
+            // format's save settings, and on the size chosen in the Save
+            // dialog's Settings, if one was.
             auto dlg = std::make_shared<UltraCanvasImageExportDialog>(vimg);
             dlg->SetFileName(path);
+            if (!size.IsOriginal()) dlg->SetTargetSize(size.width, size.height);
             dlg->onSave = [this, path](const UCImageSave::ImageExportOptions& options) {
                 std::string error;
                 if (!document->SaveToFile(path, error, &options))

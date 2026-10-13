@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoDocument.cpp
 // The document and the .ultravideo file (UltraVideoDocument.h).
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 
@@ -533,6 +533,7 @@ bool Document::Save(const std::string& toPath, std::string& error) {
     v.Set("binWidth", view.binWidth);
     v.Set("inspectorWidth", view.inspectorWidth);
     v.Set("dockPercent", view.dockPercent);
+    v.Set("useProxies", view.useProxies);
     root.Set("view", v);
 
     JSONSerializeOptions options;
@@ -716,6 +717,7 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
         loaded.view.binWidth = static_cast<int>(v.Get("binWidth").GetInteger(280));
         loaded.view.inspectorWidth = static_cast<int>(v.Get("inspectorWidth").GetInteger(300));
         loaded.view.dockPercent = static_cast<int>(v.Get("dockPercent").GetInteger(35));
+        loaded.view.useProxies = v.Get("useProxies").GetBoolean(true);
     }
     loaded.path = fromPath;
     doc = std::move(loaded);

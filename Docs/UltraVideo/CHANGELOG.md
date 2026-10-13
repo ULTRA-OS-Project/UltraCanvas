@@ -1,3 +1,36 @@
+#### 2026-10-13 *0.2.1*
+- **Proxies are made on the graphics hardware.** UltraVideo now makes its
+  proxies with VideoFX's `Hardware` acceleration (VideoFX 0.12.0). Each
+  proxy is encoded by the first hardware encoder that works on the machine:
+  NVENC, Quick Sync, VA-API, AMF, VideoToolbox or Media Foundation. That
+  leaves the processor free for the editing while the bin's videos are
+  being made smaller. Where no hardware encoder works it falls back to
+  software, as before. The encoder is not part of a proxy's name, so
+  proxies already in the cache are used as they are.
+  (`ProxyMaker::EditorSettings()`, checked in `UltraVideoDocumentTest`.)
+
+#### 2026-10-12 *0.2.0*
+- **Proxies: large clips scrub smoothly.** Every video in the media bin gets
+  a proxy in the background, made by VideoFX: the same clip at 540 lines,
+  quick to seek in. The viewer and the playback draft play the timeline
+  from the proxies, and the **export reads the originals**.
+  - The proxies are made one at a time on a thread of their own
+    (`UltraVideoProxies.{h,cpp}`), not on the preview's worker, so
+    scrubbing never waits behind one.
+  - The bin tile shows *proxy waiting*, *proxy 40 %* and *proxy*. When a
+    clip on the timeline gets its proxy, the viewer switches to it at once.
+  - Clips no taller than a proxy get none.
+  - Proxies made in an earlier session are ready at once, from the user's
+    cache folder.
+  - A clip removed from the bin leaves the queue. One that cannot be made
+    is reported and plays from the original.
+  - *Preview from proxies*, in the inspector's Project tab, is on by
+    default. It is saved with the project (`view.useProxies`) and is not an
+    undo step.
+  - Tested in `UltraVideoDocumentTest`: a clip's proxy made and played, a
+    small clip left as it is, the cache reused, a clip dropped before its
+    turn, and a missing file.
+
 #### 2026-10-11 *0.1.0*
 - **The first release: the editor's skeleton.** `Apps/UltraVideo`, on
   VideoFX 0.9.0 and the framework's `UltraCanvasVideoTimeline` and

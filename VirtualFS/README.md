@@ -282,13 +282,25 @@ if (!disk.IsTrueRam()) {
 Check `VirtualFS_IsTrueRamDiskAvailable()` before creating anything if the
 distinction matters, so you can warn up front rather than after the fact.
 
+That question - `VirtualFS_GetPreferredRamDiskBacking()` is the same one - is
+put to the system **once per process** and the answer kept: on Windows it
+launches `where imdisk` and on macOS `command -v hdiutil` through a shell,
+which takes seconds on a loaded machine. An application with a user interface
+asks the first time from a background thread at start-up, and every later
+call, on any thread, answers at once (a call made while the probe still runs
+waits for its answer rather than probing again). A driver installed while the
+process runs is seen at the next start.
+
 A disc's name is at most **23 characters on Windows** (64 elsewhere;
 `VirtualFS_GetMaxRamDiskNameLength()` says which). A drive letter carries no
 name, so an ImDisk disc keeps it in its NTFS volume label - that is how
 `VirtualFS_ListRamDisks()` finds it again - and a label holds 32 characters,
 nine of them the `ultravfs-` prefix. The fallback directory takes the same
 limit, so a name does not work on one machine and fail on the next only
-because ImDisk is installed there.
+because ImDisk is installed there. The label is read from local fixed,
+removable and RAM drives on D: to Z: only: a mapped network drive whose
+server is away, or an empty CD drive, would otherwise hold every listing for
+as long as Windows takes to give up, and neither can carry an ImDisk disc.
 
 ### Privacy and lifetime
 

@@ -1,5 +1,21 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.33.0 - file uploads (a chooser button, BuildOptions::onChooseFiles);
+//                   a <label>'s text acts on its control
+// Version: 1.32.0 - BuildOptions::interactiveForms: real form widgets on the line
+//                   with their text, held by a FormController per <form>
+// Version: 1.31.0 - an inline element's background and border, at any depth in
+//                   a run, drawn by the label around its text (LabelTextBox),
+//                   across lines; only vertical padding makes it a box
+// Version: 1.30.0 - inline elements' backgrounds: a Pango background over the
+//                   text and its padding; one with a border, or a background
+//                   with vertical padding (the mail button), is a box on the line;
+//                   a space between a box and the text beside it is kept
+// Version: 1.29.0 - @import: imported sheets come before the importing sheet's
+//                   rules (in an @media block when the import names media)
+// Version: 1.28.0 - an inline element's horizontal margin, border and padding
+//                   keep its text apart from its neighbours (placeholders of
+//                   that width in the label's run)
 // Version: 1.27.0 - display: flex / grid (and inline-flex / inline-grid) lay their
 //                   children out on the CSSLayout flex and grid engines: elements
 //                   are items of their own size with real margins, text between
@@ -92,12 +108,19 @@
 #include <functional>
 
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasDropdown.h"
+#include "UltraCanvasRadio.h"
+#include "UltraCanvasTextArea.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasTextSelection.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 
 namespace UltraCanvas {
 namespace HTML {
@@ -251,6 +274,29 @@ ImagePosition ToImagePosition(const BackgroundPosition& p) {
 
 // Whether a run holds nothing but whitespace text (spaces, newlines, &nbsp;)
 // - between two images it is the space that separates them on their line.
+// Whether the text at the start (atEnd false) or the end of `run` is
+// collapsible white space - the space a label trims, which a box next to
+// the run must keep as a gap ("Order now: [Buy] today").
+const Node* EdgeText(const Node& node, bool atEnd) {
+    if (node.type == NodeType::Text) return node.text.empty() ? nullptr : &node;
+    if (!node.IsElement() || node.children.empty()) return nullptr;
+    const size_t n = node.children.size();
+    for (size_t k = 0; k < n; ++k) {
+        const Node& child = *node.children[atEnd ? n - 1 - k : k];
+        if (child.type == NodeType::Text && child.text.empty()) continue;
+        return EdgeText(child, atEnd);
+    }
+    return nullptr;
+}
+
+bool RunEdgeIsSpace(const std::vector<Node*>& run, bool atEnd) {
+    if (run.empty()) return false;
+    const Node* text = EdgeText(*(atEnd ? run.back() : run.front()), atEnd);
+    if (!text) return false;
+    const unsigned char c = static_cast<unsigned char>(atEnd ? text->text.back() : text->text.front());
+    return std::isspace(c) != 0;
+}
+
 bool OnlyWhitespace(const std::vector<Node*>& run) {
     for (const Node* n : run) {
         if (n->type != NodeType::Text) return false;
@@ -619,6 +665,64 @@ void FixBackwardSpan(CSSLayout::GridLine& start, CSSLayout::GridLine& end) {
     }
 }
 
+// `ref` read relative to `base` (a sheet's own href): an absolute URL, a
+// scheme, a /root path or no base leaves it as it is; otherwise it goes in
+// base's folder, "." and ".." resolved. A sheet named by an absolute URL
+// (PageLoader rewrites imports to those) is never changed.
+std::string JoinHref(const std::string& base, const std::string& ref) {
+    if (ref.empty() || base.empty() || ref[0] == '/' || ref[0] == '#') return ref;
+    for (char c : ref) {
+        if (c == ':') return ref;                         // a scheme: absolute
+        if (c == '/' || c == '?' || c == '#') break;
+    }
+    std::string dir = base.substr(0, base.find_first_of("?#"));
+    const size_t slash = dir.rfind('/');
+    dir = slash == std::string::npos ? std::string() : dir.substr(0, slash + 1);
+    // Keep "scheme://host/" out of the path arithmetic.
+    size_t rootEnd = 0;
+    if (const size_t scheme = dir.find("://"); scheme != std::string::npos) {
+        const size_t pathStart = dir.find('/', scheme + 3);
+        rootEnd = pathStart == std::string::npos ? dir.size() : pathStart + 1;
+    }
+    std::vector<std::string> parts;
+    std::string joined = dir.substr(rootEnd) + ref;
+    const size_t query = joined.find_first_of("?#");
+    const std::string tail = query == std::string::npos ? std::string() : joined.substr(query);
+    if (query != std::string::npos) joined.resize(query);
+    size_t start = 0;
+    while (start <= joined.size()) {
+        size_t end = joined.find('/', start);
+        if (end == std::string::npos) end = joined.size();
+        const std::string part = joined.substr(start, end - start);
+        if (part == "..") { if (!parts.empty() && parts.back() != "..") parts.pop_back(); else if (rootEnd == 0) parts.push_back(part); }
+        else if (part != "." && !(part.empty() && end != joined.size())) parts.push_back(part);
+        start = end + 1;
+    }
+    std::string out = dir.substr(0, rootEnd);
+    for (size_t k = 0; k < parts.size(); ++k) {
+        if (k) out += '/';
+        out += parts[k];
+    }
+    return out + tail;
+}
+
+// True when the run's text is nothing but room (picture-less placeholders,
+// their word joiners) and white space: empty inline elements with margins.
+bool OnlyRoom(const std::string& plain, const std::vector<LabelInlineImage>& images) {
+    for (const auto& image : images) {
+        if (image.image) return false;
+    }
+    for (size_t i = 0; i < plain.size(); ) {
+        if (plain.compare(i, 3, "\xEF\xBF\xBC") == 0 || plain.compare(i, 3, "\xE2\x81\xA0") == 0) {
+            i += 3;
+            continue;
+        }
+        if (!std::isspace(static_cast<unsigned char>(plain[i]))) return false;
+        ++i;
+    }
+    return true;
+}
+
 bool MarkupHasVisibleText(const std::string& markup) {
     bool inTag = false;
     for (char c : markup) {
@@ -638,6 +742,33 @@ bool MarkupHasVisibleText(const std::string& markup) {
 // ENTRY POINTS
 // ============================================================================
 
+std::string ElementBuilder::ExpandImports(const std::string& css, const std::string& sheetHref,
+                                          int depth, std::vector<std::string>& seen) {
+    const std::vector<StyleImport> imports = StyleSheet::ParseImports(css);
+    if (imports.empty()) return css;
+    std::string out;
+    for (const StyleImport& import : imports) {
+        const std::string href = JoinHref(sheetHref, import.href);
+        if (std::find(seen.begin(), seen.end(), href) != seen.end()) continue;   // once (and no cycles)
+        if (depth >= kMaxImportDepth || seen.size() >= kMaxImportedSheets) {
+            warnings.push_back("style sheet not imported (too many or too deep): " + href);
+            continue;
+        }
+        seen.push_back(href);
+        if (!opts.resourceLoader) continue;
+        const std::vector<uint8_t> bytes = opts.resourceLoader(href);
+        if (bytes.empty()) {
+            warnings.push_back("stylesheet not found: " + href);
+            continue;
+        }
+        std::string sheet = ExpandImports(std::string(bytes.begin(), bytes.end()), href, depth + 1, seen);
+        if (!import.media.empty()) sheet = "@media " + import.media + " {\n" + sheet + "\n}";
+        out += sheet;
+        out += '\n';
+    }
+    return out + css;
+}
+
 BuildResult ElementBuilder::Build(const std::string& html, const BuildOptions& options) {
     Parser parser;
     Document doc = parser.Parse(html);
@@ -650,21 +781,31 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     anchors.clear();
     elementCount = 0;
     nextId = 0;
+    currentDocument = &document;
+    labelTargets = std::make_shared<LabelTargets>();
+    builtForms.clear();
+    formByNode.clear();
+    formless.reset();
 
     resolver.ClearStyleSheets();
     resolver.SetMediaWidth(opts.viewportWidth > 0.f ? opts.viewportWidth : 800.f);
+    // A sheet's @import rules bring their sheets in ahead of its own rules;
+    // one sheet is imported once however many sheets name it.
+    std::vector<std::string> importedSheets(document.styleSheetLinks.begin(),
+                                            document.styleSheetLinks.end());
     for (const auto& href : document.styleSheetLinks) {
         if (opts.resourceLoader) {
             std::vector<uint8_t> bytes = opts.resourceLoader(href);
             if (!bytes.empty()) {
-                resolver.AddStyleSheet(std::string(bytes.begin(), bytes.end()));
+                resolver.AddStyleSheet(ExpandImports(std::string(bytes.begin(), bytes.end()),
+                                                     href, 0, importedSheets));
             } else {
                 warnings.push_back("stylesheet not found: " + href);
             }
         }
     }
     for (const auto& css : document.styleSheets) {
-        resolver.AddStyleSheet(css);
+        resolver.AddStyleSheet(ExpandImports(css, std::string(), 0, importedSheets));
     }
     if (!opts.userCss.empty()) {
         resolver.AddStyleSheet(opts.userCss);
@@ -692,6 +833,11 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     result.warnings = warnings;
     result.elementCount = elementCount;
     result.anchors = std::move(anchors);
+    result.forms = std::move(builtForms);
+    if (formless) result.forms.push_back(std::move(formless));
+    builtForms.clear();
+    formByNode.clear();
+    currentDocument = nullptr;
     return result;
 }
 
@@ -923,6 +1069,7 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildItem(Node& element) {
     }
     if (element.tag == "input" || element.tag == "textarea" ||
         element.tag == "button" || element.tag == "select") {
+        if (opts.interactiveForms) return BuildFormWidget(element);   // a search bar's field and button
         return BuildFormControl(element);
     }
     // Any other element is a box (a <span> or <a> item is blockified), as
@@ -931,6 +1078,12 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildItem(Node& element) {
     auto box = MakeContainer(element.tag);
     RegisterAnchors(element, box);
     ApplyBoxStyle(*box, style, /*fillWidth=*/false, /*realMargins=*/true);
+    if (style.display == DisplayMode::Inline) {
+        // A plain inline element drawn as a box: its vertical margins do
+        // not move its line (CSS 2 §10.6.1), only its horizontal ones count.
+        box->box.margin.top = CSSLayout::Dimension::Px(0.f);
+        box->box.margin.bottom = CSSLayout::Dimension::Px(0.f);
+    }
     ConfigureBlockLayout(*box);
     ApplyBackgroundImage(*box, style);
     BuildContentInto(*box, element);
@@ -1069,12 +1222,30 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             ++elementCount;
         };
         if (!marker.empty() && lineParts.front().box) addLabel({});
-        for (auto& part : lineParts) {
+        for (size_t k = 0; k < lineParts.size(); ++k) {
+            LinePart& part = lineParts[k];
             if (!part.box) {
                 addLabel(part.run);
                 continue;
             }
             if (auto box = BuildInlineBox(*part.box)) {
+                // The labels trim their outer spaces; a space between a run
+                // and the box stays as a gap beside the box. White space at
+                // the start of the line, or alone between two boxes, is one
+                // gap (after the first box) or none.
+                const ComputedStyle& boxStyle = resolver.StyleOf(part.box);
+                const LinePart* before = k > 0 ? &lineParts[k - 1] : nullptr;
+                const LinePart* after = k + 1 < lineParts.size() ? &lineParts[k + 1] : nullptr;
+                const bool spaceBefore = before && !before->box && !OnlyWhitespace(before->run) &&
+                                         RunEdgeIsSpace(before->run, /*atEnd=*/true);
+                const bool spaceAfter = after && !after->box && RunEdgeIsSpace(after->run, /*atEnd=*/false) &&
+                                        (!OnlyWhitespace(after->run) ||
+                                         (k + 2 < lineParts.size() && lineParts[k + 2].box));
+                const float space = (spaceBefore || spaceAfter) ? SpaceWidth(blockStyle) : 0.f;
+                if (spaceBefore)
+                    box->box.margin.left = CSSLayout::Dimension::Px(std::max(0.f, boxStyle.marginLeft) + space);
+                if (spaceAfter)
+                    box->box.margin.right = CSSLayout::Dimension::Px(std::max(0.f, boxStyle.marginRight) + space);
                 // vertical-align: top / bottom on the box (side-by-side mail
                 // columns are top); otherwise centred on its neighbours.
                 switch (resolver.StyleOf(part.box).verticalAlign) {
@@ -1294,6 +1465,19 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         // into children and emits nothing since the value lives in an attribute.
         if (child.tag == "input" || child.tag == "textarea" ||
             child.tag == "button" || child.tag == "select") {
+            // Real widgets sit on the line with their text, as a browser's
+            // inline-block controls do ("Name: [______] [Search]").
+            if (opts.interactiveForms) {
+                if (!IsBlockDisplay(childStyle.display)) {
+                    addBox(child);
+                    return;
+                }
+                flushRun();            // display: block - a line of its own
+                if (auto widget = BuildFormWidget(child)) {
+                    addFlowChild(widget, childStyle.marginTop, childStyle.marginBottom);
+                }
+                return;
+            }
             flushRun();
             if (auto control = BuildFormControl(child)) {
                 addFlowChild(control, childStyle.marginTop, childStyle.marginBottom);
@@ -1362,7 +1546,10 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         // An inline element around a block or a table (<a href><table>,
         // <font><div>): as in a browser, the block breaks the line and the
         // inline's formatting carries on inside it - so look through it.
-        if (HasBlockDescendant(child)) {
+        // Likewise an inline element around a form control (<label>Name
+        // <input></label>) when the controls are widgets: a run of text
+        // cannot hold a widget.
+        if (HasBlockDescendant(child) || (opts.interactiveForms && ContainsFormControl(child))) {
             RegisterAnchors(child, std::static_pointer_cast<UltraCanvasUIElement>(
                                        parent.shared_from_this()));
             for (const auto& grand : child.children) processChild(*grand);
@@ -1435,6 +1622,8 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     runPlain.clear();
     runLinks.clear();
     runImages.clear();
+    runBoxes.clear();
+    runRoomEnd = std::string::npos;
     runLineHeightPx = 0.f;
     runLineHeightSet = false;
     if (!markerPrefix.empty()) {
@@ -1480,6 +1669,16 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
         if (end > start) {
             std::string href = AncestorLink(*node);
             if (!href.empty()) runLinks.push_back({ start, end, href });
+            // Inside a <label> the builder looked through (it holds its
+            // control): a click on the text acts on the control.
+            else if (opts.interactiveForms)
+                for (const Node* a = node->parent; a && a != blockNode; a = a->parent)
+                    if (a->IsElement("label")) {
+                        const int target = LabelTargetIndex(*a);
+                        if (target >= 0)
+                            runLinks.push_back({ start, end, "#ucform-label:" + std::to_string(target), true });
+                        break;
+                    }
         }
     }
     const bool runNoWrap = blockStyle.noWrap || (anyText && allNoWrap);
@@ -1497,6 +1696,10 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
             link.endByte -= static_cast<int>(begin);
         }
         for (auto& image : runImages) image.byteOffset -= static_cast<int>(begin);
+        for (auto& box : runBoxes) {
+            box.startByte = std::max(0, box.startByte - static_cast<int>(begin));
+            box.endByte -= static_cast<int>(begin);
+        }
     }
     while (!markup.empty() && markup.back() == ' ') {
         markup.pop_back();
@@ -1511,7 +1714,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
                                   }),
                    runLinks.end());
 
-    if (!MarkupHasVisibleText(markup)) return nullptr;
+    if (!MarkupHasVisibleText(markup) || OnlyRoom(runPlain, runImages)) return nullptr;
     // The block's own letter-spacing: around the whole run (its inline
     // elements' own spacing, where it differs, is a span inside).
     if (std::fabs(blockStyle.letterSpacingPx) > 0.01f) {
@@ -1541,19 +1744,44 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
 
     // Attach the link byte ranges; the label hit-tests clicks against the
     // rendered text, so only the link actually under the pointer activates.
-    if (!runLinks.empty() && opts.onLinkActivated) {
+    const bool labelLinks = std::any_of(runLinks.begin(), runLinks.end(),
+                                        [](const LabelTextLink& l) { return l.quiet; });
+    if (!runLinks.empty() && (opts.onLinkActivated || labelLinks)) {
         label->SetTextLinks(runLinks);
-        label->onLinkActivated = opts.onLinkActivated;
+        if (labelLinks) {
+            // A <label>'s text acts on its control; any other link is the page's.
+            auto targets = labelTargets;
+            auto follow = opts.onLinkActivated;
+            label->onLinkActivated = [targets, follow](const std::string& href) {
+                static const std::string kLabel = "#ucform-label:";
+                if (href.compare(0, kLabel.size(), kLabel) == 0) {
+                    const size_t n = static_cast<size_t>(std::strtoul(href.c_str() + kLabel.size(), nullptr, 10));
+                    if (!targets || n >= targets->targets.size()) return;
+                    auto it = targets->controls.find(targets->targets[n]);
+                    if (it == targets->controls.end()) return;
+                    if (auto form = it->second.first.lock()) form->ActivateControl(it->second.second);
+                    return;
+                }
+                if (follow) follow(href);
+            };
+        } else {
+            label->onLinkActivated = opts.onLinkActivated;
+        }
         label->onLinkHovered = opts.onLinkHovered;
         label->SetShowLinkTooltips(opts.linkTooltips);
     }
     if (!runImages.empty()) label->SetInlineImages(runImages);
+    for (auto& box : runBoxes) box.endByte = std::min(box.endByte, static_cast<int>(runPlain.size()));
+    runBoxes.erase(std::remove_if(runBoxes.begin(), runBoxes.end(),
+                                  [](const LabelTextBox& b) { return b.endByte <= b.startByte; }),
+                   runBoxes.end());
+    if (!runBoxes.empty()) label->SetTextBoxes(runBoxes);
     return label;
 }
 
 void ElementBuilder::StyleWrap(const ComputedStyle& style, const ComputedStyle& runStyle,
                                std::string& prefix, std::string& suffix,
-                               const std::string& tag) {
+                               const std::string& tag, bool withBackground) {
     auto wrap = [&](const std::string& open, const std::string& close) {
         prefix += open;
         suffix = close + suffix;
@@ -1580,6 +1808,13 @@ void ElementBuilder::StyleWrap(const ComputedStyle& style, const ComputedStyle& 
     if (colorDiffers) {
         wrap("<span foreground=\"" + ColorHex(style.color) + "\">", "</span>");
     }
+    // An inline element's own background (it is not inherited: runStyle's
+    // is its block's, painted by the block's box), as tall as the text. In
+    // a run AppendInlineMarkup draws it as a LabelTextBox instead; this is
+    // for the text of an inline the builder looked through.
+    if (withBackground && style.backgroundColor && style.backgroundColor->a > 0) {
+        wrap("<span background=\"" + ColorHex(*style.backgroundColor) + "\">", "</span>");
+    }
 }
 
 void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
@@ -1590,8 +1825,11 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
         for (unsigned char c : node.text) {
             if (!std::isspace(c)) { NoteRunLineHeight(runStyle); break; }
         }
+        // Right after room, white space collapses against the text before it.
+        const bool afterRoom = runRoomEnd == runPlain.size();
         std::string plain = preserveWhitespace
-            ? node.text : CollapseWhitespace(node.text, runPlain);
+            ? node.text
+            : CollapseWhitespace(node.text, afterRoom ? std::string(1, runBeforeRoom) : runPlain);
         out += EscapeMarkup(plain);
         runPlain += plain;
         return;
@@ -1671,14 +1909,52 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 
     // Span wrappers derived from the difference to the enclosing run style.
     std::string prefix, suffix;
-    StyleWrap(style, runStyle, prefix, suffix, node.tag);
+    StyleWrap(style, runStyle, prefix, suffix, node.tag, /*withBackground=*/false);
 
+    // Its margin, border and padding on the left and the right: room before
+    // its first letter and after its last (CSS 2 §10.3.1 - an inline box's
+    // vertical ones do not move its line).
+    // The margin is outside the element's span; the border and padding
+    // inside it, where its background (StyleWrap) paints them, and inside
+    // its link: a click on a link's padding follows it, as in a browser.
+    const float marginBefore = std::max(0.f, style.marginLeft);
+    const float marginAfter = std::max(0.f, style.marginRight);
+    const float insideBefore = style.borderLeft.Width() + std::max(0.f, style.paddingLeft);
+    const float insideAfter = style.borderRight.Width() + std::max(0.f, style.paddingRight);
+
+    AppendInlineSpace(marginBefore, /*glueAfter=*/true, out);
     out += prefix;
     const int linkStart = static_cast<int>(runPlain.size());
+    // Its background and border: a box the label draws around its bytes,
+    // the room for its padding and border included. Pushed before the boxes
+    // inside it, so it is drawn under them.
+    const bool paints = style.backgroundColor && style.backgroundColor->a > 0;
+    size_t boxIndex = std::string::npos;
+    if (paints || style.HasBorder()) {
+        LabelTextBox box;
+        box.startByte = linkStart;
+        if (paints) box.background = ToColor(*style.backgroundColor);
+        auto side = [&](const BorderSide& b) {
+            return LabelInlineImageBorder{ b.Width(), ToColor(b.color), BorderDash(b) };
+        };
+        box.borderTop = side(style.borderTop);
+        box.borderRight = side(style.borderRight);
+        box.borderBottom = side(style.borderBottom);
+        box.borderLeft = side(style.borderLeft);
+        box.paddingTop = std::max(0.f, style.paddingTop);
+        box.paddingBottom = std::max(0.f, style.paddingBottom);
+        // In px; the label caps it at half the piece (a percentage is not kept).
+        box.borderRadius = style.borderRadiusPercent > 0.f ? 0.f : std::max(0.f, style.borderRadius);
+        boxIndex = runBoxes.size();
+        runBoxes.push_back(box);
+    }
+    AppendInlineSpace(insideBefore, /*glueAfter=*/true, out);
     bool childPre = preserveWhitespace || style.preserveWhitespace;
     for (const auto& child : node.children) {
         AppendInlineMarkup(*child, style, childPre, out);
     }
+    AppendInlineSpace(insideAfter, /*glueAfter=*/false, out);
+    if (boxIndex != std::string::npos) runBoxes[boxIndex].endByte = static_cast<int>(runPlain.size());
     out += suffix;
 
     if (style.isLink && !style.href.empty()) {
@@ -1686,7 +1962,31 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
         if (linkEnd > linkStart) {
             runLinks.push_back({linkStart, linkEnd, style.href});
         }
+    } else if (node.tag == "label" && opts.interactiveForms) {
+        // <label for="id">Name</label>: a click on its text acts on the control.
+        const int linkEnd = static_cast<int>(runPlain.size());
+        const int target = LabelTargetIndex(node);
+        if (target >= 0 && linkEnd > linkStart)
+            runLinks.push_back({ linkStart, linkEnd, "#ucform-label:" + std::to_string(target), true });
     }
+    // After the link's range: a click on the margin is not a click on it.
+    AppendInlineSpace(marginAfter, /*glueAfter=*/false, out);
+}
+
+void ElementBuilder::AppendInlineSpace(float px, bool glueAfter, std::string& out) {
+    if (!(px >= 0.5f)) return;
+    static const char kPlaceholder[] = "\xEF\xBF\xBC";   // U+FFFC
+    static const char kWordJoiner[] = "\xE2\x81\xA0";   // U+2060
+    if (runRoomEnd != runPlain.size()) runBeforeRoom = runPlain.empty() ? '\n' : runPlain.back();
+    if (!glueAfter) { out += kWordJoiner; runPlain += kWordJoiner; }
+    LabelInlineImage room;
+    room.byteOffset = static_cast<int>(runPlain.size());
+    room.frame.marginLeft = std::min(px, 10000.f);   // no picture: only the width counts
+    runImages.push_back(std::move(room));
+    out += kPlaceholder;
+    runPlain += kPlaceholder;
+    if (glueAfter) { out += kWordJoiner; runPlain += kWordJoiner; }
+    runRoomEnd = runPlain.size();
 }
 
 // ============================================================================
@@ -1866,6 +2166,304 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildFormControl(Node& ele
     return box;
 }
 
+// ============================================================================
+// INTERACTIVE FORMS
+// ============================================================================
+
+bool ElementBuilder::IsFormControl(const Node& node) {
+    return node.IsElement() && (node.tag == "input" || node.tag == "textarea" ||
+                                node.tag == "button" || node.tag == "select");
+}
+
+bool ElementBuilder::ContainsFormControl(const Node& node) const {
+    for (const auto& child : node.children) {
+        if (!child->IsElement()) continue;
+        if (resolver.StyleOf(child.get()).display == DisplayMode::Hidden) continue;
+        if (IsFormControl(*child) || ContainsFormControl(*child)) return true;
+    }
+    return false;
+}
+
+int ElementBuilder::LabelTargetIndex(const Node& label) {
+    if (!labelTargets) return -1;
+    const Node* target = nullptr;
+    const std::string forId = TrimAscii(label.GetAttribute("for"));
+    if (!forId.empty()) {
+        if (currentDocument && currentDocument->root)
+            currentDocument->root->ForEachElement([&](Node& n) {
+                if (n.GetAttribute("id") == forId) { target = IsFormControl(n) ? &n : nullptr; return false; }
+                return true;
+            });
+    } else {
+        std::function<const Node*(const Node&)> first = [&](const Node& n) -> const Node* {
+            for (const auto& c : n.children) {
+                if (!c->IsElement()) continue;
+                if (IsFormControl(*c)) {
+                    std::string type = c->GetAttribute("type");
+                    std::transform(type.begin(), type.end(), type.begin(), [](unsigned char ch) { return char(std::tolower(ch)); });
+                    if (TrimAscii(type) != "hidden") return c.get();
+                    continue;
+                }
+                if (const Node* found = first(*c)) return found;
+            }
+            return nullptr;
+        };
+        target = first(label);
+    }
+    if (!target) return -1;
+    auto& targets = labelTargets->targets;
+    for (size_t i = 0; i < targets.size(); ++i)
+        if (targets[i] == target) return static_cast<int>(i);
+    targets.push_back(target);
+    return static_cast<int>(targets.size()) - 1;
+}
+
+FormController& ElementBuilder::FormFor(const Node& control) {
+    // form="id" names the form; else the nearest <form> around the control.
+    const Node* form = nullptr;
+    const std::string formId = control.GetAttribute("form");
+    if (!formId.empty() && currentDocument && currentDocument->root) {
+        currentDocument->root->ForEachElement([&](Node& n) {
+            if (n.tag == "form" && n.GetAttribute("id") == formId) { form = &n; return false; }
+            return true;
+        });
+    }
+    if (!form && formId.empty())
+        for (const Node* p = control.parent; p; p = p->parent)
+            if (p->IsElement("form")) { form = p; break; }
+    if (!form) {
+        if (!formless) {
+            formless = std::make_shared<FormController>();
+            formless->inForm = false;
+        }
+        return *formless;
+    }
+    auto it = formByNode.find(form);
+    if (it != formByNode.end()) return *it->second;
+    auto controller = std::make_shared<FormController>();
+    controller->inForm = true;
+    controller->action = TrimAscii(form->GetAttribute("action"));
+    std::string method = form->GetAttribute("method");
+    std::transform(method.begin(), method.end(), method.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    controller->method = TrimAscii(method) == "post" ? "post" : "get";
+    std::string enctype = form->GetAttribute("enctype");
+    std::transform(enctype.begin(), enctype.end(), enctype.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    enctype = TrimAscii(enctype);
+    if (enctype == "multipart/form-data" || enctype == "text/plain") controller->enctype = enctype;
+    controller->target = form->GetAttribute("target");
+    controller->onSubmit = opts.onFormSubmit;
+    formByNode.emplace(form, controller);
+    builtForms.push_back(controller);
+    return *controller;
+}
+
+std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildFormWidget(Node& element) {
+    const ComputedStyle& style = resolver.StyleOf(&element);
+    FormController& form = FormFor(element);
+    std::weak_ptr<FormController> formRef;
+    for (const auto& f : builtForms) if (f.get() == &form) formRef = f;
+    if (!form.inForm) formRef = formless;
+    const int index = static_cast<int>(form.controls.size());
+    if (labelTargets) labelTargets->controls[&element] = { formRef, index };
+
+    FormController::Control control;
+    control.name = element.GetAttribute("name");
+    control.disabled = element.HasAttribute("disabled");
+    for (const Node* p = element.parent; p && !control.disabled; p = p->parent)
+        if (p->IsElement("fieldset") && p->HasAttribute("disabled")) control.disabled = true;
+
+    // Sizes from the font, as a browser sizes a control with no CSS size.
+    const float fs = style.fontSizePx > 0.f ? style.fontSizePx : 14.f;
+    const float charWidth = fs * 0.55f;
+    const float lineHeight = std::round(fs * 1.25f + 10.f);
+    auto attrInt = [&](const char* name, int fallback, int lo, int hi) {
+        const std::string v = TrimAscii(element.GetAttribute(name));
+        if (v.empty() || !std::isdigit(static_cast<unsigned char>(v[0]))) return fallback;
+        int n = 0;
+        for (char c : v) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) break;
+            n = std::min(hi, n * 10 + (c - '0'));
+        }
+        return std::max(lo, n);
+    };
+    auto size = [&](UltraCanvasUIElement& w, float width, float height) {
+        if (style.widthPercent) w.size.width = CSSLayout::Dimension::Pct(*style.widthPercent);
+        else w.size.width = CSSLayout::Dimension::Px(style.widthPx ? *style.widthPx : std::round(width));
+        w.size.height = CSSLayout::Dimension::Px(style.heightPx ? *style.heightPx : std::round(height));
+        w.box.margin.left = CSSLayout::Dimension::Px(std::max(0.f, style.marginLeft));
+        w.box.margin.right = CSSLayout::Dimension::Px(std::max(0.f, style.marginRight));
+        w.layoutItem.SetFlexGrow(0.f).SetFlexShrink(style.widthPercent ? 1.f : 0.f);
+        if (style.widthPercent) w.layoutItem.SetFlexBasis(CSSLayout::Dimension::Pct(*style.widthPercent));
+    };
+    std::string type = element.GetAttribute("type");
+    std::transform(type.begin(), type.end(), type.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    type = TrimAscii(type);
+
+    std::shared_ptr<UltraCanvasUIElement> widget;
+    auto submitOnEnter = [formRef](const std::string&) {
+        if (auto f = formRef.lock(); f && f->inForm) { f->Submit(-1); return true; }
+        return false;
+    };
+
+    if (element.tag == "textarea") {
+        auto area = std::make_shared<UltraCanvasTextArea>(MakeId("textarea"));
+        std::string text = element.TextContent();
+        if (!text.empty() && text[0] == '\n') text.erase(0, 1);     // the newline after <textarea>
+        area->SetText(text, false);
+        area->SetBorders(1.f, Color(118, 118, 118, 255));   // a browser's field edge
+        control.kind = FormController::Kind::Text;
+        control.initialText = text;
+        size(*area, attrInt("cols", 20, 1, 500) * charWidth + 16.f,
+             attrInt("rows", 2, 1, 200) * fs * 1.3f + 12.f);
+        widget = area;
+    } else if (element.tag == "select") {
+        auto dropdown = std::make_shared<UltraCanvasDropdown>(MakeId("select"));
+        int selected = -1, longest = 4;
+        std::function<void(const Node&)> addOptions = [&](const Node& n) {
+            for (const auto& c : n.children) {
+                if (c->IsElement("optgroup")) { addOptions(*c); continue; }
+                if (!c->IsElement("option")) continue;
+                const std::string text = CollapseWhitespace(TrimAscii(c->TextContent()), "\n");
+                const std::string value = c->HasAttribute("value") ? c->GetAttribute("value") : text;
+                dropdown->AddItem(text.empty() ? std::string(" ") : text, value);
+                control.optionValues.push_back(value);
+                if (c->HasAttribute("selected")) selected = static_cast<int>(control.optionValues.size()) - 1;
+                longest = std::max(longest, static_cast<int>(text.size()));
+            }
+        };
+        addOptions(element);
+        if (selected < 0 && !control.optionValues.empty()) selected = 0;
+        if (selected >= 0) dropdown->SetSelectedIndex(selected, false);
+        control.kind = FormController::Kind::Select;
+        control.initialIndex = selected;
+        size(*dropdown, std::min(longest, 40) * charWidth + 36.f, lineHeight);
+        widget = dropdown;
+    } else if (element.tag == "button" || type == "submit" || type == "reset" ||
+               type == "button" || type == "image") {
+        std::string buttonType = element.tag == "button" ? type : type;
+        if (element.tag == "button" && buttonType != "reset" && buttonType != "button") buttonType = "submit";
+        std::string text = element.tag == "button" ? TrimAscii(element.TextContent())
+                                                    : element.GetAttribute("value");
+        if (text.empty() && element.tag == "input" && type == "image") text = element.GetAttribute("alt");
+        if (text.empty()) text = buttonType == "reset" ? "Reset" : buttonType == "submit" ? "Submit" : " ";
+        control.kind = buttonType == "reset" ? FormController::Kind::Reset
+                     : buttonType == "button" ? FormController::Kind::Button
+                                              : FormController::Kind::Submit;
+        control.value = element.GetAttribute("value");
+        if (element.tag == "button" && !element.HasAttribute("value")) control.value = std::string();
+        auto button = std::make_shared<UltraCanvasButton>(MakeId("button"), text);
+        const FormController::Kind kind = control.kind;
+        button->onClick = [formRef, index, kind]() {
+            auto f = formRef.lock();
+            if (!f) return;
+            if (kind == FormController::Kind::Submit) f->Submit(index);
+            else if (kind == FormController::Kind::Reset) f->Reset();
+        };
+        size(*button, static_cast<float>(std::min<size_t>(text.size(), 60)) * fs * 0.6f + 24.f, lineHeight);
+        widget = button;
+    } else if (type == "checkbox" || type == "radio") {
+        const bool checked = element.HasAttribute("checked");
+        control.kind = type == "radio" ? FormController::Kind::Radio : FormController::Kind::Checkbox;
+        control.value = element.HasAttribute("value") ? element.GetAttribute("value") : "on";
+        control.initialChecked = checked;
+        std::shared_ptr<UltraCanvasLabeledToggleBase> toggle;
+        if (type == "radio") {
+            auto radio = std::make_shared<UltraCanvasRadio>(MakeId("radio"), std::string());
+            // Radios with one name in one form are one group.
+            auto& group = form.radioGroups[control.name.empty() ? MakeId("unnamed") : control.name];
+            if (!group) group = std::make_shared<UltraCanvasRadioGroup>();
+            radio->SetChecked(checked);
+            group->AddRadioButton(radio);
+            toggle = radio;
+        } else {
+            auto box = std::make_shared<UltraCanvasCheckbox>(MakeId("checkbox"), std::string());
+            box->SetChecked(checked);
+            toggle = box;
+        }
+        size(*toggle, 18.f, 18.f);
+        if (style.marginLeft <= 0.f) toggle->box.margin.left = CSSLayout::Dimension::Px(3.f);
+        if (style.marginRight <= 0.f) toggle->box.margin.right = CSSLayout::Dimension::Px(3.f);
+        widget = toggle;
+    } else if (type == "hidden") {
+        control.kind = FormController::Kind::Hidden;
+        control.value = element.GetAttribute("value");
+        form.controls.push_back(std::move(control));
+        return nullptr;
+    } else if (type == "file") {
+        // A button that asks the host for files, and the names chosen.
+        control.kind = FormController::Kind::File;
+        control.multiple = element.HasAttribute("multiple");
+        control.accept = element.GetAttribute("accept");
+        auto row = MakeContainer("file");
+        row->layout.SetFlex(CSSLayout::FlexDirection::Row, CSSLayout::FlexWrap::NoWrap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        const std::string buttonText = control.multiple ? "Choose files\xE2\x80\xA6" : "Choose file\xE2\x80\xA6";
+        auto button = std::make_shared<UltraCanvasButton>(MakeId("choose"), buttonText);
+        button->size.width = CSSLayout::Dimension::Px(std::round(13.f * fs * 0.6f + 24.f));
+        button->size.height = CSSLayout::Dimension::Px(lineHeight);
+        button->layoutItem.SetFlexShrink(0.f);
+        auto names = std::make_shared<UltraCanvasLabel>(MakeId("files"));
+        ConfigureLabel(*names, style);
+        names->SetText(control.multiple ? "No files chosen" : "No file chosen");
+        names->box.margin.left = CSSLayout::Dimension::Px(6.f);
+        names->layoutItem.SetFlexShrink(1.f);
+        row->AddChild(button);
+        row->AddChild(names);
+        control.fileNames = names;
+        const bool multiple = control.multiple;
+        const std::string accept = control.accept;
+        if (opts.onChooseFiles) {
+            auto choose = opts.onChooseFiles;
+            control.openChooser = [formRef, index, choose, multiple, accept]() {
+                choose(multiple, accept, [formRef, index](std::vector<std::string> paths) {
+                    if (paths.empty()) return;                  // cancelled: the choice stays
+                    if (auto f = formRef.lock()) f->SetFiles(index, std::move(paths));
+                });
+            };
+            button->onClick = [formRef, index]() {
+                auto f = formRef.lock();
+                if (f && index < static_cast<int>(f->controls.size()) && f->controls[static_cast<size_t>(index)].openChooser)
+                    f->controls[static_cast<size_t>(index)].openChooser();
+            };
+        } else {
+            button->SetDisabled(true);                          // nowhere to choose files from
+        }
+        if (control.disabled) button->SetDisabled(true);
+        row->box.margin.left = CSSLayout::Dimension::Px(std::max(0.f, style.marginLeft));
+        row->box.margin.right = CSSLayout::Dimension::Px(std::max(0.f, style.marginRight));
+        row->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+        control.element = row;
+        form.controls.push_back(std::move(control));
+        RegisterAnchors(element, row);
+        return row;
+    } else if (type == "color" || type == "range") {
+        // Shown as the page wrote it, not sent.
+        control.kind = FormController::Kind::Other;
+        form.controls.push_back(std::move(control));
+        return BuildFormControl(element);
+    } else {
+        auto input = std::make_shared<UltraCanvasTextInput>(MakeId("input"));
+        if (type == "password") input->SetInputType(TextInputType::Password);
+        const std::string value = element.GetAttribute("value");
+        input->SetText(value);
+        input->SetPlaceholder(element.GetAttribute("placeholder"));
+        if (element.HasAttribute("readonly")) input->SetReadOnly(true);
+        if (element.HasAttribute("maxlength")) input->SetMaxLength(attrInt("maxlength", 524288, 0, 524288));
+        input->onEnterPressed = submitOnEnter;
+        control.kind = FormController::Kind::Text;
+        control.initialText = value;
+        size(*input, attrInt("size", 20, 1, 500) * charWidth + 16.f, lineHeight);
+        widget = input;
+    }
+
+    if (control.disabled) widget->SetDisabled(true);
+    control.element = widget;
+    form.controls.push_back(std::move(control));
+    RegisterAnchors(element, widget);
+    return widget;
+}
+
+
 bool ElementBuilder::HasBlockDescendant(const Node& element) const {
     for (const auto& childPtr : element.children) {
         const Node& child = *childPtr;
@@ -1873,6 +2471,8 @@ bool ElementBuilder::HasBlockDescendant(const Node& element) const {
         const ComputedStyle& style = resolver.StyleOf(&child);
         if (style.display == DisplayMode::Hidden) continue;
         if (child.tag == "table" || IsBlockDisplay(style.display)) return true;
+        // A control drawn for display only is a block of its own.
+        if (!opts.interactiveForms && IsFormControl(child)) return true;
         if (style.display == DisplayMode::InlineBlock) continue;   // a box of its own
         if (HasBlockDescendant(child)) return true;
     }
@@ -1881,8 +2481,20 @@ bool ElementBuilder::HasBlockDescendant(const Node& element) const {
 
 bool ElementBuilder::NeedsInlineBox(const Node& element) const {
     const ComputedStyle& style = resolver.StyleOf(&element);
-    if (style.display != DisplayMode::InlineBlock) return false;
     if (element.tag == "img" || element.tag == "image" || element.tag == "svg") return false;
+    if (style.display == DisplayMode::Inline) {
+        // A plain inline element whose background or border reaches past its
+        // text (vertical padding - the mail "button" <a
+        // style="background:#07f;padding:12px 24px;color:#fff">) is a box on
+        // the line, which grows the line to hold it. Any other background or
+        // border is drawn by the label around the element's text
+        // (LabelTextBox), breaking across lines with it.
+        if (element.tag == "br" || HasBlockDescendant(element)) return false;
+        const bool paints = style.backgroundColor.has_value() && style.backgroundColor->a > 0;
+        return (paints || style.HasBorder()) &&
+               (style.paddingTop > 0.f || style.paddingBottom > 0.f);
+    }
+    if (style.display != DisplayMode::InlineBlock) return false;
     if (style.layoutMode != BoxLayoutMode::Flow) return true;   // inline-flex / inline-grid
     if (HasBlockDescendant(element)) return true;
     return style.backgroundColor.has_value() || style.HasBorder() ||
@@ -1892,6 +2504,7 @@ bool ElementBuilder::NeedsInlineBox(const Node& element) const {
 }
 
 std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildInlineBox(Node& element) {
+    if (opts.interactiveForms && IsFormControl(element)) return BuildFormWidget(element);
     const ComputedStyle& style = resolver.StyleOf(&element);
     if (element.tag == "table" || style.display == DisplayMode::Table) {
         return BuildTable(element, /*inlineBox=*/true);

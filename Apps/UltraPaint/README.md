@@ -26,6 +26,31 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 
 ## Tools
 
+The palette groups tools of a kind on one button: resting the pointer on it
+folds out a bar beside it with the whole group, and a click there picks a
+tool; a click on the button itself picks the tool it shows. A small triangle
+in a button's corner marks a group. Top to bottom:
+
+| Button | Tools |
+|---|---|
+| Select | Rectangle Select, Ellipse Select, Lasso, Magic Wand |
+| Pen | Paintbrush, Pencil, Airbrush |
+| Lines | Line, Polyline, Arrow, Curve |
+| Shapes | Rectangle, Ellipse |
+| Morph | Smudge, Clone Stamp |
+| Shading | Dodge, Burn |
+| Move, Crop, Eyedropper, Eraser | one tool each |
+| Fill | Fill, Gradient |
+| Text | Text |
+| View | Zoom, Pan |
+
+With an *adaptive* toolbar (the default) a group's button shows the tool last
+picked from it; with a *static* one it always shows the group's main tool -
+the first of the row above - and the bar marks the tool in use
+(*Edit > Settings > Display > Tool palette*). The groups are `PaletteGroups()`
+in `UltraPaintWindow.cpp`; the fold-out is the framework's
+[`UltraCanvasToolGroupButton`](../../Docs/UltraCanvas/UltraCanvasToolGroupButton.md).
+
 | Tool | Key | Notes |
 |---|---|---|
 | Move | M | Drags the selected pixels (or the whole layer) |
@@ -37,13 +62,16 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 | Pencil | N | Hard, aliased pixels |
 | Paintbrush | B | Size, hardness, opacity, flow, spacing, round / square, pressure |
 | Airbrush | A | Soft, low flow |
-| Eraser | X (Shift) | To transparency |
+| Eraser | Shift+X | To transparency (plain `X` swaps the colours) |
 | Clone Stamp | S | Ctrl+click sets the source |
 | Smudge | U | Drags colour along |
 | Dodge / Burn | O / K | Lighten / darken |
 | Fill | F | Flood fill: mode (Normal / Replace), tolerance, contiguous, sample merged, opacity |
 | Gradient | G | Foreground → background; linear, radial, reflected |
 | Line / Rectangle / Ellipse | D / Q / P | Outline in the foreground colour, fill in the background colour, anti-aliased, Shift constrains |
+| Polyline | Y | Click to add corners; double-click or Enter ends it, a click on the first corner closes it (filled in the background colour with *Fill a closed shape*). Backspace takes the last corner back, Escape cancels, Shift constrains each segment to 45° |
+| Arrow | V | Drag from the tail to the tip: a filled head at the tip, or at both ends. *Head size* in pixels, never less than three times the line width |
+| Curve | J | Drag a straight line, then drag or click twice to bend it - the first bend pulls the whole curve, the second its far half. Enter keeps it as it is, Escape cancels |
 | Text | T | Click, type, choose font / size / bold |
 | Zoom | Z | Click in, Alt/right-click out |
 | Pan | H | Space+drag works with every tool |
@@ -88,9 +116,12 @@ transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
   clipboard history UltraDesktop keeps, saying when it was copied; Paste
   Last Copied Image takes it without asking. Settings opens the settings
   window: *Display > Mouse pointer magnification glass* - on or off, 2x /
-  3x / 4x, and the size of the glass (100-400 px); a change applies at once
-  and is saved to `~/.config/UltraCanvas/UltraPaint/config.ini` (the
-  platform's settings folder elsewhere).
+  3x / 4x, and the size of the glass (100-400 px) - and *Display > Tool
+  palette* - an adaptive toolbar (a group's button shows the tool last
+  picked) or a static one (always the group's main tool). A change applies
+  at once and is saved to `~/.config/UltraCanvas/UltraPaint/config.ini` (the
+  platform's settings folder elsewhere); *Restore defaults* restores the
+  page shown.
 - **Image:** Scale Image, Canvas Size (with anchor), Crop to Selection
   (applies the Crop tool's rectangle when that tool is holding one,
   otherwise crops to the selection),
@@ -149,10 +180,12 @@ every pixel of a colour and `Del` erases them.
 
 ## Files
 
-Opens what libvips loads (PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL,
-TGA, PSD, camera RAW, …). *Save* / *Save As* write the flattened image
-in the format of the extension; *Export with Options* adds the per-format
-knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
+Opens and saves the formats the framework's FileLoader lists for this build
+(`UltraCanvasFileLoader::GetSupportedLoadExtensions` / `AddImageSaveTypes`:
+PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL, TGA, QOI, ICO, camera RAW,
+… - whatever libvips and the framework's plugins read and write here), not
+a list of its own. *Save* / *Save As* write the flattened image in the
+format of the extension; *Export with Options* adds the per-format knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
 and one PNG per layer.
 
 ### Dropping a file on the canvas

@@ -1,3 +1,13 @@
+#### 2026-10-12 *0.24.4*
+- **One UltraFIBU at a time.** Starting the UltraFIBU window while it is
+  already running - with or without a file - brings the open window forward
+  (restored if minimised; an open dialog comes forward with it) instead of
+  opening a second copy; the start window counts as well. Two starts at the
+  same moment cannot both stay, and a copy that does not answer is reported
+  with *"UltraFIBU is already running"*. The commands (`ultrafibu info
+  buch.db`, ...) are unaffected: they still run beside an open window.
+  Framework: `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
 #### 2026-10-10 *0.24.3*
 - **Windows: the framework now closes the console a double-click opens.**
   UltraFIBU stays a console program, so its commands print into the prompt

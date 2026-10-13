@@ -9,8 +9,8 @@
 // That is what makes this a type lookup rather than a file lookup - one call
 // per extension serves a folder of ten thousand files, and a path on a
 // disconnected volume still gets its icon.
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+// Version: 1.1.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasWindowsIcons.h"
@@ -134,6 +134,13 @@ namespace UltraCanvas {
             return out;
         }
 
+        // The lists come in the shell's own sizes, and the jumbo one is 256
+        // a side whatever was asked: a medium tile asking for 128 pixels got
+        // a quarter-megabyte pixmap it drew at a quarter of the area, and a
+        // window full of distinct types held four times what it showed. So
+        // every answer goes through FitHostIconToSize, after the trim above
+        // so the picture itself fills the size asked for.
+
         // The shell's icon index for a file NAME - no disk access, and no
         // requirement that the file exists.
         bool SystemIconIndex(const std::wstring& path, bool isDirectory,
@@ -197,11 +204,11 @@ namespace UltraCanvas {
         if (SystemIconIndex(wide, isDirectory, index)) {
             for (int list : ListsForSize(desiredSize)) {
                 if (auto pixmap = IconFromImageList(list, index))
-                    return TrimTransparentBorder(pixmap);
+                    return FitHostIconToSize(TrimTransparentBorder(pixmap), desiredSize);
             }
         }
         if (auto pixmap = AssociatedIcon(wide, isDirectory, desiredSize))
-            return TrimTransparentBorder(pixmap);
+            return FitHostIconToSize(TrimTransparentBorder(pixmap), desiredSize);
         return nullptr;
     }
 
