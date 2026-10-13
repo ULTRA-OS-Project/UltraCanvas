@@ -1607,6 +1607,11 @@ package_if_built "UltraCanvasStart" build_app_bundle \
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 package_if_built "ultramsg" build_cli_tool "ultramsg"
 
+# Package the UltraPress command line (Apps/UltraPress): a starter site, the
+# check, a page's HTML shadow, the static publish. The editor comes later and
+# joins as an app bundle then.
+package_if_built "ultrapress" build_cli_tool "ultrapress"
+
 # ── What was packaged ───────────────────────────────────────────────────────
 
 if [ "${#SKIPPED_APPS[@]}" -gt 0 ]; then
