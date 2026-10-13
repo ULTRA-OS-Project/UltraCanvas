@@ -179,7 +179,15 @@ lists Overdue plus every priority actually used on the board.
   column; double-clicking a column header renames it inline; Del removes the
   selected card. Programmatic access: `OpenCardEditor(id)`,
   `CloseCardEditor(save)`, `SetEditable(bool)`.
-- `ScrollToCard(id)` / `SelectCard(id)` from code.
+- **Files from outside** (any board, editable or not): set `onFilesDropped`
+  and files dragged in from a file manager or the desktop land on the column
+  under the pointer; the column is highlighted while they hover it. What the
+  files become is the host's decision. Unset, file drops pass on to the
+  parent elements.
+- `ScrollToCard(id)` / `SelectCard(id)` from code; `ColumnIdAt(point)` is the
+  column under a point in the element's coordinates (-1 = none);
+  `BeginColumnRename(columnId, startEmpty)` opens a column title's inline
+  rename, for an "add column" button of the host's own.
 
 Callbacks:
 
@@ -193,6 +201,9 @@ board->onSelectionChanged = [](int id) { /* selected */ };   // -1 = cleared
 board->onWipExceeded = [](int columnId) { /* over WIP limit */ };
 board->onBoardChanged = []() { /* changed */ };             // Any editor mutation
 board->canDropCard = [](int cardId, int toColumnId) { return true; };
+board->onFilesDropped = [data](const std::vector<std::string>& files, int columnId, int laneId) {
+    for (const std::string& path : files) data->AddCard(columnId, path, laneId);
+};
 ```
 
 ## Factories

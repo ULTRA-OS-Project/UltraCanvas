@@ -1728,6 +1728,12 @@ int UltraCanvasKanbanBoardElement::ColumnIndexAt(const Point2Di& pos) const {
     return -1;
 }
 
+int UltraCanvasKanbanBoardElement::ColumnIdAt(const Point2Di& pos) const {
+    int index = ColumnIndexAt(pos);
+    if (index < 0 || index >= static_cast<int>(layout.columns.size())) return -1;
+    return layout.columns[index].columnId;
+}
+
 int UltraCanvasKanbanBoardElement::LaneIdAt(const Point2Di& pos) const {
     for (const auto& lane : layout.lanes) {
         if (pos.y >= lane.top && pos.y <= lane.top + lane.height) {
@@ -2353,6 +2359,18 @@ void UltraCanvasKanbanBoardElement::RenderCards(IRenderContext* ctx) {
 }
 
 void UltraCanvasKanbanBoardElement::RenderDropIndicator(IRenderContext* ctx) {
+    if (fileDragOver && dropColumnIndex >= 0 &&
+        dropColumnIndex < static_cast<int>(layout.columns.size())) {
+        // Files from outside: the whole column is the target, there is no
+        // insertion point — dropped files join the end.
+        const ColumnLayout& cl = layout.columns[dropColumnIndex];
+        ctx->SetFillPaint(style.dropIndicatorColor.WithAlpha(40));
+        ctx->FillRoundedRectangle(cl.bodyRect, style.columnCornerRadius);
+        ctx->SetStrokePaint(style.dropIndicatorColor);
+        ctx->SetStrokeWidth(2.0f);
+        ctx->DrawRoundedRectangle(cl.bodyRect, style.columnCornerRadius);
+        return;
+    }
     if (!draggingCard || dropColumnIndex < 0 ||
         dropColumnIndex >= static_cast<int>(layout.columns.size())) return;
 
@@ -3024,10 +3042,19 @@ void UltraCanvasKanbanBoardElement::StartAddColumn() {
     auto ds = GetKanbanDataSource();
     if (!ds) return;
     int columnId = ds->AddColumn("New Column");
-    renamingColumnId = columnId;
-    renameBuffer = "New Column";
-    SetFocus(true);
+    BeginColumnRename(columnId);
     if (onBoardChanged) onBoardChanged();
+}
+
+void UltraCanvasKanbanBoardElement::BeginColumnRename(int columnId, bool startEmpty) {
+    auto ds = GetKanbanDataSource();
+    const KanbanColumn* col = ds ? ds->FindColumn(columnId) : nullptr;
+    if (!col) return;
+    if (editor.open) CloseCardEditor(false);
+    CommitRename(true);
+    renamingColumnId = col->id;
+    renameBuffer = startEmpty ? std::string() : col->title;
+    SetFocus(true);
     RequestRedraw();
 }
 
@@ -3076,8 +3103,9 @@ bool UltraCanvasKanbanBoardElement::OnEvent(const UCEvent& event) {
             return HandleWheel(event);
 
         case UCEventType::MouseLeave:
-            if (draggingCard) {
+            if (draggingCard || fileDragOver) {
                 draggingCard = false;
+                fileDragOver = false;
                 dropColumnIndex = -1;
             }
             pressedCardId = -1;
@@ -3093,6 +3121,38 @@ bool UltraCanvasKanbanBoardElement::OnEvent(const UCEvent& event) {
 
         case UCEventType::TextInput:
             return HandleTextInput(event);
+
+        case UCEventType::DragEnter:
+        case UCEventType::DragOver: {
+            if (!onFilesDropped || draggingCard) return false;
+            int index = ColumnIndexAt(event.pointer);
+            if (!fileDragOver || index != dropColumnIndex) {
+                fileDragOver = true;
+                dropColumnIndex = index;
+                dropLaneId = layout.lanes.empty() ? -1 : LaneIdAt(event.pointer);
+                RequestRedraw();
+            }
+            return true;
+        }
+
+        case UCEventType::DragLeave:
+            if (!fileDragOver) return false;
+            fileDragOver = false;
+            dropColumnIndex = -1;
+            RequestRedraw();
+            return true;
+
+        case UCEventType::Drop: {
+            if (!onFilesDropped || event.droppedFiles.empty()) return false;
+            const bool wasOver = fileDragOver;
+            fileDragOver = false;
+            dropColumnIndex = -1;
+            if (wasOver) RequestRedraw();
+            int columnId = ColumnIdAt(event.pointer);
+            int laneId = layout.lanes.empty() ? -1 : LaneIdAt(event.pointer);
+            onFilesDropped(event.droppedFiles, columnId, laneId);
+            return true;
+        }
 
         default:
             return false;

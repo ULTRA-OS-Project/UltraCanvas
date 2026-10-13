@@ -132,6 +132,17 @@ windows stop short of the bars instead of covering them.
 - **Stickerboard**: sticky notes over the wallpaper. *+* in the corner adds
   one; each note is edited in place, dragged by its top bar, cycled through
   six paper colours and closed with ×. Notes come back where they were.
+- **Sticker board**: files and notes sorted into categories on a Kanban board
+  over the wallpaper, toggled by the button below the Stickerboard's. It
+  starts with *Docs*, *Work* and *Home*. Drop files from the file manager
+  onto a category and they are added to it straight away, without a
+  question; a file already on the board moves to the category it was
+  dropped on. A double-click opens a file with its default application;
+  cards are dragged from one category to another. *+ Add category* adds a
+  category and lets you type its name (double-click a category's title to
+  rename it later). The picker in the bar switches the display style:
+  *Sticky notes*, *Poster*, *Schematic* or *Dark*. Drag the panel by its
+  title; the board, its style and its place are kept.
 
 ### Notifications
 
@@ -188,11 +199,17 @@ ssh (`--windows` needs a display; `--apps` and `--devices` do not).
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
   "stickerboardVisible": false,
-  "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ]
+  "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
+  "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
+                     "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } }
 }
 ```
 
 An empty wallpaper shows the framework's `media/images/landscape.jpg`.
+`categoryBoard.board` is the Kanban element's own JSON document
+([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
+it the Sticker board starts with Docs, Work and Home. `design` is one of
+`stickynotes`, `poster`, `schematic`, `dark`.
 
 ## How the mail count gets there
 
