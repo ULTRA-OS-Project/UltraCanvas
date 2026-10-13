@@ -1631,6 +1631,20 @@ package_if_built "UltraCanvasStart" build_app_bundle \
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 package_if_built "ultramsg" build_cli_tool "ultramsg"
 
+# Package UltraPress (Apps/UltraPress). `ultrapress` is one program, the
+# commands and the editor window (two names differing only in case are one
+# name on this filesystem): it goes into an app bundle, and beside it as a
+# command-line tool - a starter site, the check, a page's HTML shadow, the
+# static publish, the WordPress import.
+package_if_built "ultrapress" build_app_bundle \
+    "ultrapress" \
+    "UltraPress" \
+    "com.cloverleaf.UltraPress" \
+    "media/appicon/UltraPress.png" \
+    "public.app-category.developer-tools" \
+    ""
+package_if_built "ultrapress" build_cli_tool "ultrapress"
+
 # ── What was packaged ───────────────────────────────────────────────────────
 
 if [ "${#SKIPPED_APPS[@]}" -gt 0 ]; then

@@ -314,7 +314,14 @@ if(EMSCRIPTEN)
     # to what links it), and a sibling module compiled before the core
     # without them stops the link - "--shared-memory is disallowed by
     # VirtualFSManager.cpp.o because it was not compiled with 'atomics'".
-    add_compile_options(-pthread -fwasm-exceptions)
+    # The thread switch is the library's (same name, same default; its own
+    # option() then finds the value), declared here because this runs first.
+    option(ULTRACANVAS_WASM_THREADS "WebAssembly: build with -pthread (Web Workers)" ON)
+    if(ULTRACANVAS_WASM_THREADS)
+        add_compile_options(-pthread -fwasm-exceptions)
+    else()
+        add_compile_options(-fwasm-exceptions)
+    endif()
     set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
     set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
     set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
@@ -383,6 +390,7 @@ include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
 include(cmake/UltraCanvasWinManifest.cmake)
 include(cmake/UltraCanvasWindowsGuiApp.cmake)
+include(cmake/UltraCanvasSingleInstance.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
@@ -435,6 +443,14 @@ endif()
 # and Tests/ must agree about which side defines the backend.
 if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
+endif()
+
+# Which platforms can hold a single-instance lock (UltraCanvasInstanceLock:
+# flock() on Linux, the BSDs and macOS, LockFileEx on Windows). Same reason as
+# above: the core file compiles an "Unsupported" fallback unless this is set,
+# and the library and Tests/ must agree about which side defines the backend.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK ON)
 endif()
 
 # Which platforms have a trash UltraCanvasTrash can move files into: the
@@ -550,6 +566,17 @@ endif()
 option(BUILD_ULTRAFIBU "Build the UltraFIBU accounting application" ON)
 if(BUILD_ULTRAFIBU AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraFIBU)
+endif()
+
+# ===== ULTRAPRESS =====
+# The website and shop builder that publishes WebAssembly
+# (Docs/Research/UltraPressDesignProposal.md). Phase 1 begins with the
+# headless engine and the `ultrapress` command line; the editor and the
+# renderer follow. The engine links the core for UltraCanvasJSON and the
+# HTMLReader, so it is built wherever the core is.
+option(BUILD_ULTRAPRESS "Build the UltraPress engine and command line" ON)
+if(BUILD_ULTRAPRESS AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_subdirectory(Apps/UltraPress)
 endif()
 
 # ===== ULTRACLEANER =====
@@ -1174,6 +1201,8 @@ if(BUILD_ULTRAWIN_MANAGER AND TARGET UltraWin)
         Apps/UltraWinManager/main.cpp
         Apps/UltraWinManager/UltraWinManagerWindow.cpp
     )
+    # One copy per user (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraWinManager)
     target_include_directories(UltraWinManager PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraWinManager
@@ -1302,6 +1331,17 @@ if(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS AND TARGET UltraDatabase)
     add_subdirectory(Tests/UltraFIBU)
     message(STATUS "")
     message(STATUS "── UltraFIBU engine test suite enabled (target: UltraFIBUEngineTests) ──")
+endif()
+
+# ===== ULTRAPRESS ENGINE TESTS =====
+# The content model, the validator, the HTML shadow, the sitemap and feed,
+# the static publish of the example site. Headless; needs the core library.
+option(ULTRACANVAS_BUILD_ULTRAPRESS_TESTS "Build the UltraPress engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAPRESS_TESTS AND TARGET UltraPressEngine)
+    enable_testing()
+    add_subdirectory(Tests/UltraPress)
+    message(STATUS "")
+    message(STATUS "── UltraPress engine test suite enabled (target: UltraPressEngineTests) ──")
 endif()
 
 # ===== ULTRACLEANER ENGINE TESTS =====
@@ -1765,6 +1805,8 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
     )
+    # One copy per user (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraAIApp)
 
     target_include_directories(UltraAIApp PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}

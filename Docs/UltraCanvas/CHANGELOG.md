@@ -1,3 +1,179 @@
+#### 2026-10-13 *0.9.272*
+- **UltraCrypt 0.2.0: Ed25519 signatures.** `UltraCrypt_Sign` and
+  `UltraCrypt_Verify` (and `UltraCrypt_SignFile` / `UltraCrypt_VerifyFile`
+  over a file's bytes) give the framework its first public-key operation:
+  deterministic 64-byte detached signatures under RFC 8032, checked with a
+  32-byte public key and nothing else, so a signed catalog or update can be
+  verified by a client that holds no secret. `UltraCrypt_GenerateSignatureKeyPair`
+  draws a fresh pair, `UltraCrypt_SignatureKeyPairFromSeed` rebuilds one from
+  a 32-byte seed (a seed in a vault is the whole signing identity) and
+  `UltraCrypt_GetSignaturePublicKey` reads the public half out of a secret
+  key. A wrong-length key or signature is refused with `InvalidKeySize` /
+  `InvalidArgument` before anything is checked; a mismatch is the new
+  `UltraCryptResultCode::SignatureInvalid`, one code whether the message, the
+  signature or the key is off. Tested against the RFC 8032 §7.1 vectors plus
+  a flipped message bit, a flipped signature bit, a wrong key and a file with
+  a byte appended. The first consumer is UltraStore's signed catalog.
+- **UltraNet 0.3.0: downloads that resume, pause and are not cut off at
+  30 seconds.** What UltraStore's package downloads need, and what every
+  download so far lacked:
+  - **`UltraNetHttpOptions::outputFilePath` works**, on the sync and the
+    async path: the body goes to the file, `response.body` stays empty, and
+    the file is closed before `onComplete` fires. `UltraNet_HttpDownloadFile`
+    is now this with its `localPath`. It was declared and never read; the
+    API status tool had it as NOT IMPLEMENTED.
+  - **Range resume.** `resumeOutputFile` continues a partial file: its size
+    is the offset, the request asks for `bytes=<size>-`, a 206 is appended,
+    a 200 from a server that ignores the range replaces the file rather than
+    being appended to it, and a 416 whose `Content-Range` total is the file's
+    size means the file was already complete and is reported as success.
+    `resumeFromOffset` does the same for a caller holding its own partial
+    copy. Progress figures count the resumed bytes, so they are of the whole
+    file.
+  - **No whole-transfer timeout on a download.** A transfer that writes a
+    file has no `timeoutMs` limit by default and a stall limit instead: the
+    new `stallTimeoutMs` (the config default, 30 s, for a file; off
+    otherwise) ends a transfer with `Timeout` when no byte has moved for that
+    long. `timeoutMs = -1` turns the whole-transfer limit off for any
+    request. Before this, `UltraNet_HttpDownloadFile` - the SDK download in
+    UltraCanvasStart among others - failed after 30 seconds whatever the
+    file's size.
+  - **Pause and resume.** `UltraNet_PauseRequest` / `UltraNet_ResumeRequest`
+    / `UltraNet_IsRequestPaused` on an async handle: nothing is read while
+    paused, no callback fires, the connection stays open, the stall limit is
+    suspended, and the transfer continues where it stopped. A pause asked
+    for before the connection exists is applied as soon as it does.
+  - **`httpsOnlyRedirects`.** A redirect to anything but `https://` ends the
+    transfer as the new `UltraNetResultCode::RedirectRefused`, with the 3xx
+    and its `Location` reported, so a download started over TLS is never
+    bounced onto a plain connection. Without it a redirect may go to
+    `http://` or `https://`; libcurl's default also allowed `ftp://`.
+  - **`UltraNetHttpRequest::onHeaders`.** Fires once, when the final
+    response's headers are complete and before its body - not for a redirect
+    being followed or a 1xx - with `statusCode`, `headers`, `contentType` and
+    `contentLength` filled. Returning false ends the transfer as `Cancelled`
+    with nothing read: a `Content-Length` over the package's declared size
+    is refused before a byte of it is downloaded.
+  - Tested against a Range-capable loopback origin (`Tests/UltraNet/
+    test_download.cpp`: 206, 200-start-over, 416-complete, the tail by
+    offset, progress totals, the refused redirect, headers before the body
+    and as a veto, a stall, pause and resume, an async file). The API status
+    tool probes each of them (`/range/<n>`, `/redirect-http` and `/stall`
+    routes on its origin).
+
+#### 2026-10-13 *0.9.271*
+- **VideoFX 0.13.0: voice-overs and sound effects at any time.** The new
+  `VideoFXExportSettings::audioClips` holds free audio clips. Each is a sound
+  file placed at a time of the export, independent of the cuts, with its own
+  range of the file (`start`, `end`), `volume` and fades.
+  - New: `VideoFXAudioClip`, with `Sound(path, at, volume)` and
+    `VoiceOver(path, at, volume)`.
+  - The clips are mixed with the segments' sound before the music. A clip
+    with `ducksMusic` (every `VoiceOver`) is heard by the ducker, so the music
+    dips under narration as it does under speech. Sound effects are added
+    after the ducker and leave the music alone.
+  - Clips may overlap each other and the cuts. One running past the end of
+    the export is cut off there; the export is not lengthened. A silent
+    timeline with a voice-over gets a sound track.
+  - Each clip's file is opened when the timeline reaches it and closed when
+    it has played.
+  - Refused before anything is written: a missing file, one without sound,
+    a start past the file's end, or a value out of range.
+  - Saved in project files (missing clips are reported like missing
+    songs), and carried by slideshows and drafts.
+  - `videofx`: `--sound FILE@SECONDS[:VOLUME]` and
+    `--voice FILE@SECONDS[:VOLUME]`, repeatable.
+
+#### 2026-10-13 *0.9.270*
+- **`UltraCanvasButton::SetTextAlign` is honoured.** The button drew its
+  text centred whatever `SetTextAlign` had been given - `style.textAlign`
+  was set and never read - so a list of flat, left-aligned buttons (the
+  front page demo's FAQ questions, UltraPress's page and block lists) came
+  out ragged, short labels centred and long ones flush left. `DrawText` now
+  aligns as the style says; buttons that never call it are unchanged.
+- **New design proposal: UltraPress, a website and shop builder that
+  publishes WebAssembly** (`Docs/Research/UltraPressDesignProposal.md`).
+  The investigation decides what "generate WebAssembly instead of HTML and
+  JavaScript" can mean and picks one: a site is data, edited on the desktop
+  and rendered by one framework renderer built per release with the
+  Emscripten port - the ultraos.eu front page demo generalised - with a
+  plain HTML shadow of every page for crawlers, mail clients and screen
+  readers, and a native UltraWeb app as the second output. It maps the
+  brief's twelve features onto the modules the tree has (HTMLReader,
+  RichTextEdit, UltraDatabase, UltraNet's SMTP and OAuth2, UltraCloud's
+  FTP / SFTP / WebDAV publishing, UltraVault, UltraAI, VirtualFS packages,
+  UltraFIBU invoices), names the two missing framework pieces - an HTTP
+  server in UltraNet and a site theme model - and lays out a measure-first
+  Phase 0, five phases, the risks and nine questions for the user.
+- **WebAssembly backend: the History API.** `WASMURL::PushUrl` and
+  `ReplaceUrl` change the address bar without leaving the page, `GetPath`
+  reads it, and `SetOnNavigate` hears the back and forward buttons (every
+  `popstate`) with the new URL - so an application that shows several pages
+  from one module is no longer one URL (`UltraCanvasWASMSupport.h`,
+  `Docs/UltraCanvas/UltraCanvasWebAssembly.md`). The ultraos.eu front page
+  demo uses it: a link into the site opens a page of the demo under
+  `?page=<site path>` instead of leaving for the real site, the back button
+  returns, and a reload keeps the page; the demo's CMake adds the
+  `UltraCanvas/` directory to its include path for the header.
+- **`wasm-build.yml` records what a visitor downloads:** a *Demo sizes*
+  step writes each demo's `.wasm`, `.js`, `.data` and worker file into the
+  job summary, raw, gzip-compressed and Brotli-compressed, the way the
+  packaging jobs report the desktop package sizes. Measurement only; it
+  never fails the job. First run (emsdk 6.0.11): the ultraos.eu front page
+  demo is 11.24 MB raw and 3.9 MB over Brotli, 6.52 MB of it the module
+  and 4.57 MB the fonts and pictures; the minimal demo 10.01 MB raw. The
+  proposal's §4.3 carries the table. The artifact list no longer names the
+  `<demo>.ww.js` worker files, which emsdk 6.0.11 does not emit. The
+  workflow then grew into five variants, one job each, for the proposal's
+  Phase 0: `baseline`, `min-size` (`-Os`), `no-vips`, `four-fonts` and
+  `single-thread`, each with its own size table and `wasm-demo-<variant>`
+  artifact; the last three never fail the run. All five build: `-Os` saves
+  60 KB, no libvips 0.65 MB over Brotli, four fonts 0.94 MB, and the
+  single-threaded build is no larger than the threaded one.
+- **WebAssembly backend: build options for the size measurements.**
+  `ULTRACANVAS_WASM_THREADS=OFF` builds the library without `-pthread`, and
+  `WASM_THREADS=0` builds `build-wasm-sysroot.sh`'s sysroot the same way,
+  for a single-threaded program a static host can serve without isolation
+  headers; the demo's `UC_WASM_FONTS` preloads a `;`-list of the bundled
+  fonts instead of all fourteen. The window logs its first presented frame
+  to the browser console with its time since navigation start, so a tester
+  reads the port's time to first paint on any browser.
+- **New application: UltraPress 0.1.0**, the website and shop builder that
+  publishes WebAssembly - its headless engine and `ultrapress` command line,
+  Phase 1 of the proposal (`Apps/UltraPress`, `Docs/UltraPress/`, its own
+  changelog). Framework side: the product declaration in
+  `cmake/UltraCanvasVersion.cmake`, `BUILD_ULTRAPRESS` and
+  `ULTRACANVAS_BUILD_ULTRAPRESS_TESTS` in the root CMake, and
+  `Docs/UltraPress` in the docs index.
+- `Masterfile_modules.md` §6 said UltraDatabase was "Concept / design only";
+  it has had the SQLite core, migrations and the PostgreSQL driver since
+  UltraFIBU's multi-user mode was built on them. The registry line now says
+  what `Docs/Modules/UltraDatabase/README.md` says.
+
+#### 2026-10-13 *0.9.269*
+- **One running copy per user: `UltraCanvasSingleInstance`.** A second start
+  of an application no longer opens another window: it asks the copy already
+  running to come forward - restored if minimised, an open dialog first - and
+  quits. An application opts in with `ultracanvas_single_instance(<target>)`
+  in CMake and a few lines in `main()` (`Claim()` before `Initialize`,
+  `ListenRaise()` before `Run`). UltraMail, UltraClipboard, DeviceExplorer,
+  UOS-Settings, UltraNetMonitor, UltraPassword, UltraAuthenticator,
+  UltraCleaner, EmailCleaner, UltraClaude, the UltraAI dashboard, UltraSocial,
+  UltraFIBU and UltraWin Manager use it; command-line tools and the
+  document applications do not (yet). The request travels over UltraMessage
+  (`<appId>.show`); the source is compiled into each application, since the
+  core does not link UltraMessage. See
+  `Docs/UltraCanvas/UltraCanvasSingleInstance.md`.
+- **`UltraCanvasInstanceLock`**, underneath it: `Acquire(<path>)` answers
+  `Acquired`, `HeldElsewhere` (another copy is running), `Failed` or
+  `Unsupported`. The lock is the operating system's (`flock` on Linux, the
+  BSDs and macOS, `LockFileEx` on Windows), so it goes away with the process
+  however it ends - a crash never leaves a stale lock behind. Android and
+  WebAssembly answer `Unsupported`. Tested by `Tests/InstanceLockTest.cpp`
+  (ctest: `InstanceLockTest`), on a Thai-and-emoji folder name and across a
+  process that exits without releasing. See
+  `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
+
 #### 2026-10-13 *0.9.268*
 - **A header's usage example can be compiled too, when it opts in.**
   `scripts/check_doc_examples.py` checked the component docs, but the

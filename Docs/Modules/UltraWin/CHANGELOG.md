@@ -1,3 +1,13 @@
+#### 2026-10-12 *0.1.2*
+- **One UltraWin Manager at a time.** Starting UltraWin Manager
+  (`Apps/UltraWinManager`) while it is already running brings the open window
+  forward (restored if minimised; an open dialog comes forward with it)
+  instead of opening a second copy. Two starts at the same moment cannot both
+  stay, and a copy that does not answer is reported with *"UltraWin Manager is
+  already running"*. `--help` and `--version` are unaffected; UltraWinSetup is
+  unchanged. Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
 #### 2026-09-28 *0.1.1*
 - **The version is in the window title** — `UltraWin Manager 0.1.1` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

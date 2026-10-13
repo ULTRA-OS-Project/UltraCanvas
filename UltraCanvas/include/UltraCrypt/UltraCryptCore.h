@@ -2,8 +2,8 @@
 // Cryptographic services for the ULTRA OS / UltraCanvas framework.
 //
 // UltraCrypt is the single place where hashing, message authentication,
-// authenticated encryption, key derivation and secure random generation are
-// implemented, so that no application, plugin or sibling module has to write
+// authenticated encryption, digital signatures, key derivation and secure
+// random generation are implemented, so that no application, plugin or sibling module has to write
 // its own. The backing library (libsodium) is wrapped completely: no libsodium
 // type appears in this header, so it can be replaced without affecting callers.
 //
@@ -23,7 +23,7 @@
 // keyed with Argon2id. AES-256-GCM exists only to read foreign data and is
 // hardware-gated.
 //
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 #ifndef ULTRACRYPTCORE_H
@@ -53,6 +53,7 @@ enum class UltraCryptResultCode : uint8_t {
     InvalidKeySize,
     InvalidNonceSize,
     AuthenticationFailed,  // AEAD tag mismatch: ciphertext, AAD or nonce altered
+    SignatureInvalid,      // the signature does not match the message and key
     EntropyFailure,        // CSPRNG unavailable; never falls back to a PRNG
     BackendUnavailable,    // built without libsodium
     InternalError
@@ -324,6 +325,80 @@ UltraCryptResult UltraCrypt_RandomUInt32(uint32_t bound, uint32_t& out);
 
 // RFC 4122 version 4, lowercase hyphenated.
 UltraCryptResult UltraCrypt_GenerateUuidV4(std::string& out);
+
+// ============================================================================
+// Digital signatures (Ed25519)
+// ============================================================================
+// One signature scheme: Ed25519 (RFC 8032), deterministic, 64-byte signatures,
+// 32-byte public keys. It is what a signed catalog, manifest or update is
+// checked with: the verifier holds nothing but a public key, so a signing key
+// never has to leave the machine that signs.
+//
+// A secret key is the 64-byte form the backend uses (the 32-byte seed with
+// the public key appended) and travels in an UltraCryptSecureBuffer. The seed
+// alone is enough to rebuild the pair (UltraCrypt_SignatureKeyPairFromSeed),
+// so a key holder stores either the seed or the whole secret key - never the
+// public half alone, which cannot sign.
+enum class UltraCryptSignatureAlgorithm : uint8_t {
+    Ed25519
+};
+
+size_t UltraCrypt_GetSignaturePublicKeySize(UltraCryptSignatureAlgorithm algorithm); // 32
+size_t UltraCrypt_GetSignatureSecretKeySize(UltraCryptSignatureAlgorithm algorithm); // 64
+size_t UltraCrypt_GetSignatureSeedSize(UltraCryptSignatureAlgorithm algorithm);      // 32
+size_t UltraCrypt_GetSignatureSize(UltraCryptSignatureAlgorithm algorithm);          // 64
+bool   UltraCrypt_IsSignatureAvailable(UltraCryptSignatureAlgorithm algorithm);
+
+// A fresh pair from the CSPRNG. EntropyFailure leaves both outputs untouched.
+UltraCryptResult UltraCrypt_GenerateSignatureKeyPair(
+        UltraCryptSignatureAlgorithm algorithm,
+        std::vector<uint8_t>& outPublicKey,
+        UltraCryptSecureBuffer& outSecretKey);
+
+// The pair a seed of UltraCrypt_GetSignatureSeedSize() bytes determines. The
+// same seed always gives the same pair, so a seed kept in a vault is the
+// whole signing identity.
+UltraCryptResult UltraCrypt_SignatureKeyPairFromSeed(
+        UltraCryptSignatureAlgorithm algorithm,
+        const UltraCryptSecureBuffer& seed,
+        std::vector<uint8_t>& outPublicKey,
+        UltraCryptSecureBuffer& outSecretKey);
+
+// The public key a secret key carries, for a tool that holds only the latter.
+UltraCryptResult UltraCrypt_GetSignaturePublicKey(
+        UltraCryptSignatureAlgorithm algorithm,
+        const UltraCryptSecureBuffer& secretKey,
+        std::vector<uint8_t>& outPublicKey);
+
+// Detached signature over the exact bytes given. Deterministic: the same key
+// and message always produce the same signature, so there is no nonce to
+// store and no entropy failure at signing time.
+UltraCryptResult UltraCrypt_Sign(UltraCryptSignatureAlgorithm algorithm,
+                                 const UltraCryptSecureBuffer& secretKey,
+                                 const void* data, size_t size,
+                                 std::vector<uint8_t>& outSignature);
+
+// Returns SignatureInvalid when the signature does not match the message and
+// public key - one code whether a byte of the message, of the signature or of
+// the key is off, since a verifier has no business telling them apart.
+// InvalidKeySize / InvalidArgument report a key or signature of the wrong
+// length before anything is checked.
+UltraCryptResult UltraCrypt_Verify(UltraCryptSignatureAlgorithm algorithm,
+                                   const std::vector<uint8_t>& publicKey,
+                                   const void* data, size_t size,
+                                   const std::vector<uint8_t>& signature);
+
+// The file variants sign and verify a file's bytes as they are on disk, read
+// in full (a signature covers the whole file, so there is no streaming form).
+UltraCryptResult UltraCrypt_SignFile(UltraCryptSignatureAlgorithm algorithm,
+                                     const UltraCryptSecureBuffer& secretKey,
+                                     const std::string& filePath,
+                                     std::vector<uint8_t>& outSignature);
+
+UltraCryptResult UltraCrypt_VerifyFile(UltraCryptSignatureAlgorithm algorithm,
+                                       const std::vector<uint8_t>& publicKey,
+                                       const std::string& filePath,
+                                       const std::vector<uint8_t>& signature);
 
 // ============================================================================
 // Base32 into a secure buffer

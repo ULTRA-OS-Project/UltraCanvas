@@ -82,7 +82,11 @@ source /path/to/emsdk/emsdk_env.sh   # Emscripten 6.0.11 - the version CI builds
 The whole sysroot is compiled `-pthread -fwasm-exceptions`; the library
 build (CMakeLists.txt WASM branch) propagates the same flags PUBLIC, since
 the exception/threading ABI must match across every static library in the
-final link.
+final link. `WASM_THREADS=0 ./build-wasm-sysroot.sh <other-dir>` builds a
+sysroot without `-pthread` for a single-threaded application
+(`-DULTRACANVAS_WASM_THREADS=OFF` on the library): no `SharedArrayBuffer`,
+so no isolation headers on the serving host, and no `std::thread` at run
+time. The two kinds never share a directory.
 
 ### 2. The library / an application
 
@@ -191,15 +195,25 @@ serve the build directory with `serve.py`, and open:
   viewport. It exercises the layout engine (Block for the stacked sections,
   wrapping Flex rows for the cards and the navigation), wrapped text, hover
   states, images preloaded into the virtual FS, text inputs, a text area, a
-  checkbox, popup menus, wheel scrolling and `OpenURL()` (every link opens
-  the real page in a new tab). The texts are the page's, in tables at the
-  top of the file; the photos the page shows are placeholder tiles except
-  the three in `media/images/ultraos/`.
+  checkbox, popup menus, wheel scrolling, and the History API: a link into
+  the site opens a page of the demo under `?page=<site path>` (`PushUrl`),
+  the back button returns to the front page (`SetOnNavigate`), and a reload
+  opens the same page again; links to other sites, `mailto:` and `tel:` go
+  through `OpenURL()`. The texts are the page's, in tables at the top of the
+  file; the photos the page shows are placeholder tiles except the three in
+  `media/images/ultraos/`.
 
 The manually dispatched `wasm-build.yml` workflow configures the repository
-root with `-DBUILD_WASM_DEMOS=ON`, builds all three and uploads them, with
-`serve.py`, as the `wasm-demo` artifact: unzip it into a folder, run
-`python3 serve.py 8080` there and open any of the pages.
+root with `-DBUILD_WASM_DEMOS=ON`, so one library build gives all three
+pages, in five variants - `baseline`, `min-size` (`-Os`), `no-vips`,
+`four-fonts` (`-DUC_WASM_FONTS=...`, the four the front page uses) and
+`single-thread` - writes each variant's download sizes (raw, gzip, Brotli)
+into its job summary, and uploads each as the `wasm-demo-<variant>`
+artifact, one folder with the three pages and `serve.py`: unzip one, run
+`python3 serve.py 8080` there and open any of the pages. The browser
+console then shows `first frame presented N ms after navigation start`,
+the port's time to first paint on that machine. The last three variants
+are measurements that may fail to build; they never fail the run.
 
 The same two sources build as desktop applications - configure the
 repository root with `-DBUILD_WASM_DEMOS=ON` and run `build/ultraos-frontpage`

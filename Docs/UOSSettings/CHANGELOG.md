@@ -1,3 +1,12 @@
+#### 2026-10-12 *0.3.1*
+- **One UOS-Settings at a time.** Starting UOS-Settings while it is already
+  running brings the open window forward (restored if minimised; an open
+  dialog comes forward with it) instead of opening a second copy. Two starts
+  at the same moment cannot both stay, and a copy that does not answer is
+  reported with *"UOS-Settings is already running"*. Command-line modes
+  (`--version`) are unaffected. Framework: `UltraCanvasSingleInstance`
+  (framework changelog: `instance-lock`).
+
 #### 2026-10-05 *0.3.0*
 - **Trusted certificates names each device.** The list showed only the
   address a key is kept under, so two printers on one subnet read as two

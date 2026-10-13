@@ -302,6 +302,44 @@ add_test(NAME FileLockTest COMMAND FileLockTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FileLockTest")
 
+# ===== INSTANCE LOCK TEST =====
+# Same arrangement as the file-lock test above: UltraCanvasInstanceLock is
+# built from its own sources (core plus this platform's backend), needs no
+# display and does not link UltraCanvas.
+message(STATUS "  Building InstanceLockTest...")
+
+set(INSTANCE_LOCK_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/InstanceLockTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasInstanceLock.cpp
+)
+# Backend source and define chosen together, from the single
+# ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK decision in the top-level CMakeLists.
+if(ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK)
+    if(WIN32)
+        list(APPEND INSTANCE_LOCK_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsInstanceLock.cpp)
+    elseif(APPLE)
+        list(APPEND INSTANCE_LOCK_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MacOS/UltraCanvasMacOSInstanceLock.cpp)
+    else()
+        list(APPEND INSTANCE_LOCK_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxInstanceLock.cpp)
+    endif()
+endif()
+
+add_executable(InstanceLockTest ${INSTANCE_LOCK_SOURCES})
+target_include_directories(InstanceLockTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(InstanceLockTest PRIVATE cxx_std_20)
+if(ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK)
+    target_compile_definitions(InstanceLockTest PRIVATE ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK)
+endif()
+set_target_properties(InstanceLockTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME InstanceLockTest COMMAND InstanceLockTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: InstanceLockTest")
+
 # ===== ARCHIVE RUN TEST =====
 # "Extract and run" without a display or an archive: which entries count as
 # programs on each kind of host, the run folders (made, marked, removed, and

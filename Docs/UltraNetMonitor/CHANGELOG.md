@@ -1,3 +1,16 @@
+#### 2026-10-13 *0.15*
+- **One UltraNetMonitor at a time.** Starting UltraNetMonitor while it is
+  already running brings the open window forward (restored if minimised; an
+  open dialog comes forward with it) instead of opening a second copy. Two
+  starts at the same moment cannot both stay, and a copy that does not answer
+  is reported with *"UltraNetMonitor is already running"*. A second start
+  claims before the name sources start, so it never runs a DNS proxy of its
+  own. Command-line modes (`--list`, `--by-app`, `--names`, `--capabilities`,
+  `--events`, `--record`, `--history`, `--dns`, `--events-history`,
+  `--totals`, `--store-stats`, `--purge`, `--version`, `--help`) are
+  unaffected. Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
 #### 2026-10-12 *0.14*
 - **The window starts at the toolbar.** The line above it - the version,
   the backend and the state of every source, cut off at the window's width

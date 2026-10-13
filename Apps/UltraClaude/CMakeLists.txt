@@ -24,6 +24,8 @@ add_executable(UltraClaude
     ui/ChatListView.cpp
     ui/UltraClaudeWindow.cpp
 )
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraClaude)
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols
 # when the core is linked statically, as the other applications do.

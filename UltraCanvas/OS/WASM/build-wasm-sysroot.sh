@@ -16,6 +16,12 @@
 #   ./build-wasm-sysroot.sh [sysroot-dir] [work-dir]
 #
 # Idempotent: each stage is skipped when its pkg-config file already exists.
+#
+# WASM_THREADS=0 builds a sysroot without -pthread, for a single-threaded
+# application (UltraCanvas configured with -DULTRACANVAS_WASM_THREADS=OFF):
+# no SharedArrayBuffer, so no cross-origin isolation headers on the serving
+# host. Objects built with -pthread cannot be linked without it, so the two
+# kinds of sysroot do not mix - give each its own directory.
 set -euo pipefail
 
 command -v emcc >/dev/null || { echo "emcc not on PATH — source emsdk_env.sh first" >&2; exit 1; }
@@ -35,9 +41,17 @@ export PKG_CONFIG_PATH="$PKG_CONFIG_LIBDIR"
 export EM_PKG_CONFIG_PATH="$PKG_CONFIG_LIBDIR"
 export PKG_CONFIG="pkg-config --static"
 export CPATH="$SYSROOT/include"
-export CFLAGS="-O2 -pthread -fwasm-exceptions -fvisibility=hidden -msimd128"
+WASM_THREADS=${WASM_THREADS:-1}
+if [ "$WASM_THREADS" = "0" ]; then
+  THREAD_FLAG=""          # compiler / linker flag
+  MESON_THREAD=""         # the same inside the meson cross file's lists
+else
+  THREAD_FLAG="-pthread"
+  MESON_THREAD="'-pthread', "
+fi
+export CFLAGS="-O2 $THREAD_FLAG -fwasm-exceptions -fvisibility=hidden -msimd128"
 export CXXFLAGS="$CFLAGS"
-export LDFLAGS="-pthread -fwasm-exceptions -L$SYSROOT/lib"
+export LDFLAGS="$THREAD_FLAG -fwasm-exceptions -L$SYSROOT/lib"
 export CHOST=wasm32-unknown-linux
 export MAKEFLAGS="-j$(nproc)"
 
@@ -64,10 +78,10 @@ pkg-config = ['$WORK/wasm-pkg-config', '--static']
 exe_wrapper = '$NODE_BIN'
 
 [built-in options]
-c_args = ['-O2', '-pthread', '-fwasm-exceptions', '-fvisibility=hidden', '-msimd128']
-c_link_args = ['-pthread', '-fwasm-exceptions']
-cpp_args = ['-O2', '-pthread', '-fwasm-exceptions', '-fvisibility=hidden', '-msimd128']
-cpp_link_args = ['-pthread', '-fwasm-exceptions']
+c_args = ['-O2', $MESON_THREAD'-fwasm-exceptions', '-fvisibility=hidden', '-msimd128']
+c_link_args = [$MESON_THREAD'-fwasm-exceptions']
+cpp_args = ['-O2', $MESON_THREAD'-fwasm-exceptions', '-fvisibility=hidden', '-msimd128']
+cpp_link_args = [$MESON_THREAD'-fwasm-exceptions']
 default_library = 'static'
 # Keep -sPTHREAD_POOL_SIZE out of generated .pc files
 c_thread_count = 0
@@ -237,12 +251,14 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   [ -f meson.build ] || curl -Ls https://github.com/harfbuzz/harfbuzz/releases/download/12.1.0/harfbuzz-12.1.0.tar.xz | tar xJC . --strip-components=1
   rm -rf _build
   # hb.hh promotes warnings to errors via pragmas; emscripten's newer clang
-  # trips -Wunused-template, so disable the pragma block.
+  # trips -Wunused-template, so disable the pragma block. No utilities: the
+  # hb-subset tool links with -pthread from meson's threads dependency
+  # whatever the cross file says, which a WASM_THREADS=0 sysroot refuses.
   meson setup _build $MESON_ARGS \
-    "-Dcpp_args=-O2 -pthread -fwasm-exceptions -fvisibility=hidden -msimd128 -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR" \
+    "-Dcpp_args=-O2 $THREAD_FLAG -fwasm-exceptions -fvisibility=hidden -msimd128 -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR" \
     -Dfreetype=enabled -Dglib=enabled -Dgobject=disabled -Dicu=disabled \
     -Dcairo=disabled -Dchafa=disabled -Dtests=disabled -Ddocs=disabled \
-    -Dintrospection=disabled -Dbenchmark=disabled
+    -Dintrospection=disabled -Dbenchmark=disabled -Dutilities=disabled
   meson install -C _build
 )
 

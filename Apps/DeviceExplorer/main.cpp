@@ -8,7 +8,11 @@
 //
 // Two ways in. Without arguments it opens the UltraCanvas window. With
 // --list it scans once, prints the same tree as text and exits - usable over
-// ssh and checkable in CI.
+// ssh and checkable in CI. One window per user: a second start brings the
+// running one forward and quits (UltraCanvasSingleInstance.h); --list is not
+// a window and runs alongside it.
+// Version: 0.3.0 - one DeviceExplorer per user: a second start brings the
+//                  first one's window forward instead of opening another copy
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -26,6 +30,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 
 #include <csignal>
@@ -155,6 +160,12 @@ int main(int argc, char* argv[]) {
 
     if (list) return RunList(grouping, details, showSerials);
 
+    // Only the window claims the one copy per user; --list above runs
+    // alongside an open window. Outlives app.Run(), so it sits outside the try.
+    UltraCanvasSingleInstance instance("org.ultraos.deviceexplorer", "DeviceExplorer");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy came forward
+
     UltraCanvasApplication app;
 
 #ifdef __linux__
@@ -171,6 +182,8 @@ int main(int argc, char* argv[]) {
             debugOutput << "Failed to initialize the UltraCanvas application" << std::endl;
             return EXIT_FAILURE;
         }
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "DeviceExplorer");
         // One icon, everywhere the app is drawn: the window and the taskbar
         // entry read this file; the .ico embedded in the Windows binary and
         // the desktop entry's theme icon are rendered from the same
@@ -185,7 +198,9 @@ int main(int argc, char* argv[]) {
             exitCode = EXIT_FAILURE;
         } else {
             window.Show();
+            instance.ListenRaise();   // a later start brings this window forward
             app.Run();
+            instance.Close();         // no request reaches the window once it starts to go
         }
     } catch (const std::exception& e) {
         debugOutput << "Unhandled exception: " << e.what() << std::endl;

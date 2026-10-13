@@ -1,3 +1,11 @@
+#### 2026-10-12 *0.1.13*
+- **One UltraAI at a time.** Starting UltraAI while it is already running brings
+  the open window forward (restored if minimised; an open dialog comes forward
+  with it) instead of opening a second copy. Two starts at the same moment
+  cannot both stay, and a copy that does not answer is reported with
+  *"UltraAI is already running"*. Command-line modes are unaffected.
+  Framework: `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
 #### 2026-10-09 *0.1.12*
 - **New dashboard icon.** The face is drawn larger and without the light blue
   disc behind it (`media/appicon/UltraAI.svg`, the uploaded artwork).

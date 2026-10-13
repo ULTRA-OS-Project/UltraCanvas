@@ -91,6 +91,8 @@ add_executable(UltraCleaner
     ui/UltraCleanerAlbumView.cpp
     ui/UltraCleanerHomeView.cpp
 )
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraCleaner)
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols
 # when the core is linked statically, as the other applications do.
