@@ -170,13 +170,18 @@ jobs:
       - name: Demo sizes
         continue-on-error: true
         working-directory: UltraCanvas/OS/WASM/demo/build
+        env:
+          # Through the environment, not interpolated into the script: the
+          # four-fonts configure string holds semicolons, which the shell
+          # read as command separators (run 12).
+          CONFIGURE: ${{ matrix.configure }}
         run: |
           kb() { du -k "$1" | cut -f1; }
           mb() { awk -v k="$1" 'BEGIN { printf "%.2f MB", k / 1024 }'; }
           gz() { gzip -9 -c "$1" | wc -c | awk '{ printf "%.2f MB", $1 / 1048576 }'; }
           br() { if command -v brotli >/dev/null; then brotli -q 11 -c "$1" | wc -c | awk '{ printf "%.2f MB", $1 / 1048576 }'; else echo "n/a"; fi; }
           {
-            echo "### WebAssembly demo sizes: ${{ matrix.variant }} (emsdk ${{ inputs.emsdk_version }}, \`${{ matrix.configure }}\`)"
+            echo "### WebAssembly demo sizes: ${{ matrix.variant }} (emsdk ${{ inputs.emsdk_version }}, \`$CONFIGURE\`)"
             echo ""
             echo "| File | Raw | gzip -9 | brotli -q 11 |"
             echo "|---|---:|---:|---:|"

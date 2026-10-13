@@ -2099,7 +2099,11 @@ endif()
 # dependencies (cairo/pango/glib/fontconfig/harfbuzz/freetype/tinyxml2/vips) are re-exported as
 # bare -l<name> usage requirements, so the -L dirs must propagate (PUBLIC) to every consumer (the
 # final .exe) exactly like on macOS above — otherwise lld-link reports "could not open 'cairo.lib'".
-if(WIN32)
+# And under Emscripten: the wasm sysroot's lib/ is no default search directory of wasm-ld either.
+# With libvips on, LIBVIPS_LIBRARY_DIRS (PUBLIC, above) happened to carry it for every library;
+# a -DULTRACANVAS_ENABLE_VIPS=OFF build then failed to find pango, cairo, glib and the rest
+# (wasm-build.yml's no-vips variant, 2026-10-13).
+if(WIN32 OR EMSCRIPTEN)
     target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${CAIRO_LIBRARY_DIRS}
             ${PANGO_LIBRARY_DIRS}

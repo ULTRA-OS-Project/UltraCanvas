@@ -243,12 +243,14 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   [ -f meson.build ] || curl -Ls https://github.com/harfbuzz/harfbuzz/releases/download/12.1.0/harfbuzz-12.1.0.tar.xz | tar xJC . --strip-components=1
   rm -rf _build
   # hb.hh promotes warnings to errors via pragmas; emscripten's newer clang
-  # trips -Wunused-template, so disable the pragma block.
+  # trips -Wunused-template, so disable the pragma block. No utilities: the
+  # hb-subset tool links with -pthread from meson's threads dependency
+  # whatever the cross file says, which a WASM_THREADS=0 sysroot refuses.
   meson setup _build $MESON_ARGS \
     "-Dcpp_args=-O2 $THREAD_FLAG -fwasm-exceptions -fvisibility=hidden -msimd128 -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR" \
     -Dfreetype=enabled -Dglib=enabled -Dgobject=disabled -Dicu=disabled \
     -Dcairo=disabled -Dchafa=disabled -Dtests=disabled -Ddocs=disabled \
-    -Dintrospection=disabled -Dbenchmark=disabled
+    -Dintrospection=disabled -Dbenchmark=disabled -Dutilities=disabled
   meson install -C _build
 )
 
