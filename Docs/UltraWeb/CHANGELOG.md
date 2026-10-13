@@ -1,3 +1,13 @@
+#### 2026-10-13 *0.6.1*
+- **A large download is no longer cut off after 30 seconds.** A streamed
+  download ran under UltraNet's 30-second whole-transfer limit, so any file
+  that took longer to arrive failed part-way with a timeout. Now the file is
+  written by UltraNet itself (`outputFilePath`, UltraNet 0.3.0) with no time
+  limit at all: a download is as long as the file is large, and only
+  a server that stops sending for 30 seconds ends it, as a failed download
+  that leaves no part file. The progress figures are UltraNet's, with "so
+  far" when the server gave no size.
+
 #### 2026-10-12 *0.6.0*
 - **The downloads list.** A **Downloads** button on the toolbar shows or
   hides a panel above the status bar. It reads "Downloads (2)" while two

@@ -1,3 +1,257 @@
+#### 2026-10-13 *0.9.277*
+- DemoApp: the Kanban Board and the Pyramid Diagram moved from the Charts
+  category to Diagrams, next to the Matrix Diagram - neither plots data on
+  axes. Their pages, variants and source files are unchanged.
+- **Matrix diagram, Phase 2: the X and Y shapes.** `UltraCanvasMatrixDiagram`
+  now lays out `MatrixShape::X` - four sets on the arms of a cross (left, top,
+  right, bottom in model order), four panels in the quadrants, and a hub that is
+  either blank or holds the four set titles in boxes with arrows out to their
+  arms (`SetHubMode(MatrixHubMode::Captions)`) - and `MatrixShape::Y`, three
+  rhombic panels between seams 120 degrees apart. Both used to fall back to the
+  L layout of panel 0. Every panel is now one cell lattice (origin, row step,
+  column step), so the grid, marks, highlight and hit test serve all four
+  shapes without shape-specific copies; an X panel may name either of its sets
+  as the row set and is turned to fit.
+- Matrix diagram: a form header band (PROJECT / AREA / TEAM / DATE ...) from the
+  new `MatrixModel::headerFields`, in every shape; `SetShowHeaderBand(false)`
+  hides it.
+- Matrix diagram: `MatrixDiagramStyle::tintCellsByLevel` fills each marked cell
+  faintly with its level's colour, and a level filtered out through the legend
+  fades its tint with its mark.
+- Matrix diagram: hovering a cell lights its row and column item in every panel
+  that lists them - across both wings of a T and both quadrants of an X - not
+  only in the hovered panel.
+- `MatrixModel::Validate()` rejects an X panel that pairs two sets on one axis,
+  two panels claiming one quadrant, and a Y panel that crosses a set with
+  itself or repeats a pair. New samples `MatrixSamples::SupplyChain()` (X) and
+  `MatrixSamples::DesignTraceability()` (Y) are on new X-Shaped and Y-Shaped
+  tabs of the DemoApp page, which also gains hub, tint and header-band
+  controls. `Tests/MatrixModelTest.cpp` covers the new checks and samples.
+- Matrix diagram: rotated column headers (45 and 90 degrees) lean right past
+  their column, and the last one ran past the element and was clipped - "Graphical
+  methods" on the T sample's right wing. The cells are now narrowed just enough
+  for every rotated header to end inside the element, in the L, T and X.
+- Matrix diagram: `SetDarkTheme(false)` reset the whole style struct, dropping
+  the caller's sizes and switches (`alternateRowBands`, `tintCellsByLevel`,
+  `markSize`); it now swaps the colours only, through the new
+  `MatrixDiagramStyle::ApplyLightTheme()`.
+
+#### 2026-10-13 *0.9.276*
+- **VirtualFS asks the system once which RAM disc backing it has.**
+  `VirtualFS_GetPreferredRamDiskBacking()` (and
+  `VirtualFS_IsTrueRamDiskAvailable()` over it) launched a shell on every
+  call - `where imdisk` on Windows, `command -v hdiutil` and `diskutil` on
+  macOS - which takes seconds on a loaded machine, and UltraFiler asked on
+  the UI thread every time its *+ Drive* menu opened. The answer is now
+  probed once per process, on the first call from any thread, and kept; a
+  caller that arrives while another thread is still probing waits for that
+  answer rather than probing again, so an application can pay for the probe
+  on a background thread at start-up. The Windows and macOS back ends read
+  the kept answer when creating a disc instead of probing a second time. The
+  platform contract gains `RamDiskDetail::PlatformPreferredBacking()`, the
+  raw probe the core calls once. `VirtualFSRamDiskTest` checks that the
+  second answer is the kept one (UltraFiler changelog 1.72.6).
+- **VirtualFS on Windows looks for ImDisk discs on local drives only.**
+  `VirtualFS_ListRamDisks()` and creating a disc read the volume label of
+  every drive letter, and `GetVolumeInformationW` on a mapped network drive
+  whose server is away, or on a CD or floppy drive with nothing in it,
+  blocks for as long as the redirector or the drive takes to give up. The
+  back end now asks `GetDriveTypeW`, which answers from the mount table, and
+  reads only fixed, removable and RAM drives from D: to Z: - the letters it
+  hands out itself, and the only kinds an ImDisk volume can be.
+- **New element: `UltraCanvasTickerBoard`** (`Plugins/Diagrams/`), the ticker
+  board the catalogue lacked: a strip of items - a label, a value, a change
+  coloured by its trend - crawling across a band without end. Two faces: `Text`
+  sets the strip in a font; `DotMatrix` lights it on a fixed grid of 5x7 LED
+  dots that the text steps across one column at a time. It moves by itself
+  from the first frame, pauses while the pointer rests on it, shows an item's
+  tooltip, reports a click, and `UpdateItem` re-prices an item in place without
+  a jump. `MakeTickerQuote` formats a quote with its arrow and percentage.
+  Doc: `Docs/UltraCanvas/UltraCanvasTickerBoard.md`; a *Ticker Board* page in
+  DemoApp's Diagrams section shows a market ticker, an amber LED sign, live
+  dot-matrix quotes and a headline crawl.
+
+#### 2026-10-13 *0.9.275*
+- **CI: the compiled-object cache is saved from main only.** Every run of
+  every branch used to save a fresh ccache for each of the six build legs,
+  and under the repository's 10 GB cache limit the least-recently-used
+  eviction regularly took main's caches with it. The leg that paid was the
+  macOS Intel one, whose runner compiles five to ten times slower than the
+  others: a cold start there was a 65-82 minute build step against 13 with
+  the cache, with the whole matrix waiting on it. A pull request now
+  restores main's cache on every push and saves none; a run on main saves
+  its objects after the build, whether or not the build succeeded.
+
+#### 2026-10-13 *0.9.274*
+- **A drawing gets a size in the Save dialog's Settings too.** The Size row
+  of a bitmap type's Settings needed the picture's pixel size, and a drawing -
+  an SVG, a page of shapes - has none, so exactly where a size is wanted most
+  there was no field for it. `FileDialogOptions::SetDrawingSize(width,
+  height)` (`FileDialogConfig::imageIsDrawing`) gives the size a drawing is
+  drawn at unless another is chosen; the row opens on it, Keep proportions
+  keeps the drawing's shape, and the tooltips say it is drawn sharp at any
+  size. `FileSavePicture` (`width`, `height`, `drawing`) is the same for
+  `ShowSaveSettingsDialog`. `FileDialogTest` checks the row, the size coming
+  back and that a bitmap's `SetImageSize` is not a drawing.
+- **The settings dialog is the controls alone.** The paragraph above the
+  controls ("How PNG files are written. Every application ...") is gone - the
+  title names the format and each setting's tooltip says what it does. The
+  controls make one column of one width: a slider is no longer stretched
+  across the dialog with its value at the far edge but sits at the list's
+  width with the value beside it, the lists and size fields line up under it,
+  and a rule parts the size (this save's) from the format's own settings. A
+  slider sat 3 px below its caption - a horizontal `UltraCanvasSlider` draws
+  along its bottom edge, leaving room above for a value - and is now exactly
+  as tall as its handle, so the row centres it level with the caption.
+- **A dialog of controls has no empty room above its buttons.**
+  `UltraCanvasModalDialog` sized itself for its message area even when that
+  was hidden, so a dialog without a message - the save settings, among
+  others - kept an empty line and its slack, some 40 px, between the last
+  control and the buttons. A hidden message area now takes no room.
+- **Media viewer: Save image as at another size, with the type's save
+  settings.** `UltraCanvasMediaViewer` (UltraViewer) never told the Save
+  dialog how big its picture was, so a bitmap type's Settings had no Size row
+  there, and it wrote every file with the writer's defaults whatever those
+  Settings held. It now passes the picture's size as shown (a quarter turn
+  swaps the sides) - or, for an SVG, the drawing's size on the page through
+  `SetDrawingSize` - and writes with the type's stored settings at the size
+  chosen. An SVG is drawn again at that size, so it stays sharp, where
+  stretching the picture read at its page size blurred it.
+  `UltraCanvasMediaSurface::GetSavePicture` and
+  `SaveProcessed(path, size, error)` are the surface's side;
+  `MediaViewerSaveTest` (new) saves a bitmap larger and in another shape, an
+  SVG at twenty times its size with a hard edge, and a JPEG at two stored
+  qualities.
+- **`RasterizeVectorDocument`: a loaded drawing's page at any size.**
+  `UltraCanvasVectorRaster.h` drew a file at a chosen size
+  (`RasterizeVectorFile`) and chosen elements of an open drawing cropped to
+  what they paint (`RasterizeVectorElements`), but not the whole page of an
+  open drawing - what a drawing program exports as a bitmap. It now does:
+  the view box drawn at the pixel size asked for (one side 0 follows the
+  page's shape; both given stretch it), sharp at any size, with the
+  document's background colour and `VectorRasterOptions::background` under
+  it. ArtCreator's Export writes PNG and JPEG with it. `VectorRasterTest`
+  checks a page twenty times its size with a hard edge, the sizes, the
+  backgrounds and the refusals.
+- **Windows icons read and written by the framework's own libvips plugin;
+  QOI written by ours too.** An `.ico` was read and written through
+  ImageMagick, which many builds lack - there the export encoder could write
+  no icon at all - and QOI was written through it as well, though the
+  framework's QOI plugin read it. `VipsIcoPlugin` (new, beside
+  `VipsQoiLoader`) registers `icoload` / `icoload_buffer` - the file's largest
+  picture, a PNG entry or a bitmap one (32-bit with alpha; 24, 8, 4 or 1-bit
+  with the AND mask), cursors too - and `icosave`: one PNG picture per size
+  (16, 32, 48 and 256 unless told, `ImageExportOptions::ico.sizes`), the
+  picture fitted into the square on transparency and never blown up past its
+  own size. `VipsQoiLoader` gains `qoisave` through the bundled codec. Both
+  register when the image subsystem starts, so `new_from_file` /
+  `write_to_file` - PixelFX, `UCRasterDocument::SaveToFile`, the export
+  encoder - take them like any other format. `ImageIcoQoiTest` (new) round
+  trips QOI, checks an icon's sizes and PNG pictures, reads bitmap icons
+  made by hand (32-bit, 24-bit with a mask, a 4-bit palette) and saves both
+  from a raster document.
+- **A format listed as saveable can be encoded.** libvips has an AVIF and a
+  HEIC saver wherever libheif is installed, but they write nothing ("heifsave:
+  Unsupported compression") without libheif's AV1 / HEVC encoder.
+  `VipsCanEncode` (`ImageCairo.h`) answers for those by encoding a 2 x 2
+  picture once; `UltraCanvasFileLoader::GetSupportedFormats` reports a bitmap
+  format's `canSave` with it, and names the framework's own plugins as the
+  ICO and QOI providers. `UltraCanvasImageExportDialog` lists only formats
+  that can be encoded, so it offers ICO and QOI everywhere and AVIF / HEIC
+  only where they work.
+- **FileLoader saves a drawing as a bitmap, and every application loads and
+  saves through FileLoader.** `UltraCanvasFileLoader::SaveVectorDocument`
+  writes bitmap types too: the page drawn at a size (a new overload takes a
+  `FileSaveImageSize`; without one, `GetVectorDocumentPixelSize` - the page at
+  96 DPI), sharp at any, with the format's save settings, a JPEG on white.
+  `CanSaveImage` says whether this build writes a bitmap type, and
+  `AddVectorDocumentSaveTypes` fills a Save dialog with every vector writer
+  and every bitmap type it writes, and the page's size as a drawing.
+  ArtCreator's Export is those calls, so it offers PNG, JPEG, WebP, AVIF,
+  HEIC, TIFF, GIF, QOI, ICO and whatever else this build writes.
+  `AGENTS.md` (*Core conventions*) now says it for every application: what a
+  user loads or saves goes through FileLoader - its dialogs, readers and
+  writers, format inventory and save settings - and only a program's own
+  internal files are read and written directly; what FileLoader cannot do
+  yet is added to it, not worked around. `FileLoaderDrawingSaveTest` (new)
+  checks the page size, the types, a PNG drawn at ten times its size with a
+  hard edge, a JPEG on white and an icon.
+- **`AddImageSaveTypes`: a picture's Save offers FileLoader's types.**
+  `UltraCanvasFileLoader::AddImageSaveTypes(opts)` fills a Save dialog with
+  every bitmap type this build writes, each named, PNG first;
+  `AddVectorDocumentSaveTypes` uses it. The media viewer's Save image as
+  (six types of its own before) and UltraPaint's Open / Import / drop, Save
+  As and Export (fixed lists of their own) now take FileLoader's lists, so
+  GIF, HEIC, QOI, icons and whatever else this build reads and writes are on
+  offer there, and a type it cannot write is not. The format inventory knows
+  camera raw (DNG, CR2, NEF, ARW), read where libvips' ImageMagick delegate
+  is.
+
+#### 2026-10-13 *0.9.273*
+- **The demo application builds for WebAssembly.** `emcmake cmake` at the
+  repository root now produces `UltraCanvasDemo.html`: a *WebAssembly
+  defaults* block in the root CMakeLists.txt leaves the other applications
+  and the sibling modules off (as the Android block does), the demo target
+  becomes a page with its own shell (`Apps/DemoApp/wasm-shell.html`, a
+  loading line until the runtime is up) and preloads what its pages read -
+  fonts, icons, images, vector samples, the smaller 3D models, the docs and
+  its own sources - at `/share/...` in the virtual filesystem. The
+  application object is static in the browser, where `Run()` never returns,
+  the main window maximizes to the viewport, and the page's query string
+  stands in for the command line (`?component=piecharts`, `?about=0`). Left
+  out in the browser, each at its registration under `#ifndef __EMSCRIPTEN__`:
+  the audio pages and the three audio charts (no audio backend), the video
+  player (no video backend) and the STL page (a 25 MB sample).
+  `-DBUILD_WASM_DEMOS=ON` now also works under emcmake, adding the two
+  validation apps to the same build, which is how `wasm-build.yml` builds
+  all three pages from one library build and uploads them in one folder with
+  `serve.py`. Making the root configure and link under emcmake also fixed
+  four framework-side things: a toolchain file now counts as an explicit
+  compiler choice in the root CMakeLists.txt, so emcmake is not steered to
+  the host's clang; the core is forced static for WebAssembly (the cache
+  default is the desktop's shared core, and a wasm "shared library" is a
+  dynamic-linking side module); the CUPS probe skips the browser, where the
+  host's `cups-config` answered and the link asked for a `-lcups` that does
+  not exist; and the root passes `-pthread -fwasm-exceptions` to every
+  module in a wasm tree, since VirtualFS, compiled before the core without
+  them, stopped the link ("--shared-memory is disallowed by
+  VirtualFSManager.cpp.o"). New `cmake/UltraCanvasWasmSysroot.cmake` puts
+  the wasm sysroot on `CMAKE_FIND_ROOT_PATH`, so `find_package(ZLIB)` finds
+  the zlib it holds and the Models plugin's FBX and .blend readers are built
+  for the browser too. The demo's LaTeX page is now built and registered only
+  with the LaTeX plugin (`ULTRACANVAS_PLUGIN_LATEX`), as the PDF page is:
+  its `CreateLaTeXView()` is the plugin's on-demand loader, so any build
+  with the plugin off failed to link the demo. Two wasm sysroot patches
+  came out of running the page (`UltraCanvas/OS/WASM/patches/`, applied by
+  `build-wasm-sysroot.sh`, whose cache key they change): glib's
+  `g_slist_free_full`, `g_list_free_full`, `g_queue_free_full` and
+  `g_queue_clear_full` called their one-argument `GDestroyNotify` through
+  the two-argument `GFunc` of the foreach helpers, and pango's
+  `pango_attr_list_copy` passed `pango_attribute_copy` as a `GCopyFunc` -
+  both trap on wasm's indirect-call signature check, the first on the first
+  pango markup laid out (the demo's tree view), the second on the first
+  attribute list copied (the About window).
+  Docs: `Docs/UltraCanvas/UltraCanvasWebAssembly.md` (*The demo application
+  in the browser*), `UltraCanvas/OS/WASM/README.md`.
+- **SVG in a build whose libvips has no `svgload`.** `UCImage` now reads an
+  SVG through the vector preview seam (`UltraCanvasVectorPreview.h`, the one
+  `RegisterVectorFormatsPlugin()` installs) when libvips has no SVG loader or
+  refuses the file, keeps the parsed document and renders it with the core's
+  vector renderer at each requested size, fitted by the image's fit mode as
+  the libvips path is. The WebAssembly sysroot's libvips is such a build, so
+  the browser demo's SVG page and its SVG icons - toolbars, flat buttons, the
+  tree - render as on the desktop. An application that registers no Vector
+  plugin is unchanged.
+- The core's WebAssembly link options add `-sGROWABLE_ARRAYBUFFERS=1`: with
+  threads and memory growth, every JavaScript-side heap access otherwise
+  checks whether the buffer was replaced; the browser's growable
+  SharedArrayBuffer removes that where it exists, the checked path stays
+  elsewhere.
+- The demo's pages all name their source as `DemoApp/<file>.cpp`, the path
+  the packages ship the sources at (`share/DemoApp/`): six pages said
+  `Apps/DemoApp/...`, which resolved nowhere, so their source button opened
+  nothing.
+
 #### 2026-10-13 *0.9.272*
 - **UltraCrypt 0.2.0: Ed25519 signatures.** `UltraCrypt_Sign` and
   `UltraCrypt_Verify` (and `UltraCrypt_SignFile` / `UltraCrypt_VerifyFile`

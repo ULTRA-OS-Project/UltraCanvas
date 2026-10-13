@@ -1460,8 +1460,11 @@ application in `SaveSettings.conf` in the same folder.
 button edits them, its file icon (`UltraCanvasFileDragIcon`) is dropped on a
 folder to save there, and `UCRasterDocument::SaveToFile` reads them. A
 picture's size for one save (`FileSaveImageSize`, offered when the caller
-passes `FileDialogOptions::SetImageSize`) comes back through the
-`SaveFileDialog` overload that reports it, never stored.
+passes `FileDialogOptions::SetImageSize`, or `SetDrawingSize` for a drawing,
+which has no pixel size and is drawn sharp at any) comes back through the
+`SaveFileDialog` overload that reports it, never stored. The media viewer's
+Save image as (UltraViewer) offers it and draws an SVG again at the size
+chosen.
 
 ### **4. Plug-ins for File Types**
 
@@ -23333,8 +23336,8 @@ options say `SetRegisterAsRecent(false)` - by the framework dialog itself
 `SetDefaultFileName`, the filters (`AddFilter(description, extension or
 extensions)`, undotted, `"*"` for everything), `SetShowHidden`,
 `SetFilterToggles`, `SetConfirmOverwrite`, `SetHoverIconMenu`,
-`SetDefaultExtension`, `SetSaveSettingsButton`, `SetImageSize` and the parent
-window.
+`SetDefaultExtension`, `SetSaveSettingsButton`, `SetImageSize` (or
+`SetDrawingSize` for a drawing) and the parent window.
 
 ### Building it yourself
 
@@ -23371,6 +23374,7 @@ A config starts without filters: the dialog then lists every file under an
 | `addToRecent` | Open, Open multiple and Save add what they accept to the system's recent files (default `true`; `UltraCanvasFileLoader` sets it from `SetRegisterAsRecent`) |
 | `saveSettingsButton` | Save: the Settings button at the end of the type row, for the chosen type's [save settings](#save-settings) (default `true`; `FileDialogOptions::SetSaveSettingsButton`). Off for a caller whose writer does not read them |
 | `imageWidth`, `imageHeight` | Save: the size of the picture being saved (`FileDialogOptions::SetImageSize`). A bitmap type's Settings then offer [another size](#the-pictures-size) for this save; `GetSaveImageSize()` is the size chosen |
+| `imageIsDrawing` | Save: that picture is a drawing (`FileDialogOptions::SetDrawingSize`) - no pixel size of its own, `imageWidth` x `imageHeight` the size it is drawn at, and it is [drawn sharp at any](#a-drawing) |
 | `width`, `height` | 900 × 560 by default; the size the user left it at wins |
 
 The result arrives through `onFileSelected(path)` (single modes),
@@ -23533,7 +23537,10 @@ A press that is released without moving is a click (`onClick`).
 How a file is written is often a choice: JPEG's quality, PNG's compression,
 whether a TIFF is LZW or Deflate. The **Settings** button at the end of a
 Save dialog's type row (after "Files of type") shows the settings of the type being saved - a checkbox, a slider
-or a list per setting - and stores them on OK. For a picture of known size a
+or a list per setting - and stores them on OK. The dialog is the controls
+alone: its title names the format ("PNG settings"), each setting's tooltip
+says what it does, the controls make one column with a slider's value beside
+it, and a rule parts the size (this save's) from the format's settings. For a picture of known size a
 bitmap type's dialog also has the picture's size for this save
 ([The picture's size](#the-pictures-size)). The button is greyed out while
 the type has nothing to set ("notes.txt", a name of no type, BMP without a
@@ -23554,7 +23561,7 @@ the types):
 | `GetSaveSettings(extensionOrPath)` | Every setting's value: the user's where they set it, the default elsewhere |
 | `HasStoredSaveSettings(extensionOrPath)` | The user has set any of them |
 | `SetSaveSettings(settings)` / `ResetSaveSettings(extensionOrPath)` | Store (merged over what was there; a value is clamped or replaced by the default when it is not one the setting can hold, and a key the format lacks is dropped) / forget |
-| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
+| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` - or a `FileSavePicture`, which may be [a drawing](#a-drawing) - also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
 | `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
 | `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings; `GetImageExportOptions(path, size, options)` at a [chosen size](#the-pictures-size) too |
 | `SetImageExportOptions(options)` | The other way: `options.format`'s quality, compression, colour depth ... and transparency stored as that format's settings (not the size) |
@@ -23648,7 +23655,37 @@ which has no Settings. A dialog built directly reports it with
 `UltraCanvasFileDialog::GetSaveImageSize()`, and
 `ShowSaveSettingsDialog(extensionOrPath, pictureWidth, pictureHeight, size,
 parent, onClosed)` offers the same row anywhere else. UltraPaint's Save As
-passes its picture's size.
+passes its picture's size, and the media viewer's Save image as (UltraViewer)
+its picture's.
+
+#### A drawing
+
+A drawing - an SVG, a page of shapes - has **no pixel size** of its own, so
+`SetImageSize` has nothing to give; yet that is when a size is wanted most,
+since it can be drawn at any. `SetDrawingSize(width, height)` gives the size
+it is drawn at unless another is chosen (its size on the page at 96 DPI,
+say): the Size row opens on it, Keep proportions keeps the drawing's shape,
+and the tooltips say it is drawn sharp at any size. The caller draws it at
+the size that comes back, not its picture stretched:
+
+<!-- doc-check: int pageWidth = 0, pageHeight = 0; void DrawAt(const std::string& path, int width, int height); -->
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Export drawing")
+    .AddFilter("PNG", std::string("png"))
+    .SetDrawingSize(pageWidth, pageHeight)
+    .SetParentWindow(window.get());
+const int w = pageWidth, h = pageHeight;
+UltraCanvasFileLoader::SaveFileDialog(opts, [w, h](DialogResult r, const std::string& path,
+                                                   const FileSaveImageSize& size) {
+    if (r != DialogResult::OK) return;
+    DrawAt(path, size.IsOriginal() ? w : size.width, size.IsOriginal() ? h : size.height);
+});
+```
+
+`ShowSaveSettingsDialog(extensionOrPath, picture, size, parent, onClosed)`
+takes the same as a `FileSavePicture` (`width`, `height`, `drawing`). The
+media viewer offers an SVG this way and draws it again at the size chosen.
 
 ## Filter toggles
 
@@ -38466,12 +38503,13 @@ FILE: Docs/UltraCanvas/UltraCanvasMatrixDiagram.md
 <!-- doc-check: int row; int col; void Log(const std::string& line); -->
 
 A matrix diagram — one of the Seven Management and Planning Tools — makes the
-relationships between two or three ordered lists visible and countable. Rows and
+relationships between two to four ordered lists visible and countable. Rows and
 columns are things; each intersection carries a symbol from a small named scale,
 and the weights behind those symbols roll up into per-row and per-column totals.
 
-**Status:** Phase 1 — the `L` and `T` shapes. `Y`, `X` and the QFD `House`
-composite are planned; see
+**Status:** Phases 1 and 2 — the `L`, `T`, `X` and `Y` shapes, the form header
+band, cell tint and hover bands that run across panels. The QFD `House`
+composite is planned; see
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Which element do I want?
@@ -38481,7 +38519,7 @@ composite are planned; see
 | Continuous numeric cell values, a colour map, a colour bar | `UltraCanvasHeatmapChartElement` |
 | Items positioned at continuous (x, y) in a 2×2 space (BCG, Eisenhower, risk) | `UltraCanvasQuadrantChart` |
 | Rooms and their required adjacencies | `UltraCanvasAdjacencyDiagram` — it owns that data and draws its own matrix view |
-| Named relationship levels between two or three ordered lists, with totals | **this element** |
+| Named relationship levels between two to four ordered lists, with totals | **this element** |
 
 The distinction that matters is the cell datum. A heatmap cell holds a *number*
 and encodes it as a fill; a matrix diagram cell holds a *named level* and draws
@@ -38544,12 +38582,13 @@ Cells are stored **sparsely** — set the marks you have; the rest stay empty.
 |---|---|---|---|
 | `MatrixShape::L` | 2 | 1 | A × B — the basic form |
 | `MatrixShape::T` | 3 | 2 | B × A and A × C, A being the shared row axis |
-| `MatrixShape::Y` | 3 | 3 | *planned* |
-| `MatrixShape::X` | 4 | 4 | *planned* |
+| `MatrixShape::X` | 4 | 4 | A × B, B × C, C × D, D × A — four panels round a hub |
+| `MatrixShape::Y` | 3 | 3 | A × B, B × C, C × A — three rhombic panels between seams 120° apart |
 | `MatrixShape::House` | 2 | 2 | *planned* — QFD composite with the correlation roof |
 
-Unimplemented shapes fall back to the `L` layout of panel 0 rather than drawing
-nothing, so data set against them is still visible.
+`House` falls back to the `L` layout of panel 0 rather than drawing nothing, so
+data set against it is still visible. So does an `X` or `Y` whose model the
+shape cannot place (see *Validation*).
 
 A `T` shares its row axis between two wings. Panel 0 is the left wing, panel 1
 the right, and the shared row labels are drawn once between them:
@@ -38566,6 +38605,78 @@ model.AddPanel("employees", "skills",   MatrixScale::HighMediumLow());
 ```
 
 That is why the scale lives on the **panel** and not on the model.
+
+### The X shape
+
+An `X` puts its four sets on the arms of a cross, in model order: `sets[0]`
+left, `sets[1]` top, `sets[2]` right, `sets[3]` bottom. The top and bottom arms
+list their items as rows, the left and right arms as columns, and each panel
+fills the quadrant between its two arms — so every panel must pair a left/right
+set with a top/bottom one. Which of the two is the panel's row set is up to
+you: a panel whose rows are a side arm's items is turned to fit.
+
+```cpp
+MatrixModel x;
+x.shape = MatrixShape::X;
+x.AddSet("suppliers", "Suppliers",        {"Supplier A", "Supplier B"});   // left
+x.AddSet("storage",   "Storage areas",    {"W/H 1", "W/H 2"});             // top
+x.AddSet("customers", "Customers",        {"P-1042", "P-1187"});           // right
+x.AddSet("lines",     "Production lines", {"Line 1", "Line 2"});           // bottom
+
+x.AddPanel("suppliers", "storage",   MatrixScale::HighMediumLow());   // top-left, turned
+x.AddPanel("storage",   "customers", MatrixScale::HighMediumLow());   // top-right
+x.AddPanel("lines",     "customers", MatrixScale::HighMediumLow());   // bottom-right
+x.AddPanel("lines",     "suppliers", MatrixScale::HighMediumLow());   // bottom-left
+
+auto xDiagram = CreateMatrixDiagramElement("supply", 10, 10, 760, 560, x);
+xDiagram->SetHubMode(MatrixHubMode::Captions);
+```
+
+The middle of the cross is the **hub**. `MatrixHubMode::Blank` leaves it empty
+and draws each set's title at the outer end of its arm; `MatrixHubMode::Captions`
+puts the four titles in boxes in the hub with arrows out to their arms, and the
+hub grows to hold them. One cell width serves both left quadrants and both right
+ones, one cell height every row, so the quadrants always line up across the hub.
+
+### The Y shape
+
+A `Y` runs three seams out of a centre point, 120° apart — `sets[0]` straight
+up, `sets[1]` down-right, `sets[2]` down-left. Each seam is a band listing its
+set, and between two seams sits the panel crossing their sets, drawn as a
+rhombus whose cells step along both seams. A row starts at its label on one
+seam and runs parallel to the other.
+
+```cpp
+MatrixModel y;
+y.shape = MatrixShape::Y;
+y.AddSet("requirements", "Requirements", {"Quiet", "Compact"});
+y.AddSet("functions",    "Functions",    {"Generate suction", "Store energy"});
+y.AddSet("components",   "Components",   {"Motor", "Battery pack"});
+y.AddPanel("requirements", "functions",    MatrixScale::QFD());
+y.AddPanel("functions",    "components",   MatrixScale::QFD());
+y.AddPanel("components",   "requirements", MatrixScale::QFD());
+```
+
+The cell size is the largest that fits the whole figure, labels and titles
+included, between the style's `minCellSize` and `maxCellSize`.
+
+`X` and `Y` draw no totals gutters — their outer edges are other panels' arms or
+open space, and the totals are one call away on the model.
+
+### The form header band
+
+Many printed matrix diagrams carry a form header — PROJECT, AREA, TITLE, TEAM,
+DATE. Put the fields on the model and the element draws them as a row of boxes
+above the grid, in any shape:
+
+```cpp
+x.headerFields = {
+        {"PROJECT", "Warehouse consolidation"},
+        {"TEAM",    "Ops planning"},
+        {"DATE",    "2026-10-13"},
+};
+xDiagram->SetShowHeaderBand(true);   // the default; false hides it
+```
 
 ## Relationship scales
 
@@ -38645,7 +38756,10 @@ diagram->SetShowCellValues(false);           // draw each cell's weight as text
 `MatrixHeaderFit::Auto` measures the column labels once and picks the cheapest
 form that fits — `Horizontal`, then `Wrapped`, then `Rotated45`, then
 `Rotated90`. It never iterates: the cell width settles first, the fit follows
-from the width, and the band height follows from the fit. The grid has first
+from the width, and the band height follows from the fit. A rotated header leans
+right past its column, so when the fit is rotated the cells are then narrowed
+just enough for the last label to end inside the element - which cannot change
+the fit, because a rotated label does not depend on the cell width. The grid has first
 claim on the vertical space, so a very long header is ellipsised rather than
 squeezing the rows out.
 
@@ -38656,11 +38770,20 @@ MatrixDiagramStyle style = diagram->GetStyle();
 style.alternateRowBands = true;
 style.fillLabelBands = false;      // the solid label band behind row labels
 style.markSize = 0.5;              // fraction of the cell's short side
+style.tintCellsByLevel = true;     // fill each marked cell with its level's colour
+style.cellTintAlpha = 56;          // ... this faintly, under the mark
 diagram->SetStyle(style);
 ```
 
-`SetDarkTheme(true)` applies the dark palette to the whole style; call it before
-your own overrides, since it replaces the struct.
+The tint gives a heatmap-like read of where the strong relationships cluster;
+the mark stays the datum, and a level filtered out through the legend fades its
+tint along with its mark.
+
+`SetDarkTheme(true)` and `SetDarkTheme(false)` swap the palette and nothing
+else: sizes, fonts and switches such as `alternateRowBands` or
+`tintCellsByLevel` survive a round trip. Colours you set yourself are replaced,
+so set them after choosing the theme. `MatrixDiagramStyle::ApplyDarkTheme()`
+and `ApplyLightTheme()` do the same to a style you hold.
 
 ## Interaction
 
@@ -38674,7 +38797,11 @@ diagram->onColumnClick = [](int panel, int index, const MatrixItem& item) { };
 click landed in a label band. `onCellClick` fires for empty cells too — check
 `GetModel().LevelAt(...)` to tell them apart.
 
-Hovering highlights the cell's row and column and shows a tooltip. Clicking a
+Hovering highlights the cell's row and column and shows a tooltip. The bands
+follow the *items*, not the panel: a T's shared row lights up in both wings, and
+an X's column lights up in both quadrants that list it. In an `X` or `Y`, a
+click on an arm label reports a whole row or column of the first panel that
+lists the item. Clicking a
 legend entry filters the marks to that level; `SetLevelFilter("")` clears it.
 
 ## Interchange
@@ -38692,9 +38819,11 @@ alone.
 
 ## Samples
 
-`MatrixSamples::ImprovementTools()`, `MatrixSamples::EmployeeAllocation()` and
-`MatrixSamples::QualityFunctionDeployment()` build the three models the demo
-shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
+`MatrixSamples::ImprovementTools()` (L), `MatrixSamples::EmployeeAllocation()`
+(T), `MatrixSamples::QualityFunctionDeployment()` (L, weighted),
+`MatrixSamples::SupplyChain()` (X, with a form header) and
+`MatrixSamples::DesignTraceability()` (Y) build the models the demo shows
+(`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
 
@@ -38706,7 +38835,10 @@ if (!result.valid) { for (const auto& e : result.errors) Log(e); }   // Log: you
 ```
 
 Checks the set count against the shape, panel set references, cell indices,
-level ids and duplicate cells. `warnings` collects things that are drawable but
+level ids and duplicate cells. For an `X` it also checks that every panel pairs
+a left/right set with a top/bottom one and that no two panels claim the same
+quadrant; for a `Y`, that every panel crosses two different sets among the first
+three and that no pair appears twice. `warnings` collects things that are drawable but
 suspicious, such as an empty item set.
 
 The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
@@ -39365,6 +39497,28 @@ The adjustments panel (the `settings-sliders` toolbar toggle) drives `MediaAdjus
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
+
+*Save as* offers FileLoader's types - every bitmap type this build writes
+(`UltraCanvasFileLoader::AddImageSaveTypes`: PNG first, then JPEG, WebP,
+AVIF, HEIC, TIFF, GIF, QOI, ICO, … as available) - and tells the Save dialog
+how big the picture is, so the **Settings** of a bitmap type offer
+[another size](UltraCanvasFileDialog.md#the-pictures-size) for that save, and
+writes with the type's save settings (JPEG quality, PNG compression ...) once
+the user has stored any. An SVG has no pixel size of its own: it is offered as
+[a drawing](UltraCanvasFileDialog.md#a-drawing), at its size on the page, and
+written by drawing it again at the size chosen - sharp at any size, where the
+picture shown would blur when stretched. The surface does it:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+```cpp
+UltraCanvasMediaSurface* surface = viewer->GetSurface();
+const FileSavePicture picture = surface->GetSavePicture();   // turned as shown
+FileSaveImageSize size;
+size.width = picture.width * 2;
+size.height = picture.height * 2;
+std::string error;
+surface->SaveProcessed("twice.png", size, error);   // a drawing drawn again at that size
+```
 
 Each slider is **continuous over its whole range** and carries its live value in
 its caption (`Gamma  1.37`), so an edit can be read off and repeated. The
@@ -51450,7 +51604,7 @@ SVG goes through three parts of the framework, each for one job:
 
 | Job | Component | Behind it |
 |---|---|---|
-| Show an SVG file on screen, or a thumbnail of one | `UltraCanvasImageElement`, `UltraCanvasMediaViewer`, `UCImage` | librsvg, through the parse-once `UCSvgDocument` cache (`libspecific/Cairo/SvgDocumentCairo.h`) |
+| Show an SVG file on screen, or a thumbnail of one | `UltraCanvasImageElement`, `UltraCanvasMediaViewer`, `UCImage` | librsvg, through the parse-once `UCSvgDocument` cache (`libspecific/Cairo/SvgDocumentCairo.h`); where libvips has no `svgload` (the WebAssembly sysroot) or refuses the file, the Vector plugin's reader through the vector preview seam (`UltraCanvasVectorPreview.h`), the parsed document kept and rendered by the core's vector renderer at each requested size |
 | Turn an SVG into pixels at a chosen size | `UltraCanvasVectorRaster` (`InspectVectorFile`, `RasterizeVectorFile`) | librsvg via libvips, so the result is rendered *at* the requested size |
 | Read an SVG into an editable drawing, or write one | `VectorConverter::SVGConverter` in the Vector plugin | tinyxml2 and the `VectorStorage::VectorDocument` model; `<style>` sheets through the HTMLReader's CSS parser |
 
@@ -61429,6 +61583,273 @@ The setters are not thread-safe. Call them only from the UI thread.
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) — General 2D rendering pipeline
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasTickerBoard.md
+==============================================================================
+
+# UltraCanvasTickerBoard Documentation
+
+## Overview
+
+`UltraCanvasTickerBoard` is the **ticker board**: a strip of items - a label,
+a value, a change - crawling across a band without end. It is the stock
+ticker along the bottom of a news channel, the headline crawl, the departure
+board in a lobby and the LED sign over a shop door, in one element with two
+faces:
+
+- **Text** sets the strip in a font on a plain band.
+- **DotMatrix** lights it on a fixed grid of round LED dots, seven rows high,
+  glyphs five dots wide, and steps the text across the grid one column at a
+  time the way a real sign does.
+
+The board moves by itself from its first frame, pauses while the pointer
+rests on it, shows an item's tooltip, reports a click on an item, and lets a
+live feed re-price an item in place without the strip jumping.
+
+For a *still* LED readout of one value use
+[`UltraCanvasGaugeDiagramElement`](UltraCanvasGaugeExamples.md) in
+`GaugeMode::Digital`; this element exists to move.
+
+**Namespace:** `UltraCanvas`
+**Header:** `include/Plugins/Diagrams/UltraCanvasTickerBoard.h`
+**Base Class:** `UltraCanvasUIElement`
+**Version:** 1.0.0
+**Last Modified:** 2026-10-13
+**Author:** UltraCanvas Framework
+
+## Class Hierarchy
+
+```
+UltraCanvasUIElement
+    └── UltraCanvasTickerBoard
+```
+
+## Features
+
+- **Items with three fields:** a label, a value and a change, each drawn in
+  its own colour; any field may be empty, and an item with only a label is a
+  crawling message
+- **Trend colouring:** the change is drawn in `upColor`, `downColor` or
+  `flatColor` by the item's `TickerTrend`, with a triangle before it
+  (`showArrows`)
+- **Two faces:** `TickerBoardFace::Text` and `TickerBoardFace::DotMatrix`,
+  switchable at run time with `SetFace()`
+- **Dot-matrix font:** the classic 5x7 glyph set for ASCII, proportional
+  (blank edge columns dropped), with Latin-1 letters drawn as their base
+  letter and the arrows, bullet, degree, euro and pound signs added
+- **Self-driven motion:** a timer advances the strip at `pixelsPerSecond`
+  from the first frame; `Stop()` halts it where it is, `Start()` resumes;
+  `pauseOnHover` holds it still under the pointer
+- **Seamless loop:** the strip repeats without a gap; a strip shorter than
+  the band is drawn as many times as the band needs
+- **Live updates:** `UpdateItem()` replaces one item and keeps the strip's
+  position, so a feed can re-price while the board rolls
+- **Interaction:** per-item tooltips, `onItemClick`, `onItemHover`,
+  `GetItemAt()`
+- **Quote helper:** `MakeTickerQuote()` formats a price and a change into an
+  item with its sign, percentage and trend
+
+## Data Model
+
+```cpp
+struct TickerItem {
+    std::string label;          // "AAPL", "Platform 4", a headline
+    std::string value;          // "189.30" - already formatted
+    std::string change;         // "+1.25 (+0.66%)" - drawn in the trend colour
+    TickerTrend trend = TickerTrend::Flat;
+    Color labelColor = Color(0, 0, 0, 0);   // transparent = the style's colour
+    Color valueColor = Color(0, 0, 0, 0);
+    std::string tooltip;        // shown while the pointer rests on the item
+};
+```
+
+`TickerItem` has three constructors: default, `TickerItem(label)` for a
+message, and `TickerItem(label, value, change = "", trend = Flat)`.
+
+## Basic Usage
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasTickerBoard.h"
+
+auto board = CreateTickerBoard("Prices", 0, 0, 800, 44, TickerBoardFace::Text);
+board->AddItem(MakeTickerQuote("UCNV", 189.30, 1.25));   // "189.30", "+1.25 (+0.66%)", Up
+board->AddItem(MakeTickerQuote("VFX", 42.18, -0.64));    // "42.18", "-0.64 (-1.49%)", Down
+board->AddItem(TickerItem("Platform 4", "12:45"));       // a label and a value
+board->onItemClick = [](size_t index) {
+    // open the quote at `index`
+    (void)index;
+};
+container->AddChild(board);
+```
+
+The board starts rolling on its first frame; there is nothing to start.
+
+### A crawling message
+
+```cpp
+auto sign = CreateTickerBoard("Sign", 0, 0, 800, 64, TickerBoardFace::DotMatrix);
+sign->SetText("WELCOME - Next departure: Platform 4 at 12:45");
+```
+
+`SetText()` replaces the items with one label-only item.
+
+### Re-pricing while it rolls
+
+```cpp
+// Called from a feed callback: the strip keeps its position.
+board->UpdateItem(0, MakeTickerQuote("UCNV", 190.05, 2.00));
+```
+
+`SetItems()`, `AddItem()`, `RemoveItem()` and `ClearItems()` relay the whole
+strip; `UpdateItem()` is the one to call from a feed.
+
+## Motion
+
+```cpp
+board->Stop();                    // halts where it is
+board->Start();                   // resumes
+board->SetRunning(false);         // the same pair, as a flag
+board->SetSpeed(120.0f);          // pixels per second
+board->SetDirection(TickerDirection::Rightward);
+board->SetOffset(0.0);            // the first item's label at the left edge
+```
+
+Distance is computed from elapsed time, not counted per frame, so a late
+timer never slows the crawl down; the DotMatrix face rounds the position to
+whole columns and redraws only when a column boundary is crossed. While
+`pauseOnHover` is set (the default), the board holds still from `MouseEnter`
+to `MouseLeave` and the pause is not caught up afterwards.
+
+## Style
+
+```cpp
+TickerBoardStyle s = board->GetStyle();
+s.face = TickerBoardFace::DotMatrix;
+s.direction = TickerDirection::Leftward;
+s.pixelsPerSecond = 110.0f;
+s.pauseOnHover = true;
+s.backgroundColor = Color(12, 10, 8, 255);
+s.labelColor = Color(255, 170, 0, 255);   // amber
+s.upColor = Color(56, 214, 122, 255);
+s.downColor = Color(244, 84, 84, 255);
+s.separator = "\xE2\x80\xA2";             // a bullet between items; "" for a gap only
+s.cornerRadius = 6.0f;
+board->SetStyle(s);
+```
+
+| Field | Face | Meaning |
+|---|---|---|
+| `face` | - | `Text` or `DotMatrix` |
+| `direction` | - | `Leftward` (items enter at the right) or `Rightward` |
+| `pixelsPerSecond` | - | crawl speed; DotMatrix moves in whole columns |
+| `frameIntervalMs` | - | timer period, 33 ms by default |
+| `pauseOnHover` | - | hold still while the pointer is on the board |
+| `backgroundColor`, `cornerRadius` | - | the band |
+| `labelColor`, `valueColor` | - | the label and value fields (an item may override both) |
+| `upColor`, `downColor`, `flatColor` | - | the change field and its arrow, by trend |
+| `separatorColor`, `separator` | - | the glyph between items; empty for none |
+| `showArrows` | - | a triangle before the change when the trend is not `Flat` |
+| `fontFamily`, `fontSize` | Text | the font; empty family is the UI default, size 0 is sized from the band |
+| `labelWeight`, `valueWeight` | Text | weights of the label and of the other fields |
+| `fieldGap`, `itemGap` | Text | px between fields, and either side of the separator |
+| `dotPitch` | DotMatrix | dot centre to centre; 0 fits seven rows to the band height |
+| `dotFill` | DotMatrix | dot diameter as a share of the pitch (0.3..1) |
+| `showOffDots`, `offDotColor` | DotMatrix | the unlit grid behind the text |
+| `glyphGapColumns`, `fieldGapColumns`, `itemGapColumns` | DotMatrix | blank columns between glyphs, fields and items |
+
+A font family may be a comma-separated fallback list
+(`"DSEG14 Classic,Monospace"`), so a seven-segment face is one style field
+away when such a font is installed.
+
+## Interaction
+
+```cpp
+board->onItemClick = [](size_t index) { (void)index; };   // left button released on an item
+board->onItemHover = [](size_t index) { (void)index; };   // SIZE_MAX when the pointer left every item
+size_t under = board->GetItemAt(120);                      // board-local x, from the last frame drawn
+```
+
+An item's `tooltip` is shown through `UltraCanvasTooltipManager` while the
+pointer rests on it and hidden when it leaves. The separator belongs to no
+item: between items `GetItemAt()` returns `SIZE_MAX`.
+
+## Accessibility
+
+The board reads as a label (`AccessibleRole::Label`) whose value text is the
+items in order - `"UCNV 189.30 +1.25 (+0.66%); VFX 42.18 -0.64 (-1.49%)"` -
+so a screen reader gets the content once, not the animation.
+
+## Quote formatting
+
+```cpp
+TickerItem q = MakeTickerQuote("UCNV", 189.30, 1.25);          // decimals 2, with percent
+TickerItem r = MakeTickerQuote("BTC", 64123.5, -812.25, 1, false);
+```
+
+`MakeTickerQuote(symbol, price, change, decimals = 2, withPercent = true)`
+formats the value at `decimals` places, prefixes a positive change with `+`,
+appends the percentage against the previous price (`price - change`) when
+asked, and sets the trend from the sign of the change. The numbers are
+formatted for a reader, in the application's locale.
+
+## API Reference
+
+```cpp
+void SetItems(const std::vector<TickerItem>& newItems);
+size_t AddItem(const TickerItem& item);
+void UpdateItem(size_t index, const TickerItem& item);
+void RemoveItem(size_t index);
+void ClearItems();
+const std::vector<TickerItem>& GetItems() const;
+size_t GetItemCount() const;
+void SetText(const std::string& message);
+
+void Start();
+void Stop();
+void SetRunning(bool running);
+bool IsRunning() const;
+void SetOffset(double pixels);
+double GetOffset() const;
+double GetStripLength() const;   // one pass of the strip in px, from the last frame drawn
+
+TickerBoardStyle& GetStyle();
+void SetStyle(const TickerBoardStyle& s);
+void SetFace(TickerBoardFace face);
+void SetDirection(TickerDirection direction);
+void SetSpeed(float pixelsPerSecond);
+
+size_t GetItemAt(int localX) const;
+```
+
+```cpp
+std::function<void(size_t index)> onItemClick;
+std::function<void(size_t index)> onItemHover;
+```
+
+Factory and helper, free functions in `namespace UltraCanvas`:
+
+```cpp
+std::shared_ptr<UltraCanvasTickerBoard> CreateTickerBoard(
+        const std::string& identifier, float x, float y, float w, float h,
+        TickerBoardFace face = TickerBoardFace::Text);
+TickerItem MakeTickerQuote(const std::string& symbol, double price, double change,
+                           int decimals = 2, bool withPercent = true);
+```
+
+## Demo
+
+DemoApp, *Diagrams → Ticker Board*
+(`Apps/DemoApp/UltraCanvasTickerBoardExamples.cpp`): a market ticker in a
+font, an amber LED sign, dot-matrix quotes re-priced every 1.5 s in place, a
+rightward headline crawl on a light band, and buttons that pause, re-speed,
+reverse and re-face the first board while it rolls.
+
+## See Also
+
+- [`UltraCanvasUIElements.md`](UltraCanvasUIElements.md) - the element catalogue
+- [`UltraCanvasGaugeExamples.md`](UltraCanvasGaugeExamples.md) - `GaugeMode::Digital`, the still LED readout
+- [`UltraCanvasBusyIndicator`](UltraCanvasUIElements.md) - the other self-animating element, built on the same timer
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTimePicker.md
 ==============================================================================
 
@@ -64750,6 +65171,7 @@ from an external "Show password" checkbox. See
 |---|---|---|
 | Static text - selectable and copyable with `SetSelectable`, or across many labels with one `UltraCanvasTextSelection` | `UltraCanvasLabel` | `UltraCanvasLabel.h`, `UltraCanvasTextSelection.h` |
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
+| Text that scrolls past by itself (a marquee, a news crawl, a stock ticker, an LED sign) | `UltraCanvasTickerBoard` - see *Diagrams* below | `Plugins/Diagrams/UltraCanvasTickerBoard.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
@@ -64893,7 +65315,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two item sets crossed in an L or T, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
@@ -64902,6 +65324,7 @@ Each takes its data through setters and renders itself; most have a
 | A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
 | A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |
 | A bit-accurate map of a protocol data unit | `UltraCanvasPacketDiagram` | `Plugins/Diagrams/UltraCanvasPacketDiagram.h` |
+| A ticker board: labels, values and changes crawling across a band without end, set in a font or lit on a 5x7 LED dot grid - a stock ticker, a headline crawl, an LED sign | `UltraCanvasTickerBoard` (`CreateTickerBoard`, `MakeTickerQuote`) | `Plugins/Diagrams/UltraCanvasTickerBoard.h` |
 | A gauge, **and the framework's progress bar** | `UltraCanvasGaugeDiagramElement` — see *Pickers, dialogs and feedback* above | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 
 ### Codes and documents
@@ -64917,7 +65340,8 @@ The vector format plugins (`UltraCanvasCDRElement`, `UltraCanvasEPSElement`,
 `UltraCanvasXARElement`) are **not** in these tables on purpose: they are
 decoders behind `UltraCanvasVectorElement` and `UltraCanvasImageElement`, which
 are what an application reaches for. An SVG has no element of its own either:
-`UltraCanvasImageElement` shows it (through librsvg). Same for
+`UltraCanvasImageElement` shows it (through librsvg, or the Vector plugin's
+reader where libvips has no SVG loader). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
 
 ## Creating them
@@ -65764,7 +66188,12 @@ it registered:
   the process-wide font machinery);
 - the Filer's **Display > Thumbnails** and **Display > Detail view** settings
   pages stop greying the formats out, because `GetPreviewableFormats()` asks
-  the same seam.
+  the same seam;
+- `UltraCanvasImageElement` and `UCImage` show an SVG in a build whose libvips
+  has no `svgload` - the WebAssembly sysroot's - by reading it through the
+  seam and rendering the kept document with the core's vector renderer at
+  each requested size; every SVG icon of a WebAssembly page comes from here.
+  A libvips that refuses an SVG gets the same second reader on the desktop.
 
 ```cpp
 RegisterVectorFormatsPlugin();                    // once, at startup
@@ -65984,6 +66413,40 @@ if (!layer) ShowStatus(error);   // nothing visible, or too large
   are no elements, nothing visible, a scale that is not positive, or a result
   larger than `maxPixels` (64 Mpx by default - a clipboard copy, not a print).
 
+## A loaded drawing's page
+
+`RasterizeVectorDocument` draws the whole page of an open `VectorDocument` -
+what a drawing program's *Export* writes as a PNG or a JPEG. A drawing has no
+pixel size of its own, so it is drawn **at** the size asked for, sharp at any
+size, never drawn small and stretched:
+
+<!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> drawing; void ShowStatus(const std::string&); -->
+```cpp
+#include "UltraCanvasVectorRaster.h"
+
+VectorRasterOptions options;
+options.width = 3200;                 // the height follows the page's shape
+std::string error;
+auto page = RasterizeVectorDocument(*drawing, options, error);
+if (!page) ShowStatus(error);         // no page size, or too large
+```
+
+- **The page** is the document's view box (0,0 to its `Size` where it has
+  none). Both sides 0 give a pixel a document unit; one side 0 follows the
+  page's shape; both given scale each side on its own, so a size in another
+  shape stretches the page to it.
+- **Background**: the document's own `BackgroundColor` is drawn, and
+  `options.background` under it - transparent by default, so a PNG keeps
+  what the page leaves empty.
+- Null comes back with `error` set for a document with no page size or a
+  size larger than `options.maxPixels` (256 Mpx by default).
+
+An application does not call it to export: `UltraCanvasFileLoader::
+SaveVectorDocument(document, path, size, ...)` does, for every bitmap type
+this build writes, with the types from `AddVectorDocumentSaveTypes` - see
+[FileLoader](../Modules/FileLoader/README.md#a-drawing-saved-as-a-bitmap).
+ArtCreator's Export is those two calls.
+
 ## What it is not
 
 - **Not a vector editor.** The document model, the converters between vector
@@ -66005,7 +66468,10 @@ comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
 `UltraPaintImportDialog`).
 
 ArtCreator: *Copy* puts the selection on the system clipboard as a PNG made
-by `RasterizeVectorElements` (`Apps/ArtCreator/ArtCreatorWindow.cpp`).
+by `RasterizeVectorElements`, and *Export* writes PNG, JPEG and the other
+bitmap types through `UltraCanvasFileLoader::SaveVectorDocument`, which
+draws the page with `RasterizeVectorDocument`
+(`Apps/ArtCreator/ArtCreatorWindow.cpp`, `core/UltraCanvasFileLoader.cpp`).
 
 ## Tests
 
@@ -66016,7 +66482,10 @@ drawing, and an absurd size is refused rather than allocated. It reports
 `[SKIP]` on a build with no SVG rasterizer instead of failing. Its
 `RasterizeVectorElements` checks need no file rasterizer and run on every
 build: the crop to what is painted, a stroke past the bounds, the scale, an
-ancestor's transform, and the refusals.
+ancestor's transform, and the refusals. So do its `RasterizeVectorDocument`
+checks: the natural size, a page twenty times larger with a hard edge, one
+side following the page's shape, a size in another shape, both backgrounds,
+and the refusals.
 
 ## See also
 
@@ -67879,6 +68348,43 @@ and the address read at start decides the first page, so a reload keeps it.
 The rebuild is posted to the UI thread (`PostToUIThread`), never done inside
 the click of a button the rebuild removes. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
 at the repository root).
+
+## The demo application in the browser
+
+The framework's demo application (`Apps/DemoApp/`) builds as a page too:
+`emcmake cmake` at the repository root produces `UltraCanvasDemo.html`, the
+whole page tree of the desktop demo - the elements, the layout system, the
+charts and diagrams, the vector and bitmap formats, the 3D model readers,
+the text documents, the Filer and Album widgets, the module pages - less
+what the browser has no backend for:
+
+| Left out | Why |
+|---|---|
+| Audio Player, Level Meter, Audio FX, and the Waveform, Spectrogram and Audio Analysis charts | `ULTRACANVAS_ENABLE_AUDIO` is off in the browser: no playback, and the sample tracks the charts analyse are decoded by the audio module |
+| Video Player | `ULTRACANVAS_ENABLE_VIDEO` is off: the null backend plays nothing (the Video Timeline, a pure element, stays) |
+| STL 3D Models | its one sample is a 25 MB file; the model formats page shows the other readers from the smaller samples |
+| OpenGL, CDR, XAR, EPS, PDF, OCR, Vectorizer, LaTeX, Ultra Net | compiled out by `UltraCanvas/CMakeLists.txt` for every WebAssembly build, so their pages are absent or say so, as on a desktop build without them |
+
+**SVG** takes a different road in the browser: the wasm sysroot's libvips has
+no SVG loader, so `UCImage` reads an .svg through the vector preview seam
+the Vector plugin installs and renders it with the core's vector renderer
+(`UltraCanvasVectorConverters.md`, *the vector preview provider*). The
+demo registers the plugin in its `main.cpp`, so its SVG page and every SVG
+icon - the toolbars', the flat buttons', the tree's - render as on the
+desktop; an application that registers no plugins gets "format not
+supported" for them.
+
+The pages' files - the fonts, icons, images, vector samples, the smaller 3D
+models, the docs and the demo's own sources for the source button - are
+preloaded into the virtual filesystem at `/share/...` by the demo's CMake
+block, about 50 MB downloaded once. The page's query string replaces the
+command line: `UltraCanvasDemo.html?component=piecharts` opens that page
+(and, like `--component`, leaves the About window out), and `?about=0` is
+`--no-about`. The main window maximizes to the browser viewport. The source
+is three `__EMSCRIPTEN__` branches: the static application object in
+`main.cpp`, the query string there, and the page registrations left out in
+`UltraCanvasDemo.cpp`. `wasm-build.yml` builds the page in CI, with the two
+sample applications.
 
 ## Known limitations
 
@@ -70876,8 +71382,45 @@ or an application adds its own with `RegisterSaveFormat`. A caller that passes
 the picture's size (`FileDialogOptions::SetImageSize`) also gets a Size row in
 a bitmap type's settings, for that save only: the size comes back through the
 `SaveFileDialog` overload whose callback takes a `FileSaveImageSize`, and
-`GetImageExportOptions(path, size, options)` writes at it. See *Save settings*
+`GetImageExportOptions(path, size, options)` writes at it. A drawing (SVG,
+a page of shapes) has no pixel size of its own: `SetDrawingSize` gives the
+size it is drawn at, offers the same row, and the caller draws it again at the
+size chosen. See *Save settings*
 in [the file dialog's documentation](../../UltraCanvas/UltraCanvasFileDialog.md#save-settings).
+
+### A Drawing Saved as a Bitmap
+Every file a user loads or saves in an UltraCanvas application goes through
+FileLoader - only a program's own internal files (settings, caches, logs) are
+read and written directly. That is what puts every format this build reads
+and writes in front of the user, and the conversions between them. A
+drawing's Export is two calls: the Save dialog's types for it - every vector
+writer and every bitmap type this build writes, with the page's size as a
+drawing so a bitmap type's Settings offer any size - and the save, which
+draws the page at the size chosen (a drawing has no pixel size of its own,
+so it is sharp at any) and writes it with the format's save settings:
+
+<!-- doc-check: std::shared_ptr<VectorStorage::VectorDocument> drawing; void ShowError(const std::string&); -->
+```cpp
+FileDialogOptions opts;
+opts.SetTitle("Export drawing");
+UltraCanvasFileLoader::AddVectorDocumentSaveTypes(opts, *drawing);
+UltraCanvasFileLoader::SaveFileDialog(opts, [drawing](DialogResult r, const std::string& path,
+                                                      const FileSaveImageSize& size) {
+    if (r != DialogResult::OK) return;
+    std::string error;
+    if (!UltraCanvasFileLoader::SaveVectorDocument(*drawing, path, size, error))
+        ShowError(error);
+});
+```
+
+`GetVectorDocumentPixelSize(document)` is the size a page starts at (96 DPI;
+the model is in points), and `CanSaveImage(extensionOrPath)` says whether
+this build writes a bitmap type. A picture's Save offers
+`AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
+and its Open `GetSupportedLoadExtensions(MediaFormatCategory::Bitmap)`, as
+UltraPaint and the media viewer do. Windows icons and QOI are read and written
+by the framework's own libvips plugins, and an AVIF or HEIC type is offered
+only where libheif can encode it.
 
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
@@ -71186,7 +71729,7 @@ FILE: Docs/Modules/FileLoader/intro.md
 
 The unified one-stop loader for images, vector graphics, 3D models, audio, video, text, and spreadsheets. Instead of juggling separate libraries, programmers call one consistent interface that reuses each file plug-in's own save and load logic.
 The main benefit of FileLoader is that applications don't need to be updated to support new file formats. For example if there is a new image format only the plugin is loaded for FileLoader and the app is able to load and save the new format. This makes any app future proof. Also new functionality can be provided: when you download an image, audio or video file from a website, you can directly choose another format at save time.
-Because format availability depends on the libraries and plugins a build was compiled with, FileLoader also exposes a runtime inventory — `UltraCanvasFileLoader::GetSupportedFormats()` / `UltraCanvasSupportedFormats::GetAll()` — that reports exactly which formats the current build can load and save, and which library or plugin provides each. Loading and saving stay simple and predictable across formats.
+Because format availability depends on the libraries and plugins a build was compiled with, FileLoader also exposes a runtime inventory — `UltraCanvasFileLoader::GetSupportedFormats()` / `UltraCanvasSupportedFormats::GetAll()` — that reports exactly which formats the current build can load and save, and which library or plugin provides each. A bitmap format counts as saveable only where it can be encoded: libvips has an AVIF and a HEIC saver wherever libheif is installed, but they write nothing without libheif's AV1 / HEVC encoder, so a build without one does not list them. Windows icons (`.ico`, read from `.cur` too) and QOI are read and written by the framework's own libvips plugins, without ImageMagick, so every build with libvips has them. Loading and saving stay simple and predictable across formats.
 
 ==============================================================================
 FILE: Docs/Modules/IODeviceManager/Architecture.md
@@ -80807,13 +81350,25 @@ if (!disk.IsTrueRam()) {
 Check `VirtualFS_IsTrueRamDiskAvailable()` before creating anything if the
 distinction matters, so you can warn up front rather than after the fact.
 
+That question - `VirtualFS_GetPreferredRamDiskBacking()` is the same one - is
+put to the system **once per process** and the answer kept: on Windows it
+launches `where imdisk` and on macOS `command -v hdiutil` through a shell,
+which takes seconds on a loaded machine. An application with a user interface
+asks the first time from a background thread at start-up, and every later
+call, on any thread, answers at once (a call made while the probe still runs
+waits for its answer rather than probing again). A driver installed while the
+process runs is seen at the next start.
+
 A disc's name is at most **23 characters on Windows** (64 elsewhere;
 `VirtualFS_GetMaxRamDiskNameLength()` says which). A drive letter carries no
 name, so an ImDisk disc keeps it in its NTFS volume label - that is how
 `VirtualFS_ListRamDisks()` finds it again - and a label holds 32 characters,
 nine of them the `ultravfs-` prefix. The fallback directory takes the same
 limit, so a name does not work on one machine and fail on the next only
-because ImDisk is installed there.
+because ImDisk is installed there. The label is read from local fixed,
+removable and RAM drives on D: to Z: only: a mapped network drive whose
+server is away, or an empty CD drive, would otherwise hold every listing for
+as long as Windows takes to give up, and neither can carry an ImDisk disc.
 
 ### Privacy and lifetime
 

@@ -37,13 +37,16 @@
 // The picture's size, when the caller gives it, makes a bitmap type's Settings
 // start with a Size row: width x height, Keep proportions. The size is for
 // that save only and comes back with it (GetSaveImageSize, and the
-// SaveFileDialog that reports a FileSaveImageSize), never stored.
+// SaveFileDialog that reports a FileSaveImageSize), never stored. A drawing
+// (SetDrawingSize) has no pixel size of its own and gets the row all the same,
+// opened on the size it is drawn at. The settings dialog has no text above its
+// controls and no empty room above its buttons.
 //
 // The naming rule and the settings store are checked on their own and always
 // run; the dialog itself is read back from the composited pixels, so that
 // part runs under Xvfb and skips - rather than fails - without a display.
-// Version: 1.7.0
-// Last Modified: 2026-10-12
+// Version: 1.8.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -1044,6 +1047,76 @@ int main() {
                 PressEnter(loaderRun, "scaled");
                 TEST("... and the size chosen comes back with the path",
                      *saved == expect("scaled.png") && savedSize->width == 400 && savedSize->height == 300);
+            }
+
+            // A drawing has no pixel size of its own: SetDrawingSize gives the
+            // size it is drawn at, and the Size row is offered all the same.
+            {
+                FileDialogOptions opts;
+                opts.SetTitle("Drawing save").SetInitialDirectory(folder)
+                    .AddFilter("PNG", std::string("png"))
+                    .SetDefaultFileName("drawing.png").SetDrawingSize(300, 200).SetRegisterAsRecent(false);
+                TEST("SetDrawingSize marks the picture a drawing",
+                     opts.imageIsDrawing && opts.imageWidth == 300 && opts.imageHeight == 200);
+                TEST("... and SetImageSize a bitmap again",
+                     !FileDialogOptions(opts).SetImageSize(30, 20).imageIsDrawing);
+                auto savedSize = std::make_shared<FileSaveImageSize>();
+                UltraCanvasFileLoader::SaveFileDialog(opts, [savedSize](DialogResult r, const std::string&,
+                                                                        const FileSaveImageSize& size) {
+                    if (r == DialogResult::OK) *savedSize = size;
+                });
+                const auto open = UltraCanvasDialogManager::GetActiveDialogs();
+                auto shown = open.empty() ? nullptr : std::dynamic_pointer_cast<UltraCanvasFileDialog>(open.back());
+                SaveRun drawingRun;
+                drawingRun.dialog = shown;
+                drawingRun.nameField = shown ? dynamic_cast<UltraCanvasTextInput*>(shown->FindChildById("FileDialogName"))
+                                             : nullptr;
+                auto settingsDialog = shown ? openSettings(drawingRun) : nullptr;
+                auto* w = settingsDialog ? dynamic_cast<UltraCanvasSpinner*>(settingsDialog->FindChildById("SaveSizeWidth"))
+                                         : nullptr;
+                TEST("A drawing's settings have the Size row", w != nullptr);
+                if (w) {
+                    TEST("... opened on the size it is drawn at", w->GetIntValue() == 300);
+                    TEST("... saying a drawing is drawn sharp at any size",
+                         w->GetTooltip().find("drawing") != std::string::npos);
+                    auto* message = settingsDialog->FindChildById("MessageArea");
+                    TEST("No text above the settings: the title names the format",
+                         message && !message->IsVisible());
+                    for (int frame = 0; frame < 3; ++frame) settingsDialog->UpdateAndRender();
+                    auto* form = settingsDialog->FindChildById("SaveSettingsForm");
+                    auto* footer = settingsDialog->FindChildById("FooterSection");
+                    if (form && footer) {
+                        const float gap = footer->GetBoundsInWindow().y -
+                                          (form->GetBoundsInWindow().y + form->GetBoundsInWindow().height);
+                        std::cerr << "      settings form to buttons: " << gap << " px" << std::endl;
+                        TEST("... and no empty room between the settings and the buttons", gap >= 0 && gap <= 32);
+                    }
+                    // A horizontal slider draws along its bottom edge: sized
+                    // to its handle, it sits level with its caption.
+                    auto* slider = dynamic_cast<UltraCanvasSlider*>(settingsDialog->FindChildById("SaveSetting_compression"));
+                    auto* sliderCaption = settingsDialog->FindChildById("SaveSetting_compression-caption");
+                    if (slider && sliderCaption) {
+                        const Rect2Df s = slider->GetBoundsInWindow(), c = sliderCaption->GetBoundsInWindow();
+                        const SliderVisualStyle& look = slider->GetStyle();
+                        const float handleRow = std::ceil(std::max(look.handleSize,
+                                                                   look.trackHeight + 2.0f * look.borderWidth));
+                        const float off = (s.y + s.height / 2) - (c.y + c.height / 2);
+                        std::cerr << "      slider " << s.height << " px tall (handle row " << handleRow
+                                  << "), centre to caption centre " << off << " px" << std::endl;
+                        TEST("A slider is level with its caption: as tall as its handle, centred on the row",
+                             std::abs(s.height - handleRow) <= 0.5f && std::abs(off) <= 1.0f);
+                    }
+                    if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+                        WritePpm(settingsDialog.get(), static_cast<int>(settingsDialog->GetWidth()),
+                                 static_cast<int>(settingsDialog->GetHeight()),
+                                 std::string(shotDir) + "/save-settings-drawing.ppm");
+                    }
+                    w->SetValue(1200);
+                    settingsDialog->ActivateButton(DialogButton::OK);
+                }
+                PressEnter(drawingRun, "drawing");
+                TEST("... and the drawing comes back at the size chosen",
+                     savedSize->width == 1200 && savedSize->height == 800);
             }
 
             // A caller whose writer does not read the settings turns it off.

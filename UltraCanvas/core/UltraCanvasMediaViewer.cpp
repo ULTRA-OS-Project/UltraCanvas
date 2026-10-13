@@ -1,8 +1,14 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.8.0
-// Last Modified: 2026-10-10
+// Version: 1.9.0
+// Last Modified: 2026-10-13
+// V1.9.0: Save image as offers FileLoader's types - every bitmap type this
+//   build writes - instead of six of its own; and another size in a bitmap
+//   type's Settings - the
+//   picture's own, or for an SVG the size it is drawn at, a drawing having no
+//   pixels of its own - and writes with the type's save settings at the size
+//   chosen; a drawing is drawn again at that size, so it stays sharp.
 // V1.8.0: IsPlayingMedia; images are read with UCImage::GetFresh, so a
 //   picture saved over since it was last shown opens as it is now.
 // V1.7.1: Save image as offers a name it can write - an SVG's stem as a PNG
@@ -102,34 +108,13 @@ static std::string BaseName(const std::string& path) {
 }
 
 // ----- Save as -----
-// The formats Save writes, in the order the dialog lists them. libvips picks
-// the writer from the name's extension, so the extension is the format; the
-// first one of each is the one a name is given, and PNG, the first format, is
-// the default.
-struct SaveFormat {
-    const char* label;
-    std::vector<std::string> extensions;
-};
-
-static const std::vector<SaveFormat>& SaveFormats() {
-    static const std::vector<SaveFormat> formats = {
-        { "PNG image",  { "png" } },
-        { "JPEG image", { "jpg", "jpeg" } },
-        { "WebP image", { "webp" } },
-        { "TIFF image", { "tiff", "tif" } },
-        { "AVIF image", { "avif" } },
-        { "BMP image",  { "bmp" } },
-    };
-    return formats;
-}
-
+// The formats Save writes are FileLoader's: every bitmap type this build
+// writes (UltraCanvasFileLoader::AddImageSaveTypes / CanSaveImage), PNG
+// first - not a list of the viewer's own. The image writer picks the format
+// from the name's extension.
 static bool HasSaveExtension(const std::string& path) {
     const std::string ext = LowerExt(BaseName(path));
-    for (const SaveFormat& format : SaveFormats()) {
-        if (std::find(format.extensions.begin(), format.extensions.end(), ext) !=
-            format.extensions.end()) return true;
-    }
-    return false;
+    return !ext.empty() && UltraCanvasFileLoader::CanSaveImage(ext);
 }
 
 // The name Save offers for the file being shown: its own name when that is a
@@ -935,19 +920,82 @@ bool UltraCanvasMediaSurface::OnEvent(const UCEvent& event) {
     }
 }
 
+#ifdef HAS_LIBVIPS
+// An SVG the image pipeline rasterized: a drawing, which its loader draws
+// again at any scale. Only one read from a file can be drawn again.
+static bool IsRedrawableDrawing(const vips::VImage& v) {
+    if (vips_image_get_typeof(v.get_image(), "vips-loader") == 0) return false;
+    const char* loader = nullptr;
+    if (vips_image_get_string(v.get_image(), "vips-loader", &loader) != 0 || !loader) return false;
+    const char* file = v.filename();
+    return std::strncmp(loader, "svgload", 7) == 0 && file && *file;
+}
+#endif
+
+FileSavePicture UltraCanvasMediaSurface::GetSavePicture() const {
+    FileSavePicture picture;
+    if (!image || !image->IsValid()) return picture;
+    int w = image->GetWidth();
+    int h = image->GetHeight();
+#ifdef HAS_LIBVIPS
+    // What Save starts from: the size the pipeline reads the file at (an
+    // SVG's is its own size on the page), not the size it is shown at.
+    try {
+        vips::VImage v = image->GetVImage();
+        w = v.width();
+        h = v.height();
+        picture.drawing = IsRedrawableDrawing(v);
+    } catch (...) {
+        // The header did not read: the size the image reported.
+    }
+#endif
+    if ((((rotationQuarters % 4) + 4) % 4) % 2 == 1) std::swap(w, h);
+    picture.width = w;
+    picture.height = h;
+    return picture;
+}
+
 bool UltraCanvasMediaSurface::SaveProcessed(const std::string& path, std::string& error) {
+    return SaveProcessed(path, FileSaveImageSize(), error);
+}
+
+bool UltraCanvasMediaSurface::SaveProcessed(const std::string& path, const FileSaveImageSize& size,
+                                            std::string& error) {
     if (!image || !image->IsValid()) { error = "No image to save"; return false; }
 #ifdef HAS_LIBVIPS
     try {
         vips::VImage v = image->GetVImage();
+        int q = ((rotationQuarters % 4) + 4) % 4;
+        // A drawing has no pixels of its own: drawn again at the size chosen
+        // it stays sharp, where stretching the picture read at its page size
+        // would blur it. The size is the one shown, so a quarter turn swaps
+        // the sides back; drawn at the larger of the two scales, the writer
+        // then only ever shrinks the other side to fit.
+        if (!size.IsOriginal() && v.width() > 0 && v.height() > 0 && IsRedrawableDrawing(v)) {
+            const int w = (q % 2 == 1) ? size.height : size.width;
+            const int h = (q % 2 == 1) ? size.width : size.height;
+            const double scale = std::max(static_cast<double>(w) / v.width(),
+                                          static_cast<double>(h) / v.height());
+            v = vips::VImage::new_from_file(v.filename(), vips::VImage::option()->set("scale", scale));
+        }
         PixelFX::PFXImage p(v);
         p = ApplyColourAdjustments(p, adjust);
-        int q = ((rotationQuarters % 4) + 4) % 4;
         if      (q == 1) p = PixelFX::Resample::Rot(p, PixelFX::Angle::D90);
         else if (q == 2) p = PixelFX::Resample::Rot(p, PixelFX::Angle::D180);
         else if (q == 3) p = PixelFX::Resample::Rot(p, PixelFX::Angle::D270);
         if (flipH) p = PixelFX::Resample::FlipHorizontal(p);
         if (flipV) p = PixelFX::Resample::FlipVertical(p);
+        // At another size, or once the user has stored settings for the
+        // format (the Save dialog's Settings): the image writer's options -
+        // the settings, and the size. Otherwise the writer's own defaults,
+        // as before.
+        UCImageSave::ImageExportOptions options;
+        if ((!size.IsOriginal() || UltraCanvasFileLoader::HasStoredSaveSettings(path)) &&
+            UltraCanvasFileLoader::GetImageExportOptions(path, size, options)) {
+            const std::string err = ExportVImage(p, path, options);
+            if (!err.empty()) { error = err; return false; }
+            return true;
+        }
         if (!PixelFX::FileIO::Save(p, path)) {
             error = PixelFX::GetLastError();
             if (error.empty()) error = "Save failed";
@@ -962,6 +1010,7 @@ bool UltraCanvasMediaSurface::SaveProcessed(const std::string& path, std::string
         return false;
     }
 #else
+    (void)size;
     error = "Saving requires libvips support";
     return false;
 #endif
@@ -1865,17 +1914,27 @@ void UltraCanvasMediaViewer::ShowSaveDialog() {
     opts.SetTitle("Save image as")
         .SetDefaultFileName(SaveNameFor(GetCurrentPath()))
         .SetParentWindow(GetWindow());
-    for (const SaveFormat& format : SaveFormats()) opts.AddFilter(format.label, format.extensions);
+    UltraCanvasFileLoader::AddImageSaveTypes(opts);
+    // The picture's size - or the drawing's, which has none in pixels - so a
+    // bitmap type's Settings offer to write it at another.
+    const FileSavePicture picture = surface->GetSavePicture();
+    if (picture.drawing) opts.SetDrawingSize(picture.width, picture.height);
+    else                 opts.SetImageSize(picture.width, picture.height);
     UltraCanvasFileLoader::SaveFileDialog(opts,
-            [this](DialogResult r, const std::string& chosen) {
+            [this](DialogResult r, const std::string& chosen, const FileSaveImageSize& size) {
                 if (r != DialogResult::OK || chosen.empty() || !surface) return;
                 // A failed save says so in a message, not only in the info
                 // bar: the line at the bottom is easily missed, and then the
                 // save looks as if it did nothing at all.
-                auto save = [this](const std::string& path) {
+                auto save = [this, size](const std::string& path) {
                     std::string err;
-                    if (surface && surface->SaveProcessed(path, err)) {
-                        if (infoLabel) infoLabel->SetText("Saved: " + BaseName(path));
+                    if (surface && surface->SaveProcessed(path, size, err)) {
+                        if (infoLabel) {
+                            infoLabel->SetText(size.IsOriginal()
+                                    ? "Saved: " + BaseName(path)
+                                    : "Saved: " + BaseName(path) + " at " + std::to_string(size.width) +
+                                      " x " + std::to_string(size.height) + " px");
+                        }
                         return;
                     }
                     if (infoLabel) infoLabel->SetText("Save failed: " + err);

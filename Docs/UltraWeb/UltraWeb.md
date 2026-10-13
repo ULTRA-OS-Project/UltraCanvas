@@ -79,10 +79,12 @@ both framework pieces (`Docs/UltraCanvas/UltraCanvasHTMLReader.md`):
   in the Downloads folder, named as the server or the address says (the
   name cleaned of folders and hidden dots). The page stays on show, with
   its address and history. A file up to 16 MB is saved from what was
-  fetched; a larger one is fetched again and streamed to disk. A file is
-  written as `<name>.part` and renamed when complete, so a broken download
-  leaves no file that looks whole; downloads still running when the window
-  closes are cancelled. Nothing is opened after it is saved.
+  fetched; a larger one is fetched again and streamed to disk, for as long
+  as it takes - there is no time limit, only a server that stops sending for
+  30 seconds ends it. A file is written as `<name>.part` and renamed when
+  complete, so a broken download leaves no file that looks whole; downloads
+  still running when the window closes are cancelled. Nothing is opened
+  after it is saved.
 - **The downloads list.** The toolbar's **Downloads** button (it reads
   "Downloads (2)" while two run) shows or hides a panel above the status
   bar, which opens by itself when a streamed download starts. Each

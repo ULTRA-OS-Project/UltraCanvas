@@ -1,13 +1,36 @@
-# UltraCanvasMatrixDiagram — Research & Feature Proposal
+**Status:** **Phases 1 and 2 are implemented** as `UltraCanvasMatrixDiagram` +
+`UltraCanvasMatrixModel` — see
+[`UltraCanvasMatrixDiagram.md`](UltraCanvasMatrixDiagram.md) for the guide.
+Phase 1 delivered the model (C1–C3, C5, C7), the `L` and `T` shapes, the totals
+gutters, the `ChartLegend` `Glyph` swatch, the demo page and
+`Tests/MatrixModelTest.cpp`. Phase 2 (2026-10-13) delivered D4 `X` with both
+hub modes (S8), D5 `Y`, the L6 form header band (`MatrixModel::headerFields`)
+and S6 cell tint; S7 hover bands now follow the hovered *items* across every
+panel that lists them, and I4 legend filtering had already shipped with Phase 1.
 
-**Status:** **Not implemented.** A repository-wide search for `matrix diagram`,
-`MatrixDiagram`, `MatrixChart`, `L-shaped`, `roof matrix`, `QFD` and
-`house of quality` returns no element, no header, no demo slot and no test. The
-only `matrix` hits are (a) `UltraCanvasQuadrantChart`, which uses the word for
-its 2×2 *positioning* presets (BCG, Eisenhower, Risk, Ansoff, Priority), (b)
-`UltraCanvasHeatmapChart`, whose file comment calls it a "2D heatmap / matrix
-chart", and (c) `UltraCanvasSWOTDiagram`'s `SWOTDesign::Matrix` geometry preset.
-None of the three is a matrix diagram in the sense investigated here.
+How Phase 2 departs from the plan below, and why:
+
+* **One lattice for every shape.** Rather than a separate solver per shape,
+  every panel is a cell lattice — an origin plus a row step and a column step —
+  and the grid, marks, highlight and hit test all go through it. An X quadrant
+  whose model rows lie on a side arm is the same lattice with the steps
+  swapped, and a Y panel is the same lattice with steps along two seams 120°
+  apart. So §7.1's warning holds in reverse: the Y's rhombic cells needed no
+  rotated drawing at all, only the inverse lattice transform for hit testing.
+* **The Y is not axis-aligned**, despite §10's "Phases 1 and 2 are entirely
+  axis-aligned" — three panels between seams 120° apart cannot be. Its labels
+  are drawn level along their bands (turned with the band, never upside down);
+  its cell size is found by bisection over the figure's bounding box, which is
+  monotonic in the cell size.
+* **X placement is by set order** (`sets[0..3]` = left, top, right, bottom)
+  and `Validate()` enforces it: every X panel must pair a side set with an end
+  set, one panel per quadrant; every Y panel must cross two different sets
+  among the first three, one panel per pair.
+* **No totals gutters on X or Y.** Their outer edges are other panels' arms or
+  open space; the totals stay one call away on the model.
+
+Still open: Phase 3 (D6 `House` with the correlation roof, L8 bar strip, X1/X2
+interchange beyond the single-panel CSV that already exists) and Phase 4.
 
 **Revision 3 (2026-08-10) — scope correction.** Reference images 1, 2 and 7 are
 architectural room-adjacency matrices, and adjacency data is already modelled by

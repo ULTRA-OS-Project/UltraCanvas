@@ -6,7 +6,7 @@ SVG goes through three parts of the framework, each for one job:
 
 | Job | Component | Behind it |
 |---|---|---|
-| Show an SVG file on screen, or a thumbnail of one | `UltraCanvasImageElement`, `UltraCanvasMediaViewer`, `UCImage` | librsvg, through the parse-once `UCSvgDocument` cache (`libspecific/Cairo/SvgDocumentCairo.h`) |
+| Show an SVG file on screen, or a thumbnail of one | `UltraCanvasImageElement`, `UltraCanvasMediaViewer`, `UCImage` | librsvg, through the parse-once `UCSvgDocument` cache (`libspecific/Cairo/SvgDocumentCairo.h`); where libvips has no `svgload` (the WebAssembly sysroot) or refuses the file, the Vector plugin's reader through the vector preview seam (`UltraCanvasVectorPreview.h`), the parsed document kept and rendered by the core's vector renderer at each requested size |
 | Turn an SVG into pixels at a chosen size | `UltraCanvasVectorRaster` (`InspectVectorFile`, `RasterizeVectorFile`) | librsvg via libvips, so the result is rendered *at* the requested size |
 | Read an SVG into an editable drawing, or write one | `VectorConverter::SVGConverter` in the Vector plugin | tinyxml2 and the `VectorStorage::VectorDocument` model; `<style>` sheets through the HTMLReader's CSS parser |
 

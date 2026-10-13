@@ -180,10 +180,12 @@ every pixel of a colour and `Del` erases them.
 
 ## Files
 
-Opens what libvips loads (PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL,
-TGA, PSD, camera RAW, …). *Save* / *Save As* write the flattened image
-in the format of the extension; *Export with Options* adds the per-format
-knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
+Opens and saves the formats the framework's FileLoader lists for this build
+(`UltraCanvasFileLoader::GetSupportedLoadExtensions` / `AddImageSaveTypes`:
+PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL, TGA, QOI, ICO, camera RAW,
+… - whatever libvips and the framework's plugins read and write here), not
+a list of its own. *Save* / *Save As* write the flattened image in the
+format of the extension; *Export with Options* adds the per-format knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
 and one PNG per layer.
 
 ### Dropping a file on the canvas

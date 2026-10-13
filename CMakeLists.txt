@@ -25,7 +25,8 @@ include(cmake/UltraCanvasVersion.cmake)
 # this is checked here instead of being discovered one file at a time.
 set(ULTRACANVAS_MIN_CLANG_MAJOR 16)
 if(UNIX AND NOT APPLE AND NOT ANDROID
-   AND NOT DEFINED ENV{CXX} AND NOT DEFINED CMAKE_CXX_COMPILER)
+   AND NOT DEFINED ENV{CXX} AND NOT DEFINED CMAKE_CXX_COMPILER
+   AND NOT CMAKE_TOOLCHAIN_FILE)   # a toolchain file (emcmake, the NDK) names its own compiler
     # Unversioned first: it is what CI installs and it keeps the ccache key
     # stable. Then versioned binaries `clang-NN`, newest first, for dev boxes
     # that install e.g. clang-21 without the unversioned symlink. Each
@@ -124,7 +125,7 @@ endif()
 # ${CMAKE_MATCH_1} before if() evaluates MATCHES, so in one condition it read
 # the previous match's leftovers and the branch was taken on any ld
 # ("GNU ld 2.42 < 2.40").
-if(UNIX AND NOT APPLE AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Ask the compiler which linker it actually drives (honours its default and any
     # -fuse-ld), not CMAKE_LINKER - that is just a path CMake happened to find and
     # is not what clang links with.
@@ -292,6 +293,67 @@ if(ANDROID)
     set(ULTRACANVAS_ENABLE_NET OFF CACHE BOOL "Build the UltraNet networking library")
 endif()
 
+# ===== WEBASSEMBLY DEFAULTS (the core library and the demo as a web page) =====
+# Cache defaults only (no FORCE), like the Android block: -D on the command
+# line still wins. Under emcmake the root builds the core library and
+# UltraCanvasDemo.html (see the demo's EMSCRIPTEN block below); the other
+# applications and the sibling modules have never been compiled for the
+# browser, and most of them cannot be - they are built around sockets
+# (UltraNet is forced off in UltraCanvas/CMakeLists.txt), processes, D-Bus,
+# the desktop's windows or FFmpeg. VirtualFS stays on: the core's archive
+# bridge and FileLoader's decompression are plain C++ and the demo's Filer
+# page browses archives through them. The sysroot and the flags are in
+# UltraCanvas/OS/WASM/README.md.
+if(EMSCRIPTEN)
+    # The wasm sysroot for find_package(ZLIB) - VirtualFS below and the
+    # Models plugin's FBX reader; see the file.
+    include(cmake/UltraCanvasWasmSysroot.cmake)
+    # One threading and exception ABI for every archive in the page's link:
+    # the sysroot and the core are built -pthread -fwasm-exceptions
+    # (UltraCanvas/CMakeLists.txt, WASM branch, where the core passes them on
+    # to what links it), and a sibling module compiled before the core
+    # without them stops the link - "--shared-memory is disallowed by
+    # VirtualFSManager.cpp.o because it was not compiled with 'atomics'".
+    # The thread switch is the library's (same name, same default; its own
+    # option() then finds the value), declared here because this runs first.
+    option(ULTRACANVAS_WASM_THREADS "WebAssembly: build with -pthread (Web Workers)" ON)
+    if(ULTRACANVAS_WASM_THREADS)
+        add_compile_options(-pthread -fwasm-exceptions)
+    else()
+        add_compile_options(-fwasm-exceptions)
+    endif()
+    set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
+    set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
+    set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
+    set(BUILD_ULTRAPAINT_APP OFF CACHE BOOL "Build the UltraPaint bitmap editor application")
+    set(BUILD_ARTCREATOR_APP OFF CACHE BOOL "Build the ArtCreator vector drawing editor application")
+    set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
+    set(BUILD_ULTRAAI_MODULE OFF CACHE BOOL "Build the UltraAI module (interfaces, registry, adapters)")
+    set(BUILD_CSSLAYOUT_TESTS OFF CACHE BOOL "Build the CSSLayout non-UI test harness")
+    set(ULTRACANVAS_USE_VIDEOFX OFF CACHE BOOL "Build the VideoFX video editing / conversion module")
+    set(BUILD_ULTRACLOUD OFF CACHE BOOL "Build the UltraCloud module")
+    set(BUILD_SMARTHOME OFF CACHE BOOL "Build the Smart Home module")
+    set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
+    set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
+    set(BUILD_ULTRASOCIAL OFF CACHE BOOL "Build the UltraSocial application")
+    set(BUILD_ULTRAFIBU OFF CACHE BOOL "Build the UltraFIBU accounting application")
+    set(BUILD_ULTRACLEANER OFF CACHE BOOL "Build the UltraCleaner application")
+    set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
+    set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
+    set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
+    set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
+    set(BUILD_ULTRAWEB OFF CACHE BOOL "Build the UltraWeb browser")
+    set(BUILD_ULTRADESKTOP OFF CACHE BOOL "Build the UltraDesktop application")
+    set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
+    set(BUILD_ULTRAVIDEO OFF CACHE BOOL "Build the UltraVideo application")
+    set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
+    set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
+    set(BUILD_ULTRAPASSWORD OFF CACHE BOOL "Build the UltraPassword application")
+    set(BUILD_ULTRAWIN_MANAGER OFF CACHE BOOL "Build the UltraWin Manager application")
+    set(BUILD_ULTRAWIN_SETUP OFF CACHE BOOL "Build the ultrawin-setup CLI tool")
+    set(BUILD_ULTRAMSG_CLI OFF CACHE BOOL "Build the ultramsg command-line tool")
+endif()
+
 # ===== BUILD OPTIONS =====
 option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_ULTRAFILER_APP "Build the UltraFiler file manager application" ON)
@@ -411,16 +473,18 @@ endif()
 
 add_subdirectory(UltraCanvas)
 
-# ===== WEBASSEMBLY DEMOS, NATIVELY =====
+# ===== WEBASSEMBLY DEMOS =====
 # The browser validation apps under UltraCanvas/OS/WASM/demo/ (wasm-demo and
 # the ultraos.eu front page) are ordinary UltraCanvas applications: built here
-# they run on the desktop, so a page can be looked at before the hour-long
-# wasm pipeline (wasm-build.yml) runs. Off by default; emcmake builds them
-# from their own directory instead (see UltraCanvas/OS/WASM/README.md).
-option(BUILD_WASM_DEMOS "Build the WebAssembly demo apps as desktop applications" OFF)
-if(BUILD_WASM_DEMOS AND NOT EMSCRIPTEN)
+# natively they run on the desktop, so a page can be looked at before the
+# hour-long wasm pipeline (wasm-build.yml) runs; built here under emcmake they
+# are pages beside UltraCanvasDemo.html, from the one library build (that is
+# what wasm-build.yml does). Off by default; emcmake also builds them from
+# their own directory (see UltraCanvas/OS/WASM/README.md).
+option(BUILD_WASM_DEMOS "Build the WebAssembly demo apps (as desktop applications natively, as pages under emcmake)" OFF)
+if(BUILD_WASM_DEMOS)
     message(STATUS "")
-    message(STATUS "── Building WebAssembly demos (native) ──")
+    message(STATUS "── Building WebAssembly demos ──")
     add_subdirectory(UltraCanvas/OS/WASM/demo)
 endif()
 
@@ -736,6 +800,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasTickerBoardExamples.cpp
             Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasSequenceDiagramExamples.cpp
@@ -788,7 +853,6 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAudioAnalysisExamples.cpp
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
             Apps/DemoApp/UltraCanvasAIExamples.cpp
-            Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
             Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
@@ -801,6 +865,13 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
             Apps/DemoApp/UltraCanvasPixelFXExamples.cpp
         )
+    endif()
+
+    # The LaTeX page calls CreateLaTeXView(), whose on-demand loader
+    # (core/UltraCanvasLaTeXModuleLoader.cpp) is only compiled with the plugin;
+    # without it the page's registration is out too (ULTRACANVAS_PLUGIN_LATEX).
+    if(ULTRACANVAS_PLUGIN_LATEX)
+        list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasLaTeXExamples.cpp)
     endif()
 
     # Only include GL examples if GL support is enabled
@@ -920,8 +991,12 @@ if(BUILD_DEMO_APP)
     )
     # Export the executable's dynamic symbols so on-demand plugin modules
     # (dlopen'ed via the loader, e.g. libUltraCanvasLaTeX) can resolve
-    # UltraCanvas core symbols when the core is linked statically.
-    set_target_properties(UltraCanvasDemo PROPERTIES ENABLE_EXPORTS ON)
+    # UltraCanvas core symbols when the core is linked statically. Not in the
+    # browser: nothing is dlopen'ed there, and the setting would ask for a
+    # dynamic-linking wasm build.
+    if(NOT EMSCRIPTEN)
+        set_target_properties(UltraCanvasDemo PROPERTIES ENABLE_EXPORTS ON)
+    endif()
 
     # Include directories
     target_include_directories(UltraCanvasDemo PRIVATE
@@ -974,6 +1049,57 @@ if(BUILD_DEMO_APP)
         # macOS deprecated OpenGL in 10.14; silence per-call warnings in the GL demo code.
         $<$<AND:$<BOOL:${ULTRACANVAS_ENABLE_GL}>,$<BOOL:${APPLE}>>:GL_SILENCE_DEPRECATION=1>
     )
+
+    # ===== The demo as a web page (emcmake; UltraCanvas/OS/WASM/README.md) =====
+    # The output is UltraCanvasDemo.html plus .js, .wasm, .ww.js and the .data
+    # bundle holding every file the pages read: GetResourcesDir() resolves to
+    # ./share/ with the virtual filesystem's cwd of /, so each directory is
+    # preloaded at /share/<its repository path>, the layout package-linux.sh
+    # gives the portable package. The bundle is downloaded whole before main()
+    # runs, so it holds what the pages show and not the whole of media/
+    # (124 MB): media/3D without its four largest folders (the 25 MB STL, the
+    # 18 MB .blend, the 6.9 MB VRML and the 3.9 MB PLY, which the model
+    # formats page does not list either), and no audio or video samples,
+    # whose players are compiled out in the browser. The demo's own sources
+    # go in for the page header's source button, as the packages ship them.
+    if(EMSCRIPTEN)
+        set_target_properties(UltraCanvasDemo PROPERTIES SUFFIX ".html")
+        # The browser utilities (WASMURL reads ?component=... for main.cpp)
+        # live under OS/WASM/, which is not on the library's include path.
+        target_include_directories(UltraCanvasDemo PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas)
+        set(_uc_demo_preload
+            media/fonts media/icons media/appicon media/images media/vector
+            media/flags media/textsamples media/ebooks media/diagrams
+            media/docs
+            media/3D/3DS media/3D/Alembic media/3D/COLLADA media/3D/DWG
+            media/3D/DXF media/3D/FBX media/3D/MS3D media/3D/OBJ media/3D/STEP
+            media/3D/X3D media/3D/XFile media/3D/spring.obj media/3D/torusknot.obj
+            Docs/UltraCanvas Docs/Modules)
+        foreach(_uc_dir IN LISTS _uc_demo_preload)
+            if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${_uc_dir}")
+                target_link_options(UltraCanvasDemo PRIVATE
+                    "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/${_uc_dir}@/share/${_uc_dir}")
+            endif()
+        endforeach()
+        unset(_uc_dir)
+        unset(_uc_demo_preload)
+        file(GLOB _uc_demo_sources "${CMAKE_CURRENT_SOURCE_DIR}/Apps/DemoApp/*.cpp")
+        foreach(_uc_src IN LISTS _uc_demo_sources)
+            get_filename_component(_uc_name "${_uc_src}" NAME)
+            target_link_options(UltraCanvasDemo PRIVATE
+                "SHELL:--preload-file ${_uc_src}@/share/DemoApp/${_uc_name}")
+        endforeach()
+        unset(_uc_src)
+        unset(_uc_name)
+        unset(_uc_demo_sources)
+        # The page around the canvases: a loading line while the bundle
+        # downloads, then the demo window filling the viewport.
+        target_link_options(UltraCanvasDemo PRIVATE
+            "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/Apps/DemoApp/wasm-shell.html")
+        set_property(TARGET UltraCanvasDemo APPEND PROPERTY LINK_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/Apps/DemoApp/wasm-shell.html")
+    endif()
 
     # Embed app icon in .exe (Windows only)
     ultracanvas_embed_app_icon(UltraCanvasDemo

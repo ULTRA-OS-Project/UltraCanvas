@@ -3,9 +3,10 @@
 // already has, or - over its size limit - the file fetched again and
 // streamed to disk (http(s) through UltraNet, a local file copied). A file
 // is written to "<name>.part" and renamed when it is complete, so a broken
-// download never leaves a file that looks whole.
-// Version: 0.1.0
-// Last Modified: 2026-10-12
+// download never leaves a file that looks whole. A download is as long as
+// the file is large: it has no time limit, only a stall limit.
+// Version: 0.2.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -35,6 +36,10 @@ std::shared_ptr<Download> StartDownload(const std::string& url, const std::strin
                                         std::function<void(std::function<void()>)> post,
                                         std::function<void(int64_t received, int64_t total)> onProgress,
                                         std::function<void(bool ok, const std::string& error)> onDone);
+
+// A download fails when no byte has arrived for this long (30 s by
+// default; tests shorten it). A whole-transfer limit there is none.
+void SetDownloadStallTimeout(int milliseconds);
 
 // "1.4 MB", "830 KB", "12 bytes".
 std::string ByteSize(int64_t bytes);

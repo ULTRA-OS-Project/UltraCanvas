@@ -58,9 +58,12 @@ if (BUILD_DEMO_APP)
     # standard lcms2 and the PDF viewer SIGSEGVs.
     # Default ON here so a plain `cmake ..` matches CI (which passes
     # -DULTRACANVAS_BUILD_SHARED=ON on every row); an explicit -D...=OFF still
-    # wins. Android keeps a static core (no suite there). Windows forces it ON
+    # wins. Android keeps a static core (no suite there), and so does
+    # WebAssembly: a wasm "shared library" is a dynamic-linking side module,
+    # and the page is one statically linked program (the WASM block below
+    # forces it, whatever the cache holds). Windows forces it ON
     # below whenever the LaTeX plug-in is built, whatever this says.
-    if(ANDROID)
+    if(ANDROID OR EMSCRIPTEN)
         option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
     else()
         option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" ON)
@@ -192,6 +195,12 @@ endif()
 # vips) must come from a wasm sysroot on PKG_CONFIG_PATH under emcmake —
 # see OS/WASM/README.md.
 if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
+    # The wasm sysroot on CMAKE_FIND_ROOT_PATH, for the find_package(ZLIB)
+    # of the Models plugin (FBX, .blend) and the VirtualFS bridge; a no-op
+    # when the root CMakeLists.txt included it already.
+    include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasWasmSysroot.cmake")
+    # One statically linked program: see the option above.
+    set(ULTRACANVAS_BUILD_SHARED OFF CACHE BOOL "Build shared library instead of static" FORCE)
     set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
     set(ULTRACANVAS_ENABLE_AUDIO OFF CACHE BOOL "Enable audio playback & recording (requires backend lib)" FORCE)
     set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)" FORCE)
@@ -788,6 +797,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSWOTDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasParliamentDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCircleDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTickerBoard.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneDiagram.cpp
@@ -1076,8 +1086,11 @@ endif()
 # CUPS is the printing system on both Linux and macOS, with the same library
 # and the same API, so the backend is one file in core/ rather than a copy
 # under each platform directory that would drift apart. Without CUPS the
-# module still builds and simply registers no printer backend.
-if(UNIX)
+# module still builds and simply registers no printer backend. Not in the
+# browser, which has no printing system: the toolchain finds host programs,
+# so the host's cups-config answered for the wasm build and the link asked
+# for a -lcups that does not exist there.
+if(UNIX AND NOT EMSCRIPTEN)
     pkg_check_modules(ULTRACANVAS_CUPS QUIET cups)
     if(NOT ULTRACANVAS_CUPS_FOUND)
         # Older CUPS installs ship cups-config instead of a .pc file.
@@ -1372,9 +1385,11 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/QoiPixmapCodec.cpp
 )
 if(ULTRACANVAS_HAS_VIPS)
-    # vips foreign loader for QOI — consumes the codec symbols above.
+    # vips foreign loader and saver for QOI — consumes the codec symbols
+    # above — and the framework's own Windows icon (.ico) loader and saver.
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsIcoPlugin.cpp
     )
 endif()
 if(LIBRSVG_FOUND)
@@ -2005,6 +2020,13 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
             ${_uc_wasm_thread_link}
             -fwasm-exceptions
             -sALLOW_MEMORY_GROWTH=1
+            # Growth with threads otherwise costs every JS-side heap access
+            # a check that the buffer was not replaced (Emscripten warns
+            # "-pthread + ALLOW_MEMORY_GROWTH may run non-wasm code
+            # slowly"). 1 uses the browser's growable SharedArrayBuffer
+            # where it exists (Chromium, Safari; Firefox from 154) and keeps
+            # the checked path elsewhere; 2 would require it.
+            -sGROWABLE_ARRAYBUFFERS=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1
             # The backend's EM_ASM bridges (clipboard, dialogs, downloads,
