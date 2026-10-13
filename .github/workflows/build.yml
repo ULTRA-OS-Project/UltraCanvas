@@ -184,9 +184,9 @@ jobs:
       # platforms, MSYS2 included, and so actions/cache can name it directly.
       # CCACHE_MAXSIZE is deliberately small: GitHub allows 10 GB of cache per
       # REPOSITORY and evicts least-recently-used, and this matrix saves six
-      # caches per run, so a default 5 GB per leg would evict the other legs'
-      # entries (and llms-txt's, and ui-reuse's) on every push. 500 MB x 6 legs
-      # leaves the budget with room.
+      # caches per run on main, so a default 5 GB per leg would evict the
+      # other legs' entries (and llms-txt's, and ui-reuse's) on every push.
+      # 500 MB x 6 legs leaves the budget with room.
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
       # Compare the compiler by content rather than mtime: the runner image
@@ -757,13 +757,25 @@ jobs:
 
       # ===== Configure & Build =====
 
-      # Restore the previous run's compiled objects. `key` is unique per run, so
-      # every run saves a fresh cache at the end; `restore-keys` is the prefix,
-      # so a run that finds no exact match falls back to the most recent cache
-      # for the same leg and starts from those objects rather than from nothing.
-      # Keyed per os AND build_type because the compile lines differ.
+      # Restore the previous run's compiled objects. `key` is unique per run
+      # and never matches; `restore-keys` is the prefix, so every run falls
+      # back to the most recent cache for the same leg and starts from those
+      # objects rather than from nothing. Keyed per os AND build_type because
+      # the compile lines differ.
+      #
+      # Only a run on main saves a cache (the step after the build). A pull
+      # request's cache is visible to that pull request alone, yet it counted
+      # against the repository's 10 GB like any other, and with six legs
+      # saving on every run of every branch the least-recently-used eviction
+      # regularly took main's caches with it. The leg that paid was the
+      # macOS Intel one: its runner compiles five to ten times slower than
+      # the others, so a cold start there was a 65-82 minute build step
+      # against 13 with the cache (2026-10-13), and the whole matrix waited
+      # on it. A pull request now restores main's cache on every push and
+      # saves none.
       - name: Restore ccache
-        uses: actions/cache@v5
+        id: ccache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-${{ matrix.os }}-${{ matrix.build_type }}-${{ github.run_id }}
@@ -1062,6 +1074,16 @@ jobs:
       - name: ccache statistics
         if: always()
         run: ccache -s
+
+      # The objects of this run, for the next one - from main only, whether
+      # or not the build succeeded (a half-built tree is still a head start).
+      # See "Restore ccache" for why a pull request saves none.
+      - name: Save ccache (main)
+        if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
 
       # UltraCanvasStart's engine tests, then the app's headless --check on
       # this leg's platform: it detects the runner, finds its package manager
