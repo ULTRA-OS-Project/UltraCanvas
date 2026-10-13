@@ -36,6 +36,13 @@ if(UC_WASM_DEMO_STANDALONE)
     add_subdirectory(${UC_LIB_DIR} UltraCanvas)
 endif()
 
+# Which of the bundled fonts (media/fonts) the page carries: "all", or a
+# ;-list of file names - the four the front page uses are
+# "Ubuntu-R.ttf;Ubuntu-B.ttf;Ubuntu-RI.ttf;Ubuntu-BI.ttf". The whole family
+# is 4.3 MB of the 4.6 MB .data file; the wasm-build workflow's four-fonts
+# variant measures the difference.
+set(UC_WASM_FONTS "all" CACHE STRING "Fonts preloaded into the virtual FS: all, or a ;-list of media/fonts file names")
+
 # uc_wasm_demo(<target> <source> [preload dirs/files as src@dst ...])
 # Under Emscripten the program is a .html page with the bundled fonts (and
 # whatever else the page needs) preloaded into the virtual FS; natively it is
@@ -50,8 +57,18 @@ function(uc_wasm_demo target source)
         target_include_directories(${target} PRIVATE ${UC_LIB_DIR})
         # GetResourcesDir() resolves to ./share/ (cwd is / in MEMFS), so the
         # bundled fonts must be preloaded at /share/media/fonts.
-        target_link_options(${target} PRIVATE
-            "SHELL:--preload-file ${UC_REPO_ROOT}/media/fonts@/share/media/fonts")
+        if(UC_WASM_FONTS STREQUAL "all")
+            target_link_options(${target} PRIVATE
+                "SHELL:--preload-file ${UC_REPO_ROOT}/media/fonts@/share/media/fonts")
+        else()
+            foreach(font IN LISTS UC_WASM_FONTS)
+                if(NOT EXISTS "${UC_REPO_ROOT}/media/fonts/${font}")
+                    message(FATAL_ERROR "UC_WASM_FONTS names ${font}, which is not in media/fonts")
+                endif()
+                target_link_options(${target} PRIVATE
+                    "SHELL:--preload-file ${UC_REPO_ROOT}/media/fonts/${font}@/share/media/fonts/${font}")
+            endforeach()
+        endif()
         foreach(preload IN LISTS ARGN)
             target_link_options(${target} PRIVATE
                 "SHELL:--preload-file ${UC_REPO_ROOT}/${preload}")

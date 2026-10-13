@@ -95,6 +95,13 @@ option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires bac
 # (Android, WASM). Without it, raster image loading/saving and PixelFX compile
 # to their HAS_LIBVIPS-guarded fallbacks; the QOI codec keeps working.
 option(ULTRACANVAS_ENABLE_VIPS "Enable libvips-backed raster image processing" ON)
+# WebAssembly only. ON builds with -pthread (Web Workers; the page then needs
+# the cross-origin isolation headers for SharedArrayBuffer). OFF builds a
+# single-threaded program that any static host can serve; it must link
+# against a sysroot built with WASM_THREADS=0 (OS/WASM/build-wasm-sysroot.sh),
+# and std::thread fails at run time, so Album / Filer background scans do not
+# run. Measured against each other by the wasm-build workflow's variants.
+option(ULTRACANVAS_WASM_THREADS "WebAssembly: build with -pthread (Web Workers)" ON)
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
 
@@ -1962,20 +1969,28 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
             ${FONTCONFIG_LIBRARIES}
     )
     # Core widgets (Album, Filer) spawn std::thread and libvips runs thread
-    # pools, so the whole program must be built with -pthread; exception
-    # handling must use the wasm EH instructions the sysroot libraries were
-    # compiled with (-fwasm-exceptions), not Emscripten's default
-    # abort-on-throw. PUBLIC so app executables inherit both.
+    # pools, so the whole program is built with -pthread unless
+    # ULTRACANVAS_WASM_THREADS is OFF (then against a sysroot built the same
+    # way); exception handling must use the wasm EH instructions the sysroot
+    # libraries were compiled with (-fwasm-exceptions), not Emscripten's
+    # default abort-on-throw. PUBLIC so app executables inherit both.
+    if(ULTRACANVAS_WASM_THREADS)
+        set(_uc_wasm_thread_compile -pthread)
+        set(_uc_wasm_thread_link -pthread -sPTHREAD_POOL_SIZE=8)
+    else()
+        set(_uc_wasm_thread_compile)
+        set(_uc_wasm_thread_link)
+        message(STATUS "WebAssembly: single-threaded build (ULTRACANVAS_WASM_THREADS=OFF)")
+    endif()
     target_compile_options(${ULTRACANVAS_LIB_NAME} PUBLIC
-            -pthread
+            ${_uc_wasm_thread_compile}
             -fwasm-exceptions
     )
     # PUBLIC so app executables linked against the static core inherit the
     # Emscripten runtime settings the backend depends on.
     target_link_options(${ULTRACANVAS_LIB_NAME} PUBLIC
-            -pthread
+            ${_uc_wasm_thread_link}
             -fwasm-exceptions
-            -sPTHREAD_POOL_SIZE=8
             -sALLOW_MEMORY_GROWTH=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1

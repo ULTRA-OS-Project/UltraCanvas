@@ -73,7 +73,11 @@ source /path/to/emsdk/emsdk_env.sh   # Emscripten 6.0.11 - the version CI builds
 The whole sysroot is compiled `-pthread -fwasm-exceptions`; the library
 build (CMakeLists.txt WASM branch) propagates the same flags PUBLIC, since
 the exception/threading ABI must match across every static library in the
-final link.
+final link. `WASM_THREADS=0 ./build-wasm-sysroot.sh <other-dir>` builds a
+sysroot without `-pthread` for a single-threaded application
+(`-DULTRACANVAS_WASM_THREADS=OFF` on the library): no `SharedArrayBuffer`,
+so no isolation headers on the serving host, and no `std::thread` at run
+time. The two kinds never share a directory.
 
 ### 2. The library / an application
 
@@ -168,9 +172,15 @@ owning references.
   file; the photos the page shows are placeholder tiles except the three in
   `media/images/ultraos/`.
 
-The manually dispatched `wasm-build.yml` workflow builds both and uploads
-them, with `serve.py`, as the `wasm-demo` artifact: unzip it into a folder,
-run `python3 serve.py 8080` there and open either page.
+The manually dispatched `wasm-build.yml` workflow builds both in five
+variants - `baseline`, `min-size` (`-Os`), `no-vips`, `four-fonts`
+(`-DUC_WASM_FONTS=...`, the four the front page uses) and `single-thread` -
+writes each variant's download sizes (raw, gzip, Brotli) into its job
+summary, and uploads each as the `wasm-demo-<variant>` artifact: unzip one
+into a folder, run `python3 serve.py 8080` there and open either page. The
+browser console then shows `first frame presented N ms after navigation
+start`, the port's time to first paint on that machine. The last three
+variants are measurements that may fail to build; they never fail the run.
 
 The same two sources build as desktop applications - configure the
 repository root with `-DBUILD_WASM_DEMOS=ON` and run `build/ultraos-frontpage`

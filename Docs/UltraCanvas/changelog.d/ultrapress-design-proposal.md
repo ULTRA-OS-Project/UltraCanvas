@@ -30,7 +30,19 @@
   demo is 11.24 MB raw and 3.9 MB over Brotli, 6.52 MB of it the module
   and 4.57 MB the fonts and pictures; the minimal demo 10.01 MB raw. The
   proposal's §4.3 carries the table. The artifact list no longer names the
-  `<demo>.ww.js` worker files, which emsdk 6.0.11 does not emit.
+  `<demo>.ww.js` worker files, which emsdk 6.0.11 does not emit. The
+  workflow then grew into five variants, one job each, for the proposal's
+  Phase 0: `baseline`, `min-size` (`-Os`), `no-vips`, `four-fonts` and
+  `single-thread`, each with its own size table and `wasm-demo-<variant>`
+  artifact; the last three never fail the run.
+- **WebAssembly backend: build options for the size measurements.**
+  `ULTRACANVAS_WASM_THREADS=OFF` builds the library without `-pthread`, and
+  `WASM_THREADS=0` builds `build-wasm-sysroot.sh`'s sysroot the same way,
+  for a single-threaded program a static host can serve without isolation
+  headers; the demo's `UC_WASM_FONTS` preloads a `;`-list of the bundled
+  fonts instead of all fourteen. The window logs its first presented frame
+  to the browser console with its time since navigation start, so a tester
+  reads the port's time to first paint on any browser.
 - `Masterfile_modules.md` §6 said UltraDatabase was "Concept / design only";
   it has had the SQLite core, migrations and the PostgreSQL driver since
   UltraFIBU's multi-user mode was built on them. The registry line now says

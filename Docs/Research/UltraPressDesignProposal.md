@@ -726,10 +726,16 @@ produces that model.
 
 ## 9. Phases
 
-**Phase 0 — measure, decide (short).** The baseline is recorded (§4.3:
-11.24 MB raw, 3.9 MB Brotli for the front page demo). Build the demo
-without libvips and with a font subset, and record those; time to first
-paint on a laptop and a phone; whether a single-threaded build links and runs; Firefox and
+**Phase 0 — measure, decide (short). Started 2026-10-13.** The baseline is
+recorded (§4.3: 11.24 MB raw, 3.9 MB Brotli for the front page demo), and
+`wasm-build.yml` now builds the levers as variants beside it — `min-size`
+(`-Os`), `no-vips` (`-DULTRACANVAS_ENABLE_VIPS=OFF`; the demo's PNG pictures
+then do not load, the module is the measurement), `four-fonts`
+(`-DUC_WASM_FONTS=…`) and `single-thread` (`-DULTRACANVAS_WASM_THREADS=OFF`
+against a sysroot built with `WASM_THREADS=0`) — each with its own size
+table; the window logs its time to first paint to the browser console, so a
+tester on a laptop, a phone, Firefox or Safari reads one number. Still to
+do: run those tests; whether a single-threaded build links and runs; Firefox and
 Safari; whether an Emscripten side module loads. (The History API,
 `PushUrl` and `SetOnNavigate`, is already in `UltraCanvasWASMSupport.h`.)
 Decide the HTML shadow with the user (§11, question 1). Deliverable: the numbers in this document's §4.3,

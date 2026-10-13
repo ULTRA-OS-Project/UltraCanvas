@@ -35,7 +35,7 @@ onto an HTML `<canvas>`.
 | Printing | Native print dialog | `ShowPrintDialog()` opens the text in a new window and calls `window.print()`. |
 | Folder watch, file lock, volume monitor, hardware info | Native probes | The core fallbacks: polling, "unknown", "null" backend. |
 | Spell checking | System service or Hunspell | Hunspell only, with dictionaries preloaded into the virtual FS. |
-| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. |
+| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. `-DULTRACANVAS_WASM_THREADS=OFF` builds single-threaded against a sysroot built with `WASM_THREADS=0`: no headers needed, and `std::thread` fails at run time. |
 | Networking (UltraNet), OpenGL, audio, video, most file-type plugins | Available | Compiled out (`UltraCanvas/CMakeLists.txt` forces them off for `EMSCRIPTEN`). |
 
 ### Application lifetime
@@ -145,7 +145,10 @@ WASMURL::SetOnNavigate([](const std::string& url) { ShowPageFor(url); });
 WASMURL::PushUrl("/the-plan/");          // on a click; does not call the callback
 ```
 
-`WASMTime` exposes `performance.now()` and performance marks.
+`WASMTime` exposes `performance.now()` and performance marks. The window logs
+its first presented frame to the browser console once, as `first frame
+presented N ms after navigation start`: the time to first paint including the
+download, compilation and start-up, from the browser's own clock.
 
 ## Serving an application
 
