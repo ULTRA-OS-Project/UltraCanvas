@@ -160,6 +160,13 @@ int main() {
         Check(out.width == 40 && out.height == 20, "... the file is the picture's size");
     }
 
+    // ----- FileLoader's types: an icon and a QOI too -----
+    const fs::path icon = scratch / "photo.ico", quite = scratch / "photo.qoi";
+    Check(surface->SaveProcessed(PathToUtf8(icon), FileSaveImageSize(), error) && fs::file_size(icon, ec) > 22,
+          "Saved as an icon, a type FileLoader offers: " + error);
+    Check(surface->SaveProcessed(PathToUtf8(quite), FileSaveImageSize(), error) && fs::file_size(quite, ec) > 14,
+          "... and as QOI: " + error);
+
     // ----- The type's save settings -----
     auto storeQuality = [](int q) {
         FileSaveSettings settings = UltraCanvasFileLoader::GetSaveSettings("jpg");

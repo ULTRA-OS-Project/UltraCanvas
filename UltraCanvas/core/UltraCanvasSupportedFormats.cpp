@@ -101,6 +101,11 @@ namespace {
             { "psd",  {},                 "Adobe Photoshop document" },
             { "ico",  {},                 "Windows icon" },
             { "fits", {},                 "Flexible Image Transport System" },
+            // Camera raw: read where libvips' ImageMagick delegate is.
+            { "dng",  {},                 "Digital Negative (camera raw)" },
+            { "cr2",  {},                 "Canon raw" },
+            { "nef",  {},                 "Nikon raw" },
+            { "arw",  {},                 "Sony raw" },
         };
         return candidates;
     }

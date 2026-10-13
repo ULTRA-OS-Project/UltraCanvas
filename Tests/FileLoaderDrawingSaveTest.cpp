@@ -8,7 +8,9 @@
 //     for (sharp: one hard step at an edge), at the page's own size without
 //     one, a JPEG on white, an icon at its sizes;
 //   - AddVectorDocumentSaveTypes: the bitmap types it writes, and the page's
-//     size as a drawing for the Save dialog's Settings.
+//     size as a drawing for the Save dialog's Settings;
+//   - AddImageSaveTypes: the bitmap types alone, PNG first - what an
+//     application's Save of a picture offers.
 //
 // Headless. The vector writers come from the Vector plugin, which this test
 // does not register: only the bitmap half is checked.
@@ -79,6 +81,12 @@ int main() {
           "AddVectorDocumentSaveTypes offers the bitmap types it writes, ICO and QOI included");
     Check(opts.imageIsDrawing && opts.imageWidth == 96 && opts.imageHeight == 48,
           "... and the page's size as a drawing, for the Settings' Size row");
+    FileDialogOptions images;
+    UltraCanvasFileLoader::AddImageSaveTypes(images);
+    Check(!images.filters.empty() && !images.filters.front().extensions.empty() &&
+          images.filters.front().extensions.front() == "png" && HasFilter(images, "ico") && HasFilter(images, "qoi") &&
+          !HasFilter(images, "svg") && !images.imageIsDrawing,
+          "AddImageSaveTypes: every bitmap type it writes, PNG first, nothing else");
     FileDialogOptions vectorOnly;
     UltraCanvasFileLoader::AddVectorDocumentSaveTypes(vectorOnly, doc, false);
     Check(!HasFilter(vectorOnly, "png") && !vectorOnly.imageIsDrawing, "... none of that without bitmaps");

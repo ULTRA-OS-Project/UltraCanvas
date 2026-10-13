@@ -2,7 +2,8 @@
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
 // Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
-//                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes
+//                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
+//                  AddImageSaveTypes
 // Version: 1.3.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
@@ -568,17 +569,21 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasFileLoader::AddVectorDocumentSaveTypes(FileDialogOptions& opts,
-                                                           const VectorStorage::VectorDocument& document,
-                                                           bool withBitmaps) {
-        for (const std::string& ext : SavableVectorExtensions()) opts.AddFilter(VectorTypeName(ext), ext);
-        if (!withBitmaps) return;
+    void UltraCanvasFileLoader::AddImageSaveTypes(FileDialogOptions& opts) {
         for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Bitmap)) {
             if (!format.canSave) continue;
             std::vector<std::string> extensions = {format.extension};
             extensions.insert(extensions.end(), format.aliases.begin(), format.aliases.end());
             opts.AddFilter(format.description, extensions);
         }
+    }
+
+    void UltraCanvasFileLoader::AddVectorDocumentSaveTypes(FileDialogOptions& opts,
+                                                           const VectorStorage::VectorDocument& document,
+                                                           bool withBitmaps) {
+        for (const std::string& ext : SavableVectorExtensions()) opts.AddFilter(VectorTypeName(ext), ext);
+        if (!withBitmaps) return;
+        AddImageSaveTypes(opts);
         const Size2Di page = GetVectorDocumentPixelSize(document);
         opts.SetDrawingSize(page.width, page.height);
     }

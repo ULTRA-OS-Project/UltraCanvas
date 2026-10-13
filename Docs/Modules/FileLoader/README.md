@@ -156,7 +156,10 @@ UltraCanvasFileLoader::SaveFileDialog(opts, [drawing](DialogResult r, const std:
 
 `GetVectorDocumentPixelSize(document)` is the size a page starts at (96 DPI;
 the model is in points), and `CanSaveImage(extensionOrPath)` says whether
-this build writes a bitmap type. Windows icons and QOI are read and written
+this build writes a bitmap type. A picture's Save offers
+`AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
+and its Open `GetSupportedLoadExtensions(MediaFormatCategory::Bitmap)`, as
+UltraPaint and the media viewer do. Windows icons and QOI are read and written
 by the framework's own libvips plugins, and an AVIF or HEIC type is offered
 only where libheif can encode it.
 

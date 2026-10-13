@@ -412,8 +412,10 @@ The adjustments panel (the `settings-sliders` toolbar toggle) drives `MediaAdjus
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
 
-*Save as* tells the Save dialog how big the picture is, so the **Settings**
-of a bitmap type (PNG, JPEG, WebP, TIFF, AVIF, BMP) offer
+*Save as* offers FileLoader's types - every bitmap type this build writes
+(`UltraCanvasFileLoader::AddImageSaveTypes`: PNG first, then JPEG, WebP,
+AVIF, HEIC, TIFF, GIF, QOI, ICO, … as available) - and tells the Save dialog
+how big the picture is, so the **Settings** of a bitmap type offer
 [another size](UltraCanvasFileDialog.md#the-pictures-size) for that save, and
 writes with the type's save settings (JPEG quality, PNG compression ...) once
 the user has stored any. An SVG has no pixel size of its own: it is offered as

@@ -1,8 +1,11 @@
 #### 2026-10-13 *1.0.6*
-- **Save image as at another size, with the type's settings.** The Settings
-  button of the Save dialog showed no size field here: the viewer never told
-  it how big the picture was. A bitmap type's Settings (PNG, JPEG, WebP, TIFF,
-  AVIF, BMP) now start with the picture's size - as shown, so a picture turned
+- **Save image as: every type this build writes, at another size, with the
+  type's settings.** The Save dialog offered six types of the viewer's own
+  (PNG, JPEG, WebP, TIFF, AVIF, BMP); it now offers the framework's
+  FileLoader list - every bitmap type this build writes, GIF, HEIC, QOI and
+  icons among them. And its Settings button showed no size field here: the
+  viewer never told it how big the picture was. A bitmap type's Settings now
+  start with the picture's size - as shown, so a picture turned
   a quarter starts on its turned sides - and the file is written at the size
   chosen, with the type's settings (JPEG quality, PNG compression ...), which
   the viewer ignored before. A drawing (SVG) has no pixel size of its own: it

@@ -91,3 +91,13 @@
   yet is added to it, not worked around. `FileLoaderDrawingSaveTest` (new)
   checks the page size, the types, a PNG drawn at ten times its size with a
   hard edge, a JPEG on white and an icon.
+- **`AddImageSaveTypes`: a picture's Save offers FileLoader's types.**
+  `UltraCanvasFileLoader::AddImageSaveTypes(opts)` fills a Save dialog with
+  every bitmap type this build writes, each named, PNG first;
+  `AddVectorDocumentSaveTypes` uses it. The media viewer's Save image as
+  (six types of its own before) and UltraPaint's Open / Import / drop, Save
+  As and Export (fixed lists of their own) now take FileLoader's lists, so
+  GIF, HEIC, QOI, icons and whatever else this build reads and writes are on
+  offer there, and a type it cannot write is not. The format inventory knows
+  camera raw (DNG, CR2, NEF, ARW), read where libvips' ImageMagick delegate
+  is.

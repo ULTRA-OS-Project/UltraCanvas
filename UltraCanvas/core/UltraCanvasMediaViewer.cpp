@@ -3,7 +3,9 @@
 // See UltraCanvasMediaViewer.h for the feature overview.
 // Version: 1.9.0
 // Last Modified: 2026-10-13
-// V1.9.0: Save image as offers another size in a bitmap type's Settings - the
+// V1.9.0: Save image as offers FileLoader's types - every bitmap type this
+//   build writes - instead of six of its own; and another size in a bitmap
+//   type's Settings - the
 //   picture's own, or for an SVG the size it is drawn at, a drawing having no
 //   pixels of its own - and writes with the type's save settings at the size
 //   chosen; a drawing is drawn again at that size, so it stays sharp.
@@ -106,34 +108,13 @@ static std::string BaseName(const std::string& path) {
 }
 
 // ----- Save as -----
-// The formats Save writes, in the order the dialog lists them. libvips picks
-// the writer from the name's extension, so the extension is the format; the
-// first one of each is the one a name is given, and PNG, the first format, is
-// the default.
-struct SaveFormat {
-    const char* label;
-    std::vector<std::string> extensions;
-};
-
-static const std::vector<SaveFormat>& SaveFormats() {
-    static const std::vector<SaveFormat> formats = {
-        { "PNG image",  { "png" } },
-        { "JPEG image", { "jpg", "jpeg" } },
-        { "WebP image", { "webp" } },
-        { "TIFF image", { "tiff", "tif" } },
-        { "AVIF image", { "avif" } },
-        { "BMP image",  { "bmp" } },
-    };
-    return formats;
-}
-
+// The formats Save writes are FileLoader's: every bitmap type this build
+// writes (UltraCanvasFileLoader::AddImageSaveTypes / CanSaveImage), PNG
+// first - not a list of the viewer's own. The image writer picks the format
+// from the name's extension.
 static bool HasSaveExtension(const std::string& path) {
     const std::string ext = LowerExt(BaseName(path));
-    for (const SaveFormat& format : SaveFormats()) {
-        if (std::find(format.extensions.begin(), format.extensions.end(), ext) !=
-            format.extensions.end()) return true;
-    }
-    return false;
+    return !ext.empty() && UltraCanvasFileLoader::CanSaveImage(ext);
 }
 
 // The name Save offers for the file being shown: its own name when that is a
@@ -1933,7 +1914,7 @@ void UltraCanvasMediaViewer::ShowSaveDialog() {
     opts.SetTitle("Save image as")
         .SetDefaultFileName(SaveNameFor(GetCurrentPath()))
         .SetParentWindow(GetWindow());
-    for (const SaveFormat& format : SaveFormats()) opts.AddFilter(format.label, format.extensions);
+    UltraCanvasFileLoader::AddImageSaveTypes(opts);
     // The picture's size - or the drawing's, which has none in pixels - so a
     // bitmap type's Settings offer to write it at another.
     const FileSavePicture picture = surface->GetSavePicture();

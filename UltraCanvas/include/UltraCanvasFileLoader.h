@@ -5,7 +5,8 @@
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
 // Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
-//                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes
+//                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
+//                  AddImageSaveTypes
 // Version: 1.3.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
@@ -253,6 +254,11 @@ namespace UltraCanvas {
         static Size2Di GetVectorDocumentPixelSize(const VectorStorage::VectorDocument& document);
         // A bitmap format this build writes (GetSupportedFormats: canSave).
         static bool CanSaveImage(const std::string& extensionOrPath);
+        // A Save dialog's file types for a picture: every bitmap type this
+        // build writes, each with its name, PNG first. An application's
+        // Save / Export of a picture offers these - plus its own project
+        // type, if it has one - never a list of its own.
+        static void AddImageSaveTypes(FileDialogOptions& opts);
         // The Save dialog's file types for a drawing: every vector writer this
         // build has, then - `withBitmaps` - every bitmap type it writes, each
         // with its name, and the drawing's size (SetDrawingSize), so a bitmap
