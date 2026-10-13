@@ -930,6 +930,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     // neutralised by the flag above.
     if (ramDiskProbeWorker.joinable()) ramDiskProbeWorker.join();
     if (ramDiskFactsWorker.joinable()) ramDiskFactsWorker.join();
+    if (driveListWorker.joinable()) driveListWorker.join();
     StopCloudStorageDiscovery();
     // Its worker posts into this window, so it has to be joined here like the
     // others - and before the widgets its callback touches are destroyed. The
@@ -3574,8 +3575,10 @@ void UltraFilerWindow::BuildFolderTree() {
     // RHEL, Arch and openSUSE, used to be missed entirely.
     //
     // This is only the first fill: RefreshDriveNodes keeps the rows in step
-    // with what is mounted from here on.
-    for (const MountedVolume& volume : ListMountedVolumes())
+    // with what is mounted from here on. On the UI thread, since the rows
+    // belong in the first frame; one pass over the mount table, no probe.
+    knownVolumes = ListMountedVolumes();
+    for (const MountedVolume& volume : knownVolumes)
         AddTreeDriveNode(volume.path, DriveNodeLabel(volume));
 
     if (root) root->Expand();
@@ -3922,12 +3925,59 @@ void UltraFilerWindow::AddTreeDriveNode(const std::string& path,
 
 void UltraFilerWindow::RefreshDriveNodes() {
     if (!folderTree) return;
+    // One reading at a time; a request during a reading is remembered and
+    // served by that reading's completion, so the newest set of mounts is
+    // what the tree ends up showing.
+    if (driveListBusy.exchange(true)) {
+        driveListPending.store(true);
+        return;
+    }
+    if (driveListWorker.joinable()) driveListWorker.join();
+    auto alive = probeAlive;
+    driveListWorker = std::thread([this, alive]() {
+        // Both lists in one pass, off the UI thread: the mount table is
+        // cheap, but a RAM disc listing reads volume labels, and a drive
+        // that answers slowly - a share, a sleeping disk - is paid for here.
+        std::vector<UltraFilerRamDisks::RamDisc> discs;
+        std::vector<MountedVolume> volumes;
+        try {
+            // Waits for the start-up probe's answer if it is not in yet (the
+            // answer is kept once given) - off the UI thread, so nothing
+            // shows it.
+            if (UltraFilerRamDisks::Available()) discs = UltraFilerRamDisks::List();
+            volumes = ListMountedVolumes();
+        } catch (const std::exception&) {
+            // An exception leaving a std::thread ends the process; a listing
+            // that failed is a listing with nothing new to show.
+            discs.clear();
+            volumes.clear();
+        }
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app || !alive->load()) {
+            driveListBusy.store(false);
+            return;
+        }
+        app->PostToUIThread([this, alive, discs = std::move(discs),
+                             volumes = std::move(volumes)]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            driveListBusy.store(false);
+            // A failed listing (empty volumes - the system root is always
+            // among them) must not strip every drive row.
+            if (!volumes.empty()) ApplyDriveLists(discs, volumes);
+            if (driveListPending.exchange(false)) RefreshDriveNodes();
+        });
+    });
+}
+
+void UltraFilerWindow::ApplyDriveLists(const std::vector<UltraFilerRamDisks::RamDisc>& discs,
+                                       const std::vector<MountedVolume>& volumes) {
+    if (!folderTree) return;
     // RAM discs first, for the same one-row-per-path reason as at start-up -
     // and because this pass is also how a disc another program made or
     // removed reaches the tree.
-    RefreshRamDiskNodes();
+    ApplyRamDiskList(discs);
 
-    const std::vector<MountedVolume> volumes = ListMountedVolumes();
+    knownVolumes = volumes;
     std::set<std::string> mounted;
     for (const MountedVolume& volume : volumes) mounted.insert(volume.path);
 
@@ -5819,7 +5869,9 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
 
 void UltraFilerWindow::RefreshComputerPage() {
     RefreshComputerFolders();
-    RebuildComputerDriveCards(ListMountedVolumes());
+    // The volumes as last listed (the start-up fill, then every drive pass):
+    // the cards follow the tree's rows, and the page shows without a listing.
+    RebuildComputerDriveCards(knownVolumes);
     QueueVolumeSpaceQuery();
 }
 

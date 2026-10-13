@@ -325,8 +325,19 @@ private:
     // Driven by the volume monitor (StartVolumeMonitor), which is what makes a
     // USB stick plugged in while UltraFiler is running appear without a
     // restart - the tree used to be enumerated exactly once, at start-up.
-    // Cheap and idempotent: calling it when nothing changed does nothing.
+    //
+    // The listing - the mounted volumes and the RAM discs, which are found
+    // among them - is read on a worker thread and applied when it is in
+    // (ApplyDriveLists), so a drive that answers slowly never holds the
+    // window: one reading at a time, and a request made during a reading is
+    // served by one more reading when it completes. Idempotent: a pass that
+    // finds nothing changed changes nothing.
     void RefreshDriveNodes();
+    // The UI-thread half: the RAM disc rows first (one row per path - a disc
+    // that is also a mounted volume gets its row where it can be ejected),
+    // then the drive rows brought in line with `volumes`.
+    void ApplyDriveLists(const std::vector<UltraFilerRamDisks::RamDisc>& discs,
+                         const std::vector<MountedVolume>& volumes);
     // ===== REMOTE DRIVES =====
     // The "+ Drive" button in the navigation row: it offers an FTP / SFTP
     // server or a cloud account, adds it through UltraCloud's shared
@@ -1152,6 +1163,14 @@ private:
     // does nothing rather than opening two dialogs.
     std::thread ramDiskFactsWorker;
     bool ramDiskDialogPending = false;
+    // The worker listing the mounted volumes and RAM discs (RefreshDriveNodes),
+    // its busy flag and the "ask again when done" flag, like the volume
+    // sizes' worker below; and the volumes as last listed, which the Computer
+    // page's drive cards are built from, so showing the page lists nothing.
+    std::thread driveListWorker;
+    std::atomic<bool> driveListBusy{false};
+    std::atomic<bool> driveListPending{false};
+    std::vector<MountedVolume> knownVolumes;
     // The last failure reported for a drive operation. Deleting five entries
     // queues five operations, and five identical "permission denied" dialogs
     // in a row tell the user nothing the first one did not - so a repeat of

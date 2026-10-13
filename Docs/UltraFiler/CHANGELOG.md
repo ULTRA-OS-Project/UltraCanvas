@@ -29,6 +29,13 @@
   worker now and the dialog opens when they are in, with the busy pointer
   shown if that takes longer than a moment; a second click meanwhile does
   nothing rather than opening two dialogs.
+- **Plugging a drive in or out no longer lists the drives on the UI thread.**
+  Each mount or unmount, and *Refresh drives* in the tree's menu, listed the
+  mounted volumes and the RAM discs while the window waited. The listing
+  runs on a worker now and the tree's drive rows and the Computer page's
+  drive cards are brought in line when it is in, one listing at a time;
+  the Computer page itself shows from the last listing instead of making
+  one of its own.
 
 #### 2026-10-12 *1.72.5*
 - **Icons no longer flicker in a maximised window.** With *Display > File
