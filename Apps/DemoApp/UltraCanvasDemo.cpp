@@ -1631,6 +1631,18 @@ namespace UltraCanvas {
                 .AddVariant("matrixdiagram", "T-Shaped")
                 .AddVariant("matrixdiagram", "Weighted (QFD)");
 
+    diagramBuilder.AddItem("tickerboard", "Ticker Board",
+                           "Labels, values and changes crawling across a band: set in a font, "
+                           "or lit on a 5x7 LED dot grid that the text steps across",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateTickerBoardExamples(); },
+                           "DemoApp/UltraCanvasTickerBoardExamples.cpp",
+                           "Docs/UltraCanvas/UltraCanvasTickerBoard.md")
+                .AddVariant("tickerboard", "Market Quotes")
+                .AddVariant("tickerboard", "LED Sign")
+                .AddVariant("tickerboard", "Live Dot-Matrix Quotes")
+                .AddVariant("tickerboard", "Headline Crawl");
+
 //        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
 //                               ImplementationStatus::NotImplemented,
 //                               [this]() { return nullptr; });

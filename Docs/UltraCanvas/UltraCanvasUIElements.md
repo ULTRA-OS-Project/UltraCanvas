@@ -80,6 +80,7 @@ from an external "Show password" checkbox. See
 |---|---|---|
 | Static text - selectable and copyable with `SetSelectable`, or across many labels with one `UltraCanvasTextSelection` | `UltraCanvasLabel` | `UltraCanvasLabel.h`, `UltraCanvasTextSelection.h` |
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
+| Text that scrolls past by itself (a marquee, a news crawl, a stock ticker, an LED sign) | `UltraCanvasTickerBoard` - see *Diagrams* below | `Plugins/Diagrams/UltraCanvasTickerBoard.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
@@ -232,6 +233,7 @@ Each takes its data through setters and renders itself; most have a
 | A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
 | A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |
 | A bit-accurate map of a protocol data unit | `UltraCanvasPacketDiagram` | `Plugins/Diagrams/UltraCanvasPacketDiagram.h` |
+| A ticker board: labels, values and changes crawling across a band without end, set in a font or lit on a 5x7 LED dot grid - a stock ticker, a headline crawl, an LED sign | `UltraCanvasTickerBoard` (`CreateTickerBoard`, `MakeTickerQuote`) | `Plugins/Diagrams/UltraCanvasTickerBoard.h` |
 | A gauge, **and the framework's progress bar** | `UltraCanvasGaugeDiagramElement` — see *Pickers, dialogs and feedback* above | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 
 ### Codes and documents

@@ -4709,6 +4709,28 @@ else()
     message(STATUS "  BusyIndicatorRenderTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TICKER BOARD RENDER TEST =====
+# UltraCanvasTickerBoard drawn offscreen: MakeTickerQuote's formatting, the
+# DotMatrix grid geometry and hit testing, the Text face's runs and the
+# offset wrapping to the strip length.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TickerBoardRenderTest...")
+    add_executable(TickerBoardRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TickerBoardRenderTest.cpp
+    )
+    target_include_directories(TickerBoardRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TickerBoardRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(TickerBoardRenderTest PRIVATE UltraCanvas)
+    set_target_properties(TickerBoardRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TickerBoardRenderTest COMMAND TickerBoardRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TickerBoardRenderTest")
+else()
+    message(STATUS "  TickerBoardRenderTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== RENDER ALPHA TEST =====
 # IRenderContext::SetAlpha fades fills, strokes, gradients and text, not only
 # images. Offscreen, no display needed.
