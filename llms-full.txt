@@ -1611,11 +1611,17 @@ Store, and any other UltraCanvas-based application that needs local or
 networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
-**Implementation status (this branch):** Concept / design only. Public
-surface specified in `Docs/Modules/UltraDatabase/README.md`; suggested
-rollout is SQLite core + registry + query/transaction/migration API
-(Stage 1), async + pooling + PostgreSQL/MySQL drivers (Stage 2),
-remaining drivers and at-rest encryption (Stage 3).
+**Implementation status (this branch):** Stage 1 implemented, and the
+PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
+parameterized queries, prepared statements, transactions and versioned
+migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
+`Tests/UltraDatabase`); the PostgreSQL driver
+(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
+found, verifies TLS by default and reads its password from UltraVault, and
+UltraFIBU's multi-user mode runs on it. Still the Stage 2/3 plan: the other
+networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB, DuckDB), async
+queries, pooling, streaming cursors and at-rest encryption. Details in
+`Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
 
@@ -67677,7 +67683,7 @@ FILE: Docs/UltraCanvas/UltraCanvasWebAssembly.md
 
 # UltraCanvas on WebAssembly
 
-<!-- doc-check: std::vector<uint8_t> documentBytes; -->
+<!-- doc-check: std::vector<uint8_t> documentBytes; void ShowPageFor(const std::string& url); -->
 
 **Status: experimental.** The framework builds with Emscripten and runs in
 Chromium: windows render through the same Cairo/Pango pipeline as the desktop
@@ -67712,7 +67718,7 @@ onto an HTML `<canvas>`.
 | Printing | Native print dialog | `ShowPrintDialog()` opens the text in a new window and calls `window.print()`. |
 | Folder watch, file lock, volume monitor, hardware info | Native probes | The core fallbacks: polling, "unknown", "null" backend. |
 | Spell checking | System service or Hunspell | Hunspell only, with dictionaries preloaded into the virtual FS. |
-| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. |
+| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. `-DULTRACANVAS_WASM_THREADS=OFF` builds single-threaded against a sysroot built with `WASM_THREADS=0`: no headers needed, and `std::thread` fails at run time. |
 | Networking (UltraNet), OpenGL, audio, video, most file-type plugins | Available | Compiled out (`UltraCanvas/CMakeLists.txt` forces them off for `EMSCRIPTEN`). |
 
 ### Application lifetime
@@ -67809,9 +67815,23 @@ WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::
 
 `WASMBrowser` also wraps `alert` / `confirm` / `prompt`, the console,
 `navigator.userAgent`, the screen size and `localStorage`. `WASMURL` reads the
-page URL, its query parameters (`GetQueryParameter`, `GetAllQueryParameters`)
-and hash, and can navigate or reload. `WASMTime` exposes `performance.now()`
-and performance marks.
+page URL, its path, its query parameters (`GetQueryParameter`,
+`GetAllQueryParameters`) and hash, and can navigate or reload. An application
+that shows several pages from one module uses its History API instead of
+navigating: `PushUrl` changes the address bar and adds an entry the back
+button returns to, `ReplaceUrl` rewrites the current entry, and
+`SetOnNavigate` hears the back and forward buttons (every `popstate`, a hash
+change included) with the new URL, on the main thread:
+
+```cpp
+WASMURL::SetOnNavigate([](const std::string& url) { ShowPageFor(url); });
+WASMURL::PushUrl("/the-plan/");          // on a click; does not call the callback
+```
+
+`WASMTime` exposes `performance.now()` and performance marks. The window logs
+its first presented frame to the browser console once, as `first frame
+presented N ms after navigation start`: the time to first paint including the
+download, compilation and start-up, from the browser's own clock.
 
 ## Serving an application
 
@@ -67837,8 +67857,13 @@ forms with text inputs, a text area and a checkbox, a footer). The second
 is the pattern for a web-page-like application: one scrollable container
 filling the window, sections stacked by Block layout so wrapped text gets
 its real height, Flex rows for the horizontal pieces, popup menus anchored
-under their buttons, and `Maximize()` under `__EMSCRIPTEN__` to fill the
-viewport. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
+under their buttons, `Maximize()` under `__EMSCRIPTEN__` to fill the
+viewport, and several pages from one module through the History API: a
+link into the site pushes `?page=<site path>` and rebuilds the page's
+sections, `SetOnNavigate` rebuilds them for the back and forward buttons,
+and the address read at start decides the first page, so a reload keeps it.
+The rebuild is posted to the UI thread (`PostToUIThread`), never done inside
+the click of a button the rebuild removes. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
 at the repository root).
 
 ## Known limitations
@@ -84260,6 +84285,187 @@ its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.
 
 ==============================================================================
+FILE: Docs/UltraPress/README.md
+==============================================================================
+
+# UltraPress
+
+**Status:** Phase 1 under way. UltraPress 0.4.1 is the headless engine, the
+`ultrapress` program - the commands and the editor window -, the block
+renderer on real elements and the WordPress importer: a site as a folder of JSON files, the
+block registry, the HTML shadow of every page, the static publish, every
+block as UltraCanvas elements, blocks added, moved, removed and edited
+with the page re-rendered live, and a WordPress export read into a site.
+The publisher onto web hosts and the WebAssembly output follow
+([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
+**Last Modified:** 2026-10-13
+**Author:** UltraCanvas Framework / ULTRA OS
+
+UltraPress is the website and shop builder of ULTRA OS: a WordPress-class
+system built on UltraCanvas whose published pages are rendered by the
+framework itself, compiled to WebAssembly, with a plain HTML shadow of every
+page for search engines, link previews, mail clients and screen readers.
+
+This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
+
+## The window
+
+```bash
+ultrapress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
+ultrapress mysite --check     # render every page without a window; element counts and warnings
+```
+
+`ultrapress` is one program: a command word first (`new`, `check`, `page`,
+`publish`, `import`, `help`) runs that command without a window, a site
+folder opens the editor. There is no second `UltraPress` binary: two names
+that differ only in case are one name on macOS and Windows.
+
+The left column lists the pages and the current page's blocks: select one,
+move it with the arrows, remove it, or add one after the selection from
+the drop-down of every registered type. The right column is the selected
+block's properties, generated from the registry - a text input for a
+line, a text area for paragraphs and HTML, a checkbox for a flag, an
+integer for a number, and links, items and lists as JSON applied as soon
+as it parses - or, with no block selected, the page's title, description,
+status and pinning. Every change re-renders the page in the middle;
+*Save site* writes the folder (`ui/UltraPressWindow.h`).
+
+The page is rendered on real UltraCanvas elements by the block renderer
+(`Apps/UltraPress/render/UltraPressRender.h`, target `UltraPressRender`),
+built the way the ultraos.eu front page demo is: bands whose centred
+column is Block-laid-out so wrapped text measures, wrapping Flex rows for
+columns and buttons. The hero and call to action sit on the theme's night
+colours, FAQs are an accordion, forms are real inputs whose fields reach
+`RenderOptions::onFormSubmit`, the newsletter calls
+`onNewsletterSubscribe`, links call `onLink` with a page's path or a URL,
+rich text and HTML blocks go through the HTML reader's element builder,
+and a picture the site folder lacks is a captioned tile. The theme's
+colours (`accent`, `ink`, `inkSoft`, `paper`, `paperSoft`, `rule`,
+`night`, `nightSoft`, `onDark`, `tile`) and `fontFamily` reach it through
+`PaletteFromTheme`. Under Emscripten the same renderer is the published
+page; on the desktop it is the editor's preview, pixel for pixel.
+
+## The command line
+
+```bash
+ultrapress new mysite --name "My site" --url https://my.example   # a starter site
+ultrapress check mysite                                           # every problem, exit 1 when there is one
+ultrapress page mysite home                                       # the front page's HTML shadow, to stdout
+ultrapress publish mysite out                                     # the static tier, into out/
+ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the renderer referenced (later)
+ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
+```
+
+`import` reads a WordPress export (Tools > Export in WordPress, the WXR
+file): the site's name, address, language and owner, every page and post
+with its slug, status and date, the front page (the page named home, or
+`--front <slug>`), the menus with their nesting, and the bodies as blocks.
+The block editor's markers map onto the registry where a block exists -
+paragraphs, headings, images, covers, quotes, buttons, columns, galleries,
+lists, spacers, HTML - and everything else, and classic content, becomes
+rich text; the report says what was kept that way. Attachment URLs are
+rewritten to `media/<year>/<month>/<file>` and fetched with `--media`
+(through UltraNet) or listed. A post's dated WordPress address is reported
+as a redirect to its new path. `--no-drafts` leaves drafts out.
+
+`publish` writes `index.html` for the front page and `<slug>/index.html` for
+every other published page, `sitemap.xml`, `robots.txt`, `feed.xml` (the
+posts), an `.htaccess` with the cache and type rules an Apache host needs,
+and copies `media/`. Upload the folder to any web host; the files are all it
+takes. Drafts are left out unless `--drafts` is given.
+
+## The site folder
+
+```
+mysite/
+├── site.json        name, tagline, url, language, languages, owner
+├── theme.json       name, colors (name → #rrggbb), fontFamily
+├── menus.json       {"main": [...], "footer": [...]}; an item has title and page (a slug) or url, and items
+├── pages/<slug>.json
+└── media/           pictures and downloads; a block names them by path
+```
+
+A page:
+
+```json
+{
+  "slug": "the-plan", "title": "The development plan", "kind": "page",
+  "status": "published", "date": "2026-10-13", "pinned": false,
+  "seo": {"description": "…", "image": "media/plan.png", "noindex": false},
+  "blocks": [
+    {"type": "hero", "props": {"kicker": "…", "title": "…", "text": "…",
+                               "buttons": [{"title": "Learn more", "page": "about", "primary": true}]}},
+    {"type": "faq", "props": {"items": [{"q": "…", "a": "…"}]}}
+  ]
+}
+```
+
+`slug` `home` is the front page, at `/`; every other page is at `/<slug>/`.
+`kind` is `page` or `post` (dated, in the feed, an `<article>`). `status` is
+`published`, `draft` or `scheduled`. A link is `{"page": "<slug>"}` or
+`{"url": "…"}`. `Apps/UltraPress/examples/ultraos` is a complete small site.
+
+## The blocks
+
+| Type | Properties |
+|---|---|
+| `heading` | `text`, `level` (2–4) |
+| `text` | `heading`, `text` (paragraphs separated by blank lines) |
+| `richtext` | `html` (what the editor wrote; passed through) |
+| `hero` | `kicker`, `title`, `text`, `buttons`, `picture` |
+| `picture` | `src`, `alt`, `caption` |
+| `columns` | `heading`; its children are the columns |
+| `card` | `title`, `text`, `picture`, `link`, `linkTitle` |
+| `features` | `heading`, `items` (strings) |
+| `cta` | `title`, `text`, `buttons` |
+| `faq` | `heading`, `items` (`q`, `a`); also emitted as `FAQPage` structured data |
+| `quote` | `text`, `cite` |
+| `buttons` | `items` |
+| `form` | `id`, `heading`, `text`, `fields` (`name`, `label`, `type`, `required`), `submit` - posts to `/api/form/<id>` on the server tier |
+| `newsletter` | `heading`, `text`, `list` - posts to `/api/newsletter/subscribe` |
+| `downloads` | `heading`, `items` (`title`, `file`, `version`, `size`, `description`) |
+| `html` | `html` (the owner's own, passed through) |
+| `spacer` | `height` |
+
+The registry is `BlockRegistry::BuiltIn()` in
+`Apps/UltraPress/engine/UltraPressBlocks.h`; `ValidateSite` checks a site
+against it.
+
+## The engine
+
+`Apps/UltraPress/engine/`, target `UltraPressEngine`, `namespace UltraPress`:
+
+- `UltraPressModel.h` - `Site`, `Page`, `Block`, `Menu`, `Theme`; JSON in and
+  out; `LoadSite` / `SaveSite`; `PagePath`, `PageUrl`, `LinkHref`;
+  `SortedPages` (pinned first; stored, alphabetic or most popular) and
+  `MakeSlug`.
+- `UltraPressBlocks.h` - the registry and `ValidateSite`.
+- `UltraPressHtml.h` - `HtmlEmitter`: `Page`, `Sitemap`, `Robots`, `Feed`,
+  `Block`; `HtmlOptions` names the renderer script and the UltraWeb app.
+  Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
+  blocks are the owner's own HTML and pass through.
+- `UltraPressPublish.h` - `PublishStatic` and `CreateStarterSite`.
+- `UltraPressImport.h` - `ImportWordPress` / `ImportWordPressFile` with
+  `ImportOptions` (the front page, a media fetcher, drafts) and
+  `ImportReport`; `BlocksFromWordPressContent` maps the block editor's
+  markup. TinyXML2 reads the export, privately.
+
+It links the core library for `UltraCanvasJSON` and the HTMLReader's
+`EscapeText`, and opens no window. Tests: `Tests/UltraPress/UltraPressEngineTests.cpp`,
+built with `-DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON`; they save and reload a
+site, validate a broken one, parse the shadow back with `HTML::Parser`, and
+publish the example site into a temporary folder.
+
+## Not yet
+
+Text edited in place on the page, a picture picker and the media library,
+new pages and menus from the window, undo, the WebAssembly renderer release
+and its reference from the shadow, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
+the newsletter's e-mail mode of the emitter, the Markdown block, and
+everything of the server tier (Phase 2): forms and newsletter sign-ups on a
+static site need a form service until then.
+
+==============================================================================
 FILE: Docs/Legal/Privacy/README.md
 ==============================================================================
 
@@ -84295,6 +84501,7 @@ every statement in it is true of both.
 |---|---|---|
 | `UltraMail.md` | UltraMail, English | draft 1.0, needs the bracketed items and legal review |
 | `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.0, same |
+| `UltraPress.md` | UltraPress, English - the command line of 0.1.0, which contacts no server | draft 0.1, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change
@@ -85009,4 +85216,159 @@ Since it collects no data for us, no age verification takes place.
 We update this declaration whenever UltraMail's data flows change, for example
 when a feature that contacts a server is added. The version and date at the
 top identify the current text; earlier versions are available in the project's
+source repository.
+
+==============================================================================
+FILE: Docs/Legal/Privacy/UltraPress.md
+==============================================================================
+
+# Privacy declaration — UltraPress
+
+**Version 0.1 (draft for legal review) · 13 October 2026**
+
+This declaration explains what personal data the **UltraPress** application
+processes, where that processing happens, which third parties it contacts and
+why, and what rights you have under the General Data Protection Regulation
+(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.1 - the
+`ultrapress` command line - on Linux, Windows, macOS and ULTRA OS. It does
+not cover the website itself, other ULTRA OS applications, any ULTRA OS
+online service, or **the websites you build with UltraPress**: a site you
+publish is yours, served by the host you chose, and needs a declaration of
+its own.
+
+> **Review status.** This text was drafted from UltraPress's source code
+> (`Apps/UltraPress`) and documentation. The items in square brackets (`[…]`)
+> must be filled in, and the whole text must be reviewed by a lawyer before it
+> is published. Later versions of UltraPress add features that contact
+> servers - the editor's publishing onto a web host, the server tier with
+> forms, members, shop and newsletter, the website-builder assistant - and
+> each of those changes this declaration before it ships.
+
+## 1. Who is responsible
+
+ULTRA OS Development GmbH
+An den Klippen 23
+57462 Olpe
+Germany
+
+E-mail: [privacy@ultraos.eu]
+Managing director(s): […]
+Commercial register: […]
+
+The company has not appointed a data protection officer, because it is not
+required to [confirm with legal review].
+
+## 2. The short version
+
+- UltraPress 0.1 is a command-line program that runs **on your own
+  computer**. It reads a site folder you give it and writes files into a
+  folder you name. Nothing leaves your device.
+- It contacts **no server at all**: not ours, not anyone's. It has no
+  account, no sign-in, no update check, no telemetry and no advertising.
+- The pages it writes contain only what you put into the site folder. Where
+  the pages reference a server - a contact form, a newsletter sign-up - that
+  server is one you will run or choose; this version runs none.
+- ULTRA OS Development GmbH receives no data from your use of UltraPress and
+  holds none.
+
+## 3. What UltraPress stores on your device
+
+| Data | What it is | Where |
+|---|---|---|
+| The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you | the folder you name, e.g. `ultrapress new mysite` |
+| The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out` |
+
+UltraPress writes no settings, caches, logs or history files of its own. Its
+messages go to the terminal it was started from.
+
+The site folder and the published site contain whatever you wrote into
+them. If you put personal data there - your own name and address in the
+site's owner field, a person's picture, an e-mail address on a contact page -
+it is in those files and in every copy of the published site, including the
+copy on your web host once you upload it. UltraPress does not read it for any
+purpose but writing the pages.
+
+### 3.1 How sensitive data is protected
+
+UltraPress stores no passwords, keys or tokens. The files it writes are
+protected by your operating system's file permissions and nothing else; they
+are meant to be published.
+
+### 3.2 Who can read this data
+
+You, and anyone you give the folders to. UltraPress does not send them
+anywhere.
+
+### 3.3 Our role
+
+All processing happens on your device under your control. ULTRA OS
+Development GmbH is not the controller of that processing within the meaning
+of Art. 4(7) GDPR; you are. For the website you publish, you are the
+controller towards its visitors, and your web host is your processor under
+its own terms.
+
+## 4. Data UltraPress sends to servers
+
+None. UltraPress 0.1 opens no network connection.
+
+## 5. Other servers UltraPress contacts, and why
+
+None.
+
+The HTML pages UltraPress writes reference, by address only, three things a
+visitor's browser may request once the site is online: the site's own
+pictures and downloads (from your host), a form endpoint at `/api/form/<id>`
+and a newsletter endpoint at `/api/newsletter/subscribe` (both on your host,
+and answered only by a server you run - this version includes none), and,
+when you ask for it with `--renderer`, a script file you name. None of these
+is a server of ULTRA OS Development GmbH, and none exists unless you put it
+there.
+
+## 6. What we do not do
+
+UltraPress does not:
+
+- create or require an account with ULTRA OS Development GmbH;
+- send usage statistics, analytics, crash reports or diagnostic data to us or
+  anyone else;
+- check for updates by contacting our servers;
+- show advertising or contain third-party advertising or tracking code, in
+  the program or in the pages it writes;
+- put analytics, tracking pixels, cookies or third-party scripts into the
+  pages it writes;
+- share, sell or otherwise disclose any of your data.
+
+Because no data reaches us, we hold no personal data about UltraPress users
+and cannot identify you from your use of the application.
+
+## 7. Your rights
+
+Under the GDPR you have the rights of access (Art. 15), rectification
+(Art. 16), erasure (Art. 17), restriction of processing (Art. 18), data
+portability (Art. 20) and objection (Art. 21), and the right to lodge a
+complaint with a supervisory authority (Art. 77). The authority responsible
+for us is the Landesbeauftragte für Datenschutz und Informationsfreiheit
+Nordrhein-Westfalen, Kavalleriestraße 2–4, 40213 Düsseldorf, Germany.
+
+Because UltraPress keeps your data only in folders on your own device, you
+exercise these rights directly: the files are plain JSON and HTML that you
+can read, change, copy and delete yourself. For the website you publish,
+your visitors exercise their rights towards you and your web host.
+
+For any question about this declaration, write to [privacy@ultraos.eu].
+
+## 8. Children
+
+UltraPress is a tool for building websites and is not directed at children.
+Since it collects no data for us, no age verification takes place.
+
+## 9. Changes to this declaration
+
+We update this declaration whenever UltraPress's data flows change: the next
+changes already planned are publishing onto a web host from the editor
+(your host's credentials, kept in the system's credential store), the server
+tier (visitors' form entries, member accounts, orders and newsletter
+subscriptions on a server you run) and the website-builder assistant (your
+answers sent to an AI provider you choose). The version and date at the top
+identify the current text; earlier versions are available in the project's
 source repository.

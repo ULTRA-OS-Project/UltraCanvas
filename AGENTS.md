@@ -485,6 +485,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
 | `Docs/UltraVideo/CHANGELOG.md` | UltraVideo — the video editor |
 | `Docs/UltraWeb/CHANGELOG.md` | UltraWeb — the browser for WebAssembly apps |
+| `Docs/UltraPress/CHANGELOG.md` | UltraPress — the website and shop builder that publishes WebAssembly |
 
 Format: `#### YYYY-MM-DD *x.y.z*`. **For the framework changelog you do not
 write that line at all**: drop your bullets in a new file under

@@ -1,6 +1,6 @@
 # UltraCanvas on WebAssembly
 
-<!-- doc-check: std::vector<uint8_t> documentBytes; -->
+<!-- doc-check: std::vector<uint8_t> documentBytes; void ShowPageFor(const std::string& url); -->
 
 **Status: experimental.** The framework builds with Emscripten and runs in
 Chromium: windows render through the same Cairo/Pango pipeline as the desktop
@@ -35,7 +35,7 @@ onto an HTML `<canvas>`.
 | Printing | Native print dialog | `ShowPrintDialog()` opens the text in a new window and calls `window.print()`. |
 | Folder watch, file lock, volume monitor, hardware info | Native probes | The core fallbacks: polling, "unknown", "null" backend. |
 | Spell checking | System service or Hunspell | Hunspell only, with dictionaries preloaded into the virtual FS. |
-| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. |
+| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. `-DULTRACANVAS_WASM_THREADS=OFF` builds single-threaded against a sysroot built with `WASM_THREADS=0`: no headers needed, and `std::thread` fails at run time. |
 | Networking (UltraNet), OpenGL, audio, video, most file-type plugins | Available | Compiled out (`UltraCanvas/CMakeLists.txt` forces them off for `EMSCRIPTEN`). |
 
 ### Application lifetime
@@ -132,9 +132,23 @@ WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::
 
 `WASMBrowser` also wraps `alert` / `confirm` / `prompt`, the console,
 `navigator.userAgent`, the screen size and `localStorage`. `WASMURL` reads the
-page URL, its query parameters (`GetQueryParameter`, `GetAllQueryParameters`)
-and hash, and can navigate or reload. `WASMTime` exposes `performance.now()`
-and performance marks.
+page URL, its path, its query parameters (`GetQueryParameter`,
+`GetAllQueryParameters`) and hash, and can navigate or reload. An application
+that shows several pages from one module uses its History API instead of
+navigating: `PushUrl` changes the address bar and adds an entry the back
+button returns to, `ReplaceUrl` rewrites the current entry, and
+`SetOnNavigate` hears the back and forward buttons (every `popstate`, a hash
+change included) with the new URL, on the main thread:
+
+```cpp
+WASMURL::SetOnNavigate([](const std::string& url) { ShowPageFor(url); });
+WASMURL::PushUrl("/the-plan/");          // on a click; does not call the callback
+```
+
+`WASMTime` exposes `performance.now()` and performance marks. The window logs
+its first presented frame to the browser console once, as `first frame
+presented N ms after navigation start`: the time to first paint including the
+download, compilation and start-up, from the browser's own clock.
 
 ## Serving an application
 
@@ -160,8 +174,13 @@ forms with text inputs, a text area and a checkbox, a footer). The second
 is the pattern for a web-page-like application: one scrollable container
 filling the window, sections stacked by Block layout so wrapped text gets
 its real height, Flex rows for the horizontal pieces, popup menus anchored
-under their buttons, and `Maximize()` under `__EMSCRIPTEN__` to fill the
-viewport. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
+under their buttons, `Maximize()` under `__EMSCRIPTEN__` to fill the
+viewport, and several pages from one module through the History API: a
+link into the site pushes `?page=<site path>` and rebuilds the page's
+sections, `SetOnNavigate` rebuilds them for the back and forward buttons,
+and the address read at start decides the first page, so a reload keeps it.
+The rebuild is posted to the UI thread (`PostToUIThread`), never done inside
+the click of a button the rebuild removes. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
 at the repository root).
 
 ## Known limitations
