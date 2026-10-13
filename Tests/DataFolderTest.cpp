@@ -4,9 +4,13 @@
 // place once - renamed whole, never over data already there, never from a
 // folder that is not the application's.
 //
-// Self-contained: no test framework, links nothing (the header is header-only).
+// Also the settings root beside it (UltraCanvasSettingsFolder.h), which
+// UltraTexter and UltraAI keep their own folders under.
+//
+// Self-contained: no test framework, links nothing (both headers are header-only).
 // Author: UltraCanvas Framework
 #include "UltraCanvasDataFolder.h"
+#include "UltraCanvasSettingsFolder.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -94,6 +98,30 @@ static void TestRule() {
     const fs::path live = UltraCanvasDataFolder("App-ทดสอบ-🚀");
     Check(live.empty() || PathToUtf8(live.filename()) == "App-ทดสอบ-🚀", "the app name survives the join");
     Check(live.empty() == UltraCanvasDataFolderRoot().empty(), "empty exactly when there is no root");
+}
+
+static void TestSettingsRoot() {
+    std::printf("settings root\n");
+    // Windows: %APPDATA% and nothing else; macOS: Application Support; the
+    // rest: XDG_CONFIG_HOME, else ~/.config - the rule UltraCanvasSettingsFolder()
+    // has always applied.
+    Check(SamePath(SettingsFolderRootFor(DataFolderPlatform::Windows, "C:/Users/erika/AppData/Roaming", "/x", "C:/Users/erika"),
+                   fs::path("C:/Users/erika/AppData/Roaming")), "Windows: APPDATA");
+    Check(SettingsFolderRootFor(DataFolderPlatform::Windows, "", "/x", "C:/Users/erika").empty(),
+          "Windows without APPDATA: nothing");
+    Check(SamePath(SettingsFolderRootFor(DataFolderPlatform::MacOS, "", "/x", "/Users/erika"),
+                   fs::path("/Users/erika/Library/Application Support")), "macOS: Application Support");
+    Check(SettingsFolderRootFor(DataFolderPlatform::MacOS, "", "/x", "").empty(), "macOS without HOME: nothing");
+    Check(SamePath(SettingsFolderRootFor(DataFolderPlatform::Unix, "", "/x", "/home/erika"), fs::path("/x")),
+          "Linux: XDG_CONFIG_HOME");
+    Check(SamePath(SettingsFolderRootFor(DataFolderPlatform::Unix, "C:/AppData", "", "/home/erika"),
+                   fs::path("/home/erika/.config")), "Linux: ~/.config, APPDATA ignored");
+    Check(SettingsFolderRootFor(DataFolderPlatform::Unix, "", "", "").empty(), "no home: nothing");
+    // The live environment names a root on every CI machine; the shared
+    // UltraCanvasSettingsFolder() joins onto it in the core, which this test
+    // does not link.
+    const fs::path liveRoot = UltraCanvasSettingsFolderRoot();
+    Check(liveRoot.empty() || liveRoot.is_absolute(), "the live root is absolute");
 }
 
 static void TestAdopt(const fs::path& scratch) {
@@ -196,6 +224,7 @@ int main() {
     fs::create_directories(scratch, ec);
 
     TestRule();
+    TestSettingsRoot();
     TestAdopt(scratch);
 
     fs::remove_all(scratch, ec);

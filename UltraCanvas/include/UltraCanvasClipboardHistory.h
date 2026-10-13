@@ -16,9 +16,11 @@
 //   <data>/ultraos/clipboard/blobs/ab/….bin  one file per payload, named by a keyed hash, encrypted
 //   <data>/ultraos/clipboard/thumbs/….png    96 × 96 thumbnails of images
 //   <config>/ultraos/clipboard.key           the 256-bit key, owner-only, kept apart from the data
-// <data> is $XDG_DATA_HOME (~/.local/share), %LOCALAPPDATA% on Windows and
-// ~/Library/Application Support on macOS; <config> is the folder the
-// desktop's own settings use.
+// <data> is $XDG_DATA_HOME when it is set, on every platform (as for the
+// applications' data folders, UltraCanvasDataFolder.h), else ~/.local/share,
+// %LOCALAPPDATA% on Windows (a machine-local store, so not the applications'
+// roaming %APPDATA%) and ~/Library/Application Support on macOS; <config> is
+// the folder the desktop's own settings use.
 //
 // Titles, texts and payloads are encrypted with XChaCha20-Poly1305 when
 // UltraCrypt has libsodium. That protects a copy of the data folder and a

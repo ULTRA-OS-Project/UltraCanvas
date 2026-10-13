@@ -16713,9 +16713,11 @@ between them.
 | `<data>/ultraos/clipboard/thumbs/<hash>.png` | image thumbnails |
 | `<config>/ultraos/clipboard.key` | the 256-bit key, owner-only |
 
-`<data>` is `$XDG_DATA_HOME` (`~/.local/share`), `%LOCALAPPDATA%` on Windows,
-`~/Library/Application Support` on macOS; `<config>` is the folder the
-desktop's settings use. The folders are owner-only.
+`<data>` is `$XDG_DATA_HOME` when it is set, on every platform (as for the
+applications' data folders, `UltraCanvasDataFolder.h`), else `~/.local/share`,
+`%LOCALAPPDATA%` on Windows (a machine-local store, so not the applications'
+roaming `%APPDATA%`) and `~/Library/Application Support` on macOS; `<config>`
+is the folder the desktop's settings use. The folders are owner-only.
 
 With libsodium, titles, previews and payloads are sealed with
 XChaCha20-Poly1305 under the key file, kept apart from the data: a copy of the
@@ -76746,8 +76748,9 @@ Default locations: bus `$XDG_RUNTIME_DIR/ultramessage/bus.sock` (Linux),
 `$TMPDIR/ultramessage/bus.sock` (macOS), `\\.\pipe\UltraMessage-<session>`
 (Windows); journal `~/.local/share/ultramessage/journal.db`,
 `~/Library/Application Support/UltraMessage/journal.db`,
-`%LOCALAPPDATA%\UltraMessage\journal.db`. Socket, lock file and directories
-are owner-only.
+`%LOCALAPPDATA%\UltraMessage\journal.db` - or under `$XDG_DATA_HOME` when
+that is set, on every platform, as for the applications' data folders
+(`UltraCanvasDataFolder.h`). Socket, lock file and directories are owner-only.
 
 ### 3.5 Schemas and topics
 
@@ -81611,8 +81614,8 @@ UltraClipboard --version
 ## Privacy
 
 The history lives in `~/.local/share/ultraos/clipboard/` (`%LOCALAPPDATA%` on
-Windows, `~/Library/Application Support` on macOS), in folders only you can
-open. Titles, texts and copies are encrypted with a key kept apart from them
+Windows, `~/Library/Application Support` on macOS, or under `$XDG_DATA_HOME`
+when that is set, on every platform), in folders only you can open. Titles, texts and copies are encrypted with a key kept apart from them
 in `~/.config/ultraos/clipboard.key`, so a copy of the history folder or a
 backup of it cannot be read without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the

@@ -175,8 +175,9 @@ Default locations: bus `$XDG_RUNTIME_DIR/ultramessage/bus.sock` (Linux),
 `$TMPDIR/ultramessage/bus.sock` (macOS), `\\.\pipe\UltraMessage-<session>`
 (Windows); journal `~/.local/share/ultramessage/journal.db`,
 `~/Library/Application Support/UltraMessage/journal.db`,
-`%LOCALAPPDATA%\UltraMessage\journal.db`. Socket, lock file and directories
-are owner-only.
+`%LOCALAPPDATA%\UltraMessage\journal.db` - or under `$XDG_DATA_HOME` when
+that is set, on every platform, as for the applications' data folders
+(`UltraCanvasDataFolder.h`). Socket, lock file and directories are owner-only.
 
 ### 3.5 Schemas and topics
 

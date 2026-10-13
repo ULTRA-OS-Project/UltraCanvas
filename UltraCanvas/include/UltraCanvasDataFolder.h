@@ -20,10 +20,15 @@
 // where an earlier version of it kept the data (its own LegacyDataDirs),
 // which AdoptLegacyDataFolder moves into place once.
 //
-// One deliberate exception: the desktop's clipboard history
-// (UltraCanvasClipboardHistory::DefaultDirectory) keeps %LOCALAPPDATA% on
-// Windows. It is a machine-local store of copied blobs, not data that should
-// roam with the profile, and moving an existing history would gain nothing.
+// Two deliberate exceptions, on Windows only: the desktop's clipboard history
+// (UltraCanvasClipboardHistory::DefaultDirectory) and the UltraMessage journal
+// (UltraMsg_GetDefaultJournalPath) keep %LOCALAPPDATA%. Both are machine-local
+// stores - copied blobs, this machine's record of the bus - not data that
+// should roam with the profile, and moving them would gain nothing. On every
+// other platform, and under $XDG_DATA_HOME, they follow this rule too.
+//
+// The settings, as opposed to the data, have their own root:
+// UltraCanvasSettingsFolder.h.
 //
 // Header-only on purpose, like UltraCanvasPathUtf8.h: the applications'
 // headless engines (UltraMailEngine, UltraPasswordCore, ...) use it without
