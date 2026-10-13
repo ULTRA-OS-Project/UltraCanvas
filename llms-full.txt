@@ -695,6 +695,32 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
 
+- **UltraCanvasInstanceLock** (`UltraCanvasInstanceLock.h`) — one running
+  copy of an application per user. `InstanceLock::Acquire(path)` answers
+  `Acquired`, `HeldElsewhere` (another copy runs), `Failed` or `Unsupported`;
+  the operating system drops the lock when the process ends, so a crash never
+  leaves a stale one. Backends: `OS/Linux/UltraCanvasLinuxInstanceLock.cpp`
+  and `OS/MacOS/UltraCanvasMacOSInstanceLock.cpp` (`flock`),
+  `OS/MSWindows/UltraCanvasWindowsInstanceLock.cpp` (`LockFileEx`); Android and
+  WebAssembly get the `Unsupported` fallback in
+  `core/UltraCanvasInstanceLock.cpp` (`ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK`
+  unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
+  `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
+
+- **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
+  copy of an application per user, built on UltraCanvasInstanceLock: a second
+  start asks the running copy over UltraMessage (`<appId>.show`) to come
+  forward and quits. `Claim()`, `ListenRaise()` / `Listen(handler)`,
+  `Close()`, `BringToFront()`, `RunAlreadyRunningAlert()`. Not in the core
+  library: `ultracanvas_single_instance(<target>)`
+  (`cmake/UltraCanvasSingleInstance.cmake`) compiles
+  `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
+  UltraMessage where present. Used by the single-window applications (UltraMail,
+  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
+  UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
+  UltraSocial, UltraFIBU, UltraWin Manager). See
+  `Docs/UltraCanvas/UltraCanvasSingleInstance.md`.
+
 - **UltraCanvasArchiveRun** (`UltraCanvasArchiveRun.h`) — "Extract and
   run": what it takes to start a program that is inside an archive, whose
   virtual path no system can execute. The run folders and the rule for which
@@ -33636,6 +33662,76 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 - [UltraCanvasContainer](UltraCanvasContainer.md) — Layout root for the benchmark
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasInstanceLock.md
+==============================================================================
+
+# UltraCanvasInstanceLock
+
+Lets an application run **one copy per user**: the lock a program takes at
+start so that a second start can tell the first one is still running.
+
+```cpp
+#include "UltraCanvasInstanceLock.h"
+
+InstanceLock lock;   // keep it alive as long as the application runs
+if (lock.Acquire(dataDir + "/instance.lock") == InstanceLockResult::HeldElsewhere) {
+    // Another copy is running: hand it whatever this start was asked to do
+    // (UltraMessage is the usual way), then quit.
+    return 0;
+}
+```
+
+<!-- doc-check: std::string dataDir -->
+
+## The lock is not the file
+
+The file only gives the lock somewhere to live. The lock itself is an
+operating-system lock on that file, and **the system drops it when the process
+ends, however it ends** — a normal exit, a crash, `kill -9`, a power cut. A
+crashed application therefore never leaves a stale lock that stops the next
+start, and nothing has to delete or clean up the file; it stays and is reused.
+On POSIX the file holds the holder's process id, for a person looking at it;
+nothing reads it back.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `InstanceLock::Acquire(path, error = nullptr)` | Tries, **without waiting**, to take the lock on the file at `path` (UTF-8), creating the file and its folder when missing. Returns an `InstanceLockResult`; `error` receives the reason on `Failed`. Again while held: `Acquired`. |
+| `InstanceLock::Release()` | Lets go. The destructor does the same. |
+| `InstanceLock::IsHeld()` | Whether this object holds the lock. |
+| `InstanceLockAvailable()` | Whether this build can lock at all. False means `Acquire()` always answers `Unsupported`. |
+
+| `InstanceLockResult` | Meaning |
+|---|---|
+| `Acquired` | This process holds the lock. |
+| `HeldElsewhere` | Another process holds it: another copy is running. |
+| `Failed` | The file could not be opened or locked (an unwritable folder). Usually best treated as "run anyway": better two copies than none. |
+| `Unsupported` | No backend on this platform. |
+
+The lock is per **file**, so it is per user exactly when the path is: put it
+in the user's data folder. Two `InstanceLock` objects in one process also
+exclude each other, which is what the test relies on.
+
+## Backends
+
+| Platform | Backend |
+|---|---|
+| Linux, the BSDs, macOS | `flock` with `LOCK_EX \| LOCK_NB` on the file opened `O_CLOEXEC`, so a program the application starts does not inherit the lock. |
+| Windows | `LockFileEx` with `LOCKFILE_EXCLUSIVE_LOCK \| LOCKFILE_FAIL_IMMEDIATELY` on the first byte. The file is opened sharing read, write and delete, so a virus scanner or backup program that opens it is never mistaken for a second copy. |
+| Android, WebAssembly | None: one process per application there anyway. `Acquire()` answers `Unsupported`. |
+
+The platform decision is the single `ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK`
+condition in the top-level `CMakeLists.txt`; the library and
+`Tests/InstanceLockTest.cpp` (ctest: `InstanceLockTest`) both follow it.
+
+## Who uses it
+
+`UltraCanvasSingleInstance` (`Docs/UltraCanvas/UltraCanvasSingleInstance.md`),
+which adds the hand-off to the running copy and bringing its window forward.
+An application normally uses that, not the lock directly.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasJSON.md
 ==============================================================================
 
@@ -54145,6 +54241,97 @@ targets, non-Unicode strings, case-insensitive resolution inside a prefix, and
 the files that end in `.lnk` without being links.
 `Tests/FilerShortcutEntryTest.cpp` takes the same links through a folder scan
 and checks the entries the file display produces from them.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSingleInstance.md
+==============================================================================
+
+# UltraCanvasSingleInstance
+
+Lets an application run **one copy per user**. A second start does not open
+another window: it asks the copy already running to come forward, handing it
+whatever this start was asked for, and quits.
+
+```cpp
+#include "UltraCanvasSingleInstance.h"
+
+int main() {
+    UltraCanvasSingleInstance instance("org.ultraos.deviceexplorer", "DeviceExplorer");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return 0;   // the running copy came forward
+
+    UltraCanvasApplication app;
+    if (!app.Initialize("DeviceExplorer")) return 1;
+    if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+        return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "DeviceExplorer");
+
+    // ... create and show the main window ...
+    instance.ListenRaise();   // a later start brings the main window forward
+    app.Run();
+    instance.Close();         // before the windows go
+    return 0;
+}
+```
+
+And in the application's `CMakeLists.txt`, after its `add_executable`:
+
+```cmake
+ultracanvas_single_instance(DeviceExplorer)
+```
+
+## How it decides
+
+**Who runs** is decided by an operating-system lock
+([UltraCanvasInstanceLock](UltraCanvasInstanceLock.md)) on
+`<settings folder>/instances/<appId>.lock` — or in the folder `Claim()` is
+given, as UltraMail does with its data folder. The system drops the lock when
+the process ends, however it ends, so two starts at the same moment can never
+both stay, and a crash never blocks the next start.
+
+**Coming forward** travels over UltraMessage, the per-user message bus: a
+request on the topic `<appId>.show` to the running copy's endpoint
+`<appId>.instance`, which answers before it acts. The first copy hosts the bus
+when nothing else does. A copy started a moment earlier may not listen yet, so
+a later start keeps asking for up to ten seconds.
+
+| `Claim()` answers | Meaning |
+|---|---|
+| `First` | This process holds the lock: carry on. Also the answer when the lock cannot be taken for any other reason (an unwritable folder, a platform without locks) — better two copies than none. |
+| `HandedOff` | Another copy runs and took the request: quit. |
+| `AlreadyRunning` | Another copy holds the lock but did not answer (busy, or a build without UltraMessage): say so with `RunAlreadyRunningAlert`, then quit. |
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `UltraCanvasSingleInstance(appId, displayName)` | `appId` is reverse-DNS (`"org.ultraos.deviceexplorer"`); the lock file and the bus topic are named after it. `displayName` is what the alert says. |
+| `Claim(request = {}, lockDirectory = "")` | Takes the lock; when another copy holds it, offers it `request` (a JSON object). Call **after** the command line is read — a mode that prints and exits (`--help`, `--list`) must not claim — and **before** `Initialize`, so a second start costs no window system. |
+| `Listen(handler)` | A later start's request arrives in `handler(const JSONValue&)` on the UI thread. UltraClipboard reads `search` and `editId` from it. |
+| `ListenRaise()` | `Listen` with `BringToFront()` as the handler — what a single-window application needs. |
+| `Close()` | Stops listening. The lock stays until the object goes, so no second copy slips in while this one shuts down. |
+| `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. |
+| `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. |
+
+## Why it is compiled into the application
+
+The hand-off needs UltraMessage, a separate module the core library does not
+link. `ultracanvas_single_instance(<target>)`
+(`cmake/UltraCanvasSingleInstance.cmake`) therefore compiles
+`core/AppEntry/UltraCanvasSingleInstance.cpp` into the executable and links
+UltraMessage where the build has it. Without UltraMessage the lock still stops
+a second copy, and `Claim()` answers `AlreadyRunning` rather than `HandedOff`.
+
+## Who uses it
+
+UltraMail (lock in its data folder: one copy per mailbox), UltraClipboard
+(hands over the search and the entry to edit), DeviceExplorer, UOS-Settings,
+UltraNetMonitor, UltraPassword, UltraAuthenticator, UltraCleaner,
+EmailCleaner, UltraClaude, the UltraAI dashboard, UltraSocial, UltraFIBU and
+UltraWin Manager. Command-line tools (`ultramsg`, `anchorpoint`, `ultrafibu`)
+do not: scripts run several of them at once. Applications that open documents
+(Texter, UltraPaint, UltraViewer, UltraFiler, UltraVideo, ArtCreator,
+AnchorPoint) are not single-instance yet — they need the running copy to open
+the second start's files, which is a hook of their own.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
@@ -76626,7 +76813,7 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | The presenters' shared half: what a notification says, which update shows where, what a click publishes | `Internal::ReadPresentedContent`, `PresentedNotifications`, `PublishPresenterResponse` in `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h` |
 | UltraMail → `mail.message`, and its new-mail notification | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`, `Apps/UltraMail/engine/UltraMailNewMail.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
-| UltraClipboard's single-instance hand-off (`org.ultraos.ultraclipboard.show`, request / reply) | `Apps/UltraClipboard/SingleInstance.{h,cpp}` |
+| One copy per application: the single-instance hand-off (`<appId>.show`, request / reply, endpoint `<appId>.instance`) that UltraMail, UltraClipboard and the other single-window apps use | `UltraCanvas/include/UltraCanvasSingleInstance.h`, `UltraCanvas/core/AppEntry/UltraCanvasSingleInstance.cpp` (compiled into each app by `ultracanvas_single_instance()`) |
 | `UltraCanvasMessageCenter` element (target `UltraMessageCenter`) | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp` |
 | `UltraCanvasNotificationToast` element and `UltraCanvasNotificationToastHost` (target `UltraMessageCenter`): notifications on screen where nothing else draws them | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp` |
 | Tests (41 cases; the adapter and presenter ones on a private D-Bus session, the presenters' shared half on every platform; 11 more for the message centre and the toasts in-tree) | `Tests/UltraMessage/` |
@@ -81589,8 +81776,10 @@ there comes forward instead and keeps what is typed in it. The hand-off goes
 over UltraMessage, the per-user message bus: a request on the topic
 `org.ultraos.ultraclipboard.show` (`search`, `editId`) to the running
 instance, which answers before it acts; the first instance hosts the bus when
-nothing else does. Without the bus (a build without UltraDatabase, a bus that
-cannot be reached) every start opens its own window.
+nothing else does. Who runs is decided by an operating-system lock
+(`UltraCanvasSingleInstance`, `UltraCanvasInstanceLock`), so two starts at the
+same moment cannot both stay; without the bus a second start says that
+UltraClipboard is already running instead of opening a window of its own.
 
 ## Command line
 

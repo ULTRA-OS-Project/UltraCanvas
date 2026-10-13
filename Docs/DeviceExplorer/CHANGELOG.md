@@ -1,3 +1,12 @@
+#### 2026-10-12 *0.2.1*
+- **One DeviceExplorer at a time.** Starting DeviceExplorer while it is
+  already running brings the open window forward (restored if minimised; an
+  open dialog comes forward with it) instead of opening a second copy. Two
+  starts at the same moment cannot both stay, and a copy that does not answer
+  is reported with *"DeviceExplorer is already running"*. Command-line modes
+  (`--list`, `--version`, `--help`) are unaffected. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
 #### 2026-09-29 *0.2.0*
 - **Printers show their status and ink or toner.** Selecting a printer adds
   two sections above its details:

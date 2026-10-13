@@ -516,6 +516,32 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
 
+- **UltraCanvasInstanceLock** (`UltraCanvasInstanceLock.h`) — one running
+  copy of an application per user. `InstanceLock::Acquire(path)` answers
+  `Acquired`, `HeldElsewhere` (another copy runs), `Failed` or `Unsupported`;
+  the operating system drops the lock when the process ends, so a crash never
+  leaves a stale one. Backends: `OS/Linux/UltraCanvasLinuxInstanceLock.cpp`
+  and `OS/MacOS/UltraCanvasMacOSInstanceLock.cpp` (`flock`),
+  `OS/MSWindows/UltraCanvasWindowsInstanceLock.cpp` (`LockFileEx`); Android and
+  WebAssembly get the `Unsupported` fallback in
+  `core/UltraCanvasInstanceLock.cpp` (`ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK`
+  unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
+  `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
+
+- **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
+  copy of an application per user, built on UltraCanvasInstanceLock: a second
+  start asks the running copy over UltraMessage (`<appId>.show`) to come
+  forward and quits. `Claim()`, `ListenRaise()` / `Listen(handler)`,
+  `Close()`, `BringToFront()`, `RunAlreadyRunningAlert()`. Not in the core
+  library: `ultracanvas_single_instance(<target>)`
+  (`cmake/UltraCanvasSingleInstance.cmake`) compiles
+  `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
+  UltraMessage where present. Used by the single-window applications (UltraMail,
+  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
+  UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
+  UltraSocial, UltraFIBU, UltraWin Manager). See
+  `Docs/UltraCanvas/UltraCanvasSingleInstance.md`.
+
 - **UltraCanvasArchiveRun** (`UltraCanvasArchiveRun.h`) — "Extract and
   run": what it takes to start a program that is inside an archive, whose
   virtual path no system can execute. The run folders and the rule for which

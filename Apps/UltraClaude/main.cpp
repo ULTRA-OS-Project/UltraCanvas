@@ -11,8 +11,14 @@
 // standard output - the same engine, headless, so it can be checked from a
 // terminal or over ssh.
 //
+// One UltraClaude window per user: a second start brings the running one
+// forward and quits (UltraCanvasSingleInstance.h). The terminal modes do not
+// take part.
+//
+// Version: 0.2.0 - one UltraClaude per user: a second start brings the first
+//                  one's window forward instead of opening another copy
 // Version: 0.1.0
-// Last Modified: 2026-10-02
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatStore.h"
@@ -23,6 +29,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 
 #include <condition_variable>
@@ -210,12 +217,23 @@ int main(int argc, char** argv) {
 
     if (print) return RunPrint(printPrompt, options);
 
+    // One UltraClaude window per user: two would remember, and write, the
+    // same chat list.
+    using UltraCanvas::UltraCanvasSingleInstance;
+    UltraCanvasSingleInstance instance("org.ultraos.ultraclaude", "UltraClaude");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;
+
     UltraCanvas::UltraCanvasApplication app;
     if (!app.Initialize("UltraClaude")) {
         std::fprintf(stderr, "UltraClaude: the UltraCanvas application could not be "
                              "initialised (no display?). Use --print for the terminal.\n");
         return EXIT_FAILURE;
     }
+    // The other copy holds the lock but did not answer: say so rather than
+    // vanish without a word.
+    if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+        return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraClaude");
     app.SetDefaultWindowIcon(UltraCanvas::NormalizePath(
             UltraCanvas::GetResourcesDir() + "media/appicon/UltraClaude.png"));
 
@@ -226,6 +244,9 @@ int main(int argc, char** argv) {
     }
     window.onClosed = [&app]() { app.Exit(); };
     window.Show();
+    // A later start asks this window to come forward.
+    instance.ListenRaise();
     app.Run();
+    instance.Close();   // no request reaches the window once it starts to go
     return EXIT_SUCCESS;
 }

@@ -2,12 +2,14 @@
 // UltraSocial application entry point. Creates the UltraCanvas application,
 // opens the store and the credential vault in the per-user application data
 // folder (UltraSocialPaths.h), shows the main window and runs the main loop.
+// Version: 0.2.1 - one UltraSocial per user: a second start brings the
+//                  running window forward instead of opening another copy
 // Version: 0.2.0 - the app icon on the window and the taskbar; the data in
 //                  the platform's application data folder (%APPDATA% on
 //                  Windows, Application Support on macOS), moved there once
 //                  from where 0.1.x left it
 // Version: 0.1.0 (Phase 1)
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraSocialApp.h"
 
@@ -16,6 +18,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasPathUtf8.h"   // GetEnvUtf8 / PathToUtf8
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 
 #include <UltraNet/UltraNetCore.h>
@@ -58,9 +61,21 @@ std::string UserDataDir() {
 } // namespace
 
 int main() {
+    // One UltraSocial per user, decided before anything is opened: a second
+    // copy would post from and poll the same accounts twice. A second start
+    // brings the running window forward and quits.
+    using UltraCanvas::UltraCanvasSingleInstance;
+    UltraCanvasSingleInstance instance("org.ultraos.ultrasocial", "UltraSocial");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff)
+        return EXIT_SUCCESS;
+
     UltraCanvas::UltraCanvasApplication app;
     if (!app.Initialize("UltraSocial"))
         return EXIT_FAILURE;
+    // Another copy holds the lock but did not answer: say so, quit.
+    if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+        return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraSocial");
     // The application's own mark: the window icon, the taskbar/dock entry the
     // window manager takes from it, and the start page and toolbar logos all
     // read this same file.
@@ -75,8 +90,10 @@ int main() {
 
     auto window = social.CreateMainWindow();
     window->Show();
+    instance.ListenRaise();   // a later start brings the window forward
 
     app.Run();
+    instance.Close();         // no request reaches the window once it starts to go
     UltraNet_Shutdown();
     return EXIT_SUCCESS;
 }

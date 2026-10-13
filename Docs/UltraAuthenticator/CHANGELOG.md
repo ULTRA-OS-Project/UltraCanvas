@@ -1,3 +1,13 @@
+#### 2026-10-12 *0.2.7*
+- **One UltraAuthenticator at a time.** Starting UltraAuthenticator while it
+  is already running brings the open window forward (restored if minimised;
+  the unlock or new-vault dialog comes forward with it) instead of opening a
+  second copy on the same vault. Two starts at the same moment cannot both
+  stay, and a copy that does not answer is reported with *"UltraAuthenticator
+  is already running"*. Command-line modes (`--help`, `--version`) are
+  unaffected. Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
 #### 2026-10-04 *0.2.6*
 - **The owner-only permission is set on the store and export files in a
   folder named in any script.** `fs::permissions` on the temporary file was

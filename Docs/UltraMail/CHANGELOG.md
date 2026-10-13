@@ -1,3 +1,19 @@
+#### 2026-10-12 *0.10.51*
+- **One UltraMail at a time.** Starting UltraMail while it is already
+  running no longer opens a second copy - two copies on the one mailbox
+  synced the same accounts twice, wrote the database from two processes and
+  could send the outbox twice. The second start brings the running window
+  forward (restored if it was minimised; an open dialog comes forward with
+  it) and quits. A copy that is still starting is waited for for up to ten
+  seconds; one that does not answer at all is reported with *"UltraMail is
+  already running"* instead of a silent exit. Decided by the framework's new
+  single-instance helper (`UltraCanvasSingleInstance`) and its lock on
+  `instance.lock` in the data folder (framework changelog: `instance-lock`),
+  which the system releases when UltraMail ends - a crash
+  never stops the next start. The request to come forward travels over
+  UltraMessage (`org.ultraos.ultramail.show`); the timing trace says which
+  way a start went.
+
 #### 2026-10-11 *0.10.50*
 - **An attachment's menu no longer covers the chip.** At the foot of the
   window a click on an attachment chip opens its Open / Save As menu above

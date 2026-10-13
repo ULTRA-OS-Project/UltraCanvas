@@ -328,6 +328,7 @@ include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
 include(cmake/UltraCanvasWinManifest.cmake)
 include(cmake/UltraCanvasWindowsGuiApp.cmake)
+include(cmake/UltraCanvasSingleInstance.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
@@ -380,6 +381,14 @@ endif()
 # and Tests/ must agree about which side defines the backend.
 if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
+endif()
+
+# Which platforms can hold a single-instance lock (UltraCanvasInstanceLock:
+# flock() on Linux, the BSDs and macOS, LockFileEx on Windows). Same reason as
+# above: the core file compiles an "Unsupported" fallback unless this is set,
+# and the library and Tests/ must agree about which side defines the backend.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_INSTANCE_LOCK ON)
 endif()
 
 # Which platforms have a trash UltraCanvasTrash can move files into: the
@@ -1056,6 +1065,8 @@ if(BUILD_ULTRAWIN_MANAGER AND TARGET UltraWin)
         Apps/UltraWinManager/main.cpp
         Apps/UltraWinManager/UltraWinManagerWindow.cpp
     )
+    # One copy per user (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraWinManager)
     target_include_directories(UltraWinManager PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraWinManager
@@ -1647,6 +1658,8 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
     )
+    # One copy per user (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraAIApp)
 
     target_include_directories(UltraAIApp PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}

@@ -71,7 +71,7 @@ public:
     // dialog at once (the desktop's quick panel asks for both).
     bool Create(const std::string& search, int64_t editId);
     void Show();
-    // Another start of UltraClipboard handed this over (SingleInstance): the
+    // Another start of UltraClipboard handed this over (UltraCanvasSingleInstance): the
     // window comes forward with that search, or that entry's edit dialog.
     void Present(const std::string& search, int64_t editId);
 
