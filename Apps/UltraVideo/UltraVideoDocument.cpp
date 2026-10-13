@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoDocument.cpp
 // The document and the .ultravideo file (UltraVideoDocument.h).
-// Version: 0.2.0
-// Last Modified: 2026-10-12
+// Version: 0.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 
@@ -85,6 +85,20 @@ std::string OverlaySpan::Name() const {
 }
 
 bool OverlaySpan::IsStill() const { return Document::KindOfPath(path) == MediaKind::Image; }
+
+std::string SoundSpan::Name() const {
+    const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+    return name.empty() ? "Sound" : name;
+}
+
+VideoFXAudioClip SoundSpan::ToAudioClip() const {
+    VideoFXAudioClip c = ducksMusic ? VideoFXAudioClip::VoiceOver(path, start, volume) : VideoFXAudioClip::Sound(path, start, volume);
+    c.start = sourceIn;
+    c.end = sourceIn + duration;
+    c.fadeIn = fadeIn;
+    c.fadeOut = fadeOut;
+    return c;
+}
 
 namespace {
 // The first free place on a lane of spans at or after `at`: spans never
@@ -232,6 +246,10 @@ std::string Document::NewOverlayId() {
     return "o" + std::to_string(nextOverlayId++);
 }
 
+std::string Document::NewSoundId() {
+    return "a" + std::to_string(nextSoundId++);
+}
+
 std::string Document::NewTitleId() {
     return "t" + std::to_string(nextTitleId++);
 }
@@ -343,6 +361,33 @@ int Document::OverlayIndex(const std::string& id) const {
     return -1;
 }
 
+int Document::AddSound(const std::string& path, double at, bool voiceOver) {
+    const MediaItem* m = FindMedia(path);
+    if (!m) m = &Import(path);
+    if (!m->error.empty() || m->duration <= 0.04) return -1;
+    if (m->kind != MediaKind::Audio && !(m->kind == MediaKind::Video && m->hasAudio)) return -1;
+    SoundSpan span;
+    span.id = NewSoundId();
+    span.path = m->path;
+    span.duration = m->duration;
+    span.ducksMusic = voiceOver;
+    span.start = FreePlace(sounds, std::max(0.0, at), span.duration);
+    sounds.push_back(span);
+    return static_cast<int>(sounds.size()) - 1;
+}
+
+int Document::SoundIndex(const std::string& id) const {
+    for (size_t i = 0; i < sounds.size(); ++i) if (sounds[i].id == id) return static_cast<int>(i);
+    return -1;
+}
+
+std::vector<VideoFXAudioClip> Document::AudioClipsForEngine() const {
+    std::vector<VideoFXAudioClip> clips;
+    for (const SoundSpan& a : sounds)
+        if (!a.path.empty() && a.duration >= 0.04) clips.push_back(a.ToAudioClip());
+    return clips;
+}
+
 int Document::TitleIndex(const std::string& id) const {
     for (size_t i = 0; i < titles.size(); ++i) if (titles[i].id == id) return static_cast<int>(i);
     return -1;
@@ -395,6 +440,7 @@ MediaItem& Document::Import(const std::string& p) {
 bool Document::MediaInUse(const std::string& p) const {
     for (const VideoFXSegment& s : project.segments) if (s.path == p) return true;
     for (const OverlaySpan& v : overlays) if (v.path == p) return true;
+    for (const SoundSpan& a : sounds) if (a.path == p) return true;
     for (const std::string& song : project.settings.music.Songs()) if (song == p) return true;
     return false;
 }
@@ -446,6 +492,7 @@ bool Document::Save(const std::string& toPath, std::string& error) {
     // works on it; the spans themselves follow in `titles`
     VideoFXProject rendered = project;
     rendered.segments = SegmentsForEngine();
+    rendered.settings.audioClips = AudioClipsForEngine();
     std::string projectText;
     const VideoFXResult r = VideoFX_ProjectToJson(rendered, projectText, PathToUtf8(base));
     if (r != VideoFXResult::Ok) {
@@ -512,6 +559,22 @@ bool Document::Save(const std::string& toPath, std::string& error) {
     }
     root.Set("overlays", pips);
     root.Set("nextOverlayId", nextOverlayId);
+    JSONValue lane = JSONValue::MakeArray();
+    for (const SoundSpan& a : sounds) {
+        JSONValue o = JSONValue::MakeObject();
+        o.Set("id", a.id);
+        o.Set("path", Relative(a.path, base));
+        o.Set("start", a.start);
+        o.Set("duration", a.duration);
+        o.Set("sourceIn", a.sourceIn);
+        o.Set("volume", a.volume);
+        o.Set("fadeIn", a.fadeIn);
+        o.Set("fadeOut", a.fadeOut);
+        o.Set("ducksMusic", a.ducksMusic);
+        lane.Append(o);
+    }
+    root.Set("sounds", lane);
+    root.Set("nextSoundId", nextSoundId);
     JSONValue bin = JSONValue::MakeArray();
     for (const MediaItem& m : media) {
         JSONValue o = JSONValue::MakeObject();
@@ -669,6 +732,34 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
         loaded.nextOverlayId = static_cast<int>(root.Get("nextOverlayId").GetInteger(static_cast<int64_t>(loaded.overlays.size()) + 1));
     }
 
+    // The voice-and-sound lane: the spans are the truth, written back as the
+    // engine's audio clips, which go again here. A project without spans
+    // (made by `videofx`, or an older UltraVideo) has its audio clips turned
+    // into spans once the bin knows the files' lengths, below.
+    std::vector<VideoFXAudioClip> clipsWithoutSpans;
+    if (root.Contains("sounds")) {
+        const JSONValue& lane = root.Get("sounds");
+        for (size_t i = 0; i < lane.GetSize(); ++i) {
+            const JSONValue& o = lane.At(i);
+            SoundSpan a;
+            a.id = o.Get("id").GetString();
+            a.path = Absolute(o.Get("path").GetString(), base);
+            a.start = std::max(0.0, o.Get("start").GetNumber());
+            a.duration = std::max(0.04, o.Get("duration").GetNumber(1.0));
+            a.sourceIn = std::max(0.0, o.Get("sourceIn").GetNumber(0.0));
+            a.volume = std::clamp(o.Get("volume").GetNumber(1.0), 0.0, 4.0);
+            a.fadeIn = std::max(0.0, o.Get("fadeIn").GetNumber(0.0));
+            a.fadeOut = std::max(0.0, o.Get("fadeOut").GetNumber(0.0));
+            a.ducksMusic = o.Get("ducksMusic").GetBoolean(true);
+            if (a.id.empty() || a.path.empty()) continue;
+            loaded.sounds.push_back(a);
+        }
+        loaded.nextSoundId = static_cast<int>(root.Get("nextSoundId").GetInteger(static_cast<int64_t>(loaded.sounds.size()) + 1));
+    } else {
+        clipsWithoutSpans = loaded.project.settings.audioClips;
+    }
+    loaded.project.settings.audioClips.clear();
+
     const JSONValue& bin = root.Get("media");
     for (size_t i = 0; i < bin.GetSize(); ++i) {
         const std::string p = Absolute(bin.At(i).Get("path").GetString(), base);
@@ -696,6 +787,23 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
     for (const VideoFXSegment& s : loaded.project.segments)
         if (s.kind == VideoFXSourceKind::File || s.kind == VideoFXSourceKind::Image) known(s.path);
     for (const OverlaySpan& v : loaded.overlays) known(v.path);
+    for (const SoundSpan& a : loaded.sounds) known(a.path);
+    for (const VideoFXAudioClip& c : clipsWithoutSpans) {
+        known(c.path);
+        const MediaItem* m = loaded.FindMedia(c.path);
+        SoundSpan a;
+        a.id = loaded.NewSoundId();
+        a.path = c.path;
+        a.start = std::max(0.0, c.at);
+        a.sourceIn = std::max(0.0, c.start);
+        const double end = c.end > c.start ? c.end : (m ? m->duration : 0.0);
+        a.duration = std::max(0.04, end - a.sourceIn);
+        a.volume = c.volume;
+        a.fadeIn = c.fadeIn;
+        a.fadeOut = c.fadeOut;
+        a.ducksMusic = c.ducksMusic;
+        loaded.sounds.push_back(a);
+    }
     const JSONValue& marks = root.Get("markers");
     for (size_t i = 0; i < marks.GetSize(); ++i) {
         const JSONValue& m = marks.At(i);

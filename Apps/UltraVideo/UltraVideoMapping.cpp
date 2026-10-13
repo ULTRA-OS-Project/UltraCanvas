@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoMapping.cpp
 // Document <-> timeline model (UltraVideoMapping.h).
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoMapping.h"
 
@@ -361,6 +361,32 @@ TimelineModel BuildTimelineModel(const Document& doc) {
     TimelineDeriveStarts(main);
     model.tracks.push_back(main);
 
+    // The voice-and-sound lane: free clips of sound under the main track
+    TimelineTrack soundTrack;
+    soundTrack.id = kSoundTrackId;
+    soundTrack.kind = TimelineTrackKind::Audio;
+    soundTrack.name = "Voice & sound";
+    soundTrack.magnetic = false;
+    for (const SoundSpan& a : doc.sounds) {
+        TimelineClip clip;
+        clip.id = a.id;
+        clip.kind = TimelineClipKind::Audio;
+        clip.name = a.Name();
+        clip.source = a.path;
+        clip.start = a.start;
+        clip.duration = std::max(0.04, a.duration);
+        clip.sourceIn = a.sourceIn;
+        const MediaItem* m = doc.FindMedia(a.path);
+        clip.sourceLength = m ? m->duration : 0.0;
+        clip.muted = a.volume <= 0.0;
+        clip.fadeIn = a.fadeIn;
+        clip.fadeOut = a.fadeOut;
+        soundTrack.clips.push_back(clip);
+    }
+    std::stable_sort(soundTrack.clips.begin(), soundTrack.clips.end(),
+                     [](const TimelineClip& a, const TimelineClip& b) { return a.start < b.start; });
+    model.tracks.push_back(soundTrack);
+
     // The music lane: one bar per song, edited in the inspector (locked here)
     TimelineTrack music;
     music.id = kMusicTrackId;
@@ -540,6 +566,73 @@ bool ApplyChange(Document& doc, const TimelineChange& c) {
                     if (clip.id != c.before[0].id) { copy.start = clip.start; copy.duration = std::max(0.04, clip.duration); }
                 }
                 doc.overlays.push_back(copy);
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+    if (c.trackId == kSoundTrackId) {
+        // A free lane like the overlays', whose fades are edited on the clip too
+        switch (c.kind) {
+            case TimelineChangeKind::Move:
+            case TimelineChangeKind::Trim: {
+                for (const TimelineClip& clip : c.after) {
+                    const int index = doc.SoundIndex(clip.id);
+                    if (index < 0) return false;
+                    SoundSpan& a = doc.sounds[static_cast<size_t>(index)];
+                    a.start = std::max(0.0, clip.start);
+                    a.duration = std::max(0.04, clip.duration);
+                    a.sourceIn = std::max(0.0, clip.sourceIn);
+                }
+                return !c.after.empty();
+            }
+            case TimelineChangeKind::FadeSet: {
+                if (c.after.size() != 1) return false;
+                const int index = doc.SoundIndex(c.after[0].id);
+                if (index < 0) return false;
+                SoundSpan& a = doc.sounds[static_cast<size_t>(index)];
+                a.fadeIn = std::max(0.0, c.after[0].fadeIn);
+                a.fadeOut = std::max(0.0, c.after[0].fadeOut);
+                return true;
+            }
+            case TimelineChangeKind::Split: {
+                if (c.before.size() != 1 || c.after.size() != 2) return false;
+                const int index = doc.SoundIndex(c.before[0].id);
+                if (index < 0) return false;
+                SoundSpan right = doc.sounds[static_cast<size_t>(index)];
+                SoundSpan& left = doc.sounds[static_cast<size_t>(index)];
+                left.start = c.after[0].start;
+                left.duration = std::max(0.04, c.after[0].duration);
+                left.fadeOut = 0.0;
+                right.id = doc.NewSoundId();
+                right.start = c.after[1].start;
+                right.duration = std::max(0.04, c.after[1].duration);
+                right.sourceIn = std::max(0.0, c.after[1].sourceIn);
+                right.fadeIn = 0.0;
+                doc.sounds.push_back(right);
+                return true;
+            }
+            case TimelineChangeKind::Delete: {
+                size_t removed = 0;
+                for (const TimelineClip& clip : c.before) {
+                    const int index = doc.SoundIndex(clip.id);
+                    if (index < 0) continue;
+                    doc.sounds.erase(doc.sounds.begin() + index);
+                    ++removed;
+                }
+                return removed > 0;
+            }
+            case TimelineChangeKind::Duplicate: {
+                if (c.before.size() != 1) return false;
+                const int index = doc.SoundIndex(c.before[0].id);
+                if (index < 0) return false;
+                SoundSpan copy = doc.sounds[static_cast<size_t>(index)];
+                copy.id = doc.NewSoundId();
+                for (const TimelineClip& clip : c.after) {
+                    if (clip.id != c.before[0].id) { copy.start = clip.start; copy.duration = std::max(0.04, clip.duration); }
+                }
+                doc.sounds.push_back(copy);
                 return true;
             }
             default:

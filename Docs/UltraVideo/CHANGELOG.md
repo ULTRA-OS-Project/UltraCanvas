@@ -1,3 +1,34 @@
+#### 2026-10-13 *0.3.0*
+- **Voice-overs and sound effects at any time.** A new free lane on the
+  timeline, **A2 Voice & sound**, sits between the main track and the
+  music. It holds sound clips placed at any time, over the clips' own
+  sound and the music, mixed by VideoFX's audio clips (VideoFX 0.13.0).
+  - Two kinds of clip. A **voice-over** makes the music dip under it. A
+    **sound effect** plays over the music without changing it. A switch
+    in the inspector turns one into the other, as does the clip's menu.
+  - Adding a clip:
+    - right-click the lane for *Add a voice-over here…*, *Add a sound
+      effect here…*, or one of the bin's files with sound (songs, and
+      videos for their sound);
+    - use the *Voice-over* and *Sound effect* buttons on a song in the
+      bin's *Music* tab, which place it at the playhead;
+    - or drop files on the lane; a dropped file becomes a voice-over.
+  - A sound clip is moved, trimmed, split, duplicated and deleted like any
+    clip, and shows its waveform. Its fade handles set its fades, and
+    trimming its left edge moves into the file.
+  - The inspector sets *Volume* (up to 200 %), *Fade in*, *Fade out* and
+    *The music dips under it*.
+  - The playback draft and the export mix the lane. Exporting the work
+    area keeps the part of each clip that lies inside it.
+  - The `.ultravideo` file keeps the lane's spans (`sounds`). The engine's
+    project inside the file carries them as audio clips, so `videofx
+    render` gives the same sound. A VideoFX project's audio clips, opened
+    in UltraVideo, appear on the lane.
+  - (`SoundSpan`, `Document::AddSound`, `AudioClipsForEngine`, the `A2`
+    mapping; tested in `UltraVideoDocumentTest`.)
+- A selected overlay clip is no longer deselected whenever the timeline
+  is redrawn.
+
 #### 2026-10-13 *0.2.1*
 - **Proxies are made on the graphics hardware.** UltraVideo now makes its
   proxies with VideoFX's `Hardware` acceleration (VideoFX 0.12.0). Each

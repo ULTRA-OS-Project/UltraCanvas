@@ -5,8 +5,8 @@
 // `.ultravideo` file that holds all of it (Docs/Research/UltraVideoDesignProposal.md
 // §5.6, §9.2). The project inside the file is what VideoFX_ProjectToJson
 // writes, so `videofx render` works on it once extracted.
-// Version: 0.2.0
-// Last Modified: 2026-10-12
+// Version: 0.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -86,6 +86,26 @@ struct OverlaySpan {
     bool IsStill() const;           // a picture rather than a video
 };
 
+// A clip on the voice-and-sound lane (proposal §5.3): a file's sound at any
+// time, over the clips' own sound and the music - a voice-over, which the
+// music dips under, or a sound effect, which it does not. Each becomes one
+// of the export's audio clips (VideoFXAudioClip, VideoFX 0.13.0).
+struct SoundSpan {
+    std::string id;                 // the element's key ("a1")
+    std::string path;               // a sound file, or a video whose sound is wanted; UTF-8, absolute
+    double start = 0.0;             // seconds on the timeline
+    double duration = 1.0;
+    double sourceIn = 0.0;          // seconds into the file where it begins
+    double volume = 1.0;            // 0..4 (1 = as recorded)
+    double fadeIn = 0.0;            // seconds, at the span's own ends
+    double fadeOut = 0.0;
+    bool ducksMusic = true;         // a voice-over; false for a sound effect
+
+    double End() const { return start + duration; }
+    std::string Name() const;       // the file name
+    VideoFX::VideoFXAudioClip ToAudioClip() const;
+};
+
 // The title styles the bin offers (opening title, lower third, caption)
 struct TitleStyle {
     const char* key;
@@ -105,6 +125,8 @@ public:
     std::vector<std::string> clipIds;       // one per segment, in order: the element's keys
     std::vector<TitleSpan> titles;          // the title lane, in any order
     std::vector<OverlaySpan> overlays;      // the overlay-video lane, in any order
+    std::vector<SoundSpan> sounds;          // the voice-and-sound lane, in any order; the truth for
+                                            // the export's audio clips (project.settings.audioClips stays empty)
     std::vector<MediaItem> media;           // the bin
     std::vector<UltraCanvas::TimelineMarker> markers;
     ViewState view;
@@ -112,6 +134,7 @@ public:
     int nextClipId = 1;
     int nextTitleId = 1;
     int nextOverlayId = 1;
+    int nextSoundId = 1;
 
     std::string Name() const;               // the title, else the file's stem, else "Untitled"
     std::string Describe() const;           // "1920 x 1080 · 25 fps"
@@ -123,6 +146,7 @@ public:
     std::string NewClipId();
     std::string NewTitleId();
     std::string NewOverlayId();
+    std::string NewSoundId();
     // Where the segments sit on the timeline: the start of each, derived as
     // the element derives them (transition overlaps subtracted)
     std::vector<double> SegmentStarts() const;
@@ -138,6 +162,14 @@ public:
     // there. Returns its index, -1 when the file is sound or unreadable.
     int AddOverlay(const std::string& path, double at);
     int OverlayIndex(const std::string& id) const;
+    // A file's sound on the voice-and-sound lane at a time, for its length:
+    // a voice-over (the music dips under it) or a sound effect. Imported
+    // into the bin first when it is not there. Returns its index, -1 when
+    // the file has no sound or cannot be read.
+    int AddSound(const std::string& path, double at, bool voiceOver = true);
+    int SoundIndex(const std::string& id) const;
+    // The lane as the engine's audio clips (VideoFXExportSettings::audioClips)
+    std::vector<VideoFX::VideoFXAudioClip> AudioClipsForEngine() const;
     // Timeline seconds of a segment: a file's range over its speed, a still's seconds
     double SegmentSeconds(size_t index) const;
     const MediaItem* FindMedia(const std::string& path) const;

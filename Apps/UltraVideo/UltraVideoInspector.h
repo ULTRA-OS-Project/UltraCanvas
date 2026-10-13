@@ -1,13 +1,15 @@
 // Apps/UltraVideo/UltraVideoInspector.h
 // The inspector (Docs/Research/UltraVideoDesignProposal.md §6.4): three tabs
 // of catalogue elements. Clip - the selected clip's name, in and out, speed,
-// mute, the transition into it, a still's motion and framing. Audio - the
+// mute, the transition into it, a still's motion and framing; a title's
+// text and look, an overlay's place and size, a voice-over's or sound
+// effect's volume, fades and ducking. Audio - the
 // music: the songs, volume, fades, crossfade, loop, ducking. Project - name,
 // size, frame rate, fit. Every field reports an edit as a closure over the
 // document; the window applies it through the undo history and shows the
 // document again, so the inspector never writes the document itself.
-// Version: 0.2.0
-// Last Modified: 2026-10-12
+// Version: 0.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -36,8 +38,9 @@ public:
     void ApplyPalette(const Palette& palette);
 
     // Show the document: `segment` is the selected clip's segment, `title`
-    // the selected title span and `overlay` the selected overlay clip, -1 for none
-    void Show(const Document& document, int segment, int title = -1, int overlay = -1);
+    // the selected title span, `overlay` the selected overlay clip and
+    // `sound` the selected clip on the voice-and-sound lane, -1 for none
+    void Show(const Document& document, int segment, int title = -1, int overlay = -1, int sound = -1);
     void ShowClipTab();
     void ShowAudioTab();
 
@@ -95,6 +98,11 @@ private:
     std::shared_ptr<Dropdown> overlayAnchor;
     std::shared_ptr<Slider> overlaySize, overlayOpacity, overlayFadeIn, overlayFadeOut;
     std::shared_ptr<Label> overlaySizeValue, overlayOpacityValue, overlayFadeInValue, overlayFadeOutValue;
+    // a clip on the voice-and-sound lane (A2)
+    std::shared_ptr<Container> soundRows;
+    std::shared_ptr<Slider> soundVolume, soundFadeIn, soundFadeOut;
+    std::shared_ptr<Label> soundVolumeValue, soundFadeInValue, soundFadeOutValue;
+    std::shared_ptr<Switch> soundDucks;
 
     // Audio
     std::shared_ptr<Label> songs;
@@ -112,6 +120,7 @@ private:
     int segment = -1;
     int title = -1;
     int overlay = -1;
+    int sound = -1;
     double documentFrameRate = 25.0;
     bool updating = false;
 };

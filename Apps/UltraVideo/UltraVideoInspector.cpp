@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
-// Version: 0.2.0
-// Last Modified: 2026-10-12
+// Version: 0.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
@@ -473,6 +473,52 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
                   [](OverlaySpan& v, double s) { v.fadeOut = s; }, [](double v) { return Seconds(v); });
     clipFields->AddChild(overlayRows);
 
+    // ---- a voice-over or sound effect (A2): how loud, its fades, the music under it ----
+    soundRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.sound", 0, 0, kPageWidth, 160);
+    soundRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    soundRows->layoutItem.SetFlexShrink(0);
+    auto soundSlider = [&](const std::string& id, float lo, float hi, float step, std::shared_ptr<Slider>& out,
+                           std::shared_ptr<Label>& value, const std::string& caption, const std::string& label,
+                           std::function<void(SoundSpan&, double)> apply, std::function<std::string(double)> format) {
+        out = CreateSlider(id, 0, 0, 110, ctl);
+        out->SetRange(lo, hi);
+        out->SetStep(step);
+        out->SetValueDisplay(SliderValueDisplay::NoDisplay);
+        auto row = Row(soundRows, id + ".row", caption, out);
+        value = CreateLabel(id + ".value", 0, 0, 50, ctl, "");
+        value->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
+        captions.push_back(value);
+        row->AddChild(value);
+        sliders.push_back(out);
+        Label* valuePtr = value.get();
+        out->onValueChanged = [this, valuePtr, label, apply, format](float v) {
+            valuePtr->SetText(format(v));
+            const int index = sound;
+            const double d = v;
+            Edit(label, [index, apply, d](Document& doc) {
+                if (index >= 0 && static_cast<size_t>(index) < doc.sounds.size()) apply(doc.sounds[static_cast<size_t>(index)], d);
+            });
+        };
+    };
+    soundSlider("uv.insp.soundVolume", 0.0f, 2.0f, 0.05f, soundVolume, soundVolumeValue, "Volume", "Set sound volume",
+                [](SoundSpan& a, double v) { a.volume = v; }, percent);
+    soundSlider("uv.insp.soundFadeIn", 0.0f, 5.0f, 0.1f, soundFadeIn, soundFadeInValue, "Fade in", "Set sound fade in",
+                [](SoundSpan& a, double s) { a.fadeIn = s; }, [](double v) { return Seconds(v); });
+    soundSlider("uv.insp.soundFadeOut", 0.0f, 5.0f, 0.1f, soundFadeOut, soundFadeOutValue, "Fade out", "Set sound fade out",
+                [](SoundSpan& a, double s) { a.fadeOut = s; }, [](double v) { return Seconds(v); });
+    soundDucks = UltraCanvasSwitch::Create("uv.insp.soundDucks", 0, 0, "The music dips under it", true);
+    soundDucks->onStateChanged = [this](CheckedState, CheckedState now) {
+        const int index = sound;
+        const bool on = now == CheckedState::Checked;
+        Edit(on ? "Make voice-over" : "Make sound effect", [index, on](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.sounds.size()) d.sounds[static_cast<size_t>(index)].ducksMusic = on;
+        });
+    };
+    soundDucks->layoutItem.SetFlexShrink(0);
+    switches.push_back(soundDucks);
+    soundRows->AddChild(soundDucks);
+    clipFields->AddChild(soundRows);
+
     transitionRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.transition", 0, 0, kPageWidth, 100);
     transitionRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     transitionRows->layoutItem.SetFlexShrink(0);
@@ -711,11 +757,12 @@ void Inspector::ShowAudioTab() {
     if (tabs) tabs->SetActiveTab(1);
 }
 
-void Inspector::Show(const Document& doc, int index, int titleIndex, int overlayIndex) {
+void Inspector::Show(const Document& doc, int index, int titleIndex, int overlayIndex, int soundIndex) {
     updating = true;
     segment = index;
     title = titleIndex;
     overlay = overlayIndex;
+    sound = soundIndex;
     documentFrameRate = doc.FrameRate();
     for (auto& t : timecodes) t->SetFrameRate(documentFrameRate);
 
@@ -723,10 +770,31 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
     const bool hasClip = index >= 0 && static_cast<size_t>(index) < doc.project.segments.size();
     const bool hasTitle = !hasClip && titleIndex >= 0 && static_cast<size_t>(titleIndex) < doc.titles.size();
     const bool hasOverlay = !hasClip && !hasTitle && overlayIndex >= 0 && static_cast<size_t>(overlayIndex) < doc.overlays.size();
-    clipEmpty->SetVisible(!hasClip && !hasTitle && !hasOverlay);
-    clipFields->SetVisible(hasClip || hasTitle || hasOverlay);
+    const bool hasSound = !hasClip && !hasTitle && !hasOverlay && soundIndex >= 0 && static_cast<size_t>(soundIndex) < doc.sounds.size();
+    clipEmpty->SetVisible(!hasClip && !hasTitle && !hasOverlay && !hasSound);
+    clipFields->SetVisible(hasClip || hasTitle || hasOverlay || hasSound);
     titleRows->SetVisible(hasTitle);
     overlayRows->SetVisible(hasOverlay);
+    soundRows->SetVisible(hasSound);
+    if (hasSound) {
+        const SoundSpan& a = doc.sounds[static_cast<size_t>(soundIndex)];
+        clipName->SetText(a.Name());
+        clipKind->SetText(a.ducksMusic ? "Voice-over on Voice & sound" : "Sound effect on Voice & sound");
+        fileRows->SetVisible(false);
+        stillRow->SetVisible(false);
+        imageRows->SetVisible(false);
+        transitionRows->SetVisible(false);
+        mute->SetVisible(false);
+        clipDuration->SetText(Seconds(a.duration) + " on the timeline, from " + TimelineTimecode(a.start, documentFrameRate) +
+                              (a.sourceIn <= 0.0 ? "" : ", the file from " + Seconds(a.sourceIn)));
+        soundVolume->SetValue(static_cast<float>(a.volume));
+        soundVolumeValue->SetText(std::to_string(static_cast<int>(std::lround(a.volume * 100))) + " %");
+        soundFadeIn->SetValue(static_cast<float>(a.fadeIn));
+        soundFadeInValue->SetText(Seconds(a.fadeIn));
+        soundFadeOut->SetValue(static_cast<float>(a.fadeOut));
+        soundFadeOutValue->SetText(Seconds(a.fadeOut));
+        soundDucks->SetChecked(a.ducksMusic);
+    }
     if (hasOverlay) {
         const OverlaySpan& v = doc.overlays[static_cast<size_t>(overlayIndex)];
         clipName->SetText(v.Name());
