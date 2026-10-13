@@ -1,3 +1,66 @@
+#### 2026-10-13 *0.9.272*
+- **UltraCrypt 0.2.0: Ed25519 signatures.** `UltraCrypt_Sign` and
+  `UltraCrypt_Verify` (and `UltraCrypt_SignFile` / `UltraCrypt_VerifyFile`
+  over a file's bytes) give the framework its first public-key operation:
+  deterministic 64-byte detached signatures under RFC 8032, checked with a
+  32-byte public key and nothing else, so a signed catalog or update can be
+  verified by a client that holds no secret. `UltraCrypt_GenerateSignatureKeyPair`
+  draws a fresh pair, `UltraCrypt_SignatureKeyPairFromSeed` rebuilds one from
+  a 32-byte seed (a seed in a vault is the whole signing identity) and
+  `UltraCrypt_GetSignaturePublicKey` reads the public half out of a secret
+  key. A wrong-length key or signature is refused with `InvalidKeySize` /
+  `InvalidArgument` before anything is checked; a mismatch is the new
+  `UltraCryptResultCode::SignatureInvalid`, one code whether the message, the
+  signature or the key is off. Tested against the RFC 8032 §7.1 vectors plus
+  a flipped message bit, a flipped signature bit, a wrong key and a file with
+  a byte appended. The first consumer is UltraStore's signed catalog.
+- **UltraNet 0.3.0: downloads that resume, pause and are not cut off at
+  30 seconds.** What UltraStore's package downloads need, and what every
+  download so far lacked:
+  - **`UltraNetHttpOptions::outputFilePath` works**, on the sync and the
+    async path: the body goes to the file, `response.body` stays empty, and
+    the file is closed before `onComplete` fires. `UltraNet_HttpDownloadFile`
+    is now this with its `localPath`. It was declared and never read; the
+    API status tool had it as NOT IMPLEMENTED.
+  - **Range resume.** `resumeOutputFile` continues a partial file: its size
+    is the offset, the request asks for `bytes=<size>-`, a 206 is appended,
+    a 200 from a server that ignores the range replaces the file rather than
+    being appended to it, and a 416 whose `Content-Range` total is the file's
+    size means the file was already complete and is reported as success.
+    `resumeFromOffset` does the same for a caller holding its own partial
+    copy. Progress figures count the resumed bytes, so they are of the whole
+    file.
+  - **No whole-transfer timeout on a download.** A transfer that writes a
+    file has no `timeoutMs` limit by default and a stall limit instead: the
+    new `stallTimeoutMs` (the config default, 30 s, for a file; off
+    otherwise) ends a transfer with `Timeout` when no byte has moved for that
+    long. `timeoutMs = -1` turns the whole-transfer limit off for any
+    request. Before this, `UltraNet_HttpDownloadFile` - the SDK download in
+    UltraCanvasStart among others - failed after 30 seconds whatever the
+    file's size.
+  - **Pause and resume.** `UltraNet_PauseRequest` / `UltraNet_ResumeRequest`
+    / `UltraNet_IsRequestPaused` on an async handle: nothing is read while
+    paused, no callback fires, the connection stays open, the stall limit is
+    suspended, and the transfer continues where it stopped. A pause asked
+    for before the connection exists is applied as soon as it does.
+  - **`httpsOnlyRedirects`.** A redirect to anything but `https://` ends the
+    transfer as the new `UltraNetResultCode::RedirectRefused`, with the 3xx
+    and its `Location` reported, so a download started over TLS is never
+    bounced onto a plain connection. Without it a redirect may go to
+    `http://` or `https://`; libcurl's default also allowed `ftp://`.
+  - **`UltraNetHttpRequest::onHeaders`.** Fires once, when the final
+    response's headers are complete and before its body - not for a redirect
+    being followed or a 1xx - with `statusCode`, `headers`, `contentType` and
+    `contentLength` filled. Returning false ends the transfer as `Cancelled`
+    with nothing read: a `Content-Length` over the package's declared size
+    is refused before a byte of it is downloaded.
+  - Tested against a Range-capable loopback origin (`Tests/UltraNet/
+    test_download.cpp`: 206, 200-start-over, 416-complete, the tail by
+    offset, progress totals, the refused redirect, headers before the body
+    and as a veto, a stall, pause and resume, an async file). The API status
+    tool probes each of them (`/range/<n>`, `/redirect-http` and `/stall`
+    routes on its origin).
+
 #### 2026-10-13 *0.9.271*
 - **VideoFX 0.13.0: voice-overs and sound effects at any time.** The new
   `VideoFXExportSettings::audioClips` holds free audio clips. Each is a sound
