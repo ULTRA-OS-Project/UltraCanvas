@@ -382,11 +382,11 @@ static void TestVaultLocation(const fs::path& dir) {
     std::printf("vault location\n");
     using UltraCanvas::PathToUtf8;
 
-    // Windows: %APPDATA%; without it, the folder UltraPassword always used under HOME.
+    // Windows: %APPDATA%; without it, the folder %APPDATA% would have named.
     Check(SamePath(ResolveDataDir(DataDirPlatform::Windows, "", "C:/Users/erika/AppData/Roaming", ""),
                    fs::path("C:/Users/erika/AppData/Roaming") / "UltraPassword"), "Windows: APPDATA");
     Check(SamePath(ResolveDataDir(DataDirPlatform::Windows, "", "", "C:/Users/erika"),
-                   fs::path("C:/Users/erika") / ".local" / "share" / "UltraPassword"), "Windows without APPDATA");
+                   fs::path("C:/Users/erika") / "AppData" / "Roaming" / "UltraPassword"), "Windows without APPDATA");
     // macOS: Application Support, not ~/.local/share.
     Check(SamePath(ResolveDataDir(DataDirPlatform::MacOS, "", "", "/Users/erika"),
                    fs::path("/Users/erika/Library/Application Support/UltraPassword")), "macOS: Application Support");
@@ -405,9 +405,12 @@ static void TestVaultLocation(const fs::path& dir) {
     Check(VaultPathIn("/data/UltraPassword") == PathToUtf8(fs::path("/data/UltraPassword") / "vault.upwvault"),
           "the vault file in the folder");
 
-    // Only macOS moved.
+    // Linux kept its folder; macOS moved, and so did Windows with HOME set.
     Check(LegacyDataDirs(DataDirPlatform::Unix, "/home/erika").empty(), "Linux kept its folder");
-    Check(LegacyDataDirs(DataDirPlatform::Windows, "C:/Users/erika").empty(), "Windows kept its folder");
+    Check(LegacyDataDirs(DataDirPlatform::Windows, "").empty(), "Windows without HOME: nothing to move");
+    const auto win = LegacyDataDirs(DataDirPlatform::Windows, "C:/Users/erika");
+    Check(win.size() == 1 && SamePath(win[0], fs::path("C:/Users/erika/.local/share/UltraPassword")),
+          "Windows with HOME: ~/.local/share/UltraPassword");
     Check(LegacyDataDirs(DataDirPlatform::MacOS, "").empty(), "no home, no legacy folder");
     const auto mac = LegacyDataDirs(DataDirPlatform::MacOS, "/Users/erika");
     Check(mac.size() == 1 && SamePath(mac[0], fs::path("/Users/erika/.local/share/UltraPassword")),

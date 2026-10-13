@@ -1113,6 +1113,21 @@ add_test(NAME PathUtf8Test COMMAND PathUtf8Test
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: PathUtf8Test")
 
+# ===== PER-USER DATA FOLDER TEST =====
+# UltraCanvasDataFolder.h: each platform's rule for the application data
+# folder, the folders earlier versions used, and moving one into place once.
+# Header-only, so the test links nothing.
+message(STATUS "  Building DataFolderTest...")
+add_executable(DataFolderTest ${CMAKE_CURRENT_SOURCE_DIR}/DataFolderTest.cpp)
+target_include_directories(DataFolderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(DataFolderTest PRIVATE cxx_std_17)
+set_target_properties(DataFolderTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME DataFolderTest COMMAND DataFolderTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: DataFolderTest")
+
 # ===== VIDEO TIMELINE MODEL TEST =====
 # The model behind UltraCanvasVideoTimeline (UltraCanvasVideoTimelineModel.h):
 # derived starts on a magnetic track, splitting, trimming, moving, deleting,

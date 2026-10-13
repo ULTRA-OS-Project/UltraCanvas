@@ -3,8 +3,10 @@
   macOS was treated like Linux, so the mailbox database, the credential vault
   and the preferences went to `~/.local/share/UltraMail` - while UltraSocial
   and the desktop's clipboard history already kept theirs in Application
-  Support, the place the platform means for them. The rule is now the same in
-  all three (`engine/UltraMailPaths.h`): `%APPDATA%\UltraMail` on Windows,
+  Support, the place the platform means for them. The rule is now the
+  framework's one rule (`UltraCanvasDataFolder.h`, shared with UltraPassword,
+  UltraAuthenticator, UltraSocial and EmailCleaner), which
+  `engine/UltraMailPaths.h` applies: `%APPDATA%\UltraMail` on Windows,
   Application Support on macOS, `$XDG_DATA_HOME` or `~/.local/share`
   elsewhere, and `$XDG_DATA_HOME` wins everywhere when it is set. On the first
   start a folder an earlier version left in `~/.local/share` on macOS is moved

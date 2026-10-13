@@ -1,3 +1,18 @@
+#### 2026-10-13 *0.2.7*
+- **The vault lives in the platform's application data folder.** The default
+  folder was `~/.local/share/UltraAuthenticator` wherever `HOME` was set -
+  on macOS always, and on Windows even ahead of `%APPDATA%`, so a profile
+  with `HOME` set kept its second factors in a folder no other application
+  uses. It is `%APPDATA%\UltraAuthenticator` on Windows,
+  `~/Library/Application Support/UltraAuthenticator` on macOS and
+  `$XDG_DATA_HOME` or `~/.local/share` elsewhere now, `$XDG_DATA_HOME`
+  winning everywhere when it is set: the framework's one rule
+  (`UltraCanvasDataFolder.h`), shared with UltraMail, UltraPassword and
+  UltraSocial, through the new `VaultLocation.h` in the core. On the first
+  start a folder 0.2.6 left in `~/.local/share` on those platforms is moved
+  into place whole - the vault opens with its password as before and
+  `settings.ini` comes along. `--vault PATH` and Linux are unaffected.
+
 #### 2026-10-04 *0.2.6*
 - **The owner-only permission is set on the store and export files in a
   folder named in any script.** `fs::permissions` on the temporary file was

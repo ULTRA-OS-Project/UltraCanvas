@@ -1949,6 +1949,8 @@ if (BUILD_TESTS)
     add_executable(UltraAuthenticatorStoreTests
         Tests/UltraAuthenticatorStoreTests.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
+        # The default vault folder, and a vault moved into it from where 0.2.6 kept it.
+        Apps/UltraAuthenticator/VaultLocation.cpp
     )
     target_link_libraries(UltraAuthenticatorStoreTests PRIVATE UltraCrypt)
     target_compile_features(UltraAuthenticatorStoreTests PRIVATE cxx_std_20)

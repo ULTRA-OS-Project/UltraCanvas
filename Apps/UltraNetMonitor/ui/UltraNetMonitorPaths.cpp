@@ -1,4 +1,5 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorPaths.cpp
+// Version: 0.1.1 - HOME and XDG_DATA_HOME read as UTF-8 too (GetEnvUtf8)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorPaths.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
@@ -19,17 +20,19 @@ namespace UltraNetMonitor {
 std::string DefaultStorePath() {
     namespace fs = std::filesystem;
     fs::path root;
-    const char* home = std::getenv("HOME");
+    // Every variable through GetEnvUtf8: on Windows getenv answers in the
+    // ANSI code page, which turns a profile folder named outside it into '?',
+    // and reading HOME and XDG_DATA_HOME the same way keeps the file on one
+    // rule rather than one per platform.
+    const std::string home = UltraCanvas::GetEnvUtf8("HOME");
 #if defined(_WIN32)
-    // UTF-8 from the wide environment (GetEnvUtf8): getenv answers in the
-    // ANSI code page, which turns a profile folder named outside it into '?'.
     if (const std::string local = UltraCanvas::GetEnvUtf8("LOCALAPPDATA"); !local.empty())
         root = PathFromUtf8(local);
 #elif defined(__APPLE__)
-    if (home && *home) root = PathFromUtf8(home) / "Library" / "Application Support";
+    if (!home.empty()) root = PathFromUtf8(home) / "Library" / "Application Support";
 #else
-    if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg) root = xdg;
-    else if (home && *home) root = PathFromUtf8(home) / ".local" / "share";
+    if (const std::string xdg = UltraCanvas::GetEnvUtf8("XDG_DATA_HOME"); !xdg.empty()) root = PathFromUtf8(xdg);
+    else if (!home.empty()) root = PathFromUtf8(home) / ".local" / "share";
 #endif
     if (root.empty()) return std::string();
     const fs::path directory = root / "UltraNetMonitor";

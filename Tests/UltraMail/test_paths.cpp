@@ -62,11 +62,11 @@ void MakeLegacyData(const fs::path& dir) {
 } // namespace
 
 TEST(paths_resolve_per_platform) {
-    // Windows: %APPDATA%; without it, the folder UltraMail always used under HOME.
+    // Windows: %APPDATA%; without it, the folder %APPDATA% would have named.
     REQUIRE(SamePath(ResolveDataDir(DataDirPlatform::Windows, "", "C:/Users/erika/AppData/Roaming", ""),
                      fs::path("C:/Users/erika/AppData/Roaming") / "UltraMail"));
     REQUIRE(SamePath(ResolveDataDir(DataDirPlatform::Windows, "", "", "C:/Users/erika"),
-                     fs::path("C:/Users/erika") / ".local" / "share" / "UltraMail"));
+                     fs::path("C:/Users/erika") / "AppData" / "Roaming" / "UltraMail"));
     // macOS: Application Support, not ~/.local/share.
     REQUIRE(SamePath(ResolveDataDir(DataDirPlatform::MacOS, "", "", "/Users/erika"),
                      fs::path("/Users/erika/Library/Application Support/UltraMail")));
@@ -90,10 +90,14 @@ TEST(paths_resolve_per_platform) {
 }
 
 TEST(paths_legacy_locations) {
-    // Only macOS moved; Linux and Windows kept their folders.
+    // Linux kept its folder; macOS moved, and so did Windows with HOME set
+    // (without it 0.10.50 already used %APPDATA%).
     REQUIRE(LegacyDataDirs(DataDirPlatform::Unix, "/home/erika").empty());
-    REQUIRE(LegacyDataDirs(DataDirPlatform::Windows, "C:/Users/erika").empty());
+    REQUIRE(LegacyDataDirs(DataDirPlatform::Windows, "").empty());
     REQUIRE(LegacyDataDirs(DataDirPlatform::MacOS, "").empty());
+    auto win = LegacyDataDirs(DataDirPlatform::Windows, "C:/Users/erika");
+    REQUIRE_EQ(win.size(), static_cast<size_t>(1));
+    REQUIRE(SamePath(win[0], fs::path("C:/Users/erika/.local/share/UltraMail")));
 
     auto mac = LegacyDataDirs(DataDirPlatform::MacOS, "/Users/erika");
     REQUIRE_EQ(mac.size(), static_cast<size_t>(1));

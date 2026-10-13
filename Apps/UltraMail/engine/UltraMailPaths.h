@@ -9,19 +9,24 @@
 //   others   $XDG_DATA_HOME/UltraMail, else ~/.local/share/UltraMail
 //
 // $XDG_DATA_HOME, when set, wins on every platform, so a test or a portable
-// setup can point the app elsewhere. The same rule as UltraSocial's
-// (UltraSocialPaths.h) and the desktop's clipboard history
-// (UltraCanvasClipboardHistory::DefaultDirectory).
+// setup can point the app elsewhere. The rule is the framework's
+// (UltraCanvasDataFolder.h), shared with UltraPassword, UltraAuthenticator,
+// UltraSocial and EmailCleaner; this file adds UltraMail's folder name, the
+// file that marks a folder as its own, and where earlier versions kept it.
 //
 // Up to 0.10.50 macOS was treated like Linux and the folder was
-// ~/.local/share/UltraMail there. AdoptLegacyDataDir moves such a folder into
-// place once, whole, so the accounts, the mail and the vault open as before.
+// ~/.local/share/UltraMail there (as it was on Windows without %APPDATA%).
+// AdoptLegacyDataDir moves such a folder into place once, whole, so the
+// accounts, the mail and the vault open as before.
 //
 // All strings are UTF-8 (UltraCanvasPathUtf8.h).
+// Version: 0.1.1 - the rule and the move come from the framework's UltraCanvasDataFolder.h
 // Version: 0.1.0 - the per-platform application data folder
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include "UltraCanvasDataFolder.h"   // DataFolderPlatform
 
 #include <string>
 #include <vector>
@@ -35,7 +40,7 @@ inline constexpr const char* kDataFolderName = "UltraMail";
 // folder UltraMail has ever started in holds one).
 inline constexpr const char* kMailboxFileName = "mail.db";
 
-enum class DataDirPlatform { Windows, MacOS, Unix };
+using DataDirPlatform = UltraCanvas::DataFolderPlatform;
 
 // The platform this build runs on.
 DataDirPlatform CurrentDataDirPlatform();
@@ -53,8 +58,9 @@ std::string ResolveDataDir(DataDirPlatform platform,
 std::string DefaultDataDir();
 
 // Where earlier versions may have left the data on this platform, other than
-// where it goes now: ~/.local/share/UltraMail on macOS. Pure, like
-// ResolveDataDir. Windows and Linux kept their folders, so they have none.
+// where it goes now: ~/.local/share/UltraMail on macOS, and on Windows when
+// HOME is set (what 0.10.50 used there without %APPDATA%). Pure, like
+// ResolveDataDir. Linux kept its folder, so it has none.
 std::vector<std::string> LegacyDataDirs(DataDirPlatform platform,
                                         const std::string& home);
 

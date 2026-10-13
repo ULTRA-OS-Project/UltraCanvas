@@ -1,11 +1,13 @@
 // Apps/UltraPassword/core/VaultLocation.cpp
 // See VaultLocation.h.
+// Version: 0.1.1 - the rule and the move come from the framework's UltraCanvasDataFolder.h
 // Version: 0.1.0 - the per-platform application data folder
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "VaultLocation.h"
 
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
+#include "UltraCanvasDataFolder.h"   // DataFolderRootFor / AdoptLegacyDataFolder
+#include "UltraCanvasPathUtf8.h"     // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
 
 #include <filesystem>
 #include <system_error>
@@ -17,94 +19,25 @@ using UltraCanvas::PathToUtf8;
 
 namespace UltraPassword {
 
-namespace {
-
-bool HoldsVault(const fs::path& dir) {
-    std::error_code ec;
-    return fs::is_regular_file(dir / kVaultFileName, ec);
-}
-
-// The same folder, however it is spelt (a symlinked home, "./" components).
-bool SameFolder(const fs::path& a, const fs::path& b) {
-    std::error_code ec;
-    if (fs::exists(a, ec) && fs::exists(b, ec) && fs::equivalent(a, b, ec)) return true;
-    return a.lexically_normal() == b.lexically_normal();
-}
-
-} // namespace
-
 DataDirPlatform CurrentDataDirPlatform() {
-#if defined(_WIN32)
-    return DataDirPlatform::Windows;
-#elif defined(__APPLE__)
-    return DataDirPlatform::MacOS;
-#else
-    return DataDirPlatform::Unix;
-#endif
+    return UltraCanvas::CurrentDataFolderPlatform();
 }
 
 std::string ResolveDataDir(DataDirPlatform platform, const std::string& xdgDataHome,
                            const std::string& appData, const std::string& home) {
-    fs::path root;
-    if (!xdgDataHome.empty()) {
-        root = PathFromUtf8(xdgDataHome);
-    } else if (platform == DataDirPlatform::Windows && !appData.empty()) {
-        root = PathFromUtf8(appData);
-    } else if (!home.empty()) {
-        // Windows without %APPDATA% keeps the folder it always had under HOME.
-        root = platform == DataDirPlatform::MacOS
-                   ? PathFromUtf8(home) / "Library" / "Application Support"
-                   : PathFromUtf8(home) / ".local" / "share";
-    }
+    const fs::path root = UltraCanvas::DataFolderRootFor(platform, xdgDataHome, appData, home);
     if (root.empty()) return std::string();
     return PathToUtf8(root / kDataFolderName);
 }
 
 std::vector<std::string> LegacyDataDirs(DataDirPlatform platform, const std::string& home) {
-    std::vector<std::string> dirs;
-    if (platform != DataDirPlatform::MacOS || home.empty()) return dirs;
-    dirs.push_back(PathToUtf8(PathFromUtf8(home) / ".local" / "share" / kDataFolderName));
-    return dirs;
+    return UltraCanvas::LegacyUnixDataFolders(platform, home, kDataFolderName);
 }
 
 std::string AdoptLegacyDataDir(const std::string& dataDir,
                                const std::vector<std::string>& candidates,
                                std::string& error) {
-    error.clear();
-    if (dataDir.empty()) return std::string();
-    const fs::path target = PathFromUtf8(dataDir);
-    if (HoldsVault(target)) return std::string();   // already in place
-
-    for (const auto& candidate : candidates) {
-        const fs::path source = PathFromUtf8(candidate);
-        if (candidate.empty() || SameFolder(source, target) || !HoldsVault(source))
-            continue;
-
-        std::error_code ec;
-        fs::create_directories(target.parent_path(), ec);
-        // An empty folder in the way (made by hand, or by an installer) is
-        // replaced; anything else in it is kept and the vault copied beside.
-        if (fs::is_directory(target, ec) && fs::is_empty(target, ec)) fs::remove(target, ec);
-
-        ec.clear();
-        if (!fs::exists(target, ec)) {
-            fs::rename(source, target, ec);
-            if (!ec) return candidate;
-        }
-
-        // Another drive, or the target already has files: copy, then remove.
-        ec.clear();
-        fs::create_directories(target, ec);
-        fs::copy(source, target,
-                 fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            error = "could not move " + candidate + " to " + dataDir + ": " + ec.message();
-            return std::string();
-        }
-        fs::remove_all(source, ec);   // the copy is complete; a leftover is harmless
-        return candidate;
-    }
-    return std::string();
+    return UltraCanvas::AdoptLegacyDataFolder(dataDir, candidates, {kVaultFileName}, error);
 }
 
 std::string VaultPathIn(const std::string& dataDir) {

@@ -7,18 +7,25 @@
 //   others   $XDG_DATA_HOME/UltraPassword, else ~/.local/share/UltraPassword
 //
 // $XDG_DATA_HOME, when set, wins on every platform, so a test or a portable
-// setup can point the app elsewhere. The same rule as UltraMail's
-// (UltraMailPaths.h), UltraSocial's and the desktop's clipboard history.
+// setup can point the app elsewhere. The rule is the framework's
+// (UltraCanvasDataFolder.h), shared with UltraMail, UltraAuthenticator,
+// UltraSocial and EmailCleaner; this file adds UltraPassword's folder name,
+// the vault file that marks a folder as its own, and where earlier versions
+// kept it.
 //
 // Up to 0.1.2 macOS was treated like Linux and the folder was
-// ~/.local/share/UltraPassword there. AdoptLegacyDataDir moves such a folder
-// into place once, whole, so the vault opens as before.
+// ~/.local/share/UltraPassword there (as it was on Windows without
+// %APPDATA%). AdoptLegacyDataDir moves such a folder into place once, whole,
+// so the vault opens as before.
 //
 // All strings are UTF-8 (UltraCanvasPathUtf8.h).
+// Version: 0.1.1 - the rule and the move come from the framework's UltraCanvasDataFolder.h
 // Version: 0.1.0 - the per-platform application data folder
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include "UltraCanvasDataFolder.h"   // DataFolderPlatform
 
 #include <string>
 #include <vector>
@@ -30,7 +37,7 @@ namespace UltraPassword {
 inline constexpr const char* kDataFolderName = "UltraPassword";
 inline constexpr const char* kVaultFileName  = "vault.upwvault";
 
-enum class DataDirPlatform { Windows, MacOS, Unix };
+using DataDirPlatform = UltraCanvas::DataFolderPlatform;
 
 // The platform this build runs on.
 DataDirPlatform CurrentDataDirPlatform();
@@ -44,8 +51,9 @@ std::string ResolveDataDir(DataDirPlatform platform,
                            const std::string& home);
 
 // Where earlier versions may have left the vault on this platform, other than
-// where it goes now: ~/.local/share/UltraPassword on macOS. Pure, like
-// ResolveDataDir. Windows and Linux kept their folders, so they have none.
+// where it goes now: ~/.local/share/UltraPassword on macOS, and on Windows
+// when HOME is set (what 0.1.2 used there without %APPDATA%). Pure, like
+// ResolveDataDir. Linux kept its folder, so it has none.
 std::vector<std::string> LegacyDataDirs(DataDirPlatform platform,
                                         const std::string& home);
 
