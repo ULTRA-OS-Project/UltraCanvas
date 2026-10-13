@@ -1,3 +1,15 @@
+#### 2026-10-13 *0.4.1*
+- **One program.** `ultrapress` is the commands and the editor window: a
+  command word first (`new`, `check`, `page`, `publish`, `import`, `help`)
+  runs the command, a site folder opens the editor, `--check` after the
+  folder renders every page without a window. The separate `UltraPress`
+  window binary is gone: the macOS build stopped with "No rule to make
+  target `ultrapress.dir/depend`" because on a case-insensitive filesystem
+  the two targets' names, and their binaries' paths, are one. The desktop
+  entry and the packaging scripts name `ultrapress`; on macOS the app bundle
+  is built from it, with the command-line tool beside it, as UltraFIBU's
+  `ultrafibu` is one program for the same reason.
+
 #### 2026-10-13 *0.4.0*
 - **The WordPress importer.** `ultrapress import <export.xml> <site-dir>`
   reads a WordPress export (Tools > Export, the WXR file) into a site: the

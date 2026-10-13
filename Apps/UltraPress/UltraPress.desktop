@@ -6,14 +6,15 @@
 # media/appicon/UltraPress.svg into share/icons/hicolor/scalable/apps. The
 # window and taskbar icon come from the same PNG through UCAPP_ICON_PATH.
 #
-# Exec takes the site folder to open; --check is for the command line.
+# Exec takes the site folder to open. `ultrapress` is the one program: the
+# commands and, given a site folder, the window.
 Type=Application
 Version=1.5
 Name=UltraPress
 GenericName=Website Builder
 Comment=Build websites and shops that publish WebAssembly
-Exec=UltraPress %f
-TryExec=UltraPress
+Exec=ultrapress %f
+TryExec=ultrapress
 Icon=UltraPress
 Terminal=false
 StartupNotify=true

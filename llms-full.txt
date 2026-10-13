@@ -83665,9 +83665,9 @@ FILE: Docs/UltraPress/README.md
 
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.4.0 is the headless engine, the
-`ultrapress` command line, the block renderer on real elements, the editor
-window and the WordPress importer: a site as a folder of JSON files, the
+**Status:** Phase 1 under way. UltraPress 0.4.1 is the headless engine, the
+`ultrapress` program - the commands and the editor window -, the block
+renderer on real elements and the WordPress importer: a site as a folder of JSON files, the
 block registry, the HTML shadow of every page, the static publish, every
 block as UltraCanvas elements, blocks added, moved, removed and edited
 with the page re-rendered live, and a WordPress export read into a site.
@@ -83686,9 +83686,14 @@ This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
 ## The window
 
 ```bash
-UltraPress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
-UltraPress mysite --check     # render every page without a window; element counts and warnings
+ultrapress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
+ultrapress mysite --check     # render every page without a window; element counts and warnings
 ```
+
+`ultrapress` is one program: a command word first (`new`, `check`, `page`,
+`publish`, `import`, `help`) runs that command without a window, a site
+folder opens the editor. There is no second `UltraPress` binary: two names
+that differ only in case are one name on macOS and Windows.
 
 The left column lists the pages and the current page's blocks: select one,
 move it with the arrows, remove it, or add one after the selection from

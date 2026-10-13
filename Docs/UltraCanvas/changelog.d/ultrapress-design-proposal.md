@@ -34,7 +34,9 @@
   workflow then grew into five variants, one job each, for the proposal's
   Phase 0: `baseline`, `min-size` (`-Os`), `no-vips`, `four-fonts` and
   `single-thread`, each with its own size table and `wasm-demo-<variant>`
-  artifact; the last three never fail the run.
+  artifact; the last three never fail the run. All five build: `-Os` saves
+  60 KB, no libvips 0.65 MB over Brotli, four fonts 0.94 MB, and the
+  single-threaded build is no larger than the threaded one.
 - **WebAssembly backend: build options for the size measurements.**
   `ULTRACANVAS_WASM_THREADS=OFF` builds the library without `-pthread`, and
   `WASM_THREADS=0` builds `build-wasm-sysroot.sh`'s sysroot the same way,

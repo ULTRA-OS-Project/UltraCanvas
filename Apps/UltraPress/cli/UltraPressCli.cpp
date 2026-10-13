@@ -1,5 +1,6 @@
 // Apps/UltraPress/cli/UltraPressCli.cpp
 // The commands: new, check, page, publish, help, --version.
+// Version: 0.4.1 - help names the window, the same program since there is one
 // Version: 0.4.0 - import: a WordPress export as a site
 // Version: 0.1.0
 // Last Modified: 2026-10-13
@@ -48,6 +49,8 @@ void PrintHelp() {
         "  ultrapress import <export.xml> <site-dir> [--front <slug>] [--media] [--no-drafts]\n"
         "      a WordPress export (Tools > Export) as a site: pages, posts, menus,\n"
         "      the bodies as blocks; --media fetches the attachments into media/\n"
+        "  ultrapress <site-dir> [--check]\n"
+        "      open the site in the editor window; --check renders every page without one\n"
         "  ultrapress --version\n",
         ULTRAPRESS_VERSION);
 }

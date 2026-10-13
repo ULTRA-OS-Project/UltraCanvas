@@ -1,18 +1,28 @@
 // Apps/UltraPress/ui/main.cpp
-// UltraPress: the site in a window - the pages and the current page's
-// blocks on the left, the page rendered on real elements in the middle,
-// the selected block's properties on the right (ui/UltraPressWindow.h).
-// The renderer is the one that becomes the published page under Emscripten.
+// ultrapress: the one UltraPress program - the commands and the window.
+// A command word first (new, check, page, publish, import, help) runs that
+// command without a window (cli/UltraPressCli.h); a site folder opens it in
+// the editor - the pages and the current page's blocks on the left, the
+// page rendered on real elements in the middle, the selected block's
+// properties on the right (ui/UltraPressWindow.h). The renderer is the one
+// that becomes the published page under Emscripten.
 //
-//   UltraPress <site-dir>            open a site folder
-//   UltraPress <site-dir> --check    render every page without a window and
+//   ultrapress <site-dir>            open a site folder in the editor
+//   ultrapress <site-dir> --check    render every page without a window and
 //                                    print the element counts and warnings
-//   UltraPress --version
+//   ultrapress <command> ...         new, check, page, publish, import, help
+//   ultrapress --version
+//
+// There were two programs, ultrapress and UltraPress, until the macOS build
+// showed that two names differing only in case are one name on a
+// case-insensitive filesystem. One program, like ultrafibu.
+// Version: 0.4.1 - one program: the commands and the window
 // Version: 0.3.0 - editing: blocks added, moved, removed and their properties changed; Save
 // Version: 0.2.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressBlocks.h"
+#include "UltraPressCli.h"
 #include "UltraPressModel.h"
 #include "UltraPressRender.h"
 #include "UltraPressWindow.h"
@@ -43,11 +53,23 @@ const Color kPaper(255, 255, 255, 255);
 int Usage() {
     std::fprintf(stderr,
                  "UltraPress %s\n"
-                 "  UltraPress <site-dir>           open a site folder\n"
-                 "  UltraPress <site-dir> --check   render every page without a window, print what was built\n"
-                 "  UltraPress --version\n",
+                 "  ultrapress <site-dir>           open a site folder in the editor\n"
+                 "  ultrapress <site-dir> --check   render every page without a window, print what was built\n"
+                 "  ultrapress <command> ...        new, check, page, publish, import; `ultrapress help` lists them\n"
+                 "  ultrapress --version\n",
                  ULTRAPRESS_VERSION);
     return 2;
+}
+
+// Whether the first argument is a command word rather than a site folder.
+// A folder that happens to be called `check` is opened as `./check`.
+bool IsCommand(const std::string& word) {
+    static const char* const kCommands[] = {"new", "check", "page", "publish", "import",
+                                            "help", "--help", "-h"};
+    for (const char* command : kCommands) {
+        if (word == command) return true;
+    }
+    return false;
 }
 
 int RunCheck(const UltraPress::Site& site, const std::string& siteDir) {
@@ -76,6 +98,7 @@ int main(int argc, char* argv[]) {
         std::printf("UltraPress %s\n", ULTRAPRESS_VERSION);
         return 0;
     }
+    if (IsCommand(args[0])) return UltraPress::CommandLine(argc, argv);
     const std::string siteDir = args[0];
     bool check = false;
     for (size_t i = 1; i < args.size(); ++i) {
