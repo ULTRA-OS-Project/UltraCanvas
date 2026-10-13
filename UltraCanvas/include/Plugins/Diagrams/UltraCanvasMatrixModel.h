@@ -1,8 +1,9 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixModel.h
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.2.0 - House of Quality: symmetric (roof) panels, improvement direction and target per item, Correlation scale, relative weights, table import with importances
 // Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 //
 // This is the semantic model behind the matrix diagram feature. Like
@@ -51,6 +52,9 @@ namespace UltraCanvas {
                 // sets[0..3] go left, top, right, bottom; each panel pairs a
                 // left/right set with a top/bottom one
         House   // L + correlation roof + targets         (QFD composite)
+                // panels[0] crosses sets[0] (needs) with sets[1] (technical
+                // requirements); panels[1], when present, is the symmetric
+                // roof over sets[1]
     };
     // There is no standalone symmetric ("roof") shape: the only symmetric half
     // matrix this element draws is the QFD correlation roof, which is internal
@@ -60,7 +64,8 @@ namespace UltraCanvas {
     // How many item sets a shape requires. Returns 0 for an unknown shape.
     int MatrixShapeSetCount(MatrixShape shape);
 
-    // How many panels a shape lays out.
+    // How many panels a shape needs at least. A House needs only its body;
+    // the roof is a second, optional panel.
     int MatrixShapePanelCount(MatrixShape shape);
 
 // =============================================================================
@@ -119,11 +124,26 @@ namespace UltraCanvas {
         static MatrixScale Strength531();    // strong 5 / medium 3 / weak 1
         static MatrixScale HighMediumLow();  // high 3 / medium 2 / low 1, low hollow
         static MatrixScale Presence();       // one level, weight 1
+
+        // The House of Quality roof: how two technical requirements interact.
+        // Strong positive ++ / positive + / negative - / strong negative --,
+        // drawn as text. The weights are signed (2 / 1 / -1 / -2) so a sum
+        // reads as net support or conflict; the roll-ups never use them.
+        static MatrixScale Correlation();
     };
 
 // =============================================================================
 // ITEM SETS
 // =============================================================================
+
+    // Which way a technical requirement should move: the direction-of-
+    // improvement row of a House of Quality.
+    enum class MatrixImprovement {
+        NoDirection,    // named to avoid the X11 'None' macro
+        Maximize,       // more is better
+        Minimize,       // less is better
+        Target          // hit a nominal value
+    };
 
     struct MatrixItem {
         std::string id;
@@ -138,6 +158,12 @@ namespace UltraCanvas {
         Color       accent = Color(0, 0, 0, 0);
 
         std::string note;   // shown in the tooltip
+
+        // House of Quality columns: the direction of improvement and the
+        // target value ("< 11 kg", "35 mm"). Free text: a target is read by
+        // people, never parsed.
+        MatrixImprovement improvement = MatrixImprovement::NoDirection;
+        std::string       target;
 
         MatrixItem() = default;
         MatrixItem(const std::string& itemId, const std::string& itemLabel,
@@ -169,7 +195,12 @@ namespace UltraCanvas {
         std::string rowSetId;
         std::string colSetId;
         MatrixScale scale;                  // per-panel: a T's two wings often differ
-        bool        symmetric = false;      // upper triangle only (the House roof)
+
+        // One set against itself, upper triangle only (the House roof).
+        // Cells are stored with row < col: SetCellAt swaps a lower-triangle
+        // pair round and refuses the diagonal, and FindCell looks a pair up
+        // either way round.
+        bool        symmetric = false;
 
         MatrixPanel() = default;
         MatrixPanel(const std::string& rows, const std::string& cols,
@@ -290,6 +321,14 @@ namespace UltraCanvas {
         // natural order, so the ranking is stable.
         std::vector<int> RankColumns(int panel) const;
 
+        // Each column's share of the panel's total score, in percent - the
+        // "relative weight" row of a House of Quality. All zero when the
+        // panel has no score at all.
+        std::vector<double> RelativeColumnWeights(int panel) const;
+
+        // The symmetric panel over `setId`, or -1. A House's roof.
+        int FindSymmetricPanel(const std::string& setId) const;
+
         // ---- Validation ----
         // Checks set count against the shape, panel set references, cell
         // indices and level ids, and that an X or Y panel crosses two sets the
@@ -306,14 +345,32 @@ namespace UltraCanvas {
 
     // One panel as CSV: a header row of column labels, then one row per row
     // item whose first field is the row label and whose cells hold level ids.
-    // Empty cells are empty fields.
-    std::string ExportMatrixCsv(const MatrixModel& model, int panel = 0);
+    // Empty cells are empty fields. With `withImportance`, a second column
+    // headed "Importance" carries each row's importance, written dot-decimal.
+    std::string ExportMatrixCsv(const MatrixModel& model, int panel = 0,
+                                bool withImportance = false);
 
     // Parse the format ExportMatrixCsv writes back into `panel` of `model`.
     // The sets and the scale must already exist - this fills in marks, it does
-    // not invent items. Returns false and leaves the model untouched when the
-    // header or a row label does not match.
+    // not invent items. An "Importance" second column, when present, sets the
+    // row importances too. Returns false and leaves the model untouched when
+    // the header or a row label does not match.
     bool ImportMatrixCsv(const std::string& csv, MatrixModel& model, int panel = 0);
+
+    // Build a new L-shaped model from the tabular form a spreadsheet holds: a
+    // header row of column labels, a first column of row labels, and a mark
+    // in each cell. Unlike ImportMatrixCsv this invents the items - nothing
+    // need exist beforehand. A cell may name its level by id, by label (any
+    // case), by glyph, or by weight ("9"), so a QFD sheet typed with numbers
+    // reads as it is. An optional second column headed "Importance" or
+    // "Weight" sets the row importances. Numbers are dot-decimal whatever the
+    // locale. On any unknown mark, unparsable importance or ragged row, it
+    // returns false, puts the reason in `error` when given, and leaves `out`
+    // untouched.
+    bool ImportMatrixTable(const std::string& csv, const MatrixScale& scale, MatrixModel& out,
+                           const std::string& rowTitle = "Rows",
+                           const std::string& colTitle = "Columns",
+                           std::string* error = nullptr);
 
 // =============================================================================
 // SAMPLES
@@ -343,6 +400,10 @@ namespace UltraCanvas {
         // Y-shaped: customer requirements, product functions and components,
         // each related to the other two - a design traceability loop.
         MatrixModel DesignTraceability();
+
+        // House of Quality: the QualityFunctionDeployment() matrix with its
+        // correlation roof, directions of improvement and target values.
+        MatrixModel HouseOfQuality();
 
     } // namespace MatrixSamples
 

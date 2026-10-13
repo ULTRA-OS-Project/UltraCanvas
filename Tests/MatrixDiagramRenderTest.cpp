@@ -13,6 +13,7 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each shape is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.2.0 - the House: roof cells only above the diagonal, each centred between its two columns; the bar strip
 // Version: 1.1.0 - rotated headers stay inside the element; a theme switch keeps non-colour settings
 // Version: 1.0.0
 // Last Modified: 2026-10-13
@@ -23,6 +24,7 @@
 
 #include <cairo/cairo.h>
 
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -88,7 +90,8 @@ struct Canvas {
 // Renders the model, then sweeps the hit test and checks every cell of every
 // panel is reachable over a comparable area.
 void CheckShape(const std::string& name, const MatrixModel& model,
-                MatrixHubMode hub = MatrixHubMode::Blank, bool tint = false) {
+                MatrixHubMode hub = MatrixHubMode::Blank, bool tint = false,
+                MatrixRollUp rollUp = MatrixRollUp::Numbers) {
     std::cout << "\n" << name << "\n";
 
     Canvas canvas(kWidth, kHeight);
@@ -99,6 +102,7 @@ void CheckShape(const std::string& name, const MatrixModel& model,
     diagram->SetEnableTooltips(false);   // no window to show one in
     diagram->SetHubMode(hub);
     diagram->SetTotals(MatrixTotals::Both);
+    diagram->SetRollUp(rollUp);
     if (tint) {
         MatrixDiagramStyle style = diagram->GetStyle();
         style.tintCellsByLevel = true;
@@ -112,6 +116,7 @@ void CheckShape(const std::string& name, const MatrixModel& model,
 
     // ---- Sweep ----
     std::map<std::tuple<int, int, int>, int> hits;
+    std::map<std::tuple<int, int, int>, double> sumX;
     int armHits = 0;
     for (int y = 0; y < kHeight; y += 2) {
         for (int x = 0; x < kWidth; x += 2) {
@@ -119,6 +124,7 @@ void CheckShape(const std::string& name, const MatrixModel& model,
             const MatrixRef ref = diagram->GetHoveredCell();
             if (ref.IsCell()) {
                 ++hits[std::make_tuple(ref.panel, ref.row, ref.col)];
+                sumX[std::make_tuple(ref.panel, ref.row, ref.col)] += x;
             } else if (ref.IsValid()) {
                 ++armHits;
             }
@@ -126,15 +132,19 @@ void CheckShape(const std::string& name, const MatrixModel& model,
     }
 
     bool allReached = true;
-    int smallest = 1 << 30, largest = 0;
+    bool comparable = true;
+    std::string spread;
     for (size_t p = 0; p < model.panels.size(); ++p) {
         const MatrixItemSet* rows = model.RowSet(static_cast<int>(p));
         const MatrixItemSet* cols = model.ColSet(static_cast<int>(p));
         if (!rows || !cols) continue;
         // An L shows panel 0 only.
         if (model.shape == MatrixShape::L && p > 0) continue;
+        const bool triangle = model.panels[p].symmetric;
+        int smallest = 1 << 30, largest = 0;
         for (int r = 0; r < rows->Count(); ++r) {
-            for (int c = 0; c < cols->Count(); ++c) {
+            // A symmetric panel has cells above its diagonal only.
+            for (int c = triangle ? r + 1 : 0; c < cols->Count(); ++c) {
                 auto it = hits.find(std::make_tuple(static_cast<int>(p), r, c));
                 const int n = (it == hits.end()) ? 0 : it->second;
                 if (n == 0) {
@@ -145,14 +155,51 @@ void CheckShape(const std::string& name, const MatrixModel& model,
                 largest = std::max(largest, n);
             }
         }
+        // Within one panel the cells share a size, so their hit areas should
+        // agree to within the sampling error of a 2px sweep. (Panels may
+        // differ: a roof diamond is half the area of a body cell.)
+        if (smallest == 0 || largest > smallest * 2) comparable = false;
+        spread += (spread.empty() ? "" : ", ") + std::to_string(smallest) + "-" + std::to_string(largest);
     }
     Check(allReached, "every cell of every panel can be pointed at");
-    // Within one shape the cells share a size (an X's cells can differ in
-    // width and height, not between quadrants), so their hit areas should
-    // agree to within the sampling error of a 2px sweep.
-    Check(smallest > 0 && largest <= smallest * 2,
-          "every cell is hit over a comparable area (" + std::to_string(smallest) + " to "
-          + std::to_string(largest) + " samples)");
+    Check(comparable, "within each panel the cells are hit over comparable areas ("
+                      + spread + " samples)");
+
+    // Nothing may land below a symmetric panel's diagonal.
+    bool belowDiagonal = false;
+    for (const auto& entry : hits) {
+        const int p = std::get<0>(entry.first);
+        if (p >= 0 && p < static_cast<int>(model.panels.size()) && model.panels[p].symmetric &&
+            std::get<2>(entry.first) <= std::get<1>(entry.first)) {
+            belowDiagonal = true;
+        }
+    }
+    Check(!belowDiagonal, "no point lands on or below a symmetric panel's diagonal");
+
+    // A House's roof cell (r, c) correlates columns r and c, so it must stand
+    // centred between them: its mean x is the mean of the two columns'.
+    if (model.shape == MatrixShape::House && model.panels.size() > 1) {
+        const MatrixItemSet* cols = model.ColSet(0);
+        std::vector<double> colX(static_cast<size_t>(cols->Count()), 0.0);
+        std::vector<int> colN(colX.size(), 0);
+        for (const auto& entry : hits) {
+            if (std::get<0>(entry.first) != 0) continue;
+            const size_t c = static_cast<size_t>(std::get<2>(entry.first));
+            colX[c] += sumX[entry.first];
+            colN[c] += entry.second;
+        }
+        double worst = 0.0;
+        for (const auto& entry : hits) {
+            if (std::get<0>(entry.first) != 1) continue;
+            const size_t r = static_cast<size_t>(std::get<1>(entry.first));
+            const size_t c = static_cast<size_t>(std::get<2>(entry.first));
+            if (colN[r] == 0 || colN[c] == 0) continue;
+            const double expected = (colX[r] / colN[r] + colX[c] / colN[c]) / 2.0;
+            worst = std::max(worst, std::fabs(sumX[entry.first] / entry.second - expected));
+        }
+        Check(worst < 2.0, "every roof cell stands centred between its two columns (worst "
+                           + std::to_string(worst) + " px off)");
+    }
     Check(armHits > 0, "the row and column labels are hit too");
 
     // Hovering a cell and reading back the tooltip text is the round trip a
@@ -306,6 +353,10 @@ int main() {
     CheckShape("X-blank", MatrixSamples::SupplyChain(), MatrixHubMode::Blank);
     CheckShape("X-captions", MatrixSamples::SupplyChain(), MatrixHubMode::Captions, true);
     CheckShape("Y", MatrixSamples::DesignTraceability());
+    CheckShape("House", MatrixSamples::HouseOfQuality(), MatrixHubMode::Blank, false,
+               MatrixRollUp::Bars);
+    CheckShape("L-bars", MatrixSamples::QualityFunctionDeployment(), MatrixHubMode::Blank,
+               false, MatrixRollUp::Bars);
     TestTransposedXPanel();
     TestRotatedHeadersFit();
     TestThemeKeepsSettings();

@@ -38507,9 +38507,10 @@ relationships between two to four ordered lists visible and countable. Rows and
 columns are things; each intersection carries a symbol from a small named scale,
 and the weights behind those symbols roll up into per-row and per-column totals.
 
-**Status:** Phases 1 and 2 — the `L`, `T`, `X` and `Y` shapes, the form header
-band, cell tint and hover bands that run across panels. The QFD `House`
-composite is planned; see
+**Status:** Phases 1–3 — the `L`, `T`, `X`, `Y` and QFD `House` shapes, the
+form header band, cell tint, hover bands that run across panels, a ranked bar
+strip for the column totals, and spreadsheet import. Phase 4 (pan/zoom,
+keyboard navigation, JSON, editing) is still open; see
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Which element do I want?
@@ -38584,11 +38585,11 @@ Cells are stored **sparsely** — set the marks you have; the rest stay empty.
 | `MatrixShape::T` | 3 | 2 | B × A and A × C, A being the shared row axis |
 | `MatrixShape::X` | 4 | 4 | A × B, B × C, C × D, D × A — four panels round a hub |
 | `MatrixShape::Y` | 3 | 3 | A × B, B × C, C × A — three rhombic panels between seams 120° apart |
-| `MatrixShape::House` | 2 | 2 | *planned* — QFD composite with the correlation roof |
+| `MatrixShape::House` | 2 | 1–2 | the QFD House of Quality: an L plus the correlation roof |
 
-`House` falls back to the `L` layout of panel 0 rather than drawing nothing, so
-data set against it is still visible. So does an `X` or `Y` whose model the
-shape cannot place (see *Validation*).
+An `X`, `Y` or `House` whose model the shape cannot place (see *Validation*)
+falls back to the `L` layout of panel 0 rather than drawing nothing, so its
+data is still visible.
 
 A `T` shares its row axis between two wings. Panel 0 is the left wing, panel 1
 the right, and the shared row labels are drawn once between them:
@@ -38662,6 +38663,45 @@ included, between the style's `minCellSize` and `maxCellSize`.
 
 `X` and `Y` draw no totals gutters — their outer edges are other panels' arms or
 open space, and the totals are one call away on the model.
+
+### The House of Quality
+
+`MatrixShape::House` is the QFD composite: customer needs (`sets[0]`) against
+technical requirements (`sets[1]`) in panel 0, and over the requirements'
+header a **roof** — a second, *symmetric* panel that relates the requirements
+to each other. Round the grid it adds an importance column (the rows'
+`importance`), a direction-of-improvement row and a target row from the
+requirements' own fields:
+
+```cpp
+MatrixModel house = MatrixSamples::QualityFunctionDeployment();   // needs x requirements
+house.shape = MatrixShape::House;
+
+MatrixItemSet* reqs = house.FindSet("requirements");
+reqs->items[0].improvement = MatrixImprovement::Minimize;   // Maximize | Minimize | Target
+reqs->items[0].target = "< 11 kg";                          // free text, read by people
+
+MatrixPanel& roof = house.AddPanel("requirements", "requirements",
+                                   MatrixScale::Correlation());
+roof.symmetric = true;
+house.SetCell(1, "Frame mass", "Gear range", "strongnegative");
+
+auto houseDiagram = CreateMatrixDiagramElement("hoq", 10, 10, 900, 680, house);
+houseDiagram->SetTotals(MatrixTotals::Both);
+houseDiagram->SetRollUp(MatrixRollUp::Bars);
+```
+
+A **symmetric panel** crosses one set with itself and keeps one cell per pair,
+above the diagonal: `SetCellAt(1, 4, 0, ...)` is stored as `(0, 4)`, `LevelAt`
+and `FindCell` answer either way round, and the diagonal has no cell at all.
+`MatrixScale::Correlation()` is the roof's usual scale — `++`, `+`, `−`, `−−`,
+with signed weights that the roll-ups never use. The roof is drawn at 45°, one
+diamond per pair, each standing over the boundary between its two columns; the
+diagram trades cell width for row height so the roof cannot squeeze the rows
+(`MatrixDiagramStyle::maxRoofShare`, `minRowAspect`). `SetShowImportance(false)`
+hides the importance column. A House without a roof panel draws without one.
+
+`MatrixSamples::HouseOfQuality()` is a complete example.
 
 ### The form header band
 
@@ -38742,6 +38782,16 @@ gutter underneath — the presentation the printed form uses. Because they are
 computed from the marks they are consistent by construction, which a hand-built
 version is not.
 
+The column totals can instead be a **strip of bars** with each column's rank,
+the way a QFD exercise presents its result; the top three ranks stand out:
+
+```cpp
+diagram->SetRollUp(MatrixRollUp::Bars);      // Numbers is the default
+std::vector<double> shares = model.RelativeColumnWeights(0);   // percent of the total
+```
+
+A column's tooltip gives its total, rank, share and target.
+
 ## Presentation
 
 ```cpp
@@ -38812,17 +38862,40 @@ bool ok = ImportMatrixCsv(csv, model, 0);
 ```
 
 The CSV is a header row of column labels then one row per row item, with level
-ids in the cells and empty fields for empty cells. Import fills in marks; it
-does not invent items, so the sets and the scale must already exist. It parses
-the whole file before touching the model, so a malformed file leaves your data
-alone.
+ids in the cells and empty fields for empty cells. `ExportMatrixCsv(model, 0,
+true)` adds an `Importance` column after the row labels, and `ImportMatrixCsv`
+reads it back. Import fills in marks; it does not invent items, so the sets and
+the scale must already exist. It parses the whole file before touching the
+model, so a malformed file leaves your data alone.
+
+To build a model **from** a spreadsheet, use `ImportMatrixTable`. It creates the
+items from the header row and the first column, and reads each mark by level
+id, label (any case), glyph or weight — so a QFD sheet typed with `9`, `3`, `1`
+imports as it is. An `Importance` (or `Weight`) second column sets the row
+importances. Numbers are dot-decimal whatever the locale.
+
+<!-- doc-check: std::string sheetCsv; -->
+
+A leading UTF-8 byte-order mark, as Excel writes, is skipped. The DemoApp's
+**Import table...** button reads a sheet this way, trying each built-in scale
+until one reads every mark; `media/diagrams/matrix/` holds two sample sheets.
+
+```cpp
+MatrixModel imported;
+std::string error;
+if (!ImportMatrixTable(sheetCsv, MatrixScale::QFD(), imported,
+                       "Customer needs", "Technical requirements", &error)) {
+    Log(error);   // names the line and the mark it could not read
+}
+```
 
 ## Samples
 
 `MatrixSamples::ImprovementTools()` (L), `MatrixSamples::EmployeeAllocation()`
 (T), `MatrixSamples::QualityFunctionDeployment()` (L, weighted),
-`MatrixSamples::SupplyChain()` (X, with a form header) and
-`MatrixSamples::DesignTraceability()` (Y) build the models the demo shows
+`MatrixSamples::SupplyChain()` (X, with a form header),
+`MatrixSamples::DesignTraceability()` (Y) and `MatrixSamples::HouseOfQuality()`
+(House) build the models the demo shows
 (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
@@ -38838,7 +38911,9 @@ Checks the set count against the shape, panel set references, cell indices,
 level ids and duplicate cells. For an `X` it also checks that every panel pairs
 a left/right set with a top/bottom one and that no two panels claim the same
 quadrant; for a `Y`, that every panel crosses two different sets among the first
-three and that no pair appears twice. `warnings` collects things that are drawable but
+three and that no pair appears twice; for a `House`, that panel 0 crosses two
+different sets and any further panel is the symmetric roof over its columns.
+A cell of a symmetric panel on or below the diagonal is an error. `warnings` collects things that are drawable but
 suspicious, such as an empty item set.
 
 The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
@@ -65315,7 +65390,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two to four item sets crossed in an L, T, X or Y, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, or a QFD House of Quality, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
