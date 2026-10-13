@@ -29,7 +29,8 @@
   never fails the job. First run (emsdk 6.0.11): the ultraos.eu front page
   demo is 11.24 MB raw and 3.9 MB over Brotli, 6.52 MB of it the module
   and 4.57 MB the fonts and pictures; the minimal demo 10.01 MB raw. The
-  proposal's §4.3 carries the table.
+  proposal's §4.3 carries the table. The artifact list no longer names the
+  `<demo>.ww.js` worker files, which emsdk 6.0.11 does not emit.
 - `Masterfile_modules.md` §6 said UltraDatabase was "Concept / design only";
   it has had the SQLite core, migrations and the PostgreSQL driver since
   UltraFIBU's multi-user mode was built on them. The registry line now says

@@ -154,7 +154,11 @@ jobs:
       # Both demos, with serve.py: unzip the artifact into a folder, run
       # `python3 serve.py 8080` there and open wasm-demo.html or
       # ultraos-frontpage.html (the pages need the server's cross-origin
-      # isolation headers, see UltraCanvas/OS/WASM/README.md).
+      # isolation headers, see UltraCanvas/OS/WASM/README.md). No separate
+      # worker file (<demo>.ww.js): emsdk 6.0.11 puts the pthread worker
+      # into the .js, as run 11 of this workflow showed (9 of 11 listed
+      # files uploaded). An emsdk that emits one again needs it listed, or
+      # the threads do not start.
       - name: Upload demos
         uses: actions/upload-artifact@v6
         with:
@@ -165,10 +169,8 @@ jobs:
             UltraCanvas/OS/WASM/demo/build/wasm-demo.js
             UltraCanvas/OS/WASM/demo/build/wasm-demo.wasm
             UltraCanvas/OS/WASM/demo/build/wasm-demo.data
-            UltraCanvas/OS/WASM/demo/build/wasm-demo.ww.js
             UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.html
             UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.js
             UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.wasm
             UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.data
-            UltraCanvas/OS/WASM/demo/build/ultraos-frontpage.ww.js
           if-no-files-found: error
