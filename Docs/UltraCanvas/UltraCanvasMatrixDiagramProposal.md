@@ -579,7 +579,7 @@ struct MatrixModel {
 // No BuildAdjacencyMatrix(): revision 3 removed it. This header must not know
 // about AdjacencyRoom/AdjacencyLink -- adjacency data stays in the element that
 // owns it and is drawn by that element's own matrix view (§4.2).
-std::string ExportMatrixCsv(const MatrixModel&, int panel = 0);
+std::string ExportMatrixCsv(const MatrixModel&, int panel = 0, bool withImportance = false);
 bool        ImportMatrixCsv(const std::string& csv, MatrixModel& out);
 
 } // namespace UltraCanvas

@@ -17,8 +17,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir
 #include "UltraCanvasUtils.h"      // NormalizePath
-#include "UltraCanvasPathUtf8.h"
-#include <cstdio>
+#include "UltraCanvasPathUtf8.h"   // PathToUtf8 / PathFromUtf8 for the file name
 #include <memory>
 #include <sstream>
 #include <string>
@@ -392,16 +391,14 @@ namespace UltraCanvas {
                      readoutText](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
 
-                std::string text;
-                if (std::FILE* f = OpenFileUtf8(path, "rb")) {
-                    char buffer[4096];
-                    size_t n = 0;
-                    while ((n = std::fread(buffer, 1, sizeof(buffer), f)) > 0) text.append(buffer, n);
-                    std::fclose(f);
-                } else {
-                    readoutText->SetText("Could not open " + path);
+                // Read through the loader, as every user file is: it also
+                // takes a gzipped sheet or a URL.
+                const FileBytesResult loaded = UltraCanvasFileLoader::LoadFile(path);
+                if (!loaded.success) {
+                    readoutText->SetText("Could not open " + path + ": " + loaded.error);
                     return;
                 }
+                const std::string text(loaded.bytes.begin(), loaded.bytes.end());
 
                 // The sheet does not say which scale its marks belong to, so
                 // try the presets in turn and keep the first that reads every
