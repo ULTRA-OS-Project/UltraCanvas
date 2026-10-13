@@ -23502,6 +23502,7 @@ the types):
 | `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
 | `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
 | `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings; `GetImageExportOptions(path, size, options)` at a [chosen size](#the-pictures-size) too |
+| `SetImageExportOptions(options)` | The other way: `options.format`'s quality, compression, colour depth ... and transparency stored as that format's settings (not the size) |
 
 Built in are the bitmap formats the image writer takes options for, each with
 only the settings that writer honours: PNG (compression, colours, interlace,
@@ -23510,6 +23511,12 @@ WebP, AVIF, HEIF, JPEG XL and JPEG 2000 (quality, lossless, effort or speed,
 bit depth), GIF (colours, dither, interlace), TIFF and OpenEXR (compression),
 Netpbm (binary), TGA, PCX, SGI and Photoshop (RLE), DPX and Cineon (bit
 depth). BMP, ICO, QOI, HDR, FITS and Farbfeld are written without options.
+
+The bitmap export dialog (`UltraCanvasImageExportDialog`) is the other
+place these values are edited: it opens every format on its save settings,
+and on the format of the file name it is given, and its Save stores the
+format's options back (`SetImageExportOptions`) - so it and the Save dialog's
+Settings never disagree.
 
 A writer reads them back. `UCRasterDocument::SaveToFile` does so itself when
 the caller passes no options and the user has stored settings for the format
@@ -64562,7 +64569,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | The icon of a file about to be saved, dragged onto a folder of the window to choose where it goes (the RISC OS save box's icon; the Save dialog has a big one left of its name and type, "Drag to Folder" under it) | `UltraCanvasFileDragIcon` (`CreateFileDragIcon`; [doc](UltraCanvasFileDialog.md#the-file-icon)) | `UltraCanvasFileDragIcon.h` |
 | One file format's save settings (JPEG quality, PNG compression, TIFF codec ...), kept for every application - and, for a picture, the size to write it at this once | `UltraCanvasFileLoader::ShowSaveSettingsDialog` ([doc](UltraCanvasFileDialog.md#save-settings)) | `UltraCanvasFileLoader.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
-| Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
+| Save a bitmap with per-format options - opened on the format's save settings (and the format the file name has), which Save stores back | `UltraCanvasImageExportDialog` ([save settings](UltraCanvasFileDialog.md#save-settings)) | `dialogs/UltraCanvasImageExportDialog.h` |
 | Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog`, `ShowMetadataDialog()` — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
 | Turn a 3D model into a bitmap, letting the user frame the view first | `UltraCanvasModelViewDialog`, `ShowModelViewDialog()` ([doc](UltraCanvasModelViewDialog.md)) | `dialogs/UltraCanvasModelViewDialog.h` |
 | A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
@@ -70524,15 +70531,23 @@ listing of the current folder (an `UltraCanvasFilerWidget`, the UltraFiler
 display), and the file-name field and file-type dropdown
 below them.
 
+<!-- doc-check: FileDialogOptions opts; void ShowPicture(std::shared_ptr<UCImage> image); void Play(std::shared_ptr<UCAudio> audio); void ShowDocument(std::shared_ptr<UCRichDocument> document); void ShowError(const std::string& message); -->
 ```cpp
 // Decode an image into a UCImage
-UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) { ... });
+UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) {
+    if (r.IsSuccess()) ShowPicture(img);
+    else if (!r.loadError.empty()) ShowError(r.loadError);   // empty: cancelled
+});
 
 // Decode audio into a UCAudio PCM buffer (WAV/MP3/FLAC always; OGG/Opus with codec libs)
-UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) { ... });
+UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) {
+    if (r.IsSuccess()) Play(audio);
+});
 
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/Markdown/TXT)
-UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) { ... });
+UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
+    if (r.IsSuccess()) ShowDocument(doc);
+});
 ```
 
 ### Editable Vector Documents
@@ -70544,6 +70559,8 @@ writers are the Vector plugin's converters (SVG, XAR, EMF, WMF, DXF, DWG, AI,
 EPS, CDR, PDF), installed by `RegisterVectorFormatsPlugin()`:
 
 ```cpp
+#include "UltraCanvasVectorFormatsPlugin.h"          // the Vector plugin
+
 RegisterVectorFormatsPlugin();                       // once, at start-up
 
 std::string error;
@@ -70635,12 +70652,15 @@ Add support for proprietary or specialized graphics formats without modifying
 core code. Register an `IGraphicsPlugin` with the graphics plugin registry and
 its extensions immediately show up in the format inventory:
 
+<!-- doc-check: std::shared_ptr<IGraphicsPlugin> myFormatPlugin; -->
 ```cpp
+#include "Models/STL/UltraCanvasSTLPlugin.h"
+
 // Register a graphics plugin (e.g. the built-in STL model plugin)
 RegisterSTLPlugin();
 
-// ...or your own
-UltraCanvasGraphicsPluginRegistry::RegisterPlugin(std::make_shared<MyFormatPlugin>());
+// ...or your own: an IGraphicsPlugin implementation
+UltraCanvasGraphicsPluginRegistry::RegisterPlugin(myFormatPlugin);
 ```
 
 ---
@@ -70699,6 +70719,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 FileLoader is part of the core library — no separate initialization is needed
 beyond creating the application. Load a file and check the result:
 
+<!-- doc-check: void ProcessBytes(const std::vector<uint8_t>& bytes); -->
 ```cpp
 auto result = UltraCanvasFileLoader::LoadFile("any_file.ext");
 if (result.success) {
