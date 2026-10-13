@@ -1290,7 +1290,13 @@ future.
 - `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync` (an async response
   cut off after its status line carries `UltraNetResponse::transferError`,
   `IsComplete()` and `exceededReceiveLimit`)
-- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`
+- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`; any request writes
+  its body to a file through `UltraNetHttpOptions::outputFilePath`, resumes a
+  partial one with `resumeOutputFile` (`resumeFromOffset` for a caller's own
+  partial copy), follows redirects to https:// only with
+  `httpsOnlyRedirects`, has no whole-transfer timeout but a `stallTimeoutMs`
+  when it writes a file, and sees the final response's headers before the
+  body through `UltraNetHttpRequest::onHeaders`, which can veto the body
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
@@ -1332,7 +1338,8 @@ future.
   reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
 - `UltraNet_ConvertToUtf8` (bytes in a named charset to UTF-8, through iconv
   where the build has it; what mail bodies and web pages are read with)
-- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
+- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`,
+  `UltraNet_PauseRequest`, `UltraNet_ResumeRequest`, `UltraNet_IsRequestPaused`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 
 **Plugin Categories (Tier 2 / Tier 3, located under `Plugins/UltraNet/`):**
@@ -1354,7 +1361,8 @@ loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
 worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
-`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNet_GetTransferStats`, `UltraNet_PauseRequest` /
+`UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
 on libcurl. Remaining gaps are per-function and environment-dependent —

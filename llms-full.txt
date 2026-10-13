@@ -1469,7 +1469,13 @@ future.
 - `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync` (an async response
   cut off after its status line carries `UltraNetResponse::transferError`,
   `IsComplete()` and `exceededReceiveLimit`)
-- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`
+- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`; any request writes
+  its body to a file through `UltraNetHttpOptions::outputFilePath`, resumes a
+  partial one with `resumeOutputFile` (`resumeFromOffset` for a caller's own
+  partial copy), follows redirects to https:// only with
+  `httpsOnlyRedirects`, has no whole-transfer timeout but a `stallTimeoutMs`
+  when it writes a file, and sees the final response's headers before the
+  body through `UltraNetHttpRequest::onHeaders`, which can veto the body
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
@@ -1511,7 +1517,8 @@ future.
   reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
 - `UltraNet_ConvertToUtf8` (bytes in a named charset to UTF-8, through iconv
   where the build has it; what mail bodies and web pages are read with)
-- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
+- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`,
+  `UltraNet_PauseRequest`, `UltraNet_ResumeRequest`, `UltraNet_IsRequestPaused`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 
 **Plugin Categories (Tier 2 / Tier 3, located under `Plugins/UltraNet/`):**
@@ -1533,7 +1540,8 @@ loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
 worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
-`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNet_GetTransferStats`, `UltraNet_PauseRequest` /
+`UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
 on libcurl. Remaining gaps are per-function and environment-dependent —
@@ -77675,9 +77683,33 @@ UltraNet_ResolveUrl("https://x.org/app/main.wasm", "../data/a.json", url);
 // url == "https://x.org/data/a.json"; a URL with a control character in it
 // (a CR or LF that would end the request line) is refused
 
-// File download streamed straight to disk
+// File download streamed straight to disk. No whole-transfer timeout (a
+// download is as long as the file is large), a 30 s stall timeout instead.
 UltraNet_HttpDownloadFile("https://cdn.example.com/big.zip",
                           "/tmp/big.zip");
+
+// A download that can be resumed, paused and checked before its body: any
+// request writes to a file through outputFilePath, on the async path too.
+UltraNetHttpRequest dl;
+dl.url = "https://cdn.example.com/big.zip";
+dl.options.outputFilePath     = "/tmp/big.zip.part";
+dl.options.resumeOutputFile   = true;   // the file's size is the Range start
+dl.options.httpsOnlyRedirects = true;   // never bounced onto http://
+dl.options.stallTimeoutMs     = 60000;  // Timeout when nothing moves for 60 s
+dl.onHeaders = [](const UltraNetResponse& head) {
+    // The final response's headers, before any body: 206 means the rest of
+    // the file is coming, 200 that the server sent it all and the partial
+    // file was replaced. Return false to end the transfer (Cancelled).
+    return head.contentLength <= kMaxPackageBytes;
+};
+dl.onDownloadProgress = [](int64_t now, int64_t total) {
+    // Figures of the whole file, the resumed bytes included.
+};
+UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetResponse& resp) {
+    // The file is closed and complete here when resp.IsComplete().
+});
+UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
+UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
 ```
 
 ```cpp
