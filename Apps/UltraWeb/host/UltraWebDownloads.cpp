@@ -1,7 +1,7 @@
 // Apps/UltraWeb/host/UltraWebDownloads.cpp
 // Saving downloads (UltraWebDownloads.h).
-// Version: 0.1.0
-// Last Modified: 2026-10-12
+// Version: 0.2.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebDownloads.h"
@@ -17,7 +17,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <mutex>
 #include <system_error>
 
 using namespace UltraCanvas;
@@ -25,6 +24,8 @@ using namespace UltraCanvas;
 namespace UltraWeb {
 
 namespace {
+
+std::atomic<int> g_stallTimeoutMs{ 30000 };
 
 bool StartsWithLower(const std::string& s, const char* prefix) {
     for (size_t i = 0; prefix[i]; ++i) {
@@ -53,11 +54,7 @@ public:
     std::function<void(std::function<void()>)> post;
     std::function<void(int64_t, int64_t)> onProgress;
     std::function<void(bool, const std::string&)> onDone;
-    std::FILE* file = nullptr;
-    std::mutex fileLock;
-    bool writeFailed = false;
     std::atomic<bool> cancelled{ false };
-    std::atomic<int64_t> received{ 0 };
     std::atomic<int64_t> lastReport{ 0 };     // ms since epoch of the last progress post
     UltraNetHandle handle = 0;
 
@@ -67,42 +64,31 @@ public:
     }
 
     void Start() {
-        file = OpenFileUtf8(part, "wb");
-        if (!file) {
-            Done(false, "cannot write " + part);
-            return;
-        }
         auto self = shared_from_this();
         UltraNetHttpRequest request;
         request.url = url;
         request.options.maxReceiveSize = int64_t(1) << 42;   // 4 TB: no limit worth the name
-        request.options.timeoutMs = 0;
-        request.onDataChunk = [self](const std::vector<uint8_t>& chunk) {
-            std::lock_guard<std::mutex> guard(self->fileLock);
-            if (!self->file || self->writeFailed) return;
-            if (std::fwrite(chunk.data(), 1, chunk.size(), self->file) != chunk.size()) self->writeFailed = true;
-            self->received += static_cast<int64_t>(chunk.size());
-        };
+        // UltraNet streams the body to the part file and closes it before
+        // onComplete. A download is as long as the file is large, so it has
+        // no whole-transfer limit; one that stops moving ends as a stall.
+        request.options.outputFilePath = part;
+        request.options.timeoutMs = -1;
+        request.options.stallTimeoutMs = g_stallTimeoutMs.load();
         request.onDownloadProgress = [self](int64_t now, int64_t total) {
             // A few reports a second are enough for a status line.
             const int64_t ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
             if (ms - self->lastReport < 250) return;
             self->lastReport = ms;
+            if (total <= 0) total = -1;    // the list reads -1 as "no total"
             if (self->onProgress) self->post([self, now, total]() { self->onProgress(now, total); });
         };
         handle = UltraNet_HttpRequestAsync(request, [self](const UltraNetResponse& response) {
-            {
-                std::lock_guard<std::mutex> guard(self->fileLock);
-                if (self->file) std::fclose(self->file);
-                self->file = nullptr;
-            }
             std::string error;
             if (self->cancelled) error = "cancelled";
             else if (response.statusCode == 0) error = response.statusMessage.empty() ? "no answer" : response.statusMessage;
             else if (response.statusCode >= 400) error = "the server answered " + std::to_string(response.statusCode);
             else if (!response.IsComplete()) error = response.transferError;
-            else if (self->writeFailed) error = "the disk refused the file (full?)";
             if (!error.empty()) {
                 std::error_code ec;
                 std::filesystem::remove(PathFromUtf8(self->part), ec);
@@ -186,6 +172,10 @@ std::shared_ptr<Download> StartDownload(const std::string& url, const std::strin
     }
     download->Start();
     return download;
+}
+
+void SetDownloadStallTimeout(int milliseconds) {
+    g_stallTimeoutMs = milliseconds > 0 ? milliseconds : 30000;
 }
 
 std::string ByteSize(int64_t bytes) {
