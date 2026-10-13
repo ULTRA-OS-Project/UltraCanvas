@@ -38719,7 +38719,10 @@ diagram->SetShowCellValues(false);           // draw each cell's weight as text
 `MatrixHeaderFit::Auto` measures the column labels once and picks the cheapest
 form that fits — `Horizontal`, then `Wrapped`, then `Rotated45`, then
 `Rotated90`. It never iterates: the cell width settles first, the fit follows
-from the width, and the band height follows from the fit. The grid has first
+from the width, and the band height follows from the fit. A rotated header leans
+right past its column, so when the fit is rotated the cells are then narrowed
+just enough for the last label to end inside the element - which cannot change
+the fit, because a rotated label does not depend on the cell width. The grid has first
 claim on the vertical space, so a very long header is ellipsised rather than
 squeezing the rows out.
 
@@ -38739,8 +38742,11 @@ The tint gives a heatmap-like read of where the strong relationships cluster;
 the mark stays the datum, and a level filtered out through the legend fades its
 tint along with its mark.
 
-`SetDarkTheme(true)` applies the dark palette to the whole style; call it before
-your own overrides, since it replaces the struct.
+`SetDarkTheme(true)` and `SetDarkTheme(false)` swap the palette and nothing
+else: sizes, fonts and switches such as `alternateRowBands` or
+`tintCellsByLevel` survive a round trip. Colours you set yourself are replaced,
+so set them after choosing the theme. `MatrixDiagramStyle::ApplyDarkTheme()`
+and `ApplyLightTheme()` do the same to a style you hold.
 
 ## Interaction
 

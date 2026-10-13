@@ -23,3 +23,11 @@
   `MatrixSamples::DesignTraceability()` (Y) are on new X-Shaped and Y-Shaped
   tabs of the DemoApp page, which also gains hub, tint and header-band
   controls. `Tests/MatrixModelTest.cpp` covers the new checks and samples.
+- Matrix diagram: rotated column headers (45 and 90 degrees) lean right past
+  their column, and the last one ran past the element and was clipped - "Graphical
+  methods" on the T sample's right wing. The cells are now narrowed just enough
+  for every rotated header to end inside the element, in the L, T and X.
+- Matrix diagram: `SetDarkTheme(false)` reset the whole style struct, dropping
+  the caller's sizes and switches (`alternateRowBands`, `tintCellsByLevel`,
+  `markSize`); it now swaps the colours only, through the new
+  `MatrixDiagramStyle::ApplyLightTheme()`.

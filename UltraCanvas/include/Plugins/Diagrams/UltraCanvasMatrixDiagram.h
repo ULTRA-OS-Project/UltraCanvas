@@ -1,6 +1,7 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixDiagram.h
 // Matrix diagram element: item sets crossed in L, T, X and Y arrangements, cell
 // marks drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Version: 1.1.1 - rotated column headers get room on the right instead of being clipped; SetDarkTheme(false) keeps non-colour settings
 // Version: 1.1.0 - Phase 2: the X shape (blank or captioned hub), the Y shape, the form header band, cell tint by level, hover bands across panels
 // Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
@@ -156,9 +157,12 @@ namespace UltraCanvas {
         bool    tintCellsByLevel    = false;
         uint8_t cellTintAlpha       = 56;
 
-        // Applies the dark palette in place. Kept as a method rather than a
-        // second struct so callers can tweak a field afterwards.
+        // Apply the dark or the light palette in place. Only colours change:
+        // sizes, switches and fonts are left as the caller set them. Kept as
+        // methods rather than second structs so callers can tweak a field
+        // afterwards.
         void ApplyDarkTheme();
+        void ApplyLightTheme();
     };
 
 // =============================================================================
@@ -382,6 +386,12 @@ namespace UltraCanvas {
         // given a settled fit and cell width. Clamped to the style maximum.
         double MeasureHeaderBand(IRenderContext* ctx, const MatrixItemSet* cols,
                                  MatrixHeaderFit fit, double cellWidth) const;
+
+        // How far each column label of `cols` reaches right of its column's
+        // centre when drawn at `fit` in a band of `bandHeight`. Empty unless
+        // the fit is rotated: only a rotated label leans past its column.
+        std::vector<double> RotatedHeaderReach(IRenderContext* ctx, const MatrixItemSet* cols,
+                                               MatrixHeaderFit fit, double bandHeight) const;
 
         double MeasureWidestLabel(IRenderContext* ctx, const MatrixItemSet* set,
                                   float fontSize) const;

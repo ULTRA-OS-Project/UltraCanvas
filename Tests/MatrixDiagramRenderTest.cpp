@@ -13,6 +13,7 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each shape is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.1.0 - rotated headers stay inside the element; a theme switch keeps non-colour settings
 // Version: 1.0.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
@@ -222,6 +223,77 @@ void TestTransposedXPanel() {
           "a turned panel puts each cell where the unturned one does");
 }
 
+// Rotated column headers lean right from their column's centre, so the last
+// one reaches past the grid. The layout must leave it room: nothing may be
+// drawn on the content area's right edge, where the clip would cut it off.
+void TestRotatedHeadersFit() {
+    std::cout << "\nRotated headers stay inside the element\n";
+
+    for (MatrixShape shape : {MatrixShape::L, MatrixShape::T}) {
+        const MatrixModel model = (shape == MatrixShape::T)
+                ? MatrixSamples::EmployeeAllocation() : MatrixSamples::ImprovementTools();
+        for (MatrixHeaderFit fit : {MatrixHeaderFit::Rotated45, MatrixHeaderFit::Rotated90}) {
+            Canvas canvas(kWidth, kHeight);
+            if (!canvas.ctx) return;
+            auto diagram = CreateMatrixDiagramElement("rot", 0, 0, kWidth, kHeight, model);
+            diagram->SetEnableTooltips(false);
+            diagram->SetHeaderFit(fit);
+            diagram->SetShowLegend(false);
+            diagram->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+
+            // The element keeps a 12 px margin; its content ends there.
+            const int edge = kWidth - 12 - 1;
+            cairo_surface_t* surface = cairo_get_target(canvas.cr);
+            cairo_surface_flush(surface);
+            const unsigned char* data = cairo_image_surface_get_data(surface);
+            const int stride = cairo_image_surface_get_stride(surface);
+            int ink = 0;
+            for (int y = 0; y < kHeight; ++y) {
+                const uint32_t px = reinterpret_cast<const uint32_t*>(data + y * stride)[edge];
+                if ((px & 0x00FFFFFFu) != 0x00FCFCFDu) ++ink;
+            }
+            Check(ink == 0, std::string(shape == MatrixShape::T ? "T" : "L")
+                            + (fit == MatrixHeaderFit::Rotated45 ? ", 45 degrees" : ", 90 degrees")
+                            + ": nothing reaches the clipped edge (" + std::to_string(ink)
+                            + " pixels did)");
+            canvas.Save(std::string("matrix-rotated-") + (shape == MatrixShape::T ? "T" : "L")
+                        + (fit == MatrixHeaderFit::Rotated45 ? "45" : "90"));
+        }
+    }
+}
+
+// Switching the theme changes colours, and only colours: a layout or
+// behaviour setting made before must survive a round trip through dark.
+void TestThemeKeepsSettings() {
+    std::cout << "\nTheme switch keeps non-colour settings\n";
+
+    auto diagram = CreateMatrixDiagramElement("theme", 0, 0, 400, 300);
+    MatrixDiagramStyle style = diagram->GetStyle();
+    const MatrixDiagramStyle defaults = style;
+    style.tintCellsByLevel = true;
+    style.alternateRowBands = true;
+    style.markSize = 0.6;
+    style.minCellSize = 22.0;
+    diagram->SetStyle(style);
+
+    diagram->SetDarkTheme(true);
+    Check(diagram->GetStyle().tintCellsByLevel && diagram->GetStyle().alternateRowBands,
+          "going dark keeps the switches");
+    Check(diagram->GetStyle().cellBackground != defaults.cellBackground,
+          "going dark changes the colours");
+
+    diagram->SetDarkTheme(false);
+    const MatrixDiagramStyle& back = diagram->GetStyle();
+    Check(back.tintCellsByLevel && back.alternateRowBands,
+          "coming back keeps tintCellsByLevel and alternateRowBands");
+    Check(back.markSize == 0.6 && back.minCellSize == 22.0,
+          "coming back keeps the sizes");
+    Check(back.cellBackground == defaults.cellBackground &&
+          back.labelColor == defaults.labelColor &&
+          back.hubBackground == defaults.hubBackground,
+          "coming back restores the light colours");
+}
+
 } // namespace
 
 int main() {
@@ -235,6 +307,8 @@ int main() {
     CheckShape("X-captions", MatrixSamples::SupplyChain(), MatrixHubMode::Captions, true);
     CheckShape("Y", MatrixSamples::DesignTraceability());
     TestTransposedXPanel();
+    TestRotatedHeadersFit();
+    TestThemeKeepsSettings();
 
     std::cout << "\n================================\n";
     if (g_failures == 0) {

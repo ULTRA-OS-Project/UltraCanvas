@@ -1,5 +1,6 @@
 // Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
 // Matrix diagram element: L, T, X and Y arrangements, ordinal cell marks, roll-ups
+// Version: 1.1.1 - rotated column headers get room on the right instead of being clipped; SetDarkTheme(false) keeps non-colour settings
 // Version: 1.1.0 - Phase 2: X (blank or captioned hub) and Y shapes on one cell lattice, form header band, cell tint, hover bands across panels
 // Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
@@ -23,6 +24,35 @@ namespace UltraCanvas {
 // =============================================================================
 // STYLE
 // =============================================================================
+
+    // Every colour field, and nothing else: what a theme switch replaces.
+    static void CopyColours(const MatrixDiagramStyle& from, MatrixDiagramStyle& to) {
+        to.gridLineColor           = from.gridLineColor;
+        to.cellBackground          = from.cellBackground;
+        to.cellAlternateBackground = from.cellAlternateBackground;
+        to.markHighlightRing       = from.markHighlightRing;
+        to.labelColor              = from.labelColor;
+        to.axisTitleColor          = from.axisTitleColor;
+        to.labelBandColor          = from.labelBandColor;
+        to.labelBandTextColor      = from.labelBandTextColor;
+        to.totalsBackground        = from.totalsBackground;
+        to.totalsTextColor         = from.totalsTextColor;
+        to.hoverBandColor          = from.hoverBandColor;
+        to.selectedCellColor       = from.selectedCellColor;
+        to.titleColor              = from.titleColor;
+        to.subtitleColor           = from.subtitleColor;
+        to.hubBackground           = from.hubBackground;
+        to.hubCaptionTextColor     = from.hubCaptionTextColor;
+        to.hubArrowColor           = from.hubArrowColor;
+        to.headerFieldLabelColor   = from.headerFieldLabelColor;
+        to.headerFieldValueColor   = from.headerFieldValueColor;
+        to.headerBandBackground    = from.headerBandBackground;
+        to.headerBandBorderColor   = from.headerBandBorderColor;
+    }
+
+    void MatrixDiagramStyle::ApplyLightTheme() {
+        CopyColours(MatrixDiagramStyle(), *this);
+    }
 
     void MatrixDiagramStyle::ApplyDarkTheme() {
         gridLineColor           = Color( 68,  74,  86, 255);
@@ -216,11 +246,13 @@ namespace UltraCanvas {
     void UltraCanvasMatrixDiagram::SetDarkTheme(bool dark) {
         if (darkTheme == dark) return;
         darkTheme = dark;
+        // Colours only. Resetting the whole struct here used to throw away
+        // every size and switch the caller had set (row bands, cell tint).
         if (dark) {
             style.ApplyDarkTheme();
             backgroundColor = Color(30, 33, 40, 255);
         } else {
-            style = MatrixDiagramStyle();
+            style.ApplyLightTheme();
             backgroundColor = Color(252, 252, 253, 255);
         }
         RebuildLegend();
@@ -384,6 +416,55 @@ namespace UltraCanvas {
         return ClampSafe(raw, style.minCellSize, style.maxCellSize);
     }
 
+    std::vector<double> UltraCanvasMatrixDiagram::RotatedHeaderReach(IRenderContext* ctx,
+                                                                     const MatrixItemSet* cols,
+                                                                     MatrixHeaderFit fit,
+                                                                     double bandHeight) const {
+        std::vector<double> reach;
+        if (!cols || (fit != MatrixHeaderFit::Rotated45 && fit != MatrixHeaderFit::Rotated90)) {
+            return reach;
+        }
+
+        // DrawColumnLabel anchors each label at its column's centre, runs it
+        // up and to the right at `angle`, and ellipsises it to the band. Its
+        // right end is the run's horizontal part plus half the text height
+        // turned by the same angle.
+        const double angle = (fit == MatrixHeaderFit::Rotated45) ? M_PI / 4.0 : M_PI / 2.0;
+        const double maxLength = std::max(0.0, bandHeight / std::sin(angle) - 6.0);
+        const double textHeight = style.colLabelFontSize * 1.25;
+
+        ctx->SetFontSize(style.colLabelFontSize);
+        for (const MatrixItem& item : cols->items) {
+            const double length = std::min(static_cast<double>(ctx->GetTextLineWidth(item.label)),
+                                           maxLength);
+            reach.push_back(length * std::cos(angle) + textHeight / 2.0 * std::sin(angle));
+        }
+        return reach;
+    }
+
+    // The widest cell at which every label in `reach` ends inside `room`,
+    // measured from the left edge of the first of `cellsBefore` cells that
+    // come before this set's columns: column c's label ends at
+    // (cellsBefore + c + 0.5) * cellWidth + reach[c].
+    static double CellWidthLimit(const std::vector<double>& reach, double room, int cellsBefore) {
+        double limit = 1e300;
+        for (size_t c = 0; c < reach.size(); ++c) {
+            limit = std::min(limit, (room - reach[c]) / (cellsBefore + static_cast<double>(c) + 0.5));
+        }
+        return limit;
+    }
+
+    // How far the labels in `reach` stick out past the right edge of their
+    // `cols` columns of `cellWidth`.
+    static double RightOverhang(const std::vector<double>& reach, double cellWidth) {
+        double overhang = 0.0;
+        const double n = static_cast<double>(reach.size());
+        for (size_t c = 0; c < reach.size(); ++c) {
+            overhang = std::max(overhang, reach[c] - (n - static_cast<double>(c) - 0.5) * cellWidth);
+        }
+        return overhang;
+    }
+
     double UltraCanvasMatrixDiagram::MeasureWidestLabel(IRenderContext* ctx,
                                                         const MatrixItemSet* set,
                                                         float fontSize) const {
@@ -537,6 +618,15 @@ namespace UltraCanvas {
         double bandHeight = std::min(bandAllowance,
                                      MeasureHeaderBand(ctx, model.ColSet(0), pl.fit, pl.cellWidth));
 
+        // A rotated header leans right past the last column. Narrow the cells
+        // until it ends inside the content area instead of under the clip.
+        // The fit stays: a rotated label does not depend on the cell width.
+        const std::vector<double> reach = RotatedHeaderReach(ctx, model.ColSet(0), pl.fit, bandHeight);
+        if (!reach.empty()) {
+            pl.cellWidth = std::max(style.minCellSize,
+                    std::min(pl.cellWidth, CellWidthLimit(reach, area.x + area.width - gridLeft, 0)));
+        }
+
         const double gridTop = area.y + bandHeight + axisTitleSpace;
         const double gridAvailH = area.y + area.height - gridTop
                                   - (colTotals ? style.totalsGutterSize : 0.0);
@@ -586,7 +676,7 @@ namespace UltraCanvas {
         // column counts, so cells stay square-ish on both sides.
         const double totalWidth = area.width - spineWidth - style.panelGap * 2.0;
         const int totalCols = left.cols + right.cols;
-        const double cellWidth = FitCellSize(totalWidth, totalCols);
+        double cellWidth = FitCellSize(totalWidth, totalCols);
 
         // Same single-pass order as the L: width, then fit, then band height,
         // with the grid holding first claim on the vertical space.
@@ -601,6 +691,14 @@ namespace UltraCanvas {
                 std::max(MeasureHeaderBand(ctx, model.ColSet(0), left.fit, cellWidth),
                          MeasureHeaderBand(ctx, model.ColSet(1), right.fit, cellWidth)));
 
+        // The right wing's rotated headers lean out past the assembly's right
+        // edge; narrow the cells of both wings until they fit (see LayoutL).
+        const std::vector<double> reach = RotatedHeaderReach(ctx, model.ColSet(1), right.fit, bandHeight);
+        if (!reach.empty()) {
+            cellWidth = std::max(style.minCellSize,
+                    std::min(cellWidth, CellWidthLimit(reach, totalWidth, left.cols)));
+        }
+
         const double gridTop = area.y + bandHeight + axisTitleSpace;
         const double gridAvailH = area.y + area.height - gridTop;
         const double cellHeight = FitCellSize(gridAvailH, left.rows);
@@ -608,8 +706,10 @@ namespace UltraCanvas {
         const double leftGridW = cellWidth * left.cols;
         const double rightGridW = cellWidth * right.cols;
 
-        // Centre the whole assembly horizontally.
-        const double assemblyW = leftGridW + spineWidth + rightGridW + style.panelGap * 2.0;
+        // Centre the whole assembly horizontally, counting the headers that
+        // overhang its right edge as part of it.
+        const double assemblyW = leftGridW + spineWidth + rightGridW + style.panelGap * 2.0
+                                 + RightOverhang(reach, cellWidth);
         const double startX = area.x + std::max(0.0, (area.width - assemblyW) / 2.0);
 
         left.cellWidth = right.cellWidth = cellWidth;
@@ -682,7 +782,7 @@ namespace UltraCanvas {
             hubW = std::max(hubW, minW);
         }
 
-        const double cellW = FitCellSize(area.width - hubW - titleSpace * 2.0, nL + nR);
+        double cellW = FitCellSize(area.width - hubW - titleSpace * 2.0, nL + nR);
 
         const double gridFloor = (nT + nB) * style.minCellSize + titleSpace * 2.0;
         const double bandAllowance = ClampSafe(area.height - gridFloor,
@@ -694,9 +794,18 @@ namespace UltraCanvas {
                          MeasureHeaderBand(ctx, &right, fitR, cellW)));
         const double hubH = std::max(bandH, hubMinH);
 
+        // The right arm's rotated headers lean out past the right quadrants;
+        // narrow the cells until they fit (see LayoutL). The left arm's lean
+        // into the hub, which is in the drawing already.
+        const std::vector<double> reach = RotatedHeaderReach(ctx, &right, fitR, hubH);
+        if (!reach.empty()) {
+            cellW = std::max(style.minCellSize,
+                    std::min(cellW, CellWidthLimit(reach, area.width - titleSpace * 2.0 - hubW, nL)));
+        }
+
         const double cellH = FitCellSize(area.height - hubH - titleSpace * 2.0, nT + nB);
 
-        const double totalW = (nL + nR) * cellW + hubW;
+        const double totalW = (nL + nR) * cellW + hubW + RightOverhang(reach, cellW);
         const double totalH = (nT + nB) * cellH + hubH;
         const double x0 = area.x + titleSpace
                           + std::max(0.0, (area.width - titleSpace * 2.0 - totalW) / 2.0);
