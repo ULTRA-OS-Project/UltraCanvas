@@ -773,6 +773,34 @@ codesign_bundle() {
 #
 # $1 may also be a disk image: notarytool takes a .dmg as it is, so only a
 # bundle or a tool folder is zipped first.
+# Staple the notarization ticket to a bundle or image and validate it, with
+# retries. Both the staple and the validate are lookups on Apple's CloudKit
+# ticket service, and from 2026-10-12 that lookup failed with "The network
+# connection was lost" (stapler exit 68) on every release build from
+# 0.9.253 to 0.9.265 - thirteen in a row, each after a notarization Apple
+# had already accepted; in each run some bundles stapled and a later one did
+# not, and in 0.9.265 a staple went through and the validate right after it
+# did not. So each is tried up to STAPLE_ATTEMPTS times (default 5) with a
+# pause between: a staple that worked is not repeated, only its validate.
+# Only a lookup that fails every time ends the run.
+staple_bundle() {
+    local target="$1" attempt stapled=false
+    for attempt in $(seq 1 "${STAPLE_ATTEMPTS:-5}"); do
+        if [ "$stapled" = false ] && xcrun stapler staple "$target"; then
+            stapled=true
+        fi
+        if [ "$stapled" = true ] && xcrun stapler validate "$target"; then
+            return 0
+        fi
+        if [ "$attempt" -lt "${STAPLE_ATTEMPTS:-5}" ]; then
+            echo "  The $([ "$stapled" = true ] && echo validate || echo staple) of $(basename "$target") failed (attempt $attempt of ${STAPLE_ATTEMPTS:-5}); trying again in 20 s"
+            sleep 20
+        fi
+    done
+    echo "  ERROR: the notarization ticket could not be $([ "$stapled" = true ] && echo validated on || echo "stapled to") $(basename "$target") after ${STAPLE_ATTEMPTS:-5} attempts"
+    return 1
+}
+
 notarize_bundle() {
     local app_bundle="$1"
     local staple="${2:-true}"
@@ -841,10 +869,7 @@ notarize_bundle() {
 
     if [ "$staple" = "true" ]; then
         echo "  Stapling notarization ticket..."
-        xcrun stapler staple "$app_bundle"
-
-        echo "  Verifying stapled bundle..."
-        xcrun stapler validate "$app_bundle"
+        staple_bundle "$app_bundle"
     fi
 
     echo "  Notarized: $(basename "$app_bundle")"
@@ -1233,8 +1258,7 @@ finish_suite() {
         local app
         for app in "${BUILT_APPS[@]}"; do
             echo "  Stapling $(basename "$app")..."
-            xcrun stapler staple "$app"
-            xcrun stapler validate "$app"
+            staple_bundle "$app"
         done
     fi
     echo ""
