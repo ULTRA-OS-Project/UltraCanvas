@@ -1,3 +1,124 @@
+#### 2026-10-13 *0.9.267*
+- **Host OS file icons no longer flicker in a window that shows more types
+  than the icon cache holds.** With *Display > File icons = Host OS*, a
+  maximised UltraFiler window on a folder of DLLs never settled: every tile
+  flipped between the shell's icon and the simple one for as long as the
+  window was open, while a smaller window on the same folder was fine. Two
+  causes, both in the framework. The cache's eviction dropped the least
+  recently *drawn* icons once over budget, without knowing they were still
+  on screen - an icon dropped while drawn is asked for again on the next
+  frame, and its answer evicts the next drawn one, without end. Eviction
+  now keeps whatever this frame or the last one drew, however far over
+  budget a screen full of distinct types puts the cache (the ceiling is met
+  again when they scroll away). And `HostFileIconKey` keyed programs,
+  libraries and shortcuts per *file* rather than per type, so ninety DLLs
+  held ninety copies of one 256-pixel picture - three times the budget.
+  Every backend resolves the host's icon from the name alone (the shell with
+  `SHGFI_USEFILEATTRIBUTES`, the desktops by MIME type or UTType), so a
+  `.dll` keys as `ext:dll` like any other type now; a program's own icon is
+  still the native module's answer and is unaffected.
+- **A host icon is held at the size it is drawn.** The Windows shell's
+  jumbo list answers 256 pixels a side whatever was asked, so a medium tile
+  asking for 128 held a quarter-megabyte pixmap and drew it at a quarter of
+  the area; a Linux theme's `.ico` came back at its nearest frame, which can
+  be the larger one. `FitHostIconToSize` (UltraCanvasHostFileIcons) resamples
+  a backend's answer down to the size asked for, never up, and the Windows
+  and Linux backends go through it - macOS already drew into a bitmap of
+  that size. Four times as many types fit the same cache.
+- **A stale Windows version resource fails CI.** `UltraTexter.rc` /
+  `.manifest` and `UltraFiler.rc` / `.manifest` carry a literal copy of the
+  version that `set-version.sh` writes, and the configure-time warning for
+  one that fell behind its changelog was not enough: UltraFiler 1.72.4
+  shipped with a 1.72.3 version resource. `scripts/check_changelog.py`
+  compares them now and `changelog.yml` runs on a change to them.
+
+#### 2026-10-13 *0.9.266*
+- **VideoFX 0.12.0: hardware encoders by choice.** The new
+  `VideoFXExportSettings::acceleration` chooses the video encoder:
+  - `Auto` keeps the old order (software, then VideoToolbox or Media
+    Foundation).
+  - `Software` uses software encoders only.
+  - `Hardware` takes the first hardware encoder that works on the machine,
+    and falls back to software.
+  - `NVENC`, `QuickSync`, `VAAPI`, `AMF`, `VideoToolbox` and
+    `MediaFoundation` name one family. If it does not work, the export fails
+    with `EncoderNotAvailable` and says whether FFmpeg lacks the encoder or
+    the machine lacks the hardware.
+  - Each hardware encoder is tried once, with one small frame, before it is
+    chosen, since FFmpeg builds often carry encoders the computer cannot run.
+    The answers are kept for the rest of the process.
+  - VA-API frames are uploaded to graphics memory before they are encoded.
+  - New: `VideoFXAcceleration`, `VideoFXEncoderInfo`,
+    `VideoFX_ListVideoEncoders` (every encoder of the build and whether it
+    works here, for a settings dialog), `VideoFX_ChooseVideoEncoder`,
+    `VideoFX_AccelerationName`, and an acceleration argument on
+    `VideoFX_IsVideoEncoderAvailable`.
+  - Saved in project files. Proxies can use it too
+    (`VideoFXProxySettings::acceleration`).
+  - `videofx encoders [codec]`, and `--hw software|hardware|nvenc|qsv|vaapi|amf|videotoolbox|mf`
+    on every export command.
+
+#### 2026-10-13 *0.9.265*
+- **HTML reader: downloads.** A navigation that found no page
+  (`PageKind::Other`) told its host only the address and type.
+  - **Bytes and name:** `HTML::PageLoader` now hands over the bytes
+    (`LoadedPage::body`) and the name to save the file as (`fileName`).
+  - **`PageLoader::DownloadFileName`** picks that name:
+    Content-Disposition's `filename*` (RFC 5987) or `filename`, else the
+    address's last segment, cleaned of folders, control characters and
+    leading dots, else `download` with an extension for its type.
+  - **Attachments:** `Content-Disposition: attachment` makes even an HTML
+    answer a download (`LoadedPage::attachment`); the fetch reports the
+    header in `FetchResult::contentDisposition`.
+  - **Large files:** a non-page answer over the fetch's size limit
+    (`FetchResult::tooLarge`) is a download marked `truncated`, for the
+    host to fetch again streaming, instead of an error page.
+  - **`UltraCanvasWebView`:** a download keeps the page on show, its
+    address and its history, which no longer gains an entry for the file.
+  - Tests in `HTMLPageLoaderTest` and `WebViewTest`.
+
+#### 2026-10-12 *0.9.264*
+- **Rendering: SetAlpha fades fills, strokes and text, not only images.** The
+  Cairo context applied the global alpha to pictures alone: a fill, a stroke
+  or a line of text set the source back to its colour at the colour's own
+  alpha, so whatever a caller dimmed with `SetAlpha` came out as a faded
+  picture beside full-strength shapes and text. A colour's alpha is now
+  scaled by the global alpha, and a gradient (or any pattern) is painted
+  through a group laid down at it. What that puts right: the file display's
+  dimmed entries (a file the type filter does not ask for) grey out their
+  name and columns as well as the icon, as their comment always said;
+  slideshow transitions fade the letterbox and the caption; a locked or
+  hidden video timeline track, a dragged Kanban card and the album's drag
+  marker are translucent; a connection's opacity and a vector drawing's
+  group, layer and object opacity apply to its shapes and text. The
+  CorelDRAW painter folded an object's opacity into its fill and stroke
+  colours and also set it with `SetAlpha`; the colours now carry only their
+  fill / stroke opacity, so an object is not faded twice. `RenderAlphaTest`
+  reads the pixels of a fill, a stroke, a gradient and text under
+  `SetAlpha`, and the render suites (vector, XAR, CDR, EPS, SVG, models,
+  Filer, image, screenshots) pass as before.
+- **Image export dialog: the save settings, the file's format, the colour
+  depth.** `UltraCanvasImageExportDialog` opens every format on the user's
+  save settings for it (`UltraCanvasFileLoader::GetImageExportOptions`, the
+  values the Save dialog's Settings button edits) and its Save stores what it
+  was left on back as that format's settings
+  (`UltraCanvasFileLoader::SetImageExportOptions`, new: the image writer's
+  options turned back into a format's settings; the size is not stored).
+  `SetFileName` picks the format the name's extension names - the dialog
+  stayed on PNG whatever it was given, so UltraPaint's Export wrote
+  "photo.jpg" as a PNG. `SetOptions` now moves the controls (they showed
+  their construction defaults whatever the options said), the colour depth
+  list is applied (choosing a depth changed nothing), JPEG XL's quality
+  slider is applied, and `SetTargetSize` with a size in another shape than
+  the picture's turns Keep proportions off, so the size is met exactly.
+- **FileLoader docs compile, and CI keeps them so.** The eight examples of
+  `Docs/Modules/FileLoader/README.md` that did not compile (`{ ... }`
+  placeholders, two plugin registrations without their headers, an undefined
+  plugin class, helpers the reader writes) are fixed, and
+  `scripts/check_doc_examples.py --all` - CI's doc check - now covers the
+  module docs listed in `CHECKED_MODULE_DOCS`, FileLoader's first. A module
+  joins once its examples compile; its findings are fixed, never baselined.
+
 #### 2026-10-12 *0.9.263*
 - **Save dialog: a big logo of the file's type, dragged onto a folder to save
   there.** The framework's Save dialog shows, at the left of the name and type

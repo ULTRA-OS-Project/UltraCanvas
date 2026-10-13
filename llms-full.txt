@@ -579,8 +579,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Image / Other / Error, final URL, base, charset, the parsed `Document`,
   warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
   (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
-  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`; `LoadPost` for a form's
-  POST. Fetch, POST, URL resolution and charset conversion are services the
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`, `DownloadFileName`;
+  `LoadPost` for a form's POST; a non-page answer keeps its bytes and file
+  name for the host to save. Fetch, POST, URL resolution and charset conversion are services the
   caller passes in, so it is framework-independent; linked style sheets and
   their `@import`s load before a page is ready;
   mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
@@ -2309,11 +2310,12 @@ to the project, missing media reported), waveforms (loudness envelopes
 for timelines and players), a preview (any frame of a timeline rendered
 as the export would make it, for an editor's viewer), proxy media (small
 stand-ins for large clips, made once into a cache folder and switched in
-for previews and drafts),
+for previews and drafts), hardware encoders by choice (software, any that
+works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media
+Foundation, each tried on the machine before it is used),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: keyframed parameters,
-several free audio tracks, hardware encoders beyond the platform ones picked
-automatically (VideoToolbox, Media Foundation).
+several free audio tracks.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
@@ -2326,7 +2328,8 @@ automatically (VideoToolbox, Media Foundation).
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
   `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
-  `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`
+  `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
+  `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
   (`VideoFXExportSettings::keyframeInterval`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
@@ -2353,6 +2356,9 @@ automatically (VideoToolbox, Media Foundation).
 - Proxy media: `VideoFX_GetDefaultProxyDirectory`, `VideoFX_ProxyPath`,
   `VideoFX_HasProxy`, `VideoFX_CreateProxy`, `VideoFX_CreateProxies`,
   `VideoFX_UseProxies`, `VideoFX_ClearProxies`
+- Encoders: `VideoFX_IsVideoEncoderAvailable(codec, acceleration)`,
+  `VideoFX_ListVideoEncoders`, `VideoFX_ChooseVideoEncoder`,
+  `VideoFX_AccelerationName`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -2372,6 +2378,8 @@ automatically (VideoToolbox, Media Foundation).
   TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
+  FindVideoEncoder, VideoEncoderCandidates, AccelerationOfEncoder,
+  EncoderWorks, NeedsHardwareFrames, SetUpHardwareFrames,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
   MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
@@ -4512,7 +4520,8 @@ collects every application with the DLLs it needs into one standalone zip.
 release uses. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
 copy, because `windres` reads them from disk: run `./set-version.sh` after
-bumping the version, and the CMake configure warns when they are stale.
+bumping the version; the CMake configure warns when they are stale and
+`scripts/check_changelog.py` fails CI on it.
 
 </details>
 
@@ -13280,6 +13289,7 @@ void SetPadding(float all);                                      // inherited fr
 void SetPadding(float vertical, float horizontal);
 void SetPadding(float top, float right, float bottom, float left);
 void SetIconSpacing(int spacing);
+void SetIconSize(int width, int height);   // the size the icon is drawn at
 void SetCornerRadius(float radius);
 
 // The icon's size as set with SetIconSize - what a twin of the button
@@ -23527,6 +23537,7 @@ the types):
 | `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
 | `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
 | `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings; `GetImageExportOptions(path, size, options)` at a [chosen size](#the-pictures-size) too |
+| `SetImageExportOptions(options)` | The other way: `options.format`'s quality, compression, colour depth ... and transparency stored as that format's settings (not the size) |
 
 Built in are the bitmap formats the image writer takes options for, each with
 only the settings that writer honours: PNG (compression, colours, interlace,
@@ -23535,6 +23546,12 @@ WebP, AVIF, HEIF, JPEG XL and JPEG 2000 (quality, lossless, effort or speed,
 bit depth), GIF (colours, dither, interlace), TIFF and OpenEXR (compression),
 Netpbm (binary), TGA, PCX, SGI and Photoshop (RLE), DPX and Cineon (bit
 depth). BMP, ICO, QOI, HDR, FITS and Farbfeld are written without options.
+
+The bitmap export dialog (`UltraCanvasImageExportDialog`) is the other
+place these values are edited: it opens every format on its save settings,
+and on the format of the file name it is given, and its Save stores the
+format's options back (`SetImageExportOptions`) - so it and the Save dialog's
+Settings never disagree.
 
 A writer reads them back. `UCRasterDocument::SaveToFile` does so itself when
 the caller passes no options and the user has stored settings for the format
@@ -31975,8 +31992,19 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
   queues what it does not have, and `onResourcesArrived` says when to build
   again.
 - **Kinds:** HTML and XHTML. Plain text becomes a `<pre>` page, a picture a
-  page of its own. Anything else (`PageKind::Other`, say `application/wasm`)
-  goes back to the caller undecided, and a failed fetch is `PageKind::Error`.
+  page of its own. Anything else (`PageKind::Other`, say `application/wasm`
+  or a zip) goes back to the caller undecided, and a failed fetch is
+  `PageKind::Error`.
+- **Downloads:** an Other answer keeps its bytes (`LoadedPage::body`) and
+  the name to save it as (`fileName`, from `DownloadFileName`:
+  Content-Disposition's `filename*` or `filename`, else the address's last
+  segment, cleaned of folders, control characters and leading dots). A
+  `Content-Disposition: attachment` answer is Other even when it is HTML
+  (`attachment`). A non-page over the fetch's size limit (the fetch sets
+  `FetchResult::tooLarge`) is Other with `truncated` set and no bytes, for
+  the host to fetch again streaming; a page that large is still an error.
+  `UltraCanvasWebView` hands it to `onNonHtml` and keeps the page on show,
+  its address and its history.
 - **Rules:** an http(s) page loads http(s) and `data:` resources, an https
   page no http ones, and only a `file:` page loads `file:` resources.
 - **Limits:** 16 MB per document, 32 style sheets, 512 resources a page.
@@ -32829,6 +32857,7 @@ if (UltraCanvas::HostFileIconsAvailable()) {
 | `HostFileIconKey(path, isDirectory)` | what the answer depends on — the cache key, pure string work |
 | `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` | the icon as a `UCPixmap`, or null |
 | `RefreshHostFileIcons()` | forget the lookups — after a theme change |
+| `FitHostIconToSize(pixmap, desiredSize)` | the answer resampled down to the size it is drawn at; never scaled up |
 
 ## The key is the whole design
 
@@ -32845,13 +32874,32 @@ The keys:
 | What | Key | Why |
 |---|---|---|
 | a directory | `dir` | every folder is one icon |
-| a file that carries its own icon | `file:<path>` | not a type at all — two programs must never share an icon |
 | a name with no extension | `name:<lowercased name>` | the freedesktop database matches `makefile` and `README` by name |
 | everything else | `ext:<suffix chain>` | `archive.tar.gz` keys as `tar.gz`, not `gz` — a tarball and a gzip file are different types and are drawn differently |
 
 The suffix chain runs from the **first** dot, which is the finest distinction
 the type databases make. A leading dot is part of the name (`.bashrc` is a
 name, not a `bashrc` file).
+
+A program, a shortcut or a bundle keys by its extension like everything else.
+The icon such a file carries of its own is `UltraCanvasNativeFileIcons`'s
+answer, read out of the file; what *this* module answers for it is the host's
+icon for `.exe` or `.lnk`, resolved from the name alone on every backend, and
+so the same for every file of the kind. (Until October 2026 those were keyed
+per file, which made a folder of ninety DLLs hold ninety copies of one
+picture.)
+
+## Held at the size it is drawn
+
+An icon source answers in its own sizes: the Windows shell's jumbo list is
+256 pixels a side whatever was asked, and an `.ico`'s nearest frame can be
+the larger one. A 256-pixel icon drawn in a 128-pixel tile holds four times
+the memory it shows, which is what let a window full of distinct types run
+over the filer's icon budget. So every backend hands back what
+`FitHostIconToSize` makes of its answer: resampled so the longer edge is the
+size asked for when it is larger, untouched when it is not (a type whose icon
+only exists at 48 stays 48, and the caller scales it up). macOS draws the
+`NSImage` straight into a bitmap of that size and needs no resample.
 
 ## The three backends
 
@@ -62450,7 +62498,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.8.0
+**Version:** 1.8.1
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -62692,6 +62740,26 @@ enum class ToolbarIconSize {
     Huge,       // 64x64
     Custom      // user-defined
 };
+```
+
+Every button the toolbar adds draws its icon at this size, and
+`SetAppearance()` applies it again to the buttons already there:
+`ToolbarAppearance::IconPixelSize()` gives the pixels (Custom is
+`customIconWidth` x `customIconHeight`; a button's `GetIconWidth()` /
+`GetIconHeight()` read it back). Pick the size the icon set is drawn
+for. A line icon is drawn on the pixel grid of one size, and at any other
+size its lines fall between two pixels and blur: the shared 24 px sets
+(`media/icons/menu/`, `media/icons/artcreator/`) want `Medium`, a 16 px set
+`Small`. A button that needs another size sets it with `SetIconSize()` after
+it is added, and again after a later `SetAppearance()`.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasToolbar>("tools", 0, 0, 0, 38);
+ToolbarAppearance look = bar->GetAppearance();
+look.iconSize = ToolbarIconSize::Small;   // a set drawn on a 16 px grid
+bar->SetAppearance(look);
+auto play = bar->AddButton("play", "", "media/icons/ultravideo/play.svg", [] {});
+int drawn = play->GetIconWidth();         // 16
 ```
 
 ## ToolbarAppearance Structure
@@ -64737,7 +64805,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | The icon of a file about to be saved, dragged onto a folder of the window to choose where it goes (the RISC OS save box's icon; the Save dialog has a big one left of its name and type, "Drag to Folder" under it) | `UltraCanvasFileDragIcon` (`CreateFileDragIcon`; [doc](UltraCanvasFileDialog.md#the-file-icon)) | `UltraCanvasFileDragIcon.h` |
 | One file format's save settings (JPEG quality, PNG compression, TIFF codec ...), kept for every application - and, for a picture, the size to write it at this once | `UltraCanvasFileLoader::ShowSaveSettingsDialog` ([doc](UltraCanvasFileDialog.md#save-settings)) | `UltraCanvasFileLoader.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
-| Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
+| Save a bitmap with per-format options - opened on the format's save settings (and the format the file name has), which Save stores back | `UltraCanvasImageExportDialog` ([save settings](UltraCanvasFileDialog.md#save-settings)) | `dialogs/UltraCanvasImageExportDialog.h` |
 | Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog`, `ShowMetadataDialog()` — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
 | Turn a 3D model into a bitmap, letting the user frame the view first | `UltraCanvasModelViewDialog`, `ShowModelViewDialog()` ([doc](UltraCanvasModelViewDialog.md)) | `dialogs/UltraCanvasModelViewDialog.h` |
 | A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
@@ -70699,15 +70767,23 @@ listing of the current folder (an `UltraCanvasFilerWidget`, the UltraFiler
 display), and the file-name field and file-type dropdown
 below them.
 
+<!-- doc-check: FileDialogOptions opts; void ShowPicture(std::shared_ptr<UCImage> image); void Play(std::shared_ptr<UCAudio> audio); void ShowDocument(std::shared_ptr<UCRichDocument> document); void ShowError(const std::string& message); -->
 ```cpp
 // Decode an image into a UCImage
-UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) { ... });
+UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_ptr<UCImage> img) {
+    if (r.IsSuccess()) ShowPicture(img);
+    else if (!r.loadError.empty()) ShowError(r.loadError);   // empty: cancelled
+});
 
 // Decode audio into a UCAudio PCM buffer (WAV/MP3/FLAC always; OGG/Opus with codec libs)
-UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) { ... });
+UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) {
+    if (r.IsSuccess()) Play(audio);
+});
 
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/Markdown/TXT)
-UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) { ... });
+UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
+    if (r.IsSuccess()) ShowDocument(doc);
+});
 ```
 
 ### Editable Vector Documents
@@ -70719,6 +70795,8 @@ writers are the Vector plugin's converters (SVG, XAR, EMF, WMF, DXF, DWG, AI,
 EPS, CDR, PDF), installed by `RegisterVectorFormatsPlugin()`:
 
 ```cpp
+#include "UltraCanvasVectorFormatsPlugin.h"          // the Vector plugin
+
 RegisterVectorFormatsPlugin();                       // once, at start-up
 
 std::string error;
@@ -70810,12 +70888,15 @@ Add support for proprietary or specialized graphics formats without modifying
 core code. Register an `IGraphicsPlugin` with the graphics plugin registry and
 its extensions immediately show up in the format inventory:
 
+<!-- doc-check: std::shared_ptr<IGraphicsPlugin> myFormatPlugin; -->
 ```cpp
+#include "Models/STL/UltraCanvasSTLPlugin.h"
+
 // Register a graphics plugin (e.g. the built-in STL model plugin)
 RegisterSTLPlugin();
 
-// ...or your own
-UltraCanvasGraphicsPluginRegistry::RegisterPlugin(std::make_shared<MyFormatPlugin>());
+// ...or your own: an IGraphicsPlugin implementation
+UltraCanvasGraphicsPluginRegistry::RegisterPlugin(myFormatPlugin);
 ```
 
 ---
@@ -70874,6 +70955,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 FileLoader is part of the core library — no separate initialization is needed
 beyond creating the application. Load a file and check the result:
 
+<!-- doc-check: void ProcessBytes(const std::vector<uint8_t>& bytes); -->
 ```cpp
 auto result = UltraCanvasFileLoader::LoadFile("any_file.ext");
 if (result.success) {
@@ -79226,7 +79308,8 @@ segments.
 > zoom ("Ken Burns"), one-call slideshows, background music that dips under
 > speech, project files, waveforms for timelines and players, a preview
 > that renders any frame of a timeline without an export, proxy media for
-> smooth editing of large clips, GIF and
+> smooth editing of large clips, hardware encoders (NVENC, Quick Sync,
+> VA-API, AMF, VideoToolbox, Media Foundation) by choice, GIF and
 > audio-only output, lossless cut, the background job and the `videofx`
 > command-line tool work today, on FFmpeg 4.4 to 8.x.
 > Keyframed parameters and several free audio tracks are planned (see
@@ -79916,6 +79999,7 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `videoBitRate`, `audioBitRate` | 0 | Set to use a bit rate instead of quality |
 | `encoderPreset` | — | e.g. `"veryfast"` for x264 / x265 |
 | `keyframeInterval` | encoder default | Seconds between keyframes; short = quick to seek (proxies use 0.5) |
+| `acceleration` | `Auto` | Software, any hardware encoder (`Hardware`), or one family; see *Hardware encoders* |
 | `sampleRate`, `channels` | first audio source / stereo | Mono only when every source is mono |
 
 Presets: `WebMP4(height)`, `WebM(height)`, `AnimatedGif(width, fps)`,
@@ -79935,6 +80019,55 @@ if (!VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H265))
 H.264 uses libx264, then the platform encoder (VideoToolbox on macOS, Media
 Foundation on Windows), then OpenH264; H.265, AV1 and ProRes likewise try the
 software encoder first.
+
+### Hardware encoders
+
+The graphics hardware can encode too: several times faster than software,
+with the processor left free, at some cost in quality for the same file
+size. `VideoFXExportSettings::acceleration` chooses:
+
+| Value | Encoder |
+|---|---|
+| `Auto` (default) | As before: software, then the platform's encoder (VideoToolbox, Media Foundation) |
+| `Software` | Software only: libx264, libx265, libvpx, SVT-AV1, ... |
+| `Hardware` | The first hardware encoder that works on this machine; software when none does |
+| `NVENC` | NVIDIA (`h264_nvenc`, `hevc_nvenc`, `av1_nvenc`) |
+| `QuickSync` | Intel (`h264_qsv`, `hevc_qsv`, `av1_qsv`, `vp9_qsv`) |
+| `VAAPI` | VA-API on Linux, Intel and AMD graphics (`h264_vaapi`, `hevc_vaapi`, `av1_vaapi`, `vp9_vaapi`) |
+| `AMF` | AMD on Windows (`h264_amf`, `hevc_amf`, `av1_amf`) |
+| `VideoToolbox` | macOS (`h264_videotoolbox`, `hevc_videotoolbox`, `prores_videotoolbox`) |
+| `MediaFoundation` | Windows (`h264_mf`, `hevc_mf`, `av1_mf`) |
+
+An FFmpeg build often carries hardware encoders the machine cannot run:
+Ubuntu's has `h264_nvenc` whether or not the computer has an NVIDIA card.
+So VideoFX tries each hardware encoder once, by encoding one small frame,
+before it chooses one, and keeps the answer for the rest of the process.
+`Hardware` never lands on an encoder that does not run here. A named family
+that cannot run fails with `EncoderNotAvailable`, and the error says
+whether FFmpeg lacks the encoder or the machine lacks the hardware.
+
+```cpp
+VideoFXExportSettings s = VideoFXExportSettings::WebMP4(1080);
+s.acceleration = VideoFXAcceleration::Hardware;           // fast where it can be
+
+// a settings dialog: what this machine can do
+for (const VideoFXEncoderInfo& e : VideoFX_ListVideoEncoders(VideoFXVideoCodec::H264))
+    if (e.works) encoderChoice->AddItem(VideoFX_AccelerationName(e.acceleration));
+
+std::string name = VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware);
+// "h264_nvenc" on an NVIDIA machine, "libx264" on one without hardware encoding
+```
+
+`VideoFX_IsVideoEncoderAvailable(codec, acceleration)` asks the same for one
+choice; with `Hardware` it means a hardware encoder, not the software one
+the export would fall back to. The first list takes a moment, typically
+under a second, because each hardware encoder is tried once; later lists
+answer at once. VA-API takes frames only in graphics memory, so each frame
+is uploaded before it is encoded. The other families take ordinary frames.
+Hardware encoders are driven by bit rate (`videoBitRate`, or one derived from
+`quality` and the picture size); `encoderPreset` and `keyframeInterval`
+reach them too. Proxies can be made on the hardware as well
+(`VideoFXProxySettings::acceleration`).
 
 ---
 
@@ -80119,6 +80252,8 @@ videofx project trip.vfxproj                             # what it holds, missin
 videofx render trip.vfxproj                              # render a saved project
 videofx proxy trip.vfxproj                               # proxies of its clips, for editing
 videofx render trip.vfxproj draft.mp4 --proxies          # a quick draft from the proxies
+videofx encoders h264                                    # the H.264 encoders, and which work here
+videofx transcode talk.mov talk.mp4 --hw hardware        # on the graphics hardware where there is one
 ```
 
 ---
@@ -80170,7 +80305,7 @@ generates its own clips, so it needs no media files.
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
 | 4c | Preview: any frame of a timeline rendered as the export would make it, without an export (`VideoFXPreview`); a slideshow's plan as segments | **Done** |
 | 4d | Proxy media: small stand-ins for large clips, made once into a cache folder, switched in for previews and drafts, the originals exported | **Done** |
-| 4 | Explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
+| 4e | Hardware encoders by choice: software, any that works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media Foundation, each tried on the machine before it is used | **Done** |
 | 5 | A timeline editor element in UltraCanvas on top of the engine (`UltraCanvasVideoTimeline`, in the core) | **Done** |
 
 *VideoFX — part of the UltraCanvas framework.*
@@ -83968,6 +84103,23 @@ sound, and the playhead follows it. An edit throws the draft away and the
 next Play renders a new one. Where no sound device or player is available
 playback stays frame by frame and the status line says so.
 
+**Proxies.** Large clips, such as 4K phone videos, are slow to scrub. So
+every video in the bin gets a *proxy* in the background: the same clip at
+540 lines, quick to seek in (VideoFX's proxy media). The bin tile shows its
+progress, *proxy waiting*, *proxy 40 %*, and *proxy* when it is ready. From
+then on the viewer and the playback draft play that clip from its proxy.
+The **export always reads the originals**, at full quality.
+- Proxies are made one at a time on a thread of their own, so scrubbing
+  never waits behind one.
+- A clip no taller than a proxy, which is already quick, gets none.
+- Proxies are kept in the user's cache folder (`~/.cache/VideoFX/Proxies`
+  and the like), so a project opened again plays from them at once.
+- A clip removed from the bin before its proxy is made is dropped from the
+  queue.
+- *Preview from proxies*, in the inspector's Project tab, turns them off
+  and on for the project. It is saved with the project, and is not an
+  undo step.
+
 ### The timeline
 
 The `UltraCanvasVideoTimeline` element with four lanes: **T1 Titles**, a
@@ -84054,11 +84206,13 @@ are offered first; a song in the bin becomes the music.
   under the clips' own sound by preset (speech, outdoor, loud event) and
   level.
 - **Project**: the name, the output size (from the first clip, Full HD, HD,
-  4K, portrait, square), the frame rate, and how clips of another shape are
-  fitted.
+  4K, portrait, square), the frame rate, how clips of another shape are
+  fitted, and *Preview from proxies* (on by default; see *Proxies* above).
 
 Every field is an edit like any other: it goes through undo and shows on
-the timeline and in the viewer at once.
+the timeline and in the viewer at once. *Preview from proxies* is the one
+exception: it changes how the project is previewed, not the project, so it
+is no undo step.
 
 ## Undo, projects and export
 

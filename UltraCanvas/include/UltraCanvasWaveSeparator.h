@@ -5,6 +5,8 @@
 // separator on its side of the curve, the next group's colour the rest, so
 // the groups read as carved into one bar rather than boxed side by side.
 //
+// doc-check: std::shared_ptr<UltraCanvasContainer> bar; Color barColor; Color insetColor;
+// doc-check: example
 //   auto wave = std::make_shared<UltraCanvasWaveSeparator>("Taskbar.Wave1",
 //                   /*verticalBar=*/true);
 //   wave->SetColors(barColor, insetColor);   // group before, group after

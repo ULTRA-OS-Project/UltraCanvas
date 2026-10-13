@@ -1,5 +1,4 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.cpp
-// Version: 0.10.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorWindow.h"
 
@@ -30,10 +29,11 @@ namespace {
 
 constexpr float kWindowWidth  = 1180.0f;
 constexpr float kWindowHeight = 720.0f;
-constexpr float kSideMargin   = 8.0f;
-constexpr float kPageTop      = 44.0f;
-constexpr float kPagePadding  = 10.0f;
+constexpr float kPagePadding  = 10.0f;   // around the toolbar and the tabs
+constexpr float kTabPadding   = 8.0f;    // inside a tab's page, around its bar and list
 constexpr float kSectionGap   = 8.0f;
+constexpr float kControlHeight = 28.0f;
+constexpr int   kInfoDialogWidth = 640;
 constexpr int   kProcessColumnWidth = 470;
 constexpr int   kProcessColumnMin   = 300;
 
@@ -91,6 +91,90 @@ void PinToolbar(const std::shared_ptr<UltraCanvasUIElement>& bar) {
     bar->layoutItem.SetFlexShrink(0);
 }
 
+// A toolbar button is as wide as its label: it is given no width, so the
+// layout measures the text (UltraCanvasButton::MeasureOwnContent), and a
+// longer label - "Stop recording" for "Record", or a translation - fits
+// instead of being cut to "All applicati…". It never shrinks either; the
+// status text beside it gives way.
+std::shared_ptr<UltraCanvasButton> MakeToolbarButton(const std::string& id, const std::string& text) {
+    auto button = CreateButton(id, 0, 0, 0, kControlHeight, text);
+    button->layoutItem.SetFlexShrink(0);
+    return button;
+}
+
+// The status text at the end of a bar takes what the controls leave, and
+// gives it back first: basis zero, so a long text is ellipsized by the
+// label rather than pushing the button after it out of the bar.
+std::shared_ptr<UltraCanvasLabel> MakeBarStatus(const std::string& id, const std::string& text = "") {
+    auto label = CreateLabel(id, 0, 0, 0, 24, text);
+    label->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    label->layoutItem.SetFlexGrow(1);
+    label->layoutItem.SetFlexShrink(1);
+    return label;
+}
+
+// A tab's page: its bar above its list, padded so the bar sits as far from
+// the tab frame as the list sits from the bar. No explicit size: the tabbed
+// container measures its active page with an exact width and height, so
+// the page must not carry a size of its own that competes with that.
+std::shared_ptr<UltraCanvasContainer> MakeTabPage(const std::string& id) {
+    auto page = CreateContainer(id, 0, 0, 0, 0);
+    MakePlainColumn(page);
+    page->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    page->SetPadding(kTabPadding);
+    return page;
+}
+
+// A note's headline: the part before its colon ("20 processes could not be
+// opened in the last snapshot"); what follows is the explanation, which the
+// status line has no room for and the tooltip and the Info dialog carry.
+std::string NoteHeadline(const std::string& note) {
+    const std::size_t colon = note.find(':');
+    return colon == std::string::npos ? note : note.substr(0, colon);
+}
+
+// A start-up note about an event source rather than a name source.
+bool IsEventNote(const std::string& note) {
+    return note.rfind("Events", 0) == 0 || note.find("conntrack") != std::string::npos ||
+           note.find("kernel network") != std::string::npos;
+}
+
+// One source on a status line: its count while it works, else one word -
+// "stopped", or `troubleWord` for a source that runs but reports an error
+// ("failed" for a name source, "idle" for an event source whose tracker
+// has nothing to report) - the error itself is under Info… and in the
+// line's tooltip, where there is room for it.
+std::string SourceOnLine(const std::string& name, bool running, const std::string& lastError,
+                         int64_t count, const char* unit, const char* troubleWord) {
+    if (!running) return name + ": stopped";
+    if (!lastError.empty()) return name + ": " + troubleWord;
+    return name + ": " + std::to_string(count) + " " + unit;
+}
+
+// Free text into the dialog's Markdown: a backend note names "sock_diag"
+// and "nf_conntrack", whose underscores would otherwise start italics.
+std::string EscapeMarkdown(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (const char c : text) {
+        if (c == '\\' || c == '*' || c == '_' || c == '`' || c == '[' || c == ']' ||
+            c == '<' || c == '>' || c == '$' || c == '#' || c == '|' || c == '~') {
+            out.push_back('\\');
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
+// The same source in full, for the tooltip and the dialog.
+std::string SourceInFull(const std::string& name, bool running, const std::string& lastError,
+                         int64_t count, const char* unit) {
+    std::string text = name + ": " + (running ? "running" : "stopped") + ", " +
+                       std::to_string(count) + " " + unit;
+    if (!lastError.empty()) text += " - " + lastError;
+    return text;
+}
+
 // Header clicks sort; the view shows the order but the proxy decides it.
 void WireHeaderSorting(const std::shared_ptr<UltraCanvasListView>& view,
                        const std::shared_ptr<UltraCanvasListSortFilterProxy>& proxy) {
@@ -145,14 +229,10 @@ bool UltraNetMonitorWindow::Initialize(std::vector<std::string> nameNotes) {
     window_ = CreateWindow(config);
     if (!window_) return false;
 
-    auto title = CreateLabel("nmTitle", 16, 10, 260, 26, "UltraNetMonitor");
-    title->SetFontSize(18);
-    window_->AddChild(title);
-    subtitleLabel_ = CreateLabel("nmSubtitle", 200, 14, 900, 22, "");
-    window_->AddChild(subtitleLabel_);
-
     // Laid out, not positioned: a flex column of toolbar and tabs, sized by
-    // LayoutForSize so the window's size is the page's size.
+    // LayoutForSize so the window's size is the page's size. The window
+    // starts at the toolbar; the version is in the title bar and what the
+    // backend and the sources can do is under Info….
     page_ = CreateContainer("nmPage", 0, 0, 0, 0);
     MakePlainColumn(page_);
     page_->SetPadding(kPagePadding);
@@ -211,11 +291,11 @@ void UltraNetMonitorWindow::Show() {
 
 void UltraNetMonitorWindow::LayoutForSize(float width, float height) {
     if (!page_) return;
-    const float pageWidth  = std::max(400.0f, width  - 2 * kSideMargin);
-    const float pageHeight = std::max(240.0f, height - kPageTop - kSideMargin);
+    const float pageWidth  = std::max(400.0f, width);
+    const float pageHeight = std::max(240.0f, height);
     // SetElementSize, not SetBounds: the layout engine sizes from the CSS
     // dimensions, so a bounds-only change is overwritten on the next pass.
-    page_->SetElementAbsolutePosition(Point2Df(kSideMargin, kPageTop));
+    page_->SetElementAbsolutePosition(Point2Df(0.0f, 0.0f));
     page_->SetElementSize(Size2Df(pageWidth, pageHeight));
     page_->InvalidateLayout();
     if (window_) window_->AddDirtyRectangle(
@@ -227,39 +307,40 @@ void UltraNetMonitorWindow::LayoutForSize(float width, float height) {
 std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildToolbar() {
     auto bar = MakeToolbar("nmToolbar");
 
-    filterInput_ = CreateTextInput("nmFilter", 0, 0, 260, 28);
+    filterInput_ = CreateTextInput("nmFilter", 0, 0, 260, kControlHeight);
     filterInput_->SetPlaceholder("Filter connections (app, address, state, user)");
     filterInput_->onTextChanged = [this](const std::string& text) {
         if (connectionProxy_) connectionProxy_->SetFilterText(text);
     };
     bar->AddChild(filterInput_);
 
-    allButton_ = CreateButton("nmAll", 0, 0, 130, 28, "All applications");
+    allButton_ = MakeToolbarButton("nmAll", "All applications");
+    allButton_->SetTooltip("Show every application's connections again");
     allButton_->SetOnClick([this]() { SelectProcess(std::nullopt); });
     bar->AddChild(allButton_);
 
-    pauseButton_ = CreateButton("nmPause", 0, 0, 90, 28, "Pause");
+    pauseButton_ = MakeToolbarButton("nmPause", "Pause");
+    pauseButton_->SetTooltip("Stop reading the socket table until Resume");
     pauseButton_->SetOnClick([this]() { SetPaused(!paused_.load()); });
     bar->AddChild(pauseButton_);
 
-    recordButton_ = CreateButton("nmRecord", 0, 0, 130, 28, "Record");
+    recordButton_ = MakeToolbarButton("nmRecord", "Record");
+    recordButton_->SetTooltip("Write every snapshot, name and event into the activity store for the History tab");
     recordButton_->SetOnClick([this]() { ToggleRecording(); });
     bar->AddChild(recordButton_);
 
-    statusLabel_ = CreateLabel("nmStatus", 0, 0, 0, 24, "");
-    statusLabel_->layoutItem.SetFlexGrow(1);
-    statusLabel_->layoutItem.SetFlexShrink(1);
+    statusLabel_ = MakeBarStatus("nmStatus");
     bar->AddChild(statusLabel_);
+
+    infoButton_ = MakeToolbarButton("nmInfo", "Info…");
+    infoButton_->SetTooltip("What this build can see: the backend, the name and event sources, and what each could not do");
+    infoButton_->SetOnClick([this]() { ShowInfo(); });
+    bar->AddChild(infoButton_);
     return bar;
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildLivePage() {
-    // No explicit size: the tabbed container measures its active page with
-    // an exact width and height, so the page must not carry a size of its
-    // own that competes with that.
-    auto live = CreateContainer("nmLivePage", 0, 0, 0, 0);
-    MakePlainColumn(live);
-    live->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    auto live = MakeTabPage("nmLivePage");
 
     // Processes left, connections right. A split pane rather than a flex
     // row: the connection side keeps every pixel a wider window adds, and
@@ -288,37 +369,35 @@ std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildLivePage() {
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildHistoryPage() {
-    auto history = CreateContainer("nmHistoryPage", 0, 0, 0, 0);
-    MakePlainColumn(history);
-    history->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    auto history = MakeTabPage("nmHistoryPage");
 
     auto bar = MakeToolbar("nmHistoryBar");
-    rangeDropdown_ = CreateDropdown("nmRange", 0, 0, 160, 28);
+    rangeDropdown_ = CreateDropdown("nmRange", 0, 0, 160, kControlHeight);
     for (const char* label : kRangeLabels) rangeDropdown_->AddItem(label);
     rangeDropdown_->SetSelectedIndex(1, /*runNotifications=*/false);
     rangeDropdown_->onSelectionChanged = [this](int, const DropdownItem&) { RefreshHistory(); };
     bar->AddChild(rangeDropdown_);
     rangeDropdown_->layoutItem.SetFlexShrink(0);
 
-    historyFilter_ = CreateTextInput("nmHistoryFilter", 0, 0, 240, 28);
+    historyFilter_ = CreateTextInput("nmHistoryFilter", 0, 0, 240, kControlHeight);
     historyFilter_->SetPlaceholder("Filter recorded flows");
     historyFilter_->onTextChanged = [this](const std::string& text) {
         if (flowProxy_) flowProxy_->SetFilterText(text);
     };
     bar->AddChild(historyFilter_);
 
-    refreshButton_ = CreateButton("nmRefresh", 0, 0, 90, 28, "Refresh");
+    refreshButton_ = MakeToolbarButton("nmRefresh", "Refresh");
+    refreshButton_->SetTooltip("Read the recorded flows over the chosen range again");
     refreshButton_->SetOnClick([this]() { RefreshHistory(); });
     bar->AddChild(refreshButton_);
 
-    purgeButton_ = CreateButton("nmPurge", 0, 0, 120, 28, "Purge…");
+    purgeButton_ = MakeToolbarButton("nmPurge", "Purge…");
+    purgeButton_->SetTooltip("Delete everything recorded; asks a second time before it does");
     purgeButton_->SetOnClick([this]() { PurgeHistory(); });
     bar->AddChild(purgeButton_);
 
-    historyStatus_ = CreateLabel("nmHistoryStatus", 0, 0, 0, 24,
-                                 "Nothing loaded yet — press Refresh, or Record on the toolbar.");
-    historyStatus_->layoutItem.SetFlexGrow(1);
-    historyStatus_->layoutItem.SetFlexShrink(1);
+    historyStatus_ = MakeBarStatus("nmHistoryStatus",
+                                   "Nothing loaded yet — press Refresh, or Record on the toolbar.");
     bar->AddChild(historyStatus_);
 
     history->AddChild(bar);
@@ -385,25 +464,22 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildFlowList() {
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildNamesPage() {
-    auto names = CreateContainer("nmNamesPage", 0, 0, 0, 0);
-    MakePlainColumn(names);
-    names->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    auto names = MakeTabPage("nmNamesPage");
 
     auto bar = MakeToolbar("nmNamesBar");
-    namesFilter_ = CreateTextInput("nmNamesFilter", 0, 0, 260, 28);
+    namesFilter_ = CreateTextInput("nmNamesFilter", 0, 0, 260, kControlHeight);
     namesFilter_->SetPlaceholder("Filter names (name, address, source)");
     namesFilter_->onTextChanged = [this](const std::string& text) {
         if (nameProxy_) nameProxy_->SetFilterText(text);
     };
     bar->AddChild(namesFilter_);
 
-    namesRefreshButton_ = CreateButton("nmNamesRefresh", 0, 0, 90, 28, "Refresh");
+    namesRefreshButton_ = MakeToolbarButton("nmNamesRefresh", "Refresh");
+    namesRefreshButton_->SetTooltip("List the name table again");
     namesRefreshButton_->SetOnClick([this]() { RefreshNames(); });
     bar->AddChild(namesRefreshButton_);
 
-    namesStatus_ = CreateLabel("nmNamesStatus", 0, 0, 0, 24, "");
-    namesStatus_->layoutItem.SetFlexGrow(1);
-    namesStatus_->layoutItem.SetFlexShrink(1);
+    namesStatus_ = MakeBarStatus("nmNamesStatus");
     bar->AddChild(namesStatus_);
 
     names->AddChild(bar);
@@ -426,36 +502,35 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildNameList() {
 }
 
 std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildEventsPage() {
-    auto events = CreateContainer("nmEventsPage", 0, 0, 0, 0);
-    MakePlainColumn(events);
-    events->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    auto events = MakeTabPage("nmEventsPage");
 
     auto bar = MakeToolbar("nmEventsBar");
-    eventsFilter_ = CreateTextInput("nmEventsFilter", 0, 0, 260, 28);
+    eventsFilter_ = CreateTextInput("nmEventsFilter", 0, 0, 260, kControlHeight);
     eventsFilter_->SetPlaceholder("Filter events (app, address, host, kind)");
     eventsFilter_->onTextChanged = [this](const std::string& text) {
         if (eventProxy_) eventProxy_->SetFilterText(text);
     };
     bar->AddChild(eventsFilter_);
 
-    eventsModeButton_ = CreateButton("nmEventsMode", 0, 0, 120, 28, "Show recorded");
+    eventsModeButton_ = MakeToolbarButton("nmEventsMode", "Show recorded");
+    eventsModeButton_->SetTooltip("Switch between the events as they happen and what the store recorded over the History tab's range");
     eventsModeButton_->SetOnClick([this]() { ToggleEventsRecorded(); });
     bar->AddChild(eventsModeButton_);
 
-    eventsRefreshButton_ = CreateButton("nmEventsRefresh", 0, 0, 90, 28, "Refresh");
+    eventsRefreshButton_ = MakeToolbarButton("nmEventsRefresh", "Refresh");
+    eventsRefreshButton_->SetTooltip("Read the events again");
     eventsRefreshButton_->SetOnClick([this]() { RefreshEvents(); });
     bar->AddChild(eventsRefreshButton_);
 
-    eventsClearButton_ = CreateButton("nmEventsClear", 0, 0, 90, 28, "Clear");
+    eventsClearButton_ = MakeToolbarButton("nmEventsClear", "Clear");
+    eventsClearButton_->SetTooltip("Forget the recent events; the store keeps what was recorded");
     eventsClearButton_->SetOnClick([this]() {
         NetworkMonitor_ClearRecentEvents();
         RefreshEvents();
     });
     bar->AddChild(eventsClearButton_);
 
-    eventsStatus_ = CreateLabel("nmEventsStatus", 0, 0, 0, 24, "");
-    eventsStatus_->layoutItem.SetFlexGrow(1);
-    eventsStatus_->layoutItem.SetFlexShrink(1);
+    eventsStatus_ = MakeBarStatus("nmEventsStatus");
     bar->AddChild(eventsStatus_);
 
     events->AddChild(bar);
@@ -580,19 +655,8 @@ void UltraNetMonitorWindow::LogLayout() {
 }
 
 void UltraNetMonitorWindow::RefreshStatus() {
-    std::string subtitle = std::string(ULTRANETMONITOR_VERSION) + " · backend: " +
-                           capabilities_.backendName;
-    if (capabilities_.socketTable) {
-        subtitle += capabilities_.allUsers ? " · every process"
-                                           : " · this user's processes only (elevate for all)";
-        subtitle += capabilities_.perConnectionBytes ? " · byte counters"
-                                                     : " · no byte counters on this backend";
-    }
-    subtitle += " · names: " + NameSourcesSummary();
-    subtitle += " · events: " + EventSourcesSummary();
-    if (subtitleLabel_) subtitleLabel_->SetText(subtitle);
-
     std::string status;
+    std::string detail;   // the line's tooltip: what the line has no room for
     if (!NetworkMonitor_IsAvailable()) {
         status = "No NetworkMonitor backend for this platform in this build.";
     } else if (!lastResult_.success && !lastResult_.message.empty()) {
@@ -605,10 +669,14 @@ void UltraNetMonitorWindow::RefreshStatus() {
                                          : " · showing PID " + std::to_string(*selectedPid_);
         }
         if (paused_.load()) status += " · paused";
-        // The first note is the one that changes what the table means.
+        // The first note is the one that changes what the table means. Its
+        // headline is on the line; the explanation ("named from the process
+        // list, without path or user (elevate for those)") is in the tooltip
+        // and under Info….
         for (const auto& note : capabilities_.notes) {
             if (note.find("could not be") != std::string::npos) {
-                status += " · " + note;
+                status += " · " + NoteHeadline(note);
+                detail = note;
                 break;
             }
         }
@@ -627,24 +695,87 @@ void UltraNetMonitorWindow::RefreshStatus() {
               std::to_string(recordedEvents_.load()) + " events)"
             : " · recording failed: " + error;
     }
-    if (statusLabel_) statusLabel_->SetText(status);
+    if (statusLabel_) {
+        statusLabel_->SetText(status);
+        statusLabel_->SetTooltip(detail);
+    }
+}
+
+// ===== INFO =====
+
+void UltraNetMonitorWindow::ShowInfo() {
+    if (!window_) return;
+    DialogConfig config;
+    config.title = std::string("UltraNetMonitor ") + ULTRANETMONITOR_VERSION;
+    config.message = BuildInfoMarkdown();
+    config.dialogType = DialogType::Information;
+    config.buttons = DialogButtons::OK;
+    config.showIcon = false;   // the text is the content; a badge would only narrow it
+    config.width = kInfoDialogWidth;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    if (dialog) UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window_.get());
+}
+
+std::string UltraNetMonitorWindow::BuildInfoMarkdown() {
+    std::string md = "**Backend:** " + EscapeMarkdown(capabilities_.backendName.empty() ? std::string("none")
+                                                                                          : capabilities_.backendName) + "\n\n";
+    if (!capabilities_.socketTable) {
+        md += "- no socket table: nothing can be listed on this platform in this build\n";
+    } else {
+        md += capabilities_.allUsers ? "- every user's processes\n"
+                                     : "- this user's processes only (elevate for all)\n";
+        md += capabilities_.processAttribution ? "- connections are attributed to their process\n"
+                                               : "- connections cannot be attributed to a process\n";
+        md += capabilities_.perConnectionBytes ? "- byte counters per connection\n"
+                                               : "- no byte counters on this backend: Sent and Received show a dash\n";
+    }
+    for (const auto& note : capabilities_.notes) md += "- " + EscapeMarkdown(note) + "\n";
+
+    md += "\n**Name sources**\n\n";
+    std::vector<NameSourceStatus> nameSources;
+    NetworkMonitor_ListNameSources(nameSources);
+    if (nameSources.empty()) md += "- none running\n";
+    for (const auto& source : nameSources) {
+        md += "- " + EscapeMarkdown(SourceInFull(source.name, source.running, source.lastError,
+                                                 source.observations, "observations")) + "\n";
+    }
+    for (const auto& note : nameNotes_) if (!IsEventNote(note)) md += "- " + EscapeMarkdown(note) + "\n";
+
+    md += "\n**Event sources**\n\n";
+    std::vector<EventSourceStatus> eventSources;
+    NetworkMonitor_ListEventSources(eventSources);
+    if (eventSources.empty()) md += "- none running\n";
+    for (const auto& source : eventSources) {
+        md += "- " + EscapeMarkdown(SourceInFull(source.name, source.running, source.lastError,
+                                                 source.events, "events")) + "\n";
+    }
+    for (const auto& note : nameNotes_) if (IsEventNote(note)) md += "- " + EscapeMarkdown(note) + "\n";
+
+    md += "\n**Activity store**\n\n";
+    {
+        std::lock_guard<std::mutex> lock(storeMutex_);
+        if (store_ != NetworkMonitorInvalidStore) {
+            md += "- " + EscapeMarkdown(storePath_) + "\n";
+        } else if (!storeError_.empty()) {
+            md += "- not open: " + EscapeMarkdown(storeError_) + "\n";
+        } else {
+            const std::string path = storePath_.empty() ? DefaultStorePath() : storePath_;
+            md += path.empty() ? "- no per-user data directory on this system\n"
+                               : "- " + EscapeMarkdown(path) + " (opened on first use)\n";
+        }
+        if (recording_.load()) {
+            md += "- recording: " + std::to_string(recordedSnapshots_.load()) + " snapshots, " +
+                  std::to_string(recordedObservations_.load()) + " DNS observations, " +
+                  std::to_string(recordedEvents_.load()) + " events\n";
+            if (!recordError_.empty()) md += "- recording failed: " + EscapeMarkdown(recordError_) + "\n";
+        } else {
+            md += "- not recording\n";
+        }
+    }
+    return md;
 }
 
 // ===== NAMES =====
-
-std::string UltraNetMonitorWindow::NameSourcesSummary() const {
-    std::vector<NameSourceStatus> sources;
-    NetworkMonitor_ListNameSources(sources);
-    if (sources.empty()) return "no sources";
-    std::string text;
-    for (const auto& source : sources) {
-        if (!text.empty()) text += ", ";
-        text += source.name;
-        if (!source.running) text += " (stopped)";
-        else if (!source.lastError.empty()) text += " (failed)";
-    }
-    return text;
-}
 
 void UltraNetMonitorWindow::RefreshNames() {
     std::vector<NameRecord> records;
@@ -654,33 +785,33 @@ void UltraNetMonitorWindow::RefreshNames() {
     for (const auto& record : records) if (NetworkMonitor_NameIsObserved(record.source)) ++observed;
     nameModel_->Replace(std::move(records));
 
+    // The line counts; the tooltip and Info… carry the errors and the notes.
     std::string text = std::to_string(count) + " addresses named, " + std::to_string(observed) +
                        " from observed queries";
+    std::string detail;
+    bool trouble = false;
     std::vector<NameSourceStatus> sources;
     NetworkMonitor_ListNameSources(sources);
     for (const auto& source : sources) {
-        text += " · " + source.name + ": " + std::to_string(source.observations) + " observations";
-        if (!source.lastError.empty()) text += " - " + source.lastError;
+        text += " · " + SourceOnLine(source.name, source.running, source.lastError,
+                                     source.observations, "observations", "failed");
+        detail += (detail.empty() ? "" : "\n") +
+                  SourceInFull(source.name, source.running, source.lastError, source.observations, "observations");
+        if (!source.running || !source.lastError.empty()) trouble = true;
     }
-    for (const auto& note : nameNotes_) text += " · " + note;
-    if (namesStatus_) namesStatus_->SetText(text);
+    for (const auto& note : nameNotes_) {
+        if (IsEventNote(note)) continue;
+        detail += (detail.empty() ? "" : "\n") + note;
+        trouble = true;
+    }
+    if (trouble) text += " · details under Info…";
+    if (namesStatus_) {
+        namesStatus_->SetText(text);
+        namesStatus_->SetTooltip(detail);
+    }
 }
 
 // ===== EVENTS =====
-
-std::string UltraNetMonitorWindow::EventSourcesSummary() const {
-    std::vector<EventSourceStatus> sources;
-    NetworkMonitor_ListEventSources(sources);
-    if (sources.empty()) return "no sources";
-    std::string text;
-    for (const auto& source : sources) {
-        if (!text.empty()) text += ", ";
-        text += source.name;
-        if (!source.running) text += " (stopped)";
-        else if (!source.lastError.empty()) text += " (idle)";
-    }
-    return text;
-}
 
 void UltraNetMonitorWindow::ToggleEventsRecorded() {
     eventsRecorded_ = !eventsRecorded_;
@@ -719,19 +850,27 @@ void UltraNetMonitorWindow::RefreshEvents() {
         text = std::to_string(events.size()) + " recent events (newest " + std::to_string(kEventsShown) + " kept)";
     }
     eventModel_->Replace(std::move(events));
+    // The line counts; the tooltip and Info… carry the errors and the notes.
+    std::string detail;
+    bool trouble = false;
     std::vector<EventSourceStatus> sources;
     NetworkMonitor_ListEventSources(sources);
     for (const auto& source : sources) {
-        text += " · " + source.name + ": " + std::to_string(source.events) + " events";
-        if (!source.lastError.empty()) text += " - " + source.lastError;
+        text += " · " + SourceOnLine(source.name, source.running, source.lastError, source.events, "events", "idle");
+        detail += (detail.empty() ? "" : "\n") +
+                  SourceInFull(source.name, source.running, source.lastError, source.events, "events");
+        if (!source.running || !source.lastError.empty()) trouble = true;
     }
     for (const auto& note : nameNotes_) {
-        if (note.rfind("Events", 0) == 0 || note.find("conntrack") != std::string::npos ||
-            note.find("kernel network") != std::string::npos) {
-            text += " · " + note;
-        }
+        if (!IsEventNote(note)) continue;
+        detail += (detail.empty() ? "" : "\n") + note;
+        trouble = true;
     }
-    if (eventsStatus_) eventsStatus_->SetText(text);
+    if (trouble) text += " · details under Info…";
+    if (eventsStatus_) {
+        eventsStatus_->SetText(text);
+        eventsStatus_->SetTooltip(detail);
+    }
 }
 
 void UltraNetMonitorWindow::SetPaused(bool paused) {

@@ -12,7 +12,7 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.11.0
+// Version: 0.12.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -578,6 +578,9 @@ private:
     const AVCodec* vcodec = nullptr;
     const AVCodec* acodec = nullptr;
     CodecContextPtr venc, aenc;
+    BufferRefPtr hwDevice, hwFrames;               // VA-API: the device and its frame pool
+    AVPixelFormat hwFormat = AV_PIX_FMT_NONE;      // the encoder's graphics-memory format, if any
+    FramePtr hwFrame;                              // a frame uploaded to it
     AVStream* vst = nullptr;
     AVStream* ast = nullptr;
     int width = 0, height = 0;
@@ -865,11 +868,23 @@ VideoFXResult Exporter::PlanOutput() {
         if (settings.videoCodec == VideoFXVideoCodec::Auto) candidates = DefaultVideoCodecs(muxer);
         else candidates = {settings.videoCodec};
         for (VideoFXVideoCodec c : candidates) {
-            if ((vcodec = FindVideoEncoder(c))) break;
+            if ((vcodec = FindVideoEncoder(c, settings.acceleration))) break;
         }
-        if (!vcodec)
+        if (!vcodec) {
+            const VideoFXAcceleration a = settings.acceleration;
+            if (a == VideoFXAcceleration::Auto || a == VideoFXAcceleration::Hardware)
+                return Fail(VideoFXResult::EncoderNotAvailable,
+                            std::string("No ") + VideoCodecName(candidates.front()) + " encoder in this build");
+            // Say whether FFmpeg lacks it or the machine cannot run it
+            std::string built;
+            for (const EncoderCandidate& e : VideoEncoderCandidates(candidates.front()))
+                if (e.kind == a && avcodec_find_encoder_by_name(e.name)) built = e.name;
+            const std::string what = std::string(VideoFX_AccelerationName(a)) + " " + VideoCodecName(candidates.front());
             return Fail(VideoFXResult::EncoderNotAvailable,
-                        std::string("No ") + VideoCodecName(candidates.front()) + " encoder in this build");
+                        built.empty() ? "No " + what + " encoder in this FFmpeg build"
+                                      : "The " + what + " encoder (" + built + ") does not work on this machine: "
+                                        "no such graphics hardware or driver");
+        }
         if (avformat_query_codec(ofmt, vcodec->id, FF_COMPLIANCE_NORMAL) == 0)
             return Fail(VideoFXResult::UnsupportedFormat,
                         std::string(vcodec->name) + " cannot be stored in " + muxer);
@@ -947,17 +962,34 @@ VideoFXResult Exporter::OpenVideoEncoder() {
                 if (*p == preferred) { found = true; break; }
             }
             if (!found) {
+                // the first format in system memory - a hardware one only
+                // through the frame pool below
                 pixFmt = fmts[0];
+                for (const AVPixelFormat* p = fmts; *p != AV_PIX_FMT_NONE; ++p) {
+                    const AVPixFmtDescriptor* d = av_pix_fmt_desc_get(*p);
+                    if (d && !(d->flags & AV_PIX_FMT_FLAG_HWACCEL)) { pixFmt = *p; break; }
+                }
                 for (const AVPixelFormat* p = fmts; *p != AV_PIX_FMT_NONE; ++p) {
                     if (*p == AV_PIX_FMT_YUV420P || *p == AV_PIX_FMT_NV12) { pixFmt = *p; break; }
                 }
             }
         }
+        // VA-API takes frames in graphics memory only: the segments make NV12
+        // and each frame is uploaded before it is encoded
+        if (NeedsHardwareFrames(vcodec, &hwFormat)) pixFmt = AV_PIX_FMT_NV12;
     }
 
     c->width = width;
     c->height = height;
     c->pix_fmt = pixFmt;
+    if (hwFormat != AV_PIX_FMT_NONE) {
+        const int herr = SetUpHardwareFrames(c, hwFormat, hwDevice, hwFrames);
+        if (herr < 0) return Fail(VideoFXResult::EncoderNotAvailable,
+                                  std::string("Cannot open the graphics device for ") + name, herr);
+        c->pix_fmt = hwFormat;
+        hwFrame.reset(av_frame_alloc());
+        if (!hwFrame) return Fail(VideoFXResult::EncodeError, "Out of memory");
+    }
     c->sample_aspect_ratio = AVRational{1, 1};
     c->time_base = av_inv_q(frameRate);
     c->framerate = frameRate;
@@ -1260,6 +1292,15 @@ VideoFXResult Exporter::WritePackets(AVCodecContext* enc, AVStream* st) {
 }
 
 VideoFXResult Exporter::EncodeVideo(AVFrame* frame) {
+    if (frame && hwFrames) {
+        // into graphics memory first (VA-API)
+        av_frame_unref(hwFrame.get());
+        int herr = av_hwframe_get_buffer(hwFrames.get(), hwFrame.get(), 0);
+        if (herr >= 0) herr = av_hwframe_transfer_data(hwFrame.get(), frame, 0);
+        if (herr >= 0) herr = av_frame_copy_props(hwFrame.get(), frame);
+        if (herr < 0) return Fail(VideoFXResult::EncodeError, "Cannot upload a frame to the graphics device", herr);
+        frame = hwFrame.get();
+    }
     int err = avcodec_send_frame(venc.get(), frame);
     if (err < 0 && err != AVERROR_EOF) return Fail(VideoFXResult::EncodeError, "Video encoding failed", err);
     return WritePackets(venc.get(), vst);

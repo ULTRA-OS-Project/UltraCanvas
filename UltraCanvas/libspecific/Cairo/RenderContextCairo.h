@@ -68,7 +68,15 @@ namespace UltraCanvas {
         std::vector<RenderState> stateStack;
         RenderState currentState;
 
+        // Sets the source: a colour with its alpha scaled by the global alpha
+        // (SetAlpha), or a pattern as it is.
         void ApplySource(const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern = nullptr);
+        // A pattern cannot have its alpha scaled, so a fill, stroke or text
+        // painted with one under a global alpha below one goes through a
+        // group, laid down at that alpha by EndAlphaGroup. True when the
+        // group was opened (pass it to EndAlphaGroup); a colour needs none.
+        bool BeginAlphaGroup(const Color& sourceColor, const std::shared_ptr<IPaintPattern>& sourcePattern);
+        void EndAlphaGroup(bool opened);
         void ApplyTextSource() {
             ApplySource(currentState.textSourceColor, currentState.textSourcePattern);
         }

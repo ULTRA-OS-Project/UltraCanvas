@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXUnavailable.cpp
 // Built instead of the FFmpeg sources when FFmpeg is not found: the API links,
 // VideoFX_IsAvailable() says false, and every operation returns NotAvailable.
-// Version: 0.11.0
+// Version: 0.12.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
@@ -36,7 +36,9 @@ std::string VideoFX_GetVersion() { return VIDEOFX_VERSION_STRING; }
 std::string VideoFX_GetBackendVersion() { return "unavailable"; }
 bool VideoFX_IsAvailable() { return false; }
 std::string VideoFX_GetLastError() { return projectError.empty() ? kReason : projectError; }
-bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec) { return false; }
+bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec, VideoFXAcceleration) { return false; }
+std::vector<VideoFXEncoderInfo> VideoFX_ListVideoEncoders(VideoFXVideoCodec) { return {}; }
+std::string VideoFX_ChooseVideoEncoder(VideoFXVideoCodec, VideoFXAcceleration) { return ""; }
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec) { return false; }
 bool VideoFX_IsTextOverlayAvailable() { return false; }
 bool VideoFX_SetDefaultFontPath(const std::string& path) { return path.empty(); }

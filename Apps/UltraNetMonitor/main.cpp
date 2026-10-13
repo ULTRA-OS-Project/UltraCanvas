@@ -22,9 +22,6 @@
 // One window per user: a second start brings the running one forward and
 // quits (UltraCanvasSingleInstance.h). The headless modes are not windows
 // and run alongside it.
-// Version: 0.11.0 - one UltraNetMonitor per user: a second start brings the
-//                   first one's window forward instead of opening another copy
-// Version: 0.10.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 // Before the window header: on Linux that one reaches X11, whose `None`

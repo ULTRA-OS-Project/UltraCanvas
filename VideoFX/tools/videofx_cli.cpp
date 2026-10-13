@@ -10,6 +10,7 @@
 //   videofx project <project.vfxproj>    what a project holds, and which of its media are missing
 //   videofx proxy <clip>... | <project.vfxproj>   make proxies (small stand-ins for editing)
 //   videofx proxy --clear                delete every proxy in the cache folder
+//   videofx encoders [codec]             every encoder of this build, and whether it works here
 //   videofx frame <file> <seconds> <out.png|out.jpg> [maxWidth maxHeight]
 //   videofx preview <project.vfxproj> <seconds> <out.png|out.jpg> [maxWidth maxHeight]   the project's frame at that time
 //   videofx transcode <in> <out> [options]
@@ -52,17 +53,21 @@
 //          rectcrop radial pixelize blur distance diagtl diagtr diagbl diagbr
 //          squeezeh squeezev
 //          --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none
+//          --hw auto|software|hardware|nvenc|qsv|vaapi|amf|videotoolbox|mf
+//                                        which encoder: hardware = any that works here,
+//                                        else software; a named one fails if it does not
 //          --acodec aac|mp3|opus|vorbis|flac|pcm|none
 // effects: brightness=v contrast=v saturation=v gamma=v exposure=v hue=deg
 //          temperature=v grayscale sepia invert blur=r sharpen=v denoise=v
 //          vignette=v rotate90 rotate180 rotate270 rotate=deg hflip vflip
 //          crop=x:y:w:h fadein=s fadeout=s volume=g normalize[=lufs] lut=path
-// Version: 0.11.0
+// Version: 0.12.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include <VideoFX/VideoFX.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <iomanip>
@@ -111,6 +116,7 @@ int Usage() {
         "       videofx project <project.vfxproj>\n"
         "       videofx proxy <clip>... | <project.vfxproj> [--proxy-height N] [--proxy-dir DIR]\n"
         "       videofx proxy --clear [--proxy-dir DIR]\n"
+        "       videofx encoders [h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif]\n"
         "       videofx frame <file> <seconds> <out.png|out.jpg> [maxWidth maxHeight]\n"
         "       videofx transcode <in> <out> [options]\n"
         "       videofx trim <in> <out> <start> <end> [--lossless] [options]\n"
@@ -128,6 +134,7 @@ int Usage() {
         "         [--duck-preset speech|outdoor|loud]\n"
         "         [--duck-threshold DB] [--duck-attack S] [--duck-hold S] [--duck-release S]\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
+        "         --hw auto|software|hardware|nvenc|qsv|vaapi|amf|videotoolbox|mf\n"
         "         --acodec aac|mp3|opus|vorbis|flac|pcm|none\n";
     return 2;
 }
@@ -152,6 +159,17 @@ bool ParseVideoCodec(const std::string& s, VideoFXVideoCodec& c) {
         {"prores", VideoFXVideoCodec::ProRes}, {"ffv1", VideoFXVideoCodec::FFV1}, {"gif", VideoFXVideoCodec::GIF},
         {"none", VideoFXVideoCodec::Disabled}};
     for (const auto& n : names) if (s == n.first) { c = n.second; return true; }
+    return false;
+}
+
+bool ParseAcceleration(const std::string& s, VideoFXAcceleration& a) {
+    static const std::pair<const char*, VideoFXAcceleration> names[] = {
+        {"auto", VideoFXAcceleration::Auto}, {"software", VideoFXAcceleration::Software},
+        {"hardware", VideoFXAcceleration::Hardware}, {"nvenc", VideoFXAcceleration::NVENC},
+        {"qsv", VideoFXAcceleration::QuickSync}, {"vaapi", VideoFXAcceleration::VAAPI},
+        {"amf", VideoFXAcceleration::AMF}, {"videotoolbox", VideoFXAcceleration::VideoToolbox},
+        {"mf", VideoFXAcceleration::MediaFoundation}};
+    for (const auto& n : names) if (s == n.first) { a = n.second; return true; }
     return false;
 }
 
@@ -279,6 +297,10 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--speed" && next(v)) speed = NumberOr(v, 1.0);
         else if (a == "--vcodec" && next(v)) { if (!ParseVideoCodec(v, settings.videoCodec)) return false; }
         else if (a == "--acodec" && next(v)) { if (!ParseAudioCodec(v, settings.audioCodec)) return false; }
+        else if (a == "--hw" && next(v)) {
+            if (!ParseAcceleration(v, settings.acceleration)) return false;
+            o.proxy.acceleration = settings.acceleration;
+        }
         else if (a == "--transition" && next(v)) {
             if (!ParseTransition(v, o.transition)) return false;
             o.transitionGiven = true;
@@ -574,6 +596,23 @@ int Proxy(const std::vector<std::string>& args, const Options& o) {
     return failures ? 1 : 0;
 }
 
+// The encoders of this build, software and hardware, and which work here
+int Encoders(const std::vector<std::string>& args) {
+    VideoFXVideoCodec codec = VideoFXVideoCodec::Auto;
+    if (args.size() > 1 || (args.size() == 1 && !ParseVideoCodec(args[0], codec))) return Usage();
+    const std::vector<VideoFXEncoderInfo> list = VideoFX_ListVideoEncoders(codec);
+    for (const VideoFXEncoderInfo& e : list) {
+        std::cout << "  " << e.name << std::string(e.name.size() < 22 ? 22 - e.name.size() : 1, ' ')
+                  << VideoFX_AccelerationName(e.acceleration)
+                  << std::string(std::max<int>(1, 18 - static_cast<int>(std::string(VideoFX_AccelerationName(e.acceleration)).size())), ' ')
+                  << (e.works ? "works here" : "not on this machine") << "\n";
+    }
+    if (list.empty()) std::cout << "  (no encoders)\n";
+    std::cout << "--hw hardware picks for H.264: "
+              << VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware) << "\n";
+    return 0;
+}
+
 int ShowProject(const std::string& path) {
     VideoFXProject p;
     std::vector<std::string> missing;
@@ -647,6 +686,7 @@ int main(int argc, char** argv) {
     if (cmd == "waveform" && !args.empty() && args.size() <= 4) return Waveform(args);
     if (cmd == "preview" && (args.size() == 3 || args.size() == 5)) return Preview(args, options);
     if (cmd == "proxy") return Proxy(args, options);
+    if (cmd == "encoders") return Encoders(args);
     if (cmd == "project" && args.size() == 1) return ShowProject(args[0]);
     if (cmd == "render" && (args.size() == 1 || args.size() == 2)) {
         VideoFXProject p;

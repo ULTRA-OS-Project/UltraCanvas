@@ -92,11 +92,17 @@ namespace UltraCanvas {
                                                      int edge) {
             if (file.empty()) return nullptr;
             if (HasIconResourceExtension(file)) {
-                if (auto pixmap = LoadIconResource(file, 0, edge)) return pixmap;
+                // The reader answers with the embedded frame NEAREST the
+                // size, which can be the larger one: held at the size it is
+                // drawn, like every backend's answer.
+                if (auto pixmap = LoadIconResource(file, 0, edge))
+                    return FitHostIconToSize(pixmap, edge);
             }
             auto image = UCImage::Get(file);
             if (!image || image->GetWidth() <= 0 || image->GetHeight() <= 0)
                 return nullptr;
+            // Rasterized (an SVG) or scaled (a PNG) to the size asked for by
+            // the image pipeline itself, so this one is already at size.
             return image->GetPixmap(edge, edge, ImageFitMode::Contain, 1.0f);
         }
 

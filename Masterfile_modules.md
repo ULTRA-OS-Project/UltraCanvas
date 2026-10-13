@@ -400,8 +400,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Image / Other / Error, final URL, base, charset, the parsed `Document`,
   warnings), `Cancel`, `GetResource(href)` for the builder's `resourceLoader`
   (cached, fetched on demand, `onResourcesArrived`), `Resolve`, and the static
-  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`; `LoadPost` for a form's
-  POST. Fetch, POST, URL resolution and charset conversion are services the
+  `DetectCharset`, `RewriteCssUrls`, `DecodeDataUrl`, `DownloadFileName`;
+  `LoadPost` for a form's POST; a non-page answer keeps its bytes and file
+  name for the host to save. Fetch, POST, URL resolution and charset conversion are services the
   caller passes in, so it is framework-independent; linked style sheets and
   their `@import`s load before a page is ready;
   mixed-content and file rules; 16 MB / 32 sheets / 512 resources a page.
@@ -2130,11 +2131,12 @@ to the project, missing media reported), waveforms (loudness envelopes
 for timelines and players), a preview (any frame of a timeline rendered
 as the export would make it, for an editor's viewer), proxy media (small
 stand-ins for large clips, made once into a cache folder and switched in
-for previews and drafts),
+for previews and drafts), hardware encoders by choice (software, any that
+works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media
+Foundation, each tried on the machine before it is used),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: keyframed parameters,
-several free audio tracks, hardware encoders beyond the platform ones picked
-automatically (VideoToolbox, Media Foundation).
+several free audio tracks.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
@@ -2147,7 +2149,8 @@ automatically (VideoToolbox, Media Foundation).
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
   `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
-  `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`
+  `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
+  `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
   (`VideoFXExportSettings::keyframeInterval`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
@@ -2174,6 +2177,9 @@ automatically (VideoToolbox, Media Foundation).
 - Proxy media: `VideoFX_GetDefaultProxyDirectory`, `VideoFX_ProxyPath`,
   `VideoFX_HasProxy`, `VideoFX_CreateProxy`, `VideoFX_CreateProxies`,
   `VideoFX_UseProxies`, `VideoFX_ClearProxies`
+- Encoders: `VideoFX_IsVideoEncoderAvailable(codec, acceleration)`,
+  `VideoFX_ListVideoEncoders`, `VideoFX_ChooseVideoEncoder`,
+  `VideoFX_AccelerationName`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
@@ -2193,6 +2199,8 @@ automatically (VideoToolbox, Media Foundation).
   TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
+  FindVideoEncoder, VideoEncoderCandidates, AccelerationOfEncoder,
+  EncoderWorks, NeedsHardwareFrames, SetUpHardwareFrames,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
   MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
