@@ -8,8 +8,8 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
-// Version: 0.4.0
-// Last Modified: 2026-10-13
+// Version: 0.5.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -73,7 +73,8 @@ private:
     void ApplyPalette();
 
     // the document
-    void Edit(const std::string& label, const std::function<void(Document&)>& edit);
+    // `mergeKey`: a slider being dragged, whose edits fold into one undo step
+    void Edit(const std::string& label, const std::function<void(Document&)>& edit, const std::string& mergeKey = "");
     void RefreshAll();                 // after any change of the document
     void RefreshAppBar();
     void RefreshBin();

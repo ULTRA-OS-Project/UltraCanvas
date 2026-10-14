@@ -115,7 +115,10 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
     binPane->AddChild(BuildMediaBin());
     viewerPane_->AddChild(viewer_.Build(*palette_));
     inspectorTabs_ = inspector_.Build(*palette_);
-    inspector_.onEdit = [this](const std::string& label, std::function<void(Document&)> edit) { Edit(label, edit); };
+    inspector_.onEdit = [this](const std::string& label, std::function<void(Document&)> edit, const std::string& mergeKey) {
+        Edit(label, edit, mergeKey);
+    };
+    inspector_.onEditEnd = [this]() { history_.EndMerge(); };
     inspector_.onAddMusic = [this]() { ImportMedia(); };
     inspector_.onUseProxies = [this](bool on) { SetUseProxies(on); };
     proxies_.onDone = [this](const std::string& clip, ProxyMaker::State state) { ProxyDone(clip, state); };
@@ -732,10 +735,11 @@ void UltraVideoWindow::ApplyPalette() {
 // ============================================================================
 // the document
 // ============================================================================
-void UltraVideoWindow::Edit(const std::string& label, const std::function<void(Document&)>& edit) {
+void UltraVideoWindow::Edit(const std::string& label, const std::function<void(Document&)>& edit,
+                            const std::string& mergeKey) {
     Document before = document_;
     edit(document_);
-    history_.Push(label, before, document_);
+    history_.Push(label, before, document_, mergeKey);
     InvalidateDraft();
     RefreshAll();
 }

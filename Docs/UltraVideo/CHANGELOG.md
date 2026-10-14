@@ -11,6 +11,21 @@
   - This needs VideoFX 0.14.0 (`VideoFXOverlay::effects`).
   - (`EffectTarget`, `Document::EffectsOf`, `ApplyEffectPreset` and
     `SetEffectAmount` taking a target; tested in `UltraVideoDocumentTest`.)
+- **A slider's drag is one undo step.** Before, every value a slider in
+  the inspector passed through while it was dragged was an undo step of
+  its own, so undoing a volume change could take dozens of steps. Now the
+  whole drag is one step, and the viewer still follows it as it moves.
+  - This covers every slider in the inspector: the clip's speed and its
+    effects' strengths, a title's size and fades, an overlay's size,
+    opacity and fades, a sound clip's volume and fades, and the music's
+    volume, fades, crossfade and ducking level.
+  - A key press on a slider is a step of its own.
+  - So is a second drag of the same slider, and any edit after a save,
+    an undo or a redo.
+  - (`History::Push` with a merge key and `History::EndMerge`, wired to
+    every inspector slider in one place, `Inspector::MergeSliderDrags`.
+    Tested in `UltraVideoDocumentTest`, which now builds an inspector
+    without a display and drags its music-volume slider.)
 - **Blurs in the preview over proxies look as they will in the export.**
   VideoFX 0.14.0 scales a blur's radius to the proxy's picture. Before, on
   a proxy half as tall, *Strong blur* looked twice as strong in the viewer

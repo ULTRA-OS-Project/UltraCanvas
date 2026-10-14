@@ -9,7 +9,9 @@
 // music: the songs, volume, fades, crossfade, loop, ducking. Project - name,
 // size, frame rate, fit. Every field reports an edit as a closure over the
 // document; the window applies it through the undo history and shows the
-// document again, so the inspector never writes the document itself.
+// document again, so the inspector never writes the document itself. A
+// slider's edits while it is dragged carry its id as the merge key, so a
+// whole drag is one undo step; its release ends the step (onEditEnd).
 // Version: 0.5.0
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
@@ -47,7 +49,8 @@ public:
     void ShowAudioTab();
 
     // An edit of the document, named for the history
-    std::function<void(const std::string& label, std::function<void(Document&)> edit)> onEdit;
+    std::function<void(const std::string& label, std::function<void(Document&)> edit, const std::string& mergeKey)> onEdit;
+    std::function<void()> onEditEnd;       // a slider let go: its drag's undo step is complete
     std::function<void()> onAddMusic;      // the Audio tab's Add song: a file dialog, the window's
     // The Project tab's "Preview from proxies": a view setting, not an edit
     // (no undo step), the window's to apply
@@ -68,6 +71,9 @@ private:
     void Edit(const std::string& label, std::function<void(Document&)> edit);
     void StyleControls(const Palette& palette);
     EffectTarget Target() const;    // whose effects the rows edit: the segment, else the overlay clip
+    // Every slider's edits as one undo step per drag (or per key press)
+    void MergeSliderDrags();
+    std::string dragKey;            // the slider whose edit is being made, "" for any other field
 
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs;
     std::shared_ptr<Container> clipPage, audioPage, projectPage;

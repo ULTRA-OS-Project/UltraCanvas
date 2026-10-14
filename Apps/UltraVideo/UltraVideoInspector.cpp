@@ -116,7 +116,37 @@ std::shared_ptr<UltraCanvasContainer> Inspector::Row(const std::shared_ptr<Conta
 
 void Inspector::Edit(const std::string& label, std::function<void(Document&)> edit) {
     if (updating) return;
-    if (onEdit) onEdit(label, std::move(edit));
+    if (onEdit) onEdit(label, std::move(edit), dragKey);
+}
+
+// A slider passes every value of a drag to onValueChanging and the one it
+// settles on to onValueChanged at the release (or a key press's value
+// alone). Both run the slider's own handler, under its id as the merge key;
+// the release, with or without a last value, closes the step.
+void Inspector::MergeSliderDrags() {
+    for (const std::shared_ptr<Slider>& s : sliders) {
+        const std::function<void(float)> changed = s->onValueChanged;
+        if (!changed) continue;
+        const std::string key = "slider:" + s->GetIdentifier();
+        s->onValueChanging = [this, changed, key](float v) {
+            if (updating) return;
+            dragKey = key;
+            changed(v);
+            dragKey.clear();
+        };
+        s->onValueChanged = [this, changed, key](float v) {
+            if (updating) return;
+            dragKey = key;
+            changed(v);
+            dragKey.clear();
+            if (onEditEnd) onEditEnd();
+        };
+        const std::function<void(const UCEvent&)> released = s->onRelease;
+        s->onRelease = [this, released](const UCEvent& e) {
+            if (released) released(e);
+            if (onEditEnd) onEditEnd();      // a drag back to where it began reports no value
+        };
+    }
 }
 
 std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
@@ -742,6 +772,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     projectPage->AddChild(useProxies);
     tabs->AddTab("Project", projectPage);
 
+    MergeSliderDrags();
     ApplyPalette(p);
     return tabs;
 }

@@ -3,14 +3,17 @@
 // media the engine probes, segments from media, the timeline model derived
 // from the document, every reported change written back, undo and redo, and
 // the .ultravideo file round trip with relative media paths and missing
-// media reported; the title, overlay and voice-and-sound lanes; the effect
-// presets and their strength, on main-track clips and overlay clips. Needs the VideoFX engine (FFmpeg) for the probes and the
-// clips it generates; without it the suite skips itself.
+// media reported; undo, with a slider's drag in the inspector as one step;
+// the title, overlay and voice-and-sound lanes; the effect presets and their
+// strength, on main-track clips and overlay clips. Needs the VideoFX engine
+// (FFmpeg) for the probes and the clips it generates; without it the suite
+// skips itself.
 // Version: 0.5.0
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoHistory.h"
+#include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
 #include "UltraVideoProxies.h"
 
@@ -759,6 +762,79 @@ int main() {
     history.Redo(doc);
     history.Push("Another", doc, doc);
     CHECK(!history.CanRedo(), "a new edit drops the redo branch");
+
+    // a slider's drag: its edits fold into one step
+    {
+        History drag;
+        Document d;
+        d.project.settings.music.volume = 1.0;
+        auto step = [&](double v, const std::string& key) {
+            Document was = d;
+            d.project.settings.music.volume = v;
+            drag.Push("Set music volume", was, d, key);
+        };
+        step(0.9, "slider:vol");
+        step(0.7, "slider:vol");
+        step(0.5, "slider:vol");
+        CHECK(drag.CanUndo() && drag.UndoLabel() == "Set music volume", "a drag is one step");
+        CHECK(drag.Undo(d) && Near(d.project.settings.music.volume, 1.0, 1e-9) && !drag.CanUndo(), "undone at once, back to where it began");
+        CHECK(drag.Redo(d) && Near(d.project.settings.music.volume, 0.5, 1e-9), "redone to where it ended");
+        step(0.4, "slider:vol");
+        CHECK(drag.Undo(d) && Near(d.project.settings.music.volume, 0.5, 1e-9) && drag.CanUndo(), "after an undo or redo the next drag is a step of its own");
+        drag.Redo(d);
+        drag.EndMerge();
+        step(0.3, "slider:vol");
+        CHECK(drag.Undo(d) && Near(d.project.settings.music.volume, 0.4, 1e-9), "a release ends the step: the next drag of the same slider is its own");
+        drag.Redo(d);
+        step(0.2, "slider:fade");
+        step(0.1, "slider:vol");
+        CHECK(drag.Undo(d) && Near(d.project.settings.music.volume, 0.2, 1e-9), "another slider's edit is its own step");
+        drag.Redo(d);
+        drag.MarkClean();
+        step(0.05, "slider:vol");
+        CHECK(!drag.IsClean() && drag.Undo(d) && drag.IsClean() && Near(d.project.settings.music.volume, 0.1, 1e-9),
+              "an edit after a save never folds into the saved step");
+        drag.Redo(d);
+        step(0.6, "");
+        step(0.65, "");
+        CHECK(drag.Undo(d) && Near(d.project.settings.music.volume, 0.6, 1e-9), "edits without a key stay one step each");
+    }
+
+    // the inspector's sliders: a drag's values under the slider's own key, the release closing the step
+    {
+        Inspector inspector;
+        auto tabs = inspector.Build(PaletteFor(true));
+        Document shown;
+        shown.Import(song);
+        shown.AppendMedia(*shown.FindMedia(song));                // the music
+        inspector.Show(shown, -1);
+        std::vector<std::string> keys;
+        int ends = 0;
+        Document edited = shown;
+        inspector.onEdit = [&](const std::string&, std::function<void(Document&)> e, const std::string& key) {
+            e(edited);
+            keys.push_back(key);
+        };
+        inspector.onEditEnd = [&]() { ++ends; };
+        UltraCanvasSlider* volume = nullptr;
+        for (int t = 0; t < tabs->GetTabCount() && !volume; ++t)
+            if (auto page = std::dynamic_pointer_cast<UltraCanvasContainer>(tabs->GetTabContent(t)))
+                volume = dynamic_cast<UltraCanvasSlider*>(page->FindChildById("uv.insp.musicVolume"));
+        CHECK(volume && volume->onValueChanging && volume->onValueChanged && volume->onRelease, "the music volume slider, wired for drags");
+        if (volume) {
+            volume->onValueChanging(0.9f);
+            volume->onValueChanging(0.7f);
+            CHECK(keys.size() == 2 && keys[0] == "slider:uv.insp.musicVolume" && keys[1] == keys[0] && ends == 0,
+                  "a drag's values carry the slider's key, the step still open");
+            CHECK(Near(edited.project.settings.music.volume, 0.7, 1e-6), "and edit as they go");
+            volume->onValueChanged(0.6f);
+            CHECK(keys.size() == 3 && keys[2] == keys[0] && ends == 1 && Near(edited.project.settings.music.volume, 0.6, 1e-6),
+                  "the value it settles on, then the step closed");
+            UCEvent up;
+            volume->onRelease(up);
+            CHECK(ends == 2, "a release closes it too (a drag back to where it began reports no value)");
+        }
+    }
 
     std::printf("\n-- the file --\n");
     const std::string file = TempPath("trip.ultravideo");
