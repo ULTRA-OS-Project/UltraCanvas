@@ -2,6 +2,9 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.3.0 - Windows: in place of the Windows desktop and back (the
+//                  settings button's menu, --session), no RAM disc button
+//                  without a RAM disc
 // Version: 0.2.0 - the notification toasts (StartNotifications, PlaceNotifications)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -326,8 +329,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
 
     // 1. System: ULTRA OS settings and the app starter.
     auto system = MakeGroup("Taskbar.System", vertical, false);
-    AddBarButton(system, "settings", "ULTRA OS settings", IconPath("ultraos.svg"),
-                 [this]() { OpenSystemSettings(); });
+    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath("ultraos.svg"),
+                                       [this]() { OpenSystemSettings(); });
+    settingsButton->onContextMenu = [this](int x, int y) { ShowSettingsButtonMenu(x, y); };
     AddBarButton(system, "apps", "Applications", IconPath("apps.svg"),
                  [this]() { OpenAppStarter(); });
     bar->AddChild(system);
@@ -343,10 +347,13 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
 
     bar->AddChild(CreateWaveSeparator("Taskbar.Wave2", vertical, kBarInsetColor, kBarColor, kWaveLength));
 
-    // 3. Pinned: the RAM disc and UltraFiler.
+    // 3. Pinned: the RAM disc (when there is one - Windows has none of its
+    // own) and UltraFiler.
     auto pinned = MakeGroup("Taskbar.Pinned", vertical, false);
-    AddBarButton(pinned, "ramdisc", "RAM disc (" + settings_.ramDiscPath + ")", IconPath("ramdisc.svg"),
-                 [this]() { OpenRamDisc(); });
+    if (!settings_.ramDiscPath.empty()) {
+        AddBarButton(pinned, "ramdisc", "RAM disc (" + settings_.ramDiscPath + ")", IconPath("ramdisc.svg"),
+                     [this]() { OpenRamDisc(); });
+    }
     AddBarButton(pinned, "filer", "UltraFiler", IconPath("ultrafiler.svg"),
                  [this]() { OpenFiler(); });
     bar->AddChild(pinned);
@@ -679,6 +686,7 @@ void UltraDesktopWindow::CheckSettingsFile() {
 
 void UltraDesktopWindow::OnTimer() {
     CheckSettingsFile();
+    CheckDesktopSwitch();
     if (windowsDirty_.exchange(false)) {
         RefreshDesktops();
         RefreshWindows();
@@ -958,6 +966,68 @@ void UltraDesktopWindow::ShowWindowMenu(uint64_t windowId, int windowX, int wind
     popupMenu_->AddItem(MenuItemData::Action("Close window", [windowId]() { UltraCanvasDesktopShell::CloseWindow(windowId); }));
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 260, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Action("ULTRA OS settings", [this]() { OpenSystemSettings(); }));
+    // Only Windows has a desktop of its own to switch from, and back to.
+    if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
+        popupMenu_->AddItem(MenuItemData::Separator());
+        if (UltraCanvasDesktopShell::IsSystemDesktopReplaced()) {
+            popupMenu_->AddItem(MenuItemData::Action("Switch back to the Windows desktop",
+                                                     [this]() { SwitchBackToSystemDesktop(); }));
+        } else {
+            popupMenu_->AddItem(MenuItemData::Action("Use as the Windows desktop",
+                                                     [this]() { UseAsSystemDesktop(); }));
+            // A trial run beside the Windows desktop has no title bar to close.
+            popupMenu_->AddItem(MenuItemData::Action("Close UltraDesktop", []() {
+                if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
+            }));
+        }
+    }
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+// ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
+
+void UltraDesktopWindow::UseAsSystemDesktop() {
+    std::string error;
+    if (UltraCanvasDesktopShell::ReplaceSystemDesktop(UltraCanvasDesktopShell::FindProgram("UltraDesktop"),
+                                                      {"--session"}, &error)) {
+        sessionDesktop_ = true;
+        return;
+    }
+    debugOutput << "UltraDesktop: not the desktop at sign-in: " << error << std::endl;
+    UltraCanvasDialogManager::ShowWarning("UltraDesktop could not take the place of the Windows desktop.\n\n" + error,
+                                          "UltraDesktop", nullptr, window_.get());
+}
+
+void UltraDesktopWindow::SwitchBackToSystemDesktop() {
+    std::string error;
+    if (!UltraCanvasDesktopShell::RestoreSystemDesktop(&error)) {
+        debugOutput << "UltraDesktop: the Windows desktop not restored: " << error << std::endl;
+        UltraCanvasDialogManager::ShowWarning("The Windows desktop could not be restored.\n\n" + error,
+                                              "UltraDesktop", nullptr, window_.get());
+        return;
+    }
+    // Explorer's taskbar is back; the desktop it covered is the user's again.
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
+}
+
+void UltraDesktopWindow::CheckDesktopSwitch() {
+    if (!sessionDesktop_) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (now < nextSwitchCheck_) return;
+    nextSwitchCheck_ = now + std::chrono::seconds(1);
+    if (!UltraCanvasDesktopShell::CanReplaceSystemDesktop() || UltraCanvasDesktopShell::IsSystemDesktopReplaced())
+        return;
+    debugOutput << "UltraDesktop: switched back to the Windows desktop elsewhere; closing" << std::endl;
+    sessionDesktop_ = false;
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
 }
 
 void UltraDesktopWindow::ShowClipboardMenu(int windowX, int windowY) {

@@ -1,3 +1,12 @@
+#### 2026-10-13 *0.4.0*
+- **Desktop → At sign-in (Windows): UltraDesktop in place of the Windows
+  desktop.** On switches over at once and for every sign-in after. Off brings
+  the Windows desktop back at once, with the taskbar as it was. A note on the
+  page tells you how to get back when the desktop does not come up. The row
+  only appears on Windows.
+- **Desktop → RAM disc can be emptied.** An empty field now means no RAM disc
+  button, instead of keeping the previous folder.
+
 #### 2026-10-12 *0.3.1*
 - **One UOS-Settings at a time.** Starting UOS-Settings while it is already
   running brings the open window forward (restored if minimised; an open
