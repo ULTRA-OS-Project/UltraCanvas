@@ -1904,8 +1904,27 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
 # LLD does not, so without this every app that links the core (which re-exports
 # the vips libs PUBLIC) fails with "unable to find library -lvips". PUBLIC so the
 # -L rides along with the libraries, matching what the Vectorizer/OCR plugins do.
+# target_link_directories(<target> PUBLIC <dirs>...), build-interface only
+# under Emscripten. There the directories are the wasm sysroot's lib/, which
+# on CI sits inside the checkout (wasm-build.yml keeps it in the workspace),
+# and CMake refuses to generate an exported target whose
+# INTERFACE_LINK_DIRECTORIES holds a path under the source directory
+# ("which is prefixed in the source directory"; run 14 of wasm-build.yml, the
+# first to configure the repository root and so the first with the checkout
+# as the source directory). The installed package has no use for a build
+# machine's sysroot, so the install interface goes without them.
+function(_uc_public_link_directories target)
+    foreach(_uc_dir IN LISTS ARGN)
+        if(EMSCRIPTEN)
+            target_link_directories(${target} PUBLIC $<BUILD_INTERFACE:${_uc_dir}>)
+        else()
+            target_link_directories(${target} PUBLIC ${_uc_dir})
+        endif()
+    endforeach()
+endfunction()
+
 if(ULTRACANVAS_HAS_VIPS)
-    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBVIPS_LIBRARY_DIRS})
+    _uc_public_link_directories(${ULTRACANVAS_LIB_NAME} ${LIBVIPS_LIBRARY_DIRS})
 endif()
 
 # Native folder watching: the define tells the core watcher that this platform
@@ -2138,8 +2157,9 @@ endif()
 # With libvips on, LIBVIPS_LIBRARY_DIRS (PUBLIC, above) happened to carry it for every library;
 # a -DULTRACANVAS_ENABLE_VIPS=OFF build then failed to find pango, cairo, glib and the rest
 # (wasm-build.yml's no-vips variant, 2026-10-13).
+# (Build-interface only under Emscripten: _uc_public_link_directories above.)
 if(WIN32 OR EMSCRIPTEN)
-    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
+    _uc_public_link_directories(${ULTRACANVAS_LIB_NAME}
             ${CAIRO_LIBRARY_DIRS}
             ${PANGO_LIBRARY_DIRS}
             ${FONTCONFIG_LIBRARY_DIRS}
