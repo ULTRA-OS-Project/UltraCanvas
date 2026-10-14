@@ -475,6 +475,39 @@ The control handles various keyboard inputs:
 - **Drag**: Select text range (keeps selecting while the pointer is outside the field)
 - **Click on the clear button / eye button**: Empty the field / toggle the password mask
 
+### Input Method Composition
+
+While an input method (Japanese, Chinese, Korean, dead-key sequences on some
+systems) is composing, the text it has so far is drawn **in the field, at the
+caret, underlined**, with the caret inside it where the input method puts it;
+the horizontal scroll keeps that caret in view. The field says so through
+`DrawsTextComposition()`, and the platform backend then sends it
+`UCEventType::TextComposition` events instead of opening the input method's
+own composition window (on a backend that does not report compositions the
+window is used as before).
+
+- The composition is **not** part of the text: `GetText()`, `onTextChanged`,
+  validation and the undo stack never see it. `GetCompositionText()` returns
+  it (`""` when nothing is being composed).
+- The committed result arrives as ordinary typing (`KeyDown` with `text`), which
+  ends the composition and is inserted like any typed character - length limit,
+  validation and one undo step included.
+- An empty composition ends it without typing anything, and so does losing
+  the focus or turning the field read-only.
+- Starting to compose over a selection deletes the selection, as typing would
+  (that deletion is a normal edit: one undo step, one `onTextChanged`).
+- A **read-only** or **password** field returns `false` from
+  `DrawsTextComposition()`. A password field leaves the composing to the
+  input method's own window: masking the composition would hide what is being
+  converted, and drawing it in the field would show the secret (most platforms
+  switch the input method off for password fields anyway).
+
+```cpp
+auto field = CreateTextInput("Name", 10, 10, 240, 28);
+bool inPlace = field->DrawsTextComposition();          // true: editable
+const std::string& composing = field->GetCompositionText();
+```
+
 ### Event Callbacks
 
 ```cpp
