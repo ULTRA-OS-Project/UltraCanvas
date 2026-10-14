@@ -3563,8 +3563,11 @@ elseif(NOT ULTRACANVAS_PLUGIN_PDF)
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
 endif()
 
-# OCR Plugin
-if(ULTRACANVAS_PLUGIN_OCR)
+# OCR Plugin. It hands libvips images to tesseract (its CMakeLists.txt
+# requires vips), so a core built with ULTRACANVAS_ENABLE_VIPS=OFF skips it.
+if(ULTRACANVAS_PLUGIN_OCR AND NOT ULTRACANVAS_HAS_VIPS)
+    message(STATUS "  [✗] OCR Plugin - DISABLED (needs libvips; ULTRACANVAS_ENABLE_VIPS is OFF)")
+elseif(ULTRACANVAS_PLUGIN_OCR)
     pkg_check_modules(TESSERACT tesseract)
     pkg_check_modules(LEPTONICA lept)
     if(TESSERACT_FOUND AND LEPTONICA_FOUND)
@@ -3585,8 +3588,13 @@ else()
     message(STATUS "  [−] OCR Plugin - SKIPPED (disabled by option)")
 endif()
 
-# Vectorizer Plugin (raster → SVG via VTracer through a Rust shim)
-if(ULTRACANVAS_PLUGIN_VECTORIZER)
+# Vectorizer Plugin (raster → SVG via VTracer through a Rust shim). It loads
+# the raster it traces through PixelFX, which a core built with
+# ULTRACANVAS_ENABLE_VIPS=OFF has not got (the link then fails on
+# PixelFX::PFXImage::FromFile), so such a core skips it.
+if(ULTRACANVAS_PLUGIN_VECTORIZER AND NOT ULTRACANVAS_HAS_VIPS)
+    message(STATUS "  [✗] Vectorizer Plugin - DISABLED (needs libvips; ULTRACANVAS_ENABLE_VIPS is OFF)")
+elseif(ULTRACANVAS_PLUGIN_VECTORIZER)
     find_program(CARGO_EXECUTABLE cargo)
     if(CARGO_EXECUTABLE)
         if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Vectorizer/CMakeLists.txt)
