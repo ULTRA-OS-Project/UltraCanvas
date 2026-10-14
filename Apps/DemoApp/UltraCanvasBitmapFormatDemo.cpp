@@ -23,21 +23,9 @@
 
 namespace UltraCanvas {
 
-// ===== FULL-SIZE VIEWER =====
-    // Every demo page that opens a sample "full size" - bitmaps, vector
-    // drawings, 3D models - comes here, and the file opens in one
-    // UltraCanvasMediaViewerWindow over the window the click came from (the
-    // demo's main window). The arrow keys walk the rest of the sample's
-    // folder; Escape closes it. The instance is allocated once and never
-    // destroyed: its destructor closes a window, which must not run during
-    // static teardown after the windowing system has shut down.
-    void ShowInMediaViewer(const std::string& path) {
-        if (path.empty()) return;
-        static auto* viewerWindow = new UltraCanvasMediaViewerWindow();
-        UltraCanvasWindowBase* host = nullptr;
-        if (auto* app = UltraCanvasApplication::GetInstance()) host = app->GetFocusedWindow();
-        viewerWindow->Show(path, host);
-    }
+// (ShowInMediaViewer, the full-size viewer every sample page opens, is in
+// UltraCanvasMediaViewerExamples.cpp: that file is built in every
+// configuration, this one only with libvips.)
 
 // ===== FORMAT INFO STRUCTURES =====
 

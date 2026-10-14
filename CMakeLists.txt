@@ -815,7 +815,6 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLabelPlacementExamples.cpp
             Apps/DemoApp/UltraCanvasToolbarExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
-            Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
             Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp
             Apps/DemoApp/UltraCanvasPieChartExamples.cpp
             Apps/DemoApp/UltraCanvasSunburstChartExamples.cpp
@@ -859,11 +858,14 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasSTLExamples.cpp
     )
 
-    # These files depend on libvips
+    # These files depend on libvips (the performance page benchmarks its
+    # codecs through vips::VImage directly; without libvips the no-vips
+    # WebAssembly variant failed to compile it).
     if(LIBVIPS_FOUND)
         list(APPEND DEMO_SOURCES
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
             Apps/DemoApp/UltraCanvasPixelFXExamples.cpp
+            Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
         )
     endif()
 

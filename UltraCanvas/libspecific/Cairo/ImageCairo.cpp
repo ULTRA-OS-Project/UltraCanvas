@@ -3,12 +3,13 @@
 // Version: 2.6.0 - ICO and QOI written by the framework's own libvips savers
 //                  (VipsIcoPlugin, VipsQoiLoader), registered with the loaders;
 //                  no ImageMagick for either
+// Version: 2.6.0 - ...and so is one that arrives as bytes (LoadFromMemory sniffs the SVG)
 // Version: 2.5.0 - An SVG libvips cannot load is read through the vector preview seam
 //                 and rendered by the core's vector renderer (the WebAssembly build)
 // Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
 //                  drops it; RemoveFromCache releases libvips' cached operations
 //                  too; pixmap keys carry the source stamp
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -359,8 +360,23 @@ namespace UltraCanvas {
 #endif
     }
 
-    bool UCImageRaster::LoadVectorDocument(const std::string& imagePath) {
-        auto document = LoadVectorPreviewDocument(imagePath);
+    namespace {
+        // Bytes that are an SVG document: optional BOM and whitespace, then an
+        // XML declaration, a DOCTYPE, a comment or the <svg> element itself,
+        // with "<svg" somewhere in the first kilobyte. Gzip-compressed SVG
+        // (.svgz) is not sniffed: from memory nothing inflates it.
+        bool LooksLikeSvg(const uint8_t* data, size_t size) {
+            if (!data || size < 5) return false;
+            size_t i = 0;
+            if (size >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) i = 3;
+            while (i < size && (data[i] == ' ' || data[i] == '\t' || data[i] == '\r' || data[i] == '\n')) ++i;
+            if (i >= size || data[i] != '<') return false;
+            const std::string head(reinterpret_cast<const char*>(data + i), std::min<size_t>(size - i, 1024));
+            return head.find("<svg") != std::string::npos;
+        }
+    }
+
+    bool UCImageRaster::AdoptVectorDocument(std::shared_ptr<VectorStorage::VectorDocument> document) {
         if (!document) return false;
         // The natural size: what the drawing asks to be drawn at, else what
         // it paints - the same answer RenderVectorDocumentPixmap fits to.
@@ -377,6 +393,22 @@ namespace UltraCanvas {
         height = std::max(1, static_cast<int>(std::lround(dh)));
         transparency = 1;        // a drawing shows what is behind it
         errorMessage.clear();
+        return true;
+    }
+
+    bool UCImageRaster::LoadVectorDocument(const std::string& imagePath) {
+        return AdoptVectorDocument(LoadVectorPreviewDocument(imagePath));
+    }
+
+    bool UCImageRaster::LoadVectorDocumentFromMemory(const uint8_t* data, size_t size) {
+        if (!LooksLikeSvg(data, size)) return false;
+        if (!AdoptVectorDocument(LoadVectorPreviewDocumentFromMemory("svg", data, size))) return false;
+        // The document is the image now; the bytes a decoder would have
+        // read are not needed.
+        if (imgDataPtr && ownData) free(imgDataPtr);
+        imgDataPtr = nullptr;
+        ownData = false;
+        imgDataSize = 0;
         return true;
     }
 
@@ -572,6 +604,12 @@ namespace UltraCanvas {
             result->errorMessage = "Invalid data: null pointer or zero size";
             return result;
         }
+        // An SVG that came as bytes, in a build whose libvips cannot
+        // rasterize SVG: the vector preview seam, as Load() does for a file.
+        const bool svg = LooksLikeSvg(data, dataSize);
+        if (svg && !PipelineHasSvgLoader() && result->LoadVectorDocumentFromMemory(data, dataSize)) {
+            return result;
+        }
 
         try {
             // Copy the buffer: the raster outlives the call (pixmap creation,
@@ -592,6 +630,10 @@ namespace UltraCanvas {
             result->height = vipsImage.height();
             result->ReadAnimationMetadata(vipsImage);
         } catch (vips::VError& err) {
+            // The loader refused the bytes: the plugin's reader may not.
+            if (svg && result->LoadVectorDocumentFromMemory(data, dataSize)) {
+                return result;
+            }
             debugOutput << "UCImageVips::LoadFromMemory: Failed to load image from buffer. Err:" << err.what() << std::endl;
             result->errorMessage = std::string("Failed to load image from memory buffer. Err:") + err.what();
         }
@@ -641,6 +683,9 @@ namespace UltraCanvas {
         std::memcpy(result->imgDataPtr, data, dataSize);
         result->imgDataSize = dataSize;
         result->ownData = true;
+        if (result->LoadVectorDocumentFromMemory(data, dataSize)) {
+            return result;
+        }
         result->errorMessage = "Image loading not yet implemented (no libvips)";
         return result;
     }

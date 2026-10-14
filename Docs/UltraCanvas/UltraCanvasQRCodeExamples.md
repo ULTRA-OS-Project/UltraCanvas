@@ -393,6 +393,8 @@ UltraCanvasFileLoader::SaveFileDialog(opts, [qr](DialogResult result, const std:
 });
 ```
 
+Writing the raster file goes through libvips, so in a build without it (the no-vips wasm variant, for one) `ExportToImage` fails with an error naming libvips and `ExportToSVG` is the way to save a QR code to disk.
+
 ### 9. Generating Without a Widget
 
 `QRCodeUtils::GenerateQRCode` returns a `QRCodeData` matrix directly — handy for headless generation or custom rendering. Inspect `valid`, `version`, `size`, and read individual modules with `IsDark`.
@@ -413,7 +415,7 @@ if (data.valid) {
 
 ### 10. Decoding an Image
 
-When a decoder backend is built in, `ScanQRCodeFile` returns every QR code found in an image. Always gate on `IsDecoderAvailable()` first.
+When a decoder backend is built in, `ScanQRCodeFile` returns every QR code found in an image. Always gate on `IsDecoderAvailable()` first. Reading the image file also needs libvips; a build without it reports an error naming libvips, and `ScanQRCodeImage` on pixels you decoded yourself still works.
 
 ```cpp
 using namespace UltraCanvas;
@@ -440,7 +442,7 @@ if (QRCodeUtils::IsDecoderAvailable()) {
 - **Verify before relying on output**: check `IsValid()` (and `GetErrorMessage()` on failure) after setting content, especially for long payloads that may exceed the chosen version range.
 - **Maintain contrast**: keep a dark foreground on a light background. Decorative gradients and styled modules are fine, but extreme stylings (very low module scale, low contrast) reduce scan reliability.
 - **Gradients vs solid colours are exclusive**: setting a gradient overrides the foreground colour; call `ClearGradient()` before relying on `SetForegroundColor` again.
-- **Guard decoding**: always call `IsDecoderAvailable()` before `ScanQRCodeFile`, since decoding depends on an optional backend (e.g. libzbar).
+- **Guard decoding**: always call `IsDecoderAvailable()` before `ScanQRCodeFile`, since decoding depends on an optional backend (e.g. libzbar). `ScanQRCodeFile` and `ExportToImage` also need libvips to read and write the image file; without it they return an error instead of a result.
 
 ## See Also
 
