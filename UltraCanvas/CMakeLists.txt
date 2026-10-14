@@ -309,6 +309,22 @@ else()
     message(STATUS "  librsvg: NOT FOUND (SVG re-parses per rasterization via libvips)")
 endif()
 
+# libheif - asked which codecs it decodes (optional; only with libvips).
+# libvips' HEIF loader takes .heic, .heif and .avif wherever libheif is built
+# in, but libheif decodes a HEIC only with an HEVC decoder plug-in and an AVIF
+# only with an AV1 one, and it loads those separately. With libheif's headers
+# the format inventory asks it (VipsCanDecode) and offers HEIC or AVIF only
+# where they decode; without them it goes by the loader's file endings.
+if(ULTRACANVAS_HAS_VIPS)
+    pkg_check_modules(LIBHEIF libheif)
+endif()
+if(ULTRACANVAS_HAS_VIPS AND LIBHEIF_FOUND)
+    set(ULTRACANVAS_HAS_LIBHEIF TRUE)
+    message(STATUS "  libheif: ${LIBHEIF_VERSION} (HEIC / AVIF offered only where they decode)")
+else()
+    set(ULTRACANVAS_HAS_LIBHEIF FALSE)
+endif()
+
 # zbar - QR/barcode decoder (optional)
 pkg_check_modules(ZBAR zbar)
 if(ZBAR_FOUND)
@@ -1860,6 +1876,26 @@ if(LIBRSVG_FOUND)
     foreach(_inc_dir ${LIBRSVG_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
+endif()
+if(ULTRACANVAS_HAS_LIBHEIF)
+    # Only libspecific/Cairo/ImageCairo.cpp includes libheif's header, so the
+    # define and the include path go on that one source: on the whole library
+    # they would recompile every object of it whenever libheif comes or goes.
+    # The compiler's own directories are left out, as CMake does for a
+    # target's: Debian's libheif names /usr/include/x86_64-linux-gnu, and as
+    # an -I ahead of the system paths it breaks <cstdlib>'s #include_next.
+    set(_uc_heif_includes ${LIBHEIF_INCLUDE_DIRS})
+    if(_uc_heif_includes AND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+        list(REMOVE_ITEM _uc_heif_includes ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+    endif()
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
+                 APPEND PROPERTY COMPILE_DEFINITIONS HAS_LIBHEIF=1)
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
+                 APPEND PROPERTY INCLUDE_DIRECTORIES ${_uc_heif_includes})
+    # PUBLIC, and its -L with it, as the vips libraries below: a static core
+    # never links them itself, the application does.
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBHEIF_LIBRARIES})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBHEIF_LIBRARY_DIRS})
 endif()
 
 if(ZBAR_FOUND)
@@ -3828,6 +3864,9 @@ set(ULTRACANVAS_LIBRARIES ${ULTRACANVAS_LIB_NAME} ${ULTRACANVAS_PLUGIN_TARGETS} 
 # Export the frozen core decision, not the (possibly plugin-polluted)
 # LIBVIPS_FOUND — the parent uses this to gate vips-dependent demo sources.
 set(LIBVIPS_FOUND ${ULTRACANVAS_HAS_VIPS} PARENT_SCOPE)
+# ULTRACANVAS_HAS_LIBHEIF — whether the format inventory can ask libheif which
+# HEIC / AVIF codecs decode (FileLoaderTypeListsTest holds it to that).
+set(ULTRACANVAS_HAS_LIBHEIF ${ULTRACANVAS_HAS_LIBHEIF} PARENT_SCOPE)
 set(ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
 # Named individually as well, so an application can link one plugin without
 # taking every other format's code with it (UltraPaint wants the 3D readers).
@@ -4047,6 +4086,9 @@ else()
 endif()
 if(LIBRSVG_FOUND)
     message(STATUS "  librsvg: ${LIBRSVG_VERSION} (parse-once SVG documents)")
+endif()
+if(ULTRACANVAS_HAS_LIBHEIF)
+    message(STATUS "  libheif: ${LIBHEIF_VERSION} (HEIC / AVIF offered only where they decode)")
 endif()
 # message(STATUS "  libgrapheme: 3.0.0 (bundled, Unicode 17.0.0)")
 message(STATUS "  Plugins: ${ULTRACANVAS_PLUGIN_TARGETS}")

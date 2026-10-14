@@ -2,9 +2,9 @@
 // Builds the runtime supported-format inventory. Sources of truth, per
 // category:
 //   Bitmap       — candidate table probed per-extension against the installed
-//                  libvips build (VipsCanLoad / VipsCanEncode - a saver that
-//                  can encode here); ICO and QOI through the framework's own
-//                  libvips plugins.
+//                  libvips build (VipsCanDecode / VipsCanEncode - a loader
+//                  that can decode and a saver that can encode here); ICO and
+//                  QOI through the framework's own libvips plugins.
 //   Vector       — svg/svgz through libvips+librsvg (probed); everything else
 //                  comes from the graphics plugin registry (CDR/XAR/... appear
 //                  once the host application registers the plugin).
@@ -24,17 +24,19 @@
 //                  means UltraCanvasFontFile can read the name records and
 //                  rasterize a specimen, not that the image pipeline decodes
 //                  it (CanImagePipelineLoad stays false for every font).
+// Version: 1.3.0 - a bitmap's canLoad asks whether it can decode (no HEIC
+//                  without libheif's HEVC decoder, no AVIF without its AV1 one)
 // Version: 1.2.0 - a bitmap's canSave asks whether it can encode (no AVIF /
 //                  HEIC without libheif's encoder); ICO and QOI name the
 //                  framework's own plugins
 // Version: 1.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasGraphicsPluginSystem.h"
-#include "UltraCanvasImage.h"                 // VipsCanLoad / VipsCanSave
+#include "UltraCanvasImage.h"                 // VipsCanDecode / VipsCanEncode
 #include "Documents/eBook/IEBookEngine.h"     // GetRegisteredEBookExtensions
 #include "Documents/eBook/TXTEngine.h"        // RegisterBuiltinEBookEngines
 
@@ -137,15 +139,19 @@ namespace {
             f.aliases     = c.aliases;
             f.description = c.description;
             f.category    = MediaFormatCategory::Bitmap;
-            f.canLoad     = VipsCanLoad(dotExt);
-            // A saver that can encode here: an AVIF / HEIC saver is compiled
-            // in wherever libheif is, but writes nothing without its encoder.
+            // A loader that can decode and a saver that can encode here: the
+            // HEIF loader and saver take .heic and .avif wherever libheif is,
+            // but read or write nothing without its HEVC / AV1 codecs.
+            f.canLoad     = VipsCanDecode(dotExt);
             f.canSave     = VipsCanEncode(dotExt);
             // ICO and QOI are the framework's own libvips loaders and savers.
             f.provider    = std::string(c.ext) == "ico" ? "UltraCanvas (VipsIcoPlugin)"
                           : std::string(c.ext) == "qoi" ? "UltraCanvas (VipsQoiLoader)"
                           : "libvips";
-            if (!f.canLoad && magick) {
+            // ImageMagick reads what no dedicated loader claims - not a HEIC
+            // the HEIF loader claims and cannot decode: that loader is the one
+            // libvips picks for the file, and ImageMagick's HEIC is libheif too.
+            if (!f.canLoad && magick && !VipsCanLoad(dotExt)) {
                 f.canLoad = true;
                 f.provider = "libvips (ImageMagick delegate)";
             }
