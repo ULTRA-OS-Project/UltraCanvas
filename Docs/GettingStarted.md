@@ -57,7 +57,10 @@ Optional plug-ins add their libraries: `libcdr-dev librevenge-dev` with
 `libboost-dev liblcms2-dev libicu-dev` for CDR, `libzbar-dev` for barcode
 decoding, `libsodium-dev` for UltraCrypt, `libtesseract-dev libleptonica-dev`
 for OCR, a Rust toolchain for the Vectorizer, and `libmupdf-dev` for PDF
-(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). The complete
+(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). Phone photos
+(HEIC) need libheif's HEVC decoder, `libheif-plugin-libde265`; with
+`libheif-dev`, which `libvips-dev` brings along, the build asks libheif and
+offers HEIC only where it decodes. The complete
 list is the *Install dependencies (Linux)* step in `.github/workflows/build.yml`.
 Other distributions use the same library names under their package manager.
 

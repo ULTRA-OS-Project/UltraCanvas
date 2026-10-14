@@ -6,7 +6,7 @@
 
 **UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, scrolling for long menus, and cross-platform compatibility.
 
-**Version:** 1.4.0  
+**Version:** 1.5.0 - `MenuStyle::FromTheme`  
 **Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework
 
@@ -303,8 +303,17 @@ struct MenuStyle {
 
     // Minimal flat design
     static MenuStyle Flat();
+
+    // The framework theme's roles over Dark() or Default() by its dark flag
+    // (or over a base of your own): the menu agrees with the window's look
+    static MenuStyle FromTheme(const UltraCanvasTheme& theme);
+    static MenuStyle FromTheme(const UltraCanvasTheme& theme, const MenuStyle& base);
 };
 ```
+
+A menu asked to follow the theme (`menu->SetFollowTheme(true)`) takes
+`FromTheme` over its own style now and on every theme change; see
+`Docs/UltraCanvas/UltraCanvasTheme.md`.
 
 `Dark()` and `Flat()` are `Default()` with colours (and, for `Flat()`, the
 border, the panel's corner radius and the shadow) replaced — every metric is

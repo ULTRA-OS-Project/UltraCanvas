@@ -1,6 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.11.0 - onFocusGained / onFocusLost, as the text input has them
+// Version: 3.12.0 - onFocusGained / onFocusLost, as the text input has them
+// Version: 3.11.0 - ApplyTheme: the light or dark preset, the surfaces and ink from the theme roles
 // Version: 3.10.0 - an input method's composition is drawn in the caret's line,
 //                 underlined, instead of in the input method's own window
 //                 (DrawsTextComposition, GetCompositionText)
@@ -512,6 +513,10 @@ namespace UltraCanvas {
 
         // Event handling
         virtual bool OnEvent(const UCEvent& event) override;
+        // The theme's roles over the light or dark token colours: the well
+        // behind the text, ink, the hover fill for the current line, the
+        // accent behind a selection, faint ink for line numbers
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
 
         void Invalidate();
         void InvalidateAllLineLayouts();

@@ -77,7 +77,7 @@ evidence:
 | The viewer scrubs the *rendered* frame through a new `VideoFX_RenderFrame` (§5.5, §8.2) | Today the engine can pull a frame from a *source* file, not the output frame at a timeline time with effects, overlays and transitions applied. A draft export played in the player is the fallback, not the design: it is seconds stale after every edit. |
 | The application saves a `.ultravideo` JSON file that embeds the VideoFX project (§5.6, §9.2) | `.vfxproj` holds exactly what the engine renders and nothing else; `VideoFX_SaveProject` writes every field, so app keys would be dropped on a round trip. The app's file holds the lanes, markers, media bin, zoom and the embedded `.vfxproj` text from `VideoFX_ProjectToJson`, so `videofx render` can still render what the app saved. |
 | A "story" mode in front of the timeline (§5.9, §6.11) | The brief is *impressive videos with little effort*. The engine's automatic features — photos with pan and zoom that keep faces in shot, slideshows cut on the beat, music that dips under speech — produce that from a folder and a song in one call (`VideoFX_CreateSlideshow`). The timeline is for the user who then wants to change something. |
-| The design's tokens map onto the framework theme; nothing is hard-coded in the element (§5.8) | The brand book says so itself. The framework themes every element; a second colour system in one app would break the dark theme and the DPI scaling the rest of the suite gets for free. |
+| The design's tokens map onto the framework theme; nothing is hard-coded in the element (§5.8) | The brand book says so itself. The framework had no theme when this was written - every element carried its own style struct - so §14 adds one (`UltraCanvasTheme`): the tokens fill its roles, the element reads them, and a second app gets a dark timeline by switching the theme. |
 | The overlay video track is in the model from day one and disabled in the app until the engine renders it (§5.3, §8.3) | Picture-in-picture is planned, not built, in VideoFX. Leaving the lane out of the element's model would cost an API change later; leaving it visible would promise what the export cannot do. |
 
 ---
@@ -876,6 +876,7 @@ Apps/UltraVideo/
 Docs/UltraVideo/CHANGELOG.md    "#### <date> *0.1.0*" is the version
 Docs/UltraVideo/README.md       how to use it
 Tests/UltraVideoDocumentTest.cpp  the document, mapping and history, headless
+Tests/UltraVideoDraftTest.cpp   the draft's sound against the cut, the player's position against its frames
 media/icons/ultravideo/         the interface icon set, loaded at run time
 media/appicon/UltraVideo.{png,svg}
 ```
@@ -903,7 +904,7 @@ and sound types for *Open with*. All of it is in place (§14).
 | 2 | `VideoFX_RenderFrame` (8.2, **done** in 0.9.0), the draft preset (8.5), export range (8.6) | VideoFX 0.9.0 |
 | 3 | `Apps/UltraVideo` 0.1.0: window, media bin, viewer with scrubbing, inspector (clip, audio, project), timeline wired through the mapping, undo, `.ultravideo`, export dialog (**built**, §14) | First app release |
 | 4 | Title lane and music lane (**built**, §14: spans, fades, song boundaries, beats) in the element; markers, work area, snapping, ripple built in phase 1; the story wizard (**built**); the overlay-video lane (**built**, on VideoFX 0.10.0) | App 0.2.0 |
-| 5 | Picture-in-picture (8.3, **done** in VideoFX 0.10.0) and free audio tracks (8.4, **done** in VideoFX 0.13.0) in the engine; the overlay lane (**built**, app 0.2.0) and the voice-and-sound lane (**built**, app 0.3.0) switched on | VideoFX 0.13, app 0.3 |
+| 5 | Picture-in-picture (8.3, **done** in VideoFX 0.10.0) and free audio tracks (8.4, **done** in VideoFX 0.13.0) in the engine; the overlay lane (**built**, app 0.2.0) and the voice-and-sound lane (**built**, app 0.3.0) switched on; the design's tokens on the framework's theme roles, every element following them (**built**, app 0.5.0) | VideoFX 0.13, app 0.5 |
 | 6 | Keyframes in the engine and keyframe markers on clips; proxy media; hardware encoder choice | Later |
 
 ---
@@ -1048,6 +1049,27 @@ that writing it showed:
   menu, a bin tile's action or a drop; the inspector's place, size, opacity
   and fades. A picture on the lane becomes an image overlay: a logo. The
   lane is no longer hidden; the table of §5.3 names the mapping.
+- **The theme roles** (§5.8): the framework had no theme - each element a
+  style struct with its own light and dark presets - so `UltraCanvasTheme`
+  1.0.0 adds one: the shared roles (surfaces, lines, ink, accent, focus,
+  danger), two presets, a current theme, and named element roles for the
+  colours an element has beyond the shared ones. `VideoTimelineStyle` and
+  `TimecodeFieldStyle` gained `FromTheme`; the app's `ThemeFor` maps the 41
+  token roles onto it (the timeline's clip, guide and playhead tokens as
+  `video-timeline.<role>`) and the window sets it as the current theme
+  when the palette switches. `UltraCanvasTheme` 1.1.0 then gave every
+  panel element a `FromTheme` (the menu's and the tooltip's over their own
+  dark and light presets), an element the choice to follow the theme
+  (`SetFollowTheme`: styled from the current theme now and on every
+  change, over its own shape), and the application a change handler that
+  walks its windows: the app's split panes, tabs, fields, albums,
+  toolbars, dropdowns, context menu, sliders and switches follow it (the
+  ink handle and on-accent thumb as the `slider.handle` and `switch.thumb`
+  element roles), as do the buttons by their variant (`ButtonVariant`:
+  ghost icons, standard and primary text buttons, the selected tool) and
+  the labels (`LabelVariant`: body, muted, faint, heading), and
+  `ApplyPalette` keeps only the timeline's token sizes; the dialogs follow
+  the theme too (modal dialog 3.9.0) and take no palette.
 - **The design's token files** (§5.8): `screens/tokens/tokens.json` is now
   in the tree as the source of truth, reconstructed from the generated
   header with every description kept, and
@@ -1067,6 +1089,17 @@ that writing it showed:
   playhead, and Stop puts the frame surface back at the second the sound
   stopped. An edit invalidates the draft and falls back to frames at the
   same second. No sound device or player: frames, with a message.
+  Confirmed with the GStreamer plugins installed (no sound server: the
+  framework's backend now lets playbin pick a silent sink where PulseAudio
+  does not answer, so the picture plays at pace; a player that refuses to
+  start falls back to frames instead of a playhead at the end). The draft
+  is rendered at the project's shape and the player places its picture as
+  the frame surface does (`VideoPlayerStyle::videoFit` and `videoInset`,
+  player element 0.1.5), so nothing moves when it takes over. The sound was
+  measured through a PulseAudio null sink: present for the whole play,
+  the clip's sound joining at its cut, half the level at half volume;
+  `UltraVideoDraftTest` pins the sound to the cut and the player's
+  position to its frames headless, within a frame.
 - **Drag from the bin** (§6.2): the framework has no drag source API, and
   the album's own drag is a reorder; `UltraCanvasAlbum` 1.9.0 gained
   `onItemDraggedOut`, which fires once when a tile crosses the album's
@@ -1091,10 +1124,9 @@ that writing it showed:
   unsaved-changes question.
 - Not built, and left for the next phase: marker dragging, a real slip trim
   (the Slip tool trims for now), retiming by `Ctrl`-drag, vertical scrolling
-  of many tracks, resizing a track by its edge, and the mapping onto the
-  framework's theme roles (the element carries its colours in its style
-  struct, as the other elements do; the app fills it from
-  `UltraVideoTokens.h`).
+  of many tracks, and resizing a track by its edge. The mapping onto the
+  framework's theme roles came with `UltraCanvasTheme` (§14: *The theme
+  roles*).
 
 ## See also
 

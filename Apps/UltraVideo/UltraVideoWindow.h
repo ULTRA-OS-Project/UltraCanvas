@@ -176,10 +176,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> binSearch_;
     std::shared_ptr<UltraCanvas::UltraCanvasAlbum> binAlbum_, musicAlbum_;
     std::shared_ptr<Label> binEmpty_, titlesNote_, effectsNote_;
-    std::vector<std::shared_ptr<Button>> titleButtons_;
-    std::vector<std::shared_ptr<Label>> titleHints_;
-    std::vector<std::shared_ptr<Button>> effectButtons_;
-    std::vector<std::shared_ptr<Label>> effectHeadings_;
+    std::vector<std::shared_ptr<Button>> titleButtons_, effectButtons_;
     std::vector<size_t> binRows_;      // album row -> media index
     std::vector<size_t> musicRows_;
     Viewer viewer_;

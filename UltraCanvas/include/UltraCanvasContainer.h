@@ -2,6 +2,7 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
+// Version: 4.6.0 - OnThemeChanged reaches every child
 // Version: 4.5.0 - FinishArrange for subclasses that place their own children
 // Version: 4.4.0 - ContainerStyle::clipChildren (false: CSS overflow: visible)
 // Version: 4.3.0
@@ -195,6 +196,11 @@ namespace UltraCanvas {
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent &event) override;
+        // The theme reaches every child
+        void OnThemeChanged(const UltraCanvasTheme& theme) override {
+            UltraCanvasUIElement::OnThemeChanged(theme);
+            for (auto& child : GetChildren()) if (child) child->OnThemeChanged(theme);
+        }
 
         void SetWindow(UltraCanvasWindowBase *win) override;
         bool SetFocus(bool on) override;

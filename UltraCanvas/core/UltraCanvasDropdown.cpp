@@ -1,7 +1,7 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-07-02 - DropdownSelect event.targetElement set via weak_from_this()
+// Last Modified: 2026-10-12 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
@@ -883,4 +883,25 @@ namespace UltraCanvas {
         }
     }
 
+
+    DropdownStyle DropdownStyle::FromTheme(const UltraCanvasTheme& theme, const DropdownStyle& base) {
+        DropdownStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.normalColor = r.raised;
+        s.hoverColor = r.hover;
+        s.pressedColor = r.pressed;
+        s.disabledColor = r.panel;
+        s.borderColor = r.lineStrong;
+        s.focusBorderColor = r.focus;
+        s.normalTextColor = r.ink;
+        s.disabledTextColor = r.inkFaint;
+        s.listBackgroundColor = r.raised;
+        s.listBorderColor = r.line;
+        s.itemHoverColor = r.hover;
+        s.itemSelectedColor = r.accentSoft;
+        s.checkboxBorderColor = r.lineStrong;
+        s.checkboxCheckedColor = r.accent;
+        s.checkmarkColor = r.onAccent;
+        return s;
+    }
 } // namespace UltraCanvas

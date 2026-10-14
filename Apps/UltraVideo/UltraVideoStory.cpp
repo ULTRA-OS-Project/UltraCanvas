@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoStory.cpp
 // The story wizard (UltraVideoStory.h).
+// Version: 0.3.0 - the wizard follows the theme (its dialog, tabs, album, labels); no palette parameter
 // Version: 0.2.0 - the photos, clips and songs offered are FileLoader's types the engine reads
 // Version: 0.1.0
 // Last Modified: 2026-10-13
@@ -96,6 +97,7 @@ std::shared_ptr<UltraCanvasContainer> Row(const std::shared_ptr<UltraCanvasConta
     row->layoutItem.SetFlexShrink(0);
     auto label = CreateLabel(id + ".caption", 0, 0, 180, kControl, caption);
     label->layoutItem.SetFlexShrink(0);
+    FollowTheme(label, LabelVariant::Muted);
     row->AddChild(label);
     field->layoutItem.SetFlexShrink(0);
     row->AddChild(field);
@@ -109,13 +111,14 @@ std::shared_ptr<UltraCanvasContainer> Page(const std::string& id, const std::str
     page->SetPadding(12);
     auto text = CreateLabel(id + ".intro", 0, 0, kContentWidth - 24, 40, intro);
     text->layoutItem.SetFlexShrink(0);
+    FollowTheme(text, LabelVariant::Body);
     page->AddChild(text);
     return page;
 }
 
 } // namespace
 
-void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<std::string> files,
+void ShowStoryWizard(UltraCanvasWindow* parent, std::vector<std::string> files,
                      std::function<void(const StoryChoice&)> onMake) {
     auto w = std::make_shared<Wizard>();
     w->parent = parent;
@@ -140,14 +143,14 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("uv.story.tabs", 0, 0, kContentWidth, 400);
     tabs->SetCloseMode(TabCloseMode::NoClose);
     tabs->SetTabStyle(TabStyle::Flat);
-    tabs->SetActiveTabIndicatorColor(ToColor(p.Accent));
+    tabs->SetFollowTheme(true);
 
     // ---- 1. Pictures and clips ----
     auto pictures = Page("uv.story.pictures", "Step 1 - the pictures and clips, in the order they play. Drag to reorder; hover one for Remove.");
     auto addRow = std::make_shared<UltraCanvasContainer>("uv.story.addRow", 0, 0, kContentWidth, kControl + 4);
     addRow->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     addRow->layoutItem.SetFlexShrink(0);
-    auto add = MakeTextButton("uv.story.add", "Add photos and clips\xE2\x80\xA6", p, 190);
+    auto add = MakeTextButton("uv.story.add", "Add photos and clips\xE2\x80\xA6", 190);
     Wizard* wiz = w.get();
     add->SetOnClick([wiz]() {
         FileDialogOptions opts;
@@ -166,6 +169,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     addRow->AddChild(add);
     w->count = CreateLabel("uv.story.count", 0, 0, 340, kControl, "");
     w->count->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    FollowTheme(w->count, LabelVariant::Muted);
     addRow->AddChild(w->count);
     pictures->AddChild(addRow);
     w->album = std::make_shared<UltraCanvasAlbum>("uv.story.album", 0, 0, kContentWidth - 24, 190);
@@ -179,12 +183,9 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     cfg.gap = 6;
     cfg.outerPadding = 0;
     cfg.actionDisplay = AlbumActionDisplay::OnHover;
-    cfg.backgroundColor = ToColor(p.Bg200);
-    cfg.itemBackgroundColor = ToColor(p.Bg300);
     cfg.showBorder = false;
-    cfg.captionColor = ToColor(p.Ink);
-    cfg.subtitleColor = ToColor(p.InkMuted);
     w->album->SetConfig(cfg);
+    w->album->SetFollowTheme(true);      // the panel, raised tiles, captions from the theme
     AlbumAction remove;
     remove.id = "remove";
     remove.label = "Remove";
@@ -213,11 +214,12 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     auto music = Page("uv.story.music", "Step 2 - a song under the whole video, or none.");
     w->songs = CreateLabel("uv.story.songs", 0, 0, kContentWidth - 24, 36, "");
     w->songs->layoutItem.SetFlexShrink(0);
+    FollowTheme(w->songs, LabelVariant::Body);
     music->AddChild(w->songs);
     auto songRow = std::make_shared<UltraCanvasContainer>("uv.story.songRow", 0, 0, kContentWidth, kControl + 4);
     songRow->layout.SetFlexRow().SetFlexGap(12);
     songRow->layoutItem.SetFlexShrink(0);
-    auto choose = MakeTextButton("uv.story.choose", "Choose a song\xE2\x80\xA6", p, 150);
+    auto choose = MakeTextButton("uv.story.choose", "Choose a song\xE2\x80\xA6", 150);
     choose->SetOnClick([wiz]() {
         FileDialogOptions opts;
         opts.SetTitle("A song for the story").SetParentWindow(wiz->parent);
@@ -229,7 +231,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
         });
     });
     songRow->AddChild(choose);
-    auto none = MakeTextButton("uv.story.none", "No music", p, 110);
+    auto none = MakeTextButton("uv.story.none", "No music", 110);
     none->SetOnClick([wiz]() { wiz->choice.songs.clear(); wiz->RefreshSongs(); });
     songRow->AddChild(none);
     music->AddChild(songRow);
@@ -264,6 +266,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     length->SetValueDisplay(SliderValueDisplay::NoDisplay);
     auto lengthRow = Row(style, "uv.story.row.length", "Lasting", length);
     w->lengthValue = CreateLabel("uv.story.lengthValue", 0, 0, 60, kControl, "1.0 s");
+    FollowTheme(w->lengthValue, LabelVariant::Muted);
     lengthRow->AddChild(w->lengthValue);
     length->onValueChanged = [wiz](float v) {
         wiz->choice.transitionSeconds = v;
@@ -297,6 +300,7 @@ void ShowStoryWizard(UltraCanvasWindow* parent, const Palette& p, std::vector<st
     dialog->AddDialogElement(tabs);
     dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
     dialog->AddCustomButton("Make video", DialogResult::OK, DialogButtonRole::Default);
+    dialog->SetFollowTheme(true);        // the dialog's surface, message and buttons with the window's look
     UltraCanvasDialogManager::ShowDialog(dialog, [w, onMake, parent](DialogResult result) {
         if (result != DialogResult::OK) return;
         if (w->choice.files.empty()) {

@@ -14,7 +14,7 @@ that raised the dialog can neither dismiss it nor leak back to the parent window
 once it closes.
 
 **File Location**: `include/UltraCanvasModalDialog.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - keys aimed at a blocked window reach the dialog
 **Author**: UltraCanvas Framework
 
 ## What the keyboard does
@@ -23,6 +23,11 @@ once it closes.
 |-----|--------|
 | `Return` / `Enter` | Activates the default button (`DialogConfig::defaultButton`). |
 | `Escape` | Activates the cancel button; closes with `DialogResult::Cancel` when the dialog has none. |
+
+The keys reach the dialog wherever the system sends them: one delivered to
+a window the dialog blocks (a focus-follows-pointer window manager, or no
+window manager) is redirected to the dialog by the application instead of
+being dropped.
 | *letter* | Activates the button whose underlined letter it is — but only while the dialog has no editable text field. |
 | `Alt`+*letter* | Activates that button always, including while a text field has the focus. |
 | `Tab` / `Shift+Tab` | Moves focus between buttons and fields (inherited window behaviour). |

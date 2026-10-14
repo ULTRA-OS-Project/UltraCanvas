@@ -1,9 +1,12 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.7.0 - VipsCanDecode asks libheif whether it decodes HEIC (HEVC) and
+//                  AVIF (AV1) here
 // Version: 2.6.0 - ICO and QOI written by the framework's own libvips savers
 //                  (VipsIcoPlugin, VipsQoiLoader), registered with the loaders;
 //                  no ImageMagick for either
 // Version: 2.6.0 - ...and so is one that arrives as bytes (LoadFromMemory sniffs the SVG)
+// Version: 2.7.0 - a build without libvips reads PNG through cairo's own reader
 // Version: 2.5.0 - An SVG libvips cannot load is read through the vector preview seam
 //                 and rendered by the core's vector renderer (the WebAssembly build)
 // Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
@@ -27,6 +30,9 @@
 #include "VipsQoiLoader.h"
 #include "VipsIcoPlugin.h"
 #include "UltraCanvasGifEncoder.h"
+#endif
+#ifdef HAS_LIBHEIF
+#include <libheif/heif.h>                          // VipsCanDecode: which codecs decode here
 #endif
 #ifdef HAS_LIBRSVG
 #include "SvgDocumentCairo.h"
@@ -374,6 +380,72 @@ namespace UltraCanvas {
             const std::string head(reinterpret_cast<const char*>(data + i), std::min<size_t>(size - i, 1024));
             return head.find("<svg") != std::string::npos;
         }
+
+#ifndef HAS_LIBVIPS
+        // Without libvips the one raster format read is PNG, through cairo's
+        // own reader (cairo-png is in every sysroot this build links): the
+        // icons, logos and status marks a program's chrome is made of.
+        bool LooksLikePng(const uint8_t* data, size_t size) {
+            static const uint8_t signature[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+            return data && size >= 33 && std::memcmp(data, signature, 8) == 0;
+        }
+
+        // The IHDR chunk follows the signature: width and height big-endian
+        // at bytes 16 and 20, the colour type at 25 (4 and 6 carry alpha).
+        void ReadPngHeader(const uint8_t* data, int& w, int& h, bool& alpha) {
+            auto be32 = [data](size_t at) {
+                return (static_cast<uint32_t>(data[at]) << 24) | (static_cast<uint32_t>(data[at + 1]) << 16) |
+                       (static_cast<uint32_t>(data[at + 2]) << 8) | static_cast<uint32_t>(data[at + 3]);
+            };
+            const uint32_t pw = be32(16), ph = be32(20);
+            w = pw > 0 && pw < 0x40000000u ? static_cast<int>(pw) : 0;
+            h = ph > 0 && ph < 0x40000000u ? static_cast<int>(ph) : 0;
+            alpha = data[25] == 4 || data[25] == 6;
+        }
+
+        struct PngReadCursor { const uint8_t* data; size_t size; size_t pos; };
+
+        cairo_status_t ReadPngBytes(void* closure, unsigned char* out, unsigned int length) {
+            auto* cursor = static_cast<PngReadCursor*>(closure);
+            if (cursor->pos + length > cursor->size) return CAIRO_STATUS_READ_ERROR;
+            std::memcpy(out, cursor->data + cursor->pos, length);
+            cursor->pos += length;
+            return CAIRO_STATUS_SUCCESS;
+        }
+
+        // The PNG decoded to an ARGB32 surface, or nullptr. A 16-bit PNG comes
+        // back as a float surface on newer cairo and a grey one as A8 or
+        // RGB24: whatever it is, it is painted onto ARGB32.
+        cairo_surface_t* DecodePngSurface(const uint8_t* data, size_t size) {
+#ifdef CAIRO_HAS_PNG_FUNCTIONS
+            PngReadCursor cursor{ data, size, 0 };
+            cairo_surface_t* loaded = cairo_image_surface_create_from_png_stream(ReadPngBytes, &cursor);
+            if (cairo_surface_status(loaded) != CAIRO_STATUS_SUCCESS) {
+                cairo_surface_destroy(loaded);
+                return nullptr;
+            }
+            if (cairo_image_surface_get_format(loaded) == CAIRO_FORMAT_ARGB32) return loaded;
+            const int w = cairo_image_surface_get_width(loaded);
+            const int h = cairo_image_surface_get_height(loaded);
+            cairo_surface_t* argb = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+            if (cairo_surface_status(argb) != CAIRO_STATUS_SUCCESS) {
+                cairo_surface_destroy(argb);
+                cairo_surface_destroy(loaded);
+                return nullptr;
+            }
+            cairo_t* cr = cairo_create(argb);
+            cairo_set_source_surface(cr, loaded, 0, 0);
+            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+            cairo_paint(cr);
+            cairo_destroy(cr);
+            cairo_surface_destroy(loaded);
+            return argb;
+#else
+            (void)data; (void)size;
+            return nullptr;
+#endif
+        }
+#endif  // !HAS_LIBVIPS
     }
 
     bool UCImageRaster::AdoptVectorDocument(std::shared_ptr<VectorStorage::VectorDocument> document) {
@@ -645,20 +717,38 @@ namespace UltraCanvas {
         auto result = std::make_shared<UCImageRaster>(imagePath);
         (void)loadOnlyHeader;
         // No image pipeline, but a drawing the Vector plugin reads still
-        // renders through the core's vector renderer.
+        // renders through the core's vector renderer, and a PNG through
+        // cairo's reader (the pixmap is decoded when first drawn).
         if (IsSvgFileName(imagePath) && result->LoadVectorDocument(imagePath)) {
             return result;
         }
-        result->LoadFileToMemory(imagePath);
-        result->errorMessage = "Image loading not yet implemented (no libvips)";
+        if (result->LoadFileToMemory(imagePath) && result->AdoptPngBytes()) {
+            return result;
+        }
+        if (result->errorMessage.empty())
+            result->errorMessage = "No decoder for this picture in a build without libvips (PNG and SVG only)";
         return result;
     }
 
-    // No loader, so nothing can be said about the pixels: "opaque" is the
-    // answer that leaves a backdrop chooser out of the way.
+    // What the PNG header says: alpha when its colour type carries one. The
+    // other answer, "opaque", leaves a backdrop chooser out of the way.
     bool UCImageRaster::HasTransparency() {
-        transparency = 0;
-        return false;
+        return transparency == 1;
+    }
+
+    // The bytes in imgDataPtr taken as a PNG: its size from the header now,
+    // the pixels when a pixmap is asked for.
+    bool UCImageRaster::AdoptPngBytes() {
+        if (!LooksLikePng(imgDataPtr, imgDataSize)) return false;
+        int w = 0, h = 0;
+        bool alpha = false;
+        ReadPngHeader(imgDataPtr, w, h, alpha);
+        if (w <= 0 || h <= 0) return false;
+        width = w;
+        height = h;
+        transparency = alpha ? 1 : 0;
+        errorMessage.clear();
+        return true;
     }
 
     // No loader, so no metadata: "" means "unknown" to every caller.
@@ -686,7 +776,10 @@ namespace UltraCanvas {
         if (result->LoadVectorDocumentFromMemory(data, dataSize)) {
             return result;
         }
-        result->errorMessage = "Image loading not yet implemented (no libvips)";
+        if (result->AdoptPngBytes()) {
+            return result;
+        }
+        result->errorMessage = "No decoder for this picture in a build without libvips (PNG and SVG only)";
         return result;
     }
 #endif
@@ -996,7 +1089,71 @@ namespace UltraCanvas {
         if (vectorDocument) {
             return CreatePixmapFromVectorDocument(w, h, fitMode, scale);
         }
-        return nullptr;
+        if (!LooksLikePng(imgDataPtr, imgDataSize) || w <= 0 || h <= 0) return nullptr;
+        if (scale <= 0.0f) scale = 1.0f;
+        cairo_surface_t* source = DecodePngSurface(imgDataPtr, imgDataSize);
+        if (!source) {
+            errorMessage = "The PNG could not be decoded: " + fileName;
+            return nullptr;
+        }
+        const int sw = cairo_image_surface_get_width(source);
+        const int sh = cairo_image_surface_get_height(source);
+        if (sw <= 0 || sh <= 0) {
+            cairo_surface_destroy(source);
+            return nullptr;
+        }
+        // The box w x h, by the fit mode, with the libvips thumbnail path's
+        // meaning: Fill stretches to the box, Contain fits it, ScaleDown fits
+        // it but never past the natural size, Cover covers it and is cropped
+        // to it, NoScale is the natural size. Rendered at device pixels.
+        const double sx = static_cast<double>(w) / sw;
+        const double sy = static_cast<double>(h) / sh;
+        double fx = 1.0, fy = 1.0;
+        switch (fitMode) {
+            case ImageFitMode::Fill:      fx = sx; fy = sy; break;
+            case ImageFitMode::Contain:   fx = fy = std::min(sx, sy); break;
+            case ImageFitMode::ScaleDown: fx = fy = std::min(1.0, std::min(sx, sy)); break;
+            case ImageFitMode::Cover:     fx = fy = std::max(sx, sy); break;
+            case ImageFitMode::NoScale:   break;
+        }
+        const int tw = std::max(1, static_cast<int>(std::lround(sw * fx * scale)));
+        const int th = std::max(1, static_cast<int>(std::lround(sh * fy * scale)));
+        auto pm = std::make_shared<UCPixmapCairo>(tw, th);
+        if (!pm->IsValid()) {
+            cairo_surface_destroy(source);
+            return nullptr;
+        }
+        {
+            cairo_t* cr = cairo_create(pm->GetSurface());
+            cairo_scale(cr, static_cast<double>(tw) / sw, static_cast<double>(th) / sh);
+            cairo_set_source_surface(cr, source, 0, 0);
+            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+            cairo_paint(cr);
+            cairo_destroy(cr);
+        }
+        cairo_surface_destroy(source);
+        pm->MarkDirty();
+        pm->Flush();
+        if (fitMode == ImageFitMode::Cover && (tw > w * scale || th > h * scale)) {
+            // Centre crop to the box, in device pixels.
+            const int bw = std::max(1, static_cast<int>(std::lround(w * scale)));
+            const int bh = std::max(1, static_cast<int>(std::lround(h * scale)));
+            auto cropped = std::make_shared<UCPixmapCairo>(bw, bh);
+            if (!cropped->IsValid()) return nullptr;
+            cairo_t* cr = cairo_create(cropped->GetSurface());
+            cairo_set_source_surface(cr, pm->GetSurface(), -(tw - bw) / 2.0, -(th - bh) / 2.0);
+            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+            cairo_paint(cr);
+            cairo_destroy(cr);
+            cropped->MarkDirty();
+            cropped->Flush();
+            pm = cropped;
+        }
+        if (scale != 1.0f) {
+            pm->SetDeviceScale(scale);
+        }
+        return pm;
     }
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
         return nullptr;
@@ -1439,6 +1596,38 @@ namespace UltraCanvas {
         vips_error_clear();
         known[key] = works;
         return works;
+    }
+
+#ifdef HAS_LIBHEIF
+    namespace {
+        // libheif loads its codec plug-ins in heif_init (1.14 on), which
+        // counts its callers; this one stays for the program's life.
+        bool HeifDecodes(heif_compression_format format) {
+#if defined(LIBHEIF_NUMERIC_VERSION) && LIBHEIF_NUMERIC_VERSION >= 0x010d0000
+            static const bool initialised = [] { heif_init(nullptr); return true; }();
+            (void)initialised;
+#endif
+            return heif_have_decoder_for_format(format) != 0;
+        }
+    }
+#endif
+
+    bool VipsCanDecode(const std::string& extensionWithDot) {
+        if (!VipsCanLoad(extensionWithDot)) return false;
+#ifdef HAS_LIBHEIF
+        std::string ext = extensionWithDot;
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        // Asked once each: the plug-ins do not change while the program runs
+        if (ext == ".heic" || ext == ".heif") {
+            static const bool hevc = HeifDecodes(heif_compression_HEVC);
+            return hevc;
+        }
+        if (ext == ".avif") {
+            static const bool av1 = HeifDecodes(heif_compression_AV1);
+            return av1;
+        }
+#endif
+        return true;
     }
 
     namespace {

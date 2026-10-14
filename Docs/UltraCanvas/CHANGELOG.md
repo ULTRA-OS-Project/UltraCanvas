@@ -1,3 +1,178 @@
+#### 2026-10-14 *0.9.295*
+- **The doc-examples check keeps its baseline honest and reports an undeclared
+  name once.** `scripts/check_doc_examples.py --strict` now fails on a baseline
+  entry it no longer finds (and, with `--all`, on one of a doc that is gone), so
+  `scripts/doc_examples_baseline.txt` is rewritten in the change that implements
+  a proposal's API instead of outliving it. The errors it reports come from a
+  pass with clang's spell-checking off (`-fno-spell-checking`): an undeclared
+  name is one finding, not the chain of follow-on errors in the terms of
+  clang's guess at what was meant, and the finding's wording no longer changes
+  when a header gains a type of a similar name. A design document is held to
+  its proposed types: a type it names and does not declare is a finding, where
+  a component doc's is taken for the reader's own.
+
+#### 2026-10-14 *0.9.294*
+- **A build without libvips reads PNG.** `UCImage` in a build configured
+  with `ULTRACANVAS_ENABLE_VIPS=OFF` read SVG (through the Vector plugin)
+  and nothing else, so the demo's own chrome - the tree's folder and status
+  icons, the page buttons, the About logo - came up as grey squares in the
+  WebAssembly `no-vips` and `single-thread` variants. PNG now goes through
+  cairo's own reader (`cairo_image_surface_create_from_png_stream`), from a
+  file or from bytes: the size comes from the header at load, the pixels
+  are decoded when a pixmap is first asked for, the fit modes mean what the
+  libvips thumbnail path means them to, and `HasTransparency` answers from
+  the header's colour type. Other raster formats still report that the
+  build has no decoder for them.
+- **The single-threaded WebAssembly build runs.** The workflow's
+  `single-thread` variant had never run in a browser: every page ended on
+  `GLib-ERROR (g_system_thread_new): error 'Not supported' during
+  'pthread_create'` at its first text, which the new smoke step was the
+  first to see. Two causes. pango hands fontconfig's work (FcInit,
+  matching, sorting) to a worker thread it starts with `g_thread_new`, a
+  program built without `-pthread` cannot start one (Emscripten answers
+  ENOTSUP) and GLib treats that answer as a programming error; a sysroot
+  patch (`pango-1.52-wasm-no-threads.patch`) runs those jobs on the
+  caller's thread when there are no threads, and the threaded build keeps
+  its worker. And libvips evaluates every image on a worker thread of its
+  own (wasm-vips itself requires threads), so the library's CMake now
+  forces `ULTRACANVAS_ENABLE_VIPS` off when `ULTRACANVAS_WASM_THREADS` is
+  off, with a status line saying why: such a program reads PNG through
+  cairo's reader and SVG through the Vector plugin, and the workflow's
+  variant says so.
+- **The WebAssembly workflow opens its pages in a browser.** `wasm-build.yml`
+  built five variants and ran none, so a page that came up empty - the
+  JPEG page, until the sysroot learnt JPEG - was found by a person after the
+  download. Each variant's job now serves its collected pages with
+  `serve.py` and opens them in the runner's Google Chrome, headless, with
+  the new `UltraCanvas/OS/WASM/demo/smoke.mjs`: the demo's start page and a
+  handful of its pages (SVG, pie charts and, where libvips is in, the PNG,
+  JPEG, TIFF, WebP, GIF and BMP pages), plus the two validation apps. A page
+  must present a frame and keep a console free of "Error creating
+  example", uncaught errors and Emscripten aborts, or the job fails; the
+  screenshots and console logs are the `wasm-smoke-<variant>` artifact.
+  The script runs against a local build too (the WebAssembly README).
+
+#### 2026-10-14 *0.9.293*
+- **`UltraCanvasModalDialog` 3.9.0 follows the theme.** `ModalDialogStyle::FromTheme`
+  puts the theme's ink on the message and muted ink on the details over a
+  style's own sizes, and the dialog's `ApplyTheme` colours its surface with
+  the panel role and its footer buttons by their role (the default answer
+  `ButtonVariant::Primary`, the others `Standard`; a destructive one keeps
+  its red). `SetFollowTheme(true)` after the buttons are added applies it
+  and keeps the dialog with the theme while it is open; the elements a
+  host added follow on their own. UltraVideo's export, unsaved-changes and
+  story dialogs follow the theme and take no palette.
+- **A key the system delivers to a window a modal dialog blocks reaches the
+  dialog.** `UltraCanvasApplicationBase` 1.10.0: a KeyDown, KeyUp, TextInput
+  or TextComposition aimed at a blocked window is redirected to the modal
+  instead of dropped, so Escape closes the dialog, Return takes its default
+  answer and typing reaches its field wherever the keyboard focus happens
+  to be - under a focus-follows-pointer window manager, or with none at
+  all (an Xvfb session), where the pointer over the main window used to
+  swallow every key while a dialog was up. Pointer events aimed at a
+  blocked window are still swallowed, and a click there still raises the
+  modal.
+- **`UltraCanvasTheme` 1.0.0: the framework's colour roles.** One object a
+  window's light or dark look lives in - surfaces (`ground`, `panel`,
+  `well`, `raised`, `hover`, `pressed`), lines, ink, the accent, focus and
+  danger - with two presets (`Light` from the colours the elements default
+  to, `Dark` from the greys the dark menu, tooltip and text area use), a
+  current theme (`SetCurrent`, `Current`), and named element roles
+  (`SetRole`, `Role`, `HasRole`) for colours an element has beyond the
+  shared ones. `VideoTimelineStyle::FromTheme` and
+  `TimecodeFieldStyle::FromTheme` build the two elements' styles from it:
+  the shared roles for surfaces, ink, accent, focus and danger, the
+  timeline's own `video-timeline.<role>` colours where the theme names them
+  and its light or dark palette where it does not. UltraVideo maps its
+  design tokens onto the theme (`ThemeFor`) and sets it as the current one,
+  so nothing is hard-coded in the element.
+  `Docs/UltraCanvas/UltraCanvasTheme.md`; `Tests/UltraCanvasThemeTest.cpp`.
+- **`UltraCanvasTheme` 1.1.0: the elements follow it.** `FromTheme` on every
+  style struct with colours - `ButtonStyle`, `LabelStyle`, `DropdownStyle`,
+  `SliderVisualStyle`, `SwitchVisualStyle`, `TextInputStyle`,
+  `ToolbarAppearance`, `SplitPaneStyle`, `AlbumConfig`, `MenuStyle`,
+  `TooltipStyle` - puts the roles over a base style whose shape (sizes,
+  fonts, flags) stays; the menu and the tooltip start from their `Dark()`
+  or `Light()` preset by the theme's `dark` flag, so a dark menu or tooltip
+  agrees with the rest of a dark window. `UltraCanvasUIElement` gained
+  `SetFollowTheme` / `GetFollowTheme`, `ApplyTheme` and `OnThemeChanged`:
+  an element that follows styles itself from the current theme at once
+  and again on every change, over its own style (a radius or a font set
+  before survives a switch); the tabbed container and the text area
+  (its light or dark token colours, the surfaces and ink from the roles)
+  override `ApplyTheme` directly; a container passes a change on to its
+  children. Off by default: an element styled by hand keeps its look.
+  `UltraCanvasTheme::AddChangeHandler` / `RemoveChangeHandler` are called
+  after `SetCurrent`; the application installs one in `Initialize` that
+  walks every window and sets `UltraCanvasTooltipManager::SetStyle` (now
+  static, the style every tooltip shown without one takes; `GetStyle`)
+  from the theme, so an application switches its look with one call.
+  UltraVideo's split panes, tabs, fields, albums, toolbars, dropdowns and
+  context menu follow the theme; its own looks stay in `ApplyPalette`.
+  The slider's handle (`slider.handle`, `slider.handle-border`) and the
+  switch's thumb (`switch.thumb`, `switch.thumb-border`) are element
+  roles, the raised surface and the control border where a theme does not
+  name them, so UltraVideo's ink handle and on-accent thumb follow the
+  theme as well. `ButtonStyle::FromTheme` takes the button's **variant**
+  (`ButtonVariant`: `Standard` - the raised surface with the control
+  border; `Ghost` - no fill at rest, the hover and pressed fills; `Primary`
+  - the accent with text on it; `Selected` - the soft accent fill with the
+  accent for ink, an active tool), set on the element with
+  `SetThemeVariant`, which re-styles a following button at once; the
+  variants' colours are element roles (`button.primary`,
+  `button.ghost-hover`, `button.selected` ...) over the shared ones. Every
+  UltraVideo button follows the theme by its variant. `LabelStyle::FromTheme`
+  likewise takes the label's variant (`LabelVariant`: `Body` and `Heading`
+  - ink; `Muted` - muted ink; `Faint` - faint ink; the element roles
+  `label.muted`, `label.faint`, `label.heading`), set with
+  `SetThemeVariant`; every UltraVideo label follows the theme by its
+  variant and `ApplyPalette` keeps the timeline alone.
+  `Tests/UltraCanvasThemeTest.cpp`: 54 checks.
+- **`UltraCanvasVideoPlayerElement` 0.1.5: the picture placed as a host's
+  frame surface places it.** `VideoPlayerStyle::videoFit` chooses `Contain`
+  (fitted whole, letterboxed, the default and the old behaviour), `Cover`
+  (filling the element, cropped) or `Pixels` (the frame's own pixels at
+  `zoomPercent`), and `videoInset` keeps the picture that far from the
+  element's edges; a picture larger than the element is clipped to it. A
+  viewer that swaps its own frame surface for the player while a file
+  plays can give the player the surface's inset and fit, so the picture
+  stays where it was. 0.1.6: `showSafeArea` draws a dashed title-safe
+  guide over the picture, `safeAreaInset` (5 %) in from each edge, in
+  `safeAreaColor`; `zoomReferenceHeight` makes a `Pixels` zoom relative to
+  a picture of that height, so a proxy file zooms as the original would.
+- **Video playback without a PulseAudio server.** `VideoBackendGStreamer`
+  0.1.13 probes the `pulsesink` it prefers to READY before handing it to
+  playbin: where no PulseAudio server answers (a bare X session, a
+  container, a desktop on ALSA or JACK alone) playbin given an unopenable
+  sink failed to activate its sinks and nothing played - `Play()` returned
+  false, with or without sound. Now playbin's `autoaudiosink` picks a sink
+  that works, a silent one at worst, which still runs the clock: the
+  picture plays at pace and the position is reported. With PulseAudio
+  running nothing changes.
+
+#### 2026-10-14 *0.9.292*
+- **HEIC and AVIF are offered to open only where they decode.** libvips'
+  HEIF loader takes `.heic`, `.heif` and `.avif` wherever it is built with
+  libheif, but libheif decodes them only with codec plug-ins it loads
+  separately: HEVC (libde265) for a HEIC, AV1 (aomdec, dav1d) for an AVIF.
+  Without the HEVC plug-in, FileLoader listed HEIC as readable, so Open
+  dialogs and UltraVideo's import offered phone photos that then failed to
+  load, or came up black: libvips reports each tile it cannot decode only
+  as a warning and returns a black picture of the right size.
+  - The new `VipsCanDecode` (`ImageCairo.h`) asks libheif which decoders it
+    has (`heif_have_decoder_for_format`). FileLoader's format inventory now
+    reports a bitmap type's `canLoad` with it, as `VipsCanEncode` already
+    decides `canSave`.
+  - ImageMagick no longer stands in for such a type: libvips hands the file
+    to its HEIF loader, and ImageMagick's HEIC reader is libheif as well.
+  - The framework links libheif when its development files are installed
+    (`HAS_LIBHEIF`). Without them, the inventory goes by the loader's file
+    endings, as before.
+  - `FileLoaderTypeListsTest` decodes `media/images/test_small.heic` and
+    `.avif`. A sample counts as decoded when it has `test_small.png`'s size
+    and is not black, and each type must be offered exactly when its sample
+    decodes.
+
 #### 2026-10-14 *0.9.291*
 - **Clipboard history rows: a Save as action, and the icons left of the
   text.** `ClipboardRowAction::SaveAs` is painted between Edit and Delete when

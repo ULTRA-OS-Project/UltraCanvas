@@ -1,0 +1,121 @@
+--- a/pango/pangofc-fontmap.c
++++ b/pango/pangofc-fontmap.c
+@@ -120,6 +120,16 @@
+ static GCond fc_init_cond;
+ static DefaultConfig fc_initialized = DEFAULT_CONFIG_NOT_INITIALIZED;
+ 
++/* A WebAssembly program built without -pthread cannot start the fontconfig
++ * worker: Emscripten answers pthread_create with ENOTSUP, and GLib treats
++ * that as a programming error and aborts. With PANGO_FC_NO_THREAD defined
++ * (the sysroot script passes it for a build without threads; the macro
++ * __EMSCRIPTEN_PTHREADS__ is no guide, glib's .pc puts -pthread on every
++ * consumer's compile line) every job the queue would hand the worker runs
++ * on the caller's thread instead; the waits below then find their result
++ * already there.
++ */
++
+ 
+ typedef struct _PangoFcFontFaceData PangoFcFontFaceData;
+ typedef struct _PangoFcFace         PangoFcFace;
+@@ -948,6 +958,7 @@
+   return NULL;
+ }
+ 
++#ifndef PANGO_FC_NO_THREAD
+ static gpointer
+ fc_thread_func (gpointer data)
+ {
+@@ -986,6 +997,39 @@
+ 
+   return NULL;
+ }
++#endif /* !PANGO_FC_NO_THREAD */
++
++/* Hand a job to the fontconfig worker, or do it here when there is none. */
++static void
++queue_fc_job (GAsyncQueue *queue, ThreadData *td)
++{
++#ifdef PANGO_FC_NO_THREAD
++  (void) queue;
++  switch (td->op)
++    {
++    case FC_INIT:
++      init_in_thread (td);
++      break;
++
++    case FC_MATCH:
++      match_in_thread (td);
++      break;
++
++    case FC_SORT:
++      sort_in_thread (td);
++      break;
++
++    case FC_END:
++      thread_data_free (td);
++      break;
++
++    default:
++      g_assert_not_reached ();
++    }
++#else
++  g_async_queue_push (queue, td);
++#endif
++}
+ 
+ static PangoFcPatterns *
+ pango_fc_patterns_new (FcPattern *pat, PangoFcFontMap *fontmap)
+@@ -1007,8 +1051,8 @@
+   g_mutex_init (&pats->mutex);
+   g_cond_init (&pats->cond);
+ 
+-  g_async_queue_push (fontmap->priv->queue, thread_data_new (FC_MATCH, pats));
+-  g_async_queue_push (fontmap->priv->queue, thread_data_new (FC_SORT, pats));
++  queue_fc_job (fontmap->priv->queue, thread_data_new (FC_MATCH, pats));
++  queue_fc_job (fontmap->priv->queue, thread_data_new (FC_SORT, pats));
+ 
+   g_hash_table_insert (fontmap->priv->patterns_hash, pats->pattern, pats);
+ 
+@@ -1458,6 +1502,25 @@
+ static void
+ start_fontconfig_thread (PangoFcFontMap *fcfontmap)
+ {
++#ifdef PANGO_FC_NO_THREAD
++  /* No worker. FcInit runs here, after the lock is released: init_in_thread
++   * takes fc_init_mutex itself.
++   */
++  gboolean init_now = FALSE;
++
++  g_mutex_lock (&fc_init_mutex);
++
++  if (fc_initialized == DEFAULT_CONFIG_NOT_INITIALIZED)
++    {
++      fc_initialized = DEFAULT_CONFIG_INITIALIZING;
++      init_now = TRUE;
++    }
++
++  g_mutex_unlock (&fc_init_mutex);
++
++  if (init_now)
++    queue_fc_job (fcfontmap->priv->queue, thread_data_new (FC_INIT, NULL));
++#else
+   GThread *thread;
+ 
+   g_mutex_lock (&fc_init_mutex);
+@@ -1473,6 +1536,7 @@
+     }
+ 
+   g_mutex_unlock (&fc_init_mutex);
++#endif
+ }
+ 
+ static void
+@@ -1563,7 +1627,7 @@
+   priv->n_families = -1;
+   priv->families = NULL;
+ 
+-  g_async_queue_push (fcfontmap->priv->queue, thread_data_new (FC_END, NULL));
++  queue_fc_job (fcfontmap->priv->queue, thread_data_new (FC_END, NULL));
+ 
+   g_async_queue_unref (priv->queue);
+   priv->queue = NULL;

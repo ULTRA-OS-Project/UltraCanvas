@@ -1,5 +1,6 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.15.0 - MenuStyle::FromTheme
 // Version: 1.14.0 - OpenMenuAnchored (below a widget, or above it when there is no
 //                  room below); menubar drop-downs flip above their item; symbolic
 //                  icons painted in the entry's text colour (MenuStyle::iconTint);
@@ -1653,4 +1654,21 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+
+    MenuStyle MenuStyle::FromTheme(const UltraCanvasTheme& theme, const MenuStyle& base) {
+        MenuStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.backgroundColor = r.raised;
+        s.borderColor = r.line;
+        s.hoverColor = r.hover;
+        s.hoverTextColor = r.ink;
+        s.pressedColor = r.pressed;
+        s.selectedColor = r.accentSoft;
+        s.separatorColor = r.line;
+        s.textColor = r.ink;
+        s.shortcutColor = r.inkMuted;
+        s.disabledTextColor = r.inkFaint;
+        s.headerTextColor = r.inkMuted;
+        return s;
+    }
 }

@@ -1,6 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.8.1 - onFocusGained / onFocusLost fired after the area's own focus handling
+// Version: 3.9.1 - onFocusGained / onFocusLost fired after the area's own focus handling
+// Version: 3.9.0 - ApplyTheme
 // Version: 3.8.0 - an input method's composition is laid out in the caret's line
 //                 at the caret, underlined, with the caret inside it; the view
 //                 follows that caret. Composing over a selection replaces it;
@@ -3972,6 +3973,26 @@ namespace UltraCanvas {
         style.fontColor = color;
         isNeedRecalculateVisibleArea = true;
         isNeedRebuildLineLayouts = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextArea::ApplyTheme(const UltraCanvasTheme& theme) {
+        // the token colours of the light or dark preset, the surfaces and
+        // ink from the roles
+        if (theme.dark) ApplyDarkTheme(); else ApplyLightTheme();
+        const ThemeRoles& r = theme.roles;
+        backgroundColor = r.well;
+        style.fontColor = r.ink;
+        style.borderColor = r.lineStrong;
+        style.currentLineColor = r.hover;
+        style.lineNumbersColor = r.inkFaint;
+        style.lineNumbersBackgroundColor = r.panel;
+        style.selectionColor = r.accent.WithAlpha(100);
+        style.cursorColor = r.ink;
+        style.placeholderColor = r.inkFaint;
+        style.scrollbarTrackColor = r.panel;
+        style.scrollbarColor = r.lineStrong;
+        style.tokenStyles.defaultStyle.color = r.ink;
         RequestRedraw();
     }
 } // namespace UltraCanvas

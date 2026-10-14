@@ -4023,7 +4023,10 @@ Optional plug-ins add their libraries: `libcdr-dev librevenge-dev` with
 `libboost-dev liblcms2-dev libicu-dev` for CDR, `libzbar-dev` for barcode
 decoding, `libsodium-dev` for UltraCrypt, `libtesseract-dev libleptonica-dev`
 for OCR, a Rust toolchain for the Vectorizer, and `libmupdf-dev` for PDF
-(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). The complete
+(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). Phone photos
+(HEIC) need libheif's HEVC decoder, `libheif-plugin-libde265`; with
+`libheif-dev`, which `libvips-dev` brings along, the build asks libheif and
+offers HEIC only where it decodes. The complete
 list is the *Install dependencies (Linux)* step in `.github/workflows/build.yml`.
 Other distributions use the same library names under their package manager.
 
@@ -13208,8 +13211,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.0.6  
-**Last Modified:** 2026-10-12  
+**Version:** 1.1.0 - the theme and the button's variant  
+**Last Modified:** 2026-10-14  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -13511,6 +13514,44 @@ Padding is not part of the style: it is the element's box padding, set with
 `Default()`, `PrimaryStyle()`, `SecondaryStyle()`, `DangerStyle()`,
 `SuccessStyle()`, `FlatStyle()`, `SplitButtonStyle()`, `BadgeButtonStyle()`
 and `CounterButtonStyle()`.
+
+## The theme and the button's variant
+
+`ButtonStyle::FromTheme` maps the framework theme (`UltraCanvasTheme`,
+`Docs/UltraCanvas/UltraCanvasTheme.md`) onto a style, over a base whose
+shape (sizes, fonts, flags) stays, by the button's **variant**:
+
+```cpp
+enum class ButtonVariant {
+    Standard,   // the raised surface with the control border: a text button
+    Ghost,      // no fill at rest, the hover and pressed fills: an icon button in a bar
+    Primary,    // the accent fill with text on it: the one main action
+    Selected    // a ghost button in its on state: the soft accent fill, the accent for its ink
+};
+static ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base,
+                                          ButtonVariant variant = ButtonVariant::Standard);
+```
+
+A button told its variant and asked to follow the theme styles itself
+from the current theme, now and on every change; an active tool switches
+between `Ghost` and `Selected` with `SetThemeVariant` alone:
+
+```cpp
+auto tool = std::make_shared<UltraCanvasButton>("tool.blade", 0, 0, 28, 28, "");
+ButtonStyle shape;
+shape.borderWidth = 0.0f;
+shape.cornerRadius = 4.0f;
+shape.useIconAsMask = true;
+tool->SetStyle(shape);                              // the shape once
+tool->SetThemeVariant(ButtonVariant::Ghost);        // the colours from the theme
+tool->SetFollowTheme(true);
+tool->SetThemeVariant(ButtonVariant::Selected);     // the active tool, re-styled at once
+```
+
+A theme names the variants' colours as element roles where its design
+differs from the shared roles: `button.ghost-hover`, `button.ghost-pressed`,
+`button.primary`, `button.primary-hover`, `button.on-primary`,
+`button.selected`, `button.on-selected`.
 
 ## ButtonBuilder Pattern
 
@@ -20287,7 +20328,7 @@ that raised the dialog can neither dismiss it nor leak back to the parent window
 once it closes.
 
 **File Location**: `include/UltraCanvasModalDialog.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - keys aimed at a blocked window reach the dialog
 **Author**: UltraCanvas Framework
 
 ## What the keyboard does
@@ -20296,6 +20337,11 @@ once it closes.
 |-----|--------|
 | `Return` / `Enter` | Activates the default button (`DialogConfig::defaultButton`). |
 | `Escape` | Activates the cancel button; closes with `DialogResult::Cancel` when the dialog has none. |
+
+The keys reach the dialog wherever the system sends them: one delivered to
+a window the dialog blocks (a focus-follows-pointer window manager, or no
+window manager) is redirected to the dialog by the application instead of
+being dropped.
 | *letter* | Activates the button whose underlined letter it is — but only while the dialog has no editable text field. |
 | `Alt`+*letter* | Activates that button always, including while a text field has the focus. |
 | `Tab` / `Shift+Tab` | Moves focus between buttons and fields (inherited window behaviour). |
@@ -35384,6 +35430,7 @@ its text unless it is given a size.
 **Header:** `include/UltraCanvasLabel.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
+**Version:** 2.13.0 - the theme and the label's variant
 
 ## Features
 
@@ -35452,6 +35499,35 @@ label's style: they belong to every element (`SetBackgroundColor`,
 - `LabelStyle::SubHeaderStyle()`, `LabelStyle::CaptionStyle()`,
   `LabelStyle::StatusStyle()`: a sub-heading, a small muted caption, status
   bar text.
+
+### The theme and the label's variant
+
+`LabelStyle::FromTheme` colours a style from the framework theme
+(`UltraCanvasTheme`, `Docs/UltraCanvas/UltraCanvasTheme.md`), over a base
+whose font, alignment and wrap stay, by the label's **variant**:
+
+```cpp
+enum class LabelVariant {
+    Body,       // primary text: ink
+    Muted,      // secondary text - a note, a caption, a status line: muted ink
+    Faint,      // a hint, a placeholder: faint ink
+    Heading     // a panel or section title: ink
+};
+static LabelStyle LabelStyle::FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base,
+                                        LabelVariant variant = LabelVariant::Body);
+```
+
+A label told its variant and asked to follow the theme colours itself
+from the current theme, now and on every change:
+
+```cpp
+auto note = CreateLabel("note", 0, 0, 240, 18, "Select a clip, then click a preset.");
+note->SetThemeVariant(LabelVariant::Muted);
+note->SetFollowTheme(true);
+```
+
+A theme names `label.muted`, `label.faint` and `label.heading` as element
+roles where its design differs from the shared ink roles.
 
 ## Methods
 
@@ -40157,7 +40233,7 @@ FILE: Docs/UltraCanvas/UltraCanvasMenuExamples.md
 
 **UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, scrolling for long menus, and cross-platform compatibility.
 
-**Version:** 1.4.0  
+**Version:** 1.5.0 - `MenuStyle::FromTheme`  
 **Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework
 
@@ -40454,8 +40530,17 @@ struct MenuStyle {
 
     // Minimal flat design
     static MenuStyle Flat();
+
+    // The framework theme's roles over Dark() or Default() by its dark flag
+    // (or over a base of your own): the menu agrees with the window's look
+    static MenuStyle FromTheme(const UltraCanvasTheme& theme);
+    static MenuStyle FromTheme(const UltraCanvasTheme& theme, const MenuStyle& base);
 };
 ```
+
+A menu asked to follow the theme (`menu->SetFollowTheme(true)`) takes
+`FromTheme` over its own style now and on every theme change; see
+`Docs/UltraCanvas/UltraCanvasTheme.md`.
 
 `Dark()` and `Flat()` are `Default()` with colours (and, for `Flat()`, the
 border, the panel's corner radius and the shadow) replaced — every metric is
@@ -59723,7 +59808,7 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 
 **Header:** `UltraCanvasTextArea.h`  
 **Implementation:** `UltraCanvasTextArea.cpp`  
-**Version:** 2.0.2  
+**Version:** 2.1.0 - `ApplyTheme`  
 **Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework  
 
@@ -60171,6 +60256,17 @@ void SetCursorColor(const Color& color);
 void ApplyDarkTheme();
 ```
 Applies dark color scheme with syntax highlighting.
+
+#### ApplyTheme
+```cpp
+void ApplyTheme(const UltraCanvasTheme& theme);
+```
+The light or dark preset by the theme's `dark` flag (the token colours),
+then the theme's roles for the surfaces and ink: the well behind the text,
+ink, the hover fill on the current line, the accent behind a selection,
+faint ink for the line numbers over the panel. A text area asked to follow
+the theme (`SetFollowTheme(true)`) does this on every theme change; see
+`Docs/UltraCanvas/UltraCanvasTheme.md`.
 
 #### ApplyLightTheme
 ```cpp
@@ -61899,6 +61995,183 @@ The setters are not thread-safe. Call them only from the UI thread.
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Text display widget that consumes these settings
 - [UltraCanvasDropdown](UltraCanvasDropdown.md) — Used in the demo for live selection
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) — General 2D rendering pipeline
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasTheme.md
+==============================================================================
+
+# UltraCanvas Theme
+
+<!-- doc-check: std::shared_ptr<UltraCanvasVideoTimeline> timeline; std::shared_ptr<UltraCanvasTimecodeField> field; std::shared_ptr<UltraCanvasButton> button; std::shared_ptr<UltraCanvasTextInput> input; std::shared_ptr<UltraCanvasMenu> menu; std::shared_ptr<UltraCanvasContainer> panel; -->
+
+`UltraCanvasTheme` — the framework's **colour roles**: the object a window's
+light or dark look lives in, which an element reads when its style is
+built, so an application fills the roles from its own design once and every
+element that reads the theme follows. A role is named for what it is for
+(the panel, the ink, the accent, the focus ring), never for what it looks
+like.
+
+**Namespace:** `UltraCanvas`
+**Header:** `include/UltraCanvasTheme.h`
+**Source:** `core/UltraCanvasTheme.cpp`
+**Readers:** `FromTheme` on `ButtonStyle`, `LabelStyle`, `DropdownStyle`,
+`SliderVisualStyle`, `SwitchVisualStyle`, `TextInputStyle`,
+`ToolbarAppearance`, `SplitPaneStyle`, `AlbumConfig`, `MenuStyle`,
+`TooltipStyle`, `VideoTimelineStyle`, `TimecodeFieldStyle`; `ApplyTheme` on
+those elements, the tabbed container and the text area
+(`include/UltraCanvasUIElement.h`)
+**Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
+**Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
+**Version:** 1.5.0 - the modal dialog follows the theme
+**Last Modified:** 2026-10-12
+**Author:** UltraCanvas Framework
+
+## Status
+
+The theme, its two presets, the current theme and its change handlers are
+in place. Every panel element reads it: the button, label, dropdown,
+slider, switch, text input, toolbar, split pane and album through a
+`FromTheme` on their style struct and an `ApplyTheme` on the element; the
+tabbed container and the text area through `ApplyTheme` alone; the menu
+and the tooltip through `MenuStyle::FromTheme` and `TooltipStyle::FromTheme`,
+which put the roles over their own `Dark()` and `Light()` presets, so a
+dark menu or tooltip agrees with the rest of a dark window. An element
+follows the theme only when asked (`SetFollowTheme`); styled by hand it
+keeps its look, as before.
+
+## The roles
+
+```cpp
+struct ThemeRoles {
+    Color ground, panel, well, raised, hover, pressed;   // surfaces, back to front
+    Color line, lineStrong;                               // hairlines; control borders
+    Color ink, inkMuted, inkFaint;                        // text and icons
+    Color accent, accentHover, accentSoft, onAccent;      // the one accent
+    Color focus, danger;                                  // the focus ring; errors
+};
+```
+
+| Role | What it is for |
+|---|---|
+| `ground` | The window ground and the gutters between panels |
+| `panel` | A panel's surface: a bin, an inspector, a timeline body |
+| `well` | An inset surface: a field, a lane |
+| `raised` | A raised surface: headers, a ruler, a menu, a button at rest |
+| `hover`, `pressed` | The fills of a row or control under the pointer and pressed |
+| `line`, `lineStrong` | Hairline dividers; control borders, grips and strong ticks |
+| `ink`, `inkMuted`, `inkFaint` | Primary text and icons; secondary text; placeholders, ruler labels, disabled text |
+| `accent`, `accentHover`, `accentSoft`, `onAccent` | Primary fills and selection rings; the accent under the pointer; the tint behind a selected row; text on the accent |
+| `focus` | The keyboard focus ring, snap lines, drop outlines |
+| `danger` | Destructive actions, errors, an invalid entry's border |
+
+An element with colours of its own beyond these reads them as **element
+roles** by name, with a fallback it derives from the shared roles or from
+its light or dark palette, so a theme that does not name them still looks
+right. The video timeline's are `video-timeline.playhead`,
+`video-timeline.clip-video`, `video-timeline.clip-video-edge` and the same
+for `image`, `card`, `title` and `audio`, `video-timeline.waveform`,
+`video-timeline.transition-fill`, `video-timeline.on-transition`,
+`video-timeline.beat`, `video-timeline.trim-overflow`,
+`video-timeline.drop-soft`, `video-timeline.range-fill`,
+`video-timeline.muted-hatch` and `video-timeline.scrollbar`. The slider's
+are `slider.handle` and `slider.handle-border` (the raised surface and the
+control border otherwise), the switch's `switch.thumb` and
+`switch.thumb-border`: a design whose handle is ink or whose thumb is the
+text-on-accent colour names them and the controls follow the theme too.
+The button's variants (`ButtonVariant`: `Standard`, `Ghost`, `Primary`,
+`Selected`, set on the element with `SetThemeVariant`) read
+`button.ghost-hover`, `button.ghost-pressed`, `button.primary`,
+`button.primary-hover`, `button.on-primary`, `button.selected` and
+`button.on-selected`, the shared hover, pressed, accent, accent-hover,
+on-accent and soft-accent roles otherwise. The label's variants
+(`LabelVariant`: `Body`, `Muted`, `Faint`, `Heading`) read `label.muted`,
+`label.faint` and `label.heading`, the shared ink roles otherwise. A modal
+dialog follows the theme too (`ModalDialogStyle::FromTheme`, the dialog's
+`ApplyTheme`): the panel role behind its sections, ink for the message,
+its footer buttons by their role.
+
+## Using it
+
+The framework starts with `Light`, built from the colours the elements
+default to; `Dark` is the greys the dark menu, tooltip and text area already
+use. An application sets the theme before it builds its window, and reads
+it where it builds a style:
+
+```cpp
+UltraCanvasTheme::SetCurrent(UltraCanvasTheme::Dark());
+timeline->SetStyle(VideoTimelineStyle::FromTheme());       // the current theme
+field->SetStyle(TimecodeFieldStyle::FromTheme());
+```
+
+An application with a design of its own fills the roles from its tokens and
+names the element roles it has colours for:
+
+```cpp
+UltraCanvasTheme theme = UltraCanvasTheme::Dark();
+theme.name = "My app";
+theme.roles.panel = Color(21, 23, 26);
+theme.roles.accent = Color(242, 165, 58);
+theme.SetRole("video-timeline.playhead", Color(255, 93, 79));
+UltraCanvasTheme::SetCurrent(theme);
+timeline->SetStyle(VideoTimelineStyle::FromTheme(theme));
+bool named = theme.HasRole("video-timeline.playhead");                        // true
+Color beat = theme.Role("video-timeline.beat", Color(255, 255, 255, 41));     // the fallback: not named
+```
+
+### Following the theme
+
+Every element's style struct that has colours gained a `FromTheme`: the
+roles mapped onto its fields, over a **base** style whose shape (sizes,
+fonts, flags) stays - the struct's default when none is given, so a
+`FromTheme()` with no arguments is a themed default. The menu and the
+tooltip start from their `Dark()` or `Light()` preset by the theme's
+`dark` flag; the text input from `Default()`.
+
+```cpp
+button->SetStyle(ButtonStyle::FromTheme());                 // the current theme over the default shape
+TextInputStyle rounded = input->GetStyle();
+rounded.borderRadius = 8;
+input->SetStyle(TextInputStyle::FromTheme(UltraCanvasTheme::Current(), rounded));   // its own shape kept
+menu->SetStyle(MenuStyle::FromTheme());                     // Dark() or Light() by the theme, the roles over it
+UltraCanvasTooltipManager::SetStyle(TooltipStyle::FromTheme());
+```
+
+An element asked to **follow the theme** styles itself from the current
+theme at once and again whenever it changes: `ApplyTheme` puts the theme's
+colours over the element's own style (`FromTheme(theme, GetStyle())`), so
+a radius, a font or a toolbar's icon size set before survive a switch. A
+container passes a change on to its children, a window to its whole tree.
+
+```cpp
+input->SetFollowTheme(true);                                // styled now, and on every change
+panel->SetFollowTheme(true);
+button->SetFollowTheme(false);                              // keeps the look it has
+bool follows = input->GetFollowTheme();
+```
+
+`SetCurrent` calls every **change handler** after the switch. The
+application installs one at start-up (`UltraCanvasApplicationBase::Initialize`)
+that walks its windows - every element that follows re-styles - and sets
+the tooltip manager's style from the theme, so an application switches
+its look with one call and re-applies by hand only what it styled by hand:
+
+```cpp
+int handler = UltraCanvasTheme::AddChangeHandler([](const UltraCanvasTheme& theme) {
+    // an application's own panels, drawn from the roles
+    (void)theme.roles.panel;
+});
+UltraCanvasTheme::SetCurrent(UltraCanvasTheme::Dark());     // the handlers run, the windows re-style
+UltraCanvasTheme::RemoveChangeHandler(handler);
+```
+
+A handler added during a change is not called for that change; one
+removed during a change is not called again.
+
+## Related
+
+- `Docs/UltraCanvas/UltraCanvasVideoTimeline.md`, `UltraCanvasTimecodeField.md` — the two readers with element roles of their own
+- `Docs/UltraCanvas/UltraCanvasTooltipManager.md` — `TooltipStyle::FromTheme`, the manager's style
+- `Apps/UltraVideo/UltraVideoTheme.h` — a design's tokens mapped onto the theme (`ThemeFor`)
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTickerBoard.md
@@ -63797,7 +64070,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.4.0  
+**Version:** 2.5.0 - `TooltipStyle::FromTheme`; the manager's style is the one every tooltip shown without one takes  
 **Last Modified:** 2026-10-05  
 **Author:** UltraCanvas Framework
 
@@ -64021,7 +64294,15 @@ struct TooltipStyle {
 ```cpp
 static TooltipStyle TooltipStyle::Dark();   // the default dark theme
 static TooltipStyle TooltipStyle::Light();  // white background, dark text
+static TooltipStyle TooltipStyle::FromTheme(const UltraCanvasTheme& theme);   // Dark() or Light() by the theme, its roles over it
 ```
+
+A tooltip shown without a style takes the manager's
+(`UltraCanvasTooltipManager::SetStyle`, static; `GetStyle` reads it) - the
+framework's dark tooltip until one is set. The application sets it from
+the theme whenever the theme changes (`UltraCanvasTheme::SetCurrent`), so
+tooltips agree with the window's look without the application's help; see
+`Docs/UltraCanvas/UltraCanvasTheme.md`.
 
 ### Soft shadow
 
@@ -65586,7 +65867,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
-| Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar, a pulsing circle or a ring of circling dots (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
@@ -67445,9 +67726,18 @@ Callbacks: `onRecordingStateChanged`, `onPreviewFrame`, `onSaved`,
 
 ### UI elements
 
-`UltraCanvasVideoPlayerElement` — video surface (aspect-fit letterbox) with an
-auto-hiding overlay transport bar: play/pause, seek, mute, volume, time labels.
-`ShowOpenDialog()` opens the native file picker.
+`UltraCanvasVideoPlayerElement` — video surface with an auto-hiding overlay
+transport bar: play/pause, seek, mute, volume, time labels.
+`ShowOpenDialog()` opens the native file picker. `VideoPlayerStyle::videoFit`
+places the picture: `Contain` (fitted whole, letterboxed; the default),
+`Cover` (filling the element, cropped) or `Pixels` (its own pixels at
+`zoomPercent`, or those of a picture `zoomReferenceHeight` high, so a
+proxy file zooms as the original would), inside `videoInset` from the
+element's edges - a host that
+shows the player in place of a frame surface of its own gives it the same
+inset and fit, and the picture stays put. `showSafeArea` draws a dashed
+title-safe guide over the picture, `safeAreaInset` (5 % by default) of its
+width and height in from each edge, in `safeAreaColor`.
 
 `UltraCanvasVideoRecorderElement` — live camera preview with a REC/stop button,
 elapsed-time readout, blinking record indicator, and a camera picker popup.
@@ -67596,7 +67886,11 @@ scrolling, fit; reorder on the magnetic main track with an insertion
 marker, free placement elsewhere; trim with snapping and a live readout;
 split with the blade tool or `S`; delete with ripple; duplicate; nudge;
 markers; the work area; rubber-band selection; file drop with an insertion
-marker; a context-menu hook; keyboard throughout. Light and dark palettes.
+marker; a context-menu hook; keyboard throughout. Light and dark palettes,
+and `VideoTimelineStyle::FromTheme` for the framework theme
+(`UltraCanvasTheme.md`): the shared roles for surfaces, ink, accent, focus
+and danger, the element's own `video-timeline.<role>` colours where the
+theme names them.
 
 Not yet: marker dragging, slip trimming (the tool is accepted and trims for
 now), retiming by `Ctrl`-drag, vertical scrolling of many tracks, resizing
@@ -71810,8 +72104,12 @@ this build writes a bitmap type. A picture's Save offers
 `AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
 and its Open `AddLoadTypes(opts, "Pictures", {MediaFormatCategory::Bitmap})`
 (see *A Dialog's File Types* below), as UltraPaint and the media viewer do. Windows icons and QOI are read and written
-by the framework's own libvips plugins, and an AVIF or HEIC type is offered
-only where libheif can encode it.
+by the framework's own libvips plugins. An AVIF or HEIC type is offered to
+save only where libheif can encode it, and to open only where it can decode
+it: libvips' HEIF loader takes both file endings wherever libheif is, but
+libheif decodes a HEIC only with its HEVC plug-in (libde265) and an AVIF only
+with an AV1 one (aomdec, dav1d). The build asks libheif when its headers are
+installed; without them, the inventory goes by the loader's file endings.
 
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
@@ -85569,7 +85867,8 @@ folder imports its files). The dialogs offer FileLoader's types that the
 engine reads: at start-up UltraVideo tells the framework's codec registry
 which films and sound VideoFX's FFmpeg reads and writes, and gives the engine
 the framework's image reader for the pictures FFmpeg does not open whole - a
-phone's HEIC (a grid of tiles libheif puts together), a camera's raw file.
+phone's HEIC (a grid of tiles libheif puts together, offered where libheif
+has its HEVC decoder, libde265), a camera's raw file.
 Every file is probed by the engine and shows a duration badge, *photo*, or
 *unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
@@ -85612,8 +85911,9 @@ in the background - a small, quick MP4 with the music and the clips' own
 sound (`VideoFXExportSettings::Draft`) - and plays frame by frame until it
 is ready; from then on Play runs the draft in the framework's player with
 sound, and the playhead follows it. An edit throws the draft away and the
-next Play renders a new one. Where no sound device or player is available
-playback stays frame by frame and the status line says so.
+next Play renders a new one. Where no sound server answers the picture
+still plays at pace, silently; where the player cannot play the draft at
+all, playback stays frame by frame and the status line says so.
 
 **Proxies.** Large clips, such as 4K phone videos, are slow to scrub. So
 every video in the bin gets a *proxy* in the background: the same clip at
@@ -85800,14 +86100,17 @@ starts but can read no media. The icon set the window uses is
 
 Tests: `UltraVideoDocumentTest` (the document, the mapping onto the
 timeline model and back, the history, the file round trip; headless, needs
-the engine).
+the engine) and `UltraVideoDraftTest` (the draft played with sound: rendered
+with the app's settings, its sound steps in at the document's cut within a
+frame, and the framework's player reports a position that matches the
+frames it shows and reads the cut when the clip's first frame appears;
+headless, the player part skips itself without GStreamer plugins).
 
 ## Not yet
 
-Effect presets on overlay clips and stills of the overlay lane, effects
-dragged from the bin onto a clip, and the mapping of the design's tokens onto the framework's theme roles (the app colours
-its elements from the tokens directly). The proposal's roadmap (§11) has
-the order.
+Effect presets on overlay clips and stills of the overlay lane, and effects
+dragged from the bin onto a clip. The proposal's roadmap (§11) has the
+order.
 
 ==============================================================================
 FILE: Docs/UltraPress/README.md

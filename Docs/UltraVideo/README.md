@@ -30,7 +30,8 @@ folder imports its files). The dialogs offer FileLoader's types that the
 engine reads: at start-up UltraVideo tells the framework's codec registry
 which films and sound VideoFX's FFmpeg reads and writes, and gives the engine
 the framework's image reader for the pictures FFmpeg does not open whole - a
-phone's HEIC (a grid of tiles libheif puts together), a camera's raw file.
+phone's HEIC (a grid of tiles libheif puts together, offered where libheif
+has its HEVC decoder, libde265), a camera's raw file.
 Every file is probed by the engine and shows a duration badge, *photo*, or
 *unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
@@ -73,8 +74,9 @@ in the background - a small, quick MP4 with the music and the clips' own
 sound (`VideoFXExportSettings::Draft`) - and plays frame by frame until it
 is ready; from then on Play runs the draft in the framework's player with
 sound, and the playhead follows it. An edit throws the draft away and the
-next Play renders a new one. Where no sound device or player is available
-playback stays frame by frame and the status line says so.
+next Play renders a new one. Where no sound server answers the picture
+still plays at pace, silently; where the player cannot play the draft at
+all, playback stays frame by frame and the status line says so.
 
 **Proxies.** Large clips, such as 4K phone videos, are slow to scrub. So
 every video in the bin gets a *proxy* in the background: the same clip at
@@ -261,11 +263,14 @@ starts but can read no media. The icon set the window uses is
 
 Tests: `UltraVideoDocumentTest` (the document, the mapping onto the
 timeline model and back, the history, the file round trip; headless, needs
-the engine).
+the engine) and `UltraVideoDraftTest` (the draft played with sound: rendered
+with the app's settings, its sound steps in at the document's cut within a
+frame, and the framework's player reports a position that matches the
+frames it shows and reads the cut when the clip's first frame appears;
+headless, the player part skips itself without GStreamer plugins).
 
 ## Not yet
 
-Effect presets on overlay clips and stills of the overlay lane, effects
-dragged from the bin onto a clip, and the mapping of the design's tokens onto the framework's theme roles (the app colours
-its elements from the tokens directly). The proposal's roadmap (§11) has
-the order.
+Effect presets on overlay clips and stills of the overlay lane, and effects
+dragged from the bin onto a clip. The proposal's roadmap (§11) has the
+order.

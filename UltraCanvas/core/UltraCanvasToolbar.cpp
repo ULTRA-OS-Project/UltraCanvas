@@ -1,5 +1,6 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.8.0 - ToolbarAppearance::FromTheme
 // Version: 1.7.1 - buttons draw their icons at the size ToolbarAppearance::iconSize
 //                  names (IconPixelSize), not at 20 px whatever it said
 // Version: 1.7.0 - AddToolGroup
@@ -1144,4 +1145,17 @@ namespace UltraCanvas {
 
     } // namespace ToolbarPresets
 
+
+    ToolbarAppearance ToolbarAppearance::FromTheme(const UltraCanvasTheme& theme, const ToolbarAppearance& base) {
+        ToolbarAppearance a = base;
+        const ThemeRoles& r = theme.roles;
+        a.foregroundColor = r.ink;
+        a.backgroundColor = r.panel;
+        a.separatorColor = r.line;
+        a.hoverBackgroundColor = r.hover;
+        a.activeBackgroundColor = r.pressed;
+        a.disabledBackgroundColor = r.panel;
+        a.disabledForegroundColor = r.inkFaint;
+        return a;
+    }
 } // namespace UltraCanvas
