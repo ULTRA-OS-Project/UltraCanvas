@@ -1,8 +1,9 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
@@ -11,6 +12,7 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasTextInput.h"
@@ -19,6 +21,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasPathUtf8.h"   // PathToUtf8
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasSwitch.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 
@@ -401,6 +404,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     addRow("uos-dt-wallpaper-row", "Wallpaper", wallpaper_, browse);
 
     ramDisc_ = std::make_shared<UltraCanvasTextInput>("uos-dt-ramdisc", 0, 0, 260, 28);
+    ramDisc_->SetPlaceholder("None: no RAM disc button");
     wireText(ramDisc_);
     addRow("uos-dt-ramdisc-row", "RAM disc", ramDisc_);
 
@@ -414,6 +418,16 @@ void UOSSettingsWindow::BuildDesktopPage() {
         if (!refreshing_) SaveDesktopPage();
     };
     addRow("uos-dt-desktops-row", "Virtual desktops", desktops_);
+
+    // Only where there is a system desktop to take the place of (Windows).
+    if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
+        systemDesktop_ = UltraCanvasSwitch::Create("uos-dt-replace", 0, 0,
+                                                   "UltraDesktop in place of the Windows desktop");
+        systemDesktop_->onStateChanged = [this](CheckedState, CheckedState now) {
+            if (!refreshing_) SetSystemDesktopReplaced(now == CheckedState::Checked);
+        };
+        addRow("uos-dt-replace-row", "At sign-in", systemDesktop_);
+    }
     page->AddChild(body);
 
     desktopStatus_ = MakeLabel("uos-dt-status", "", kTextFontSize, kMutedTextColor);
@@ -425,12 +439,24 @@ void UOSSettingsWindow::BuildDesktopPage() {
     spacer->size.height = CSSLayout::Dimension::Px(24);
     page->AddChild(spacer);
 
-    auto notes = MakeNotes("uos-dt-note", {
+    std::vector<std::string> noteTexts = {
             "Changes are saved at once - a text field when you leave it or press "
             "Return - and a running desktop takes them over within a second.",
-            "The RAM disc is the folder the desktop's drive button opens; the file "
-            "manager is the program its folder buttons start. Virtual desktops "
-            "are asked of the window manager, which may offer a different number."});
+            "The RAM disc is the folder the desktop's drive button opens - empty, "
+            "no button; the file manager is the program its folder buttons start. "
+            "Virtual desktops are asked of the window manager, which may offer a "
+            "different number."};
+    if (systemDesktop_) {
+        noteTexts.push_back(
+            "At sign-in: UltraDesktop takes the place of the Windows desktop for "
+            "this account. It starts at sign-in and Explorer's taskbar hides "
+            "itself, while Explorer's tray and notifications keep working. Turn "
+            "the switch off, or choose \"Switch back to the Windows desktop\" on "
+            "the desktop's settings button, to have the Windows desktop back at "
+            "once. If the desktop ever does not come up: Ctrl+Shift+Esc, \"Run "
+            "new task\", UltraDesktop --restore-desktop.");
+    }
+    auto notes = MakeNotes("uos-dt-note", noteTexts);
     page->AddChild(notes);
 
     pages_[kPageDesktop] = page;
@@ -453,6 +479,7 @@ void UOSSettingsWindow::RefreshDesktopPage() {
     if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
     if (filer_) filer_->SetText(settings.filerProgram);
     if (desktops_) desktops_->SetSelectedIndex(std::clamp(settings.virtualDesktops, 1, 9) - 1, false);
+    if (systemDesktop_) systemDesktop_->SetChecked(UltraCanvasDesktopShell::IsSystemDesktopReplaced());
     refreshing_ = false;
     if (desktopStatus_) {
         desktopStatus_->SetText(read ? "Settings file: " + path
@@ -476,7 +503,7 @@ void UOSSettingsWindow::SaveDesktopPage() {
                                           : UltraDesktop::TaskbarEdge::Left;
     }
     if (wallpaper_) settings.wallpaper = wallpaper_->GetText();
-    if (ramDisc_ && !ramDisc_->GetText().empty()) settings.ramDiscPath = ramDisc_->GetText();
+    if (ramDisc_) settings.ramDiscPath = ramDisc_->GetText();   // "" = no RAM disc button
     if (filer_ && !filer_->GetText().empty()) settings.filerProgram = filer_->GetText();
     if (desktops_) settings.virtualDesktops = std::clamp(desktops_->GetSelectedIndex() + 1, 1, 9);
     if (!settings.Save(path, &error)) {
@@ -484,6 +511,35 @@ void UOSSettingsWindow::SaveDesktopPage() {
         return;
     }
     if (desktopStatus_) desktopStatus_->SetText("Saved to " + path);
+}
+
+void UOSSettingsWindow::SetSystemDesktopReplaced(bool replaced) {
+    std::string error;
+    std::string status;
+    if (replaced) {
+        const std::string program = UltraCanvasDesktopShell::FindProgram("UltraDesktop");
+        if (UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--session"}, &error)) {
+            // Now, not only from the next sign-in - unless it is open already.
+            bool running = false;
+            for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+                if (w.appClass == "UltraDesktop") running = true;
+            }
+            status = "UltraDesktop is the desktop now and at every sign-in; Explorer's taskbar hides itself.";
+            if (!running && !UltraCanvasDesktopShell::LaunchProgram("UltraDesktop", {"--session"}, &error)) {
+                status = "UltraDesktop is the desktop from the next sign-in; it could not be started now: " + error;
+            }
+        }
+    } else if (UltraCanvasDesktopShell::RestoreSystemDesktop(&error)) {
+        status = "The Windows desktop is back. A desktop started at sign-in closes within a second.";
+    }
+    if (status.empty()) {
+        status = "Not changed: " + error;
+        // The switch shows what is true, not what was asked for.
+        refreshing_ = true;
+        if (systemDesktop_) systemDesktop_->SetChecked(UltraCanvasDesktopShell::IsSystemDesktopReplaced());
+        refreshing_ = false;
+    }
+    if (desktopStatus_) desktopStatus_->SetText(status);
 }
 
 void UOSSettingsWindow::BrowseWallpaper() {

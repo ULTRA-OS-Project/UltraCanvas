@@ -1,12 +1,15 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.4.0 - WindowType::Desktop: undecorated, the primary monitor's
+//                  size, out of the taskbar and Alt+Tab, on every virtual
+//                  desktop, kept below every other window
 // Version: 1.3.0 - never shown black: the first frame is drawn before the
 //                  window appears, and a new surface starts in the window's
 //                  background colour instead of black
 // Version: 1.2.0 - WindowType::Notification: topmost, out of the taskbar, never activated
 // Version: 1.1.1 - window icon pixels converted to straight alpha
 // Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -65,6 +68,14 @@ namespace UltraCanvas {
             DestroyWindow(hwnd);
             hwnd = nullptr;
             return false;
+        }
+
+        // A desktop window took the screen's size in CreateHWND, after the
+        // base had already sized this container from the config it was given:
+        // follow, or the bars and wallpaper are laid out for the smaller box
+        // and the rest of the screen stays unpainted.
+        if (config_.type == WindowType::Desktop) {
+            SetBounds(Rect2Di(0, 0, config_.width, config_.height));
         }
 
         // STEP 4: Initialize OLE drag-drop
@@ -172,6 +183,14 @@ namespace UltraCanvas {
                 style = WS_POPUP;
                 exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
                 break;
+            case WindowType::Desktop:
+                // The desktop itself: undecorated; a tool window, which keeps
+                // it out of the taskbar and Alt+Tab and shows it on every
+                // virtual desktop; held below every other window by
+                // WM_WINDOWPOSCHANGING. Sized to the screen below.
+                style = WS_POPUP;
+                exStyle = WS_EX_TOOLWINDOW;
+                break;
             default: // Standard
                 break;
         }
@@ -182,12 +201,26 @@ namespace UltraCanvas {
         if (!config_.maximizable) style &= ~WS_MAXIMIZEBOX;
         if (config_.alwaysOnTop)  exStyle |= WS_EX_TOPMOST;
 
+        // The desktop window is the screen: whatever size was asked for, it
+        // covers the primary monitor, which is the one at 0,0.
+        if (config_.type == WindowType::Desktop) {
+            config_.x = 0;
+            config_.y = 0;
+        }
+
         // Seed the device scale from the monitor the window will open on. hwnd
         // doesn't exist yet, so QueryNativeDeviceScale() uses the monitor under
         // the configured position (GetDpiForMonitor / GetDpiForSystem). The
         // process is Per-Monitor-V2 aware, so CreateWindowExW client sizes are in
         // PHYSICAL px = logical × deviceScale.
         RefreshDeviceScale();
+
+        if (config_.type == WindowType::Desktop) {
+            config_.width  = std::max(1, PhysicalToLogical(GetSystemMetrics(SM_CXSCREEN)));
+            config_.height = std::max(1, PhysicalToLogical(GetSystemMetrics(SM_CYSCREEN)));
+            config_.resizable = false;
+            style &= ~WS_THICKFRAME;
+        }
 
         // Calculate window rect to get correct client area size (physical px)
         RECT rect = {0, 0, LogicalToPhysical(config_.width), LogicalToPhysical(config_.height)};
@@ -532,6 +565,17 @@ namespace UltraCanvas {
             case WM_MOUSELEAVE: {
                 trackingMouseLeave = false;
                 break;  // Let ProcessWindowMessage handle the event
+            }
+
+            case WM_WINDOWPOSCHANGING: {
+                // The desktop window stays below every other window however it
+                // was activated: a click on the wallpaper or on a bar must not
+                // lift it over the applications.
+                if (config_.type == WindowType::Desktop) {
+                    auto* pos = reinterpret_cast<WINDOWPOS*>(lParam);
+                    if (!(pos->flags & SWP_NOZORDER)) pos->hwndInsertAfter = HWND_BOTTOM;
+                }
+                break;
             }
 
             case WM_GETMINMAXINFO: {

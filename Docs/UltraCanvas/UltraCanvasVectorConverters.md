@@ -1,6 +1,6 @@
 # UltraCanvas Vector Format Converters
 
-<!-- doc-check: std::string dwgBytes; -->
+<!-- doc-check: std::string dwgBytes; std::vector<uint8_t> svgBytes; -->
 
 The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file formats and the framework's in-memory `VectorStorage::VectorDocument` model. Every converter implements `UltraCanvas::VectorConverter::IVectorFormatConverter` (`UltraCanvasVectorConverter.h`): `Import`/`ImportFromString`/`ImportFromStream` produce a `VectorDocument`, `Export`/`ExportToString`/`ExportToStream` serialize one, and `ValidateFile`/`ValidateData` sniff signatures.
 
@@ -148,13 +148,17 @@ it registered:
   has no `svgload` - the WebAssembly sysroot's - by reading it through the
   seam and rendering the kept document with the core's vector renderer at
   each requested size; every SVG icon of a WebAssembly page comes from here.
-  A libvips that refuses an SVG gets the same second reader on the desktop.
+  A libvips that refuses an SVG gets the same second reader on the desktop,
+  and an SVG that arrives as bytes (`UCImage::LoadFromMemory`, a picture in
+  a mail) takes the provider's `LoadFromMemory`, the converter's
+  `ImportFromString`.
 
 ```cpp
 RegisterVectorFormatsPlugin();                    // once, at startup
 
 CanPreviewVectorExtension("dwg");                 // true
 LoadVectorPreviewDocument("plan.dxf");            // a VectorDocument
+LoadVectorPreviewDocumentFromMemory("svg", svgBytes.data(), svgBytes.size());   // from bytes
 RenderVectorPreviewPixmap("plan.dwg", 256, 256);  // a UCPixmap for a tile
 ```
 

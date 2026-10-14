@@ -24,9 +24,10 @@ UOS-Settings opens on this page.
 |---|---|
 | **Taskbar** | The screen edge the taskbar sits on: Left, Top or Bottom. |
 | **Wallpaper** | The picture behind the desktop; empty is the framework's picture. *Browse...* opens the file dialog. |
-| **RAM disc** | The folder the desktop's drive button opens. |
+| **RAM disc** | The folder the desktop's drive button opens; empty, no button (the default on Windows). |
 | **File manager** | The program the desktop's folder buttons start. |
 | **Virtual desktops** | How many the organiser offers (1-9); asked of the window manager, which may offer another number. |
+| **At sign-in** (Windows only) | *UltraDesktop in place of the Windows desktop*: on, UltraDesktop starts at every sign-in of this account - and now, if it is not running - and Explorer's taskbar hides itself; off, the Windows desktop is back at once, the taskbar as it was, and a desktop the sign-in started closes. Not a setting in the file: it is the account's start at sign-in, through `UltraCanvasDesktopShell::ReplaceSystemDesktop` / `RestoreSystemDesktop`, so the switch always shows what is true. See [UltraDesktop on Windows](../UltraDesktop/README.md#on-windows). |
 
 A dropdown is saved when it changes, a text field when it is left or Return
 is pressed. The fields go to UltraDesktop's settings file -

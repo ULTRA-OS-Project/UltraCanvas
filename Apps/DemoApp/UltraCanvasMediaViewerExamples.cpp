@@ -5,16 +5,37 @@
 // slideshow, zoom, rotation, mirroring, colour adjustments, save-as and the
 // info popup. The widget is framed and captioned to separate it from the
 // programmer-facing notes below it.
+// Version: 1.0.2 - ShowInMediaViewer lives here, built in every configuration
 // Version: 1.0.1
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasMediaViewerWindow.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 
 namespace UltraCanvas {
+
+// ===== FULL-SIZE VIEWER =====
+    // Every demo page that opens a sample "full size" - bitmaps, vector
+    // drawings, 3D models - comes here, and the file opens in one
+    // UltraCanvasMediaViewerWindow over the window the click came from (the
+    // demo's main window). The arrow keys walk the rest of the sample's
+    // folder; Escape closes it. The instance is allocated once and never
+    // destroyed: its destructor closes a window, which must not run during
+    // static teardown after the windowing system has shut down. It lives in
+    // this file because the vector and 3D pages call it too, and this file
+    // is built in every configuration where UltraCanvasBitmapFormatDemo.cpp,
+    // its old home, needs libvips (a build without it failed to link).
+    void ShowInMediaViewer(const std::string& path) {
+        if (path.empty()) return;
+        static auto* viewerWindow = new UltraCanvasMediaViewerWindow();
+        UltraCanvasWindowBase* host = nullptr;
+        if (auto* app = UltraCanvasApplication::GetInstance()) host = app->GetFocusedWindow();
+        viewerWindow->Show(path, host);
+    }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMediaViewerExamples() {
         auto root = std::make_shared<UltraCanvasContainer>("MediaViewerExamples", 0, 0, 1000, 916);

@@ -1,10 +1,12 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
-// Version: 0.5.0 - OpenFiles: files handed over by a second start
+// Version: 0.6.0 - OpenFiles: files handed over by a second start
+// Version: 0.5.0 - Import, the overlay and a sound on A2 offer FileLoader's types the engine reads
 // Version: 0.4.0
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
+#include "UltraVideoFormats.h"
 #include "UltraVideoMapping.h"
 
 #include "UltraCanvasAlert.h"
@@ -36,13 +38,6 @@ constexpr unsigned kTickMs = 20;
 constexpr int kMessageTicks = 200;       // 4 s
 constexpr double kMinZoom = 2.0;
 constexpr double kMaxZoom = 2000.0;
-
-const std::vector<std::string>& MediaExtensions() {
-    static const std::vector<std::string> exts = {"mp4", "mov", "mkv", "webm", "avi", "m4v", "mpg", "mpeg", "mts", "ts",
-                                                  "jpg", "jpeg", "png", "webp", "heic", "heif", "tif", "tiff", "bmp", "avif",
-                                                  "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus"};
-    return exts;
-}
 
 bool IsProjectFile(const std::string& path) {
     return PathToUtf8(PathFromUtf8(path).extension()) == ".ultravideo";
@@ -965,7 +960,7 @@ bool UltraVideoWindow::SaveTo(const std::string& path) {
 void UltraVideoWindow::ImportMedia() {
     FileDialogOptions opts;
     opts.SetTitle("Import media").SetParentWindow(window_.get());
-    opts.AddFilter("Video, pictures and sound", MediaExtensions());
+    AddImportTypes(opts, "Video, pictures and sound", true, true, true);
     UltraCanvasFileLoader::OpenMultipleFilesDialog(opts, [this](DialogResult result, const std::vector<std::string>& files) {
         if (result == DialogResult::OK && !files.empty()) ImportFiles(files);
     });
@@ -1548,10 +1543,7 @@ void UltraVideoWindow::AddOverlay(const std::string& path, double at) {
 void UltraVideoWindow::ChooseOverlay(double at) {
     FileDialogOptions opts;
     opts.SetTitle("A file over the picture").SetParentWindow(window_.get());
-    std::vector<std::string> exts;
-    for (const std::string& e : MediaExtensions())
-        if (Document::KindOfPath("x." + e) != MediaKind::Audio) exts.push_back(e);
-    opts.AddFilter("Video and pictures", exts);
+    AddImportTypes(opts, "Video and pictures", true, true, false);
     UltraCanvasFileLoader::OpenFileDialog(opts, [this, at](DialogResult result, const std::string& path) {
         if (result == DialogResult::OK && !path.empty()) AddOverlay(path, at);
     });
@@ -1578,10 +1570,7 @@ void UltraVideoWindow::AddSound(const std::string& path, double at, bool voiceOv
 void UltraVideoWindow::ChooseSound(double at, bool voiceOver) {
     FileDialogOptions opts;
     opts.SetTitle(voiceOver ? "A voice-over" : "A sound effect").SetParentWindow(window_.get());
-    std::vector<std::string> exts;
-    for (const std::string& e : MediaExtensions())
-        if (Document::KindOfPath("x." + e) != MediaKind::Image) exts.push_back(e);
-    opts.AddFilter("Sound, and video with sound", exts);
+    AddImportTypes(opts, "Sound, and video with sound", true, false, true);
     UltraCanvasFileLoader::OpenFileDialog(opts, [this, at, voiceOver](DialogResult result, const std::string& path) {
         if (result == DialogResult::OK && !path.empty()) AddSound(path, at, voiceOver);
     });
@@ -1796,7 +1785,7 @@ void UltraVideoWindow::ShowTimelineMenu(const std::string& trackId, double secon
             menu_->AddItem(MenuItemData::ActionWithShortcut("Import media here\xE2\x80\xA6", "Ctrl+I", [this, seconds]() {
                 FileDialogOptions opts;
                 opts.SetTitle("Import media").SetParentWindow(window_.get());
-                opts.AddFilter("Video, pictures and sound", MediaExtensions());
+                AddImportTypes(opts, "Video, pictures and sound", true, true, true);
                 UltraCanvasFileLoader::OpenMultipleFilesDialog(opts, [this, seconds](DialogResult result, const std::vector<std::string>& files) {
                     if (result == DialogResult::OK && !files.empty()) ImportFiles(files, seconds);
                 });

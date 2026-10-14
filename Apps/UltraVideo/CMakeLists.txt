@@ -15,6 +15,7 @@ add_executable(UltraVideo
     main.cpp
     UltraVideoDialogs.cpp
     UltraVideoDocument.cpp
+    UltraVideoFormats.cpp
     UltraVideoHistory.cpp
     UltraVideoInspector.cpp
     UltraVideoMapping.cpp

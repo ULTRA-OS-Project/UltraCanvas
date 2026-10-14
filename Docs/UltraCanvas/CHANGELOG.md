@@ -1,3 +1,226 @@
+#### 2026-10-14 *0.9.284*
+- **DemoApp: sharp toolbar icons on the Vector Editing and WYSIWYG pages.**
+  - *Vector Editing:* Undo and Redo used Texter's icons, drawn as thin
+    filled outlines, beside ArtCreator's 2 px line icons. They now use the
+    framework's shared line icons (`media/icons/menu/undo.svg`, `redo.svg`),
+    the ones ArtCreator's own toolbar uses: 2 px strokes on whole pixels, like
+    every other button on the page.
+  - *WYSIWYG:* the page imitates Texter and keeps Texter's icons, but five of
+    them were exports with fractional coordinates and hairline strokes, so at
+    24 px the list bars fell between two pixel rows and the italic *i*, the
+    numbers, the `{#}` and the `<>` were smeared. `md-italic`, `md-code`,
+    `md-list-unordered`, `md-list-ordered` and `code2` in
+    `media/icons/texter/` are redrawn on the 24 px grid in the weight of
+    Texter's other icons - black, 1 px lines on whole pixels. Texter's
+    markdown side bar uses four of them and is sharp too (Texter 1.65).
+
+#### 2026-10-14 *0.9.283*
+- **A build without libvips links again** (the WebAssembly workflow's no-vips
+  variant, run 16 of `wasm-build.yml`): the demo's bitmap format pages and
+  its *Image Performance Test* are registered only with libvips, whose
+  codecs they show and benchmark, matching the guard their sources already
+  had in CMake; `ShowInMediaViewer`, which the vector and 3D pages call too,
+  moved from the libvips-only `UltraCanvasBitmapFormatDemo.cpp` to
+  `UltraCanvasMediaViewerExamples.cpp`, built in every configuration; and
+  the QR code element's `ScanQRCodeFile` and picture export, which read and
+  write through libvips, now say so and fail cleanly without it instead of
+  leaving the core library with unresolved libvips symbols. The element,
+  the pixel-buffer scan and the decoder are unchanged. The OCR and
+  Vectorizer plugins, whose own CMake files require libvips (one hands
+  libvips images to tesseract, the other loads the raster it traces through
+  PixelFX), are skipped with a status line when the core is configured with
+  `ULTRACANVAS_ENABLE_VIPS=OFF`, instead of linking against a PixelFX the
+  core has not got; the demo registers its Vectorizer page only with the
+  plugin, as before.
+- **`scripts/check_doc_examples.py` rebuilds its precompiled header when any
+  header it was built from changes**, not only one under `UltraCanvas/include/`.
+  A public header includes further ones (`UltraCanvasImage.h` takes
+  `libspecific/Cairo/ImageCairo.h`), and after an edit to one of those clang
+  refused the cached header, which the checker reported as "a header changed
+  while the docs were being checked" on every run until something under
+  `include/` was touched.
+- **An SVG that arrives as bytes renders without libvips' SVG loader too.**
+  `UCImage::LoadFromMemory` now recognises SVG text (a BOM, whitespace, then
+  the XML declaration, a DOCTYPE or `<svg` itself) and, where libvips has no
+  `svgload` or refuses the bytes, reads it through the vector preview seam's
+  new `LoadFromMemory` (`UltraCanvasVectorPreview.h`,
+  `LoadVectorPreviewDocumentFromMemory`), which the Vector plugin answers
+  with its converter's `ImportFromString`. The file path took that road
+  since 0.9.273; a picture in a mail or a clipboard paste did not.
+- VirtualFS no longer warns about a missing libarchive in a WebAssembly
+  configure: the wasm sysroot never holds it, so the message is a status
+  line there and a warning everywhere else.
+- **The WebAssembly configure no longer fails on CI's in-checkout sysroot.**
+  The core's Emscripten link directories (the wasm sysroot's `lib/`, for
+  cairo, pango, glib, libvips and the rest) are build-interface only now:
+  `wasm-build.yml` keeps the sysroot inside the workspace, and CMake refuses
+  to generate an exported target whose `INTERFACE_LINK_DIRECTORIES` holds a
+  path under the source directory. Run 14 of the workflow, the first to
+  configure the repository root rather than `OS/WASM/demo`, failed on every
+  variant with that error; the installed package has no use for a build
+  machine's sysroot anyway.
+- **The single-threaded WebAssembly build runs in current browsers again.**
+  It stopped on its first request for random bytes with
+  `Failed to execute 'getRandomValues' on 'Crypto': The provided
+  ArrayBufferView value must not be resizable` (the threaded variants were
+  unaffected). The core's link options passed `-sGROWABLE_ARRAYBUFFERS=1`
+  to every WebAssembly build; in a browser with resizable WebAssembly
+  memory that makes a single-threaded program's heap a resizable
+  ArrayBuffer, and Emscripten hands such a heap to Web Crypto directly,
+  where it copies shared memory through a temporary buffer first. The
+  option now goes with `-pthread` only, where it earns its place (growth
+  without a check on every JavaScript-side heap access); a single-threaded
+  program grows its memory the ordinary way.
+
+#### 2026-10-14 *0.9.282*
+- **Open and Save dialogs take their file types from FileLoader.** Applications
+  kept extension lists of their own, which offered types the build could not
+  read and missed ones it could. FileLoader now hands its format inventory
+  to a dialog:
+  - `UltraCanvasFileLoader::AddLoadTypes(opts, label, {categories})` adds one
+    Open filter with every type the build reads in those categories, aliases
+    included, and nothing when it reads none.
+  - `AddSaveTypes(opts, category)` adds one Save filter per type the build
+    writes, under the type's name. `AddImageSaveTypes` is now
+    `AddSaveTypes(Bitmap)`.
+  - Every save-type call puts the type that the proposed file name ends in
+    first, because the dialog starts on its first type. Before, a
+    `drawing.svg` opened on Adobe Illustrator, the alphabet's first vector
+    type.
+  - A codec an application registers itself (`RegisterMediaCodec`) joins
+    both lists.
+- **Text documents get their own types.** The Document category also holds
+  PDF and e-books, which `LoadTextDocument` cannot open, so:
+  - `AddTextDocumentLoadTypes` offers what it does read: ODT, DOCX, DOC,
+    LaTeX, Markdown and plain text, first all together under "Documents",
+    then each type on its own. `OpenTextDocument` offers these when it is
+    given no filters.
+  - `SaveTextDocument` writes ODT or DOCX, and `AddTextDocumentSaveTypes`
+    offers those two.
+- **VideoFX 0.14.0 reports which files it reads and writes.** `VideoFX_GetFileFormats()`
+  asks the FFmpeg it is linked against:
+  - Video and sound containers count as read when FFmpeg has a demuxer for
+    them, and as written when it has the muxer and the usual encoders.
+  - Still pictures count as read when FFmpeg's decoders open them. AVIF
+    needs FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its
+    demuxer opens it, but a phone's HEIC is a grid of tiles that VideoFX
+    does not put together, so it would import one tile of the photo.
+  - `VideoFXTest` writes every type the report says it writes and reads
+    each one back.
+- **VideoFX reads pictures through the host application.** With
+  `VideoFX_SetPictureReader`, an application hands VideoFX its own image
+  reader for chosen picture types: a cheap size from the header, and the
+  upright RGBA picture. `VideoFX_Probe`, `VideoFX_ExtractFrame` and
+  `VideoFX_ExtractThumbnails` then read those files through it, and so do
+  image segments, overlays and slideshows. `VideoFX_GetFileFormats` reports
+  the types as read.
+- **QR codes save as any picture type.** The new
+  `UltraCanvasQRCode::ExportToImage(path, moduleSize, error)` writes the type
+  the file name ends in: any type FileLoader writes (`CanSaveImage`), such as
+  ICO, TIFF or GIF, not only the five of `QRImageFormat`.
+- **DemoApp: every page offers FileLoader's file types.** Eleven pages kept
+  lists of their own: WYSIWYG, ODT, spreadsheet, system dialogs, QR code,
+  Filer, OCR, PixelFX, AudioFX, image benchmark and vectorizer. For example,
+  WYSIWYG's Insert image offered five picture types, and the vectorizer saved
+  only SVG. Now:
+  - The vectorizer saves the traced drawing as SVG, as any other vector type,
+    or as a bitmap drawn sharp at any size.
+  - The QR code page's single Save offers every picture type and SVG.
+  - The QR code and image benchmark pages open and save through FileLoader's
+    dialogs instead of calling the native dialogs directly.
+  - The CDR page still saves only SVG and XAR, because those are its
+    plugin's own two converters.
+
+#### 2026-10-14 *0.9.281*
+- **`UltraCanvasDesktopShell` on Windows** (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp`),
+  the first step towards UltraDesktop replacing the Windows desktop. Until
+  now Windows had the empty fallback, so UltraDesktop there showed no running
+  windows, an empty Apps window, no screenshot and no reserved bars. It works
+  with Explorer running beside UltraDesktop and with UltraDesktop as the shell.
+  - Windows: `EnumWindows`, filtered the way Explorer's taskbar filters.
+    `appClass` is the program's name (for a Microsoft Store app, the program
+    inside the frame) and the icon is the executable's. Activate, minimize
+    and close are asynchronous, so a hung program cannot hang the taskbar.
+  - Virtual desktops: the count, the order and the current desktop come from
+    the registry values where Explorer keeps them (Windows documents no call
+    for any of them). A window's desktop comes from `IVirtualDesktopManager`.
+    Switching desktops sends Explorer's own Ctrl+Win+Left/Right. Changing the
+    number of desktops, and moving another program's window to a desktop,
+    have no Windows call and answer false.
+  - `ReserveScreenEdges`: an appbar for each reserved edge while Explorer's
+    taskbar runs, and the work area itself when nothing else keeps it.
+  - Screenshot: `BitBlt` of the whole virtual screen.
+  - Devices:
+    - the webcam from the consent store that Windows' privacy indicator reads;
+    - the microphone and speaker from running Core Audio sessions;
+    - the battery from `GetSystemPowerStatus`;
+    - the keyboard layout from the window being typed into.
+  - The monitor uses WinEvent hooks and a registry notification for the
+    desktop count. Global shortcuts use `RegisterHotKey`. Explorer reserves
+    most Win-key combinations, Win+V among them, so `Start` reports those
+    as taken.
+  - `ListApplications` lists the Start menu's program shortcuts (the user's
+    and the machine's), named as `desktop.ini` names them. `LaunchApplication`
+    opens a shortcut the way Explorer does. This adds a new `shortcutPath`
+    field to `UCDesktopEntry`. Microsoft Store apps are not listed yet.
+- **`UltraCanvasDesktopShell::ReplaceSystemDesktop` /
+  `RestoreSystemDesktop` / `IsSystemDesktopReplaced` /
+  `CanReplaceSystemDesktop`: a program in place of the system's desktop, and
+  the way back.**
+  - On Windows a value under the user's Run key starts the program at
+    sign-in, and Explorer's taskbar is set to auto-hide. Explorer keeps
+    running.
+  - Restoring removes the value and gives the taskbar the state recorded
+    before the first switch.
+  - It applies to one account only and needs no administrator rights.
+  - On Linux and elsewhere the session decides which desktop runs:
+    `CanReplaceSystemDesktop()` is false there, and restoring is a harmless
+    no-op.
+  - UltraDesktop 0.3.0 and UOS-Settings 0.4.0 use it.
+- **`WindowType::Desktop` on Windows** is now what it is on X11: undecorated,
+  the size of the primary monitor, out of the taskbar and Alt+Tab, shown on
+  every virtual desktop and kept below every other window. Before, it was a
+  normal decorated window.
+- `WindowsIcons::WriteSurfacePng`: the "Open with" menu's icon cache and the
+  desktop shell now share one PNG writer. It writes through the wide API and
+  replaces the file atomically.
+- `DesktopShellTest` now runs on the Windows CI rows too
+  (`ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS`). It opens a window of its own
+  with a Thai title and checks that the window list returns the title. It
+  reserves a screen edge and checks that the work area makes room. It also
+  minimizes and closes the window, registers a hot key, writes a screenshot
+  and lists a Start menu it builds itself.
+- **A Windows installer:** `package-win.sh --installer` builds
+  `UltraCanvas-Setup-Windows-<version>-<arch>.exe` from the folder the zip is
+  made of (`Windows/Installer/UltraCanvasSetup.nsi`,
+  `scripts/build-windows-installer.sh`, NSIS).
+  - It installs for the current account, with no administrator rights,
+    into `%LOCALAPPDATA%\Programs\UltraCanvas`.
+  - Every GUI-subsystem program gets a Start-menu entry, read from its PE
+    header, so command-line tools get none. The suite gets an
+    *Apps & features* entry.
+  - The finish page offers UltraDesktop as the Windows desktop, off unless
+    ticked.
+  - The uninstaller restores the Windows desktop first, then removes exactly
+    the files it installed: a folder that still holds a file of the user's
+    stays.
+  - The commented-out CPack block in `CMakeLists.txt` is gone. The platform
+    scripts are what know what a package must hold.
+- **The signing scripts no longer carry the certificate's password.**
+  `SignUltraDemo.ps1` and `SignUltraTexter.ps1` had it written into
+  their defaults, readable by anyone who could read the repository. They now
+  read it from `ULTRACANVAS_SIGN_PFX_PASSWORD` (or `-PfxPassword`), and they
+  stop with a message instead of signing when it is missing.
+  - To change the password: delete the `.pfx`, set the new password and run
+    `-Mode CreateAndSign`. The certificate already in the store is exported
+    again under the new password.
+  - `*.pfx` and `*.p12` are now ignored by git, since the scripts export the
+    private key next to themselves in the repository root.
+  - `-Description` sets the name the signature shows. The demo script had
+    signed with "UltraTexter", so the installer would have been signed under
+    that name. It now signs as "UltraCanvas", and the installer as
+    "UltraCanvas Setup".
+
 #### 2026-10-14 *0.9.280*
 - **One rule for the per-user application data folder:
   `UltraCanvasDataFolder.h`.** Every application worked out for itself where

@@ -799,7 +799,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` behind the internal
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
+  (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
+  hooks, `RegisterHotKey`, the Start menu) in
+  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp`, both behind the internal
   `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. Public surface:
   - `ListWindows` (`DesktopWindowInfo`: id, title, WM class, icon file
     resolved through the icon themes, desktop, pid, active, minimized,
@@ -809,16 +812,23 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
     `MoveWindowToVirtualDesktop`.
   - `GetScreenSize`, `ReserveScreenEdges` (a window's strips along the
-    screen's edges, `_NET_WM_STRUT_PARTIAL`, so maximised windows stop short
-    of a desktop's bars), `CaptureScreen` (PNG), `DefaultScreenshotPath`
+    screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
+    so maximised windows stop short of a desktop's bars), `CaptureScreen`
+    (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
     (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
   - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
-    icons resolved), `MatchApplication` (a window's entry, by
+    icons resolved; the Start menu's program shortcuts on Windows, launched
+    by opening the shortcut), `MatchApplication` (a window's entry, by
     `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
     `FindProgram` (next to this executable first, then `PATH`).
+  - `CanReplaceSystemDesktop` / `IsSystemDesktopReplaced` /
+    `ReplaceSystemDesktop` / `RestoreSystemDesktop` - a program (UltraDesktop)
+    in place of the system's desktop at sign-in, and the way back (Windows:
+    the user's Run key and Explorer's taskbar on auto-hide, its previous
+    state restored; elsewhere the session decides and the calls say so).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -828,7 +838,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `UltraCanvasGlobalShortcut` - `Start("Super+V", onPressed, &error)` /
     `Stop()` (joins) / `IsRunning`: a key combination that reaches this
     program from any window (X11 `XGrabKey` on its own connection and
-    thread; fails with a reason elsewhere and when another program holds it).
+    thread, Windows `RegisterHotKey` on its own thread; fails with a reason
+    elsewhere and when another program holds it).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
@@ -1290,6 +1301,15 @@ which has no pixel size and is drawn sharp at any) comes back through the
 `SaveFileDialog` overload that reports it, never stored. The media viewer's
 Save image as (UltraViewer) offers it and draws an SVG again at the size
 chosen.
+
+A dialog's file types come from the format inventory, never an application's
+own list: `AddLoadTypes(opts, label, {categories})` (one Open filter of every
+type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
+(one Save filter per type it writes, the proposed name's type first),
+`AddTextDocumentLoadTypes` / `AddTextDocumentSaveTypes` with
+`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
+codec an application brings joins them through `RegisterMediaCodec`, as
+UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
 
 ### **4. Plug-ins for File Types**
 
@@ -2178,12 +2198,16 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
   `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
-  (`VideoFXExportSettings::keyframeInterval`)
+  (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
+  `VideoFXPictureReader`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
   `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
-  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`
+  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`,
+  `VideoFX_GetFileFormats` (the films, sound and pictures the linked FFmpeg
+  reads, and the ones an export writes), `VideoFX_SetPictureReader` (picture
+  types the host application reads for the engine)
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
