@@ -3,10 +3,10 @@
   with suggestions, or a CJK reading waiting for its candidate. The Android
   backend kept that composition inside the keyboard. It now passes it on the
   way the Linux and Windows backends do:
-  - An element that draws compositions itself (`DrawsTextComposition()`,
-    today `UltraCanvasRichTextEdit`) receives `TextComposition` events and
-    shows the word at its caret while it is typed. Any other element still
-    sees only the committed text.
+  - An editable `UltraCanvasTextInput`, `UltraCanvasTextArea` or
+    `UltraCanvasRichTextEdit` (any element whose `DrawsTextComposition()` is
+    true) receives `TextComposition` events and shows the word at its caret
+    while it is typed. Any other element still sees only the committed text.
   - A word was lost when the keyboard ended the composition without
     committing it, for example when it closed mid-word. Such a word is now
     kept as typed.
