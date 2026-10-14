@@ -244,7 +244,10 @@ then each type under its name. A codec an application brings itself joins
 the lists once it is registered: UltraVideo registers what its FFmpeg engine
 reads and writes (`VideoFX_GetFileFormats`) with `RegisterMediaCodec`, and
 FileLoader's Video and Audio lists then hold MKV, WebM and AVI on a macOS
-whose platform backend reads only MP4, MOV and 3GP.
+whose platform backend reads only MP4, MOV and 3GP. The other way round, it
+hands its engine the framework's image reader (`UCImageRaster`, through
+`VideoFX_SetPictureReader`) for the picture types FileLoader reads and FFmpeg
+does not open whole, so a phone's HEIC comes in as the whole photo.
 
 ### Extensible Plugin Architecture
 Add support for proprietary or specialized graphics formats without modifying

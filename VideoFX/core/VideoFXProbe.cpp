@@ -1,8 +1,10 @@
 // VideoFX/core/VideoFXProbe.cpp
 // Media inspection: VideoFX_Probe, frame and thumbnail extraction, saving a
-// frame as PNG / JPEG.
+// frame as PNG / JPEG; the host application's picture reader.
+// Version: 0.14.0 - VideoFX_SetPictureReader: picture types the host reads
+//                  go through its reader in Probe, ExtractFrame, ExtractThumbnails
 // Version: 0.10.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -15,6 +17,8 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <memory>
+#include <mutex>
 
 namespace VideoFX {
 
@@ -43,11 +47,117 @@ std::string LowerExtension(const std::string& path) {
     return ext;
 }
 
+// ===== the host application's picture reader =====
+
+std::mutex pictureReaderMutex;
+std::shared_ptr<const VideoFXPictureReader> pictureReader;
+
+// The host's reader when it takes this file's type
+std::shared_ptr<const VideoFXPictureReader> HostReaderFor(const std::string& path) {
+    std::string ext = LowerExtension(path);
+    if (ext.size() < 2) return nullptr;
+    ext.erase(0, 1);
+    std::shared_ptr<const VideoFXPictureReader> reader;
+    {
+        std::lock_guard<std::mutex> lock(pictureReaderMutex);
+        reader = pictureReader;
+    }
+    if (reader && std::find(reader->extensions.begin(), reader->extensions.end(), ext) != reader->extensions.end())
+        return reader;
+    return nullptr;
+}
+
+VideoFXResult ReadHostPicture(const VideoFXPictureReader& reader, const std::string& path, VideoFXFrame& frame) {
+    std::error_code ec;
+    if (path.empty() || !std::filesystem::exists(UltraCanvas::PathFromUtf8(path), ec))
+        return Fail(VideoFXResult::FileNotFound, "File not found: " + path);
+    frame = VideoFXFrame{};
+    if (!reader.decode || !reader.decode(path, frame) || !frame.IsValid()) {
+        frame = VideoFXFrame{};
+        return Fail(VideoFXResult::DecodeError, "The application could not read the picture " + path);
+    }
+    frame.timestamp = 0.0;
+    return VideoFXResult::Ok;
+}
+
+// Shrunk to fit maxWidth x maxHeight (0: no limit), never enlarged - what
+// ConvertToRgba does with a decoded frame
+VideoFXResult FitFrame(VideoFXFrame& frame, int maxWidth, int maxHeight) {
+    double scale = 1.0;
+    if (maxWidth > 0) scale = std::min(scale, maxWidth / static_cast<double>(frame.width));
+    if (maxHeight > 0) scale = std::min(scale, maxHeight / static_cast<double>(frame.height));
+    if (scale >= 1.0) return VideoFXResult::Ok;
+    const int w = std::max(1, static_cast<int>(std::lround(frame.width * scale)));
+    const int h = std::max(1, static_cast<int>(std::lround(frame.height * scale)));
+    SwsPtr sws(sws_getContext(frame.width, frame.height, AV_PIX_FMT_RGBA, w, h, AV_PIX_FMT_RGBA, SWS_BICUBIC,
+                              nullptr, nullptr, nullptr));
+    if (!sws) return Fail(VideoFXResult::DecodeError, "Cannot scale the picture");
+    std::vector<uint8_t> scaled(static_cast<size_t>(w) * h * 4);
+    const uint8_t* srcData[4] = {frame.pixels.data(), nullptr, nullptr, nullptr};
+    const int srcLines[4] = {frame.width * 4, 0, 0, 0};
+    uint8_t* dstData[4] = {scaled.data(), nullptr, nullptr, nullptr};
+    const int dstLines[4] = {w * 4, 0, 0, 0};
+    sws_scale(sws.get(), srcData, srcLines, 0, frame.height, dstData, dstLines);
+    frame.width = w;
+    frame.height = h;
+    frame.pixels = std::move(scaled);
+    return VideoFXResult::Ok;
+}
+
+// What VideoFX_Probe says of a picture the host reads: one picture stream,
+// no length
+VideoFXResult ProbeHostPicture(const VideoFXPictureReader& reader, const std::string& path, VideoFXMediaInfo& info) {
+    std::error_code ec;
+    if (path.empty() || !std::filesystem::exists(UltraCanvas::PathFromUtf8(path), ec))
+        return Fail(VideoFXResult::FileNotFound, "File not found: " + path);
+    int width = 0, height = 0;
+    bool read = reader.size && reader.size(path, width, height) && width > 0 && height > 0;
+    if (!read) {
+        VideoFXFrame frame;
+        if (ReadHostPicture(reader, path, frame) != VideoFXResult::Ok) return VideoFXResult::DecodeError;
+        width = frame.width;
+        height = frame.height;
+    }
+    info.path = path;
+    info.formatName = "picture";
+    info.formatLongName = "a picture read by the application";
+    const auto bytes = std::filesystem::file_size(UltraCanvas::PathFromUtf8(path), ec);
+    if (!ec) info.fileSize = static_cast<int64_t>(bytes);
+    VideoFXStreamInfo s;
+    s.index = 0;
+    s.kind = VideoFXStreamKind::Video;
+    s.codecName = "picture";
+    s.width = width;
+    s.height = height;
+    info.streams.push_back(s);
+    info.videoStreamIndex = 0;
+    info.width = width;
+    info.height = height;
+    return VideoFXResult::Ok;
+}
+
 } // namespace
+
+void VideoFX_SetPictureReader(VideoFXPictureReader reader) {
+    for (std::string& ext : reader.extensions) {
+        if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    }
+    reader.extensions.erase(std::remove(reader.extensions.begin(), reader.extensions.end(), std::string()),
+                            reader.extensions.end());
+    std::lock_guard<std::mutex> lock(pictureReaderMutex);
+    if (reader.extensions.empty()) pictureReader.reset();
+    else pictureReader = std::make_shared<const VideoFXPictureReader>(std::move(reader));
+}
 
 // ===== single-frame decoding (declared in VideoFXBackend.h, shared with the preview) =====
 
 namespace Internal {
+
+std::vector<std::string> HostPictureExtensions() {
+    std::lock_guard<std::mutex> lock(pictureReaderMutex);
+    return pictureReader ? pictureReader->extensions : std::vector<std::string>{};
+}
 
 VideoFXResult OpenVideoStream(const std::string& path, OpenVideo& v) {
     VideoFXResult r = OpenInput(path, v.fmt);
@@ -235,6 +345,7 @@ VideoFXResult ConvertToRgba(const AVFrame* src, int rotation, int maxWidth, int 
 VideoFXResult VideoFX_Probe(const std::string& path, VideoFXMediaInfo& info) {
     ClearError();
     info = VideoFXMediaInfo{};
+    if (auto reader = HostReaderFor(path)) return ProbeHostPicture(*reader, path, info);
     FormatInputPtr fmt;
     VideoFXResult r = OpenInput(path, fmt);
     if (r != VideoFXResult::Ok) return r;
@@ -317,6 +428,10 @@ VideoFXResult VideoFX_ExtractFrame(const std::string& path, double seconds, Vide
     ClearError();
     frame = VideoFXFrame{};
     if (!std::isfinite(seconds)) return Fail(VideoFXResult::InvalidArgument, "Time is not a number");
+    if (auto reader = HostReaderFor(path)) {
+        VideoFXResult r = ReadHostPicture(*reader, path, frame);
+        return r != VideoFXResult::Ok ? r : FitFrame(frame, maxWidth, maxHeight);
+    }
     OpenVideo v;
     VideoFXResult r = OpenVideoStream(path, v);
     if (r != VideoFXResult::Ok) return r;
@@ -334,6 +449,15 @@ VideoFXResult VideoFX_ExtractThumbnails(const std::string& path, int count, std:
     ClearError();
     frames.clear();
     if (count <= 0 || count > 10000) return Fail(VideoFXResult::InvalidArgument, "Thumbnail count must be 1..10000");
+    if (auto reader = HostReaderFor(path)) {
+        // A still: the same picture in every slice, as FFmpeg gives a still
+        VideoFXFrame picture;
+        VideoFXResult r = ReadHostPicture(*reader, path, picture);
+        if (r == VideoFXResult::Ok) r = FitFrame(picture, maxWidth, maxHeight);
+        if (r != VideoFXResult::Ok) return r;
+        frames.assign(static_cast<size_t>(count), picture);
+        return VideoFXResult::Ok;
+    }
     OpenVideo v;
     VideoFXResult r = OpenVideoStream(path, v);
     if (r != VideoFXResult::Ok) return r;

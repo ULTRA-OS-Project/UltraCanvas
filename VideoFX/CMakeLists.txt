@@ -12,7 +12,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(VideoFX
-    VERSION 0.13.0
+    VERSION 0.14.0
     DESCRIPTION "VideoFX - video editing and conversion engine"
     LANGUAGES CXX
 )

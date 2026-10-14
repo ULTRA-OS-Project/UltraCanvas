@@ -2362,14 +2362,16 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
   `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
-  (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`
+  (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
+  `VideoFXPictureReader`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
   `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
   `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`,
   `VideoFX_GetFileFormats` (the films, sound and pictures the linked FFmpeg
-  reads, and the ones an export writes)
+  reads, and the ones an export writes), `VideoFX_SetPictureReader` (picture
+  types the host application reads for the engine)
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
@@ -71653,7 +71655,10 @@ then each type under its name. A codec an application brings itself joins
 the lists once it is registered: UltraVideo registers what its FFmpeg engine
 reads and writes (`VideoFX_GetFileFormats`) with `RegisterMediaCodec`, and
 FileLoader's Video and Audio lists then hold MKV, WebM and AVI on a macOS
-whose platform backend reads only MP4, MOV and 3GP.
+whose platform backend reads only MP4, MOV and 3GP. The other way round, it
+hands its engine the framework's image reader (`UCImageRaster`, through
+`VideoFX_SetPictureReader`) for the picture types FileLoader reads and FFmpeg
+does not open whole, so a phone's HEIC comes in as the whole photo.
 
 ### Extensible Plugin Architecture
 Add support for proprietary or specialized graphics formats without modifying
@@ -80295,9 +80300,10 @@ by hand:
   it: the muxer and the container's usual encoders are there. `container`
   then names the `VideoFXContainer` an export to it uses.
 - Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
-  FFmpeg 6. HEIC is listed and not read: from FFmpeg 7.0 the demuxer opens
-  it, but a phone's HEIC is a grid of tiles in a stream group, which VideoFX
-  does not put together yet. GIF is also written, as the animation.
+  FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its demuxer
+  opens it, but a phone's HEIC is a grid of tiles in a stream group, which
+  VideoFX does not put together. A host application's picture reader does
+  (below). GIF is also written, as the animation.
 
 The descriptions match the UltraCanvas codec registry's, so an application
 that brings VideoFX hands the films and sound to `RegisterMediaCodec`, and
@@ -80309,6 +80315,26 @@ module built without FFmpeg returns an empty list.
 for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
     if (f.kind == VideoFXFileKind::Video && f.canWrite)
         std::printf("%s (%s) - an export writes it\n", f.description.c_str(), f.extension.c_str());
+```
+
+**Pictures the application reads.** A host with an image library of its own
+hands VideoFX a `VideoFXPictureReader`: the picture types it takes over, a
+cheap `size` (the upright size, from the header) and `decode` (the upright
+picture as RGBA). `VideoFX_Probe`, `VideoFX_ExtractFrame` and
+`VideoFX_ExtractThumbnails` read files of those types through it instead of
+FFmpeg, and so does everything built on them: image segments, picture
+overlays, slideshows. `VideoFX_GetFileFormats` then reports the types read.
+Both calls come from the engine's worker threads. UltraVideo gives VideoFX
+the UltraCanvas image reader (libvips, libheif) this way, for every picture
+type FileLoader reads and FFmpeg does not: a phone's HEIC comes in whole and
+upright, and so does a camera's raw file.
+
+```cpp
+VideoFXPictureReader reader;
+reader.extensions = {"heic", "heif"};
+reader.size = [](const std::string& path, int& w, int& h) { return MyImageSize(path, w, h); };
+reader.decode = [](const std::string& path, VideoFXFrame& frame) { return MyImageRgba(path, frame); };
+VideoFX_SetPictureReader(reader);             // a reader with no extensions takes it away
 ```
 
 ---
@@ -85081,10 +85107,11 @@ Import videos, photos and songs with the import button, `Ctrl+I`, by
 dropping them on the window, or by naming them on the command line (a
 folder imports its files). The dialogs offer FileLoader's types that the
 engine reads: at start-up UltraVideo tells the framework's codec registry
-which films and sound VideoFX's FFmpeg reads and writes, and a picture type
-the engine cannot read (a camera's raw file, and HEIC, whose tile grid the
-engine does not put together yet) is not offered. Every file is probed by the engine and shows a duration badge,
-*photo*, or *unreadable* with the reason in its tooltip.
+which films and sound VideoFX's FFmpeg reads and writes, and gives the engine
+the framework's image reader for the pictures FFmpeg does not open whole - a
+phone's HEIC (a grid of tiles libheif puts together), a camera's raw file.
+Every file is probed by the engine and shows a duration badge, *photo*, or
+*unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
 the timeline; a song becomes the music under the whole video. Or drag a
 tile onto the timeline: on the main track it goes in at the cut nearest the

@@ -2,9 +2,10 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.14.0 - VideoFXFileFormat / VideoFXFileKind (VideoFX_GetFileFormats)
+// Version: 0.14.0 - VideoFXFileFormat / VideoFXFileKind (VideoFX_GetFileFormats),
+//                  VideoFXPictureReader (VideoFX_SetPictureReader)
 // Version: 0.13.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -437,6 +438,19 @@ struct VideoFXFileFormat {
     bool canRead = false;                           // a segment, an overlay or a song can be this file
     bool canWrite = false;                          // an export writes it: its muxer and usual encoder are here
     VideoFXContainer container = VideoFXContainer::Auto;   // what an export to it uses; Auto when none does
+};
+
+// Picture types the host application reads for the engine, with its own
+// image library (VideoFX_SetPictureReader): a HEIC of tiles, a camera's raw
+// file - whatever FFmpeg does not open whole. Both calls come from the
+// engine's worker threads.
+struct VideoFXPictureReader {
+    std::vector<std::string> extensions;    // the types it takes over: lowercase, undotted
+    // The picture's size as shown (upright), read without decoding it;
+    // false when it cannot read the file
+    std::function<bool(const std::string& path, int& width, int& height)> size;
+    // The picture, upright, at its full size; false when it cannot read it
+    std::function<bool(const std::string& path, VideoFXFrame& frame)> decode;
 };
 
 // One encoder FFmpeg offers for a codec (VideoFX_ListVideoEncoders)

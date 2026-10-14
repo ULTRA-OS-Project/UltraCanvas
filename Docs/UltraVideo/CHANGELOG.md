@@ -8,13 +8,16 @@
     macOS, for example, the registry alone knew only MP4, MOV and 3GP.
   - Import media, the file over the picture, a voice-over or sound effect
     on A2, and the story's photos, clips and songs offer FileLoader's types
-    that the engine reads. A picture type the engine cannot read is no longer
-    offered and then refused: a camera's raw files, and HEIC. Before, HEIC was refused on FFmpeg 6; on FFmpeg 7 a
-    phone's HEIC, which is a grid of tiles, would have come in as a single
-    tile, because the engine does not put the grid together yet.
+    that the engine reads.
+  - **HEIC photos import whole.** Picture types FileLoader reads and FFmpeg
+    does not are read through the framework's image reader
+    (`VideoFX_SetPictureReader`): HEIC, a camera's raw files, FITS and so on.
+    For HEIC this is libheif, which puts a phone photo's grid of tiles
+    together and turns it upright. FFmpeg 6 refused HEIC, and FFmpeg 7 would
+    have given one tile of the photo.
   - Whether a file is a picture or sound is decided by the same lists, so a
-    HEIC still shows as a photo, marked unreadable, where it cannot be
-    opened.
+    picture this build cannot decode (a HEIC where libheif lacks its HEVC
+    decoder) still shows as a photo, marked unreadable.
   - Export's Browse offers the presets' types under FileLoader's names.
     Picking a type there selects the preset that writes it, so an MP4 can
     no longer be saved under a `.wav` name.

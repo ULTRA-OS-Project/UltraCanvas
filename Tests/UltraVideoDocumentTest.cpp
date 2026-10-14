@@ -6,6 +6,7 @@
 // media reported; the title, overlay and voice-and-sound lanes; the effect
 // presets and their strength. Needs the VideoFX engine (FFmpeg) for the probes and the
 // clips it generates; without it the suite skips itself.
+// Version: 0.6.0 - a HEIC imported and exported through the framework's image reader
 // Version: 0.5.0 - the files it takes are FileLoader's lists, as the engine reads them
 // Version: 0.4.0
 // Last Modified: 2026-10-13
@@ -895,6 +896,84 @@ int main() {
               "AddImportTypes: one filter of them, under its label");
         CHECK(FormatName("mp4") == "MPEG-4 container" && FormatName(".MOV") == "QuickTime movie" && FormatName("xyz") == "XYZ",
               "a type's name is FileLoader's; an unknown one its extension");
+        // A HEIC through the framework's image reader: FFmpeg would give one
+        // tile of a phone's photo, libheif the whole of it, upright
+        const std::vector<std::string> bitmaps = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+        if (holds(bitmaps, "heic")) {
+            CHECK(holds(ImportExtensions(false, true, false), "heic"), "a HEIC is offered: the engine reads it through the framework");
+            Document heicDoc;
+            const MediaItem heic = heicDoc.Import(std::string(UC_MEDIA_DIR) + "/images/dice.heic");
+            CHECK(heic.error.empty() && heic.kind == MediaKind::Image && heic.width == 800 && heic.height == 600,
+                  "... imported as a photo of its own size, 800 x 600");
+            // Its pixels need libheif's HEVC decoder (libde265), which a
+            // libheif built with plugins may lack while it reads the header
+            auto probe = UCImageRaster::Load(heic.path, true);
+            auto pixmap = probe && probe->IsValid() ? probe->CreatePixmap(probe->GetWidth(), probe->GetHeight()) : nullptr;
+            if (!pixmap || !pixmap->IsValid()) {
+                std::printf("  SKIP  this build's libheif has no HEVC decoder: the HEIC's pixels are not checked\n");
+            } else {
+                VideoFXFrame shown;
+                CHECK(VideoFX_ExtractFrame(heic.path, 0.0, shown, 400, 400) == VideoFXResult::Ok && shown.width == 400 &&
+                      shown.height == 300, "... its picture, fitted for the bin");
+                VideoFXExportSettings s;
+                s.container = VideoFXContainer::MKV;
+                s.videoCodec = VideoFXVideoCodec::MPEG4;
+                s.width = 320; s.height = 240; s.frameRate = 10.0;
+                const std::string film = TempPath("media/dice.mkv");
+                VideoFXFrame exported;
+                CHECK(VideoFX_Export({VideoFXSegment::FromImage(heic.path, 0.5)}, film, s) == VideoFXResult::Ok &&
+                      VideoFX_ExtractFrame(film, 0.2, exported) == VideoFXResult::Ok && exported.IsValid(),
+                      "... and exported into a film");
+                long sum = 0;
+                for (size_t i = 0; i < exported.pixels.size(); i += 4) sum += exported.pixels[i] + exported.pixels[i + 1] + exported.pixels[i + 2];
+                CHECK(sum > static_cast<long>(exported.pixels.size() / 4) * 30, "... showing the photo, not black");
+            }
+        } else {
+            std::printf("  SKIP  this build's image reader has no HEIC\n");
+        }
+
+        // The same road end to end with a type the framework reads and the
+        // engine's FFmpeg is not asked to: a FITS picture, 64 x 48, grey 200
+        if (holds(bitmaps, "fits")) {
+            const std::string fits = TempPath("media/sky.fits");
+            {
+                std::string header;
+                auto card = [&header](const std::string& text) {
+                    header += text + std::string(80 - text.size(), ' ');
+                };
+                card("SIMPLE  =                    T");
+                card("BITPIX  =                    8");
+                card("NAXIS   =                    2");
+                card("NAXIS1  =                   64");
+                card("NAXIS2  =                   48");
+                card("END");
+                header.resize(2880, ' ');
+                std::string data(64 * 48, static_cast<char>(200));
+                data.resize((data.size() + 2879) / 2880 * 2880, '\0');      // whole 2880-byte blocks
+                std::FILE* f = OpenFileUtf8(fits, "wb");
+                if (f) { std::fwrite(header.data(), 1, header.size(), f); std::fwrite(data.data(), 1, data.size(), f); std::fclose(f); }
+            }
+            Document fitsDoc;
+            const MediaItem sky = fitsDoc.Import(fits);
+            CHECK(holds(ImportExtensions(false, true, false), "fits") && sky.error.empty() && sky.kind == MediaKind::Image &&
+                  sky.width == 64 && sky.height == 48,
+                  "a picture the framework reads for the engine is offered, and imported at its size");
+            VideoFXFrame shown, filmed;
+            VideoFXExportSettings s;
+            s.container = VideoFXContainer::MKV;
+            s.videoCodec = VideoFXVideoCodec::MPEG4;
+            s.width = 64; s.height = 48; s.frameRate = 10.0;
+            const std::string film = TempPath("media/sky.mkv");
+            CHECK(VideoFX_ExtractFrame(fits, 0.0, shown) == VideoFXResult::Ok && shown.width == 64 &&
+                  std::abs(shown.pixels[0] - 200) < 3 && shown.pixels[3] == 255,
+                  "... its pixels are the framework's: grey 200, opaque");
+            CHECK(VideoFX_Export({VideoFXSegment::FromImage(fits, 0.5)}, film, s) == VideoFXResult::Ok &&
+                  VideoFX_ExtractFrame(film, 0.2, filmed) == VideoFXResult::Ok &&
+                  std::abs(filmed.pixels[(24 * 64 + 32) * 4] - 200) < 16,
+                  "... and a film of it shows them");
+        } else {
+            std::printf("  SKIP  this build's image reader has no FITS\n");
+        }
         CHECK(Document::KindOfPath("a/holiday.HEIC") == MediaKind::Image && Document::KindOfPath("x.jxl") == MediaKind::Image &&
               Document::KindOfPath("x.opus") == MediaKind::Audio && Document::KindOfPath("x.m2ts") == MediaKind::Unknown &&
               Document::KindOfPath("notes.txt") == MediaKind::Unknown,

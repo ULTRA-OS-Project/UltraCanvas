@@ -13,9 +13,10 @@
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
 // Version: 0.14.0 - VideoFX_GetFileFormats: the containers and pictures this
-//                  build reads, and the ones an export writes
+//                  build reads (the host's picture types too), and the ones an
+//                  export writes
 // Version: 0.13.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -3237,10 +3238,12 @@ const std::vector<KnownContainer>& KnownContainers() {
 
 // A still picture: the decoders that open it (any one will do) and, for the
 // ISO-BMFF pictures, the extension the mov demuxer has to claim - AVIF from
-// FFmpeg 6. HEIC is listed and never read: the mov demuxer claims it from
-// FFmpeg 7.0, but a phone's HEIC is a grid of 512 px tiles that FFmpeg hands
-// out as separate streams of a stream group, and the engine does not put a
-// grid together yet - it would import one tile of the photo.
+// FFmpeg 6. HEIC is listed and not read by FFmpeg here: the mov demuxer
+// claims it from FFmpeg 7.0, but a phone's HEIC is a grid of 512 px tiles
+// that FFmpeg hands out as separate streams of a stream group, and the engine
+// does not put a grid together - it would import one tile of the photo. A
+// host application with an image library that does reads it instead
+// (VideoFX_SetPictureReader).
 struct KnownPicture {
     const char* extension;
     std::vector<std::string> aliases;
@@ -3342,6 +3345,22 @@ std::vector<VideoFXFileFormat> VideoFX_GetFileFormats() {
         f.canRead = AnyDecoder(k.decoders) && (!k.movExtension || MovDemuxerClaims(k.movExtension));
         f.canWrite = k.container != VideoFXContainer::Auto && ExportWrites(k.container, f.kind);
         f.container = f.canWrite ? k.container : VideoFXContainer::Auto;
+        out.push_back(std::move(f));
+    }
+    // The picture types the host application reads (VideoFX_SetPictureReader)
+    for (const std::string& ext : HostPictureExtensions()) {
+        auto known = std::find_if(out.begin(), out.end(), [&ext](const VideoFXFileFormat& f) {
+            return f.kind == VideoFXFileKind::Picture &&
+                   (f.extension == ext || std::find(f.aliases.begin(), f.aliases.end(), ext) != f.aliases.end());
+        });
+        if (known != out.end()) {
+            known->canRead = true;
+            continue;
+        }
+        VideoFXFileFormat f;
+        f.extension = ext;
+        f.kind = VideoFXFileKind::Picture;
+        f.canRead = true;
         out.push_back(std::move(f));
     }
     return out;

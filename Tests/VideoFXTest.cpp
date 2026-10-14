@@ -10,9 +10,10 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.14.0 - VideoFX_GetFileFormats: every type it writes written and read back
+// Version: 0.14.0 - VideoFX_GetFileFormats: every type it writes written and read back;
+//                  VideoFX_SetPictureReader: picture types the application reads
 // Version: 0.13.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -1144,6 +1145,7 @@ static void TestProxies(const VideoFXExportSettings& base);
 static void TestEncoders(const VideoFXExportSettings& base);
 static void TestAudioClips(const VideoFXExportSettings& base);
 static void TestFileFormats();
+static void TestPictureReader();
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -1358,6 +1360,7 @@ static void TestEngine() {
     TestEncoders(base);
     TestAudioClips(base);
     TestFileFormats();
+    TestPictureReader();
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -2563,6 +2566,74 @@ static void TestFileFormats() {
     CHECK(VideoFX_Probe(still, info) == VideoFXResult::Ok && info.HasVideo(), "... which it reads as a picture");
 }
 
+static void TestPictureReader() {
+    std::printf("\n-- picture types the application reads --\n");
+    // A stand-in for the host's image library: ".uvpic" files are 40 x 30
+    // and red; one named bad.uvpic cannot be read
+    auto touch = [](const std::string& path) {
+        std::FILE* f = UltraCanvas::OpenFileUtf8(path, "wb");
+        if (f) { std::fputs("not for FFmpeg", f); std::fclose(f); }
+    };
+    const std::string picture = TempPath("photo.uvpic");
+    const std::string bad = TempPath("bad.uvpic");
+    touch(picture);
+    touch(bad);
+    int decodes = 0;
+    VideoFXPictureReader reader;
+    reader.extensions = {".UVPIC"};
+    reader.size = [](const std::string& path, int& w, int& h) {
+        if (path.find("bad.") != std::string::npos) return false;
+        w = 40; h = 30;
+        return true;
+    };
+    reader.decode = [&decodes](const std::string& path, VideoFXFrame& frame) {
+        if (path.find("bad.") != std::string::npos) return false;
+        ++decodes;
+        frame.width = 40; frame.height = 30;
+        frame.pixels.assign(40 * 30 * 4, 0);
+        for (size_t i = 0; i < frame.pixels.size(); i += 4) { frame.pixels[i] = 255; frame.pixels[i + 3] = 255; }
+        return true;
+    };
+    VideoFX_SetPictureReader(reader);
+
+    VideoFXMediaInfo info;
+    CHECK(VideoFX_Probe(picture, info) == VideoFXResult::Ok && info.HasVideo() && !info.HasAudio() &&
+          info.width == 40 && info.height == 30 && decodes == 0,
+          "Probe: the application's size, without decoding the picture");
+    VideoFXFrame frame;
+    CHECK(VideoFX_ExtractFrame(picture, 0.0, frame, 20, 20) == VideoFXResult::Ok && frame.width == 20 && frame.height == 15 &&
+          frame.pixels[0] > 200 && frame.pixels[1] < 50,
+          "ExtractFrame: the application's picture, fitted into the size asked for");
+    std::vector<VideoFXFrame> strip;
+    CHECK(VideoFX_ExtractThumbnails(picture, 3, strip) == VideoFXResult::Ok && strip.size() == 3 && strip[2].width == 40,
+          "ExtractThumbnails: the still in every slice");
+    bool listed = false;
+    for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
+        listed = listed || (f.extension == "uvpic" && f.kind == VideoFXFileKind::Picture && f.canRead);
+    CHECK(listed, "GetFileFormats reports the type read, extension made lowercase and undotted");
+
+    VideoFXExportSettings s;
+    s.container = VideoFXContainer::MKV;
+    s.videoCodec = VideoFXVideoCodec::MPEG4;
+    s.width = 64; s.height = 48; s.frameRate = 10.0;
+    const std::string out = TempPath("from-picture.mkv");
+    CHECK_OK(VideoFX_Export({VideoFXSegment::FromImage(picture, 0.5)}, out, s), "an image segment of the type exports");
+    VideoFXFrame shown;
+    CHECK(VideoFX_ExtractFrame(out, 0.2, shown) == VideoFXResult::Ok && shown.IsValid() &&
+          shown.pixels[(static_cast<size_t>(shown.height / 2) * shown.width + shown.width / 2) * 4] > 180,
+          "... showing the application's picture");
+
+    CHECK(VideoFX_Probe(bad, info) == VideoFXResult::DecodeError && !VideoFX_GetLastError().empty(),
+          "a file the application cannot read: DecodeError, with the reason");
+    CHECK(VideoFX_Probe(TempPath("missing.uvpic"), info) == VideoFXResult::FileNotFound, "a missing one: FileNotFound");
+
+    VideoFX_SetPictureReader(VideoFXPictureReader{});
+    CHECK(VideoFX_Probe(picture, info) != VideoFXResult::Ok, "with the reader taken away, FFmpeg cannot read it");
+    bool still = false;
+    for (const VideoFXFileFormat& f : VideoFX_GetFileFormats()) still = still || f.extension == "uvpic";
+    CHECK(!still, "... and the type is no longer reported");
+}
+
 static void TestEncoders(const VideoFXExportSettings& base) {
     std::printf("\n-- encoders: software and hardware --\n");
     const auto t0 = std::chrono::steady_clock::now();
@@ -2745,6 +2816,7 @@ static void TestEngine() {
           VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Software).empty(),
           "stub: no encoders of any kind");
     CHECK(VideoFX_GetFileFormats().empty(), "stub: no file it reads or writes");
+    VideoFX_SetPictureReader(VideoFXPictureReader{});      // nothing to read with: a no-op
 }
 
 #endif

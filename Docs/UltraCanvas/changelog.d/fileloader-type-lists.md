@@ -22,16 +22,23 @@
     given no filters.
   - `SaveTextDocument` writes ODT or DOCX, and `AddTextDocumentSaveTypes`
     offers those two.
-- **VideoFX reports which files it reads and writes.** `VideoFX_GetFileFormats()`
+- **VideoFX 0.14.0 reports which files it reads and writes.** `VideoFX_GetFileFormats()`
   asks the FFmpeg it is linked against:
   - Video and sound containers count as read when FFmpeg has a demuxer for
     them, and as written when it has the muxer and the usual encoders.
   - Still pictures count as read when FFmpeg's decoders open them. AVIF
-    needs FFmpeg 6. HEIC is never reported as read: from FFmpeg 7.0 the
+    needs FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its
     demuxer opens it, but a phone's HEIC is a grid of tiles that VideoFX
-    does not put together yet, so it would import one tile of the photo.
+    does not put together, so it would import one tile of the photo.
   - `VideoFXTest` writes every type the report says it writes and reads
     each one back.
+- **VideoFX reads pictures through the host application.** With
+  `VideoFX_SetPictureReader`, an application hands VideoFX its own image
+  reader for chosen picture types: a cheap size from the header, and the
+  upright RGBA picture. `VideoFX_Probe`, `VideoFX_ExtractFrame` and
+  `VideoFX_ExtractThumbnails` then read those files through it, and so do
+  image segments, overlays and slideshows. `VideoFX_GetFileFormats` reports
+  the types as read.
 - **QR codes save as any picture type.** The new
   `UltraCanvasQRCode::ExportToImage(path, moduleSize, error)` writes the type
   the file name ends in: any type FileLoader writes (`CanSaveImage`), such as
