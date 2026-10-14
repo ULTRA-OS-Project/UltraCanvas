@@ -64,8 +64,12 @@ recording:
 * **JSON cells are keyed by item id**, not index, so a file survives its items
   being reordered; the import runs the result through `Validate()`.
 
-Still open: the competitive-assessment block of the House (new data, see
-above), D7 `C` (deferred per Q3) and C4 attribute gutters (deferred).
+The competitive-assessment block followed: `MatrixModel::competitors` and
+`ratings` (keyed by need and competitor id, 1..`ratingMax`), drawn right of the
+House's grid as one marker per need per competitor, joined row to row, with the
+competitors in the legend and the ratings in JSON.
+
+Still open: D7 `C` (deferred per Q3) and C4 attribute gutters (deferred).
 
 **Revision 3 (2026-08-10) — scope correction.** Reference images 1, 2 and 7 are
 architectural room-adjacency matrices, and adjacency data is already modelled by

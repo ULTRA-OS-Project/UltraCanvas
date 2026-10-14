@@ -1,5 +1,6 @@
 // Plugins/Diagrams/UltraCanvasMatrixDiagram.cpp
 // Matrix diagram element: L, T, X, Y and House arrangements, ordinal cell marks, roll-ups
+// Version: 1.4.0 - the House of Quality's competitive-assessment block
 // Version: 1.3.0 - Phase 4: pan and zoom through the shared diagram viewport, keyboard navigation, cycle-on-click editing
 // Version: 1.2.0 - Phase 3: the House of Quality (roof, importance column, direction and target rows), roll-up bar strip with ranks
 // Version: 1.1.1 - rotated column headers get room on the right instead of being clipped; SetDarkTheme(false) keeps non-colour settings
@@ -219,6 +220,7 @@ namespace UltraCanvas {
     void UltraCanvasMatrixDiagram::SetShape(MatrixShape shape) {
         if (model.shape == shape) return;
         model.shape = shape;
+        RebuildLegend();   // the competitors' entries come and go with the House
         DropLayoutCache();
         RequestRedraw();
     }
@@ -369,6 +371,18 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasMatrixDiagram::SetShowCompetitiveAssessment(bool on) {
+        if (showCompetitive == on) return;
+        showCompetitive = on;
+        RebuildLegend();
+        DropLayoutCache();
+        RequestRedraw();
+    }
+
+    bool UltraCanvasMatrixDiagram::CompetitiveShown() const {
+        return showCompetitive && model.shape == MatrixShape::House && !model.competitors.empty();
+    }
+
     void UltraCanvasMatrixDiagram::SetShowImportance(bool on) {
         if (showImportance == on) return;
         showImportance = on;
@@ -444,6 +458,26 @@ namespace UltraCanvas {
                     case MatrixMarkShape::Triangle: entry.swatch = LegendSwatch::Marker; break;
                     case MatrixMarkShape::Disc:
                     default:                     entry.swatch = LegendSwatch::Circle; break;
+                }
+                entries.push_back(entry);
+            }
+        }
+
+        // The competitors of a House's assessment share the key: their marks
+        // are what the block is read by.
+        if (CompetitiveShown()) {
+            for (const MatrixCompetitor& competitor : model.competitors) {
+                ChartLegendEntry entry;
+                entry.id = "competitor:" + competitor.id;
+                entry.label = competitor.name.empty() ? competitor.id : competitor.name;
+                entry.color = competitor.color;
+                switch (competitor.mark) {
+                    case MatrixMarkShape::Ring:     entry.swatch = LegendSwatch::Ring;   break;
+                    case MatrixMarkShape::Square:
+                    case MatrixMarkShape::Cross:    entry.swatch = LegendSwatch::Square; break;
+                    case MatrixMarkShape::Triangle:
+                    case MatrixMarkShape::Diamond:  entry.swatch = LegendSwatch::Marker; break;
+                    default:                        entry.swatch = LegendSwatch::Circle; break;
                 }
                 entries.push_back(entry);
             }
@@ -775,7 +809,11 @@ namespace UltraCanvas {
         const double tgtH = anyTarget ? style.targetRowHeight : 0.0;
 
         const double gridLeft = area.x + axisTitleSpace + pl.rowLabels.width + impW;
-        const double room = area.x + area.width - gridLeft;
+        // The competitive block takes its width off the right before the cells
+        // are sized, and the rotated headers may not lean into it either.
+        const double compGap = 10.0;
+        const double compW = CompetitiveShown() ? style.competitiveWidth + compGap : 0.0;
+        const double room = area.x + area.width - gridLeft - compW;
         const double gridAvailW = room - (rowTotals ? style.totalsGutterSize : 0.0);
 
         // The roof's height is cols * w / 2, so capping it caps w.
@@ -829,6 +867,11 @@ namespace UltraCanvas {
         if (rowTotals) {
             pl.rowTotals = Rect2Dd(pl.grid.x + pl.grid.width, pl.grid.y,
                                    style.totalsGutterSize, pl.grid.height);
+        }
+        if (compW > 0.0) {
+            const double left = (rowTotals ? pl.rowTotals.x + pl.rowTotals.width : pl.grid.x + pl.grid.width)
+                                + compGap;
+            pl.competitive = Rect2Dd(left, pl.grid.y, style.competitiveWidth, pl.grid.height);
         }
         if (colTotals) {
             pl.colTotals = Rect2Dd(pl.grid.x, pl.grid.y + pl.grid.height + tgtH,
@@ -1545,6 +1588,7 @@ namespace UltraCanvas {
         RenderColumnLabels(ctx, pl);
         RenderTotals(ctx, pl);
         RenderHouseBands(ctx, pl);
+        RenderCompetitive(ctx, pl);
         if (showAxisTitles) RenderAxisTitles(ctx, pl);
     }
 
@@ -2075,6 +2119,115 @@ namespace UltraCanvas {
         }
     }
 
+    // The competitive assessment: a track per need from 1 to ratingMax, each
+    // competitor's rating a marker on it, and each competitor's markers
+    // joined row to row so the eye follows one product down the needs - the
+    // way a House of Quality is read. A gap in a competitor's ratings breaks
+    // its line rather than bridging it.
+    void UltraCanvasMatrixDiagram::RenderCompetitive(IRenderContext* ctx, const PanelLayout& pl) {
+        if (pl.competitive.width <= 0.0 || pl.rows == 0) return;
+        const MatrixItemSet* needs = model.RowSet(pl.panelIndex);
+        if (!needs) return;
+
+        const Rect2Dd& band = pl.competitive;
+        const double maxValue = std::max(1.0, model.ratingMax);
+        const double pad = style.ratingMarkerRadius + 4.0;
+        auto xOf = [&](double value) {
+            const double t = (maxValue > 1.0) ? (value - 1.0) / (maxValue - 1.0) : 0.5;
+            return band.x + pad + t * (band.width - pad * 2.0);
+        };
+        auto yOf = [&](int row) { return pl.grid.y + (row + 0.5) * pl.cellHeight; };
+
+        ctx->SetFillPaint(style.competitiveBackground);
+        ctx->FillRectangle(band);
+
+        // The hovered need lights up here as it does in the grid.
+        if (hovered.IsValid() && hovered.row >= 0 &&
+            model.panels[static_cast<size_t>(hovered.panel)].rowSetId ==
+                    model.panels[static_cast<size_t>(pl.panelIndex)].rowSetId &&
+            hovered.row < pl.rows) {
+            ctx->SetFillPaint(style.hoverBandColor);
+            ctx->FillRectangle(Rect2Dd(band.x, pl.grid.y + hovered.row * pl.cellHeight,
+                                       band.width, pl.cellHeight));
+        }
+
+        // One tick line per whole step, numbered above the block.
+        ctx->SetStrokePaint(style.competitiveTickColor);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->SetFontSize(style.totalsFontSize - 1.0f);
+        ctx->SetTextPaint(style.axisTitleColor);
+        const int steps = static_cast<int>(std::floor(maxValue));
+        for (int v = 1; v <= steps; ++v) {
+            const double x = xOf(v);
+            ctx->DrawLine(Point2Dd(x, band.y), Point2Dd(x, band.y + band.height));
+            const std::string label = std::to_string(v);
+            Size2Di s = ctx->GetTextLineDimensions(label);
+            ctx->DrawText(label, Point2Dd(x - s.width / 2.0, band.y - s.height - 3.0));
+        }
+        for (int r = 1; r < pl.rows; ++r) {
+            ctx->DrawLine(Point2Dd(band.x, pl.grid.y + r * pl.cellHeight),
+                          Point2Dd(band.x + band.width, pl.grid.y + r * pl.cellHeight));
+        }
+        ctx->SetStrokePaint(style.gridLineColor);
+        ctx->SetStrokeWidth(style.gridLineWidth);
+        ctx->DrawRectangle(band);
+
+        // The block's caption, above the numbers - wrapped rather than cut
+        // when the block is narrower than the words.
+        ctx->SetFontSize(style.axisTitleFontSize);
+        ctx->SetFontWeight(FontWeight::Bold);
+        ctx->SetTextPaint(style.axisTitleColor);
+        const std::vector<std::string> caption = WrapToLines(ctx, "Competitive assessment", band.width, 2);
+        const double captionLine = style.axisTitleFontSize * 1.3;
+        double cy = band.y - style.totalsFontSize * 1.3 - 8.0 - caption.size() * captionLine;
+        for (const std::string& line : caption) {
+            Size2Di cs = ctx->GetTextLineDimensions(line);
+            ctx->DrawText(line, Point2Dd(band.x + (band.width - cs.width) / 2.0, cy));
+            cy += captionLine;
+        }
+        ctx->SetFontWeight(FontWeight::Normal);
+
+        // Lines first, markers on top; a highlighted competitor last of all.
+        auto drawCompetitor = [&](const MatrixCompetitor& competitor, bool dimmed) {
+            Color line = competitor.color;
+            if (dimmed) line.a = static_cast<uint8_t>(line.a / 5);
+            ctx->SetStrokePaint(line);
+            ctx->SetStrokeWidth(style.competitiveLineWidth);
+            bool havePrev = false;
+            Point2Dd prev;
+            for (int r = 0; r < pl.rows && r < needs->Count(); ++r) {
+                double value = 0.0;
+                if (!model.RatingOf(needs->items[static_cast<size_t>(r)].id, competitor.id, value)) {
+                    havePrev = false;
+                    continue;
+                }
+                const Point2Dd at(xOf(value), yOf(r));
+                if (havePrev) ctx->DrawLine(prev, at);
+                prev = at;
+                havePrev = true;
+            }
+
+            MatrixLevel marker;
+            marker.shape = competitor.mark;
+            marker.color = competitor.color;
+            const double side = style.ratingMarkerRadius * 2.0 / std::max(0.05, style.markSize);
+            for (int r = 0; r < pl.rows && r < needs->Count(); ++r) {
+                double value = 0.0;
+                if (!model.RatingOf(needs->items[static_cast<size_t>(r)].id, competitor.id, value)) continue;
+                DrawMark(ctx, marker, Rect2Dd(xOf(value) - side / 2.0, yOf(r) - side / 2.0, side, side),
+                         dimmed);
+            }
+        };
+        for (const MatrixCompetitor& competitor : model.competitors) {
+            if (competitor.id == competitorFilter) continue;
+            drawCompetitor(competitor, !competitorFilter.empty());
+        }
+        if (!competitorFilter.empty()) {
+            const int at = model.IndexOfCompetitor(competitorFilter);
+            if (at >= 0) drawCompetitor(model.competitors[static_cast<size_t>(at)], false);
+        }
+    }
+
     // The column scores as a strip of bars - the QFD presentation of the
     // roll-up. Each column shows its bar, its score and its rank; the top
     // three ranks stand out in their own colour.
@@ -2324,7 +2477,9 @@ namespace UltraCanvas {
                     px >= pl.rowLabels.x && px < pl.rowLabels.x + pl.rowLabels.width;
             const bool inImportance = pl.importance.width > 0.0 &&
                     px >= pl.importance.x && px < pl.importance.x + pl.importance.width;
-            if (inGridY && (inRowLabels || inImportance)) {
+            const bool inCompetitive = pl.competitive.width > 0.0 &&
+                    px >= pl.competitive.x && px < pl.competitive.x + pl.competitive.width;
+            if (inGridY && (inRowLabels || inImportance || inCompetitive)) {
                 MatrixRef ref;
                 ref.panel = pl.panelIndex;
                 ref.row = std::clamp(static_cast<int>((py - pl.grid.y) / pl.cellHeight),
@@ -2476,6 +2631,15 @@ namespace UltraCanvas {
                                      static_cast<double>(point.y)));
                     if (entry != SIZE_MAX && entry < legend->GetEntryCount()) {
                         const std::string& id = legend->GetEntry(entry).id;
+                        // A competitor's entry highlights its line in the
+                        // assessment; a level's filters the marks.
+                        if (id.rfind("competitor:", 0) == 0) {
+                            const std::string competitor = id.substr(11);
+                            competitorFilter = (competitorFilter == competitor) ? std::string() : competitor;
+                            legend->SetHighlightedEntry(competitorFilter.empty() ? SIZE_MAX : entry);
+                            RequestRedraw();
+                            return true;
+                        }
                         SetLevelFilter(levelFilter == id ? std::string() : id);
                         legend->SetHighlightedEntry(levelFilter.empty() ? SIZE_MAX : entry);
                         return true;
@@ -2775,6 +2939,16 @@ namespace UltraCanvas {
         } else if (ref.row >= 0 && ref.row < rows->Count()) {
             const MatrixItem& item = rows->items[static_cast<size_t>(ref.row)];
             out << item.label << "\ntotal " << FormatTotal(model.RowScore(ref.panel, ref.row));
+            // A need's ratings, when the House shows them.
+            if (ref.panel == 0 && CompetitiveShown()) {
+                for (const MatrixCompetitor& competitor : model.competitors) {
+                    double value = 0.0;
+                    if (model.RatingOf(item.id, competitor.id, value)) {
+                        out << "\n" << (competitor.name.empty() ? competitor.id : competitor.name)
+                            << " " << FormatFloatClassic(value, 3);
+                    }
+                }
+            }
             if (!item.note.empty()) out << "\n" << item.note;
         } else if (ref.col >= 0 && ref.col < cols->Count()) {
             const MatrixItem& item = cols->items[static_cast<size_t>(ref.col)];

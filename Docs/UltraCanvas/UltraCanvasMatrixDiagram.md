@@ -10,8 +10,8 @@ and the weights behind those symbols roll up into per-row and per-column totals.
 **Status:** Phases 1–3 — the `L`, `T`, `X`, `Y` and QFD `House` shapes, the
 form header band, cell tint, hover bands that run across panels, a ranked bar
 strip for the column totals, and spreadsheet import - and Phase 4: pan and
-zoom, keyboard navigation, cycle-on-click editing and JSON save and load. Still
-open is the House's competitive-assessment block; see
+zoom, keyboard navigation, cycle-on-click editing and JSON save and load - and
+the House's competitive-assessment block. See
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Which element do I want?
@@ -201,6 +201,29 @@ diamond per pair, each standing over the boundary between its two columns; the
 diagram trades cell width for row height so the roof cannot squeeze the rows
 (`MatrixDiagramStyle::maxRoofShare`, `minRowAspect`). `SetShowImportance(false)`
 hides the importance column. A House without a roof panel draws without one.
+
+#### The competitive assessment
+
+Right of the grid, a House can show how customers rate your product and its
+rivals on each need - the gaps the technical requirements have to close. Each
+competitor is a marker per need on a 1-to-`ratingMax` track (5 by default),
+joined row to row:
+
+```cpp
+house.AddCompetitor("ours",    "Our bicycle",    Color(40, 44, 52, 255));
+house.AddCompetitor("cruiser", "City Cruiser X", Color(214, 110, 40, 255),
+                    MatrixMarkShape::Square);
+house.SetRating("light", "ours", 2.0);      // need id, competitor id, 1..ratingMax
+house.SetRating("light", "cruiser", 4.0);
+```
+
+`SetRating` refuses an item that is not one of panel 0's rows (the needs), an
+unknown competitor and a value outside `1..ratingMax`; `RatingOf` reads one back.
+The competitors join the legend - clicking one brings its line to the front and
+dims the others - and a need's tooltip lists its ratings. A rating left out
+breaks that competitor's line instead of bridging the gap. The block draws only
+while the model has competitors; `SetShowCompetitiveAssessment(false)` hides it
+and gives the cells its width back.
 
 `MatrixSamples::HouseOfQuality()` is a complete example.
 
@@ -433,7 +456,7 @@ if (!ImportMatrixJson(jsonText, loaded, &jsonError)) {
 }
 ```
 
-Cells are written by item id rather than position, so a file whose items have
+Competitors and their ratings travel with the rest. Cells are written by item id rather than position, so a file whose items have
 been reordered still puts every mark where it belongs. The import refuses
 another format, a newer version, a cell naming an unknown item or level, and a
 model its shape cannot draw - and leaves `loaded` untouched when it does.

@@ -1,5 +1,6 @@
 // Plugins/Diagrams/UltraCanvasMatrixModel.cpp
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.4.0 - competitive assessment: competitors and their per-need ratings
 // Version: 1.3.0 - JSON interchange of the whole model (MatrixModelToJson / MatrixModelFromJson)
 // Version: 1.2.0 - House of Quality: symmetric (roof) panels, improvement direction and target per item, Correlation scale, relative weights, table import with importances
 // Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
@@ -464,6 +465,34 @@ namespace UltraCanvas {
             }
         }
 
+        // The competitive assessment rates the needs - panel 0's rows - so
+        // every rating must name one of them and a competitor that exists.
+        for (size_t a = 0; a < competitors.size(); ++a) {
+            if (competitors[a].id.empty()) fail("competitor " + std::to_string(a) + " has an empty id");
+            for (size_t b = a + 1; b < competitors.size(); ++b) {
+                if (competitors[a].id == competitors[b].id) {
+                    fail("competitor id '" + competitors[a].id + "' appears twice");
+                }
+            }
+        }
+        if (!ratings.empty() && !(ratingMax >= 1.0)) fail("ratingMax must be at least 1");
+        {
+            const MatrixItemSet* needs = RowSet(0);
+            for (size_t r = 0; r < ratings.size(); ++r) {
+                const MatrixRating& rating = ratings[r];
+                const std::string where = "rating " + std::to_string(r);
+                if (!needs || needs->IndexOf(rating.itemId) < 0) {
+                    fail(where + " rates '" + rating.itemId + "', which is not a row of panel 0");
+                }
+                if (IndexOfCompetitor(rating.competitorId) < 0) {
+                    fail(where + " names unknown competitor '" + rating.competitorId + "'");
+                }
+                if (!(rating.value >= 1.0 && rating.value <= ratingMax)) {
+                    fail(where + " is outside 1.." + FormatFloatClassic(ratingMax, 3));
+                }
+            }
+        }
+
         for (size_t c = 0; c < cells.size(); ++c) {
             const MatrixCell& cell = cells[c];
             const std::string where = "cell " + std::to_string(c);
@@ -512,6 +541,58 @@ namespace UltraCanvas {
         panels.clear();
         cells.clear();
         headerFields.clear();
+        competitors.clear();
+        ratings.clear();
+        ratingMax = 5.0;
+    }
+
+// =============================================================================
+// MODEL - COMPETITIVE ASSESSMENT
+// =============================================================================
+
+    MatrixCompetitor& MatrixModel::AddCompetitor(const std::string& id, const std::string& name,
+                                                 const Color& color, MatrixMarkShape mark) {
+        competitors.emplace_back(id, name, color, mark);
+        return competitors.back();
+    }
+
+    int MatrixModel::IndexOfCompetitor(const std::string& id) const {
+        for (size_t i = 0; i < competitors.size(); ++i) {
+            if (competitors[i].id == id) return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    bool MatrixModel::SetRating(const std::string& itemId, const std::string& competitorId,
+                                double value) {
+        const MatrixItemSet* needs = RowSet(0);
+        if (!needs || needs->IndexOf(itemId) < 0) return false;
+        if (IndexOfCompetitor(competitorId) < 0) return false;
+        if (!(value >= 1.0 && value <= ratingMax)) return false;   // also refuses NaN
+
+        for (MatrixRating& rating : ratings) {
+            if (rating.itemId == itemId && rating.competitorId == competitorId) {
+                rating.value = value;
+                return true;
+            }
+        }
+        ratings.push_back({itemId, competitorId, value});
+        return true;
+    }
+
+    bool MatrixModel::RatingOf(const std::string& itemId, const std::string& competitorId,
+                               double& value) const {
+        for (const MatrixRating& rating : ratings) {
+            if (rating.itemId == itemId && rating.competitorId == competitorId) {
+                value = rating.value;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void MatrixModel::ClearRatings() {
+        ratings.clear();
     }
 
 // =============================================================================
@@ -912,6 +993,24 @@ namespace UltraCanvas {
             cells.Append(c);
         }
         doc.Set("cells", cells);
+
+        if (!model.competitors.empty()) {
+            JSONValue competitors = JSONValue::MakeArray();
+            for (const MatrixCompetitor& c : model.competitors) {
+                competitors.Append(JSONValue::MakeObject()
+                        .Set("id", c.id).Set("name", c.name)
+                        .Set("color", JSON::FromColor(c.color))
+                        .Set("mark", NameOf(kMarkNames, c.mark)));
+            }
+            doc.Set("competitors", competitors);
+            if (model.ratingMax != 5.0) doc.Set("ratingMax", model.ratingMax);
+            JSONValue ratings = JSONValue::MakeArray();
+            for (const MatrixRating& r : model.ratings) {
+                ratings.Append(JSONValue::MakeObject()
+                        .Set("item", r.itemId).Set("competitor", r.competitorId).Set("value", r.value));
+            }
+            doc.Set("ratings", ratings);
+        }
         return doc;
     }
 
@@ -1020,6 +1119,31 @@ namespace UltraCanvas {
                 const MatrixItemSet* rows = model.RowSet(panel);
                 const MatrixItemSet* colSet = model.ColSet(panel);
                 model.SetCellAt(panel, rows->IndexOf(row), colSet->IndexOf(col), level, note);
+            }
+        }
+
+        model.ratingMax = json.Get("ratingMax").GetNumber(5.0);
+        for (const JSONValue& c : json.Get("competitors").GetElements()) {
+            MatrixCompetitor competitor;
+            competitor.id = c.Get("id").GetString();
+            competitor.name = c.Get("name").GetString(competitor.id);
+            if (c.Contains("color") && !JSON::ToColor(c.Get("color"), competitor.color)) {
+                return failWith("competitor '" + competitor.id + "' has an unreadable colour");
+            }
+            const std::string mark = c.Get("mark").GetString("disc");
+            if (!ValueOf(kMarkNames, mark, competitor.mark)) {
+                return failWith("competitor '" + competitor.id + "' has an unknown mark '" + mark + "'");
+            }
+            model.competitors.push_back(competitor);
+        }
+        for (const JSONValue& r : json.Get("ratings").GetElements()) {
+            const std::string item = r.Get("item").GetString();
+            const std::string competitor = r.Get("competitor").GetString();
+            const double value = r.Get("value").GetNumber(0.0);
+            if (!model.SetRating(item, competitor, value)) {
+                return failWith("rating of '" + item + "' for '" + competitor + "' ("
+                                + FormatFloatClassic(value, 3) + ") names an unknown need or "
+                                "competitor, or lies outside 1.." + FormatFloatClassic(model.ratingMax, 3));
             }
         }
 
@@ -1349,6 +1473,26 @@ namespace UltraCanvas {
                 {"Lighting output",  "Lock mounting",     "positive"},
             };
             for (const Pair& pair : pairs) model.SetCell(1, pair.a, pair.b, pair.level);
+
+            // How commuters rate this bicycle and two rivals on each need,
+            // 1 (poor) to 5 (excellent): the gaps the requirements must close.
+            model.AddCompetitor("ours",    "Our bicycle",    Color( 40,  44,  52, 255), MatrixMarkShape::Disc);
+            model.AddCompetitor("cruiser", "City Cruiser X", Color(214, 110,  40, 255), MatrixMarkShape::Square);
+            model.AddCompetitor("urban",   "Urban Pro",      Color( 60, 120, 200, 255), MatrixMarkShape::Triangle);
+            struct Rating { const char* need; double ours, cruiser, urban; };
+            static const Rating ratings[] = {
+                {"light",    2, 4, 3},
+                {"comfort",  4, 3, 4},
+                {"safe",     3, 3, 5},
+                {"weather",  2, 4, 3},
+                {"lowmaint", 3, 2, 4},
+                {"secure",   4, 3, 2},
+            };
+            for (const Rating& r : ratings) {
+                model.SetRating(r.need, "ours", r.ours);
+                model.SetRating(r.need, "cruiser", r.cruiser);
+                model.SetRating(r.need, "urban", r.urban);
+            }
             return model;
         }
 

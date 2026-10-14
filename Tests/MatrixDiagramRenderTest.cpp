@@ -13,6 +13,7 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each shape is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.4.0 - the competitive-assessment block: its rows are hit as the needs, and it gives way when hidden
 // Version: 1.3.0 - pan and zoom keep the pointed-at cell put; keyboard navigation follows the screen; editing cycles levels
 // Version: 1.2.0 - the House: roof cells only above the diagonal, each centred between its two columns; the bar strip
 // Version: 1.1.0 - rotated headers stay inside the element; a theme switch keeps non-colour settings
@@ -562,6 +563,52 @@ void TestEditing() {
           "a roof cell steps through the correlation scale, read either way round");
 }
 
+// The House's competitive block stands right of the grid. Pointing into it
+// at a need's height reports that need, as its row label does, and hiding
+// it gives the grid the width back.
+void TestCompetitive() {
+    std::cout << "\nCompetitive assessment\n";
+    Canvas canvas(kWidth, kHeight);
+    if (!canvas.ctx) return;
+    auto house = LaidOut(MatrixSamples::HouseOfQuality(), canvas);
+    const int lastCol = house->GetModel().ColSet(0)->Count() - 1;
+
+    Point2Di centre;
+    int cellW = 0;
+    Check(FindCellCentre(*house, Ref(0, 2, lastCol), kWidth, kHeight, centre, cellW),
+          "the last column of the 'Safe in traffic' row is on screen");
+
+    int blockX = -1;
+    for (int x = centre.x + cellW; x < kWidth; ++x) {
+        const MatrixRef ref = HoverAt(*house, Point2Di(x, centre.y));
+        if (ref.panel == 0 && ref.row == 2 && ref.col < 0) { blockX = x; break; }
+    }
+    Check(blockX >= centre.x + cellW, "right of the grid, the block reports the row's need");
+
+    house->SetShowCompetitiveAssessment(false);
+    house->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    Point2Di wider;
+    int widerW = 0;
+    FindCellCentre(*house, Ref(0, 2, lastCol), kWidth, kHeight, wider, widerW);
+    Check(widerW > cellW, "hidden, it gives its width back to the cells");
+    bool stillHit = false;
+    for (int x = blockX; x < kWidth; x += 2) {
+        const MatrixRef ref = HoverAt(*house, Point2Di(x, wider.y));
+        if (ref.panel == 0 && ref.row == 2 && ref.col < 0 && x > wider.x + widerW * 2) stillHit = true;
+    }
+    Check(!stillHit, "and nothing right of the grid answers for it any more");
+
+    // A House with no competitors draws no block at all.
+    MatrixModel plain = MatrixSamples::HouseOfQuality();
+    plain.competitors.clear();
+    plain.ratings.clear();
+    auto bare = LaidOut(plain, canvas);
+    Point2Di bareCentre;
+    int bareW = 0;
+    FindCellCentre(*bare, Ref(0, 2, lastCol), kWidth, kHeight, bareCentre, bareW);
+    Check(bareW > cellW, "a House without competitors keeps the whole width for its cells");
+}
+
 } // namespace
 
 int main() {
@@ -583,6 +630,7 @@ int main() {
     TestPanZoom();
     TestKeyboard();
     TestEditing();
+    TestCompetitive();
     TestThemeKeepsSettings();
 
     std::cout << "\n================================\n";

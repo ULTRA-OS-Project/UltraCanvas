@@ -1,6 +1,7 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixDiagram.h
 // Matrix diagram element: item sets crossed in L, T, X, Y and House arrangements, cell
 // marks drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Version: 1.4.0 - the House of Quality's competitive-assessment block
 // Version: 1.3.0 - Phase 4: pan and zoom through the shared diagram viewport, keyboard navigation, cycle-on-click editing
 // Version: 1.2.0 - Phase 3: the House of Quality (roof, importance column, direction and target rows), roll-up bar strip with ranks
 // Version: 1.1.1 - rotated column headers get room on the right instead of being clipped; SetDarkTheme(false) keeps non-colour settings
@@ -175,6 +176,13 @@ namespace UltraCanvas {
         double  minRowAspect          = 0.6;    // rows at least this fraction of the cell width
         Color   improvementColor      = Color(60, 66, 76, 255);
 
+        // ---- Competitive assessment (House) ----
+        double  competitiveWidth      = 150.0;  // the block right of the grid
+        double  ratingMarkerRadius    = 4.5;
+        float   competitiveLineWidth  = 1.6f;
+        Color   competitiveBackground = Color(250, 251, 252, 255);
+        Color   competitiveTickColor  = Color(218, 222, 228, 255);
+
         // ---- Cell tint ----
         // Fill each populated cell with its level's colour at this alpha,
         // under the mark - a heatmap look for readers who want one. Off by
@@ -242,6 +250,13 @@ namespace UltraCanvas {
         // and the grid. On by default.
         void SetShowImportance(bool on);
         bool GetShowImportance() const { return showImportance; }
+
+        // House only: the competitive-assessment block right of the grid -
+        // each competitor's rating of every need, 1..ratingMax, as markers
+        // joined row to row. On by default; it draws nothing while the model
+        // has no competitors. A competitor's legend entry highlights it.
+        void SetShowCompetitiveAssessment(bool on);
+        bool GetShowCompetitiveAssessment() const { return showCompetitive; }
 
         void SetShowAxisTitles(bool on);
 
@@ -336,6 +351,8 @@ namespace UltraCanvas {
         MatrixTotals    totals          = MatrixTotals::NoTotals;
         MatrixRollUp    rollUp          = MatrixRollUp::Numbers;
         bool            showImportance  = true;
+        bool            showCompetitive = true;
+        std::string     competitorFilter;   // a highlighted competitor's id, or empty
         bool            showAxisTitles  = true;
         bool            showLegend      = true;
         bool            showCellValues  = false;
@@ -394,6 +411,7 @@ namespace UltraCanvas {
             Rect2Dd importance;                 // row importances, left of the grid
             Rect2Dd improvementRow;             // direction arrows, above the grid
             Rect2Dd targetRow;                  // target values, below the grid
+            Rect2Dd competitive;                // the competitive assessment, right of it
             bool    colTitleInCorner = false;   // the roof takes the space above the header
         };
 
@@ -506,6 +524,8 @@ namespace UltraCanvas {
         void RenderHeaderBand(IRenderContext* ctx);
         void RenderHouseBands(IRenderContext* ctx, const PanelLayout& pl);
         void RenderColumnBars(IRenderContext* ctx, const PanelLayout& pl);
+        void RenderCompetitive(IRenderContext* ctx, const PanelLayout& pl);
+        bool CompetitiveShown() const;
 
         // One column label inside a header band of the given fit, centred on
         // `centerX` and sitting on `bandBottom`.

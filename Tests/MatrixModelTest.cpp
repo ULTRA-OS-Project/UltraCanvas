@@ -10,6 +10,7 @@
 // tools" matrix that drove the 5/3/1 preset: its printed row totals are the
 // arithmetic these tests pin down.
 //
+// Version: 1.4.0 - competitive assessment: ratings, their validation and their JSON
 // Version: 1.3.0 - JSON interchange: every sample round-trips, failures leave the model untouched
 // Version: 1.2.0 - symmetric panels, House validation, relative weights, the importance column, ImportMatrixTable, the House sample
 // Version: 1.1.0 - X and Y panel validation, form header fields, the X and Y samples
@@ -773,6 +774,60 @@ static void TestJsonRoundTrip() {
           "after every failure the model is untouched");
 }
 
+static void TestCompetitiveAssessment() {
+    std::printf("\n[competitive assessment]\n");
+
+    MatrixModel house = MatrixSamples::HouseOfQuality();
+    CHECK(house.competitors.size() == 3 && house.ratings.size() == 18,
+          "the House sample rates three products on six needs");
+    double v = 0.0;
+    CHECK(house.RatingOf("safe", "urban", v) && v == 5.0, "a rating reads back by need and competitor");
+    CHECK(!house.RatingOf("safe", "nobody", v), "an unknown competitor has no rating");
+
+    CHECK(house.SetRating("safe", "ours", 4.0) && house.RatingOf("safe", "ours", v) && v == 4.0 &&
+          house.ratings.size() == 18,
+          "setting a rating again replaces it");
+    CHECK(!house.SetRating("Frame mass", "ours", 3.0),
+          "a column item is not a need and cannot be rated");
+    CHECK(!house.SetRating("safe", "nobody", 3.0), "nor can an unknown competitor");
+    CHECK(!house.SetRating("safe", "ours", 0.0) && !house.SetRating("safe", "ours", 6.0),
+          "ratings outside 1..5 are refused");
+    CHECK(!house.SetRating("safe", "ours", std::nan("")), "and so is NaN");
+    house.ratingMax = 10.0;
+    CHECK(house.SetRating("safe", "ours", 8.0), "a wider scale takes wider values");
+
+    MatrixModel bad = MatrixSamples::HouseOfQuality();
+    bad.ratings.push_back({"safe", "ghost", 3.0});
+    CHECK(!bad.Validate().valid, "a hand-made rating of an unknown competitor fails validation");
+    MatrixModel twice = MatrixSamples::HouseOfQuality();
+    twice.AddCompetitor("ours", "Copy", Color(0, 0, 0, 255));
+    CHECK(!twice.Validate().valid, "a competitor id used twice fails validation");
+    MatrixModel range = MatrixSamples::HouseOfQuality();
+    range.ratings[0].value = 9.0;
+    CHECK(!range.Validate().valid, "a hand-made rating past ratingMax fails validation");
+
+    MatrixModel reread;
+    std::string error;
+    CHECK(ImportMatrixJson(ExportMatrixJson(MatrixSamples::HouseOfQuality()), reread, &error) &&
+          reread.competitors.size() == 3 && reread.ratings.size() == 18 &&
+          reread.competitors[1].mark == MatrixMarkShape::Square,
+          "competitors and ratings survive JSON");
+    CHECK(reread.RatingOf("light", "cruiser", v) && v == 4.0, "with their values");
+
+    JSONValue doc = MatrixModelToJson(MatrixSamples::HouseOfQuality());
+    JSONValue ratings = JSONValue::MakeArray();
+    ratings.Append(JSONValue::MakeObject().Set("item", "light").Set("competitor", "ours").Set("value", 7.0));
+    doc.Set("ratings", ratings);
+    MatrixModel keep = MatrixSamples::ImprovementTools();
+    CHECK(!MatrixModelFromJson(doc, keep, &error) && error.find("light") != std::string::npos &&
+          keep.competitors.empty(),
+          "a file with an out-of-range rating is refused, by name, model untouched");
+
+    keep.Clear();
+    CHECK(keep.competitors.empty() && keep.ratings.empty() && keep.ratingMax == 5.0,
+          "Clear() drops the assessment too");
+}
+
 // =============================================================================
 
 int main() {
@@ -799,6 +854,7 @@ int main() {
     TestImportanceColumn();
     TestImportTable();
     TestJsonRoundTrip();
+    TestCompetitiveAssessment();
 
     std::printf("\n================================\n");
     if (g_failures == 0) {
