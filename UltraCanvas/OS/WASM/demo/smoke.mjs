@@ -74,20 +74,24 @@ for (const spec of specs) {
     let presented = null;
     let resolveFrame;
     const framePromise = new Promise(r => { resolveFrame = r; });
+    // A failing line ends the wait at once: a page that aborted during
+    // start-up never presents a frame, and the timeout would only add
+    // minutes per page to the job.
     page.on('console', m => {
         const text = m.text();
         lines.push(`[${m.type()}] ${text}`);
         const hit = firstFrame.exec(text);
         if (hit && presented === null) { presented = Number(hit[1]); resolveFrame(true); }
+        if (failing.test(text)) resolveFrame(false);
     });
-    page.on('pageerror', e => lines.push(`[pageerror] ${e.message}`));
-    page.on('crash', () => lines.push('[pageerror] the page crashed'));
+    page.on('pageerror', e => { lines.push(`[pageerror] ${e.message}`); resolveFrame(false); });
+    page.on('crash', () => { lines.push('[pageerror] the page crashed'); resolveFrame(false); });
 
     const problems = [];
     try {
         await page.goto(base + spec, { waitUntil: 'load', timeout: firstFrameTimeout });
         const framed = await Promise.race([framePromise, new Promise(r => setTimeout(() => r(false), firstFrameTimeout))]);
-        if (!framed) problems.push(`no first frame within ${firstFrameTimeout} ms`);
+        if (!framed && presented === null) problems.push(`no first frame within ${firstFrameTimeout} ms`);
         await page.waitForTimeout(settle);
         await page.screenshot({ path: path.join(out, `${name}.png`) });
     } catch (e) {
@@ -102,6 +106,13 @@ for (const spec of specs) {
         failures++;
         console.log(`FAIL ${spec}`);
         for (const p of problems) console.log(`     ${p}`);
+        // The end of the console, so the job log says how far the page got
+        // without a trip to the artifact.
+        const tail = lines.slice(-20);
+        if (tail.length) {
+            console.log(`     last ${tail.length} of ${lines.length} console lines:`);
+            for (const l of tail) console.log(`       ${l.slice(0, 300)}`);
+        }
     } else {
         console.log(`ok   ${spec}  first frame ${presented} ms, ${lines.length} console lines`);
     }
