@@ -16636,7 +16636,7 @@ FILE: Docs/UltraCanvas/UltraCanvasClipboardHistory.md
 
 # UltraCanvasClipboardHistory
 
-<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); void Preview(int64_t id); UltraCanvasClipboardRecorder recorder; -->
+<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void SaveAs(int64_t id); void Delete(int64_t id); void Preview(int64_t id); UltraCanvasClipboardRecorder recorder; -->
 
 The clipboard history of ULTRA OS: every copy, in every format the
 framework's clipboard reads, kept on disk so it outlives the program that
@@ -16735,7 +16735,9 @@ is not recorded), `recordingPaused`, `imageThumbnails`, `previewStyle` (how
 UltraClipboard previews an image whose thumbnail the pointer rests on:
 `ClipboardPreviewStyle::Modern`, a pane over the right part of the list with
 the viewer's info line, or `Classic`, the picture alone floating over the
-middle of the list) and `excludedApplications` (`Defaults()`: UltraPassword,
+middle of the list), `iconSide` (where a row's action icons stand:
+`ClipboardIconSide::Right`, after the text at the row's right edge, or `Left`,
+between the thumbnail and the text) and `excludedApplications` (`Defaults()`: UltraPassword,
 UltraAuthenticator, KeePassXC, Bitwarden, 1Password).
 
 `EditClipboardText(text, edit)` is the edit dialog's text tools:
@@ -16858,6 +16860,7 @@ listView->onCellClicked = [this, rows = rows.get(), model = model.get()](int row
     switch (rows->ActionAt(row, at)) {
         case ClipboardRowAction::Copy:   Copy(entry->id); break;
         case ClipboardRowAction::Edit:   Edit(entry->id); break;
+        case ClipboardRowAction::SaveAs: SaveAs(entry->id); break;   // only with style.saveAction
         case ClipboardRowAction::Delete: Delete(entry->id); break;
         default: break;
     }
@@ -16876,9 +16879,14 @@ listView->tooltipProvider = [rows = rows.get()](int row, int) {
 - **The row**: a thumbnail drawn by kind (an image's own thumbnail, a colour
   swatch, a code tile, a link tile, file sheets with a `+n` badge), the
   title, a meta line (`DescribeClipboardEntry`: "Text · 2 lines · 29
-  characters · UltraMail · 5 min ago") and Copy, Edit and Delete. The light
-  style shows the actions on every row, the compact one on the hovered and
-  selected rows only. `ShowCopied(id)` turns Copy into a check with a
+  characters · UltraMail · 5 min ago") and Copy, Edit and Delete -
+  `ClipboardRowStyle::saveAction` adds Save as between Edit and Delete
+  (UltraClipboard). The actions stand at the row's right edge, or between the
+  thumbnail and the text with `actionsLeftOfText` (`SetActionsLeftOfText`
+  changes it on a delegate in use - UltraClipboard applies the policy's
+  `iconSide` this way); left of the text they keep their place while hidden,
+  so the text does not move. The light style shows the actions on every row,
+  the compact one on the hovered and selected rows only. `ShowCopied(id)` turns Copy into a check with a
   "Copied" pill for a moment; redraw while `IsShowingCopied()`.
   `IsOverThumbnail(posInCell)` says whether a point of a row is on the
   thumbnail's column (the tile's width, the row's whole height, so a pointer
@@ -83053,8 +83061,8 @@ FILE: Docs/UltraClipboard/README.md
 # UltraClipboard
 
 The clipboard history of ULTRA OS: everything you copied, with a thumbnail and
-Copy, Edit and Delete on every entry. Find a copy from last week, use it
-again, change it first, or pin it so it stays.
+Copy, Edit, Save as and Delete on every entry. Find a copy from last week,
+use it again, change it first, save it as a file, or pin it so it stays.
 
 Source: [`Apps/UltraClipboard/`](../../Apps/UltraClipboard/). Changelog:
 [`CHANGELOG.md`](CHANGELOG.md). The history itself:
@@ -83082,15 +83090,32 @@ listed in the settings are left out.
 **The list.** Pinned entries come first, then Today, Yesterday and Earlier.
 Every row has a thumbnail by kind (the picture itself for an image, the
 colour for a colour, a sheet with a `+n` badge for several files), the title,
-a line on what it is, which program it came from and when, and three buttons:
+a line on what it is, which program it came from and when, and four buttons:
 
 | Button | Key | |
 |---|---|---|
 | Copy | Enter, double-click | puts it back on the clipboard; it moves to the top |
 | Edit | F2, Ctrl+E | the edit dialog; an image opens in UltraPaint |
+| Save as | Ctrl+S | writes the entry to a file, then asks *Delete the item from the clipboard?* |
 | Delete | Delete | with *Undo* in the status bar for 8 seconds (Ctrl+Z) |
 
-Right-click a row for the same and *Pin* / *Unpin* (Ctrl+P). Up and Down move
+The buttons stand right of the entry's text, or left of it between the
+thumbnail and the text: Settings, *Display → Icons*. The desktop's quick
+panel follows the same setting.
+
+Right-click a row for the same and *Pin* / *Unpin* (Ctrl+P).
+
+**Saving as a file.** *Save as* writes the entry where you choose, through
+the framework's Save dialog: a text, code, link or colour as a text file;
+formatted text as HTML (as it was copied), ODT or DOCX, or as its plain
+text; an image as any picture type this build writes (in the type it was
+copied in, at its own size, it is written as it came, nothing re-encoded;
+the type's Settings can give another size); copied files are copied into the
+folder you choose, and files that were *cut* are moved there, as pasting them
+would. A file of the same name already in that folder is replaced only when
+you say so. Once saved, UltraClipboard asks *Delete the item from the
+clipboard?* - Yes deletes it, with *Undo* as for any deletion; No keeps it.
+The next *Save as* starts in the folder the last one saved to. Up and Down move
 through the list, skipping the section headers.
 
 **Finding.** Type in the search field (Ctrl+F) to search titles and texts,
@@ -83111,7 +83136,8 @@ nothing copied is kept (the desktop's clipboard button shows it crossed out).
 **Settings** (the sliders button): how many entries the history keeps (100 to
 2,000, pinned ones not counted), for how long (a day to a year, by last use),
 how much in all and the largest single copy, whether images get thumbnails,
-and the programs whose copies are never recorded. The dialog also says where
+how an image previews, *Display → Icons* (the row's buttons left or right of
+the item text), and the programs whose copies are never recorded. The dialog also says where
 the key is kept and what the encryption protects.
 
 **More** (`⋯`): *Find*, *Settings* and *Clear history*, which removes every

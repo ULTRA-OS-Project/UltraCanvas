@@ -1,8 +1,8 @@
 // core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp
 // The list model and row painter for a clipboard history. See
 // include/UltraCanvasClipboardHistoryView.h.
-// Version: 1.1.0
-// Last Modified: 2026-10-11
+// Version: 1.2.0 - the Save as action (ClipboardRowStyle::saveAction)
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboardHistoryView.h"
@@ -360,8 +360,17 @@ int ClipboardHistoryRowDelegate::GetRowHeight(const IListModel* model, int row) 
     return r && r->header ? style.headerHeight : style.rowHeight;
 }
 
+std::vector<ClipboardRowAction> ClipboardHistoryRowDelegate::Actions() const {
+    if (style.saveAction) {
+        return {ClipboardRowAction::Copy, ClipboardRowAction::Edit, ClipboardRowAction::SaveAs,
+                ClipboardRowAction::Delete};
+    }
+    return {ClipboardRowAction::Copy, ClipboardRowAction::Edit, ClipboardRowAction::Delete};
+}
+
 double ClipboardHistoryRowDelegate::ActionsLeft(int width) const {
-    return width - (style.compact ? 8 : 12) - 3.0 * style.actionSize;
+    if (style.actionsLeftOfText) return style.padding + style.thumbnailSize + (style.compact ? 6 : 10);
+    return width - (style.compact ? 8 : 12) - static_cast<double>(Actions().size()) * style.actionSize;
 }
 
 bool ClipboardHistoryRowDelegate::ActionsVisible(const ListItemStyleOption& option) const {
@@ -371,10 +380,13 @@ bool ClipboardHistoryRowDelegate::ActionsVisible(const ListItemStyleOption& opti
 ClipboardRowAction ClipboardHistoryRowDelegate::ActionAt(int row, const Point2Di& posInCell) const {
     (void)row;
     if (rowWidth <= 0) return ClipboardRowAction::NoAction;
+    const std::vector<ClipboardRowAction> actions = Actions();
     const double left = ActionsLeft(rowWidth);
-    if (posInCell.x < left || posInCell.x >= left + 3.0 * style.actionSize) return ClipboardRowAction::NoAction;
-    const int slot = static_cast<int>((posInCell.x - left) / style.actionSize);
-    return slot == 0 ? ClipboardRowAction::Copy : slot == 1 ? ClipboardRowAction::Edit : ClipboardRowAction::Delete;
+    if (posInCell.x < left || posInCell.x >= left + static_cast<double>(actions.size()) * style.actionSize) {
+        return ClipboardRowAction::NoAction;
+    }
+    const size_t slot = static_cast<size_t>((posInCell.x - left) / style.actionSize);
+    return slot < actions.size() ? actions[slot] : ClipboardRowAction::NoAction;
 }
 
 bool ClipboardHistoryRowDelegate::IsOverThumbnail(const Point2Di& posInCell) const {
@@ -404,6 +416,7 @@ std::string ClipboardHistoryRowDelegate::ActionTooltip(ClipboardRowAction action
     switch (action) {
         case ClipboardRowAction::Copy: return "Copy  (Enter)";
         case ClipboardRowAction::Edit: return "Edit  (F2)";
+        case ClipboardRowAction::SaveAs: return "Save as  (Ctrl+S)";
         case ClipboardRowAction::Delete: return "Delete  (Del)";
         default: return "";
     }
@@ -519,16 +532,22 @@ void ClipboardHistoryRowDelegate::PaintActions(IRenderContext* ctx, const Clipbo
     const double glyph = style.actionGlyph;
     const bool selectedLight = option.isSelected && !style.compact;
     const bool copied = entry.id == copiedId && IsShowingCopied();
-    const char* names[3] = {"copy.svg", "edit.svg", "delete.svg"};
-    const ClipboardRowAction actions[3] = {ClipboardRowAction::Copy, ClipboardRowAction::Edit,
-                                           ClipboardRowAction::Delete};
-    for (int i = 0; i < 3; ++i) {
+    const std::vector<ClipboardRowAction> actions = Actions();
+    auto iconOf = [](ClipboardRowAction action) {
+        switch (action) {
+            case ClipboardRowAction::Copy: return "copy.svg";
+            case ClipboardRowAction::Edit: return "edit.svg";
+            case ClipboardRowAction::SaveAs: return "save.svg";
+            default: return "delete.svg";
+        }
+    };
+    for (size_t i = 0; i < actions.size(); ++i) {
         const double x = left + i * style.actionSize;
         const Point2Dd centre(x + style.actionSize / 2.0, r.y + r.height / 2.0);
         const bool hovered = row == hoverRow && actions[i] == hoverAction;
         Color colour = selectedLight ? Colors::White
                      : (option.isHovered || option.isSelected) ? style.actionActiveColor : style.actionColor;
-        std::string icon = names[i];
+        std::string icon = iconOf(actions[i]);
         if (i == 0 && copied) {
             ctx->SetFillPaint(style.copiedBackground);
             ctx->FillCircle(centre, style.actionSize / 2.0);
@@ -548,7 +567,9 @@ void ClipboardHistoryRowDelegate::PaintActions(IRenderContext* ctx, const Clipbo
     }
     if (copied && !style.compact) {
         const double w = 62, h = 22;
-        const Rect2Dd pill(left - w - 10, r.y + (r.height - h) / 2.0, w, h);
+        // Beside the icons, or at the row's right edge when they are left of the text.
+        const double pillX = style.actionsLeftOfText ? r.x + r.width - style.padding - w : left - w - 10;
+        const Rect2Dd pill(pillX, r.y + (r.height - h) / 2.0, w, h);
         ctx->DrawFilledRectangle(pill, style.copiedBackground, 0.0f, Colors::Transparent, static_cast<float>(h / 2));
         auto layout = ctx->CreateTextLayout("Copied", false);
         if (layout) {
@@ -594,9 +615,14 @@ void ClipboardHistoryRowDelegate::RenderItem(IRenderContext* ctx, const IListMod
     const double t = style.thumbnailSize;
     PaintThumbnail(ctx, entry, Rect2Dd(rect.x + style.padding, rect.y + (rect.height - t) / 2.0, t, t));
 
-    const double textX = rect.x + style.padding + t + (style.compact ? 10 : 16);
     const bool actions = ActionsVisible(option);
-    const double textRight = actions ? rect.x + ActionsLeft(rect.width) - 8 : rect.x + rect.width - style.padding;
+    // Icons left of the text keep their place while hidden (a compact row
+    // shows them on hover), so the text does not jump.
+    const double actionsWidth = static_cast<double>(Actions().size()) * style.actionSize;
+    const double textX = style.actionsLeftOfText ? rect.x + ActionsLeft(rect.width) + actionsWidth + 8
+                                                 : rect.x + style.padding + t + (style.compact ? 10 : 16);
+    const double textRight = actions && !style.actionsLeftOfText ? rect.x + ActionsLeft(rect.width) - 8
+                                                                 : rect.x + rect.width - style.padding;
     double titleX = textX;
     if (entry.pinned) {
         if (auto pin = UCImage::Get(IconsDir(iconsDir) + "pin.svg")) {

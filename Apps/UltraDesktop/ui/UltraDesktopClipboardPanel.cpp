@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopClipboardPanel.cpp
 // The clipboard quick panel. See UltraDesktopClipboardPanel.h.
+// Version: 0.1.1 - the row's icons follow the history's iconSide (left or right of the text)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -325,9 +326,15 @@ void UltraDesktopClipboardPanel::Reload() {
         shown = history_->List(query);
     }
     model_->SetEntries(std::move(shown), ClipboardHistoryListModel::Sections::PinnedAndRecent, lead);
-    if (recording_ && history_->IsOpen()) {
-        const bool recordingNow = !history_->GetPolicy().recordingPaused;
-        if (recording_->IsChecked() != recordingNow) recording_->SetChecked(recordingNow);
+    if (history_->IsOpen()) {
+        const ClipboardHistoryPolicy policy = history_->GetPolicy();
+        const bool recordingNow = !policy.recordingPaused;
+        if (recording_ && recording_->IsChecked() != recordingNow) recording_->SetChecked(recordingNow);
+        // UltraClipboard's Settings, Display -> Icons: the row's icons left or right of its text.
+        if (const bool left = policy.iconSide == ClipboardIconSide::Left; left != rows_->Style().actionsLeftOfText) {
+            rows_->SetActionsLeftOfText(left);
+            list_->RequestRedraw();
+        }
     }
     if (model_->GetEntryCount() == 0) {
         if (status_ && removedId_ == 0) status_->SetText(text.empty() ? "Nothing copied yet" : "Nothing found");

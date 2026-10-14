@@ -1,3 +1,11 @@
+#### 2026-10-14 *0.3.1*
+- **The clipboard quick panel follows UltraClipboard's *Display → Icons*.**
+  Set the icons left of the item text in UltraClipboard's Settings and the
+  panel's Copy / Edit / Delete stand between the thumbnail and the text too;
+  right, as before, is the default. The panel picks the setting up the next
+  time it opens or the history changes (framework changelog:
+  `clipboard-save-as`).
+
 #### 2026-10-14 *0.3.0*
 - **UltraDesktop can take the place of the Windows desktop, and give it
   back.** On Windows it now has running windows, the Start menu's programs,
