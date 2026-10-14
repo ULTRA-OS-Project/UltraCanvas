@@ -204,6 +204,33 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     message(STATUS "    Test registered: UltraWebGuestTest")
 endif()
 
+# ===== ULTRAWEB TAB TEST =====
+# One UltraWeb tab (Apps/UltraWeb/ui/UltraWebTab) without a window: pages
+# from file:// with their titles and history, a download handed over, and
+# the built-in app running in the tab's own area.
+if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
+    message(STATUS "  Building UltraWebTabTest...")
+    set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
+    add_executable(UltraWebTabTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebTabTest.cpp
+        ${_uw_dir}/host/UltraWebFetch.cpp
+        ${_uw_dir}/host/UltraWebGuest.cpp
+        ${_uw_dir}/host/UltraWebLoader.cpp
+        ${_uw_dir}/host/UltraWebPages.cpp
+        ${_uw_dir}/host/UltraWebStorage.cpp
+        ${_uw_dir}/ui/UltraWebTab.cpp)
+    target_include_directories(UltraWebTabTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
+    target_compile_features(UltraWebTabTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraWebTabTest PRIVATE WasmHost UltraNet UltraCanvas)
+    set_target_properties(UltraWebTabTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraWebTabTest COMMAND UltraWebTabTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraWebTabTest")
+endif()
+
 # ===== ULTRAWEB DOWNLOADS TEST =====
 # UltraWeb's downloads (Apps/UltraWeb/host/UltraWebDownloads): bytes saved
 # through a part file, a local file copied, and http downloads streamed to

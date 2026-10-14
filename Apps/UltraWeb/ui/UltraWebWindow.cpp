@@ -1,25 +1,21 @@
 // Apps/UltraWeb/ui/UltraWebWindow.cpp
 // The browser window (UltraWebWindow.h).
+// Version: 0.7.0 - tabs: a tab strip above the toolbar, one page or app per tab
 // Version: 0.6.0 - a downloads list: a panel above the status bar
 // Version: 0.5.0 - downloads: a link to no page is saved through the save dialog
 // Version: 0.3.0 - web pages in an UltraCanvasWebView; back / forward
 // Version: 0.2.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebWindow.h"
 
-#include "../host/UltraWebFetch.h"
 #include "../host/UltraWebDownloads.h"
-#include "../host/UltraWebPages.h"
-#include "../host/UltraWebStorage.h"
 
 #include "UltraCanvasApplication.h"
-#include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasUtils.h"
-#include "WasmHost/UltraCanvasWasmHost.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -39,33 +35,10 @@ constexpr float kWindowWidth = 1000;
 constexpr float kWindowHeight = 720;
 constexpr float kBarHeight = 34;
 constexpr float kMargin = 8;
+constexpr int kTabHeight = 30;
 
 void PostToUi(std::function<void()> task) {
     if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(std::move(task));
-}
-
-void AppLog(const std::string& line) { std::fprintf(stderr, "[UltraWeb app] %s\n", line.c_str()); }
-
-// The services an app reaches beside its elements (GuestServices), real
-// ones: the application's timers, UltraNet, a store on disk per origin,
-// the system clipboard.
-GuestServices RealServices(const std::string& address) {
-    GuestServices services;
-    services.startTimer = [](uint32_t ms, bool repeat, std::function<void()> fire) -> uint32_t {
-        auto* app = UltraCanvasApplicationBase::GetCurrent();
-        if (!app) return 0;
-        return app->StartTimer(ms, repeat, [fire](TimerId) { fire(); });
-    };
-    services.stopTimer = [](uint32_t id) {
-        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(id);
-    };
-    services.fetch = MakeNetworkFetch(PostToUi);
-    std::string problem;
-    services.storage = UltraWebStorage::Open(UltraWebStorage::DefaultDirectory(),
-                                             UltraWebStorage::PartitionFor(address), problem);
-    if (!problem.empty()) AppLog("UltraWeb: storage kept in memory only: " + problem);
-    services.writeClipboard = [](const std::string& text) { return SetClipboardText(text); };
-    return services;
 }
 
 std::shared_ptr<UltraCanvasContainer> MakeBar(const std::string& id) {
@@ -83,14 +56,16 @@ std::shared_ptr<UltraCanvasContainer> MakeBar(const std::string& id) {
 
 } // namespace
 
-UltraWebWindow::UltraWebWindow() : loader_(PostToUi), alive_(std::make_shared<bool>(true)) {}
+UltraWebWindow::UltraWebWindow() : alive_(std::make_shared<bool>(true)) {}
 
-// The guest first: it removes its elements from the app area, which must
+// The tabs first: their guests remove their elements from areas that must
 // still exist.
 UltraWebWindow::~UltraWebWindow() {
+    alive_.reset();
     for (const auto& download : downloads_) download.second->Cancel();   // their part files go
     downloadList_.onChanged = nullptr;
-    guest_.reset();
+    if (window_) window_->UnInstallWindowEventFilter("uw-shortcuts");
+    tabs_.clear();
 }
 
 bool UltraWebWindow::Initialize() {
@@ -110,14 +85,42 @@ bool UltraWebWindow::Initialize() {
     plain.autoShowScrollbars = false;
     page_->SetContainerStyle(plain);
 
+    // The tab strip is the topmost bar; the pages it switches go into
+    // tabPages_, below the toolbar, which acts on the active tab.
+    tabStrip_ = std::make_shared<UltraCanvasTabbedContainer>("uwTabs", 0, 0, 0, kTabHeight);
+    tabStrip_->SetTabHeight(kTabHeight);
+    tabStrip_->SetTabMinWidth(110);
+    tabStrip_->SetTabMaxWidth(220);
+    tabStrip_->SetCloseMode(TabCloseMode::Closable);
+    tabStrip_->SetAllowTabReordering(true);
+    tabStrip_->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
+    tabStrip_->SetShowNewTabButton(true);
+    tabStrip_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    tabPages_ = CreateContainer("uwTabPages", 0, 0, 0, 0);
+    tabPages_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    tabPages_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    tabPages_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    tabPages_->SetContainerStyle(plain);
+    tabStrip_->SetContentHost(tabPages_);
+    tabStrip_->onNewTabRequest = [this]() { NewTab(std::string()); };
+    tabStrip_->onTabClose = [this](int index) { return CloseTab(index); };
+    tabStrip_->onTabChange = [this](int, int) { ShowActiveTab(); };
+    tabStrip_->onTabReorder = [this](int from, int to) {
+        if (from < 0 || to < 0 || from >= (int)tabs_.size() || to >= (int)tabs_.size() || from == to) return;
+        auto tab = std::move(tabs_[from]);
+        tabs_.erase(tabs_.begin() + from);
+        tabs_.insert(tabs_.begin() + to, std::move(tab));
+    };
+    page_->AddChild(tabStrip_);
+
     auto toolbar = MakeBar("uwToolbar");
     backButton_ = CreateButton("uwBack", 0, 0, 34, 28, "\xE2\x86\x90");        // ←
     backButton_->SetTooltip("Back");
-    backButton_->SetOnClick([this]() { if (showingPage_) webView_->GoBack(); });
+    backButton_->SetOnClick([this]() { if (auto* tab = ActiveTab()) tab->GoBack(); });
     toolbar->AddChild(backButton_);
     forwardButton_ = CreateButton("uwForward", 0, 0, 34, 28, "\xE2\x86\x92");  // →
     forwardButton_->SetTooltip("Forward");
-    forwardButton_->SetOnClick([this]() { if (showingPage_) webView_->GoForward(); });
+    forwardButton_->SetOnClick([this]() { if (auto* tab = ActiveTab()) tab->GoForward(); });
     toolbar->AddChild(forwardButton_);
     address_ = CreateTextInput("uwAddress", 0, 0, 0, 28);
     address_->SetPlaceholder("a web address, a file, about:demo or a .wasm app");
@@ -132,10 +135,7 @@ bool UltraWebWindow::Initialize() {
     goButton_->SetOnClick([this]() { Navigate(address_->GetText()); });
     toolbar->AddChild(goButton_);
     reloadButton_ = CreateButton("uwReload", 0, 0, 80, 28, "Reload");
-    reloadButton_->SetOnClick([this]() {
-        if (showingPage_) webView_->Reload();
-        else if (!currentAddress_.empty()) Navigate(currentAddress_);
-    });
+    reloadButton_->SetOnClick([this]() { if (auto* tab = ActiveTab()) tab->Reload(); });
     toolbar->AddChild(reloadButton_);
     downloadsButton_ = CreateButton("uwDownloadsButton", 0, 0, 120, 28, "Downloads");
     downloadsButton_->SetTooltip("Show or hide the downloads");
@@ -143,21 +143,7 @@ bool UltraWebWindow::Initialize() {
     toolbar->AddChild(downloadsButton_);
     page_->AddChild(toolbar);
 
-    // UC_ROOT_HANDLE: a flex column the app fills; how its children sit
-    // across it is the app's to say (UC_PROP_ALIGN), start until then.
-    appArea_ = CreateContainer("uwAppArea", 0, 0, 0, 0);
-    appArea_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Start);
-    appArea_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    appArea_->layoutItem.SetFlexGrow(1);
-    appArea_->layoutItem.SetFlexShrink(1);
-    appArea_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    page_->AddChild(appArea_);
-
-    errorTitle_ = CreateLabel("uwErrorTitle", "");
-    errorTitle_->SetFontSize(16);
-    errorTitle_->SetTextColor(Color(176, 32, 32));
-    errorDetail_ = CreateLabel("uwErrorDetail", "");
-    errorDetail_->SetWrap(TextWrap::WrapWord);
+    page_->AddChild(tabPages_);
 
     statusBar_ = MakeBar("uwStatusBar");
     status_ = CreateLabel("uwStatus", "");
@@ -190,68 +176,9 @@ bool UltraWebWindow::Initialize() {
         if (!progressOnly) UpdateDownloadsButton();
     };
 
-    // Web pages: the HTML reader on UltraNet. The view lives here and joins
-    // the app area while a page is shown.
-    webView_ = std::make_shared<UltraCanvasWebView>("uwWebView");
-    webView_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    webView_->layoutItem.SetFlexGrow(1);
-    webView_->layoutItem.SetFlexShrink(1);
-    webView_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    webView_->SetServices(MakePageServices(PostToUi));
-    webView_->SetScheduler(PostToUi);
-    HTML::BuildOptions pageOptions;
-    pageOptions.style.baseFontSizePx = 16.f;
-    pageOptions.linkTooltips = false;          // the status bar shows the address
-    webView_->SetBuildOptions(pageOptions);
-    webView_->onUrlChanged = [this](const std::string& url) {
-        currentAddress_ = url;
-        address_->SetText(url);
-        UpdateNavigationButtons();
-    };
-    webView_->onTitleChanged = [this](const std::string& title) {
-        if (window_) window_->SetWindowTitle(title + " - UltraWeb " + ULTRAWEB_VERSION);
-    };
-    webView_->onLoadingChanged = [this](bool loading) {
-        SetStatus(loading ? "Loading " + currentAddress_ + " ..." : currentAddress_);
-        UpdateNavigationButtons();
-    };
-    webView_->onLinkHovered = [this](const std::string& url) {
-        SetStatus(url.empty() ? currentAddress_ : url);
-    };
-    webView_->onExternalLink = [this](const std::string& url) {
-        SetStatus("Opening " + url + " with the system ...");
-        OpenURL(url);
-    };
-    // A file input's button: the system's (or the framework's) file dialog,
-    // filtered by the input's accept="" list where it names extensions.
-    webView_->onChooseFiles = [](bool multiple, const std::string& accept,
-                                 std::function<void(std::vector<std::string>)> done) {
-        FileDialogOptions options;
-        options.title = multiple ? "Choose files to upload" : "Choose a file to upload";
-        std::vector<std::string> extensions = AcceptExtensions(accept);
-        if (!extensions.empty()) options.filters.emplace_back("Accepted files", extensions);
-        options.filters.emplace_back("All files", std::vector<std::string>{ "*" });
-        if (multiple) {
-            UltraCanvasFileLoader::OpenMultipleFilesDialog(options,
-                [done](DialogResult result, const std::vector<std::string>& paths) {
-                    done(result == DialogResult::OK ? paths : std::vector<std::string>{});
-                });
-        } else {
-            UltraCanvasFileLoader::OpenFileDialog(options, [done](DialogResult result, const std::string& path) {
-                done(result == DialogResult::OK && !path.empty() ? std::vector<std::string>{ path }
-                                                                 : std::vector<std::string>{});
-            });
-        }
-    };
-    webView_->onNonHtml = [this](const HTML::LoadedPage& page) {
-        // An app served without .wasm in its address runs; anything else
-        // that is no page is a file to save.
-        if (!page.attachment && page.contentType.find("application/wasm") != std::string::npos) RunApp(page.url);
-        else SaveDownload(page);
-    };
-
+    InstallShortcuts();
     window_->AddChild(page_);
-    UpdateNavigationButtons();
+    NewTab(std::string());
     LayoutForSize(kWindowWidth, kWindowHeight);
     window_->onWindowResize = [this](int width, int height) {
         LayoutForSize(static_cast<float>(width), static_cast<float>(height));
@@ -264,97 +191,112 @@ void UltraWebWindow::Show() {
 }
 
 void UltraWebWindow::Navigate(const std::string& address) {
-    const std::string target = UltraWebLoader::Normalise(address);
-    if (IsAppAddress(target)) RunApp(target);
-    else OpenPage(ToPageUrl(target));
+    if (UltraWebTab* tab = ActiveTab()) tab->Navigate(address);
 }
 
-void UltraWebWindow::OpenPage(const std::string& url) {
-    loader_.Cancel();
-    guest_.reset();
-    if (!showingPage_) {
-        ClearAppArea();
-        appArea_->AddChild(webView_);
-        showingPage_ = true;
+UltraWebTab& UltraWebWindow::NewTab(const std::string& address) {
+    UltraWebTab::Host host;
+    host.post = PostToUi;
+    host.onChanged = [this](UltraWebTab& tab) { TabChanged(tab); };
+    host.onDownload = [this](UltraWebTab&, const HTML::LoadedPage& page) { SaveDownload(page); };
+    tabs_.push_back(std::make_unique<UltraWebTab>("uwTab" + std::to_string(++tabSerial_), std::move(host)));
+    UltraWebTab& tab = *tabs_.back();
+    const int index = tabStrip_->AddTab(tab.Title(), tab.Area());
+    tabStrip_->SetActiveTab(index);
+    ShowActiveTab();
+    if (!address.empty()) {
+        tab.Navigate(address);
+    } else if (window_) {
+        // A new, empty tab: type where to go.
+        address_->SetText(std::string());
+        window_->SetFocusedElement(address_.get());
     }
-    webView_->Navigate(url);
-    appArea_->InvalidateLayout();
+    return tab;
 }
 
-void UltraWebWindow::UpdateNavigationButtons() {
-    backButton_->SetDisabled(!showingPage_ || !webView_->CanGoBack());
-    forwardButton_->SetDisabled(!showingPage_ || !webView_->CanGoForward());
-}
-
-void UltraWebWindow::RunApp(const std::string& target) {
-    if (!UltraCanvasWasm_IsAvailable()) {
-        if (showingPage_) { webView_->Stop(); showingPage_ = false; }
-        ClearAppArea();
-        UpdateNavigationButtons();
-        ShowError("This UltraWeb cannot run apps", UltraCanvasWasm_EngineDescription());
-        return;
-    }
-    address_->SetText(target);
-    SetStatus("Loading " + target + " ...");
-    loader_.Load(target, [this](LoadedApp app) { ShowApp(app); });
-}
-
-void UltraWebWindow::ShowApp(const LoadedApp& app) {
-    guest_.reset();
-    if (showingPage_) {
-        webView_->Stop();
-        showingPage_ = false;
-    }
-    ClearAppArea();
-    UpdateNavigationButtons();
-    currentAddress_ = app.address;
-    address_->SetText(app.address);
-    SetTitleFor(app.address);
-    if (!app.ok) {
-        ShowError("Cannot open " + app.address, app.error);
-        SetStatus("Not loaded");
-        return;
-    }
-
-    GuestOptions options;
-    options.onLog = AppLog;
-    options.address = app.address;
-    options.services = RealServices(app.address);
+bool UltraWebWindow::CloseTab(int index) {
+    // The last tab stays: closing it would leave a window with nothing in it.
+    if (tabs_.size() <= 1 || index < 0 || index >= (int)tabs_.size()) return false;
+    // The tab goes on a later turn: this runs inside the strip's own click
+    // (or a key press), and the page may be mid-event.
+    // The strip picks the tab shown next once this returns; the toolbar
+    // follows it then.
+    std::shared_ptr<UltraWebTab> closing(std::move(tabs_[index]));
+    tabs_.erase(tabs_.begin() + index);
+    if (shownTab_ == closing.get()) shownTab_ = nullptr;
     std::weak_ptr<bool> alive = alive_;
-    options.onFailure = [this, alive](const std::string& message) {
-        if (alive.expired()) return;
-        guest_.reset();
-        ClearAppArea();
-        ShowError("The app stopped", message);
-        SetStatus("Stopped: " + currentAddress_);
-    };
-    options.defer = PostToUi;
+    PostToUi([this, alive, closing]() {
+        if (!alive.expired()) ShowActiveTab();
+    });
+    return true;
+}
 
-    std::string error;
-    guest_ = UltraWebGuest::Start(app.module, appArea_, std::move(options), error);
-    if (!guest_) {
-        ClearAppArea();
-        ShowError("The app did not start", error);
-        SetStatus("Not running: " + app.address);
-        return;
+void UltraWebWindow::CloseActiveTab() {
+    // RemoveTab asks onTabClose (CloseTab), which lets the tab go.
+    tabStrip_->RemoveTab(tabStrip_->GetActiveTab());
+}
+
+void UltraWebWindow::SwitchTab(int step) {
+    const int count = tabStrip_->GetTabCount();
+    if (count < 2) return;
+    tabStrip_->SetActiveTab(((tabStrip_->GetActiveTab() + step) % count + count) % count);
+    ShowActiveTab();
+}
+
+UltraWebTab* UltraWebWindow::ActiveTab() const {
+    const int index = tabStrip_ ? tabStrip_->GetActiveTab() : -1;
+    return index >= 0 && index < (int)tabs_.size() ? tabs_[index].get() : nullptr;
+}
+
+int UltraWebWindow::IndexOf(const UltraWebTab& tab) const {
+    for (size_t i = 0; i < tabs_.size(); ++i)
+        if (tabs_[i].get() == &tab) return static_cast<int>(i);
+    return -1;
+}
+
+void UltraWebWindow::TabChanged(UltraWebTab& tab) {
+    const int index = IndexOf(tab);
+    if (index < 0) return;
+    const std::string title = tab.Title();
+    if (tabStrip_->GetTabTitle(index) != title) {
+        tabStrip_->SetTabTitle(index, title);
+        tabStrip_->SetTabTooltip(index, tab.Address().empty() ? title : title + "\n" + tab.Address());
     }
-    SetStatus("Running " + app.address + "  ·  " + std::to_string(guest_->ElementCount()) + " elements  ·  "
-              + UltraCanvasWasm_EngineDescription());
+    if (&tab == ActiveTab()) ShowActiveTab();
 }
 
-void UltraWebWindow::ShowError(const std::string& title, const std::string& detail) {
-    errorTitle_->SetText(title);
-    errorDetail_->SetText(detail);
-    appArea_->AddChild(errorTitle_);
-    appArea_->AddChild(errorDetail_);
-    appArea_->InvalidateLayout();
-    appArea_->RequestRedraw();
+void UltraWebWindow::ShowActiveTab() {
+    UltraWebTab* tab = ActiveTab();
+    if (!tab) return;
+    // The address field follows the tab, but never under the user's
+    // fingers: only when the tab's address (or the tab) has changed.
+    if (tab != shownTab_ || tab->Address() != shownAddress_) {
+        address_->SetText(tab->Address());
+        shownTab_ = tab;
+        shownAddress_ = tab->Address();
+    }
+    backButton_->SetDisabled(!tab->CanGoBack());
+    forwardButton_->SetDisabled(!tab->CanGoForward());
+    SetStatus(tab->StatusText());
+    if (window_) window_->SetWindowTitle(tab->Title() + " - UltraWeb " + ULTRAWEB_VERSION);
 }
 
-void UltraWebWindow::ClearAppArea() {
-    appArea_->ClearChildren();
-    appArea_->InvalidateLayout();
-    appArea_->RequestRedraw();
+void UltraWebWindow::InstallShortcuts() {
+    // Browser keys, whatever has the focus: they type nothing.
+    window_->InstallEventFilter("uw-shortcuts", [this](const UCEvent& e) -> bool {
+        if (e.type != UCEventType::KeyDown || !e.ctrl || e.alt) return false;
+        if (window_->GetActivePopupElement()) return false;
+        switch (e.virtualKey) {
+            case UCKeys::T: NewTab(std::string()); return true;
+            case UCKeys::W: CloseActiveTab(); return true;
+            case UCKeys::Tab: SwitchTab(e.shift ? -1 : 1); return true;
+            case UCKeys::L:
+                window_->SetFocusedElement(address_.get());
+                address_->SelectAll();
+                return true;
+            default: return false;
+        }
+    }, { UCEventType::KeyDown });
 }
 
 void UltraWebWindow::SaveDownload(const HTML::LoadedPage& page) {
@@ -440,11 +382,6 @@ void UltraWebWindow::UpdateDownloadsButton() {
 void UltraWebWindow::SetStatus(const std::string& text) {
     status_->SetText(text);
     status_->RequestRedraw();
-}
-
-void UltraWebWindow::SetTitleFor(const std::string& address) {
-    if (!window_) return;
-    window_->SetWindowTitle(address + " - UltraWeb " + ULTRAWEB_VERSION);
 }
 
 void UltraWebWindow::LayoutForSize(float width, float height) {
