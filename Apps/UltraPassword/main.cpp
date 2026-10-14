@@ -7,10 +7,13 @@
 // There is no "skip" and no "remember me": a vault that opens without the
 // password opens for anyone holding the file.
 //
+// Version: 0.2.1 - the default vault folder comes from core/VaultLocation.h
+//                  (Application Support on macOS, moved there once)
 // Version: 0.2.0 - one UltraPassword per user: a second start brings the
 //                  first one's window forward instead of opening another copy
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "core/VaultLocation.h"   // DefaultVaultPath
 #include "ui/PasswordApp.h"
 
 #include "UltraCanvasApplication.h"
@@ -55,29 +58,6 @@ void PrintUsage(const char* prog) {
               << "  -v, --version  show version\n";
 }
 
-// Per-user data directory: $XDG_DATA_HOME, else %APPDATA% on Windows, else
-// ~/.local/share - the same places UltraAuthenticator keeps its vault.
-std::string DefaultVaultPath() {
-    namespace fs = std::filesystem;
-    fs::path base;
-    // UTF-8 (GetEnvUtf8), as PathFromUtf8 expects: on Windows a narrow
-    // getenv answers in the ANSI code page and would miss a profile folder
-    // named outside it.
-    if (const std::string xdg = GetEnvUtf8("XDG_DATA_HOME"); !xdg.empty()) {
-        base = PathFromUtf8(xdg);
-    } else if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty()) {
-        base = PathFromUtf8(appData);
-    } else if (const std::string home = GetEnvUtf8("HOME"); !home.empty()) {
-        base = PathFromUtf8(home) / ".local" / "share";
-    } else {
-        base = fs::current_path();
-    }
-    fs::path dir = base / "UltraPassword";
-    std::error_code ec;
-    fs::create_directories(dir, ec);   // best effort; Create reports real errors
-    return PathToUtf8(dir / "vault.upwvault");
-}
-
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -91,7 +71,17 @@ int main(int argc, char* argv[]) {
         }
         if (a == "--vault" && i + 1 < argc) { vaultPath = argv[++i]; continue; }
     }
-    if (vaultPath.empty()) vaultPath = DefaultVaultPath();
+    if (vaultPath.empty()) {
+        // The platform's application data folder (VaultLocation.h); a vault an
+        // earlier version kept in ~/.local/share on macOS is moved there once.
+        std::string movedFrom, moveError;
+        vaultPath = UltraPassword::DefaultVaultPath(&movedFrom, &moveError);
+        if (!movedFrom.empty())
+            std::cerr << "UltraPassword: moved the vault from " << movedFrom << " to "
+                      << UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(vaultPath).parent_path()) << "\n";
+        else if (!moveError.empty())
+            std::cerr << "UltraPassword: " << moveError << "\n";
+    }
 
     // Without a crypto backend there is no safe way to hold a password; a
     // vault app that started anyway would be inviting misplaced trust.

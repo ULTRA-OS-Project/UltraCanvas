@@ -301,7 +301,7 @@ works the classic way (an *app password*).
 The sign-in runs as an OAuth *client* that the provider must know. Register one
 per provider once and give it to UltraMail through `oauth.ini` in the data
 folder (`~/.local/share/UltraMail/` on Linux, `%APPDATA%\UltraMail\` on
-Windows):
+Windows, `~/Library/Application Support/UltraMail/` on macOS):
 
 ```ini
 [google]
@@ -348,7 +348,8 @@ admin must leave IMAP and *Authenticated SMTP* enabled for the mailbox.
 
 UltraMail writes what it is doing, step by step and with its times, to
 `trace.log` in the data folder (`%APPDATA%\UltraMail\trace.log` on Windows,
-`~/.local/share/UltraMail/trace.log` on Linux), which is emptied at each
+`~/.local/share/UltraMail/trace.log` on Linux,
+`~/Library/Application Support/UltraMail/trace.log` on macOS), which is emptied at each
 start, and to the console it was started from. Windows Release builds open no
 console window of their own; started from a command prompt they write into
 it, and Debug builds keep their console window. Every line carries the time of day, the seconds since the

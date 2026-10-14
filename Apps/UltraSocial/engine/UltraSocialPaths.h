@@ -9,7 +9,9 @@
 //   others   $XDG_DATA_HOME/UltraSocial, else ~/.local/share/UltraSocial
 //
 // $XDG_DATA_HOME, when set, wins on every platform (as in UltraMail), so a
-// test or a portable setup can point the app elsewhere.
+// test or a portable setup can point the app elsewhere. The rule is the
+// framework's (UltraCanvasDataFolder.h), shared with UltraMail,
+// UltraPassword, UltraAuthenticator and EmailCleaner.
 //
 // Up to 0.1.x the folder was $XDG_DATA_HOME or ~/.local/share everywhere, and
 // "UltraSocial" in the working directory when HOME was unset - the normal
@@ -19,10 +21,13 @@
 // other applications' files; RenameLegacyDatabase gives it its own.
 //
 // All strings are UTF-8 (UltraCanvasPathUtf8.h).
+// Version: 0.1.1 - the rule and the move come from the framework's UltraCanvasDataFolder.h
 // Version: 0.1.0 - the per-platform application data folder
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include "UltraCanvasDataFolder.h"   // DataFolderPlatform
 
 #include <string>
 #include <vector>
@@ -36,7 +41,7 @@ inline constexpr const char* kLegacyDatabaseFileName = "social.db";
 // <dataDir>/ultrasocial.db
 std::string DatabasePath(const std::string& dataDir);
 
-enum class DataDirPlatform { Windows, MacOS, Unix };
+using DataDirPlatform = UltraCanvas::DataFolderPlatform;
 
 // The platform this build runs on.
 DataDirPlatform CurrentDataDirPlatform();

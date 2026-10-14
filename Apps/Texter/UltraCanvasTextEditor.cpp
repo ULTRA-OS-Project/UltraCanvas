@@ -1,5 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.3.6 - the autosave folder comes from the framework's data folder rule
+//                  (UltraCanvasDataFolder), every variable read as UTF-8
 // Version: 2.3.5 - the Recent files menu opens anchored to its toolbar button
 // Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
 //                  and shortcut colours
@@ -11,6 +13,7 @@
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasTextEditor.h"
+#include "UltraCanvasDataFolder.h"   // UltraCanvasDataFolder
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTextArea.h"
@@ -72,33 +75,18 @@ namespace {
         ms.shadowColor       = theme.shadowColor;
     }
 
+    // The autosave folder: UltraTexter under the framework's data folder rule
+    // (UltraCanvasDataFolder.h - %APPDATA%, Application Support, $XDG_DATA_HOME
+    // or ~/.local/share), every variable read as UTF-8 since the folder is
+    // opened through PathFromUtf8. The temp folder when the environment names
+    // no home. With a trailing separator, as every caller appends a name.
     std::string GetAppDataDirectory() {
-#ifdef _WIN32
-        // UTF-8 from the wide environment, as the autosave folder is opened
-        // through PathFromUtf8; getenv would answer in the ANSI code page.
-        const std::string appData = GetEnvUtf8("APPDATA");
-        if (!appData.empty()) {
-            return appData + "\\UltraTexter\\";
+        std::filesystem::path dir = UltraCanvasDataFolder("UltraTexter");
+        if (dir.empty()) {
+            std::error_code ec;
+            dir = std::filesystem::temp_directory_path(ec) / "UltraTexter";
         }
-        return "C:\\UltraTexter\\";
-#elif __APPLE__
-        const char* home = std::getenv("HOME");
-        if (home) {
-            return std::string(home) + "/Library/Application Support/UltraTexter/";
-        }
-        return "/tmp/UltraTexter/";
-#else
-        // Linux: XDG Base Directory Specification
-        const char* xdgDataHome = std::getenv("XDG_DATA_HOME");
-        if (xdgDataHome && xdgDataHome[0] != '\0') {
-            return std::string(xdgDataHome) + "/UltraTexter/";
-        }
-        const char* home = std::getenv("HOME");
-        if (home) {
-            return std::string(home) + "/.local/share/UltraTexter/";
-        }
-        return "/tmp/UltraTexter/";
-#endif
+        return PathToUtf8(dir) + "/";
     }
 
     // Build a Flat-style ToolbarAppearance tinted for either light or dark mode.

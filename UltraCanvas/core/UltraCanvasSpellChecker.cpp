@@ -1,7 +1,10 @@
 // core/UltraCanvasSpellChecker.cpp
 // Implementation of the cross-platform spell checking service
+// Version: 1.1.1 - the user dictionary lives in the framework's data folder rule
+//                  (UltraCanvasDataFolder.h): Application Support on macOS, with the
+//                  folder an earlier version left in ~/.local/share moved there once
 // Version: 1.1.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpellChecker.h"
@@ -14,6 +17,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include "UltraCanvasDataFolder.h"   // UltraCanvasDataFolderRoot / AdoptLegacyDataFolder
 #include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
@@ -866,29 +870,29 @@ void UltraCanvasSpellChecker::WorkerLoop() {
 // SERVICE - DICTIONARY MANAGEMENT
 // ===================================================================
 
+// <data root>/UltraCanvas/UserDictionary.txt, the data root being the
+// framework's rule (UltraCanvasDataFolder.h): %APPDATA% on Windows, Application
+// Support on macOS, $XDG_DATA_HOME or ~/.local/share elsewhere, every variable
+// read as UTF-8 since the file is opened through PathFromUtf8. Up to 1.1.0
+// macOS was treated like Linux, so the words a person added went to
+// ~/.local/share/UltraCanvas; that folder is moved into place once, whole.
+// The working directory when the environment names no home.
 std::string UltraCanvasSpellChecker::ResolveDefaultUserDictionaryPath() const {
-    std::string base;
-
-#if defined(_WIN32)
-    // UTF-8 from the wide environment: the file is opened through
-    // PathFromUtf8, and getenv would answer in the ANSI code page.
-    base = UltraCanvas::GetEnvUtf8("APPDATA");
-    if (base.empty()) base = UltraCanvas::GetEnvUtf8("USERPROFILE");
-    const std::string separator = "\\";
-    const std::string folder = "UltraCanvas";
-#else
-    if (const char* xdg = std::getenv("XDG_DATA_HOME")) base = xdg;
-    if (base.empty()) {
-        if (const char* home = std::getenv("HOME")) {
-            base = std::string(home) + "/.local/share";
+    namespace fs = std::filesystem;
+    const fs::path root = UltraCanvas::UltraCanvasDataFolderRoot();
+    if (root.empty()) return "UltraCanvasUserDictionary.txt";
+    const fs::path folder = root / "UltraCanvas";
+    if (UltraCanvas::CurrentDataFolderPlatform() == UltraCanvas::DataFolderPlatform::MacOS) {
+        const std::string home = UltraCanvas::DataFolderHome();
+        if (!home.empty()) {
+            std::string error;   // a failed move leaves the old folder; the new path is used
+            UltraCanvas::AdoptLegacyDataFolder(
+                UltraCanvas::PathToUtf8(folder),
+                {UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(home) / ".local" / "share" / "UltraCanvas")},
+                {"UserDictionary.txt"}, error);
         }
     }
-    const std::string separator = "/";
-    const std::string folder = "UltraCanvas";
-#endif
-
-    if (base.empty()) return "UltraCanvasUserDictionary.txt";
-    return base + separator + folder + separator + "UserDictionary.txt";
+    return UltraCanvas::PathToUtf8(folder / "UserDictionary.txt");
 }
 
 void UltraCanvasSpellChecker::SetUserDictionaryPath(const std::string& filePath) {
