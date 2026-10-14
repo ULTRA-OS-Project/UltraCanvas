@@ -123,6 +123,54 @@ without sound fails with `NoMediaStreams`; a range beginning after the sound
 ends with `InvalidArgument`. `videofx waveform <file> [blocksPerSecond] [start [end]]`
 prints the same, one block a line.
 
+**Which files.** `VideoFX_GetFileFormats()` lists the files this build reads
+and writes, asking the FFmpeg it is linked against rather than a list kept
+by hand:
+
+- Films and sound (`VideoFXFileKind::Video` / `Audio`) are the containers it
+  knows by name: MP4, MOV, MKV, WebM, AVI, MPEG, transport streams, WMV, FLV,
+  Ogg, 3GP, MP3, M4A, AAC, WAV, FLAC, Opus, WMA, AIFF and others. Each is
+  `canRead` when FFmpeg has its demuxer, and `canWrite` when an export writes
+  it: the muxer and the container's usual encoders are there. `container`
+  then names the `VideoFXContainer` an export to it uses.
+- Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
+  FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its demuxer
+  opens it, but a phone's HEIC is a grid of tiles in a stream group, which
+  VideoFX does not put together. A host application's picture reader does
+  (below). GIF is also written, as the animation.
+
+The descriptions match the UltraCanvas codec registry's, so an application
+that brings VideoFX hands the films and sound to `RegisterMediaCodec`, and
+FileLoader's lists, and the dialogs built from them, then offer exactly what
+the engine handles. UltraVideo does this (`UltraVideoFormats.cpp`). The
+module built without FFmpeg returns an empty list.
+
+```cpp
+for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
+    if (f.kind == VideoFXFileKind::Video && f.canWrite)
+        std::printf("%s (%s) - an export writes it\n", f.description.c_str(), f.extension.c_str());
+```
+
+**Pictures the application reads.** A host with an image library of its own
+hands VideoFX a `VideoFXPictureReader`: the picture types it takes over, a
+cheap `size` (the upright size, from the header) and `decode` (the upright
+picture as RGBA). `VideoFX_Probe`, `VideoFX_ExtractFrame` and
+`VideoFX_ExtractThumbnails` read files of those types through it instead of
+FFmpeg, and so does everything built on them: image segments, picture
+overlays, slideshows. `VideoFX_GetFileFormats` then reports the types read.
+Both calls come from the engine's worker threads. UltraVideo gives VideoFX
+the UltraCanvas image reader (libvips, libheif) this way, for every picture
+type FileLoader reads and FFmpeg does not: a phone's HEIC comes in whole and
+upright, and so does a camera's raw file.
+
+```cpp
+VideoFXPictureReader reader;
+reader.extensions = {"heic", "heif"};
+reader.size = [](const std::string& path, int& w, int& h) { return MyImageSize(path, w, h); };
+reader.decode = [](const std::string& path, VideoFXFrame& frame) { return MyImageRgba(path, frame); };
+VideoFX_SetPictureReader(reader);             // a reader with no extensions takes it away
+```
+
 ---
 
 ## The timeline: segments

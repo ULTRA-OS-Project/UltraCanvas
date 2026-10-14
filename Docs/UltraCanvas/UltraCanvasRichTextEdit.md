@@ -70,7 +70,6 @@ the result over.
 
 ```cpp
 #include "UltraCanvasFileLoader.h"
-#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
 std::string error;
 if (auto document = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
@@ -79,8 +78,10 @@ if (auto document = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
     ShowError(error);
 }
 
-// Saving: the element hands back the same document, edits included.
-UCWordDocumentIO::Save(savePath, *editor->GetDocument(), error);
+// Saving: the element hands back the same document, edits included. The
+// Save dialog's types are AddTextDocumentSaveTypes (ODT, DOCX), its Open
+// dialog's AddTextDocumentLoadTypes.
+UltraCanvasFileLoader::SaveTextDocument(*editor->GetDocument(), savePath, error);
 ```
 
 Because the element shares ownership of the document (`std::shared_ptr`), an
@@ -141,8 +142,9 @@ toolbar, `IncreaseQuoteLevel()` / `DecreaseQuoteLevel()` move every block the
 selection touches (or the caret's) one level in or out, between 0 and 8.
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
-the reader produced, hands it to the element, and hands the same object back to
-`UCWordDocumentIO::Save` — no conversion in either direction. See
+`UltraCanvasFileLoader::LoadTextDocument` produced, hands it to the element, and
+hands the same object back to `SaveTextDocument` — no conversion in either
+direction. See
 `Apps/Texter/UltraCanvasTextEditor.cpp` (`LoadWordIntoDocument`,
 `SaveRichDocumentAs`) for a worked integration, including how the element is
 swapped into an existing tab layout and how a shared formatting toolbar drives

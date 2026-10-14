@@ -66,7 +66,7 @@ UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_p
     if (r.IsSuccess()) Play(audio);
 });
 
-// Parse a word-processing document into a UCRichDocument (ODT/DOCX/Markdown/TXT)
+// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT)
 UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
     if (r.IsSuccess()) ShowDocument(doc);
 });
@@ -158,8 +158,8 @@ UltraCanvasFileLoader::SaveFileDialog(opts, [drawing](DialogResult r, const std:
 the model is in points), and `CanSaveImage(extensionOrPath)` says whether
 this build writes a bitmap type. A picture's Save offers
 `AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
-and its Open `GetSupportedLoadExtensions(MediaFormatCategory::Bitmap)`, as
-UltraPaint and the media viewer do. Windows icons and QOI are read and written
+and its Open `AddLoadTypes(opts, "Pictures", {MediaFormatCategory::Bitmap})`
+(see *A Dialog's File Types* below), as UltraPaint and the media viewer do. Windows icons and QOI are read and written
 by the framework's own libvips plugins, and an AVIF or HEIC type is offered
 only where libheif can encode it.
 
@@ -205,6 +205,49 @@ auto imgSave = UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCate
 // Alias-aware lookup: ".JPEG", "jpg" and "jpeg" all resolve to the same entry
 auto info = UltraCanvasSupportedFormats::FindByExtension(".heic");
 ```
+
+### A Dialog's File Types
+An application's Open and Save dialogs offer the inventory, never a list of
+their own (the rule in `AGENTS.md`), so every type this build reads or
+writes is on offer and nothing it cannot:
+
+<!-- doc-check: std::shared_ptr<UCRichDocument> letter; void ShowError(const std::string& message); -->
+```cpp
+// Open: one filter holding every type this build reads in the categories
+FileDialogOptions open;
+open.SetTitle("Import media");
+UltraCanvasFileLoader::AddLoadTypes(open, "Video, pictures and sound",
+    {MediaFormatCategory::Video, MediaFormatCategory::Bitmap, MediaFormatCategory::Audio});
+open.AddFilter("All files", "*");
+
+// Save: one filter per type it writes, under its name - the type the
+// proposed name ends in first, since the dialog starts on the first
+FileDialogOptions save;
+save.SetDefaultFileName("table.ods");
+UltraCanvasFileLoader::AddSaveTypes(save, MediaFormatCategory::Spreadsheet);
+
+// A text document: what LoadTextDocument reads (ODT, DOCX, DOC, LaTeX,
+// Markdown, text - not the PDFs and e-books the Document category also
+// holds) and what SaveTextDocument writes (ODT, DOCX)
+FileDialogOptions saveLetter;
+saveLetter.SetDefaultFileName("letter.odt");
+UltraCanvasFileLoader::AddTextDocumentSaveTypes(saveLetter);
+UltraCanvasFileLoader::SaveFileDialog(saveLetter, [document = letter](DialogResult r, const std::string& path) {
+    std::string error;
+    if (r == DialogResult::OK && !UltraCanvasFileLoader::SaveTextDocument(*document, path, error))
+        ShowError(error);
+});
+```
+
+`AddTextDocumentLoadTypes(opts)` is the Open side: one "Documents" filter,
+then each type under its name. A codec an application brings itself joins
+the lists once it is registered: UltraVideo registers what its FFmpeg engine
+reads and writes (`VideoFX_GetFileFormats`) with `RegisterMediaCodec`, and
+FileLoader's Video and Audio lists then hold MKV, WebM and AVI on a macOS
+whose platform backend reads only MP4, MOV and 3GP. The other way round, it
+hands its engine the framework's image reader (`UCImageRaster`, through
+`VideoFX_SetPictureReader`) for the picture types FileLoader reads and FFmpeg
+does not open whole, so a phone's HEIC comes in as the whole photo.
 
 ### Extensible Plugin Architecture
 Add support for proprietary or specialized graphics formats without modifying

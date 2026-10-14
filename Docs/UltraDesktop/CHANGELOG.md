@@ -1,3 +1,22 @@
+#### 2026-10-14 *0.3.0*
+- **UltraDesktop can take the place of the Windows desktop, and give it
+  back.** On Windows it now has running windows, the Start menu's programs,
+  reserved bars and a screenshot (framework changelog:
+  `desktopshell-windows-backend`). You can switch over in UOS-Settings →
+  Desktop, from the settings button's right-click menu, or with
+  `--use-as-desktop`.
+  - What switching over does: the sign-in starts UltraDesktop, and
+    Explorer's taskbar hides itself. Explorer keeps running underneath.
+  - The way back: the same switch or menu, `--restore-desktop`, or
+    uninstalling. Each removes the start at sign-in and gives the taskbar
+    back the state it had before.
+  - A desktop the sign-in started (`--session`) closes within a second of
+    being switched back.
+  - A trial run started by hand closes from the same menu.
+- **No RAM disc button without a RAM disc.** An empty RAM disc folder leaves
+  the button out. That is the default on Windows, which has no RAM disc of
+  its own; `/dev/shm` stays the default elsewhere.
+
 #### 2026-10-13 *0.2.2*
 - **The Sticker board: files sorted into categories on the desktop.** The
   pinboard on the right bar shows a Kanban board over the wallpaper with three

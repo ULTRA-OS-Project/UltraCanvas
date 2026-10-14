@@ -3,8 +3,9 @@
 // view types (details / list / thumbnails / bar size / treemap), sortable
 // columns, a file type filter that hides or greys out the other types, the
 // hover icon menu and the full file context menu (right-click).
+// Version: 1.2.0 - the type buttons hold FileLoader's lists
 // Version: 1.1.0
-// Last Modified: 2026-10-01
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -14,8 +15,11 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasUtils.h"
+#include <algorithm>
 #include <filesystem>
+#include <initializer_list>
 #include <vector>
 
 namespace UltraCanvas {
@@ -324,16 +328,25 @@ namespace UltraCanvas {
             row->AddChild(lbl);
 
             struct TypeSeed { const char* label; std::vector<std::string> extensions; };
-            // The same lists a FileDialogConfig::AddFilter() call would hold.
+            // FileLoader's lists - the types this build reads, as a file
+            // dialog's filters hold them (UltraCanvasFileLoader::AddLoadTypes)
+            auto reads = [](std::initializer_list<MediaFormatCategory> categories) {
+                std::vector<std::string> out;
+                for (MediaFormatCategory category : categories)
+                    for (const std::string& ext : UltraCanvasFileLoader::GetSupportedLoadExtensions(category))
+                        if (std::find(out.begin(), out.end(), ext) == out.end()) out.push_back(ext);
+                return out;
+            };
             const std::vector<TypeSeed> types = {
                 {"All files", {"*"}},
-                {"Images",    {"png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"}},
-                {"Audio",     {"mp3", "flac", "wav", "ogg", "m4a"}},
-                {"Video",     {"mp4", "mkv", "webm", "mov", "avi"}},
+                {"Images",    reads({MediaFormatCategory::Bitmap, MediaFormatCategory::Vector})},
+                {"Audio",     reads({MediaFormatCategory::Audio})},
+                {"Video",     reads({MediaFormatCategory::Video})},
             };
             auto group = std::make_shared<std::vector<UltraCanvasButton*>>();
             auto filerPtr = filer.get();
             for (const TypeSeed& t : types) {
+                if (t.extensions.empty()) continue;      // a kind this build reads none of
                 auto b = std::make_shared<UltraCanvasButton>(
                         std::string("FilerTypes_") + t.label, 0, 0, 0, 24, t.label);
                 b->SetFontSize(11);

@@ -2,9 +2,11 @@
 // UltraVideo - a video editor on the VideoFX engine and the framework's
 // UltraCanvasVideoTimeline element. Opens the project or the media files
 // named on the command line.
+// Version: 0.2.0 - registers the engine's files with the codec registry (RegisterEngineFormats)
 // Version: 0.1.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
+#include "UltraVideoFormats.h"
 #include "UltraVideoWindow.h"
 
 #include "UltraCanvasApplication.h"
@@ -80,6 +82,8 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraVideo.png"));
+        // The engine's files join FileLoader's lists before a dialog asks
+        UltraVideo::RegisterEngineFormats();
         window = std::make_unique<UltraVideo::UltraVideoWindow>(app);
         if (!window->Create(paths)) {
             std::cerr << "Failed to create the main window\n";

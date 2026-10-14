@@ -4,9 +4,10 @@
 // rasterized into a UCPixmap — what Windows Explorer shows for these files.
 // The extraction itself is exposed to the rest of the Windows backend
 // through UltraCanvasWindowsIcons.h: the "Open with" service reuses it for
-// the icon locations that IAssocHandler reports.
-// Version: 1.1.0
-// Last Modified: 2026-09-04
+// the icon locations that IAssocHandler reports, and it and the desktop
+// shell write the results out as PNG files through WriteSurfacePng.
+// Version: 1.2.0 - WriteSurfacePng, moved here from the "Open with" backend
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasWindowsIcons.h"
@@ -24,8 +25,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <vector>
+
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -164,6 +169,46 @@ namespace UltraCanvas {
             std::shared_ptr<UCPixmap> pm = PixmapFromIcon(icon);
             DestroyIcon(icon);
             return pm;
+        }
+
+        namespace {
+            cairo_status_t WritePngChunk(void* closure, const unsigned char* data,
+                                         unsigned int length) {
+                FILE* file = static_cast<FILE*>(closure);
+                return std::fwrite(data, 1, length, file) == length
+                       ? CAIRO_STATUS_SUCCESS : CAIRO_STATUS_WRITE_ERROR;
+            }
+        } // namespace
+
+        bool WriteSurfacePng(cairo_surface_t* surface, const std::string& path) {
+            if (!surface || path.empty() ||
+                cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS)
+                return false;
+            cairo_surface_flush(surface);
+            namespace fs = std::filesystem;
+            const std::string temp = path + "." +
+                    std::to_string(static_cast<unsigned long>(GetCurrentProcessId()))
+                    + ".tmp";
+            // Through a stream, not cairo_surface_write_to_png: that one opens
+            // the narrow path in the process code page, which mangles a
+            // folder under a user name outside it.
+            FILE* file = _wfopen(Utf8ToWide(temp).c_str(), L"wb");
+            if (!file) return false;
+            const cairo_status_t status =
+                    cairo_surface_write_to_png_stream(surface, WritePngChunk, file);
+            const bool closed = std::fclose(file) == 0;
+            std::error_code ec;
+            if (status != CAIRO_STATUS_SUCCESS || !closed) {
+                fs::remove(PathFromUtf8(temp), ec);
+                return false;
+            }
+            fs::rename(PathFromUtf8(temp), PathFromUtf8(path), ec);
+            if (ec) {
+                // Another process won the race: its file is just as good.
+                fs::remove(PathFromUtf8(temp), ec);
+                return fs::exists(PathFromUtf8(path), ec);
+            }
+            return true;
         }
 
     } // namespace WindowsIcons

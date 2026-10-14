@@ -1,6 +1,8 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.5.0 - AddLoadTypes / AddSaveTypes (the inventory as a dialog's file types),
+//                  AddTextDocumentLoadTypes, SaveTextDocument, AddTextDocumentSaveTypes
 // Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
@@ -450,6 +452,48 @@ namespace UltraCanvas {
         return UltraCanvasSupportedFormats::GetSaveExtensions(category);
     }
 
+    namespace {
+        // A format's extension and its aliases: one dialog filter's worth.
+        std::vector<std::string> ExtensionsOf(const MediaFormatInfo& format) {
+            std::vector<std::string> extensions = {format.extension};
+            extensions.insert(extensions.end(), format.aliases.begin(), format.aliases.end());
+            return extensions;
+        }
+
+        // The Save dialog starts on its first type: the one the proposed
+        // name ends in goes there, so the two agree ("drawing.svg" opens on
+        // SVG, not on the alphabet's first vector type).
+        void PutDefaultTypeFirst(FileDialogOptions& opts) {
+            std::string ext = PathToUtf8(PathFromUtf8(opts.defaultFileName).extension());
+            if (ext.size() < 2) return;
+            ext = ext.substr(1);
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            auto holds = [&ext](const FileFilter& filter) {
+                return std::find(filter.extensions.begin(), filter.extensions.end(), ext) != filter.extensions.end();
+            };
+            auto it = std::find_if(opts.filters.begin(), opts.filters.end(), holds);
+            if (it != opts.filters.end() && it != opts.filters.begin())
+                std::rotate(opts.filters.begin(), it, it + 1);
+        }
+    } // namespace
+
+    void UltraCanvasFileLoader::AddLoadTypes(FileDialogOptions& opts, const std::string& label,
+                                             std::initializer_list<MediaFormatCategory> categories) {
+        std::vector<std::string> extensions;
+        for (MediaFormatCategory category : categories)
+            for (const std::string& ext : GetSupportedLoadExtensions(category))
+                if (std::find(extensions.begin(), extensions.end(), ext) == extensions.end())
+                    extensions.push_back(ext);
+        if (!extensions.empty()) opts.AddFilter(label, extensions);
+    }
+
+    void UltraCanvasFileLoader::AddSaveTypes(FileDialogOptions& opts, MediaFormatCategory category) {
+        for (const MediaFormatInfo& format : GetSupportedFormats(category))
+            if (format.canSave) opts.AddFilter(format.description, ExtensionsOf(format));
+        PutDefaultTypeFirst(opts);
+    }
+
     // ===== VECTOR DOCUMENTS =====
 
     std::shared_ptr<VectorStorage::VectorDocument> UltraCanvasFileLoader::LoadVectorDocument(
@@ -570,18 +614,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFileLoader::AddImageSaveTypes(FileDialogOptions& opts) {
-        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Bitmap)) {
-            if (!format.canSave) continue;
-            std::vector<std::string> extensions = {format.extension};
-            extensions.insert(extensions.end(), format.aliases.begin(), format.aliases.end());
-            opts.AddFilter(format.description, extensions);
-        }
+        AddSaveTypes(opts, MediaFormatCategory::Bitmap);
     }
 
     void UltraCanvasFileLoader::AddVectorDocumentSaveTypes(FileDialogOptions& opts,
                                                            const VectorStorage::VectorDocument& document,
                                                            bool withBitmaps) {
         for (const std::string& ext : SavableVectorExtensions()) opts.AddFilter(VectorTypeName(ext), ext);
+        PutDefaultTypeFirst(opts);
         if (!withBitmaps) return;
         AddImageSaveTypes(opts);
         const Size2Di page = GetVectorDocumentPixelSize(document);
@@ -627,6 +667,44 @@ namespace UltraCanvas {
             UCRichDocument::FromMarkdown(text, baseDirectory));
     }
 
+    namespace {
+        // The document types LoadTextDocument reads: the Word document reader's
+        // (ODT, DOCX, DOC, LaTeX) and the Markdown text path's.
+        bool TextDocumentReads(const MediaFormatInfo& format) {
+            if (WordDocumentFormatFromExtension(format.extension) != WordDocumentFormat::Unknown) return true;
+            return format.extension == "md" || format.extension == "txt";
+        }
+
+        // ... and the ones SaveTextDocument writes.
+        bool TextDocumentWrites(const MediaFormatInfo& format) {
+            const WordDocumentFormat type = WordDocumentFormatFromExtension(format.extension);
+            return format.canSave && (type == WordDocumentFormat::Odt || type == WordDocumentFormat::Docx);
+        }
+    } // namespace
+
+    void UltraCanvasFileLoader::AddTextDocumentLoadTypes(FileDialogOptions& opts) {
+        std::vector<MediaFormatInfo> formats;
+        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Document))
+            if (format.canLoad && TextDocumentReads(format)) formats.push_back(format);
+        std::vector<std::string> all;
+        for (const MediaFormatInfo& format : formats)
+            for (const std::string& ext : ExtensionsOf(format)) all.push_back(ext);
+        if (all.empty()) return;
+        opts.AddFilter("Documents", all);
+        for (const MediaFormatInfo& format : formats) opts.AddFilter(format.description, ExtensionsOf(format));
+    }
+
+    bool UltraCanvasFileLoader::SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
+                                                 std::string& outError) {
+        return UCWordDocumentIO::Save(filePath, document, outError);
+    }
+
+    void UltraCanvasFileLoader::AddTextDocumentSaveTypes(FileDialogOptions& opts) {
+        for (const MediaFormatInfo& format : GetSupportedFormats(MediaFormatCategory::Document))
+            if (TextDocumentWrites(format)) opts.AddFilter(format.description, ExtensionsOf(format));
+        PutDefaultTypeFirst(opts);
+    }
+
     void UltraCanvasFileLoader::OpenTextDocument(
             const FileDialogOptions& opts,
             std::function<void(const FileLoadResult&, std::shared_ptr<UCRichDocument>)> onResult) {
@@ -634,15 +712,8 @@ namespace UltraCanvas {
         FileDialogOptions effective = opts;
         if (effective.title.empty()) effective.title = "Open Document";
         if (effective.filters.empty()) {
-            effective
-                .AddFilter("Documents",
-                           std::vector<std::string>{"odt", "docx", "doc", "tex", "md", "markdown", "txt"})
-                .AddFilter("OpenDocument Text (*.odt)", "odt")
-                .AddFilter("Word Document (*.docx)", "docx")
-                .AddFilter("LaTeX Document (*.tex)", "tex")
-                .AddFilter("Markdown (*.md)", std::vector<std::string>{"md", "markdown"})
-                .AddFilter("Plain Text (*.txt)", "txt")
-                .AddFilter("All files (*.*)", "*");
+            AddTextDocumentLoadTypes(effective);
+            effective.AddFilter("All files (*.*)", "*");
         }
 
         OpenFileDialog(effective, [onResult](DialogResult r, const std::string& path) {
