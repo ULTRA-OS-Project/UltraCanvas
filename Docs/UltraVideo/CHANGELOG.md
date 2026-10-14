@@ -1,3 +1,21 @@
+#### 2026-10-14 *0.5.0*
+- **Effects on overlay clips.** The bin's effect presets now also work on
+  a selected clip on the overlay lane. They change only that clip's own
+  picture, such as a picture-in-picture video in black and white or a
+  softened logo, and leave the picture under it untouched.
+  - The inspector lists the overlay clip's effects, each with its strength
+    slider and remove button, as it does for a main-track clip.
+  - A blur's radius follows the overlay file's own height.
+  - The clip shows its effects badge on the overlay lane, and the
+    `.ultravideo` file keeps the effects with the overlay span.
+  - This needs VideoFX 0.14.0 (`VideoFXOverlay::effects`).
+  - (`EffectTarget`, `Document::EffectsOf`, `ApplyEffectPreset` and
+    `SetEffectAmount` taking a target; tested in `UltraVideoDocumentTest`.)
+- **Blurs in the preview over proxies look as they will in the export.**
+  VideoFX 0.14.0 scales a blur's radius to the proxy's picture. Before, on
+  a proxy half as tall, *Strong blur* looked twice as strong in the viewer
+  as in the export.
+
 #### 2026-10-13 *0.4.0*
 - **Effect presets in the bin.** The bin's *Effects* tab is no longer a
   placeholder. It holds one-click presets for the selected main-track clip.

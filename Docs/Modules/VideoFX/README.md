@@ -261,8 +261,10 @@ VideoFX_Export(timeline, "final.mp4", settings);
   be taken for a whole proxy.
 - **Switching.** `VideoFX_UseProxies(timeline)` returns the timeline with
   every clip that has a proxy replaced by it; trims, speed, effects and
-  overlays are kept. A `Crop` effect, which is in the clip's pixels, is
-  scaled to the proxy's. A picture-in-picture video at its own pixel size
+  overlays are kept. The effects measured in the clip's pixels - a
+  `Crop`'s rectangle and a `Blur`'s radius, on a segment or on a
+  picture-in-picture video - are scaled to the proxy's, so the preview looks
+  as the export will. A picture-in-picture video at its own pixel size
   (`imageHeight` 0) keeps its original, since a proxy would shrink it.
 - **Give the output size.** With `width` and `height` 0 an export or preview
   takes its size from the first segment, which over proxies is the proxy.
@@ -720,6 +722,7 @@ clip.overlays = { title, logo, cam };
 | `fadeIn`, `fadeOut`, `opacity` | Seconds; 0..1 |
 | **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = the default font (below) |
 | **Image:** `imagePath` or `image`, `imageHeight` | A PNG keeps its transparency; `image` takes RGBA pixels from memory (for example a picture UltraCanvas rendered); `imageHeight` 0 = its own pixel size |
+| **Image or video:** `effects` | The picture's own look: colour and detail effects (brightness, contrast, saturation, gamma, exposure, hue, temperature, greyscale, sepia, invert, blur, sharpen, denoise, vignette) applied in order to the overlay's picture before it is sized, in its own pixels; its transparency is kept. Geometry, fades, LUTs and sound effects are refused here, as are effects on a text overlay (`InvalidArgument` when the export is planned). Saved in project files. |
 | **Video:** `videoPath`, `videoStart`, `imageHeight` | Picture-in-picture: the file's picture plays from `videoStart` seconds into it from the overlay's `start` on, at its own speed, upright, without its sound; when the file ends before the overlay does its last frame holds. `imageHeight` sizes it like an image (0 = the file's own pixels). `VideoFXOverlay::Video` makes one from a path, anchor, height and start second. The file is checked when the export is planned, so a missing one fails before anything is written. |
 
 Text is taken literally — `:`, quotes, `%` and backslashes need no escaping.
@@ -1075,6 +1078,7 @@ generates its own clips, so it needs no media files.
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
 | 3g | Free audio clips: voice-overs and sound effects at given times, trimmed, faded, the music ducking under voice-overs | **Done** |
+| 3h | Effects on image and video overlays: colour and detail, transparency kept | **Done** |
 | 3 | Keyframed effect and overlay parameters | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |

@@ -10,8 +10,8 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.13.0
-// Last Modified: 2026-10-13
+// Version: 0.14.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -30,6 +30,7 @@
 #include <clocale>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <locale>
@@ -169,6 +170,33 @@ static void TestEffectChains() {
     CHECK(!BuildVideoEffectChain({VideoFXEffect::Gamma(0.0)}, 5.0, chain, error), "gamma 0 refused");
     CHECK(!BuildVideoEffectChain({VideoFXEffect::LUT("", 1.0)}, 5.0, chain, error), "LUT without file refused");
     CHECK(!BuildAudioEffectChain({VideoFXEffect::NormalizeAudio(0.0)}, 5.0, chain, error), "0 LUFS refused");
+}
+
+static void TestOverlayEffectGraph() {
+    std::printf("Overlay effects (filter text)\n");
+    std::string graph, error;
+    CHECK(IsOverlayEffect(VideoFXEffectType::Grayscale) && IsOverlayEffect(VideoFXEffectType::Blur) &&
+          IsOverlayEffect(VideoFXEffectType::Temperature), "colour and detail effects go on an overlay");
+    CHECK(!IsOverlayEffect(VideoFXEffectType::Crop) && !IsOverlayEffect(VideoFXEffectType::Rotate90) &&
+          !IsOverlayEffect(VideoFXEffectType::FadeIn) && !IsOverlayEffect(VideoFXEffectType::Volume) &&
+          !IsOverlayEffect(VideoFXEffectType::LUT), "geometry, fades, sound and LUTs do not");
+    CHECK(BuildOverlayEffectGraph({}, "ov0", "ov0fx", "p", graph, error) && graph.empty(), "no effects: no fragment");
+    CHECK(BuildOverlayEffectGraph({VideoFXEffect::Grayscale(), VideoFXEffect::Blur(2.0)}, "ov0", "ov0fx", "p", graph, error),
+          "a look and a blur build");
+    CHECK_EQ(graph, "[ov0]format=rgba,split[pa][pb];[pb]alphaextract[pal];[pa]hue=s=0,gblur=sigma=2[pc];[pc][pal]alphamerge[ov0fx];",
+             "the alpha goes round the effects");
+    CHECK(BuildOverlayEffectGraph({VideoFXEffect::Blur(0.0)}, "a", "b", "p", graph, error) && graph.find("[pa]null[pc]") != std::string::npos,
+          "a blur of 0 passes the picture through");
+    CHECK(!BuildOverlayEffectGraph({VideoFXEffect::Crop(0, 0, 10, 10)}, "a", "b", "p", graph, error), "a crop refused");
+    CHECK(!BuildOverlayEffectGraph({VideoFXEffect::Brightness(3.0)}, "a", "b", "p", graph, error), "a bad value refused");
+    VideoFXOverlay text = VideoFXOverlay::Text("Hi");
+    text.effects = {VideoFXEffect::Grayscale()};
+    CHECK(!ValidateOverlay(text, 5.0, error), "a text overlay takes no effects");
+    VideoFXOverlay pic = VideoFXOverlay::Image("logo.png");
+    pic.effects = {VideoFXEffect::Sepia()};
+    CHECK(ValidateOverlay(pic, 5.0, error), "an image overlay takes a look");
+    pic.effects = {VideoFXEffect::FlipHorizontal()};
+    CHECK(!ValidateOverlay(pic, 5.0, error), "but not a flip");
 }
 
 static void TestTransitionAndOverlayText() {
@@ -1142,6 +1170,7 @@ static void TestPreview(const VideoFXExportSettings& base);
 static void TestProxies(const VideoFXExportSettings& base);
 static void TestEncoders(const VideoFXExportSettings& base);
 static void TestAudioClips(const VideoFXExportSettings& base);
+static void TestOverlayEffects(const VideoFXExportSettings& base);
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -1355,6 +1384,7 @@ static void TestEngine() {
     TestProxies(base);
     TestEncoders(base);
     TestAudioClips(base);
+    TestOverlayEffects(base);
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -2444,9 +2474,10 @@ static void TestProxies(const VideoFXExportSettings& base) {
     }
     VideoFXSegment first = VideoFXSegment::FromFile(clip, 0.0, 1.5);
     VideoFXSegment second = VideoFXSegment::FromFile(clip, 1.0, 2.5);
-    second.effects = {VideoFXEffect::Crop(160, 90, 320, 180)};
+    second.effects = {VideoFXEffect::Crop(160, 90, 320, 180), VideoFXEffect::Blur(2.0)};
     VideoFXOverlay pip = VideoFXOverlay::Video(pipClip, VideoFXAnchor::TopLeft, 0.25);
     pip.margin = 0.0;
+    pip.effects = {VideoFXEffect::Blur(3.0)};
     second.overlays = {pip};
     const std::vector<VideoFXSegment> timeline = {first, VideoFXSegment::FromFile(small), second};
     CHECK_OK(VideoFX_ClearProxies(ps), "start from an empty cache");
@@ -2462,8 +2493,13 @@ static void TestProxies(const VideoFXExportSettings& base) {
     const std::vector<VideoFXSegment> proxied = VideoFX_UseProxies(timeline, ps, &replaced);
     CHECK(replaced == 3, "two segments and the overlay switched");
     CHECK(proxied[1].path == small, "the small clip plays itself");
-    CHECK(proxied[2].effects.size() == 1 && proxied[2].effects[0].x == 80 && proxied[2].effects[0].y == 45 &&
+    CHECK(proxied[2].effects.size() == 2 && proxied[2].effects[0].x == 80 && proxied[2].effects[0].y == 45 &&
           proxied[2].effects[0].width == 160 && proxied[2].effects[0].height == 90, "the crop scaled to the proxy");
+    CHECK(Near(proxied[2].effects[1].amount, 1.0, 1e-9), "the blur too: half the radius on a proxy half as tall");
+    CHECK(proxied[2].overlays.size() == 1 && Near(proxied[2].overlays[0].effects[0].amount, 2.0, 1e-9),
+          "and the picture-in-picture's blur, on its 180-line proxy of 270 lines");
+    CHECK(Near(timeline[2].effects[1].amount, 2.0, 1e-9) && Near(timeline[2].overlays[0].effects[0].amount, 3.0, 1e-9),
+          "the timeline itself keeps its radii");
 
     // the preview over proxies matches the preview over the originals
     VideoFXExportSettings s = base;
@@ -2584,6 +2620,84 @@ static double LevelAt(const VideoFXWaveform& w, double seconds) {
     return i >= 0 && i < w.totalBlocks ? w.rmsValues[static_cast<size_t>(i)] : -1.0;
 }
 
+// An overlay's own look: on its picture only, its transparency kept, in the
+// export and the preview, and through a project file
+static void TestOverlayEffects(const VideoFXExportSettings& base) {
+    std::printf("Overlay effects\n");
+    VideoFXExportSettings s = base;
+    s.width = 320; s.height = 240; s.frameRate = 25.0;
+    // 80x80: the left half opaque red, the right half transparent
+    VideoFXFrame half;
+    half.width = 80;
+    half.height = 80;
+    half.pixels.assign(80 * 80 * 4, 0);
+    for (int y = 0; y < 80; ++y)
+        for (int x = 0; x < 40; ++x) {
+            uint8_t* px = &half.pixels[(static_cast<size_t>(y) * 80 + x) * 4];
+            px[0] = 255; px[3] = 255;
+        }
+    VideoFXSegment card = VideoFXSegment::SolidColor(0x0000FF, 1.0);
+    VideoFXOverlay logo = VideoFXOverlay::ImageFromFrame(half, VideoFXAnchor::TopLeft, 0.0);
+    logo.margin = 0.0;
+    card.overlays = {logo};
+    VideoFXFrame f;
+    int r = 0, g = 0, b = 0;
+    CHECK_OK(VideoFX_RenderFrame({card}, 0.5, f, s), "a red picture over blue");
+    PixelAt(f, 20, 40, r, g, b);
+    CHECK(r > 200 && g < 60 && b < 60, "red as it is");
+
+    card.overlays[0].effects = {VideoFXEffect::Grayscale()};
+    CHECK_OK(VideoFX_RenderFrame({card}, 0.5, f, s), "the same picture in black and white");
+    PixelAt(f, 20, 40, r, g, b);
+    CHECK(std::abs(r - g) < 12 && std::abs(g - b) < 12 && r > 30 && r < 200, "grey where it was red");
+    PixelAt(f, 60, 40, r, g, b);
+    CHECK(b > 200 && r < 60 && g < 60, "its transparent half still shows the blue");
+    PixelAt(f, 200, 200, r, g, b);
+    CHECK(b > 200 && r < 60, "and the frame under it untouched");
+
+    const std::string out = TempPath("overlay-effects.mkv");
+    CHECK_OK(VideoFX_Export({card}, out, s), "exported");
+    CHECK_OK(VideoFX_ExtractFrame(out, 0.5, f), "a frame of the export");
+    PixelAt(f, 20, 40, r, g, b);
+    CHECK(std::abs(r - g) < 16 && std::abs(g - b) < 16, "the export is grey there too");
+
+    // a picture-in-picture video
+    const std::string red = TempPath("red-pip.mkv");
+    {
+        VideoFXExportSettings rs = base;
+        rs.width = 160; rs.height = 120; rs.frameRate = 25.0;
+        CHECK_OK(VideoFX_Export({VideoFXSegment::SolidColor(0xFF0000, 1.0)}, red, rs), "a red clip");
+    }
+    VideoFXSegment under = VideoFXSegment::SolidColor(0x0000FF, 1.0);
+    VideoFXOverlay pip = VideoFXOverlay::Video(red, VideoFXAnchor::TopLeft, 0.5);
+    pip.margin = 0.0;
+    pip.effects = {VideoFXEffect::Sepia()};
+    under.overlays = {pip};
+    CHECK_OK(VideoFX_RenderFrame({under}, 0.5, f, s), "a red clip in sepia over the picture");
+    PixelAt(f, 40, 40, r, g, b);
+    CHECK(r > g && g > b && g > 60, "brown, not red");
+
+    // refused up front
+    VideoFXSegment bad = card;
+    bad.overlays[0].effects = {VideoFXEffect::Rotate90()};
+    CHECK(VideoFX_RenderFrame({bad}, 0.5, f, s) == VideoFXResult::InvalidArgument, "a quarter turn on an overlay: InvalidArgument");
+    bad.overlays = {VideoFXOverlay::Text("Hello")};
+    bad.overlays[0].effects = {VideoFXEffect::Grayscale()};
+    CHECK(VideoFX_Export({bad}, TempPath("bad.mkv"), s) == VideoFXResult::InvalidArgument, "effects on a text overlay: InvalidArgument");
+
+    // through a project file
+    VideoFXProject project;
+    under.overlays[0].effects = {VideoFXEffect::Sepia(), VideoFXEffect::Blur(2.5)};
+    project.segments = {under};
+    std::string text;
+    CHECK_OK(VideoFX_ProjectToJson(project, text, ""), "a project with overlay effects");
+    VideoFXProject back;
+    CHECK_OK(VideoFX_ProjectFromJson(text, back, ""), "read back");
+    CHECK(back.segments.size() == 1 && back.segments[0].overlays.size() == 1 && back.segments[0].overlays[0].effects.size() == 2 &&
+          back.segments[0].overlays[0].effects[0].type == VideoFXEffectType::Sepia &&
+          Near(back.segments[0].overlays[0].effects[1].amount, 2.5, 1e-9), "the overlay keeps its effects");
+}
+
 static void TestAudioClips(const VideoFXExportSettings& base) {
     std::printf("\n-- free audio clips --\n");
     // a 1 s tone, and a 6 s one for music
@@ -2687,6 +2801,7 @@ int main() {
     TestKenBurnsMath();
     TestMusicMath();
     TestAudioClipMath();
+    TestOverlayEffectGraph();
     TestBeatMath();
     TestFaceDetector();
     TestProjectFiles();

@@ -5,8 +5,8 @@
 // `.ultravideo` file that holds all of it (Docs/Research/UltraVideoDesignProposal.md
 // §5.6, §9.2). The project inside the file is what VideoFX_ProjectToJson
 // writes, so `videofx render` works on it once extracted.
-// Version: 0.4.0
-// Last Modified: 2026-10-13
+// Version: 0.5.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -106,6 +106,13 @@ struct SoundSpan {
     VideoFX::VideoFXAudioClip ToAudioClip() const;
 };
 
+// Whose effects an edit touches: a main-track segment or an overlay clip
+// (the V2 lane's picture, VideoFXOverlay::effects); -1 for none
+struct EffectTarget {
+    int segment = -1;
+    int overlay = -1;
+};
+
 // The title styles the bin offers (opening title, lower third, caption)
 struct TitleStyle {
     const char* key;
@@ -194,13 +201,23 @@ public:
     int SoundIndex(const std::string& id) const;
     // The lane as the engine's audio clips (VideoFXExportSettings::audioClips)
     std::vector<VideoFX::VideoFXAudioClip> AudioClipsForEngine() const;
-    // Put a preset's effects on a segment, after the ones it has. False when
-    // there is no such segment or preset, or the segment ends with exactly
-    // these effects already (a second click does not double a look).
-    bool ApplyEffectPreset(size_t segment, const std::string& key);
+    // The effects of a segment or an overlay clip, nullptr when there is none
+    std::vector<VideoFX::VideoFXEffect>* EffectsOf(EffectTarget target);
+    const std::vector<VideoFX::VideoFXEffect>* EffectsOf(EffectTarget target) const;
+    // Put a preset's effects on a segment or an overlay clip, after the ones
+    // it has; a blur's radius from that picture's own height. False when
+    // there is no such clip or preset, or the clip ends with exactly these
+    // effects already (a second click does not double a look).
+    bool ApplyEffectPreset(EffectTarget target, const std::string& key);
+    bool ApplyEffectPreset(size_t segment, const std::string& key) {
+        return ApplyEffectPreset(EffectTarget{static_cast<int>(segment), -1}, key);
+    }
     // One effect's amount, clamped to RangeOfEffect. False when there is no
-    // such segment or effect, or its amount is not adjustable.
-    bool SetEffectAmount(size_t segment, size_t effect, double amount);
+    // such clip or effect, or its amount is not adjustable.
+    bool SetEffectAmount(EffectTarget target, size_t effect, double amount);
+    bool SetEffectAmount(size_t segment, size_t effect, double amount) {
+        return SetEffectAmount(EffectTarget{static_cast<int>(segment), -1}, effect, amount);
+    }
     // Timeline seconds of a segment: a file's range over its speed, a still's seconds
     double SegmentSeconds(size_t index) const;
     const MediaItem* FindMedia(const std::string& path) const;

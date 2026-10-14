@@ -2,8 +2,8 @@
 // Proxy media: see VideoFXProxy.h. Built in every configuration; making a
 // proxy goes through VideoFX_Probe / VideoFX_Export, which the stub answers
 // with NotAvailable.
-// Version: 0.12.0
-// Last Modified: 2026-10-12
+// Version: 0.14.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFXProxy.h"
@@ -69,9 +69,21 @@ bool DisplaySize(const VideoFXMediaInfo& info, int& w, int& h) {
     return info.HasVideo() && w > 0 && h > 0;
 }
 
-bool HasCrop(const VideoFXSegment& seg) {
-    return std::any_of(seg.effects.begin(), seg.effects.end(),
-                       [](const VideoFXEffect& e) { return e.type == VideoFXEffectType::Crop; });
+// Effects measured in the clip's pixels - a crop's rectangle, a blur's
+// radius - which a proxy needs in its own
+bool HasPixelEffects(const std::vector<VideoFXEffect>& effects) {
+    return std::any_of(effects.begin(), effects.end(), [](const VideoFXEffect& e) {
+        return e.type == VideoFXEffectType::Crop || (e.type == VideoFXEffectType::Blur && e.amount > 0.0);
+    });
+}
+
+// Those effects for a proxy whose picture is `sx` x `sy` the clip's and
+// `pw` x `ph`: the same region, a radius as big against the picture
+void ScalePixelEffects(std::vector<VideoFXEffect>& effects, double sx, double sy, int pw, int ph) {
+    for (VideoFXEffect& e : effects) {
+        if (e.type == VideoFXEffectType::Crop) e = ScaleCrop(e, sx, sy, pw, ph);
+        else if (e.type == VideoFXEffectType::Blur) e.amount *= sy;
+    }
 }
 
 std::string RandomHex8() {
@@ -322,34 +334,36 @@ std::vector<VideoFXSegment> UseProxies(const std::vector<VideoFXSegment>& segmen
         return proxyOf.emplace(clip, std::move(proxy)).first->second;
     };
 
+    // A crop or a blur is in the clip's pixels: the proxy needs the same in
+    // its own. Without both sizes the clip stays.
+    auto rescale = [](const std::string& clip, const std::string& proxy, std::vector<VideoFXEffect>& effects) {
+        if (!HasPixelEffects(effects)) return true;
+        VideoFXMediaInfo a, b;
+        int aw = 0, ah = 0, bw = 0, bh = 0;
+        if (VideoFX_Probe(clip, a) != VideoFXResult::Ok || VideoFX_Probe(proxy, b) != VideoFXResult::Ok ||
+            !DisplaySize(a, aw, ah) || !DisplaySize(b, bw, bh))
+            return false;
+        ScalePixelEffects(effects, static_cast<double>(bw) / aw, static_cast<double>(bh) / ah, bw, bh);
+        return true;
+    };
+
     for (VideoFXSegment& seg : out) {
         if (seg.kind == VideoFXSourceKind::File) {
             const std::string& proxy = lookUp(seg.path);
-            bool use = !proxy.empty();
-            if (use && HasCrop(seg)) {
-                // A crop is in the clip's pixels: the proxy needs the same
-                // region in its own. Without both sizes the clip stays.
-                VideoFXMediaInfo a, b;
-                int aw = 0, ah = 0, bw = 0, bh = 0;
-                use = VideoFX_Probe(seg.path, a) == VideoFXResult::Ok && VideoFX_Probe(proxy, b) == VideoFXResult::Ok &&
-                      DisplaySize(a, aw, ah) && DisplaySize(b, bw, bh);
-                if (use) {
-                    const double sx = static_cast<double>(bw) / aw, sy = static_cast<double>(bh) / ah;
-                    for (VideoFXEffect& e : seg.effects) {
-                        if (e.type == VideoFXEffectType::Crop) e = ScaleCrop(e, sx, sy, bw, bh);
-                    }
-                }
-            }
-            if (use) {
+            std::vector<VideoFXEffect> effects = seg.effects;
+            if (!proxy.empty() && rescale(seg.path, proxy, effects)) {
                 seg.path = proxy;
+                seg.effects = std::move(effects);
                 ++count;
             }
         }
         for (VideoFXOverlay& o : seg.overlays) {
             if (o.kind != VideoFXOverlayKind::Video || o.imageHeight <= 0.0) continue;
             const std::string& proxy = lookUp(o.videoPath);
-            if (!proxy.empty()) {
+            std::vector<VideoFXEffect> effects = o.effects;
+            if (!proxy.empty() && rescale(o.videoPath, proxy, effects)) {
                 o.videoPath = proxy;
+                o.effects = std::move(effects);
                 ++count;
             }
         }
