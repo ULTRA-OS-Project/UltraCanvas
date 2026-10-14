@@ -1,12 +1,16 @@
 // PixelFX/core/PixelFX.cpp
 // Comprehensive bitmap processing module for UltraCanvas powered by libvips
+// Version: 1.4.0 - GetSupportedLoadFormats / GetSupportedSaveFormats are
+//                  FileLoader's lists, not a fixed one
 // Version: 1.3.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFX.h"
 #include "PixelFX/PixelFXMetadataDecode.h"
 #include "UltraCanvasFileError.h"
+#include "UltraCanvasFileLoader.h"              // the types Load and Save offer
+#include "UltraCanvasImage.h"                   // VipsCanDecode
 #include "../libspecific/Cairo/VipsQoiLoader.h"
 #include "../libspecific/Cairo/UltraCanvasGifEncoder.h"
 #include <algorithm>
@@ -367,17 +371,33 @@ namespace PixelFX {
             });
         }
 
+        // FileLoader's lists, never one of PixelFX's own (AGENTS.md: the files
+        // a user loads or saves are FileLoader's). Load hands a file to
+        // libvips, so it reads every picture type FileLoader reads - libvips'
+        // loaders, ImageMagick's through it, the framework's ICO and QOI - and
+        // the drawings and documents among FileLoader's types that libvips
+        // itself opens (SVG, PDF, PostScript), not those of a plug-in. A fixed
+        // list offered HEIC where libheif has no HEVC decoder and missed ICO,
+        // QOI, JPEG XL and the rest.
         std::vector<std::string> GetSupportedLoadFormats() {
-            return {"png", "jpg", "jpeg", "webp", "tiff", "tif", "gif", "heic", "heif", "avif", "pdf", "svg", "raw", "ppm", "fits", "exr"};
+            using namespace UltraCanvas;
+            std::vector<std::string> out = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+            for (MediaFormatCategory category : {MediaFormatCategory::Vector, MediaFormatCategory::Document})
+                for (const std::string& ext : UltraCanvasFileLoader::GetSupportedLoadExtensions(category))
+                    if (VipsCanDecode("." + ext) && std::find(out.begin(), out.end(), ext) == out.end())
+                        out.push_back(ext);
+            return out;
         }
 
+        // Every picture type FileLoader writes: a libvips saver that can
+        // encode here, which is what Save's write_to_file looks for.
         std::vector<std::string> GetSupportedSaveFormats() {
-            return {"png", "jpg", "jpeg", "webp", "tiff", "tif", "gif", "heic", "heif", "avif", "ppm", "fits"};
+            return UltraCanvas::UltraCanvasFileLoader::GetSupportedSaveExtensions(UltraCanvas::MediaFormatCategory::Bitmap);
         }
 
         bool IsFormatSupported(const std::string& format) {
             auto formats = GetSupportedLoadFormats();
-            std::string lower = format;
+            std::string lower = !format.empty() && format[0] == '.' ? format.substr(1) : format;
             std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
             return std::find(formats.begin(), formats.end(), lower) != formats.end();
         }

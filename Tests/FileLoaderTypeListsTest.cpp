@@ -12,12 +12,15 @@
 //     the text reader cannot open;
 //   - SaveTextDocument writes ODT and DOCX that LoadTextDocument reads back,
 //     and refuses a type it does not write, with a reason;
+//   - PixelFX's GetSupportedLoadFormats / GetSupportedSaveFormats are these
+//     lists, not a fixed one of its own;
 //   - HEIC and AVIF are offered where they decode: libvips' HEIF loader takes
 //     both wherever libheif is, but libheif decodes them only with its HEVC /
 //     AV1 plug-ins (media/images/test_small.heic and .avif decide: the
 //     size of test_small.png, and not black).
 //
 // Headless.
+// Version: 1.2.0 - PixelFX's format lists are FileLoader's
 // Version: 1.1.0 - HEIC and AVIF offered where they decode
 // Version: 1.0.0
 // Last Modified: 2026-10-14
@@ -28,6 +31,9 @@
 #include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasRichDocument.h"
+#ifdef HAS_LIBVIPS
+#include "PixelFX/PixelFX.h"
+#endif
 
 #include <algorithm>
 #include <cstdint>
@@ -212,6 +218,28 @@ int main() {
         Check(offered || !decodes, type + (decodes ? ": decodes here and is offered" : ": does not decode here"));
 #endif
     }
+
+#ifdef HAS_LIBVIPS
+    // ----- PixelFX offers FileLoader's lists -----
+    const std::vector<std::string> pfxLoad = PixelFX::FileIO::GetSupportedLoadFormats();
+    const std::vector<std::string> pfxSave = PixelFX::FileIO::GetSupportedSaveFormats();
+    auto inList = [](const std::vector<std::string>& list, const std::string& ext) {
+        return std::find(list.begin(), list.end(), ext) != list.end();
+    };
+    bool everyPicture = !pictures.empty();
+    for (const std::string& ext : pictures) everyPicture = everyPicture && inList(pfxLoad, ext);
+    Check(everyPicture, "PixelFX reads every picture type FileLoader reads (" + std::to_string(pictures.size()) + ")");
+    Check(inList(pfxLoad, "heic") == inList(pictures, "heic") && inList(pfxLoad, "ico") && inList(pfxLoad, "qoi"),
+          "... HEIC only where FileLoader has it, ICO and QOI through the framework's loaders");
+    Check(!inList(pfxLoad, "docx") && !inList(pfxLoad, "odt") && !inList(pfxLoad, "raw"),
+          "... and no document libvips does not open, nor the old list's \"raw\"");
+    Check(inList(pfxLoad, "svg") == UltraCanvas::VipsCanLoad(".svg"), "... SVG where libvips opens it");
+    Check(pfxSave == UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCategory::Bitmap),
+          "PixelFX writes the picture types FileLoader writes");
+    Check(PixelFX::FileIO::IsFormatSupported(".PNG") && PixelFX::FileIO::IsFormatSupported("jpeg") &&
+          !PixelFX::FileIO::IsFormatSupported("docx"),
+          "IsFormatSupported: a type it reads, with or without its dot");
+#endif
 
     std::cout << (g_failures == 0 ? "All type list checks passed.\n" : "Type list checks FAILED.\n");
     return g_failures == 0 ? 0 : 1;
