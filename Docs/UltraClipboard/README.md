@@ -101,8 +101,10 @@ UltraClipboard --version
 The history lives in `~/.local/share/ultraos/clipboard/` (`%LOCALAPPDATA%` on
 Windows, `~/Library/Application Support` on macOS, or under `$XDG_DATA_HOME`
 when that is set, on every platform), in folders only you can open. Titles, texts and copies are encrypted with a key kept apart from them
-in `~/.config/ultraos/clipboard.key`, so a copy of the history folder or a
-backup of it cannot be read without the key. Image thumbnails are not
+in `~/.config/ultraos/clipboard.key` (`%APPDATA%\ultraos` on Windows,
+`~/Library/Application Support/ultraos` on macOS, beside the desktop's
+settings), so a copy of the history folder or a backup of it cannot be read
+without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the
 encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.

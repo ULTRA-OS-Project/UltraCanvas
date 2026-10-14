@@ -141,6 +141,11 @@ static void TestSettingsRoot() {
     // does not link.
     const fs::path liveRoot = UltraCanvasSettingsFolderRoot();
     Check(liveRoot.empty() || liveRoot.is_absolute(), "the live root is absolute");
+    // The desktop's own folder sits directly under that root.
+    const fs::path desktop = UltraCanvasDesktopSettingsFolder();
+    Check(desktop.empty() == liveRoot.empty(), "the desktop folder is empty exactly when the root is");
+    Check(desktop.empty() || (desktop.filename() == "ultraos" && SamePath(desktop.parent_path(), liveRoot)),
+          "the desktop folder is <root>/ultraos");
 }
 
 static void TestAdopt(const fs::path& scratch) {

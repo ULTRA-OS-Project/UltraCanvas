@@ -1,4 +1,7 @@
 // Apps/UltraCleaner/engine/UltraCleanerPaths.cpp
+// The platform rules below are other programs' conventions, not the
+// framework's own data folder rule - UltraCleanerPaths.h says why.
+// Version: 0.1.1 - says why these are not the framework's data folder helpers
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerPaths.h"

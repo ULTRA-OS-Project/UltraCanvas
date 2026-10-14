@@ -18,6 +18,14 @@ namespace UltraCleaner {
 // ===== WELL-KNOWN DIRECTORIES =====
 // Each returns "" when the platform has no such location or the environment
 // does not say where it is. None of them create anything.
+//
+// These describe where OTHER programs keep their files - the {DATA}, {CACHE}
+// and {STATE} placeholders of the cleaning rules - so they follow each
+// platform's own convention and nothing else. They are deliberately not the
+// framework's UltraCanvasDataFolder / UltraCanvasSettingsFolder rules, which
+// name where UltraCanvas applications put their own data and let
+// $XDG_DATA_HOME win on macOS and Windows too: a rule about VS Code's cache
+// on a Mac has to look in Application Support whatever XDG_DATA_HOME says.
 std::string HomeDir();
 std::string UserTempDir();      // TMPDIR / %TEMP% / /tmp
 std::string SystemTempDir();    // /tmp, /private/var/tmp, C:\Windows\Temp

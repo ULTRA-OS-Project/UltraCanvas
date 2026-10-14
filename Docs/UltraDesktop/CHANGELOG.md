@@ -1,3 +1,14 @@
+#### 2026-10-14 *0.3.1*
+- **The settings file lives in Application Support on macOS.** `desktop.json`
+  was kept in `~/.config/ultraos` there, as on Linux, while every other
+  per-user file of the desktop and its applications is in
+  `~/Library/Application Support`. Its folder is now the framework's desktop
+  settings folder (`UltraCanvasDesktopSettingsFolder`): `%APPDATA%\ultraos`
+  on Windows, `~/Library/Application Support/ultraos` on macOS,
+  `$XDG_CONFIG_HOME` or `~/.config/ultraos` elsewhere, every variable read as
+  UTF-8. On the first start the old macOS folder is moved into place whole,
+  the clipboard history's key with it; Linux and Windows are untouched.
+
 #### 2026-10-14 *0.3.0*
 - **UltraDesktop can take the place of the Windows desktop, and give it
   back.** On Windows it now has running windows, the Start menu's programs,

@@ -175,7 +175,10 @@ between them.
 applications' data folders, `UltraCanvasDataFolder.h`), else `~/.local/share`,
 `%LOCALAPPDATA%` on Windows (a machine-local store, so not the applications'
 roaming `%APPDATA%`) and `~/Library/Application Support` on macOS; `<config>`
-is the folder the desktop's settings use. The folders are owner-only.
+is the folder the desktop's settings use (`UltraCanvasDesktopSettingsFolder`:
+`%APPDATA%`, Application Support on macOS, `$XDG_CONFIG_HOME` or `~/.config`;
+on macOS a key kept under `~/.config` by earlier versions is moved there once).
+The folders are owner-only.
 
 With libsodium, titles, previews and payloads are sealed with
 XChaCha20-Poly1305 under the key file, kept apart from the data: a copy of the

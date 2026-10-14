@@ -2,6 +2,9 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.1.1 - the file lives in the framework's desktop settings folder
+//                  (UltraCanvasDesktopSettingsFolder): Application Support on macOS,
+//                  moved there from ~/.config once; every variable read as UTF-8
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -9,6 +12,7 @@
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasSettingsFolder.h"   // UltraCanvasDesktopSettingsFolder
 
 #include <algorithm>
 #include <cstdlib>
@@ -40,18 +44,14 @@ bool ParseTaskbarEdge(const std::string& text, TaskbarEdge& out) {
     return false;
 }
 
+// The desktop's settings folder (UltraCanvasSettingsFolder.h): %APPDATA%\ultraos
+// on Windows, Application Support/ultraos on macOS, $XDG_CONFIG_HOME or
+// ~/.config/ultraos elsewhere, every variable read as UTF-8. On macOS a folder
+// an earlier version kept under ~/.config is moved there once.
 std::string DesktopSettings::DefaultPath() {
-    fs::path root;
-#if defined(_WIN32)
-    // UTF-8 from the wide environment, as PathFromUtf8 expects: getenv would
-    // answer in the ANSI code page and miss a profile folder named outside it.
-    if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty()) root = PathFromUtf8(appData);
-#else
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) root = PathFromUtf8(xdg);
-    else if (const char* home = std::getenv("HOME"); home && *home) root = PathFromUtf8(home) / ".config";
-#endif
-    if (root.empty()) return std::string();
-    return PathToUtf8(root / "ultraos" / "desktop.json");
+    const fs::path folder = UltraCanvas::UltraCanvasDesktopSettingsFolder();
+    if (folder.empty()) return std::string();
+    return PathToUtf8(folder / "desktop.json");
 }
 
 bool DesktopSettings::Load(const std::string& path, std::string* error) {
