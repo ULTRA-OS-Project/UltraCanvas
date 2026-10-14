@@ -47,9 +47,11 @@
 // sign-in and the pages of a long listing (UltraCloudLog.h). Each is recorded
 // there and reported to the status line as it happens
 // (RemoteActivity::step), and a failure keeps its codes and diagnostics for
-// the log window.
-// Version: 1.8.0
-// Last Modified: 2026-10-09
+// the log window. A sign-in from the add-drive dialog is a session too
+// (RemoteSignInLog), and a cloud service that limits requests is waited out
+// and asked again (kRemoteRateLimitMaxWaitSeconds).
+// Version: 1.9.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -74,7 +76,7 @@
 // Forward-declared, not included: the add-account dialog needs the service to
 // store into, and that is the only thing about UltraCloud that has to escape
 // this class. A pointer to an incomplete type costs no include.
-namespace UltraCloud { class CloudService; }
+namespace UltraCloud { class CloudService; struct Result; }
 
 namespace UltraCanvas {
 
@@ -154,6 +156,31 @@ struct RemoteActivity {
     bool IsTransfer() const {
         return kind == Kind::Uploading || kind == Kind::Downloading;
     }
+};
+
+class UltraFilerRemoteDrives;
+
+// The add-drive dialog's sign-in, recorded in the connection log as a session
+// of its own ("Add drive"), so a sign-in that fails there can be read step by
+// step like any job the worker runs. Made on the UI thread
+// (UltraFilerRemoteDrives::MakeSignInLog) and handed to the dialog's watch
+// (UltraCloud::AddAccountWatch): Begin and End are called on the dialog's
+// sign-in thread, around each sign-in. Begin sets that thread's log sinks -
+// UltraCloud's, and UltraNet's FTP log for an FTP drive - and End puts them
+// back and closes the session. The session is written on the UI thread, where
+// each line is posted, and only while the drives still exist: a sign-in still
+// waiting on the browser when the window closes writes nothing and touches
+// nothing that is gone.
+class RemoteSignInLog {
+public:
+    void Begin(const std::string& providerId, const std::string& driveName,
+               const std::string& server);
+    void End(const UltraCloud::Result& result);
+
+private:
+    friend class UltraFilerRemoteDrives;
+    struct State;
+    std::shared_ptr<State> state_;
 };
 
 class UltraFilerRemoteDrives {
@@ -316,6 +343,10 @@ public:
     // burst are one call - so a handler can afford to read the whole log.
     std::function<void()> onConnectionLogChanged;
 
+    // A recorder for the add-drive dialog's sign-ins (RemoteSignInLog). Call
+    // on the UI thread; the dialog's sign-in thread uses what it returns.
+    std::shared_ptr<RemoteSignInLog> MakeSignInLog();
+
     // How many subfolder listings are waiting to be fetched ahead. Tests and
     // diagnostics; the UI does not show it - prefetching is meant to be
     // invisible.
@@ -396,6 +427,7 @@ private:
     // Tells the UI thread the log changed, unless a notice is already on its
     // way.
     void NotifyLogChanged();
+    friend class RemoteSignInLog;   // writes its sessions on the UI thread
     // Posts one activity report to the UI thread. `force` sends it even when
     // the thinning interval has not elapsed - used for the first and last
     // report of a job, which are the two nobody may miss.

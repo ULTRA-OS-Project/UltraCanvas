@@ -331,6 +331,32 @@ int main() {
         Check(RemoteFailureHint(answered).empty(), "nothing to explain about a 200");
     }
 
+    std::printf("Status line requests\n");
+    {
+        Check(ShortHttpRequestText("POST https://api.dropboxapi.com/2/files/list_folder") ==
+                      "POST api.dropboxapi.com/2/files/list_folder",
+              "a short path is kept whole, without the scheme");
+        Check(ShortHttpRequestText("GET https://www.googleapis.com/drive/v3/files?q=%27root%27"
+                                   "+in+parents&pageToken=abc") ==
+                      "GET www.googleapis.com/drive/v3/files",
+              "the query is left out");
+        Check(ShortHttpRequestText("PROPFIND https://cloud.example.org/remote.php/dav/files/"
+                                   "erika/Fotos%20Mai/") ==
+                      "PROPFIND cloud.example.org/.../erika/Fotos Mai/",
+              "a long path keeps its last two parts, decoded, and a folder its slash");
+        Check(ShortHttpRequestText("GET https://graph.microsoft.com/v1.0/me/drive/root:/"
+                                   "Photos/2024:/children?$top=200") ==
+                      "GET graph.microsoft.com/.../2024:/children",
+              "OneDrive's item path ends in what is asked of it");
+        Check(ShortHttpRequestText("GET https://example.org") == "GET example.org",
+              "a bare host");
+        Check(ShortHttpRequestText("GET https://example.org/") == "GET example.org/",
+              "the root");
+        Check(ShortHttpRequestText("PUT https://h.example/a/b/c/100%") ==
+                      "PUT h.example/.../c/100%",
+              "a stray percent sign is left as it is");
+    }
+
     std::printf("Formatting\n");
     {
         Check(FormatRemoteLogDuration(850) == "850 ms", "milliseconds");

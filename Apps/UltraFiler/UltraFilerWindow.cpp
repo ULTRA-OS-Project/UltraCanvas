@@ -59,8 +59,8 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.28.1 - the connection log button on every remote drive, cloud drives too
-// Last Modified: 2026-10-09
+// Version: 1.29.0 - add-drive sign-ins in the connection log; "+ Drive > Connection log..."
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -2258,6 +2258,15 @@ void UltraFilerWindow::ShowAddDriveMenu() {
     addDriveMenu->AddItem(cloudItem);
     addDriveMenu->AddItem(MenuItemData::Separator());
     addDriveMenu->AddItem(ramItem);
+    // The log of the drives' connections - the same window as the network
+    // button in a folder display's corner, which is only there while the
+    // display is on a drive. Here it is also reachable after a sign-in that
+    // failed, before there is any drive to open.
+    MenuItemData logItem = MenuItemData::Action(
+            "Connection log...", [this]() { OpenConnectionLog(); });
+    logItem.enabled = remote;
+    addDriveMenu->AddItem(MenuItemData::Separator());
+    addDriveMenu->AddItem(logItem);
     addDriveMenu->OpenMenu(
             Point2Di(addDriveButton->GetXInWindow(),
                      addDriveButton->GetYInWindow() + (int)addDriveButton->GetHeight() + 1),
@@ -2287,6 +2296,17 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
         return;
     }
     const bool ftp = kind == RemoteDriveKind::FtpOrSftp;
+    // Each sign-in the dialog runs is a session of the connection log, so a
+    // refused one can be read step by step - the "+ Drive" menu opens the
+    // log before there is a drive to open it from.
+    std::shared_ptr<RemoteSignInLog> signInLog = remoteDrives->MakeSignInLog();
+    UltraCloud::AddAccountWatch watch;
+    watch.onBegin = [signInLog](const UltraCloud::Account& account) {
+        signInLog->Begin(account.providerId, account.displayName, account.serverUrl);
+    };
+    watch.onEnd = [signInLog](const UltraCloud::Account&, const UltraCloud::Result& result) {
+        signInLog->End(result);
+    };
     UltraCloud::ShowAddAccountDialog(
             window.get(), *service,
             [this](const UltraCloud::Account&) {
@@ -2307,7 +2327,7 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
                         providerId, ftp ? RemoteDriveKind::FtpOrSftp
                                         : RemoteDriveKind::CloudStorage);
             },
-            ftp ? "Add an FTP / SFTP drive" : "Add a cloud drive");
+            ftp ? "Add an FTP / SFTP drive" : "Add a cloud drive", std::move(watch));
 #endif
 }
 

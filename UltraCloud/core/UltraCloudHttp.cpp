@@ -1,14 +1,15 @@
 // UltraCloud/core/UltraCloudHttp.cpp
-// Version: 0.3.0 - every request logged (UltraCloudLog.h); a refusal keeps the
-//                  service's own reason, a throttled request says so, and a
-//                  failure carries its diagnostics
-// Last Modified: 2026-10-09
+// Version: 0.4.0 - a throttled request is sent again after the wait the
+//                  service asks for (RateLimitPolicy)
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudHttp.h>
 #include <UltraCloud/UltraCloudLog.h>
 
+#include <chrono>
 #include <cmath>
 #include <ctime>
+#include <thread>
 
 namespace UltraCloud {
 
@@ -65,15 +66,26 @@ bool IsThrottled(int status, const std::string& retryAfter, const std::string& r
     return false;
 }
 
+long long AskedWait(const std::string& retryAfter) {
+    return RetryAfterSeconds(retryAfter, static_cast<long long>(std::time(nullptr)));
+}
+
 // "it asks to wait 30 s" / "it gives no time to wait".
 std::string WaitText(const std::string& retryAfter) {
-    const long long seconds =
-            RetryAfterSeconds(retryAfter, static_cast<long long>(std::time(nullptr)));
+    const long long seconds = AskedWait(retryAfter);
     if (seconds < 0) return "it gives no time to wait";
     return "it asks to wait " + std::to_string(seconds) + " s";
 }
 
+thread_local RateLimitPolicy t_rateLimit;
+
 } // namespace
+
+RateLimitPolicy SetThreadRateLimitPolicy(RateLimitPolicy policy) {
+    RateLimitPolicy previous = std::move(t_rateLimit);
+    t_rateLimit = std::move(policy);
+    return previous;
+}
 
 HttpProviderBase::HttpProviderBase(HttpFn http) : http_(std::move(http)) {
     if (!http_) http_ = [](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
@@ -101,33 +113,77 @@ UltraNetResult HttpProviderBase::Send(const Credentials& credentials, UltraNetHt
     // The method and the URL go to the log; the headers - Authorization among
     // them - and the body do not.
     const bool logging = ThreadLogActive();
-    if (logging) LogToThread(LogKind::Request, MethodText(request) + " " + LoggableUrl(request.url));
+    // A copy: the wait may run code that sets another policy on this thread.
+    const RateLimitPolicy policy = t_rateLimit;
+    const int tries = 1 + (policy.maxRetries > 0 ? policy.maxRetries : 0);
 
-    UltraNetResult net = http_(request, response);
+    UltraNetResult net;
+    for (int attempt = 1;; ++attempt) {
+        if (logging)
+            LogToThread(LogKind::Request, MethodText(request) + " " + LoggableUrl(request.url));
+        response = UltraNetResponse{};
+        net = http_(request, response);
 
-    if (logging) {
-        const std::string took = Duration(response.elapsedTime);
         const int status = response.statusCode;
-        if (status > 0) {
+        const std::string took = Duration(response.elapsedTime);
+        if (status <= 0) {
+            if (logging) {
+                std::string line = "No answer: " + (net.message.empty() ? std::string("the request failed")
+                                                                        : net.message);
+                if (!took.empty()) line += " (after " + took + ")";
+                LogToThread(LogKind::Error, line);
+            }
+            return net;
+        }
+        const std::string reason = status >= 400 ? ServerErrorReason(BodyText(response)) : "";
+        const std::string retryAfter = response.headers.Get("Retry-After");
+        if (logging) {
             std::string line = std::to_string(status);
             if (!response.statusMessage.empty()) line += " " + response.statusMessage;
-            std::string reason;
-            if (status >= 400) reason = ServerErrorReason(BodyText(response));
             if (!reason.empty()) line += " - " + reason;
             if (!took.empty()) line += reason.empty() ? " - " + took : " (" + took + ")";
             LogToThread(LogKind::Response, line, status);
-            const std::string retryAfter = response.headers.Get("Retry-After");
-            if (IsThrottled(status, retryAfter, reason))
-                LogToThread(LogKind::Step, "The service is limiting requests: " +
-                                           WaitText(retryAfter));
+        }
+        if (!IsThrottled(status, retryAfter, reason)) return net;
+
+        // Throttled: wait as long as the service asks - or 1, 2, 4 s when it
+        // does not say - and send the same request again.
+        const std::string limiting = "The service is limiting requests: " + WaitText(retryAfter);
+        long long wait = AskedWait(retryAfter);
+        if (wait < 0) wait = 1LL << (attempt - 1 < 10 ? attempt - 1 : 10);
+        if (wait < 1) wait = 1;   // "0": come back at once - not in the same breath
+        if (tries == 1) {
+            if (logging) LogToThread(LogKind::Step, limiting);
+            return net;
+        }
+        if (attempt >= tries) {
+            if (logging)
+                LogToThread(LogKind::Step, limiting + " - not trying again after " +
+                                           std::to_string(tries) + " tries");
+            return net;
+        }
+        if (wait > policy.maxWaitSeconds) {
+            if (logging)
+                LogToThread(LogKind::Step, limiting + " - longer than a request waits (" +
+                                           std::to_string(policy.maxWaitSeconds) +
+                                           " s), so not trying again");
+            return net;
+        }
+        if (logging)
+            LogToThread(LogKind::Step, limiting + " - trying again in " + std::to_string(wait) +
+                                       " s (try " + std::to_string(attempt + 1) + " of " +
+                                       std::to_string(tries) + ")");
+        bool waited = true;
+        if (policy.wait) {
+            waited = policy.wait(wait);
         } else {
-            std::string line = "No answer: " + (net.message.empty() ? std::string("the request failed")
-                                                                    : net.message);
-            if (!took.empty()) line += " (after " + took + ")";
-            LogToThread(LogKind::Error, line);
+            std::this_thread::sleep_for(std::chrono::seconds(wait));
+        }
+        if (!waited) {
+            if (logging) LogToThread(LogKind::Step, "Stopped waiting - the request is given up");
+            return net;
         }
     }
-    return net;
 }
 
 Result HttpProviderBase::FromHttp(const UltraNetResult& net, const UltraNetResponse& response,

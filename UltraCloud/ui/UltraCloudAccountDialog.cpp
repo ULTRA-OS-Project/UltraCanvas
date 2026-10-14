@@ -1,7 +1,6 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
-// Version: 0.4.0 - the form is a UltraCanvasFormLayout grid, not a row of
-//                  flex containers with hard-coded caption widths
-// Last Modified: 2026-09-22
+// Version: 0.5.0 - AddAccountWatch around each sign-in
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
 #include "UltraCloudUiStyle.h"
@@ -63,7 +62,7 @@ std::vector<std::shared_ptr<ICloudProvider>> OrderedProviders() {
 void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
                           std::function<void(const Account&)> onAdded,
                           std::function<bool(const std::string& providerId)> providerFilter,
-                          const std::string& title) {
+                          const std::string& title, AddAccountWatch watch) {
     DialogConfig config;
     config.title      = title.empty() ? "Add cloud account" : title;
     config.width      = 520;
@@ -253,10 +252,12 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
         // open the consent page in the system browser and wait for the
         // loopback redirect.
         const bool oauth = caps.needsOAuth;
-        std::thread([weak, dlg, added, addBtn, status, a, c, oauth, &service]() mutable {
+        std::thread([weak, dlg, added, addBtn, status, a, c, oauth, &service, watch]() mutable {
+            if (watch.onBegin) watch.onBegin(a);
             Result r = oauth
                 ? service.SignInAccount(a, [](const std::string& url) { UltraCanvas::OpenURL(url); })
                 : service.AddAccount(a, c, /*verify=*/true);
+            if (watch.onEnd) watch.onEnd(a, r);
             auto* app = UltraCanvasApplicationBase::GetCurrent();
             auto finish = [weak, dlg, added, addBtn, status, a, r]() {
                 if (weak.expired()) return;   // dialog already closed

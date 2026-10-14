@@ -1,8 +1,9 @@
 // UltraCloud/core/UltraCloudOAuth.cpp
-// Version: 0.3.0 - the app registration is UltraNet's shared registry
-// Last Modified: 2026-09-23
+// Version: 0.4.0 - the browser sign-in says its steps in the thread's log
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudOAuth.h>
+#include <UltraCloud/UltraCloudLog.h>
 
 #include <ctime>
 
@@ -72,11 +73,26 @@ Result OAuthProviderBase::SignIn(const Account& account,
         return Result::Error(ResultCode::Unsupported,
                              "no OAuth client id configured for " + DisplayName()
                              + " (set ULTRACLOUD_" + Id() + "_CLIENT_ID or call SetOAuthApp)");
+    // The sign-in page's address goes to the log without its query, which
+    // carries the request's one-time state and code challenge.
+    auto logOpen = [&openUrl](const std::string& url) {
+        LogToThread(LogKind::Step, "Opening the sign-in page in the browser: " +
+                                   url.substr(0, url.find('?')));
+        if (openUrl) openUrl(url);
+    };
+    LogToThread(LogKind::Step, "Signing in to " + DisplayName() +
+                               " through the browser - waiting for the answer on " +
+                               app.redirectUri);
     UltraNetOAuth2Token token;
-    UltraNetResult r = hooks_.authorize(OAuthConfig(app), openUrl, token);
-    if (!r || !token.IsValid())
-        return Result::Error(ResultCode::AuthFailed,
-                             "sign-in failed: " + (r.message.empty() ? "no token" : r.message));
+    UltraNetResult r = hooks_.authorize(OAuthConfig(app), logOpen, token);
+    if (!r || !token.IsValid()) {
+        const std::string why = r.message.empty() ? "no token" : r.message;
+        LogToThread(LogKind::Step, "The browser sign-in did not complete: " + why);
+        return Result::Error(ResultCode::AuthFailed, "sign-in failed: " + why);
+    }
+    LogToThread(LogKind::Step, "Signed in - " + DisplayName() + " gave an access token" +
+                               (token.refreshToken.empty() ? std::string(" (no refresh token)")
+                                                           : std::string()));
     ApplyToken(token, out);
     return Result::Ok();
 }

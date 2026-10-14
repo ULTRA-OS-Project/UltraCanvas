@@ -29,8 +29,8 @@
 // for the session at hand, not an audit trail, and it never holds a password
 // - UltraNet writes PASS as "PASS ********" before a line gets here, and
 // UltraCloud logs no header, no body and no query value that carries a token.
-// Version: 1.1.0 - cloud drives: HTTP sessions, their labels and their hints
-// Last Modified: 2026-10-09
+// Version: 1.2.0 - ShortHttpRequestText for the status line
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -264,6 +264,65 @@ inline const char* RemoteLogKindLabel(RemoteLogLine::Kind kind, bool http = fals
         case RemoteLogLine::Kind::Error:    return "Error:    ";
     }
     return "";
+}
+
+// A cloud drive's request as the status line shows it: the method, the host
+// and the end of the path, without the scheme and the query -
+//   "POST https://api.dropboxapi.com/2/files/list_folder"
+//       -> "POST api.dropboxapi.com/2/files/list_folder"
+//   "PROPFIND https://cloud.example.org/remote.php/dav/files/erika/Fotos%20Mai/"
+//       -> "PROPFIND cloud.example.org/.../erika/Fotos Mai/"
+// A path of more than three parts keeps its last two, percent-decoded, so the
+// folder or file the request is about stays readable. The connection log
+// keeps the whole URL.
+inline std::string ShortHttpRequestText(const std::string& request) {
+    const std::size_t space = request.find(' ');
+    if (space == std::string::npos) return request;
+    std::string url = request.substr(space + 1);
+    if (const std::size_t scheme = url.find("://"); scheme != std::string::npos)
+        url.erase(0, scheme + 3);
+    if (const std::size_t query = url.find_first_of("?#"); query != std::string::npos)
+        url.erase(query);
+    const std::size_t slash = url.find('/');
+    if (slash == std::string::npos) return request.substr(0, space + 1) + url;
+    const std::string host = url.substr(0, slash);
+    std::string path = url.substr(slash);
+    const bool folder = path.size() > 1 && path.back() == '/';
+
+    std::vector<std::string> parts;
+    for (std::size_t at = 0; at < path.size();) {
+        std::size_t next = path.find('/', at);
+        if (next == std::string::npos) next = path.size();
+        if (next > at) parts.push_back(path.substr(at, next - at));
+        at = next + 1;
+    }
+    auto hex = [](char c) {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    auto decode = [&hex](const std::string& part) {
+        std::string out;
+        for (std::size_t i = 0; i < part.size(); ++i) {
+            if (part[i] == '%' && i + 2 < part.size() && hex(part[i + 1]) >= 0 &&
+                hex(part[i + 2]) >= 0) {
+                out.push_back(static_cast<char>(hex(part[i + 1]) * 16 + hex(part[i + 2])));
+                i += 2;
+            } else {
+                out.push_back(part[i]);
+            }
+        }
+        return out;
+    };
+    std::string shown;
+    if (parts.size() <= 3) {
+        for (const std::string& part : parts) shown += "/" + decode(part);
+    } else {
+        shown = "/.../" + decode(parts[parts.size() - 2]) + "/" + decode(parts.back());
+    }
+    if (folder || shown.empty()) shown += "/";
+    return request.substr(0, space + 1) + host + shown;
 }
 
 // One line as the message log shows it.
