@@ -2948,12 +2948,17 @@ message(STATUS "    Test registered: SequenceModelTest")
 # sparse cell storage, the weighted row/column roll-ups, stable column ranking,
 # validation, the CSV codec in both directions and the shipped samples. UI-free.
 message(STATUS "  Building MatrixModelTest...")
+# The JSON interchange compiles the JSON wrapper and its vendored engine in
+# directly, as MindMapIOTest does, so the model still needs no UI stack.
 add_executable(MatrixModelTest
     ${CMAKE_CURRENT_SOURCE_DIR}/MatrixModelTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMatrixModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
 )
 target_include_directories(MatrixModelTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
 )
 target_compile_features(MatrixModelTest PRIVATE cxx_std_20)
 # ImportMatrixTable and the importance column read numbers through the

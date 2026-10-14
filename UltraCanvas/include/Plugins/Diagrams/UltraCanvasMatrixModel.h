@@ -1,5 +1,6 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixModel.h
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.3.0 - JSON interchange of the whole model (MatrixModelToJson / MatrixModelFromJson)
 // Version: 1.2.0 - House of Quality: symmetric (roof) panels, improvement direction and target per item, Correlation scale, relative weights, table import with importances
 // Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
@@ -36,6 +37,8 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+    class JSONValue;   // DataFormats/UltraCanvasJSON.h - only the JSON functions need it
 
 // =============================================================================
 // SHAPE
@@ -371,6 +374,31 @@ namespace UltraCanvas {
                            const std::string& rowTitle = "Rows",
                            const std::string& colTitle = "Columns",
                            std::string* error = nullptr);
+
+    // The whole model as JSON - every set, panel, scale, cell and header field,
+    // where the CSV forms carry one panel's marks. Cells are keyed by item id,
+    // not index, so a file survives its items being reordered:
+    //
+    //   { "format": "ultracanvas-matrix", "version": 1, "title": ..., "shape": "House",
+    //     "header": [ {"label", "value"} ],
+    //     "sets":   [ {"id", "title", "accent": [r,g,b,a], "items": [ {"id", "label",
+    //                 "importance", "note", "improvement", "target", "accent"} ]} ],
+    //     "panels": [ {"rows", "columns", "symmetric", "scale": {"title", "levels":
+    //                 [ {"id", "label", "glyph", "shape", "color", "weight", "size"} ]}} ],
+    //     "cells":  [ {"panel", "row", "column", "level", "note"} ] }
+    //
+    // Members that hold their default are left out.
+    JSONValue MatrixModelToJson(const MatrixModel& model);
+    std::string ExportMatrixJson(const MatrixModel& model, bool pretty = true);
+
+    // Read that form back. The result must pass Validate(): on an unknown
+    // format or a newer version, a cell naming an item or level that does not
+    // exist, or a model the shape cannot draw, it returns false, puts the
+    // reason in `error` when given, and leaves `out` untouched.
+    bool MatrixModelFromJson(const JSONValue& json, MatrixModel& out,
+                             std::string* error = nullptr);
+    bool ImportMatrixJson(const std::string& text, MatrixModel& out,
+                          std::string* error = nullptr);
 
 // =============================================================================
 // SAMPLES

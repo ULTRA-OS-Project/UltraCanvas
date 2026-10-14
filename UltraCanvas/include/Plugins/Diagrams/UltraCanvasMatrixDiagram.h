@@ -1,6 +1,7 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixDiagram.h
 // Matrix diagram element: item sets crossed in L, T, X, Y and House arrangements, cell
 // marks drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Version: 1.3.0 - Phase 4: pan and zoom through the shared diagram viewport, keyboard navigation, cycle-on-click editing
 // Version: 1.2.0 - Phase 3: the House of Quality (roof, importance column, direction and target rows), roll-up bar strip with ranks
 // Version: 1.1.1 - rotated column headers get room on the right instead of being clipped; SetDarkTheme(false) keeps non-colour settings
 // Version: 1.1.0 - Phase 2: the X shape (blank or captioned hub), the Y shape, the form header band, cell tint by level, hover bands across panels
@@ -38,6 +39,7 @@
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
 #include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
+#include "Plugins/Diagrams/UltraCanvasDiagramViewport.h"
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -270,6 +272,38 @@ namespace UltraCanvas {
         void SetLevelFilter(const std::string& levelId);
         const std::string& GetLevelFilter() const { return levelFilter; }
 
+        // Select a cell (or clear the selection with an invalid ref), as a
+        // click or the keyboard would. Fires onSelectionChanged.
+        void SelectCell(const MatrixRef& ref);
+
+        // ===== PAN AND ZOOM =====
+        // Off by default, so a diagram that fits its element behaves exactly
+        // as before. When on: the wheel zooms about the pointer, dragging
+        // empty space (or with the middle button) pans, Ctrl + / Ctrl - zoom
+        // and Ctrl 0 resets. Titles, the form header and the legend stay put;
+        // only the matrix moves. The minimap and the zoom-button overlay are
+        // the shared diagram viewport's - turn them on through Viewport().
+        void SetPanZoomEnabled(bool on);
+        bool GetPanZoomEnabled() const { return panZoomEnabled; }
+        void ZoomViewIn();
+        void ZoomViewOut();
+        void ResetView();               // zoom 1, no pan: the laid-out diagram
+        double GetViewZoom() const { return viewport.GetZoomLevel(); }
+        UltraCanvasDiagramViewport& Viewport() { return viewport; }
+
+        // ===== EDITING =====
+        // Off by default. When on, a click on a cell - or Space / Enter on the
+        // selected one - steps it to the next level of its panel's scale,
+        // strongest first, then back to empty; Shift steps the other way, and
+        // Delete clears it. Anything richer than cycling (a level picker)
+        // belongs in real elements beside the diagram, not painted into it.
+        void SetEditable(bool on);
+        bool GetEditable() const { return editable; }
+
+        // Step one cell's level as a click would. Returns false for a ref
+        // that is not a cell. Fires onCellEdited.
+        bool CycleCell(const MatrixRef& ref, bool backwards = false);
+
         // ===== CALLBACKS =====
         // Fired for a populated cell and for an empty one alike; check
         // GetModel().LevelAt(...) to tell them apart.
@@ -277,12 +311,19 @@ namespace UltraCanvas {
         std::function<void(const MatrixRef&)> onCellHover;
         std::function<void(int panel, int index, const MatrixItem&)> onRowClick;
         std::function<void(int panel, int index, const MatrixItem&)> onColumnClick;
+        // The new level id, or an empty string when the cell was cleared.
+        std::function<void(const MatrixRef&, const std::string& levelId)> onCellEdited;
+        std::function<void(const MatrixRef&)> onSelectionChanged;
 
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void RenderChart(IRenderContext* ctx) override;
         bool HandleChartMouseMove(const Point2Di& mousePos) override;
         bool OnEvent(const UCEvent& event) override;
+
+        // Keyboard navigation needs the focus; the framework only hands it
+        // to elements that ask.
+        bool AcceptsFocus() const override { return true; }
 
     private:
         // ===== DATA =====
@@ -307,6 +348,15 @@ namespace UltraCanvas {
         // ===== INTERACTION STATE =====
         MatrixRef hovered;
         MatrixRef selected;
+        bool      editable = false;
+
+        // ===== VIEWPORT =====
+        UltraCanvasDiagramViewport viewport;
+        bool      panZoomEnabled = false;
+        bool      panDragging = false;
+        bool      minimapDragging = false;
+        Point2Di  lastDragPoint;
+        int       hoveredControlButton = -1;
 
         // ===== LAYOUT CACHE (element-local coordinates) =====
         // One entry per model panel. A T shape produces two, an X four, a Y
@@ -472,7 +522,10 @@ namespace UltraCanvas {
         // ===== HIT TESTING =====
         // Cell under a point, or an invalid ref. Also resolves the label bands,
         // returning row-only or column-only refs.
+        // `point` is element-local; the viewport maps it into the layout's
+        // coordinates first, and nothing outside the content area is a hit.
         MatrixRef HitTest(const Point2Di& point) const;
+        MatrixRef HitTestLayout(double px, double py) const;
         const PanelLayout* PanelAt(int panelIndex) const;
 
         // ===== HELPERS =====
@@ -485,6 +538,15 @@ namespace UltraCanvas {
         // square inscribed in the rhombus otherwise.
         Rect2Dd MarkBox(const PanelLayout& pl, int row, int col) const;
         MatrixRef ArmRef(int setIndex, int item) const;
+
+        // ===== KEYBOARD =====
+        bool HandleKeyDown(const UCEvent& event);
+        // Moves the selection to the neighbouring cell lying furthest in the
+        // screen direction (dx, dy) - whatever way the panel's lattice runs.
+        bool MoveSelection(double dx, double dy);
+        bool SelectPanel(int step);
+        bool CellExists(const PanelLayout& pl, int row, int col) const;
+        void KeepSelectionVisible();
         std::string FormatTotal(double value) const;
         std::string EllipsizeToWidth(IRenderContext* ctx, const std::string& text,
                                      double maxWidth) const;

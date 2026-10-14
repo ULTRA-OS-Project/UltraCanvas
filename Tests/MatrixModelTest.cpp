@@ -10,6 +10,7 @@
 // tools" matrix that drove the 5/3/1 preset: its printed row totals are the
 // arithmetic these tests pin down.
 //
+// Version: 1.3.0 - JSON interchange: every sample round-trips, failures leave the model untouched
 // Version: 1.2.0 - symmetric panels, House validation, relative weights, the importance column, ImportMatrixTable, the House sample
 // Version: 1.1.0 - X and Y panel validation, form header fields, the X and Y samples
 // Version: 1.0.0
@@ -17,6 +18,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
+#include "DataFormats/UltraCanvasJSON.h"
 
 #include <algorithm>
 #include <cmath>
@@ -671,6 +673,106 @@ static void TestImportTable() {
     CHECK(NearlyEqual(reread.RowScore(0, 0), 18.0), "with the same totals");
 }
 
+static void TestJsonRoundTrip() {
+    std::printf("\n[JSON]\n");
+
+    // Every sample, every shape: written, read back, written again - the two
+    // documents must be identical, which compares every set, item, panel,
+    // level, cell and header field at once.
+    struct Sample { const char* name; MatrixModel (*build)(); };
+    const Sample samples[] = {
+            {"L (improvement tools)", &MatrixSamples::ImprovementTools},
+            {"T (employee allocation)", &MatrixSamples::EmployeeAllocation},
+            {"L with importances (QFD)", &MatrixSamples::QualityFunctionDeployment},
+            {"X (supply chain)", &MatrixSamples::SupplyChain},
+            {"Y (design traceability)", &MatrixSamples::DesignTraceability},
+            {"House of Quality", &MatrixSamples::HouseOfQuality},
+    };
+    for (const Sample& sample : samples) {
+        const MatrixModel original = sample.build();
+        const std::string written = ExportMatrixJson(original);
+        MatrixModel reread;
+        std::string error;
+        const bool ok = ImportMatrixJson(written, reread, &error);
+        if (!ok) std::printf("    %s\n", error.c_str());
+        CHECK(ok && ExportMatrixJson(reread) == written,
+              (std::string(sample.name) + " round-trips unchanged").c_str());
+    }
+
+    MatrixModel house = MatrixSamples::HouseOfQuality();
+    MatrixModel reread;
+    CHECK(ImportMatrixJson(ExportMatrixJson(house, false), reread),
+          "the compact form reads back too");
+    CHECK(reread.shape == MatrixShape::House && reread.panels[1].symmetric,
+          "the shape and the roof survive");
+    CHECK(reread.FindSet("requirements")->items[0].improvement == MatrixImprovement::Minimize &&
+          reread.FindSet("requirements")->items[0].target == "< 11 kg",
+          "directions and targets survive");
+    CHECK(NearlyEqual(reread.ColumnScore(0, 2), house.ColumnScore(0, 2)),
+          "importances survive, so the scores do");
+    CHECK(reread.headerFields.size() == 3, "the form header survives");
+
+    // Cells are written by item id, so a file whose items come in another
+    // order still puts every mark where it was.
+    JSONValue doc = MatrixModelToJson(MatrixSamples::ImprovementTools());
+    JSONParseResult parsed;
+    JSONValue items = JSON::Parse(JSON::Serialize(doc.Get("sets").At(1).Get("items")), &parsed);
+    JSONValue reversed = JSONValue::MakeArray();
+    for (size_t i = items.GetSize(); i-- > 0;) reversed.Append(items.At(i));
+    JSONValue sets = JSONValue::MakeArray();
+    sets.Append(doc.Get("sets").At(0));
+    JSONValue tools = doc.Get("sets").At(1);
+    tools.Set("items", reversed);
+    sets.Append(tools);
+    doc.Set("sets", sets);
+    MatrixModel reordered;
+    CHECK(MatrixModelFromJson(doc, reordered), "a file with its columns reordered reads");
+    CHECK(reordered.sets[1].items[0].label == "5S" &&
+          reordered.LevelAt(0, 0, 7) == MatrixSamples::ImprovementTools().LevelAt(0, 0, 0),
+          "and each mark follows its item, not its old position");
+
+    // A roof pair written below the diagonal lands above it.
+    JSONValue roofDoc = MatrixModelToJson(MatrixSamples::HouseOfQuality());
+    JSONValue cells = JSONValue::MakeArray();
+    cells.Append(JSONValue::MakeObject().Set("panel", 1).Set("row", "Gear range")
+                 .Set("column", "Frame mass").Set("level", "positive"));
+    roofDoc.Set("cells", cells);
+    MatrixModel roofModel;
+    CHECK(MatrixModelFromJson(roofDoc, roofModel) && roofModel.cells.size() == 1 &&
+          roofModel.cells[0].row < roofModel.cells[0].col,
+          "a roof pair written either way round is stored above the diagonal");
+
+    // Failures name the problem and leave the caller's model alone.
+    MatrixModel keep = MatrixSamples::ImprovementTools();
+    const size_t keepCells = keep.cells.size();
+    std::string error;
+    CHECK(!ImportMatrixJson("{ \"format\": ", keep, &error) && error.find("line") != std::string::npos,
+          "malformed JSON fails with a line number");
+    CHECK(!ImportMatrixJson("{\"format\":\"something-else\",\"version\":1}", keep, &error),
+          "another format is refused");
+    CHECK(!ImportMatrixJson("{\"format\":\"ultracanvas-matrix\",\"version\":99}", keep, &error) &&
+          error.find("99") != std::string::npos,
+          "a newer version is refused, by number");
+
+    JSONValue badLevel = MatrixModelToJson(MatrixSamples::ImprovementTools());
+    JSONValue badCells = JSONValue::MakeArray();
+    badCells.Append(JSONValue::MakeObject().Set("panel", 0).Set("row", "HR")
+                    .Set("column", "SPC").Set("level", "enormous"));
+    badLevel.Set("cells", badCells);
+    CHECK(!MatrixModelFromJson(badLevel, keep, &error) && error.find("enormous") != std::string::npos,
+          "a cell with an unknown level is refused, by name");
+
+    JSONValue badShape = MatrixModelToJson(MatrixSamples::ImprovementTools());
+    badShape.Set("shape", "Z");
+    CHECK(!MatrixModelFromJson(badShape, keep, &error), "an unknown shape is refused");
+
+    JSONValue undrawable = MatrixModelToJson(MatrixSamples::ImprovementTools());
+    undrawable.Set("shape", "X");
+    CHECK(!MatrixModelFromJson(undrawable, keep, &error), "a model its shape cannot draw is refused");
+    CHECK(keep.cells.size() == keepCells && keep.shape == MatrixShape::L,
+          "after every failure the model is untouched");
+}
+
 // =============================================================================
 
 int main() {
@@ -696,6 +798,7 @@ int main() {
     TestRelativeWeights();
     TestImportanceColumn();
     TestImportTable();
+    TestJsonRoundTrip();
 
     std::printf("\n================================\n");
     if (g_failures == 0) {
