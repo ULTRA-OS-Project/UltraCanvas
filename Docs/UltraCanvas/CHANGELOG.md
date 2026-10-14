@@ -1,3 +1,101 @@
+#### 2026-10-14 *0.9.293*
+- **`UltraCanvasModalDialog` 3.9.0 follows the theme.** `ModalDialogStyle::FromTheme`
+  puts the theme's ink on the message and muted ink on the details over a
+  style's own sizes, and the dialog's `ApplyTheme` colours its surface with
+  the panel role and its footer buttons by their role (the default answer
+  `ButtonVariant::Primary`, the others `Standard`; a destructive one keeps
+  its red). `SetFollowTheme(true)` after the buttons are added applies it
+  and keeps the dialog with the theme while it is open; the elements a
+  host added follow on their own. UltraVideo's export, unsaved-changes and
+  story dialogs follow the theme and take no palette.
+- **A key the system delivers to a window a modal dialog blocks reaches the
+  dialog.** `UltraCanvasApplicationBase` 1.10.0: a KeyDown, KeyUp, TextInput
+  or TextComposition aimed at a blocked window is redirected to the modal
+  instead of dropped, so Escape closes the dialog, Return takes its default
+  answer and typing reaches its field wherever the keyboard focus happens
+  to be - under a focus-follows-pointer window manager, or with none at
+  all (an Xvfb session), where the pointer over the main window used to
+  swallow every key while a dialog was up. Pointer events aimed at a
+  blocked window are still swallowed, and a click there still raises the
+  modal.
+- **`UltraCanvasTheme` 1.0.0: the framework's colour roles.** One object a
+  window's light or dark look lives in - surfaces (`ground`, `panel`,
+  `well`, `raised`, `hover`, `pressed`), lines, ink, the accent, focus and
+  danger - with two presets (`Light` from the colours the elements default
+  to, `Dark` from the greys the dark menu, tooltip and text area use), a
+  current theme (`SetCurrent`, `Current`), and named element roles
+  (`SetRole`, `Role`, `HasRole`) for colours an element has beyond the
+  shared ones. `VideoTimelineStyle::FromTheme` and
+  `TimecodeFieldStyle::FromTheme` build the two elements' styles from it:
+  the shared roles for surfaces, ink, accent, focus and danger, the
+  timeline's own `video-timeline.<role>` colours where the theme names them
+  and its light or dark palette where it does not. UltraVideo maps its
+  design tokens onto the theme (`ThemeFor`) and sets it as the current one,
+  so nothing is hard-coded in the element.
+  `Docs/UltraCanvas/UltraCanvasTheme.md`; `Tests/UltraCanvasThemeTest.cpp`.
+- **`UltraCanvasTheme` 1.1.0: the elements follow it.** `FromTheme` on every
+  style struct with colours - `ButtonStyle`, `LabelStyle`, `DropdownStyle`,
+  `SliderVisualStyle`, `SwitchVisualStyle`, `TextInputStyle`,
+  `ToolbarAppearance`, `SplitPaneStyle`, `AlbumConfig`, `MenuStyle`,
+  `TooltipStyle` - puts the roles over a base style whose shape (sizes,
+  fonts, flags) stays; the menu and the tooltip start from their `Dark()`
+  or `Light()` preset by the theme's `dark` flag, so a dark menu or tooltip
+  agrees with the rest of a dark window. `UltraCanvasUIElement` gained
+  `SetFollowTheme` / `GetFollowTheme`, `ApplyTheme` and `OnThemeChanged`:
+  an element that follows styles itself from the current theme at once
+  and again on every change, over its own style (a radius or a font set
+  before survives a switch); the tabbed container and the text area
+  (its light or dark token colours, the surfaces and ink from the roles)
+  override `ApplyTheme` directly; a container passes a change on to its
+  children. Off by default: an element styled by hand keeps its look.
+  `UltraCanvasTheme::AddChangeHandler` / `RemoveChangeHandler` are called
+  after `SetCurrent`; the application installs one in `Initialize` that
+  walks every window and sets `UltraCanvasTooltipManager::SetStyle` (now
+  static, the style every tooltip shown without one takes; `GetStyle`)
+  from the theme, so an application switches its look with one call.
+  UltraVideo's split panes, tabs, fields, albums, toolbars, dropdowns and
+  context menu follow the theme; its own looks stay in `ApplyPalette`.
+  The slider's handle (`slider.handle`, `slider.handle-border`) and the
+  switch's thumb (`switch.thumb`, `switch.thumb-border`) are element
+  roles, the raised surface and the control border where a theme does not
+  name them, so UltraVideo's ink handle and on-accent thumb follow the
+  theme as well. `ButtonStyle::FromTheme` takes the button's **variant**
+  (`ButtonVariant`: `Standard` - the raised surface with the control
+  border; `Ghost` - no fill at rest, the hover and pressed fills; `Primary`
+  - the accent with text on it; `Selected` - the soft accent fill with the
+  accent for ink, an active tool), set on the element with
+  `SetThemeVariant`, which re-styles a following button at once; the
+  variants' colours are element roles (`button.primary`,
+  `button.ghost-hover`, `button.selected` ...) over the shared ones. Every
+  UltraVideo button follows the theme by its variant. `LabelStyle::FromTheme`
+  likewise takes the label's variant (`LabelVariant`: `Body` and `Heading`
+  - ink; `Muted` - muted ink; `Faint` - faint ink; the element roles
+  `label.muted`, `label.faint`, `label.heading`), set with
+  `SetThemeVariant`; every UltraVideo label follows the theme by its
+  variant and `ApplyPalette` keeps the timeline alone.
+  `Tests/UltraCanvasThemeTest.cpp`: 54 checks.
+- **`UltraCanvasVideoPlayerElement` 0.1.5: the picture placed as a host's
+  frame surface places it.** `VideoPlayerStyle::videoFit` chooses `Contain`
+  (fitted whole, letterboxed, the default and the old behaviour), `Cover`
+  (filling the element, cropped) or `Pixels` (the frame's own pixels at
+  `zoomPercent`), and `videoInset` keeps the picture that far from the
+  element's edges; a picture larger than the element is clipped to it. A
+  viewer that swaps its own frame surface for the player while a file
+  plays can give the player the surface's inset and fit, so the picture
+  stays where it was. 0.1.6: `showSafeArea` draws a dashed title-safe
+  guide over the picture, `safeAreaInset` (5 %) in from each edge, in
+  `safeAreaColor`; `zoomReferenceHeight` makes a `Pixels` zoom relative to
+  a picture of that height, so a proxy file zooms as the original would.
+- **Video playback without a PulseAudio server.** `VideoBackendGStreamer`
+  0.1.13 probes the `pulsesink` it prefers to READY before handing it to
+  playbin: where no PulseAudio server answers (a bare X session, a
+  container, a desktop on ALSA or JACK alone) playbin given an unopenable
+  sink failed to activate its sinks and nothing played - `Play()` returned
+  false, with or without sound. Now playbin's `autoaudiosink` picks a sink
+  that works, a silent one at worst, which still runs the clock: the
+  picture plays at pace and the position is reported. With PulseAudio
+  running nothing changes.
+
 #### 2026-10-14 *0.9.292*
 - **HEIC and AVIF are offered to open only where they decode.** libvips'
   HEIF loader takes `.heic`, `.heif` and `.avif` wherever it is built with
