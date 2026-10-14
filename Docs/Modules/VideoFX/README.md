@@ -134,7 +134,9 @@ by hand:
   it: the muxer and the container's usual encoders are there. `container`
   then names the `VideoFXContainer` an export to it uses.
 - Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
-  FFmpeg 6 and HEIC FFmpeg 7.1. GIF is also written, as the animation.
+  FFmpeg 6. HEIC is listed and not read: from FFmpeg 7.0 the demuxer opens
+  it, but a phone's HEIC is a grid of tiles in a stream group, which VideoFX
+  does not put together yet. GIF is also written, as the animation.
 
 The descriptions match the UltraCanvas codec registry's, so an application
 that brings VideoFX hands the films and sound to `RegisterMediaCodec`, and

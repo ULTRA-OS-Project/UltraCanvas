@@ -29,8 +29,8 @@ dropping them on the window, or by naming them on the command line (a
 folder imports its files). The dialogs offer FileLoader's types that the
 engine reads: at start-up UltraVideo tells the framework's codec registry
 which films and sound VideoFX's FFmpeg reads and writes, and a picture type
-FFmpeg cannot decode (HEIC before FFmpeg 7.1, a camera's raw file) is not
-offered. Every file is probed by the engine and shows a duration badge,
+the engine cannot read (a camera's raw file, and HEIC, whose tile grid the
+engine does not put together yet) is not offered. Every file is probed by the engine and shows a duration badge,
 *photo*, or *unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
 the timeline; a song becomes the music under the whole video. Or drag a

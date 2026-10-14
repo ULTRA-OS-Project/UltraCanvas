@@ -8,9 +8,10 @@
     macOS, for example, the registry alone knew only MP4, MOV and 3GP.
   - Import media, the file over the picture, a voice-over or sound effect
     on A2, and the story's photos, clips and songs offer FileLoader's types
-    that the engine reads. A picture type
-    FFmpeg cannot decode is no longer offered and then refused: HEIC is left
-    out before FFmpeg 7.1, and so are a camera's raw files.
+    that the engine reads. A picture type the engine cannot read is no longer
+    offered and then refused: a camera's raw files, and HEIC. Before, HEIC was refused on FFmpeg 6; on FFmpeg 7 a
+    phone's HEIC, which is a grid of tiles, would have come in as a single
+    tile, because the engine does not put the grid together yet.
   - Whether a file is a picture or sound is decided by the same lists, so a
     HEIC still shows as a photo, marked unreadable, where it cannot be
     opened.

@@ -10,8 +10,8 @@
 // an application that brings its own codec - and FileLoader's Video and
 // Audio lists then hold them. An import offers FileLoader's films, pictures
 // and sound that the engine reads: a picture type FileLoader reads and
-// FFmpeg does not (HEIC before FFmpeg 7.1, a camera's raw file) is left out
-// rather than offered and refused.
+// the engine does not (a camera's raw file; HEIC, whose tile grid it does
+// not put together yet) is left out rather than offered and refused.
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework

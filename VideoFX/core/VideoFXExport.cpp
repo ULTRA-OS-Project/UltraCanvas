@@ -3237,7 +3237,10 @@ const std::vector<KnownContainer>& KnownContainers() {
 
 // A still picture: the decoders that open it (any one will do) and, for the
 // ISO-BMFF pictures, the extension the mov demuxer has to claim - AVIF from
-// FFmpeg 6, HEIC / HEIF from 7.1.
+// FFmpeg 6. HEIC is listed and never read: the mov demuxer claims it from
+// FFmpeg 7.0, but a phone's HEIC is a grid of 512 px tiles that FFmpeg hands
+// out as separate streams of a stream group, and the engine does not put a
+// grid together yet - it would import one tile of the photo.
 struct KnownPicture {
     const char* extension;
     std::vector<std::string> aliases;
@@ -3268,7 +3271,7 @@ const std::vector<KnownPicture>& KnownPictures() {
         {"tga",  {},              {"targa"},                       nullptr, C::Auto},
         {"psd",  {},              {"psd"},                         nullptr, C::Auto},
         {"avif", {},              {"libdav1d", "libaom-av1", "av1"}, "avif", C::Auto},
-        {"heic", {"heif"},        {"hevc"},                        "heic",  C::Auto},
+        {"heic", {"heif"},        {},                              "heic",  C::Auto},   // tile grids: not yet
     };
     return pictures;
 }

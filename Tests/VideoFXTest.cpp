@@ -2531,6 +2531,9 @@ static void TestFileFormats() {
     const VideoFXFileFormat* gif = FindFormat(formats, "gif");
     CHECK(gif && gif->canRead && gif->canWrite && gif->container == VideoFXContainer::GIF,
           "a GIF is read, and an export writes one: the animation");
+    const VideoFXFileFormat* heic = FindFormat(formats, "heif");
+    CHECK(heic && heic->kind == VideoFXFileKind::Picture && !heic->canRead,
+          "HEIC is known as a picture and not read: a phone's is a tile grid the engine does not assemble yet");
 
     // Every type it says it writes, written and read back: no claim untested
     int written = 0;

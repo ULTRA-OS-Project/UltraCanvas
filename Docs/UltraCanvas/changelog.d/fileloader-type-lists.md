@@ -27,8 +27,9 @@
   - Video and sound containers count as read when FFmpeg has a demuxer for
     them, and as written when it has the muxer and the usual encoders.
   - Still pictures count as read when FFmpeg's decoders open them. AVIF
-    needs FFmpeg 6 and HEIC FFmpeg 7.1, so a build on FFmpeg 6.1 now leaves
-    HEIC out instead of offering it and then refusing the file.
+    needs FFmpeg 6. HEIC is never reported as read: from FFmpeg 7.0 the
+    demuxer opens it, but a phone's HEIC is a grid of tiles that VideoFX
+    does not put together yet, so it would import one tile of the photo.
   - `VideoFXTest` writes every type the report says it writes and reads
     each one back.
 - **QR codes save as any picture type.** The new

@@ -50691,8 +50691,9 @@ toolbar, `IncreaseQuoteLevel()` / `DecreaseQuoteLevel()` move every block the
 selection touches (or the caret's) one level in or out, between 0 and 8.
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
-the reader produced, hands it to the element, and hands the same object back to
-`UCWordDocumentIO::Save` — no conversion in either direction. See
+`UltraCanvasFileLoader::LoadTextDocument` produced, hands it to the element, and
+hands the same object back to `SaveTextDocument` — no conversion in either
+direction. See
 `Apps/Texter/UltraCanvasTextEditor.cpp` (`LoadWordIntoDocument`,
 `SaveRichDocumentAs`) for a worked integration, including how the element is
 swapped into an existing tab layout and how a shared formatting toolbar drives
@@ -80294,7 +80295,9 @@ by hand:
   it: the muxer and the container's usual encoders are there. `container`
   then names the `VideoFXContainer` an export to it uses.
 - Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
-  FFmpeg 6 and HEIC FFmpeg 7.1. GIF is also written, as the animation.
+  FFmpeg 6. HEIC is listed and not read: from FFmpeg 7.0 the demuxer opens
+  it, but a phone's HEIC is a grid of tiles in a stream group, which VideoFX
+  does not put together yet. GIF is also written, as the animation.
 
 The descriptions match the UltraCanvas codec registry's, so an application
 that brings VideoFX hands the films and sound to `RegisterMediaCodec`, and
@@ -85079,8 +85082,8 @@ dropping them on the window, or by naming them on the command line (a
 folder imports its files). The dialogs offer FileLoader's types that the
 engine reads: at start-up UltraVideo tells the framework's codec registry
 which films and sound VideoFX's FFmpeg reads and writes, and a picture type
-FFmpeg cannot decode (HEIC before FFmpeg 7.1, a camera's raw file) is not
-offered. Every file is probed by the engine and shows a duration badge,
+the engine cannot read (a camera's raw file, and HEIC, whose tile grid the
+engine does not put together yet) is not offered. Every file is probed by the engine and shows a duration badge,
 *photo*, or *unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
 the timeline; a song becomes the music under the whole video. Or drag a
