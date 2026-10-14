@@ -910,6 +910,31 @@ else()
     message(STATUS "  ClipboardHistoryStoreTest skipped (UltraClipboardHistory not built)")
 endif()
 
+# ===== KANBAN FILE DROP TEST =====
+# Files dropped onto UltraCanvasKanbanBoardElement reach onFilesDropped with
+# the column under the pointer (and pass on without it), BeginColumnRename,
+# and UltraDesktop's settings keeping its Sticker board. Offscreen, headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building KanbanFileDropTest...")
+    add_executable(KanbanFileDropTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/KanbanFileDropTest.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopSettings.cpp
+    )
+    target_include_directories(KanbanFileDropTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui)
+    target_compile_features(KanbanFileDropTest PRIVATE cxx_std_20)
+    target_link_libraries(KanbanFileDropTest PRIVATE UltraCanvas)
+    set_target_properties(KanbanFileDropTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME KanbanFileDropTest COMMAND KanbanFileDropTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: KanbanFileDropTest")
+else()
+    message(STATUS "  KanbanFileDropTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== UTF-8 FIND ALL TEST =====
 # utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
 # loop was quadratic and hung UltraTexter's search bar on a large file.

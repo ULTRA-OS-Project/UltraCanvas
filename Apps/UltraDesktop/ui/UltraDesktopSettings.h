@@ -1,9 +1,10 @@
 // Apps/UltraDesktop/ui/UltraDesktopSettings.h
 // What the desktop remembers between sessions: which edge the taskbar sits
 // on, the wallpaper, the RAM disc the pinned drive button opens, how many
-// virtual desktops the organiser offers, and the sticky notes on the
-// Stickerboard. One JSON file, read at start-up and written on every change.
-// No UI in here, which is what lets the test read and write it.
+// virtual desktops the organiser offers, the sticky notes on the
+// Stickerboard and the Sticker board's categories. One JSON file, read at
+// start-up and written on every change. No UI in here, which is what lets
+// the test read and write it.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -29,6 +30,19 @@ struct Sticker {
     std::string color = "#FFF59D";   // the note's paper, as CSS hex
 };
 
+// The Sticker board: files and notes sorted into categories on a Kanban
+// board over the wallpaper. The board itself is kept as the Kanban
+// element's own JSON document, so this file needs no UI to read it.
+struct CategoryBoardSettings {
+    bool visible = false;
+    std::string design = "stickynotes";   // stickynotes | poster | schematic | dark
+    float x = 320;
+    float y = 60;
+    float width = 780;
+    float height = 460;
+    std::string board;      // KanbanDataSource::ToJSON; "" = the default categories
+};
+
 struct DesktopSettings {
     TaskbarEdge taskbarEdge = TaskbarEdge::Left;
     std::string wallpaper;              // "" = the framework's default picture
@@ -37,6 +51,7 @@ struct DesktopSettings {
     int virtualDesktops = 3;            // 1..9, what the organiser offers
     bool stickerboardVisible = false;
     std::vector<Sticker> stickers;
+    CategoryBoardSettings categoryBoard;
 
     // "<config dir>/ultraos/desktop.json": $XDG_CONFIG_HOME, else ~/.config
     // (%APPDATA% on Windows). "" when there is no home to keep it in.
