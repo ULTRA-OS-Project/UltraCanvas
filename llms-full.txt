@@ -66124,13 +66124,13 @@ investigation behind it is
 | `VectorEdit::VectorSelection` | Ordered selected elements, their document-space bounds, listeners, re-binding by Id after an undo | `include/DataFormats/UltraCanvasVectorEdit.h`, `core/DataFormats/UltraCanvasVectorEdit.cpp` |
 | `VectorEdit::VectorHistory` | Labelled undo / redo by document snapshots, coalescing, a memory budget | same |
 | `VectorEdit::VectorHitTester` | Geometric fill / stroke hit testing with a tolerance, through every ancestor transform; rectangle queries | same |
-| `VectorEdit` operations | Transform about a pivot, bake a transform, z-order, group / ungroup / reparent, delete, duplicate, align, distribute, convert to path | same |
+| `VectorEdit` operations | Transform about a pivot, bake a transform, z-order, group / ungroup / reparent, delete, duplicate, align, distribute, convert to path, snap to an icon's pixel grid | same |
 | `UltraCanvasBezierPath` | Anchors that own their handles: the editing model of a path, with split / node types / hit tests / polyline fitting and a lossless round trip to `PathData` | `include/UltraCanvasBezierPath.h`, `core/UltraCanvasBezierPath.cpp` |
 | `UltraCanvasVectorCanvas` | The element: pasteboard, page, grid, rulers, guides, snapping, selection handles, tool hooks in document coordinates | `include/UltraCanvasVectorCanvas.h`, `core/UltraCanvasVectorCanvas.cpp` |
 | `UltraCanvasGradientEditor` | The stops of a gradient on a strip | [UltraCanvasGradientEditor](UltraCanvasGradientEditor.md) |
 
-**Version**: 1.0.0
-**Last Modified**: 2026-09-15
+**Version**: 1.1.0 - Pixel alignment: `SnapToPixels`, `SnapToPixel`
+**Last Modified**: 2026-10-14
 **Author**: UltraCanvas Framework
 
 Everything here is in the core library. The Vector plugin
@@ -66247,6 +66247,33 @@ auto path = ConvertToPath(el);                // rect / circle / ellipse / line 
 auto made = CombineShapes(selection.Elements(), CombineOp::Subtract); // Xara's Combine Shapes: the front shape
                                               // cuts the others (Add / Intersect: one shape, the back one's style)
 ```
+
+### Pixel alignment
+
+An icon is drawn for the size it is shown at, and is sharp there only
+where its straight edges fall on whole pixels. `SnapToPixels` moves shapes
+onto the pixel grid of that size: `pixel` is the width of one icon pixel
+in document units (the page's width divided by the icon's size), and the
+grid starts at `origin`, the page's corner.
+
+```cpp
+const auto result = SnapToPixels(els, 1.0, Point2Dd(0, 0)); // a 24-unit page drawn at 24 px
+// result.aligned: shapes moved; result.skipped: text, images, rotated shapes
+double x = SnapToPixel(2.3, 1.0, 0.0, true);  // 2.5: a pixel centre
+double y = SnapToPixel(2.3, 1.0);              // 2.0: a pixel edge
+```
+
+Line widths become whole pixels (at least one). A shape whose line is an
+odd number of pixels wide lands on pixel centres - a 1 px line there covers
+one row of pixels fully - and one with an even width or no line on pixel
+edges. Rectangles keep at least a pixel each way and whole-pixel corner
+radii; circles and ellipses snap by the edges of their bounds, so any
+diameter stays possible; paths are made absolute and their nodes snapped,
+each curve's control points moving with their node, and a curve that fits
+inside one pixel becomes a straight line. Groups are aligned through their
+children, following any transform that only scales and moves; text,
+images and rotated or skewed shapes are left as they are. ArtCreator's icon
+mode calls it (Arrange > Snap to Pixels).
 
 A document-space matrix `M` lands on an element as `T' = P⁻¹·M·P·T`, `P`
 being its parent-to-document map, so children of transformed groups move
@@ -66365,6 +66392,8 @@ catalogue ([UltraCanvasUIElements](UltraCanvasUIElements.md)) alongside
 selection, history, hit testing, every operation, the canvas's view maths,
 snapping and handles, and the gradient editor — all without a window.
 `Tests/VectorModelTest.cpp` covers the model and the renderer.
+`Tests/VectorPixelSnapTest.cpp` (CTest `VectorPixelSnapTest`) covers
+`SnapToPixels` and `SnapToPixel`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVectorConverters.md

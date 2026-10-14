@@ -11,8 +11,10 @@
 // The raster counterpart is UCRasterDocument / UCRasterSelection; the
 // split is the same: the model edits without a window, the element shows
 // it, the application owns the tools.
+// Version: 1.1.0 - SnapToPixels / SnapToPixel: shapes onto the pixel grid of
+//                  the size an icon is shown at
 // Version: 1.0.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -268,6 +270,38 @@ std::optional<VectorStorage::PathData> OutlineOf(const VectorElement& element);
 // new elements, which have replaced the inputs in the document.
 enum class CombineOp { Add, Subtract, Intersect, Slice };
 std::vector<ElementPtr> CombineShapes(const std::vector<ElementPtr>& elements, CombineOp op);
+
+// ===== PIXEL ALIGNMENT =====
+// An icon is drawn at a size known in advance - a 24 px toolbar button, a
+// 16 px menu entry - and is sharp there only where its straight edges fall
+// on whole pixels: a 2 px line centred on a pixel edge covers two pixel
+// rows fully, the same line half a pixel off covers three, the outer two
+// half grey. `pixel` is the width of one of those pixels in document units
+// (the page's width divided by the icon's size in pixels); the grid starts
+// at `origin`, the page's corner.
+
+// A coordinate on that grid: on the nearest pixel edge, or with `centre`
+// on the nearest pixel centre - where a line of an odd number of pixels
+// must run to cover whole pixels.
+double SnapToPixel(double value, double pixel, double origin = 0.0, bool centre = false);
+
+// Moves the elements' geometry onto the grid: every line width becomes a
+// whole number of pixels (at least one), and the points of a shape with an
+// odd line width land on pixel centres, those of a shape with an even
+// width or no line on pixel edges. Rectangles (their corner radii too),
+// circles and ellipses (by the edges of their bounds, so any diameter
+// stays possible), lines, polylines, polygons and paths are aligned - a
+// path by its nodes, each curve's control points moving with their node so
+// the curve keeps its shape; groups through their children. Text, images
+// and shapes under a rotation or skew are left as they are. A transform
+// that only scales and moves is followed: the shape lands on the grid in
+// document space.
+struct PixelSnapResult {
+    int aligned = 0;    // shapes moved onto the grid
+    int skipped = 0;    // shapes left as they were
+};
+PixelSnapResult SnapToPixels(const std::vector<ElementPtr>& elements, double pixel,
+                             const Point2Dd& origin = Point2Dd(0, 0));
 
 } // namespace VectorEdit
 } // namespace UltraCanvas
