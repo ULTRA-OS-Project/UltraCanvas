@@ -149,7 +149,7 @@ namespace UltraCanvas {
         if (!env || !clipboardManager) return false;
 
         jstring label = env->NewStringUTF("UltraCanvas");
-        jstring value = env->NewStringUTF(text.c_str());
+        jstring value = AndroidJni::ToJString(env, text);
         jobject clip = env->CallStaticObjectMethod(clipDataClass, midNewPlainText,
                                                    label, value);
         env->DeleteLocalRef(label);

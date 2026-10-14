@@ -3,7 +3,8 @@
 //
 // NativeActivity alone cannot host anything that needs a real Activity on the
 // Java UI thread - AlertDialog, the Storage Access Framework's
-// startActivityForResult/onActivityResult, an InputConnection for full IME.
+// startActivityForResult/onActivityResult, an InputConnection for full IME,
+// and the answer to a runtime permission request.
 // This subclass supplies those, and the C++ side calls into it over JNI.
 //
 // Declare it in the manifest INSTEAD of android.app.NativeActivity:
@@ -17,7 +18,7 @@
 // methods and every dialog falls back to its "cancelled" stub, so an app that
 // never opens a native dialog needs no Java at all.
 //
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 
 package org.ultraos.ultracanvas;
@@ -28,6 +29,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
@@ -49,6 +51,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 
 public class UltraCanvasActivity extends NativeActivity {
@@ -568,9 +571,75 @@ public class UltraCanvasActivity extends NativeActivity {
         try { c.close(); } catch (Throwable ignored) { }
     }
 
+    // ===== RUNTIME PERMISSIONS =====
+
+    // Offset that keeps permission request codes clear of anything else the
+    // activity may request; requestPermissions takes the low 16 bits only.
+    private static final int PERMISSION_REQUEST_BASE = 0x4000;
+    // UI thread only: request code -> the native side's request id, which
+    // may outgrow the request code's 14 bits in a long-running app.
+    private final android.util.SparseIntArray permissionRequests =
+            new android.util.SparseIntArray();
+    private int nextPermissionCode;
+
+    /**
+     * Ask for one runtime permission (CAMERA, RECORD_AUDIO, ...). Called from
+     * the native glue thread; the answer goes back through
+     * nativeOnPermissionResult with the same request id. Implemented by
+     * UltraCanvasAndroidPermissions.cpp.
+     */
+    public void requestPermissionAsync(final String permission, final int requestId) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
+                    nativeOnPermissionResult(requestId, true);
+                    return;
+                }
+                int code = PERMISSION_REQUEST_BASE + (nextPermissionCode++ & 0x3FFF);
+                permissionRequests.put(code, requestId);
+                requestPermissions(new String[] { permission }, code);
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                           int[] grantResults) {
+        int index = permissionRequests.indexOfKey(requestCode);
+        if (index < 0) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+            return;
+        }
+        int requestId = permissionRequests.valueAt(index);
+        permissionRequests.removeAt(index);
+        // An empty result means the request was interrupted (the activity
+        // went away): that is a refusal, not silence, so the caller hears it.
+        boolean granted = grantResults != null && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        nativeOnPermissionResult(requestId, granted);
+    }
+
+    /**
+     * The display's clockwise rotation from the device's natural orientation,
+     * in degrees - what a camera frame needs, with the sensor's orientation,
+     * to come out upright.
+     */
+    @SuppressWarnings("deprecation")
+    public int getDisplayRotationDegrees() {
+        try {
+            return getWindowManager().getDefaultDisplay().getRotation() * 90;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
     // ===== TEXT INPUT (soft keyboard + IME) =====
 
     private InputView inputView;
+    // UI thread only. Each InputConnection remembers the session it was made
+    // for; restartInput() starts a new one.
+    private int inputSession;
 
     /**
      * Raise the soft keyboard against our input view. Called over JNI from
@@ -593,6 +662,27 @@ public class UltraCanvasActivity extends NativeActivity {
                 InputMethodManager imm = (InputMethodManager)
                         getSystemService(Context.INPUT_METHOD_SERVICE);
                 if (imm != null) imm.showSoftInput(view, 0);
+            }
+        });
+    }
+
+    /**
+     * Start a fresh input session on the input view. Called over JNI when a
+     * tap lands while a word is being composed: the native side has already
+     * kept that word as typed, so the IME must drop its composition and the
+     * context it read back, which describe text before the old caret.
+     * Bumping the session first makes the old InputConnection ignore whatever
+     * the IME still sends it - committing that word again, say.
+     */
+    public void restartInput() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                inputSession++;
+                if (inputView == null) return;
+                InputMethodManager imm = (InputMethodManager)
+                        getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.restartInput(inputView);
             }
         });
     }
@@ -678,34 +768,78 @@ public class UltraCanvasActivity extends NativeActivity {
     /**
      * Feeds the IME's output to the native side.
      *
-     * Composition (setComposingText) is deliberately left to the superclass's
-     * local buffer and never forwarded: the framework has no inline preedit
-     * concept on any platform, and the IME shows candidates in its own UI.
-     * Only committed text crosses into the app.
+     * Composition crosses too: the native side shows it inline in an element
+     * that draws compositions (TextComposition events) and holds it back from
+     * any other until it is committed. The superclass's local Editable is
+     * still kept in step, because that is what the IME reads its context back
+     * from.
      */
     private final class UltraCanvasInputConnection extends BaseInputConnection {
+        private final int session = inputSession;
+
         UltraCanvasInputConnection(View targetView) {
             // fullEditor=true keeps a local Editable, which is what lets the
             // IME read back context for autocorrect and suggestions.
             super(targetView, true);
         }
 
+        /** A connection from before restartInput(): its edits go nowhere. */
+        private boolean stale() {
+            return session != inputSession;
+        }
+
         @Override
         public boolean commitText(CharSequence text, int newCursorPosition) {
-            if (text != null && text.length() > 0) {
-                nativeOnCommitText(text.toString());
-            }
+            if (stale()) return false;
+            // Forwarded even when empty: an empty commit still replaces (that
+            // is, removes) the text being composed.
+            nativeOnCommitText(text != null ? text.toString() : "");
             return super.commitText(text, newCursorPosition);
         }
 
         @Override
+        public boolean setComposingText(CharSequence text, int newCursorPosition) {
+            if (stale()) return false;
+            String composing = text != null ? text.toString() : "";
+            nativeOnComposingText(composing, caretBytes(composing, newCursorPosition));
+            return super.setComposingText(text, newCursorPosition);
+        }
+
+        @Override
+        public boolean finishComposingText() {
+            if (stale()) return false;
+            nativeOnFinishComposingText();
+            return super.finishComposingText();
+        }
+
+        /**
+         * Re-composing text already typed - what most keyboards do when
+         * backspace reaches the end of a word - is refused. The region is
+         * measured in this connection's local Editable, which only knows what
+         * the IME typed since the session started and not where the user has
+         * since moved the caret; mirroring it natively would erase whatever
+         * text precedes the native caret. Refused, the IME composes fresh
+         * text at the caret instead. An empty region only ends the
+         * composition, which is safe.
+         */
+        @Override
+        public boolean setComposingRegion(int start, int end) {
+            if (stale()) return false;
+            if (start != end) return false;
+            nativeOnFinishComposingText();
+            return super.setComposingRegion(start, end);
+        }
+
+        @Override
         public boolean deleteSurroundingText(int beforeLength, int afterLength) {
+            if (stale()) return false;
             nativeOnDeleteSurroundingText(beforeLength, afterLength);
             return super.deleteSurroundingText(beforeLength, afterLength);
         }
 
         @Override
         public boolean sendKeyEvent(KeyEvent event) {
+            if (stale()) return false;
             if (event != null) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     nativeOnJavaKeyEvent(true, event.getKeyCode(),
@@ -727,8 +861,33 @@ public class UltraCanvasActivity extends NativeActivity {
      */
     private static native void nativeOnDialogResult(int requestId, int result, String value);
 
+    // Implemented in UltraCanvasAndroidPermissions.cpp.
+    private static native void nativeOnPermissionResult(int requestId, boolean granted);
+
+    /**
+     * The composition's caret as a UTF-8 byte offset into it - the unit the
+     * native event carries. setComposingText's newCursorPosition places the
+     * editor's cursor relative to the composition (1 = just after it), so
+     * clamped to the composition it is the caret inside it. Never splits a
+     * surrogate pair.
+     */
+    private static int caretBytes(String composing, int newCursorPosition) {
+        int length = composing.length();
+        int caret = newCursorPosition > 0 ? length + newCursorPosition - 1
+                                          : newCursorPosition;
+        caret = Math.max(0, Math.min(length, caret));
+        if (caret > 0 && caret < length
+                && Character.isLowSurrogate(composing.charAt(caret))
+                && Character.isHighSurrogate(composing.charAt(caret - 1))) {
+            caret--;
+        }
+        return composing.substring(0, caret).getBytes(StandardCharsets.UTF_8).length;
+    }
+
     // Implemented in UltraCanvasAndroidTextInput.cpp.
     private static native void nativeOnCommitText(String text);
+    private static native void nativeOnComposingText(String text, int caretBytes);
+    private static native void nativeOnFinishComposingText();
     private static native void nativeOnJavaKeyEvent(boolean down, int keyCode,
                                                     int metaState, int codePoint);
     private static native void nativeOnDeleteSurroundingText(int before, int after);

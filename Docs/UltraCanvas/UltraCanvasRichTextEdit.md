@@ -614,7 +614,12 @@ composition as `UCEventType::TextComposition` (`event.text`,
 `event.compositionCursor`) to an element whose `DrawsTextComposition()` is
 true: on X11 through an on-the-spot input context used while such an element
 has focus (other widgets keep the input method's own window), on Windows
-through the IMM composition string. `GetCompositionText()` reads it.
+through the IMM composition string, on macOS through the window's
+`NSTextInputClient` marked text (keys go through the input method only while
+such an element has focus), and in the browser (WebAssembly) through a
+transparent `<textarea>` that takes the keyboard while such an element has
+focus and whose `compositionupdate` / `compositionend` events are forwarded.
+`GetCompositionText()` reads it.
 
 ## Right-to-left text
 
@@ -997,7 +1002,8 @@ Honest limits of this first version — none of them silently misbehave:
   and NSAccessibility bridges compile but have not yet been run against
   Narrator, NVDA, JAWS or VoiceOver; the AT-SPI bridge is tested end to end.
 - **The input method's candidate window** is placed by the input method, not
-  next to the caret.
+  next to the caret, on X11 and Windows. On macOS and in the browser it opens
+  at the caret (where the composition starts).
 
 ## Related
 

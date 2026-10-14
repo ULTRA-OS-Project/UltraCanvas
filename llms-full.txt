@@ -5463,9 +5463,13 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
   `InputConnection` gives the IME an editor to compose into (autocorrect,
   suggestions, gesture typing, CJK candidates); commits arrive as
   `UCEvent::text`, and `deleteSurroundingText` is replayed as Backspace
-  presses. Pre-edit text was indeed deferred, and deliberately stays that way:
-  it is a cross-platform capability (core text model + rendering + every
-  backend), not an Android gap — Linux shows no inline pre-edit either.
+  presses. Pre-edit text was deferred until the core gained it: the
+  `TextComposition` event and `DrawsTextComposition()`, which the Linux (XIM)
+  and Windows (IMM) backends deliver. Android now delivers it too:
+  `setComposingText` becomes `TextComposition` for an element that draws
+  compositions. `finishComposingText` and a tap keep the composing word as
+  typed, and `setComposingRegion` is refused. See the backend README's *Text
+  input*.
 
 ### 3.5 Desktop services with no Android analogue
 
@@ -5537,7 +5541,7 @@ device".**
 | **libvips** (+ ~10 transitive libs) | Currently `REQUIRED` but `HAS_LIBVIPS`/`LIBVIPS_FOUND` guards already exist throughout — **make it optional** (drop `REQUIRED` at `UltraCanvas/CMakeLists.txt:146`, conditionalize the link). This is the single highest-leverage build change and benefits WASM too. Image decode on Android can later go through a smaller path (stb/libjpeg-turbo/libpng or JNI `BitmapFactory`) |
 | X11/Xcursor/Xrandr, GTK3, GLX, desktop OpenGL | Never referenced by the Android platform arm |
 | librsvg | Skip (Rust+gobject; SVG falls back gracefully) |
-| GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android |
+| GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android. **Status:** done with the NDK's MediaCodec, Camera2 and AAudio (`libspecific/Video/VideoBackendAndroid*.cpp`). No ExoPlayer, so no Java dependency. |
 | miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free. **Status: on.** It was the one entry in the Android CMake block whose dependency is vendored rather than pending in the sysroot, so it needed no link changes at all (AAudio and OpenSL ES are both reached through `dlopen`). The CI syntax check compiles the backend TU — and with it the whole `MINIAUDIO_IMPLEMENTATION` — for aarch64 |
 | Optional audio codecs (FLAC/vorbis/opus/LAME) | All plain C with known NDK builds; each just unlocks a format |
 | MuPDF (PDF plugin) | Official Android build exists; defer to a later phase |
@@ -5693,8 +5697,10 @@ Process lessons for the Android effort:
   lives in the core (`UpdateTouchGesture`) rather than the Android backend,
   since the touch stream and the geometry are both platform-neutral.
 - ~~Audio (miniaudio AAudio — near-free)~~ — done, and it was indeed free:
-  enabling the existing option, no new dependency, no new link line. Video via
-  a MediaCodec backend is still open.
+  enabling the existing option, no new dependency, no new link line.
+- ~~Video via a MediaCodec backend~~ — done, and on by default, since every
+  library it needs is in the NDK sysroot: playback with A/V sync, thumbnails,
+  and Camera2 preview + MP4 recording. See the backend README's *Video*.
 - PDF (MuPDF android), image pipeline decision (trimmed libvips vs.
   platform decoders), printing via `PrintManager`.
 - Plugin packaging as `jniLibs`, Play-store packaging polish.
@@ -51314,7 +51320,12 @@ composition as `UCEventType::TextComposition` (`event.text`,
 `event.compositionCursor`) to an element whose `DrawsTextComposition()` is
 true: on X11 through an on-the-spot input context used while such an element
 has focus (other widgets keep the input method's own window), on Windows
-through the IMM composition string. `GetCompositionText()` reads it.
+through the IMM composition string, on macOS through the window's
+`NSTextInputClient` marked text (keys go through the input method only while
+such an element has focus), and in the browser (WebAssembly) through a
+transparent `<textarea>` that takes the keyboard while such an element has
+focus and whose `compositionupdate` / `compositionend` events are forwarded.
+`GetCompositionText()` reads it.
 
 ## Right-to-left text
 
@@ -51697,7 +51708,8 @@ Honest limits of this first version — none of them silently misbehave:
   and NSAccessibility bridges compile but have not yet been run against
   Narrator, NVDA, JAWS or VoiceOver; the AT-SPI bridge is tested end to end.
 - **The input method's candidate window** is placed by the input method, not
-  next to the caret.
+  next to the caret, on X11 and Windows. On macOS and in the browser it opens
+  at the caret (where the composition starts).
 
 ## Related
 
@@ -60351,6 +60363,36 @@ The text area handles the following events:
 - **Drag**: Text selection
 - **Wheel**: Vertical scrolling (3 lines per notch)
 
+### Input Method Composition
+
+While an input method (Japanese, Chinese, Korean, ...) is composing, the text
+it has so far is laid out **in the caret's line, at the caret, underlined**,
+with the caret inside it where the input method puts it; the view scrolls to
+keep that caret visible, and a wrapped line grows as the composition does.
+The area says so through `DrawsTextComposition()`, and the platform backend
+then sends it `UCEventType::TextComposition` events instead of opening the
+input method's own composition window (on a backend that does not report
+compositions the window is used as before).
+
+- The composition is **not** part of the text: `GetText()`, `onTextChanged`,
+  syntax state and the undo stack never see it. `GetCompositionText()` returns
+  it (`""` when nothing is being composed).
+- The committed result arrives as ordinary typing (`KeyDown` with `text`),
+  which ends the composition and is inserted like any typed text.
+- An empty composition ends it without typing anything, and so does losing
+  the focus, turning the area read-only or changing the editing mode.
+- Starting to compose over a selection deletes the selection, as typing would
+  (that deletion is a normal edit: one undo step, one `onTextChanged`).
+- A composition never breaks the line: a line break in it is shown as a space.
+- `DrawsTextComposition()` is `false` for a read-only or display-only area and
+  in hex mode, where a key is a hex digit rather than text.
+
+```cpp
+auto notes = std::make_shared<UltraCanvasTextArea>("Notes", 0, 0, 400, 200);
+bool inPlace = notes->DrawsTextComposition();          // true: editable
+const std::string& composing = notes->GetCompositionText();
+```
+
 ## Usage Example
 
 ```cpp
@@ -60701,6 +60743,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)
 - **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
 - **3.8.0** (2026-08-24): Spell checking, `GetCharacterRangeBounds()`, `ReplaceTextRange()`
 - **2.0.0** (2024-12-20): Added syntax highlighting and themes
@@ -61187,6 +61230,39 @@ The control handles various keyboard inputs:
 - **Shift+Click**: Extend the selection to the click
 - **Drag**: Select text range (keeps selecting while the pointer is outside the field)
 - **Click on the clear button / eye button**: Empty the field / toggle the password mask
+
+### Input Method Composition
+
+While an input method (Japanese, Chinese, Korean, dead-key sequences on some
+systems) is composing, the text it has so far is drawn **in the field, at the
+caret, underlined**, with the caret inside it where the input method puts it;
+the horizontal scroll keeps that caret in view. The field says so through
+`DrawsTextComposition()`, and the platform backend then sends it
+`UCEventType::TextComposition` events instead of opening the input method's
+own composition window (on a backend that does not report compositions the
+window is used as before).
+
+- The composition is **not** part of the text: `GetText()`, `onTextChanged`,
+  validation and the undo stack never see it. `GetCompositionText()` returns
+  it (`""` when nothing is being composed).
+- The committed result arrives as ordinary typing (`KeyDown` with `text`), which
+  ends the composition and is inserted like any typed character - length limit,
+  validation and one undo step included.
+- An empty composition ends it without typing anything, and so does losing
+  the focus or turning the field read-only.
+- Starting to compose over a selection deletes the selection, as typing would
+  (that deletion is a normal edit: one undo step, one `onTextChanged`).
+- A **read-only** or **password** field returns `false` from
+  `DrawsTextComposition()`. A password field leaves the composing to the
+  input method's own window: masking the composition would hide what is being
+  converted, and drawing it in the field would show the secret (most platforms
+  switch the input method off for password fields anyway).
+
+```cpp
+auto field = CreateTextInput("Name", 10, 10, 240, 28);
+bool inPlace = field->DrawsTextComposition();          // true: editable
+const std::string& composing = field->GetCompositionText();
+```
 
 ### Event Callbacks
 
@@ -68934,8 +69010,17 @@ sample applications.
 
 ## Known limitations
 
-- Keyboard: no IME composition events (dead keys and CJK input methods are not
-  handled); typed text arrives on KeyDown like the desktop backends.
+- Keyboard: typed text arrives on KeyDown like the desktop backends. Input
+  method composition (CJK input methods, dead keys) reaches only an element
+  that draws compositions itself (`DrawsTextComposition()`: an editable
+  text input, text area or rich text editor): while one has focus, a transparent `<textarea>`
+  at its caret takes the keyboard, its `compositionupdate` events arrive as
+  `TextComposition` events and `compositionend` commits the text as a KeyDown
+  with `text`; keys the input method is processing (`keyCode` 229) are not
+  delivered as key presses as well. Any other element keeps the canvas, where
+  the browser offers no input method. Mobile soft keyboards beyond plain text
+  and compositions (deleting through the input method, autocorrect
+  replacements) are not handled.
 - Mouse: drags that leave the canvas stop receiving moves until the pointer
   re-enters (no pointer capture yet).
 - Touch is synthesized into left-button mouse events.

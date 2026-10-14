@@ -1,8 +1,11 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.3.0 - TextInputStyle::FromTheme, ApplyTheme
-// Version: 1.9.0
-// Last Modified: 2026-10-08
+// Version: 1.11.0 - TextInputStyle::FromTheme, ApplyTheme
+// Version: 1.10.0
+// Last Modified: 2026-10-14
+// V1.10.0: An input method's composition (pre-edit text) is drawn in the field,
+//   underlined at the caret, instead of in the input method's own window
+//   (DrawsTextComposition, GetCompositionText). It is never part of the text.
 // V1.8.0: SetFormatter fills the placeholder only when the field has none
 //   (it used to overwrite the caller's and leave an empty one empty); the rules
 //   SetInputType adds are replaced when the type changes instead of stacking,
@@ -401,6 +404,12 @@ private:
     int passwordToggleSize = 18;
     Color passwordToggleColor = Color(130, 130, 130);
     Color passwordToggleHoverColor = Color(0, 120, 215);
+
+    // ===== INPUT METHOD COMPOSITION =====
+    // The text an input method is composing (TextComposition events) and its
+    // caret, a byte offset into it. Painted at the caret, never in `text`.
+    std::string preeditText;
+    size_t preeditCursor = 0;
     
 public:
     // ===== CONSTRUCTORS =====
@@ -435,6 +444,17 @@ public:
     const std::string& GetPlaceholder() const { return placeholderText; }
 
     bool AcceptsFocus() const override { return true; }
+
+    // ===== INPUT METHOD COMPOSITION =====
+    // An input method's composition is shown in the field, underlined, at the
+    // caret (TextComposition events), not in a window of its own. It is not
+    // part of GetText(), fires no onTextChanged and leaves no undo step; the
+    // committed text then arrives as typing. A password field leaves the
+    // composing to the input method's own window: a mask would hide what is
+    // being converted, and showing it in the field would show the secret.
+    bool DrawsTextComposition() const override { return !readOnly && !passwordMode && !IsDisabled(); }
+    // The text being composed ("" when nothing is).
+    const std::string& GetCompositionText() const { return preeditText; }
 
     // ===== ACCESSIBILITY =====
     // A one-line text field to a screen reader, and in password mode a
@@ -658,6 +678,16 @@ private:
     bool HandleKeyDown(const UCEvent& event);
     bool HandleFocusGained(const UCEvent& event);
     bool HandleFocusLost(const UCEvent& event);
+    bool HandleComposition(const UCEvent& event);
+    // Drops a composition without committing it (focus lost, read-only).
+    void ClearComposition();
+
+    // GetRenderText() with the composition spliced in at the caret - what the
+    // line shows - and the caret's byte offset in it (inside the composition
+    // while composing). Caret x and the scroll clamp measure these.
+    std::string GetPaintedText() const;
+    size_t GetPaintedCaretOffset() const;
+    size_t GetCompositionRenderOffset() const { return ToRenderOffset(caretPosition); }
 
     // Inserted text is repaired to valid UTF-8 first (utf8_make_valid): a paste,
     // or a keyboard backend without an input method, can deliver bytes that are

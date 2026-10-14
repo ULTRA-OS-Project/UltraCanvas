@@ -1,3 +1,105 @@
+#### 2026-10-14 *0.9.288*
+- **Android shows the word being composed inline, and stops losing it.** A
+  soft keyboard composes each word before committing it: the underlined word
+  with suggestions, or a CJK reading waiting for its candidate. The Android
+  backend kept that composition inside the keyboard. It now passes it on the
+  way the Linux and Windows backends do:
+  - An editable `UltraCanvasTextInput`, `UltraCanvasTextArea` or
+    `UltraCanvasRichTextEdit` (any element whose `DrawsTextComposition()` is
+    true) receives `TextComposition` events and shows the word at its caret
+    while it is typed. Any other element still sees only the committed text.
+  - A word was lost when the keyboard ended the composition without
+    committing it, for example when it closed mid-word. Such a word is now
+    kept as typed.
+  - A tap while a word is being composed keeps that word as typed where it
+    was, as Android's own text fields do. It no longer follows the caret into
+    whatever the tap focused.
+  - Backspacing into a word no longer types it a second time: the keyboard
+    used to start composing that word again and commit all of it after the
+    copy that was already there.
+  - Emoji and other characters outside the Basic Multilingual Plane reached
+    widgets as six bytes no font could draw, because JNI strings were read as
+    JNI's modified UTF-8. They are now read as real UTF-8. This affected
+    everything the Java side passes to C++: committed text, dialog answers,
+    clipboard text and file names.
+  - None of this has run on a device yet; like the rest of the Android
+    backend it is compiled, not observed.
+- **Text sent from C++ to Android's Java side is real UTF-8 now.** Dialog
+  titles, messages, button labels and default input, clipboard text copied
+  out, file-picker MIME types and suggested file names were converted with
+  JNI's `NewStringUTF`. That takes JNI's *modified* UTF-8, so:
+  - an emoji or any other character outside the Basic Multilingual Plane
+    reached Java as garbage;
+  - malformed UTF-8 (a truncated file name, say) aborted the whole app when
+    CheckJNI was on, which it is in every debuggable APK.
+
+  The new `AndroidJni::ToJString` converts UTF-8 to UTF-16 itself and turns
+  malformed bytes into U+FFFD. It is the reverse of the `ToStdString` fix in
+  the same release.
+- **Android plays video and records from the camera.** Until now Android
+  builds had no video backend, so `UltraCanvasVideoPlayer` could not open
+  anything and there was no camera. The new backend uses only the NDK's own
+  libraries (`mediandk`, `camera2ndk`, `aaudio`), so it is on by default and
+  does not wait for the cross-compiled dependency sysroot:
+  - **Playback** decodes with MediaCodec and plays the sound through AAudio,
+    with the picture kept in step with what is heard. Phone recordings come
+    out upright. Seeking is frame-accurate, and looping, volume, mute and
+    playback rate work. Sound plays at 1× only, because AAudio cannot change
+    speed.
+  - **Thumbnails** come from one decoded frame, without opening an audio
+    device.
+  - **Cameras** are listed with their sizes. The preview is upright, and
+    mirrored for the front camera. Recording writes MP4 with H.264 or H.265
+    video and AAC sound, and pausing cuts the pause out of the file.
+  - **Permissions:** `UltraCanvasVideoDevices::RequestCameraPermission` shows
+    Android's prompt. The template manifest says which permissions to
+    declare.
+  - Like the rest of the Android backend, this is compiled but has not yet
+    run on a device.
+- **Input method composition on macOS and in the browser.** An element that
+  draws compositions itself (`DrawsTextComposition()`: an editable text
+  input, text area or rich text editor) now gets the pre-edit text as `TextComposition` events on these two
+  platforms too, as it already did on X11, Windows and Android, with the
+  committed text arriving as a KeyDown with `text`.
+  - macOS: the window's content view is an `NSTextInputClient`. While such an
+    element has focus, key presses without Command or Control go through
+    `interpretKeyEvents:`. Marked text becomes `TextComposition` (its caret
+    is the end of the input method's selected range, converted from UTF-16
+    to a UTF-8 byte offset), inserted text a KeyDown, and keys the input
+    method does not turn into text (Return, Delete, the arrows) the same
+    KeyDown as before. Dead keys (Option+E on a US layout) now compose
+    in place. The candidate window opens at the caret. A click or the window
+    losing the keyboard commits a composition in progress. Every other
+    element keeps the plain key path, unchanged. The application registers
+    `ApplePressAndHoldEnabled = NO` as a default, so holding a key repeats
+    it instead of opening the accent menu, which would replace text already
+    typed. A user's own setting still wins.
+  - WebAssembly: a transparent `<textarea>` at the caret takes the keyboard
+    while such an element has focus. Its `compositionupdate` events (and the
+    caret from `selectionEnd`) become `TextComposition`, and
+    `compositionend` commits the text. Keys the input method is processing
+    (`keyCode` 229, or any key mid-composition) are no longer delivered as
+    key presses too, and dead keys are let through so the browser composes
+    the accent. Moving the keyboard between the canvas and the textarea is
+    not reported as the window losing or gaining focus. Other elements keep
+    the canvas and the old key path.
+- **Text fields and text areas show what an input method is composing where
+  it will go.** `UltraCanvasTextInput` and `UltraCanvasTextArea` now draw an
+  input method's pre-edit text (Japanese, Chinese, Korean, ...) inline at the
+  caret, underlined, with the caret inside it, as `UltraCanvasRichTextEdit`
+  already did; before, the text being composed appeared in the input method's
+  own floating window, away from the text it was meant for. The single-line
+  field scrolls to keep the composition's caret in view and the text area lays
+  it out in the caret's line. The composition is never part of the text:
+  `GetText()`, `onTextChanged`, validation and the undo stack see only the
+  committed result, which arrives as typing; an empty composition, losing the
+  focus or turning the widget read-only ends it, and composing over a
+  selection replaces the selection as typing would. `GetCompositionText()`
+  returns it. Read-only fields and areas, display-only and hex-mode areas and
+  password fields keep the input method's own window - a password field
+  because a masked composition cannot be read and an unmasked one would show
+  the secret.
+
 #### 2026-10-14 *0.9.287*
 - **The demo's bitmap pages build when the sample cannot be read.** The
   page asked PixelFX for the sample's properties, and that call throws when
