@@ -66,9 +66,15 @@ jobs:
             threads: 1
             configure: -DCMAKE_BUILD_TYPE=Release "-DUC_WASM_FONTS=Ubuntu-R.ttf;Ubuntu-B.ttf;Ubuntu-RI.ttf;Ubuntu-BI.ttf"
             experimental: true
+          # Without libvips as well: it runs every image on a worker thread,
+          # which a program built without -pthread cannot start (run 23 ended
+          # every page on GLib's "error 'Not supported' during
+          # 'pthread_create'"), so the library's CMake forces it off for a
+          # single-threaded build; named here so the smoke step's page list
+          # and the sizes table read right.
           - variant: single-thread
             threads: 0
-            configure: -DCMAKE_BUILD_TYPE=Release -DULTRACANVAS_WASM_THREADS=OFF
+            configure: -DCMAKE_BUILD_TYPE=Release -DULTRACANVAS_WASM_THREADS=OFF -DULTRACANVAS_ENABLE_VIPS=OFF
             experimental: true
     env:
       # One sysroot per thread setting: objects built with -pthread do not

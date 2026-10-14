@@ -60,13 +60,20 @@ application-facing view of the platform, is in
 The REQUIRED pkg-config dependencies (cairo + pixman, pango + pangocairo,
 fontconfig, freetype, harfbuzz, glib, tinyxml2, libvips + vips-cpp) do not
 ship as Emscripten ports. `build-wasm-sysroot.sh` cross-compiles all of them
-(plus zlib, libpng, expat, libffi, pcre2) into a static sysroot with
+(plus zlib, libpng, libjpeg-turbo, libtiff, libwebp, expat, libffi, pcre2)
+into a static sysroot with
 `.pc` files, following [kleisauke/wasm-vips](https://github.com/kleisauke/wasm-vips)
 where that project builds the same dependency — including its pre-patched
 glib and libvips branches. pango gets a small local patch
 (`patches/pango-1.52-wasm-function-pointers.patch`) fixing one-argument
 callbacks cast to `GInterfaceInitFunc`/`GFunc`: native ABIs tolerate the
 arity mismatch, wasm's strict indirect-call signature checking traps on it.
+A second pango patch (`patches/pango-1.52-wasm-no-threads.patch`) runs
+fontconfig's work (FcInit, matching, sorting) on the caller's thread when
+the build has no `-pthread`: pango otherwise hands it to a worker it starts
+with `g_thread_new`, and GLib aborts on the `pthread_create` a program
+without threads cannot make, at the first text drawn. The threaded build
+keeps its worker.
 glib gets one of the same kind (`patches/glib-2.89-wasm-free-full-casts.patch`):
 `g_slist_free_full`, `g_list_free_full`, `g_queue_free_full` and
 `g_queue_clear_full` called the `GDestroyNotify` through the two-argument
@@ -86,7 +93,12 @@ final link. `WASM_THREADS=0 ./build-wasm-sysroot.sh <other-dir>` builds a
 sysroot without `-pthread` for a single-threaded application
 (`-DULTRACANVAS_WASM_THREADS=OFF` on the library): no `SharedArrayBuffer`,
 so no isolation headers on the serving host, and no `std::thread` at run
-time. The two kinds never share a directory.
+time. It is also a build without libvips, which the library's CMake forces
+(`ULTRACANVAS_ENABLE_VIPS=OFF`): libvips runs every image on a worker
+thread, a program without `-pthread` cannot start one, and GLib aborts on
+the refused `pthread_create` at the first text. Such a program reads PNG
+through cairo's own reader and SVG through the Vector plugin, nothing
+else. The two kinds of sysroot never share a directory.
 
 ### 2. The library / an application
 
@@ -251,7 +263,9 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
   HEIC / AVIF (libheif with dav1d or aom is a build of its own and megabytes
   of download) and no BMP (ImageMagick). The demo's bitmap pages say so in
   place of the picture; an application gets "format not supported" from
-  `UCImage`.
+  `UCImage`. A build without libvips (the `no-vips` and `single-thread`
+  variants) reads PNG through cairo's own reader and SVG through the Vector
+  plugin, nothing else.
 - **SVG needs the Vector plugin registered**: the sysroot's libvips has no
   SVG loader (librsvg / resvg are not built), so `UCImage` reads an .svg
   through the vector preview seam the Vector plugin installs
