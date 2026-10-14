@@ -69,7 +69,10 @@
   the connection log's *Add drive* session ends with *The sign-in was
   cancelled* and does not count as a failure. Closing UltraFiler's window
   does the same for a sign-in still running, and waits up to two seconds
-  for it to end.
+  for it to end. A sign-in that outlasts that - one stuck waiting on a
+  server - no longer uses the drive list and the credential store after the
+  window has freed them: the sign-in holds them until it ends
+  (`CloudService` shared with the dialog, see the framework changelog).
 - **Shorter requests on the status line.** While a cloud drive works, the
   status line showed each request's whole address, query and all. It now
   shows the method, the server and the end of the path - *Request: PROPFIND

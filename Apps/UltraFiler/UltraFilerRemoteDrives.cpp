@@ -40,13 +40,20 @@ namespace fs = std::filesystem;
 
 struct UltraFilerRemoteDrives::Impl {
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
-    UltraCloud::AccountStore accounts;
+    // Shared rather than owned: the service keeps the account store and the
+    // secret store alive, and the add-drive dialog's sign-in thread keeps the
+    // service alive - a browser sign-in can still be ending after the window
+    // that started it has closed and this object is gone.
+    std::shared_ptr<UltraCloud::AccountStore> accounts =
+            std::make_shared<UltraCloud::AccountStore>();
     // UltraFiler's own vault: ultrafiler.vault + device.key under the config
     // directory, unlocked without a prompt (UltraVault::DeviceKeyVault). The
-    // secret store writes into it under "cloud.<accountId>.*".
+    // secret store writes into it under "cloud.<accountId>.*" - through
+    // UltraVault's process-wide store, which this object only opens, so the
+    // secret store does not depend on it staying.
     UltraVault::DeviceKeyVault vault;
-    std::unique_ptr<UltraCloud::ISecretStore> secrets;
-    std::unique_ptr<UltraCloud::CloudService> service;
+    std::shared_ptr<UltraCloud::ISecretStore> secrets;
+    std::shared_ptr<UltraCloud::CloudService> service;
     bool opened = false;
 
     // Opens the account store, the vault and the secret store once. The
@@ -86,7 +93,7 @@ struct UltraFilerRemoteDrives::Impl {
             return false;
         }
         const UltraCloud::Result r =
-                accounts.Open("ultrafiler-cloud", dir + "/remote-drives.db");
+                accounts->Open("ultrafiler-cloud", dir + "/remote-drives.db");
         if (!r.IsOk()) {
             error = "cannot open the drive list: " + r.message;
             return false;
@@ -101,11 +108,11 @@ struct UltraFilerRemoteDrives::Impl {
                             vault.GetLastUnlockStatus());
             return false;
         }
-        secrets = std::make_unique<UltraCloud::VaultSecretStore>();
+        secrets = std::make_shared<UltraCloud::VaultSecretStore>();
         std::vector<UltraCloud::Account> known;
-        accounts.List(known);
+        accounts->List(known);
         UltraCloud::MigrateLegacyFileSecrets(dir + "/remote-drive-secrets", known, *secrets);
-        service = std::make_unique<UltraCloud::CloudService>(accounts, *secrets);
+        service = std::make_shared<UltraCloud::CloudService>(accounts, secrets);
         opened = true;
         return true;
     }
@@ -236,7 +243,7 @@ bool UltraFilerRemoteDrives::Reload(std::string& error) {
     if (!impl_->Open(error)) return false;
 
     std::vector<UltraCloud::Account> accounts;
-    const UltraCloud::Result r = impl_->accounts.List(accounts);
+    const UltraCloud::Result r = impl_->accounts->List(accounts);
     if (!r.IsOk()) {
         error = "cannot read the drive list: " + r.message;
         return false;
@@ -1104,11 +1111,11 @@ void UltraFilerRemoteDrives::SaveDiskCache() {
     if (ec) fs::remove(UltraCanvas::PathFromUtf8(temp), ec);
 }
 
-UltraCloud::CloudService* UltraFilerRemoteDrives::Service() {
+std::shared_ptr<UltraCloud::CloudService> UltraFilerRemoteDrives::Service() {
 #ifndef ULTRAFILER_HAS_ULTRACLOUD
     return nullptr;
 #else
-    return impl_->service.get();
+    return impl_->service;
 #endif
 }
 
@@ -1124,9 +1131,11 @@ void UltraFilerRemoteDrives::Stop() {
     if (worker_.joinable()) worker_.join();
     // A sign-in from the add-drive dialog still running is called off - the
     // wait for the browser ends within a fraction of a second - and given a
-    // moment to end: it runs on the service this object owns. One stuck in a
-    // request to a server that does not answer is not waited out; called
-    // off, it stores nothing when that request ends.
+    // moment to end, so it is over before the application it reports to goes
+    // away with the window. One stuck in a request to a server that does not
+    // answer is not waited out: it holds the shared service, and through it
+    // the stores, so nothing it uses is freed under it, and called off it
+    // stores nothing when that request ends.
     signIns_->stopping.store(true);
     {
         std::unique_lock<std::mutex> lk(signIns_->mutex);

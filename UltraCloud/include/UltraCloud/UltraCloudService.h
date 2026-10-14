@@ -1,8 +1,9 @@
 // UltraCloud/include/UltraCloud/UltraCloudService.h
 // The app-facing facade: accounts + secrets + providers behind one object.
 // "Share this file through my default cloud account" is one call.
-// Version: 0.4.0 - an access token the service rejects is renewed and the
-//                  call made once more; a cancelled sign-in stores nothing
+// Version: 0.5.0 - a service can own its stores (the shared_ptr
+//                  constructor), so it can be shared with work that outlives
+//                  whoever made it
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -20,8 +21,19 @@ namespace UltraCloud {
 
 class CloudService {
 public:
+    // A service over stores the caller keeps: they must outlive it, and so
+    // must the service outlive every call made on it.
     CloudService(AccountStore& accounts, ISecretStore& secrets)
         : accounts_(accounts), secrets_(secrets) {}
+
+    // A service that keeps its stores alive for as long as it lives itself.
+    // Made with std::make_shared, it can be handed to work that may outlive
+    // whoever made it - the add-account dialog's sign-in thread, which waits
+    // minutes on the browser, holds it until the sign-in has ended
+    // (ShowAddAccountDialog's shared_ptr form).
+    CloudService(std::shared_ptr<AccountStore> accounts, std::shared_ptr<ISecretStore> secrets)
+        : ownedAccounts_(std::move(accounts)), ownedSecrets_(std::move(secrets)),
+          accounts_(*ownedAccounts_), secrets_(*ownedSecrets_) {}
 
     AccountStore& Accounts() { return accounts_; }
     ISecretStore& Secrets()  { return secrets_; }
@@ -99,6 +111,10 @@ private:
                       Credentials& credentials, ICloudProvider& provider,
                       const std::string& why);
 
+    // Set by the shared_ptr constructor only. Declared before the references
+    // below, which are bound to what they hold.
+    std::shared_ptr<AccountStore> ownedAccounts_;
+    std::shared_ptr<ISecretStore> ownedSecrets_;
     AccountStore& accounts_;
     ISecretStore& secrets_;
 };

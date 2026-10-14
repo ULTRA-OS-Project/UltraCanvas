@@ -2355,7 +2355,7 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
         UltraCanvasAlert::Error(error, "Add a drive", nullptr, window.get());
         return;
     }
-    UltraCloud::CloudService* service = remoteDrives->Service();
+    std::shared_ptr<UltraCloud::CloudService> service = remoteDrives->Service();
     if (!service) {
         UltraCanvasAlert::Error("The drive list is not available.",
                                 "Add a drive", nullptr, window.get());
@@ -2375,8 +2375,10 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
     };
     // Closing the window calls a sign-in still waiting on the browser off.
     watch.cancelled = [signInLog]() { return signInLog->Cancelled(); };
+    // The shared form: the dialog's sign-in thread holds the service until
+    // the sign-in ends, which can be after this window has closed.
     UltraCloud::ShowAddAccountDialog(
-            window.get(), *service,
+            window.get(), service,
             [this](const UltraCloud::Account&) {
                 // Stored: re-read the list so the new row appears, and drop
                 // the listing cache in case an account was replaced under the

@@ -1,6 +1,6 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
-// Version: 0.6.0 - AddAccountWatch around each sign-in; Cancel and closing the
-//                  dialog call a running sign-in off
+// Version: 0.7.0 - the shared_ptr form: the sign-in thread holds the service
+//                  until it ends
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
@@ -65,6 +65,18 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
                           std::function<void(const Account&)> onAdded,
                           std::function<bool(const std::string& providerId)> providerFilter,
                           const std::string& title, AddAccountWatch watch) {
+    // Not owned: an aliasing pointer with no owner, so the caller's promise
+    // to keep the service alive is what keeps it alive, as it always was.
+    std::shared_ptr<CloudService> unowned(std::shared_ptr<CloudService>(), &service);
+    ShowAddAccountDialog(parent, std::move(unowned), std::move(onAdded),
+                         std::move(providerFilter), title, std::move(watch));
+}
+
+void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService> service,
+                          std::function<void(const Account&)> onAdded,
+                          std::function<bool(const std::string& providerId)> providerFilter,
+                          const std::string& title, AddAccountWatch watch) {
+    if (!service) return;
     DialogConfig config;
     config.title      = title.empty() ? "Add cloud account" : title;
     config.width      = 520;
@@ -227,7 +239,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
     // given up on.
     auto gaveUp = std::make_shared<std::atomic<bool>>(false);
 
-    addBtn->onClick = [=, &service]() {
+    addBtn->onClick = [=]() {
         int idx = provider->GetSelectedIndex();
         if (idx < 0 || idx >= static_cast<int>(providers.size())) return;
         Account a;
@@ -259,7 +271,10 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
         // open the consent page in the system browser and wait for the
         // loopback redirect.
         const bool oauth = caps.needsOAuth;
-        std::thread([weak, dlg, added, addBtn, status, a, c, oauth, &service, watch,
+        // The thread holds the service until the sign-in has ended: a sign-in
+        // can wait minutes on the browser, and the dialog - or the window that
+        // opened it - can be gone long before.
+        std::thread([weak, dlg, added, addBtn, status, a, c, oauth, service, watch,
                      gaveUp]() mutable {
             std::function<bool()> previousCancel = SetThreadSignInCancel(
                     [gaveUp, hostCancelled = watch.cancelled]() {
@@ -267,8 +282,8 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
                     });
             if (watch.onBegin) watch.onBegin(a);
             Result r = oauth
-                ? service.SignInAccount(a, [](const std::string& url) { UltraCanvas::OpenURL(url); })
-                : service.AddAccount(a, c, /*verify=*/true);
+                ? service->SignInAccount(a, [](const std::string& url) { UltraCanvas::OpenURL(url); })
+                : service->AddAccount(a, c, /*verify=*/true);
             if (watch.onEnd) watch.onEnd(a, r);
             SetThreadSignInCancel(std::move(previousCancel));
             auto* app = UltraCanvasApplicationBase::GetCurrent();

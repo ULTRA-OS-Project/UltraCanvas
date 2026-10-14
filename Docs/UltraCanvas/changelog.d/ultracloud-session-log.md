@@ -95,3 +95,17 @@
   refused renewal, a token renewed a moment ago not renewed again, a
   cancelled sign-in storing no account and a browser sign-in called off
   (`test_log.cpp`).
+- **A `CloudService` can own its stores, and the add-account dialog's
+  sign-in holds it.** `CloudService` only referred to its account store and
+  secret store, and the dialog's sign-in thread only referred to the
+  service - so a sign-in still running when the application closed the
+  window that owned them (a browser sign-in waits up to five minutes) went
+  on using freed objects. A new constructor,
+  `CloudService(std::shared_ptr<AccountStore>, std::shared_ptr<ISecretStore>)`,
+  keeps the stores alive for as long as the service lives, and
+  `ShowAddAccountDialog` has a form taking `std::shared_ptr<CloudService>`
+  whose sign-in thread holds the service until the sign-in has ended. The
+  reference forms stay, with the caller keeping the service alive as
+  before. `UltraCloudTests`: a thread holding a shared service stores an
+  account and reads it back after every other handle is gone, and the
+  stores go with the last holder (clean under valgrind).

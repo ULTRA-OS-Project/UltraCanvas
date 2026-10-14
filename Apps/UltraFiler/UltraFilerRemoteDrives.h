@@ -183,7 +183,9 @@ struct RemoteSignInTracker {
 // Closing the window calls a running sign-in off (Cancelled, which the
 // dialog's watch asks) - a browser sign-in nobody will finish does not hold
 // its thread for minutes, and stores no account - and Stop() waits a moment
-// for it to end, since it runs on the service the drives own.
+// for it to end. What it runs on is its own: the dialog's thread holds the
+// shared service (Service()), and through it the account and secret stores,
+// so a sign-in that outlasts the wait uses nothing that is gone.
 class RemoteSignInLog {
 public:
     void Begin(const std::string& providerId, const std::string& driveName,
@@ -374,8 +376,10 @@ public:
 
     // The service the shared add-account dialog stores into. Null until
     // Reload() has opened the account store, and always null in a build
-    // without UltraCloud.
-    UltraCloud::CloudService* Service();
+    // without UltraCloud. Shared: it keeps its stores alive, so the dialog's
+    // sign-in thread can hold it for as long as it runs, after this object
+    // is gone if need be.
+    std::shared_ptr<UltraCloud::CloudService> Service();
 
     // Joins the worker, calls off a sign-in the add-drive dialog is still
     // running and waits up to two seconds for it to end (RemoteSignInLog),
