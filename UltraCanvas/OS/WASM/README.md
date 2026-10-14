@@ -228,8 +228,10 @@ the port's time to first paint on that machine. The framework's
 `debugOutput` stream also lands in that console (stderr) in every build
 configuration, so a page that fails to build says why there
 (`Error creating example for <page>: ...`); a page can turn it off with
-`Module.ENV.ULTRACANVAS_DEBUG_LOG = "0"` in a `preRun` hook. The last three variants
-are measurements that may fail to build; they never fail the run.
+`Module.ENV.ULTRACANVAS_DEBUG_LOG = "0"` in a `preRun` hook. `no-vips` and
+`four-fonts` are measurements that may fail to build; they never fail the
+run. `baseline`, `min-size` and `single-thread` are required: the last is
+the build a static host without cross-origin isolation headers must serve.
 
 After the upload, each variant's job opens its pages in the runner's Google
 Chrome, headless, with `demo/smoke.mjs`: every page must present a frame
