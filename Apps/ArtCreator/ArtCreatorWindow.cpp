@@ -2,6 +2,13 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.8.0 - icon mode: File > New Icon (16 to 256 px), an Icon panel with the
+//                 icon size, a pixel grid, pointer snapping that puts lines of odd
+//                 pixel widths on pixel centres, Arrange > Snap to Pixels, the page
+//                 drawn at the icon's size with its soft pixels, marked on the canvas
+//                 too; Export writes the icon at its size; Object > line widths in
+//                 pixels (1 to 4 px: icon pixels in icon mode); the tool palette in
+//                 groups with fold-out bars, as UltraPaint's
 // Version: 1.7.0 - BringForward: restores and raises the window
 // Version: 1.6.0 - Export offers FileLoader's types (AddVectorDocumentSaveTypes):
 //                 every vector writer and every bitmap type this build writes -
@@ -243,21 +250,25 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
 
     // ----- canvas -> tool -----
-    canvas->onToolPress = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnPress(toolContext, e); };
+    // In icon mode the pointer goes to the icon's pixel grid first (IconEvent).
+    canvas->onToolPress = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnPress(toolContext, IconEvent(e)); };
     canvas->onToolDrag = [this](const VectorPointerEvent& e) {
         pointerX = e.doc.x; pointerY = e.doc.y; pointerInside = true;
-        if (auto* t = ActiveTool()) t->OnDrag(toolContext, e);
+        if (auto* t = ActiveTool()) t->OnDrag(toolContext, IconEvent(e));
         UpdateStatus();
     };
-    canvas->onToolRelease = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnRelease(toolContext, e); };
+    canvas->onToolRelease = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnRelease(toolContext, IconEvent(e)); };
     canvas->onToolHover = [this](const VectorPointerEvent& e) {
         pointerX = e.doc.x; pointerY = e.doc.y; pointerInside = true;
-        if (auto* t = ActiveTool()) t->OnHover(toolContext, e);
+        if (auto* t = ActiveTool()) t->OnHover(toolContext, IconEvent(e));
         UpdateStatus();
     };
-    canvas->onToolDoubleClick = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnDoubleClick(toolContext, e); };
+    canvas->onToolDoubleClick = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnDoubleClick(toolContext, IconEvent(e)); };
     canvas->onToolKey = [this](const UCEvent& ev) { auto* t = ActiveTool(); return t && t->OnKey(toolContext, ev); };
-    canvas->onDrawOverlay = [this](IRenderContext* ctx, const VectorViewTransform& v) { if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v); };
+    canvas->onDrawOverlay = [this](IRenderContext* ctx, const VectorViewTransform& v) {
+        DrawIconOverlay(ctx, v);
+        if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
+    };
     canvas->onViewChanged = [this]() { UpdateStatus(); };
     canvas->onFilesDropped = [this](const std::vector<std::string>& files) {
         if (files.empty()) return;
@@ -347,6 +358,12 @@ void ArtCreatorWindow::BuildMenuBar() {
         .AddSubmenu("File", {
             M::ActionWithShortcut("New...", "Ctrl+N", MenuIconPath("new.svg"), [this]() { CmdNew(); }),
             M::ActionWithShortcut("New Window", "Ctrl+Alt+N", MenuIconPath("new-window.svg"), [this]() { CmdNewWindow(); }),
+            M::Submenu("New Icon", MenuIconPath("new-icon.svg"), [this]() {
+                std::vector<MenuItemData> sizes;
+                for (int n : ArtIconSizes())
+                    sizes.push_back(M::Action(std::to_string(n) + " x " + std::to_string(n) + " px", [this, n]() { CmdNewIcon(n); }));
+                return sizes;
+            }),
             M::ActionWithShortcut("Open...", "Ctrl+O", MenuIconPath("open.svg"), [this]() { CmdOpen(); }),
             M::Separator(),
             M::ActionWithShortcut("Save", "Ctrl+S", MenuIconPath("save.svg"), [this]() { CmdSave(); }),
@@ -409,18 +426,24 @@ void ArtCreatorWindow::BuildMenuBar() {
             M::Action("Remove ClipView, Blend or Mould", MenuIconPath("release.svg"), [this]() { CmdRemoveContainer(); }),
             M::Separator(),
             M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+S", MenuIconPath("shape-editor.svg"), [this]() { CmdConvertToPath(); }),
+            M::ActionWithShortcut("Snap to Pixels", "Ctrl+Shift+P", MenuIconPath("snap-pixels.svg"), [this]() { CmdSnapToPixels(); }),
         })
         .AddSubmenu("Object", {
             M::Action("No Fill", MenuIconPath("no-fill.svg"), [this]() { CmdRemoveFill(); }),
             M::Action("No Line", MenuIconPath("no-line.svg"), [this]() { CmdRemoveLine(); }),
             M::Separator(),
-            M::Header("Line width"),
+            M::Header("Line width in points"),
             M::Action("Hairline (0.25 pt)", MenuIconPath("line-hairline.svg"), [this]() { CmdLineWidth(0.25f); }),
             M::Action("0.5 pt", MenuIconPath("line-05.svg"), [this]() { CmdLineWidth(0.5f); }),
             M::Action("1 pt", MenuIconPath("line-1.svg"), [this]() { CmdLineWidth(1.0f); }),
             M::Action("2 pt", MenuIconPath("line-2.svg"), [this]() { CmdLineWidth(2.0f); }),
             M::Action("4 pt", MenuIconPath("line-4.svg"), [this]() { CmdLineWidth(4.0f); }),
             M::Action("8 pt", MenuIconPath("line-8.svg"), [this]() { CmdLineWidth(8.0f); }),
+            M::Header("Line width in pixels"),
+            M::Action("1 px", MenuIconPath("line-1.svg"), [this]() { CmdLineWidthPixels(1); }),
+            M::Action("2 px", MenuIconPath("line-2.svg"), [this]() { CmdLineWidthPixels(2); }),
+            M::Action("3 px", MenuIconPath("line-3.svg"), [this]() { CmdLineWidthPixels(3); }),
+            M::Action("4 px", MenuIconPath("line-4.svg"), [this]() { CmdLineWidthPixels(4); }),
         })
         .AddSubmenu("Layer", {
             M::ActionWithShortcut("New Layer", "Ctrl+Shift+N", MenuIconPath("layer-add.svg"), [this]() { CmdLayerAdd(); }),
@@ -449,6 +472,17 @@ void ArtCreatorWindow::BuildMenuBar() {
             WithIcon(M::Checkbox("Snap to Objects", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toObjects = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-objects.svg")),
             WithIcon(M::Checkbox("Snap to Page", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toPage = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-page.svg")),
             M::Action("Clear Guides", MenuIconPath("clear-guides.svg"), [this]() { canvas->ClearGuides(); }),
+            M::Separator(),
+            M::Submenu("Icon Size", MenuIconPath("new-icon.svg"), [this]() {
+                std::vector<MenuItemData> items;
+                items.push_back(M::Action(iconSize > 0 ? "Off" : "Off (now)", [this]() { SetIconSize(0); }));
+                for (int n : ArtIconSizes()) {
+                    std::string label = std::to_string(n) + " x " + std::to_string(n) + " px";
+                    if (n == iconSize) label += " (now)";
+                    items.push_back(M::Action(label, [this, n]() { SetIconSize(n); }));
+                }
+                return items;
+            }),
         })
         .AddSubmenu("Help", {
             M::Action("About ArtCreator", MenuIconPath("about.svg"), [this]() { CmdAbout(); }),
@@ -529,6 +563,38 @@ void ArtCreatorWindow::SetDisplayQuality(int level) {
     if (canvas) canvas->SetDisplayQuality(quality);
 }
 
+namespace {
+    // The palette's groups, top to bottom, as UltraPaint's: tools of a kind
+    // share one slot, the group's main tool first. The slot shows the tool
+    // last picked from its group, and resting the pointer on it folds out a
+    // bar with the whole group. A group of one tool is a plain button. A
+    // tool missing here still gets a slot of its own, after these, so a tool
+    // added to CreateArtTools() never goes missing.
+    struct PaletteGroup {
+        const char* id;
+        std::vector<ArtToolId> tools;
+    };
+    const std::vector<PaletteGroup>& PaletteGroups() {
+        using T = ArtToolId;
+        static const std::vector<PaletteGroup> groups = {
+            { "select",  { T::Selector, T::ShapeEditor } },
+            { "draw",    { T::Pen, T::Freehand, T::Line } },
+            { "shapes",  { T::Rectangle, T::Ellipse, T::QuickShape } },
+            { "text",    { T::Text } },
+            { "fill",    { T::Fill, T::Transparency } },
+            { "effects", { T::Shadow, T::Feather, T::Contour, T::Bevel } },   // drawn around a shape
+            { "combine", { T::Blend, T::Mould } },                             // shapes into new ones
+            { "view",    { T::Zoom, T::Push } },
+        };
+        return groups;
+    }
+
+    // A tool's id among the palette's group items.
+    std::string ToolItemId(ArtToolId id) {
+        return "tool-" + std::to_string(static_cast<int>(id));
+    }
+}
+
 void ArtCreatorWindow::BuildToolPalette() {
     palette = std::make_shared<UltraCanvasToolbar>("ac-palette", 0, 0, kPaletteWidth, 0);
     palette->SetOrientation(ToolbarOrientation::Vertical);
@@ -541,19 +607,48 @@ void ArtCreatorWindow::BuildToolPalette() {
     // squeezing every icon into a button too small for it.
     palette->SetOverflowMode(ToolbarOverflowMode::Scroll);
     palette->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    toolButtons.clear();
+
+    auto findTool = [this](ArtToolId id) -> const ArtTool* {
+        for (const auto& t : tools) if (t->id == id) return t.get();
+        return nullptr;
+    };
+    auto itemOf = [this](const ArtTool& t) {
+        ToolGroupItem item;
+        item.id = ToolItemId(t.id);
+        item.iconPath = ToolIconPath(t.iconFile);
+        item.tooltip = t.name;
+        if (t.shortcutKey) item.tooltip += std::string(" (") + t.shortcutKey + ")";
+        return item;
+    };
+
+    std::vector<std::pair<std::string, std::vector<ToolGroupItem>>> slots;
+    std::vector<ArtToolId> placed;
+    for (const auto& g : PaletteGroups()) {
+        std::vector<ToolGroupItem> items;
+        for (ArtToolId id : g.tools) {
+            if (const ArtTool* t = findTool(id)) { items.push_back(itemOf(*t)); placed.push_back(id); }
+        }
+        if (!items.empty()) slots.emplace_back(g.id, std::move(items));
+    }
     for (const auto& t : tools) {
-        const ArtToolId id = t->id;
-        auto b = palette->AddToggleButton("ac-tool-" + std::to_string(static_cast<int>(id)), "", ToolIconPath(t->iconFile),
-                                          [this, id](bool) { SelectTool(id); });
-        std::string tip = t->name;
-        if (t->shortcutKey) tip += std::string(" (") + t->shortcutKey + ")";
-        b->SetTooltip(tip);
+        if (std::find(placed.begin(), placed.end(), t->id) != placed.end()) continue;
+        slots.emplace_back(ToolItemId(t->id), std::vector<ToolGroupItem>{ itemOf(*t) });
+    }
+
+    toolSlots.clear();
+    for (auto& [groupId, items] : slots) {
+        auto b = palette->AddToolGroup("ac-tools-" + groupId, items, [this](const std::string& itemId) {
+            for (const auto& t : tools) {
+                if (ToolItemId(t->id) == itemId) { SelectTool(t->id); return; }
+            }
+        });
+        b->SetSlotShowsLastPicked(true);
         // The palette's icons are drawn on a 28 px grid (media/icons/
         // artcreator/28) with 2 px strokes on whole units: shown at 28 px
         // they land on whole pixels and stay sharp. Shown at any other size
         // every line falls between two pixels and blurs, as the 24 px icons
-        // did at 22 px.
+        // did at 22 px. The fold-out bar's buttons take the slot's size, icon
+        // size and style.
         b->SetIconSize(kToolIcon, kToolIcon);
         b->SetElementSize(Size2Df(kToolButton, kToolButton));
         // Flat: no box around a tool; a soft grey under the pointer and the
@@ -565,7 +660,7 @@ void ArtCreatorWindow::BuildToolPalette() {
         flat.hoverColor = Color(0, 0, 0, 18);
         flat.pressedColor = Color(0, 103, 192, 46);
         b->SetStyle(flat);
-        toolButtons.push_back(b);
+        toolSlots.push_back(b);
     }
     body->AddChild(palette);
 }
@@ -576,6 +671,9 @@ void ArtCreatorWindow::BuildRightPanel() {
     rightPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     rightPanel->SetPadding(6);
     rightPanel->SetBackgroundColor(Color(244, 244, 246, 255));
+
+    // ----- icon: on top, and only in icon mode - the icon at its size -----
+    BuildIconPanel();
 
     // ----- colour: foreground = fill, background = line -----
     rightPanel->AddChild(PanelTitle("ac-color-title", "Colour (fill / line)"));
@@ -720,6 +818,7 @@ void ArtCreatorWindow::InstallShortcuts() {
                 case UCKeys::B: CmdReorder(e.shift ? ZOrderMove::Backward : ZOrderMove::ToBack); return true;
                 case UCKeys::Key0: canvas->ZoomToPage(); return true;
                 case UCKeys::Key1: canvas->ZoomToActual(); return true;
+                case UCKeys::P: if (!e.shift) break; CmdSnapToPixels(); return true;
                 default: break;
             }
             return false;
@@ -749,6 +848,7 @@ void ArtCreatorWindow::NewDrawing(const ArtCreatorPageResult& page) {
     EnsureIds(*doc);
     SetDocument(doc, "");
     canvas->SetRulerUnit(page.PointsPerUnit(), ArtCreatorPageResult::UnitSymbol(page.unit));
+    SetIconSize(0);
 }
 
 void ArtCreatorWindow::SetDocument(std::shared_ptr<VectorDocument> doc, const std::string& path) {
@@ -799,6 +899,13 @@ bool ArtCreatorWindow::OpenFile(const std::string& path) {
     EnsureIds(*doc);
     SetDocument(doc, path);
     canvas->SetRulerUnit(lastPage.PointsPerUnit(), ArtCreatorPageResult::UnitSymbol(lastPage.unit));
+    // A square page of one of the icon sizes - 24 x 24, the way icons are
+    // saved as SVG - opens in icon mode at that size.
+    int openedIcon = 0;
+    const Rect2Dd vb = document->ViewBox;
+    for (int n : ArtIconSizes())
+        if (std::fabs(vb.width - n) < 1e-6 && std::fabs(vb.height - n) < 1e-6) openedIcon = n;
+    SetIconSize(openedIcon);
     if (statusHint) {
         std::string s = "Opened " + FileNameOf(path);
         if (!warnings.empty()) s += "  (" + std::to_string(warnings.size()) + " reader note" + (warnings.size() == 1 ? "" : "s") + ": " + warnings.front() + ")";
@@ -856,6 +963,7 @@ void ArtCreatorWindow::OnDocumentChanged() {
     UpdateUndoButtons();
     UpdateTitle();
     UpdateStatus();
+    RefreshIconPreview();
     if (auto* t = ActiveTool()) t->OnSelectionChanged(toolContext);
 }
 
@@ -876,8 +984,11 @@ void ArtCreatorWindow::UpdateTitle() {
 void ArtCreatorWindow::UpdateStatus() {
     if (!document || !statusPos) return;
     char buf[160];
-    const double k = lastPage.PointsPerUnit();
-    if (pointerInside) std::snprintf(buf, sizeof(buf), "%.1f, %.1f %s", pointerX / k, pointerY / k, ArtCreatorPageResult::UnitSymbol(lastPage.unit));
+    // In icon mode positions and sizes are in the icon's pixels.
+    const bool icon = iconSize > 0 && IconPixel() > 0;
+    const double k = icon ? IconPixel() : lastPage.PointsPerUnit();
+    const char* unit = icon ? "px" : ArtCreatorPageResult::UnitSymbol(lastPage.unit);
+    if (pointerInside) std::snprintf(buf, sizeof(buf), "%.1f, %.1f %s", pointerX / k, pointerY / k, unit);
     else std::snprintf(buf, sizeof(buf), "--, --");
     statusPos->SetText(buf);
     std::snprintf(buf, sizeof(buf), "%.0f %%", canvas->GetZoom() * 100.0);
@@ -885,7 +996,7 @@ void ArtCreatorWindow::UpdateStatus() {
     if (selection->Empty()) std::snprintf(buf, sizeof(buf), "Nothing selected");
     else if (selection->Count() == 1) {
         const Rect2Dd b = selection->Bounds();
-        std::snprintf(buf, sizeof(buf), "1 %s  %.1f x %.1f %s", ElementKindName(*selection->First()), b.width / k, b.height / k, ArtCreatorPageResult::UnitSymbol(lastPage.unit));
+        std::snprintf(buf, sizeof(buf), "1 %s  %.1f x %.1f %s", ElementKindName(*selection->First()), b.width / k, b.height / k, unit);
     } else std::snprintf(buf, sizeof(buf), "%zu objects selected", selection->Count());
     statusSelection->SetText(buf);
 }
@@ -983,12 +1094,15 @@ void ArtCreatorWindow::CmdSaveAs() {
 void ArtCreatorWindow::CmdExport() {
     if (!document) return;
     FileDialogOptions opts;
-    std::string def = documentPath.empty() ? "untitled.pdf" : PathToUtf8(PathFromUtf8(documentPath).stem()) + ".pdf";
+    // An icon is exported as a picture at its size; a drawing as a PDF.
+    const std::string ext = iconSize > 0 ? ".png" : ".pdf";
+    std::string def = documentPath.empty() ? "untitled" + ext : PathToUtf8(PathFromUtf8(documentPath).stem()) + ext;
     opts.SetTitle("Export drawing");
     // FileLoader's types: every vector writer and every bitmap type this
     // build writes, and the page's size, so a bitmap type's Settings offer
     // any size - a drawing has no pixel size and is drawn sharp at any.
     UltraCanvasFileLoader::AddVectorDocumentSaveTypes(opts, *document);
+    if (iconSize > 0) opts.SetDrawingSize(iconSize, IconRasterHeight());
     opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(def)
         .SetParentWindow(window.get());
@@ -996,7 +1110,9 @@ void ArtCreatorWindow::CmdExport() {
                                                        const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
-        SaveToPath(path, size);
+        FileSaveImageSize at = size;
+        if (iconSize > 0 && at.IsOriginal()) { at.width = iconSize; at.height = IconRasterHeight(); }
+        SaveToPath(path, at);
     });
 }
 
@@ -1016,6 +1132,7 @@ void ArtCreatorWindow::CmdDocumentSetup() {
             document->ViewBox = Rect2Dd{0, 0, w, h};
         });
         canvas->SetRulerUnit(r.PointsPerUnit(), ArtCreatorPageResult::UnitSymbol(r.unit));
+        SetIconSize(iconSize);   // the pixel grid of the new page
         canvas->ZoomToPage();
     };
     ShowDialog(dlg);
@@ -1401,6 +1518,21 @@ void ArtCreatorWindow::CmdLineWidth(float width) {
     Reselect(ids);
 }
 
+// A line width in pixels: in icon mode the icon's own, so the line covers
+// whole rows of the pixels it is shown at; otherwise the page's 96 DPI pixel
+// (0.75 pt), the px of Document Setup.
+void ArtCreatorWindow::CmdLineWidthPixels(int pixels) {
+    const double pixel = IconPixel() > 0 ? IconPixel() : 72.0 / 96.0;
+    CmdLineWidth(static_cast<float>(pixels * pixel));
+    if (!statusHint) return;
+    std::string hint = "Line width " + std::to_string(pixels) + " px";
+    // A line that turns odd (or even) wants the other half of the grid.
+    if (IconPixel() > 0 && !selection->Empty())
+        hint += pixels % 2 ? " - on pixel centres it is sharp: Snap to Pixels (Ctrl+Shift+P) moves it there"
+                           : " - on pixel edges it is sharp: Snap to Pixels (Ctrl+Shift+P) moves it there";
+    statusHint->SetText(hint);
+}
+
 // ===========================================================================
 // LAYER COMMANDS
 // ===========================================================================
@@ -1453,9 +1585,10 @@ void ArtCreatorWindow::SelectTool(ArtToolId id) {
     if (auto* old = ActiveTool()) { if (old->id != id) old->Deactivate(toolContext); }
     activeTool = id;
     ArtTool* t = ActiveTool();
-    for (size_t i = 0; i < tools.size() && i < toolButtons.size(); ++i) {
-        const bool on = tools[i]->id == id;
-        if (toolButtons[i]->IsPressed() != on) toolButtons[i]->SetPressed(on);
+    // The slot of the tool's group shows it and is pressed; the others not.
+    for (const auto& slot : toolSlots) {
+        const bool on = slot->SetCurrentItem(ToolItemId(id));
+        if (slot->IsPressed() != on) slot->SetPressed(on);
     }
     if (!t) return;
     t->Activate(toolContext);
@@ -1690,6 +1823,250 @@ void ArtCreatorWindow::PlaceText(double x, double y, const ArtCreatorTextResult&
     const std::string id = text->Id;
     history.Record("Text", [&]() { if (auto layer = ActiveLayer()) layer->AddChild(text); });
     Reselect({id});
+}
+
+// ===========================================================================
+// ICON MODE
+// ===========================================================================
+
+void ArtCreatorWindow::CmdNewIcon(int pixels) {
+    auto go = [this, pixels]() {
+        // One document unit a pixel, as icons are saved: an SVG of
+        // width="24" height="24" viewBox="0 0 24 24".
+        auto doc = std::make_shared<VectorDocument>();
+        doc->Size = Size2Dd{static_cast<double>(pixels), static_cast<double>(pixels)};
+        doc->ViewBox = Rect2Dd{0, 0, static_cast<double>(pixels), static_cast<double>(pixels)};
+        doc->AddLayer("Layer 1");
+        EnsureIds(*doc);
+        SetDocument(doc, "");
+        SetIconSize(pixels);
+        canvas->ZoomToPage();
+        if (statusHint) statusHint->SetText("New " + std::to_string(pixels) + " px icon: draw on the pixel grid, the panel shows it at its size");
+    };
+    if (modified) ConfirmDiscard("Discard the unsaved changes and start a new icon?", go);
+    else go();
+}
+
+double ArtCreatorWindow::IconPixel() const {
+    if (iconSize <= 0 || !document || document->ViewBox.width <= 0) return 0;
+    return document->ViewBox.width / iconSize;
+}
+
+int ArtCreatorWindow::IconRasterHeight() const {
+    const double p = IconPixel();
+    if (p <= 0) return 0;
+    return std::max(1, static_cast<int>(std::lround(document->ViewBox.height / p)));
+}
+
+void ArtCreatorWindow::SetIconSize(int pixels) {
+    const bool wasOn = iconSize > 0;
+    iconSize = std::max(0, pixels);
+    if (iconSize > 0 && !wasOn) {
+        gridBeforeIcon = canvas->GetGrid();
+        snapBeforeIcon = canvas->GetSnapOptions();
+    }
+    const double p = IconPixel();
+    toolContext.iconPixel = p;
+    if (iconSize > 0 && p > 0) {
+        // Major lines every few pixels, and every pixel once the view is
+        // close enough for them to be told apart (the canvas shows minor
+        // lines from minPixelSpacing on).
+        const int major = iconSize <= 32 ? 4 : iconSize <= 96 ? 8 : 16;
+        VectorGridSpec grid = gridBeforeIcon;
+        grid.spacing = p * major;
+        grid.subdivisions = major;
+        grid.visible = iconGrid;
+        canvas->SetGrid(grid);
+        // The pixel grid is snapped to here (IconEvent), knowing the line
+        // width; the canvas's own grid snap would only know pixel edges.
+        VectorSnapOptions snap = snapBeforeIcon;
+        snap.toGrid = false;
+        canvas->SetSnapOptions(snap);
+        canvas->SetRulerUnit(p, "px");
+        // New lines a whole number of pixels wide.
+        const float whole = static_cast<float>(std::max(1.0, std::round(toolOptions.strokeWidth / p)) * p);
+        if (std::fabs(whole - toolOptions.strokeWidth) > 1e-4f) {
+            toolOptions.strokeWidth = whole;
+            RebuildLinePanel();
+        }
+    } else if (wasOn) {
+        canvas->SetGrid(gridBeforeIcon);
+        canvas->SetSnapOptions(snapBeforeIcon);
+        canvas->SetRulerUnit(lastPage.PointsPerUnit(), ArtCreatorPageResult::UnitSymbol(lastPage.unit));
+    }
+    if (iconSizeBox) {
+        int index = 0;
+        const auto& sizes = ArtIconSizes();
+        for (size_t i = 0; i < sizes.size(); ++i) if (sizes[i] == iconSize) index = static_cast<int>(i) + 1;
+        if (iconSizeBox->GetSelectedIndex() != index) iconSizeBox->SetSelectedIndex(index, false);
+    }
+    if (iconPanel) iconPanel->SetVisible(iconSize > 0);
+    RefreshIconPreview();
+    UpdateStatus();
+    canvas->Refresh();
+}
+
+bool ArtCreatorWindow::IconCentred() const {
+    const double p = IconPixel();
+    if (p <= 0) return false;
+    auto odd = [p](double width) { return (std::max(1L, std::lround(width / p)) % 2) == 1; };
+    if (activeTool == ArtToolId::Selector || activeTool == ArtToolId::ShapeEditor) {
+        // moving or reshaping what is there: the selection's line decides
+        for (const auto& e : selection->Elements())
+            if (e && e->Style.Stroke.has_value() && e->Style.Stroke->Width > 0) {
+                const double scale = std::sqrt(std::fabs(e->GetGlobalTransform().Determinant()));
+                return odd(e->Style.Stroke->Width * (scale > 0 ? scale : 1.0));
+            }
+        return false;
+    }
+    return toolOptions.shapeStroke && odd(toolOptions.strokeWidth);
+}
+
+VectorPointerEvent ArtCreatorWindow::IconEvent(const VectorPointerEvent& e) const {
+    const double p = IconPixel();
+    if (p <= 0 || !iconSnap) return e;
+    VectorPointerEvent out = e;
+    const bool centre = IconCentred();
+    out.snapped = Point2Dd(SnapToPixel(e.snapped.x, p, document->ViewBox.x, centre),
+                           SnapToPixel(e.snapped.y, p, document->ViewBox.y, centre));
+    return out;
+}
+
+void ArtCreatorWindow::CmdSnapToPixels() {
+    if (!document) return;
+    const double p = IconPixel();
+    if (p <= 0) {
+        if (statusHint) statusHint->SetText("Snap to Pixels works on an icon: choose its size under Icon in the panel");
+        return;
+    }
+    // The selection, or everything on the visible, unlocked layers.
+    std::vector<ElementPtr> targets = selection->Elements();
+    if (targets.empty())
+        for (const auto& layer : document->Layers) {
+            if (!layer || !layer->Visible || layer->Locked) continue;
+            for (const auto& c : layer->Children) if (c) targets.push_back(c);
+        }
+    if (targets.empty()) return;
+    const auto ids = selection->Ids();
+    PixelSnapResult result;
+    history.Record("Snap to Pixels", [&]() {
+        result = SnapToPixels(targets, p, Point2Dd(document->ViewBox.x, document->ViewBox.y));
+    });
+    Reselect(ids);
+    if (statusHint) {
+        std::string msg = "Snapped " + std::to_string(result.aligned) + (result.aligned == 1 ? " shape" : " shapes") +
+                          " to the " + std::to_string(iconSize) + " px grid";
+        if (result.skipped > 0)
+            msg += "; " + std::to_string(result.skipped) + " left as " + (result.skipped == 1 ? "it is" : "they are") +
+                   " (text, pictures, rotated shapes)";
+        statusHint->SetText(msg);
+    }
+}
+
+void ArtCreatorWindow::BuildIconPanel() {
+    using namespace ArtOptionWidgets;
+    // Built once and shown only in icon mode; nothing in it is rebuilt, so
+    // the size box can switch icon mode off from its own callback.
+    iconPanel = std::make_shared<UltraCanvasContainer>("ac-icon", 0, 0, kRightInner, 0);
+    iconPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    iconPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    iconPanel->AddChild(PanelTitle("ac-icon-title", "Icon"));
+
+    std::vector<std::string> sizes = {"Off"};
+    for (int n : ArtIconSizes()) sizes.push_back(std::to_string(n) + " x " + std::to_string(n) + " px");
+    AddDropdown(*iconPanel, "ac-icon-size", "Size", sizes, 0, [this](int index) {
+        const auto& all = ArtIconSizes();
+        SetIconSize(index <= 0 || index > static_cast<int>(all.size()) ? 0 : all[index - 1]);
+    });
+    if (auto row = std::dynamic_pointer_cast<UltraCanvasContainer>(iconPanel->GetChildren().back()))
+        if (!row->GetChildren().empty())
+            iconSizeBox = std::dynamic_pointer_cast<UltraCanvasDropdown>(row->GetChildren().back());
+
+    // grid, snapping, marks: one row
+    auto toggles = std::make_shared<UltraCanvasContainer>("ac-icon-toggles", 0, 0, 0, 24);
+    toggles->layout.SetFlexRow().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    toggles->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto toggle = [&](const std::string& id, const std::string& label, float width, bool on,
+                      const std::string& tip, std::function<void(bool)> changed) {
+        auto cb = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, width, 24, label);
+        cb->SetChecked(on);
+        cb->SetTooltip(tip);
+        cb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        cb->onStateChanged = [changed](CheckedState, CheckedState n) { changed(n == CheckedState::Checked); };
+        toggles->AddChild(cb);
+    };
+    toggle("ac-icon-grid", "Grid", 62, iconGrid, "Show the icon's pixel grid on the page", [this](bool on) {
+        iconGrid = on;
+        VectorGridSpec g = canvas->GetGrid();
+        g.visible = on;
+        canvas->SetGrid(g);
+    });
+    toggle("ac-icon-snap", "Snap", 64, iconSnap,
+           "Snap the pointer to the pixel grid: lines an odd number of pixels wide to pixel centres, "
+           "the rest to pixel edges", [this](bool on) { iconSnap = on; });
+    toggle("ac-icon-soft", "Mark soft", 110, iconMarkSoft,
+           "Mark the pixels the drawing only partly covers, on the page", [this](bool on) { iconMarkSoft = on; canvas->Refresh(); });
+    iconPanel->AddChild(toggles);
+    AddButtonRow(*iconPanel, "ac-icon-snapnow", {{"Snap to Pixels", [this]() { CmdSnapToPixels(); }}});
+
+    iconPreview = std::make_shared<ArtIconPreview>("ac-icon-preview", kRightInner);
+    iconPreview->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    iconPanel->AddChild(iconPreview);
+    iconCaption = CreateLabel("ac-icon-caption", 0, 0, kRightInner, 46, "");
+    iconCaption->SetFontSize(11);
+    iconCaption->SetWrap(TextWrap::WrapWord);
+    iconCaption->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    iconPanel->AddChild(iconCaption);
+    iconPanel->SetVisible(false);
+    rightPanel->AddChild(iconPanel);
+    LayoutIconPanel();
+}
+
+void ArtCreatorWindow::LayoutIconPanel() {
+    if (!iconPanel) return;
+    float h = 0;
+    for (const auto& child : iconPanel->GetChildren())
+        if (child && child->IsVisible()) h += child->GetHeight() + 3;
+    iconPanel->SetBounds(Rect2Df(0, 0, kRightInner, h));
+    iconPanel->InvalidateLayout();
+    if (rightPanel) rightPanel->RequestRedraw();
+}
+
+void ArtCreatorWindow::RefreshIconPreview() {
+    if (!iconPreview) return;
+    if (iconSize <= 0 || !document || IconPixel() <= 0) {
+        iconRaster.reset();
+        iconPreview->SetRaster(nullptr);
+        if (iconCaption) iconCaption->SetText("");
+        LayoutIconPanel();
+        return;
+    }
+    const int w = iconSize, h = IconRasterHeight();
+    auto raster = std::make_shared<ArtIconRaster>(RasterizeIcon(*document, w, h));
+    iconRaster = raster;
+    iconPreview->SetRaster(raster);
+    if (iconCaption) {
+        std::string text = std::to_string(w) + " x " + std::to_string(h) + " px: ";
+        const size_t soft = raster->softPixels.size();
+        if (!raster->error.empty()) text = "Nothing drawn yet: " + raster->error;
+        else if (raster->coveredPixels == 0) text += "nothing drawn yet";
+        else if (soft == 0) text += "sharp, no soft pixels";
+        else text += std::to_string(soft) + (soft == 1 ? " soft pixel" : " soft pixels") +
+                     " (red). Curves and slants always leave some; a straight edge should leave none.";
+        iconCaption->SetText(text);
+    }
+    LayoutIconPanel();
+    canvas->Refresh();
+}
+
+void ArtCreatorWindow::DrawIconOverlay(IRenderContext* ctx, const VectorViewTransform& view) {
+    if (!ctx || iconSize <= 0 || !iconMarkSoft || !iconRaster || !document) return;
+    const double p = IconPixel();
+    if (p <= 0 || view.DocToViewLength(p) < 4) return;   // too small on screen to mark
+    const Rect2Dd vb = document->ViewBox;
+    ctx->SetFillPaint(Color(230, 40, 40, 64));
+    for (const auto& px : iconRaster->softPixels)
+        ctx->FillRectangle(view.DocToView(Rect2Dd(vb.x + px.x * p, vb.y + px.y * p, p, p)));
 }
 
 } // namespace UltraCanvas

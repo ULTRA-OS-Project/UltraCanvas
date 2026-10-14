@@ -235,7 +235,11 @@ cfg.redirectUri           = "http://127.0.0.1:0/callback";  // 0 = ephemeral por
 
 UltraNetOAuth2Token token;
 auto r = UltraNet_OAuth2AuthorizeInteractive(
-    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token);
+    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token,
+    300000,                                  // how long the browser may take
+    [&] { return dialogClosed.load(); });    // optional: ends the wait early
+// A wait called off ends as UltraNetResultCode::Cancelled within a fraction
+// of a second, rather than holding its thread until the timeout.
 if (r) {
     // token.accessToken -> "authorization: Bearer ..." on API calls
     // token.refreshToken -> store in the credential vault;
@@ -431,7 +435,10 @@ architecture.
   interfaces use `I<Category>ProtocolPlugin`. Callbacks use
   `on<Event>` (base verb form).
 * **Errors:** every blocking call returns `UltraNetResult`. Operator
-  `bool` for quick success checks; structured fields for diagnostics.
+  `bool` for quick success checks; structured fields for diagnostics. An
+  HTTP request that failed in transit (no answer, TLS refused, timed out)
+  carries the connection chain in `diagnostics`, as an FTP or mail failure
+  does (`UltraNetCurlError.h`).
 * **Handles:** zero (`0`) is invalid. Always check before use.
 * **Security defaults:** TLS verification ON, minimum TLS 1.2,
   hostname check ON, `acceptInvalidCert` requires explicit opt-in.

@@ -34,8 +34,9 @@
 // time, the holder of the recorder lease (AcquireRecorder).
 //
 // Not thread-safe: use one instance from one thread.
+// Version: 1.2.0 - ClipboardHistoryPolicy::iconSide: the row's icons left or right of its text
 // Version: 1.1.0 - ClipboardHistoryPolicy::previewStyle: how UltraClipboard previews an image
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -126,6 +127,13 @@ enum class ClipboardPreviewStyle : int {
     Modern = 1     // a pane over the right part of the list, with the viewer's info line
 };
 
+// Where a row's action icons (Copy, Edit, Save as, Delete) stand: after the
+// item's text at the row's right edge, or between the thumbnail and the text.
+enum class ClipboardIconSide : int {
+    Right = 0,
+    Left = 1
+};
+
 // Shared by every process that opens the history (kept in the database).
 struct ClipboardHistoryPolicy {
     int maxEntries = 500;                        // unpinned
@@ -135,6 +143,7 @@ struct ClipboardHistoryPolicy {
     bool recordingPaused = false;
     bool imageThumbnails = true;
     ClipboardPreviewStyle previewStyle = ClipboardPreviewStyle::Modern;
+    ClipboardIconSide iconSide = ClipboardIconSide::Right;
     std::vector<std::string> excludedApplications;
 
     static ClipboardHistoryPolicy Defaults();

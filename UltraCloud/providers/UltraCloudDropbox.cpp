@@ -1,8 +1,9 @@
 // UltraCloud/providers/UltraCloudDropbox.cpp
-// Version: 0.3.0
-// Last Modified: 2026-09-04
+// Version: 0.4.0 - each further page of a listing is logged
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudDropbox.h>
+#include <UltraCloud/UltraCloudLog.h>
 #include <UltraCloud/UltraCloudWebDav.h>   // NormalizePath
 
 #include "core/UltraCloudInternal.h"
@@ -108,11 +109,14 @@ Result DropboxProvider::List(const Account&, const Credentials& credentials,
     arg.Set("path", DropboxPath(path));
     Result r = Rpc(credentials, "files/list_folder", ToJson(arg), resp, "list " + path);
     if (!r) return r;
+    int page = 1;
     while (true) {
         JSONValue v = ParseJson(BodyText(resp));
         const JSONValue& entries = v["entries"];
         for (std::size_t i = 0; i < entries.GetSize(); ++i) out.push_back(EntryFrom(entries[i]));
         if (!v["has_more"].GetBoolean(false)) break;
+        LogToThread(LogKind::Step, "The listing continues - page " + std::to_string(++page) +
+                                   " (" + std::to_string(out.size()) + " entries so far)");
         JSONValue cont = JSONValue::MakeObject();
         cont.Set("cursor", v["cursor"].GetString());
         resp = UltraNetResponse{};

@@ -5,7 +5,8 @@
 // on UltraNet_Tcp*, and the token exchange on UltraNet_HttpPost. The token
 // JSON is a flat object, so a focused scanner below extracts the standard
 // fields without pulling a JSON engine into the UltraNet target.
-// Version: 0.1.0
+// Version: 0.2.0 - the redirect wait can be called off (isCancelled)
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -320,25 +321,34 @@ void SendHttpResponse(UltraNetHandle conn, const std::string& status,
 }
 
 // Serves the loopback listener until the provider's redirect arrives on
-// `path` or the deadline passes. Stray requests (favicon, reloads) get a
-// 404 and the wait continues.
+// `path`, the deadline passes or `cancelled` says to stop. Stray requests
+// (favicon, reloads) get a 404 and the wait continues.
 UltraNetResult RunCallbackServer(UltraNetHandle listener,
                                  const std::string& path,
                                  int timeoutMs,
                                  const std::string& responseHtml,
-                                 UltraNetOAuth2CallbackResult& out) {
+                                 UltraNetOAuth2CallbackResult& out,
+                                 const std::function<bool()>& cancelled) {
     using Clock = std::chrono::steady_clock;
     const auto deadline = Clock::now() + std::chrono::milliseconds(timeoutMs);
     const std::string& html =
         responseHtml.empty() ? kDefaultResponseHtml : responseHtml;
+    // How long one accept waits when the wait can be called off: short
+    // enough that a closed dialog lets its thread go at once.
+    constexpr long long kCancelCheckMs = 200;
 
     for (;;) {
+        if (cancelled && cancelled()) {
+            return UltraNetResult::Error(UltraNetResultCode::Cancelled,
+                "the sign-in was cancelled before the browser answered");
+        }
         auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
                              deadline - Clock::now()).count();
         if (remaining <= 0) {
             return UltraNetResult::Error(UltraNetResultCode::Timeout,
                 "no authorization redirect received before the timeout");
         }
+        if (cancelled && remaining > kCancelCheckMs) remaining = kCancelCheckMs;
         UltraNetEndpoint remote;
         UltraNetHandle conn = UltraNet_TcpAccept(listener, remote,
                                                  static_cast<int>(remaining));
@@ -526,7 +536,8 @@ UltraNetResult UltraNet_OAuth2WaitForCallback(
     const std::string& redirectUri,
     UltraNetOAuth2CallbackResult& outResult,
     int timeoutMs,
-    const std::string& responseHtml) {
+    const std::string& responseHtml,
+    const std::function<bool()>& isCancelled) {
     outResult = {};
     std::string bindAddress, path;
     bool ipv6 = false;
@@ -550,7 +561,7 @@ UltraNetResult UltraNet_OAuth2WaitForCallback(
             " (port in use?)");
     }
     auto result = RunCallbackServer(listener, path, timeoutMs, responseHtml,
-                                    outResult);
+                                    outResult, isCancelled);
     UltraNet_SocketClose(listener);
     return result;
 }
@@ -635,7 +646,8 @@ UltraNetResult UltraNet_OAuth2AuthorizeInteractive(
     const UltraNetOAuth2Config& config,
     const std::function<void(const std::string&)>& onOpenUrl,
     UltraNetOAuth2Token& outToken,
-    int timeoutMs) {
+    int timeoutMs,
+    const std::function<bool()>& isCancelled) {
     outToken = {};
     if (config.authorizationEndpoint.empty() || config.clientId.empty()) {
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
@@ -686,7 +698,8 @@ UltraNetResult UltraNet_OAuth2AuthorizeInteractive(
     onOpenUrl(UltraNet_OAuth2BuildAuthUrl(effective, pkce, state));
 
     UltraNetOAuth2CallbackResult cb;
-    auto wait = RunCallbackServer(listener, path, timeoutMs, std::string(), cb);
+    auto wait = RunCallbackServer(listener, path, timeoutMs, std::string(), cb,
+                                  isCancelled);
     UltraNet_SocketClose(listener);
     if (!wait) return wait;
 

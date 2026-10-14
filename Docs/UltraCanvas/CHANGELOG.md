@@ -1,3 +1,252 @@
+#### 2026-10-14 *0.9.291*
+- **Clipboard history rows: a Save as action, and the icons left of the
+  text.** `ClipboardRowAction::SaveAs` is painted between Edit and Delete when
+  `ClipboardRowStyle::saveAction` is set (UltraClipboard sets it; the
+  desktop's quick panel keeps its three), with its tooltip *"Save as
+  (Ctrl+S)"* and a new `media/icons/clipboard/save.svg`.
+  `ClipboardRowStyle::actionsLeftOfText` (`SetActionsLeftOfText` on a
+  delegate in use) puts the actions between the thumbnail and the text
+  instead of at the row's right edge, and keeps their place while a compact
+  row hides them so the text does not move. `ClipboardHistoryPolicy::iconSide`
+  (`ClipboardIconSide::Right` / `Left`) keeps that choice with the history's
+  settings, shared by every process that opens it: UltraClipboard's rows and
+  UltraDesktop's quick panel both follow it.
+
+#### 2026-10-14 *0.9.290*
+- **UltraCloud's providers log their requests, and a refusal keeps the
+  service's reason.** A failed Dropbox, OneDrive, Google Drive, Nextcloud or
+  WebDAV call came back as `HTTP 409` or `HTTP 403` with nothing else: the
+  body that said why (`path/not_found`, `userRateLimitExceeded`,
+  `invalid_grant`) was dropped, and there was no way to see which requests
+  had been made. A caller - UltraFiler's connection log - had a session log
+  for FTP drives only.
+  - `UltraCloudLog.h` (new): a per-thread sink, `SetThreadLog`, the way
+    `UltraNet_SetThreadFtpLog` serves the FTP provider. Every request through
+    `HttpProviderBase::Send` writes a *Request* line (method and URL) and a
+    *Response* line (status, the service's reason when it refused, how long
+    it took), or an *Error* line when no answer came. `CloudService` logs an
+    access token being renewed and a renewal refused; the Dropbox, OneDrive
+    and Google Drive listings log each further page. With no sink set,
+    nothing is formatted.
+  - Nothing secret reaches a line: no header (the bearer token among them),
+    no body, and `LoggableUrl` masks the value of every query parameter
+    whose name carries a secret (`tempauth`, `key`, `code`, `sig`, ...) and
+    drops a URL's user name and password.
+  - `ServerErrorReason` reads each service's error body - Dropbox's
+    `error_summary`, Microsoft Graph's `error.code` / `message`, Google's
+    `errors[].reason`, OAuth's `error` / `error_description`, and the
+    WebDAV / SabreDAV `<s:message>` (`WebDavErrorMessage`, new) - and
+    `HttpProviderBase::FromHttp` puts it in the message:
+    `list /Photos: HTTP 409 - path/not_found`, `... sign-in rejected
+    (HTTP 401 - ...)`, `... not allowed (HTTP 403 - ...)`.
+  - A throttled request - 429, a 503 with `Retry-After`, or Google Drive's
+    403 `rateLimitExceeded` / `userRateLimitExceeded` - is the new
+    `ResultCode::RateLimited` (added after `Unknown`; the other codes keep
+    their numbers), and its message says how long the service asks to wait
+    (`RetryAfterSeconds` reads both forms of `Retry-After`).
+  - A failure's `diagnostics` carries the HTTP status, the service's
+    reason, `Retry-After`, the request ID the service's support asks for,
+    the URL that answered and the time taken, then the transport's
+    connection chain.
+- **A failed UltraNet HTTP transfer carries its diagnostics.** A request
+  that got no answer (no route, TLS refused, timed out) filled
+  `UltraNetResult::message` only; it now fills `diagnostics` with the
+  connection chain (`UltraNetCurlError.h`), as FTP and mail failures
+  already did.
+- `UltraCloudTests` gains `test_log.cpp`: URL masking, every service's error
+  body, `Retry-After`, the throttled OneDrive 429 and Google 403, a sign-in
+  refusal, a Nextcloud server that never answered, the Dropbox log lines
+  without the token, and a token renewal succeeding and refused.
+- **A throttled cloud request is sent again after the wait the service
+  asks for.** `HttpProviderBase::Send` used to return the first 429 as the
+  failure. It now waits as long as `Retry-After` says - or 1, 2, 4 s when
+  the service gives no time - and sends the same request again: the service
+  did not act on it, so this is safe for every method, uploads included.
+  `RateLimitPolicy` (`UltraCloudHttp.h`), set per thread with
+  `SetThreadRateLimitPolicy`, says how many tries (3 after the first by
+  default), the longest wait sat out (30 s by default; a longer one fails at
+  once as `RateLimited`) and how to wait - a function a worker can return
+  `false` from to stop waiting when it is shut down; the default sleeps.
+  Each wait, and a request given up, is a line in the thread's log.
+- **The browser sign-in says its steps.** `OAuthProviderBase::SignIn` logs
+  where it waits for the browser's answer, the sign-in page it opens
+  (without its query: the one-time state and code challenge stay out), and
+  whether the service gave an access token or why the sign-in did not
+  complete.
+- **The add-account dialog can be watched.** `ShowAddAccountDialog` takes
+  an optional `AddAccountWatch`: `onBegin` and `onEnd` run on the dialog's
+  sign-in thread around each sign-in, so a host can set that thread's log
+  sinks and record the attempt - UltraFiler puts it in its connection log.
+- `UltraCloudTests`: a throttled request sent again and answered, Google
+  Drive's 403 waited out 1, 2 and 4 s and then given up, a wait longer than
+  the policy allows, a wait interrupted, and the browser sign-in's lines
+  without its state, code challenge or tokens - with a recorded wait, so no
+  test sleeps.
+- **A rejected access token is renewed and the call made once more.**
+  `CloudService` renewed an OAuth token only when it had expired by the
+  local clock; a 401 for one the service rejected anyway - revoked early, a
+  clock that is off, or expired while `Send` waited out a service limiting
+  requests - failed the call. Every `CloudService` call now runs through
+  one helper (`Run`) that, on `AuthFailed` with HTTP 401 for an account
+  with a refresh token, renews the token, stores it and makes the call once
+  more - not when the token was renewed a moment before, and never more
+  than once. `UploadAndShare` runs its three steps again as a whole.
+- **A sign-in can be called off.** `UltraNet_OAuth2WaitForCallback` and
+  `UltraNet_OAuth2AuthorizeInteractive` take an optional `isCancelled`,
+  asked about five times a second while the loopback listener waits for
+  the browser; once it says true the wait ends as
+  `UltraNetResultCode::Cancelled` instead of holding the thread for up to
+  five minutes. UltraCloud's per-thread `SetThreadSignInCancel` /
+  `SignInCancelled` (`UltraCloudProvider.h`) feeds it: an OAuth sign-in
+  ends as the new `ResultCode::Cancelled` (after `RateLimited`; the other
+  codes keep their numbers), and `CloudService::AddAccount` /
+  `SignInAccount` store no account once the check says true. The
+  add-account dialog's *Cancel* and close box call a running sign-in off -
+  before, a sign-in the user went on to finish in the browser was stored
+  after the dialog had been cancelled - and `AddAccountWatch::cancelled`
+  lets a host call it off as well.
+- Tests: the redirect wait called off (`test_oauth2.cpp`); a rejected token
+  renewed and the call made again, renewed once and not in a loop, a
+  refused renewal, a token renewed a moment ago not renewed again, a
+  cancelled sign-in storing no account and a browser sign-in called off
+  (`test_log.cpp`).
+- **A `CloudService` can own its stores, and the add-account dialog's
+  sign-in holds it.** `CloudService` only referred to its account store and
+  secret store, and the dialog's sign-in thread only referred to the
+  service - so a sign-in still running when the application closed the
+  window that owned them (a browser sign-in waits up to five minutes) went
+  on using freed objects. A new constructor,
+  `CloudService(std::shared_ptr<AccountStore>, std::shared_ptr<ISecretStore>)`,
+  keeps the stores alive for as long as the service lives, and
+  `ShowAddAccountDialog` has a form taking `std::shared_ptr<CloudService>`
+  whose sign-in thread holds the service until the sign-in has ended. The
+  reference forms stay, with the caller keeping the service alive as
+  before. `UltraCloudTests`: a thread holding a shared service stores an
+  account and reads it back after every other handle is gone, and the
+  stores go with the last holder (clean under valgrind).
+
+#### 2026-10-14 *0.9.289*
+- **`VectorEdit::SnapToPixels`: shapes onto the pixel grid of the size an
+  icon is shown at.** An icon drawn for 24 px is sharp there only where its
+  straight edges fall on whole pixels; a 2 px line half a pixel off covers
+  three pixel rows, the outer two half grey. The new operation takes the
+  width of one icon pixel in document units and the grid's origin, makes
+  every line width a whole number of pixels (at least one), and moves the
+  points of a shape whose line is an odd number of pixels wide onto pixel
+  centres, those of a shape with an even width or no line onto pixel
+  edges. Rectangles keep at least a pixel each way and whole-pixel corner
+  radii; circles and ellipses snap by the edges of their bounds, so any
+  diameter stays possible; paths are made absolute and their nodes snapped,
+  each curve's control points moving with their node, and a curve that fits
+  inside one pixel becomes straight. Groups are aligned through their
+  children, following transforms that only scale and move; text, images
+  and rotated or skewed shapes are left alone and counted. `SnapToPixel`
+  is the same rule for one coordinate. ArtCreator's new icon mode uses
+  both; `Tests/VectorPixelSnapTest.cpp` covers them
+  (`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`, *Pixel alignment*).
+
+#### 2026-10-14 *0.9.288*
+- **Android shows the word being composed inline, and stops losing it.** A
+  soft keyboard composes each word before committing it: the underlined word
+  with suggestions, or a CJK reading waiting for its candidate. The Android
+  backend kept that composition inside the keyboard. It now passes it on the
+  way the Linux and Windows backends do:
+  - An editable `UltraCanvasTextInput`, `UltraCanvasTextArea` or
+    `UltraCanvasRichTextEdit` (any element whose `DrawsTextComposition()` is
+    true) receives `TextComposition` events and shows the word at its caret
+    while it is typed. Any other element still sees only the committed text.
+  - A word was lost when the keyboard ended the composition without
+    committing it, for example when it closed mid-word. Such a word is now
+    kept as typed.
+  - A tap while a word is being composed keeps that word as typed where it
+    was, as Android's own text fields do. It no longer follows the caret into
+    whatever the tap focused.
+  - Backspacing into a word no longer types it a second time: the keyboard
+    used to start composing that word again and commit all of it after the
+    copy that was already there.
+  - Emoji and other characters outside the Basic Multilingual Plane reached
+    widgets as six bytes no font could draw, because JNI strings were read as
+    JNI's modified UTF-8. They are now read as real UTF-8. This affected
+    everything the Java side passes to C++: committed text, dialog answers,
+    clipboard text and file names.
+  - None of this has run on a device yet; like the rest of the Android
+    backend it is compiled, not observed.
+- **Text sent from C++ to Android's Java side is real UTF-8 now.** Dialog
+  titles, messages, button labels and default input, clipboard text copied
+  out, file-picker MIME types and suggested file names were converted with
+  JNI's `NewStringUTF`. That takes JNI's *modified* UTF-8, so:
+  - an emoji or any other character outside the Basic Multilingual Plane
+    reached Java as garbage;
+  - malformed UTF-8 (a truncated file name, say) aborted the whole app when
+    CheckJNI was on, which it is in every debuggable APK.
+
+  The new `AndroidJni::ToJString` converts UTF-8 to UTF-16 itself and turns
+  malformed bytes into U+FFFD. It is the reverse of the `ToStdString` fix in
+  the same release.
+- **Android plays video and records from the camera.** Until now Android
+  builds had no video backend, so `UltraCanvasVideoPlayer` could not open
+  anything and there was no camera. The new backend uses only the NDK's own
+  libraries (`mediandk`, `camera2ndk`, `aaudio`), so it is on by default and
+  does not wait for the cross-compiled dependency sysroot:
+  - **Playback** decodes with MediaCodec and plays the sound through AAudio,
+    with the picture kept in step with what is heard. Phone recordings come
+    out upright. Seeking is frame-accurate, and looping, volume, mute and
+    playback rate work. Sound plays at 1× only, because AAudio cannot change
+    speed.
+  - **Thumbnails** come from one decoded frame, without opening an audio
+    device.
+  - **Cameras** are listed with their sizes. The preview is upright, and
+    mirrored for the front camera. Recording writes MP4 with H.264 or H.265
+    video and AAC sound, and pausing cuts the pause out of the file.
+  - **Permissions:** `UltraCanvasVideoDevices::RequestCameraPermission` shows
+    Android's prompt. The template manifest says which permissions to
+    declare.
+  - Like the rest of the Android backend, this is compiled but has not yet
+    run on a device.
+- **Input method composition on macOS and in the browser.** An element that
+  draws compositions itself (`DrawsTextComposition()`: an editable text
+  input, text area or rich text editor) now gets the pre-edit text as `TextComposition` events on these two
+  platforms too, as it already did on X11, Windows and Android, with the
+  committed text arriving as a KeyDown with `text`.
+  - macOS: the window's content view is an `NSTextInputClient`. While such an
+    element has focus, key presses without Command or Control go through
+    `interpretKeyEvents:`. Marked text becomes `TextComposition` (its caret
+    is the end of the input method's selected range, converted from UTF-16
+    to a UTF-8 byte offset), inserted text a KeyDown, and keys the input
+    method does not turn into text (Return, Delete, the arrows) the same
+    KeyDown as before. Dead keys (Option+E on a US layout) now compose
+    in place. The candidate window opens at the caret. A click or the window
+    losing the keyboard commits a composition in progress. Every other
+    element keeps the plain key path, unchanged. The application registers
+    `ApplePressAndHoldEnabled = NO` as a default, so holding a key repeats
+    it instead of opening the accent menu, which would replace text already
+    typed. A user's own setting still wins.
+  - WebAssembly: a transparent `<textarea>` at the caret takes the keyboard
+    while such an element has focus. Its `compositionupdate` events (and the
+    caret from `selectionEnd`) become `TextComposition`, and
+    `compositionend` commits the text. Keys the input method is processing
+    (`keyCode` 229, or any key mid-composition) are no longer delivered as
+    key presses too, and dead keys are let through so the browser composes
+    the accent. Moving the keyboard between the canvas and the textarea is
+    not reported as the window losing or gaining focus. Other elements keep
+    the canvas and the old key path.
+- **Text fields and text areas show what an input method is composing where
+  it will go.** `UltraCanvasTextInput` and `UltraCanvasTextArea` now draw an
+  input method's pre-edit text (Japanese, Chinese, Korean, ...) inline at the
+  caret, underlined, with the caret inside it, as `UltraCanvasRichTextEdit`
+  already did; before, the text being composed appeared in the input method's
+  own floating window, away from the text it was meant for. The single-line
+  field scrolls to keep the composition's caret in view and the text area lays
+  it out in the caret's line. The composition is never part of the text:
+  `GetText()`, `onTextChanged`, validation and the undo stack see only the
+  committed result, which arrives as typing; an empty composition, losing the
+  focus or turning the widget read-only ends it, and composing over a
+  selection replaces the selection as typing would. `GetCompositionText()`
+  returns it. Read-only fields and areas, display-only and hex-mode areas and
+  password fields keep the input method's own window - a password field
+  because a masked composition cannot be read and an unmasked one would show
+  the secret.
+
 #### 2026-10-14 *0.9.287*
 - **The demo's bitmap pages build when the sample cannot be read.** The
   page asked PixelFX for the sample's properties, and that call throws when

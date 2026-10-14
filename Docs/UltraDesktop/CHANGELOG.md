@@ -1,4 +1,4 @@
-#### 2026-10-14 *0.3.1*
+#### 2026-10-14 *0.3.2*
 - **The settings file lives in Application Support on macOS.** `desktop.json`
   was kept in `~/.config/ultraos` there, as on Linux, while every other
   per-user file of the desktop and its applications is in
@@ -8,6 +8,14 @@
   `$XDG_CONFIG_HOME` or `~/.config/ultraos` elsewhere, every variable read as
   UTF-8. On the first start the old macOS folder is moved into place whole,
   the clipboard history's key with it; Linux and Windows are untouched.
+
+#### 2026-10-14 *0.3.1*
+- **The clipboard quick panel follows UltraClipboard's *Display → Icons*.**
+  Set the icons left of the item text in UltraClipboard's Settings and the
+  panel's Copy / Edit / Delete stand between the thumbnail and the text too;
+  right, as before, is the default. The panel picks the setting up the next
+  time it opens or the history changes (framework changelog:
+  `clipboard-save-as`).
 
 #### 2026-10-14 *0.3.0*
 - **UltraDesktop can take the place of the Windows desktop, and give it
