@@ -12,14 +12,17 @@
 # Generates, in a temporary folder:
 #   - the Start-menu list: one entry per application, where an application
 #     is an executable built for the Windows GUI subsystem - read from its PE
-#     header, so a command-line tool (console subsystem) never gets one;
+#     header, so a command-line tool (console subsystem) never gets one -
+#     less the helpers in NOT_APPLICATIONS below, which have no window of
+#     their own to open;
 #   - the removal list: every file it installs and every folder, deepest
 #     first, so the uninstaller removes exactly those and leaves a folder
 #     that still holds something of the user's;
 #   - the installer's icon from media/appicon/UltraCanvas.png, when
 #     ImageMagick is there to convert it.
+# Version: 0.1.1 - no Start-menu entry for UltraCanvasShellGuard
 # Version: 0.1.0
-# Last Modified: 2026-10-12
+# Last Modified: 2026-10-14
 set -e
 
 if [ $# -ne 4 ]; then
@@ -77,11 +80,16 @@ nsis_quote() {
 }
 
 # ===== THE START MENU =====
+# GUI programs that are not applications: UltraCanvasShellGuard is what the
+# sign-in starts when UltraDesktop runs instead of Explorer - started from
+# the Start menu it would only start UltraDesktop.
+NOT_APPLICATIONS=" UltraCanvasShellGuard "
 : > "$SHORTCUTS"
 COUNT=0
 for exe in "$DIST"/*.exe; do
     [ -e "$exe" ] || continue
     name="$(basename "$exe" .exe)"
+    case "$NOT_APPLICATIONS" in *" $name "*) continue ;; esac
     [ "$(pe_subsystem "$exe")" = "2" ] || continue
     q="$(nsis_quote "$name")"
     printf 'CreateShortCut "$SMPROGRAMS\\${PRODUCT}\\%s.lnk" "$INSTDIR\\%s.exe"\n' "$q" "$q" >> "$SHORTCUTS"

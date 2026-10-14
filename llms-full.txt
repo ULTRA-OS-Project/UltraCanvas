@@ -981,8 +981,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
-  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp`, both behind the internal
-  `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. Public surface:
+  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
+  `UltraCanvasWindowsTrayHost.cpp` (the notification area), both behind the
+  internal `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. On
+  Windows also the standalone **UltraCanvasShellGuard** program
+  (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
+  instead of Explorer. Public surface:
   - `ListWindows` (`DesktopWindowInfo`: id, title, WM class, icon file
     resolved through the icon themes, desktop, pid, active, minimized,
     skipTaskbar), `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`,
@@ -1003,11 +1007,17 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     by opening the shortcut), `MatchApplication` (a window's entry, by
     `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
     `FindProgram` (next to this executable first, then `PATH`).
-  - `CanReplaceSystemDesktop` / `IsSystemDesktopReplaced` /
-    `ReplaceSystemDesktop` / `RestoreSystemDesktop` - a program (UltraDesktop)
-    in place of the system's desktop at sign-in, and the way back (Windows:
-    the user's Run key and Explorer's taskbar on auto-hide, its previous
-    state restored; elsewhere the session decides and the calls say so).
+  - `CanReplaceSystemDesktop` / `GetSystemDesktopReplacement` /
+    `IsSystemDesktopReplaced` / `ReplaceSystemDesktop` / `RestoreSystemDesktop`
+    / `IsSystemDesktopRunning` - a program (UltraDesktop) in place of the
+    system's desktop at sign-in, `DesktopReplacement::Beside` or `Instead`,
+    and the way back (Windows: beside, the user's Run key and Explorer's
+    taskbar on auto-hide, its previous state restored; instead, the account's
+    Winlogon shell setting naming UltraCanvasShellGuard, which restarts a
+    crashing desktop and starts Explorer for the session when it cannot run;
+    elsewhere the session decides and the calls say so).
+  - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
+    (Windows `ExitWindowsEx`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -1019,6 +1029,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     program from any window (X11 `XGrabKey` on its own connection and
     thread, Windows `RegisterHotKey` on its own thread; fails with a reason
     elsewhere and when another program holds it).
+  - `UltraCanvasTrayHost` - `Start(onChanged, &error)` / `Stop()` (joins) /
+    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon) /
+    `Click(id, TrayClick)`: the notification area for a desktop that is the
+    shell (Windows `Shell_TrayWnd` on its own thread; refused while Explorer's
+    taskbar runs, and on X11).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
@@ -19623,7 +19638,8 @@ The running desktop as a shell sees it: the windows other applications have
 open and which one is active, the virtual desktops, the installed applications
 a launcher lists, a screenshot of the screen, the live state of the devices an
 info panel shows, and the counts an application publishes for the desktop to
-show beside its icon.
+show beside its icon. For a desktop that is the session's shell it also hosts
+the programs' tray icons and ends the session.
 
 ```cpp
 #include "UltraCanvasDesktopShell.h"
@@ -19727,24 +19743,130 @@ second or two is fine.
 | Call | Meaning |
 |---|---|
 | `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. On Windows the Start menu's shortcuts instead (`%APPDATA%` and `%ProgramData%` `\Microsoft\Windows\Start Menu\Programs`), the user's shadowing the machine's of the same name: named as the folder's `desktop.ini` names them, programs only (no uninstallers, help files or web links), `program` the shortcut's target, `startupWMClass` its name (so `MatchApplication` finds its windows), `shortcutPath` the `.lnk`, `iconFile` a PNG of its icon. Microsoft Store applications have no shortcut there and are not listed yet. |
-| `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. |
+| `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. While no Explorer taskbar runs (the desktop is the shell), a shortcut to a bare `explorer.exe` — the Start menu's *File Explorer* — opens *This PC*: started with nothing to open, Explorer would take over as the session's desktop. |
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. |
 | `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
 ### In place of the system's desktop
 
+<!-- doc-check: std::string program; -->
+
+A desktop takes the place of the system's in one of two ways, a
+`DesktopReplacement`:
+
+- **`Beside`** — started at sign-in, while the system's desktop keeps running.
+  On Windows: a value *UltraCanvas Desktop* under the user's `Run` key (so it
+  is listed among Task Manager's startup apps) and Explorer's taskbar set to
+  auto-hide, its state before the first switch recorded. Explorer's tray, its
+  notifications, its Start menu and the programs that need it go on working.
+  It takes effect at once.
+- **`Instead`** — the session's shell: the system's desktop does not start at
+  all. On Windows the account's own shell setting (Winlogon's `Shell` under
+  `HKEY_CURRENT_USER`, which sign-in reads before the machine's) names
+  **UltraCanvasShellGuard**, which must sit beside `program`, followed by
+  `program` and its arguments. It takes effect at the next sign-in.
+- `Off` — the system's own desktop.
+
+```cpp
+std::string error;
+if (UltraCanvasDesktopShell::CanReplaceSystemDesktop(DesktopReplacement::Instead) &&
+    !UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--shell"}, &error,
+                                                   DesktopReplacement::Instead)) {
+    debugOutput << "Not the shell: " << error << std::endl;
+}
+```
+
 | Call | Meaning |
 |---|---|
-| `CanReplaceSystemDesktop()` | Whether this platform has a switch for which desktop a session starts: true on Windows; false where the session itself decides (ULTRA OS, Linux) and elsewhere. |
-| `ReplaceSystemDesktop(program, arguments, &error)` | From now on this account's sign-in starts `program` (an absolute path) with `arguments`, in place of the system's desktop. On Windows: a value *UltraCanvas Desktop* under the user's `Run` key (so it is listed among Task Manager's startup apps) and Explorer's taskbar set to auto-hide, its state before the first switch recorded. Explorer keeps running, so its tray, its notifications and the programs that need it go on working. No administrator rights; no other account changes. |
-| `RestoreSystemDesktop(&error)` | The way back: the start at sign-in removed and the taskbar given the recorded state — as it was, not a default. True, changing nothing, when nothing was replaced (and on every platform without the switch). |
-| `IsSystemDesktopReplaced()` | Whether the sign-in starts the program now. |
+| `CanReplaceSystemDesktop(how = Beside)` | Whether this platform has that switch for which desktop a session starts: true on Windows, for both; false where the session itself decides (ULTRA OS, Linux) and elsewhere. |
+| `ReplaceSystemDesktop(program, arguments, &error, how = Beside)` | From now on this account's sign-in starts `program` (an absolute path) with `arguments`, beside the system's desktop or instead of it. One at a time: switching to one removes the other. `Instead` is refused, writing nothing, when UltraCanvasShellGuard is not beside `program`. No administrator rights; no other account changes. |
+| `RestoreSystemDesktop(&error)` | The way back from either: the start at sign-in removed, the account's shell setting removed when it names the guard (never another program's), and the taskbar given the recorded state — as it was, not a default. True, changing nothing, when nothing was replaced (and on every platform without the switch). |
+| `GetSystemDesktopReplacement()` | `Off`, `Beside` or `Instead`, as the account is set now. |
+| `IsSystemDesktopReplaced()` | Whether it is anything but `Off`. |
+| `IsSystemDesktopRunning()` | Whether the system's own desktop runs in this session — Explorer's taskbar on Windows (a notification area this process hosts does not count). False in a session where a desktop runs `Instead`. |
 
-UltraDesktop switches over with `--use-as-desktop` and back with
-`--restore-desktop`, passes itself `--session` for the sign-in, and closes
-within a second when a session desktop finds the switch gone — so turning it
-off in UOS-Settings brings the Windows desktop back at once. See
+UltraDesktop switches over with `--use-as-desktop` (beside) or
+`--use-instead-of-explorer`, and back with `--restore-desktop`; it passes
+itself `--session` or `--shell` for the sign-in, and closes within a second
+when a session desktop finds the switch gone — so turning it off in
+UOS-Settings brings the Windows desktop back at once. See
 [UltraDesktop on Windows](../UltraDesktop/README.md#on-windows).
+
+#### UltraCanvasShellGuard
+
+What the sign-in starts when a desktop runs instead of Explorer
+(`OS/MSWindows/ShellGuard/`, built beside the applications). Its one job is
+that the screen is never left empty:
+
+- it starts the desktop, and starts it again when it crashes;
+- it starts Explorer for the session when the desktop fails three times
+  within a minute or cannot start at all — and tells the user why;
+- it starts Explorer when the desktop exits by itself (switched back, or
+  closed — not when the session is ending, which closes it too), and, should
+  the desktop hang, when the account's shell setting
+  stops naming the guard — `UltraDesktop --restore-desktop` from Task
+  Manager's *Run new task* — after five seconds' grace;
+- it does for the session what Explorer would have: tells the sign-in screen
+  the desktop is up, hides minimized windows instead of parking them at the
+  screen's corner, and starts the programs that start with Windows (the `Run`
+  and `RunOnce` keys, the policy `Run` lists, the Startup folders — except
+  those switched off in Task Manager).
+
+It is a program of its own, linking nothing of the framework and its C++
+runtime statically, so a desktop that cannot even load — a DLL missing after
+a half-finished update — still gets its fallback. Started any other way (by
+hand, by a test, while Explorer runs) it only starts and restarts the program.
+What it did is logged to `%LOCALAPPDATA%\UltraCanvas\ShellGuard.log`. Exit
+codes: 0 the desktop exited normally or Explorer took over, 1 it could not be
+started, 2 no program named, 3 three failures within a minute.
+
+Without Explorer, Windows has nobody for the parts of its interface Explorer
+hosts: the Start menu, the quick settings and the notification centre,
+Explorer's own keyboard shortcuts (Win+E, Win+R, Win+X …), and programs that
+measure the taskbar (`SHAppBarMessage`) are told there is none.
+
+### The notification area
+
+<!-- doc-check: std::atomic<bool> trayDirty; -->
+
+`UltraCanvasTrayHost` is the system tray for a desktop that is the session's
+shell: on Windows the window every program's `Shell_NotifyIcon` talks to
+(`Shell_TrayWnd`), on a thread of its own, so a busy desktop never stalls a
+program adding its icon.
+
+```cpp
+UltraCanvasTrayHost tray;   // a member: Stop() runs in its destructor
+std::string error;
+if (!tray.Start([this]() { trayDirty.store(true); }, &error)) {   // the host's thread!
+    debugOutput << "No tray icons: " << error << std::endl;
+}
+// On the UI thread, when trayDirty was set:
+for (const DesktopTrayIcon& icon : tray.ListIcons()) {
+    const std::string id = icon.id;
+    taskbar->AddButton("tray-" + id, "", icon.iconFile, [&tray, id]() {
+        tray.Click(id, TrayClick::Left);
+    });
+}
+```
+
+| Call | Meaning |
+|---|---|
+| `Start(onChanged, &error)` | Hosts the notification area and asks the programs already running to add their icons again (`TaskbarCreated`). False, saying why, while another notification area runs — Explorer's taskbar, when the desktop runs beside it; only one can — and on a platform with none to host (X11 here, whose trays are a protocol of their own). `onChanged` runs on the host's thread and must only hand the news over. |
+| `Stop()` | Takes the window down; joins, so no callback runs after it returns. `IsRunning()`. |
+| `ListIcons()` | The icons, in the order the programs added them, hidden ones left out: `DesktopTrayIcon { id, tooltip, iconFile, appClass, processId, balloonTitle, balloonText, balloonSerial }`. `iconFile` is a PNG of the icon in the disk cache, named after its pixels (an animated icon's frames are each written once); `appClass` the program's name, as `DesktopWindowInfo`'s. A new balloon gets a new `balloonSerial`: a desktop shows each serial once, as a toast. Any thread. |
+| `Click(id, button)` | A click at the mouse pointer, handed to the program as the notification area would — in the form the program asked for with `NIM_SETVERSION` (the button message alone; plus `NIN_SELECT` and `WM_CONTEXTMENU`; or the anchor point and the icon's id packed in) — with the foreground handed on, so the program's menu or window can come forward. Two left clicks within the double-click time are a double click. False when the icon is gone. Any thread. |
+
+The host answers `Shell_NotifyIconGetRect` with a square around the point the
+icon was last clicked at, so a program's popup opens beside it, and drops the
+icon of a program that ended without removing it. It does not answer
+`SHAppBarMessage`.
+
+### The end of the session
+
+| Call | Meaning |
+|---|---|
+| `CanEndSession()` | Whether this backend can sign out, restart and shut down: true on Windows; on Linux the session's own menu does it. |
+| `EndSession(how, &error)` | `SessionEnd::SignOut`, `Restart` or `ShutDown`: the system asks every program to close, and a program may still refuse. On Windows `ExitWindowsEx`, with the shutdown privilege every account that may shut down holds switched on first. What a desktop's menu offers when it is the shell and no Start menu runs. |
 
 ### Notices
 
@@ -19816,9 +19938,9 @@ the shell they are free.
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it". The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
-| Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`; the application list from the Start menu. Executable and shortcut icons are extracted once into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
-| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` and `UltraCanvasGlobalShortcut::Start` fail with a reason; the application list, launcher and notices still work. |
+| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it". The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). No switch at sign-in, tray host or session end: the session owns those. |
+| Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`; the application list from the Start menu; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
+| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start` and `EndSession` fail with a reason; the application list, launcher and notices still work. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -84061,7 +84183,8 @@ stays empty and the Task Manager says so.
 
 UltraDesktop runs on Windows too, from the same suite folder as the other
 applications, and can take the place of the Windows desktop for one account
-— with the way back always one click away.
+— beside Explorer, or instead of it — with the way back always one click
+away.
 
 ### Trying it
 
@@ -84071,34 +84194,71 @@ on running underneath with its own taskbar along the bottom, over the foot of
 the right bar. *Close UltraDesktop* on the settings button's right-click menu
 ends the trial.
 
-### In place of the Windows desktop
+### Beside Explorer
 
 Any one of these switches over, for this account only, without administrator
 rights:
 
-- **UOS-Settings → Desktop → At sign-in**: *UltraDesktop in place of the
-  Windows desktop*;
-- the settings button's right-click menu: *Use as the Windows desktop*;
+- **UOS-Settings → Desktop → At sign-in**: *UltraDesktop beside Explorer*;
+- the settings button's right-click menu: *Use as the Windows desktop (beside
+  Explorer)*;
 - `UltraDesktop --use-as-desktop` (what the installer's finish page runs).
 
 From then on the sign-in starts UltraDesktop (an entry *UltraCanvas Desktop*
 in Task Manager's startup apps) and Explorer's taskbar hides itself; it slides
 in when the pointer touches the bottom edge. Explorer keeps running, so its
-notification area, its notifications and the programs that rely on it work as
-before.
+notification area, its notifications, its Start menu and the programs that
+rely on it work as before. This is the gentle way, and takes effect at once.
+
+### Instead of Explorer
+
+- **UOS-Settings → Desktop → At sign-in**: *UltraDesktop instead of
+  Explorer*;
+- the settings button's right-click menu: *Use instead of Explorer (from the
+  next sign-in)*;
+- `UltraDesktop --use-instead-of-explorer`.
+
+From the next sign-in UltraDesktop is the whole desktop and Explorer does not
+start. UltraDesktop then also
+
+- shows the programs' **tray icons** (OneDrive, a VPN client, a chat program)
+  on the info panel, above its services: a click opens the program, a right
+  click its menu, and their balloons appear as notifications;
+- offers **Sign out, Restart and Shut down** on the settings button's
+  right-click menu, which the Start menu would otherwise.
+
+The sign-in actually starts *UltraCanvasShellGuard*, which starts
+UltraDesktop — and keeps the screen from ever staying empty:
+
+- it starts UltraDesktop again when it crashes; after the third crash within a
+  minute, or when UltraDesktop cannot start at all, it starts Explorer for
+  that session and says why (UltraDesktop is tried again at the next sign-in);
+- it starts the programs that start with Windows, as Explorer would — the
+  ones switched off in Task Manager stay off;
+- it writes what it did to `%LOCALAPPDATA%\UltraCanvas\ShellGuard.log`.
+
+Without Explorer there is nothing for the parts of Windows that Explorer
+hosts: the Start menu, the quick settings (Wi-Fi, volume), the notification
+centre and Explorer's own keyboard shortcuts (Win+E, Win+R, Win+X). File
+Explorer windows still open — UltraDesktop opens *This PC* for the Start
+menu's *File Explorer*, which would otherwise start a second desktop.
 
 ### Back to the Windows desktop
 
-- UOS-Settings → Desktop: turn the switch off;
+- UOS-Settings → Desktop → At sign-in: *The Windows desktop*;
 - the settings button's right-click menu: *Switch back to the Windows
   desktop*;
 - `UltraDesktop --restore-desktop` — also from Task Manager when nothing else
-  is at hand: Ctrl+Shift+Esc, *Run new task*;
+  is at hand: Ctrl+Shift+Esc, *Run new task*, `UltraDesktop --restore-desktop`
+  (the installer registers the name, so no path is needed);
 - uninstalling the suite does the same.
 
-Each of them removes the start at sign-in and gives the taskbar back the
-state it had before the switch — auto-hide or not, as you had it — and a
-desktop the sign-in started closes within a second.
+Each of them removes the start at sign-in, beside or instead, and gives the
+taskbar back the state it had before the switch — auto-hide or not, as you had
+it. A desktop the sign-in started closes within a second; instead of Explorer,
+Explorer then starts in its place at once, and should UltraDesktop not respond
+any more, the guard ends it after five seconds and starts Explorer all the
+same.
 
 ### What works, and what differs from Linux
 
@@ -84106,11 +84266,11 @@ desktop the sign-in started closes within a second.
 |---|---|
 | Running applications | every window Explorer's taskbar would show, with its program's icon; Microsoft Store apps by the program inside their frame |
 | Applications window | the Start menu's programs, named as the Start menu names them; Microsoft Store apps are not listed yet |
-| Virtual desktops | the organiser follows Windows' desktops and switches between them; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
-| Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead |
+| Virtual desktops | the organiser follows Windows' desktops and switches between them while Explorer runs; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
+| Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
 | RAM disc | no button unless a folder is set (UOS-Settings → Desktop → RAM disc) |
-| Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, battery, keyboard layout, network, USB and Bluetooth |
-| Notifications | other programs' notifications are drawn by Windows, as before |
+| Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
+| Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md

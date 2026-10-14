@@ -24,12 +24,16 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
+// Version: 1.1.3 - DesktopReplacement, EndSession and the tray host (none of
+//                  them here: the session owns the desktop, the sign-out and
+//                  the tray, which on X11 is a protocol of its own)
 // Version: 1.1.2 - ListNativeApplications (none: desktop entries are the list);
 //                  ReplaceSystemDesktop (none: the session starts the desktop)
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
+#include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
@@ -649,16 +653,30 @@ bool CaptureScreen(const std::string& pngPath, std::string& error) {
 
 // Desktop entries are this platform's application list; the core reads them.
 bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
+// No entry here has a shortcut; opened like any file should one ever come.
+bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
+    return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
+}
 
 // The session decides which desktop runs - on ULTRA OS, UltraDesktop's own
 // session file - so there is nothing for a program to switch.
-bool CanReplaceSystemDesktop() { return false; }
-bool IsSystemDesktopReplaced() { return false; }
-bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, std::string& error) {
+bool CanReplaceSystemDesktop(DesktopReplacement) { return false; }
+DesktopReplacement GetSystemDesktopReplacement() { return DesktopReplacement::Off; }
+bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, DesktopReplacement,
+                          std::string& error) {
     error = "On this system the session starts the desktop; choose UltraDesktop's session at sign-in.";
     return false;
 }
 bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
+bool IsSystemDesktopRunning() { return true; }              // whatever the session started is the system's
+
+// Signing out is the session manager's (logind, the display manager), which
+// this backend does not talk to yet.
+bool CanEndSession() { return false; }
+bool EndSession(SessionEnd, std::string& error) {
+    error = "Signing out, restarting and shutting down go through the session's own menu here.";
+    return false;
+}
 
 void ReadDeviceActivity(DesktopDeviceActivity& activity) {
     ProbeAudio(activity);
@@ -910,6 +928,23 @@ void ShortcutClose(ShortcutState* state) {
     if (state->wakePipe[1] >= 0) ::close(state->wakePipe[1]);
     delete state;
 }
+
+// ===== THE NOTIFICATION AREA =====
+// An X11 tray is the system-tray protocol (a selection and XEmbed) or
+// StatusNotifierItem over D-Bus, neither of which this backend hosts yet.
+
+struct TrayHostState {};
+
+TrayHostState* TrayHostOpen(std::string& error) {
+    error = "Hosting the notification area is not available on X11 yet.";
+    return nullptr;
+}
+bool TrayHostAttach(TrayHostState*, std::string&) { return false; }
+bool TrayHostWait(TrayHostState*) { return false; }
+void TrayHostWake(TrayHostState*) {}
+void TrayHostClose(TrayHostState*) {}
+std::vector<DesktopTrayIcon> TrayHostIcons(TrayHostState*) { return {}; }
+bool TrayHostClick(TrayHostState*, const std::string&, TrayClick) { return false; }
 
 } // namespace DesktopShellBackend
 } // namespace UltraCanvas

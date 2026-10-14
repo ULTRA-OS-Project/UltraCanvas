@@ -40,12 +40,15 @@
 // for the screenshot, procfs and sysfs for the device activity) and Windows
 // (EnumWindows filtered as Explorer's taskbar filters, appbars for the screen
 // edges, BitBlt for the screenshot, WinEvent hooks for the monitor,
-// RegisterHotKey for shortcuts, the Start menu for the applications). Where
+// RegisterHotKey for shortcuts, the Start menu for the applications, the
+// notification area's Shell_TrayWnd for the tray icons). Where
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.4.0 - instead of the system's desktop (DesktopReplacement::Instead),
+//                  the notification area (UltraCanvasTrayHost), EndSession
 // Version: 1.3.0 - in place of the system's desktop (ReplaceSystemDesktop)
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -126,6 +129,36 @@ namespace UltraCanvas {
 
         std::vector<std::string> warnings;
     };
+
+    // ===== HOW A DESKTOP TAKES THE PLACE OF THE SYSTEM'S =====
+    enum class DesktopReplacement {
+        Off,        // the system's own desktop
+        Beside,     // started at sign-in; the system's desktop keeps running
+                    // beside it (Windows: Explorer, with its taskbar hidden)
+        Instead     // the session's shell: the system's desktop does not
+                    // start at all (Windows: the account's own shell setting)
+    };
+
+    // ===== AN ICON IN THE NOTIFICATION AREA =====
+    // What a program puts in the system tray (Shell_NotifyIcon on Windows),
+    // as the desktop hosting the tray sees it.
+    struct DesktopTrayIcon {
+        std::string id;                 // stable while the icon exists
+        std::string tooltip;            // UTF-8; "" when the program gave none
+        std::string iconFile;           // the icon as a PNG; "" when it has no image
+        std::string appClass;           // the program's name, as DesktopWindowInfo's
+        int processId = 0;
+        // The last balloon the program showed ("Backup finished"). A new one
+        // gets a new serial: a desktop shows each serial once.
+        std::string balloonTitle;
+        std::string balloonText;
+        uint64_t    balloonSerial = 0;
+    };
+
+    enum class TrayClick { Left, Right, Middle };
+
+    // ===== THE END OF THE SESSION =====
+    enum class SessionEnd { SignOut, Restart, ShutDown };
 
     // ===== A COUNT AN APPLICATION PUBLISHES FOR THE DESKTOP =====
     // UltraMail publishes its unread count under "UltraMail"; the desktop
@@ -227,25 +260,52 @@ namespace UltraCanvas {
 
         // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
         // Whether this user's sign-in starts `desktopProgram` (UltraDesktop)
-        // as the desktop, and the way back. On Windows the program starts with
-        // the session, given `arguments`, and Explorer's taskbar hides itself;
-        // Explorer keeps running, so its tray, its notifications and the
-        // programs that need it go on working. Restoring removes the start
-        // and gives the taskbar back the state it had before - that state,
-        // not a default. Per user: no other account changes and no
-        // administrator rights are needed; it takes effect for the session
-        // that is running, and every one after. Where the session itself
-        // decides which desktop runs (ULTRA OS, Linux) or the platform has no
-        // such switch, CanReplaceSystemDesktop() is false and the calls fail
-        // saying so.
-        static bool CanReplaceSystemDesktop();
+        // as the desktop, and the way back. Per user: no other account
+        // changes and no administrator rights are needed. Where the session
+        // itself decides which desktop runs (ULTRA OS, Linux) or the platform
+        // has no such switch, CanReplaceSystemDesktop() is false and the
+        // calls fail saying so.
+        //
+        // Beside (Windows): the program starts with the session, given
+        // `arguments`, and Explorer's taskbar hides itself; Explorer keeps
+        // running, so its tray, its notifications and the programs that need
+        // it go on working. It takes effect at once.
+        //
+        // Instead (Windows): the account's shell setting (Winlogon's Shell
+        // under HKEY_CURRENT_USER) names UltraCanvasShellGuard, which must
+        // sit beside `desktopProgram`; Explorer does not start at sign-in.
+        // The guard starts the program with `arguments`, restarts it when it
+        // crashes, and starts Explorer for the session when it crashes three
+        // times in a minute, cannot start at all, or exits - so a broken
+        // desktop never leaves the screen empty. It also starts the programs
+        // Explorer would have started (the Run keys, the Startup folders).
+        // It takes effect at the next sign-in.
+        //
+        // Restoring removes either, and gives the taskbar back the state it
+        // had before the first switch - that state, not a default.
+        static bool CanReplaceSystemDesktop(DesktopReplacement how = DesktopReplacement::Beside);
+        static DesktopReplacement GetSystemDesktopReplacement();
+        // Any replacement, Beside or Instead (not Off).
         static bool IsSystemDesktopReplaced();
         // `desktopProgram` is an absolute path to the executable.
         static bool ReplaceSystemDesktop(const std::string& desktopProgram,
                                          const std::vector<std::string>& arguments = {},
-                                         std::string* error = nullptr);
+                                         std::string* error = nullptr,
+                                         DesktopReplacement how = DesktopReplacement::Beside);
         // Safe to call when nothing was replaced: true, nothing changes.
         static bool RestoreSystemDesktop(std::string* error = nullptr);
+        // Whether the system's own desktop runs in this session right now
+        // (Windows: Explorer's taskbar). False under a desktop that replaced
+        // it Instead - the session a tray host is for.
+        static bool IsSystemDesktopRunning();
+
+        // ===== THE END OF THE SESSION =====
+        // What a desktop's "Sign out", "Restart" and "Shut down" do: the
+        // system asks every program to close, and a program may still
+        // refuse. False with the reason in `error`; CanEndSession() is false
+        // where this backend has no such call.
+        static bool CanEndSession();
+        static bool EndSession(SessionEnd how, std::string* error = nullptr);
 
         // ===== NOTICES =====
         // Publish `count` (and an optional line of text) under `application`.
@@ -327,6 +387,59 @@ namespace UltraCanvas {
         std::atomic<bool> running{false};
         std::thread worker;
         PressedCallback callback;
+        struct Impl;
+        std::unique_ptr<Impl> impl;
+    };
+
+    // ===== THE NOTIFICATION AREA =====
+    // The system tray, for a desktop that is the session's shell: on Windows
+    // the window every program's Shell_NotifyIcon talks to (Shell_TrayWnd),
+    // on a thread of its own, so a busy desktop never stalls a program
+    // adding its icon. Starting it asks the programs already running to add
+    // their icons again (TaskbarCreated).
+    //
+    //   UltraCanvasTrayHost tray;
+    //   if (tray.Start([this]() { trayDirty.store(true); })) {   // background thread!
+    //       for (const DesktopTrayIcon& icon : tray.ListIcons()) { ... }
+    //       tray.Click(icon.id, TrayClick::Right);   // the program opens its menu
+    //   }
+    //
+    // Only one notification area works at a time, so Start refuses while
+    // another runs - Explorer's taskbar, when the desktop runs beside it -
+    // and wherever the platform has none to host (X11 here; its trays are a
+    // protocol of their own). The callback runs on the host's thread and must
+    // only hand the news over.
+    class UltraCanvasTrayHost {
+    public:
+        using ChangedCallback = std::function<void()>;
+
+        UltraCanvasTrayHost();
+        ~UltraCanvasTrayHost();
+
+        UltraCanvasTrayHost(const UltraCanvasTrayHost&) = delete;
+        UltraCanvasTrayHost& operator=(const UltraCanvasTrayHost&) = delete;
+
+        // False with the reason in `error`: another notification area runs,
+        // or this platform has none to host.
+        bool Start(ChangedCallback onChanged, std::string* error = nullptr);
+        // Joins the thread, so no callback runs after this returns. Safe twice.
+        void Stop();
+        bool IsRunning() const { return running.load(); }
+
+        // The icons the programs show, in the order they were added; hidden
+        // ones (a program may keep an icon and hide it) left out. Any thread.
+        std::vector<DesktopTrayIcon> ListIcons() const;
+        // A click on an icon, at the mouse pointer, handed to its program as
+        // the notification area would: the left button usually opens the
+        // program, the right one its menu; two left clicks within the
+        // system's double-click time are a double click. False when the icon
+        // is gone. Any thread.
+        bool Click(const std::string& id, TrayClick button);
+
+    private:
+        std::atomic<bool> running{false};
+        std::thread worker;
+        ChangedCallback callback;
         struct Impl;
         std::unique_ptr<Impl> impl;
     };

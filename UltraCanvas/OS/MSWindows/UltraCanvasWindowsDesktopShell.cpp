@@ -34,12 +34,23 @@
 //   - Applications: the Start menu's shortcuts, the user's and the
 //     machine's, named as the Start menu names them (desktop.ini) and
 //     launched by opening the shortcut, as Explorer does.
-//   - In place of the system's desktop: a value under the user's Run key
-//     starts the desktop at sign-in, and Explorer's taskbar is set to hide
-//     itself; the taskbar's state before is kept and given back on the way
-//     back. Explorer keeps running beside it.
+//   - In place of the system's desktop, beside Explorer: a value under the
+//     user's Run key starts the desktop at sign-in, and Explorer's taskbar
+//     is set to hide itself; the taskbar's state before is kept and given
+//     back on the way back. Explorer keeps running beside it.
+//   - Instead of Explorer: the account's own shell setting (Winlogon's
+//     Shell under HKEY_CURRENT_USER, which sign-in reads before the
+//     machine's) names UltraCanvasShellGuard with the desktop after it; the
+//     guard is what keeps a failing desktop from leaving the screen empty
+//     (OS/MSWindows/ShellGuard/).
+//   - The notification area, when the desktop is the shell: Shell_TrayWnd,
+//     the window every program's Shell_NotifyIcon talks to
+//     (UltraCanvasWindowsTrayHost.cpp).
+//   - The end of the session: ExitWindowsEx.
+// Version: 1.2.0 - DesktopReplacement::Instead, EndSession, LaunchShortcut;
+//                  our own Shell_TrayWnd is not Explorer's taskbar
 // Version: 1.1.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 // IVirtualDesktopManager, DWMWA_CLOAKED and the cloaking events are declared
@@ -57,9 +68,12 @@
 
 #include "UltraCanvasDesktopShellBackend.h"
 #include "UltraCanvasDiskCache.h"
+#include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasShellLink.h"
+#include "UltraCanvasUtils.h"           // LaunchDetachedProcess
+#include "UltraCanvasWindowsDesktopShellInternal.h"
 #include "UltraCanvasWindowsIcons.h"
 
 #include <windows.h>
@@ -81,6 +95,7 @@
 #include <cstring>
 #include <cwctype>
 #include <filesystem>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <mutex>
@@ -414,8 +429,20 @@ namespace {
         return SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT)) == inputs.size();
     }
 
+    // Explorer's taskbar - not the Shell_TrayWnd this process may host
+    // itself as the shell's notification area.
+    HWND ExplorerTaskbarWindow() {
+        for (HWND tray = FindWindowExW(nullptr, nullptr, L"Shell_TrayWnd", nullptr); tray;
+             tray = FindWindowExW(nullptr, tray, L"Shell_TrayWnd", nullptr)) {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(tray, &pid);
+            if (pid != GetCurrentProcessId()) return tray;
+        }
+        return nullptr;
+    }
+
     bool ExplorerTaskbarRunning() {
-        return FindWindowW(L"Shell_TrayWnd", nullptr) != nullptr;
+        return ExplorerTaskbarWindow() != nullptr;
     }
 
     // ===== SCREEN EDGES =====
@@ -767,6 +794,12 @@ namespace {
     constexpr wchar_t kRunValue[] = L"UltraCanvas Desktop";
     constexpr wchar_t kShellStateKey[] = L"Software\\UltraCanvas\\DesktopShell";
     constexpr wchar_t kTaskbarStateValue[] = L"TaskbarStateBeforeReplacing";
+    // Instead of Explorer: the account's shell, which sign-in (userinit)
+    // reads from the user's hive before the machine's. Only a value naming
+    // the guard is ever ours to change; another program's shell is left be.
+    constexpr wchar_t kWinlogonKey[] = L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon";
+    constexpr wchar_t kShellValue[] = L"Shell";
+    constexpr wchar_t kShellGuardProgram[] = L"UltraCanvasShellGuard.exe";
 
     // An argument as the C runtime splits a command line back into argv:
     // quoted when it holds a space, a tab or a quote, with the backslashes
@@ -816,9 +849,84 @@ namespace {
     void SetTaskbarState(UINT state) {
         APPBARDATA data = {};
         data.cbSize = sizeof(data);
-        data.hWnd = FindWindowW(L"Shell_TrayWnd", nullptr);
+        data.hWnd = ExplorerTaskbarWindow();
         data.lParam = static_cast<LPARAM>(state);
         SHAppBarMessage(ABM_SETSTATE, &data);
+    }
+
+    // The taskbar as it was before the first switch, when Explorer is there
+    // to take it; kept for a later call otherwise.
+    void GiveTaskbarBack() {
+        DWORD previous = 0;
+        if (ReadDword(kShellStateKey, kTaskbarStateValue, previous) && ExplorerTaskbarRunning()) {
+            SetTaskbarState(previous);
+            RegDeleteKeyValueW(HKEY_CURRENT_USER, kShellStateKey, kTaskbarStateValue);
+        }
+    }
+
+    bool ReadString(const wchar_t* subKey, const wchar_t* name, std::wstring& out) {
+        DWORD size = 0;
+        if (RegGetValueW(HKEY_CURRENT_USER, subKey, name, RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
+                         nullptr, nullptr, &size) != ERROR_SUCCESS || size == 0)
+            return false;
+        std::wstring buffer(size / sizeof(wchar_t) + 1, L'\0');
+        if (RegGetValueW(HKEY_CURRENT_USER, subKey, name, RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
+                         nullptr, buffer.data(), &size) != ERROR_SUCCESS)
+            return false;
+        buffer.resize(wcsnlen(buffer.c_str(), buffer.size()));
+        out = buffer;
+        return true;
+    }
+
+    // The program a command line starts: its first word, quoted or not.
+    std::wstring FirstWord(const std::wstring& command) {
+        size_t at = command.find_first_not_of(L" \t");
+        if (at == std::wstring::npos) return {};
+        if (command[at] == L'"') {
+            const size_t end = command.find(L'"', at + 1);
+            return command.substr(at + 1, end == std::wstring::npos ? std::wstring::npos : end - at - 1);
+        }
+        const size_t end = command.find_first_of(L" \t", at);
+        return command.substr(at, end == std::wstring::npos ? std::wstring::npos : end - at);
+    }
+
+    // Whether the account's shell is the guard - ours to change and remove.
+    bool ShellIsOurGuard() {
+        std::wstring shell;
+        if (!ReadString(kWinlogonKey, kShellValue, shell)) return false;
+        return _wcsicmp(FileNameOf(FirstWord(shell)).c_str(), kShellGuardProgram) == 0;
+    }
+
+    bool RemoveOurShell(std::string& error) {
+        if (!ShellIsOurGuard()) return true;
+        const LSTATUS removed = RegDeleteKeyValueW(HKEY_CURRENT_USER, kWinlogonKey, kShellValue);
+        if (removed == ERROR_SUCCESS || removed == ERROR_FILE_NOT_FOUND) return true;
+        error = "The account's shell setting could not be put back to Explorer (Windows error " +
+                std::to_string(removed) + ").";
+        return false;
+    }
+
+    bool RemoveRunValue(std::string& error) {
+        const LSTATUS removed = RegDeleteKeyValueW(HKEY_CURRENT_USER, kRunKey, kRunValue);
+        if (removed == ERROR_SUCCESS || removed == ERROR_FILE_NOT_FOUND) return true;
+        error = "The desktop's start at sign-in could not be removed (Windows error " + std::to_string(removed) +
+                ").";
+        return false;
+    }
+
+    // A privilege the account holds but has not switched on - the right to
+    // shut the computer down - switched on for this process.
+    bool EnablePrivilege(const wchar_t* name) {
+        HANDLE token = nullptr;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token)) return false;
+        TOKEN_PRIVILEGES privileges = {};
+        privileges.PrivilegeCount = 1;
+        privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        bool ok = LookupPrivilegeValueW(nullptr, name, &privileges.Privileges[0].Luid) &&
+                  AdjustTokenPrivileges(token, FALSE, &privileges, 0, nullptr, nullptr) &&
+                  GetLastError() == ERROR_SUCCESS;   // ERROR_NOT_ALL_ASSIGNED: the account lacks it
+        CloseHandle(token);
+        return ok;
     }
 
     // ===== THE MONITOR =====
@@ -929,6 +1037,25 @@ namespace {
     }
 
 } // namespace
+
+// ===== SHARED WITH THE TRAY HOST =====
+
+namespace Win32 {
+
+std::string CachedIconPng(const std::string& key, const std::function<std::shared_ptr<UCPixmap>()>& make) {
+    return CachedIconFile(key, make);
+}
+
+std::string ProgramNameOfProcess(DWORD pid) {
+    const std::wstring exe = ProcessImagePath(pid);
+    return exe.empty() ? std::string() : Narrow(StemOf(exe));
+}
+
+bool ForeignTrayWindowRunning() {
+    return ExplorerTaskbarRunning();
+}
+
+} // namespace Win32
 
 // ===== BACKEND =====
 
@@ -1300,21 +1427,72 @@ bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out) {
     return true;
 }
 
+bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
+    // While this desktop is the shell, a shortcut to a bare explorer.exe
+    // (the Start menu's "File Explorer") would start a second desktop:
+    // Explorer takes over as the shell when it starts with nothing to open
+    // and no taskbar of its own around. Given a folder, it is a window.
+    if (!ExplorerTaskbarRunning()) {
+        UCShellLink link;
+        if (ReadShellLink(shortcutPath, link) && link.arguments.empty()) {
+            const std::string target = link.hostTargetPath.empty() ? link.targetPath : link.hostTargetPath;
+            if (!target.empty() && _wcsicmp(FileNameOf(Widen(target)).c_str(), L"explorer.exe") == 0) {
+                // This PC, the folder Explorer itself opens on a click.
+                return LaunchDetachedProcess({target, "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"},
+                                             link.workingDirectory, error);
+            }
+        }
+    }
+    return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
+}
+
 // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
 
-bool CanReplaceSystemDesktop() { return true; }
+bool CanReplaceSystemDesktop(DesktopReplacement how) {
+    return how == DesktopReplacement::Beside || how == DesktopReplacement::Instead;
+}
 
-bool IsSystemDesktopReplaced() {
+DesktopReplacement GetSystemDesktopReplacement() {
+    if (ShellIsOurGuard()) return DesktopReplacement::Instead;
     DWORD size = 0;
-    return RegGetValueW(HKEY_CURRENT_USER, kRunKey, kRunValue, RRF_RT_REG_SZ, nullptr, nullptr, &size) ==
-           ERROR_SUCCESS;
+    if (RegGetValueW(HKEY_CURRENT_USER, kRunKey, kRunValue, RRF_RT_REG_SZ, nullptr, nullptr, &size) == ERROR_SUCCESS)
+        return DesktopReplacement::Beside;
+    return DesktopReplacement::Off;
 }
 
 bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::string>& arguments,
-                          std::string& error) {
+                          DesktopReplacement how, std::string& error) {
+    const std::wstring wideProgram = Widen(program);
     // The program always in quotes: "C:\Program Files\..." has a space.
-    std::wstring command = L"\"" + Widen(program) + L"\"";
+    std::wstring command = L"\"" + wideProgram + L"\"";
     for (const std::string& argument : arguments) command += L" " + QuoteArgument(Widen(argument));
+
+    if (how == DesktopReplacement::Instead) {
+        // The guard, never the desktop itself: a desktop that crashes, or
+        // was half removed, must still leave the user a screen to work on.
+        const size_t slash = wideProgram.find_last_of(L"\\/");
+        const std::wstring guard =
+            (slash == std::wstring::npos ? std::wstring() : wideProgram.substr(0, slash + 1)) + kShellGuardProgram;
+        const DWORD attributes = GetFileAttributesW(guard.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            error = Narrow(kShellGuardProgram) + std::string(" is not installed beside ") + program +
+                    ". It is what brings Explorer back if the desktop fails, so without it the switch is not made.";
+            return false;
+        }
+        const std::wstring shell = L"\"" + guard + L"\" " + command;
+        const DWORD bytes = static_cast<DWORD>((shell.size() + 1) * sizeof(wchar_t));
+        if (!WriteValue(kWinlogonKey, kShellValue, REG_SZ, shell.c_str(), bytes)) {
+            error = "Windows did not let this account change its shell: the Winlogon key could not be written.";
+            return false;
+        }
+        // Not also beside: one desktop at sign-in. Explorer's taskbar goes
+        // back to how it was - the next session has no Explorer to hide,
+        // and the way back must find it as the user left it.
+        std::string ignored;
+        RemoveRunValue(ignored);
+        GiveTaskbarBack();
+        return true;
+    }
 
     // The taskbar as it is now, recorded once: switching again must not
     // record the hidden taskbar as the one to come back to.
@@ -1329,23 +1507,45 @@ bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::str
         error = "Windows did not let this account start a program at sign-in: the Run key could not be written.";
         return false;
     }
+    // Beside Explorer from now on, not instead of it.
+    if (!RemoveOurShell(error)) return false;
     if (explorer) SetTaskbarState(ABS_AUTOHIDE | ABS_ALWAYSONTOP);
     return true;
 }
 
 bool RestoreSystemDesktop(std::string& error) {
-    const LSTATUS removed = RegDeleteKeyValueW(HKEY_CURRENT_USER, kRunKey, kRunValue);
-    if (removed != ERROR_SUCCESS && removed != ERROR_FILE_NOT_FOUND) {
-        error = "The desktop's start at sign-in could not be removed (Windows error " + std::to_string(removed) +
-                ").";
-        return false;
-    }
+    if (!RemoveRunValue(error)) return false;
+    if (!RemoveOurShell(error)) return false;
     // The taskbar as it was. Kept for later when Explorer is not running to
     // be given it.
-    DWORD previous = 0;
-    if (ReadDword(kShellStateKey, kTaskbarStateValue, previous) && ExplorerTaskbarRunning()) {
-        SetTaskbarState(previous);
-        RegDeleteKeyValueW(HKEY_CURRENT_USER, kShellStateKey, kTaskbarStateValue);
+    GiveTaskbarBack();
+    return true;
+}
+
+bool IsSystemDesktopRunning() {
+    return ExplorerTaskbarRunning();
+}
+
+// ===== THE END OF THE SESSION =====
+
+bool CanEndSession() { return true; }
+
+bool EndSession(SessionEnd how, std::string& error) {
+    // A planned end, as the Start menu's: the reason Windows records.
+    const DWORD reason = SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER | SHTDN_REASON_FLAG_PLANNED;
+    UINT flags = EWX_LOGOFF;
+    if (how != SessionEnd::SignOut) {
+        // Every account that may shut the computer down holds the privilege
+        // switched off; a program switches it on for itself first.
+        if (!EnablePrivilege(SE_SHUTDOWN_NAME)) {
+            error = "This account is not allowed to shut the computer down.";
+            return false;
+        }
+        flags = how == SessionEnd::Restart ? EWX_REBOOT : EWX_POWEROFF;
+    }
+    if (!ExitWindowsEx(flags, reason)) {
+        error = "Windows refused (error " + std::to_string(GetLastError()) + ").";
+        return false;
     }
     return true;
 }

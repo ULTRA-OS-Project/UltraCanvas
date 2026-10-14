@@ -1,3 +1,13 @@
+#### 2026-10-14 *0.5.0*
+- **Desktop → At sign-in (Windows) is a choice of three:** *The Windows
+  desktop*, *UltraDesktop beside Explorer* (what the switch did before:
+  started now and at every sign-in, Explorer's taskbar hidden) and
+  *UltraDesktop instead of Explorer* - the whole desktop from the next
+  sign-in, with the tray icons and sign out on UltraDesktop itself, and
+  Explorer started in its place should UltraDesktop fail (framework changelog:
+  `desktopshell-instead-of-explorer`). The choice always shows what is set, and
+  a change that could not be made is said and undone on the page.
+
 #### 2026-10-13 *0.4.0*
 - **Desktop → At sign-in (Windows): UltraDesktop in place of the Windows
   desktop.** On switches over at once and for every sign-in after. Off brings

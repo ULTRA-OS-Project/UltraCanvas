@@ -4,8 +4,8 @@
 # ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS - so the Windows CI row, which builds
 # no full test suite, runs the Win32 backend of UltraCanvasDesktopShell
 # against a real desktop: its window list, monitor, screen edges, hot keys,
-# screenshot and the Start menu. Paths are relative to this file, so either
-# includer works.
+# screenshot, the Start menu, the shell guard and the notification area.
+# Paths are relative to this file, so either includer works.
 
 set(_DST_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(_DST_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../UltraCanvas/include")
@@ -36,6 +36,11 @@ if(TARGET UltraCanvas)
     set_target_properties(DesktopShellTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${_DST_BIN_DIR}
     )
+    # On Windows the test starts UltraCanvasShellGuard from beside itself
+    # (both are built to the build root): built first.
+    if(TARGET UltraCanvasShellGuard)
+        add_dependencies(DesktopShellTest UltraCanvasShellGuard)
+    endif()
     add_test(NAME DesktopShellTest COMMAND DesktopShellTest
              WORKING_DIRECTORY ${_DST_BIN_DIR})
     message(STATUS "    Test registered: DesktopShellTest")

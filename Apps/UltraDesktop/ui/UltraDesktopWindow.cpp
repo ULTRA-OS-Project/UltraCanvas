@@ -2,6 +2,8 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.4.0 - Windows: instead of Explorer - the tray icons (StartTray,
+//                  RefreshTray), sign out / restart / shut down
 // Version: 0.3.0 - Windows: in place of the Windows desktop and back (the
 //                  settings button's menu, --session), no RAM disc button
 //                  without a RAM disc
@@ -34,12 +36,14 @@
 #include "UltraCanvasWindow.h"
 #ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
 #include "Plugins/UltraMessage/UltraCanvasNotificationToast.h"
+#include "UltraMessage/UltraMessage.h"
 #endif
 
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <set>
 #include <type_traits>
 
 #ifndef ULTRADESKTOP_VERSION
@@ -76,6 +80,7 @@ const Color kMarkerCount   (90, 90, 90, 255);    // grey pill for counts
 const Color kMarkerSaved   (60, 170, 90, 255);   // green: the screenshot landed
 
 const char* const kRunningPrefix = "win:";
+const char* const kTrayPrefix = "tray:";
 
 // The window's native handle as the id the desktop shell module takes: an
 // X11 Window is an integer, a HWND or NSWindow a pointer. A template, so the
@@ -107,6 +112,7 @@ UltraDesktopWindow::~UltraDesktopWindow() {
     // over through members of this object: stop them before anything else goes.
     StopDevicePoll();
     shellMonitor_.Stop();
+    trayHost_.Stop();
     clipboardShortcut_.Stop();
     clipboardPanel_.reset();
     if (recorder_) recorder_->Detach();
@@ -147,6 +153,7 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     // the device poll on its own thread as a pending reading. The UI timer
     // applies both.
     shellMonitor_.Start([this]() { windowsDirty_.store(true); });
+    if (shellSession_) StartTray();
     StartDevicePoll();
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         uiTimer_ = app->StartTimer(kUiTimerMs, /*periodic=*/true, [this](TimerId) { OnTimer(); });
@@ -181,6 +188,10 @@ void UltraDesktopWindow::BuildLayout() {
     }
     runningItems_.clear();
     runningTitles_.clear();
+    // The tray icons live on the info panel, which is built anew.
+    trayIcons_.clear();
+    trayTooltips_.clear();
+    if (trayHost_.IsRunning()) trayDirty_.store(true);
     running_.reset();
     organiser_.reset();
     info_.reset();
@@ -691,6 +702,7 @@ void UltraDesktopWindow::OnTimer() {
         RefreshDesktops();
         RefreshWindows();
     }
+    if (trayDirty_.exchange(false)) RefreshTray();
 
     bool apply = false;
     DesktopDeviceActivity now;
@@ -970,23 +982,42 @@ void UltraDesktopWindow::ShowWindowMenu(uint64_t windowId, int windowX, int wind
 
 void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     if (!window_) return;
-    popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 260, 0);
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 300, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
     popupMenu_->AddItem(MenuItemData::Action("ULTRA OS settings", [this]() { OpenSystemSettings(); }));
     // Only Windows has a desktop of its own to switch from, and back to.
     if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
         popupMenu_->AddItem(MenuItemData::Separator());
-        if (UltraCanvasDesktopShell::IsSystemDesktopReplaced()) {
+        const DesktopReplacement mode = UltraCanvasDesktopShell::GetSystemDesktopReplacement();
+        if (mode == DesktopReplacement::Off) {
+            popupMenu_->AddItem(MenuItemData::Action("Use as the Windows desktop (beside Explorer)",
+                                                     [this]() { UseAsSystemDesktop(DesktopReplacement::Beside); }));
+        }
+        if (mode != DesktopReplacement::Instead &&
+            UltraCanvasDesktopShell::CanReplaceSystemDesktop(DesktopReplacement::Instead)) {
+            popupMenu_->AddItem(MenuItemData::Action("Use instead of Explorer (from the next sign-in)",
+                                                     [this]() { UseAsSystemDesktop(DesktopReplacement::Instead); }));
+        }
+        if (mode == DesktopReplacement::Instead) {
+            popupMenu_->AddItem(MenuItemData::Action("Keep Explorer running beside UltraDesktop",
+                                                     [this]() { UseAsSystemDesktop(DesktopReplacement::Beside); }));
+        }
+        if (mode != DesktopReplacement::Off) {
             popupMenu_->AddItem(MenuItemData::Action("Switch back to the Windows desktop",
                                                      [this]() { SwitchBackToSystemDesktop(); }));
-        } else {
-            popupMenu_->AddItem(MenuItemData::Action("Use as the Windows desktop",
-                                                     [this]() { UseAsSystemDesktop(); }));
+        } else if (!sessionDesktop_) {
             // A trial run beside the Windows desktop has no title bar to close.
             popupMenu_->AddItem(MenuItemData::Action("Close UltraDesktop", []() {
                 if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
             }));
         }
+    }
+    // As the shell, nothing else offers the end of the session.
+    if (shellSession_ && UltraCanvasDesktopShell::CanEndSession()) {
+        popupMenu_->AddItem(MenuItemData::Separator());
+        popupMenu_->AddItem(MenuItemData::Action("Sign out...", [this]() { ConfirmEndSession(SessionEnd::SignOut); }));
+        popupMenu_->AddItem(MenuItemData::Action("Restart...", [this]() { ConfirmEndSession(SessionEnd::Restart); }));
+        popupMenu_->AddItem(MenuItemData::Action("Shut down...", [this]() { ConfirmEndSession(SessionEnd::ShutDown); }));
     }
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
@@ -994,11 +1025,19 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
 
 // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
 
-void UltraDesktopWindow::UseAsSystemDesktop() {
+void UltraDesktopWindow::UseAsSystemDesktop(DesktopReplacement how) {
     std::string error;
+    const bool instead = how == DesktopReplacement::Instead;
     if (UltraCanvasDesktopShell::ReplaceSystemDesktop(UltraCanvasDesktopShell::FindProgram("UltraDesktop"),
-                                                      {"--session"}, &error)) {
+                                                      {instead ? "--shell" : "--session"}, &error, how)) {
         sessionDesktop_ = true;
+        if (instead && !shellSession_) {
+            UltraCanvasDialogManager::ShowInformation(
+                    "From the next sign-in UltraDesktop is the desktop, and Explorer does not start: sign out and "
+                    "in again to see it.\n\nShould UltraDesktop ever fail to start, Explorer starts in its place "
+                    "for that session. \"Switch back to the Windows desktop\", here or in UOS-Settings, undoes it.",
+                    "UltraDesktop", nullptr, window_.get());
+        }
         return;
     }
     debugOutput << "UltraDesktop: not the desktop at sign-in: " << error << std::endl;
@@ -1014,8 +1053,132 @@ void UltraDesktopWindow::SwitchBackToSystemDesktop() {
                                               "UltraDesktop", nullptr, window_.get());
         return;
     }
-    // Explorer's taskbar is back; the desktop it covered is the user's again.
+    // Explorer's taskbar is back - or, as the shell, the guard starts
+    // Explorer the moment this desktop has closed.
     if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
+}
+
+void UltraDesktopWindow::ConfirmEndSession(SessionEnd how) {
+    const char* question = how == SessionEnd::SignOut ? "Sign out now? Programs that are open are asked to close."
+                         : how == SessionEnd::Restart ? "Restart the computer now? Programs that are open are asked "
+                                                        "to close."
+                                                      : "Shut down the computer now? Programs that are open are "
+                                                        "asked to close.";
+    UltraCanvasDialogManager::ShowConfirmation(question, "UltraDesktop", [this, how](bool confirmed) {
+        if (!confirmed) return;
+        std::string error;
+        if (UltraCanvasDesktopShell::EndSession(how, &error)) return;
+        UltraCanvasDialogManager::ShowWarning("Windows did not end the session.\n\n" + error, "UltraDesktop", nullptr,
+                                              window_.get());
+    }, window_.get());
+}
+
+// ===== THE NOTIFICATION AREA =====
+
+void UltraDesktopWindow::StartTray() {
+    std::string error;
+    if (!trayHost_.Start([this]() { trayDirty_.store(true); }, &error)) {
+        debugOutput << "UltraDesktop: the tray icons are not shown: " << error << std::endl;
+    }
+}
+
+void UltraDesktopWindow::RefreshTray() {
+    if (!info_ || !trayHost_.IsRunning()) return;
+    const std::vector<DesktopTrayIcon> icons = trayHost_.ListIcons();
+    std::set<std::string> wanted;
+    for (const DesktopTrayIcon& icon : icons) wanted.insert(kTrayPrefix + icon.id);
+
+    // Gone icons leave the panel.
+    for (auto it = trayIcons_.begin(); it != trayIcons_.end();) {
+        if (wanted.count(it->first) == 0) {
+            info_->RemoveItem(it->first);
+            trayTooltips_.erase(it->first);
+            it = trayIcons_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (const DesktopTrayIcon& icon : icons) {
+        const std::string itemId = kTrayPrefix + icon.id;
+        std::shared_ptr<UltraCanvasButton> button;
+        auto known = trayIcons_.find(itemId);
+        if (known == trayIcons_.end()) {
+            // A program without a picture still gets a button: its initial.
+            std::string text;
+            if (icon.iconFile.empty() && !icon.appClass.empty()) {
+                text = icon.appClass.substr(0, 1);
+                std::transform(text.begin(), text.end(), text.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+            }
+            const std::string id = icon.id;
+            button = info_->AddButton(itemId, text, icon.iconFile, [this, id, itemId]() {
+                if (info_) info_->ClearItemBadge(itemId);   // the balloon was seen
+                trayHost_.Click(id, TrayClick::Left);
+            });
+            StyleBarButton(button);
+            // In their own colours: a tray icon's colour often is its state.
+            ButtonStyle style = button->GetStyle();
+            style.useIconAsMask = false;
+            button->SetStyle(style);
+            button->SetElementSize(Size2Df(static_cast<float>(kInfoButton), static_cast<float>(kInfoButton)));
+            button->SetIconSize(kInfoIcon, kInfoIcon);
+            button->onContextMenu = [this, id](int, int) { trayHost_.Click(id, TrayClick::Right); };
+            // Above the services, in the order the programs added them.
+            const int from = info_->GetItemIndex(itemId);
+            const int to = info_->GetItemIndex("mail");
+            if (to >= 0 && from > to) info_->MoveItem(from, to);
+            trayIcons_[itemId] = icon.iconFile;
+        } else {
+            button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget(itemId));
+            if (button && known->second != icon.iconFile) {
+                button->SetIcon(icon.iconFile);
+                known->second = icon.iconFile;
+            }
+        }
+        if (!button) continue;
+        const std::string tooltip = icon.tooltip.empty() ? icon.appClass : icon.tooltip;
+        if (trayTooltips_[itemId] != tooltip) {
+            trayTooltips_[itemId] = tooltip;
+            button->SetTooltip(tooltip);
+        }
+        if (icon.balloonSerial != 0 && trayBalloons_[icon.id] != icon.balloonSerial) {
+            trayBalloons_[icon.id] = icon.balloonSerial;
+            ShowTrayBalloon(icon);
+        }
+    }
+    info_->InvalidateLayout();
+    info_->RequestRedraw();
+}
+
+void UltraDesktopWindow::ShowTrayBalloon(const DesktopTrayIcon& icon) {
+    const std::string title = icon.balloonTitle.empty() ? icon.appClass : icon.balloonTitle;
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
+    // A balloon is a notification: the toasts draw it.
+    if (toasts_) {
+        UltraMessage::SystemNotification notification;
+        notification.appId = icon.appClass;
+        notification.appName = icon.appClass;
+        notification.summary = title;
+        notification.body = icon.balloonText;
+        UltraMsgMessage message;
+        message.envelope.id = "tray-" + icon.id + "-" + std::to_string(icon.balloonSerial);
+        message.envelope.topic = UltraMsgTopics::SystemNotification;
+        message.envelope.from.appId = "org.ultraos.ultradesktop.tray";
+        message.body = UltraMessage::MakeSystemNotification(notification);
+        if (toasts_->Ingest(message)) return;
+    }
+#endif
+    // No toasts: a yellow marker on the icon, the words in its tooltip
+    // until it is clicked.
+    if (!info_) return;
+    const std::string itemId = kTrayPrefix + icon.id;
+    info_->SetItemBadgeDot(itemId, kMarkerActive);
+    if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget(itemId))) {
+        const std::string text = title + (icon.balloonText.empty() ? "" : ": " + icon.balloonText);
+        trayTooltips_[itemId] = text;
+        button->SetTooltip(text);
+    }
 }
 
 void UltraDesktopWindow::CheckDesktopSwitch() {

@@ -3,9 +3,10 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.4.0 - DesktopReplacement::Instead, the tray host, EndSession
 // Version: 1.3.0 - the Windows backend; ListNativeApplications;
 //                  in place of the system's desktop
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASDESKTOPSHELLBACKEND_H
@@ -51,14 +52,24 @@ namespace DesktopShellBackend {
     // Windows. False where desktop entries are the answer, and the core then
     // reads them itself; true with `out` filled (unsorted) otherwise.
     bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out);
+    // Open one of those applications' shortcuts the way the platform's own
+    // desktop would (Windows: the .lnk through the shell). Only called for
+    // an entry with shortcutPath set.
+    bool LaunchShortcut(const std::string& shortcutPath, std::string& error);
 
     // In place of the system's desktop (UltraCanvasDesktopShell.h). The core
-    // has checked that `program` is an existing absolute path.
-    bool CanReplaceSystemDesktop();
-    bool IsSystemDesktopReplaced();
+    // has checked that `program` is an existing absolute path, and that `how`
+    // is not Off.
+    bool CanReplaceSystemDesktop(DesktopReplacement how);
+    DesktopReplacement GetSystemDesktopReplacement();
     bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::string>& arguments,
-                              std::string& error);
+                              DesktopReplacement how, std::string& error);
     bool RestoreSystemDesktop(std::string& error);
+    bool IsSystemDesktopRunning();
+
+    // The end of the session.
+    bool CanEndSession();
+    bool EndSession(SessionEnd how, std::string& error);
 
     // The parts of the device activity only the platform can read: audio
     // and video capture in use, playback running, the battery, the keyboard
@@ -81,6 +92,21 @@ namespace DesktopShellBackend {
     bool ShortcutWait(ShortcutState* state);
     void ShortcutWake(ShortcutState* state);
     void ShortcutClose(ShortcutState* state);
+
+    // The notification area. `TrayHostOpen` checks there is one to host
+    // (nullptr + error otherwise); the core's thread then calls
+    // `TrayHostAttach` once - the window the programs talk to is that
+    // thread's - and `TrayHostWait` until it returns false. Wait answers
+    // true when the icons changed, false when `TrayHostWake` was called (it
+    // has taken the window down by then). Icons and clicks from any thread.
+    struct TrayHostState;
+    TrayHostState* TrayHostOpen(std::string& error);
+    bool TrayHostAttach(TrayHostState* state, std::string& error);
+    bool TrayHostWait(TrayHostState* state);
+    void TrayHostWake(TrayHostState* state);
+    void TrayHostClose(TrayHostState* state);
+    std::vector<DesktopTrayIcon> TrayHostIcons(TrayHostState* state);
+    bool TrayHostClick(TrayHostState* state, const std::string& id, TrayClick button);
 
 } // namespace DesktopShellBackend
 } // namespace UltraCanvas

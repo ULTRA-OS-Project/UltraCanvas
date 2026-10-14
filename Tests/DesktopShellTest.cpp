@@ -13,11 +13,26 @@
 // minimized, given a reserved screen edge that the work area has to make
 // room for, and closed - plus a global shortcut and a screenshot file. On a
 // CI runner (CI=true) it also switches the desktop at sign-in to itself and
-// back, and checks the Run value and the taskbar's state come back as they
-// were; anywhere else that is skipped, so a developer's own taskbar and
-// sign-in are never touched.
+// back - beside Explorer and instead of it - and checks the Run value, the
+// account's shell setting and the taskbar's state come back as they were;
+// anywhere else that is skipped, so a developer's own taskbar and sign-in
+// are never touched.
+//
+// Two parts of the Windows backend run in programs of their own, safely
+// anywhere:
+//   - UltraCanvasShellGuard, started on this test as the "desktop" that
+//     crashes on request (--guard-child): it must start it again, and give
+//     up after the third failure within a minute. Not being the session's
+//     shell, it starts no Explorer and no startup programs.
+//   - The notification area: this test again (--tray-child), on a Windows
+//     desktop of its own that has no Explorer taskbar, so the host can own
+//     Shell_TrayWnd there and shell32's real Shell_NotifyIcon reaches it -
+//     icons added, changed, hidden, ballooned and removed, clicks in every
+//     NIM_SETVERSION form, Shell_NotifyIconGetRect - while the user's own
+//     taskbar is never touched.
+// Version: 1.4.0 - instead of Explorer, the shell guard, the tray host
 // Version: 1.3.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShell.h"
@@ -25,16 +40,30 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <cwchar>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
+#include <vector>
 #include "UltraCanvasPathUtf8.h"
 
 #if defined(_WIN32)
+// Shell_NotifyIconGetRect and NOTIFYICONDATAW's newest fields are declared
+// for Windows 7 headers and later.
+#if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0A00
+#  undef _WIN32_WINNT
+#  define _WIN32_WINNT 0x0A00
+#endif
+#if !defined(NTDDI_VERSION) || (NTDDI_VERSION >> 16) < _WIN32_WINNT
+#  undef NTDDI_VERSION
+#  define NTDDI_VERSION (_WIN32_WINNT << 16)
+#endif
 #include "UltraCanvasShellLink.h"
 #include "ShellLinkTestSupport.h"
 #include <windows.h>
-#include <shellapi.h>   // SHAppBarMessage
+#include <shellapi.h>   // SHAppBarMessage, Shell_NotifyIconW
 #endif
 
 namespace fs = std::filesystem;
@@ -142,11 +171,335 @@ RECT WorkArea() {
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &area, 0);
     return area;
 }
+
+std::wstring ThisProgram() {
+    wchar_t self[MAX_PATH * 2] = {};
+    GetModuleFileNameW(nullptr, self, MAX_PATH * 2);
+    return self;
+}
+
+std::wstring FolderOf(const std::wstring& path) {
+    return path.substr(0, path.find_last_of(L"\\/"));
+}
+
+std::wstring Quoted(const std::wstring& text) {
+    return L"\"" + text + L"\"";
+}
+
+// A program run to its end: its exit code, or -1 when it could not start or
+// did not end within `ms`. Its output goes to this test's own (the
+// handles are inherited), so its PASS and FAIL lines are part of the run.
+// `desktop`, when given, is the Windows desktop it starts on.
+int RunToEnd(const std::wstring& program, const std::wstring& commandLine, DWORD ms,
+             const wchar_t* desktop = nullptr) {
+    std::fflush(stdout);
+    std::vector<wchar_t> buffer(commandLine.begin(), commandLine.end());
+    buffer.push_back(L'\0');
+    std::wstring desktopName = desktop ? desktop : L"";
+    STARTUPINFOW startup = {};
+    startup.cb = sizeof(startup);
+    if (desktop) startup.lpDesktop = desktopName.data();
+    const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    const HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+    BOOL inherit = FALSE;
+    if (out && out != INVALID_HANDLE_VALUE) {
+        SetHandleInformation(out, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+        if (err && err != INVALID_HANDLE_VALUE) SetHandleInformation(err, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+        startup.dwFlags = STARTF_USESTDHANDLES;
+        startup.hStdOutput = out;
+        startup.hStdError = err;
+        startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        inherit = TRUE;
+    }
+    PROCESS_INFORMATION process = {};
+    if (!CreateProcessW(program.c_str(), buffer.data(), nullptr, nullptr, inherit, 0, nullptr, nullptr, &startup,
+                        &process)) {
+        std::printf("  (could not start %s: error %lu)\n", PathUtf8Detail::Utf16ToUtf8(program).c_str(),
+                    GetLastError());
+        return -1;
+    }
+    CloseHandle(process.hThread);
+    int code = -1;
+    if (WaitForSingleObject(process.hProcess, ms) == WAIT_OBJECT_0) {
+        DWORD exitCode = 0;
+        if (GetExitCodeProcess(process.hProcess, &exitCode)) code = static_cast<int>(exitCode);
+    } else {
+        TerminateProcess(process.hProcess, 99);
+    }
+    CloseHandle(process.hProcess);
+    return code;
+}
+
+int ReadCount(const fs::path& file) {
+    std::ifstream in(file);
+    int n = 0;
+    in >> n;
+    return n;
+}
+
+// --guard-child <mode> <counter file>: the "desktop" the shell guard starts.
+// It counts its starts, then crashes (an access violation's exit code),
+// crashes the first time only, or exits cleanly.
+int GuardChild(const std::string& mode, const fs::path& counter) {
+    const int n = ReadCount(counter) + 1;
+    {
+        std::ofstream out(counter, std::ios::trunc);
+        out << n << "\n";
+    }
+    if (mode == "crash" || (mode == "crash-once" && n == 1)) ExitProcess(0xC0000005u);
+    return 0;
+}
+
+// ----- the notification area, on a desktop of its own (--tray-child) -----
+
+// What the tray test's window was sent: its callback message's arguments,
+// and whether TaskbarCreated reached it.
+struct TrayInbox {
+    std::vector<std::pair<WPARAM, LPARAM>> callbacks;
+    bool taskbarCreated = false;
+};
+TrayInbox g_inbox;
+constexpr UINT kTrayCallback = WM_APP + 0x31;
+UINT g_taskbarCreated = 0;
+
+LRESULT CALLBACK TrayTestWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == kTrayCallback) {
+        g_inbox.callbacks.emplace_back(wParam, lParam);
+        return 0;
+    }
+    if (g_taskbarCreated != 0 && msg == g_taskbarCreated) {
+        g_inbox.taskbarCreated = true;
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+HWND OpenTrayTestWindow() {
+    static const bool registered = []() {
+        WNDCLASSEXW wc = {};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = TrayTestWindowProc;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.lpszClassName = L"UltraCanvasTrayTestWindow";
+        return RegisterClassExW(&wc) != 0;
+    }();
+    if (!registered) return nullptr;
+    // Top-level and never shown, as a tray program's own window usually is.
+    return CreateWindowExW(0, L"UltraCanvasTrayTestWindow", L"tray test", WS_OVERLAPPED, 0, 0, 10, 10, nullptr,
+                           nullptr, GetModuleHandleW(nullptr), nullptr);
+}
+
+// A 16x16 icon of one colour, made in memory.
+HICON MakeIcon(COLORREF colour) {
+    BITMAPV5HEADER header = {};
+    header.bV5Size = sizeof(header);
+    header.bV5Width = 16;
+    header.bV5Height = -16;
+    header.bV5Planes = 1;
+    header.bV5BitCount = 32;
+    header.bV5Compression = BI_BITFIELDS;
+    header.bV5RedMask = 0x00FF0000;
+    header.bV5GreenMask = 0x0000FF00;
+    header.bV5BlueMask = 0x000000FF;
+    header.bV5AlphaMask = 0xFF000000;
+    void* bits = nullptr;
+    // No device context: an RGB DIB needs none, and this desktop has no screen.
+    HBITMAP colourBitmap = CreateDIBSection(nullptr, reinterpret_cast<BITMAPINFO*>(&header), DIB_RGB_COLORS, &bits,
+                                            nullptr, 0);
+    if (!colourBitmap || !bits) return nullptr;
+    const uint32_t pixel = 0xFF000000u | (GetRValue(colour) << 16) | (GetGValue(colour) << 8) | GetBValue(colour);
+    for (int i = 0; i < 16 * 16; ++i) static_cast<uint32_t*>(bits)[i] = pixel;
+    HBITMAP mask = CreateBitmap(16, 16, 1, 1, nullptr);
+    ICONINFO info = {};
+    info.fIcon = TRUE;
+    info.hbmColor = colourBitmap;
+    info.hbmMask = mask;
+    HICON icon = CreateIconIndirect(&info);
+    DeleteObject(colourBitmap);
+    DeleteObject(mask);
+    return icon;
+}
+
+void CopyText(wchar_t* field, size_t capacity, const std::string& utf8) {
+    const std::wstring wide = PathUtf8Detail::Utf8ToUtf16<std::wstring>(utf8);
+    wcsncpy(field, wide.c_str(), capacity - 1);
+    field[capacity - 1] = L'\0';
+}
+
+NOTIFYICONDATAW IconData(HWND window, UINT id) {
+    NOTIFYICONDATAW data = {};
+    data.cbSize = sizeof(data);
+    data.hWnd = window;
+    data.uID = id;
+    return data;
+}
+
+const DesktopTrayIcon* FindTrayIcon(const std::vector<DesktopTrayIcon>& icons, const std::string& tooltip) {
+    for (const DesktopTrayIcon& icon : icons) {
+        if (icon.tooltip == tooltip) return &icon;
+    }
+    return nullptr;
+}
+
+int TrayChild() {
+    std::printf("  [notification area, on a desktop of its own]\n");
+    Check(!UltraCanvasDesktopShell::IsSystemDesktopRunning(), "no Explorer taskbar on this desktop");
+    Check(FindWindowW(L"Shell_TrayWnd", nullptr) == nullptr, "and no notification area yet");
+
+    g_taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
+    HWND window = OpenTrayTestWindow();
+    Check(window != nullptr, "the test program's window opens");
+    if (!window) return g_failures;
+
+    UltraCanvasTrayHost host;
+    std::atomic<int> changes{0};
+    std::string why;
+    Check(host.Start([&changes]() { ++changes; }, &why), "the tray host starts " + why);
+    Check(FindWindowW(L"Shell_TrayWnd", nullptr) != nullptr, "it owns Shell_TrayWnd");
+    Check(!UltraCanvasDesktopShell::IsSystemDesktopRunning(), "which is not taken for Explorer's taskbar");
+    Check(PumpUntil([]() { return g_inbox.taskbarCreated; }, 3000), "programs are asked to add their icons (TaskbarCreated)");
+    {
+        UltraCanvasTrayHost second;
+        std::string refused;
+        Check(!second.Start([]() {}, &refused) && !refused.empty(), "a second host is refused: " + refused);
+    }
+
+    // Added through shell32's own Shell_NotifyIcon, the icon destroyed at
+    // once - as programs do - and a Thai tooltip.
+    const std::string tip = "Tray test \xE0\xB8\x97\xE0\xB8\x94\xE0\xB8\xAA\xE0\xB8\xAD\xE0\xB8\x9A";
+    NOTIFYICONDATAW data = IconData(window, 7);
+    data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    data.uCallbackMessage = kTrayCallback;
+    data.hIcon = MakeIcon(RGB(220, 30, 30));
+    CopyText(data.szTip, std::size(data.szTip), tip);
+    Check(Shell_NotifyIconW(NIM_ADD, &data) != FALSE, "Shell_NotifyIcon adds an icon");
+    DestroyIcon(data.hIcon);
+    std::vector<DesktopTrayIcon> icons;
+    Check(PumpUntil([&]() {
+              icons = host.ListIcons();
+              return icons.size() == 1 && !icons[0].iconFile.empty();
+          }, 5000),
+          "the host lists it, with its picture (" + std::to_string(icons.size()) + " icons)");
+    std::string id;
+    if (icons.size() == 1) {
+        const DesktopTrayIcon& icon = icons[0];
+        id = icon.id;
+        Check(icon.tooltip == tip, "its tooltip in UTF-8: " + icon.tooltip);
+        Check(icon.appClass == "DesktopShellTest", "named after its program: " + icon.appClass);
+        Check(icon.processId == static_cast<int>(GetCurrentProcessId()), "with this process's id");
+        std::ifstream png(PathFromUtf8(icon.iconFile), std::ios::binary);
+        char signature[8] = {};
+        png.read(signature, 8);
+        Check(png && std::string(signature + 1, 3) == "PNG", "its picture is a PNG: " + icon.iconFile);
+    }
+
+    // Clicks, version 0: the button messages alone, the icon's id in wParam.
+    g_inbox.callbacks.clear();
+    Check(host.Click(id, TrayClick::Left), "a left click is handed over");
+    PumpUntil([]() { return g_inbox.callbacks.size() >= 2; }, 3000);
+    Check(g_inbox.callbacks.size() == 2 && g_inbox.callbacks[0].first == 7 &&
+              g_inbox.callbacks[0].second == WM_LBUTTONDOWN && g_inbox.callbacks[1].second == WM_LBUTTONUP,
+          "as WM_LBUTTONDOWN, WM_LBUTTONUP with the icon's id (" + std::to_string(g_inbox.callbacks.size()) +
+              " messages)");
+    g_inbox.callbacks.clear();
+    host.Click(id, TrayClick::Left);   // within the double-click time of the first
+    PumpUntil([]() { return g_inbox.callbacks.size() >= 2; }, 3000);
+    Check(!g_inbox.callbacks.empty() && g_inbox.callbacks[0].second == WM_LBUTTONDBLCLK,
+          "a second click soon after is a double click");
+
+    // Version 4: the event and the id packed in lParam, the point in wParam,
+    // and WM_CONTEXTMENU after a right click.
+    data = IconData(window, 7);
+    data.uVersion = NOTIFYICON_VERSION_4;
+    Check(Shell_NotifyIconW(NIM_SETVERSION, &data) != FALSE, "NIM_SETVERSION 4 is accepted");
+    g_inbox.callbacks.clear();
+    Check(host.Click(id, TrayClick::Right), "a right click is handed over");
+    PumpUntil([]() { return g_inbox.callbacks.size() >= 3; }, 3000);
+    const auto& got = g_inbox.callbacks;
+    Check(got.size() == 3 && LOWORD(got[0].second) == WM_RBUTTONDOWN && HIWORD(got[0].second) == 7 &&
+              LOWORD(got[1].second) == WM_RBUTTONUP && LOWORD(got[2].second) == WM_CONTEXTMENU,
+          "as WM_RBUTTONDOWN, WM_RBUTTONUP, WM_CONTEXTMENU with the id beside them (" +
+              std::to_string(got.size()) + " messages)");
+
+    // Where it is: around the point it was clicked at.
+    NOTIFYICONIDENTIFIER where = {};
+    where.cbSize = sizeof(where);
+    where.hWnd = window;
+    where.uID = 7;
+    RECT rect = {};
+    Check(SUCCEEDED(Shell_NotifyIconGetRect(&where, &rect)) && rect.right - rect.left == 16 &&
+              rect.bottom - rect.top == 16,
+          "Shell_NotifyIconGetRect answers a rectangle (" + std::to_string(rect.right - rect.left) + " wide)");
+
+    // A new tooltip, a balloon, hidden and shown.
+    data = IconData(window, 7);
+    data.uFlags = NIF_TIP | NIF_INFO;
+    CopyText(data.szTip, std::size(data.szTip), "changed");
+    CopyText(data.szInfoTitle, std::size(data.szInfoTitle), "Backup");
+    CopyText(data.szInfo, std::size(data.szInfo), "Finished");
+    Check(Shell_NotifyIconW(NIM_MODIFY, &data) != FALSE, "NIM_MODIFY is accepted");
+    const DesktopTrayIcon* changed = nullptr;
+    PumpUntil([&]() {
+        icons = host.ListIcons();
+        changed = FindTrayIcon(icons, "changed");
+        return changed != nullptr;
+    }, 3000);
+    Check(changed != nullptr, "the tooltip changes");
+    Check(changed && changed->balloonSerial != 0 && changed->balloonTitle == "Backup" &&
+              changed->balloonText == "Finished",
+          "and the balloon is there to show");
+    data = IconData(window, 7);
+    data.uFlags = NIF_STATE;
+    data.dwState = NIS_HIDDEN;
+    data.dwStateMask = NIS_HIDDEN;
+    Shell_NotifyIconW(NIM_MODIFY, &data);
+    Check(PumpUntil([&]() { return host.ListIcons().empty(); }, 3000), "a hidden icon is not listed");
+    data.dwState = 0;
+    Shell_NotifyIconW(NIM_MODIFY, &data);
+    Check(PumpUntil([&]() { return host.ListIcons().size() == 1; }, 3000), "and is listed again when shown");
+
+    // A program that ends without NIM_DELETE: its icon goes with its window.
+    HWND other = OpenTrayTestWindow();
+    NOTIFYICONDATAW orphan = IconData(other, 1);
+    orphan.uFlags = NIF_TIP;
+    CopyText(orphan.szTip, std::size(orphan.szTip), "orphan");
+    Shell_NotifyIconW(NIM_ADD, &orphan);
+    Check(PumpUntil([&]() { return FindTrayIcon(host.ListIcons(), "orphan") != nullptr; }, 3000),
+          "a second icon is listed");
+    DestroyWindow(other);
+    Check(PumpUntil([&]() { return FindTrayIcon(host.ListIcons(), "orphan") == nullptr; }, 6000),
+          "and dropped when its window is gone");
+
+    data = IconData(window, 7);
+    Check(Shell_NotifyIconW(NIM_DELETE, &data) != FALSE, "NIM_DELETE is accepted");
+    Check(PumpUntil([&]() { return host.ListIcons().empty(); }, 3000), "and the icon is gone");
+    Check(Shell_NotifyIconW(NIM_MODIFY, &data) == FALSE, "a deleted icon cannot be changed");
+    Check(changes.load() > 0, "the host reported its changes (" + std::to_string(changes.load()) + ")");
+
+    host.Stop();
+    Check(FindWindowW(L"Shell_TrayWnd", nullptr) == nullptr, "stopped, Shell_TrayWnd is gone");
+    DestroyWindow(window);
+    return g_failures;
+}
 #endif
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+#if defined(_WIN32)
+    // The programs of their own this test starts (see the head comment).
+    if (argc == 4 && std::strcmp(argv[1], "--guard-child") == 0) {
+        return GuardChild(argv[2], PathFromUtf8(argv[3]));
+    }
+    if (argc == 2 && std::strcmp(argv[1], "--tray-child") == 0) {
+        const int failures = TrayChild();
+        std::printf("  [%d checks on the tray's desktop, %d failures]\n", g_checks, failures);
+        return failures;
+    }
+#else
+    (void)argc;
+    (void)argv;
+#endif
     std::srand(12345);
     const fs::path scratch = MakeScratch();
     SetEnv("XDG_RUNTIME_DIR", scratch.string());   // path-string-ok: temp_directory_path is ASCII here
@@ -384,9 +737,26 @@ int main() {
                                                                          error);
         Check(!UltraCanvasDesktopShell::ReplaceSystemDesktop("relative/UltraDesktop", {}, &error) && !error.empty(),
               "a program that is not an absolute path is refused: " + error);
+        Check(!UltraCanvasDesktopShell::ReplaceSystemDesktop("relative/UltraDesktop", {}, &error,
+                                                             DesktopReplacement::Off),
+              "replacing with nothing is refused");
 #if !defined(_WIN32)
         Check(!UltraCanvasDesktopShell::CanReplaceSystemDesktop(), "here the session decides which desktop runs");
+        Check(!UltraCanvasDesktopShell::CanReplaceSystemDesktop(DesktopReplacement::Instead),
+              "beside the system's desktop or instead of it");
         Check(!UltraCanvasDesktopShell::IsSystemDesktopReplaced(), "so nothing is replaced");
+        Check(UltraCanvasDesktopShell::GetSystemDesktopReplacement() == DesktopReplacement::Off,
+              "and the replacement reads as none");
+        Check(UltraCanvasDesktopShell::IsSystemDesktopRunning(), "whatever the session runs is its own desktop");
+        std::string why;
+        Check(!UltraCanvasDesktopShell::CanEndSession() &&
+                  !UltraCanvasDesktopShell::EndSession(SessionEnd::SignOut, &why) && !why.empty(),
+              "ending the session is the session manager's here: " + why);
+        UltraCanvasTrayHost tray;
+        std::string trayWhy;
+        Check(!tray.Start([]() {}, &trayWhy) && !trayWhy.empty() && !tray.IsRunning(),
+              "no notification area to host here: " + trayWhy);
+        Check(tray.ListIcons().empty() && !tray.Click("tray-1", TrayClick::Left), "and so no icons to click");
 #endif
     }
 
@@ -483,6 +853,80 @@ int main() {
             std::printf("  (no screen here to write: %s)\n", captureError.c_str());
         }
 
+        // ===== WINDOWS: INSTEAD OF EXPLORER, SAFELY ANYWHERE =====
+        const std::wstring self = ThisProgram();
+        const std::wstring guard = FolderOf(self) + L"\\UltraCanvasShellGuard.exe";
+        const bool haveGuard = GetFileAttributesW(guard.c_str()) != INVALID_FILE_ATTRIBUTES;
+        Check(haveGuard, "UltraCanvasShellGuard.exe is built beside the test");
+        Check(UltraCanvasDesktopShell::CanReplaceSystemDesktop(DesktopReplacement::Instead),
+              "Windows can run a desktop instead of Explorer");
+        Check(UltraCanvasDesktopShell::CanEndSession(), "and end the session from it");
+        {
+            // A program with no guard beside it is never made the shell: the
+            // switch is refused before anything is written.
+            const fs::path lonely = scratch / "lonely" / "Desktop.exe";
+            WriteFile(lonely, "MZ");
+            std::string why;
+            Check(!UltraCanvasDesktopShell::ReplaceSystemDesktop(PathToUtf8(lonely), {}, &why,
+                                                                 DesktopReplacement::Instead) &&
+                      why.find("UltraCanvasShellGuard") != std::string::npos,
+                  "without the guard beside it, no desktop replaces Explorer: " + why);
+        }
+        if (haveGuard) {
+            // The guard, not as the session's shell: it starts the program,
+            // starts it again after a crash, and gives up after the third
+            // failure within a minute - starting nothing else.
+            const fs::path counter = scratch / "guard-starts.txt";
+            const auto runGuard = [&](const char* mode) {
+                std::error_code ec;
+                fs::remove(counter, ec);
+                const std::wstring command = Quoted(guard) + L" " + Quoted(self) + L" --guard-child " +
+                                             PathUtf8Detail::Utf8ToUtf16<std::wstring>(mode) + L" " +
+                                             Quoted(counter.native());
+                return RunToEnd(guard, command, 60000);
+            };
+            int code = runGuard("ok");
+            Check(code == 0 && ReadCount(counter) == 1, "the guard starts the desktop once when it exits cleanly (exit " +
+                                                            std::to_string(code) + ", " +
+                                                            std::to_string(ReadCount(counter)) + " start)");
+            code = runGuard("crash-once");
+            Check(code == 0 && ReadCount(counter) == 2,
+                  "starts it again after a crash (exit " + std::to_string(code) + ", " +
+                      std::to_string(ReadCount(counter)) + " starts)");
+            code = runGuard("crash");
+            Check(code == 3 && ReadCount(counter) == 3,
+                  "and gives up after three failures within a minute (exit " + std::to_string(code) + ", " +
+                      std::to_string(ReadCount(counter)) + " starts)");
+            Check(RunToEnd(guard, Quoted(guard), 30000) == 2, "a guard given no desktop says so (exit 2)");
+        }
+        {
+            // The notification area: Explorer's taskbar holds it here when it
+            // runs, so a host is refused - and is tested on a desktop of its
+            // own, through this program started there.
+            if (UltraCanvasDesktopShell::IsSystemDesktopRunning()) {
+                UltraCanvasTrayHost tray;
+                std::string refused;
+                Check(!tray.Start([]() {}, &refused) && !refused.empty(),
+                      "beside Explorer's taskbar the tray host is refused: " + refused);
+            }
+            const std::wstring name = L"UltraCanvasTrayTest" + std::to_wstring(GetCurrentProcessId());
+            HDESK desk = CreateDesktopW(name.c_str(), nullptr, nullptr, 0, GENERIC_ALL, nullptr);
+            if (!desk) {
+                const char* ciRunner = std::getenv("CI");   // path-string-ok: ASCII flag
+                const bool onCi = ciRunner && std::string(ciRunner) == "true";
+                const std::string reason = "no desktop of its own for the tray test (error " +
+                                           std::to_string(GetLastError()) + ")";
+                if (onCi) Check(false, reason);
+                else std::printf("  (%s)\n", reason.c_str());
+            } else {
+                const std::wstring where = L"WinSta0\\" + name;
+                const int failures = RunToEnd(self, Quoted(self) + L" --tray-child", 120000, where.c_str());
+                Check(failures == 0, "the notification area passes on its own desktop (" +
+                                         std::to_string(failures) + " failures)");
+                CloseDesktop(desk);
+            }
+        }
+
         // The desktop at sign-in: switched to this test program and back. It
         // writes the user's Run key and hides the taskbar, so only on a CI
         // runner - a developer running the suite keeps their sign-in as is.
@@ -493,9 +937,7 @@ int main() {
             APPBARDATA bar = {};
             bar.cbSize = sizeof(bar);
             const UINT taskbarBefore = static_cast<UINT>(SHAppBarMessage(ABM_GETSTATE, &bar));
-            wchar_t self[MAX_PATH * 2] = {};
-            GetModuleFileNameW(nullptr, self, MAX_PATH * 2);
-            const std::string program = PathUtf8Detail::Utf16ToUtf8(std::wstring(self));
+            const std::string program = PathUtf8Detail::Utf16ToUtf8(self);
             std::string why;
             Check(UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--session", "two words"}, &why),
                   "the switch is made " + why);
@@ -519,6 +961,53 @@ int main() {
                 Check(PumpUntil([&]() { return static_cast<UINT>(SHAppBarMessage(ABM_GETSTATE, &bar)) == taskbarBefore; },
                                 3000),
                       "the taskbar is as it was before the first switch (" + std::to_string(taskbarBefore) + ")");
+            }
+
+            // Instead of Explorer: the account's shell setting names the
+            // guard, then this program with its arguments.
+            const wchar_t* winlogon = L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon";
+            const auto readShell = [winlogon]() {
+                wchar_t value[2048] = {};
+                DWORD bytes = sizeof(value);
+                if (RegGetValueW(HKEY_CURRENT_USER, winlogon, L"Shell", RRF_RT_REG_SZ, nullptr, value, &bytes) !=
+                    ERROR_SUCCESS)
+                    return std::wstring();
+                return std::wstring(value);
+            };
+            const std::wstring shellBefore = readShell();
+            Check(shellBefore.empty(), "the runner's account has no shell of its own: " +
+                                           PathUtf8Detail::Utf16ToUtf8(shellBefore));
+            if (shellBefore.empty() && haveGuard) {
+                Check(UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--shell"}, &why,
+                                                                   DesktopReplacement::Instead),
+                      "the desktop replaces Explorer " + why);
+                Check(UltraCanvasDesktopShell::GetSystemDesktopReplacement() == DesktopReplacement::Instead,
+                      "and reads back as instead of Explorer");
+                const std::wstring expectedShell = Quoted(guard) + L" " + Quoted(self) + L" --shell";
+                Check(readShell() == expectedShell,
+                      "the shell setting starts the guard, then the desktop: " + PathUtf8Detail::Utf16ToUtf8(readShell()));
+                DWORD runBytes = 0;
+                Check(RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                                   L"UltraCanvas Desktop", RRF_RT_REG_SZ, nullptr, nullptr, &runBytes) != ERROR_SUCCESS,
+                      "and nothing starts beside Explorer as well");
+                Check(UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--session"}, &why,
+                                                                   DesktopReplacement::Beside) &&
+                          UltraCanvasDesktopShell::GetSystemDesktopReplacement() == DesktopReplacement::Beside &&
+                          readShell().empty(),
+                      "beside Explorer again: the shell setting is gone " + why);
+                Check(UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--shell"}, &why,
+                                                                   DesktopReplacement::Instead) &&
+                          UltraCanvasDesktopShell::RestoreSystemDesktop(&why),
+                      "instead once more, and restored " + why);
+                Check(UltraCanvasDesktopShell::GetSystemDesktopReplacement() == DesktopReplacement::Off &&
+                          readShell().empty(),
+                      "Explorer is the account's desktop again");
+                if (explorer) {
+                    Check(PumpUntil([&]() {
+                              return static_cast<UINT>(SHAppBarMessage(ABM_GETSTATE, &bar)) == taskbarBefore;
+                          }, 3000),
+                          "and its taskbar is as it was");
+                }
             }
         } else {
             std::printf("  (desktop switch at sign-in: not on a CI runner, left alone)\n");
