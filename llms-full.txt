@@ -83329,6 +83329,12 @@ as `code`, and each numbered step of a guide is one action.
 in a dialog. **Report** (header): the system, the checks, the plan and the
 notes as text, with *Copy*.
 
+A project written by UltraCanvasStart 0.3.0 or 0.3.1 (the releases before
+v0.9.252) does not build as written: its `main.cpp` calls
+`app.CreateWindow(config)`, a method the application class does not have.
+Change that line to `auto window = CreateWindow(config);` - the framework's
+function - and it builds; projects written by 0.3.2 and later have it so.
+
 ## Command line
 
 ```
