@@ -1,5 +1,6 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.8.0 - onFocusGained / onFocusLost fired after the area's own focus handling
 // Version: 3.7.5 - scrolling down to the caret puts a whole line at the top of
 //                 the view, not the tail of one (consoles that append); a line
 //                 ending at the viewport's top edge is not drawn
@@ -1426,10 +1427,12 @@ namespace UltraCanvas {
                 case UCEventType::FocusGained:
                     // The render pass claims the shared caret with the current rect
                     RequestRedraw();
+                    if (onFocusGained) onFocusGained();
                     return true;
                 case UCEventType::FocusLost:
                     UltraCanvasCaret::GetInstance().Hide(this);
                     RequestRedraw();
+                    if (onFocusLost) onFocusLost();
                     return true;
                 default:
                     return false;
@@ -1452,6 +1455,7 @@ namespace UltraCanvas {
             case UCEventType::FocusGained:
                 // The render pass claims the shared caret with the current rect
                 RequestRedraw();
+                if (onFocusGained) onFocusGained();
                 return true;
             case UCEventType::FocusLost:
                 UltraCanvasCaret::GetInstance().Hide(this);
@@ -1460,6 +1464,7 @@ namespace UltraCanvas {
                 // re-runs via ReconcileLayoutState.
                 currentLine.reset();
                 RequestRedraw();
+                if (onFocusLost) onFocusLost();
                 return true;
             default:
                 return false;

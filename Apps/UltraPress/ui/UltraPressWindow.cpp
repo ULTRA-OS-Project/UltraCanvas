@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.7.2 - an FAQ question edits in place; a paragraph field keeps its text when left
 // Version: 0.7.0 - text edited in place
 // Version: 0.6.0 - the media library
 // Version: 0.5.1 - Publish prunes
@@ -437,7 +438,7 @@ void EditorWindow::BeginTextEdit(int binding) {
     if (editing >= 0) CommitTextEdit();
     if (binding < 0 || binding >= static_cast<int>(shown.bindings.size())) return;
     const TextBinding& bound = shown.bindings[static_cast<size_t>(binding)];
-    if (!bound.slot || !bound.label) return;
+    if (!bound.slot || !bound.element) return;
     // The block the text belongs to becomes the selected one - the lists on
     // both sides follow - without re-rendering the page under the field.
     const size_t close = bound.blockPath.find(']');
@@ -448,7 +449,7 @@ void EditorWindow::BeginTextEdit(int binding) {
         RebuildProperties();
     }
     editing = binding;
-    bound.slot->RemoveChild(bound.label);
+    bound.slot->RemoveChild(bound.element);
     if (bound.multiline) {
         const float height = std::max(120.f, bound.size * 1.5f * 4);
         editArea = std::make_shared<UltraCanvasTextArea>("EditArea", 0, 0, 0, height);
@@ -461,6 +462,7 @@ void EditorWindow::BeginTextEdit(int binding) {
             if (event.virtualKey == UCKeys::Return && event.ctrl) { Later([this]() { CommitTextEdit(); }); return true; }
             return false;
         };
+        editArea->onFocusLost = [this]() { Later([this]() { if (editing >= 0 && editArea) CommitTextEdit(); }); };
         bound.slot->AddChild(editArea);
         editArea->SetFocus(true);
         SetStatus("Editing; Ctrl+Enter keeps the text, Escape drops the change");
@@ -516,7 +518,7 @@ void EditorWindow::CancelTextEdit() {
     if (bound.slot) {
         if (editInput) bound.slot->RemoveChild(editInput);
         if (editArea) bound.slot->RemoveChild(editArea);
-        if (bound.label) bound.slot->AddChild(bound.label);
+        if (bound.element) bound.slot->AddChild(bound.element);
     }
     editInput.reset();
     editArea.reset();

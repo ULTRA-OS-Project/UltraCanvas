@@ -59319,7 +59319,7 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 **Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework  
 
-<!-- doc-check: void SendChatText(); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
+<!-- doc-check: void SendChatText(); void SaveNote(const std::string& text); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
 
 ## Class Hierarchy
 ```
@@ -59826,6 +59826,19 @@ std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 // Every KeyDown, before the area handles it (any editing mode, read-only too).
 // Return true to consume the key; false lets the area edit as usual.
 std::function<bool(const UCEvent&)> onBeforeKeyDown;
+
+// The keyboard focus arriving and leaving, the same two the text input has;
+// fired after the area's own handling, so onFocusLost reads the final text.
+std::function<void()> onFocusGained;
+std::function<void()> onFocusLost;
+```
+
+A field that keeps its text when it is left, whether it is a line or a
+paragraph:
+
+```cpp
+auto note = std::make_shared<UltraCanvasTextArea>("note", 0, 0, 400, 120);
+note->onFocusLost = [raw = note.get()]() { SaveNote(raw->GetText()); };   // your own save
 ```
 
 `onBeforeKeyDown` gives a key a meaning of its own without reimplementing the
@@ -84470,7 +84483,8 @@ against it.
   `ResolveBlockPath`.
 - `UltraPressBlocks.h` - the registry and `ValidateSite`.
 - `UltraPressHtml.h` - `HtmlEmitter`: `Page`, `Sitemap`, `Robots`, `Feed`,
-  `Block`; `HtmlOptions` names the renderer script and the UltraWeb app.
+  `Block`; `HtmlOptions` names the renderer script, the UltraWeb app and
+  the site folder, with which every `<img>` carries its width and height.
   Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
   blocks are the owner's own HTML and pass through.
 - `UltraPressPublish.h` - `PublishStatic` (the output mirrors the site:
@@ -84531,8 +84545,9 @@ The window's Publish prunes; the command line prunes with `--prune`.
 paragraph, a feature, an answer - and a field takes its place with the text
 in it; the block is selected on the left and the right. Enter keeps a
 title, Ctrl+Enter a paragraph, Escape drops the change, and so does leaving
-a single-line field. One paragraph of a long text is edited on its own.
-Rich text and HTML blocks are edited in the properties pane.
+a field. One paragraph of a long text is edited on its own; an FAQ's
+question on a second click, once it is open. Rich text and HTML blocks are
+edited in the properties pane.
 
 **Pictures.** A picture property (the hero's and the card's `picture`, the
 picture block's `src`) has **Pick…** beside its path. It opens the media

@@ -4,6 +4,7 @@
 // full-width bands whose centred column is Block-laid-out so wrapped text
 // measures, wrapping Flex rows for columns and buttons - with the texts,
 // colours and menus read from the site instead of tables in the source.
+// Version: 0.7.2 - the FAQ's question edited in place on a second click
 // Version: 0.7.1 - a picture keeps its own shape (ImageDimensions), the given size is the frame it fits
 // Version: 0.7.0 - text bindings for editing in place
 // Version: 0.2.0
@@ -207,7 +208,7 @@ PageRenderer::Element PageRenderer::Bound(const std::string& id, const std::stri
     binding.multiline = multiline;
     binding.size = size;
     binding.slot = slot;
-    binding.label = label;
+    binding.element = label;
     page.bindings.push_back(std::move(binding));
     const int index = static_cast<int>(page.bindings.size()) - 1;
     // The label holds the callback; it captures the editor's function and
@@ -525,15 +526,40 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
             question->SetFont(palette.font, 18, FontWeight::Bold);
             question->SetTextAlign(TextAlignment::Left);
             question->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(44));
-            entry->AddChild(question);
+            // In the editor the question is a binding too: its slot holds
+            // the button, and a second click on an open question edits it.
+            int questionBinding = -1;
+            if (options.editable) {
+                auto slot = CreateContainer(entryId + "QuestionSlot");
+                slot->layout.SetDisplay(CSSLayout::DisplayType::Block);
+                slot->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
+                slot->AddChild(question);
+                entry->AddChild(slot);
+                TextBinding binding;
+                binding.blockPath = blockPath;
+                binding.where = TextLocation{"items", index, "q", -1};
+                binding.text = q;
+                binding.size = 18;
+                binding.slot = slot;
+                binding.element = question;
+                page.bindings.push_back(std::move(binding));
+                questionBinding = static_cast<int>(page.bindings.size()) - 1;
+            } else {
+                entry->AddChild(question);
+            }
             auto answer = Paragraphs(entryId + "Answer", item["a"].GetString(), 15, palette.inkSoft, false, page,
                                      TextLocation{"items", index, "a", -1});
             answer->SetPadding(6, 10, 14, 10);
             answer->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
             answer->SetVisible(index == 0);
             entry->AddChild(answer);
-            // The question holds the callback, so it is captured raw.
-            question->onClick = [answer, question = question.get(), q]() {
+            // The question holds the callback, so it is captured raw. Open
+            // and editable, a click edits the question instead of closing it.
+            question->onClick = [answer, question = question.get(), q, questionBinding, callback = options.onEditText]() {
+                if (questionBinding >= 0 && answer->IsVisible() && callback) {
+                    callback(questionBinding);
+                    return;
+                }
                 const bool open = !answer->IsVisible();
                 answer->SetVisible(open);
                 question->SetText((open ? "-  " : "+  ") + q);

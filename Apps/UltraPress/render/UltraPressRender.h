@@ -6,6 +6,7 @@
 // desktop, and under Emscripten the published page itself; the two share
 // the Cairo + Pango pipeline, so the preview is the page
 // (Docs/Research/UltraPressDesignProposal.md §5.2).
+// Version: 0.7.2 - an FAQ question is a binding too: TextBinding::element is the label or the button in the slot
 // Version: 0.7.0 - editable: every piece of block text is a binding the editor can edit in place
 // Version: 0.2.0
 // Last Modified: 2026-10-13
@@ -59,7 +60,8 @@ struct TextBinding {
     bool multiline = false;                // a long text: an area, Ctrl+Enter commits
     float size = 16;                       // the label's font size, for the input
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> slot;
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel> label;
+    // What shows the text in the slot: a label, or the FAQ question's button.
+    std::shared_ptr<UltraCanvas::UltraCanvasUIElement> element;
 };
 
 // The theme's colours as the renderer uses them, with the ultraos.eu

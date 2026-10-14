@@ -177,7 +177,8 @@ against it.
   `ResolveBlockPath`.
 - `UltraPressBlocks.h` - the registry and `ValidateSite`.
 - `UltraPressHtml.h` - `HtmlEmitter`: `Page`, `Sitemap`, `Robots`, `Feed`,
-  `Block`; `HtmlOptions` names the renderer script and the UltraWeb app.
+  `Block`; `HtmlOptions` names the renderer script, the UltraWeb app and
+  the site folder, with which every `<img>` carries its width and height.
   Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
   blocks are the owner's own HTML and pass through.
 - `UltraPressPublish.h` - `PublishStatic` (the output mirrors the site:
@@ -238,8 +239,9 @@ The window's Publish prunes; the command line prunes with `--prune`.
 paragraph, a feature, an answer - and a field takes its place with the text
 in it; the block is selected on the left and the right. Enter keeps a
 title, Ctrl+Enter a paragraph, Escape drops the change, and so does leaving
-a single-line field. One paragraph of a long text is edited on its own.
-Rich text and HTML blocks are edited in the properties pane.
+a field. One paragraph of a long text is edited on its own; an FAQ's
+question on a second click, once it is open. Rich text and HTML blocks are
+edited in the properties pane.
 
 **Pictures.** A picture property (the hero's and the card's `picture`, the
 picture block's `src`) has **Pick…** beside its path. It opens the media

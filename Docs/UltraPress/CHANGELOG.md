@@ -1,3 +1,16 @@
+#### 2026-10-14 *0.7.2*
+- **The FAQ's questions edit in place too.** A click on a closed question
+  opens it as before; a click on an open one puts the field there, like
+  every other piece of text on the page.
+- **A paragraph field keeps its text when it is left.** Clicking elsewhere
+  commits the area the way it commits a single line; the framework's text
+  area gained the focus callbacks the text input had.
+- **The shadow's pictures carry their size.** Every `<img>` of a media
+  picture gets `width` and `height` from the file's header, and the
+  social card its `og:image:width` and `og:image:height`, so a browser
+  lays the page out before the pictures arrive (`HtmlOptions::
+  siteDirectory`, which the publish and `ultrapress page` pass).
+
 #### 2026-10-14 *0.7.1*
 - **A picture's pixels.** The library reads a picture's size from its
   header - PNG, JPEG, GIF, WebP, BMP - without decoding it

@@ -297,7 +297,7 @@ static void TestEditor() {
     }
     Check(titleBinding >= 0 && shown.bindings[static_cast<size_t>(titleBinding)].text == "Edit" &&
               !shown.bindings[static_cast<size_t>(titleBinding)].multiline &&
-              shown.bindings[static_cast<size_t>(titleBinding)].slot && shown.bindings[static_cast<size_t>(titleBinding)].label,
+              shown.bindings[static_cast<size_t>(titleBinding)].slot && shown.bindings[static_cast<size_t>(titleBinding)].element,
           "the hero's title is a single-line binding with its slot and label");
     int leadBinding = -1;
     for (size_t i = 0; i < shown.bindings.size(); ++i) {
@@ -332,6 +332,18 @@ static void TestEditor() {
     Check(!editor.CommitTextEdit("A new first paragraph.") && !editor.IsEditingText(), "the same text again is a cancel, not a change");
     editor.BeginTextEdit(999);
     Check(!editor.IsEditingText(), "a binding past the end starts nothing");
+    int questionBinding = -1;
+    for (size_t i = 0; i < editor.Shown().bindings.size(); ++i) {
+        const TextBinding& b = editor.Shown().bindings[i];
+        if (b.where.property == "items" && b.where.key == "q" && b.where.item == 0) questionBinding = static_cast<int>(i);
+    }
+    Check(questionBinding >= 0 && std::dynamic_pointer_cast<UltraCanvas::UltraCanvasButton>(
+                                      editor.Shown().bindings[static_cast<size_t>(questionBinding)].element) != nullptr,
+          "the FAQ's first question is a binding whose element is its button");
+    editor.BeginTextEdit(questionBinding);
+    Check(editor.IsEditingText() && editor.CommitTextEdit("Is it edited?") &&
+              editor.CurrentSite().FindPage("home")->blocks[editor.SelectedBlock()].Items("items")[0]["q"].GetString() == "Is it edited?",
+          "and it is edited in place like the rest");
 
     std::printf("The editor's media library\n");
     Check(editor.Media().empty(), "no media to start");

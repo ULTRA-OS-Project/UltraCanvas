@@ -1,5 +1,6 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.10.0 - onFocusGained / onFocusLost, as the text input has them
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
@@ -876,6 +877,14 @@ namespace UltraCanvas {
         // reimplementing the editor: a chat box sends on Enter and keeps
         // Shift+Enter for a new line. Runs on the UI thread.
         std::function<bool(const UCEvent&)> onBeforeKeyDown;
+
+        // Called when the area takes the keyboard focus, and when it loses it -
+        // the same two the text input has, so a host that commits a field when
+        // it is left treats a single line and a paragraph alike. Runs on the UI
+        // thread, after the area's own handling (the caret hidden, the text
+        // settled), so the callback reads the final text.
+        std::function<void()> onFocusGained;
+        std::function<void()> onFocusLost;
 
         // Called just before a check is queued, with the exact text about to be
         // checked. Lets the host rebuild content-dependent options: in

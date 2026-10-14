@@ -7,6 +7,7 @@
 // is loaded as a real site. The deploy sends a published folder through a
 // recording uploader and, where UltraCloud is built, through the hosts onto
 // the in-memory provider.
+// Version: 0.7.2 - the shadow's picture sizes
 // Version: 0.7.0 - text in a block: paragraphs, locations, block paths
 // Version: 0.6.0 - the media library
 // Version: 0.5.0 - the deploy and the hosts
@@ -790,6 +791,44 @@ static void TestMedia() {
     fs::remove_all(elsewhere, ec);
 }
 
+static void TestShadowImageSizes() {
+    std::printf("The shadow's picture sizes\n");
+    const fs::path dir = TempDir("shadow-sizes");
+    std::error_code ec;
+    fs::create_directories(dir / "media", ec);
+    {
+        // A PNG header: 1600 x 900.
+        std::ofstream out(dir / "media" / "wide.png", std::ios::binary);
+        const unsigned char bytes[] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D, 'I', 'H', 'D', 'R',
+                                       0, 0, 0x06, 0x40, 0, 0, 0x03, 0x84, 8, 6, 0, 0, 0};
+        out.write(reinterpret_cast<const char*>(bytes), sizeof bytes);
+    }
+    Site site = CreateStarterSite("Sizes", "https://sizes.example");
+    site.pages[0].blocks[0].Set("picture", "media/wide.png");
+    site.pages[0].seo.image = "media/wide.png";
+    Block picture{"picture"};
+    picture.Set("src", "media/missing.png").Set("alt", "gone");
+    site.pages[0].blocks.push_back(picture);
+    Block remote{"picture"};
+    remote.Set("src", "https://elsewhere.example/far.png").Set("alt", "far");
+    site.pages[0].blocks.push_back(remote);
+    HtmlOptions options;
+    options.siteDirectory = UltraCanvas::PathToUtf8(dir);
+    const std::string html = HtmlEmitter(site, options).Page(site.pages[0]);
+    Check(Contains(html, "<img src=\"/media/wide.png\" alt=\"\" width=\"1600\" height=\"900\">"), "a picture in the folder carries its width and height");
+    Check(Contains(html, "<img src=\"/media/missing.png\" alt=\"gone\">"), "a missing one carries none");
+    Check(Contains(html, "<img src=\"https://elsewhere.example/far.png\" alt=\"far\">"), "an absolute URL carries none");
+    Check(Contains(html, "<meta property=\"og:image:width\" content=\"1600\">") && Contains(html, "<meta property=\"og:image:height\" content=\"900\">"),
+          "the social card names its size");
+    const std::string without = HtmlEmitter(site).Page(site.pages[0]);
+    Check(!Contains(without, "width=\"1600\"") && !Contains(without, "og:image:width"), "without the site folder, no sizes");
+    const PublishResult published = PublishStatic(site, UltraCanvas::PathToUtf8(dir), UltraCanvas::PathToUtf8(dir / "out"));
+    std::string index;
+    Check(published.ok && ReadTextFile(UltraCanvas::PathToUtf8(dir / "out" / "index.html"), index) && Contains(index, "width=\"1600\" height=\"900\""),
+          "a publish passes the site folder on");
+    fs::remove_all(dir, ec);
+}
+
 static void TestTextInBlocks() {
     std::printf("Text in a block\n");
     const std::vector<std::string> paragraphs = SplitParagraphs("  First.\n\n\nSecond line one\nline two  \n \n");
@@ -847,6 +886,7 @@ int main() {
     TestDeploy();
     TestMedia();
     TestTextInBlocks();
+    TestShadowImageSizes();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

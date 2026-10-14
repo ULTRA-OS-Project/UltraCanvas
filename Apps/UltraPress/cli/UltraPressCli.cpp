@@ -194,7 +194,9 @@ int CommandPage(const std::vector<std::string>& args) {
         std::fprintf(stderr, "no page '%s'\n", args[1].c_str());
         return 1;
     }
-    HtmlEmitter emitter(site);
+    HtmlOptions html;
+    html.siteDirectory = args[0];
+    HtmlEmitter emitter(site, html);
     std::fputs(emitter.Page(*page).c_str(), stdout);
     return 0;
 }

@@ -78,7 +78,9 @@ PublishResult PublishStatic(const Site& site, const std::string& siteDirectory,
         result.errors.push_back("cannot create " + outputDirectory + ": " + ec.message());
         return result;
     }
-    HtmlEmitter emitter(site, options.html);
+    HtmlOptions html = options.html;
+    if (html.siteDirectory.empty()) html.siteDirectory = siteDirectory;   // the pictures' sizes come from the site folder
+    HtmlEmitter emitter(site, html);
     bool ok = true;
     for (const Page& page : site.pages) {
         if (!page.IsPublished() && !options.includeDrafts) continue;
