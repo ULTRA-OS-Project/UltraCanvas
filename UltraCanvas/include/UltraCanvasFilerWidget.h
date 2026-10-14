@@ -138,6 +138,7 @@
 namespace UltraCanvas {
 
     class UltraCanvasProgressDialog;   // compress / extract progress window
+    class UltraCanvasModalDialog;
 
 
     class UltraCanvasMenu;
@@ -3538,6 +3539,10 @@ namespace UltraCanvas {
             std::vector<OperationDialogButton> buttons;
             int width = 560;
             bool showIcon = false;
+            // Re-derives `facts` while the dialog is open: called again each
+            // time a background folder walk lands, so a size still being
+            // counted fills in without holding the question back.
+            std::function<std::string()> liveFacts;
         };
         // Shows the dialog; `onAnswer(buttonIndex, applyToAll)` runs for the
         // button that was pressed, `onDismiss` when the dialog went without
@@ -3546,6 +3551,13 @@ namespace UltraCanvas {
         bool ShowOperationDialog(const OperationDialogSpec& spec,
                                  std::function<void(size_t button, bool applyToAll)> onAnswer,
                                  std::function<void()> onDismiss);
+        // The open operation dialog whose facts follow the folder walks
+        // (OperationDialogSpec::liveFacts), and the source of those facts.
+        std::weak_ptr<UltraCanvasModalDialog> liveFactsDialog;
+        std::function<std::string()> liveFactsSource;
+        // Puts the current liveFacts into that dialog; asking again also
+        // re-queues a walk a rescan dropped.
+        void RefreshLiveDialogFacts();
         // The entry list the operation dialogs share (the delete confirmation's
         // list, generalised): at most kOperationListRows rows, `visibleRows`
         // of them at a time, the rest behind a scrollbar.
