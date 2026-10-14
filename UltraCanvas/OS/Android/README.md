@@ -244,7 +244,8 @@ unchanged. While the input view holds focus it forwards key events to the
 native side itself, so a hardware keyboard keeps working during editing.
 
 **The word being composed is shown inline** by an element that draws
-compositions itself (`DrawsTextComposition()`, today `UltraCanvasRichTextEdit`):
+compositions itself (`DrawsTextComposition()`: `UltraCanvasTextInput`,
+`UltraCanvasTextArea` and `UltraCanvasRichTextEdit` when editable):
 `setComposingText` reaches it as `TextComposition` events, the same events the
 Linux (XIM) and Windows (IMM) backends send, and it draws the word at its
 caret. Any other element sees nothing until the word is committed, and the
@@ -425,9 +426,7 @@ spells out what the sysroot needs to contain.
 The cross-compiled dependency sysroot and a real APK build (the blocker for
 everything below, since nothing can be observed until then), clipboard
 images/files **copying** (pasting is done — it needs an app-declared
-`ContentProvider`, see above), inline composition in `UltraCanvasTextInput`
-and `UltraCanvasTextArea` (only `UltraCanvasRichTextEdit` draws one so far, on
-every platform), and PDF. **Video is on** (see Video above). **Audio is
+`ContentProvider`, see above), and PDF. **Video is on** (see Video above). **Audio is
 on**: its backend is miniaudio, which is vendored rather than waiting on the
 sysroot and speaks AAudio (with OpenSL ES beneath
 it) natively — both runtime-linked, so there is nothing extra to link. Only
