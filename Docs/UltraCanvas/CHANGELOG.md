@@ -1,3 +1,36 @@
+#### 2026-10-14 *0.9.287*
+- **The demo's bitmap pages build when the sample cannot be read.** The
+  page asked PixelFX for the sample's properties, and that call throws when
+  libvips cannot open the file; nothing caught it, so a format this build
+  has no codec for lost the whole page, About and Format Specification
+  cards included, with the reason going to a debug stream that was off. The
+  page now says "This build cannot read JPEG files" (with the reader's
+  message) where the picture and its properties would be, keeps the cards,
+  hides the Full Size and Export buttons, and Export no longer throws out
+  of its click handler when libvips cannot reopen the file.
+- **`debugOutput` reaches the browser console in the WebAssembly build.** The
+  diagnostic stream was off in a release build unless `ULTRACANVAS_DEBUG_LOG`
+  said otherwise, and a `.wasm` inherits no environment to say it in, so the
+  demo's "Error creating example for ..." line, written when a page's builder
+  throws, went nowhere. Under Emscripten the sink is now on by default and
+  writes to stderr, which the browser shows in its developer console; a page
+  turns it off with `Module.ENV.ULTRACANVAS_DEBUG_LOG = "0"` in a `preRun`
+  hook. Desktop and Android defaults are unchanged.
+- **The browser reads JPEG, TIFF and WebP.** The WebAssembly sysroot's
+  libvips was built with every optional codec off, so beside PNG and the
+  built-in GIF decoder it opened nothing: the demo's JPEG, TIFF and WebP
+  pages came up empty. `build-wasm-sysroot.sh` now builds libjpeg-turbo,
+  libtiff and libwebp into the sysroot and libvips with `jpeg`, `tiff` and
+  `webp` enabled, for reading and writing; the workflow's sysroot cache is
+  keyed on the script, so the next run rebuilds it. Every pkg-config query
+  of a WebAssembly configure is a static one now (`--static`, set by
+  `cmake/UltraCanvasWasmSysroot.cmake`): the program is one static link,
+  and libwebp names its libsharpyuv only in `Requires.private`, without
+  which the link stopped on `SharpYuvConvert`. HEIC / AVIF (libheif
+  and a decoder, a build of their own and megabytes of download) and BMP
+  (ImageMagick) stay out, and the WebAssembly README says which formats a
+  browser build has.
+
 #### 2026-10-14 *0.9.286*
 - **A second start's files go to the running copy:
   `UltraCanvasSingleInstance::MakeOpenRequest` / `ListenOpen`.** The document
