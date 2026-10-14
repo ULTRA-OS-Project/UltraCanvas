@@ -3,10 +3,11 @@
 // media the engine probes, segments from media, the timeline model derived
 // from the document, every reported change written back, undo and redo, and
 // the .ultravideo file round trip with relative media paths and missing
-// media reported. Needs the VideoFX engine (FFmpeg) for the probes and the
+// media reported; the title, overlay and voice-and-sound lanes; the effect
+// presets and their strength. Needs the VideoFX engine (FFmpeg) for the probes and the
 // clips it generates; without it the suite skips itself.
-// Version: 0.3.0 - the files it takes are FileLoader's lists, as the engine reads them
-// Version: 0.2.1
+// Version: 0.5.0 - the files it takes are FileLoader's lists, as the engine reads them
+// Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
@@ -25,6 +26,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -330,7 +332,7 @@ int main() {
         const TimelineTrack* lane = tm.FindTrack(kTitleTrackId);
         CHECK(lane && lane->kind == TimelineTrackKind::Title && !lane->IsMagnetic() && lane->clips.size() == 2, "a free title lane with both spans");
         CHECK(lane && lane->clips[0].kind == TimelineClipKind::Title && lane->clips[0].name == "Summer trip" && Near(lane->clips[0].start, 1.0, 1e-9), "as title clips at their times");
-        CHECK(tm.tracks.size() == 4 && tm.tracks[0].id == kTitleTrackId && tm.tracks[1].id == kOverlayTrackId && tm.tracks[2].id == kMainTrackId, "the title and overlay lanes sit above the main track");
+        CHECK(tm.tracks.size() == 5 && tm.tracks[0].id == kTitleTrackId && tm.tracks[1].id == kOverlayTrackId && tm.tracks[2].id == kMainTrackId, "the title and overlay lanes sit above the main track");
 
         TimelineChange moveT;
         moveT.kind = TimelineChangeKind::Move;
@@ -465,6 +467,208 @@ int main() {
         CHECK(back.nextOverlayId == od.nextOverlayId && back.SegmentsForEngine()[0].overlays.size() == od.SegmentsForEngine()[0].overlays.size(), "and derive the same again");
     }
 
+    std::printf("\n-- the voice-and-sound lane --\n");
+    {
+        Document ad;
+        ad.Import(clip);
+        ad.AppendMedia(*ad.FindMedia(clip));          // 0..3 s
+        ad.AppendMedia(*ad.FindMedia(clip));          // 3..6 s
+        const double songSeconds = ad.Import(song).duration;
+        CHECK(ad.AddSound(photo, 0.0) == -1 && ad.sounds.empty(), "a picture has no sound");
+        CHECK(ad.AddSound(junk, 0.0) == -1 && ad.sounds.empty(), "an unreadable file goes nowhere");
+        const int voice = ad.AddSound(song, 1.0);
+        CHECK(voice == 0 && ad.sounds[0].id == "a1" && ad.sounds[0].path == song && ad.sounds[0].ducksMusic, "a voice-over, with an id, the music dipping under it");
+        CHECK(Near(ad.sounds[0].start, 1.0, 1e-9) && Near(ad.sounds[0].duration, songSeconds, 1e-9) && ad.sounds[0].sourceIn == 0.0, "for the file's length, from its start");
+        CHECK(ad.SoundIndex("a1") == 0 && ad.SoundIndex("o1") == -1 && ad.OverlayIndex("a1") == -1 && SegmentOfClip(ad, "a1") == -1, "found by id, nothing else");
+        CHECK(ad.MediaInUse(song) && !ad.RemoveMedia(song), "a sound keeps its file in the bin");
+        const int effect = ad.AddSound(clip, 0.5, false);
+        CHECK(effect == 1 && Near(ad.sounds[1].start, ad.sounds[0].End(), 1e-9) && !ad.sounds[1].ducksMusic, "a video's sound as an effect goes after the first");
+        CHECK(Near(ad.Length(), 6.0, 0.1), "sounds do not lengthen the picture");
+
+        ad.sounds[0].fadeIn = 0.5;
+        ad.sounds[0].volume = 0.8;
+        std::vector<VideoFXAudioClip> clips = ad.AudioClipsForEngine();
+        CHECK(clips.size() == 2 && clips[0].path == song && Near(clips[0].at, 1.0, 1e-9) && clips[0].start == 0.0 && Near(clips[0].end, songSeconds, 1e-9), "the engine's audio clips: at 1 s, the whole file");
+        CHECK(Near(clips[0].volume, 0.8, 1e-9) && Near(clips[0].fadeIn, 0.5, 1e-9) && clips[0].ducksMusic && !clips[1].ducksMusic, "with volume, fades and ducking");
+        CHECK(ad.project.settings.audioClips.empty(), "the project's own audio clips stay empty: the spans are the truth");
+
+        TimelineModel am = BuildTimelineModel(ad);
+        const TimelineTrack* lane = am.FindTrack(kSoundTrackId);
+        CHECK(am.tracks.size() == 5 && am.tracks[3].id == kSoundTrackId && am.tracks[4].id == kMusicTrackId, "the lane sits between the main track and the music");
+        CHECK(lane && lane->kind == TimelineTrackKind::Audio && !lane->IsMagnetic() && lane->clips.size() == 2, "a free audio lane with both sounds");
+        CHECK(lane && lane->clips[0].id == "a1" && lane->clips[0].kind == TimelineClipKind::Audio && lane->clips[0].source == song &&
+              Near(lane->clips[0].sourceLength, songSeconds, 1e-9) && Near(lane->clips[0].fadeIn, 0.5, 1e-9), "an audio clip with its source and fades, for the waveform and trims");
+
+        TimelineTrack at = *lane;
+        double applied = 0.0;
+        CHECK(TimelineTrimClip(at, "a1", true, 1.5, 25.0, &applied), "the model trims the sound's left edge");
+        TimelineChange trimA;
+        trimA.kind = TimelineChangeKind::Trim;
+        trimA.trackId = kSoundTrackId;
+        trimA.before = {*lane->FindClip("a1")};
+        trimA.after = {*at.FindClip("a1")};
+        const double into = applied - 1.0;
+        CHECK(ApplyChange(ad, trimA) && Near(ad.sounds[0].start, applied, 1e-9) && Near(ad.sounds[0].sourceIn, into, 1e-9), "a left trim moves into the file too");
+        CHECK(Near(ad.AudioClipsForEngine()[0].start, into, 1e-9) && Near(ad.AudioClipsForEngine()[0].end, songSeconds, 1e-6), "and the engine's clip starts there in the file");
+        TimelineChange fade;
+        fade.kind = TimelineChangeKind::FadeSet;
+        fade.trackId = kSoundTrackId;
+        fade.after = {*at.FindClip("a1")};
+        fade.after[0].fadeOut = 1.0;
+        CHECK(ApplyChange(ad, fade) && Near(ad.sounds[0].fadeOut, 1.0, 1e-9), "a fade handle sets the fade");
+        am = BuildTimelineModel(ad);
+        lane = am.FindTrack(kSoundTrackId);
+        at = *lane;
+        const double cut = ad.sounds[0].start + 1.0;
+        CHECK(TimelineSplitClip(at, "a1", cut, 25.0, "a1:2"), "the model splits a sound");
+        TimelineChange splitA;
+        splitA.kind = TimelineChangeKind::Split;
+        splitA.trackId = kSoundTrackId;
+        splitA.before = {*lane->FindClip("a1")};
+        splitA.after = {*at.FindClip("a1"), *at.FindClip("a1:2")};
+        CHECK(ApplyChange(ad, splitA) && ad.sounds.size() == 3 && Near(ad.sounds[0].duration, 1.0, 1e-9) && ad.sounds[2].id == "a3", "a split makes two sounds");
+        CHECK(Near(ad.sounds[2].sourceIn, into + 1.0, 1e-9) && ad.sounds[0].fadeOut == 0.0 && ad.sounds[2].fadeIn == 0.0 && Near(ad.sounds[2].fadeOut, 1.0, 1e-9),
+              "the right one goes on in the file, the fades stay at the outer ends");
+        TimelineChange delA;
+        delA.kind = TimelineChangeKind::Delete;
+        delA.trackId = kSoundTrackId;
+        delA.before = {*at.FindClip("a1:2")};
+        delA.before[0].id = "a2";
+        CHECK(ApplyChange(ad, delA) && ad.sounds.size() == 2 && ad.SoundIndex("a2") == -1, "a sound deletes");
+
+        const std::string afile = TempPath("sounds.ultravideo");
+        std::string aerror;
+        CHECK(ad.Save(afile, aerror), ("save with sounds: " + aerror).c_str());
+        {
+            std::FILE* f = std::fopen(afile.c_str(), "rb");
+            std::string text;
+            if (f) { char buf[4096]; size_t n; while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n); std::fclose(f); }
+            CHECK(text.find("\"sounds\"") != std::string::npos && text.find("\"audioClips\"") != std::string::npos, "the file carries the spans and the engine's audio clips");
+        }
+        Document back;
+        CHECK(Document::Load(afile, back, aerror, nullptr), ("load with sounds: " + aerror).c_str());
+        CHECK(back.sounds.size() == 2 && back.sounds[0].path == song && Near(back.sounds[0].sourceIn, into, 1e-9) && Near(back.sounds[0].volume, 0.8, 1e-9), "the spans come back with their file, second and volume");
+        CHECK(back.sounds[0].ducksMusic && Near(back.sounds[0].fadeIn, 0.5, 1e-9) && back.sounds[1].id == "a3" && Near(back.sounds[1].fadeOut, 1.0, 1e-9), "ducking, fades and ids too");
+        CHECK(back.project.settings.audioClips.empty() && back.nextSoundId == ad.nextSoundId && back.AudioClipsForEngine().size() == 2, "the engine's clips are dropped on load and derive the same again");
+
+        // A project from `videofx` carries audio clips but no spans: they become spans
+        VideoFXProject plain;
+        plain.segments = {VideoFXSegment::FromFile(clip)};
+        plain.settings.audioClips = {VideoFXAudioClip::Sound(song, 0.5, 0.7)};
+        std::string plainText;
+        CHECK(VideoFX_ProjectToJson(plain, plainText, "") == VideoFXResult::Ok, "a plain VideoFX project");
+        const std::string pfile = TempPath("plain.ultravideo");
+        if (std::FILE* f = std::fopen(pfile.c_str(), "wb")) {
+            const std::string text = "{\"format\": \"ultravideo\", \"version\": 1, \"project\": " + plainText + "}\n";
+            std::fwrite(text.data(), 1, text.size(), f);
+            std::fclose(f);
+        }
+        Document fromPlain;
+        CHECK(Document::Load(pfile, fromPlain, aerror, nullptr), ("load a plain project: " + aerror).c_str());
+        CHECK(fromPlain.sounds.size() == 1 && fromPlain.sounds[0].id == "a1" && Near(fromPlain.sounds[0].start, 0.5, 1e-9) && !fromPlain.sounds[0].ducksMusic, "its audio clip becomes a sound span");
+        CHECK(Near(fromPlain.sounds[0].duration, songSeconds, 1e-6) && Near(fromPlain.sounds[0].volume, 0.7, 1e-9) && fromPlain.project.settings.audioClips.empty(), "for the file's length, at its volume");
+    }
+
+    std::printf("\n-- effect presets --\n");
+    {
+        Document ed;
+        ed.Import(clip);
+        ed.Import(photo);
+        ed.AppendMedia(*ed.FindMedia(clip));          // 320 x 240
+        ed.AppendMedia(*ed.FindMedia(photo));
+        CHECK(EffectPresets().size() >= 10 && FindEffectPreset("warm") && FindEffectPreset("softblur") && !FindEffectPreset("nope"), "the presets, found by key");
+        bool looks = false, blurs = false;
+        for (const EffectPreset& e : EffectPresets()) { looks |= !e.blur; blurs |= e.blur; }
+        CHECK(looks && blurs, "colour looks and blurs");
+        CHECK(!ed.ApplyEffectPreset(0, "nope") && !ed.ApplyEffectPreset(5, "warm") && ed.project.segments[0].effects.empty(), "no preset or no clip: nothing");
+        CHECK(ed.ApplyEffectPreset(0, "warm") && ed.project.segments[0].effects.size() == 2, "Warm puts its two effects on the clip");
+        CHECK(ed.project.segments[0].effects[0].type == VideoFXEffectType::Temperature && Near(ed.project.segments[0].effects[0].amount, 0.3, 1e-9), "the engine's own effects");
+        CHECK(!ed.ApplyEffectPreset(0, "warm") && ed.project.segments[0].effects.size() == 2, "a second click does not double it");
+        CHECK(ed.ApplyEffectPreset(0, "strongblur") && ed.project.segments[0].effects.size() == 3, "a blur goes after the look");
+        CHECK(Near(ed.project.segments[0].effects[2].amount, 3.5, 1e-9), "its radius from the clip's 240 lines (1.5 % of the height, to half a pixel)");
+        CHECK(ed.ApplyEffectPreset(1, "softblur") && Near(ed.project.segments[1].effects[0].amount, 0.5, 1e-9), "a photo's blur from its own 120 lines, at least half a pixel");
+        CHECK(DescribeEffect(ed.project.segments[0].effects[0]) == "Warmer 30 %" && DescribeEffect(ed.project.segments[0].effects[1]) == "Saturation +10 %", "the inspector's names for them");
+        CHECK(DescribeEffect(ed.project.segments[0].effects[2]) == "Blur 3.5 px" && DescribeEffect(VideoFXEffect::Temperature(-0.3)) == "Cooler 30 %", "a blur in pixels, cool as cooler");
+        CHECK(DescribeEffect(VideoFXEffect::Grayscale()) == "Black and white" && DescribeEffect(VideoFXEffect::Vignette(0.5)) == "Dark corners 50 %", "and the others by what they do");
+        const TimelineModel em = BuildTimelineModel(ed);
+        CHECK(Main(em) && Main(em)->clips[0].hasEffects, "the clip shows the effects badge");
+
+        // every preset renders: the engine takes each one's effects
+        bool all = true;
+        std::string failed;
+        for (const EffectPreset& e : EffectPresets()) {
+            Document one;
+            one.Import(clip);
+            one.AppendMedia(*one.FindMedia(clip));
+            one.ApplyEffectPreset(0, e.key);
+            VideoFXFrame frame;
+            if (VideoFX_RenderFrame(one.SegmentsForEngine(), 1.0, frame, {}, 160, 120) != VideoFXResult::Ok || !frame.IsValid()) {
+                all = false;
+                failed += std::string(" ") + e.key;
+            }
+        }
+        CHECK(all, ("every preset renders a frame" + failed).c_str());
+        VideoFXFrame plainFrame, bwFrame;
+        Document plain;
+        plain.Import(clip);
+        plain.AppendMedia(*plain.FindMedia(clip));
+        Document grey = plain;
+        grey.ApplyEffectPreset(0, "bw");
+        CHECK(VideoFX_RenderFrame(plain.SegmentsForEngine(), 1.0, plainFrame, {}, 160, 120) == VideoFXResult::Ok &&
+              VideoFX_RenderFrame(grey.SegmentsForEngine(), 1.0, bwFrame, {}, 160, 120) == VideoFXResult::Ok, "a frame with and without a look");
+        bool allGrey = bwFrame.IsValid(), differs = false;
+        for (size_t i = 0; allGrey && i + 3 < bwFrame.pixels.size(); i += 4) {
+            const int r = bwFrame.pixels[i], g = bwFrame.pixels[i + 1], b = bwFrame.pixels[i + 2];
+            allGrey = std::abs(r - g) <= 6 && std::abs(g - b) <= 6;
+        }
+        for (size_t i = 0; i < plainFrame.pixels.size() && i < bwFrame.pixels.size() && !differs; ++i) differs = plainFrame.pixels[i] != bwFrame.pixels[i];
+        CHECK(allGrey && differs, "Black and white turns the test pattern grey");
+
+        // the inspector's strength sliders
+        CHECK(RangeOfEffect(VideoFXEffectType::Temperature).adjustable && RangeOfEffect(VideoFXEffectType::Temperature).low == -1.0, "a look's amount runs from -1 to 1");
+        CHECK(RangeOfEffect(VideoFXEffectType::Blur).adjustable && RangeOfEffect(VideoFXEffectType::Blur).high == 50.0, "a blur up to 50 px");
+        CHECK(!RangeOfEffect(VideoFXEffectType::Grayscale).adjustable && !RangeOfEffect(VideoFXEffectType::Crop).adjustable &&
+              !RangeOfEffect(VideoFXEffectType::Rotate90).adjustable, "switches and the crop have no slider");
+        CHECK(ed.SetEffectAmount(0, 0, 0.6) && Near(ed.project.segments[0].effects[0].amount, 0.6, 1e-9) &&
+              DescribeEffect(ed.project.segments[0].effects[0]) == "Warmer 60 %", "Warm made warmer");
+        CHECK(ed.SetEffectAmount(0, 2, 500.0) && Near(ed.project.segments[0].effects[2].amount, 50.0, 1e-9), "held to the range");
+        CHECK(ed.SetEffectAmount(0, 2, 3.5) && !ed.SetEffectAmount(0, 9, 1.0) && !ed.SetEffectAmount(7, 0, 1.0), "no such effect or clip: nothing");
+        Document switches = plain;
+        switches.project.segments[0].effects = {VideoFXEffect::Grayscale()};
+        CHECK(!switches.SetEffectAmount(0, 0, 1.0) && switches.project.segments[0].effects[0].amount == 0.0, "a switch keeps its amount");
+        ed.SetEffectAmount(0, 0, 0.3);
+        // every adjustable amount renders at both ends of its range
+        bool ends = true;
+        std::string endsFailed;
+        for (VideoFXEffectType type : {VideoFXEffectType::Brightness, VideoFXEffectType::Contrast, VideoFXEffectType::Saturation,
+                                       VideoFXEffectType::Gamma, VideoFXEffectType::Exposure, VideoFXEffectType::Hue,
+                                       VideoFXEffectType::Temperature, VideoFXEffectType::Blur, VideoFXEffectType::Sharpen,
+                                       VideoFXEffectType::Denoise, VideoFXEffectType::Vignette, VideoFXEffectType::Rotate,
+                                       VideoFXEffectType::FadeIn, VideoFXEffectType::FadeOut, VideoFXEffectType::Volume}) {
+            const EffectRange range = RangeOfEffect(type);
+            for (double v : {range.low, range.high}) {
+                Document one = plain;
+                VideoFXEffect e;
+                e.type = type;
+                e.amount = v;
+                one.project.segments[0].effects = {e};
+                VideoFXFrame frame;
+                if (VideoFX_RenderFrame(one.SegmentsForEngine(), 1.0, frame, {}, 160, 120) != VideoFXResult::Ok || !frame.IsValid()) {
+                    ends = false;
+                    endsFailed += " " + DescribeEffect(e);
+                }
+            }
+        }
+        CHECK(ends, ("every slider's ends render a frame" + endsFailed).c_str());
+
+        const std::string efile = TempPath("effects.ultravideo");
+        std::string eerror;
+        CHECK(ed.Save(efile, eerror), ("save with effects: " + eerror).c_str());
+        Document back;
+        CHECK(Document::Load(efile, back, eerror, nullptr), ("load with effects: " + eerror).c_str());
+        CHECK(back.project.segments.size() == 2 && back.project.segments[0].effects.size() == 3 && Near(back.project.segments[0].effects[2].amount, 3.5, 1e-9), "the effects come back with the project");
+    }
+
     std::printf("\n-- the story wizard --\n");
     {
         const std::string beach = TempPath("media/at_the-beach.png");
@@ -505,7 +709,7 @@ int main() {
         CHECK(!textOverlays, "the engine's caption overlays are not kept twice");
         CHECK(story.project.settings.music.Songs() == std::vector<std::string>{song} && story.media.size() == 4 && story.FindMedia(song), "the music set and everything in the bin");
         const TimelineModel storyModel = BuildTimelineModel(story);
-        CHECK(storyModel.tracks.size() == 4 && storyModel.tracks[0].clips.size() == 3 && storyModel.tracks[2].clips.size() == 3, "a timeline with the captions and the clips");
+        CHECK(storyModel.tracks.size() == 5 && storyModel.tracks[0].clips.size() == 3 && storyModel.tracks[2].clips.size() == 3, "a timeline with the captions and the clips");
 
         StoryChoice plain;
         plain.files = {clip};

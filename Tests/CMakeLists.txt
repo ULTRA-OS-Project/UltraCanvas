@@ -910,6 +910,31 @@ else()
     message(STATUS "  ClipboardHistoryStoreTest skipped (UltraClipboardHistory not built)")
 endif()
 
+# ===== KANBAN FILE DROP TEST =====
+# Files dropped onto UltraCanvasKanbanBoardElement reach onFilesDropped with
+# the column under the pointer (and pass on without it), BeginColumnRename,
+# and UltraDesktop's settings keeping its Sticker board. Offscreen, headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building KanbanFileDropTest...")
+    add_executable(KanbanFileDropTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/KanbanFileDropTest.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopSettings.cpp
+    )
+    target_include_directories(KanbanFileDropTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui)
+    target_compile_features(KanbanFileDropTest PRIVATE cxx_std_20)
+    target_link_libraries(KanbanFileDropTest PRIVATE UltraCanvas)
+    set_target_properties(KanbanFileDropTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME KanbanFileDropTest COMMAND KanbanFileDropTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: KanbanFileDropTest")
+else()
+    message(STATUS "  KanbanFileDropTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== UTF-8 FIND ALL TEST =====
 # utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
 # loop was quadratic and hung UltraTexter's search bar on a large file.
@@ -1150,6 +1175,21 @@ set_target_properties(PathUtf8Test PROPERTIES
 add_test(NAME PathUtf8Test COMMAND PathUtf8Test
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: PathUtf8Test")
+
+# ===== PER-USER DATA FOLDER TEST =====
+# UltraCanvasDataFolder.h: each platform's rule for the application data
+# folder, the folders earlier versions used, and moving one into place once.
+# Header-only, so the test links nothing.
+message(STATUS "  Building DataFolderTest...")
+add_executable(DataFolderTest ${CMAKE_CURRENT_SOURCE_DIR}/DataFolderTest.cpp)
+target_include_directories(DataFolderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(DataFolderTest PRIVATE cxx_std_17)
+set_target_properties(DataFolderTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME DataFolderTest COMMAND DataFolderTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: DataFolderTest")
 
 # ===== VIDEO TIMELINE MODEL TEST =====
 # The model behind UltraCanvasVideoTimeline (UltraCanvasVideoTimelineModel.h):
@@ -2889,6 +2929,9 @@ target_include_directories(MatrixModelTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
 )
 target_compile_features(MatrixModelTest PRIVATE cxx_std_20)
+# ImportMatrixTable and the importance column read numbers through the
+# locale-independent parser, which lives in the UI-free text utilities.
+target_link_libraries(MatrixModelTest PRIVATE UltraCanvasTextUtils)
 set_target_properties(MatrixModelTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -5478,4 +5521,27 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: TabPillStyleScreenshotTest")
 else()
     message(STATUS "  TabPillStyleScreenshotTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TREE VIEW KEYBOARD TEST =====
+# The tree view takes the keyboard focus and the arrow keys move its
+# selection: every key the doc lists, with a hidden root, under "jump to
+# first entry", and before any row was focused. Headless: the keys are sent
+# to the element as the application sends them to the focused element.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewKeyboardTest...")
+    add_executable(TreeViewKeyboardTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewKeyboardTest.cpp
+    )
+    target_include_directories(TreeViewKeyboardTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewKeyboardTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewKeyboardTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewKeyboardTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewKeyboardTest COMMAND TreeViewKeyboardTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewKeyboardTest")
+else()
+    message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
 endif()

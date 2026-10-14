@@ -1,3 +1,12 @@
+#### 2026-10-13 *0.1.14*
+- **The endpoint settings are found in a profile named in any script.**
+  `endpoints.json`'s folder was built by hand from `HOME` and
+  `XDG_CONFIG_HOME` read through the narrow `getenv` on macOS and Linux; it
+  comes from the framework's settings root now
+  (`UltraCanvasSettingsFolderRoot`, every variable read as UTF-8) and lands in
+  the same folder as before on every platform (framework changelog:
+  `settings-root-and-xdg-everywhere`).
+
 #### 2026-10-12 *0.1.13*
 - **One UltraAI at a time.** Starting UltraAI while it is already running brings
   the open window forward (restored if minimised; an open dialog comes forward

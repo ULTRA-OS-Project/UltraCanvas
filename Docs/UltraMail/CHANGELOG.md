@@ -1,3 +1,19 @@
+#### 2026-10-13 *0.10.52*
+- **The data folder is `~/Library/Application Support/UltraMail` on macOS.**
+  macOS was treated like Linux, so the mailbox database, the credential vault
+  and the preferences went to `~/.local/share/UltraMail` - while UltraSocial
+  and the desktop's clipboard history already kept theirs in Application
+  Support, the place the platform means for them. The rule is now the
+  framework's one rule (`UltraCanvasDataFolder.h`, shared with UltraPassword,
+  UltraAuthenticator, UltraSocial and EmailCleaner), which
+  `engine/UltraMailPaths.h` applies: `%APPDATA%\UltraMail` on Windows,
+  Application Support on macOS, `$XDG_DATA_HOME` or `~/.local/share`
+  elsewhere, and `$XDG_DATA_HOME` wins everywhere when it is set. On the first
+  start a folder an earlier version left in `~/.local/share` on macOS is moved
+  into place whole, vault included, so the accounts, the mail and the saved
+  passwords open as before; the move is noted in the timing trace. Linux and
+  Windows installations are untouched.
+
 #### 2026-10-12 *0.10.51*
 - **One UltraMail at a time.** Starting UltraMail while it is already
   running no longer opens a second copy - two copies on the one mailbox

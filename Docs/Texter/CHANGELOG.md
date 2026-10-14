@@ -1,3 +1,14 @@
+#### 2026-10-13 *1.64*
+- **The settings and the autosave folder are found in a profile named in any
+  script.** The config folder (`config.ini`, the recent files, the session)
+  and the autosave folder were built by hand from `HOME`, `XDG_CONFIG_HOME`
+  and `XDG_DATA_HOME` read through the narrow `getenv`, which on Windows
+  answers in the ANSI code page. Both come from the framework's rules now -
+  the settings root (`UltraCanvasSettingsFolderRoot`) and the data folder
+  (`UltraCanvasDataFolder`), every variable read as UTF-8 - and land in the
+  same folders as before on every platform (framework changelog:
+  `settings-root-and-xdg-everywhere`).
+
 #### 2026-10-11 *1.63*
 - **Menus opened from buttons stay clear of them.** The Recent files menu of
   the toolbar and the search bar's settings and history menus open with the

@@ -16773,9 +16773,11 @@ between them.
 | `<data>/ultraos/clipboard/thumbs/<hash>.png` | image thumbnails |
 | `<config>/ultraos/clipboard.key` | the 256-bit key, owner-only |
 
-`<data>` is `$XDG_DATA_HOME` (`~/.local/share`), `%LOCALAPPDATA%` on Windows,
-`~/Library/Application Support` on macOS; `<config>` is the folder the
-desktop's settings use. The folders are owner-only.
+`<data>` is `$XDG_DATA_HOME` when it is set, on every platform (as for the
+applications' data folders, `UltraCanvasDataFolder.h`), else `~/.local/share`,
+`%LOCALAPPDATA%` on Windows (a machine-local store, so not the applications'
+roaming `%APPDATA%`) and `~/Library/Application Support` on macOS; `<config>`
+is the folder the desktop's settings use. The folders are owner-only.
 
 With libsodium, titles, previews and payloads are sealed with
 XChaCha20-Poly1305 under the key file, kept apart from the data: a copy of the
@@ -34917,7 +34919,17 @@ lists Overdue plus every priority actually used on the board.
   column; double-clicking a column header renames it inline; Del removes the
   selected card. Programmatic access: `OpenCardEditor(id)`,
   `CloseCardEditor(save)`, `SetEditable(bool)`.
-- `ScrollToCard(id)` / `SelectCard(id)` from code.
+- **Files from outside** (any board, editable or not): set `onFilesDropped`
+  and files dragged in from a file manager or the desktop land on the column
+  under the pointer; the column is highlighted while they hover it. What the
+  files become is the host's decision. Unset, file drops pass on to the
+  parent elements.
+- `ScrollToCard(id)` / `SelectCard(id)` from code; `ScrollToColumn(id)`
+  scrolls the board sideways just far enough to show a column (works right
+  after `AddColumn`; renaming a column scrolls to it too); `ColumnIdAt(point)` is the
+  column under a point in the element's coordinates (-1 = none);
+  `BeginColumnRename(columnId, startEmpty)` opens a column title's inline
+  rename, for an "add column" button of the host's own.
 
 Callbacks:
 
@@ -34931,6 +34943,9 @@ board->onSelectionChanged = [](int id) { /* selected */ };   // -1 = cleared
 board->onWipExceeded = [](int columnId) { /* over WIP limit */ };
 board->onBoardChanged = []() { /* changed */ };             // Any editor mutation
 board->canDropCard = [](int cardId, int toColumnId) { return true; };
+board->onFilesDropped = [data](const std::vector<std::string>& files, int columnId, int laneId) {
+    for (const std::string& path : files) data->AddCard(columnId, path, laneId);
+};
 ```
 
 ## Factories
@@ -38518,9 +38533,10 @@ relationships between two to four ordered lists visible and countable. Rows and
 columns are things; each intersection carries a symbol from a small named scale,
 and the weights behind those symbols roll up into per-row and per-column totals.
 
-**Status:** Phases 1 and 2 — the `L`, `T`, `X` and `Y` shapes, the form header
-band, cell tint and hover bands that run across panels. The QFD `House`
-composite is planned; see
+**Status:** Phases 1–3 — the `L`, `T`, `X`, `Y` and QFD `House` shapes, the
+form header band, cell tint, hover bands that run across panels, a ranked bar
+strip for the column totals, and spreadsheet import. Phase 4 (pan/zoom,
+keyboard navigation, JSON, editing) is still open; see
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Which element do I want?
@@ -38595,11 +38611,11 @@ Cells are stored **sparsely** — set the marks you have; the rest stay empty.
 | `MatrixShape::T` | 3 | 2 | B × A and A × C, A being the shared row axis |
 | `MatrixShape::X` | 4 | 4 | A × B, B × C, C × D, D × A — four panels round a hub |
 | `MatrixShape::Y` | 3 | 3 | A × B, B × C, C × A — three rhombic panels between seams 120° apart |
-| `MatrixShape::House` | 2 | 2 | *planned* — QFD composite with the correlation roof |
+| `MatrixShape::House` | 2 | 1–2 | the QFD House of Quality: an L plus the correlation roof |
 
-`House` falls back to the `L` layout of panel 0 rather than drawing nothing, so
-data set against it is still visible. So does an `X` or `Y` whose model the
-shape cannot place (see *Validation*).
+An `X`, `Y` or `House` whose model the shape cannot place (see *Validation*)
+falls back to the `L` layout of panel 0 rather than drawing nothing, so its
+data is still visible.
 
 A `T` shares its row axis between two wings. Panel 0 is the left wing, panel 1
 the right, and the shared row labels are drawn once between them:
@@ -38673,6 +38689,45 @@ included, between the style's `minCellSize` and `maxCellSize`.
 
 `X` and `Y` draw no totals gutters — their outer edges are other panels' arms or
 open space, and the totals are one call away on the model.
+
+### The House of Quality
+
+`MatrixShape::House` is the QFD composite: customer needs (`sets[0]`) against
+technical requirements (`sets[1]`) in panel 0, and over the requirements'
+header a **roof** — a second, *symmetric* panel that relates the requirements
+to each other. Round the grid it adds an importance column (the rows'
+`importance`), a direction-of-improvement row and a target row from the
+requirements' own fields:
+
+```cpp
+MatrixModel house = MatrixSamples::QualityFunctionDeployment();   // needs x requirements
+house.shape = MatrixShape::House;
+
+MatrixItemSet* reqs = house.FindSet("requirements");
+reqs->items[0].improvement = MatrixImprovement::Minimize;   // Maximize | Minimize | Target
+reqs->items[0].target = "< 11 kg";                          // free text, read by people
+
+MatrixPanel& roof = house.AddPanel("requirements", "requirements",
+                                   MatrixScale::Correlation());
+roof.symmetric = true;
+house.SetCell(1, "Frame mass", "Gear range", "strongnegative");
+
+auto houseDiagram = CreateMatrixDiagramElement("hoq", 10, 10, 900, 680, house);
+houseDiagram->SetTotals(MatrixTotals::Both);
+houseDiagram->SetRollUp(MatrixRollUp::Bars);
+```
+
+A **symmetric panel** crosses one set with itself and keeps one cell per pair,
+above the diagonal: `SetCellAt(1, 4, 0, ...)` is stored as `(0, 4)`, `LevelAt`
+and `FindCell` answer either way round, and the diagonal has no cell at all.
+`MatrixScale::Correlation()` is the roof's usual scale — `++`, `+`, `−`, `−−`,
+with signed weights that the roll-ups never use. The roof is drawn at 45°, one
+diamond per pair, each standing over the boundary between its two columns; the
+diagram trades cell width for row height so the roof cannot squeeze the rows
+(`MatrixDiagramStyle::maxRoofShare`, `minRowAspect`). `SetShowImportance(false)`
+hides the importance column. A House without a roof panel draws without one.
+
+`MatrixSamples::HouseOfQuality()` is a complete example.
 
 ### The form header band
 
@@ -38753,6 +38808,16 @@ gutter underneath — the presentation the printed form uses. Because they are
 computed from the marks they are consistent by construction, which a hand-built
 version is not.
 
+The column totals can instead be a **strip of bars** with each column's rank,
+the way a QFD exercise presents its result; the top three ranks stand out:
+
+```cpp
+diagram->SetRollUp(MatrixRollUp::Bars);      // Numbers is the default
+std::vector<double> shares = model.RelativeColumnWeights(0);   // percent of the total
+```
+
+A column's tooltip gives its total, rank, share and target.
+
 ## Presentation
 
 ```cpp
@@ -38823,17 +38888,40 @@ bool ok = ImportMatrixCsv(csv, model, 0);
 ```
 
 The CSV is a header row of column labels then one row per row item, with level
-ids in the cells and empty fields for empty cells. Import fills in marks; it
-does not invent items, so the sets and the scale must already exist. It parses
-the whole file before touching the model, so a malformed file leaves your data
-alone.
+ids in the cells and empty fields for empty cells. `ExportMatrixCsv(model, 0,
+true)` adds an `Importance` column after the row labels, and `ImportMatrixCsv`
+reads it back. Import fills in marks; it does not invent items, so the sets and
+the scale must already exist. It parses the whole file before touching the
+model, so a malformed file leaves your data alone.
+
+To build a model **from** a spreadsheet, use `ImportMatrixTable`. It creates the
+items from the header row and the first column, and reads each mark by level
+id, label (any case), glyph or weight — so a QFD sheet typed with `9`, `3`, `1`
+imports as it is. An `Importance` (or `Weight`) second column sets the row
+importances. Numbers are dot-decimal whatever the locale.
+
+<!-- doc-check: std::string sheetCsv; -->
+
+A leading UTF-8 byte-order mark, as Excel writes, is skipped. The DemoApp's
+**Import table...** button reads a sheet this way, trying each built-in scale
+until one reads every mark; `media/diagrams/matrix/` holds two sample sheets.
+
+```cpp
+MatrixModel imported;
+std::string error;
+if (!ImportMatrixTable(sheetCsv, MatrixScale::QFD(), imported,
+                       "Customer needs", "Technical requirements", &error)) {
+    Log(error);   // names the line and the mark it could not read
+}
+```
 
 ## Samples
 
 `MatrixSamples::ImprovementTools()` (L), `MatrixSamples::EmployeeAllocation()`
 (T), `MatrixSamples::QualityFunctionDeployment()` (L, weighted),
-`MatrixSamples::SupplyChain()` (X, with a form header) and
-`MatrixSamples::DesignTraceability()` (Y) build the models the demo shows
+`MatrixSamples::SupplyChain()` (X, with a form header),
+`MatrixSamples::DesignTraceability()` (Y) and `MatrixSamples::HouseOfQuality()`
+(House) build the models the demo shows
 (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
@@ -38849,7 +38937,9 @@ Checks the set count against the shape, panel set references, cell indices,
 level ids and duplicate cells. For an `X` it also checks that every panel pairs
 a left/right set with a top/bottom one and that no two panels claim the same
 quadrant; for a `Y`, that every panel crosses two different sets among the first
-three and that no pair appears twice. `warnings` collects things that are drawable but
+three and that no pair appears twice; for a `House`, that panel 0 crosses two
+different sets and any further panel is the symmetric roof over its columns.
+A cell of a symmetric panel on or below the diagonal is an error. `warnings` collects things that are drawable but
 suspicious, such as an empty item set.
 
 The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,
@@ -64160,8 +64250,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 
 The `UltraCanvasTreeView` is a hierarchical tree view control component that provides a powerful and flexible way to display tree-structured data with support for icons, custom styling, selection modes, and interactive features. It is part of the UltraCanvas cross-platform UI framework.
 
-**Version:** 1.2.1  
-**Last Modified:** 2026-10-07  
+**Version:** 1.3.0  
+**Last Modified:** 2026-10-13  
 **Files:** 
 - Header: `include/UltraCanvasTreeView.h` (columns variant: `include/UltraCanvasColumnsTreeView.h`)
 - Implementation: `core/UltraCanvasTreeView.cpp`, `core/UltraCanvasColumnsTreeView.cpp`
@@ -64177,7 +64267,7 @@ The `UltraCanvasTreeView` is a hierarchical tree view control component that pro
 - **Visual Customization**: Colors, fonts, line styles, and spacing
 - **Scrolling**: Automatic scrollbar when content exceeds viewport
 - **Scroll-to-Top Button**: Floating "move to the top" affordance for long trees
-- **Keyboard Navigation**: Full keyboard support with arrow keys
+- **Keyboard Navigation**: The tree takes the focus, and the arrow keys move the selection
 - **Mouse Interaction**: Click, double-click, drag & drop support
 - **Dynamic Updates**: Add, remove, expand, collapse nodes at runtime
 - **Event System**: Comprehensive event callbacks for user interactions
@@ -64792,6 +64882,7 @@ if (int need = tree->GetRequiredWidth(); need > 0)
 void SetBackgroundColor(const Color& color);
 void SetSelectionColor(const Color& color);
 void SetHoverColor(const Color& color);
+void SetFocusRingColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
@@ -64952,20 +65043,50 @@ The builder also offers `SetShowRootLines()`, `SetShowCheckboxes()`,
 
 ## Keyboard Navigation
 
-The tree view supports comprehensive keyboard navigation:
+The tree view takes the keyboard focus (`AcceptsFocus()` is true): a click on
+it focuses it, and so does Tab from the element before it. While it holds the
+focus the keys below act on it. Every key that moves the selection selects the
+row it lands on, scrolls it into view, fires `onNodeSelected`, and - with
+`SetAutoExpandSelectedNode(true)` - opens it, exactly as a click would.
 
 | Key | Action |
 |-----|--------|
-| **↑** (Up Arrow) | Navigate to previous visible node |
-| **↓** (Down Arrow) | Navigate to next visible node |
-| **←** (Left Arrow) | Collapse node or navigate to parent |
-| **→** (Right Arrow) | Expand node or navigate to first child |
-| **Enter** | Toggle node expansion |
+| **↑** (Up Arrow) | Select the previous visible row |
+| **↓** (Down Arrow) | Select the next visible row |
+| **←** (Left Arrow) | Collapse an open parent; on a closed row or a leaf, go to the parent |
+| **→** (Right Arrow) | Expand a closed parent; on an open one, go to its first child |
+| **Enter** | Toggle a parent's expansion and fire `onNodeDoubleClicked` |
 | **Space** | Toggle the row's check flag, or select the row when the tree has none |
-| **Home** | Navigate to first node |
-| **End** | Navigate to last visible node |
-| **Page Up** | Scroll up one page |
-| **Page Down** | Scroll down one page |
+| **Home** | Select the first row |
+| **End** | Select the last visible row |
+| **Page Up** | Select the row one page of rows up (clamped to the first) |
+| **Page Down** | Select the row one page of rows down (clamped to the last) |
+
+Before any row was clicked or reached by key, **↓**, **→**, **Page Down** and
+**Home** start at the first row and **↑**, **Page Up** and **End** at the
+last, so a tree reached by Tab answers the first arrow. A hidden root
+(`SetRootVisible(false)`) is never a row: **↑** from the first top-level row
+stays there, and **←** on a top-level row does nothing. With
+[Jump to first entry](#jump-to-first-entry) on, open parents are stepped
+over. `GetFocusedNode()` returns the row the keys continue from, and while
+the tree holds the focus that row carries a dashed one-pixel **focus ring**,
+so it is told from a row that is merely selected; a selected tree that lost
+the focus shows no ring. `SetFocusRingColor()` sets the ring's colour;
+`Colors::Transparent` (the default) picks one that shows on the row: white
+on the selection background, the selection colour on any other row.
+
+The tree reads `UCEvent::virtualKey` (`UCKeys::Up`, `UCKeys::Down`, ...), which
+every backend fills, and returns true from `OnEvent` for a key it acted on, so
+a scrolling container above it does not scroll on the same arrow. A test or an
+application sends a key to a focused tree the way the application does:
+
+```cpp
+UCEvent key;
+key.type = UCEventType::KeyDown;
+key.virtualKey = UCKeys::Down;
+treeView->OnEvent(key);              // selects the next row
+TreeNode* current = treeView->GetFocusedNode();
+```
 
 ## Mouse Interaction
 
@@ -65343,7 +65464,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two to four item sets crossed in an L, T, X or Y, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, or a QFD House of Quality, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
@@ -77653,10 +77774,13 @@ can find again. Text search is a `LIKE` over the extracted text (`text`,
 
 Default locations: bus `$XDG_RUNTIME_DIR/ultramessage/bus.sock` (Linux),
 `$TMPDIR/ultramessage/bus.sock` (macOS), `\\.\pipe\UltraMessage-<session>`
-(Windows); journal `~/.local/share/ultramessage/journal.db`,
+(Windows); journal `~/.local/share/UltraMessage/journal.db`,
 `~/Library/Application Support/UltraMessage/journal.db`,
-`%LOCALAPPDATA%\UltraMessage\journal.db`. Socket, lock file and directories
-are owner-only.
+`%LOCALAPPDATA%\UltraMessage\journal.db` - or under `$XDG_DATA_HOME` when
+that is set, on every platform: the framework's machine-local data root
+(`UltraCanvasDataFolder.h`). A `ultramessage` folder an earlier version left
+on Linux is moved into `UltraMessage` on the first broker start. Socket, lock
+file and directories are owner-only.
 
 ### 3.5 Schemas and topics
 
@@ -81650,9 +81774,14 @@ cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
   [`Docs/UltraAuthenticator/CHANGELOG.md`](CHANGELOG.md). `--version`
   prints it.
 - Files: `accounts.vault` and `settings.ini` under
-  `$XDG_DATA_HOME/UltraAuthenticator/` (`~/.local/share/UltraAuthenticator/`
-  by default). `--vault PATH` uses another vault file; its settings live
-  beside it.
+  `$XDG_DATA_HOME/UltraAuthenticator/` when `$XDG_DATA_HOME` is set, else
+  `%APPDATA%\UltraAuthenticator\` on Windows,
+  `~/Library/Application Support/UltraAuthenticator/` on macOS and
+  `~/.local/share/UltraAuthenticator/` elsewhere (the framework's rule,
+  `UltraCanvasDataFolder.h`; up to 0.2.6 macOS and a Windows profile with
+  `HOME` set used `~/.local/share`, and the first start of a newer version
+  moves that folder into place, whole). `--vault PATH` uses another vault
+  file; its settings live beside it.
 
 ## What the secret is
 
@@ -82520,10 +82649,14 @@ add fields without breaking older readers. See
 
 ## Where the vault lives
 
-`$XDG_DATA_HOME/UltraPassword/vault.upwvault`, else
-`%APPDATA%\UltraPassword\vault.upwvault` on Windows, else
-`~/.local/share/UltraPassword/vault.upwvault`. `--vault PATH` uses another
-file.
+`$XDG_DATA_HOME/UltraPassword/vault.upwvault` when `$XDG_DATA_HOME` is set, else
+`%APPDATA%\UltraPassword\vault.upwvault` on Windows,
+`~/Library/Application Support/UltraPassword/vault.upwvault` on macOS and
+`~/.local/share/UltraPassword/vault.upwvault` elsewhere - the same places
+UltraMail and the desktop's clipboard history keep their data
+(`Apps/UltraPassword/core/VaultLocation.h`). Up to 0.1.2 the macOS vault was
+in `~/.local/share` too; the first start of a newer version moves that folder
+into place, whole. `--vault PATH` uses another file.
 
 ## Building and testing
 
@@ -82639,8 +82772,8 @@ UltraClipboard --version
 ## Privacy
 
 The history lives in `~/.local/share/ultraos/clipboard/` (`%LOCALAPPDATA%` on
-Windows, `~/Library/Application Support` on macOS), in folders only you can
-open. Titles, texts and copies are encrypted with a key kept apart from them
+Windows, `~/Library/Application Support` on macOS, or under `$XDG_DATA_HOME`
+when that is set, on every platform), in folders only you can open. Titles, texts and copies are encrypted with a key kept apart from them
 in `~/.config/ultraos/clipboard.key`, so a copy of the history folder or a
 backup of it cannot be read without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the
@@ -82989,7 +83122,7 @@ FILE: Docs/UltraDesktop/README.md
 
 UltraDesktop is the ULTRA OS desktop: the taskbar with the running
 applications, the desktop organiser with the virtual desktops, the
-Stickerboard, the clipboard and the screenshot, and the info panel with the
+Sticker board, the notes, the clipboard and the screenshot, and the info panel with the
 devices and services — on one screen-sized window under everything else. It
 is built from UltraCanvas elements on the
 [UltraCanvasDesktopShell](../UltraCanvas/UltraCanvasDesktopShell.md) module,
@@ -83014,11 +83147,11 @@ system.
 │ ⚙  │                                                              │ 1  │  desktop
 │ ⋮⋮ │                                                              │ 2  │  organiser
 │╲   │                                                              │ 3  │
-│ ╲  │                                                              │ 📌 │  Stickerboard
+│ ╲  │                                                              │ 📌 │  Sticker board
+│ ▣  │                                                              │ 🗒 │  notes
 │ ▣  │                     wallpaper                                │ 📋 │  clipboard
 │ ▣  │            (application windows float above)                 │ 📷 │  screenshot
 │ ▣  │                                                              │╱   │
-│ ▣  │                                                              │    │
 │  ╲ │                                                              │ ✉14│  info panel
 │   ╲│                                                              │ ⇧⇩ │  (devices and
 │ ▤  │                                                              │ ⌨ ●│   services)
@@ -83057,7 +83190,7 @@ windows stop short of the bars instead of covering them.
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
   a count in the settings asks the window manager for that many — the
-  *Stickerboard* toggle, the *clipboard* and *screenshot* (the whole screen to
+  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot* (the whole screen to
   `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
   green dot for three seconds and its tooltip names the file).
 - **Clipboard**: the desktop records every copy into the clipboard history
@@ -83114,9 +83247,23 @@ windows stop short of the bars instead of covering them.
   desktops - are the *Desktop* page of UOS-Settings. They live in the
   desktop's settings file; the desktop checks it once a second and rebuilds
   the bars in place when UOS-Settings changed one of them.
-- **Stickerboard**: sticky notes over the wallpaper. *+* in the corner adds
-  one; each note is edited in place, dragged by its top bar, cycled through
-  six paper colours and closed with ×. Notes come back where they were.
+- **Sticker board** (the pinboard button): files and notes sorted into
+  categories on a Kanban board over the wallpaper. It starts with *Docs*,
+  *Work* and *Home*. Drop files from the file manager onto a category and
+  they are added to it straight away, without a question; a file already on
+  the board moves to the category it was dropped on. A double-click opens a
+  file with its default application; cards are dragged from one category to
+  another, and *+ Add card* writes a note. *+ Add category* adds a category,
+  scrolls to it when the board is too wide to show them all, and lets you
+  type its name (double-click a category's title to rename it later). The
+  picker in the bar switches the display style: *Sticky notes*, *Poster*,
+  *Schematic* or *Dark*. Drag the panel by its title and resize it by the
+  grip in its bottom-right corner; the board, its style, its place and its
+  size are kept.
+- **Notes** (the note button below it): free sticky notes over the
+  wallpaper. *+* in the corner adds one; each note is edited in place,
+  dragged by its top bar, cycled through six paper colours and closed with
+  ×. Notes come back where they were.
 
 ### Notifications
 
@@ -83173,11 +83320,17 @@ ssh (`--windows` needs a display; `--apps` and `--devices` do not).
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
   "stickerboardVisible": false,
-  "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ]
+  "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
+  "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
+                     "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } }
 }
 ```
 
 An empty wallpaper shows the framework's `media/images/landscape.jpg`.
+`categoryBoard.board` is the Kanban element's own JSON document
+([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
+it the Sticker board starts with Docs, Work and Home. `design` is one of
+`stickynotes`, `poster`, `schematic`, `dark`.
 
 ## How the mail count gets there
 
@@ -83191,7 +83344,7 @@ the ones it has an icon for.
 
 The window list, the virtual desktops, the screenshot and the device markers
 need the module's X11 backend (Linux, the BSDs). Elsewhere the desktop still
-runs — application list, launcher, settings and Stickerboard work — but the
+runs — application list, launcher, settings, the Sticker board and the notes work — but the
 running-apps group stays empty and the Task Manager says so.
 
 ==============================================================================
@@ -83606,6 +83759,9 @@ client. Drop an `oauth.ini` in:
 |---|---|
 | Linux | `~/.local/share/UltraMail/` (or `$XDG_DATA_HOME/UltraMail/`) |
 | Windows | `%APPDATA%\UltraMail\` |
+| macOS | `~/Library/Application Support/UltraMail/` |
+
+`$XDG_DATA_HOME`, when set, wins on every platform (`Apps/UltraMail/engine/UltraMailPaths.h`).
 
 ```ini
 [google]
@@ -84171,7 +84327,9 @@ and maps common codes (`AuthenticationFailed`,
 (via VirtualFS):
 
 ```
-~/.local/share/UltraMail/           (per-platform user-data dir)
+~/.local/share/UltraMail/           (per-platform user-data dir: %APPDATA%\UltraMail on
+                                    Windows, ~/Library/Application Support/UltraMail on
+                                    macOS - engine/UltraMailPaths.h)
   accounts.json                     account list & settings (no secrets)
   <account-id>/
     folders.json                    folder tree, UIDVALIDITY, sync state
@@ -84927,13 +85085,25 @@ offered. Every file is probed by the engine and shows a duration badge,
 Double-click a video or a photo, or press its *Add* button, to put it on
 the timeline; a song becomes the music under the whole video. Or drag a
 tile onto the timeline: on the main track it goes in at the cut nearest the
-pointer, on the overlay lane it goes over the picture at that time, and a
-song dropped anywhere becomes the music; the insertion marker shows where,
+pointer, on the overlay lane it goes over the picture at that time, on
+*Voice & sound* it is a voice-over at that time, and a song dropped
+anywhere else becomes the music; the insertion marker shows where,
 `Esc` lets go. A search
-field filters the bin by name. The *Music* tab lists the songs. The
+field filters the bin by name. The *Music* tab lists the songs, each with
+*Voice-over* and *Sound effect* buttons that put it on the *Voice & sound*
+lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. *Effects* waits for a later release.
+playhead. The *Effects* tab holds one-click presets for the selected
+clip on the main track: the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
+*Dramatic*, *Black and white*, *Sepia*, *Vintage* and *Brighter*, and under
+*Blur and detail* *Soft blur*, *Strong blur*, *Sharpen* and *Reduce noise*.
+A preset is the engine's own effects (a look is a few of them: Warm is
+warmer colour and a little more saturation); they go after the clip's
+other effects, and a second click on the same preset does nothing. A
+blur's radius follows the clip's picture height, so it looks alike on a
+phone clip and a 4K one. The clip shows the effects badge on the
+timeline, and the viewer shows the look at once.
 
 ### The viewer
 
@@ -84976,11 +85146,12 @@ The **export always reads the originals**, at full quality.
 
 ### The timeline
 
-The `UltraCanvasVideoTimeline` element with four lanes: **T1 Titles**, a
+The `UltraCanvasVideoTimeline` element with five lanes: **T1 Titles**, a
 free lane of title spans over the picture; **V2 Overlay video**, a free
 lane of files shown over the picture; **V1 Main track**, magnetic -
-clips follow each other, gaps close; and **A1 Music**, which shows the
-songs and is edited from the inspector. Drag a clip to reorder,
+clips follow each other, gaps close; **A2 Voice & sound**, a free lane of
+voice-overs and sound effects; and **A1 Music**, which shows the songs and
+is edited from the inspector. Drag a clip to reorder,
 drag an edge to trim, drag a transition's edge for its length, drop files
 at a time, right-click for the menu. The toolbar: Select `V`, Blade `B`,
 Trim `T`, Slip `Y`; split at the playhead `S`, delete `Del`, a marker `M`;
@@ -85012,6 +85183,24 @@ length, place (nine positions), size as a share of the frame's height,
 opacity and fades. The viewer shows it while editing, and like a title it
 is cut into one overlay per main-track clip it crosses when the engine
 renders, so it runs across a cut.
+
+### Voice & sound
+
+The **A2 Voice & sound** lane puts a file's sound at any time, over the
+clips' own sound and the music: a narration, a voice-over, a door slam, a
+cheer. A clip there is a **voice-over**, which the music dips under as it
+does under speech in the clips, or a **sound effect**, which plays over
+the music without changing it. Right-click the lane for *Add a voice-over
+here…*, *Add a sound effect here…* and the bin's files with sound (songs,
+and videos for their sound only); use the buttons on a song in the
+*Music* tab (at the playhead); or drop files on the lane - a dropped file
+is a voice-over. A sound clip is moved, trimmed, split and deleted like
+any clip, shows its waveform, and its fade handles set its fades; trimming
+its left edge moves into the file. The inspector sets its *Volume* (up to
+200 %), *Fade in*, *Fade out* and *The music dips under it*, which turns a
+voice-over into a sound effect and back. The playback draft and the export
+mix the lane (VideoFX's audio clips); the viewer's frame-by-frame scrubbing
+is silent, as for every lane.
 
 ### Music
 
@@ -85051,10 +85240,14 @@ are offered first; a song in the bin becomes the music.
 - **Clip**: the selected clip's name and what it is; for a video its *In*
   and *Out* as timecode fields and its *Speed*; for a photo or a card its
   *Length*, and for a photo the *Motion* (auto, still, zoom, pan), the
-  *Framing* and *Keep faces in shot*; *Mute*; the **transition into** the
+  *Framing* and *Keep faces in shot*; *Mute*; the clip's **Effects**, one
+  row per effect by what it does (*Warmer 30 %*, *Blur 3.5 px*) with a
+  strength slider (none for a switch such as black and white or a flip)
+  and a button that removes it, and *Remove all effects*; the **transition into** the
   clip, by type and length with the maximum shown. For a title: its text
   (type it and press `Enter`), length, style, place, size, colour, shadow,
-  band, fade in and fade out.
+  band, fade in and fade out. For a voice-over or sound effect: volume,
+  fade in, fade out and whether the music dips under it.
 - **Audio**: the music - the songs, *Add song*, *Remove music*, *Volume*,
   *Fade in*, *Fade out*, *Crossfade* between songs, repeat, and the ducking
   under the clips' own sound by preset (speech, outdoor, loud event) and
@@ -85075,7 +85268,11 @@ app bar's buttons name what they would undo. `Ctrl+S` saves the project as
 a `.ultravideo` file, `Ctrl+Shift+S` under a new name, `Ctrl+O` opens one,
 `Ctrl+N` starts afresh; closing with unsaved changes asks. The file is
 JSON: the engine's own project (what `videofx render` takes) with the bin,
-the markers and the view around it, media paths relative to the file.
+the markers and the view around it, media paths relative to the file. The
+lanes' spans (titles, overlays, sounds) are kept beside it, and the engine's
+project carries what they become - overlays and audio clips - so `videofx
+render` gives the same video. A VideoFX project's audio clips, opened in
+UltraVideo, appear on the *Voice & sound* lane.
 
 **Export** (`Ctrl+E`) asks for a preset - web MP4 at 1080p, 720p or 4K,
 WebM, an animated GIF, a ProRes master, or sound only as MP3 - the output
@@ -85083,7 +85280,8 @@ file (*Browse* offers the presets' types; picking one there picks its
 preset), and whether to export the whole project or the work area set with
 `I` and `O` on the timeline. The export runs in the background with a
 progress dialog and can be cancelled; a cancelled or failed export leaves
-no file.
+no file. Exporting the work area keeps the part of each sound clip inside
+it.
 
 ## Command line
 
@@ -85109,8 +85307,8 @@ the engine).
 
 ## Not yet
 
-Effect presets, and the mapping
-of the design's tokens onto the framework's theme roles (the app colours
+Effect presets on overlay clips and stills of the overlay lane, effects
+dragged from the bin onto a clip, and the mapping of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.
 

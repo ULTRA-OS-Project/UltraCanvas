@@ -2,11 +2,12 @@
 // The two translations between the document and the timeline element
 // (Docs/Research/UltraVideoDesignProposal.md §9.2): BuildTimelineModel derives
 // the element's model from the document - the main track from the segments,
-// the music lane from the settings' music, the markers and the work area -
+// the voice-and-sound lane from the document's sound spans, the music lane
+// from the settings' music, the markers and the work area -
 // and ApplyChange turns a change the element reports into edits of the
 // document. The element never sees a VideoFX type.
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -21,6 +22,7 @@ namespace UltraVideo {
 constexpr const char* kTitleTrackId = "T1";
 constexpr const char* kOverlayTrackId = "V2";   // the overlay-video lane, free, over the main track
 constexpr const char* kMainTrackId = "V1";
+constexpr const char* kSoundTrackId = "A2";     // voice-overs and sound effects, free, under the main track
 constexpr const char* kMusicTrackId = "A1";
 
 UltraCanvas::TimelineModel BuildTimelineModel(const Document& document);
@@ -38,8 +40,8 @@ bool RemoveSong(Document& document, size_t index);
 // A short name for what a change did, for the undo history
 std::string DescribeChange(const UltraCanvas::TimelineChange& change);
 
-// The segment of a clip id, or -1 (a title's or an overlay's id gives -1:
-// see Document::TitleIndex and Document::OverlayIndex)
+// The segment of a clip id, or -1 (a title's, an overlay's or a sound's id
+// gives -1: see Document::TitleIndex, OverlayIndex and SoundIndex)
 int SegmentOfClip(const Document& document, const std::string& clipId);
 
 // What a clip is called in the band and the inspector

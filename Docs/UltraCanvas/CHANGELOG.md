@@ -1,3 +1,131 @@
+#### 2026-10-14 *0.9.280*
+- **One rule for the per-user application data folder:
+  `UltraCanvasDataFolder.h`.** Every application worked out for itself where
+  its data goes, and they disagreed: UltraMail, UltraPassword and
+  UltraAuthenticator treated macOS like Linux and kept the mailbox and the
+  vaults in `~/.local/share`, UltraAuthenticator preferred `HOME` to
+  `%APPDATA%` on Windows, EmailCleaner knew neither and looked for UltraMail's
+  mail in the working directory there, while UltraSocial and the desktop's
+  clipboard history used `~/Library/Application Support`. The new header-only
+  helper (usable from the headless engines, like `UltraCanvasPathUtf8.h`)
+  names the one rule - `%APPDATA%` on Windows, Application Support on macOS,
+  `$XDG_DATA_HOME` or `~/.local/share` elsewhere, and `$XDG_DATA_HOME` wins
+  everywhere - as a pure, testable `DataFolderRootFor(platform, ...)`,
+  `UltraCanvasDataFolder(appName)` for the live environment,
+  `LegacyUnixDataFolders` for where the rule moved away from, and
+  `AdoptLegacyDataFolder`, which moves such a folder into place once, whole,
+  never over data already there. UltraMail, UltraPassword, UltraAuthenticator,
+  UltraSocial and EmailCleaner all resolve their folder through it now; the
+  clipboard history keeps `%LOCALAPPDATA%` on purpose (a machine-local store,
+  not roaming data). `Tests/DataFolderTest.cpp` covers the rule and the move.
+- **Files can be dropped onto a Kanban board.** `UltraCanvasKanbanBoardElement`
+  gains `onFilesDropped(files, columnId, laneId)`: files dragged in from a file
+  manager or the desktop land on the column under the pointer, and while the
+  callback is set the column the files would join is highlighted during the
+  drag. Unset, drops pass on to the parent elements as before. Two public
+  helpers go with it: `ColumnIdAt(point)`, the column under a point, and
+  `BeginColumnRename(columnId, startEmpty)`, the inline rename that
+  double-clicking a header opens, for a host's own "add column" button.
+- **`ScrollToColumn(columnId)`** scrolls a board too wide for its columns
+  just far enough to show one, also right after `AddColumn` (the scroll is
+  worked out by the next layout). A column opened for renaming - the board's
+  own "+" and `BeginColumnRename` - is scrolled into view the same way.
+- **Typing into a Kanban board's column rename and card editor works.** Both
+  read characters only from `TextInput` events, which no platform backend
+  sends: every one puts the typed text on the `KeyDown`. So a new column kept
+  "New Column", and a card added with "+ Add card" could not be given a
+  title. The keys that type now go into the field; Tab, Delete and
+  Ctrl/Alt/Cmd shortcuts still do not. (UltraDesktop's Sticker board uses
+  all of the above.)
+- **The machine-local data root is in the header too:
+  `UltraCanvasLocalDataFolderRoot()`.** Data that should not roam with a
+  Windows profile - the desktop's clipboard history, the UltraMessage journal,
+  the OCR language packs - each resolved `%LOCALAPPDATA%` and the other
+  platforms' folders with a copy of the rule of its own, two of them through
+  the narrow `getenv`. `UltraCanvasDataFolder.h` now has the one rule for it
+  as well (`LocalDataFolderRootFor`, pure, and the live root): `%LOCALAPPDATA%`
+  on Windows, the same Application Support / `~/.local/share` as the roaming
+  root elsewhere, `$XDG_DATA_HOME` first everywhere. All three use it, in the
+  folders they had. On Windows `USERPROFILE` stands in for `HOME` when the
+  latter is unset, for both roots.
+- **The UltraMessage journal's folder is `UltraMessage` on every platform.**
+  Linux alone spelt it `ultramessage`; the first broker start moves that
+  folder, journal and SQLite side files together, into `UltraMessage`.
+- **The spell checker's user dictionary lives in the data folder rule.** On
+  macOS it was kept in `~/.local/share/UltraCanvas`, as on Linux, while every
+  other per-user file of the framework there is in Application Support; it
+  moves there on first use, the words a person added with it. The Hunspell
+  backend searches `UltraCanvas/dictionaries` under the same root first (so a
+  dictionary dropped there is found on macOS too), reads every variable as
+  UTF-8, and still looks in the earlier folders.
+- **The settings root is in the header: `UltraCanvasSettingsFolderRoot()`.**
+  `UltraCanvasSettingsFolder()` names the shared `UltraCanvas` folder, but an
+  application with a folder of its own name there (UltraTexter, UltraAI)
+  rebuilt the root above it by hand, each from narrow `getenv` reads that miss
+  a Windows profile named outside the ANSI code page. The root is now a
+  header-only, pure `SettingsFolderRootFor(platform, ...)` with
+  `UltraCanvasSettingsFolderRoot()` for the live environment - usable without
+  linking the core, like `UltraCanvasDataFolder.h` - and the shared folder
+  joins onto it. UltraTexter's config and autosave folders and UltraAI's
+  endpoint settings resolve through the framework now, in the same places as
+  before. `Tests/DataFolderTest.cpp` covers the rule.
+- **`$XDG_DATA_HOME` names the clipboard history's and the UltraMessage
+  journal's folder on every platform.** Both honoured it on Linux only, while
+  every application honours it everywhere; a portable desktop setup can now
+  point them elsewhere too. Without it nothing moves: `%LOCALAPPDATA%` on
+  Windows (machine-local stores, on purpose not the applications' roaming
+  `%APPDATA%` - `UltraCanvasDataFolder.h` says so), Application Support on
+  macOS, `~/.local/share` elsewhere, under the folder names they always had.
+
+#### 2026-10-14 *0.9.279*
+- **The tree view answers the keyboard.** `UltraCanvasTreeView` now takes the
+  keyboard focus (`AcceptsFocus()`), by a click on it or by Tab, and while it
+  holds it the arrow keys move the selection: Up / Down to the previous / next
+  row, Left collapses or goes to the parent, Right expands or goes to the first
+  child, Page Up / Page Down move a page of rows, Home / End go to the first /
+  last row, Enter toggles a parent and Space toggles the check flag. The
+  handler existed but never ran: the tree did not accept the focus, so no key
+  event reached it, and it compared `nativeKeyCode` against Windows
+  virtual-key numbers that match nothing on Linux or macOS. It reads
+  `UCKeys` now, like the list view. A tree with no row focused yet starts at
+  the first row on Down / Home and at the last on Up / End; a hidden root is
+  never a row (Up from the first top-level row stays there); and a handled key
+  returns true from `OnEvent`, so a scrolling parent does not scroll on the
+  same arrow. `GetFocusedNode()` returns the row the keys continue from.
+  `Tests/TreeViewKeyboardTest.cpp` drives every key headless. While the tree
+  holds the focus the row the keys continue from carries a dashed one-pixel
+  focus ring (`SetFocusRingColor`; by default white on the selection
+  background, the selection colour elsewhere), so it is told from a row that
+  is merely selected.
+
+#### 2026-10-13 *0.9.278*
+- **Matrix diagram, Phase 3: the House of Quality.** `MatrixShape::House` now
+  lays out the QFD composite instead of falling back to an L: customer needs
+  against technical requirements, with the correlation **roof** drawn at 45
+  degrees over the requirements' header, an importance column, a
+  direction-of-improvement row and a target row. The roof is a symmetric panel
+  (`MatrixPanel::symmetric`): the model stores each pair once above the
+  diagonal whichever way round it is set, and refuses the diagonal. New
+  `MatrixScale::Correlation()` (++ / + / − / −−), `MatrixItem::improvement`
+  and `MatrixItem::target`, and `MatrixSamples::HouseOfQuality()`.
+- Matrix diagram: `SetRollUp(MatrixRollUp::Bars)` draws the column totals as a
+  strip of bars with each column's rank, the top three highlighted;
+  `MatrixModel::RelativeColumnWeights()` gives each column's share, and a
+  column's tooltip now shows its rank, share and target.
+- Matrix diagram: `ImportMatrixTable()` builds a model from a spreadsheet's
+  tabular form - items from the header row and first column, marks by level id,
+  label, glyph or weight, and an optional Importance column - and reports the
+  line and mark it could not read. `ExportMatrixCsv(..., true)` writes the
+  importances, and `ImportMatrixCsv` reads them back. Numbers are dot-decimal
+  in every locale.
+- Matrix diagram: a label wrapped onto its last line dropped the words that did
+  not fit without a trace; the last line now ends in "..." instead.
+- DemoApp: a House of Quality tab on the Matrix Diagram page, a control that
+  switches the column totals between bars and numbers, and an **Import
+  table...** button that reads a CSV sheet into an "Imported" tab, trying each
+  built-in scale until one reads every mark. Two sample sheets ship in
+  `media/diagrams/matrix/`; a leading UTF-8 byte-order mark is skipped.
+
 #### 2026-10-13 *0.9.277*
 - DemoApp: the Kanban Board and the Pyramid Diagram moved from the Charts
   category to Diagrams, next to the Matrix Diagram - neither plots data on
