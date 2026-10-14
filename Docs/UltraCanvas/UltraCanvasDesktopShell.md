@@ -55,11 +55,11 @@ panel never disagree about an interface.
 
 | Call | Meaning |
 |---|---|
-| `ListWindows()` | Every managed window in stacking order, bottom first, as `DesktopWindowInfo { id, title, appClass, appName, iconFile, virtualDesktop, processId, active, minimized, skipTaskbar }`. Docks, panels, the desktop and tooltips are included with `skipTaskbar` true so a caller can tell them apart; a taskbar lists the rest. `iconFile` is the application's own icon, resolved from `appClass` through the icon themes ([UltraCanvasDesktopEntry](UltraCanvasDesktopEntry.md)) — for the applications this repository ships, `StartupWMClass` and `Icon=` carry the same name. |
+| `ListWindows()` | Every managed window in stacking order, bottom first, as `DesktopWindowInfo { id, title, appClass, appName, iconFile, virtualDesktop, processId, active, minimized, skipTaskbar }`. Docks, panels, the desktop and tooltips are included with `skipTaskbar` true so a caller can tell them apart; a taskbar lists the rest. `iconFile` is the application's own icon, resolved from `appClass` through the icon themes ([UltraCanvasDesktopEntry](UltraCanvasDesktopEntry.md)) — for the applications this repository ships, `StartupWMClass` and `Icon=` carry the same name. On Windows `id` is the `HWND`, `appClass` the program's name (`firefox`, `UltraFiler` — for a Microsoft Store application the program inside its frame), `appName` the same in lower case, and `iconFile` the executable's icon as a PNG. |
 | `GetActiveWindow()` | The focused window's id, 0 if none. |
 | `ActivateWindow(id)` | Raise, un-minimize and focus; switches to the window's desktop first. |
 | `MinimizeWindow(id)` | Iconify. |
-| `CloseWindow(id)` | Ask the window to close through the window manager (`WM_DELETE_WINDOW`), never kill. |
+| `CloseWindow(id)` | Ask the window to close through the window manager (`WM_DELETE_WINDOW`; on Windows `WM_SYSCOMMAND SC_CLOSE`, what the taskbar's *Close window* sends), never kill. |
 
 ### Virtual desktops
 
@@ -67,12 +67,21 @@ panel never disagree about an interface.
 unknown), `SetCurrentVirtualDesktop(i)`, `SetVirtualDesktopCount(n)` (1..32)
 and `MoveWindowToVirtualDesktop(id, i)` (−1 = on every desktop).
 
+Windows documents none of this. The count, the order and the current desktop
+are read where Explorer keeps them (`VirtualDesktopIDs` and
+`CurrentVirtualDesktop` in the registry, as PowerToys reads them), a window's
+desktop through `IVirtualDesktopManager`. Switching sends Explorer's own
+Ctrl+Win+Left/Right, so it needs Explorer running; `SetVirtualDesktopCount`
+answers false (the count is the user's, in Task View), and
+`MoveWindowToVirtualDesktop` moves only the calling program's own windows and
+never to "every desktop".
+
 ### The screen
 
 | Call | Meaning |
 |---|---|
-| `GetScreenSize(w, h)` | The default screen's size in pixels. |
-| `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. |
+| `GetScreenSize(w, h)` | The default screen's size in pixels; on Windows the primary monitor's, the one at 0,0 that a desktop window covers. |
+| `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
 | `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
 | `DefaultScreenshotPath()` | `<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png` — the user's Pictures folder from `GetWellKnownUserFolders`, the home directory when there is none. Dots in the time, since a colon is not a file-name character on Windows. |
@@ -82,16 +91,16 @@ and `MoveWindowToVirtualDesktop(id, i)` (−1 = on every desktop).
 `ReadDeviceActivity()` returns a `DesktopDeviceActivity`, every field
 best-effort and `warnings` saying in words what could not be read:
 
-| Field | Source (Linux) |
-|---|---|
-| `webcamInUse` | a process of the user's holds a `/dev/video*` descriptor (`/proc/<pid>/fd`) |
-| `microphoneInUse`, `speakerPlaying` | `/proc/asound/card*/pcm*c/sub*/status` (capture) and `pcm*p` (playback) say `state: RUNNING` — no sound-server dependency |
-| `bluetoothPresent`, `bluetoothPowered`, `bluetoothConnectedDevices` | `UltraCanvasHardwareInfo::ListBluetoothAdapters` |
-| `wifiPresent`, `wifiConnected`, `wifiSsid`, `lanConnected`, `vpnConnected`, `internetInterfaceUp` | `UltraCanvasHardwareInfo::ListNetworkInterfaces`; a tunnel is the `Tunnel` link type or a `tun`/`tap`/`wg`/`ppp`/`vpn`/`tailscale`… name |
-| `bytesReceived`, `bytesSent` | running totals over every non-loopback interface — keep the previous reading and show the difference |
-| `usbDeviceCount` | `UltraCanvasHardwareInfo::ListUSBDevices`, hubs not counted |
-| `batteryPresent`, `batteryPercent`, `batteryCharging` | `/sys/class/power_supply/*` of type `Battery` |
-| `keyboardLayout` | the XKB layout list the server was configured with, indexed by the group in effect |
+| Field | Source (Linux) | Source (Windows) |
+|---|---|---|
+| `webcamInUse` | a process of the user's holds a `/dev/video*` descriptor (`/proc/<pid>/fd`) | the camera consent store Windows' privacy indicator reads: a program's `LastUsedTimeStart` with no `LastUsedTimeStop` (Windows 10 1903 and later) |
+| `microphoneInUse`, `speakerPlaying` | `/proc/asound/card*/pcm*c/sub*/status` (capture) and `pcm*p` (playback) say `state: RUNNING` — no sound-server dependency | an active Core Audio session on any capture or render endpoint |
+| `bluetoothPresent`, `bluetoothPowered`, `bluetoothConnectedDevices` | `UltraCanvasHardwareInfo::ListBluetoothAdapters` | the same |
+| `wifiPresent`, `wifiConnected`, `wifiSsid`, `lanConnected`, `vpnConnected`, `internetInterfaceUp` | `UltraCanvasHardwareInfo::ListNetworkInterfaces`; a tunnel is the `Tunnel` link type or a `tun`/`tap`/`wg`/`ppp`/`vpn`/`tailscale`… name | the same |
+| `bytesReceived`, `bytesSent` | running totals over every non-loopback interface — keep the previous reading and show the difference | the same |
+| `usbDeviceCount` | `UltraCanvasHardwareInfo::ListUSBDevices`, hubs not counted | the same |
+| `batteryPresent`, `batteryPercent`, `batteryCharging` | `/sys/class/power_supply/*` of type `Battery` | `GetSystemPowerStatus`; on the mains and full counts as charging, as Linux's `Full` does |
+| `keyboardLayout` | the XKB layout list the server was configured with, indexed by the group in effect | the input locale of the window being typed into, as its lower-case country (`us`, `de`) |
 
 It costs one procfs/sysfs walk and one hardware listing; polling it every
 second or two is fine.
@@ -100,10 +109,25 @@ second or two is fine.
 
 | Call | Meaning |
 |---|---|
-| `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. |
-| `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. |
+| `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. On Windows the Start menu's shortcuts instead (`%APPDATA%` and `%ProgramData%` `\Microsoft\Windows\Start Menu\Programs`), the user's shadowing the machine's of the same name: named as the folder's `desktop.ini` names them, programs only (no uninstallers, help files or web links), `program` the shortcut's target, `startupWMClass` its name (so `MatchApplication` finds its windows), `shortcutPath` the `.lnk`, `iconFile` a PNG of its icon. Microsoft Store applications have no shortcut there and are not listed yet. |
+| `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. |
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. |
 | `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
+
+### In place of the system's desktop
+
+| Call | Meaning |
+|---|---|
+| `CanReplaceSystemDesktop()` | Whether this platform has a switch for which desktop a session starts: true on Windows; false where the session itself decides (ULTRA OS, Linux) and elsewhere. |
+| `ReplaceSystemDesktop(program, arguments, &error)` | From now on this account's sign-in starts `program` (an absolute path) with `arguments`, in place of the system's desktop. On Windows: a value *UltraCanvas Desktop* under the user's `Run` key (so it is listed among Task Manager's startup apps) and Explorer's taskbar set to auto-hide, its state before the first switch recorded. Explorer keeps running, so its tray, its notifications and the programs that need it go on working. No administrator rights; no other account changes. |
+| `RestoreSystemDesktop(&error)` | The way back: the start at sign-in removed and the taskbar given the recorded state — as it was, not a default. True, changing nothing, when nothing was replaced (and on every platform without the switch). |
+| `IsSystemDesktopReplaced()` | Whether the sign-in starts the program now. |
+
+UltraDesktop switches over with `--use-as-desktop` and back with
+`--restore-desktop`, passes itself `--session` for the sign-in, and closes
+within a second when a session desktop finds the switch gone — so turning it
+off in UOS-Settings brings the Windows desktop back at once. See
+[UltraDesktop on Windows](../UltraDesktop/README.md#on-windows).
 
 ### Notices
 
@@ -126,7 +150,11 @@ changes; `Stop()` joins, so no callback runs after it returns. The callback
 runs on the monitor's thread and must only hand the news over — set an
 atomic, post to the UI thread. One change can produce several callbacks; the
 receiver coalesces. Where the platform cannot notify, `Start()` succeeds and
-nothing is ever reported: `IsNative()` says which.
+nothing is ever reported: `IsNative()` says which. On Windows the monitor's
+thread sets WinEvent hooks (a window shown or hidden, the foreground,
+minimizing, the cloaking a desktop switch does) and watches Explorer's
+virtual-desktop registry key; the hooks go in a moment after `Start()`
+returns, on that thread.
 
 ### Global shortcuts
 
@@ -160,12 +188,20 @@ it is held. While the key is down the shortcut's grab holds the keyboard, and a
 window opened and focused in that time could lose the focus again when the
 grab ended; a window opened on release keeps it.
 
+On Windows a shortcut is a `RegisterHotKey` on the shortcut's own thread, and
+the callback runs when the combination is pressed, once however long it is
+held (there is no grab to lose the focus to). Explorer keeps most Win-key
+combinations for itself while it runs — `Super+V` is its clipboard history —
+so `Start` reports those as taken by another program; with UltraDesktop as
+the shell they are free.
+
 ## Backends
 
 | Platform | Backend |
 |---|---|
 | Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it". The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
-| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` and `UltraCanvasGlobalShortcut::Start` fail with a reason; the application list, launcher and notices still work. |
+| Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`; the application list from the Start menu. Executable and shortcut icons are extracted once into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
+| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` and `UltraCanvasGlobalShortcut::Start` fail with a reason; the application list, launcher and notices still work. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -180,7 +216,9 @@ fallback when it is absent.
   [toolbar's item badges and reordering](UltraCanvasToolbarExamples.md) — the
   elements the desktop's bars are made of.
 - `WindowType::Desktop` in `UltraCanvasWindow.h` — the screen-sized window at
-  the bottom of the stack a desktop draws into; `WindowType::Notification`
+  the bottom of the stack a desktop draws into (on Windows an undecorated tool
+  window the size of the primary monitor, held at the bottom, on every
+  virtual desktop and out of the taskbar and Alt+Tab); `WindowType::Notification`
   the toast above everything that never takes the focus, which
   [UltraCanvasNotificationToast](UltraCanvasNotificationToast.md) draws
   notifications in.

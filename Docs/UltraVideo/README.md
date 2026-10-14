@@ -26,18 +26,35 @@ button in the app bar switches to the light one.
 
 Import videos, photos and songs with the import button, `Ctrl+I`, by
 dropping them on the window, or by naming them on the command line (a
-folder imports its files). Every file is probed by the engine and shows a
-duration badge, *photo*, or *unreadable* with the reason in its tooltip.
+folder imports its files). The dialogs offer FileLoader's types that the
+engine reads: at start-up UltraVideo tells the framework's codec registry
+which films and sound VideoFX's FFmpeg reads and writes, and gives the engine
+the framework's image reader for the pictures FFmpeg does not open whole - a
+phone's HEIC (a grid of tiles libheif puts together), a camera's raw file.
+Every file is probed by the engine and shows a duration badge, *photo*, or
+*unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
 the timeline; a song becomes the music under the whole video. Or drag a
 tile onto the timeline: on the main track it goes in at the cut nearest the
-pointer, on the overlay lane it goes over the picture at that time, and a
-song dropped anywhere becomes the music; the insertion marker shows where,
+pointer, on the overlay lane it goes over the picture at that time, on
+*Voice & sound* it is a voice-over at that time, and a song dropped
+anywhere else becomes the music; the insertion marker shows where,
 `Esc` lets go. A search
-field filters the bin by name. The *Music* tab lists the songs. The
+field filters the bin by name. The *Music* tab lists the songs, each with
+*Voice-over* and *Sound effect* buttons that put it on the *Voice & sound*
+lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. *Effects* waits for a later release.
+playhead. The *Effects* tab holds one-click presets for the selected
+clip on the main track: the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
+*Dramatic*, *Black and white*, *Sepia*, *Vintage* and *Brighter*, and under
+*Blur and detail* *Soft blur*, *Strong blur*, *Sharpen* and *Reduce noise*.
+A preset is the engine's own effects (a look is a few of them: Warm is
+warmer colour and a little more saturation); they go after the clip's
+other effects, and a second click on the same preset does nothing. A
+blur's radius follows the clip's picture height, so it looks alike on a
+phone clip and a 4K one. The clip shows the effects badge on the
+timeline, and the viewer shows the look at once.
 
 ### The viewer
 
@@ -59,13 +76,33 @@ sound, and the playhead follows it. An edit throws the draft away and the
 next Play renders a new one. Where no sound device or player is available
 playback stays frame by frame and the status line says so.
 
+**Proxies.** Large clips, such as 4K phone videos, are slow to scrub. So
+every video in the bin gets a *proxy* in the background: the same clip at
+540 lines, quick to seek in (VideoFX's proxy media). The bin tile shows its
+progress, *proxy waiting*, *proxy 40 %*, and *proxy* when it is ready. From
+then on the viewer and the playback draft play that clip from its proxy.
+The **export always reads the originals**, at full quality.
+- Proxies are made one at a time on a thread of their own, so scrubbing
+  never waits behind one. They are encoded on the graphics hardware where
+  one works (NVENC, Quick Sync, VA-API, AMF, VideoToolbox, Media
+  Foundation), and in software where none does.
+- A clip no taller than a proxy, which is already quick, gets none.
+- Proxies are kept in the user's cache folder (`~/.cache/VideoFX/Proxies`
+  and the like), so a project opened again plays from them at once.
+- A clip removed from the bin before its proxy is made is dropped from the
+  queue.
+- *Preview from proxies*, in the inspector's Project tab, turns them off
+  and on for the project. It is saved with the project, and is not an
+  undo step.
+
 ### The timeline
 
-The `UltraCanvasVideoTimeline` element with four lanes: **T1 Titles**, a
+The `UltraCanvasVideoTimeline` element with five lanes: **T1 Titles**, a
 free lane of title spans over the picture; **V2 Overlay video**, a free
 lane of files shown over the picture; **V1 Main track**, magnetic -
-clips follow each other, gaps close; and **A1 Music**, which shows the
-songs and is edited from the inspector. Drag a clip to reorder,
+clips follow each other, gaps close; **A2 Voice & sound**, a free lane of
+voice-overs and sound effects; and **A1 Music**, which shows the songs and
+is edited from the inspector. Drag a clip to reorder,
 drag an edge to trim, drag a transition's edge for its length, drop files
 at a time, right-click for the menu. The toolbar: Select `V`, Blade `B`,
 Trim `T`, Slip `Y`; split at the playhead `S`, delete `Del`, a marker `M`;
@@ -97,6 +134,24 @@ length, place (nine positions), size as a share of the frame's height,
 opacity and fades. The viewer shows it while editing, and like a title it
 is cut into one overlay per main-track clip it crosses when the engine
 renders, so it runs across a cut.
+
+### Voice & sound
+
+The **A2 Voice & sound** lane puts a file's sound at any time, over the
+clips' own sound and the music: a narration, a voice-over, a door slam, a
+cheer. A clip there is a **voice-over**, which the music dips under as it
+does under speech in the clips, or a **sound effect**, which plays over
+the music without changing it. Right-click the lane for *Add a voice-over
+here…*, *Add a sound effect here…* and the bin's files with sound (songs,
+and videos for their sound only); use the buttons on a song in the
+*Music* tab (at the playhead); or drop files on the lane - a dropped file
+is a voice-over. A sound clip is moved, trimmed, split and deleted like
+any clip, shows its waveform, and its fade handles set its fades; trimming
+its left edge moves into the file. The inspector sets its *Volume* (up to
+200 %), *Fade in*, *Fade out* and *The music dips under it*, which turns a
+voice-over into a sound effect and back. The playback draft and the export
+mix the lane (VideoFX's audio clips); the viewer's frame-by-frame scrubbing
+is silent, as for every lane.
 
 ### Music
 
@@ -136,20 +191,26 @@ are offered first; a song in the bin becomes the music.
 - **Clip**: the selected clip's name and what it is; for a video its *In*
   and *Out* as timecode fields and its *Speed*; for a photo or a card its
   *Length*, and for a photo the *Motion* (auto, still, zoom, pan), the
-  *Framing* and *Keep faces in shot*; *Mute*; the **transition into** the
+  *Framing* and *Keep faces in shot*; *Mute*; the clip's **Effects**, one
+  row per effect by what it does (*Warmer 30 %*, *Blur 3.5 px*) with a
+  strength slider (none for a switch such as black and white or a flip)
+  and a button that removes it, and *Remove all effects*; the **transition into** the
   clip, by type and length with the maximum shown. For a title: its text
   (type it and press `Enter`), length, style, place, size, colour, shadow,
-  band, fade in and fade out.
+  band, fade in and fade out. For a voice-over or sound effect: volume,
+  fade in, fade out and whether the music dips under it.
 - **Audio**: the music - the songs, *Add song*, *Remove music*, *Volume*,
   *Fade in*, *Fade out*, *Crossfade* between songs, repeat, and the ducking
   under the clips' own sound by preset (speech, outdoor, loud event) and
   level.
 - **Project**: the name, the output size (from the first clip, Full HD, HD,
-  4K, portrait, square), the frame rate, and how clips of another shape are
-  fitted.
+  4K, portrait, square), the frame rate, how clips of another shape are
+  fitted, and *Preview from proxies* (on by default; see *Proxies* above).
 
 Every field is an edit like any other: it goes through undo and shows on
-the timeline and in the viewer at once.
+the timeline and in the viewer at once. *Preview from proxies* is the one
+exception: it changes how the project is previewed, not the project, so it
+is no undo step.
 
 ## Undo, projects and export
 
@@ -158,14 +219,20 @@ app bar's buttons name what they would undo. `Ctrl+S` saves the project as
 a `.ultravideo` file, `Ctrl+Shift+S` under a new name, `Ctrl+O` opens one,
 `Ctrl+N` starts afresh; closing with unsaved changes asks. The file is
 JSON: the engine's own project (what `videofx render` takes) with the bin,
-the markers and the view around it, media paths relative to the file.
+the markers and the view around it, media paths relative to the file. The
+lanes' spans (titles, overlays, sounds) are kept beside it, and the engine's
+project carries what they become - overlays and audio clips - so `videofx
+render` gives the same video. A VideoFX project's audio clips, opened in
+UltraVideo, appear on the *Voice & sound* lane.
 
 **Export** (`Ctrl+E`) asks for a preset - web MP4 at 1080p, 720p or 4K,
 WebM, an animated GIF, a ProRes master, or sound only as MP3 - the output
-file, and whether to export the whole project or the work area set with
+file (*Browse* offers the presets' types; picking one there picks its
+preset), and whether to export the whole project or the work area set with
 `I` and `O` on the timeline. The export runs in the background with a
 progress dialog and can be cancelled; a cancelled or failed export leaves
-no file.
+no file. Exporting the work area keeps the part of each sound clip inside
+it.
 
 ## Command line
 
@@ -176,6 +243,13 @@ UltraVideo clip.mp4 photo.jpg     a new project with these on the timeline
 UltraVideo ~/Pictures/Trip        every readable file of a folder
 UltraVideo --version
 ```
+
+One UltraVideo runs per user. Starting it again while it runs hands the
+files to the running copy and quits: a project opens there (asking first
+whether to save the current one when it has changes, as *Open project*
+does), media files are imported into the open project as a drop on the
+window would, and the window comes forward. Started without a file, it
+just brings the running window forward.
 
 ## Building
 
@@ -191,7 +265,7 @@ the engine).
 
 ## Not yet
 
-Effect presets, and the mapping
-of the design's tokens onto the framework's theme roles (the app colours
+Effect presets on overlay clips and stills of the overlay lane, effects
+dragged from the bin onto a clip, and the mapping of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.

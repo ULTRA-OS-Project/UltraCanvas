@@ -12,8 +12,11 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.10.0
-// Last Modified: 2026-10-11
+// Version: 0.14.0 - VideoFX_GetFileFormats: the containers and pictures this
+//                  build reads (the host's picture types too), and the ones an
+//                  export writes
+// Version: 0.13.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -23,6 +26,7 @@
 #include "VideoFXFaces.h"
 #include "VideoFXMusic.h"
 #include "VideoFXProject.h"
+#include "VideoFXProxy.h"
 #include "VideoFX/VideoFX.h"
 
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"   // PathFromUtf8
@@ -522,6 +526,15 @@ private:
     VideoFXResult EndOfSong();
     VideoFXResult MixMusic(AVFrame* frame, int samples, int64_t firstSample);
 
+    // ---- free audio clips (voice-overs, sound effects), mixed in likewise ----
+    struct ClipSource;
+    VideoFXResult PlanAudioClips();
+    VideoFXResult OpenClip(ClipSource& c);
+    VideoFXResult ReadClipPacket(ClipSource& c);
+    // Add the clips that sound in this block: the ones that duck the music
+    // before it is mixed (so the ducker hears them), the others after
+    VideoFXResult MixClips(AVFrame* frame, int samples, int64_t firstSample, bool ducking);
+
     // ---- encoding ----
     VideoFXResult EncodeVideo(AVFrame* frame);
     VideoFXResult EncodeAudio(AVFrame* frame);
@@ -577,6 +590,9 @@ private:
     const AVCodec* vcodec = nullptr;
     const AVCodec* acodec = nullptr;
     CodecContextPtr venc, aenc;
+    BufferRefPtr hwDevice, hwFrames;               // VA-API: the device and its frame pool
+    AVPixelFormat hwFormat = AV_PIX_FMT_NONE;      // the encoder's graphics-memory format, if any
+    FramePtr hwFrame;                              // a frame uploaded to it
     AVStream* vst = nullptr;
     AVStream* ast = nullptr;
     int width = 0, height = 0;
@@ -643,6 +659,27 @@ private:
     FramePtr musicTail;
     int musicTailPos = 0;
     std::unique_ptr<MusicDucker> ducker;
+
+    // free audio clips: each opened when the timeline reaches it, closed
+    // when it has played
+    struct ClipSource {
+        VideoFXAudioClip clip;
+        double length = 0.0;        // seconds it plays, 0 = unknown (to the file's end)
+        int64_t played = 0;         // its samples mixed so far
+        FormatInputPtr fmt;
+        CodecContextPtr dec;
+        Graph graph;
+        int stream = -1;
+        int64_t origin = 0;
+        int64_t nextPts = 0;
+        AudioFifoPtr fifo;
+        bool opened = false;
+        bool inputDone = false;
+        bool finished = false;
+    };
+    std::vector<std::unique_ptr<ClipSource>> clips;
+    int clipSampleRate = 0;         // the first clip's, for an export with no other sound
+    int clipChannels = 0;
     std::chrono::steady_clock::time_point lastReport{};
     bool cancelled = false;
 };
@@ -820,6 +857,8 @@ VideoFXResult Exporter::PlanGeometry() {
     else if (width <= 0 && height <= 0) { width = srcW; height = srcH; }
     if (width > 16384 || height > 16384 || width <= 0 || height <= 0)
         return Fail(VideoFXResult::InvalidArgument, "Output size must be 1..16384 pixels");
+    if (!(settings.keyframeInterval >= 0.0 && settings.keyframeInterval <= 60.0))
+        return Fail(VideoFXResult::InvalidArgument, "Keyframe interval must be 0..60 seconds");
     if (!gif) { width = EvenDown(width); height = EvenDown(height); }
 
     double fps = settings.frameRate > 0.0 ? settings.frameRate : srcRate;
@@ -850,6 +889,7 @@ VideoFXResult Exporter::PlanOutput() {
         if (contributesAudio) anyAudio = true;
     }
     if (settings.music.IsSet()) anyAudio = true;     // background music is sound too
+    if (!settings.audioClips.empty()) anyAudio = true;   // and so are voice-overs and sound effects
     outVideo = anyVideo && !audioOnlyContainer && settings.videoCodec != VideoFXVideoCodec::Disabled;
     outAudio = anyAudio && !gif && settings.audioCodec != VideoFXAudioCodec::Disabled;
     if (audioOnlyContainer && !anyAudio)
@@ -862,11 +902,23 @@ VideoFXResult Exporter::PlanOutput() {
         if (settings.videoCodec == VideoFXVideoCodec::Auto) candidates = DefaultVideoCodecs(muxer);
         else candidates = {settings.videoCodec};
         for (VideoFXVideoCodec c : candidates) {
-            if ((vcodec = FindVideoEncoder(c))) break;
+            if ((vcodec = FindVideoEncoder(c, settings.acceleration))) break;
         }
-        if (!vcodec)
+        if (!vcodec) {
+            const VideoFXAcceleration a = settings.acceleration;
+            if (a == VideoFXAcceleration::Auto || a == VideoFXAcceleration::Hardware)
+                return Fail(VideoFXResult::EncoderNotAvailable,
+                            std::string("No ") + VideoCodecName(candidates.front()) + " encoder in this build");
+            // Say whether FFmpeg lacks it or the machine cannot run it
+            std::string built;
+            for (const EncoderCandidate& e : VideoEncoderCandidates(candidates.front()))
+                if (e.kind == a && avcodec_find_encoder_by_name(e.name)) built = e.name;
+            const std::string what = std::string(VideoFX_AccelerationName(a)) + " " + VideoCodecName(candidates.front());
             return Fail(VideoFXResult::EncoderNotAvailable,
-                        std::string("No ") + VideoCodecName(candidates.front()) + " encoder in this build");
+                        built.empty() ? "No " + what + " encoder in this FFmpeg build"
+                                      : "The " + what + " encoder (" + built + ") does not work on this machine: "
+                                        "no such graphics hardware or driver");
+        }
         if (avformat_query_codec(ofmt, vcodec->id, FF_COMPLIANCE_NORMAL) == 0)
             return Fail(VideoFXResult::UnsupportedFormat,
                         std::string(vcodec->name) + " cannot be stored in " + muxer);
@@ -907,6 +959,10 @@ VideoFXResult Exporter::PlanOutput() {
             if (rate <= 0) rate = musicSampleRate;
             maxChannels = std::max(maxChannels, musicChannels);
         }
+        if (!clips.empty()) {
+            if (rate <= 0) rate = clipSampleRate;
+            maxChannels = std::max(maxChannels, clipChannels);
+        }
         if (rate <= 0) rate = 48000;
         if (const int* rates = SupportedSampleRates(acodec)) {
             int best = rates[0];
@@ -944,17 +1000,34 @@ VideoFXResult Exporter::OpenVideoEncoder() {
                 if (*p == preferred) { found = true; break; }
             }
             if (!found) {
+                // the first format in system memory - a hardware one only
+                // through the frame pool below
                 pixFmt = fmts[0];
+                for (const AVPixelFormat* p = fmts; *p != AV_PIX_FMT_NONE; ++p) {
+                    const AVPixFmtDescriptor* d = av_pix_fmt_desc_get(*p);
+                    if (d && !(d->flags & AV_PIX_FMT_FLAG_HWACCEL)) { pixFmt = *p; break; }
+                }
                 for (const AVPixelFormat* p = fmts; *p != AV_PIX_FMT_NONE; ++p) {
                     if (*p == AV_PIX_FMT_YUV420P || *p == AV_PIX_FMT_NV12) { pixFmt = *p; break; }
                 }
             }
         }
+        // VA-API takes frames in graphics memory only: the segments make NV12
+        // and each frame is uploaded before it is encoded
+        if (NeedsHardwareFrames(vcodec, &hwFormat)) pixFmt = AV_PIX_FMT_NV12;
     }
 
     c->width = width;
     c->height = height;
     c->pix_fmt = pixFmt;
+    if (hwFormat != AV_PIX_FMT_NONE) {
+        const int herr = SetUpHardwareFrames(c, hwFormat, hwDevice, hwFrames);
+        if (herr < 0) return Fail(VideoFXResult::EncoderNotAvailable,
+                                  std::string("Cannot open the graphics device for ") + name, herr);
+        c->pix_fmt = hwFormat;
+        hwFrame.reset(av_frame_alloc());
+        if (!hwFrame) return Fail(VideoFXResult::EncodeError, "Out of memory");
+    }
     c->sample_aspect_ratio = AVRational{1, 1};
     c->time_base = av_inv_q(frameRate);
     c->framerate = frameRate;
@@ -1008,6 +1081,13 @@ VideoFXResult Exporter::OpenVideoEncoder() {
         av_opt_set(c->priv_data, "deadline", "good", 0);
     }
     if (!settings.encoderPreset.empty()) av_opt_set(c->priv_data, "preset", settings.encoderPreset.c_str(), 0);
+    // A keyframe every so many seconds: what a seek lands on, so short
+    // intervals (proxies) make scrubbing cheap. The encoder may add more at
+    // scene cuts, never fewer.
+    if (settings.keyframeInterval > 0.0 && !gif) {
+        c->gop_size = std::max(1, static_cast<int>(std::lround(settings.keyframeInterval * fps)));
+        if (c->gop_size < 3) c->max_b_frames = 0;       // no B-frames to borrow from a missing neighbour
+    }
 
     int err = avcodec_open2(c, vcodec, nullptr);
     if (err < 0) return Fail(VideoFXResult::EncodeError, std::string("Cannot open the ") + name + " encoder", err);
@@ -1250,6 +1330,15 @@ VideoFXResult Exporter::WritePackets(AVCodecContext* enc, AVStream* st) {
 }
 
 VideoFXResult Exporter::EncodeVideo(AVFrame* frame) {
+    if (frame && hwFrames) {
+        // into graphics memory first (VA-API)
+        av_frame_unref(hwFrame.get());
+        int herr = av_hwframe_get_buffer(hwFrames.get(), hwFrame.get(), 0);
+        if (herr >= 0) herr = av_hwframe_transfer_data(hwFrame.get(), frame, 0);
+        if (herr >= 0) herr = av_frame_copy_props(hwFrame.get(), frame);
+        if (herr < 0) return Fail(VideoFXResult::EncodeError, "Cannot upload a frame to the graphics device", herr);
+        frame = hwFrame.get();
+    }
     int err = avcodec_send_frame(venc.get(), frame);
     if (err < 0 && err != AVERROR_EOF) return Fail(VideoFXResult::EncodeError, "Video encoding failed", err);
     return WritePackets(venc.get(), vst);
@@ -1463,8 +1552,17 @@ VideoFXResult Exporter::DrainAudioFifo(bool final) {
         if (!frame) return Fail(VideoFXResult::EncodeError, "Out of memory");
         if (av_audio_fifo_read(fifo.get(), reinterpret_cast<void**>(frame->extended_data), n) < n)
             return Fail(VideoFXResult::EncodeError, "Audio buffer underrun");
+        // voice-overs first, so the music ducks under them; sound effects after
+        if (!clips.empty()) {
+            VideoFXResult m = MixClips(frame.get(), n, audioSamplesEncoded, true);
+            if (m != VideoFXResult::Ok) return m;
+        }
         if (musicOn) {
             VideoFXResult m = MixMusic(frame.get(), n, audioSamplesEncoded);
+            if (m != VideoFXResult::Ok) return m;
+        }
+        if (!clips.empty()) {
+            VideoFXResult m = MixClips(frame.get(), n, audioSamplesEncoded, false);
             if (m != VideoFXResult::Ok) return m;
         }
         frame->pts = audioSamplesEncoded;
@@ -1889,6 +1987,169 @@ VideoFXResult Exporter::MixMusic(AVFrame* frame, int samples, int64_t firstSampl
         const double g = g0 + (g1 - g0) * (i + 0.5) / samples;
         for (int c = 0; c < channels; ++c)
             AddSample(frame, i, c, channels, sampleFmt, ReadSample(music.get(), i, c, channels, sampleFmt) * g);
+    }
+    return VideoFXResult::Ok;
+}
+
+// ---------------------------------------------------------------------------
+// free audio clips
+// ---------------------------------------------------------------------------
+
+// Check every clip's values and file, and note the format of the first
+VideoFXResult Exporter::PlanAudioClips() {
+    clips.clear();
+    for (size_t i = 0; i < settings.audioClips.size(); ++i) {
+        const VideoFXAudioClip& c = settings.audioClips[i];
+        std::string error;
+        if (!ValidateAudioClip(c, error))
+            return Fail(VideoFXResult::InvalidArgument, "Audio clip " + std::to_string(i + 1) + ": " + error);
+        std::error_code ec;
+        if (std::filesystem::equivalent(UltraCanvas::PathFromUtf8(c.path), UltraCanvas::PathFromUtf8(outputPath), ec))
+            return Fail(VideoFXResult::InvalidArgument, "The output file is also an audio clip: " + c.path);
+        VideoFXMediaInfo info;
+        VideoFXResult r = VideoFX_Probe(c.path, info);
+        if (r != VideoFXResult::Ok) {
+            const std::string reason = VideoFX_GetLastError();
+            return Fail(r, "Audio clip " + c.path + ": " + reason);
+        }
+        if (!info.HasAudio()) return Fail(VideoFXResult::NoMediaStreams, "The audio clip has no sound: " + c.path);
+        if (info.duration > 0.0 && c.start >= info.duration)
+            return Fail(VideoFXResult::InvalidArgument, "Audio clip start lies after the end of " + c.path);
+        auto source = std::make_unique<ClipSource>();
+        source->clip = c;
+        source->length = AudioClipSeconds(c, info.duration);
+        if (clips.empty()) clipSampleRate = info.sampleRate;
+        clipChannels = std::max(clipChannels, std::min(2, info.channels));
+        clips.push_back(std::move(source));
+    }
+    return VideoFXResult::Ok;
+}
+
+VideoFXResult Exporter::OpenClip(ClipSource& s) {
+    s.opened = true;
+    s.fifo.reset(av_audio_fifo_alloc(sampleFmt, channels, 8192));
+    if (!s.fifo) return Fail(VideoFXResult::EncodeError, "Out of memory");
+    VideoFXResult r = OpenInput(s.clip.path, s.fmt);
+    if (r != VideoFXResult::Ok) return r;
+    s.stream = av_find_best_stream(s.fmt.get(), AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (s.stream < 0) return Fail(VideoFXResult::NoMediaStreams, "The audio clip has no sound: " + s.clip.path);
+    if ((r = OpenDecoder(s.fmt.get(), s.stream, s.dec)) != VideoFXResult::Ok) return r;
+    AVStream* st = s.fmt->streams[s.stream];
+    const int64_t start = s.fmt->start_time != AV_NOPTS_VALUE ? s.fmt->start_time : 0;
+    s.origin = av_rescale_q(start, AV_TIME_BASE_Q, st->time_base);
+    if (s.clip.start > 0.0)
+        av_seek_frame(s.fmt.get(), -1, start + static_cast<int64_t>(s.clip.start * AV_TIME_BASE), AVSEEK_FLAG_BACKWARD);
+    return VideoFXResult::Ok;
+}
+
+// One packet of the clip's file, trimmed and in the output's sample format,
+// into its FIFO (at the end of the file: the decoder's and filter's rest)
+VideoFXResult Exporter::ReadClipPacket(ClipSource& s) {
+    AVStream* st = s.fmt->streams[s.stream];
+    FramePtr decoded = MakeFrame();
+    FramePtr scratch = MakeFrame();
+    auto toFifo = [&](AVFrame* out) -> VideoFXResult {
+        if (av_audio_fifo_write(s.fifo.get(), reinterpret_cast<void**>(out->extended_data), out->nb_samples) <
+            out->nb_samples)
+            return Fail(VideoFXResult::EncodeError, "Audio clip buffer overflow");
+        return VideoFXResult::Ok;
+    };
+    auto feed = [&](AVFrame* f) -> VideoFXResult {
+        const AVRational tb{1, f->sample_rate};
+        if (!s.graph.graph) {
+            std::string desc = "[in]atrim=start=" + FormatNumber(s.clip.start);
+            if (s.clip.end > 0.0) desc += ":end=" + FormatNumber(s.clip.end);
+            desc += ",asetpts=PTS-STARTPTS";
+            AppendFilter(desc, AudioTail());
+            VideoFXResult br = BuildGraph(s.graph, false, {{"in", AudioBufferSourceArgs(f, tb)}}, desc + "[out]");
+            if (br != VideoFXResult::Ok) return br;
+        }
+        const int64_t ts = f->best_effort_timestamp;
+        f->pts = ts != AV_NOPTS_VALUE ? av_rescale_q(ts - s.origin, st->time_base, tb) : s.nextPts;
+        s.nextPts = f->pts + f->nb_samples;
+        int err = av_buffersrc_add_frame_flags(s.graph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the audio clip", err);
+        return PullGraph(s.graph, scratch.get(), toFifo);
+    };
+    auto receive = [&]() -> VideoFXResult {
+        while (true) {
+            int err = avcodec_receive_frame(s.dec.get(), decoded.get());
+            if (err == AVERROR(EAGAIN) || err == AVERROR_EOF) return VideoFXResult::Ok;
+            if (err < 0) return Fail(VideoFXResult::DecodeError, "Cannot decode the audio clip " + s.clip.path, err);
+            VideoFXResult fr = feed(decoded.get());
+            av_frame_unref(decoded.get());
+            if (fr != VideoFXResult::Ok) return fr;
+        }
+    };
+
+    PacketPtr pkt = MakePacket();
+    int err = av_read_frame(s.fmt.get(), pkt.get());
+    if (err >= 0) {
+        if (pkt->stream_index != s.stream) return VideoFXResult::Ok;
+        err = avcodec_send_packet(s.dec.get(), pkt.get());
+        if (err >= 0 || err == AVERROR(EAGAIN) || err == AVERROR_INVALIDDATA) return receive();
+        return Fail(VideoFXResult::DecodeError, "Cannot decode the audio clip " + s.clip.path, err);
+    }
+    avcodec_send_packet(s.dec.get(), nullptr);
+    VideoFXResult r = receive();
+    if (r != VideoFXResult::Ok) return r;
+    if (s.graph.src) {
+        err = av_buffersrc_add_frame_flags(s.graph.src, nullptr, 0);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the audio clip", err);
+        if ((r = PullGraph(s.graph, scratch.get(), toFifo)) != VideoFXResult::Ok) return r;
+    }
+    s.inputDone = true;
+    return VideoFXResult::Ok;
+}
+
+VideoFXResult Exporter::MixClips(AVFrame* frame, int samples, int64_t firstSample, bool ducking) {
+    const int64_t blockEnd = firstSample + samples;
+    for (const std::unique_ptr<ClipSource>& p : clips) {
+        ClipSource& s = *p;
+        if (s.finished || s.clip.ducksMusic != ducking) continue;
+        const int64_t first = std::llround(s.clip.at * sampleRate);
+        const int64_t last = s.length > 0.0 ? first + std::llround(s.length * sampleRate)
+                                            : std::numeric_limits<int64_t>::max();
+        if (blockEnd <= first) continue;                    // not yet
+        const int64_t from = std::max(firstSample, first + s.played);
+        const int64_t to = std::min(blockEnd, last);
+        if (from >= to) {
+            if (firstSample >= last) {                      // played out: let go of the file
+                s.finished = true;
+                s.fmt.reset();
+                s.dec.reset();
+                s.graph = Graph{};
+                s.fifo.reset();
+            }
+            continue;
+        }
+        if (!s.opened) {
+            VideoFXResult r = OpenClip(s);
+            if (r != VideoFXResult::Ok) return r;
+        }
+        const int want = static_cast<int>(to - from);
+        while (av_audio_fifo_size(s.fifo.get()) < want && !s.inputDone) {
+            VideoFXResult r = ReadClipPacket(s);
+            if (r != VideoFXResult::Ok) return r;
+        }
+        const int n = std::min(want, av_audio_fifo_size(s.fifo.get()));
+        if (n <= 0) {                                       // the file ended before its planned length
+            s.finished = true;
+            continue;
+        }
+        FramePtr block = MakeAudioFrame(n);
+        if (!block) return Fail(VideoFXResult::EncodeError, "Out of memory");
+        if (av_audio_fifo_read(s.fifo.get(), reinterpret_cast<void**>(block->extended_data), n) < n)
+            return Fail(VideoFXResult::EncodeError, "Audio clip buffer underrun");
+        const int offset = static_cast<int>(from - firstSample);
+        const int64_t into = from - first;                  // samples into the clip at block[0]
+        for (int i = 0; i < n; ++i) {
+            const double g = AudioClipGain(s.clip, static_cast<double>(into + i) / sampleRate, s.length);
+            if (g <= 0.0) continue;
+            for (int c = 0; c < channels; ++c)
+                AddSample(frame, offset + i, c, channels, sampleFmt, ReadSample(block.get(), i, c, channels, sampleFmt) * g);
+        }
+        s.played += n;
     }
     return VideoFXResult::Ok;
 }
@@ -2331,6 +2592,7 @@ VideoFXResult Exporter::Run(const std::vector<VideoFXSegment>& segments) {
     if (outputPath.empty()) return Fail(VideoFXResult::InvalidArgument, "No output file");
     VideoFXResult r = PlanSegments(segments);
     if (r == VideoFXResult::Ok) r = PlanMusic();
+    if (r == VideoFXResult::Ok) r = PlanAudioClips();
     if (r == VideoFXResult::Ok) r = PlanOutput();
     if (r != VideoFXResult::Ok) return r;      // nothing written yet
 
@@ -2343,6 +2605,7 @@ VideoFXResult Exporter::Run(const std::vector<VideoFXSegment>& segments) {
         musicSong = 0;
         r = musicFifo && musicHold ? OpenMusic() : Fail(VideoFXResult::EncodeError, "Out of memory");
     }
+    if (!outAudio) clips.clear();          // nothing to mix them into
     for (size_t i = 0; r == VideoFXResult::Ok && i < plans.size(); ++i) r = ProcessSegment(i);
     if (r == VideoFXResult::Ok) r = Finish();
 
@@ -2927,6 +3190,183 @@ VideoFXResult PlanSlideshowSegments(const std::vector<std::string>& imagePaths, 
 } // namespace
 
 // ============================================================================
+// FILE FORMATS
+// ============================================================================
+
+namespace {
+
+// A container this engine knows by name: the demuxer that reads it and the
+// container an export writes it as (Auto: none does). The descriptions are
+// the framework format registry's, so registering one there renames nothing.
+struct KnownContainer {
+    const char* extension;
+    std::vector<std::string> aliases;
+    const char* description;
+    VideoFXFileKind kind;
+    const char* demuxer;
+    VideoFXContainer container;
+};
+
+const std::vector<KnownContainer>& KnownContainers() {
+    using K = VideoFXFileKind;
+    using C = VideoFXContainer;
+    static const std::vector<KnownContainer> containers = {
+        {"mp4",  {"m4v"},          "MPEG-4 container",              K::Video, "mov",      C::MP4},
+        {"mov",  {},               "QuickTime movie",               K::Video, "mov",      C::MOV},
+        {"mkv",  {},               "Matroska video",                K::Video, "matroska", C::MKV},
+        {"webm", {},               "WebM video",                    K::Video, "matroska", C::WebM},
+        {"avi",  {},               "AVI video",                     K::Video, "avi",      C::AVI},
+        {"mpg",  {"mpeg", "m2v"},  "MPEG program stream",           K::Video, "mpeg",     C::Auto},
+        {"m2ts", {"mts"},          "MPEG transport stream",         K::Video, "mpegts",   C::Auto},
+        {"wmv",  {"asf"},          "Windows Media video",           K::Video, "asf",      C::Auto},
+        {"flv",  {},               "Flash video",                   K::Video, "flv",      C::Auto},
+        {"ogv",  {"ogm"},          "Ogg video",                     K::Video, "ogg",      C::Auto},
+        {"3gp",  {"3g2"},          "3GPP video",                    K::Video, "mov",      C::Auto},
+        {"mp3",  {},               "MPEG layer III audio",          K::Audio, "mp3",      C::MP3},
+        {"m4a",  {"m4b"},          "MPEG-4 audio (AAC)",            K::Audio, "mov",      C::M4A},
+        {"aac",  {},               "Raw AAC bitstream (ADTS)",      K::Audio, "aac",      C::Auto},
+        {"wav",  {},               "Waveform audio",                K::Audio, "wav",      C::WAV},
+        {"flac", {},               "Free Lossless Audio Codec",     K::Audio, "flac",     C::FLAC},
+        {"ogg",  {"oga"},          "Ogg Vorbis audio",              K::Audio, "ogg",      C::OGG},
+        {"opus", {},               "Opus audio",                    K::Audio, "ogg",      C::Auto},
+        {"mka",  {},               "Matroska audio",                K::Audio, "matroska", C::Auto},
+        {"wma",  {},               "Windows Media Audio",           K::Audio, "asf",      C::Auto},
+        {"aiff", {"aif", "aifc"},  "Audio Interchange File Format", K::Audio, "aiff",     C::Auto},
+    };
+    return containers;
+}
+
+// A still picture: the decoders that open it (any one will do) and, for the
+// ISO-BMFF pictures, the extension the mov demuxer has to claim - AVIF from
+// FFmpeg 6. HEIC is listed and not read by FFmpeg here: the mov demuxer
+// claims it from FFmpeg 7.0, but a phone's HEIC is a grid of 512 px tiles
+// that FFmpeg hands out as separate streams of a stream group, and the engine
+// does not put a grid together - it would import one tile of the photo. A
+// host application with an image library that does reads it instead
+// (VideoFX_SetPictureReader).
+struct KnownPicture {
+    const char* extension;
+    std::vector<std::string> aliases;
+    std::vector<const char*> decoders;
+    const char* movExtension;
+    VideoFXContainer container;
+};
+
+const std::vector<KnownPicture>& KnownPictures() {
+    using C = VideoFXContainer;
+    static const std::vector<KnownPicture> pictures = {
+        {"png",  {},              {"png"},                         nullptr, C::Auto},
+        {"jpg",  {"jpeg", "jpe"}, {"mjpeg"},                       nullptr, C::Auto},
+        {"webp", {},              {"webp", "libwebp"},             nullptr, C::Auto},
+        {"tif",  {"tiff"},        {"tiff"},                        nullptr, C::Auto},
+        {"bmp",  {},              {"bmp"},                         nullptr, C::Auto},
+        {"gif",  {},              {"gif"},                         nullptr, C::GIF},
+        {"ico",  {},              {"bmp"},                         nullptr, C::Auto},
+        {"qoi",  {},              {"qoi"},                         nullptr, C::Auto},
+        {"jxl",  {},              {"libjxl", "jpegxl"},            nullptr, C::Auto},
+        {"jp2",  {"j2k", "j2c"},  {"jpeg2000", "libopenjpeg"},     nullptr, C::Auto},
+        {"ppm",  {},              {"ppm"},                         nullptr, C::Auto},
+        {"pgm",  {},              {"pgm"},                         nullptr, C::Auto},
+        {"pbm",  {},              {"pbm"},                         nullptr, C::Auto},
+        {"pam",  {},              {"pam"},                         nullptr, C::Auto},
+        {"exr",  {},              {"exr"},                         nullptr, C::Auto},
+        {"hdr",  {},              {"hdr"},                         nullptr, C::Auto},
+        {"tga",  {},              {"targa"},                       nullptr, C::Auto},
+        {"psd",  {},              {"psd"},                         nullptr, C::Auto},
+        {"avif", {},              {"libdav1d", "libaom-av1", "av1"}, "avif", C::Auto},
+        {"heic", {"heif"},        {},                              "heic",  C::Auto},   // tile grids: not yet
+    };
+    return pictures;
+}
+
+bool AnyDecoder(const std::vector<const char*>& names) {
+    for (const char* name : names)
+        if (avcodec_find_decoder_by_name(name)) return true;
+    return false;
+}
+
+// Whether the mov demuxer lists `extension` among its own
+bool MovDemuxerClaims(const char* extension) {
+    const AVInputFormat* mov = av_find_input_format("mov");
+    if (!mov || !mov->extensions) return false;
+    std::stringstream list(mov->extensions);
+    std::string item;
+    while (std::getline(list, item, ','))
+        if (item == extension) return true;
+    return false;
+}
+
+// Whether an export to `container` works here: its muxer, an encoder for its
+// usual picture codec (a film, an animation) and one for its usual sound
+// codec (a film, a sound file - an animation has none)
+bool ExportWrites(VideoFXContainer container, VideoFXFileKind kind) {
+    const char* muxerName = MuxerName(container);
+    const AVOutputFormat* muxer = muxerName ? av_guess_format(muxerName, nullptr, nullptr) : nullptr;
+    if (!muxer) return false;
+    auto picture = [muxer]() {
+        for (VideoFXVideoCodec c : DefaultVideoCodecs(muxer->name))
+            if (FindVideoEncoder(c, VideoFXAcceleration::Auto)) return true;
+        return false;
+    };
+    auto sound = [muxer]() {
+        for (VideoFXAudioCodec c : DefaultAudioCodecs(muxer->name))
+            if (FindAudioEncoder(c)) return true;
+        return false;
+    };
+    switch (kind) {
+        case VideoFXFileKind::Video:   return picture() && sound();
+        case VideoFXFileKind::Audio:   return sound();
+        case VideoFXFileKind::Picture: return picture();
+    }
+    return false;
+}
+
+} // namespace
+
+std::vector<VideoFXFileFormat> VideoFX_GetFileFormats() {
+    EnsureBackendInitialised();
+    std::vector<VideoFXFileFormat> out;
+    for (const KnownContainer& k : KnownContainers()) {
+        VideoFXFileFormat f;
+        f.extension = k.extension;
+        f.aliases = k.aliases;
+        f.description = k.description;
+        f.kind = k.kind;
+        f.canRead = av_find_input_format(k.demuxer) != nullptr;
+        f.canWrite = k.container != VideoFXContainer::Auto && ExportWrites(k.container, k.kind);
+        f.container = f.canWrite ? k.container : VideoFXContainer::Auto;
+        out.push_back(std::move(f));
+    }
+    for (const KnownPicture& k : KnownPictures()) {
+        VideoFXFileFormat f;
+        f.extension = k.extension;
+        f.aliases = k.aliases;
+        f.kind = VideoFXFileKind::Picture;
+        f.canRead = AnyDecoder(k.decoders) && (!k.movExtension || MovDemuxerClaims(k.movExtension));
+        f.canWrite = k.container != VideoFXContainer::Auto && ExportWrites(k.container, f.kind);
+        f.container = f.canWrite ? k.container : VideoFXContainer::Auto;
+        out.push_back(std::move(f));
+    }
+    // The picture types the host application reads (VideoFX_SetPictureReader)
+    for (const std::string& ext : HostPictureExtensions()) {
+        auto known = std::find_if(out.begin(), out.end(), [&ext](const VideoFXFileFormat& f) {
+            return f.kind == VideoFXFileKind::Picture &&
+                   (f.extension == ext || std::find(f.aliases.begin(), f.aliases.end(), ext) != f.aliases.end());
+        });
+        if (known != out.end()) {
+            known->canRead = true;
+            continue;
+        }
+        VideoFXFileFormat f;
+        f.extension = ext;
+        f.kind = VideoFXFileKind::Picture;
+        f.canRead = true;
+        out.push_back(std::move(f));
+    }
+    return out;
+}
+
+// ============================================================================
 // PREVIEW
 // ============================================================================
 
@@ -3075,6 +3515,51 @@ VideoFXResult VideoFX_RenderProject(const VideoFXProject& project, const std::st
     if (project.kind == VideoFXProjectKind::Slideshow)
         return VideoFX_CreateSlideshow(project.images, out, project.slideshow, project.settings, progress);
     return VideoFX_Export(project.segments, out, project.settings, progress);
+}
+
+// Proxies: the logic is in VideoFXProxy.cpp (shared with the stub build)
+std::string VideoFX_GetDefaultProxyDirectory() { return DefaultProxyDirectory(); }
+
+std::string VideoFX_ProxyPath(const std::string& clip, const VideoFXProxySettings& settings) {
+    return ProxyPathFor(clip, settings);
+}
+
+bool VideoFX_HasProxy(const std::string& clip, const VideoFXProxySettings& settings) {
+    const std::string proxy = ProxyPathFor(clip, settings);
+    std::error_code ec;
+    return !proxy.empty() && std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(proxy), ec);
+}
+
+VideoFXResult VideoFX_CreateProxy(const std::string& clip, const VideoFXProxySettings& settings,
+                                  const VideoFXProgressCallback& progress, std::string* editPath) {
+    ClearError();
+    std::string error;
+    const VideoFXResult r = CreateProxy(clip, settings, progress, editPath, error);
+    if (r == VideoFXResult::Ok) ClearError();           // the probe / export inside left nothing to report
+    return r == VideoFXResult::Ok ? r : Fail(r, error);
+}
+
+VideoFXResult VideoFX_CreateProxies(const std::vector<VideoFXSegment>& segments,
+                                    const VideoFXProxySettings& settings, const VideoFXProgressCallback& progress) {
+    ClearError();
+    std::string error;
+    const VideoFXResult r = CreateProxies(segments, settings, progress, error);
+    if (r == VideoFXResult::Ok) ClearError();
+    return r == VideoFXResult::Ok ? r : Fail(r, error);
+}
+
+std::vector<VideoFXSegment> VideoFX_UseProxies(const std::vector<VideoFXSegment>& segments,
+                                               const VideoFXProxySettings& settings, int* replaced) {
+    std::vector<VideoFXSegment> out = UseProxies(segments, settings, replaced);
+    ClearError();                                       // a probe that kept a clip is not a failure
+    return out;
+}
+
+VideoFXResult VideoFX_ClearProxies(const VideoFXProxySettings& settings, int* filesRemoved, uint64_t* bytesFreed) {
+    ClearError();
+    std::string error;
+    const VideoFXResult r = ClearProxies(settings, filesRemoved, bytesFreed, error);
+    return r == VideoFXResult::Ok ? r : Fail(r, error);
 }
 
 VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFXRect>& faces) {

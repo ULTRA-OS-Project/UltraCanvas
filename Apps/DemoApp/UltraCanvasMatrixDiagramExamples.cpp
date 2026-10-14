@@ -1,7 +1,10 @@
 // Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
-// Matrix diagram examples: L and T arrangements with live presentation controls
+// Matrix diagram examples: L, T, X, Y and House arrangements with live presentation controls
+// Version: 1.3.0 - Import table... button: a spreadsheet into an Imported tab
+// Version: 1.2.0 - House of Quality tab; numbers-or-bars roll-up control
+// Version: 1.1.0 - X and Y tabs; hub, header band and cell tint controls
 // Version: 1.0.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -11,6 +14,10 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasSwitch.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasConfig.h"     // GetResourcesDir
+#include "UltraCanvasUtils.h"      // NormalizePath
+#include "UltraCanvasPathUtf8.h"   // PathToUtf8 / PathFromUtf8 for the file name
 #include <memory>
 #include <sstream>
 #include <string>
@@ -42,7 +49,7 @@ namespace UltraCanvas {
         headerContainer->AddChild(mainTitle);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("matrixSubtitle", 30, 52, 1000, 30);
-        subtitle->SetText("Relationships between two or three ordered lists, marked from a named "
+        subtitle->SetText("Relationships between two to four ordered lists, marked from a named "
                           "scale and rolled up into weighted row and column totals");
         subtitle->SetFontSize(13);
         subtitle->SetAlignment(TextAlignment::Left);
@@ -116,10 +123,22 @@ namespace UltraCanvas {
         legendSelector->AddItem("Right", "right");
         legendSelector->SetSelectedIndex(0);
 
-        auto swBands = addSwitch("matrixBands", "Row banding", 258);
-        auto swLabelFill = addSwitch("matrixLabelFill", "Filled label band", 288);
-        auto swValues = addSwitch("matrixValues", "Cell weights", 318);
-        auto swAxisTitles = addSwitch("matrixAxisTitles", "Axis titles", 348);
+        auto hubSelector = addDropdown("matrixHub", "X hub", 252);
+        hubSelector->AddItem("Captions", "captions");
+        hubSelector->AddItem("Blank", "blank");
+        hubSelector->SetSelectedIndex(0);
+
+        auto rollUpSelector = addDropdown("matrixRollUp", "Column totals as", 304);
+        rollUpSelector->AddItem("Bars with ranks", "bars");
+        rollUpSelector->AddItem("Numbers", "numbers");
+        rollUpSelector->SetSelectedIndex(0);
+
+        auto swBands = addSwitch("matrixBands", "Row banding", 362);
+        auto swLabelFill = addSwitch("matrixLabelFill", "Filled label band", 390);
+        auto swValues = addSwitch("matrixValues", "Cell weights", 418);
+        auto swAxisTitles = addSwitch("matrixAxisTitles", "Axis titles", 446);
+        auto swTint = addSwitch("matrixTint", "Tint cells", 474);
+        auto swHeaderBand = addSwitch("matrixHeaderBand", "Form header", 502);
 
         // ===== DIAGRAM TABS =====
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
@@ -135,20 +154,27 @@ namespace UltraCanvas {
                 {"matrixTools",     "Improvement Tools", &MatrixSamples::ImprovementTools},
                 {"matrixEmployees", "T-Shaped",          &MatrixSamples::EmployeeAllocation},
                 {"matrixQfd",       "Weighted (QFD)",    &MatrixSamples::QualityFunctionDeployment},
+                {"matrixSupply",    "X-Shaped",          &MatrixSamples::SupplyChain},
+                {"matrixTrace",     "Y-Shaped",          &MatrixSamples::DesignTraceability},
+                {"matrixHouse",     "House of Quality",  &MatrixSamples::HouseOfQuality},
         };
 
-        std::vector<std::shared_ptr<UltraCanvasMatrixDiagram>> allDiagrams;
+        // Shared, because an import adds a diagram after the controls below
+        // have been wired, and they must reach it too.
+        auto allDiagrams = std::make_shared<std::vector<std::shared_ptr<UltraCanvasMatrixDiagram>>>();
 
         for (const TabSpec& spec : specs) {
             auto diagram = CreateMatrixDiagramElement(spec.id, 0, 0, 780, 506, spec.build());
             diagram->SetTotals(MatrixTotals::Both);
+            diagram->SetHubMode(MatrixHubMode::Captions);
+            diagram->SetRollUp(MatrixRollUp::Bars);
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     std::string(spec.id) + "Tab", 0, 0, 790, 516);
             tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
             tabContent->AddChild(diagram);
             tabbedContainer->AddTab(spec.tabTitle, tabContent);
-            allDiagrams.push_back(diagram);
+            allDiagrams->push_back(diagram);
         }
 
         // ===== STATUS / READ-OUT =====
@@ -180,8 +206,8 @@ namespace UltraCanvas {
 
         auto activeDiagram = [tabbedContainer, allDiagrams]() -> std::shared_ptr<UltraCanvasMatrixDiagram> {
             int index = tabbedContainer->GetActiveTab();
-            if (index < 0 || index >= static_cast<int>(allDiagrams.size())) return nullptr;
-            return allDiagrams[index];
+            if (index < 0 || index >= static_cast<int>(allDiagrams->size())) return nullptr;
+            return (*allDiagrams)[static_cast<size_t>(index)];
         };
 
         // The ranking is the payoff of the weighted roll-up: it is what a QFD
@@ -205,7 +231,9 @@ namespace UltraCanvas {
             rankingText->SetText(out.str());
         };
 
-        for (auto& diagram : allDiagrams) {
+        // The read-out callbacks every diagram gets - the samples now, an
+        // imported sheet later.
+        auto wireDiagram = [readoutText](const std::shared_ptr<UltraCanvasMatrixDiagram>& diagram) {
             auto weak = std::weak_ptr<UltraCanvasMatrixDiagram>(diagram);
             diagram->onCellClick = [weak, readoutText](const MatrixRef& ref) {
                 auto d = weak.lock();
@@ -242,12 +270,13 @@ namespace UltraCanvas {
                     << "   (importance " << item.importance << ")";
                 readoutText->SetText(out.str());
             };
-        }
+        };
+        for (auto& diagram : *allDiagrams) wireDiagram(diagram);
 
         // ===== CONTROL WIRING =====
         themeSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
             const bool dark = (item.value == "dark");
-            for (auto& diagram : allDiagrams) diagram->SetDarkTheme(dark);
+            for (auto& diagram : *allDiagrams) diagram->SetDarkTheme(dark);
         };
 
         totalsSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
@@ -255,7 +284,7 @@ namespace UltraCanvas {
             if (item.value == "rows")         which = MatrixTotals::Rows;
             else if (item.value == "columns") which = MatrixTotals::Columns;
             else if (item.value == "none")    which = MatrixTotals::NoTotals;
-            for (auto& diagram : allDiagrams) diagram->SetTotals(which);
+            for (auto& diagram : *allDiagrams) diagram->SetTotals(which);
         };
 
         headerSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
@@ -264,19 +293,19 @@ namespace UltraCanvas {
             else if (item.value == "wrapped") fit = MatrixHeaderFit::Wrapped;
             else if (item.value == "r45")     fit = MatrixHeaderFit::Rotated45;
             else if (item.value == "r90")     fit = MatrixHeaderFit::Rotated90;
-            for (auto& diagram : allDiagrams) diagram->SetHeaderFit(fit);
+            for (auto& diagram : *allDiagrams) diagram->SetHeaderFit(fit);
         };
 
         legendSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
             ChartLegendPosition position = ChartLegendPosition::BottomCenter;
             if (item.value == "top")        position = ChartLegendPosition::TopCenter;
             else if (item.value == "right") position = ChartLegendPosition::RightCenter;
-            for (auto& diagram : allDiagrams) diagram->SetLegendPosition(position);
+            for (auto& diagram : *allDiagrams) diagram->SetLegendPosition(position);
         };
 
         swBands->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
             const bool on = (newState == CheckedState::Checked);
-            for (auto& diagram : allDiagrams) {
+            for (auto& diagram : *allDiagrams) {
                 MatrixDiagramStyle style = diagram->GetStyle();
                 style.alternateRowBands = on;
                 diagram->SetStyle(style);
@@ -285,7 +314,7 @@ namespace UltraCanvas {
 
         swLabelFill->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
             const bool on = (newState == CheckedState::Checked);
-            for (auto& diagram : allDiagrams) {
+            for (auto& diagram : *allDiagrams) {
                 MatrixDiagramStyle style = diagram->GetStyle();
                 style.fillLabelBands = on;
                 diagram->SetStyle(style);
@@ -293,14 +322,41 @@ namespace UltraCanvas {
         };
 
         swValues->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
-            for (auto& diagram : allDiagrams) {
+            for (auto& diagram : *allDiagrams) {
                 diagram->SetShowCellValues(newState == CheckedState::Checked);
             }
         };
 
         swAxisTitles->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
-            for (auto& diagram : allDiagrams) {
+            for (auto& diagram : *allDiagrams) {
                 diagram->SetShowAxisTitles(newState == CheckedState::Checked);
+            }
+        };
+
+        rollUpSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
+            const MatrixRollUp presentation = (item.value == "numbers") ? MatrixRollUp::Numbers
+                                                                         : MatrixRollUp::Bars;
+            for (auto& diagram : *allDiagrams) diagram->SetRollUp(presentation);
+        };
+
+        hubSelector->onSelectionChanged = [allDiagrams](int, const DropdownItem& item) {
+            const MatrixHubMode mode = (item.value == "blank") ? MatrixHubMode::Blank
+                                                               : MatrixHubMode::Captions;
+            for (auto& diagram : *allDiagrams) diagram->SetHubMode(mode);
+        };
+
+        swTint->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
+            const bool on = (newState == CheckedState::Checked);
+            for (auto& diagram : *allDiagrams) {
+                MatrixDiagramStyle style = diagram->GetStyle();
+                style.tintCellsByLevel = on;
+                diagram->SetStyle(style);
+            }
+        };
+
+        swHeaderBand->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
+            for (auto& diagram : *allDiagrams) {
+                diagram->SetShowHeaderBand(newState == CheckedState::Checked);
             }
         };
 
@@ -308,9 +364,103 @@ namespace UltraCanvas {
         swLabelFill->SetChecked(true);
         swValues->SetChecked(false);
         swAxisTitles->SetChecked(true);
+        swTint->SetChecked(false);
+        swHeaderBand->SetChecked(true);
+
+        // ===== IMPORT =====
+        // A spreadsheet's tabular form - column labels across the top, row
+        // labels down the side, a mark in each cell - read by
+        // ImportMatrixTable into an "Imported" tab. Two sample sheets ship in
+        // media/diagrams/matrix/, where the dialog opens.
+        auto importButton = std::make_shared<UltraCanvasButton>("matrixImport", 640, 6, 145, 26,
+                                                                "Import table...");
+        readoutPanel->AddChild(importButton);
+
+        auto importedDiagram = std::make_shared<std::shared_ptr<UltraCanvasMatrixDiagram>>();
+        importButton->onClick = [tabbedContainer, allDiagrams, importedDiagram, wireDiagram,
+                                 updateRanking, readoutText]() {
+            FileDialogOptions opts;
+            opts.SetTitle("Import a matrix table")
+                .AddFilter("Comma-separated values (*.csv)", "csv")
+                .AddFilter("Text (*.txt)", "txt")
+                .AddFilter("All files", "*")
+                .SetInitialDirectory(NormalizePath(GetResourcesDir() + "media/diagrams/matrix/"));
+
+            UltraCanvasFileLoader::OpenFileDialog(opts,
+                    [tabbedContainer, allDiagrams, importedDiagram, wireDiagram, updateRanking,
+                     readoutText](DialogResult result, const std::string& path) {
+                if (result != DialogResult::OK || path.empty()) return;
+
+                // Read through the loader, as every user file is: it also
+                // takes a gzipped sheet or a URL.
+                const FileBytesResult loaded = UltraCanvasFileLoader::LoadFile(path);
+                if (!loaded.success) {
+                    readoutText->SetText("Could not open " + path + ": " + loaded.error);
+                    return;
+                }
+                const std::string text(loaded.bytes.begin(), loaded.bytes.end());
+
+                // The sheet does not say which scale its marks belong to, so
+                // try the presets in turn and keep the first that reads every
+                // mark: numbers 9/3/1 land on QFD, names like "medium" on 5/3/1.
+                struct Candidate { const char* name; MatrixScale scale; };
+                const Candidate candidates[] = {
+                        {"QFD 9/3/1", MatrixScale::QFD()},
+                        {"strong/medium/weak 5/3/1", MatrixScale::Strength531()},
+                        {"high/medium/low", MatrixScale::HighMediumLow()},
+                        {"presence", MatrixScale::Presence()},
+                };
+                MatrixModel model;
+                std::string error, firstError;
+                const char* used = nullptr;
+                for (const Candidate& c : candidates) {
+                    if (ImportMatrixTable(text, c.scale, model, "Rows", "Columns", &error)) {
+                        used = c.name;
+                        break;
+                    }
+                    if (firstError.empty()) firstError = error;
+                }
+                const std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
+                if (!used) {
+                    readoutText->SetText("Could not import " + fileName + ": " + firstError);
+                    return;
+                }
+
+                model.title = fileName;
+                model.subtitle = std::to_string(model.sets[0].Count()) + " rows x "
+                                 + std::to_string(model.sets[1].Count()) + " columns, read on the "
+                                 + used + " scale";
+
+                std::shared_ptr<UltraCanvasMatrixDiagram>& target = *importedDiagram;
+                if (!target) {
+                    // The first import adds a tab, dressed like the others.
+                    target = CreateMatrixDiagramElement("matrixImported", 0, 0, 780, 506, model);
+                    const auto& first = allDiagrams->front();
+                    target->SetDarkTheme(first->GetDarkTheme());
+                    target->SetStyle(first->GetStyle());
+                    target->SetTotals(first->GetTotals());
+                    target->SetRollUp(first->GetRollUp());
+                    target->SetHeaderFit(first->GetHeaderFit());
+
+                    auto tabContent = std::make_shared<UltraCanvasContainer>(
+                            "matrixImportedTab", 0, 0, 790, 516);
+                    tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+                    tabContent->AddChild(target);
+                    tabbedContainer->AddTab("Imported", tabContent);
+                    allDiagrams->push_back(target);
+                    wireDiagram(target);
+                } else {
+                    target->SetModel(model);
+                }
+
+                tabbedContainer->SetActiveTab(static_cast<int>(allDiagrams->size()) - 1);
+                readoutText->SetText("Imported " + fileName + " - " + model.subtitle + ".");
+                updateRanking();
+            });
+        };
 
         // ===== ABOUT =====
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("matrixAboutTitle", PAD, 392, SIDEBAR_W, 20);
+        auto aboutTitle = std::make_shared<UltraCanvasLabel>("matrixAboutTitle", PAD, 536, SIDEBAR_W, 20);
         aboutTitle->SetText("ABOUT");
         aboutTitle->SetFontSize(11);
         aboutTitle->SetFontWeight(FontWeight::Bold);
@@ -318,15 +468,11 @@ namespace UltraCanvas {
         aboutTitle->SetAlignment(TextAlignment::Left);
         leftSidebar->AddChild(aboutTitle);
 
-        auto aboutText = std::make_shared<UltraCanvasLabel>("matrixAbout", PAD, 414, SIDEBAR_W, 240);
-        aboutText->SetText("One of the Seven Management and Planning Tools.\n\n"
-                           "Cells hold a named level from a small scale, not a number - "
-                           "for continuous values use the Heatmap chart instead.\n\n"
-                           "Each level carries a weight, so rows and columns roll up into "
-                           "totals. The 'Improvement Tools' tab uses a 5/3/1 scale; "
-                           "'Weighted (QFD)' uses 9/3/1 and real row importances.\n\n"
-                           "Room adjacency matrices belong to the Adjacency Diagram, "
-                           "which owns that data and draws its own matrix view.");
+        auto aboutText = std::make_shared<UltraCanvasLabel>("matrixAbout", PAD, 558, SIDEBAR_W, 104);
+        aboutText->SetText("Cells hold a named level, not a number - for continuous values "
+                           "use the Heatmap chart. Levels carry weights, so rows and columns "
+                           "roll up into totals and ranks. Hover a cell: its row and column "
+                           "light up in every panel that lists them.");
         aboutText->SetFontSize(10);
         aboutText->SetAlignment(TextAlignment::Left);
         aboutText->SetWrap(TextWrap::WrapWordChar);

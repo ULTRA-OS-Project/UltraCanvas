@@ -21,6 +21,16 @@
          user for microphone access. -->
     <!-- <uses-permission android:name="android.permission.RECORD_AUDIO"/> -->
 
+    <!-- Video PLAYBACK needs no permission either. The camera does: uncomment
+         this if the app uses UltraCanvasVideoRecorder or a camera preview,
+         and ask at runtime with UltraCanvasVideoDevices::RequestCameraPermission
+         (Android shows its prompt only for a permission declared here).
+         Recording with sound also needs RECORD_AUDIO above; without it the
+         video is recorded silent. required="false" keeps the app installable
+         on devices without a camera. -->
+    <!-- <uses-permission android:name="android.permission.CAMERA"/> -->
+    <!-- <uses-feature android:name="android.hardware.camera.any" android:required="false"/> -->
+
     <!-- The backend renders with Cairo into an ANativeWindow buffer and only
          uses GLES for UltraCanvasGLSurface elements, so GLES 3 is preferred
          but not required. Every minSdk-26 device ships ES 3.x anyway. -->

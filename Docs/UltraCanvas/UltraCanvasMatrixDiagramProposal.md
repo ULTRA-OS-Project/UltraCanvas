@@ -1,13 +1,58 @@
-# UltraCanvasMatrixDiagram — Research & Feature Proposal
+**Status:** **Phases 1, 2 and 3 are implemented** as `UltraCanvasMatrixDiagram` +
+`UltraCanvasMatrixModel` — see
+[`UltraCanvasMatrixDiagram.md`](UltraCanvasMatrixDiagram.md) for the guide.
+Phase 1 delivered the model (C1–C3, C5, C7), the `L` and `T` shapes, the totals
+gutters, the `ChartLegend` `Glyph` swatch, the demo page and
+`Tests/MatrixModelTest.cpp`. Phase 2 (2026-10-13) delivered D4 `X` with both
+hub modes (S8), D5 `Y`, the L6 form header band (`MatrixModel::headerFields`)
+and S6 cell tint; S7 hover bands now follow the hovered *items* across every
+panel that lists them, and I4 legend filtering had already shipped with Phase 1.
 
-**Status:** **Not implemented.** A repository-wide search for `matrix diagram`,
-`MatrixDiagram`, `MatrixChart`, `L-shaped`, `roof matrix`, `QFD` and
-`house of quality` returns no element, no header, no demo slot and no test. The
-only `matrix` hits are (a) `UltraCanvasQuadrantChart`, which uses the word for
-its 2×2 *positioning* presets (BCG, Eisenhower, Risk, Ansoff, Priority), (b)
-`UltraCanvasHeatmapChart`, whose file comment calls it a "2D heatmap / matrix
-chart", and (c) `UltraCanvasSWOTDiagram`'s `SWOTDesign::Matrix` geometry preset.
-None of the three is a matrix diagram in the sense investigated here.
+How Phase 2 departs from the plan below, and why:
+
+* **One lattice for every shape.** Rather than a separate solver per shape,
+  every panel is a cell lattice — an origin plus a row step and a column step —
+  and the grid, marks, highlight and hit test all go through it. An X quadrant
+  whose model rows lie on a side arm is the same lattice with the steps
+  swapped, and a Y panel is the same lattice with steps along two seams 120°
+  apart. So §7.1's warning holds in reverse: the Y's rhombic cells needed no
+  rotated drawing at all, only the inverse lattice transform for hit testing.
+* **The Y is not axis-aligned**, despite §10's "Phases 1 and 2 are entirely
+  axis-aligned" — three panels between seams 120° apart cannot be. Its labels
+  are drawn level along their bands (turned with the band, never upside down);
+  its cell size is found by bisection over the figure's bounding box, which is
+  monotonic in the cell size.
+* **X placement is by set order** (`sets[0..3]` = left, top, right, bottom)
+  and `Validate()` enforces it: every X panel must pair a side set with an end
+  set, one panel per quadrant; every Y panel must cross two different sets
+  among the first three, one panel per pair.
+* **No totals gutters on X or Y.** Their outer edges are other panels' arms or
+  open space; the totals stay one call away on the model.
+
+Phase 3 (2026-10-14) delivered D6 `House` with the rotated correlation roof
+(L4), the importance column, a direction-of-improvement row and a target row;
+L8 the ranked bar strip (`MatrixRollUp::Bars`) with relative weights on the
+model; X1 the importance column in the CSV round trip; and X2
+`ImportMatrixTable`, which builds a model from a spreadsheet's tabular form.
+Departures from the plan below:
+
+* **The roof needed no rotation code either.** It is the Phase 2 lattice with
+  45° steps of half a cell — cell (r, c) lands over the boundary between
+  columns r and c by construction — plus an upper-triangle flag that drawing,
+  highlighting and hit testing respect. §7.1's "inverse transform on the
+  pointer" is the same inverse every panel already uses.
+* **Symmetric cells are normalised by the model**, not the renderer: a
+  symmetric panel stores each pair once, above the diagonal, whichever way
+  round it was set, and has no diagonal cell.
+* **Roof versus rows.** Every unit of cell width costs the roof half a unit of
+  height, so the layout caps the roof (`maxRoofShare`) and then trades width
+  for height until the rows are at least `minRowAspect` of the width.
+* **No competitive-assessment block.** §2 lists it as part of the classic
+  House, but it is new data (per-row ratings of competitors), not layout, and
+  D6 did not include it. It would be the natural next addition to `House`.
+
+Still open: Phase 4 (I5 pan/zoom, I6 keyboard navigation, X3 JSON, Q5 editing)
+and the competitive-assessment block.
 
 **Revision 3 (2026-08-10) — scope correction.** Reference images 1, 2 and 7 are
 architectural room-adjacency matrices, and adjacency data is already modelled by
@@ -534,7 +579,7 @@ struct MatrixModel {
 // No BuildAdjacencyMatrix(): revision 3 removed it. This header must not know
 // about AdjacencyRoom/AdjacencyLink -- adjacency data stays in the element that
 // owns it and is drawn by that element's own matrix view (§4.2).
-std::string ExportMatrixCsv(const MatrixModel&, int panel = 0);
+std::string ExportMatrixCsv(const MatrixModel&, int panel = 0, bool withImportance = false);
 bool        ImportMatrixCsv(const std::string& csv, MatrixModel& out);
 
 } // namespace UltraCanvas

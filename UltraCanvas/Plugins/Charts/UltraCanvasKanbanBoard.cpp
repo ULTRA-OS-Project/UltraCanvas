@@ -1358,6 +1358,16 @@ void UltraCanvasKanbanBoardElement::ScrollToCard(int cardId) {
     RequestRedraw();
 }
 
+void UltraCanvasKanbanBoardElement::ScrollToColumn(int columnId) {
+    auto ds = GetKanbanDataSource();
+    if (!ds || ds->ColumnIndexOf(columnId) < 0) return;
+    // The column may have been added a moment ago and have no layout yet, so
+    // the scroll is worked out by the next layout pass.
+    scrollAnimX.Cancel();
+    pendingScrollColumnId = columnId;
+    RequestRedraw();
+}
+
 // =============================================================================
 // ELEMENT — COLOR / FORMAT HELPERS
 // =============================================================================
@@ -1554,6 +1564,17 @@ void UltraCanvasKanbanBoardElement::ComputeLayout(IRenderContext* ctx) {
     double contentW = n * colW + (n - 1) * style.columnGap;
     // Kept for the wheel's glide, which needs the range outside the layout pass.
     maxScrollX = static_cast<float>(std::max(0.0, contentW - columnsWidth));
+    if (pendingScrollColumnId >= 0) {
+        // ScrollToColumn: move only as far as it takes to show the column.
+        int index = ds->ColumnIndexOf(pendingScrollColumnId);
+        if (index >= 0) {
+            double left = index * (colW + style.columnGap);
+            double right = left + colW;
+            if (left < scrollX) scrollX = static_cast<float>(left);
+            else if (right > scrollX + columnsWidth) scrollX = static_cast<float>(right - columnsWidth);
+        }
+        pendingScrollColumnId = -1;
+    }
     scrollX = std::clamp(scrollX, 0.0f, maxScrollX);
 
     double footerH = style.footerHeight;
@@ -1726,6 +1747,12 @@ int UltraCanvasKanbanBoardElement::ColumnIndexAt(const Point2Di& pos) const {
         if (pos.x >= left && pos.x <= right) return static_cast<int>(i);
     }
     return -1;
+}
+
+int UltraCanvasKanbanBoardElement::ColumnIdAt(const Point2Di& pos) const {
+    int index = ColumnIndexAt(pos);
+    if (index < 0 || index >= static_cast<int>(layout.columns.size())) return -1;
+    return layout.columns[index].columnId;
 }
 
 int UltraCanvasKanbanBoardElement::LaneIdAt(const Point2Di& pos) const {
@@ -2353,6 +2380,18 @@ void UltraCanvasKanbanBoardElement::RenderCards(IRenderContext* ctx) {
 }
 
 void UltraCanvasKanbanBoardElement::RenderDropIndicator(IRenderContext* ctx) {
+    if (fileDragOver && dropColumnIndex >= 0 &&
+        dropColumnIndex < static_cast<int>(layout.columns.size())) {
+        // Files from outside: the whole column is the target, there is no
+        // insertion point — dropped files join the end.
+        const ColumnLayout& cl = layout.columns[dropColumnIndex];
+        ctx->SetFillPaint(style.dropIndicatorColor.WithAlpha(40));
+        ctx->FillRoundedRectangle(cl.bodyRect, style.columnCornerRadius);
+        ctx->SetStrokePaint(style.dropIndicatorColor);
+        ctx->SetStrokeWidth(2.0f);
+        ctx->DrawRoundedRectangle(cl.bodyRect, style.columnCornerRadius);
+        return;
+    }
     if (!draggingCard || dropColumnIndex < 0 ||
         dropColumnIndex >= static_cast<int>(layout.columns.size())) return;
 
@@ -2903,6 +2942,19 @@ bool UltraCanvasKanbanBoardElement::HandleDoubleClick(const UCEvent& event) {
     return false;
 }
 
+// The platform backends deliver typed characters on the KeyDown itself
+// (event.text, or event.character for one byte) - none of them sends a
+// separate TextInput - so a key that types something is text, unless a
+// shortcut modifier makes it a command.
+static bool IsTypedText(const UCEvent& event) {
+    if (event.ctrl || event.meta || event.alt) return false;
+    // Tab, Delete and the like carry their control byte as text too.
+    const unsigned char first = !event.text.empty()
+            ? static_cast<unsigned char>(event.text[0])
+            : static_cast<unsigned char>(event.character);
+    return first >= 32 && first != 127;
+}
+
 bool UltraCanvasKanbanBoardElement::HandleKeyDown(const UCEvent& event) {
     // Inline column rename.
     if (renamingColumnId >= 0) {
@@ -2912,6 +2964,7 @@ bool UltraCanvasKanbanBoardElement::HandleKeyDown(const UCEvent& event) {
             PopUtf8(renameBuffer);
             RequestRedraw();
         }
+        else if (IsTypedText(event)) HandleTextInput(event);
         return true;
     }
 
@@ -2942,6 +2995,7 @@ bool UltraCanvasKanbanBoardElement::HandleKeyDown(const UCEvent& event) {
                 RequestRedraw();
                 return true;
             default:
+                if (IsTypedText(event)) HandleTextInput(event);
                 return true;
         }
     }
@@ -3024,10 +3078,20 @@ void UltraCanvasKanbanBoardElement::StartAddColumn() {
     auto ds = GetKanbanDataSource();
     if (!ds) return;
     int columnId = ds->AddColumn("New Column");
-    renamingColumnId = columnId;
-    renameBuffer = "New Column";
-    SetFocus(true);
+    BeginColumnRename(columnId);
     if (onBoardChanged) onBoardChanged();
+}
+
+void UltraCanvasKanbanBoardElement::BeginColumnRename(int columnId, bool startEmpty) {
+    auto ds = GetKanbanDataSource();
+    const KanbanColumn* col = ds ? ds->FindColumn(columnId) : nullptr;
+    if (!col) return;
+    if (editor.open) CloseCardEditor(false);
+    CommitRename(true);
+    renamingColumnId = col->id;
+    renameBuffer = startEmpty ? std::string() : col->title;
+    ScrollToColumn(col->id);
+    SetFocus(true);
     RequestRedraw();
 }
 
@@ -3076,8 +3140,9 @@ bool UltraCanvasKanbanBoardElement::OnEvent(const UCEvent& event) {
             return HandleWheel(event);
 
         case UCEventType::MouseLeave:
-            if (draggingCard) {
+            if (draggingCard || fileDragOver) {
                 draggingCard = false;
+                fileDragOver = false;
                 dropColumnIndex = -1;
             }
             pressedCardId = -1;
@@ -3093,6 +3158,38 @@ bool UltraCanvasKanbanBoardElement::OnEvent(const UCEvent& event) {
 
         case UCEventType::TextInput:
             return HandleTextInput(event);
+
+        case UCEventType::DragEnter:
+        case UCEventType::DragOver: {
+            if (!onFilesDropped || draggingCard) return false;
+            int index = ColumnIndexAt(event.pointer);
+            if (!fileDragOver || index != dropColumnIndex) {
+                fileDragOver = true;
+                dropColumnIndex = index;
+                dropLaneId = layout.lanes.empty() ? -1 : LaneIdAt(event.pointer);
+                RequestRedraw();
+            }
+            return true;
+        }
+
+        case UCEventType::DragLeave:
+            if (!fileDragOver) return false;
+            fileDragOver = false;
+            dropColumnIndex = -1;
+            RequestRedraw();
+            return true;
+
+        case UCEventType::Drop: {
+            if (!onFilesDropped || event.droppedFiles.empty()) return false;
+            const bool wasOver = fileDragOver;
+            fileDragOver = false;
+            dropColumnIndex = -1;
+            if (wasOver) RequestRedraw();
+            int columnId = ColumnIdAt(event.pointer);
+            int laneId = layout.lanes.empty() ? -1 : LaneIdAt(event.pointer);
+            onFilesDropped(event.droppedFiles, columnId, laneId);
+            return true;
+        }
 
         default:
             return false;

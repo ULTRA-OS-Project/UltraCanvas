@@ -1,3 +1,58 @@
+#### 2026-10-14 *0.6.12*
+- **One ArtCreator at a time.** Opening a file while ArtCreator is already
+  running opens it in the running copy (in a new window) instead of starting a
+  second one; starting it without a file brings the open window forward. Two
+  starts at the same moment cannot both stay, and a copy that does not answer
+  is reported with *"ArtCreator is already running"*. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
+#### 2026-10-13 *0.6.11*
+- **Export as a bitmap, at any size.** File > Export offers PNG, JPEG, WebP,
+  AVIF, HEIC, TIFF, GIF, QOI and Windows icons beside the vector formats -
+  each one this build can write: the Export dialog's types and the save are
+  the framework's FileLoader (`AddVectorDocumentSaveTypes`,
+  `SaveVectorDocument` with a size), so a format a plugin adds appears here
+  too (AVIF and HEIC need libheif's encoders; ICO and QOI are the
+  framework's own). A drawing has no pixel size of its own, so the
+  Export dialog's Settings for them open on the page at 96 DPI (an A4 page at
+  794 x 1123 pixels) and take any other size, Keep proportions keeping the
+  page's shape; the page is then drawn at that size, not drawn small and
+  stretched, so it is as sharp at 8000 pixels as at 800. The format's save
+  settings apply (JPEG quality, PNG compression ...). A PNG keeps what the
+  page leaves transparent; a JPEG is laid on white; an icon holds the page
+  fitted into 16, 32, 48 and 256 pixel squares. The status bar says the
+  size written (framework changelog, pending entry
+  `save-size-for-drawings-and-the-viewer`: `SetDrawingSize`,
+  `RasterizeVectorDocument`, the ICO and QOI savers).
+
+#### 2026-10-12 *0.6.10*
+- **Sharp icons, drawn for the size they are shown at.** The icons were drawn
+  on a 24-unit grid with 1.8-unit strokes and shown at 22 px in the tool
+  palette, 20 px in the toolbar and 16 px in the menus. At none of those
+  sizes did a line land on whole pixels, so every edge was resampled into a
+  two-pixel grey smear: the marching ants, alignment bars and arrange arrows
+  ran together, and "1:1" was unreadable in a menu. They are redrawn, as
+  UltraPaint's were, in three sets with 2 px (1 px in the menus) strokes on
+  whole pixels:
+  - the 19 tools at 28 px in 36 px palette buttons (`media/icons/artcreator/28/`).
+    Blend is now a stepped series of circles, Transparency a checkerboard,
+    Shape Editor an outline pointer with a node, Pen a nib, Quick Shape a star.
+    Line, Rectangle, Ellipse, Text, Fill, Zoom and Push are UltraPaint's
+    drawings;
+  - the 60 toolbar and panel icons at 24 px (`media/icons/artcreator/`), shown
+    at 24 px now: every toolbar drew its icons at 20 (framework changelog:
+    `toolbar-icon-size`), and so does the DemoApp's vector example, which uses
+    this set;
+  - a 16 px set for every menu entry (`media/icons/artcreator/16/`), 72 icons
+    in one style. It replaces the mix of the shared menu set and the 24 px
+    icons shrunk to 16, and adds icons where entries had none: the line widths
+    show their thickness, and Rulers, Grid, Guides, the four Snap options and
+    Clear Guides have their own.
+- **Flat palette and toolbar buttons**, as in UltraPaint: no box around a
+  button, a soft grey under the pointer and the active tool on light blue.
+  Where the window is too short for every tool, the palette scrolls instead of
+  squeezing the buttons.
+
 #### 2026-10-11 *0.6.9*
 - **One flat icon style throughout.** Every icon is now a one-tone line
   drawing in the style of the rest of the app:

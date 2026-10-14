@@ -38,6 +38,7 @@ if (UltraCanvas::HostFileIconsAvailable()) {
 | `HostFileIconKey(path, isDirectory)` | what the answer depends on — the cache key, pure string work |
 | `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` | the icon as a `UCPixmap`, or null |
 | `RefreshHostFileIcons()` | forget the lookups — after a theme change |
+| `FitHostIconToSize(pixmap, desiredSize)` | the answer resampled down to the size it is drawn at; never scaled up |
 
 ## The key is the whole design
 
@@ -54,13 +55,32 @@ The keys:
 | What | Key | Why |
 |---|---|---|
 | a directory | `dir` | every folder is one icon |
-| a file that carries its own icon | `file:<path>` | not a type at all — two programs must never share an icon |
 | a name with no extension | `name:<lowercased name>` | the freedesktop database matches `makefile` and `README` by name |
 | everything else | `ext:<suffix chain>` | `archive.tar.gz` keys as `tar.gz`, not `gz` — a tarball and a gzip file are different types and are drawn differently |
 
 The suffix chain runs from the **first** dot, which is the finest distinction
 the type databases make. A leading dot is part of the name (`.bashrc` is a
 name, not a `bashrc` file).
+
+A program, a shortcut or a bundle keys by its extension like everything else.
+The icon such a file carries of its own is `UltraCanvasNativeFileIcons`'s
+answer, read out of the file; what *this* module answers for it is the host's
+icon for `.exe` or `.lnk`, resolved from the name alone on every backend, and
+so the same for every file of the kind. (Until October 2026 those were keyed
+per file, which made a folder of ninety DLLs hold ninety copies of one
+picture.)
+
+## Held at the size it is drawn
+
+An icon source answers in its own sizes: the Windows shell's jumbo list is
+256 pixels a side whatever was asked, and an `.ico`'s nearest frame can be
+the larger one. A 256-pixel icon drawn in a 128-pixel tile holds four times
+the memory it shows, which is what let a window full of distinct types run
+over the filer's icon budget. So every backend hands back what
+`FitHostIconToSize` makes of its answer: resampled so the longer edge is the
+size asked for when it is larger, untouched when it is not (a type whose icon
+only exists at 48 stays 48, and the caller scales it up). macOS draws the
+`NSImage` straight into a bitmap of that size and needs no resample.
 
 ## The three backends
 

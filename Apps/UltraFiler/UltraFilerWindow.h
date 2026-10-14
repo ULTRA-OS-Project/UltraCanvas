@@ -80,8 +80,9 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -110,6 +111,7 @@
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
 #include "UltraFilerRemoteDrives.h"
+#include "UltraFilerRamDisks.h"
 
 #include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"   // the transfer bar
 #include "UltraFilerSettings.h"
@@ -142,6 +144,13 @@ public:
     // the user's home directory when empty or not a directory).
     bool Initialize(const std::string& startFolder = "");
     void Show();
+    // Folders a later start of UltraFiler handed over (absolute, UTF-8 -
+    // UltraCanvasSingleInstance::ListenOpen): each opens in a tab of its own,
+    // as the tab strip's "+" opens one, so the folders already open stay where
+    // they are. A folder a tab shows already is switched to instead; a file
+    // opens its folder; what does not exist is skipped. The window comes
+    // forward either way.
+    void OpenFolders(const std::vector<std::string>& paths);
 
 private:
     // Per-tab browsing state: the folder widget of the tab plus its own
@@ -324,8 +333,19 @@ private:
     // Driven by the volume monitor (StartVolumeMonitor), which is what makes a
     // USB stick plugged in while UltraFiler is running appear without a
     // restart - the tree used to be enumerated exactly once, at start-up.
-    // Cheap and idempotent: calling it when nothing changed does nothing.
+    //
+    // The listing - the mounted volumes and the RAM discs, which are found
+    // among them - is read on a worker thread and applied when it is in
+    // (ApplyDriveLists), so a drive that answers slowly never holds the
+    // window: one reading at a time, and a request made during a reading is
+    // served by one more reading when it completes. Idempotent: a pass that
+    // finds nothing changed changes nothing.
     void RefreshDriveNodes();
+    // The UI-thread half: the RAM disc rows first (one row per path - a disc
+    // that is also a mounted volume gets its row where it can be ejected),
+    // then the drive rows brought in line with `volumes`.
+    void ApplyDriveLists(const std::vector<UltraFilerRamDisks::RamDisc>& discs,
+                         const std::vector<MountedVolume>& volumes);
     // ===== REMOTE DRIVES =====
     // The "+ Drive" button in the navigation row: it offers an FTP / SFTP
     // server or a cloud account, adds it through UltraCloud's shared
@@ -340,13 +360,36 @@ private:
     // "Cloud Storage" above it.
     void RefreshRemoteDriveNodes();
     // ===== RAM DISCS =====
+    // Asks the system, on a worker thread, whether it can make RAM discs and
+    // which discs are mounted now, then brings the "+ Drive" button and the
+    // "RAM Discs" rows in line on the UI thread. The first such question
+    // launches a shell on Windows and macOS (`where imdisk`, `command -v
+    // hdiutil`) and took seconds - and it used to be asked on the UI thread
+    // when the toolbar was built and again every time the "+ Drive" menu
+    // opened, which is why that menu took seconds to appear. The answer is
+    // kept by VirtualFS for the life of the process, so once this worker
+    // has asked, every later call answers at once. Started from Create();
+    // the sweep of Extract and Run's leftover folders rides on it, since it
+    // needs the list of discs too.
+    void StartRamDiskProbe();
+    // Sets the "+ Drive" button's tooltip and enabled state from what the
+    // build has and what the probe has answered so far.
+    void UpdateAddDriveButton();
+    // What the "+ Drive" menu offers as a RAM disc: the probe's answer once
+    // it is in, else whether the build has the facility at all - a click
+    // before the answer waits for it, in the dialog, rather than the menu
+    // waiting for it every time.
+    bool RamDisksOffered() const;
     // "+ Drive > RAM disc...": asks for a name and a size, creates the disc
     // (UltraFilerRamDisks, over VirtualFS) and opens it in the folder view.
+    // What the dialog shows about the machine is read on a worker first.
     void AddRamDisk();
     // Brings the "RAM Discs" rows in line with the discs mounted now - ones
     // made by an earlier run included, since a disc stays until it is
-    // ejected - and hides the section while there are none.
+    // ejected - and hides the section while there are none. Lists the discs
+    // itself; ApplyRamDiskList takes a list already made (by the probe).
     void RefreshRamDiskNodes();
+    void ApplyRamDiskList(const std::vector<UltraFilerRamDisks::RamDisc>& discs);
     // Asks, then unmounts the disc at `mountPath`: tabs inside it move to
     // Home first, and its row leaves the tree. Everything on it is lost,
     // which is why the question names the disc.
@@ -1118,6 +1161,24 @@ private:
     std::vector<std::string> treeRemoteDriveNodeIds;
     // Node ids (the mount paths) of the "RAM Discs" rows.
     std::vector<std::string> treeRamDiskNodeIds;
+    // The start-up probe (StartRamDiskProbe) and what it answered. Both
+    // flags are written on the UI thread only, by the callback it posts.
+    std::thread ramDiskProbeWorker;
+    bool ramDiskProbed = false;
+    bool ramDiskAvailable = false;
+    // The worker reading what the New RAM disc dialog shows (AddRamDisk),
+    // and whether its answer is still awaited - a second click meanwhile
+    // does nothing rather than opening two dialogs.
+    std::thread ramDiskFactsWorker;
+    bool ramDiskDialogPending = false;
+    // The worker listing the mounted volumes and RAM discs (RefreshDriveNodes),
+    // its busy flag and the "ask again when done" flag, like the volume
+    // sizes' worker below; and the volumes as last listed, which the Computer
+    // page's drive cards are built from, so showing the page lists nothing.
+    std::thread driveListWorker;
+    std::atomic<bool> driveListBusy{false};
+    std::atomic<bool> driveListPending{false};
+    std::vector<MountedVolume> knownVolumes;
     // The last failure reported for a drive operation. Deleting five entries
     // queues five operations, and five identical "permission denied" dialogs
     // in a row tell the user nothing the first one did not - so a repeat of

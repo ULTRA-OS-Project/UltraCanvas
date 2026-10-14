@@ -1,3 +1,138 @@
+#### 2026-10-14 *0.4.2*
+- **One UltraVideo at a time.** Opening a project or media files while
+  UltraVideo is already running handles them in the running copy instead of
+  starting a second one: a `.ultravideo` project opens there - asking first
+  whether to save the current project when it has changes, as *Open project*
+  does - and media files are imported into the open project, as dropping
+  them on the window does; the window, or its save question, comes forward.
+  Starting it without a file brings the open window forward. Two starts at
+  the same moment cannot both stay, and a copy that does not answer is
+  reported with *"UltraVideo is already running"*. `--help` and `--version`
+  are unaffected. Framework: `UltraCanvasSingleInstance` (framework
+  changelog: `instance-lock`).
+
+#### 2026-10-14 *0.4.1*
+- **Import and Export offer FileLoader's file types.** UltraVideo kept lists
+  of its own, so its dialogs offered types the engine could not read and
+  missed ones it could.
+  - At start-up UltraVideo now tells the framework's codec registry which
+    films and sound VideoFX (FFmpeg) reads and writes
+    (`VideoFX_GetFileFormats`). FileLoader's lists then include them; on
+    macOS, for example, the registry alone knew only MP4, MOV and 3GP.
+  - Import media, the file over the picture, a voice-over or sound effect
+    on A2, and the story's photos, clips and songs offer FileLoader's types
+    that the engine reads.
+  - **HEIC photos import whole.** Picture types FileLoader reads and FFmpeg
+    does not are read through the framework's image reader
+    (`VideoFX_SetPictureReader`): HEIC, a camera's raw files, FITS and so on.
+    For HEIC this is libheif, which puts a phone photo's grid of tiles
+    together and turns it upright. FFmpeg 6 refused HEIC, and FFmpeg 7 would
+    have given one tile of the photo.
+  - Whether a file is a picture or sound is decided by the same lists, so a
+    picture this build cannot decode (a HEIC where libheif lacks its HEVC
+    decoder) still shows as a photo, marked unreadable.
+  - Export's Browse offers the presets' types under FileLoader's names.
+    Picking a type there selects the preset that writes it, so an MP4 can
+    no longer be saved under a `.wav` name.
+  - The bare `.ts` extension is no longer offered: the framework decides it
+    by the file's contents, since it is far more often TypeScript. `.mts` and
+    `.m2ts` are offered.
+  - New file `UltraVideoFormats.{h,cpp}`, checked in `UltraVideoDocumentTest`.
+#### 2026-10-13 *0.4.0*
+- **Effect presets in the bin.** The bin's *Effects* tab is no longer a
+  placeholder. It holds one-click presets for the selected main-track clip.
+  - Nine colour looks: *Warm*, *Cool*, *Vivid*, *Faded*, *Dramatic*,
+    *Black and white*, *Sepia*, *Vintage* and *Brighter*.
+  - Four presets under *Blur and detail*: *Soft blur*, *Strong blur*,
+    *Sharpen* and *Reduce noise*.
+  - A preset is made of the engine's own effects (temperature, saturation,
+    contrast, vignette, blur and so on). They are added after the clip's
+    other effects, and a second click on the same preset changes nothing.
+  - A blur's radius is a share of the clip's picture height, so it looks
+    the same on a phone clip and a 4K one.
+  - The viewer, the draft and the export show the look, and the clip gets
+    its effects badge on the timeline.
+  - The inspector's Clip tab lists the clip's effects, one row per effect
+    named by what it does (*Warmer 30 %*, *Blur 3.5 px*), each with a
+    button that removes it, plus *Remove all effects*.
+  - **Each effect has a strength slider** on its row, so *Warm* can be made
+    warmer or gentler and a blur stronger. The name follows the slider as
+    it moves.
+    - The range is the engine's own units for that effect: -1 to 1 for a
+      look's amounts, up to 50 px for a blur, -180° to 180° for a hue.
+    - Switches (black and white, sepia, a flip, a quarter turn) and a crop
+      have no slider.
+  - Every change is an undo step.
+  - (`EffectPresets`, `Document::ApplyEffectPreset`, `DescribeEffect`,
+    `RangeOfEffect`, `Document::SetEffectAmount`; tested in
+    `UltraVideoDocumentTest`. The test renders a frame with every preset
+    and at both ends of every slider's range, and checks that *Black and
+    white* turns the picture grey.)
+
+#### 2026-10-13 *0.3.0*
+- **Voice-overs and sound effects at any time.** A new free lane on the
+  timeline, **A2 Voice & sound**, sits between the main track and the
+  music. It holds sound clips placed at any time, over the clips' own
+  sound and the music, mixed by VideoFX's audio clips (VideoFX 0.13.0).
+  - Two kinds of clip. A **voice-over** makes the music dip under it. A
+    **sound effect** plays over the music without changing it. A switch
+    in the inspector turns one into the other, as does the clip's menu.
+  - Adding a clip:
+    - right-click the lane for *Add a voice-over here…*, *Add a sound
+      effect here…*, or one of the bin's files with sound (songs, and
+      videos for their sound);
+    - use the *Voice-over* and *Sound effect* buttons on a song in the
+      bin's *Music* tab, which place it at the playhead;
+    - or drop files on the lane; a dropped file becomes a voice-over.
+  - A sound clip is moved, trimmed, split, duplicated and deleted like any
+    clip, and shows its waveform. Its fade handles set its fades, and
+    trimming its left edge moves into the file.
+  - The inspector sets *Volume* (up to 200 %), *Fade in*, *Fade out* and
+    *The music dips under it*.
+  - The playback draft and the export mix the lane. Exporting the work
+    area keeps the part of each clip that lies inside it.
+  - The `.ultravideo` file keeps the lane's spans (`sounds`). The engine's
+    project inside the file carries them as audio clips, so `videofx
+    render` gives the same sound. A VideoFX project's audio clips, opened
+    in UltraVideo, appear on the lane.
+  - (`SoundSpan`, `Document::AddSound`, `AudioClipsForEngine`, the `A2`
+    mapping; tested in `UltraVideoDocumentTest`.)
+- A selected overlay clip is no longer deselected whenever the timeline
+  is redrawn.
+
+#### 2026-10-13 *0.2.1*
+- **Proxies are made on the graphics hardware.** UltraVideo now makes its
+  proxies with VideoFX's `Hardware` acceleration (VideoFX 0.12.0). Each
+  proxy is encoded by the first hardware encoder that works on the machine:
+  NVENC, Quick Sync, VA-API, AMF, VideoToolbox or Media Foundation. That
+  leaves the processor free for the editing while the bin's videos are
+  being made smaller. Where no hardware encoder works it falls back to
+  software, as before. The encoder is not part of a proxy's name, so
+  proxies already in the cache are used as they are.
+  (`ProxyMaker::EditorSettings()`, checked in `UltraVideoDocumentTest`.)
+
+#### 2026-10-12 *0.2.0*
+- **Proxies: large clips scrub smoothly.** Every video in the media bin gets
+  a proxy in the background, made by VideoFX: the same clip at 540 lines,
+  quick to seek in. The viewer and the playback draft play the timeline
+  from the proxies, and the **export reads the originals**.
+  - The proxies are made one at a time on a thread of their own
+    (`UltraVideoProxies.{h,cpp}`), not on the preview's worker, so
+    scrubbing never waits behind one.
+  - The bin tile shows *proxy waiting*, *proxy 40 %* and *proxy*. When a
+    clip on the timeline gets its proxy, the viewer switches to it at once.
+  - Clips no taller than a proxy get none.
+  - Proxies made in an earlier session are ready at once, from the user's
+    cache folder.
+  - A clip removed from the bin leaves the queue. One that cannot be made
+    is reported and plays from the original.
+  - *Preview from proxies*, in the inspector's Project tab, is on by
+    default. It is saved with the project (`view.useProxies`) and is not an
+    undo step.
+  - Tested in `UltraVideoDocumentTest`: a clip's proxy made and played, a
+    small clip left as it is, the cache reused, a clip dropped before its
+    turn, and a missing file.
+
 #### 2026-10-11 *0.1.0*
 - **The first release: the editor's skeleton.** `Apps/UltraVideo`, on
   VideoFX 0.9.0 and the framework's `UltraCanvasVideoTimeline` and

@@ -6,6 +6,18 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.17.0 - onChooseFiles (file uploads); a <label>'s text acts on its
+//                   control
+// Version: 1.16.0 - BuildOptions::interactiveForms / onFormSubmit and
+//                   BuildResult::forms: real form widgets and FormController
+// Version: 1.15.0 - runBoxes: inline elements' backgrounds and borders drawn by
+//                   the label (LabelTextBox)
+// Version: 1.14.0 - @import: ExpandImports puts imported sheets before the
+//                   importing sheet's rules
+// Version: 1.13.0 - AppendInlineSpace: an inline element's horizontal margin,
+//                   border and padding as room in its run
+// Version: 1.12.0 - flex and grid containers on the CSSLayout flex / grid engines:
+//                  BuildContentInto, BuildItemsInto, BuildItem, EstimateContentWidth
 // Version: 1.11.0 - BuildOptions::selectableText: the text can be selected across
 //                  the whole tree and copied (BuildResult::textSelection)
 // Version: 1.10.0 - BuildOptions::linkTooltips (a link's href as a tooltip, or not)
@@ -25,6 +37,7 @@
 #pragma once
 
 #include "HTMLReader/HTMLDocument.h"
+#include "HTMLReader/HTMLForms.h"
 #include "HTMLReader/HTMLParser.h"
 #include "HTMLReader/HTMLStyleResolver.h"
 
@@ -78,6 +91,22 @@ struct BuildOptions {
     // word, and Ctrl+C / Ctrl+A work once the text has been clicked. A text
     // link then opens when the button is released without having dragged.
     bool selectableText = false;
+
+    // Form controls are the framework's real widgets - text inputs and areas,
+    // checkboxes, radio groups, dropdowns, buttons - on the line with their
+    // text, so the reader can fill a form in (caret, selection, clipboard,
+    // focus). Each <form>'s controls are held by a FormController
+    // (BuildResult::forms); a submit button or Enter in a field calls
+    // onFormSubmit with what the form sends. Off (mail): a control is drawn
+    // for display only, its value as text.
+    bool interactiveForms = false;
+    std::function<void(const FormSubmission& submission)> onFormSubmit;
+    // An <input type=file>'s button asks for files here: the host shows its
+    // file dialog (several when `multiple`, filtered by the input's accept=""
+    // list as written) and calls `done` with the chosen UTF-8 paths, none
+    // when cancelled. Without it the button is disabled.
+    std::function<void(bool multiple, const std::string& accept,
+                       std::function<void(std::vector<std::string> paths)> done)> onChooseFiles;
 };
 
 struct BuildResult {
@@ -93,6 +122,12 @@ struct BuildResult {
     // id/name attribute → the native element built for (or containing) it.
     // Viewers use this to scroll to #fragment link targets.
     std::unordered_map<std::string, std::shared_ptr<UltraCanvasUIElement>> anchors;
+
+    // With BuildOptions::interactiveForms: one controller per <form> in
+    // document order (and one for controls outside every form, last, when
+    // there are any). Keep them: they hold the radio groups, and Save /
+    // Restore carry what was typed across a rebuild.
+    std::vector<std::shared_ptr<FormController>> forms;
 };
 
 class ElementBuilder {
@@ -122,7 +157,15 @@ private:
     std::string runPlain;
     std::vector<LabelTextLink> runLinks;
     // Images flowing in the current run, at U+FFFC placeholders of runPlain.
+    // A picture-less one is room (AppendInlineSpace).
     std::vector<LabelInlineImage> runImages;
+    // Where the last room ends in runPlain, and the text's last character
+    // before it: white space collapses across room as if it were not there.
+    // Inline elements' backgrounds and borders in the current run, around
+    // byte ranges of runPlain (LabelTextBox).
+    std::vector<LabelTextBox> runBoxes;
+    size_t runRoomEnd = std::string::npos;
+    char runBeforeRoom = '\n';
     // The tallest line-height of the run's text - CSS makes a line as tall as
     // the tallest inline box on it, so <span style="line-height:40px"> in a
     // cell is a 40px line - and whether any of that text sets one. A run
@@ -146,8 +189,23 @@ private:
     std::shared_ptr<UltraCanvasContainer> MakeContainer(const std::string& hint);
 
     std::shared_ptr<UltraCanvasContainer> BuildBlock(Node& element);
+    // A box's content by its layout mode: normal flow (BuildChildrenInto) or,
+    // for display: flex / grid, its items (BuildItemsInto).
+    void BuildContentInto(UltraCanvasContainer& parent, Node& element);
     void BuildChildrenInto(UltraCanvasContainer& parent, Node& element,
                            int listItemIndex = -1);
+    // A flex or grid container: `parent` laid out by the CSSLayout flex or
+    // grid engine, every child element an item of its own (blockified, as CSS
+    // does: a <span> or <a> item is a box) and every run of text between them
+    // an anonymous item; whitespace between items renders nothing.
+    void BuildItemsInto(UltraCanvasContainer& parent, Node& element);
+    // One flex / grid item built from an element, at its own size (no 100%
+    // width) with its margins as real margins. Null when it shows nothing.
+    std::shared_ptr<UltraCanvasUIElement> BuildItem(Node& element);
+    // The content width of `element` estimated before layout, from the
+    // viewport down through its ancestors' widths, margins, padding and
+    // borders: what repeat(auto-fill, ...) is counted against.
+    float EstimateContentWidth(const Node& element) const;
     // `blockNode` is the element whose content the run is: a text node whose
     // parent is some other element (an inline the builder looked through,
     // because it wraps a block) takes that element's formatting.
@@ -181,14 +239,54 @@ private:
     // Display-only render of a form control (input/textarea/button/select):
     // a styled box showing its value/label. Returns null for hidden inputs.
     std::shared_ptr<UltraCanvasContainer> BuildFormControl(Node& element);
+    // BuildOptions::interactiveForms: the control as a real widget, sized
+    // as a browser sizes it (CSS width / height, else size / cols / rows
+    // and the font), registered with its form's controller. Null for a
+    // hidden input (registered, not shown).
+    std::shared_ptr<UltraCanvasUIElement> BuildFormWidget(Node& element);
+    FormController& FormFor(const Node& control);
+    static bool IsFormControl(const Node& node);
+    bool ContainsFormControl(const Node& node) const;
+    // The controls the <label>s of this build act on: a label's text is a
+    // quiet link to "#ucform-label:<n>", n indexing `targets`; a click looks
+    // its control up in `controls` (filled as the widgets are built).
+    struct LabelTargets {
+        std::vector<const Node*> targets;
+        std::unordered_map<const Node*, std::pair<std::weak_ptr<FormController>, int>> controls;
+    };
+    std::shared_ptr<LabelTargets> labelTargets;
+    // The control a <label> is for (its for="id", else the first control in
+    // it); -1 when none. The index is into labelTargets->targets.
+    int LabelTargetIndex(const Node& label);
+    Document* currentDocument = nullptr;
+    std::vector<std::shared_ptr<FormController>> builtForms;
+    std::unordered_map<const Node*, std::shared_ptr<FormController>> formByNode;
+    std::shared_ptr<FormController> formless;
+
+    // `css` with the sheets its @import rules name (fetched through
+    // opts.resourceLoader, read relative to `sheetHref`) put in front of its
+    // own rules, each in an @media block when its import names media. At
+    // most kMaxImportDepth deep and kMaxImportedSheets in all; a sheet is
+    // imported once.
+    std::string ExpandImports(const std::string& css, const std::string& sheetHref,
+                              int depth, std::vector<std::string>& seen);
+    static constexpr int kMaxImportDepth = 8;
+    static constexpr size_t kMaxImportedSheets = 64;
 
     void AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
                             bool preserveWhitespace, std::string& out);
+    // `px` of empty room in the run (an inline element's margin, border and
+    // padding on one side): a picture-less U+FFFC placeholder that wide,
+    // joined to the text after it (glueAfter) or before it by a WORD JOINER,
+    // so a line does not break between the room and its element.
+    void AppendInlineSpace(float px, bool glueAfter, std::string& out);
     // Pango markup that turns `runStyle` text into `style` text (bold, size,
     // color, ...); `tag` adds <sub>/<sup>.
+    // withBackground: the element's background as a Pango background (an
+    // inline element in a run gets a LabelTextBox instead).
     static void StyleWrap(const ComputedStyle& style, const ComputedStyle& runStyle,
                           std::string& prefix, std::string& suffix,
-                          const std::string& tag = std::string());
+                          const std::string& tag = std::string(), bool withBackground = true);
 
     // Maps the node's id (and <a name>) to the built element in `anchors`,
     // recursing into `node`'s subtree when deep is true.

@@ -270,6 +270,9 @@ client. Drop an `oauth.ini` in:
 |---|---|
 | Linux | `~/.local/share/UltraMail/` (or `$XDG_DATA_HOME/UltraMail/`) |
 | Windows | `%APPDATA%\UltraMail\` |
+| macOS | `~/Library/Application Support/UltraMail/` |
+
+`$XDG_DATA_HOME`, when set, wins on every platform (`Apps/UltraMail/engine/UltraMailPaths.h`).
 
 ```ini
 [google]

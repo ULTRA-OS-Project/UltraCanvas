@@ -8,8 +8,9 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.5.0 - OpenFiles: files handed over by a second start
+// Version: 0.4.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -18,6 +19,7 @@
 #include "UltraVideoHistory.h"
 #include "UltraVideoInspector.h"
 #include "UltraVideoPreview.h"
+#include "UltraVideoProxies.h"
 #include "UltraVideoStory.h"
 #include "UltraVideoTheme.h"
 #include "UltraVideoViewer.h"
@@ -58,6 +60,11 @@ public:
     // a new project
     bool Create(const std::vector<std::string>& paths);
     void Show();
+    // Files handed to the running window (a second start of UltraVideo): a
+    // .ultravideo project among them is opened - after asking to save the
+    // current project when it has changes - and the media files are imported
+    // into the project that is open then, as dropping them on the window does
+    void OpenFiles(const std::vector<std::string>& paths);
 
 private:
     using Button = UltraCanvas::UltraCanvasButton;
@@ -76,6 +83,11 @@ private:
     void RefreshAll();                 // after any change of the document
     void RefreshAppBar();
     void RefreshBin();
+    // The segments the viewer and the draft play: the engine's segments,
+    // through the proxies when the project says so (the export never is)
+    std::vector<VideoFX::VideoFXSegment> SegmentsToPlay() const;
+    void ProxyDone(const std::string& clip, ProxyMaker::State state);
+    void SetUseProxies(bool on);
     void RefreshTimeline();
     void RefreshInspector();
     void RefreshPreview();             // plan the timeline again in the engine
@@ -84,7 +96,7 @@ private:
     // files
     void NewProject();
     void OpenProject();
-    void OpenProjectFile(const std::string& path);
+    bool OpenProjectFile(const std::string& path);   // false: not opened (the error was shown)
     bool SaveProject();
     bool SaveProjectAs();
     bool SaveTo(const std::string& path);
@@ -123,8 +135,13 @@ private:
     void DeleteSelection();
     void AddMarker();
     void AddTitle(const std::string& styleKey, double at);
+    void ApplyEffect(const std::string& presetKey);         // a bin preset on the selected main-track clip
     void AddOverlay(const std::string& path, double at);     // a file over the picture, on V2
     void ChooseOverlay(double at);                           // ... from a file dialog
+    void AddSound(const std::string& path, double at, bool voiceOver);   // a file's sound on A2
+    void ChooseSound(double at, bool voiceOver);             // ... from a file dialog
+    // The export's audio clips for the document's sound lane, the draft's too
+    void PutSounds(const Document& document, VideoFX::VideoFXExportSettings& settings) const;
     void RequestBeats();               // detect the first song's beats on the worker, once per song
     void ShowTimelineMenu(const std::string& trackId, double seconds, const std::string& clipId, int x, int y);
     void ShowBinMenu(size_t index, int x, int y);
@@ -142,6 +159,8 @@ private:
     Document document_;
     History history_;
     Preview preview_;
+    ProxyMaker proxies_;               // the bin's videos as small stand-ins, made on the graphics hardware
+    int proxiesMade_ = 0;              // since the queue last ran dry: for one message, not one per clip
     bool dark_ = true;
     const Palette* palette_ = &Tokens::Dark;
 
@@ -159,6 +178,8 @@ private:
     std::shared_ptr<Label> binEmpty_, titlesNote_, effectsNote_;
     std::vector<std::shared_ptr<Button>> titleButtons_;
     std::vector<std::shared_ptr<Label>> titleHints_;
+    std::vector<std::shared_ptr<Button>> effectButtons_;
+    std::vector<std::shared_ptr<Label>> effectHeadings_;
     std::vector<size_t> binRows_;      // album row -> media index
     std::vector<size_t> musicRows_;
     Viewer viewer_;

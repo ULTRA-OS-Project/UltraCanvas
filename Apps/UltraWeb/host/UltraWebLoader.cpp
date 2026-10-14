@@ -47,8 +47,7 @@ bool IsHttp(const std::string& address) {
 
 std::string NotAnApp(const std::string& contentType) {
     if (Lower(contentType).find("text/html") != std::string::npos)
-        return "This is an HTML page. UltraWeb runs WebAssembly apps for now; "
-               "HTML pages come with the reader (Phase 2 of the UltraWeb plan).";
+        return "This is an HTML page, not a WebAssembly app.";
     return "This is not a WebAssembly app" + (contentType.empty() ? std::string(".") : " (Content-Type: " + contentType + ").");
 }
 

@@ -1,0 +1,7 @@
+.g { display: grid; grid-template-columns: [full-start] 100px repeat(2, minmax(0, 1fr)) fit-content(40%) [full-end];
+     grid-template-rows: auto 1fr; grid-template-areas: "a a b" ". c c"; gap: 8px 4%; grid-auto-flow: column dense;
+     place-items: safe center; place-content: space-between start; justify-items: stretch }
+.g > * { grid-column: 1 / -1; grid-row: span 2 / 4; grid-area: a; justify-self: end; align-self: baseline }
+.f { display: inline-flex; flex-flow: column-reverse wrap-reverse; flex: 1 0 25%; order: -1;
+     justify-content: space-evenly; align-items: flex-end; align-content: stretch; row-gap: 1em; column-gap: normal }
+.h { grid-template: auto 1fr / repeat(auto-fit, minmax(10em, 1fr)); grid: none; flex: none; flex-basis: content }

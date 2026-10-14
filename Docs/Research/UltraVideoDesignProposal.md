@@ -238,7 +238,7 @@ match. `VideoFXWaveform` was written that way on purpose.
 | **T1 titles** | Free lane of spans with a text or logo | `segment.overlays`, timed in segment seconds | A span is cut at every segment boundary it crosses into one overlay per segment, with the same text and anchor and the fades only on the outer ends. The user sees one span; the engine gets several overlays. Invisible, and lossless on the way back because the app's document keeps the span. |
 | **V2 overlay video** | Free lane of video (or picture) clips | `VideoFXOverlayKind::Video` / `Image` on `segment.overlays`, timed in segment seconds, `videoStart` for the file's second (§8.3, done in 0.10.0) | Cut at every segment boundary like a title span, each piece's `videoStart` advanced by where the piece begins; the app's document keeps the span (`OverlaySpan`: file, start, length, `sourceIn`, fades, look). |
 | **A1 music** | One bar: song or playlist, fades, crossfades, ducking | `settings.music` | Direct. Volume, fades, ducking preset and the playlist are the bar's inspector. |
-| **A2… free audio** | Free lane of audio clips | Not rendered yet | In the model; hidden in the app until §8.4. |
+| **A2 voice & sound** | Free lane of audio clips: voice-overs and sound effects | `settings.audioClips` (§8.4, done in VideoFX 0.13.0) | Direct, one clip per span: the app's document keeps the span (`SoundSpan`: file, start, length, `sourceIn`, volume, fades, `ducksMusic`), the engine gets `at`, `start`, `end`, volume, fades and ducking (built in app 0.3.0). |
 | **Markers, beats, work area** | On the ruler | Beats from `VideoFX_DetectBeats`; markers and the range are the app's | The work area becomes the export's trim: the app exports only the segments inside it, trimming the first and last. |
 
 Speed changes the clip's timeline duration (source range ÷ speed), and the
@@ -410,7 +410,9 @@ the name, a duration badge for video and audio, a *photo* badge for images.
 *Music* lists songs with their length and detected tempo. *Titles* lists
 title styles (opening title, lower third, logo). *Effects* lists effect
 presets ("Warm film" = temperature, saturation and a vignette) and the
-transition types by family. Everything in the bin is a drag source: media
+transition types by family (presets **built** in app 0.4.0: nine colour
+looks and four blur and detail presets, a click on the selected clip;
+transitions stay on the cut). Everything in the bin is a drag source: media
 to the main or overlay track, songs to the music lane, titles to the title
 lane, transitions to a cut, effects to a clip. Double-click opens the
 file in the viewer. A probe runs on import on a worker thread and the
@@ -901,7 +903,7 @@ and sound types for *Open with*. All of it is in place (§14).
 | 2 | `VideoFX_RenderFrame` (8.2, **done** in 0.9.0), the draft preset (8.5), export range (8.6) | VideoFX 0.9.0 |
 | 3 | `Apps/UltraVideo` 0.1.0: window, media bin, viewer with scrubbing, inspector (clip, audio, project), timeline wired through the mapping, undo, `.ultravideo`, export dialog (**built**, §14) | First app release |
 | 4 | Title lane and music lane (**built**, §14: spans, fades, song boundaries, beats) in the element; markers, work area, snapping, ripple built in phase 1; the story wizard (**built**); the overlay-video lane (**built**, on VideoFX 0.10.0) | App 0.2.0 |
-| 5 | Picture-in-picture (8.3) and free audio tracks (8.4) in the engine; the overlay and free audio lanes switched on | VideoFX 0.10, app 0.3 |
+| 5 | Picture-in-picture (8.3, **done** in VideoFX 0.10.0) and free audio tracks (8.4, **done** in VideoFX 0.13.0) in the engine; the overlay lane (**built**, app 0.2.0) and the voice-and-sound lane (**built**, app 0.3.0) switched on | VideoFX 0.13, app 0.3 |
 | 6 | Keyframes in the engine and keyframe markers on clips; proxy media; hardware encoder choice | Later |
 
 ---

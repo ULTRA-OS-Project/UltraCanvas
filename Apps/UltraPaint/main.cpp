@@ -3,8 +3,13 @@
 // selections, brushes and shapes on the framework's raster-editing layer
 // (UCRasterDocument / UltraCanvasPaintSurface), adjustments and filters
 // through PixelFX (libvips).
+// One UltraPaint per user: a second start hands its images to the running
+// copy, which opens each in a window of its own (UltraCanvasSingleInstance.h);
+// --help and --version print and quit without asking it.
+// Version: 1.2.0 - one UltraPaint per user: a second start's images open in
+//                  the running copy, a start without images brings it forward
 // Version: 1.1.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -17,6 +22,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
 #include "UltraPaintWindow.h"
@@ -97,6 +103,15 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Only a start that opens a window claims the one copy per user; the
+    // print-and-quit options above never get here. The paths go over as
+    // absolute ones: the running copy was started in another folder. Declared
+    // before the application, so it outlives app.Run().
+    UltraCanvasSingleInstance instance("org.ultraos.ultrapaint", "UltraPaint");
+    const UltraCanvasSingleInstance::Start start =
+        instance.Claim(UltraCanvasSingleInstance::MakeOpenRequest(pathsToOpen));
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy opened them
+
     UltraCanvasApplication app;
     g_app = &app;
 
@@ -116,6 +131,8 @@ int main(int argc, char* argv[]) {
         }
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraPaint.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraPaint");
 #ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
         RegisterModelFormatsPlugin();
 #endif
@@ -124,6 +141,20 @@ int main(int argc, char* argv[]) {
         // alive itself (File > New Window, and "Open new window" on a dropped
         // image add to that list), and the application exits with the last of
         // them.
+        // Listening starts before the command line's files are opened: a
+        // file that cannot be read shows a native error dialog that holds the
+        // start-up, and a start made meanwhile is still answered.
+        //
+        // A later start's images open here as that start would have opened
+        // them: each in a new window (OpenWindow gives every path one), never
+        // in place of an image open now, so nothing unsaved is touched. The
+        // first of them comes to the front.
+        instance.ListenOpen([](const std::vector<std::string>& paths) {
+            const std::shared_ptr<UltraPaintWindow> opened = UltraPaintWindow::OpenWindow(paths);
+            if (opened) opened->BringForward();
+            else UltraCanvasSingleInstance::BringToFront();
+        });
+
         if (!UltraPaintWindow::OpenWindow(pathsToOpen)) {
             HandleFatalError("Failed to create main window");
             return EXIT_FAILURE;
@@ -131,6 +162,7 @@ int main(int argc, char* argv[]) {
 
         debugOutput << "=== UltraPaint Ready ===" << std::endl;
         app.Run();
+        instance.Close();   // no request reaches a window once they start to go
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Unhandled exception: ") + e.what());
         return EXIT_FAILURE;

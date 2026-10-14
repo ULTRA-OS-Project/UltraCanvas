@@ -1,7 +1,11 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
+// Version: 2.4.0 - HasOpenFile: whether a file is open in one of this window's
+//                  tabs, so a file handed over by a second start is not
+//                  opened twice across windows
+// Version: 2.3.0 - DialogFileFilters: the Word Processing filter is FileLoader's text document types
 // Version: 2.2.0
-// Last Modified: 2026-08-28
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -94,7 +98,10 @@ namespace UltraCanvas {
         int autosaveIntervalSeconds = 60;  // Autosave every 60 seconds
         std::string autosaveDirectory = "";  // Empty = use system temp directory
 
-        // File filters for Open/Save dialogs
+        // File filters for Open/Save dialogs. The "Word Processing" entry is
+        // a place: a dialog shows FileLoader's text document types there -
+        // what LoadTextDocument reads when opening, ODT and DOCX
+        // (SaveTextDocument) when saving.
         std::vector<FileFilter> fileFilters = {
                 FileFilter("All Files", "*"),
                 FileFilter("Text Files", {"txt", "log", "md", "ini", "cfg"}),
@@ -391,6 +398,8 @@ namespace UltraCanvas {
         UltraCanvasRichTextEdit* RichSearchTarget(bool caseSensitive, bool wholeWord);
         void UpdateRichMatchCount(UltraCanvasRichTextEdit* rich, const std::string& text);
         int FindDocumentIndexById(int documentId) const;
+        // The tab showing `filePath` (compared normalized), or -1.
+        int FindDocumentIndexByPath(const std::string& filePath) const;
         void SetDocumentModified(int index, bool modified);
         // Record the current content as the clean baseline (call after load/save).
         void CaptureSavedContentBaseline(DocumentTab* doc);
@@ -425,6 +434,10 @@ namespace UltraCanvas {
                                        const std::string& content, const std::string& encoding,
                                        const std::string& language);
         void OfferRecoveryForBackup(const std::string& backupPath);
+
+        // config.fileFilters, its "Word Processing" place filled with
+        // FileLoader's text document types for an Open or a Save dialog
+        std::vector<FileFilter> DialogFileFilters(bool forSave) const;
 
         // ===== MENU HANDLERS =====
         void OnFileNew();
@@ -850,6 +863,11 @@ namespace UltraCanvas {
 
         /// Get number of open documents
         int GetDocumentCount() const { return static_cast<int>(documents.size()); }
+
+        /// Whether `filePath` is open in one of this window's tabs - compared
+        /// the way OpenFile compares it before it switches to that tab instead
+        /// of opening a second one.
+        bool HasOpenFile(const std::string& filePath) const;
     };
 
 // ===== FACTORY FUNCTIONS =====

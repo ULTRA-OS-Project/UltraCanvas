@@ -26,6 +26,8 @@ add_executable(UltraNetMonitor
     ui/UltraNetMonitorPaths.cpp
     ui/UltraNetMonitorWindow.cpp
 )
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraNetMonitor)
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols
 # when the core is linked statically, as the other applications do.

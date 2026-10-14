@@ -184,9 +184,9 @@ jobs:
       # platforms, MSYS2 included, and so actions/cache can name it directly.
       # CCACHE_MAXSIZE is deliberately small: GitHub allows 10 GB of cache per
       # REPOSITORY and evicts least-recently-used, and this matrix saves six
-      # caches per run, so a default 5 GB per leg would evict the other legs'
-      # entries (and llms-txt's, and ui-reuse's) on every push. 500 MB x 6 legs
-      # leaves the budget with room.
+      # caches per run on main, so a default 5 GB per leg would evict the
+      # other legs' entries (and llms-txt's, and ui-reuse's) on every push.
+      # 500 MB x 6 legs leaves the budget with room.
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
       # Compare the compiler by content rather than mtime: the runner image
@@ -757,13 +757,25 @@ jobs:
 
       # ===== Configure & Build =====
 
-      # Restore the previous run's compiled objects. `key` is unique per run, so
-      # every run saves a fresh cache at the end; `restore-keys` is the prefix,
-      # so a run that finds no exact match falls back to the most recent cache
-      # for the same leg and starts from those objects rather than from nothing.
-      # Keyed per os AND build_type because the compile lines differ.
+      # Restore the previous run's compiled objects. `key` is unique per run
+      # and never matches; `restore-keys` is the prefix, so every run falls
+      # back to the most recent cache for the same leg and starts from those
+      # objects rather than from nothing. Keyed per os AND build_type because
+      # the compile lines differ.
+      #
+      # Only a run on main saves a cache (the step after the build). A pull
+      # request's cache is visible to that pull request alone, yet it counted
+      # against the repository's 10 GB like any other, and with six legs
+      # saving on every run of every branch the least-recently-used eviction
+      # regularly took main's caches with it. The leg that paid was the
+      # macOS Intel one: its runner compiles five to ten times slower than
+      # the others, so a cold start there was a 65-82 minute build step
+      # against 13 with the cache (2026-10-13), and the whole matrix waited
+      # on it. A pull request now restores main's cache on every push and
+      # saves none.
       - name: Restore ccache
-        uses: actions/cache@v5
+        id: ccache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-${{ matrix.os }}-${{ matrix.build_type }}-${{ github.run_id }}
@@ -800,10 +812,12 @@ jobs:
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
+            -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
@@ -828,6 +842,7 @@ jobs:
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
@@ -1061,6 +1076,16 @@ jobs:
         if: always()
         run: ccache -s
 
+      # The objects of this run, for the next one - from main only, whether
+      # or not the build succeeded (a half-built tree is still a head start).
+      # See "Restore ccache" for why a pull request saves none.
+      - name: Save ccache (main)
+        if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
       # UltraCanvasStart's engine tests, then the app's headless --check on
       # this leg's platform: it detects the runner, finds its package manager
       # and checks the toolchain and core libraries, which the leg has by
@@ -1077,17 +1102,23 @@ jobs:
       - name: UltraCanvasStart engine tests and --check smoke run
         run: |
           set -eu
+          # The engine tests compile the skeleton against the SDK installed
+          # above when ULTRACANVAS_SDK_PREFIX names it (test_project.cpp,
+          # BuildProject): the same guard a developer gets locally from
+          # ctest with the variable set, through the code the Build step
+          # runs. The prefix goes into CMakePresets.json as text, so on
+          # Windows it is the D:/... form (cygpath -m), see below.
+          sdk="$PWD/$SDK_NAME"
+          if command -v cygpath > /dev/null 2>&1; then sdk=$(cygpath -m "$sdk"); fi
+          export ULTRACANVAS_SDK_PREFIX="$sdk"
           (cd build && ctest --output-on-failure --no-tests=error -R "^UltraCanvasStartEngine$")
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version
           "$exe" --check
           "$exe" --plan --for ${{ runner.os == 'Linux' && 'windows' || 'linux' }} > /dev/null
-          # The prefix goes into the skeleton's CMakePresets.json as text, so
-          # on Windows it has to be the D:/... form cmake reads, not the
-          # /d/... form of the MSYS2 shell (which converts arguments, not files).
-          sdk="$PWD/$SDK_NAME"
-          if command -v cygpath > /dev/null 2>&1; then sdk=$(cygpath -m "$sdk"); fi
+          # The same skeleton once more with the programmer's own two commands
+          # (the test above runs the engine's argv for them).
           "$exe" --create scaffold-smoke --name "Smoke App" --sdk "$sdk"
           test -f scaffold-smoke/main.cpp
           (cd scaffold-smoke && cmake --preset default && cmake --build --preset default --parallel 2)
@@ -1196,6 +1227,19 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest)$"
+
+      # The Win32 backend of the desktop shell module (UltraDesktop's window
+      # list, monitor, screen edges, hot keys, screenshot and Start menu)
+      # against the runner's desktop: the test opens a window of its own,
+      # finds it in the list with its Thai title, reserves a screen edge for
+      # it and checks the work area makes room, minimizes and closes it, and
+      # lists a Start menu it builds under a temp APPDATA and ProgramData.
+      # ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS builds it without the Linux-only
+      # BUILD_TESTS; Linux runs it in the full pass.
+      - name: Run DesktopShellTest (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^DesktopShellTest$"
 
       # EmailCleaner's and UltraMail's engine suites on Windows. Both were
       # built here (see the note above "Run UltraNet tests") but only Linux
@@ -1408,6 +1452,21 @@ jobs:
             echo "| application executables, $(echo "$apps" | wc -l | tr -d ' ') in total | $(mb "$total") |"
             printf '%s' "$rows"
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # How big each file-format plug-in is (Vector, CDR + libcdr, XAR, EPS,
+      # Models, OCR, Vectorizer + its Rust library). They are static, so each
+      # application that registers one carries a copy; the table is what a
+      # decision to make them shared libraries rests on. OCR and the
+      # Vectorizer build only where Tesseract and Rust are installed, which
+      # is here. Measurement only: it never fails the job.
+      - name: Format plug-in sizes
+        continue-on-error: true
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python || true)
+          [ -n "$py" ] || { echo "no Python: plug-in sizes skipped"; exit 0; }
+          "$py" scripts/report_plugin_sizes.py build \
+            --title "Format plug-in sizes (${{ runner.os }} ${{ matrix.arch_label }})" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # Release builds only, so a pull request never decodes the signing
       # certificate onto a runner it does not need it on.

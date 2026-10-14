@@ -1,3 +1,11 @@
+#### 2026-10-12 *0.2.2*
+- **One UltraSocial at a time.** Starting UltraSocial while it is already running brings
+  the open window forward (restored if minimised; an open dialog comes forward
+  with it) instead of opening a second copy. Two starts at the same moment
+  cannot both stay, and a copy that does not answer is reported with
+  *"UltraSocial is already running"*. Command-line modes are unaffected.
+  Framework: `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
 #### 2026-10-07 *0.2.1*
 - **An attachment in a folder outside the Windows code page is found.** The
   composer checked each attachment's size with its `std::string` path handed

@@ -80,6 +80,7 @@ from an external "Show password" checkbox. See
 |---|---|---|
 | Static text - selectable and copyable with `SetSelectable`, or across many labels with one `UltraCanvasTextSelection` | `UltraCanvasLabel` | `UltraCanvasLabel.h`, `UltraCanvasTextSelection.h` |
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
+| Text that scrolls past by itself (a marquee, a news crawl, a stock ticker, an LED sign) | `UltraCanvasTickerBoard` - see *Diagrams* below | `Plugins/Diagrams/UltraCanvasTickerBoard.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
@@ -93,6 +94,7 @@ from an external "Show password" checkbox. See
 | A timecode `HH:MM:SS:FF` to enter or show: segments stepped by the arrow keys, digits filling from the right, `+`/`-` offsets, a large read-only readout for a transport bar | `UltraCanvasTimecodeField` | `UltraCanvasTimecodeField.h` |
 | A gallery or a timed slideshow | `UltraCanvasAlbum`, `UltraCanvasSlideshow` | matching `*.h` |
 | eBooks | `UltraCanvasEBookViewer` | `UltraCanvasEBookViewer.h` |
+| A web page from a URL (http(s) or a file): fetched, laid out as native elements by the HTML reader, scrolled, with links, `#fragments`, back / forward, forms the reader fills in and sends, and an error page; no JavaScript. The host gives it the network (`HTML::PageLoaderServices`). For HTML you already have in memory, build it with `HTML::ElementBuilder` | `UltraCanvasWebView` | `UltraCanvasWebView.h` (loading alone: `HTMLReader/HTMLPageLoader.h`) |
 | A LaTeX formula (equation, matrix, ...) as an element | `UltraCanvasLaTeXView` via `CreateLaTeXView()` | `Plugins/LaTeX/UltraCanvasLaTeXView.h` |
 | A LaTeX document (`article`: sections, lists, tables, figures, formulas) as a rich document | `UltraCanvasLaTeXDocumentReader` → `UCRichDocument` → `ToMarkdown()` into a `UltraCanvasTextArea` in Markdown mode; `UCWordDocumentIO::Load` and `UltraCanvasFileLoader::LoadTextDocument` dispatch to it for `.tex` | `Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h` |
 | A formula inside a line of text you lay out yourself | `UltraCanvasInlineMath` (typeset, measure, draw at a baseline); `UltraCanvasTextArea`'s Markdown mode already does this for `$...$` | `UltraCanvasInlineMath.h` |
@@ -115,6 +117,7 @@ formats, and does not re-decode on every frame the way an ad-hoc
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
 | A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page) | `UltraCanvasToolbar.h` |
+| Several tools sharing one slot of a palette or toolbar - the slot shows one, a bar of the whole group folds out while the pointer rests on it, the slot then shows the tool last picked (or always the main one) ([doc](UltraCanvasToolGroupButton.md)) | `UltraCanvasToolGroupButton` (`UltraCanvasToolbar::AddToolGroup`) | `UltraCanvasToolGroupButton.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
 | The S-curve between two groups on one bar (a taskbar's system group flowing into its running apps) — one group's colour up to the curve, the next group's after it ([doc](UltraCanvasWaveSeparator.md)) | `UltraCanvasWaveSeparator` | `UltraCanvasWaveSeparator.h` |
 
@@ -150,8 +153,10 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
 | Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
+| The icon of a file about to be saved, dragged onto a folder of the window to choose where it goes (the RISC OS save box's icon; the Save dialog has a big one left of its name and type, "Drag to Folder" under it) | `UltraCanvasFileDragIcon` (`CreateFileDragIcon`; [doc](UltraCanvasFileDialog.md#the-file-icon)) | `UltraCanvasFileDragIcon.h` |
+| One file format's save settings (JPEG quality, PNG compression, TIFF codec ...), kept for every application - and, for a picture, the size to write it at this once | `UltraCanvasFileLoader::ShowSaveSettingsDialog` ([doc](UltraCanvasFileDialog.md#save-settings)) | `UltraCanvasFileLoader.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
-| Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
+| Save a bitmap with per-format options - opened on the format's save settings (and the format the file name has), which Save stores back | `UltraCanvasImageExportDialog` ([save settings](UltraCanvasFileDialog.md#save-settings)) | `dialogs/UltraCanvasImageExportDialog.h` |
 | Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog`, `ShowMetadataDialog()` — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
 | Turn a 3D model into a bitmap, letting the user frame the view first | `UltraCanvasModelViewDialog`, `ShowModelViewDialog()` ([doc](UltraCanvasModelViewDialog.md)) | `dialogs/UltraCanvasModelViewDialog.h` |
 | A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
@@ -219,7 +224,7 @@ Each takes its data through setters and renders itself; most have a
 | Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
 | Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
 | Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
-| Two item sets crossed in an L or T, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Two to four item sets crossed in an L, T, X or Y, or a QFD House of Quality, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
 | Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
@@ -228,6 +233,7 @@ Each takes its data through setters and renders itself; most have a
 | A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
 | A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |
 | A bit-accurate map of a protocol data unit | `UltraCanvasPacketDiagram` | `Plugins/Diagrams/UltraCanvasPacketDiagram.h` |
+| A ticker board: labels, values and changes crawling across a band without end, set in a font or lit on a 5x7 LED dot grid - a stock ticker, a headline crawl, an LED sign | `UltraCanvasTickerBoard` (`CreateTickerBoard`, `MakeTickerQuote`) | `Plugins/Diagrams/UltraCanvasTickerBoard.h` |
 | A gauge, **and the framework's progress bar** | `UltraCanvasGaugeDiagramElement` — see *Pickers, dialogs and feedback* above | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 
 ### Codes and documents
@@ -243,7 +249,8 @@ The vector format plugins (`UltraCanvasCDRElement`, `UltraCanvasEPSElement`,
 `UltraCanvasXARElement`) are **not** in these tables on purpose: they are
 decoders behind `UltraCanvasVectorElement` and `UltraCanvasImageElement`, which
 are what an application reaches for. An SVG has no element of its own either:
-`UltraCanvasImageElement` shows it (through librsvg). Same for
+`UltraCanvasImageElement` shows it (through librsvg, or the Vector plugin's
+reader where libvips has no SVG loader). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
 
 ## Creating them

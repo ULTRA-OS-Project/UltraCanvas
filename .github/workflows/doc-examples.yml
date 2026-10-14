@@ -1,11 +1,13 @@
 name: Doc examples
 
-# Compiles the C++ in the docs (Docs/UltraCanvas/*.md, but the changelog)
-# against the public headers, so a doc cannot drift from the API it
-# describes: a renamed function, a changed signature or a removed field in a
-# header fails here instead of in the next reader's build.
-# scripts/check_doc_examples.py says what it checks and how a doc declares
-# what its snippets assume.
+# Compiles the C++ in the docs (Docs/UltraCanvas/*.md, but the changelog,
+# and the module docs CHECKED_MODULE_DOCS lists) against the public headers,
+# so a doc cannot drift from the API it describes: a renamed function, a
+# changed signature or a removed field in a header fails here instead of in
+# the next reader's build. A header's usage example is compiled too when it
+# is marked `// doc-check: example`.
+# scripts/check_doc_examples.py says what it checks and how a doc or a
+# header declares what its snippets assume.
 #
 # A finding fails unless it is listed in scripts/doc_examples_baseline.txt.
 # Every component doc passes and must stay that way: fix the doc, or declare
@@ -28,6 +30,7 @@ on:
     branches: [main]
     paths: &paths
       - 'Docs/UltraCanvas/*.md'
+      - 'Docs/Modules/FileLoader/*.md'   # scripts/check_doc_examples.py CHECKED_MODULE_DOCS
       - 'UltraCanvas/include/**'
       - 'UltraCanvas/Plugins/**/*.h'
       - 'UltraCanvas/third_party/**/*.h'

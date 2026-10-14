@@ -1,10 +1,18 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.8.0 - an input method's composition is laid out in the caret's line
+//                 at the caret, underlined, with the caret inside it; the view
+//                 follows that caret. Composing over a selection replaces it;
+//                 committed text, an empty composition or losing the focus
+//                 ends it. It never enters the text, callbacks or undo stack.
+// Version: 3.7.5 - scrolling down to the caret puts a whole line at the top of
+//                 the view, not the tail of one (consoles that append); a line
+//                 ending at the viewport's top edge is not drawn
 // Version: 3.7.4 - list bullets "•" "◦" "▪" are drawn as shapes; an image placeholder
 //                 says "Remote image:" / "Missing image:" instead of "🌐" / "⚠"
 // Version: 3.7.3 - style.scrollbarWidth / scrollbarCornerRadius / scrollbarThumbInset
 //                 replace the fixed 15px square scrollbar
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -1118,8 +1126,9 @@ namespace UltraCanvas {
                 if (!ll) continue;
                 int lineTop    = ll->bounds.y;
                 int lineBottom = lineTop + ll->bounds.height;
-                if (lineBottom < viewportTop)  continue;
-                if (lineTop    > viewportBottom) break;
+                // A line that ends at the viewport's top has no visible pixel.
+                if (lineBottom <= viewportTop) continue;
+                if (lineTop    >= viewportBottom) break;
 
                 RenderLineLayout(ctx, ll);
             }
@@ -1131,7 +1140,7 @@ namespace UltraCanvas {
             // Grey hint drawn over the (empty) text area, whether focused or not,
             // so an empty composer still prompts the user. Mirrors the TextInput
             // placeholder using the same render-context text API.
-            if (!placeholderText.empty() && GetText().empty()) {
+            if (!placeholderText.empty() && GetText().empty() && preeditText.empty()) {
                 ctx->PushState();
                 ctx->ClipRect(visibleTextArea);
                 ctx->SetFontStyle(style.fontStyle);
@@ -1393,6 +1402,11 @@ namespace UltraCanvas {
         // returning false leaves them to the hosting widget.
         if (displayOnly && event.IsKeyboardEvent()) return false;
 
+        // Typed (committed) text ends any composition: it is what the input
+        // method composed, and is inserted as typing.
+        if (event.type == UCEventType::KeyDown && !preeditText.empty() && !event.text.empty())
+            ClearComposition();
+
         // The host sees the key first (onBeforeKeyDown in the header).
         if (event.type == UCEventType::KeyDown && onBeforeKeyDown && onBeforeKeyDown(event))
             return true;
@@ -1425,6 +1439,7 @@ namespace UltraCanvas {
                     return true;
                 case UCEventType::FocusLost:
                     UltraCanvasCaret::GetInstance().Hide(this);
+                    ClearComposition();
                     RequestRedraw();
                     return true;
                 default:
@@ -1445,12 +1460,17 @@ namespace UltraCanvas {
                 return HandleKeyDown(event);
             case UCEventType::MouseWheel:
                 return HandleMouseWheel(event);
+            case UCEventType::TextComposition:
+                return HandleComposition(event);
             case UCEventType::FocusGained:
                 // The render pass claims the shared caret with the current rect
                 RequestRedraw();
                 return true;
             case UCEventType::FocusLost:
                 UltraCanvasCaret::GetInstance().Hide(this);
+                // A composition belongs to the focused area; leaving drops it
+                // (the input method commits or abandons it on its own side).
+                ClearComposition();
                 // Return the in-edit line to its formatted MD layout while the widget is idle
                 // (or discard the stash if the line was modified). On focus regain, the swap
                 // re-runs via ReconcileLayoutState.
@@ -1460,6 +1480,47 @@ namespace UltraCanvas {
             default:
                 return false;
         }
+    }
+
+    bool UltraCanvasTextArea::HandleComposition(const UCEvent& event) {
+        if (!DrawsTextComposition()) return false;
+
+        // The composition goes into the caret's line, so a line break (or any
+        // other control character) in it shows as a space - byte for byte, so
+        // the caret offset still fits.
+        std::string composing = utf8_make_valid(event.text);
+        for (char& c : composing) {
+            const unsigned char uc = static_cast<unsigned char>(c);
+            if (uc < 32 || uc == 127) c = ' ';
+        }
+
+        // Composing over a selection replaces it, as typing would. That is a
+        // real edit (an undo step, a change report); the composition is not.
+        const bool starting = preeditText.empty() && !composing.empty();
+        if (starting && HasSelection()) {
+            DeleteSelection();
+        }
+
+        preeditText = composing;
+        const size_t cursor = event.compositionCursor < 0
+                ? preeditText.size()
+                : std::min(static_cast<size_t>(event.compositionCursor), preeditText.size());
+        preeditCursor = static_cast<int>(utf8_align_boundary(preeditText, cursor));
+        if (preeditText.empty()) compositionColumn = -1;
+
+        UltraCanvasCaret::GetInstance().ResetBlink(this);
+        isCursorMoved = true;   // the view follows the caret inside it
+        RequestRedraw();
+        return true;
+    }
+
+    void UltraCanvasTextArea::ClearComposition() {
+        if (preeditText.empty()) return;
+        preeditText.clear();
+        preeditCursor = 0;
+        compositionColumn = -1;
+        isCursorMoved = true;
+        RequestRedraw();
     }
 
     bool UltraCanvasTextArea::HandleMouseDown(const UCEvent& event) {
@@ -2005,7 +2066,24 @@ namespace UltraCanvas {
         if (cursorContentTop < verticalScrollOffset) {
             verticalScrollOffset = cursorContentTop;
         } else if (cursorContentBottom > verticalScrollOffset + visibleTextArea.height) {
-            verticalScrollOffset = cursorContentBottom - visibleTextArea.height;
+            // Scrolling down to the caret - what every append to a console does -
+            // puts a whole line at the top of the view rather than the tail of
+            // one: the lowest line top at or past the minimal offset, as long as
+            // the caret's line still fits. The gap this leaves at the bottom is
+            // less than a line.
+            const float minimal = static_cast<float>(cursorContentBottom) - visibleTextArea.height;
+            // The caret's line itself is a candidate (its top is known); the
+            // lines above it come from the layout cache.
+            float aligned = static_cast<float>(cursorContentTop) >= minimal
+                                ? static_cast<float>(cursorContentTop) : -1.0f;
+            for (int li = cursorPosition.lineIndex - 1; li >= 0 && li < static_cast<int>(lineLayouts.size()); --li) {
+                const LineLayoutBase* layout = GetActualLineLayout(li);
+                if (!layout) break;
+                const float top = layout->bounds.y;
+                if (top < minimal) break;
+                aligned = top;
+            }
+            verticalScrollOffset = aligned >= 0.0f ? aligned : minimal;
         }
         if (verticalScrollOffset < 0) verticalScrollOffset = 0;
 
@@ -2013,15 +2091,21 @@ namespace UltraCanvas {
         if (!wordWrap) {
             int line = cursorPosition.lineIndex;
             int col  = cursorPosition.columnIndex;
-            if (col > 0 && line < static_cast<int>(lines.size())) {
+            // A composition's caret can be off column 0 while the caret is on it.
+            const bool composing = !preeditText.empty();
+            if ((col > 0 || composing) && line < static_cast<int>(lines.size())) {
                 float visibleWidth = visibleTextArea.width;
                 if (cursorX < horizontalScrollOffset) {
                     horizontalScrollOffset = cursorX;
                 } else if (cursorX > horizontalScrollOffset + visibleWidth) {
                     horizontalScrollOffset = cursorX - visibleWidth;
                 }
-                if (maxLineWidth > visibleWidth) {
-                    horizontalScrollOffset = std::min(horizontalScrollOffset, static_cast<float>(maxLineWidth) - visibleWidth);
+                // The line being composed into is wider than its text by the
+                // composition, which no other line's width accounts for.
+                float widest = static_cast<float>(maxLineWidth);
+                if (composing && currentLine) widest = std::max(widest, currentLine->bounds.width + 2.0f);
+                if (widest > visibleWidth) {
+                    horizontalScrollOffset = std::min(horizontalScrollOffset, widest - visibleWidth);
                 }
             } else {
                 horizontalScrollOffset = 0;
@@ -3188,6 +3272,7 @@ namespace UltraCanvas {
         if (editingMode == mode) return;
 
         TextAreaEditingMode oldMode = editingMode;
+        ClearComposition();   // the line it was composed into is laid out anew
 
         // Leaving hex mode: convert buffer back to text
         if (oldMode == TextAreaEditingMode::Hex && mode != TextAreaEditingMode::Hex) {
@@ -3275,6 +3360,11 @@ namespace UltraCanvas {
         // non-plain `line` would still work.
         int layoutCol = std::max(0, std::min(SourceCpToVisibleCp(line->cpMap, idx.columnIndex),
                                              layoutCpCount));
+        // While composing, the caret is in the composition.
+        if (!preeditText.empty() && line == currentLine.get() && compositionColumn >= 0
+            && idx.lineIndex == cursorPosition.lineIndex && idx.columnIndex == cursorPosition.columnIndex) {
+            layoutCol = std::min(compositionColumn + utf8_byte_to_cp(preeditText, preeditCursor), layoutCpCount);
+        }
         int byteIndex = static_cast<int>(utf8_cp_to_byte(layoutText, layoutCol));
 
         Rect2Di cursorRect = line->layout->GetCursorPos(byteIndex).strongPos;
@@ -3309,6 +3399,14 @@ namespace UltraCanvas {
 
             std::string layoutText = ll->layout->GetText();
             int layoutCp = utf8_byte_to_cp(layoutText, hit.index) + hit.trailing;
+            // A hit on a composition is a hit at the caret it sits at; the
+            // text after it is that much further along in the layout.
+            if (!preeditText.empty() && ll == currentLine.get() && compositionColumn >= 0) {
+                const int preCp = utf8_length(preeditText);
+                if (layoutCp >= compositionColumn + preCp) layoutCp -= preCp;
+                else if (layoutCp > compositionColumn) layoutCp = compositionColumn;
+                return {i, layoutCp};
+            }
             return {i, VisibleCpToSourceCp(ll->cpMap, layoutCp)};
         }
         // Past the last line — land at the end of the document.
@@ -3410,7 +3508,7 @@ namespace UltraCanvas {
 
         if (cursorPosition.lineIndex >= 0 &&
             !(isReadOnly && editingMode == TextAreaEditingMode::MarkdownHybrid)) {
-            currentLine = MakePlainLineLayout(ctx, cursorPosition.lineIndex);
+            currentLine = MakePlainLineLayout(ctx, cursorPosition.lineIndex, /*withComposition=*/true);
             currentLine->logicalLineNumber = lineLayouts[cursorPosition.lineIndex]->logicalLineNumber;
         } else {
             currentLine.reset();
@@ -3449,17 +3547,46 @@ namespace UltraCanvas {
         }
     }
 
-    std::unique_ptr<LineLayoutBase> UltraCanvasTextArea::MakePlainLineLayout(IRenderContext* ctx, int lineIndex) {
+    std::unique_ptr<LineLayoutBase> UltraCanvasTextArea::MakePlainLineLayout(IRenderContext* ctx, int lineIndex,
+                                                                            bool withComposition) {
         auto ll = std::make_unique<LineLayoutBase>();
         // Content without the trailing \n — Pango must never see the line terminator,
         // or it would generate a phantom wrapped line under the segment.
         std::string txt = GetLineContent(lineIndex);
+        int txtCp = utf8_length(txt);
+
+        // The caret's line shows an input method's composition at the caret:
+        // laid out with it spliced in, underlined. The source line itself is
+        // untouched; the cpMap skips the composition, so every source column
+        // after the caret lands past it.
+        const bool composing = withComposition && !preeditText.empty()
+                               && lineIndex == cursorPosition.lineIndex;
+        int compositionCp = 0;
+        int compositionByte = 0;
+        int compositionBytes = 0;
+        std::string layoutText = txt;
+        if (composing) {
+            compositionCp = std::clamp(cursorPosition.columnIndex, 0, txtCp);
+            compositionByte = static_cast<int>(utf8_cp_to_byte(txt, compositionCp));
+            compositionBytes = static_cast<int>(preeditText.size());
+            layoutText.insert(static_cast<size_t>(compositionByte), preeditText);
+            compositionColumn = compositionCp;
+        }
 
         ll->layoutType = LineLayoutType::PlainLine;
-        ll->layout = ctx->CreateTextLayout(txt, false);
-        // Identity cpMap: layout text is the source line verbatim, no markup stripped.
-        int txtCp = utf8_length(txt);
-        ll->cpMap = {{0, 0}, {txtCp, txtCp}};
+        ll->layout = ctx->CreateTextLayout(layoutText, false);
+        if (composing) {
+            const int preCp = utf8_length(preeditText);
+            // {0,0} .. {col,col} is the text before it, {col+pre,col} on the
+            // text after it; the composition between maps to no source column.
+            ll->cpMap = {{0, 0}};
+            if (compositionCp > 0) ll->cpMap.push_back({compositionCp, compositionCp});
+            ll->cpMap.push_back({compositionCp + preCp, compositionCp});
+            if (compositionCp < txtCp) ll->cpMap.push_back({txtCp + preCp, txtCp});
+        } else {
+            // Identity cpMap: layout text is the source line verbatim, no markup stripped.
+            ll->cpMap = {{0, 0}, {txtCp, txtCp}};
+        }
         ll->layout->SetFontStyle(style.fontStyle);
         //ll->layout->SetLineSpacing(style.lineHeight);
         if (wordWrap && visibleTextArea.width > 0) {
@@ -3474,11 +3601,8 @@ namespace UltraCanvas {
             ll->syntaxExit = state;
 
             int currentByte = 0;
-            for (const auto& token : tokens) {
-                int startByte = currentByte;
-                int endByte = currentByte + static_cast<int>(token.text.size());
-                const TokenStyle& tokenStyle = GetStyleForTokenType(token.type);
-
+            auto applyTokenStyle = [&](const TokenStyle& tokenStyle, int startByte, int endByte) {
+                if (startByte >= endByte) return;
                 auto fgAttr = TextAttributeFactory::CreateForeground(tokenStyle.color);
                 fgAttr->SetRange(startByte, endByte);
                 ll->layout->InsertAttribute(std::move(fgAttr));
@@ -3498,8 +3622,28 @@ namespace UltraCanvas {
                     uAttr->SetRange(startByte, endByte);
                     ll->layout->InsertAttribute(std::move(uAttr));
                 }
+            };
+            for (const auto& token : tokens) {
+                int startByte = currentByte;
+                int endByte = currentByte + static_cast<int>(token.text.size());
+                const TokenStyle& tokenStyle = GetStyleForTokenType(token.type);
+                if (!composing || endByte <= compositionByte) {
+                    applyTokenStyle(tokenStyle, startByte, endByte);
+                } else if (startByte >= compositionByte) {
+                    // Past the composition: its offsets move along by its length.
+                    applyTokenStyle(tokenStyle, startByte + compositionBytes, endByte + compositionBytes);
+                } else {
+                    // A token the composition splits keeps its style on both sides.
+                    applyTokenStyle(tokenStyle, startByte, compositionByte);
+                    applyTokenStyle(tokenStyle, compositionByte + compositionBytes, endByte + compositionBytes);
+                }
                 currentByte = endByte;
             }
+        }
+        if (composing) {
+            auto uAttr = TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle);
+            uAttr->SetRange(compositionByte, compositionByte + compositionBytes);
+            ll->layout->InsertAttribute(std::move(uAttr));
         }
         ApplyLineSelectionBackground(ll.get(), lineIndex);
 

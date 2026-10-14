@@ -35,6 +35,12 @@ UltraViewer photo.jpg          # show a file, browse the rest of its folder
 UltraViewer a.png b.mp4 c.pdf  # view exactly these files
 ```
 
+One UltraViewer runs per user. Starting it again while it runs hands the
+files and folders to the running viewer, which shows them by the same rule
+(in place of what it showed - a viewer holds nothing unsaved) and comes to
+the front; a start without arguments just brings it forward
+(`UltraCanvasSingleInstance`). `--help` and `--version` answer on their own.
+
 - **Browsing:** Left / Right arrows (or left / right mouse click on the
   image) move through the playlist; the folder breadcrumb at the top jumps
   anywhere in the path.

@@ -1,3 +1,35 @@
+#### 2026-10-13 *0.10.52*
+- **The data folder is `~/Library/Application Support/UltraMail` on macOS.**
+  macOS was treated like Linux, so the mailbox database, the credential vault
+  and the preferences went to `~/.local/share/UltraMail` - while UltraSocial
+  and the desktop's clipboard history already kept theirs in Application
+  Support, the place the platform means for them. The rule is now the
+  framework's one rule (`UltraCanvasDataFolder.h`, shared with UltraPassword,
+  UltraAuthenticator, UltraSocial and EmailCleaner), which
+  `engine/UltraMailPaths.h` applies: `%APPDATA%\UltraMail` on Windows,
+  Application Support on macOS, `$XDG_DATA_HOME` or `~/.local/share`
+  elsewhere, and `$XDG_DATA_HOME` wins everywhere when it is set. On the first
+  start a folder an earlier version left in `~/.local/share` on macOS is moved
+  into place whole, vault included, so the accounts, the mail and the saved
+  passwords open as before; the move is noted in the timing trace. Linux and
+  Windows installations are untouched.
+
+#### 2026-10-12 *0.10.51*
+- **One UltraMail at a time.** Starting UltraMail while it is already
+  running no longer opens a second copy - two copies on the one mailbox
+  synced the same accounts twice, wrote the database from two processes and
+  could send the outbox twice. The second start brings the running window
+  forward (restored if it was minimised; an open dialog comes forward with
+  it) and quits. A copy that is still starting is waited for for up to ten
+  seconds; one that does not answer at all is reported with *"UltraMail is
+  already running"* instead of a silent exit. Decided by the framework's new
+  single-instance helper (`UltraCanvasSingleInstance`) and its lock on
+  `instance.lock` in the data folder (framework changelog: `instance-lock`),
+  which the system releases when UltraMail ends - a crash
+  never stops the next start. The request to come forward travels over
+  UltraMessage (`org.ultraos.ultramail.show`); the timing trace says which
+  way a start went.
+
 #### 2026-10-11 *0.10.50*
 - **An attachment's menu no longer covers the chip.** At the foot of the
   window a click on an attachment chip opens its Open / Save As menu above
