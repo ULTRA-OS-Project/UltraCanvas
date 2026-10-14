@@ -3,12 +3,18 @@
 // editing layer (VectorStorage::VectorDocument, VectorEdit,
 // UltraCanvasVectorCanvas) with the Vector plugin's converters for the
 // file formats.
+// One ArtCreator per user: a second start hands its drawings to the running
+// copy, which opens each in a window of its own (UltraCanvasSingleInstance.h);
+// --help and --version print and quit without asking it.
+// Version: 1.1.0 - one ArtCreator per user: a second start's drawings open in
+//                  the running copy, a start without drawings brings it forward
 // Version: 1.0.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
 #include "ArtCreatorWindow.h"
@@ -91,6 +97,15 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Only a start that opens a window claims the one copy per user; the
+    // print-and-quit options above never get here. The paths go over as
+    // absolute ones: the running copy was started in another folder. Declared
+    // before the application, so it outlives app.Run().
+    UltraCanvasSingleInstance instance("org.ultraos.artcreator", "ArtCreator");
+    const UltraCanvasSingleInstance::Start start =
+        instance.Claim(UltraCanvasSingleInstance::MakeOpenRequest(pathsToOpen));
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy opened them
+
     UltraCanvasApplication app;
 
 #ifdef __linux__
@@ -109,12 +124,28 @@ int main(int argc, char* argv[]) {
         }
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/ArtCreator.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "ArtCreator");
 #ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
         // The file formats: SVG, XAR, EMF, WMF, DXF, DWG in; those plus PDF,
         // AI, EPS, CDR out. Without the plugin the editor still draws, but
         // Open and Save say so.
         RegisterVectorFormatsPlugin();
 #endif
+
+        // Listening starts before the command line's files are opened: a
+        // file that cannot be read shows a native error dialog that holds the
+        // start-up, and a start made meanwhile is still answered.
+        //
+        // A later start's drawings open here as that start would have opened
+        // them: each in a new window (OpenWindow gives every path one), never
+        // in place of a drawing open now, so nothing unsaved is touched. The
+        // first of them comes to the front.
+        instance.ListenOpen([](const std::vector<std::string>& paths) {
+            const std::shared_ptr<ArtCreatorWindow> opened = ArtCreatorWindow::OpenWindow(paths);
+            if (opened) opened->BringForward();
+            else UltraCanvasSingleInstance::BringToFront();
+        });
 
         if (!ArtCreatorWindow::OpenWindow(pathsToOpen)) {
             HandleFatalError("Failed to create main window");
@@ -123,6 +154,7 @@ int main(int argc, char* argv[]) {
 
         debugOutput << "=== ArtCreator Ready ===" << std::endl;
         app.Run();
+        instance.Close();   // no request reaches a window once they start to go
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Unhandled exception: ") + e.what());
         return EXIT_FAILURE;

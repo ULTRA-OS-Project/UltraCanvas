@@ -23,8 +23,10 @@
 // detail pane, and the caller picks the size. RenderVectorPreviewPixmap()
 // below is the drawing half, shared by every caller that wants an image.
 //
+// Version: 1.2.0 - LoadFromMemory: a drawing from bytes, for an SVG that arrived
+//                 without a file (UCImage::LoadFromMemory)
 // Version: 1.1.0
-// Last Modified: 2026-09-26
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -34,6 +36,8 @@
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasImage.h"   // UCPixmap
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -60,6 +64,13 @@ struct VectorPreviewProvider {
     // alone. Asked only after Extensions() has said no, and expected to cost
     // a name comparison or a header read, never a full parse.
     std::function<bool(const std::string& path)> ClaimsFile;
+
+    // Optional: reads a drawing from bytes already in memory - a picture in
+    // a mail, a clipboard paste - in the format `extension` names (lowercase
+    // or not, with or without a dot). Null when the format has no reader
+    // from memory or the bytes are not that format. Never throws.
+    std::function<std::shared_ptr<VectorStorage::VectorDocument>(
+            const std::string& extension, const uint8_t* data, size_t size)> LoadFromMemory;
 
     // ----- Optional: the editing half, reached through UltraCanvasFileLoader -----
     // A reader's or writer's notes ("CSS stylesheets are not supported", "a
@@ -101,6 +112,11 @@ std::vector<std::string> PreviewableVectorExtensions();
 // Reads a drawing, or returns null when nothing in this build reads it.
 std::shared_ptr<VectorStorage::VectorDocument> LoadVectorPreviewDocument(
         const std::string& path);
+
+// Reads a drawing from bytes in the format `extension` names ("svg"), or
+// returns null when nothing in this build reads that format from memory.
+std::shared_ptr<VectorStorage::VectorDocument> LoadVectorPreviewDocumentFromMemory(
+        const std::string& extension, const uint8_t* data, size_t size);
 
 // ===== WHAT AN EDITOR ASKS =====
 // The same provider's full read and its write, for UltraCanvasFileLoader's

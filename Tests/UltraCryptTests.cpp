@@ -8,6 +8,8 @@
 //    bit, flipped AAD bit, wrong nonce, truncated tag), each asserting
 //    AuthenticationFailed AND an empty output
 //  - KDF determinism, salt sensitivity and stored-parameter honesty
+//  - Ed25519 against the RFC 8032 §7.1 vectors, plus a flipped message bit, a
+//    flipped signature bit and a wrong key, each reported as SignatureInvalid
 //  - secure-buffer semantics (move-only, wipe on destroy)
 //
 // Author: UltraCanvas Framework / ULTRA OS
@@ -320,6 +322,174 @@ static void TestKdf() {
           "zero iterations is refused");
 }
 
+// ===== Ed25519 — RFC 8032 §7.1 vectors =====
+static void TestSignatures() {
+    std::printf("Ed25519 (RFC 8032 vectors)\n");
+    const auto alg = UltraCryptSignatureAlgorithm::Ed25519;
+    Check(UltraCrypt_IsSignatureAvailable(alg), "Ed25519 is available");
+    Check(UltraCrypt_GetSignaturePublicKeySize(alg) == 32 &&
+              UltraCrypt_GetSignatureSecretKeySize(alg) == 64 &&
+              UltraCrypt_GetSignatureSeedSize(alg) == 32 &&
+              UltraCrypt_GetSignatureSize(alg) == 64,
+          "Ed25519 sizes are 32 / 64 / 32 / 64");
+
+    struct Vector {
+        const char* seed;
+        const char* publicKey;
+        const char* message;
+        const char* signature;
+    };
+    // RFC 8032 §7.1: TEST 1 (empty message), TEST 2 (one byte), TEST 3 (two
+    // bytes), TEST SHA(abc) (the 64-byte SHA-512 of "abc" as the message).
+    static const Vector kVectors[] = {
+        {"9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+         "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+         "",
+         "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"},
+        {"4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+         "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+         "72",
+         "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00"},
+        {"c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
+         "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",
+         "af82",
+         "6291d657deec24024827e69c3abe01a30ce548a284743a445e3680d7db5ac3ac18ff9b538d16f290ae67f760984dc6594a7c15e9716ed28dc027beceea1ec40a"},
+        {"833fe62409237b9d62ec77587520911e9a759cec1d19755b7da901b96dca3d42",
+         "ec172b93ad5e563bf4932c70e1245034c35467ef2efd4d64ebf819683467e2bf",
+         "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a"
+         "2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
+         "dc2a4459e7369633a52b1bf277839a00201009a3efbf3ecb69bea2186c26b58909351fc9ac90b3ecfdfbc7c66431e0303dca179c138ac17ad9bef1177331a704"},
+    };
+
+    int index = 0;
+    for (const Vector& v : kVectors) {
+        const std::string what = "RFC 8032 vector " + std::to_string(++index);
+        UltraCryptSecureBuffer seed = BufferFromHex(v.seed);
+        std::vector<uint8_t> message, expectedSig;
+        UltraCrypt_FromHex(v.message, message);
+        UltraCrypt_FromHex(v.signature, expectedSig);
+
+        std::vector<uint8_t> pk;
+        UltraCryptSecureBuffer sk;
+        Check(static_cast<bool>(UltraCrypt_SignatureKeyPairFromSeed(alg, seed, pk, sk)),
+              what + ": key pair from seed");
+        CheckHex(pk, v.publicKey, what + ": public key");
+        Check(sk.GetSize() == 64, what + ": secret key is 64 bytes");
+
+        std::vector<uint8_t> fromSecret;
+        Check(static_cast<bool>(UltraCrypt_GetSignaturePublicKey(alg, sk, fromSecret)) &&
+                  fromSecret == pk,
+              what + ": the secret key yields the same public key");
+
+        std::vector<uint8_t> sig;
+        Check(static_cast<bool>(UltraCrypt_Sign(alg, sk, message.data(),
+                                                message.size(), sig)),
+              what + ": sign");
+        CheckHex(sig, v.signature, what + ": signature");
+
+        Check(static_cast<bool>(UltraCrypt_Verify(alg, pk, message.data(),
+                                                  message.size(), expectedSig)),
+              what + ": verify");
+    }
+
+    // Negative cases, all on vector 3 (a two-byte message).
+    UltraCryptSecureBuffer seed = BufferFromHex(kVectors[2].seed);
+    std::vector<uint8_t> pk, message, sig;
+    UltraCryptSecureBuffer sk;
+    UltraCrypt_SignatureKeyPairFromSeed(alg, seed, pk, sk);
+    UltraCrypt_FromHex(kVectors[2].message, message);
+    UltraCrypt_FromHex(kVectors[2].signature, sig);
+
+    auto expectInvalid = [&](const std::vector<uint8_t>& key,
+                             const std::vector<uint8_t>& msg,
+                             const std::vector<uint8_t>& s,
+                             const std::string& what) {
+        auto r = UltraCrypt_Verify(alg, key, msg.data(), msg.size(), s);
+        Check(!r, what + " is rejected");
+        Check(r.code == UltraCryptResultCode::SignatureInvalid,
+              what + " reports SignatureInvalid");
+    };
+
+    std::vector<uint8_t> flippedMsg = message;
+    flippedMsg[0] ^= 0x01;
+    expectInvalid(pk, flippedMsg, sig, "a flipped message bit");
+
+    std::vector<uint8_t> flippedSig = sig;
+    flippedSig[10] ^= 0x01;
+    expectInvalid(pk, message, flippedSig, "a flipped signature bit");
+
+    std::vector<uint8_t> otherPk;
+    UltraCryptSecureBuffer otherSk;
+    Check(static_cast<bool>(UltraCrypt_GenerateSignatureKeyPair(alg, otherPk, otherSk)),
+          "a fresh key pair is generated");
+    Check(otherPk != pk, "a fresh key pair differs from the vector's");
+    expectInvalid(otherPk, message, sig, "a wrong public key");
+
+    std::vector<uint8_t> empty;
+    expectInvalid(pk, empty, sig, "a signature over a different message");
+
+    // Wrong lengths are refused before anything is checked.
+    std::vector<uint8_t> shortKey(pk.begin(), pk.end() - 1);
+    auto ks = UltraCrypt_Verify(alg, shortKey, message.data(), message.size(), sig);
+    Check(!ks && ks.code == UltraCryptResultCode::InvalidKeySize,
+          "a 31-byte public key is refused with InvalidKeySize");
+    std::vector<uint8_t> shortSig(sig.begin(), sig.end() - 1);
+    auto ss = UltraCrypt_Verify(alg, pk, message.data(), message.size(), shortSig);
+    Check(!ss && ss.code == UltraCryptResultCode::InvalidArgument,
+          "a 63-byte signature is refused with InvalidArgument");
+    UltraCryptSecureBuffer shortSecret(32);
+    std::vector<uint8_t> unused;
+    auto sk32 = UltraCrypt_Sign(alg, shortSecret, message.data(), message.size(), unused);
+    Check(!sk32 && sk32.code == UltraCryptResultCode::InvalidKeySize,
+          "a 32-byte secret key is refused with InvalidKeySize");
+    UltraCryptSecureBuffer shortSeed(16);
+    auto sd = UltraCrypt_SignatureKeyPairFromSeed(alg, shortSeed, pk, sk);
+    Check(!sd && sd.code == UltraCryptResultCode::InvalidKeySize,
+          "a 16-byte seed is refused with InvalidKeySize");
+
+    // Signing is deterministic: the same key and message give the same bytes.
+    std::vector<uint8_t> again;
+    UltraCrypt_Sign(alg, sk, message.data(), message.size(), again);
+    Check(again == sig, "signing is deterministic");
+
+    // A fresh pair round-trips a longer message and the empty message.
+    const std::string text(100000, 'x');
+    std::vector<uint8_t> longSig;
+    Check(static_cast<bool>(UltraCrypt_Sign(alg, otherSk, text.data(), text.size(), longSig)) &&
+              static_cast<bool>(UltraCrypt_Verify(alg, otherPk, text.data(), text.size(), longSig)),
+          "a fresh pair signs and verifies a 100 kB message");
+    std::vector<uint8_t> emptySig;
+    Check(static_cast<bool>(UltraCrypt_Sign(alg, otherSk, nullptr, 0, emptySig)) &&
+              static_cast<bool>(UltraCrypt_Verify(alg, otherPk, nullptr, 0, emptySig)),
+          "a fresh pair signs and verifies the empty message");
+
+    // File variants: the signature over a file equals the one over its bytes.
+    const std::string path = "ultracrypt-sign-test.bin";
+    if (std::FILE* f = std::fopen(path.c_str(), "wb")) {
+        std::fwrite(text.data(), 1, text.size(), f);
+        std::fclose(f);
+        std::vector<uint8_t> fileSig;
+        Check(static_cast<bool>(UltraCrypt_SignFile(alg, otherSk, path, fileSig)) &&
+                  fileSig == longSig,
+              "SignFile signs the file's bytes");
+        Check(static_cast<bool>(UltraCrypt_VerifyFile(alg, otherPk, path, longSig)),
+              "VerifyFile accepts the file's signature");
+        if (std::FILE* g = std::fopen(path.c_str(), "ab")) {
+            std::fputc('!', g);
+            std::fclose(g);
+        }
+        auto vf = UltraCrypt_VerifyFile(alg, otherPk, path, longSig);
+        Check(!vf && vf.code == UltraCryptResultCode::SignatureInvalid,
+              "VerifyFile rejects a file with a byte appended");
+        std::remove(path.c_str());
+    } else {
+        Check(false, "could not create the signature test file");
+    }
+    auto missing = UltraCrypt_VerifyFile(alg, otherPk, "no-such-file.bin", longSig);
+    Check(!missing && missing.code == UltraCryptResultCode::InvalidArgument,
+          "VerifyFile reports a missing file as InvalidArgument");
+}
+
 // ===== Secure buffer and helpers =====
 static void TestSecureBuffer() {
     std::printf("Secure buffer, random and helpers\n");
@@ -572,6 +742,7 @@ int main() {
     TestEncodings();
     TestAead();
     TestKdf();
+    TestSignatures();
     TestSecureBuffer();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);

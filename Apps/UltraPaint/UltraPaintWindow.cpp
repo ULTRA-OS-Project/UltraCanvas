@@ -3,6 +3,9 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.5.0 - BringForward: restores and raises the window
+// Version: 1.4.0 - Open / Import / Save As / Export offer FileLoader's format lists (every
+//                  bitmap type this build reads / writes), not the editor's own
 // Version: 1.3.1 - Shift+X picks the Eraser: a tool key can need Shift (it never matched with it)
 // Version: 1.3.0 - the tool palette groups its tools: tools of a kind share one slot
 //                  (UltraCanvasToolGroupButton) that shows the last one picked (adaptive)
@@ -22,7 +25,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -85,10 +88,13 @@ namespace {
     constexpr int   kStatusHeight  = 24;
     constexpr float kRowH          = 24.0f;
 
-    const std::vector<std::string> kImageExtensions = {
-        "png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif", "avif", "jxl",
-        "tga", "ppm", "pgm", "pbm", "pnm", "psd", "qoi", "ico", "svg", "exr", "hdr", "dng", "cr2", "nef", "arw"
-    };
+    // The bitmap formats this build reads, as FileLoader's format inventory
+    // says (UltraCanvasFileLoader::GetSupportedLoadExtensions) - not a list
+    // of the editor's own, so a format a plugin or a libvips build adds is
+    // opened too.
+    std::vector<std::string> ReadableImageExtensions() {
+        return UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+    }
 
     std::string FileNameOf(const std::string& path) {
         if (path.empty()) return "Untitled";
@@ -109,7 +115,8 @@ namespace {
     bool IsOpenablePath(const std::string& path) {
         if (UCRasterDocument::IsProjectFile(path)) return true;
         const std::string ext = LowerExtOf(path);
-        if (std::find(kImageExtensions.begin(), kImageExtensions.end(), ext) != kImageExtensions.end()) return true;
+        const std::vector<std::string> images = ReadableImageExtensions();
+        if (std::find(images.begin(), images.end(), ext) != images.end()) return true;
         return IsVectorGraphicsPath(path) || IsModelGraphicsPath(path);
     }
 
@@ -365,6 +372,12 @@ std::vector<std::shared_ptr<UltraPaintWindow>>& UltraPaintWindow::OpenWindows() 
 
 int UltraPaintWindow::WindowCount() {
     return static_cast<int>(OpenWindows().size());
+}
+
+void UltraPaintWindow::BringForward() {
+    if (!window) return;
+    if (window->IsMinimized()) window->Restore();
+    window->RaiseAndFocus();
 }
 
 std::shared_ptr<UltraPaintWindow> UltraPaintWindow::OpenWindow(const std::vector<std::string>& paths) {
@@ -1586,7 +1599,7 @@ void UltraPaintWindow::CmdNewWindow() {
 // formats, the editor's own projects, and whatever vector artwork it can
 // rasterize (which depends on libvips and on the registered plugins).
 std::vector<std::string> UltraPaintWindow::OpenableExtensions() {
-    std::vector<std::string> exts = kImageExtensions;
+    std::vector<std::string> exts = ReadableImageExtensions();
     exts.push_back("ucraster");
     for (const auto& v : GetVectorRasterExtensions()) {
         if (std::find(exts.begin(), exts.end(), v) == exts.end()) exts.push_back(v);
@@ -1642,14 +1655,11 @@ void UltraPaintWindow::CmdSaveAs() {
     if (!document) return;
     FileDialogOptions opts;
     std::string def = document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath());
-    opts.SetTitle("Save image as")
-        .AddFilter("PNG", std::vector<std::string>{ "png" })
-        .AddFilter("JPEG", std::vector<std::string>{ "jpg", "jpeg" })
-        .AddFilter("WebP", std::vector<std::string>{ "webp" })
-        .AddFilter("TIFF", std::vector<std::string>{ "tif", "tiff" })
-        .AddFilter("AVIF", std::vector<std::string>{ "avif" })
-        .AddFilter("BMP", std::vector<std::string>{ "bmp" })
-        .AddFilter("UltraPaint project (layers kept)", std::vector<std::string>{ "ucraster" })
+    opts.SetTitle("Save image as");
+    // FileLoader's types - every bitmap type this build writes - and the
+    // editor's own project, which keeps the layers.
+    UltraCanvasFileLoader::AddImageSaveTypes(opts);
+    opts.AddFilter("UltraPaint project (layers kept)", std::vector<std::string>{ "ucraster" })
         .AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(def)
         // The picture's size, so the Settings of a bitmap type offer to write
@@ -1668,9 +1678,9 @@ void UltraPaintWindow::CmdExport() {
 #ifdef HAS_LIBVIPS
     if (!document) return;
     FileDialogOptions opts;
-    opts.SetTitle("Export image")
-        .AddFilter("Images", kImageExtensions)
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.SetTitle("Export image");
+    UltraCanvasFileLoader::AddImageSaveTypes(opts);   // every bitmap type this build writes
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath()))
         .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());

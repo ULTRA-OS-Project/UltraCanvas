@@ -531,7 +531,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 - **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
   copy of an application per user, built on UltraCanvasInstanceLock: a second
   start asks the running copy over UltraMessage (`<appId>.show`) to come
-  forward and quits. `Claim()`, `ListenRaise()` / `Listen(handler)`,
+  forward - or hands it its files to open - and quits. `Claim()`,
+  `ListenRaise()` / `ListenOpen(openPaths)` with `MakeOpenRequest(paths)` /
+  `Listen(handler)`,
   `Close()`, `BringToFront()`, `RunAlreadyRunningAlert()`. Not in the core
   library: `ultracanvas_single_instance(<target>)`
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
@@ -539,7 +541,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   UltraMessage where present. Used by the single-window applications (UltraMail,
   UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
-  UltraSocial, UltraFIBU, UltraWin Manager). See
+  UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
+  the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
+  ArtCreator, UltraVideo, AnchorPoint). See
   `Docs/UltraCanvas/UltraCanvasSingleInstance.md`.
 
 - **UltraCanvasArchiveRun** (`UltraCanvasArchiveRun.h`) — "Extract and
@@ -795,7 +799,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` behind the internal
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
+  (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
+  hooks, `RegisterHotKey`, the Start menu) in
+  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp`, both behind the internal
   `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. Public surface:
   - `ListWindows` (`DesktopWindowInfo`: id, title, WM class, icon file
     resolved through the icon themes, desktop, pid, active, minimized,
@@ -805,16 +812,23 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
     `MoveWindowToVirtualDesktop`.
   - `GetScreenSize`, `ReserveScreenEdges` (a window's strips along the
-    screen's edges, `_NET_WM_STRUT_PARTIAL`, so maximised windows stop short
-    of a desktop's bars), `CaptureScreen` (PNG), `DefaultScreenshotPath`
+    screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
+    so maximised windows stop short of a desktop's bars), `CaptureScreen`
+    (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
     (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
   - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
-    icons resolved), `MatchApplication` (a window's entry, by
+    icons resolved; the Start menu's program shortcuts on Windows, launched
+    by opening the shortcut), `MatchApplication` (a window's entry, by
     `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
     `FindProgram` (next to this executable first, then `PATH`).
+  - `CanReplaceSystemDesktop` / `IsSystemDesktopReplaced` /
+    `ReplaceSystemDesktop` / `RestoreSystemDesktop` - a program (UltraDesktop)
+    in place of the system's desktop at sign-in, and the way back (Windows:
+    the user's Run key and Explorer's taskbar on auto-hide, its previous
+    state restored; elsewhere the session decides and the calls say so).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -824,7 +838,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `UltraCanvasGlobalShortcut` - `Start("Super+V", onPressed, &error)` /
     `Stop()` (joins) / `IsRunning`: a key combination that reaches this
     program from any window (X11 `XGrabKey` on its own connection and
-    thread; fails with a reason elsewhere and when another program holds it).
+    thread, Windows `RegisterHotKey` on its own thread; fails with a reason
+    elsewhere and when another program holds it).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
@@ -1281,8 +1296,20 @@ application in `SaveSettings.conf` in the same folder.
 button edits them, its file icon (`UltraCanvasFileDragIcon`) is dropped on a
 folder to save there, and `UCRasterDocument::SaveToFile` reads them. A
 picture's size for one save (`FileSaveImageSize`, offered when the caller
-passes `FileDialogOptions::SetImageSize`) comes back through the
-`SaveFileDialog` overload that reports it, never stored.
+passes `FileDialogOptions::SetImageSize`, or `SetDrawingSize` for a drawing,
+which has no pixel size and is drawn sharp at any) comes back through the
+`SaveFileDialog` overload that reports it, never stored. The media viewer's
+Save image as (UltraViewer) offers it and draws an SVG again at the size
+chosen.
+
+A dialog's file types come from the format inventory, never an application's
+own list: `AddLoadTypes(opts, label, {categories})` (one Open filter of every
+type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
+(one Save filter per type it writes, the proposed name's type first),
+`AddTextDocumentLoadTypes` / `AddTextDocumentSaveTypes` with
+`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
+codec an application brings joins them through `RegisterMediaCodec`, as
+UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
 
 ### **4. Plug-ins for File Types**
 
@@ -1316,7 +1343,13 @@ future.
 - `UltraNet_HttpRequest`, `UltraNet_HttpRequestAsync` (an async response
   cut off after its status line carries `UltraNetResponse::transferError`,
   `IsComplete()` and `exceededReceiveLimit`)
-- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`
+- `UltraNet_HttpDownloadFile`, `UltraNet_HttpUploadFile`; any request writes
+  its body to a file through `UltraNetHttpOptions::outputFilePath`, resumes a
+  partial one with `resumeOutputFile` (`resumeFromOffset` for a caller's own
+  partial copy), follows redirects to https:// only with
+  `httpsOnlyRedirects`, has no whole-transfer timeout but a `stallTimeoutMs`
+  when it writes a file, and sees the final response's headers before the
+  body through `UltraNetHttpRequest::onHeaders`, which can veto the body
 - `UltraNet_WebSocketConnect`, `UltraNet_WebSocketSendText`,
   `UltraNet_WebSocketSendBinary`, `UltraNet_WebSocketClose`
 - `UltraNet_FtpDownload`, `UltraNet_FtpUpload`, `UltraNet_FtpListDirectory`,
@@ -1358,7 +1391,8 @@ future.
   reference resolution), `UltraNet_UrlEncode`, `UltraNet_UrlDecode`
 - `UltraNet_ConvertToUtf8` (bytes in a named charset to UTF-8, through iconv
   where the build has it; what mail bodies and web pages are read with)
-- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`
+- `UltraNet_CancelRequest`, `UltraNet_GetTransferStats`,
+  `UltraNet_PauseRequest`, `UltraNet_ResumeRequest`, `UltraNet_IsRequestPaused`
 - `UltraNet_RegisterPlugin`, `UltraNet_GetSupportedSchemes`
 
 **Plugin Categories (Tier 2 / Tier 3, located under `Plugins/UltraNet/`):**
@@ -1380,7 +1414,8 @@ loading files from `http://`, `https://`, `ftp://`, etc. URLs.
 verbs, `UltraNet_HttpRequest`, download/upload, async via a curl_multi
 worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_CancelRequest` / `UltraNet_IsRequestActive` /
-`UltraNet_GetTransferStats`), SSE (`UltraNet_SseStream[Async]` +
+`UltraNet_GetTransferStats`, `UltraNet_PauseRequest` /
+`UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
 on libcurl. Remaining gaps are per-function and environment-dependent —
@@ -1516,9 +1551,9 @@ compatibility routing are planned for Stages 2-3. See
 ### **8. UltraCrypt**
 
 Cryptographic services — the single place where hashing, message
-authentication, authenticated encryption, key derivation and secure random
-generation are implemented, so no application, plugin or sibling module has
-to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
+authentication, authenticated encryption, digital signatures, key derivation
+and secure random generation are implemented, so no application, plugin or
+sibling module has to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
 see `Docs/Modules/UltraCrypt/README.md`.
 
 Scope is **data at rest and data integrity**. Transport security stays in
@@ -1553,6 +1588,10 @@ backing library is never visible in a public header.
   `UltraCrypt_IsAeadAvailable`
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`
+- `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
+  `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
+  `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
+  and the `UltraCrypt_GetSignature*Size` family (Ed25519, RFC 8032)
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
@@ -2140,10 +2179,11 @@ as the export would make it, for an editor's viewer), proxy media (small
 stand-ins for large clips, made once into a cache folder and switched in
 for previews and drafts), hardware encoders by choice (software, any that
 works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media
-Foundation, each tried on the machine before it is used),
+Foundation, each tried on the machine before it is used), free audio clips
+(voice-overs and sound effects at given times, the music ducking under
+voice-overs),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
-command-line tool. Planned: keyframed parameters,
-several free audio tracks.
+command-line tool. Planned: keyframed parameters.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
@@ -2154,16 +2194,21 @@ several free audio tracks.
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
+  `VideoFXAudioClip` (`VideoFXExportSettings::audioClips`; `Sound`, `VoiceOver`),
   `VideoFXBeatInfo`, `VideoFXWaveform`, `VideoFXPreview`, `VideoFXRect` (`VideoFXSegment::keepInView`,
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
   `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
-  (`VideoFXExportSettings::keyframeInterval`)
+  (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
+  `VideoFXPictureReader`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
   `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
-  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`
+  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`,
+  `VideoFX_GetFileFormats` (the films, sound and pictures the linked FFmpeg
+  reads, and the ones an export writes), `VideoFX_SetPictureReader` (picture
+  types the host application reads for the engine)
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
@@ -2211,7 +2256,7 @@ several free audio tracks.
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
   ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
   MusicEnvelope, MusicDucker, CrossfadeSeconds, PlaylistSeconds,
-  CrossfadeGains, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
+  CrossfadeGains, ValidateAudioClip, AudioClipGain, AudioClipSeconds, SlideshowSecondsForMusic, OnsetEnvelope, EstimateTempo,
   TrackBeats, AnalyseBeats, BeatAlignedChanges, ValidateKeepInView,
   FocusBounds, FitMotionToFocus, KeepFocusInView, DetectFacesGray,
   DetectFaces, ProjectToJsonText, ProjectFromJsonText, SaveProjectFile,

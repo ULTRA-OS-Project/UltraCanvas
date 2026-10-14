@@ -1,7 +1,10 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
+// Version: 2.5.0 - the content view is an NSTextInputClient: an element that
+//   draws compositions gets the input method's pre-edit as TextComposition
+//   events, its candidate window at the caret
 // Version: 2.4.0 - the content view hands VoiceOver the window's elements (children, hit test, focus)
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -15,9 +18,23 @@
 
 #include <iostream>
 #include <cstring>
+#include <algorithm>
 #include "UltraCanvasDebug.h"
 
-@interface UltraCanvasView : NSView {
+// The plain string of what an input method hands NSTextInputClient: an
+// NSString or an NSAttributedString.
+static NSString* UCPlainString(id string) {
+    if ([string isKindOfClass:[NSAttributedString class]]) return [(NSAttributedString*)string string];
+    if ([string isKindOfClass:[NSString class]]) return (NSString*)string;
+    return @"";
+}
+
+static std::string UCUtf8(NSString* string) {
+    const char* utf8 = string ? [string UTF8String] : nullptr;
+    return utf8 ? std::string(utf8) : std::string();
+}
+
+@interface UltraCanvasView : NSView <NSTextInputClient> {
     UltraCanvas::UltraCanvasMacOSWindow* ultraCanvasWindow;
     cairo_surface_t* nativeSurface;
 }
@@ -112,7 +129,92 @@
 
 // Override to prevent default NSView behavior (system beep) for unhandled keys.
 // Key events are handled through the UltraCanvas event system at the application level.
+// (Keys for an element that draws input method compositions go to the input
+// method from there too, UltraCanvasMacOSWindow::InterpretKeyDown, not here.)
 - (void)keyDown:(NSEvent *)event {}
+
+// ===== INPUT METHOD (NSTextInputClient) =====
+// AppKit's input methods talk to this view while UltraCanvasMacOSWindow::
+// InterpretKeyDown runs interpretKeyEvents:. The "document" they see is only
+// the text being composed: no surrounding text is offered, so ranges are
+// within the marked text.
+
+- (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
+    (void)replacementRange;
+    if (ultraCanvasWindow) ultraCanvasWindow->ImeInsertText(UCUtf8(UCPlainString(string)));
+}
+
+- (void)doCommandBySelector:(SEL)selector {
+    (void)selector;
+    // A key the input method did not turn into text (Return, Delete, the
+    // arrows ...): delivered as the KeyDown it is. No beep.
+    if (ultraCanvasWindow) ultraCanvasWindow->ImeDoCommand();
+}
+
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
+    (void)replacementRange;
+    if (!ultraCanvasWindow) return;
+    NSString* text = UCPlainString(string);
+    const NSUInteger length = [text length];
+    const NSUInteger location = std::min<NSUInteger>(selectedRange.location == NSNotFound ? length : selectedRange.location, length);
+    const NSUInteger selected = std::min<NSUInteger>(selectedRange.length, length - location);
+    // The composition's caret: the end of what the input method selected
+    // (a converting clause), as a UTF-8 byte offset - never inside a
+    // surrogate pair.
+    NSUInteger caret = location + selected;
+    if (caret > 0 && caret < length) {
+        const unichar unit = [text characterAtIndex:caret];
+        if (unit >= 0xDC00 && unit <= 0xDFFF) caret++;
+    }
+    const int cursorBytes = static_cast<int>(UCUtf8([text substringToIndex:caret]).size());
+    ultraCanvasWindow->ImeSetMarkedText(UCUtf8(text), static_cast<unsigned long>(length),
+                                        static_cast<unsigned long>(location), static_cast<unsigned long>(selected),
+                                        cursorBytes);
+}
+
+- (void)unmarkText {
+    if (ultraCanvasWindow) ultraCanvasWindow->ImeUnmarkText();
+}
+
+- (NSRange)selectedRange {
+    if (!ultraCanvasWindow || !ultraCanvasWindow->ImeHasMarkedText()) return NSMakeRange(0, 0);
+    return NSMakeRange(ultraCanvasWindow->ImeSelectionLocation16(), ultraCanvasWindow->ImeSelectionLength16());
+}
+
+- (NSRange)markedRange {
+    if (!ultraCanvasWindow || !ultraCanvasWindow->ImeHasMarkedText()) return NSMakeRange(NSNotFound, 0);
+    return NSMakeRange(0, ultraCanvasWindow->ImeMarkedLength16());
+}
+
+- (BOOL)hasMarkedText {
+    return (ultraCanvasWindow && ultraCanvasWindow->ImeHasMarkedText()) ? YES : NO;
+}
+
+- (NSAttributedString*)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+    (void)range;
+    (void)actualRange;
+    return nil;
+}
+
+- (NSArray<NSAttributedStringKey>*)validAttributesForMarkedText {
+    return @[];
+}
+
+// The candidate window is placed under this rectangle: the focused
+// element's caret, in screen coordinates.
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+    if (actualRange) *actualRange = range;
+    if (!ultraCanvasWindow || !self.window) return NSZeroRect;
+    const UltraCanvas::Rect2Df caret = ultraCanvasWindow->ImeCaretRectInWindow();
+    // The view is flipped: window coordinates are its own.
+    const NSRect inView = NSMakeRect(caret.x, caret.y, std::max(1.0f, caret.width), std::max(1.0f, caret.height));
+    return [self.window convertRectToScreen:[self convertRect:inView toView:nil]];
+}
+
+- (NSUInteger)characterIndexForPoint:(NSPoint)point {
+    (void)point;
+    return NSNotFound;
+}
 
 // Sent by AppKit when the view's backing scale changes (window dragged to a
 // different display, or the system reports a scale change). Forward to the
@@ -369,6 +471,9 @@ namespace UltraCanvas {
             NSRect contentFrame = [[nsWindow contentView] frame];
             contentView = [[UltraCanvasView alloc] initWithFrame:contentFrame window:this];
             [nsWindow setContentView:contentView];
+            // The view takes the keys: the input method serves the first
+            // responder's text input context (NSTextInputClient above).
+            [nsWindow makeFirstResponder:contentView];
 
             // Create and set delegate
             UltraCanvasWindowDelegate* delegate = [[UltraCanvasWindowDelegate alloc] initWithWindow:this];
@@ -789,6 +894,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidResignKey() {
+        // A composition does not outlive the window losing the keyboard:
+        // what was composed stays, as typed.
+        CommitComposition();
         UCEvent event;
         event.type = UCEventType::WindowBlur;
         event.targetWindow = GetWindowWeakPtr();
@@ -818,6 +926,139 @@ namespace UltraCanvas {
         // Shared flow: recreates nativeSurface at the new backing size, rebuilds
         // renderContext + popup/tooltip contexts, re-lays-out and repaints.
         HandleDeviceScaleChange();
+    }
+
+// ===== INPUT METHOD COMPOSITION =====
+    bool UltraCanvasMacOSWindow::InterpretKeyDown(NSEvent* event) {
+        if (!_created || !event || !contentView || !nsWindow) return false;
+        if ([nsWindow firstResponder] != contentView) return false;
+        if (!ImeHasMarkedText()) {
+            // Only an element that draws compositions has its keys go
+            // through the input method; everything else keeps the plain
+            // path it always had (and with it the shortcuts).
+            UltraCanvasUIElement* focused = GetFocusedElement();
+            if (!focused || !focused->DrawsTextComposition()) return false;
+            const NSEventModifierFlags flags = [event modifierFlags];
+            if (flags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) return false;
+        }
+        const bool wasComposing = ImeHasMarkedText();
+        imeKeyEvent = (__bridge void*)event;
+        imeKeyDelivered = false;
+        [contentView interpretKeyEvents:@[event]];
+        imeKeyEvent = nullptr;
+        // A key nothing came back for, outside any composition (a function
+        // key with no binding): the plain KeyDown it always was.
+        if (!imeKeyDelivered && !wasComposing && !ImeHasMarkedText()) {
+            if (auto* application = UltraCanvasMacOSApplication::GetInstance()) {
+                UCEvent plain = application->ConvertNSEventToUCEvent(event);
+                if (plain.type != UCEventType::NoneEvent) application->PushEvent(plain);
+            }
+        }
+        return true;
+    }
+
+    void UltraCanvasMacOSWindow::CommitComposition() {
+        if (!ImeHasMarkedText()) return;
+        const std::string text = imeMarkedText;
+        imeMarkedText.clear();
+        imeMarkedLength16 = imeSelectionLocation16 = imeSelectionLength16 = 0;
+        PushImeComposition("", 0);
+        PushImeCommit(text, false);
+        // The input method forgets it too.
+        if (contentView) [[contentView inputContext] discardMarkedText];
+    }
+
+    void UltraCanvasMacOSWindow::ImeInsertText(const std::string& text) {
+        const bool composing = ImeHasMarkedText();
+        if (composing) {
+            imeMarkedText.clear();
+            imeMarkedLength16 = imeSelectionLocation16 = imeSelectionLength16 = 0;
+            PushImeComposition("", 0);
+        }
+        // Text straight from a key press keeps that key's code and
+        // modifiers, as it had without the input method; a composition's
+        // result (or the character palette's) is text alone.
+        PushImeCommit(text, !composing && imeKeyEvent != nullptr);
+    }
+
+    void UltraCanvasMacOSWindow::ImeSetMarkedText(const std::string& text, unsigned long length16,
+                                                  unsigned long selectionLocation16, unsigned long selectionLength16,
+                                                  int cursorBytes) {
+        if (length16 == 0) {
+            // Composed away to nothing (deleted, cancelled): the composition ends.
+            const bool wasComposing = ImeHasMarkedText();
+            imeMarkedText.clear();
+            imeMarkedLength16 = imeSelectionLocation16 = imeSelectionLength16 = 0;
+            if (wasComposing) PushImeComposition("", 0);
+            return;
+        }
+        imeMarkedText = text;
+        imeMarkedLength16 = length16;
+        imeSelectionLocation16 = selectionLocation16;
+        imeSelectionLength16 = selectionLength16;
+        PushImeComposition(text, cursorBytes);
+    }
+
+    void UltraCanvasMacOSWindow::ImeUnmarkText() {
+        // The input method keeps what was composed: it is typed.
+        if (!ImeHasMarkedText()) return;
+        const std::string text = imeMarkedText;
+        imeMarkedText.clear();
+        imeMarkedLength16 = imeSelectionLocation16 = imeSelectionLength16 = 0;
+        PushImeComposition("", 0);
+        PushImeCommit(text, false);
+    }
+
+    void UltraCanvasMacOSWindow::ImeDoCommand() {
+        if (!imeKeyEvent) return;
+        imeKeyDelivered = true;
+        auto* application = UltraCanvasMacOSApplication::GetInstance();
+        if (!application) return;
+        UCEvent event = application->ConvertNSEventToUCEvent((__bridge NSEvent*)imeKeyEvent);
+        if (event.type != UCEventType::NoneEvent) application->PushEvent(event);
+    }
+
+    void UltraCanvasMacOSWindow::PushImeComposition(const std::string& text, int cursorBytes) {
+        imeKeyDelivered = true;
+        UCEvent event;
+        event.type = UCEventType::TextComposition;
+        event.timestamp = std::chrono::steady_clock::now();
+        event.targetWindow = GetWindowWeakPtr();
+        event.nativeWindowHandle = GetNativeHandle();
+        event.text = text;
+        event.compositionCursor = std::clamp(cursorBytes, 0, static_cast<int>(text.size()));
+        if (auto* application = UltraCanvasApplication::GetInstance()) application->PushEvent(event);
+    }
+
+    void UltraCanvasMacOSWindow::PushImeCommit(const std::string& text, bool fromKey) {
+        if (text.empty()) return;
+        imeKeyDelivered = true;
+        auto* application = UltraCanvasMacOSApplication::GetInstance();
+        if (!application) return;
+        UCEvent event;
+        if (fromKey && imeKeyEvent) {
+            event = application->ConvertNSEventToUCEvent((__bridge NSEvent*)imeKeyEvent);
+        } else {
+            event.timestamp = std::chrono::steady_clock::now();
+            event.targetWindow = GetWindowWeakPtr();
+            event.nativeWindowHandle = GetNativeHandle();
+            event.virtualKey = UCKeys::Unknown;
+        }
+        event.type = UCEventType::KeyDown;
+        event.text = text;
+        event.character = (text.size() == 1 && static_cast<unsigned char>(text[0]) < 128) ? text[0] : 0;
+        application->PushEvent(event);
+    }
+
+    Rect2Df UltraCanvasMacOSWindow::ImeCaretRectInWindow() {
+        UltraCanvasUIElement* focused = GetFocusedElement();
+        if (!focused) return Rect2Df(0, 0, 0, 0);
+        if (IAccessibleText* text = focused->GetAccessibleTextInterface()) {
+            const Rect2Df caret = text->GetCharacterBounds(text->GetCaretOffset());
+            if (caret.height > 0.0f) return caret;
+        }
+        // No caret to be had: the whole element.
+        return focused->GetBoundsInWindow();
     }
 } // namespace UltraCanvas
 

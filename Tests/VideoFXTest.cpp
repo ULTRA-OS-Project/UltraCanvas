@@ -10,8 +10,10 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.12.0
-// Last Modified: 2026-10-12
+// Version: 0.14.0 - VideoFX_GetFileFormats: every type it writes written and read back;
+//                  VideoFX_SetPictureReader: picture types the application reads
+// Version: 0.13.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -550,6 +552,47 @@ static std::vector<float> ClickTrack(int rate, double bpm, double offset, double
     return s;
 }
 
+// Free audio clips without the engine: values, gain, length
+static void TestAudioClipMath() {
+    std::printf("Free audio clips: values, envelope, length\n");
+    std::string error;
+    VideoFXAudioClip c = VideoFXAudioClip::Sound("boom.wav", 2.0);
+    CHECK(ValidateAudioClip(c, error) && !c.ducksMusic, "a sound effect: valid, does not duck the music");
+    CHECK(VideoFXAudioClip::VoiceOver("voice.wav", 1.0).ducksMusic, "a voice-over ducks it");
+    VideoFXAudioClip bad = c;
+    bad.path.clear();
+    CHECK(!ValidateAudioClip(bad, error), "no file refused");
+    bad = c; bad.at = -1.0;
+    CHECK(!ValidateAudioClip(bad, error), "a time before the start refused");
+    bad = c; bad.start = 3.0; bad.end = 2.0;
+    CHECK(!ValidateAudioClip(bad, error), "an end before the start refused");
+    bad = c; bad.volume = 5.0;
+    CHECK(!ValidateAudioClip(bad, error), "volume over 4 refused");
+    bad = c; bad.fadeIn = -0.5;
+    CHECK(!ValidateAudioClip(bad, error) && !error.empty(), "a negative fade refused, with a reason");
+
+    c.volume = 0.5;
+    c.fadeIn = 1.0;
+    c.fadeOut = 2.0;
+    CHECK(Near(AudioClipGain(c, 0.0, 10.0), 0.0, 1e-12) && Near(AudioClipGain(c, 0.5, 10.0), 0.25, 1e-12) &&
+          Near(AudioClipGain(c, 5.0, 10.0), 0.5, 1e-12) && Near(AudioClipGain(c, 9.0, 10.0), 0.25, 1e-12),
+          "volume times the fades in and out");
+    CHECK(AudioClipGain(c, -0.1, 10.0) == 0.0 && AudioClipGain(c, 10.1, 10.0) == 0.0, "silent outside the clip");
+    CHECK(Near(AudioClipGain(c, 5.0, 0.0), 0.5, 1e-12), "an unknown length: no fade-out");
+    // fades longer than the clip shrink to half each, meeting in the middle
+    CHECK(Near(AudioClipGain(c, 1.0, 2.0), 0.5, 1e-12) && Near(AudioClipGain(c, 0.5, 2.0), 0.25, 1e-12),
+          "fades that would overlap share the clip");
+
+    VideoFXAudioClip r = VideoFXAudioClip::Sound("x.wav", 0.0);
+    CHECK(Near(AudioClipSeconds(r, 8.0), 8.0, 1e-12) && AudioClipSeconds(r, 0.0) == 0.0, "the whole file, or unknown");
+    r.start = 1.5;
+    CHECK(Near(AudioClipSeconds(r, 8.0), 6.5, 1e-12), "what is left after the start");
+    r.end = 4.0;
+    CHECK(Near(AudioClipSeconds(r, 8.0), 2.5, 1e-12) && Near(AudioClipSeconds(r, 0.0), 2.5, 1e-12), "start to end");
+    r.end = 20.0;
+    CHECK(Near(AudioClipSeconds(r, 8.0), 6.5, 1e-12), "an end past the file stops with the file");
+}
+
 static void TestBeatMath() {
     std::printf("Beat detection: tempo, beats, changes on the beat\n");
     const int r = kBeatSampleRate;
@@ -753,6 +796,9 @@ static VideoFXProject RichTimeline(const std::string& dir) {
     settings.music.fadeOut = 3.0;
     settings.music.duckingLevel = 0.2;
     settings.music.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
+    VideoFXAudioClip voice = VideoFXAudioClip::VoiceOver(dir + "/sound/intro.wav", 1.25, 0.8);
+    voice.start = 0.5; voice.end = 7.5; voice.fadeIn = 0.2; voice.fadeOut = 0.3;
+    settings.audioClips = {voice, VideoFXAudioClip::Sound("/library/whoosh.wav", 9.0, 1.5)};
 
     VideoFXProject p = VideoFXProject::FromTimeline({clip, photo, card, pattern}, settings);
     p.title = "Ferien \xE2\x80\x93 Sommer";
@@ -825,7 +871,11 @@ static void TestProjectFiles() {
     CHECK(st.container == VideoFXContainer::WebM && st.videoCodec == VideoFXVideoCodec::VP9 && st.width == 1280 &&
           Near(st.frameRate, 29.97, 1e-12) && st.fitMode == VideoFXFitMode::Fill && st.quality == 77 &&
           st.videoBitRate == 4000000 && st.encoderPreset == "slow" && st.channels == 1 && st.threads == 3 &&
-          Near(st.keyframeInterval, 1.5, 1e-12) && st.acceleration == VideoFXAcceleration::QuickSync,
+          Near(st.keyframeInterval, 1.5, 1e-12) && st.acceleration == VideoFXAcceleration::QuickSync &&
+          st.audioClips.size() == 2 && st.audioClips[0].path == dir + "/sound/intro.wav" && st.audioClips[0].ducksMusic &&
+          Near(st.audioClips[0].at, 1.25, 1e-12) && Near(st.audioClips[0].end, 7.5, 1e-12) &&
+          Near(st.audioClips[0].fadeOut, 0.3, 1e-12) && !st.audioClips[1].ducksMusic &&
+          st.audioClips[1].path == "/library/whoosh.wav" && Near(st.audioClips[1].volume, 1.5, 1e-12),
           "export settings");
     CHECK(st.music.Songs().size() == 3 && Near(st.music.crossfade, 4.5, 1e-12) && !st.music.loop &&
           Near(st.music.duckingThresholdDb, -15.0, 1e-12) && Near(st.music.duckingLevel, 0.2, 1e-12),
@@ -1093,6 +1143,9 @@ static void TestMusic(const VideoFXExportSettings& base);
 static void TestPreview(const VideoFXExportSettings& base);
 static void TestProxies(const VideoFXExportSettings& base);
 static void TestEncoders(const VideoFXExportSettings& base);
+static void TestAudioClips(const VideoFXExportSettings& base);
+static void TestFileFormats();
+static void TestPictureReader();
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -1305,6 +1358,9 @@ static void TestEngine() {
     TestPreview(base);
     TestProxies(base);
     TestEncoders(base);
+    TestAudioClips(base);
+    TestFileFormats();
+    TestPictureReader();
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -2442,6 +2498,142 @@ static void TestProxies(const VideoFXExportSettings& base) {
 // may have no graphics hardware at all, so what is checked is that every
 // answer is consistent, a missing family fails cleanly, Hardware falls back,
 // and - where some hardware encoder does work - that it really encodes.
+static const VideoFXFileFormat* FindFormat(const std::vector<VideoFXFileFormat>& formats, const std::string& ext) {
+    for (const VideoFXFileFormat& f : formats) {
+        if (f.extension == ext) return &f;
+        for (const std::string& a : f.aliases) if (a == ext) return &f;
+    }
+    return nullptr;
+}
+
+static void TestFileFormats() {
+    std::printf("\n-- the files this build reads and writes --\n");
+    const std::vector<VideoFXFileFormat> formats = VideoFX_GetFileFormats();
+    std::string reads, writes;
+    for (const VideoFXFileFormat& f : formats) {
+        if (f.canRead) reads += " " + f.extension;
+        if (f.canWrite) writes += " " + f.extension;
+    }
+    std::printf("        reads:%s\n        writes:%s\n", reads.c_str(), writes.c_str());
+
+    const VideoFXFileFormat* mp4 = FindFormat(formats, "m4v");
+    CHECK(mp4 && mp4->extension == "mp4" && mp4->kind == VideoFXFileKind::Video && mp4->description == "MPEG-4 container",
+          "MP4 is a film, found by its alias too, under the registry's name");
+    CHECK(mp4 && mp4->canRead && mp4->canWrite && mp4->container == VideoFXContainer::MP4,
+          "... read, and written as the MP4 container (MPEG-4 and AAC are always here)");
+    const VideoFXFileFormat* mpg = FindFormat(formats, "mpeg");
+    CHECK(mpg && mpg->canRead && !mpg->canWrite && mpg->container == VideoFXContainer::Auto,
+          "MPEG program streams are read, and no export writes them");
+    const VideoFXFileFormat* wav = FindFormat(formats, "wav");
+    CHECK(wav && wav->kind == VideoFXFileKind::Audio && wav->canRead && wav->canWrite,
+          "WAV is sound, read and written");
+    const VideoFXFileFormat* png = FindFormat(formats, "png");
+    const VideoFXFileFormat* jpg = FindFormat(formats, "jpeg");
+    CHECK(png && jpg && png->kind == VideoFXFileKind::Picture && png->canRead && jpg->canRead && !png->canWrite,
+          "PNG and JPEG pictures are read; an export does not write a still");
+    const VideoFXFileFormat* gif = FindFormat(formats, "gif");
+    CHECK(gif && gif->canRead && gif->canWrite && gif->container == VideoFXContainer::GIF,
+          "a GIF is read, and an export writes one: the animation");
+    const VideoFXFileFormat* heic = FindFormat(formats, "heif");
+    CHECK(heic && heic->kind == VideoFXFileKind::Picture && !heic->canRead,
+          "HEIC is known as a picture and not read: a phone's is a tile grid the engine does not assemble yet");
+
+    // Every type it says it writes, written and read back: no claim untested
+    int written = 0;
+    bool allOk = true;
+    for (const VideoFXFileFormat& f : formats) {
+        if (!f.canWrite) continue;
+        VideoFXExportSettings s;
+        s.container = f.container;
+        s.width = 64; s.height = 48; s.frameRate = 10.0;
+        const std::string out = TempPath("format." + f.extension);
+        const bool ok = VideoFX_Export({VideoFXSegment::TestPattern(0.5)}, out, s) == VideoFXResult::Ok;
+        VideoFXMediaInfo info;
+        const bool back = ok && VideoFX_Probe(out, info) == VideoFXResult::Ok &&
+                          (f.kind == VideoFXFileKind::Audio ? info.HasAudio() : info.HasVideo());
+        if (!back) std::printf("        %s: %s\n", f.extension.c_str(), VideoFX_GetLastError().c_str());
+        allOk = allOk && back;
+        ++written;
+    }
+    CHECK(written >= 4 && allOk, "every type it writes is written, and read back");
+
+    // Every picture it reads, read: one saved through FFmpeg's own writer
+    VideoFXFrame frame;
+    CHECK_OK(VideoFX_ExtractFrame(TempPath("format.mp4"), 0.1, frame), "a frame for the pictures");
+    const std::string still = TempPath("format-still.png");
+    CHECK_OK(VideoFX_SaveFrameImage(frame, still), "... saved as PNG");
+    VideoFXMediaInfo info;
+    CHECK(VideoFX_Probe(still, info) == VideoFXResult::Ok && info.HasVideo(), "... which it reads as a picture");
+}
+
+static void TestPictureReader() {
+    std::printf("\n-- picture types the application reads --\n");
+    // A stand-in for the host's image library: ".uvpic" files are 40 x 30
+    // and red; one named bad.uvpic cannot be read
+    auto touch = [](const std::string& path) {
+        std::FILE* f = UltraCanvas::OpenFileUtf8(path, "wb");
+        if (f) { std::fputs("not for FFmpeg", f); std::fclose(f); }
+    };
+    const std::string picture = TempPath("photo.uvpic");
+    const std::string bad = TempPath("bad.uvpic");
+    touch(picture);
+    touch(bad);
+    int decodes = 0;
+    VideoFXPictureReader reader;
+    reader.extensions = {".UVPIC"};
+    reader.size = [](const std::string& path, int& w, int& h) {
+        if (path.find("bad.") != std::string::npos) return false;
+        w = 40; h = 30;
+        return true;
+    };
+    reader.decode = [&decodes](const std::string& path, VideoFXFrame& frame) {
+        if (path.find("bad.") != std::string::npos) return false;
+        ++decodes;
+        frame.width = 40; frame.height = 30;
+        frame.pixels.assign(40 * 30 * 4, 0);
+        for (size_t i = 0; i < frame.pixels.size(); i += 4) { frame.pixels[i] = 255; frame.pixels[i + 3] = 255; }
+        return true;
+    };
+    VideoFX_SetPictureReader(reader);
+
+    VideoFXMediaInfo info;
+    CHECK(VideoFX_Probe(picture, info) == VideoFXResult::Ok && info.HasVideo() && !info.HasAudio() &&
+          info.width == 40 && info.height == 30 && decodes == 0,
+          "Probe: the application's size, without decoding the picture");
+    VideoFXFrame frame;
+    CHECK(VideoFX_ExtractFrame(picture, 0.0, frame, 20, 20) == VideoFXResult::Ok && frame.width == 20 && frame.height == 15 &&
+          frame.pixels[0] > 200 && frame.pixels[1] < 50,
+          "ExtractFrame: the application's picture, fitted into the size asked for");
+    std::vector<VideoFXFrame> strip;
+    CHECK(VideoFX_ExtractThumbnails(picture, 3, strip) == VideoFXResult::Ok && strip.size() == 3 && strip[2].width == 40,
+          "ExtractThumbnails: the still in every slice");
+    bool listed = false;
+    for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
+        listed = listed || (f.extension == "uvpic" && f.kind == VideoFXFileKind::Picture && f.canRead);
+    CHECK(listed, "GetFileFormats reports the type read, extension made lowercase and undotted");
+
+    VideoFXExportSettings s;
+    s.container = VideoFXContainer::MKV;
+    s.videoCodec = VideoFXVideoCodec::MPEG4;
+    s.width = 64; s.height = 48; s.frameRate = 10.0;
+    const std::string out = TempPath("from-picture.mkv");
+    CHECK_OK(VideoFX_Export({VideoFXSegment::FromImage(picture, 0.5)}, out, s), "an image segment of the type exports");
+    VideoFXFrame shown;
+    CHECK(VideoFX_ExtractFrame(out, 0.2, shown) == VideoFXResult::Ok && shown.IsValid() &&
+          shown.pixels[(static_cast<size_t>(shown.height / 2) * shown.width + shown.width / 2) * 4] > 180,
+          "... showing the application's picture");
+
+    CHECK(VideoFX_Probe(bad, info) == VideoFXResult::DecodeError && !VideoFX_GetLastError().empty(),
+          "a file the application cannot read: DecodeError, with the reason");
+    CHECK(VideoFX_Probe(TempPath("missing.uvpic"), info) == VideoFXResult::FileNotFound, "a missing one: FileNotFound");
+
+    VideoFX_SetPictureReader(VideoFXPictureReader{});
+    CHECK(VideoFX_Probe(picture, info) != VideoFXResult::Ok, "with the reader taken away, FFmpeg cannot read it");
+    bool still = false;
+    for (const VideoFXFileFormat& f : VideoFX_GetFileFormats()) still = still || f.extension == "uvpic";
+    CHECK(!still, "... and the type is no longer reported");
+}
+
 static void TestEncoders(const VideoFXExportSettings& base) {
     std::printf("\n-- encoders: software and hardware --\n");
     const auto t0 = std::chrono::steady_clock::now();
@@ -2528,6 +2720,90 @@ static void TestEncoders(const VideoFXExportSettings& base) {
     }
 }
 
+// The RMS of a file's sound in the 0.1 s block that holds `seconds`
+static double LevelAt(const VideoFXWaveform& w, double seconds) {
+    const int i = static_cast<int>(std::floor((seconds - w.start) * 10.0));
+    return i >= 0 && i < w.totalBlocks ? w.rmsValues[static_cast<size_t>(i)] : -1.0;
+}
+
+static void TestAudioClips(const VideoFXExportSettings& base) {
+    std::printf("\n-- free audio clips --\n");
+    // a 1 s tone, and a 6 s one for music
+    const std::string tone = TempPath("clip-tone.wav");
+    const std::string song = TempPath("clip-song.wav");
+    CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(1.0)}, tone, VideoFXExportSettings::AudioOnlyWAV()), "a 1 s tone");
+    CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(6.0)}, song, VideoFXExportSettings::AudioOnlyWAV()), "a 6 s song");
+
+    // three silent seconds of picture with a tone at 1 s
+    VideoFXExportSettings s = base;
+    s.width = 160; s.height = 120; s.frameRate = 25.0;
+    const std::vector<VideoFXSegment> silent = {VideoFXSegment::SolidColor(0x000000, 3.0)};
+    const std::string out = TempPath("clips.mkv");
+    s.audioClips = {VideoFXAudioClip::Sound(tone, 1.0)};
+    CHECK_OK(VideoFX_Export(silent, out, s), "silent picture with a sound at 1 s");
+    VideoFXMediaInfo info;
+    CHECK_OK(VideoFX_Probe(out, info), "probe it");
+    CHECK(info.HasAudio() && Near(info.duration, 3.0, 0.15), "it has sound now, and is still three seconds");
+    VideoFXWaveform w;
+    CHECK_OK(VideoFX_ExtractWaveform(out, w, 10.0), "its waveform");
+    std::printf("        levels at 0.5 / 1.5 / 2.5 s: %.3f %.3f %.3f\n", LevelAt(w, 0.5), LevelAt(w, 1.5), LevelAt(w, 2.5));
+    CHECK(LevelAt(w, 0.5) < 0.01 && LevelAt(w, 1.5) > 0.05 && LevelAt(w, 2.5) < 0.01,
+          "silent before, the tone from 1 to 2 s, silent after");
+
+    // a part of the file, quieter, faded in
+    VideoFXAudioClip part = VideoFXAudioClip::Sound(tone, 0.5, 0.5);
+    part.start = 0.2;
+    part.end = 0.9;                              // 0.7 s: plays 0.5 .. 1.2
+    part.fadeIn = 0.4;
+    s.audioClips = {part, VideoFXAudioClip::Sound(tone, 2.6)};   // and one running past the end
+    CHECK_OK(VideoFX_Export(silent, out, s), "a trimmed, quieter, faded clip and one past the end");
+    CHECK_OK(VideoFX_ExtractWaveform(out, w, 10.0), "its waveform");
+    const double full = LevelAt(w, 2.8);
+    std::printf("        fade 0.55 s %.3f, held 1.05 s %.3f, after 1.35 s %.3f, late clip 2.8 s %.3f\n",
+                LevelAt(w, 0.55), LevelAt(w, 1.05), LevelAt(w, 1.35), full);
+    CHECK(LevelAt(w, 0.55) < LevelAt(w, 1.05) && LevelAt(w, 1.05) > 0.02, "it fades in");
+    CHECK(Near(LevelAt(w, 1.05), full * 0.5, full * 0.15), "at half the volume of the full one");
+    CHECK(LevelAt(w, 1.35) < 0.01, "and stops where its end says");
+    CHECK_OK(VideoFX_Probe(out, info), "probe it");
+    CHECK(Near(info.duration, 3.0, 0.15) && full > 0.05, "a clip running past the end is cut there, not the export lengthened");
+
+    // a voice-over ducks the music; a sound effect does not
+    VideoFXExportSettings m = s;
+    m.music = VideoFXMusic::FromFile(song, 0.5);
+    m.music.duckingLevel = 0.2;
+    m.music.fadeIn = 0.0;
+    m.music.fadeOut = 0.0;
+    const std::string voiced = TempPath("voiced.mkv"), effects = TempPath("effects.mkv");
+    m.audioClips = {VideoFXAudioClip::VoiceOver(tone, 1.0, 0.5)};
+    CHECK_OK(VideoFX_Export(silent, voiced, m), "music with a voice-over");
+    m.audioClips = {VideoFXAudioClip::Sound(tone, 1.0, 0.5)};
+    CHECK_OK(VideoFX_Export(silent, effects, m), "music with the same sound as an effect");
+    VideoFXWaveform a, b;
+    CHECK_OK(VideoFX_ExtractWaveform(voiced, a, 10.0), "waveform of the voiced one");
+    CHECK_OK(VideoFX_ExtractWaveform(effects, b, 10.0), "and of the other");
+    std::printf("        voice-over vs effect: before %.3f / %.3f, under it %.3f / %.3f\n",
+                LevelAt(a, 0.5), LevelAt(b, 0.5), LevelAt(a, 1.7), LevelAt(b, 1.7));
+    CHECK(Near(LevelAt(a, 0.5), LevelAt(b, 0.5), 0.01), "the same before the clip");
+    CHECK(LevelAt(a, 1.7) < LevelAt(b, 1.7) - 0.03, "under the voice-over the music has ducked; under the effect it has not");
+
+    // refused
+    VideoFXExportSettings e = s;
+    e.audioClips = {VideoFXAudioClip::Sound(TempPath("none.wav"), 1.0)};
+    CHECK(VideoFX_Export(silent, out, e) == VideoFXResult::FileNotFound, "a missing file: FileNotFound");
+    e.audioClips = {VideoFXAudioClip::Sound(tone, 1.0, 9.0)};
+    CHECK(VideoFX_Export(silent, out, e) == VideoFXResult::InvalidArgument, "volume 9: InvalidArgument");
+    VideoFXAudioClip late = VideoFXAudioClip::Sound(tone, 1.0);
+    late.start = 5.0;
+    e.audioClips = {late};
+    CHECK(VideoFX_Export(silent, out, e) == VideoFXResult::InvalidArgument, "a start past the file's end: InvalidArgument");
+    const std::string picture = TempPath("clip-picture.mkv");
+    VideoFXExportSettings p = base;
+    p.width = 160; p.height = 120; p.frameRate = 25.0;
+    CHECK_OK(VideoFX_Export(silent, picture, p), "a clip without sound");
+    e.audioClips = {VideoFXAudioClip::Sound(picture, 1.0)};
+    CHECK(VideoFX_Export(silent, out, e) == VideoFXResult::NoMediaStreams, "a file without sound: NoMediaStreams");
+}
+
 #else
 
 static void TestEngine() {
@@ -2539,6 +2815,8 @@ static void TestEngine() {
           !VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware) &&
           VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Software).empty(),
           "stub: no encoders of any kind");
+    CHECK(VideoFX_GetFileFormats().empty(), "stub: no file it reads or writes");
+    VideoFX_SetPictureReader(VideoFXPictureReader{});      // nothing to read with: a no-op
 }
 
 #endif
@@ -2552,6 +2830,7 @@ int main() {
     TestTransitionAndOverlayText();
     TestKenBurnsMath();
     TestMusicMath();
+    TestAudioClipMath();
     TestBeatMath();
     TestFaceDetector();
     TestProjectFiles();

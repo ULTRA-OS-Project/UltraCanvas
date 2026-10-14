@@ -1,16 +1,25 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.4.1 - HasOpenFile / FindDocumentIndexByPath: the already-open check
+//                  of OpenFile, also asked across windows for a file a second
+//                  start hands over
+// Version: 2.4.0 - Word documents are read and written through FileLoader
+//                  (LoadTextDocument, SaveTextDocument), and the dialogs offer its
+//                  text document and picture types
+// Version: 2.3.6 - the autosave folder comes from the framework's data folder rule
+//                  (UltraCanvasDataFolder), every variable read as UTF-8
 // Version: 2.3.5 - the Recent files menu opens anchored to its toolbar button
 // Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
 //                  and shortcut colours
 // Version: 2.3.3 - The profile folder and comment author read as UTF-8
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasTextEditor.h"
+#include "UltraCanvasDataFolder.h"   // UltraCanvasDataFolder
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTextArea.h"
@@ -72,33 +81,18 @@ namespace {
         ms.shadowColor       = theme.shadowColor;
     }
 
+    // The autosave folder: UltraTexter under the framework's data folder rule
+    // (UltraCanvasDataFolder.h - %APPDATA%, Application Support, $XDG_DATA_HOME
+    // or ~/.local/share), every variable read as UTF-8 since the folder is
+    // opened through PathFromUtf8. The temp folder when the environment names
+    // no home. With a trailing separator, as every caller appends a name.
     std::string GetAppDataDirectory() {
-#ifdef _WIN32
-        // UTF-8 from the wide environment, as the autosave folder is opened
-        // through PathFromUtf8; getenv would answer in the ANSI code page.
-        const std::string appData = GetEnvUtf8("APPDATA");
-        if (!appData.empty()) {
-            return appData + "\\UltraTexter\\";
+        std::filesystem::path dir = UltraCanvasDataFolder("UltraTexter");
+        if (dir.empty()) {
+            std::error_code ec;
+            dir = std::filesystem::temp_directory_path(ec) / "UltraTexter";
         }
-        return "C:\\UltraTexter\\";
-#elif __APPLE__
-        const char* home = std::getenv("HOME");
-        if (home) {
-            return std::string(home) + "/Library/Application Support/UltraTexter/";
-        }
-        return "/tmp/UltraTexter/";
-#else
-        // Linux: XDG Base Directory Specification
-        const char* xdgDataHome = std::getenv("XDG_DATA_HOME");
-        if (xdgDataHome && xdgDataHome[0] != '\0') {
-            return std::string(xdgDataHome) + "/UltraTexter/";
-        }
-        const char* home = std::getenv("HOME");
-        if (home) {
-            return std::string(home) + "/.local/share/UltraTexter/";
-        }
-        return "/tmp/UltraTexter/";
-#endif
+        return PathToUtf8(dir) + "/";
     }
 
     // Build a Flat-style ToolbarAppearance tinted for either light or dark mode.
@@ -567,7 +561,7 @@ namespace {
                                             }
                                             FileDialogOptions opts;
                                             opts.title = "Open File(s)";
-                                            opts.filters = config.fileFilters;
+                                            opts.filters = DialogFileFilters(false);
                                             opts.initialDirectory = folderCopy;
                                             opts.parentWindow = GetWindow();
 
@@ -1783,18 +1777,11 @@ namespace {
     }
 
     int UltraCanvasTextEditor::OpenDocumentFromPath(const std::string& filePath) {
-        // Check if file is already open. Compare normalized so the same file
-        // reached through a relative path, a symlink or a resource path with
-        // ".." in it does not end up in two tabs.
-        std::string normalizedPath = TextEditorConfigFile::NormalizeRecentPath(filePath);
-        for (size_t i = 0; i < documents.size(); i++) {
-            if (documents[i]->filePath.empty()) continue;
-            if (documents[i]->filePath == filePath ||
-                TextEditorConfigFile::NormalizeRecentPath(documents[i]->filePath) == normalizedPath) {
-                // Switch to existing tab
-                SwitchToDocument(static_cast<int>(i));
-                return static_cast<int>(i);
-            }
+        // Already open: switch to that tab instead of opening a second one.
+        const int openIndex = FindDocumentIndexByPath(filePath);
+        if (openIndex >= 0) {
+            SwitchToDocument(openIndex);
+            return openIndex;
         }
 
         // Create new document
@@ -1827,6 +1814,25 @@ namespace {
         // whether it is spell checked and how.
         ApplySpellCheckToDocument(docIndex);
         return docIndex;
+    }
+
+    int UltraCanvasTextEditor::FindDocumentIndexByPath(const std::string& filePath) const {
+        // Compare normalized so the same file reached through a relative path,
+        // a symlink or a resource path with ".." in it does not end up in two
+        // tabs.
+        const std::string normalizedPath = TextEditorConfigFile::NormalizeRecentPath(filePath);
+        for (size_t i = 0; i < documents.size(); i++) {
+            if (documents[i]->filePath.empty()) continue;
+            if (documents[i]->filePath == filePath ||
+                TextEditorConfigFile::NormalizeRecentPath(documents[i]->filePath) == normalizedPath) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
+
+    bool UltraCanvasTextEditor::HasOpenFile(const std::string& filePath) const {
+        return FindDocumentIndexByPath(filePath) >= 0;
     }
 
     void UltraCanvasTextEditor::CloseDocument(int index) {
@@ -2401,9 +2407,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             // The element shares ownership of the document, so the tab can
             // hand the very same blocks back to the writer on save.
-            auto document = std::make_shared<UCRichDocument>();
-            std::string loadError;
-            if (!UCWordDocumentIO::Load(filePath, *document, loadError)) {
+            // Read through FileLoader - only a real word-processing file,
+            // so a damaged one still falls back to the plain view below
+            std::string loadError = "not a word-processing document";
+            std::shared_ptr<UCRichDocument> document;
+            if (DetectWordDocumentFormat(filePath) != WordDocumentFormat::Unknown)
+                document = UltraCanvasFileLoader::LoadTextDocument(filePath, loadError);
+            if (!document) {
                 if (DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc) {
                     UltraCanvasDialogManager::ShowError(loadError, "Unsupported Format",
                                                         nullptr, this);
@@ -2600,7 +2610,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     PathToUtf8(PathFromUtf8(filePath).stem());
             }
             std::string saveError;
-            if (!UCWordDocumentIO::Save(filePath, *document, saveError)) {
+            if (!UltraCanvasFileLoader::SaveTextDocument(*document, filePath, saveError)) {
                 debugOutput << "Failed to save document: " << saveError << std::endl;
                 UltraCanvasDialogManager::ShowError(saveError, "Save Failed",
                                                     nullptr, this);
@@ -2731,7 +2741,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     UCRichDocument::FromMarkdown(doc->textArea->GetText(), baseDir);
                 rich.metadata.title = PathToUtf8(PathFromUtf8(filePath).stem());
                 std::string saveError;
-                if (!UCWordDocumentIO::Save(filePath, rich, saveError)) {
+                if (!UltraCanvasFileLoader::SaveTextDocument(rich, filePath, saveError)) {
                     debugOutput << "Failed to save document: " << saveError << std::endl;
                     UltraCanvasDialogManager::ShowError(saveError, "Save Failed",
                                                         nullptr, this);
@@ -3214,11 +3224,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     opts.title = "Insert Image";
                     opts.initialDirectory = lastOpenedDirectory;
                     opts.parentWindow = GetWindow();
-                    opts.filters = {
-                        FileFilter("Images", std::vector<std::string>{
-                            "png", "jpg", "jpeg", "gif", "bmp", "svg"}),
-                        FileFilter("All Files", "*"),
-                    };
+                    // Every picture type this build reads (FileLoader's
+                    // list), and SVG, which the image reader draws too
+                    UltraCanvasFileLoader::AddLoadTypes(opts, "Images", {MediaFormatCategory::Bitmap});
+                    if (!opts.filters.empty()) opts.filters.back().extensions.push_back("svg");
+                    opts.AddFilter("All Files", "*");
                     UltraCanvasFileLoader::OpenFileDialog(
                         opts,
                         [this](DialogResult result, const std::string& path) {
@@ -3576,10 +3586,29 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         CreateNewDocument();
     }
 
+    std::vector<FileFilter> UltraCanvasTextEditor::DialogFileFilters(bool forSave) const {
+        std::vector<FileFilter> out;
+        for (const FileFilter& filter : config.fileFilters) {
+            if (filter.description != "Word Processing") {
+                out.push_back(filter);
+                continue;
+            }
+            FileDialogOptions types;
+            if (forSave) {
+                UltraCanvasFileLoader::AddTextDocumentSaveTypes(types);     // ODT, DOCX - one each
+                out.insert(out.end(), types.filters.begin(), types.filters.end());
+            } else {
+                UltraCanvasFileLoader::AddTextDocumentLoadTypes(types);     // "Documents": all it reads
+                if (!types.filters.empty()) out.push_back(types.filters.front());
+            }
+        }
+        return out;
+    }
+
     void UltraCanvasTextEditor::OnFileOpen() {
         FileDialogOptions opts;
         opts.title = "Open File(s)";
-        opts.filters = config.fileFilters;
+        opts.filters = DialogFileFilters(false);
         opts.initialDirectory = lastOpenedDirectory;
         opts.parentWindow = GetWindow();
 
@@ -3689,7 +3718,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         FileDialogOptions opts;
         opts.title = "Save File As";
-        opts.filters = config.fileFilters;
+        opts.filters = DialogFileFilters(true);
         opts.initialDirectory = lastOpenedDirectory;
         opts.defaultFileName = defaultName;
         opts.parentWindow = GetWindow();
@@ -4861,7 +4890,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                         if (doc->filePath.empty()) {
                             FileDialogOptions opts;
                             opts.title = "Save File";
-                            opts.filters = config.fileFilters;
+                            opts.filters = DialogFileFilters(true);
                             opts.defaultFileName = doc->fileName;
                             opts.parentWindow = GetWindow();
 
@@ -4965,7 +4994,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
                             FileDialogOptions opts;
                             opts.title = "Save File";
-                            opts.filters = config.fileFilters;
+                            opts.filters = DialogFileFilters(true);
                             opts.defaultFileName = doc->fileName;
                             opts.parentWindow = GetWindow();
 

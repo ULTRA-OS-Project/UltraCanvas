@@ -2,6 +2,12 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.7.0 - BringForward: restores and raises the window
+// Version: 1.6.0 - Export offers FileLoader's types (AddVectorDocumentSaveTypes):
+//                 every vector writer and every bitmap type this build writes -
+//                 PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, QOI, ICO ... - and
+//                 saves through UltraCanvasFileLoader::SaveVectorDocument, a
+//                 bitmap drawn at the size the Settings give, sharp at any
 // Version: 1.5.0 - icons redrawn on pixel grids, in three sets: the palette's tools at
 //                 28 px (media/icons/artcreator/28) in 36 px buttons, the toolbar and
 //                 panel icons on a 24 px grid (toolbars draw them at 24 px now),
@@ -11,7 +17,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -300,6 +306,12 @@ std::vector<std::shared_ptr<ArtCreatorWindow>>& ArtCreatorWindow::OpenWindows() 
 
 int ArtCreatorWindow::WindowCount() {
     return static_cast<int>(OpenWindows().size());
+}
+
+void ArtCreatorWindow::BringForward() {
+    if (!window) return;
+    if (window->IsMinimized()) window->Restore();
+    window->RaiseAndFocus();
 }
 
 std::shared_ptr<ArtCreatorWindow> ArtCreatorWindow::OpenWindow(const std::vector<std::string>& paths) {
@@ -795,18 +807,25 @@ bool ArtCreatorWindow::OpenFile(const std::string& path) {
     return true;
 }
 
-bool ArtCreatorWindow::SaveToPath(const std::string& path) {
+bool ArtCreatorWindow::SaveToPath(const std::string& path, const FileSaveImageSize& size) {
     if (!document) return false;
     std::string error;
     std::vector<std::string> warnings;
-    if (!UltraCanvasFileLoader::SaveVectorDocument(*document, path, error, &warnings)) {
+    // Every type through FileLoader: a vector format through its writer, a
+    // bitmap one by drawing the page at `size` with the format's settings.
+    if (!UltraCanvasFileLoader::SaveVectorDocument(*document, path, size, error, &warnings)) {
         UltraCanvasDialogManager::ShowError(error + "\n" + path, "Save", nullptr, window.get());
         return false;
     }
     // Only a format that keeps the drawing editable becomes the document's file.
     if (UltraCanvasFileLoader::CanLoadVectorDocument(path)) { documentPath = path; modified = false; }
     UpdateTitle();
-    if (statusHint) {
+    if (statusHint && UltraCanvasFileLoader::CanSaveImage(path)) {
+        const Size2Di pixels = size.IsOriginal() ? UltraCanvasFileLoader::GetVectorDocumentPixelSize(*document)
+                                                 : Size2Di(size.width, size.height);
+        statusHint->SetText("Exported " + FileNameOf(path) + " at " + std::to_string(pixels.width) + " x " +
+                            std::to_string(pixels.height) + " px");
+    } else if (statusHint) {
         std::string s = "Saved " + FileNameOf(path);
         if (!warnings.empty()) s += "  (" + std::to_string(warnings.size()) + " writer note" + (warnings.size() == 1 ? "" : "s") + ": " + warnings.front() + ")";
         statusHint->SetText(s);
@@ -965,23 +984,19 @@ void ArtCreatorWindow::CmdExport() {
     if (!document) return;
     FileDialogOptions opts;
     std::string def = documentPath.empty() ? "untitled.pdf" : PathToUtf8(PathFromUtf8(documentPath).stem()) + ".pdf";
-    opts.SetTitle("Export drawing")
-        .AddFilter("PDF", std::vector<std::string>{ "pdf" })
-        .AddFilter("Adobe Illustrator", std::vector<std::string>{ "ai" })
-        .AddFilter("EPS", std::vector<std::string>{ "eps" })
-        .AddFilter("CorelDRAW", std::vector<std::string>{ "cdr" })
-        .AddFilter("SVG", std::vector<std::string>{ "svg" })
-        .AddFilter("Xara XAR", std::vector<std::string>{ "xar" })
-        .AddFilter("DXF", std::vector<std::string>{ "dxf" })
-        .AddFilter("EMF", std::vector<std::string>{ "emf" })
-        .AddFilter("WMF", std::vector<std::string>{ "wmf" })
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.SetTitle("Export drawing");
+    // FileLoader's types: every vector writer and every bitmap type this
+    // build writes, and the page's size, so a bitmap type's Settings offer
+    // any size - a drawing has no pixel size and is drawn sharp at any.
+    UltraCanvasFileLoader::AddVectorDocumentSaveTypes(opts, *document);
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(def)
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
+                                                       const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
-        SaveToPath(path);
+        SaveToPath(path, size);
     });
 }
 

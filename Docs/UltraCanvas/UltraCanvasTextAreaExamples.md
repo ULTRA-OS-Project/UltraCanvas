@@ -574,6 +574,36 @@ The text area handles the following events:
 - **Drag**: Text selection
 - **Wheel**: Vertical scrolling (3 lines per notch)
 
+### Input Method Composition
+
+While an input method (Japanese, Chinese, Korean, ...) is composing, the text
+it has so far is laid out **in the caret's line, at the caret, underlined**,
+with the caret inside it where the input method puts it; the view scrolls to
+keep that caret visible, and a wrapped line grows as the composition does.
+The area says so through `DrawsTextComposition()`, and the platform backend
+then sends it `UCEventType::TextComposition` events instead of opening the
+input method's own composition window (on a backend that does not report
+compositions the window is used as before).
+
+- The composition is **not** part of the text: `GetText()`, `onTextChanged`,
+  syntax state and the undo stack never see it. `GetCompositionText()` returns
+  it (`""` when nothing is being composed).
+- The committed result arrives as ordinary typing (`KeyDown` with `text`),
+  which ends the composition and is inserted like any typed text.
+- An empty composition ends it without typing anything, and so does losing
+  the focus, turning the area read-only or changing the editing mode.
+- Starting to compose over a selection deletes the selection, as typing would
+  (that deletion is a normal edit: one undo step, one `onTextChanged`).
+- A composition never breaks the line: a line break in it is shown as a space.
+- `DrawsTextComposition()` is `false` for a read-only or display-only area and
+  in hex mode, where a key is a hex digit rather than text.
+
+```cpp
+auto notes = std::make_shared<UltraCanvasTextArea>("Notes", 0, 0, 400, 200);
+bool inPlace = notes->DrawsTextComposition();          // true: editable
+const std::string& composing = notes->GetCompositionText();
+```
+
 ## Usage Example
 
 ```cpp
@@ -924,6 +954,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)
 - **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
 - **3.8.0** (2026-08-24): Spell checking, `GetCharacterRangeBounds()`, `ReplaceTextRange()`
 - **2.0.0** (2024-12-20): Added syntax highlighting and themes

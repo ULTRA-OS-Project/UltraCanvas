@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build the wasm sysroot UltraCanvas needs under emcmake: cairo (pixman),
-# pango (glib, fribidi, harfbuzz), fontconfig, freetype, tinyxml2 and libvips,
-# plus their transitive deps (zlib, libpng, expat, libffi, pcre2).
+# pango (glib, fribidi, harfbuzz), fontconfig, freetype, tinyxml2 and libvips
+# with its PNG, JPEG, TIFF and WebP codecs, plus their transitive deps (zlib,
+# libpng, libjpeg-turbo, libtiff, libwebp, expat, libffi, pcre2).
 #
 # Where a dependency is also built by kleisauke/wasm-vips, the recipe below
 # follows that project (including its pre-patched glib/libvips branches).
@@ -155,6 +156,14 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   [ -d $DEPS/glib ] || git clone --depth 1 --branch wasm-vips-2.89.3 https://github.com/kleisauke/glib.git $DEPS/glib
   cd $DEPS/glib
   [ -d subprojects/gvdb/.git ] || git clone --depth 1 https://github.com/GNOME/gvdb.git subprojects/gvdb
+  # g_slist_free_full, g_list_free_full, g_queue_free_full and
+  # g_queue_clear_full call a one-argument GDestroyNotify through the
+  # two-argument GFunc of the foreach helpers; the branch's own function-
+  # pointer fixes do not cover them, and the trap surfaced the first time a
+  # page used pango markup (pango_parse_markup frees its tag stack that way).
+  grep -q 'wasm: a GDestroyNotify' glib/gslist.c || \
+    patch -p1 < "$SCRIPT_DIR/patches/glib-2.89-wasm-free-full-casts.patch"
+  rm -rf _build
   meson setup _build $MESON_ARGS --force-fallback-for=gvdb \
     -Dintrospection=disabled -Dselinux=disabled -Dxattr=false -Dlibmount=disabled \
     -Dsysprof=disabled -Dnls=disabled -Dglib_debug=disabled -Dtests=false \
@@ -285,7 +294,53 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   make -C _build install
 )
 
+# --- libjpeg-turbo (libvips jpegload / jpegsave, and JPEG-in-TIFF) -----------------------------
+# No SIMD: libjpeg-turbo's SIMD code is x86 / Arm assembly, and -msimd128
+# does not reach it. The TurboJPEG API is not used.
+[ -f "$SYSROOT/lib/pkgconfig/libjpeg.pc" ] || (
+  stage libjpeg-turbo
+  [ -d $DEPS/libjpeg-turbo ] || git clone --depth 1 --branch 3.1.4 https://github.com/libjpeg-turbo/libjpeg-turbo.git $DEPS/libjpeg-turbo
+  cd $DEPS/libjpeg-turbo
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$SYSROOT \
+    -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_SHARED=OFF -DENABLE_STATIC=ON \
+    -DWITH_SIMD=OFF -DWITH_TURBOJPEG=OFF
+  make -C _build install
+)
+
+# --- libwebp (libvips webpload / webpsave; mux and demux for animation) ------------------------
+# libwebp's threading is its own worker pool, so it follows WASM_THREADS.
+[ -f "$SYSROOT/lib/pkgconfig/libwebp.pc" ] || (
+  stage libwebp
+  [ -d $DEPS/libwebp ] || git clone --depth 1 --branch v1.6.0 https://github.com/webmproject/libwebp.git $DEPS/libwebp
+  cd $DEPS/libwebp
+  if [ "$WASM_THREADS" = "0" ]; then WEBP_THREADS=OFF; else WEBP_THREADS=ON; fi
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$SYSROOT \
+    -DBUILD_SHARED_LIBS=OFF -DWEBP_ENABLE_SIMD=OFF -DWEBP_USE_THREAD=$WEBP_THREADS \
+    -DWEBP_BUILD_LIBWEBPMUX=ON -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF \
+    -DWEBP_BUILD_DWEBP=OFF -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF \
+    -DWEBP_BUILD_VWEBP=OFF -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF \
+    -DWEBP_BUILD_EXTRAS=OFF
+  make -C _build install
+)
+
+# --- libtiff (libvips tiffload / tiffsave; Deflate and JPEG compression) -----------------------
+[ -f "$SYSROOT/lib/pkgconfig/libtiff-4.pc" ] || (
+  stage libtiff
+  [ -d $DEPS/libtiff ] || git clone --depth 1 --branch v4.7.2 https://gitlab.com/libtiff/libtiff.git $DEPS/libtiff
+  cd $DEPS/libtiff
+  emcmake cmake -B_build -S. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$SYSROOT \
+    -DBUILD_SHARED_LIBS=OFF -Dtiff-tools=OFF -Dtiff-tests=OFF -Dtiff-contrib=OFF -Dtiff-docs=OFF \
+    -Dcxx=OFF -Dzlib=ON -Djpeg=ON -Dold-jpeg=OFF -Djbig=OFF -Dlzma=OFF -Dzstd=OFF -Dwebp=OFF \
+    -Dlerc=OFF -Dlibdeflate=OFF -DCMAKE_FIND_ROOT_PATH=$SYSROOT \
+    -DZLIB_LIBRARY=$SYSROOT/lib/libz.a -DZLIB_INCLUDE_DIR=$SYSROOT/include \
+    -DJPEG_LIBRARY=$SYSROOT/lib/libjpeg.a -DJPEG_INCLUDE_DIR=$SYSROOT/include
+  make -C _build install
+)
+
 # --- libvips (kleisauke's pre-patched emscripten branch; C++ API on for vips-cpp) -------------
+# Readers and writers: PNG, JPEG, TIFF and WebP from the libraries above, GIF
+# from libvips' built-in decoder. No HEIF / AVIF (libheif with dav1d or aom is
+# a build of its own and megabytes of download) and no ImageMagick (BMP).
 [ -f "$SYSROOT/lib/pkgconfig/vips.pc" ] || (
   stage libvips
   [ -d $DEPS/vips ] || git clone --depth 1 --branch wasm-vips-8.18.5 https://github.com/kleisauke/libvips.git $DEPS/vips
@@ -295,7 +350,8 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   rm -rf _build
   meson setup _build $MESON_ARGS \
     -Ddeprecated=false -Dexamples=false -Dcplusplus=true -Dauto_features=disabled \
-    -Dintrospection=disabled -Dmodules=disabled -Dpng=enabled -Dzlib=enabled
+    -Dintrospection=disabled -Dmodules=disabled -Dpng=enabled -Dzlib=enabled \
+    -Djpeg=enabled -Dtiff=enabled -Dwebp=enabled
   meson install -C _build --tag runtime,devel
 )
 

@@ -6,8 +6,9 @@
 // channel-layout API (AVChannelLayout, FFmpeg 5.1), the stream side-data move
 // (codecpar->coded_side_data, 6.1) and the supported-config query (7.1) are
 // wrapped here so the pipeline code does not care which one it runs on.
+// Version: 0.14.0 - HostPictureExtensions
 // Version: 0.12.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -42,6 +43,9 @@ extern "C" {
 
 namespace VideoFX {
 namespace Internal {
+
+// The picture types the host application reads (VideoFX_SetPictureReader)
+std::vector<std::string> HostPictureExtensions();
 
 // ===== ERRORS =====
 // Sets the calling thread's last error and returns `result`, so a failure is

@@ -12,8 +12,14 @@
 // is cropped to what the elements paint, a stroke past their bounds is kept,
 // the scale is honoured, an ancestor's transform puts an element where it
 // sits in the document, and nothing visible is an error, not an empty layer.
+//
+// RasterizeVectorDocument (a drawing program's export as a bitmap): the whole
+// page at the size asked for, drawn there rather than stretched - an edge on
+// the page stays one sharp pixel step at twenty times the size - each side
+// scaled on its own, the background under it, and no page is an error.
+// Version: 1.2.0 - RasterizeVectorDocument
 // Version: 1.1.0 - RasterizeVectorElements
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorRaster.h"
@@ -129,11 +135,83 @@ void TestElements() {
     Check(!RasterizeVectorElements(doc, {red}, 0.0, error), "a zero scale is refused");
 }
 
+// The framework's own renderer again, so this runs on every build too.
+void TestDocument() {
+    using namespace UltraCanvas::VectorStorage;
+    std::cout << "--- RasterizeVectorDocument ---\n";
+    // A 20 x 10 page, its left half black; the right half is empty.
+    VectorDocument doc;
+    doc.Size = Size2Dd{20, 10};
+    doc.ViewBox = Rect2Dd{0, 0, 20, 10};
+    auto layer = doc.AddLayer("Layer 1");
+    auto black = std::make_shared<VectorRect>();
+    black->Bounds = Rect2Dd(0, 0, 10, 10);
+    black->Style.Fill = Color(0, 0, 0, 255);
+    layer->AddChild(black);
+
+    std::string error;
+    VectorRasterOptions natural;
+    auto page = RasterizeVectorDocument(doc, natural, error);
+    Check(page && page->GetWidth() == 20 && page->GetHeight() == 10,
+          "no size asked: a pixel a unit, 20 x 10 (got " +
+          (page ? std::to_string(page->GetWidth()) + " x " + std::to_string(page->GetHeight()) : error) + ")");
+
+    VectorRasterOptions big;
+    big.width = 400;
+    big.height = 200;
+    auto large = RasterizeVectorDocument(doc, big, error);
+    Check(large && large->GetWidth() == 400 && large->GetHeight() == 200, "the size asked for: 400 x 200");
+    if (large) {
+        int between = 0;
+        for (int x = 0; x < 400; ++x) {
+            const RasterPixel p = large->GetPixel(x, 100);
+            if (p.a > 20 && p.a < 235) ++between;
+        }
+        Check(between <= 2, "drawn at that size, not stretched: the edge is one sharp step (" +
+                            std::to_string(between) + " soft pixels)");
+        Check(IsColour(large->GetPixel(100, 100), 0, 0, 0) && large->GetPixel(300, 100).a == 0,
+              "the left half black, the right half clear");
+    }
+
+    VectorRasterOptions wide;
+    wide.width = 100;
+    auto followed = RasterizeVectorDocument(doc, wide, error);
+    Check(followed && followed->GetWidth() == 100 && followed->GetHeight() == 50,
+          "a width alone: the height follows the page's shape");
+
+    VectorRasterOptions square;
+    square.width = 100;
+    square.height = 100;
+    auto stretched = RasterizeVectorDocument(doc, square, error);
+    Check(stretched && stretched->GetWidth() == 100 && stretched->GetHeight() == 100 &&
+          IsColour(stretched->GetPixel(45, 90), 0, 0, 0) && stretched->GetPixel(55, 90).a == 0,
+          "a size in another shape stretches the page to it");
+
+    VectorRasterOptions white = big;
+    white.background = RasterPixel(255, 255, 255, 255);
+    auto backed = RasterizeVectorDocument(doc, white, error);
+    Check(backed && IsColour(backed->GetPixel(300, 100), 255, 255, 255) &&
+          IsColour(backed->GetPixel(100, 100), 0, 0, 0),
+          "the background goes under the drawing");
+
+    doc.BackgroundColor = Color(0, 0, 255, 255);
+    auto blue = RasterizeVectorDocument(doc, natural, error);
+    Check(blue && IsColour(blue->GetPixel(15, 5), 0, 0, 255), "the document's own background colour is drawn");
+
+    VectorDocument empty;
+    Check(!RasterizeVectorDocument(empty, natural, error) && !error.empty(), "no page size is refused with a reason");
+    VectorRasterOptions huge;
+    huge.width = 100000;
+    huge.height = 100000;
+    Check(!RasterizeVectorDocument(doc, huge, error), "an absurd size is refused");
+}
+
 } // namespace
 
 int main() {
     std::cout << "=== UltraCanvasVectorRaster ===\n";
     TestElements();
+    TestDocument();
 
     const std::string svgPath = WriteTempSvg();
     const std::vector<std::string> extensions = GetVectorRasterExtensions();

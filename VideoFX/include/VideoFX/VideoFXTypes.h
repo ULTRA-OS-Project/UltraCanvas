@@ -2,8 +2,10 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.12.0
-// Last Modified: 2026-10-12
+// Version: 0.14.0 - VideoFXFileFormat / VideoFXFileKind (VideoFX_GetFileFormats),
+//                  VideoFXPictureReader (VideoFX_SetPictureReader)
+// Version: 0.13.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -420,6 +422,37 @@ enum class VideoFXAcceleration {
     MediaFoundation     // Windows (h264_mf, ...)
 };
 
+// What a file holds (VideoFXFileFormat)
+enum class VideoFXFileKind {
+    Video,                          // a film: picture, usually with sound
+    Audio,                          // sound only
+    Picture                         // a still picture (or an animated GIF)
+};
+
+// One kind of file and what this build does with it (VideoFX_GetFileFormats)
+struct VideoFXFileFormat {
+    std::string extension;                          // lowercase, no dot: "mp4"
+    std::vector<std::string> aliases;               // other extensions of it: "m4v"
+    std::string description;                        // "MPEG-4 container"; empty for a picture
+    VideoFXFileKind kind = VideoFXFileKind::Video;
+    bool canRead = false;                           // a segment, an overlay or a song can be this file
+    bool canWrite = false;                          // an export writes it: its muxer and usual encoder are here
+    VideoFXContainer container = VideoFXContainer::Auto;   // what an export to it uses; Auto when none does
+};
+
+// Picture types the host application reads for the engine, with its own
+// image library (VideoFX_SetPictureReader): a HEIC of tiles, a camera's raw
+// file - whatever FFmpeg does not open whole. Both calls come from the
+// engine's worker threads.
+struct VideoFXPictureReader {
+    std::vector<std::string> extensions;    // the types it takes over: lowercase, undotted
+    // The picture's size as shown (upright), read without decoding it;
+    // false when it cannot read the file
+    std::function<bool(const std::string& path, int& width, int& height)> size;
+    // The picture, upright, at its full size; false when it cannot read it
+    std::function<bool(const std::string& path, VideoFXFrame& frame)> decode;
+};
+
 // One encoder FFmpeg offers for a codec (VideoFX_ListVideoEncoders)
 struct VideoFXEncoderInfo {
     std::string name;                                       // FFmpeg's name, e.g. "h264_nvenc"
@@ -524,6 +557,38 @@ struct VideoFXMusic {
     }
 };
 
+// A sound placed on the timeline: a voice-over, a sound effect, a sting. It
+// plays from `at` seconds of the export, `start`..`end` of its file, mixed
+// with the segments' own sound and before the music - so a voice-over can
+// duck the music as the segments' speech does. Any number of them, at any
+// times, overlapping each other and the cuts; what lies past the end of the
+// export is cut off there.
+struct VideoFXAudioClip {
+    std::string path;               // a sound file, or a video whose sound is wanted
+    double at = 0.0;                // seconds into the export where it starts
+    double start = 0.0;             // first second of the file used
+    double end = 0.0;               // last second used, 0 = to the file's end
+    double volume = 1.0;            // 0..4 (1 = as recorded)
+    double fadeIn = 0.0;            // seconds, at the clip's own ends
+    double fadeOut = 0.0;
+    // The background music dips under it, as under the segments' sound:
+    // true for a voice-over, false for a sound effect over the music
+    bool ducksMusic = false;
+
+    static VideoFXAudioClip Sound(const std::string& path, double at, double volume = 1.0) {
+        VideoFXAudioClip c;
+        c.path = path;
+        c.at = at;
+        c.volume = volume;
+        return c;
+    }
+    static VideoFXAudioClip VoiceOver(const std::string& path, double at, double volume = 1.0) {
+        VideoFXAudioClip c = Sound(path, at, volume);
+        c.ducksMusic = true;
+        return c;
+    }
+};
+
 struct VideoFXExportSettings {
     VideoFXContainer container = VideoFXContainer::Auto;
     VideoFXVideoCodec videoCodec = VideoFXVideoCodec::Auto;
@@ -556,6 +621,7 @@ struct VideoFXExportSettings {
     int threads = 0;                // 0 = automatic
 
     VideoFXMusic music;             // background music under the whole export (none by default)
+    std::vector<VideoFXAudioClip> audioClips;   // voice-overs and sound effects at given times
 
     // Presets for common targets
     static VideoFXExportSettings WebMP4(int height = 1080);     // H.264 + AAC, 1080p default

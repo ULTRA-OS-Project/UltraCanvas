@@ -1,14 +1,21 @@
 // Apps/UltraVideo/main.cpp
 // UltraVideo - a video editor on the VideoFX engine and the framework's
 // UltraCanvasVideoTimeline element. Opens the project or the media files
-// named on the command line.
+// named on the command line. When UltraVideo is already running, the files go
+// to it instead - a project opens there, media is imported into its project -
+// and this start quits (UltraCanvasSingleInstance.h).
+// Version: 0.3.0 - one copy per user: a second start's files open in the
+//                  running copy
+// Version: 0.2.0 - registers the engine's files with the codec registry (RegisterEngineFormats)
 // Version: 0.1.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
+#include "UltraVideoFormats.h"
 #include "UltraVideoWindow.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 
 #ifdef __linux__
@@ -72,6 +79,14 @@ int main(int argc, char* argv[]) {
     std::signal(SIGTERM, OnSignal);
 #endif
 
+    // One copy per user: a second start hands its files to the running copy
+    // (absolute, since that copy was started in another folder) and quits.
+    // Declared before the window and closed before it goes, so no request
+    // reaches a window that is going.
+    UltraCanvasSingleInstance instance("org.ultraos.ultravideo", "UltraVideo");
+    const UltraCanvasSingleInstance::Start start = instance.Claim(UltraCanvasSingleInstance::MakeOpenRequest(paths));
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;
+
     UltraCanvasApplication app;
     std::unique_ptr<UltraVideo::UltraVideoWindow> window;
     try {
@@ -80,7 +95,25 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraVideo.png"));
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraVideo");
+        // The engine's files join FileLoader's lists before a dialog asks
+        UltraVideo::RegisterEngineFormats();
         window = std::make_unique<UltraVideo::UltraVideoWindow>(app);
+        // Listening starts before the command line's files are opened: a
+        // file that cannot be read shows a native error dialog that holds the
+        // start-up, and a start made meanwhile is still answered.
+        //
+        // A later start's files: a project opens (asking to save the current
+        // one first when it has changes), media is imported into the open
+        // project - as dropping them on the window does. Then the window, or
+        // the save question it asks, comes forward.
+        UltraVideo::UltraVideoWindow* shown = window.get();
+        instance.ListenOpen([shown](const std::vector<std::string>& opened) {
+            shown->OpenFiles(opened);
+            UltraCanvasSingleInstance::BringToFront();
+        });
+
         if (!window->Create(paths)) {
             std::cerr << "Failed to create the main window\n";
             return EXIT_FAILURE;
@@ -94,6 +127,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "Fatal: unknown exception\n";
         return EXIT_FAILURE;
     }
+    instance.Close();
     window.reset();
     return EXIT_SUCCESS;
 }

@@ -1,17 +1,19 @@
 // core/UltraCanvasDesktopShell.cpp
 // The platform-neutral half of UltraCanvasDesktopShell: the application list
-// from desktop entries, the launcher, the notices, the screenshot path, the
+// from desktop entries (or from the platform, where it keeps its own - the
+// Start menu on Windows), the launcher, the notices, the screenshot path, the
 // network / USB / Bluetooth part of the device activity (read from
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
-// Version: 1.1.0
-// Last Modified: 2026-09-30
+// Version: 1.2.0 - the platform's own application list; shortcut entries launch
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
+#include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasHardwareInfo.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
@@ -136,6 +138,18 @@ namespace {
         out.updatedUnixSeconds = root.Get("updated").GetInteger(0);
         if (out.application.empty()) out.application = PathToUtf8(file.stem());
         return true;
+    }
+
+    std::string LowerCase(std::string text) {
+        std::transform(text.begin(), text.end(), text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return text;
+    }
+
+    void SortByName(std::vector<UCDesktopEntry>& apps) {
+        std::sort(apps.begin(), apps.end(), [](const UCDesktopEntry& a, const UCDesktopEntry& b) {
+            return LowerCase(a.name) < LowerCase(b.name);
+        });
     }
 
     bool IsTunnelInterface(const NetworkInterfaceInfo& adapter) {
@@ -299,6 +313,13 @@ DesktopDeviceActivity UltraCanvasDesktopShell::ReadDeviceActivity() {
 // ===== APPLICATIONS =====
 
 std::vector<UCDesktopEntry> UltraCanvasDesktopShell::ListApplications(int iconSize) {
+    // A platform that keeps its applications elsewhere answers itself.
+    std::vector<UCDesktopEntry> native;
+    if (DesktopShellBackend::ListNativeApplications(iconSize, native)) {
+        SortByName(native);
+        return native;
+    }
+
     std::map<std::string, UCDesktopEntry> byId;   // desktop-file id -> the entry that won
     std::error_code ec;
     for (const fs::path& root : ApplicationDirectories()) {
@@ -329,12 +350,7 @@ std::vector<UCDesktopEntry> UltraCanvasDesktopShell::ListApplications(int iconSi
         }
         apps.push_back(std::move(entry));
     }
-    std::sort(apps.begin(), apps.end(), [](const UCDesktopEntry& a, const UCDesktopEntry& b) {
-        std::string la = a.name, lb = b.name;
-        std::transform(la.begin(), la.end(), la.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        std::transform(lb.begin(), lb.end(), lb.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return la < lb;
-    });
+    SortByName(apps);
     return apps;
 }
 
@@ -376,6 +392,22 @@ const UCDesktopEntry* UltraCanvasDesktopShell::MatchApplication(const DesktopWin
 bool UltraCanvasDesktopShell::LaunchApplication(const UCDesktopEntry& entry,
                                                 const std::vector<std::string>& files,
                                                 std::string* error) {
+    if (!entry.shortcutPath.empty()) {
+        // A Start-menu shortcut: opened the way Explorer opens it, so its
+        // arguments, its working folder and the shortcuts that name no plain
+        // program behave as they do there. Files go to the program it names.
+        std::string reason;
+        bool ok = false;
+        if (files.empty()) {
+            ok = FileAssociations::OpenWithDefaultApplication({entry.shortcutPath}, reason);
+        } else if (!entry.program.empty()) {
+            ok = FileAssociations::OpenWithApplicationPath(entry.program, files, reason);
+        } else {
+            reason = "\"" + entry.name + "\" names no program to open files with.";
+        }
+        if (!ok && error) *error = reason;
+        return ok;
+    }
     std::vector<std::string> argv = DesktopEntryCommand(entry, files);
     if (argv.empty()) {
         if (error) *error = "\"" + entry.name + "\" has no command to run.";
@@ -448,6 +480,33 @@ bool UltraCanvasDesktopShell::LaunchProgram(const std::string& program,
     const bool ok = LaunchDetachedProcess(argv, "", reason);
     if (!ok && error) *error = reason;
     return ok;
+}
+
+// ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
+
+bool UltraCanvasDesktopShell::CanReplaceSystemDesktop() { return DesktopShellBackend::CanReplaceSystemDesktop(); }
+bool UltraCanvasDesktopShell::IsSystemDesktopReplaced() { return DesktopShellBackend::IsSystemDesktopReplaced(); }
+
+bool UltraCanvasDesktopShell::ReplaceSystemDesktop(const std::string& desktopProgram,
+                                                   const std::vector<std::string>& arguments,
+                                                   std::string* error) {
+    std::string reason;
+    std::error_code ec;
+    const fs::path program = PathFromUtf8(desktopProgram);
+    if (desktopProgram.empty() || !program.is_absolute() || !fs::is_regular_file(program, ec)) {
+        reason = "\"" + desktopProgram + "\" is not a program this account can start at sign-in.";
+    } else if (DesktopShellBackend::ReplaceSystemDesktop(desktopProgram, arguments, reason)) {
+        return true;
+    }
+    if (error) *error = reason;
+    return false;
+}
+
+bool UltraCanvasDesktopShell::RestoreSystemDesktop(std::string* error) {
+    std::string reason;
+    if (DesktopShellBackend::RestoreSystemDesktop(reason)) return true;
+    if (error) *error = reason;
+    return false;
 }
 
 // ===== NOTICES =====
@@ -642,6 +701,16 @@ namespace DesktopShellBackend {
         error = "Screenshots are not available on this platform yet.";
         return false;
     }
+
+    bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
+
+    bool CanReplaceSystemDesktop() { return false; }
+    bool IsSystemDesktopReplaced() { return false; }
+    bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, std::string& error) {
+        error = "This platform has no switch for which desktop a session starts.";
+        return false;
+    }
+    bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
 
     void ReadDeviceActivity(DesktopDeviceActivity& activity) {
         activity.warnings.push_back(

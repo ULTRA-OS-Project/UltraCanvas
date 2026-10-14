@@ -69,8 +69,13 @@
 // IsPlayingMedia says whether a shown video or sound is playing, so a host
 // that reopens a file which changed on disk can leave one being played alone.
 //
-// Version: 1.11.0
-// Last Modified: 2026-10-10
+// Save image as tells the Save dialog the picture's size - or, for an SVG, the
+// size the drawing is drawn at - so a bitmap type's Settings offer another
+// size, and writes with the type's save settings at the size chosen; a drawing
+// is drawn again at that size, sharp, rather than stretched.
+//
+// Version: 1.12.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -78,6 +83,7 @@
 #include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasFileSaveSettings.h"   // FileSavePicture, FileSaveImageSize
 #include "UltraCanvasImageAnimation.h"
 #include "UltraCanvasToneCurve.h"     // ToneCurveSet used by MediaAdjustments
 #include "Models/STL/UltraCanvas3DTypes.h"  // Mesh3D / ModelViewPose for the 3D pane
@@ -223,8 +229,18 @@ public:
     void ToggleFlipVertical();
     void ResetTransforms();                 // rotation + mirror only
 
-    // Bake the current adjustments + geometry into a file (PixelFX). Returns
-    // false and fills `error` on failure.
+    // What Save writes, as the Save dialog is told it (FileDialogOptions::
+    // SetImageSize / SetDrawingSize): the picture turned as shown - a quarter
+    // turn swaps its sides - and whether it is a drawing, an SVG, which has
+    // no pixels of its own and is drawn sharp at any size. No size without
+    // an image.
+    FileSavePicture GetSavePicture() const;
+    // Bake the current adjustments + geometry into a file (PixelFX), with the
+    // format's save settings once the user has stored any, at `size`
+    // (IsOriginal: as GetSavePicture says). A drawing is drawn again at that
+    // size rather than its picture stretched. Returns false and fills `error`
+    // on failure.
+    bool SaveProcessed(const std::string& path, const FileSaveImageSize& size, std::string& error);
     bool SaveProcessed(const std::string& path, std::string& error);
 
     void SetCanvasColor(const Color& c) { canvasColor = c; RequestRedraw(); }

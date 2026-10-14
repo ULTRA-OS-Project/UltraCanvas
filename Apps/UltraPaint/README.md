@@ -180,10 +180,12 @@ every pixel of a colour and `Del` erases them.
 
 ## Files
 
-Opens what libvips loads (PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL,
-TGA, PSD, camera RAW, …). *Save* / *Save As* write the flattened image
-in the format of the extension; *Export with Options* adds the per-format
-knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
+Opens and saves the formats the framework's FileLoader lists for this build
+(`UltraCanvasFileLoader::GetSupportedLoadExtensions` / `AddImageSaveTypes`:
+PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL, TGA, QOI, ICO, camera RAW,
+… - whatever libvips and the framework's plugins read and write here), not
+a list of its own. *Save* / *Save As* write the flattened image in the
+format of the extension; *Export with Options* adds the per-format knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
 and one PNG per layer.
 
 ### Dropping a file on the canvas
@@ -272,6 +274,13 @@ UltraPaint logo.svg        # asks for the raster size, then opens it
 UltraPaint part.stl        # asks for the view and the size, then opens it
 UltraPaint a.png b.png     # one window each - what a drop on the icon expands to
 ```
+
+One UltraPaint runs per user. Starting it again while it runs - from a
+shell, a file manager or a drop on the icon - hands the images to the running
+copy, which opens each in a new window of its own and brings it to the front;
+an image already open is never replaced. A start without images just brings
+UltraPaint forward (`UltraCanvasSingleInstance`). `--help` and `--version`
+answer on their own.
 
 ## Building
 

@@ -1,3 +1,31 @@
+#### 2026-10-14 *0.7.0*
+- **Tabs.** A tab strip above the toolbar. Each tab has its own page and
+  back / forward history, or its own running app, and the toolbar, the
+  status line and the window title follow the active one.
+  - **+** on the strip or **Ctrl+T** opens an empty tab with the address
+    bar focused. A tab's **×** or **Ctrl+W** closes it, but the last tab
+    stays. **Ctrl+Tab** / **Ctrl+Shift+Tab** switch tabs, and **Ctrl+L**
+    selects the address. Tabs can be dragged to reorder them.
+  - A tab is named after its page's title, or its address for an app.
+  - New `ui/UltraWebTab`, which holds what was the whole window's page or
+    app, and `UltraWebTabTest`, which drives one without a window.
+- **Download speed and time left.** A running download's row reads
+  "4.8 MB of 20.0 MB (23%) - 1.8 MB/s, 9 s left". The speed is smoothed
+  over the last seconds.
+- **Long file names are shortened.** A name longer than 36 characters is cut
+  in the middle with "…", keeping its start and its extension, so the
+  progress keeps its room. The whole name shows as the row's tooltip.
+
+#### 2026-10-13 *0.6.1*
+- **A large download is no longer cut off after 30 seconds.** A streamed
+  download ran under UltraNet's 30-second whole-transfer limit, so any file
+  that took longer to arrive failed part-way with a timeout. Now the file is
+  written by UltraNet itself (`outputFilePath`, UltraNet 0.3.0) with no time
+  limit at all: a download is as long as the file is large, and only
+  a server that stops sending for 30 seconds ends it, as a failed download
+  that leaves no part file. The progress figures are UltraNet's, with "so
+  far" when the server gave no size.
+
 #### 2026-10-12 *0.6.0*
 - **The downloads list.** A **Downloads** button on the toolbar shows or
   hides a panel above the status bar. It reads "Downloads (2)" while two

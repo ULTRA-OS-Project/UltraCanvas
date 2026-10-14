@@ -160,9 +160,33 @@ UltraNet_ResolveUrl("https://x.org/app/main.wasm", "../data/a.json", url);
 // url == "https://x.org/data/a.json"; a URL with a control character in it
 // (a CR or LF that would end the request line) is refused
 
-// File download streamed straight to disk
+// File download streamed straight to disk. No whole-transfer timeout (a
+// download is as long as the file is large), a 30 s stall timeout instead.
 UltraNet_HttpDownloadFile("https://cdn.example.com/big.zip",
                           "/tmp/big.zip");
+
+// A download that can be resumed, paused and checked before its body: any
+// request writes to a file through outputFilePath, on the async path too.
+UltraNetHttpRequest dl;
+dl.url = "https://cdn.example.com/big.zip";
+dl.options.outputFilePath     = "/tmp/big.zip.part";
+dl.options.resumeOutputFile   = true;   // the file's size is the Range start
+dl.options.httpsOnlyRedirects = true;   // never bounced onto http://
+dl.options.stallTimeoutMs     = 60000;  // Timeout when nothing moves for 60 s
+dl.onHeaders = [](const UltraNetResponse& head) {
+    // The final response's headers, before any body: 206 means the rest of
+    // the file is coming, 200 that the server sent it all and the partial
+    // file was replaced. Return false to end the transfer (Cancelled).
+    return head.contentLength <= kMaxPackageBytes;
+};
+dl.onDownloadProgress = [](int64_t now, int64_t total) {
+    // Figures of the whole file, the resumed bytes included.
+};
+UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetResponse& resp) {
+    // The file is closed and complete here when resp.IsComplete().
+});
+UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
+UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
 ```
 
 ```cpp

@@ -1,15 +1,15 @@
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
 **Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
-**Version:** 0.1.0
+**Version:** 0.2.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-08-10
+**Last Modified:** 2026-10-13
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
-authenticated encryption, key derivation and secure random generation are
-implemented, so that no application, plugin or sibling module ever has to
-write its own.
+authenticated encryption, digital signatures, key derivation and secure
+random generation are implemented, so that no application, plugin or sibling
+module ever has to write its own.
 
 It follows the same rules as UltraNet and UltraDatabase — clear structure,
 names understandable from the name itself, `UltraCryptResult` from every
@@ -26,7 +26,8 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation and HKDF-SHA-256/512. (The RFC 4648 Base32/Base64
+Argon2id key derivation, HKDF-SHA-256/512 and Ed25519 signatures (§5.8).
+(The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
 Base32 decoder.) First consumer: the UCD document encryption envelope
 (`UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, tested by
@@ -44,8 +45,8 @@ accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
 which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18.
 
-**Not yet implemented:** the public-key surface (§2, no consumer). BLAKE3-256,
-once listed as optional, has been dropped altogether (§9).
+**Not yet implemented:** key agreement and X.509 (§2, no consumer).
+BLAKE3-256, once listed as optional, has been dropped altogether (§9).
 
 ---
 
@@ -123,9 +124,9 @@ Two caveats stated plainly:
 ## 2. Scope
 
 **In scope** — data-at-rest and data-integrity primitives: hashing, HMAC,
-authenticated encryption (AEAD), password-based and key-derivation functions,
-cryptographically secure random generation, constant-time comparison, and
-secure (zeroizing) memory.
+authenticated encryption (AEAD), digital signatures (Ed25519), password-based
+and key-derivation functions, cryptographically secure random generation,
+constant-time comparison, and secure (zeroizing) memory.
 
 **Out of scope:**
 
@@ -133,9 +134,9 @@ secure (zeroizing) memory.
   UltraCrypt never opens a socket and never validates a certificate.
 - **Credential storage and policy.** That is UltraVault's job; UltraVault
   *consumes* UltraCrypt for its file-backed fallback backend.
-- **Public-key cryptography** (signatures, key agreement, X.509). No consumer
-  needs it yet. The surface is arranged so `UltraCrypt_Sign` /
-  `UltraCrypt_Verify` can be added later without disturbing anything here.
+- **Key agreement and X.509.** No consumer needs them. Signatures, the one
+  public-key operation a signed catalog or update needs, are in (§5.8); the
+  rest can be added the same way without disturbing anything here.
 - **Protocol-level constructions** (TOTP, the UCD envelope, SuperVault's
   request flow). Those live in their consumers and are built *from* these
   primitives.
@@ -819,6 +820,76 @@ different one.
 
 ---
 
+### 5.8 Digital signatures (Ed25519)
+
+One scheme, Ed25519 (RFC 8032): deterministic, 64-byte detached signatures,
+32-byte public keys, 64-byte secret keys in the backend's form (the 32-byte
+seed with the public key appended). The verifier holds nothing but a public
+key, so a signing key never leaves the machine that signs. This is what a
+signed catalog, manifest or update is checked with.
+
+```cpp
+enum class UltraCryptSignatureAlgorithm : uint8_t { Ed25519 };
+
+size_t UltraCrypt_GetSignaturePublicKeySize(UltraCryptSignatureAlgorithm); // 32
+size_t UltraCrypt_GetSignatureSecretKeySize(UltraCryptSignatureAlgorithm); // 64
+size_t UltraCrypt_GetSignatureSeedSize(UltraCryptSignatureAlgorithm);      // 32
+size_t UltraCrypt_GetSignatureSize(UltraCryptSignatureAlgorithm);          // 64
+bool   UltraCrypt_IsSignatureAvailable(UltraCryptSignatureAlgorithm);
+
+// A fresh pair from the CSPRNG.
+UltraCryptResult UltraCrypt_GenerateSignatureKeyPair(
+        UltraCryptSignatureAlgorithm, std::vector<uint8_t>& outPublicKey,
+        UltraCryptSecureBuffer& outSecretKey);
+
+// The pair a 32-byte seed determines; a seed kept in a vault is the whole
+// signing identity.
+UltraCryptResult UltraCrypt_SignatureKeyPairFromSeed(
+        UltraCryptSignatureAlgorithm, const UltraCryptSecureBuffer& seed,
+        std::vector<uint8_t>& outPublicKey, UltraCryptSecureBuffer& outSecretKey);
+
+// The public key a secret key carries.
+UltraCryptResult UltraCrypt_GetSignaturePublicKey(
+        UltraCryptSignatureAlgorithm, const UltraCryptSecureBuffer& secretKey,
+        std::vector<uint8_t>& outPublicKey);
+
+// Deterministic detached signature over the exact bytes given.
+UltraCryptResult UltraCrypt_Sign(UltraCryptSignatureAlgorithm,
+                                 const UltraCryptSecureBuffer& secretKey,
+                                 const void* data, size_t size,
+                                 std::vector<uint8_t>& outSignature);
+
+// SignatureInvalid when the signature does not match the message and key —
+// one code whether the message, the signature or the key is off.
+UltraCryptResult UltraCrypt_Verify(UltraCryptSignatureAlgorithm,
+                                   const std::vector<uint8_t>& publicKey,
+                                   const void* data, size_t size,
+                                   const std::vector<uint8_t>& signature);
+
+// The same over a file's bytes as they are on disk.
+UltraCryptResult UltraCrypt_SignFile(UltraCryptSignatureAlgorithm,
+                                     const UltraCryptSecureBuffer& secretKey,
+                                     const std::string& filePath,
+                                     std::vector<uint8_t>& outSignature);
+UltraCryptResult UltraCrypt_VerifyFile(UltraCryptSignatureAlgorithm,
+                                       const std::vector<uint8_t>& publicKey,
+                                       const std::string& filePath,
+                                       const std::vector<uint8_t>& signature);
+```
+
+Rules: a key or signature of the wrong length is refused with
+`InvalidKeySize` / `InvalidArgument` before anything is checked; a
+verification failure is `SignatureInvalid` and nothing else, since a verifier
+has no business telling a wrong key from a wrong byte. Signing is
+deterministic, so there is no nonce to store and no entropy failure at
+signing time. Covered by the RFC 8032 §7.1 vectors (TEST 1, 2, 3 and
+SHA(abc)) plus a flipped message bit, a flipped signature bit, a wrong key and
+a file with a byte appended.
+
+*Serves:* UltraStore's signed catalog, and any signed manifest or update.
+
+---
+
 ## 6. Usage sketches
 
 **UCD v2 section encryption (§4.3 pipeline):**
@@ -876,7 +947,8 @@ is part of the deliverable, not a follow-up:
 
 - **Published test vectors, all mandatory** (implemented in
   `Tests/UltraCryptTests.cpp`): FIPS 180-4 (SHA-1 and SHA-2), RFC 2202 / 4231
-  (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 4648 (Base32/64), RFC 8439
+  (HMAC-SHA-1 / SHA-2), RFC 5869 (HKDF), RFC 4648 (Base32/64), RFC 8032
+  (Ed25519), RFC 8439
   (ChaCha20-Poly1305) plus the XChaCha20-Poly1305 vectors from
   draft-irtf-cfrg-xchacha and libsodium's own suite, NIST CAVP GCM for the
   interop-only AES path, and RFC 4226 App. D / RFC 6238 App. B once the OTP
@@ -907,7 +979,7 @@ is part of the deliverable, not a follow-up:
 | **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
-| **4** | Optional additions as needed: XChaCha20-Poly1305 at volume, public-key surface |
+| **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog. Still optional: XChaCha20-Poly1305 at volume, key agreement |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.

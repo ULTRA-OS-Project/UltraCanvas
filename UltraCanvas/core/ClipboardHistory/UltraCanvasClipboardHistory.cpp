@@ -2,8 +2,10 @@
 // The persistent clipboard history: SQLite index (UltraDatabase), payloads as
 // encrypted files named by a keyed hash, image thumbnails, retention, the
 // recorder lease. See include/UltraCanvasClipboardHistory.h.
+// Version: 1.1.2 - the folder is the framework's machine-local data root (UltraCanvasLocalDataFolderRoot)
+// Version: 1.1.1 - $XDG_DATA_HOME names the data folder on every platform, as for the applications
 // Version: 1.1.0 - the policy's previewStyle
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboardHistory.h"
@@ -11,6 +13,7 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasFileError.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasDataFolder.h"   // UltraCanvasLocalDataFolderRoot
 #include "UltraCanvasPathUtf8.h"
 #include "DataFormats/UltraCanvasJSON.h"
 #include <UltraCrypt/UltraCryptCore.h>
@@ -853,18 +856,13 @@ UltraCanvasClipboardHistory::~UltraCanvasClipboardHistory() {
     Close();
 }
 
+// The framework's machine-local data root (UltraCanvasDataFolder.h): the
+// history is a store of copied blobs, not data that should roam with the
+// profile, so %LOCALAPPDATA% on Windows rather than the applications'
+// %APPDATA%; Application Support on macOS, ~/.local/share elsewhere, and
+// $XDG_DATA_HOME first everywhere.
 std::string UltraCanvasClipboardHistory::DefaultDirectory() {
-    fs::path root;
-#if defined(_WIN32)
-    if (const std::string local = GetEnvUtf8("LOCALAPPDATA"); !local.empty()) root = PathFromUtf8(local);
-#elif defined(__APPLE__)
-    if (const std::string home = GetEnvUtf8("HOME"); !home.empty()) {
-        root = PathFromUtf8(home) / "Library" / "Application Support";
-    }
-#else
-    if (const std::string data = GetEnvUtf8("XDG_DATA_HOME"); !data.empty()) root = PathFromUtf8(data);
-    else if (const std::string home = GetEnvUtf8("HOME"); !home.empty()) root = PathFromUtf8(home) / ".local" / "share";
-#endif
+    const fs::path root = UltraCanvasLocalDataFolderRoot();
     return root.empty() ? "" : PathToUtf8(root / "ultraos" / "clipboard");
 }
 

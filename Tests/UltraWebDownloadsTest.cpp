@@ -2,14 +2,17 @@
 // UltraWeb's downloads (Apps/UltraWeb/host/UltraWebDownloads): bytes saved
 // through a part file, a local file copied, sizes shown dot-decimal, and an
 // http download streamed to disk from a loopback server - whole, a 404 that
-// leaves no file, and a cancelled one that leaves no part file either.
+// leaves no file, a cancelled one that leaves no part file either, and one
+// whose server stops sending, which ends as a stall rather than hanging.
 // Then the downloads list (host/UltraWebDownloadList) and its panel
 // (ui/UltraWebDownloadsPanel): states, sizes, the buttons each row offers
 // and what they do.
 // The http part needs POSIX sockets and is skipped on Windows.
+// Version: 1.2.0 - a stalled download ends
+// Version: 1.2.0 - speed, time left, long names
 // Version: 1.1.0 - the downloads list and panel
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "host/UltraWebDownloadList.h"
@@ -160,6 +163,53 @@ void TestList() {
     Check(changes.empty(), "clearing nothing says nothing");
 }
 
+void TestSpeedAndNames() {
+    std::printf("speed, time left, long names\n");
+    DownloadList list;
+    int64_t now = 1000;
+    list.clock = [&] { return now; };
+    const int id = list.Add("http://x/big.iso", "big.iso", "/d/big.iso");
+    const int64_t mb = 1024 * 1024;
+    now += 500;
+    list.Progress(id, mb / 2, 20 * mb);
+    Check(list.Find(id)->bytesPerSecond == 0 && DownloadList::Describe(*list.Find(id)) == "512 KB of 20.0 MB (2%)",
+          "no speed before a second has passed: " + DownloadList::Describe(*list.Find(id)));
+    now += 500;
+    list.Progress(id, 2 * mb, 20 * mb);
+    Check(list.Find(id)->bytesPerSecond == 2 * mb, "2 MB in the first second: 2 MB/s");
+    Check(DownloadList::Describe(*list.Find(id)) == "2.0 MB of 20.0 MB (10%) - 2.0 MB/s, 9 s left",
+          "speed and time left: " + DownloadList::Describe(*list.Find(id)));
+    now += 1000;
+    list.Progress(id, 3 * mb, 20 * mb);
+    Check(list.Find(id)->bytesPerSecond == (2 * 2 * mb + mb) / 3, "a slow second moves the speed a third of the way");
+
+    Check(DownloadList::TimeLeft(10, 0).empty(), "no speed, no time");
+    Check(DownloadList::TimeLeft(1, 1000) == "1 s left", "under a second shows 1 s");
+    Check(DownloadList::TimeLeft(59 * 1000, 1000) == "59 s left", "seconds");
+    Check(DownloadList::TimeLeft(61 * 1000, 1000) == "2 min left", "minutes, rounded up");
+    Check(DownloadList::TimeLeft(3600 * 1000, 1000) == "1 h left", "an hour");
+    Check(DownloadList::TimeLeft(3900 * 1000, 1000) == "1 h 5 min left", "hours and minutes");
+
+    const int unsized = list.Add("http://x/s", "s", "/d/s");
+    now += 1000;
+    list.Progress(unsized, mb, -1);
+    Check(DownloadList::Describe(*list.Find(unsized)) == "1.0 MB so far - 1.0 MB/s", "no size: speed, no time left");
+
+    Check(DownloadList::Ellipsize("short.zip", 36) == "short.zip", "a short name stays");
+    const std::string longName = "ultracanvas-nightly-build-linux-x86_64-2026-10-14-snapshot.tar.gz";
+    const std::string cut = DownloadList::Ellipsize(longName, 36);
+    Check(cut.find("\xE2\x80\xA6") != std::string::npos, "a long name gets an ellipsis: " + cut);
+    Check(cut.rfind("ultracanvas-nightly", 0) == 0 && cut.size() >= 7 && cut.compare(cut.size() - 7, 7, ".tar.gz") == 0,
+          "it keeps the start and the extension");
+    size_t chars = 0;
+    for (unsigned char c : cut) if ((c & 0xC0) != 0x80) ++chars;
+    Check(chars == 36, "36 characters, the ellipsis one of them (" + std::to_string(chars) + ")");
+    const std::string utf8 = std::string("\xC3\xA9t\xC3\xA9-") + std::string(60, 'x') + ".pdf";
+    const std::string cutUtf8 = DownloadList::Ellipsize(utf8, 20);
+    Check(cutUtf8.rfind("\xC3\xA9t\xC3\xA9", 0) == 0 && cutUtf8.compare(cutUtf8.size() - 4, 4, ".pdf") == 0,
+          "never splits a character: " + cutUtf8);
+}
+
 void TestPanel() {
     std::printf("the downloads panel\n");
     DownloadList list;
@@ -214,16 +264,25 @@ void TestPanel() {
     panel.onClose = [&] { closed = true; };
     panel.CloseButton()->onClick();
     Check(closed, "Close");
+
+    const std::string longName = "a-really-long-file-name-for-a-download-2026-10-14-final.iso";
+    const int named = list.AddSaved("http://x/l", longName, "/d/l", 1);
+    drain();
+    const auto* namedRow = panel.RowFor(named);
+    Check(namedRow && namedRow->name->GetText() != longName && namedRow->name->GetTooltip() == longName,
+          "a long name is cut in the row, whole in its tooltip");
 }
 
 #ifndef _WIN32
-// A loopback HTTP/1.0 server: /file answers `body` (slowly when asked),
-// anything else 404.
+// A loopback HTTP/1.0 server: /file answers `body` (slowly when asked, or
+// only its first piece and then nothing when `stall` is set), anything
+// else 404.
 struct Server {
     int listener = -1;
     int port = 0;
     std::string body;
     std::atomic<bool> slow{ false };
+    std::atomic<bool> stall{ false };
     std::atomic<bool> stop{ false };
     std::thread thread;
 
@@ -260,6 +319,11 @@ struct Server {
                     if (::send(client, body.data() + at, n, MSG_NOSIGNAL) <= 0) break;
                     at += n;
                     if (slow) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    if (stall) {
+                        // The connection stays open and silent until the test ends.
+                        while (!stop) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                        break;
+                    }
                 }
             } else {
                 const std::string head = "HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n";
@@ -316,6 +380,25 @@ void TestHttp(const std::filesystem::path& dir) {
     Check(finished && !ok, "a cancelled download ends, not saved");
     Check(!std::filesystem::exists(PathFromUtf8(cancelled)) && !std::filesystem::exists(PathFromUtf8(cancelled + ".part")),
           "and leaves no part file");
+
+    // A server that goes quiet: the download has no time limit of its own
+    // (a 30 s one used to end every large file), so it is the stall limit
+    // that ends it - shortened here so the test does not wait 30 s.
+    server.slow = false;
+    server.stall = true;
+    SetDownloadStallTimeout(1000);
+    finished = false;
+    const std::string stalled = PathToUtf8(dir / "stalled.bin");
+    const auto began = std::chrono::steady_clock::now();
+    StartDownload(base + "/file", stalled, Post, nullptr,
+                  [&](bool good, const std::string& why) { finished = true; ok = good; error = why; });
+    Pump([&] { return finished; }, 15);
+    const auto took = std::chrono::steady_clock::now() - began;
+    Check(finished && !ok, "a download whose server stops sending ends (" + error + ")");
+    Check(took < std::chrono::seconds(10), "within the stall limit, not a whole-transfer one");
+    Check(!std::filesystem::exists(PathFromUtf8(stalled)) && !std::filesystem::exists(PathFromUtf8(stalled + ".part")),
+          "and leaves no part file");
+    SetDownloadStallTimeout(0);
     server.Stop();
 }
 #endif
@@ -332,6 +415,7 @@ int main() {
     std::filesystem::create_directories(dir);
     TestSaveBytesAndCopy(dir);
     TestList();
+    TestSpeedAndNames();
     TestPanel();
 #ifndef _WIN32
     TestHttp(dir);
