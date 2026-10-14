@@ -179,7 +179,9 @@ song or none; with a song, *Fit the video to the song's length* paces the
 photos so the show ends with it and *Change pictures on the beat* cuts on
 the engine's beats; a dropdown names the clips' own sound so the music
 dips under it the right way. **3 Style**: the transition between pictures
-and its length, *Keep faces in shot* while the camera pans over photos,
+and its length, *Keep faces in shot* while the camera pans over photos
+and when a clip of another shape fills the frame (the engine finds them
+in a frame from the clip's middle and crops around them),
 photos and clips of another shape whole on a blurred background (clips:
 whole, with bars), filling the frame, or whole with bars, *Captions from
 the file names*, a fade in and out. *Make video* asks the engine for the
@@ -193,7 +195,9 @@ are offered first; a song in the bin becomes the music.
 ### The inspector
 
 - **Clip**: the selected clip's name and what it is; for a video its *In*
-  and *Out* as timecode fields and its *Speed*; for a photo or a card its
+  and *Out* as timecode fields, its *Speed* and *Keep faces in shot* (for
+  a clip of another shape that fills the frame, the project's framing on
+  the *Project* tab); for a photo or a card its
   *Length*, and for a photo the *Motion* (auto, still, zoom, pan), the
   *Framing* and *Keep faces in shot*; *Mute*; the clip's **Effects**, one
   row per effect by what it does (*Warmer 30 %*, *Blur 3.5 px*) with a

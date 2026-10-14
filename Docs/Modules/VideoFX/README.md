@@ -425,6 +425,17 @@ agree on is dropped. A black and white photo cannot use the skin test, so an
 occasional stray box survives there; it only makes the move frame a little
 more of the picture. Set `keepFacesInView = false` for plain motion.
 
+A **video clip** keeps its people the same way when the export's `fitMode`
+is `Fill` (a portrait phone clip filling a 16:9 frame loses its sides, a
+landscape clip in a portrait frame its top and bottom): `keepInView` on a
+file segment places the crop window around the regions instead of the
+picture's centre, and `keepFacesInView` finds them itself in one frame from
+the middle of the clip's used range (found once per clip, whatever the
+preview asks later). A clip with no face found keeps the centred crop. The
+regions are fractions of the picture as the file shows it, before the
+segment's effects. Under `Letterbox` and `Stretch` nothing is cropped and
+both are ignored.
+
 An application with a better detector plugs it in instead: UltraAI's vision
 analyser (`VisionTask::FaceDetection`), the operating system's (Vision on
 macOS, `Windows.Media.FaceAnalysis`), or a tap in its own UI. It is asked
@@ -813,7 +824,7 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `audioCodec` | `Auto` | AAC (MP4/MOV/MKV), Opus (WebM), MP3, PCM (WAV), FLAC; `Disabled` drops sound |
 | `width`, `height` | first segment | Give one and the other follows the aspect ratio |
 | `frameRate` | first segment | 30 for generated clips, 12 for GIF |
-| `fitMode` | `Letterbox` | `Fill` crops to cover, `Stretch` distorts |
+| `fitMode` | `Letterbox` | `Fill` crops to cover (around a segment's `keepInView` / its faces), `Stretch` distorts |
 | `quality` | codec default | 0..100 → CRF / qscale per encoder |
 | `videoBitRate`, `audioBitRate` | 0 | Set to use a bit rate instead of quality |
 | `encoderPreset` | — | e.g. `"veryfast"` for x264 / x265 |

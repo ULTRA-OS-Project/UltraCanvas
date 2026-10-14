@@ -6,6 +6,7 @@
 // media reported; the title, overlay and voice-and-sound lanes; the effect
 // presets and their strength. Needs the VideoFX engine (FFmpeg) for the probes and the
 // clips it generates; without it the suite skips itself.
+// Version: 0.7.0 - the palettes' contrast, as the tokens promise it
 // Version: 0.6.0 - a HEIC imported and exported through the framework's image reader
 // Version: 0.5.0 - the files it takes are FileLoader's lists, as the engine reads them
 // Version: 0.4.0
@@ -16,6 +17,7 @@
 #include "UltraVideoHistory.h"
 #include "UltraVideoMapping.h"
 #include "UltraVideoProxies.h"
+#include "UltraVideoTokens.h"
 
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
@@ -981,6 +983,34 @@ int main() {
     }
 
     fs::remove_all(PathFromUtf8(TempPath("")), ec);
+    // ---- the palettes read as the tokens promise (screens/tokens/tokens.json) ----
+    {
+        auto luminance = [](const Tokens::RGBA& c) {
+            auto channel = [](int v) { const double s = v / 255.0; return s <= 0.03928 ? s / 12.92 : std::pow((s + 0.055) / 1.055, 2.4); };
+            return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+        };
+        auto contrast = [&](const Tokens::RGBA& a, const Tokens::RGBA& b) {
+            const double la = luminance(a), lb = luminance(b);
+            return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+        };
+        for (const Tokens::Palette* p : {&Tokens::Dark, &Tokens::Light}) {
+            const std::string n = p == &Tokens::Dark ? "dark: " : "light: ";
+            const Tokens::RGBA all[] = {p->Bg000, p->Bg100, p->Bg200, p->Bg300, p->Bg400, p->Bg500};
+            bool ink = true, focus = true, muted = true;
+            for (const Tokens::RGBA& s : all) { ink = ink && contrast(p->Ink, s) >= 4.5; focus = focus && contrast(p->Focus, s) >= 3.0; }
+            for (const Tokens::RGBA& s : {p->Bg000, p->Bg100, p->Bg200, p->Bg300, p->Bg400}) muted = muted && contrast(p->InkMuted, s) >= 4.5;
+            CHECK(ink, (n + "ink reads 4.5:1 on every surface").c_str());
+            CHECK(focus, (n + "the focus ring shows 3:1 on every surface").c_str());
+            CHECK(muted, (n + "muted ink reads 4.5:1 on bg-000 to bg-400").c_str());
+            CHECK(contrast(p->InkFaint, p->Bg100) >= 4.5 && contrast(p->InkFaint, p->Bg200) >= 4.5 && contrast(p->InkFaint, p->Bg300) >= 4.5,
+                  (n + "faint ink reads 4.5:1 on bg-100 to bg-300").c_str());
+            CHECK(contrast(p->LineStrong, p->Bg100) >= 3.0 && contrast(p->LineStrong, p->Bg300) >= 3.0,
+                  (n + "the strong line shows 3:1 on bg-100 and bg-300").c_str());
+            CHECK(contrast(p->OnAccent, p->Accent) >= 4.5 && contrast(p->Accent, p->Bg100) >= 3.0,
+                  (n + "text on the accent reads, the accent shows on the panel").c_str());
+        }
+    }
+
     std::printf("\n%d of %d checks passed\n", testCount - failCount, testCount);
     return failCount ? 1 : 0;
 }

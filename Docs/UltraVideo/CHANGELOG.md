@@ -1,3 +1,13 @@
+#### 2026-10-14 *0.6.0*
+- **Clips keep their faces when they fill the frame.** The wizard's *Keep
+  faces in shot* now covers the clips as well as the photos: a clip of
+  another shape that fills the frame (*Filling the frame* on the Style
+  step, the project's *Fill* framing) is cropped around the faces the
+  engine finds in a frame from the clip's middle, not around its centre
+  (VideoFX 0.15.0: `keepFacesInView` and `keepInView` on a video segment).
+  The inspector shows *Keep faces in shot* on a video clip too, and the
+  project file keeps it.
+
 #### 2026-10-14 *0.5.1*
 - **Effects dragged onto a clip.** A preset in the bin's *Effects* tab is
   dragged from its button onto a clip on the main track: the press arms

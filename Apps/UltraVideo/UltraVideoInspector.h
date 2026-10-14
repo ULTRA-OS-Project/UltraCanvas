@@ -9,6 +9,7 @@
 // size, frame rate, fit. Every field reports an edit as a closure over the
 // document; the window applies it through the undo history and shows the
 // document again, so the inspector never writes the document itself.
+// Version: 0.6.0 - a clip's Keep faces in shot switch
 // Version: 0.5.0 - no caption or heading vectors: the labels follow the theme
 // Version: 0.4.0
 // Last Modified: 2026-10-13
@@ -80,7 +81,7 @@ private:
     std::shared_ptr<Container> clipFields, clipEmpty, fileRows, imageRows, transitionRows;
     std::shared_ptr<TimecodeField> inField, outField, transitionLength;
     std::shared_ptr<Slider> speed;
-    std::shared_ptr<Switch> mute;
+    std::shared_ptr<Switch> mute, clipFaces;   // clipFaces: a video clip that fills the frame keeps its faces
     std::shared_ptr<Dropdown> transitionType, motion, imageFit;
     std::shared_ptr<Switch> keepFaces;
     std::shared_ptr<TimecodeField> stillLength;

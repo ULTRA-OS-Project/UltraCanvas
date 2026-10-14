@@ -20,7 +20,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.5.0 - the modal dialog follows the theme
+**Version:** 1.6.0 - the readability the presets keep, measured by the test
 **Last Modified:** 2026-10-12
 **Author:** UltraCanvas Framework
 
@@ -87,6 +87,30 @@ on-accent and soft-accent roles otherwise. The label's variants
 dialog follows the theme too (`ModalDialogStyle::FromTheme`, the dialog's
 `ApplyTheme`): the panel role behind its sections, ink for the message,
 its footer buttons by their role.
+
+### Readability
+
+Both presets keep these contrast ratios (WCAG 2 relative luminance), and
+`UltraCanvasThemeTest` measures them so they cannot slip:
+
+| Ink | Reaches | On |
+|---|---|---|
+| `ink` | 4.5:1 | every surface |
+| `inkMuted` | 4.5:1 | `ground`, `panel`, `well`, `raised`, `hover` |
+| `inkFaint` | 4.5:1 | `panel`, `well`, `raised` - where ruler labels, placeholders and disabled text sit |
+| `lineStrong` | 3:1 | `panel`, `raised` - a control border, a grip |
+| `focus` | 3:1 | every surface |
+| `danger` | 4.5:1 | `panel` |
+| `onAccent` | 4.5:1 | `accent` (`Light`'s is the Windows blue on white, 4.4995) |
+
+`Dark`'s greys came from the dark menu, tooltip and text area and hold
+these as they are: the faint ink is 4.7:1 on `raised` and 5.6:1 on
+`panel`. `Light` differs from the elements' defaults in one colour:
+`lineStrong` is a mid grey (128) rather than `ButtonShadow` (160, 2.6:1 on
+white), so a border an element draws because it follows the theme reaches
+3:1; an element styled by hand keeps its default border. A theme of your
+own should hold the same ratios on the surfaces each ink is meant for -
+muted text is not for `pressed`, faint text not for `hover`.
 
 ## Using it
 

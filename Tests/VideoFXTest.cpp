@@ -10,6 +10,7 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
+// Version: 0.15.0 - the Fill crop around a video segment's keepInView
 // Version: 0.14.0 - VideoFX_GetFileFormats: every type it writes written and read back;
 //                  VideoFX_SetPictureReader: picture types the application reads
 // Version: 0.13.0
@@ -1221,6 +1222,60 @@ static void TestEngine() {
         CHECK_OK(VideoFX_ExtractFrame(fadePath, 0.0, f), "first frame of fade");
         CentreColour(f, r, g, b);
         CHECK(r < 40, "fade-in begins black");
+    }
+
+    // ---- a clip of another shape filling the frame: the crop around what it keeps in view ----
+    {
+        // a portrait clip: red top third, green middle, blue bottom
+        VideoFXFrame bands;
+        bands.width = 180; bands.height = 320;
+        bands.pixels.assign(static_cast<size_t>(bands.width) * bands.height * 4, 255);
+        for (int y = 0; y < bands.height; ++y) {
+            const int band = y * 3 / bands.height;
+            for (int x = 0; x < bands.width; ++x) {
+                uint8_t* px = &bands.pixels[(static_cast<size_t>(y) * bands.width + x) * 4];
+                px[0] = band == 0 ? 255 : 0; px[1] = band == 1 ? 255 : 0; px[2] = band == 2 ? 255 : 0;
+            }
+        }
+        VideoFXSegment still = VideoFXSegment::FromImageFrame(bands, 1.0, VideoFXImageMotion::Make(VideoFXMotionStyle::Still));
+        const std::string portrait = TempPath("portrait.mkv");
+        VideoFXExportSettings tall = base;
+        tall.width = 180; tall.height = 320;
+        CHECK_OK(VideoFX_Export({still}, portrait, tall), "a portrait clip of three bands");
+        VideoFXExportSettings fill = base;
+        fill.width = 320; fill.height = 180; fill.fitMode = VideoFXFitMode::Fill;
+        auto centreOf = [&](const VideoFXSegment& seg, const char* name, double& r, double& g, double& b) {
+            const std::string out = TempPath(std::string(name) + ".mkv");
+            VideoFXFrame f;
+            r = g = b = -1.0;
+            if (VideoFX_Export({seg}, out, fill) == VideoFXResult::Ok && VideoFX_ExtractFrame(out, 0.5, f) == VideoFXResult::Ok)
+                CentreColour(f, r, g, b);
+        };
+        double r, g, b;
+        VideoFXSegment wide = VideoFXSegment::FromFile(portrait);
+        centreOf(wide, "fill-centre", r, g, b);
+        CHECK(g > 200 && r < 60 && b < 60, "Fill with nothing to keep crops the middle: green");
+        wide.keepInView = {VideoFXRect::Make(0.1, 0.0, 0.8, 0.3)};
+        centreOf(wide, "fill-top", r, g, b);
+        CHECK(r > 200 && g < 60 && b < 60, "a region at the top keeps the top: red");
+        wide.keepInView = {VideoFXRect::Make(0.1, 0.7, 0.8, 0.3)};
+        centreOf(wide, "fill-bottom", r, g, b);
+        CHECK(b > 200 && r < 60 && g < 60, "a region at the bottom keeps the bottom: blue");
+        wide.keepInView.clear();
+        wide.keepFacesInView = true;
+        centreOf(wide, "fill-faces", r, g, b);
+        CHECK(g > 200 && r < 60 && b < 60, "faces asked for, none in the bands: the middle again");
+        wide.keepInView = {VideoFXRect::Make(0.5, 0.5, 2.0, 2.0)};
+        CHECK(VideoFX_Export({wide}, TempPath("fill-bad.mkv"), fill) == VideoFXResult::InvalidArgument,
+              "a region outside the picture is refused on a clip too");
+        wide.keepInView = {VideoFXRect::Make(0.1, 0.0, 0.8, 0.3)};
+        VideoFXExportSettings bars = fill;
+        bars.fitMode = VideoFXFitMode::Letterbox;
+        VideoFXFrame f;
+        CHECK_OK(VideoFX_Export({wide}, TempPath("bars.mkv"), bars), "Letterbox ignores the region");
+        CHECK_OK(VideoFX_ExtractFrame(TempPath("bars.mkv"), 0.5, f), "frame of the letterboxed clip");
+        CentreColour(f, r, g, b);
+        CHECK(g > 200 && r < 60, "the whole clip is shown: green in the middle");
     }
 
     // ---- trim ----

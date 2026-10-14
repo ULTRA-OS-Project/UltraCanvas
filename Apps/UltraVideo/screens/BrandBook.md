@@ -25,7 +25,7 @@ UltraVideo is the visual language of the ULTRA OS video editor and of its core e
 - The transition badge is inverted (`transition-fill` with `on-transition`), so it reads over any clip.
 - Guides are translucent: `beat` for beat marks, `range-fill` for the work area, `trim-overflow` for unused source media, `drop-soft` for drop zones and `muted-hatch` as the scrim on a muted clip.
 - Markers use `marker-amber` (the default), `marker-coral`, `marker-green`, `marker-cyan` and `marker-violet`, and always carry a label.
-- Contrast: all text pairs reach 4.5:1 and all marks (`focus`, `playhead`, `accent` rings, `line-strong`, clip edges) reach 3:1 on every surface and clip fill, in both themes.
+- Contrast: every text pair reaches 4.5:1 on the surfaces it is allowed on (`ink` everywhere, `ink-muted` on `bg-000`…`bg-400`, `ink-faint` on `bg-100`…`bg-300`), and the marks (`focus`, `playhead`, `accent` rings, clip edges) reach 3:1 on every surface and clip fill, `line-strong` on `bg-100` and `bg-300`, in both themes. `UltraVideoDocumentTest` measures the token pairs.
 
 ## Type
 

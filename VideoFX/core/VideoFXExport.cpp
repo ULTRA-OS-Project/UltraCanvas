@@ -12,6 +12,7 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
+// Version: 0.15.0 - a video segment's keepInView / keepFacesInView place the Fill crop
 // Version: 0.14.0 - VideoFX_GetFileFormats: the containers and pictures this
 //                  build reads (the host's picture types too), and the ones an
 //                  export writes
@@ -39,6 +40,7 @@
 #include <filesystem>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <sstream>
 #include <locale>
 #include <iomanip>
@@ -138,6 +140,9 @@ struct SegmentPlan {
     int channels = 0;
     int displayWidth = 0;           // after rotation, crop and quarter turns
     int displayHeight = 0;
+    // Where the Fill crop sits on a video whose shape differs: the centre
+    // of what the segment keeps in view, as fractions; 0.5 = the middle
+    double fillX = 0.5, fillY = 0.5;
     std::string videoEffects;       // filter chains built from segment.effects
     std::string audioEffects;
     std::vector<VideoFXFrame> overlayImages;   // per overlay; empty for text overlays
@@ -497,7 +502,7 @@ private:
     VideoFXResult ProcessFileSegment(const SegmentPlan& plan);
     VideoFXResult RunGeneratorGraphs(const SegmentPlan& plan, bool video, bool audio);
     VideoFXResult RunImageSegment(const SegmentPlan& plan, size_t index);
-    std::string FitChain(bool sarNotSquare, bool resample = true) const;
+    std::string FitChain(bool sarNotSquare, bool resample = true, double fillX = 0.5, double fillY = 0.5) const;
     std::string SegmentVideoGraph(const SegmentPlan& plan, const std::string& head, bool sarNotSquare,
                                   std::vector<GraphSource>& sources, bool resample = true) const;
     VideoFXResult FeedOverlayImages(Graph& g, const SegmentPlan& plan);
@@ -688,6 +693,27 @@ private:
 // planning
 // ---------------------------------------------------------------------------
 
+// The faces in a video clip, from one frame in the middle of its used range;
+// found once per clip and range, since the preview plans the same segments
+// for every frame it shows
+std::vector<VideoFXRect> FacesInClip(const std::string& path, double start, double end) {
+    static std::mutex mutex;
+    static std::map<std::string, std::vector<VideoFXRect>> found;
+    const std::string key = path + "|" + FormatNumber(start) + "|" + FormatNumber(end);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        auto it = found.find(key);
+        if (it != found.end()) return it->second;
+    }
+    std::vector<VideoFXRect> faces;
+    VideoFXFrame sample;
+    const double at = end > start ? (start + end) / 2.0 : start;
+    if (VideoFX_ExtractFrame(path, at, sample, 800, 800) == VideoFXResult::Ok && sample.IsValid()) faces = DetectFaces(sample);
+    std::lock_guard<std::mutex> lock(mutex);
+    found[key] = faces;
+    return faces;
+}
+
 VideoFXResult Exporter::PlanSegments(const std::vector<VideoFXSegment>& segments) {
     if (segments.empty()) return Fail(VideoFXResult::InvalidArgument, "The timeline has no segments");
     const std::filesystem::path outPath = UltraCanvas::PathFromUtf8(outputPath);
@@ -721,6 +747,17 @@ VideoFXResult Exporter::PlanSegments(const std::vector<VideoFXSegment>& segments
                 p.frameRate = vs.frameRate;
                 p.displayWidth = info.width;
                 p.displayHeight = info.height;
+                std::string keepError;
+                if (!ValidateKeepInView(seg.keepInView, keepError)) return Fail(VideoFXResult::InvalidArgument, keepError);
+                if (settings.fitMode == VideoFXFitMode::Fill) {
+                    std::vector<VideoFXRect> keep = seg.keepInView;
+                    if (keep.empty() && seg.keepFacesInView) keep = FacesInClip(seg.path, p.sourceStart, p.sourceEnd);
+                    if (!keep.empty()) {
+                        const VideoFXRect bounds = FocusBounds(keep);
+                        p.fillX = std::clamp(bounds.x + bounds.w / 2.0, 0.0, 1.0);
+                        p.fillY = std::clamp(bounds.y + bounds.h / 2.0, 0.0, 1.0);
+                    }
+                }
             }
             if (p.fileAudio) {
                 p.sampleRate = info.sampleRate;
@@ -1186,14 +1223,21 @@ VideoFXResult Exporter::OpenOutput() {
 // Fit to the output rate and size. `resample` false for frames already at
 // the output rate (still images): fps would drop the last one, which has no
 // duration to end by.
-std::string Exporter::FitChain(bool sarNotSquare, bool resample) const {
+std::string Exporter::FitChain(bool sarNotSquare, bool resample, double fillX, double fillY) const {
     const std::string W = std::to_string(width), H = std::to_string(height);
     std::string tail = resample ? "fps=" + Rational(frameRate) : std::string();
     if (sarNotSquare) AppendFilter(tail, "scale=trunc(iw*sar/2)*2:ih,setsar=1");
     switch (settings.fitMode) {
-        case VideoFXFitMode::Fill:
-            AppendFilter(tail, "scale=" + W + ":" + H + ":force_original_aspect_ratio=increase,crop=" + W + ":" + H);
+        case VideoFXFitMode::Fill: {
+            std::string crop = "crop=" + W + ":" + H;
+            // The crop window around what the segment keeps in view: its
+            // centre at the fraction, held inside the scaled picture
+            if (std::fabs(fillX - 0.5) > 1e-9 || std::fabs(fillY - 0.5) > 1e-9)
+                crop += ":clip(" + FormatNumber(fillX) + "*iw-" + W + "/2\\,0\\,iw-" + W + ")" +
+                        ":clip(" + FormatNumber(fillY) + "*ih-" + H + "/2\\,0\\,ih-" + H + ")";
+            AppendFilter(tail, "scale=" + W + ":" + H + ":force_original_aspect_ratio=increase," + crop);
             break;
+        }
         case VideoFXFitMode::Stretch:
             AppendFilter(tail, "scale=" + W + ":" + H);
             break;
@@ -1214,7 +1258,7 @@ std::string Exporter::SegmentVideoGraph(const SegmentPlan& plan, const std::stri
                                         std::vector<GraphSource>& sources, bool resample) const {
     std::string done;                   // finished chains, ';'-terminated
     std::string chain = head;
-    AppendFilter(chain, FitChain(sarNotSquare, resample));
+    AppendFilter(chain, FitChain(sarNotSquare, resample, plan.fillX, plan.fillY));
     int label = 0;
     for (size_t k = 0; k < plan.segment.overlays.size(); ++k) {
         const VideoFXOverlay& o = plan.segment.overlays[k];

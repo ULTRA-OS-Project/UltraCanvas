@@ -1,4 +1,5 @@
 // core/UltraCanvasTheme.cpp
+// Version: 1.2.0 - Light's lineStrong meets 3:1 on panel and raised (a mid grey, not ButtonShadow)
 // Version: 1.1.0 - change handlers
 // Version: 1.0.0
 // Last Modified: 2026-10-12
@@ -38,7 +39,9 @@ UltraCanvasTheme UltraCanvasTheme::Light() {
     r.hover = Colors::SelectionHover;
     r.pressed = Color(204, 228, 247);
     r.line = Color(222, 222, 222);
-    r.lineStrong = Colors::ButtonShadow;
+    // Not ButtonShadow (160): that is 2.6:1 on white, and a control border
+    // a following element draws is to reach 3:1 on panel and raised
+    r.lineStrong = Color(128, 128, 128);
     r.ink = Colors::TextDefault;
     r.inkMuted = Color(90, 90, 90);
     r.inkFaint = Colors::TextDisabled;
