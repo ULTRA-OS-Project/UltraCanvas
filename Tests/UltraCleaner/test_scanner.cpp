@@ -6,6 +6,7 @@
 #include "test_framework.h"
 #include "test_support.h"
 
+#include "UltraCleanerPaths.h"     // NormalizeForCompare
 #include "UltraCleanerScanner.h"
 
 #include <filesystem>
@@ -76,7 +77,9 @@ TEST(ScannerHonoursTheAgeFilter) {
     const ScanReport report = scanner.Scan({ ContentsRule(cache, /*minAgeDays=*/7) });
 
     REQUIRE_EQ(report.totalItems, static_cast<size_t>(1));
-    REQUIRE(report.items[0].path == stale);
+    // Compared the way the engine compares paths: on Windows the scanner
+    // joins the root and the name with a backslash, where TempTree wrote '/'.
+    REQUIRE(NormalizeForCompare(report.items[0].path) == NormalizeForCompare(stale));
     (void)fresh;
 }
 

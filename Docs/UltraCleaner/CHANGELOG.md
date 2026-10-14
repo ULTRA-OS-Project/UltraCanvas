@@ -9,7 +9,11 @@
   covers it.
 - **The engine suite runs in CI**, on Linux, macOS and Windows, so the case
   above is checked on the system it fails on (framework changelog:
-  `macos-opengl-optional-cleaner-tests-in-ci`).
+  `macos-opengl-optional-cleaner-tests-in-ci`). Its first Windows run failed
+  one test, `ScannerHonoursTheAgeFilter`, on path text, not on the cleaning:
+  the scanner joins a root and a name with a backslash there, and the test
+  compared that against a path written with '/'. It now compares them through
+  `NormalizeForCompare`, as the engine itself does.
 
 #### 2026-10-12 *0.62*
 - **One UltraCleaner at a time.** Starting UltraCleaner while it is already
