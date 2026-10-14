@@ -10,6 +10,8 @@
 // tools" matrix that drove the 5/3/1 preset: its printed row totals are the
 // arithmetic these tests pin down.
 //
+// Version: 1.4.0 - competitive assessment: ratings, their validation and their JSON
+// Version: 1.3.0 - JSON interchange: every sample round-trips, failures leave the model untouched
 // Version: 1.2.0 - symmetric panels, House validation, relative weights, the importance column, ImportMatrixTable, the House sample
 // Version: 1.1.0 - X and Y panel validation, form header fields, the X and Y samples
 // Version: 1.0.0
@@ -17,6 +19,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
+#include "DataFormats/UltraCanvasJSON.h"
 
 #include <algorithm>
 #include <cmath>
@@ -671,6 +674,160 @@ static void TestImportTable() {
     CHECK(NearlyEqual(reread.RowScore(0, 0), 18.0), "with the same totals");
 }
 
+static void TestJsonRoundTrip() {
+    std::printf("\n[JSON]\n");
+
+    // Every sample, every shape: written, read back, written again - the two
+    // documents must be identical, which compares every set, item, panel,
+    // level, cell and header field at once.
+    struct Sample { const char* name; MatrixModel (*build)(); };
+    const Sample samples[] = {
+            {"L (improvement tools)", &MatrixSamples::ImprovementTools},
+            {"T (employee allocation)", &MatrixSamples::EmployeeAllocation},
+            {"L with importances (QFD)", &MatrixSamples::QualityFunctionDeployment},
+            {"X (supply chain)", &MatrixSamples::SupplyChain},
+            {"Y (design traceability)", &MatrixSamples::DesignTraceability},
+            {"House of Quality", &MatrixSamples::HouseOfQuality},
+    };
+    for (const Sample& sample : samples) {
+        const MatrixModel original = sample.build();
+        const std::string written = ExportMatrixJson(original);
+        MatrixModel reread;
+        std::string error;
+        const bool ok = ImportMatrixJson(written, reread, &error);
+        if (!ok) std::printf("    %s\n", error.c_str());
+        CHECK(ok && ExportMatrixJson(reread) == written,
+              (std::string(sample.name) + " round-trips unchanged").c_str());
+    }
+
+    MatrixModel house = MatrixSamples::HouseOfQuality();
+    MatrixModel reread;
+    CHECK(ImportMatrixJson(ExportMatrixJson(house, false), reread),
+          "the compact form reads back too");
+    CHECK(reread.shape == MatrixShape::House && reread.panels[1].symmetric,
+          "the shape and the roof survive");
+    CHECK(reread.FindSet("requirements")->items[0].improvement == MatrixImprovement::Minimize &&
+          reread.FindSet("requirements")->items[0].target == "< 11 kg",
+          "directions and targets survive");
+    CHECK(NearlyEqual(reread.ColumnScore(0, 2), house.ColumnScore(0, 2)),
+          "importances survive, so the scores do");
+    CHECK(reread.headerFields.size() == 3, "the form header survives");
+
+    // Cells are written by item id, so a file whose items come in another
+    // order still puts every mark where it was.
+    JSONValue doc = MatrixModelToJson(MatrixSamples::ImprovementTools());
+    JSONParseResult parsed;
+    JSONValue items = JSON::Parse(JSON::Serialize(doc.Get("sets").At(1).Get("items")), &parsed);
+    JSONValue reversed = JSONValue::MakeArray();
+    for (size_t i = items.GetSize(); i-- > 0;) reversed.Append(items.At(i));
+    JSONValue sets = JSONValue::MakeArray();
+    sets.Append(doc.Get("sets").At(0));
+    JSONValue tools = doc.Get("sets").At(1);
+    tools.Set("items", reversed);
+    sets.Append(tools);
+    doc.Set("sets", sets);
+    MatrixModel reordered;
+    CHECK(MatrixModelFromJson(doc, reordered), "a file with its columns reordered reads");
+    CHECK(reordered.sets[1].items[0].label == "5S" &&
+          reordered.LevelAt(0, 0, 7) == MatrixSamples::ImprovementTools().LevelAt(0, 0, 0),
+          "and each mark follows its item, not its old position");
+
+    // A roof pair written below the diagonal lands above it.
+    JSONValue roofDoc = MatrixModelToJson(MatrixSamples::HouseOfQuality());
+    JSONValue cells = JSONValue::MakeArray();
+    cells.Append(JSONValue::MakeObject().Set("panel", 1).Set("row", "Gear range")
+                 .Set("column", "Frame mass").Set("level", "positive"));
+    roofDoc.Set("cells", cells);
+    MatrixModel roofModel;
+    CHECK(MatrixModelFromJson(roofDoc, roofModel) && roofModel.cells.size() == 1 &&
+          roofModel.cells[0].row < roofModel.cells[0].col,
+          "a roof pair written either way round is stored above the diagonal");
+
+    // Failures name the problem and leave the caller's model alone.
+    MatrixModel keep = MatrixSamples::ImprovementTools();
+    const size_t keepCells = keep.cells.size();
+    std::string error;
+    CHECK(!ImportMatrixJson("{ \"format\": ", keep, &error) && error.find("line") != std::string::npos,
+          "malformed JSON fails with a line number");
+    CHECK(!ImportMatrixJson("{\"format\":\"something-else\",\"version\":1}", keep, &error),
+          "another format is refused");
+    CHECK(!ImportMatrixJson("{\"format\":\"ultracanvas-matrix\",\"version\":99}", keep, &error) &&
+          error.find("99") != std::string::npos,
+          "a newer version is refused, by number");
+
+    JSONValue badLevel = MatrixModelToJson(MatrixSamples::ImprovementTools());
+    JSONValue badCells = JSONValue::MakeArray();
+    badCells.Append(JSONValue::MakeObject().Set("panel", 0).Set("row", "HR")
+                    .Set("column", "SPC").Set("level", "enormous"));
+    badLevel.Set("cells", badCells);
+    CHECK(!MatrixModelFromJson(badLevel, keep, &error) && error.find("enormous") != std::string::npos,
+          "a cell with an unknown level is refused, by name");
+
+    JSONValue badShape = MatrixModelToJson(MatrixSamples::ImprovementTools());
+    badShape.Set("shape", "Z");
+    CHECK(!MatrixModelFromJson(badShape, keep, &error), "an unknown shape is refused");
+
+    JSONValue undrawable = MatrixModelToJson(MatrixSamples::ImprovementTools());
+    undrawable.Set("shape", "X");
+    CHECK(!MatrixModelFromJson(undrawable, keep, &error), "a model its shape cannot draw is refused");
+    CHECK(keep.cells.size() == keepCells && keep.shape == MatrixShape::L,
+          "after every failure the model is untouched");
+}
+
+static void TestCompetitiveAssessment() {
+    std::printf("\n[competitive assessment]\n");
+
+    MatrixModel house = MatrixSamples::HouseOfQuality();
+    CHECK(house.competitors.size() == 3 && house.ratings.size() == 18,
+          "the House sample rates three products on six needs");
+    double v = 0.0;
+    CHECK(house.RatingOf("safe", "urban", v) && v == 5.0, "a rating reads back by need and competitor");
+    CHECK(!house.RatingOf("safe", "nobody", v), "an unknown competitor has no rating");
+
+    CHECK(house.SetRating("safe", "ours", 4.0) && house.RatingOf("safe", "ours", v) && v == 4.0 &&
+          house.ratings.size() == 18,
+          "setting a rating again replaces it");
+    CHECK(!house.SetRating("Frame mass", "ours", 3.0),
+          "a column item is not a need and cannot be rated");
+    CHECK(!house.SetRating("safe", "nobody", 3.0), "nor can an unknown competitor");
+    CHECK(!house.SetRating("safe", "ours", 0.0) && !house.SetRating("safe", "ours", 6.0),
+          "ratings outside 1..5 are refused");
+    CHECK(!house.SetRating("safe", "ours", std::nan("")), "and so is NaN");
+    house.ratingMax = 10.0;
+    CHECK(house.SetRating("safe", "ours", 8.0), "a wider scale takes wider values");
+
+    MatrixModel bad = MatrixSamples::HouseOfQuality();
+    bad.ratings.push_back({"safe", "ghost", 3.0});
+    CHECK(!bad.Validate().valid, "a hand-made rating of an unknown competitor fails validation");
+    MatrixModel twice = MatrixSamples::HouseOfQuality();
+    twice.AddCompetitor("ours", "Copy", Color(0, 0, 0, 255));
+    CHECK(!twice.Validate().valid, "a competitor id used twice fails validation");
+    MatrixModel range = MatrixSamples::HouseOfQuality();
+    range.ratings[0].value = 9.0;
+    CHECK(!range.Validate().valid, "a hand-made rating past ratingMax fails validation");
+
+    MatrixModel reread;
+    std::string error;
+    CHECK(ImportMatrixJson(ExportMatrixJson(MatrixSamples::HouseOfQuality()), reread, &error) &&
+          reread.competitors.size() == 3 && reread.ratings.size() == 18 &&
+          reread.competitors[1].mark == MatrixMarkShape::Square,
+          "competitors and ratings survive JSON");
+    CHECK(reread.RatingOf("light", "cruiser", v) && v == 4.0, "with their values");
+
+    JSONValue doc = MatrixModelToJson(MatrixSamples::HouseOfQuality());
+    JSONValue ratings = JSONValue::MakeArray();
+    ratings.Append(JSONValue::MakeObject().Set("item", "light").Set("competitor", "ours").Set("value", 7.0));
+    doc.Set("ratings", ratings);
+    MatrixModel keep = MatrixSamples::ImprovementTools();
+    CHECK(!MatrixModelFromJson(doc, keep, &error) && error.find("light") != std::string::npos &&
+          keep.competitors.empty(),
+          "a file with an out-of-range rating is refused, by name, model untouched");
+
+    keep.Clear();
+    CHECK(keep.competitors.empty() && keep.ratings.empty() && keep.ratingMax == 5.0,
+          "Clear() drops the assessment too");
+}
+
 // =============================================================================
 
 int main() {
@@ -696,6 +853,8 @@ int main() {
     TestRelativeWeights();
     TestImportanceColumn();
     TestImportTable();
+    TestJsonRoundTrip();
+    TestCompetitiveAssessment();
 
     std::printf("\n================================\n");
     if (g_failures == 0) {
