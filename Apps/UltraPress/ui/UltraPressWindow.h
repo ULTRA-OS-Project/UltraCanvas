@@ -5,6 +5,7 @@
 // model and re-renders the preview; Save writes the site folder; Publish
 // writes the static site and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.7.0 - text edited in place on the page
 // Version: 0.6.0 - the media library: Pick... on a picture property, Media library... in the side column
 // Version: 0.5.0 - Publish and Host...
 // Version: 0.3.0
@@ -18,6 +19,8 @@
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTextArea.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
 
 #include <atomic>
@@ -69,6 +72,20 @@ public:
     // block is selected.
     bool SetProperty(const std::string& name, UltraCanvas::JSONValue value);
 
+    // Text edited in place: a click on a piece of text on the page (a
+    // binding of the rendered page) selects its block and puts an input
+    // where the text was - a single line for a title, an area for a
+    // paragraph. Enter (Ctrl+Enter in an area) commits, Escape cancels, and
+    // so does leaving the field; a commit writes the block and re-renders.
+    const RenderedPage& Shown() const { return shown; }
+    bool IsEditingText() const { return editing >= 0; }
+    void BeginTextEdit(int binding);
+    // True when the block was changed (and the page re-rendered); false
+    // when the text was the same, and the label is simply back.
+    bool CommitTextEdit();                        // what the field holds
+    bool CommitTextEdit(const std::string& text); // this text (tests)
+    void CancelTextEdit();
+
     const Site& CurrentSite() const { return site; }
     const std::string& CurrentPage() const { return current; }
     int SelectedBlock() const { return selected; }
@@ -92,6 +109,10 @@ private:
     Container side, pageArea, properties;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status;
     RenderedPage shown;
+
+    int editing = -1;                      // the binding being edited, or -1
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> editInput;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> editArea;
 
     std::weak_ptr<UltraCanvas::UltraCanvasWindow> windowRef;
     std::shared_ptr<Hosts> hosts;          // opened on the first Publish or Host...

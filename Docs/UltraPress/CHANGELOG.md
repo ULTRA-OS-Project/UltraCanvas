@@ -1,3 +1,22 @@
+#### 2026-10-14 *0.7.0*
+- **Text edited in place.** A click on a piece of text on the page - a
+  title, a kicker, a heading, a paragraph, a caption, a quote and its
+  source, a feature, an answer, a download's description - selects its
+  block and puts a field where the text was: a single line for a title, an
+  area for a paragraph. Enter (Ctrl+Enter in the area) keeps the text,
+  Escape drops the change, and so does leaving a single-line field; the
+  block is written, the page re-rendered, the properties pane and the block
+  list follow. One paragraph of a long text is edited on its own and the
+  others are kept. Behind it: the renderer, with `RenderOptions::editable`,
+  puts every piece of block text in a slot of its own and records a
+  `TextBinding` (the block's path, the property, the item and key, the
+  paragraph) for it; the editor swaps the label for the field in that slot.
+  The engine gained `SplitParagraphs` (the one way a long text becomes
+  paragraphs, the shadow's too), `TextLocation` / `SetBlockText` and
+  `ResolveBlockPath`. Rich text and HTML blocks keep their property pane.
+  Tests: the model (paragraphs, locations, paths) and the editor's edit,
+  cancel and commit without a window.
+
 #### 2026-10-13 *0.6.0*
 - **Pictures and the media library.** The site's `media/` folder has a
   model (`engine/UltraPressMedia.h`): `ListMedia` lists every file with

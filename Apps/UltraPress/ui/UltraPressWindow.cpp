@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.7.0 - text edited in place
 // Version: 0.6.0 - the media library
 // Version: 0.5.1 - Publish prunes
 // Version: 0.5.0 - Publish and Host...
@@ -31,6 +32,7 @@
 #include "UltraCloudAccountDialog.h"
 #endif
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -397,12 +399,21 @@ void EditorWindow::PickImage(const std::string& name) {
 }
 
 void EditorWindow::RenderPreview() {
-    if (!pageArea) return;
-    pageArea->ClearChildren();
+    // A field still open: its text goes into the block first, and that
+    // commit renders the fresh page itself.
+    if (editing >= 0 && CommitTextEdit()) return;
+    // The page is rendered without a window too (the tests edit it), only
+    // not shown.
+    if (pageArea) pageArea->ClearChildren();
     const Page* page = CurrentPageMutable();
-    if (!page) return;
+    if (!page) {
+        shown = RenderedPage();
+        return;
+    }
     RenderOptions options;
     options.mediaRoot = siteDir;
+    options.editable = true;
+    options.onEditText = [this](int binding) { Later([this, binding]() { BeginTextEdit(binding); }); };
     options.onLink = [this](const std::string& href) {
         if (!href.empty() && href[0] == '/') {
             const std::string target = href == "/" ? "home" : href.substr(1, href.size() - 2);
@@ -419,7 +430,97 @@ void EditorWindow::RenderPreview() {
     };
     PageRenderer renderer(site, options);
     shown = renderer.Render(*page);
-    pageArea->AddChild(shown.root);
+    if (pageArea) pageArea->AddChild(shown.root);
+}
+
+void EditorWindow::BeginTextEdit(int binding) {
+    if (editing >= 0) CommitTextEdit();
+    if (binding < 0 || binding >= static_cast<int>(shown.bindings.size())) return;
+    const TextBinding& bound = shown.bindings[static_cast<size_t>(binding)];
+    if (!bound.slot || !bound.label) return;
+    // The block the text belongs to becomes the selected one - the lists on
+    // both sides follow - without re-rendering the page under the field.
+    const size_t close = bound.blockPath.find(']');
+    const int index = close == std::string::npos ? -1 : std::atoi(bound.blockPath.substr(7, close - 7).c_str());   // locale-ok: digits
+    if (index >= 0 && index != selected) {
+        selected = index;
+        RebuildSide();
+        RebuildProperties();
+    }
+    editing = binding;
+    bound.slot->RemoveChild(bound.label);
+    if (bound.multiline) {
+        const float height = std::max(120.f, bound.size * 1.5f * 4);
+        editArea = std::make_shared<UltraCanvasTextArea>("EditArea", 0, 0, 0, height);
+        editArea->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(height));
+        editArea->SetFont(kFont, bound.size);
+        editArea->SetWordWrap(true);
+        editArea->SetText(bound.text, false);
+        editArea->onBeforeKeyDown = [this](const UCEvent& event) {
+            if (event.virtualKey == UCKeys::Escape) { Later([this]() { CancelTextEdit(); }); return true; }
+            if (event.virtualKey == UCKeys::Return && event.ctrl) { Later([this]() { CommitTextEdit(); }); return true; }
+            return false;
+        };
+        bound.slot->AddChild(editArea);
+        editArea->SetFocus(true);
+        SetStatus("Editing; Ctrl+Enter keeps the text, Escape drops the change");
+    } else {
+        editInput = CreateTextInput("EditInput", 0, 0, 0, bound.size * 1.8f);
+        editInput->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(bound.size * 1.8f));
+        editInput->SetFontSize(bound.size);
+        editInput->SetText(bound.text);
+        editInput->onEnterPressed = [this](const std::string&) { Later([this]() { CommitTextEdit(); }); return true; };
+        editInput->onEscapePressed = [this]() { Later([this]() { CancelTextEdit(); }); return true; };
+        editInput->onFocusLost = [this]() { Later([this]() { if (editing >= 0) CommitTextEdit(); }); };
+        bound.slot->AddChild(editInput);
+        editInput->SetFocus(true);
+        SetStatus("Editing; Enter keeps the text, Escape drops the change");
+    }
+}
+
+bool EditorWindow::CommitTextEdit() {
+    if (editing < 0) return false;
+    const std::string text = editArea ? editArea->GetText() : editInput ? editInput->GetText() : std::string();
+    return CommitTextEdit(text);
+}
+
+bool EditorWindow::CommitTextEdit(const std::string& text) {
+    if (editing < 0 || editing >= static_cast<int>(shown.bindings.size())) return false;
+    const TextBinding bound = shown.bindings[static_cast<size_t>(editing)];
+    if (text == bound.text) {
+        CancelTextEdit();   // nothing changed: the label comes back as it was
+        return false;
+    }
+    Page* page = CurrentPageMutable();
+    Block* block = page ? ResolveBlockPath(*page, bound.blockPath) : nullptr;
+    if (!block || !SetBlockText(*block, bound.where, text)) {
+        SetStatus("The text could not be written to " + bound.blockPath);
+        CancelTextEdit();
+        return false;
+    }
+    dirty = true;
+    editing = -1;
+    editInput.reset();
+    editArea.reset();
+    RenderPreview();
+    RebuildSide();
+    RebuildProperties();
+    SetStatus("Text changed");
+    return true;
+}
+
+void EditorWindow::CancelTextEdit() {
+    if (editing < 0) return;
+    const TextBinding& bound = shown.bindings[static_cast<size_t>(editing)];
+    editing = -1;
+    if (bound.slot) {
+        if (editInput) bound.slot->RemoveChild(editInput);
+        if (editArea) bound.slot->RemoveChild(editArea);
+        if (bound.label) bound.slot->AddChild(bound.label);
+    }
+    editInput.reset();
+    editArea.reset();
+    SetStatus(dirty ? "Unsaved changes" : "");
 }
 
 void EditorWindow::RebuildSide() {

@@ -1,6 +1,6 @@
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.6.0 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.7.0 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
 renderer on real elements, the WordPress importer, the publisher onto
 web hosts and the media library: a site as a folder of JSON files, the
@@ -8,8 +8,9 @@ block registry, the HTML shadow of every page, the static publish, every
 block as UltraCanvas elements, blocks added, moved, removed and edited
 with the page re-rendered live, a WordPress export read into a site, the
 published folder uploaded onto an FTP, SFTP, WebDAV or Nextcloud host
-through UltraCloud, only what changed, and pictures and downloads brought
-into the site's media folder and picked from it. The WebAssembly output follows
+through UltraCloud, only what changed, pictures and downloads brought
+into the site's media folder and picked from it, and text edited where it
+stands on the page. The WebAssembly output follows
 ([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
 **Last Modified:** 2026-10-13
 **Author:** UltraCanvas Framework / ULTRA OS
@@ -170,7 +171,9 @@ against it.
 - `UltraPressModel.h` - `Site`, `Page`, `Block`, `Menu`, `Theme`; JSON in and
   out; `LoadSite` / `SaveSite`; `PagePath`, `PageUrl`, `LinkHref`;
   `SortedPages` (pinned first; stored, alphabetic or most popular) and
-  `MakeSlug`.
+  `MakeSlug`; text in a block: `SplitParagraphs`, `TextLocation` /
+  `SetBlockText` (a property, an item, an item's key, one paragraph) and
+  `ResolveBlockPath`.
 - `UltraPressBlocks.h` - the registry and `ValidateSite`.
 - `UltraPressHtml.h` - `HtmlEmitter`: `Page`, `Sitemap`, `Robots`, `Feed`,
   `Block`; `HtmlOptions` names the renderer script and the UltraWeb app.
@@ -229,6 +232,13 @@ An `sftp://` host signs in with a password or a private key (`--key`, or
 the dialog's *Private key* row; the password is then the key's passphrase).
 The window's Publish prunes; the command line prunes with `--prune`.
 
+**Text in place.** Click a piece of text on the page - a title, a
+paragraph, a feature, an answer - and a field takes its place with the text
+in it; the block is selected on the left and the right. Enter keeps a
+title, Ctrl+Enter a paragraph, Escape drops the change, and so does leaving
+a single-line field. One paragraph of a long text is edited on its own.
+Rich text and HTML blocks are edited in the properties pane.
+
 **Pictures.** A picture property (the hero's and the card's `picture`, the
 picture block's `src`) has **Pick…** beside its path. It opens the media
 library: every file under `media/` with a thumbnail, its kind, size and
@@ -242,8 +252,8 @@ writes the folder to upload by other means.
 
 ## Not yet
 
-Text edited in place on the page, new pages and menus from the window,
-undo, the WebAssembly renderer release
+New pages and menus from the window, undo, rich text edited in place (the
+RichTextEdit module on a `richtext` block), the WebAssembly renderer release
 and its reference from the shadow, the newsletter's e-mail mode of the
 emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a

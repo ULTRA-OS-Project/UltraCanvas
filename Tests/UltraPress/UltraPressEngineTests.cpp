@@ -7,6 +7,7 @@
 // is loaded as a real site. The deploy sends a published folder through a
 // recording uploader and, where UltraCloud is built, through the hosts onto
 // the in-memory provider.
+// Version: 0.7.0 - text in a block: paragraphs, locations, block paths
 // Version: 0.6.0 - the media library
 // Version: 0.5.0 - the deploy and the hosts
 // Version: 0.1.0
@@ -736,6 +737,53 @@ static void TestMedia() {
     fs::remove_all(elsewhere, ec);
 }
 
+static void TestTextInBlocks() {
+    std::printf("Text in a block\n");
+    const std::vector<std::string> paragraphs = SplitParagraphs("  First.\n\n\nSecond line one\nline two  \n \n");
+    Check(paragraphs.size() == 2 && paragraphs[0] == "First." && paragraphs[1] == "Second line one\nline two",
+          "paragraphs split on blank lines and are trimmed");
+    Check(SplitParagraphs("").empty() && SplitParagraphs(" \n ").empty(), "no text, no paragraphs");
+
+    Block text{"text"};
+    text.Set("heading", "Old").Set("text", "One.\n\nTwo.\n\nThree.");
+    Check(SetBlockText(text, {"heading"}, "New") && text.Text("heading") == "New", "a property is replaced whole");
+    Check(SetBlockText(text, TextLocation{"text", -1, "", 1}, "Two, revised.") && text.Text("text") == "One.\n\nTwo, revised.\n\nThree.",
+          "one paragraph is replaced, the others kept: " + text.Text("text"));
+    Check(!SetBlockText(text, TextLocation{"text", -1, "", 5}, "x"), "a paragraph past the end is refused");
+    Check(!SetBlockText(text, {""}, "x"), "no property, nothing written");
+
+    Block features{"features"};
+    features.Set("items", JSONValue::MakeArray().Append("A").Append("B").Append("C"));
+    Check(SetBlockText(features, TextLocation{"items", 1, "", -1}, "Bee") && features.Items("items")[1].GetString() == "Bee" &&
+              features.Items("items").GetSize() == 3 && features.Items("items")[2].GetString() == "C",
+          "an item of a Strings property is replaced");
+    Check(!SetBlockText(features, TextLocation{"items", 3, "", -1}, "x"), "an item past the end is refused");
+
+    Block faq{"faq"};
+    faq.Set("items", JSONValue::MakeArray()
+                         .Append(JSONValue::MakeObject().Set("q", "Why?").Set("a", "Because.\n\nAnd more."))
+                         .Append(JSONValue::MakeObject().Set("q", "How?").Set("a", "Like this.")));
+    Check(SetBlockText(faq, TextLocation{"items", 0, "q", -1}, "Why not?") && faq.Items("items")[0]["q"].GetString() == "Why not?" &&
+              faq.Items("items")[0]["a"].GetString() == "Because.\n\nAnd more.",
+          "an item's key is replaced, its other keys kept");
+    Check(SetBlockText(faq, TextLocation{"items", 0, "a", 1}, "And less.") && faq.Items("items")[0]["a"].GetString() == "Because.\n\nAnd less.",
+          "a paragraph of an item's key is replaced");
+    Check(faq.Items("items")[1]["q"].GetString() == "How?", "the other item is untouched");
+
+    Page page;
+    page.blocks.push_back(Block{"hero"});
+    Block columns{"columns"};
+    columns.children.push_back(Block{"card"});
+    columns.children.push_back(Block{"picture"});
+    page.blocks.push_back(columns);
+    Check(ResolveBlockPath(page, "blocks[0]") == &page.blocks[0] && ResolveBlockPath(page, "blocks[1]")->type == "columns" &&
+              ResolveBlockPath(page, "blocks[1].children[1]")->type == "picture",
+          "a block path resolves, children included");
+    Check(!ResolveBlockPath(page, "blocks[2]") && !ResolveBlockPath(page, "blocks[1].children[2]") && !ResolveBlockPath(page, "blocks[x]") &&
+              !ResolveBlockPath(page, "pages[0]") && !ResolveBlockPath(page, "blocks[0]x"),
+          "a path past the end, or malformed, resolves to nothing");
+}
+
 int main() {
     TestStarterRoundTrip();
     TestValidation();
@@ -745,6 +793,7 @@ int main() {
     TestWordPressImport();
     TestDeploy();
     TestMedia();
+    TestTextInBlocks();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

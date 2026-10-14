@@ -16,6 +16,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextInput.h"
 
@@ -285,12 +286,64 @@ static void TestEditor() {
     editor.RemoveBlock(99);
     Check(editor.CurrentSite().FindPage("home")->blocks.size() == 6, "an index past the end removes nothing");
 
+    std::printf("Text edited in place\n");
+    editor.ShowPage("home");
+    editor.SelectBlock(-1);
+    const RenderedPage& shown = editor.Shown();
+    Check(!shown.bindings.empty(), "the preview is rendered with bindings: " + std::to_string(shown.bindings.size()));
+    int titleBinding = -1;
+    for (size_t i = 0; i < shown.bindings.size(); ++i) {
+        if (shown.bindings[i].blockPath == "blocks[0]" && shown.bindings[i].where.property == "title") titleBinding = static_cast<int>(i);
+    }
+    Check(titleBinding >= 0 && shown.bindings[static_cast<size_t>(titleBinding)].text == "Edit" &&
+              !shown.bindings[static_cast<size_t>(titleBinding)].multiline &&
+              shown.bindings[static_cast<size_t>(titleBinding)].slot && shown.bindings[static_cast<size_t>(titleBinding)].label,
+          "the hero's title is a single-line binding with its slot and label");
+    int leadBinding = -1;
+    for (size_t i = 0; i < shown.bindings.size(); ++i) {
+        if (shown.bindings[i].blockPath == "blocks[0]" && shown.bindings[i].where.property == "text" && shown.bindings[i].where.paragraph == 0)
+            leadBinding = static_cast<int>(i);
+    }
+    Check(leadBinding >= 0 && shown.bindings[static_cast<size_t>(leadBinding)].multiline, "the hero's lead is a paragraph binding, multi-line");
+    Check(shown.bindings[static_cast<size_t>(titleBinding)].slot->GetChildren().size() == 1, "the slot holds the label");
+
+    editor.BeginTextEdit(titleBinding);
+    Check(editor.IsEditingText() && editor.SelectedBlock() == 0, "a click on the title starts an edit and selects the hero");
+    const auto slot = editor.Shown().bindings[static_cast<size_t>(titleBinding)].slot;
+    Check(slot->GetChildren().size() == 1 && std::dynamic_pointer_cast<UltraCanvas::UltraCanvasTextInput>(slot->GetChildren()[0]) != nullptr,
+          "the label gave way to a text input");
+    editor.CancelTextEdit();
+    Check(!editor.IsEditingText() && slot->GetChildren().size() == 1 &&
+              std::dynamic_pointer_cast<UltraCanvas::UltraCanvasLabel>(slot->GetChildren()[0]) != nullptr,
+          "Escape puts the label back");
+    editor.BeginTextEdit(titleBinding);
+    Check(editor.CommitTextEdit("Edited in place") && !editor.IsEditingText() &&
+              editor.CurrentSite().FindPage("home")->blocks[0].Text("title") == "Edited in place",
+          "Enter writes the title into the block");
+    Check(FindLabel(editor.Shown().root, "Edited in place") != nullptr, "and the page shows it");
+    editor.BeginTextEdit(leadBinding);
+    Check(std::dynamic_pointer_cast<UltraCanvas::UltraCanvasTextArea>(
+              editor.Shown().bindings[static_cast<size_t>(leadBinding)].slot->GetChildren()[0]) != nullptr,
+          "a paragraph gets an area");
+    Check(editor.CommitTextEdit("A new first paragraph.") &&
+              editor.CurrentSite().FindPage("home")->blocks[0].Text("text").rfind("A new first paragraph.", 0) == 0,
+          "the paragraph is written back: " + editor.CurrentSite().FindPage("home")->blocks[0].Text("text"));
+    editor.BeginTextEdit(leadBinding);
+    Check(!editor.CommitTextEdit("A new first paragraph.") && !editor.IsEditingText(), "the same text again is a cancel, not a change");
+    editor.BeginTextEdit(999);
+    Check(!editor.IsEditingText(), "a binding past the end starts nothing");
+
     std::printf("The editor's media library\n");
     Check(editor.Media().empty(), "no media to start");
     const fs::path source = dir / "A Photo.PNG";
     {
+        // A real 1x1 PNG: the preview loads the picture once it is set.
         std::ofstream png(source, std::ios::binary);
-        const unsigned char bytes[] = {0x89, 'P', 'N', 'G', 0, 1, 2, 3};
+        const unsigned char bytes[] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+                                       0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+                                       0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+                                       0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+                                       0x42, 0x60, 0x82};
         png.write(reinterpret_cast<const char*>(bytes), sizeof bytes);
     }
     std::string mediaPath, error;
@@ -322,6 +375,10 @@ static void TestEditor() {
 }
 
 int main() {
+    // The preview loads pictures through libvips, which the application
+    // initialises at start-up (UltraCanvasApplication::Initialize); a test
+    // without an application does it here.
+    UltraCanvas::UCImage::InitializeImageSubsysterm("UltraPressRenderTests");
     TestStarterSite();
     TestEveryBlock();
     TestPaletteAndExample();

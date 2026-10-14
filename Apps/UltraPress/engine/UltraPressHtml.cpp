@@ -2,6 +2,7 @@
 // The HTML shadow, sitemap, robots and feed. Text goes through
 // HTML::EscapeText everywhere; the two blocks that carry HTML (richtext,
 // html) are the owner's own and pass through.
+// Version: 0.7.0 - paragraphs split by the model (SplitParagraphs)
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -49,13 +50,7 @@ bool IsAbsoluteUrl(const std::string& url) {
 
 std::string Paragraphs(const std::string& longText) {
     std::string out;
-    std::string paragraph;
-    auto flush = [&]() {
-        // trim
-        size_t start = paragraph.find_first_not_of(" \t\r\n");
-        size_t end = paragraph.find_last_not_of(" \t\r\n");
-        if (start == std::string::npos) { paragraph.clear(); return; }
-        std::string text = paragraph.substr(start, end - start + 1);
+    for (const std::string& text : SplitParagraphs(longText)) {
         std::string escaped = EscapeText(text);
         std::string withBreaks;
         for (char c : escaped) {
@@ -64,19 +59,7 @@ std::string Paragraphs(const std::string& longText) {
             else withBreaks += c;
         }
         out += "<p>" + withBreaks + "</p>\n";
-        paragraph.clear();
-    };
-    std::istringstream lines(longText);
-    std::string line;
-    while (std::getline(lines, line)) {
-        if (line.find_first_not_of(" \t\r") == std::string::npos) {
-            flush();
-        } else {
-            if (!paragraph.empty()) paragraph += '\n';
-            paragraph += line;
-        }
     }
-    flush();
     return out;
 }
 
