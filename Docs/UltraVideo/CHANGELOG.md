@@ -1,3 +1,65 @@
+#### 2026-10-13 *0.4.0*
+- **Effect presets in the bin.** The bin's *Effects* tab is no longer a
+  placeholder. It holds one-click presets for the selected main-track clip.
+  - Nine colour looks: *Warm*, *Cool*, *Vivid*, *Faded*, *Dramatic*,
+    *Black and white*, *Sepia*, *Vintage* and *Brighter*.
+  - Four presets under *Blur and detail*: *Soft blur*, *Strong blur*,
+    *Sharpen* and *Reduce noise*.
+  - A preset is made of the engine's own effects (temperature, saturation,
+    contrast, vignette, blur and so on). They are added after the clip's
+    other effects, and a second click on the same preset changes nothing.
+  - A blur's radius is a share of the clip's picture height, so it looks
+    the same on a phone clip and a 4K one.
+  - The viewer, the draft and the export show the look, and the clip gets
+    its effects badge on the timeline.
+  - The inspector's Clip tab lists the clip's effects, one row per effect
+    named by what it does (*Warmer 30 %*, *Blur 3.5 px*), each with a
+    button that removes it, plus *Remove all effects*.
+  - **Each effect has a strength slider** on its row, so *Warm* can be made
+    warmer or gentler and a blur stronger. The name follows the slider as
+    it moves.
+    - The range is the engine's own units for that effect: -1 to 1 for a
+      look's amounts, up to 50 px for a blur, -180° to 180° for a hue.
+    - Switches (black and white, sepia, a flip, a quarter turn) and a crop
+      have no slider.
+  - Every change is an undo step.
+  - (`EffectPresets`, `Document::ApplyEffectPreset`, `DescribeEffect`,
+    `RangeOfEffect`, `Document::SetEffectAmount`; tested in
+    `UltraVideoDocumentTest`. The test renders a frame with every preset
+    and at both ends of every slider's range, and checks that *Black and
+    white* turns the picture grey.)
+
+#### 2026-10-13 *0.3.0*
+- **Voice-overs and sound effects at any time.** A new free lane on the
+  timeline, **A2 Voice & sound**, sits between the main track and the
+  music. It holds sound clips placed at any time, over the clips' own
+  sound and the music, mixed by VideoFX's audio clips (VideoFX 0.13.0).
+  - Two kinds of clip. A **voice-over** makes the music dip under it. A
+    **sound effect** plays over the music without changing it. A switch
+    in the inspector turns one into the other, as does the clip's menu.
+  - Adding a clip:
+    - right-click the lane for *Add a voice-over here…*, *Add a sound
+      effect here…*, or one of the bin's files with sound (songs, and
+      videos for their sound);
+    - use the *Voice-over* and *Sound effect* buttons on a song in the
+      bin's *Music* tab, which place it at the playhead;
+    - or drop files on the lane; a dropped file becomes a voice-over.
+  - A sound clip is moved, trimmed, split, duplicated and deleted like any
+    clip, and shows its waveform. Its fade handles set its fades, and
+    trimming its left edge moves into the file.
+  - The inspector sets *Volume* (up to 200 %), *Fade in*, *Fade out* and
+    *The music dips under it*.
+  - The playback draft and the export mix the lane. Exporting the work
+    area keeps the part of each clip that lies inside it.
+  - The `.ultravideo` file keeps the lane's spans (`sounds`). The engine's
+    project inside the file carries them as audio clips, so `videofx
+    render` gives the same sound. A VideoFX project's audio clips, opened
+    in UltraVideo, appear on the lane.
+  - (`SoundSpan`, `Document::AddSound`, `AudioClipsForEngine`, the `A2`
+    mapping; tested in `UltraVideoDocumentTest`.)
+- A selected overlay clip is no longer deselected whenever the timeline
+  is redrawn.
+
 #### 2026-10-13 *0.2.1*
 - **Proxies are made on the graphics hardware.** UltraVideo now makes its
   proxies with VideoFX's `Hardware` acceleration (VideoFX 0.12.0). Each

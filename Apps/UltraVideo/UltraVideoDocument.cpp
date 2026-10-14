@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoDocument.cpp
 // The document and the .ultravideo file (UltraVideoDocument.h).
-// Version: 0.2.0
-// Last Modified: 2026-10-12
+// Version: 0.4.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 
@@ -86,6 +86,20 @@ std::string OverlaySpan::Name() const {
 
 bool OverlaySpan::IsStill() const { return Document::KindOfPath(path) == MediaKind::Image; }
 
+std::string SoundSpan::Name() const {
+    const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+    return name.empty() ? "Sound" : name;
+}
+
+VideoFXAudioClip SoundSpan::ToAudioClip() const {
+    VideoFXAudioClip c = ducksMusic ? VideoFXAudioClip::VoiceOver(path, start, volume) : VideoFXAudioClip::Sound(path, start, volume);
+    c.start = sourceIn;
+    c.end = sourceIn + duration;
+    c.fadeIn = fadeIn;
+    c.fadeOut = fadeOut;
+    return c;
+}
+
 namespace {
 // The first free place on a lane of spans at or after `at`: spans never
 // overlap on a lane, so one asked for over another goes after it
@@ -140,6 +154,104 @@ const std::vector<TitleStyle>& TitleStyles() {
 const TitleStyle* FindTitleStyle(const std::string& key) {
     for (const TitleStyle& t : TitleStyles()) if (key == t.key) return &t;
     return nullptr;
+}
+
+const std::vector<EffectPreset>& EffectPresets() {
+    static const std::vector<EffectPreset> presets = {
+        {"warm", "Warm", "Golden-hour warmth", false,
+         {VideoFXEffect::Temperature(0.3), VideoFXEffect::Saturation(0.1)}},
+        {"cool", "Cool", "A cooler, bluer cast", false,
+         {VideoFXEffect::Temperature(-0.3)}},
+        {"vivid", "Vivid", "Richer colour and more punch", false,
+         {VideoFXEffect::Saturation(0.35), VideoFXEffect::Contrast(0.15)}},
+        {"faded", "Faded", "Soft, washed-out film", false,
+         {VideoFXEffect::Contrast(-0.2), VideoFXEffect::Saturation(-0.25), VideoFXEffect::Brightness(0.05)}},
+        {"dramatic", "Dramatic", "Hard contrast, muted colour, dark corners", false,
+         {VideoFXEffect::Contrast(0.3), VideoFXEffect::Saturation(-0.2), VideoFXEffect::Vignette(0.5)}},
+        {"bw", "Black and white", "Greyscale with a little contrast", false,
+         {VideoFXEffect::Grayscale(), VideoFXEffect::Contrast(0.1)}},
+        {"sepia", "Sepia", "An old brown photograph", false,
+         {VideoFXEffect::Sepia()}},
+        {"vintage", "Vintage", "Faded warm film with dark corners", false,
+         {VideoFXEffect::Temperature(0.2), VideoFXEffect::Contrast(-0.1), VideoFXEffect::Saturation(-0.3), VideoFXEffect::Vignette(0.4)}},
+        {"brighter", "Brighter", "Half a stop more light", false,
+         {VideoFXEffect::Exposure(0.5)}},
+        {"softblur", "Soft blur", "A gentle blur, as a background", true,
+         {VideoFXEffect::Blur(0.004)}},
+        {"strongblur", "Strong blur", "Shapes and colour only", true,
+         {VideoFXEffect::Blur(0.015)}},
+        {"sharpen", "Sharpen", "Crisper edges", true,
+         {VideoFXEffect::Sharpen(0.8)}},
+        {"denoise", "Reduce noise", "Calms grain in dark shots", true,
+         {VideoFXEffect::Denoise(4.0)}},
+    };
+    return presets;
+}
+
+const EffectPreset* FindEffectPreset(const std::string& key) {
+    for (const EffectPreset& e : EffectPresets()) if (key == e.key) return &e;
+    return nullptr;
+}
+
+std::string DescribeEffect(const VideoFXEffect& e) {
+    auto percent = [](double v) {
+        const int n = static_cast<int>(std::lround(v * 100));
+        return (n > 0 ? "+" : "") + std::to_string(n) + " %";
+    };
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    switch (e.type) {
+        case VideoFXEffectType::Brightness: return "Brightness " + percent(e.amount);
+        case VideoFXEffectType::Contrast: return "Contrast " + percent(e.amount);
+        case VideoFXEffectType::Saturation: return "Saturation " + percent(e.amount);
+        case VideoFXEffectType::Gamma: out << "Gamma " << std::fixed << std::setprecision(2) << e.amount; return out.str();
+        case VideoFXEffectType::Exposure: out << "Exposure " << std::showpos << std::fixed << std::setprecision(1) << e.amount << " stops"; return out.str();
+        case VideoFXEffectType::Hue: out << "Hue " << static_cast<int>(std::lround(e.amount)) << "\xC2\xB0"; return out.str();
+        case VideoFXEffectType::Temperature: return std::string(e.amount < 0.0 ? "Cooler " : "Warmer ") + std::to_string(static_cast<int>(std::lround(std::fabs(e.amount) * 100))) + " %";
+        case VideoFXEffectType::Grayscale: return "Black and white";
+        case VideoFXEffectType::Sepia: return "Sepia";
+        case VideoFXEffectType::Invert: return "Inverted colours";
+        case VideoFXEffectType::LUT: return "Colour table " + PathToUtf8(PathFromUtf8(e.path).filename());
+        case VideoFXEffectType::Blur: out << "Blur " << std::fixed << std::setprecision(e.amount < 10.0 ? 1 : 0) << e.amount << " px"; return out.str();
+        case VideoFXEffectType::Sharpen: out << "Sharpen " << std::fixed << std::setprecision(1) << e.amount; return out.str();
+        case VideoFXEffectType::Denoise: out << "Reduce noise " << std::fixed << std::setprecision(0) << e.amount; return out.str();
+        case VideoFXEffectType::Vignette: return "Dark corners " + std::to_string(static_cast<int>(std::lround(e.amount * 100))) + " %";
+        case VideoFXEffectType::Rotate90: return "Rotate 90\xC2\xB0";
+        case VideoFXEffectType::Rotate180: return "Rotate 180\xC2\xB0";
+        case VideoFXEffectType::Rotate270: return "Rotate 270\xC2\xB0";
+        case VideoFXEffectType::Rotate: out << "Rotate " << std::fixed << std::setprecision(1) << e.amount << "\xC2\xB0"; return out.str();
+        case VideoFXEffectType::FlipHorizontal: return "Mirrored";
+        case VideoFXEffectType::FlipVertical: return "Upside down";
+        case VideoFXEffectType::Crop: out << "Crop " << e.width << " \xC3\x97 " << e.height; return out.str();
+        case VideoFXEffectType::FadeIn: out << "Fade in " << std::fixed << std::setprecision(1) << e.amount << " s"; return out.str();
+        case VideoFXEffectType::FadeOut: out << "Fade out " << std::fixed << std::setprecision(1) << e.amount << " s"; return out.str();
+        case VideoFXEffectType::Volume: return "Volume " + std::to_string(static_cast<int>(std::lround(e.amount * 100))) + " %";
+        case VideoFXEffectType::NormalizeAudio: out << "Even loudness " << std::fixed << std::setprecision(0) << e.amount << " LUFS"; return out.str();
+    }
+    return "Effect";
+}
+
+EffectRange RangeOfEffect(VideoFXEffectType type) {
+    switch (type) {
+        case VideoFXEffectType::Brightness:
+        case VideoFXEffectType::Contrast:
+        case VideoFXEffectType::Saturation:
+        case VideoFXEffectType::Temperature: return {true, -1.0, 1.0, 0.05};
+        case VideoFXEffectType::Gamma: return {true, 0.1, 3.0, 0.05};
+        case VideoFXEffectType::Exposure: return {true, -3.0, 3.0, 0.1};
+        case VideoFXEffectType::Hue:
+        case VideoFXEffectType::Rotate: return {true, -180.0, 180.0, 1.0};
+        case VideoFXEffectType::LUT:
+        case VideoFXEffectType::Vignette: return {true, 0.0, 1.0, 0.05};
+        case VideoFXEffectType::Blur: return {true, 0.5, 50.0, 0.5};
+        case VideoFXEffectType::Sharpen: return {true, 0.0, 3.0, 0.1};
+        case VideoFXEffectType::Denoise: return {true, 0.0, 20.0, 0.5};
+        case VideoFXEffectType::FadeIn:
+        case VideoFXEffectType::FadeOut: return {true, 0.0, 5.0, 0.1};
+        case VideoFXEffectType::Volume: return {true, 0.0, 4.0, 0.05};
+        case VideoFXEffectType::NormalizeAudio: return {true, -30.0, -5.0, 1.0};
+        default: return {};
+    }
 }
 
 std::string MediaItem::Badge() const {
@@ -199,6 +311,40 @@ std::string Document::Describe() const {
     return out.str();
 }
 
+bool Document::ApplyEffectPreset(size_t index, const std::string& key) {
+    const EffectPreset* preset = FindEffectPreset(key);
+    if (!preset || index >= project.segments.size()) return false;
+    VideoFXSegment& s = project.segments[index];
+    // The picture's height for a blur: the file's, else the output's
+    int height = 0;
+    if (const MediaItem* m = FindMedia(s.path)) height = m->height;
+    if (height <= 0) height = Height();
+    std::vector<VideoFXEffect> effects = preset->effects;
+    for (VideoFXEffect& e : effects)
+        if (e.type == VideoFXEffectType::Blur) e.amount = std::max(0.5, std::round(e.amount * height * 2.0) / 2.0);
+    if (s.effects.size() >= effects.size()) {
+        bool same = true;
+        const size_t from = s.effects.size() - effects.size();
+        for (size_t i = 0; i < effects.size() && same; ++i) {
+            const VideoFXEffect& a = s.effects[from + i];
+            same = a.type == effects[i].type && std::fabs(a.amount - effects[i].amount) < 1e-9;
+        }
+        if (same) return false;
+    }
+    s.effects.insert(s.effects.end(), effects.begin(), effects.end());
+    return true;
+}
+
+bool Document::SetEffectAmount(size_t index, size_t effect, double amount) {
+    if (index >= project.segments.size()) return false;
+    std::vector<VideoFXEffect>& effects = project.segments[index].effects;
+    if (effect >= effects.size()) return false;
+    const EffectRange range = RangeOfEffect(effects[effect].type);
+    if (!range.adjustable) return false;
+    effects[effect].amount = std::clamp(amount, range.low, range.high);
+    return true;
+}
+
 double Document::SegmentSeconds(size_t index) const {
     if (index >= project.segments.size()) return 0.0;
     const VideoFXSegment& s = project.segments[index];
@@ -230,6 +376,10 @@ std::string Document::NewClipId() {
 
 std::string Document::NewOverlayId() {
     return "o" + std::to_string(nextOverlayId++);
+}
+
+std::string Document::NewSoundId() {
+    return "a" + std::to_string(nextSoundId++);
 }
 
 std::string Document::NewTitleId() {
@@ -343,6 +493,33 @@ int Document::OverlayIndex(const std::string& id) const {
     return -1;
 }
 
+int Document::AddSound(const std::string& path, double at, bool voiceOver) {
+    const MediaItem* m = FindMedia(path);
+    if (!m) m = &Import(path);
+    if (!m->error.empty() || m->duration <= 0.04) return -1;
+    if (m->kind != MediaKind::Audio && !(m->kind == MediaKind::Video && m->hasAudio)) return -1;
+    SoundSpan span;
+    span.id = NewSoundId();
+    span.path = m->path;
+    span.duration = m->duration;
+    span.ducksMusic = voiceOver;
+    span.start = FreePlace(sounds, std::max(0.0, at), span.duration);
+    sounds.push_back(span);
+    return static_cast<int>(sounds.size()) - 1;
+}
+
+int Document::SoundIndex(const std::string& id) const {
+    for (size_t i = 0; i < sounds.size(); ++i) if (sounds[i].id == id) return static_cast<int>(i);
+    return -1;
+}
+
+std::vector<VideoFXAudioClip> Document::AudioClipsForEngine() const {
+    std::vector<VideoFXAudioClip> clips;
+    for (const SoundSpan& a : sounds)
+        if (!a.path.empty() && a.duration >= 0.04) clips.push_back(a.ToAudioClip());
+    return clips;
+}
+
 int Document::TitleIndex(const std::string& id) const {
     for (size_t i = 0; i < titles.size(); ++i) if (titles[i].id == id) return static_cast<int>(i);
     return -1;
@@ -395,6 +572,7 @@ MediaItem& Document::Import(const std::string& p) {
 bool Document::MediaInUse(const std::string& p) const {
     for (const VideoFXSegment& s : project.segments) if (s.path == p) return true;
     for (const OverlaySpan& v : overlays) if (v.path == p) return true;
+    for (const SoundSpan& a : sounds) if (a.path == p) return true;
     for (const std::string& song : project.settings.music.Songs()) if (song == p) return true;
     return false;
 }
@@ -446,6 +624,7 @@ bool Document::Save(const std::string& toPath, std::string& error) {
     // works on it; the spans themselves follow in `titles`
     VideoFXProject rendered = project;
     rendered.segments = SegmentsForEngine();
+    rendered.settings.audioClips = AudioClipsForEngine();
     std::string projectText;
     const VideoFXResult r = VideoFX_ProjectToJson(rendered, projectText, PathToUtf8(base));
     if (r != VideoFXResult::Ok) {
@@ -512,6 +691,22 @@ bool Document::Save(const std::string& toPath, std::string& error) {
     }
     root.Set("overlays", pips);
     root.Set("nextOverlayId", nextOverlayId);
+    JSONValue lane = JSONValue::MakeArray();
+    for (const SoundSpan& a : sounds) {
+        JSONValue o = JSONValue::MakeObject();
+        o.Set("id", a.id);
+        o.Set("path", Relative(a.path, base));
+        o.Set("start", a.start);
+        o.Set("duration", a.duration);
+        o.Set("sourceIn", a.sourceIn);
+        o.Set("volume", a.volume);
+        o.Set("fadeIn", a.fadeIn);
+        o.Set("fadeOut", a.fadeOut);
+        o.Set("ducksMusic", a.ducksMusic);
+        lane.Append(o);
+    }
+    root.Set("sounds", lane);
+    root.Set("nextSoundId", nextSoundId);
     JSONValue bin = JSONValue::MakeArray();
     for (const MediaItem& m : media) {
         JSONValue o = JSONValue::MakeObject();
@@ -669,6 +864,34 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
         loaded.nextOverlayId = static_cast<int>(root.Get("nextOverlayId").GetInteger(static_cast<int64_t>(loaded.overlays.size()) + 1));
     }
 
+    // The voice-and-sound lane: the spans are the truth, written back as the
+    // engine's audio clips, which go again here. A project without spans
+    // (made by `videofx`, or an older UltraVideo) has its audio clips turned
+    // into spans once the bin knows the files' lengths, below.
+    std::vector<VideoFXAudioClip> clipsWithoutSpans;
+    if (root.Contains("sounds")) {
+        const JSONValue& lane = root.Get("sounds");
+        for (size_t i = 0; i < lane.GetSize(); ++i) {
+            const JSONValue& o = lane.At(i);
+            SoundSpan a;
+            a.id = o.Get("id").GetString();
+            a.path = Absolute(o.Get("path").GetString(), base);
+            a.start = std::max(0.0, o.Get("start").GetNumber());
+            a.duration = std::max(0.04, o.Get("duration").GetNumber(1.0));
+            a.sourceIn = std::max(0.0, o.Get("sourceIn").GetNumber(0.0));
+            a.volume = std::clamp(o.Get("volume").GetNumber(1.0), 0.0, 4.0);
+            a.fadeIn = std::max(0.0, o.Get("fadeIn").GetNumber(0.0));
+            a.fadeOut = std::max(0.0, o.Get("fadeOut").GetNumber(0.0));
+            a.ducksMusic = o.Get("ducksMusic").GetBoolean(true);
+            if (a.id.empty() || a.path.empty()) continue;
+            loaded.sounds.push_back(a);
+        }
+        loaded.nextSoundId = static_cast<int>(root.Get("nextSoundId").GetInteger(static_cast<int64_t>(loaded.sounds.size()) + 1));
+    } else {
+        clipsWithoutSpans = loaded.project.settings.audioClips;
+    }
+    loaded.project.settings.audioClips.clear();
+
     const JSONValue& bin = root.Get("media");
     for (size_t i = 0; i < bin.GetSize(); ++i) {
         const std::string p = Absolute(bin.At(i).Get("path").GetString(), base);
@@ -696,6 +919,23 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
     for (const VideoFXSegment& s : loaded.project.segments)
         if (s.kind == VideoFXSourceKind::File || s.kind == VideoFXSourceKind::Image) known(s.path);
     for (const OverlaySpan& v : loaded.overlays) known(v.path);
+    for (const SoundSpan& a : loaded.sounds) known(a.path);
+    for (const VideoFXAudioClip& c : clipsWithoutSpans) {
+        known(c.path);
+        const MediaItem* m = loaded.FindMedia(c.path);
+        SoundSpan a;
+        a.id = loaded.NewSoundId();
+        a.path = c.path;
+        a.start = std::max(0.0, c.at);
+        a.sourceIn = std::max(0.0, c.start);
+        const double end = c.end > c.start ? c.end : (m ? m->duration : 0.0);
+        a.duration = std::max(0.04, end - a.sourceIn);
+        a.volume = c.volume;
+        a.fadeIn = c.fadeIn;
+        a.fadeOut = c.fadeOut;
+        a.ducksMusic = c.ducksMusic;
+        loaded.sounds.push_back(a);
+    }
     const JSONValue& marks = root.Get("markers");
     for (size_t i = 0; i < marks.GetSize(); ++i) {
         const JSONValue& m = marks.At(i);

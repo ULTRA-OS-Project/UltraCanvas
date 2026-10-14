@@ -8,7 +8,7 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
-// Version: 0.2.1
+// Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
@@ -129,8 +129,13 @@ private:
     void DeleteSelection();
     void AddMarker();
     void AddTitle(const std::string& styleKey, double at);
+    void ApplyEffect(const std::string& presetKey);         // a bin preset on the selected main-track clip
     void AddOverlay(const std::string& path, double at);     // a file over the picture, on V2
     void ChooseOverlay(double at);                           // ... from a file dialog
+    void AddSound(const std::string& path, double at, bool voiceOver);   // a file's sound on A2
+    void ChooseSound(double at, bool voiceOver);             // ... from a file dialog
+    // The export's audio clips for the document's sound lane, the draft's too
+    void PutSounds(const Document& document, VideoFX::VideoFXExportSettings& settings) const;
     void RequestBeats();               // detect the first song's beats on the worker, once per song
     void ShowTimelineMenu(const std::string& trackId, double seconds, const std::string& clipId, int x, int y);
     void ShowBinMenu(size_t index, int x, int y);
@@ -167,6 +172,8 @@ private:
     std::shared_ptr<Label> binEmpty_, titlesNote_, effectsNote_;
     std::vector<std::shared_ptr<Button>> titleButtons_;
     std::vector<std::shared_ptr<Label>> titleHints_;
+    std::vector<std::shared_ptr<Button>> effectButtons_;
+    std::vector<std::shared_ptr<Label>> effectHeadings_;
     std::vector<size_t> binRows_;      // album row -> media index
     std::vector<size_t> musicRows_;
     Viewer viewer_;
