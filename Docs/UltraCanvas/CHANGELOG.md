@@ -1,3 +1,6 @@
+#### 2026-10-14 *0.9.285*
+- **The live eSCL scanner test could hang for its whole timeout and lose its output.** When a check failed early, the test removed its temporary directory while the scanner it had started still wrote into it. On Windows that removal throws; the exception went uncaught, the abort waited in Windows' fault reporting until ctest's 180-second timeout, and the lines saying which check had failed were lost with the buffered output - which is how the 0.9.265 release build failed on Windows with nothing to diagnose. The test now stops the scanner before removing the directory on every exit, retries a removal Windows refuses while a terminated process's files are released and only reports one that still fails, prints unbuffered so a killed run shows where it stopped, and ends an abort at once.
+
 #### 2026-10-14 *0.9.284*
 - **DemoApp: sharp toolbar icons on the Vector Editing and WYSIWYG pages.**
   - *Vector Editing:* Undo and Redo used Texter's icons, drawn as thin
