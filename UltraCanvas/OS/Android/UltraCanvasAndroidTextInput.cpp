@@ -7,16 +7,16 @@
 // keystrokes (CJK) or picked from candidates. UltraCanvasActivity's input view
 // supplies one; this file receives what it produces.
 //
-// Composition itself stays inside the IME's own buffer and is NOT forwarded:
-// only committed text arrives here. That matches the framework's existing
-// cross-platform text model - the Linux backend likewise takes only the
-// committed result out of Xutf8LookupString, and no core widget can render an
-// inline preedit region. Showing composing text inline would be a new
-// cross-platform capability (core model + rendering + every backend), not an
-// Android detail.
+// The text being composed is forwarded too. An element that draws
+// compositions itself (DrawsTextComposition) receives it as TextComposition
+// events and shows it inline at its caret, as the Linux and Windows backends
+// deliver it; any other element sees only the committed result. These run on
+// the Java UI thread, so each call is queued and applied on the glue thread
+// (UltraCanvasAndroidApplication::DrainImeQueue), in the order the IME made
+// them.
 //
-// Version: 1.0.0
-// Last Modified: 2026-08-23
+// Version: 1.1.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -26,19 +26,41 @@
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasAndroidJni.h"
 
-#include <android/keycodes.h>
 #include <jni.h>
 
 extern "C" {
 
-// Text the IME committed (a word, a CJK candidate, an emoji, a paste).
+// Text the IME committed (a word, a CJK candidate, an emoji, a paste). It
+// replaces whatever was being composed.
 JNIEXPORT void JNICALL
 Java_org_ultraos_ultracanvas_UltraCanvasActivity_nativeOnCommitText(
         JNIEnv* env, jclass, jstring text) {
     using namespace UltraCanvas;
     auto* app = UltraCanvasAndroidApplication::GetInstance();
     if (!app || !text) return;
-    app->PushCommittedText(AndroidJni::ToStdString(env, text));
+    app->QueueImeCommit(AndroidJni::ToStdString(env, text));
+}
+
+// The text being composed (setComposingText), with its caret as a byte offset
+// into the UTF-8 the Java side measured. "" ends the composition.
+JNIEXPORT void JNICALL
+Java_org_ultraos_ultracanvas_UltraCanvasActivity_nativeOnComposingText(
+        JNIEnv* env, jclass, jstring text, jint caretBytes) {
+    using namespace UltraCanvas;
+    auto* app = UltraCanvasAndroidApplication::GetInstance();
+    if (!app) return;
+    app->QueueImeComposition(AndroidJni::ToStdString(env, text),
+                             static_cast<int>(caretBytes));
+}
+
+// finishComposingText: the composing text stays, as typed.
+JNIEXPORT void JNICALL
+Java_org_ultraos_ultracanvas_UltraCanvasActivity_nativeOnFinishComposingText(
+        JNIEnv*, jclass) {
+    using namespace UltraCanvas;
+    auto* app = UltraCanvasAndroidApplication::GetInstance();
+    if (!app) return;
+    app->QueueImeFinishComposition();
 }
 
 // A key press the input view saw, or one the IME synthesised through
@@ -52,13 +74,12 @@ Java_org_ultraos_ultracanvas_UltraCanvasActivity_nativeOnJavaKeyEvent(
     using namespace UltraCanvas;
     auto* app = UltraCanvasAndroidApplication::GetInstance();
     if (!app) return;
-    app->PushKeyEvent(down == JNI_TRUE, keyCode, metaState, codePoint);
+    app->QueueImeKeyEvent(down == JNI_TRUE, keyCode, metaState, codePoint);
 }
 
 // The IME asked to delete text around the cursor - what a soft keyboard's
-// backspace does instead of sending a key event. The framework has no
-// "delete N characters" event, and text widgets already implement backspace,
-// so this is replayed as that many Backspace presses.
+// backspace does instead of sending a key event. Replayed as that many
+// Backspace presses, since text widgets already implement backspace.
 //
 // Only `before` is honoured: `after` (forward delete) has no soft-keyboard
 // equivalent, and replaying it as Delete presses would move a caret the IME
@@ -70,13 +91,8 @@ Java_org_ultraos_ultracanvas_UltraCanvasActivity_nativeOnDeleteSurroundingText(
     (void)after;
     auto* app = UltraCanvasAndroidApplication::GetInstance();
     if (!app) return;
-
     // A pathological count would flood the queue; a real backspace is 1.
-    const int count = before > 64 ? 64 : static_cast<int>(before);
-    for (int i = 0; i < count; ++i) {
-        app->PushKeyEvent(true, AKEYCODE_DEL, 0, 0);
-        app->PushKeyEvent(false, AKEYCODE_DEL, 0, 0);
-    }
+    app->QueueImeDeleteBefore(before > 64 ? 64 : static_cast<int>(before));
 }
 
 } // extern "C"

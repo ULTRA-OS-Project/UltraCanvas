@@ -1,13 +1,14 @@
 // OS/Android/UltraCanvasAndroidJni.cpp
 // Minimal JNI plumbing shared by the Android backend's Java bridges.
 // Version: 1.0.0
-// Last Modified: 2026-08-16
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasAndroidJni.h"
 
+#include <cstdint>
 #include <vector>
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasDebug.h"
@@ -71,10 +72,42 @@ namespace AndroidJni {
 
     std::string ToStdString(JNIEnv* env, jstring str) {
         if (!str) return {};
-        const char* utf = env->GetStringUTFChars(str, nullptr);
-        if (!utf) return {};
-        std::string result(utf);
-        env->ReleaseStringUTFChars(str, utf);
+        // Not GetStringUTFChars: that is JNI's *modified* UTF-8, which writes
+        // a character outside the BMP (every emoji) as two 3-byte surrogate
+        // halves, so text widgets received six bytes no font could draw and
+        // byte offsets computed by Java's real UTF-8 no longer lined up.
+        const jsize length = env->GetStringLength(str);
+        std::vector<jchar> units(static_cast<size_t>(length));
+        if (length > 0) env->GetStringRegion(str, 0, length, units.data());
+        if (ClearException(env, "GetStringRegion")) return {};
+
+        std::string result;
+        result.reserve(units.size());
+        for (size_t i = 0; i < units.size(); ++i) {
+            uint32_t cp = units[i];
+            if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < units.size() &&
+                units[i + 1] >= 0xDC00 && units[i + 1] <= 0xDFFF) {
+                cp = 0x10000 + ((cp - 0xD800) << 10) + (units[i + 1] - 0xDC00);
+                ++i;
+            } else if (cp >= 0xD800 && cp <= 0xDFFF) {
+                cp = 0xFFFD;                  // unpaired surrogate
+            }
+            if (cp < 0x80) {
+                result += static_cast<char>(cp);
+            } else if (cp < 0x800) {
+                result += static_cast<char>(0xC0 | (cp >> 6));
+                result += static_cast<char>(0x80 | (cp & 0x3F));
+            } else if (cp < 0x10000) {
+                result += static_cast<char>(0xE0 | (cp >> 12));
+                result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                result += static_cast<char>(0x80 | (cp & 0x3F));
+            } else {
+                result += static_cast<char>(0xF0 | (cp >> 18));
+                result += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+                result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                result += static_cast<char>(0x80 | (cp & 0x3F));
+            }
+        }
         return result;
     }
 

@@ -39,7 +39,8 @@ namespace AndroidJni {
     // runtime path, not just a programming-error backstop.
     bool ClearException(JNIEnv* env, const char* where);
 
-    // UTF-8 std::string from a jstring (empty for null).
+    // UTF-8 std::string from a jstring (empty for null). Real UTF-8, not
+    // JNI's modified UTF-8, so characters outside the BMP survive.
     std::string ToStdString(JNIEnv* env, jstring str);
 
     // Split a newline-separated list, dropping empty entries. The Java side

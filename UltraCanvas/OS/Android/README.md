@@ -21,7 +21,7 @@ Android).
 | File | Role |
 |---|---|
 | `UltraCanvasAndroidApplication.{h,cpp}` | All `UltraCanvasApplicationBase` pure virtuals + `GetInstance()`. `CollectAndProcessNativeEvents` pumps the glue's `ALooper` (activity commands + input); cross-thread wakeup is `ALooper_wake` (no eventfd needed). Touch → mouse translation (pointer 0, with double-tap synthesis), `AKEYCODE_*` → `UCKeys` mapping with layout-aware Unicode text via JNI `KeyCharacterMap` (US-ASCII derivation kept as fallback), back button → `WindowCloseRequest`, fontconfig/Pango bundled-font registration, Roboto / Droid Sans Mono defaults. Soft keyboard: `Show/HideSoftKeyboard()` (JNI `InputMethodManager` — the NDK's `ANativeActivity_showSoftInput` is unreliable by long-standing platform bug), driven automatically by `UltraCanvasCaret::onTextEditingChanged` with hides deferred one loop turn so focus moves between text widgets don't flicker the IME. Cursor + mouse-capture virtuals are folded in as accepted no-ops (no separate cursor file). |
-| `UltraCanvasAndroidJni.{h,cpp}` | Shared JNI plumbing: lazy `AttachCurrentThread` for the glue thread (detached once at shutdown), activity handle, exception clear+log, jstring→std::string. |
+| `UltraCanvasAndroidJni.{h,cpp}` | Shared JNI plumbing: lazy `AttachCurrentThread` for the glue thread (detached once at shutdown), activity handle, exception clear+log, jstring→std::string (real UTF-8, not JNI's modified UTF-8, so emoji survive). |
 | `UltraCanvasAndroidClipboard.{h,cpp}` | `UltraCanvasClipboardBackend` over JNI `ClipboardManager`. Text both ways; images and files can be **pasted** (the clip's `content://` items are copied into the app cache through `UltraCanvasActivity`, as the file picker does) but not **copied** — see Clipboard below. `GetAvailableFormats` reports what the clip actually advertises, in the same MIME spelling the Linux backend uses. Change detection via `ClipDescription.getTimestamp()` (API 26+). Android 10+ denies reads while the app lacks input focus; callers just see "nothing there" then. |
 | `UltraCanvasAndroidWindow.{h,cpp}` | All `UltraCanvasWindowBase` pure virtuals. Cairo **image** surface at physical px (the Windows backend's model), presented via `ANativeWindow_lock` → xRGB→RGBX row copy → `unlockAndPost`. `QueryNativeDeviceScale()` = `AConfiguration_getDensity`/160. Handles `APP_CMD_INIT_WINDOW`/`TERM_WINDOW`/`WINDOW_RESIZED` surface lifecycle (see Lifecycle below); desktop window-management calls are no-ops. |
 | `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name. |
@@ -29,7 +29,7 @@ Android).
 | `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics. Message dialogs, input dialogs and file *opening* are real (AlertDialog / SAF through the bridge below); `SaveFile` and `SelectFolder` stay logged "Cancel" stubs — **Dialogs** below explains why those two are blocked on an API decision rather than unfinished. |
 | `UltraCanvasAndroidDialogBridge.{h,cpp}` | Sync-over-async bridge to the Java dialogs: shows the dialog, then pumps activity commands on the glue thread until the Java UI thread delivers the answer. Falls back cleanly when the app runs a plain `NativeActivity`. |
 | `java/org/ultraos/ultracanvas/UltraCanvasActivity.java` | Optional `NativeActivity` subclass hosting everything that needs a real Activity on the Java UI thread: `AlertDialog` (message and text-input), the SAF picker with its `onActivityResult`, and the invisible input view whose `InputConnection` gives the IME something to compose into. Compiled against `android.jar` in CI by `scripts/android-java-check.sh`. |
-| `UltraCanvasAndroidTextInput.cpp` | JNI entry points for that `InputConnection`: committed text, key events routed through the input view, and `deleteSurroundingText` replayed as Backspace presses. |
+| `UltraCanvasAndroidTextInput.cpp` | JNI entry points for that `InputConnection`: committed text, the text being composed, key events routed through the input view, and `deleteSurroundingText` replayed as Backspace presses. They arrive on the Java UI thread and are queued, in order, for the glue thread (`DrainImeQueue`). |
 | `UltraCanvasAndroidAssets.{h,cpp}` | Unpacks the APK's `assets/` tree into `$HOME/share` on the first launch after an install or update (stamped against the APK's mtime+size). Inside an APK nothing is on the filesystem, so without this every path-based `fopen` for a font, icon or media file fails. Uses Java `AssetManager.list()` to walk the tree — the NDK's `AAssetDir` cannot see subdirectories — and the native `AAssetManager` to read contents. |
 | `packaging/` | Manifest + Gradle **scaffolding** for building an APK, and the sysroot blocker that stops one being built today. |
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` no-op. |
@@ -242,15 +242,33 @@ key event, is replayed as Backspace presses so existing text widgets handle it
 unchanged. While the input view holds focus it forwards key events to the
 native side itself, so a hardware keyboard keeps working during editing.
 
-**Composing text stays inside the IME** and is never forwarded. That is not an
-Android shortcut — it matches the framework's cross-platform text model: the
-Linux backend likewise takes only the committed result out of
-`Xutf8LookupString`, and no core widget can render an inline preedit region.
-Showing composition inline would be a new cross-platform capability (a core
-text model that carries a composing range, rendering for it, and support in
-every backend), not something the Android layer can add on its own. The IME
-shows its candidates in its own UI meanwhile, so CJK and suggestion-based input
-work today.
+**The word being composed is shown inline** by an element that draws
+compositions itself (`DrawsTextComposition()`, today `UltraCanvasRichTextEdit`):
+`setComposingText` reaches it as `TextComposition` events, the same events the
+Linux (XIM) and Windows (IMM) backends send, and it draws the word at its
+caret. Any other element sees nothing until the word is committed, and the
+suggestion bar shows the candidates meanwhile. The InputConnection runs on the
+Java UI thread, so every call is queued and applied on the glue thread, where
+the focused element can be asked. All calls share one queue: a composition
+overtaking the commit that ends it would leave a stale pre-edit on screen.
+
+What happens to a composition:
+
+- **`commitText`** replaces it. The pre-edit is ended first, then the text
+  arrives as typed.
+- **`finishComposingText`** keeps it as typed. A keyboard does this when it
+  closes mid-word; before, that word was lost.
+- **A tap** keeps it as typed where it was, before the tap can move focus or
+  the caret, as Android's own text fields do. The input session is then
+  restarted so the keyboard composes afresh. The old `InputConnection` ignores
+  everything from then on, so it cannot commit the same word twice.
+- **`setComposingRegion`** (re-composing a word already typed, which keyboards
+  do when backspace reaches it) is refused. The region is measured in the
+  connection's local `Editable`. That only knows what the keyboard typed in
+  this session, not where the user has since moved the caret, so mirroring it
+  would erase whatever text sits before the native caret. Refused, the
+  keyboard composes fresh text at the caret. Before, the word was typed a
+  second time after the copy already there.
 
 **With a plain `NativeActivity`** there is no editor for the IME to attach to,
 so the keyboard is raised against the decor view and only committed key events
@@ -355,10 +373,9 @@ spells out what the sysroot needs to contain.
 The cross-compiled dependency sysroot and a real APK build (the blocker for
 everything below, since nothing can be observed until then), clipboard
 images/files **copying** (pasting is done — it needs an app-declared
-`ContentProvider`, see above), gesture
-recognition on top of the touch stream (pinch/rotate → `PinchZoom`), inline
-IME composition (a cross-platform core change, not an Android one), and
-video and PDF. **Audio is on**: its backend is miniaudio, which is vendored
+`ContentProvider`, see above), inline composition in `UltraCanvasTextInput`
+and `UltraCanvasTextArea` (only `UltraCanvasRichTextEdit` draws one so far, on
+every platform), and video and PDF. **Audio is on**: its backend is miniaudio, which is vendored
 rather than waiting on the sysroot and speaks AAudio (with OpenSL ES beneath
 it) natively — both runtime-linked, so there is nothing extra to link. Only
 the optional codec libraries are missing from a minimal sysroot, which costs

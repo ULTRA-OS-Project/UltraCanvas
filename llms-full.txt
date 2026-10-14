@@ -5459,9 +5459,13 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
   `InputConnection` gives the IME an editor to compose into (autocorrect,
   suggestions, gesture typing, CJK candidates); commits arrive as
   `UCEvent::text`, and `deleteSurroundingText` is replayed as Backspace
-  presses. Pre-edit text was indeed deferred, and deliberately stays that way:
-  it is a cross-platform capability (core text model + rendering + every
-  backend), not an Android gap — Linux shows no inline pre-edit either.
+  presses. Pre-edit text was deferred until the core gained it: the
+  `TextComposition` event and `DrawsTextComposition()`, which the Linux (XIM)
+  and Windows (IMM) backends deliver. Android now delivers it too:
+  `setComposingText` becomes `TextComposition` for an element that draws
+  compositions. `finishComposingText` and a tap keep the composing word as
+  typed, and `setComposingRegion` is refused. See the backend README's *Text
+  input*.
 
 ### 3.5 Desktop services with no Android analogue
 
