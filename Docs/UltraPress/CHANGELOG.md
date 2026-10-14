@@ -1,3 +1,11 @@
+#### 2026-10-14 *0.7.4*
+- **The rich editor's toolbar.** Bold, italic, underline, a link (its
+  address asked for in a dialog), the paragraph style (body text, three
+  headings), bulleted and numbered lists, a quote, undo and redo sit in
+  the framework's toolbar above the editor in the block's place, following
+  the caret; the buttons take no focus, so pressing one and typing on
+  types into the text.
+
 #### 2026-10-14 *0.7.3*
 - **Rich text edited in place.** A `richtext` block has an *Edit text…*
   handle under it on the page; it opens the framework's rich text editor

@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.7.4 - the rich editor's toolbar: the formatting discoverable
 // Version: 0.7.3 - a richtext block edits in place
 // Version: 0.7.2 - an FAQ question edits in place; a paragraph field keeps its text when left
 // Version: 0.7.0 - text edited in place
@@ -21,6 +22,8 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasPathUtf8.h"
 #include "HTMLReader/HTMLRichDocumentImporter.h"
@@ -479,6 +482,68 @@ void EditorWindow::BeginTextEdit(int binding) {
         editRich = CreateRichTextEdit("EditRich", 0, 0, 0, 320);
         editRich->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(320));
         editRich->SetDocument(document);
+
+        // The formatting, discoverable: the framework's toolbar over the
+        // editor, driven from the editor's format state. The buttons take
+        // no focus, so pressing Bold and typing on types into the text.
+        editToolbar = std::make_shared<UltraCanvasToolbar>("EditRichBar", 0, 0, 0, 36);
+        editToolbar->SetAppearance(ToolbarAppearance::Default());
+        editToolbar->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(36));
+        auto icon = [](const std::string& name) { return NormalizePath(GetResourcesDir() + "media/icons/texter/" + name); };
+        UltraCanvasRichTextEdit* rich = editRich.get();
+        auto toggle = [&](const std::string& id, const std::string& text, const std::string& iconFile, const std::string& tip,
+                          std::function<void()> action) {
+            auto button = editToolbar->AddToggleButton(id, text, iconFile, [this, action](bool) { action(); SyncRichToolbar(); });
+            button->SetTooltip(tip);
+            button->SetAcceptsFocus(false);
+            return button.get();
+        };
+        auto plain = [&](const std::string& id, const std::string& text, const std::string& iconFile, const std::string& tip,
+                         std::function<void()> action) {
+            auto button = editToolbar->AddButton(id, text, iconFile, [this, action]() { action(); SyncRichToolbar(); });
+            button->SetTooltip(tip);
+            button->SetAcceptsFocus(false);
+            return button.get();
+        };
+        richBold = toggle("EditRichBold", "", icon("md-bold.svg"), "Bold (Ctrl+B)", [rich]() { rich->ToggleBold(); });
+        richItalic = toggle("EditRichItalic", "", icon("md-italic.svg"), "Italic (Ctrl+I)", [rich]() { rich->ToggleItalic(); });
+        richUnderline = toggle("EditRichUnderline", "U", "", "Underline (Ctrl+U)", [rich]() { rich->ToggleUnderline(); });
+        plain("EditRichLink", "", icon("md-link.svg"), "Make the selection a link", [this, rich]() {
+            if (!rich->HasSelection()) {
+                SetStatus("Select the words the link should cover first");
+                return;
+            }
+            std::shared_ptr<UltraCanvasWindow> window = windowRef.lock();
+            UltraCanvasDialogManager::ShowInputDialog(
+                "The link's address (https://..., or a page's path such as /about/)", "Link", "https://", InputType::Text,
+                [this, rich](DialogResult result, const std::string& target) {
+                    if (result != DialogResult::OK || target.empty() || !editRich || editRich.get() != rich) return;
+                    rich->SetLink(target);
+                    SyncRichToolbar();
+                },
+                window.get());
+        });
+        editToolbar->AddSeparator();
+        auto style = editToolbar->AddDropdownButton("EditRichStyle", "", {"Body text", "Heading 1", "Heading 2", "Heading 3"}, nullptr);
+        style->onSelectionChanged = [this, rich](int index, const DropdownItem&) {
+            rich->SetHeadingLevel(index < 0 ? 0 : index);
+            SyncRichToolbar();
+        };
+        style->SetTooltip("Paragraph style");
+        style->SetSelectedIndex(0, false);
+        richStyle = style.get();
+        plain("EditRichBullets", "", icon("md-list-unordered.svg"), "Bulleted list", [rich]() { rich->ToggleBulletList(); });
+        plain("EditRichNumbers", "", icon("md-list-ordered.svg"), "Numbered list", [rich]() { rich->ToggleNumberedList(); });
+        plain("EditRichQuote", "", icon("md-quote.svg"), "Quote", [rich]() { rich->ToggleBlockQuote(); });
+        editToolbar->AddSeparator();
+        plain("EditRichUndo", "", icon("undo.svg"), "Undo (Ctrl+Z)", [rich]() { rich->Undo(); });
+        plain("EditRichRedo", "", icon("redo.svg"), "Redo (Ctrl+Y)", [rich]() { rich->Redo(); });
+        // The toolbar follows the caret; the toolbar's own actions call the
+        // sync themselves, since a format armed at a collapsed caret raises
+        // neither of these.
+        editRich->onSelectionChanged = [this]() { SyncRichToolbar(); };
+        editRich->onDocumentChanged = [this]() { SyncRichToolbar(); };
+        bound.slot->AddChild(editToolbar);
         bound.slot->AddChild(editRich);
         editButtons = CreateContainer("EditRichButtons", 0, 0, 0, 36);
         editButtons->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
@@ -503,6 +568,7 @@ void EditorWindow::BeginTextEdit(int binding) {
         editButtons->AddChild(cancel);
         bound.slot->AddChild(editButtons);
         editRich->SetFocus(true);
+        SyncRichToolbar();
         SetStatus("Editing rich text; Done keeps it, Cancel drops the change");
     } else if (bound.multiline) {
         const float height = std::max(120.f, bound.size * 1.5f * 4);
@@ -531,6 +597,18 @@ void EditorWindow::BeginTextEdit(int binding) {
         bound.slot->AddChild(editInput);
         editInput->SetFocus(true);
         SetStatus("Editing; Enter keeps the text, Escape drops the change");
+    }
+}
+
+void EditorWindow::SyncRichToolbar() {
+    if (!editRich) return;
+    const RichCharFormatState state = editRich->GetFormatState();
+    if (richBold) richBold->SetPressed(RichCharFormatState::IsOn(state.bold));
+    if (richItalic) richItalic->SetPressed(RichCharFormatState::IsOn(state.italic));
+    if (richUnderline) richUnderline->SetPressed(RichCharFormatState::IsOn(state.underline));
+    if (richStyle) {
+        const int level = editRich->GetCurrentHeadingLevel();
+        richStyle->SetSelectedIndex(level >= 0 && level <= 3 ? level : 0, false);   // false: read out, not re-applied
     }
 }
 
@@ -573,6 +651,9 @@ bool EditorWindow::CommitTextEdit(const std::string& text) {
     editRich.reset();
     editButtons.reset();
     editHandle.reset();
+    editToolbar.reset();
+    richBold = richItalic = richUnderline = nullptr;
+    richStyle = nullptr;
     RenderPreview();
     RebuildSide();
     RebuildProperties();
@@ -587,6 +668,7 @@ void EditorWindow::CancelTextEdit() {
     if (bound.slot) {
         if (editInput) bound.slot->RemoveChild(editInput);
         if (editArea) bound.slot->RemoveChild(editArea);
+        if (editToolbar) bound.slot->RemoveChild(editToolbar);
         if (editRich) bound.slot->RemoveChild(editRich);
         if (editButtons) bound.slot->RemoveChild(editButtons);
         if (bound.element) bound.slot->AddChild(bound.element);
@@ -597,6 +679,9 @@ void EditorWindow::CancelTextEdit() {
     editRich.reset();
     editButtons.reset();
     editHandle.reset();
+    editToolbar.reset();
+    richBold = richItalic = richUnderline = nullptr;
+    richStyle = nullptr;
     SetStatus(dirty ? "Unsaved changes" : "");
 }
 

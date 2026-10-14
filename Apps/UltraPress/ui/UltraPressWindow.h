@@ -5,6 +5,7 @@
 // model and re-renders the preview; Save writes the site folder; Publish
 // writes the static site and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.7.4 - the rich editor's toolbar
 // Version: 0.7.3 - a richtext block edited in place with the RichTextEdit
 // Version: 0.7.0 - text edited in place on the page
 // Version: 0.6.0 - the media library: Pick... on a picture property, Media library... in the side column
@@ -22,6 +23,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasToolbar.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
 
@@ -119,6 +121,14 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasRichTextEdit> editRich;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> editButtons;   // Done / Cancel under the rich editor
     std::shared_ptr<UltraCanvas::UltraCanvasUIElement> editHandle;    // the slot's "Edit text..." handle, out while editing
+    std::shared_ptr<UltraCanvas::UltraCanvasToolbar> editToolbar;      // bold, italic, underline, link, style, lists, quote, undo, redo
+    // The toolbar's state widgets, raw: the toolbar owns them, and the
+    // editor's callbacks must not hold what the slot owns.
+    UltraCanvas::UltraCanvasButton* richBold = nullptr;
+    UltraCanvas::UltraCanvasButton* richItalic = nullptr;
+    UltraCanvas::UltraCanvasButton* richUnderline = nullptr;
+    UltraCanvas::UltraCanvasDropdown* richStyle = nullptr;
+    void SyncRichToolbar();
     std::vector<std::string> editPictures;                             // the rich editor's pictures, by media index
 
     std::weak_ptr<UltraCanvas::UltraCanvasWindow> windowRef;

@@ -359,9 +359,14 @@ static void TestEditor() {
     editor.BeginTextEdit(richBinding);
     {
         const auto& children = editor.Shown().bindings[static_cast<size_t>(richBinding)].slot->GetChildren();
-        bool rich = false;
-        for (const auto& child : children) rich = rich || std::dynamic_pointer_cast<UltraCanvas::UltraCanvasRichTextEdit>(child) != nullptr;
+        bool rich = false, toolbar = false;
+        for (const auto& child : children) {
+            rich = rich || std::dynamic_pointer_cast<UltraCanvas::UltraCanvasRichTextEdit>(child) != nullptr;
+            toolbar = toolbar || std::dynamic_pointer_cast<UltraCanvas::UltraCanvasToolbar>(child) != nullptr;
+        }
         Check(editor.IsEditingText() && rich, "the slot holds the rich text editor");
+        Check(toolbar && children.size() == 3 && std::dynamic_pointer_cast<UltraCanvas::UltraCanvasToolbar>(children[0]) != nullptr,
+              "with its toolbar above it and the buttons below");
     }
     editor.CommitTextEdit();   // what the editor's document gives back, whether or not it reads as a change
     Check(!editor.IsEditingText(), "Done closes the editor");
