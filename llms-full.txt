@@ -82817,7 +82817,8 @@ a line on what it is, which program it came from and when, and four buttons:
 | Delete | Delete | with *Undo* in the status bar for 8 seconds (Ctrl+Z) |
 
 The buttons stand right of the entry's text, or left of it between the
-thumbnail and the text: Settings, *Display → Icons*.
+thumbnail and the text: Settings, *Display → Icons*. The desktop's quick
+panel follows the same setting.
 
 Right-click a row for the same and *Pin* / *Unpin* (Ctrl+P).
 

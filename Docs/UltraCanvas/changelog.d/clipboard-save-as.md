@@ -8,4 +8,5 @@
   instead of at the row's right edge, and keeps their place while a compact
   row hides them so the text does not move. `ClipboardHistoryPolicy::iconSide`
   (`ClipboardIconSide::Right` / `Left`) keeps that choice with the history's
-  settings, shared by every process that opens it.
+  settings, shared by every process that opens it: UltraClipboard's rows and
+  UltraDesktop's quick panel both follow it.
