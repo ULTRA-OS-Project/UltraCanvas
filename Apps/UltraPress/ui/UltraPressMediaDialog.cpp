@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressMediaDialog.cpp
 // See UltraPressMediaDialog.h.
+// Version: 0.7.1 - a picture's pixels in the row; Remove unused
 // Version: 0.6.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -47,7 +48,7 @@ struct State {
     UltraCanvasModalDialog* dlg = nullptr;
     std::shared_ptr<UltraCanvasContainer> list;
     std::shared_ptr<UltraCanvasLabel> status;
-    std::shared_ptr<UltraCanvasButton> removeBtn, chooseBtn;
+    std::shared_ptr<UltraCanvasButton> removeBtn, pruneBtn, chooseBtn;
 };
 
 std::shared_ptr<UltraCanvasButton> PlainButton(const std::string& id, const std::string& text, float width, bool primary) {
@@ -109,7 +110,9 @@ void Refill(const std::shared_ptr<State>& st) {
         // The row's text is a button, so the row is picked by a click on
         // its text - the one element here that has a click.
         const std::string uses = file.usedBy == 0 ? "unused" : "used " + std::to_string(file.usedBy) + "\xC3\x97";
-        auto button = CreateButton("MediaPick" + std::to_string(i), 0, 0, 0, 56, file.path + "\n" + file.kind + ", " + HumanSize(file.size) + ", " + uses);
+        const std::string pixels = file.width > 0 ? std::to_string(file.width) + " \xC3\x97 " + std::to_string(file.height) + ", " : "";
+        auto button = CreateButton("MediaPick" + std::to_string(i), 0, 0, 0, 56,
+                                   file.path + "\n" + file.kind + ", " + pixels + HumanSize(file.size) + ", " + uses);
         button->SetFont(kFont, 13, active ? FontWeight::Bold : FontWeight::Normal);
         button->SetColors(Colors::Transparent, Color(0, 0, 0, 12));
         button->SetTextColors(kInk);
@@ -129,6 +132,9 @@ void Refill(const std::shared_ptr<State>& st) {
     }
     const bool any = st->selected >= 0;
     st->removeBtn->SetDisabled(!any || st->files[static_cast<size_t>(st->selected)].usedBy > 0);
+    bool anyUnused = false;
+    for (const MediaFile& file : st->files) anyUnused = anyUnused || file.usedBy == 0;
+    st->pruneBtn->SetDisabled(!anyUnused);
     if (st->chooseBtn) st->chooseBtn->SetDisabled(!any);
     if (any) {
         const MediaFile& file = st->files[static_cast<size_t>(st->selected)];
@@ -192,8 +198,10 @@ void ShowMediaLibrary(UltraCanvasWindowBase* parent, const std::string& siteDire
     buttons->layoutItem.SetFlexShrink(0);
     auto addBtn = PlainButton("MediaAdd", "Add file\xE2\x80\xA6", 110, false);
     st->removeBtn = PlainButton("MediaRemove", "Remove", 90, false);
+    st->pruneBtn = PlainButton("MediaPrune", "Remove unused", 150, false);
     buttons->AddChild(addBtn);
     buttons->AddChild(st->removeBtn);
+    buttons->AddChild(st->pruneBtn);
     buttons->AddStretchSpacer(1);
     auto closeBtn = PlainButton("MediaClose", pick ? "Cancel" : "Close", 90, false);
     buttons->AddChild(closeBtn);
@@ -237,6 +245,15 @@ void ShowMediaLibrary(UltraCanvasWindowBase* parent, const std::string& siteDire
         st->selected = -1;
         Refill(st);
         if (st->onChanged) st->onChanged();
+    };
+    st->pruneBtn->onClick = [st]() {
+        std::vector<std::string> removed, errors;
+        PruneMedia(st->siteDir, *st->site, removed, errors);
+        st->selected = -1;
+        Refill(st);
+        st->status->SetTextColor(errors.empty() ? kInkSoft : kAccent);
+        st->status->SetText(std::to_string(removed.size()) + " unused file(s) removed" + (errors.empty() ? "" : "; " + errors.front()));
+        if (!removed.empty() && st->onChanged) st->onChanged();
     };
     closeBtn->onClick = [st]() { st->dlg->CloseDialog(DialogResult::Cancel); };
     if (st->chooseBtn) {

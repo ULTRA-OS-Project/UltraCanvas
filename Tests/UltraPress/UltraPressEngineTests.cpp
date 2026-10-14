@@ -342,14 +342,14 @@ static void TestWordPressImport() {
         const auto& b = home->blocks;
         Check(b[0].type == "hero" && b[0].Text("title") == "It\xE2\x80\x99s time to build on what we\xE2\x80\x99ve learned" &&
                   b[0].Text("text") == "Unlike fragmented solutions, ULTRA OS unifies desktop and mobile." &&
-                  b[0].Text("picture") == "media/2026/09/hero.jpg",
+                  b[0].Text("picture") == "media/hero.jpg",
               "a cover is a hero with its title, lead and picture at the media path");
         Check(b[1].type == "heading" && b[1].Text("text") == "What ULTRA OS is" && b[1].Number("level") == 2, "a heading");
         Check(b[2].type == "text" && b[2].Text("text") == "A next-generation operating system project.\nOpen source, for everyone.\n\nOur goal is a compelling alternative.",
               "plain paragraphs merge into one text block, a break kept as a line");
         Check(b[3].type == "richtext" && b[3].Text("html").find("<a href=\"https://example.org/the-plan/\">") != std::string::npos,
               "a paragraph with a link stays rich text");
-        Check(b[4].type == "picture" && b[4].Text("src") == "media/2026/09/desktop.png" && b[4].Text("alt") == "The desktop" &&
+        Check(b[4].type == "picture" && b[4].Text("src") == "media/desktop.png" && b[4].Text("alt") == "The desktop" &&
                   b[4].Text("caption") == "The ULTRA OS desktop",
               "an image with a sized file name becomes a picture of the original at the media path");
         Check(b[5].type == "quote" && b[5].Text("text") == "Build on what we have learned." && b[5].Text("cite") == "The team", "a quote with its source");
@@ -371,7 +371,7 @@ static void TestWordPressImport() {
     Check(unknownWarned && shortcodeWarned, "the report names the unknown block and the shortcodes");
     Check(notes && notes->blocks.size() == 1 && notes->blocks[0].type == "richtext" &&
               notes->blocks[0].Text("html").find("[caption") == std::string::npos &&
-              notes->blocks[0].Text("html").find("/media/2026/09/desktop.png") != std::string::npos,
+              notes->blocks[0].Text("html").find("/media/desktop.png") != std::string::npos,
           "classic content is one rich-text block, captions unwrapped, the sized picture rewritten");
 
     // Menus.
@@ -384,8 +384,8 @@ static void TestWordPressImport() {
     Check(footer && footer->items.size() == 1 && footer->items[0].url == "https://github.com/ULTRA-OS-Project", "the footer menu");
 
     // Media and redirects.
-    Check(report.media.size() == 2 && report.media[1].second == "media/2026/09/desktop.png", "the attachments and their media paths");
-    Check(fetched.size() == 2 && report.fetched.size() == 1 && report.fetched[0].second == "media/2026/09/hero.jpg", "the fetcher is asked for each, and what succeeded is listed");
+    Check(report.media.size() == 2 && report.media[1].second == "media/desktop.png", "the attachments land flat in media/ under clean names");
+    Check(fetched.size() == 2 && report.fetched.size() == 1 && report.fetched[0].second == "media/hero.jpg", "the fetcher is asked for each, and what succeeded is listed");
     bool redirected = false;
     for (const auto& [from, to] : report.redirects) {
         if (from == "/2026/10/05/release-0-9/" && to == "/release-0-9/") redirected = true;
@@ -733,6 +733,59 @@ static void TestMedia() {
               !RemoveMedia(UltraCanvas::PathToUtf8(dir), "media/../site.json", error),
           "nothing outside media/ can be removed through the library");
     Check(!RemoveMedia(UltraCanvas::PathToUtf8(dir), "media/gone.png", error) && Contains(error, "no such file"), "a missing file says so");
+
+    std::printf("Pictures' pixels from their headers\n");
+    auto write = [&](const std::string& name, const std::vector<unsigned char>& bytes) {
+        std::ofstream out(elsewhere / name, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        return UltraCanvas::PathToUtf8(elsewhere / name);
+    };
+    int w = 0, h = 0;
+    // PNG: signature, IHDR length, "IHDR", width 1600, height 900.
+    Check(ImageDimensions(write("a.png", {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D, 'I', 'H', 'D', 'R',
+                                          0, 0, 0x06, 0x40, 0, 0, 0x03, 0x84, 8, 6, 0, 0, 0}), w, h) && w == 1600 && h == 900,
+          "PNG: " + std::to_string(w) + "x" + std::to_string(h));
+    Check(ImageDimensions(write("a.gif", {'G', 'I', 'F', '8', '9', 'a', 0x2C, 0x01, 0xC8, 0x00, 0, 0, 0}), w, h) && w == 300 && h == 200,
+          "GIF: " + std::to_string(w) + "x" + std::to_string(h));
+    std::vector<unsigned char> bmp(30, 0);
+    bmp[0] = 'B'; bmp[1] = 'M'; bmp[18] = 0x80; bmp[19] = 0x02; bmp[22] = 0xE0; bmp[23] = 0x01;
+    Check(ImageDimensions(write("a.bmp", bmp), w, h) && w == 640 && h == 480, "BMP: " + std::to_string(w) + "x" + std::to_string(h));
+    // JPEG: SOI, an APP0 segment of 16 bytes, then SOF0 with height 480 and width 720.
+    std::vector<unsigned char> jpg = {0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10};
+    jpg.insert(jpg.end(), 14, 0);
+    const unsigned char sof[] = {0xFF, 0xC0, 0x00, 0x11, 0x08, 0x01, 0xE0, 0x02, 0xD0, 0x03};
+    jpg.insert(jpg.end(), sof, sof + sizeof sof);
+    jpg.insert(jpg.end(), 12, 0);
+    Check(ImageDimensions(write("a.jpg", jpg), w, h) && w == 720 && h == 480, "JPEG: " + std::to_string(w) + "x" + std::to_string(h));
+    // WebP VP8X: canvas width - 1 = 1023, height - 1 = 767 as 24-bit little-endian.
+    std::vector<unsigned char> webp = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P', 'V', 'P', '8', 'X', 10, 0, 0, 0, 0, 0, 0, 0,
+                                       0xFF, 0x03, 0x00, 0xFF, 0x02, 0x00, 0, 0};
+    Check(ImageDimensions(write("a.webp", webp), w, h) && w == 1024 && h == 768, "WebP: " + std::to_string(w) + "x" + std::to_string(h));
+    Check(!ImageDimensions(write("a.txt", {'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', '!'}), w, h) && w == 0 &&
+              !ImageDimensions(UltraCanvas::PathToUtf8(elsewhere / "nothing.png"), w, h),
+          "not a picture, or no file: no pixels");
+    std::string pngPath;
+    Check(ImportMedia(UltraCanvas::PathToUtf8(dir), UltraCanvas::PathToUtf8(elsewhere / "a.png"), pngPath, error), "the PNG is imported");
+    {
+        int listedW = 0, listedH = 0;
+        for (const MediaFile& file : ListMedia(UltraCanvas::PathToUtf8(dir))) {
+            if (file.path == pngPath) { listedW = file.width; listedH = file.height; }
+        }
+        Check(listedW == 1600 && listedH == 900, "the list carries a picture's pixels: " + std::to_string(listedW) + "x" + std::to_string(listedH));
+    }
+
+    std::printf("Clean names and the prune\n");
+    std::set<std::string> taken = {"launch.png"};
+    auto isTaken = [&taken](const std::string& name) { return taken.count(name) > 0; };
+    Check(CleanMediaName("Launch.PNG", isTaken) == "launch-2.png" && CleanMediaName("Desktop Shot.jpeg", isTaken) == "desktop-shot.jpeg" &&
+              CleanMediaName("README", isTaken) == "readme" && CleanMediaName(".hidden", isTaken) == "hidden",
+          "a clean name: slugged stem, lower-case extension, numbered when taken");
+    std::vector<std::string> removed, pruneErrors;
+    Check(PruneMedia(UltraCanvas::PathToUtf8(dir), site, removed, pruneErrors) && removed.size() == 1 && removed[0] == "media/a.png" &&
+              ListMedia(UltraCanvas::PathToUtf8(dir)).size() == 2 && pruneErrors.empty(),
+          "prune removes every unused file and no used one: " + std::to_string(removed.size()));
+    removed.clear();
+    Check(PruneMedia(UltraCanvas::PathToUtf8(dir), site, removed, pruneErrors) && removed.empty(), "nothing unused, nothing removed");
     fs::remove_all(dir, ec);
     fs::remove_all(elsewhere, ec);
 }

@@ -1,5 +1,6 @@
 // Apps/UltraPress/engine/UltraPressMedia.cpp
 // See UltraPressMedia.h.
+// Version: 0.7.1 - dimensions, prune, clean names
 // Version: 0.6.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -10,7 +11,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <set>
 
@@ -82,6 +85,97 @@ std::string MediaKind(const std::string& name) {
     return it == kKinds.end() ? "other" : it->second;
 }
 
+namespace {
+
+uint32_t BigEndian32(const unsigned char* p) { return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | p[3]; }
+uint32_t LittleEndian32(const unsigned char* p) { return (uint32_t(p[3]) << 24) | (uint32_t(p[2]) << 16) | (uint32_t(p[1]) << 8) | p[0]; }
+uint16_t BigEndian16(const unsigned char* p) { return uint16_t((p[0] << 8) | p[1]); }
+uint16_t LittleEndian16(const unsigned char* p) { return uint16_t((p[1] << 8) | p[0]); }
+
+} // namespace
+
+bool ImageDimensions(const std::string& path, int& width, int& height) {
+    width = height = 0;
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
+    if (!in) return false;
+    unsigned char head[32] = {};
+    in.read(reinterpret_cast<char*>(head), sizeof head);
+    const std::streamsize got = in.gcount();
+    if (got < 10) return false;
+    // PNG: the IHDR chunk follows the 8-byte signature; width and height are big-endian.
+    if (got >= 24 && head[0] == 0x89 && head[1] == 'P' && head[2] == 'N' && head[3] == 'G' && std::memcmp(head + 12, "IHDR", 4) == 0) {
+        width = static_cast<int>(BigEndian32(head + 16));
+        height = static_cast<int>(BigEndian32(head + 20));
+        return width > 0 && height > 0;
+    }
+    // GIF: the logical screen size, little-endian, after "GIF87a"/"GIF89a".
+    if (head[0] == 'G' && head[1] == 'I' && head[2] == 'F') {
+        width = LittleEndian16(head + 6);
+        height = LittleEndian16(head + 8);
+        return width > 0 && height > 0;
+    }
+    // BMP: the info header's width and height (signed; a negative height is top-down).
+    if (got >= 26 && head[0] == 'B' && head[1] == 'M') {
+        const int32_t w = static_cast<int32_t>(LittleEndian32(head + 18));
+        const int32_t h = static_cast<int32_t>(LittleEndian32(head + 22));
+        width = w;
+        height = h < 0 ? -h : h;
+        return width > 0 && height > 0;
+    }
+    // WebP: "RIFF....WEBP" then a VP8 / VP8L / VP8X chunk.
+    if (got >= 30 && std::memcmp(head, "RIFF", 4) == 0 && std::memcmp(head + 8, "WEBP", 4) == 0) {
+        if (std::memcmp(head + 12, "VP8X", 4) == 0) {
+            width = 1 + (head[24] | (head[25] << 8) | (head[26] << 16));
+            height = 1 + (head[27] | (head[28] << 8) | (head[29] << 16));
+        } else if (std::memcmp(head + 12, "VP8L", 4) == 0) {
+            const uint32_t bits = LittleEndian32(head + 21);
+            width = static_cast<int>((bits & 0x3FFF) + 1);
+            height = static_cast<int>(((bits >> 14) & 0x3FFF) + 1);
+        } else if (std::memcmp(head + 12, "VP8 ", 4) == 0) {
+            width = LittleEndian16(head + 26) & 0x3FFF;
+            height = LittleEndian16(head + 28) & 0x3FFF;
+        }
+        return width > 0 && height > 0;
+    }
+    // JPEG: walk the markers to the first start-of-frame; its height and width are big-endian.
+    if (head[0] == 0xFF && head[1] == 0xD8) {
+        in.clear();
+        in.seekg(2);
+        unsigned char marker[4];
+        while (in.read(reinterpret_cast<char*>(marker), 4)) {
+            if (marker[0] != 0xFF) return false;
+            const unsigned char type = marker[1];
+            if (type == 0xD8 || (type >= 0xD0 && type <= 0xD7) || type == 0x01) { in.seekg(-2, std::ios::cur); continue; }
+            const uint16_t length = BigEndian16(marker + 2);
+            if (length < 2) return false;
+            const bool sof = (type >= 0xC0 && type <= 0xCF) && type != 0xC4 && type != 0xC8 && type != 0xCC;
+            if (sof) {
+                unsigned char frame[5];
+                if (!in.read(reinterpret_cast<char*>(frame), 5)) return false;
+                height = BigEndian16(frame + 1);
+                width = BigEndian16(frame + 3);
+                return width > 0 && height > 0;
+            }
+            if (type == 0xD9 || type == 0xDA) return false;
+            in.seekg(length - 2, std::ios::cur);
+        }
+        return false;
+    }
+    return false;
+}
+
+std::string CleanMediaName(const std::string& fileName, const std::function<bool(const std::string&)>& taken) {
+    const std::string ext = LowerExtension(fileName);
+    const std::string stem = fileName.substr(0, ext.empty() ? fileName.size() : fileName.size() - ext.size() - 1);
+    std::string base = MakeSlug(stem);
+    if (base == "page") base = "file";   // MakeSlug's fallback for an empty name
+    std::string candidate = base + (ext.empty() ? "" : "." + ext);
+    for (int n = 2; taken && taken(candidate); ++n) {
+        candidate = base + "-" + std::to_string(n) + (ext.empty() ? "" : "." + ext);
+    }
+    return candidate;
+}
+
 std::string HumanSize(int64_t bytes) {
     char out[32];
     if (bytes < 1024) std::snprintf(out, sizeof out, "%lld B", static_cast<long long>(bytes));
@@ -115,6 +209,7 @@ std::vector<MediaFile> ListMedia(const std::string& siteDirectory, const Site* s
         file.name = UltraCanvas::PathToUtf8(entry.path().filename());
         file.kind = MediaKind(file.name);
         file.size = static_cast<int64_t>(entry.file_size(ec));
+        if (file.kind == "image") ImageDimensions(UltraCanvas::PathToUtf8(entry.path()), file.width, file.height);
         out.push_back(std::move(file));
     }
     std::sort(out.begin(), out.end(), [](const MediaFile& a, const MediaFile& b) { return a.path < b.path; });
@@ -171,15 +266,9 @@ bool ImportMedia(const std::string& siteDirectory, const std::string& sourcePath
         error = "cannot create " + UltraCanvas::PathToUtf8(media) + ": " + ec.message();
         return false;
     }
-    const std::string name = UltraCanvas::PathToUtf8(source.filename());
-    const std::string ext = LowerExtension(name);
-    const std::string stem = name.substr(0, ext.empty() ? name.size() : name.size() - ext.size() - 1);
-    std::string base = MakeSlug(stem);
-    if (base == "page") base = "file";   // MakeSlug's fallback for an empty name
-    std::string candidate = base + (ext.empty() ? "" : "." + ext);
-    for (int n = 2; fs::exists(media / UltraCanvas::PathFromUtf8(candidate), ec); ++n) {
-        candidate = base + "-" + std::to_string(n) + (ext.empty() ? "" : "." + ext);
-    }
+    const std::string candidate = CleanMediaName(UltraCanvas::PathToUtf8(source.filename()), [&](const std::string& name) {
+        return fs::exists(media / UltraCanvas::PathFromUtf8(name), ec);
+    });
     const fs::path target = media / UltraCanvas::PathFromUtf8(candidate);
     fs::copy_file(source, target, fs::copy_options::none, ec);
     if (ec) {
@@ -222,6 +311,18 @@ bool RemoveMedia(const std::string& siteDirectory, const std::string& mediaPath,
         fs::remove(folder, ec);
     }
     return true;
+}
+
+bool PruneMedia(const std::string& siteDirectory, const Site& site, std::vector<std::string>& removed,
+                std::vector<std::string>& errors, const BlockRegistry& registry) {
+    bool ok = true;
+    for (const MediaFile& file : ListMedia(siteDirectory, &site, registry)) {
+        if (file.usedBy > 0) continue;
+        std::string error;
+        if (RemoveMedia(siteDirectory, file.path, error, &site, registry)) removed.push_back(file.path);
+        else { errors.push_back(error); ok = false; }
+    }
+    return ok;
 }
 
 } // namespace UltraPress

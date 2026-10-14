@@ -4,6 +4,7 @@
 // clean name, removed when nothing needs them, and every reference a page
 // makes to one checked against the folder. Headless; the editor's library
 // dialog and `ultrapress media` are two faces of it.
+// Version: 0.7.1 - ImageDimensions from the file's header; PruneMedia; a clean name for an imported file
 // Version: 0.6.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -13,6 +14,7 @@
 #include "UltraPressModel.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -25,6 +27,7 @@ struct MediaFile {
     std::string name;         // the file name alone
     std::string kind;         // "image", "document", "video", "audio", "archive", "other"
     int64_t size = 0;
+    int width = 0, height = 0;   // a picture's pixels, from its header; 0 when unknown
     int usedBy = 0;           // references from the site (0 when no site was given)
 };
 
@@ -39,6 +42,21 @@ struct MediaReference {
 
 // The kind a file name's extension gives it.
 std::string MediaKind(const std::string& name);
+
+// A picture's pixel size from its header - PNG, JPEG, GIF, WebP, BMP -
+// without decoding it, so a list of a thousand pictures costs a thousand
+// small reads. False for anything else, or a file that cannot be read.
+bool ImageDimensions(const std::string& path, int& width, int& height);
+
+// The name a file gets in the library: its stem slugged, the extension
+// lower-case; "-2", "-3" appended while `taken` says the name is in use.
+// "My Launch Photo.PNG" is "my-launch-photo.png".
+std::string CleanMediaName(const std::string& fileName, const std::function<bool(const std::string&)>& taken);
+
+// Removes every file no page uses; what went is listed. False when one
+// could not be removed (listed in `errors`); nothing to remove is true.
+bool PruneMedia(const std::string& siteDirectory, const Site& site, std::vector<std::string>& removed,
+                std::vector<std::string>& errors, const BlockRegistry& registry = BlockRegistry::BuiltIn());
 
 // Every file under <site>/media, recursively, in path order. With a site,
 // `usedBy` counts its references.

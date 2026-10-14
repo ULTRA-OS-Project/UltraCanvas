@@ -1,3 +1,18 @@
+#### 2026-10-14 *0.7.1*
+- **A picture's pixels.** The library reads a picture's size from its
+  header - PNG, JPEG, GIF, WebP, BMP - without decoding it
+  (`ImageDimensions`); the list and the dialog show "1600 × 900" beside
+  the file size, and a picture on the page keeps its own shape: as wide as
+  its frame allows and as tall as that makes it, instead of a fixed box.
+- **`ultrapress media <site> prune`** removes every file no page uses,
+  the pair of the publisher's `--prune`; the dialog has **Remove unused**.
+- **One convention for media names.** The WordPress importer now writes
+  attachments flat into `media/` under the library's clean names
+  (`media/desktop.png`, a second `desktop.png` from another month
+  `desktop-2.png`), as Add file… does, instead of `media/<year>/<month>/`;
+  a site imported and one built in the editor read alike in the library.
+  `CleanMediaName` is the one rule.
+
 #### 2026-10-14 *0.7.0*
 - **Text edited in place.** A click on a piece of text on the page - a
   title, a kicker, a heading, a paragraph, a caption, a quote and its

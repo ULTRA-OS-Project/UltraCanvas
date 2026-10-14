@@ -1,5 +1,6 @@
 // Apps/UltraPress/cli/UltraPressCli.cpp
 // The commands: new, check, page, publish, import, hosts, help, --version.
+// Version: 0.7.1 - media prune; a picture's pixels in the list
 // Version: 0.6.0 - media: the library listed, files added and removed; check finds missing media
 // Version: 0.5.1 - publish --prune; hosts add --key
 // Version: 0.5.0 - hosts: the UltraCloud accounts a site is published to; publish --to
@@ -50,9 +51,9 @@ void PrintHelp() {
         "  ultrapress check <site-dir>\n"
         "      load the site and report every problem, a picture the site does not have included;\n"
         "      exit 1 when there is one\n"
-        "  ultrapress media <site-dir> [add <file>... | remove <media-path>...]\n"
-        "      the media library: every file under media/ with its kind, size and uses;\n"
-        "      add copies files in under a clean name, remove deletes unused ones\n"
+        "  ultrapress media <site-dir> [add <file>... | remove <media-path>... | prune]\n"
+        "      the media library: every file under media/ with its kind, size, pixels and uses;\n"
+        "      add copies files in under a clean name, remove deletes unused ones, prune every unused one\n"
         "  ultrapress page <site-dir> <slug>\n"
         "      print the page's HTML shadow\n"
         "  ultrapress publish <site-dir> <out-dir> [--renderer <script.js>] [--drafts]\n"
@@ -144,7 +145,8 @@ int CommandMedia(const std::vector<std::string>& args) {
     if (args.size() == 1) {
         const std::vector<MediaFile> files = ListMedia(dir, &site);
         for (const MediaFile& file : files) {
-            std::printf("%-40s %-9s %8s  %s\n", file.path.c_str(), file.kind.c_str(), HumanSize(file.size).c_str(),
+            const std::string pixels = file.width > 0 ? std::to_string(file.width) + "\xC3\x97" + std::to_string(file.height) : "";
+            std::printf("%-40s %-9s %8s %-11s %s\n", file.path.c_str(), file.kind.c_str(), HumanSize(file.size).c_str(), pixels.c_str(),
                         file.usedBy == 0 ? "unused" : ("used " + std::to_string(file.usedBy) + "x").c_str());
         }
         std::printf("%zu file(s) in %s/media\n", files.size(), dir.c_str());
@@ -170,6 +172,14 @@ int CommandMedia(const std::vector<std::string>& args) {
             else { std::fprintf(stderr, "%s\n", error.c_str()); ++failures; }
         }
         return failures == 0 ? 0 : 1;
+    }
+    if (verb == "prune") {
+        std::vector<std::string> removed, errors;
+        const bool ok = PruneMedia(dir, site, removed, errors);
+        for (const std::string& path : removed) std::printf("removed %s\n", path.c_str());
+        for (const std::string& line : errors) std::fprintf(stderr, "%s\n", line.c_str());
+        std::printf("%zu unused file(s) removed\n", removed.size());
+        return ok ? 0 : 1;
     }
     std::fprintf(stderr, "unknown media command '%s'\n", verb.c_str());
     return 2;

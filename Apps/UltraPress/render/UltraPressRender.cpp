@@ -4,11 +4,14 @@
 // full-width bands whose centred column is Block-laid-out so wrapped text
 // measures, wrapping Flex rows for columns and buttons - with the texts,
 // colours and menus read from the site instead of tables in the source.
+// Version: 0.7.1 - a picture keeps its own shape (ImageDimensions), the given size is the frame it fits
 // Version: 0.7.0 - text bindings for editing in place
 // Version: 0.2.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressRender.h"
+
+#include "UltraPressMedia.h"
 
 #include "HTMLReader/HTMLElementBuilder.h"
 #include "UltraCanvasButton.h"
@@ -22,6 +25,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <algorithm>
 #include <sstream>
 
 using namespace UltraCanvas;
@@ -280,6 +284,15 @@ PageRenderer::Element PageRenderer::Picture(const std::string& id, const std::st
     }
     std::error_code ec;
     if (!path.empty() && std::filesystem::exists(PathFromUtf8(file), ec)) {
+        // The picture's own shape, from its header: as wide as the frame
+        // allows and as tall as that makes it, instead of a fixed box with
+        // bands above and below a landscape or beside a portrait. A very
+        // tall picture is capped at the frame's width, so a portrait does
+        // not take the page over.
+        int pixelsW = 0, pixelsH = 0;
+        if (ImageDimensions(file, pixelsW, pixelsH)) {
+            h = std::min(w, w * static_cast<float>(pixelsH) / static_cast<float>(pixelsW));
+        }
         auto image = CreateImageFromFile(id, 0, 0, w, h, file);
         image->SetFitMode(ImageFitMode::Contain);
         image->SetBorderRadius(10);

@@ -84380,6 +84380,7 @@ ultrapress hosts add ftp --server sftp://my.example --user me --key ~/.ssh/id_ed
 ultrapress media mysite                                           # every file under media/: kind, size, uses
 ultrapress media mysite add ~/Pictures/launch.png                 # copied in as media/launch.png
 ultrapress media mysite remove media/launch.png                   # deleted, unless a page uses it
+ultrapress media mysite prune                                     # every unused file deleted
 ```
 
 `import` reads a WordPress export (Tools > Export in WordPress, the WXR
@@ -84390,7 +84391,7 @@ The block editor's markers map onto the registry where a block exists -
 paragraphs, headings, images, covers, quotes, buttons, columns, galleries,
 lists, spacers, HTML - and everything else, and classic content, becomes
 rich text; the report says what was kept that way. Attachment URLs are
-rewritten to `media/<year>/<month>/<file>` and fetched with `--media`
+rewritten to `media/<file>` under the library's clean names and fetched with `--media`
 (through UltraNet) or listed. A post's dated WordPress address is reported
 as a redirect to its new path. `--no-drafts` leaves drafts out.
 
@@ -84476,10 +84477,11 @@ against it.
   what an earlier publish wrote and this one does not is removed, the
   deploy manifest excepted; `removeStale` turns it off) and
   `CreateStarterSite`.
-- `UltraPressMedia.h` - the media library: `ListMedia` (kind, size, uses),
-  `MediaReferences`, `ValidateMedia`, `ImportMedia` (a clean, unique name
-  under `media/`), `RemoveMedia` (never a used file), `MediaKind`,
-  `HumanSize`.
+- `UltraPressMedia.h` - the media library: `ListMedia` (kind, size,
+  pixels, uses), `MediaReferences`, `ValidateMedia`, `ImportMedia` (a
+  clean, unique name under `media/`: `CleanMediaName`, the importer's rule
+  too), `RemoveMedia` (never a used file), `PruneMedia`, `ImageDimensions`
+  (from the header, no decoding), `MediaKind`, `HumanSize`.
 - `UltraPressDeploy.h` - `DeployFolder`: the published folder onto a host
   through an `Uploader` (two functions: make a folder, put a file), the
   root's folders created first, only the files whose `Fingerprint` changed
@@ -84534,11 +84536,11 @@ Rich text and HTML blocks are edited in the properties pane.
 
 **Pictures.** A picture property (the hero's and the card's `picture`, the
 picture block's `src`) has **Pick…** beside its path. It opens the media
-library: every file under `media/` with a thumbnail, its kind, size and
-how many places use it; **Add file…** opens the file dialog and copies the
-chosen file into `media/` under a clean name; **Remove** deletes a file
-nothing uses; **Choose** puts the path into the property and the preview
-shows the picture. **Media library…** in the side column opens the same
+library: every file under `media/` with a thumbnail, its kind, pixels,
+size and how many places use it; **Add file…** opens the file dialog and
+copies the chosen file into `media/` under a clean name; **Remove** deletes
+a file nothing uses, **Remove unused** every such file; **Choose** puts the
+path into the property and the preview shows the picture in its own shape. **Media library…** in the side column opens the same
 dialog to browse.
 Without UltraCloud the program says so, and `ultrapress publish` still
 writes the folder to upload by other means.
