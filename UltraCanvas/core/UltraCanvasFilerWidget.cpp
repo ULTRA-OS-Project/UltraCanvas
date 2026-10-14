@@ -6533,6 +6533,13 @@ namespace UltraCanvas {
             entry.name = PathToUtf8(PathFromUtf8(path).filename());
             if (entry.name.empty()) entry.name = path;   // a drive root
             entry.isDirectory = fs::is_directory(st);
+            // The move / copy / delete questions show what a file weighs;
+            // a folder is not walked for it.
+            if (fs::is_regular_file(st)) {
+                const uintmax_t bytes = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+                if (!ec) entry.size = entry.effectiveSize = static_cast<uint64_t>(bytes);
+                ec.clear();
+            }
             // The queue asks before touching a write-protected entry, so this
             // has to be right; the listing reads the same bit for its "R".
             entry.isReadOnly = (st.permissions() & fs::perms::owner_write)
