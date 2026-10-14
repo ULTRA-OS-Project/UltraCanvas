@@ -3,6 +3,7 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.5.0 - BringForward: restores and raises the window
 // Version: 1.4.0 - Open / Import / Save As / Export offer FileLoader's format lists (every
 //                  bitmap type this build reads / writes), not the editor's own
 // Version: 1.3.1 - Shift+X picks the Eraser: a tool key can need Shift (it never matched with it)
@@ -24,7 +25,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -371,6 +372,12 @@ std::vector<std::shared_ptr<UltraPaintWindow>>& UltraPaintWindow::OpenWindows() 
 
 int UltraPaintWindow::WindowCount() {
     return static_cast<int>(OpenWindows().size());
+}
+
+void UltraPaintWindow::BringForward() {
+    if (!window) return;
+    if (window->IsMinimized()) window->Restore();
+    window->RaiseAndFocus();
 }
 
 std::shared_ptr<UltraPaintWindow> UltraPaintWindow::OpenWindow(const std::vector<std::string>& paths) {

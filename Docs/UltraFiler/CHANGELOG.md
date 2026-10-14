@@ -1,3 +1,15 @@
+#### 2026-10-14 *1.73.0*
+- **One UltraFiler at a time.** Opening a folder while UltraFiler is already
+  running opens it in a new tab of the running window - the tab strip's
+  folders stay as they were; a tab that shows that folder already is
+  switched to, and a file opens its folder - and brings the window forward
+  (restored if minimised) instead of starting a second one; starting it
+  without a folder brings the open window forward. Two starts at the same
+  moment cannot both stay, and a copy that does not answer is reported with
+  *"UltraFiler is already running"*. The *Delete as administrator* helper,
+  which UltraFiler starts itself, still runs beside it. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
 #### 2026-10-13 *1.72.6*
 - **The *+ Drive* menu opens at once.** Clicking *+ Drive* took several
   seconds before the menu with *FTP / SFTP server...*, *Cloud storage...* and
