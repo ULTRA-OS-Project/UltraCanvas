@@ -104,6 +104,7 @@ TEST(RemoverRefusesAnItemPathThatLeftTheAllowedRoots) {
     const std::string precious = tree.File("precious/keep.txt", 10);
 
     ScanReport report = ScanOf(cache);
+    REQUIRE_EQ(report.items.size(), static_cast<size_t>(1));
     // Simulates a report whose items were tampered with between the scan and
     // the clean: the guard is rebuilt from allowedRoots, not from the items.
     report.items[0].path = precious;
@@ -160,8 +161,9 @@ TEST(RemoverCountsItemsThatVanishedBeforeTheClean) {
     tree.File("cache/a.bin", 10);
 
     ScanReport report = ScanOf(cache);
+    REQUIRE_EQ(report.items.size(), static_cast<size_t>(1));
     std::error_code ec;
-    std::filesystem::remove(report.items[0].path, ec);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(report.items[0].path), ec);
 
     RemovalOptions options;
     options.mode = RemovalMode::DeletePermanently;
@@ -170,6 +172,31 @@ TEST(RemoverCountsItemsThatVanishedBeforeTheClean) {
     const RemovalReport result = remover.Remove(report, options);
     REQUIRE_EQ(result.skippedMissing, static_cast<size_t>(1));
     REQUIRE(result.failures.empty());
+}
+
+// macOS's temp folder is /var/folders/..., and /var is a link to
+// /private/var. The scan reports items under the spelling it walked; the
+// remover rebuilds its guard from the report's roots and has to accept them.
+TEST(RemoverDeletesUnderARootReachedThroughASymlink) {
+    TempTree tree;
+    tree.File("real/cache/a.bin", 10);
+    std::error_code ec;
+    std::filesystem::create_directory_symlink(
+        UltraCanvas::PathFromUtf8(tree.Path("real")),
+        UltraCanvas::PathFromUtf8(tree.Path("link")), ec);
+    if (ec) return;   // filesystem without symlinks (some CI Windows runners)
+
+    ScanReport report = ScanOf(tree.Path("link/cache"));
+    REQUIRE_EQ(report.items.size(), static_cast<size_t>(1));
+
+    RemovalOptions options;
+    options.mode = RemovalMode::DeletePermanently;
+    Remover remover;
+    const RemovalReport result = remover.Remove(report, options);
+
+    REQUIRE_EQ(result.removedItems, static_cast<size_t>(1));
+    REQUIRE(!tree.Exists("real/cache/a.bin"));
+    REQUIRE(tree.Exists("real/cache"));          // the root itself survives
 }
 
 TEST(RemoverReportsProgressAndStopsWhenCancelled) {

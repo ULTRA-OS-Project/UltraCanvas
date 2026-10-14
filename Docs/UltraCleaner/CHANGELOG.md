@@ -7,6 +7,20 @@
   found nothing. It goes through `PathFromUtf8` now, like every other path
   the engine opens. `WildcardExpansionListsFoldersNamedOutsideTheCodePage`
   covers it.
+- **On macOS the temp-file rules found nothing.** The safety guard held each
+  rule root only with its symlinks resolved. The scanner reports what it
+  finds under the root's own spelling, so every item under a root reached
+  through a link was refused as "outside the allowed roots". On macOS that is
+  `$TMPDIR` (`/var/folders/...`, where `/var` is a link to `/private/var`) and
+  `/tmp`. The guard now holds both spellings and accepts a path inside
+  either. The check that a link in an item's path cannot lead out of the
+  roots still compares only resolved paths, and the remover rebuilds its
+  guard from the roots as named. Three tests cover it: the guard, the scanner
+  and the remover, each with a root reached through a link. The first macOS
+  CI run of the suite found this. Every scan and clean test came up empty
+  there, and one of them then wrote to the first item of an empty list and
+  crashed the run before it printed a line. Those tests now check the count
+  first, and the test runner flushes its output after every test.
 - **The engine suite runs in CI**, on Linux, macOS and Windows, so the case
   above is checked on the system it fails on (framework changelog:
   `macos-opengl-optional-cleaner-tests-in-ci`). Its first Windows run failed
