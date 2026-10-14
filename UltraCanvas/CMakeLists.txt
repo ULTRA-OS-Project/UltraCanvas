@@ -1913,8 +1913,27 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
 # LLD does not, so without this every app that links the core (which re-exports
 # the vips libs PUBLIC) fails with "unable to find library -lvips". PUBLIC so the
 # -L rides along with the libraries, matching what the Vectorizer/OCR plugins do.
+# target_link_directories(<target> PUBLIC <dirs>...), build-interface only
+# under Emscripten. There the directories are the wasm sysroot's lib/, which
+# on CI sits inside the checkout (wasm-build.yml keeps it in the workspace),
+# and CMake refuses to generate an exported target whose
+# INTERFACE_LINK_DIRECTORIES holds a path under the source directory
+# ("which is prefixed in the source directory"; run 14 of wasm-build.yml, the
+# first to configure the repository root and so the first with the checkout
+# as the source directory). The installed package has no use for a build
+# machine's sysroot, so the install interface goes without them.
+function(_uc_public_link_directories target)
+    foreach(_uc_dir IN LISTS ARGN)
+        if(EMSCRIPTEN)
+            target_link_directories(${target} PUBLIC $<BUILD_INTERFACE:${_uc_dir}>)
+        else()
+            target_link_directories(${target} PUBLIC ${_uc_dir})
+        endif()
+    endforeach()
+endfunction()
+
 if(ULTRACANVAS_HAS_VIPS)
-    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBVIPS_LIBRARY_DIRS})
+    _uc_public_link_directories(${ULTRACANVAS_LIB_NAME} ${LIBVIPS_LIBRARY_DIRS})
 endif()
 
 # Native folder watching: the define tells the core watcher that this platform
@@ -2013,7 +2032,18 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     # default abort-on-throw. PUBLIC so app executables inherit both.
     if(ULTRACANVAS_WASM_THREADS)
         set(_uc_wasm_thread_compile -pthread)
-        set(_uc_wasm_thread_link -pthread -sPTHREAD_POOL_SIZE=8)
+        # Growth with threads otherwise costs every JS-side heap access a
+        # check that the buffer was not replaced (Emscripten warns "-pthread
+        # + ALLOW_MEMORY_GROWTH may run non-wasm code slowly"). 1 uses the
+        # browser's growable SharedArrayBuffer where it exists (Chromium,
+        # Safari; Firefox from 154) and keeps the checked path elsewhere; 2
+        # would require it. Threaded builds only: Emscripten copies through
+        # a temporary buffer before handing shared memory to a Web API, but
+        # hands a single-threaded program's heap over directly, and with
+        # this option that heap is a resizable ArrayBuffer, which
+        # crypto.getRandomValues refuses ("must not be resizable") the
+        # first time anything asks for random bytes.
+        set(_uc_wasm_thread_link -pthread -sPTHREAD_POOL_SIZE=8 -sGROWABLE_ARRAYBUFFERS=1)
     else()
         set(_uc_wasm_thread_compile)
         set(_uc_wasm_thread_link)
@@ -2029,13 +2059,6 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
             ${_uc_wasm_thread_link}
             -fwasm-exceptions
             -sALLOW_MEMORY_GROWTH=1
-            # Growth with threads otherwise costs every JS-side heap access
-            # a check that the buffer was not replaced (Emscripten warns
-            # "-pthread + ALLOW_MEMORY_GROWTH may run non-wasm code
-            # slowly"). 1 uses the browser's growable SharedArrayBuffer
-            # where it exists (Chromium, Safari; Firefox from 154) and keeps
-            # the checked path elsewhere; 2 would require it.
-            -sGROWABLE_ARRAYBUFFERS=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1
             # The backend's EM_ASM bridges (clipboard, dialogs, downloads,
@@ -2147,8 +2170,9 @@ endif()
 # With libvips on, LIBVIPS_LIBRARY_DIRS (PUBLIC, above) happened to carry it for every library;
 # a -DULTRACANVAS_ENABLE_VIPS=OFF build then failed to find pango, cairo, glib and the rest
 # (wasm-build.yml's no-vips variant, 2026-10-13).
+# (Build-interface only under Emscripten: _uc_public_link_directories above.)
 if(WIN32 OR EMSCRIPTEN)
-    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
+    _uc_public_link_directories(${ULTRACANVAS_LIB_NAME}
             ${CAIRO_LIBRARY_DIRS}
             ${PANGO_LIBRARY_DIRS}
             ${FONTCONFIG_LIBRARY_DIRS}
@@ -3557,8 +3581,11 @@ elseif(NOT ULTRACANVAS_PLUGIN_PDF)
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
 endif()
 
-# OCR Plugin
-if(ULTRACANVAS_PLUGIN_OCR)
+# OCR Plugin. It hands libvips images to tesseract (its CMakeLists.txt
+# requires vips), so a core built with ULTRACANVAS_ENABLE_VIPS=OFF skips it.
+if(ULTRACANVAS_PLUGIN_OCR AND NOT ULTRACANVAS_HAS_VIPS)
+    message(STATUS "  [✗] OCR Plugin - DISABLED (needs libvips; ULTRACANVAS_ENABLE_VIPS is OFF)")
+elseif(ULTRACANVAS_PLUGIN_OCR)
     pkg_check_modules(TESSERACT tesseract)
     pkg_check_modules(LEPTONICA lept)
     if(TESSERACT_FOUND AND LEPTONICA_FOUND)
@@ -3579,8 +3606,13 @@ else()
     message(STATUS "  [−] OCR Plugin - SKIPPED (disabled by option)")
 endif()
 
-# Vectorizer Plugin (raster → SVG via VTracer through a Rust shim)
-if(ULTRACANVAS_PLUGIN_VECTORIZER)
+# Vectorizer Plugin (raster → SVG via VTracer through a Rust shim). It loads
+# the raster it traces through PixelFX, which a core built with
+# ULTRACANVAS_ENABLE_VIPS=OFF has not got (the link then fails on
+# PixelFX::PFXImage::FromFile), so such a core skips it.
+if(ULTRACANVAS_PLUGIN_VECTORIZER AND NOT ULTRACANVAS_HAS_VIPS)
+    message(STATUS "  [✗] Vectorizer Plugin - DISABLED (needs libvips; ULTRACANVAS_ENABLE_VIPS is OFF)")
+elseif(ULTRACANVAS_PLUGIN_VECTORIZER)
     find_program(CARGO_EXECUTABLE cargo)
     if(CARGO_EXECUTABLE)
         if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Vectorizer/CMakeLists.txt)

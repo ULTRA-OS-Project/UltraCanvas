@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.9 - The image performance page is registered only with libvips, as it is built
 // Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
 //                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
@@ -904,6 +905,11 @@ namespace UltraCanvas {
                                 "Docs/UltraCanvas/UltraCanvasListViewExamples.md");
 
         // ===== BITMAP ELEMENTS =====
+        // Only with libvips: the format pages (UltraCanvasBitmapFormatDemo.cpp)
+        // and the performance page benchmark its codecs, and both files are
+        // built only with it (CMakeLists.txt, "These files depend on libvips").
+        // Without it the category has no pages and gets no tree node.
+#ifdef HAS_LIBVIPS
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
 
         bitmapBuilder.AddItem("pngimages", "PNG Images", "PNG Image display and manipulation",
@@ -998,6 +1004,7 @@ namespace UltraCanvas {
                 .AddVariant("imageperformance", "Full Pipeline Test")
                 .AddVariant("imageperformance", "Decompress + Draw Test")
                 .AddVariant("imageperformance", "Draw Only Test");
+#endif  // HAS_LIBVIPS
 
         // ("drawing" / "Drawing Surface" placeholder removed: no
         // UltraCanvasDrawingSurface was ever built, so the page rendered an

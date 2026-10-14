@@ -18,7 +18,13 @@
 #include <stdexcept>
 
 #include <cairo/cairo.h>
+// libvips reads the image a file scan decodes and writes the exported
+// picture; a build without it (the WebAssembly no-vips variant) keeps the
+// element, the scan of a pixel buffer and the decoder, and says so from
+// the two functions that need the library.
+#ifdef HAS_LIBVIPS
 #include <vips/vips8>
+#endif
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasFileError.h"   // WriteFileAtomically
 #ifdef ULTRACANVAS_QRCODE_HAS_DECODER
@@ -393,6 +399,11 @@ namespace UltraCanvas {
 #ifndef ULTRACANVAS_QRCODE_HAS_DECODER
         setErr("QR decoder support not built in (compile with libzbar)");
         return results;
+#elif !defined(HAS_LIBVIPS)
+        (void)imagePath;
+        setErr("Reading the image file needs libvips, which this build has not got; "
+               "scan the pixels with ScanQRCodeImage instead");
+        return results;
 #else
         using namespace zbar;
 
@@ -742,6 +753,11 @@ namespace UltraCanvas {
             }
         }
 
+#ifndef HAS_LIBVIPS
+        (void)rgba; (void)sw; (void)sh; (void)outPath;
+        setErr("Writing the picture needs libvips, which this build has not got");
+        return false;
+#else
         try {
             if (VIPS_INIT("ultracanvas-qrcode") != 0) {
                 setErr(vips_error_buffer());
@@ -787,6 +803,7 @@ namespace UltraCanvas {
             setErr(e.what());
             return false;
         }
+#endif  // HAS_LIBVIPS
     }
 
     bool UltraCanvasQRCode::ExportToImage(const std::string& filename,
