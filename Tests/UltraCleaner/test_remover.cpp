@@ -287,6 +287,16 @@ private:
     std::pair<std::string, bool> oldXdg_;
 };
 
+// Where the platform's trash keeps its files, relative to HOME: the XDG
+// trash's files/ on Linux, ~/.Trash itself on macOS (TrashDir()). The tests
+// used the Linux one everywhere, so on macOS the remover - rightly - saw no
+// trash there and moved the file.
+#if defined(__APPLE__)
+const std::string kTrashFiles = ".Trash";
+#else
+const std::string kTrashFiles = ".local/share/Trash/files";
+#endif
+
 // A rule that clears whatever directory it is pointed at, standing in for the
 // real trash rule without depending on the platform rule table.
 CleanRule TrashContentsRule(const std::string& root) {
@@ -304,8 +314,8 @@ TEST(MoveToTrashLeavesWhatIsAlreadyInTheTrashAlone) {
     TempTree tree;
     ScopedHome home(tree.Path());
 
-    const std::string files = tree.Dir(".local/share/Trash/files");
-    tree.File(".local/share/Trash/files/already-deleted.bin", 40);
+    const std::string files = tree.Dir(kTrashFiles);
+    tree.File(kTrashFiles + "/already-deleted.bin", 40);
 
     Scanner scanner;
     ScanReport report = scanner.Scan({ TrashContentsRule(files) });
@@ -323,7 +333,7 @@ TEST(MoveToTrashLeavesWhatIsAlreadyInTheTrashAlone) {
     REQUIRE_EQ(result.freedBytes, static_cast<uint64_t>(0));
     REQUIRE_EQ(result.skippedAlreadyInTrash, static_cast<size_t>(1));
     REQUIRE(result.failures.empty());
-    REQUIRE(tree.Exists(".local/share/Trash/files/already-deleted.bin"));
+    REQUIRE(tree.Exists(kTrashFiles + "/already-deleted.bin"));
 
     size_t entries = 0;
     std::error_code ec;
@@ -338,8 +348,8 @@ TEST(PermanentDeleteIsWhatActuallyEmptiesTheTrash) {
     TempTree tree;
     ScopedHome home(tree.Path());
 
-    const std::string files = tree.Dir(".local/share/Trash/files");
-    tree.File(".local/share/Trash/files/already-deleted.bin", 40);
+    const std::string files = tree.Dir(kTrashFiles);
+    tree.File(kTrashFiles + "/already-deleted.bin", 40);
 
     Scanner scanner;
     ScanReport report = scanner.Scan({ TrashContentsRule(files) });
@@ -354,6 +364,6 @@ TEST(PermanentDeleteIsWhatActuallyEmptiesTheTrash) {
     REQUIRE_EQ(result.removedItems, static_cast<size_t>(1));
     REQUIRE_EQ(result.freedBytes, static_cast<uint64_t>(40));
     REQUIRE_EQ(result.skippedAlreadyInTrash, static_cast<size_t>(0));
-    REQUIRE(!tree.Exists(".local/share/Trash/files/already-deleted.bin"));
+    REQUIRE(!tree.Exists(kTrashFiles + "/already-deleted.bin"));
 }
 #endif

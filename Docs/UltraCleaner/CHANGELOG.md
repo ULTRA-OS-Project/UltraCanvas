@@ -20,7 +20,10 @@
   CI run of the suite found this. Every scan and clean test came up empty
   there, and one of them then wrote to the first item of an empty list and
   crashed the run before it printed a line. Those tests now check the count
-  first, and the test runner flushes its output after every test.
+  first, and the test runner flushes its output after every test. Two trash
+  tests also built their trash in the Linux spot (`~/.local/share/Trash/files`).
+  On macOS the trash is `~/.Trash`, so the remover rightly saw no trash
+  there; the tests now use the platform's folder.
 - **The engine suite runs in CI**, on Linux, macOS and Windows, so the case
   above is checked on the system it fails on (framework changelog:
   `macos-opengl-optional-cleaner-tests-in-ci`). Its first Windows run failed
