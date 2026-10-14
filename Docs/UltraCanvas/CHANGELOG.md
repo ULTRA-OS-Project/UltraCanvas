@@ -1,3 +1,44 @@
+#### 2026-10-14 *0.9.294*
+- **A build without libvips reads PNG.** `UCImage` in a build configured
+  with `ULTRACANVAS_ENABLE_VIPS=OFF` read SVG (through the Vector plugin)
+  and nothing else, so the demo's own chrome - the tree's folder and status
+  icons, the page buttons, the About logo - came up as grey squares in the
+  WebAssembly `no-vips` and `single-thread` variants. PNG now goes through
+  cairo's own reader (`cairo_image_surface_create_from_png_stream`), from a
+  file or from bytes: the size comes from the header at load, the pixels
+  are decoded when a pixmap is first asked for, the fit modes mean what the
+  libvips thumbnail path means them to, and `HasTransparency` answers from
+  the header's colour type. Other raster formats still report that the
+  build has no decoder for them.
+- **The single-threaded WebAssembly build runs.** The workflow's
+  `single-thread` variant had never run in a browser: every page ended on
+  `GLib-ERROR (g_system_thread_new): error 'Not supported' during
+  'pthread_create'` at its first text, which the new smoke step was the
+  first to see. Two causes. pango hands fontconfig's work (FcInit,
+  matching, sorting) to a worker thread it starts with `g_thread_new`, a
+  program built without `-pthread` cannot start one (Emscripten answers
+  ENOTSUP) and GLib treats that answer as a programming error; a sysroot
+  patch (`pango-1.52-wasm-no-threads.patch`) runs those jobs on the
+  caller's thread when there are no threads, and the threaded build keeps
+  its worker. And libvips evaluates every image on a worker thread of its
+  own (wasm-vips itself requires threads), so the library's CMake now
+  forces `ULTRACANVAS_ENABLE_VIPS` off when `ULTRACANVAS_WASM_THREADS` is
+  off, with a status line saying why: such a program reads PNG through
+  cairo's reader and SVG through the Vector plugin, and the workflow's
+  variant says so.
+- **The WebAssembly workflow opens its pages in a browser.** `wasm-build.yml`
+  built five variants and ran none, so a page that came up empty - the
+  JPEG page, until the sysroot learnt JPEG - was found by a person after the
+  download. Each variant's job now serves its collected pages with
+  `serve.py` and opens them in the runner's Google Chrome, headless, with
+  the new `UltraCanvas/OS/WASM/demo/smoke.mjs`: the demo's start page and a
+  handful of its pages (SVG, pie charts and, where libvips is in, the PNG,
+  JPEG, TIFF, WebP, GIF and BMP pages), plus the two validation apps. A page
+  must present a frame and keep a console free of "Error creating
+  example", uncaught errors and Emscripten aborts, or the job fails; the
+  screenshots and console logs are the `wasm-smoke-<variant>` artifact.
+  The script runs against a local build too (the WebAssembly README).
+
 #### 2026-10-14 *0.9.293*
 - **`UltraCanvasModalDialog` 3.9.0 follows the theme.** `ModalDialogStyle::FromTheme`
   puts the theme's ink on the message and muted ink on the details over a
