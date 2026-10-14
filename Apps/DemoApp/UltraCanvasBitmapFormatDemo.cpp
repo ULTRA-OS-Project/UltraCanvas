@@ -807,7 +807,18 @@ namespace UltraCanvas {
         imageCard->AddChild(imageFrame);
 
         auto image = std::make_shared<UltraCanvasImageElement>("Image", 4, 4, 222, 162);
-        image->LoadFromFile(sampleImagePath);
+        // A build whose libvips lacks this format's codec (the WebAssembly
+        // sysroot reads PNG, JPEG, TIFF, WebP and GIF; BMP needs ImageMagick,
+        // HEIC and AVIF libheif) cannot show the sample. The page still
+        // builds - the About and Format Specification cards do not depend
+        // on it - and says so where the picture and its properties would be.
+        const bool readable = image->LoadFromFile(sampleImagePath);
+        // libvips ends its messages with a newline; on one line here.
+        std::string unreadableReason = readable ? std::string() : image->GetLastError();
+        for (char& c : unreadableReason) if (c == '\n' || c == '\r') c = ' ';
+        while (!unreadableReason.empty() && unreadableReason.back() == ' ') unreadableReason.pop_back();
+        const std::string unreadableNotice =
+            "This build cannot read " + info.formatName + " files.";
         image->SetFitMode(ImageFitMode::Contain);
         // Hand, not LookingGlass: a click opens the image in the viewer, and a
         // magnifier reads as "zoom" rather than "click to open".
@@ -816,6 +827,19 @@ namespace UltraCanvas {
             ShowInMediaViewer(sampleImagePath);
         };
         imageFrame->AddChild(image);
+        if (!readable) {
+            image->SetVisible(false);
+            auto noticeCont = std::make_shared<UltraCanvasContainer>("UnreadableCont", 12, 48, 206, 74);
+            auto notice = std::make_shared<UltraCanvasLabel>("Unreadable");
+            notice->SetText(unreadableNotice);
+            notice->SetFontSize(11);
+            notice->SetFontWeight(FontWeight::Bold);
+            notice->SetTextColor(Color(234, 88, 12, 255));
+            notice->SetWrap(TextWrap::WrapWord);
+            notice->SetAlignment(TextAlignment::Center);
+            noticeCont->AddChild(notice);
+            imageFrame->AddChild(noticeCont);
+        }
 
         // Extract filename
         std::string filename = sampleImagePath;
@@ -842,6 +866,7 @@ namespace UltraCanvas {
         viewBtn->onClick = [sampleImagePath]() {
             ShowInMediaViewer(sampleImagePath);
         };
+        viewBtn->SetVisible(readable);
         imageCard->AddChild(viewBtn);
 
         auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 138, 250, 108, 32);
@@ -852,11 +877,20 @@ namespace UltraCanvas {
         exportBtn->SetTextColors(Color(71, 85, 105, 255));
         exportBtn->SetCornerRadius(6);
         exportBtn->onClick = [sampleImagePath]() {
-            auto vimg = vips::VImage::new_from_file(sampleImagePath.c_str());
-            auto win = CreateImageExportDialog(vimg);
-            win->Create();
-            win->Show();
+            // A throw out of a click handler ends the program (and the
+            // WebAssembly build has no console to say why), so a sample the
+            // viewer could show but libvips cannot reopen is reported instead.
+            try {
+                auto vimg = vips::VImage::new_from_file(sampleImagePath.c_str());
+                auto win = CreateImageExportDialog(vimg);
+                win->Create();
+                win->Show();
+            } catch (const std::exception& e) {
+                debugOutput << "Bitmap page: export of " << sampleImagePath
+                            << " failed: " << e.what() << std::endl;
+            }
         };
+        exportBtn->SetVisible(readable);
         imageCard->AddChild(exportBtn);
 
         // ===== ROW 3 RIGHT: IMAGE PROPERTIES (populated from actual image) =====
@@ -872,10 +906,36 @@ namespace UltraCanvas {
         propHeader->SetTextColor(Color(30, 41, 59, 255));
         propertiesCard->AddChild(propHeader);
 
-        auto imgInfo = PixelFX::ExtractImageInfo(sampleImagePath);
+        // ExtractImageInfo throws when libvips cannot open the file; before
+        // the try below, that throw left the page without a single card.
+        PixelFX::PXImageFileInfo imgInfo;
+        bool haveInfo = readable;
+        if (haveInfo) {
+            try {
+                imgInfo = PixelFX::ExtractImageInfo(sampleImagePath);
+            } catch (const std::exception& e) {
+                debugOutput << "Bitmap page: no properties for " << sampleImagePath
+                            << ": " << e.what() << std::endl;
+                haveInfo = false;
+            }
+        }
+        if (!haveInfo) {
+            auto noPropsCont = std::make_shared<UltraCanvasContainer>("NoPropsCont", 20, 56, 600, 120);
+            auto noProps = std::make_shared<UltraCanvasLabel>("NoProps");
+            noProps->SetText(unreadableNotice +
+                             (unreadableReason.empty() ? std::string()
+                                                       : " The reader said: " + unreadableReason));
+            noProps->SetFontSize(11);
+            noProps->SetTextColor(Color(71, 85, 105, 255));
+            noProps->SetWrap(TextWrap::WrapWord);
+            noProps->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
+            noPropsCont->AddChild(noProps);
+            propertiesCard->AddChild(noPropsCont);
+        }
 
         // Property placeholders (would be populated from actual image metadata)
-        std::vector<std::pair<std::string, std::string>> defaultProps = {
+        std::vector<std::pair<std::string, std::string>> defaultProps = haveInfo ?
+            std::vector<std::pair<std::string, std::string>>{
                 {"FILE SIZE", FormatFileSize(imgInfo.fileSize)},
                 {"RESOLUTION", fmt::format("{}x{}", imgInfo.width, imgInfo.height)},
                 {"CHANNELS", fmt::format("{}", imgInfo.channels)},
@@ -884,7 +944,7 @@ namespace UltraCanvas {
                 {"BITS PER CHANNEL", fmt::format("{}", imgInfo.bitsPerChannel)},
                 {"ALPHA CHANNEL", imgInfo.hasAlpha ? "Yes" : "No"},
                 {"DPI", fmt::format("{}", round(imgInfo.dpiX))}
-        };
+            } : std::vector<std::pair<std::string, std::string>>{};
 
         int propY = 56;
         for (size_t i = 0; i < defaultProps.size(); ++i) {
