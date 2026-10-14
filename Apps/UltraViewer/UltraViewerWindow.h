@@ -19,8 +19,10 @@
 //   - text / source / markdown
 //   - UltraCanvas Document containers (*.ucd): embedded preview thumbnail +
 //     container details until the UCD v2 engine lands
+// Version: 1.1.0 - ShowPaths / BringForward: a second start's files are shown
+//                  in this window, which comes to the front
 // Version: 1.0.0
-// Last Modified: 2026-08-06
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -42,6 +44,14 @@ public:
     // many  -> exactly those files as the playlist (folders are expanded)
     bool Initialize(const std::vector<std::string>& paths);
     void Show();
+
+    // Shows `paths` in place of what the viewer shows now, by the same rule
+    // as Initialize (and a drop on the viewer); empty does nothing. A viewer
+    // holds nothing unsaved - its adjustments are a view of the file, which
+    // Open and a drop replace the same way - so nothing is asked first.
+    void ShowPaths(const std::vector<std::string>& paths);
+    // Restores the window when minimised and raises it with the keyboard focus.
+    void BringForward();
 
 private:
     std::shared_ptr<UltraCanvasWindow>      window;

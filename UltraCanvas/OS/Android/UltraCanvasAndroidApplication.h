@@ -4,7 +4,7 @@
 // blocking Run() loop is hosted there and CollectAndProcessNativeEvents pumps
 // the glue's ALooper (activity commands + input queue).
 // Version: 1.0.0
-// Last Modified: 2026-08-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -19,6 +19,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
+#include <string>
+#include <vector>
 
 // NDK types are kept out of this header where an opaque forward declaration
 // suffices, so including UltraCanvasApplication.h stays cheap.
@@ -84,6 +87,21 @@ namespace UltraCanvas {
         void HideSoftKeyboard();
 
         // ===== IME DELIVERY (called from the Java InputConnection) =====
+        // The InputConnection runs on the Java UI thread, so its calls are
+        // queued in arrival order and applied on the glue thread, where the
+        // focused element can be asked whether it draws compositions. One
+        // queue for all of them: a composition overtaking the commit that
+        // ends it would leave a stale pre-edit on screen.
+        void QueueImeCommit(const std::string& utf8);
+        // The text being composed and its caret (byte offset into `utf8`);
+        // "" ends the composition without committing anything.
+        void QueueImeComposition(const std::string& utf8, int caretBytes);
+        // Keep the composition as typed text.
+        void QueueImeFinishComposition();
+        void QueueImeKeyEvent(bool down, int32_t keyCode, int32_t metaState,
+                              int32_t codePoint);
+        void QueueImeDeleteBefore(int count);
+
         // Text the IME committed - an autocorrected or gesture-typed word, a
         // CJK candidate - which belongs to no single key.
         void PushCommittedText(const std::string& utf8);
@@ -153,6 +171,39 @@ namespace UltraCanvas {
         // so focus moving between two text widgets doesn't flicker the IME.
         void OnTextEditingChanged(bool active);
         bool pendingImeHide = false;
+
+        // ===== IME QUEUE (filled on the Java UI thread) =====
+        struct ImeOp {
+            enum class Kind { Commit, Compose, Finish, Key, DeleteBefore };
+            Kind kind = Kind::Commit;
+            std::string text;
+            int value = 0;              // Compose: caret bytes; DeleteBefore: count
+            bool down = false;          // Key
+            int32_t keyCode = 0, metaState = 0, codePoint = 0;
+        };
+        std::mutex imeQueueMutex;
+        std::vector<ImeOp> imeQueue;
+        void QueueImeOp(ImeOp op);
+        void DrainImeQueue();           // glue thread
+        void ApplyImeOp(const ImeOp& op);
+
+        // ===== COMPOSITION STATE (glue thread only) =====
+        // The IME's current composing text. It reaches the widget only as
+        // TextComposition events, and only when the focused element draws
+        // compositions; any other element sees nothing until the commit.
+        std::string imeComposing;
+        // Whether the focused element currently shows a pre-edit that must be
+        // ended with an empty TextComposition.
+        bool imeCompositionShown = false;
+        bool FocusedDrawsComposition();
+        void PushComposition(const std::string& utf8, int caretBytes);
+        void EndShownComposition();
+        void CommitComposition(const std::string& utf8);
+        void EraseBefore(int count);
+        // A tap while composing: the composing text is kept as typed in the
+        // element that has it, before the tap can move focus or the caret,
+        // and the IME is restarted so it composes afresh from there.
+        void FinishCompositionForTap();
     };
 
 } // namespace UltraCanvas

@@ -224,9 +224,13 @@ The Linux pump (`OS/Linux/UltraCanvasLinuxApplication.cpp:215-272`) is: drain
   `InputConnection` gives the IME an editor to compose into (autocorrect,
   suggestions, gesture typing, CJK candidates); commits arrive as
   `UCEvent::text`, and `deleteSurroundingText` is replayed as Backspace
-  presses. Pre-edit text was indeed deferred, and deliberately stays that way:
-  it is a cross-platform capability (core text model + rendering + every
-  backend), not an Android gap — Linux shows no inline pre-edit either.
+  presses. Pre-edit text was deferred until the core gained it: the
+  `TextComposition` event and `DrawsTextComposition()`, which the Linux (XIM)
+  and Windows (IMM) backends deliver. Android now delivers it too:
+  `setComposingText` becomes `TextComposition` for an element that draws
+  compositions. `finishComposingText` and a tap keep the composing word as
+  typed, and `setComposingRegion` is refused. See the backend README's *Text
+  input*.
 
 ### 3.5 Desktop services with no Android analogue
 
@@ -298,7 +302,7 @@ device".**
 | **libvips** (+ ~10 transitive libs) | Currently `REQUIRED` but `HAS_LIBVIPS`/`LIBVIPS_FOUND` guards already exist throughout — **make it optional** (drop `REQUIRED` at `UltraCanvas/CMakeLists.txt:146`, conditionalize the link). This is the single highest-leverage build change and benefits WASM too. Image decode on Android can later go through a smaller path (stb/libjpeg-turbo/libpng or JNI `BitmapFactory`) |
 | X11/Xcursor/Xrandr, GTK3, GLX, desktop OpenGL | Never referenced by the Android platform arm |
 | librsvg | Skip (Rust+gobject; SVG falls back gracefully) |
-| GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android |
+| GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android. **Status:** done with the NDK's MediaCodec, Camera2 and AAudio (`libspecific/Video/VideoBackendAndroid*.cpp`). No ExoPlayer, so no Java dependency. |
 | miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free. **Status: on.** It was the one entry in the Android CMake block whose dependency is vendored rather than pending in the sysroot, so it needed no link changes at all (AAudio and OpenSL ES are both reached through `dlopen`). The CI syntax check compiles the backend TU — and with it the whole `MINIAUDIO_IMPLEMENTATION` — for aarch64 |
 | Optional audio codecs (FLAC/vorbis/opus/LAME) | All plain C with known NDK builds; each just unlocks a format |
 | MuPDF (PDF plugin) | Official Android build exists; defer to a later phase |
@@ -454,8 +458,10 @@ Process lessons for the Android effort:
   lives in the core (`UpdateTouchGesture`) rather than the Android backend,
   since the touch stream and the geometry are both platform-neutral.
 - ~~Audio (miniaudio AAudio — near-free)~~ — done, and it was indeed free:
-  enabling the existing option, no new dependency, no new link line. Video via
-  a MediaCodec backend is still open.
+  enabling the existing option, no new dependency, no new link line.
+- ~~Video via a MediaCodec backend~~ — done, and on by default, since every
+  library it needs is in the NDK sysroot: playback with A/V sync, thumbnails,
+  and Camera2 preview + MP4 recording. See the backend README's *Video*.
 - PDF (MuPDF android), image pipeline decision (trimmed libvips vs.
   platform decoders), printing via `PrintManager`.
 - Plugin packaging as `jniLibs`, Play-store packaging polish.

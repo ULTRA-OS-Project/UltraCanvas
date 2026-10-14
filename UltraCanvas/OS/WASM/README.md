@@ -212,7 +212,11 @@ into its job summary, and uploads each as the `wasm-demo-<variant>`
 artifact, one folder with the three pages and `serve.py`: unzip one, run
 `python3 serve.py 8080` there and open any of the pages. The browser
 console then shows `first frame presented N ms after navigation start`,
-the port's time to first paint on that machine. The last three variants
+the port's time to first paint on that machine. The framework's
+`debugOutput` stream also lands in that console (stderr) in every build
+configuration, so a page that fails to build says why there
+(`Error creating example for <page>: ...`); a page can turn it off with
+`Module.ENV.ULTRACANVAS_DEBUG_LOG = "0"` in a `preRun` hook. The last three variants
 are measurements that may fail to build; they never fail the run.
 
 The same two sources build as desktop applications - configure the
@@ -223,6 +227,14 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
 
 ## Known limitations
 
+- **Image formats**: the sysroot's libvips reads and writes PNG, JPEG, TIFF
+  and WebP (libpng, libjpeg-turbo, libtiff and libwebp are built into the
+  sysroot) and reads GIF with its built-in decoder; QOI comes from the
+  framework's own codec and SVG from the Vector plugin (next item). No
+  HEIC / AVIF (libheif with dav1d or aom is a build of its own and megabytes
+  of download) and no BMP (ImageMagick). The demo's bitmap pages say so in
+  place of the picture; an application gets "format not supported" from
+  `UCImage`.
 - **SVG needs the Vector plugin registered**: the sysroot's libvips has no
   SVG loader (librsvg / resvg are not built), so `UCImage` reads an .svg
   through the vector preview seam the Vector plugin installs
@@ -244,8 +256,13 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
   the pointer re-enters (needs the Pointer Events capture API).
 - **Custom cursor images** fall back to the standard cursor (CSS cannot
   reference files inside the Emscripten virtual FS).
-- **IME composition, drag & drop between windows, window icons**: not
-  implemented.
+- **IME composition** reaches only an element that draws compositions
+  (`DrawsTextComposition()`: an editable text input,
+  text area or rich text editor): while one has focus a
+  transparent `<textarea>` at its caret takes the keyboard and forwards its
+  composition events (`UltraCanvasWASMApplication::UpdateImeTarget`). Other
+  elements keep the canvas, which gets no input method.
+- **Drag & drop between windows, window icons**: not implemented.
 - Presentation converts and uploads the full surface on every composition;
   damage-rect-limited `putImageData` is an easy future optimisation.
 - The browser logs a "blocking on the main thread" warning at startup

@@ -542,6 +542,11 @@ UltraFiler                  # opens the home folder
 UltraFiler /path/to/folder  # opens a specific folder
 ```
 
+One UltraFiler runs per user. Starting it again while it is running opens the
+folder in a new tab of the running window (a tab that already shows it is
+switched to; a file opens its folder) instead of starting a second copy, and a
+start without a folder brings the window forward.
+
 ## Building
 
 Built by the top-level CMake project when `BUILD_ULTRAFILER_APP` is `ON`

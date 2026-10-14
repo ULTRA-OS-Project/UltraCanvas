@@ -275,6 +275,13 @@ UltraPaint part.stl        # asks for the view and the size, then opens it
 UltraPaint a.png b.png     # one window each - what a drop on the icon expands to
 ```
 
+One UltraPaint runs per user. Starting it again while it runs - from a
+shell, a file manager or a drop on the icon - hands the images to the running
+copy, which opens each in a new window of its own and brings it to the front;
+an image already open is never replaced. A start without images just brings
+UltraPaint forward (`UltraCanvasSingleInstance`). `--help` and `--version`
+answer on their own.
+
 ## Building
 
 Configured by the root CMakeLists (`BUILD_ULTRAPAINT_APP`, default ON):

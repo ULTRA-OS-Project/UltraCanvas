@@ -7,10 +7,12 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.6.0 - BringForward: restores and raises the window (a file handed over by a
+//                  second start opens in a window of its own and comes to the front)
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -52,6 +54,9 @@ public:
     // get a window of their own. The windows own themselves.
     static std::shared_ptr<ArtCreatorWindow> OpenWindow(const std::vector<std::string>& paths);
     static int WindowCount();
+    // Restores the window when minimised and raises it with the keyboard
+    // focus: what a file a second start handed over opened in comes forward.
+    void BringForward();
 
     // The extensions this build reads and writes (empty without the Vector
     // plugin).

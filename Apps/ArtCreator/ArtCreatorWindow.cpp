@@ -2,6 +2,7 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.7.0 - BringForward: restores and raises the window
 // Version: 1.6.0 - Export offers FileLoader's types (AddVectorDocumentSaveTypes):
 //                 every vector writer and every bitmap type this build writes -
 //                 PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, QOI, ICO ... - and
@@ -16,7 +17,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -305,6 +306,12 @@ std::vector<std::shared_ptr<ArtCreatorWindow>>& ArtCreatorWindow::OpenWindows() 
 
 int ArtCreatorWindow::WindowCount() {
     return static_cast<int>(OpenWindows().size());
+}
+
+void ArtCreatorWindow::BringForward() {
+    if (!window) return;
+    if (window->IsMinimized()) window->Restore();
+    window->RaiseAndFocus();
 }
 
 std::shared_ptr<ArtCreatorWindow> ArtCreatorWindow::OpenWindow(const std::vector<std::string>& paths) {

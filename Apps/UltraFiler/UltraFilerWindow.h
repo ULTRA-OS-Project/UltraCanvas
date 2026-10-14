@@ -80,7 +80,9 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
-// Version: 1.26.1
+// Version: 1.27.1 - the connection log button on every remote drive
+// Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
+// Version: 1.26.0
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
@@ -143,6 +145,13 @@ public:
     // the user's home directory when empty or not a directory).
     bool Initialize(const std::string& startFolder = "");
     void Show();
+    // Folders a later start of UltraFiler handed over (absolute, UTF-8 -
+    // UltraCanvasSingleInstance::ListenOpen): each opens in a tab of its own,
+    // as the tab strip's "+" opens one, so the folders already open stay where
+    // they are. A folder a tab shows already is switched to instead; a file
+    // opens its folder; what does not exist is skipped. The window comes
+    // forward either way.
+    void OpenFolders(const std::vector<std::string>& paths);
 
 private:
     // Per-tab browsing state: the folder widget of the tab plus its own
