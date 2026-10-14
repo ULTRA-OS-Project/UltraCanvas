@@ -1756,6 +1756,7 @@ if (BUILD_ARTCREATOR_APP)
             Apps/ArtCreator/ArtCreatorWindow.cpp
             Apps/ArtCreator/ArtCreatorTools.cpp
             Apps/ArtCreator/ArtCreatorDialogs.cpp
+            Apps/ArtCreator/ArtCreatorIcon.cpp
     )
     # One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
     ultracanvas_single_instance(ArtCreator)

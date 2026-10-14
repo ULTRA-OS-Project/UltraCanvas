@@ -61,6 +61,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.32.0 - the connection log button on every remote drive; add-drive
+//                  sign-ins in the connection log; "+ Drive > Connection log..."
 // Version: 1.31.0 - OpenFolders: a second start's folders open in new tabs
 //                  (an open one is switched to) and the window comes forward
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
@@ -266,7 +268,7 @@ namespace {
     constexpr int kPromoteButtonLeftInset = 8;
 
     // The round button in a folder display's bottom-left corner that opens
-    // the connection log while the display is on an FTP drive: its diameter,
+    // the connection log while the display is on a remote drive: its diameter,
     // and how far it sits from the display's left and bottom edges.
     constexpr int kConnectionLogButtonSize  = 30;
     constexpr int kConnectionLogButtonInset = 10;
@@ -2368,6 +2370,15 @@ void UltraFilerWindow::ShowAddDriveMenu() {
     addDriveMenu->AddItem(cloudItem);
     addDriveMenu->AddItem(MenuItemData::Separator());
     addDriveMenu->AddItem(ramItem);
+    // The log of the drives' connections - the same window as the network
+    // button in a folder display's corner, which is only there while the
+    // display is on a drive. Here it is also reachable after a sign-in that
+    // failed, before there is any drive to open.
+    MenuItemData logItem = MenuItemData::Action(
+            "Connection log...", [this]() { OpenConnectionLog(); });
+    logItem.enabled = remote;
+    addDriveMenu->AddItem(MenuItemData::Separator());
+    addDriveMenu->AddItem(logItem);
     addDriveMenu->OpenMenuAnchored(addDriveButton->GetBoundsInWindow(), *window,
                                    PopupElementSettings(), 1);
 }
@@ -2388,15 +2399,30 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
         UltraCanvasAlert::Error(error, "Add a drive", nullptr, window.get());
         return;
     }
-    UltraCloud::CloudService* service = remoteDrives->Service();
+    std::shared_ptr<UltraCloud::CloudService> service = remoteDrives->Service();
     if (!service) {
         UltraCanvasAlert::Error("The drive list is not available.",
                                 "Add a drive", nullptr, window.get());
         return;
     }
     const bool ftp = kind == RemoteDriveKind::FtpOrSftp;
+    // Each sign-in the dialog runs is a session of the connection log, so a
+    // refused one can be read step by step - the "+ Drive" menu opens the
+    // log before there is a drive to open it from.
+    std::shared_ptr<RemoteSignInLog> signInLog = remoteDrives->MakeSignInLog();
+    UltraCloud::AddAccountWatch watch;
+    watch.onBegin = [signInLog](const UltraCloud::Account& account) {
+        signInLog->Begin(account.providerId, account.displayName, account.serverUrl);
+    };
+    watch.onEnd = [signInLog](const UltraCloud::Account&, const UltraCloud::Result& result) {
+        signInLog->End(result);
+    };
+    // Closing the window calls a sign-in still waiting on the browser off.
+    watch.cancelled = [signInLog]() { return signInLog->Cancelled(); };
+    // The shared form: the dialog's sign-in thread holds the service until
+    // the sign-in ends, which can be after this window has closed.
     UltraCloud::ShowAddAccountDialog(
-            window.get(), *service,
+            window.get(), service,
             [this](const UltraCloud::Account&) {
                 // Stored: re-read the list so the new row appears, and drop
                 // the listing cache in case an account was replaced under the
@@ -2415,7 +2441,7 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
                         providerId, ftp ? RemoteDriveKind::FtpOrSftp
                                         : RemoteDriveKind::CloudStorage);
             },
-            ftp ? "Add an FTP / SFTP drive" : "Add a cloud drive");
+            ftp ? "Add an FTP / SFTP drive" : "Add a cloud drive", std::move(watch));
 #endif
 }
 
@@ -3627,7 +3653,7 @@ void UltraFilerWindow::BuildFolderTree() {
 
     // The remote drives: read the configured accounts and show a row per
     // drive. A failure here costs the section, not the window - UltraFiler
-    // without its FTP drives is still a file manager - so it is reported to
+    // without its remote drives is still a file manager - so it is reported to
     // the log rather than thrown in the user's face at start-up.
     remoteDrives = std::make_unique<UltraFilerRemoteDrives>();
     // Fires on the UI thread once a queued listing has arrived: the folder
@@ -4939,10 +4965,11 @@ UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);
 
-    // The connection log: every step of every connection to an FTP drive,
-    // and the failed ones with their codes. Opened from a round button with
-    // the network symbol floating in this display's bottom-left corner -
-    // in the display, not the window's status bar, because it is about the
+    // The connection log: every step of every connection to a remote drive -
+    // an FTP server's commands and replies, a cloud service's requests and
+    // answers - and the failed ones with their codes. Opened from a round
+    // button with the network symbol floating in this display's bottom-left
+    // corner - in the display, not the window's status bar, because it is about the
     // drive the display is on, and it is there only while it is on one
     // (UpdateConnectionLogButton). The count of failures the log window has
     // not shown yet rides on its corner in red, so a failure that scrolled
@@ -6200,7 +6227,7 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
         tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
         tabbedContainer->SetTabIcon(index, TabIconForPath(path));
     }
-    // The connection log button comes with an FTP drive and goes with it.
+    // The connection log button comes with a remote drive and goes with it.
     UpdateConnectionLogButton(tab);
 
     // Entering a folder ends a search-result display (SetPath leaves it) and
@@ -6422,12 +6449,10 @@ void UltraFilerWindow::UpdateRemoteProgressBar() {
     statusProgress->SetValue(percent < 0.0 ? 0.0 : percent > 100.0 ? 100.0 : percent);
 }
 
-bool UltraFilerWindow::IsFtpDrivePath(const std::string& path) const {
+bool UltraFilerWindow::IsRemoteDrivePath(const std::string& path) const {
     if (!remoteDrives || !IsRemoteFilerPath(path)) return false;
     RemoteDrive drive;
-    return remoteDrives->Find(RemoteFilerAccountId(path), drive) &&
-           UltraFilerRemoteDrives::ProviderBelongsToKind(drive.providerId,
-                                                         RemoteDriveKind::FtpOrSftp);
+    return remoteDrives->Find(RemoteFilerAccountId(path), drive);
 }
 
 void UltraFilerWindow::UpdateConnectionLogButton() {
@@ -6441,7 +6466,7 @@ void UltraFilerWindow::UpdateConnectionLogButton(FilerTabState* display) {
     UltraCanvasButton& button = *display->connectionLogButton;
     UltraCanvasBadge* badge = display->connectionLogBadge.get();
 
-    const bool show = display->filer && IsFtpDrivePath(display->filer->GetPath());
+    const bool show = display->filer && IsRemoteDrivePath(display->filer->GetPath());
     if (button.IsVisible() != show) button.SetVisible(show);
     if (!show) {
         if (badge && badge->IsVisible()) badge->SetVisible(false);
@@ -6456,7 +6481,7 @@ void UltraFilerWindow::UpdateConnectionLogButton(FilerTabState* display) {
     if (connectionLogSeenErrors > errors) connectionLogSeenErrors = errors;
     const std::size_t unseen = errors - connectionLogSeenErrors;
 
-    std::string tip = "Connection log - every step of the connections to the FTP drives";
+    std::string tip = "Connection log - every step of the connections to the drives";
     if (sessions > 0) {
         tip += " (" + std::to_string(sessions) +
                (sessions == 1 ? " connection" : " connections");

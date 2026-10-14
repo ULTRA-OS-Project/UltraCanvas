@@ -4,11 +4,14 @@
 // loopback listener (RFC 8252), exchange the code, refresh tokens. The
 // building blocks are exposed individually; UltraNet_OAuth2AuthorizeInteractive
 // runs the whole dance in one blocking call.
-// Version: 0.1.0
+// Version: 0.2.0 - the redirect wait can be called off (isCancelled)
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraNetCore.h"
+
+#include <functional>
 
 #include <cstdint>
 #include <functional>
@@ -98,6 +101,10 @@ std::string UltraNet_OAuth2BuildAuthUrl(
 // http://127.0.0.1:<port>/<path> (or localhost / [::1]); the listener binds
 // to the loopback interface only. responseHtml is shown in the browser tab
 // afterwards; empty = a built-in "you can close this window" page.
+// isCancelled, when set, is asked a few times a second while the wait runs;
+// once it says true the wait ends as UltraNetResultCode::Cancelled - a sign-in
+// dialog the user closed, an application shutting down - rather than holding
+// its thread until timeoutMs.
 // ============================================================================
 struct UltraNetOAuth2CallbackResult {
     std::string code;
@@ -112,7 +119,8 @@ UltraNetResult UltraNet_OAuth2WaitForCallback(
     const std::string& redirectUri,
     UltraNetOAuth2CallbackResult& outResult,
     int timeoutMs = 300000,
-    const std::string& responseHtml = std::string());
+    const std::string& responseHtml = std::string(),
+    const std::function<bool()>& isCancelled = {});
 
 // ============================================================================
 // Step 3 — token exchange / refresh. codeVerifier must be the pkce.codeVerifier
@@ -142,9 +150,12 @@ UltraNetResult UltraNet_OAuth2ParseTokenResponse(
 // to a real ephemeral port first), generate state + PKCE, hand the consent
 // URL to onOpenUrl, await the redirect, verify state, exchange the code.
 // Blocking for up to timeoutMs — run on a worker thread, never the UI thread.
+// isCancelled ends the wait for the redirect early, as in
+// UltraNet_OAuth2WaitForCallback.
 // ============================================================================
 UltraNetResult UltraNet_OAuth2AuthorizeInteractive(
     const UltraNetOAuth2Config& config,
     const std::function<void(const std::string& consentUrl)>& onOpenUrl,
     UltraNetOAuth2Token& outToken,
-    int timeoutMs = 300000);
+    int timeoutMs = 300000,
+    const std::function<bool()>& isCancelled = {});

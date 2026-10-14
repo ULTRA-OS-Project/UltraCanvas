@@ -3648,6 +3648,25 @@ add_test(NAME VectorEditTest COMMAND VectorEditTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VectorEditTest")
 
+# VectorEdit::SnapToPixels: shapes onto the pixel grid of an icon's size -
+# whole-pixel line widths, odd widths on pixel centres, even widths and
+# fills on pixel edges, paths made absolute with their control points
+# following their nodes, transforms that scale and move followed, rotated
+# shapes and text left alone.
+message(STATUS "  Building VectorPixelSnapTest...")
+add_executable(VectorPixelSnapTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/VectorPixelSnapTest.cpp
+)
+target_include_directories(VectorPixelSnapTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(VectorPixelSnapTest PRIVATE cxx_std_20)
+target_link_libraries(VectorPixelSnapTest PRIVATE UltraCanvas)
+set_target_properties(VectorPixelSnapTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME VectorPixelSnapTest COMMAND VectorPixelSnapTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: VectorPixelSnapTest")
+
 # ===== RENDER CONTEXT TEST =====
 # The compositing and geometry API of IRenderContext on an offscreen
 # surface: blend modes, groups, masks, hit testing, transform readback,

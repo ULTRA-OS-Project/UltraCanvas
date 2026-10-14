@@ -1,3 +1,84 @@
+#### 2026-10-14 *1.74.0*
+- **Cloud drives have a connection log too.** The round network button in
+  a folder display's bottom-left corner was only there on FTP / FTPS / SFTP
+  drives; a cloud drive's log held one line per job, so a failed Dropbox or
+  Google Drive listing said `HTTP 409` or `HTTP 403` and nothing else. The
+  button is now there on every remote drive, and on a Dropbox, OneDrive,
+  Google Drive, Nextcloud or WebDAV drive the message log lists what the
+  drive did: each request (`Request:  POST https://api.dropboxapi.com/2/...`)
+  and the service's answer with its status, its own reason for a refusal and
+  how long it took (`Response: 409 Conflict - path/not_found (0.31 s)`); a
+  renewed sign-in, or the service refusing the renewal (`invalid_grant`, the
+  access was revoked); the pages of a long folder; and the service limiting
+  requests, with how long it asks to wait. UltraCloud writes these lines
+  (see the framework changelog); the drive worker puts them in the same log
+  as an FTP drive's commands and replies.
+  - The *Errors* report says *HTTP status 409* and *Last answer* for a cloud
+    drive, not *last server reply*, and its likely cause is read from the
+    HTTP status: an expired or revoked sign-in (401), a refusal (403), an
+    item moved or deleted elsewhere (404), a name conflict (409), a locked
+    file (412 / 423), a file too large (413), throttling (429, and Google
+    Drive's 403 *userRateLimitExceeded*), the service having trouble
+    (500 - 504), a full drive (507), or the service not reached at all. The
+    same numbers are not read as FTP replies (an HTTP 425 is not a failed
+    data connection). The diagnostics carry the request ID the service's
+    support asks for.
+  - A throttled request is reported as *Rate limited* rather than as a
+    server error.
+  - Nothing secret is logged: no access token, no password, no request or
+    answer body, and no value of a URL parameter that carries a key.
+  - `FilerConnectionLogTest` covers a cloud session's labels, its report, its
+    hints and the status line's short form of a request.
+- **A cloud service that limits requests is waited out.** When Dropbox,
+  OneDrive, Google Drive, Nextcloud or a WebDAV server answers that it is
+  limiting requests (429, a 503 that says when to come back, Google Drive's
+  403 *userRateLimitExceeded*), the drive now waits as long as the service
+  asks - or 1, 2 and 4 s when it does not say - and sends the request again,
+  up to three times, instead of failing the folder at once. The status line
+  and the connection log say what it is waiting for (*The service is
+  limiting requests: it asks to wait 20 s - trying again in 20 s (try 2 of
+  4)*). A wait longer than a minute is not sat out: the failure is reported
+  with the time the service asked for. A folder read ahead is not waited
+  for at all - nobody is looking at it, and reading ahead is what ran into
+  the limit - and closing the window ends a wait at once. The waiting itself
+  is UltraCloud's (`RateLimitPolicy`, see the framework changelog).
+- **Adding a drive is in the connection log.** A sign-in from the *Add a
+  cloud drive* or *Add an FTP / SFTP drive* dialog that failed left only the
+  dialog's one-line message. Each attempt is now an *Add drive* session of
+  the connection log, with its steps: for a cloud drive the browser sign-in
+  (*Opening the sign-in page in the browser: https://www.dropbox.com/oauth2/
+  authorize*, *Signed in*, or why it did not complete), then the requests
+  that check the account; for an FTP drive every command and reply, as when
+  browsing. A failed one counts as a failure on the log button. The *+
+  Drive* menu has a *Connection log...* entry, so the log can be opened
+  before there is a drive to open it from.
+- **A cloud drive whose access token the service rejects signs in again by
+  itself.** The access token was renewed only when it had expired by this
+  computer's clock; one the service rejected anyway - revoked early, a clock
+  that is off, or one that ran out while the drive waited on a service that
+  limits requests - failed the folder with *sign-in rejected (HTTP 401)*. The
+  token is now renewed from the drive's stored sign-in and the request made
+  once more; only when the service refuses that too does the folder fail,
+  with a hint to sign in again. The connection log says *The service
+  rejected the access token - renewing it and trying again*.
+- **Cancelling the add-drive dialog cancels the sign-in.** Pressing *Cancel*
+  or closing the dialog while it waited for the browser sign-in left the
+  sign-in waiting for up to five minutes - and when the user went on to
+  sign in in the browser anyway, the drive was added after all, appearing
+  only at the next start. The wait now ends at once and no drive is stored;
+  the connection log's *Add drive* session ends with *The sign-in was
+  cancelled* and does not count as a failure. Closing UltraFiler's window
+  does the same for a sign-in still running, and waits up to two seconds
+  for it to end. A sign-in that outlasts that - one stuck waiting on a
+  server - no longer uses the drive list and the credential store after the
+  window has freed them: the sign-in holds them until it ends
+  (`CloudService` shared with the dialog, see the framework changelog).
+- **Shorter requests on the status line.** While a cloud drive works, the
+  status line showed each request's whole address, query and all. It now
+  shows the method, the server and the end of the path - *Request: PROPFIND
+  cloud.example.org/.../erika/Fotos Mai/* - with the folder or file name
+  decoded; the connection log keeps the whole address.
+
 #### 2026-10-14 *1.73.0*
 - **One UltraFiler at a time.** Opening a folder while UltraFiler is already
   running opens it in a new tab of the running window - the tab strip's

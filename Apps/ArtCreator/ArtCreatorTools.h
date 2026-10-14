@@ -9,8 +9,9 @@
 // user-editable state (line width, shape sides, text font, ...) that
 // survives tool switches, and ArtToolContext is what the window lets a
 // tool reach.
+// Version: 1.2.0 - ArtToolContext::iconPixel
 // Version: 1.1.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -104,6 +105,8 @@ struct ArtToolContext {
     // to the shape editor).
     std::function<void(ArtToolId)> selectTool;
     std::function<void()> refreshOptions;
+    // Icon mode's pixel in document units (0: off): the arrow keys nudge by it.
+    double iconPixel = 0;
 };
 
 class ArtTool {

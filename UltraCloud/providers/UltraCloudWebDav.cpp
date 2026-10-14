@@ -1,8 +1,7 @@
 // UltraCloud/providers/UltraCloudWebDav.cpp
-// Version: 0.3.0 - Delete and Rename, so a WebDAV server is a drive and a publish target that can prune
-// Version: 0.2.1 - an href's entities decoded by the HTMLReader module (HTML::DecodeEntities)
-// Version: 0.2.0
-// Last Modified: 2026-10-08
+// Version: 0.4.0 - Delete and Rename, so a WebDAV server is a drive and a publish target that can prune
+// Version: 0.3.0 - WebDavErrorMessage: the <s:message> of an error body
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudWebDav.h>
 
@@ -111,6 +110,15 @@ std::string Trim(const std::string& s) {
 }
 
 } // namespace
+
+std::string WebDavErrorMessage(const std::string& xml) {
+    const std::string lower = Lower(xml);
+    std::size_t es, ee;
+    if (!FindElement(lower, "error", 0, lower.size(), es, ee)) return "";
+    std::size_t ms, me;
+    if (!FindElement(lower, "message", es, ee, ms, me)) return "";
+    return UltraCanvas::HTML::DecodeEntities(Trim(xml.substr(ms, me - ms)));
+}
 
 std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& folderPath) {
     std::vector<Entry> out;
