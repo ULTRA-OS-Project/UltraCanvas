@@ -1,5 +1,7 @@
 // include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles, value display options, and dual-handle range support
+// Version: 3.7.0 - the handle as element roles (slider.handle, slider.handle-border)
+// Version: 3.6.0 - SliderVisualStyle::FromTheme, ApplyTheme
 // Version: 3.5.0 - a slider to screen readers, with a value they can read and set
 // Version: 3.3.1
 // Last Modified: 2026-10-08
@@ -81,6 +83,15 @@ namespace UltraCanvas {
         // Text colors
         Color textColor = Colors::Black;
         Color disabledTextColor = Color(150, 150, 150);
+
+        // The theme's roles: the pressed fill for the track, the accent for
+        // the active part, the raised surface for the handle, ink; the
+        // element roles "slider.handle" and "slider.handle-border" where a
+        // theme names them
+        // over a base's own shape (sizes, fonts, flags), or a default one
+        static SliderVisualStyle FromTheme(const UltraCanvasTheme& theme, const SliderVisualStyle& base);
+        static SliderVisualStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SliderVisualStyle()); }
+        static SliderVisualStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
         // Dimensions
         float trackHeight = 6.0f;
@@ -269,6 +280,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(SliderVisualStyle::FromTheme(theme, GetStyle())); }
 
     private:
         // ===== HELPER METHODS =====

@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.10.0 - a key delivered to a window a modal blocks goes to the modal, not dropped
+// Version: 1.9.0 - Initialize installs the theme change handler: every window re-styles, the tooltips too
 // Version: 1.8.0 - when the system fonts arrive after the start, or a font file is
 //                  registered, every window is drawn again, not only laid out:
 //                  boxes drawn for characters the start's fonts lacked stayed
@@ -106,6 +108,8 @@ namespace UltraCanvas {
     }
 
     UltraCanvasApplicationBase::~UltraCanvasApplicationBase() {
+        if (themeHandler != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler);
+        themeHandler = 0;
         UltraCanvasApplicationBase* expected = this;
         g_currentApplication.compare_exchange_strong(
             expected, nullptr, std::memory_order_release);
@@ -813,6 +817,19 @@ namespace UltraCanvas {
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {
         appName = app;
 
+        // A theme change reaches every element of every window (the ones
+        // that follow the theme re-style themselves) and the tooltips
+        if (themeHandler == 0) {
+            themeHandler = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme& theme) {
+                UltraCanvasTooltipManager::SetStyle(TooltipStyle::FromTheme(theme, UltraCanvasTooltipManager::GetStyle()));
+                for (auto& window : windows) {
+                    if (!window) continue;
+                    window->OnThemeChanged(theme);
+                    window->RequestRedraw();
+                }
+            });
+        }
+
         // Each step's time, for GetStartupTimings(): a slow start is usually
         // one of these (a font cache rebuilt, a virus scanner reading every
         // library), and an application cannot see inside this call.
@@ -1142,7 +1159,7 @@ namespace UltraCanvas {
         return GetCurrentModalWindow() != nullptr;
     }
 
-    bool UltraCanvasApplicationBase::HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow* targetWindow) {
+    bool UltraCanvasApplicationBase::HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow*& targetWindow) {
         auto* modalWindow = GetCurrentModalWindow();
         if (!modalWindow) return false;
 
@@ -1164,11 +1181,21 @@ namespace UltraCanvas {
             case UCEventType::MouseWheel:
             case UCEventType::MouseEnter:
             case UCEventType::MouseLeave:
+                if (targetWindow != modalWindow) return true;
+                break;
             case UCEventType::KeyDown:
             case UCEventType::KeyUp:
             case UCEventType::TextInput:
             case UCEventType::TextComposition:
-                if (targetWindow != modalWindow) return true;
+                // A key the system delivered to a blocked window (focus follows
+                // the pointer, or no window manager gave the dialog the focus)
+                // goes to the modal: Escape and Return reach the dialog, typing
+                // reaches its field, instead of being dropped.
+                if (targetWindow != modalWindow) {
+                    auto* modalAsWindow = dynamic_cast<UltraCanvasWindow*>(modalWindow);
+                    if (!modalAsWindow) return true;
+                    targetWindow = modalAsWindow;
+                }
                 break;
             case UCEventType::WindowFocus:
                 if (targetWindow && targetWindow != modalWindow) {

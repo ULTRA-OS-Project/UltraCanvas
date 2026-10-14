@@ -14,6 +14,8 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.18.0 - FromTheme by LabelVariant
+// Version: 2.17.0 - LabelStyle::FromTheme
 // Version: 2.16.0 - a quiet LabelTextLink shows no tooltip and reports no hover
 // Version: 2.15.0 - LabelTextBox: an inline element's background and border
 //                  drawn around a byte range, one piece per line
@@ -1089,4 +1091,18 @@ namespace UltraCanvas {
         return *this;
     }
 
+
+    LabelStyle LabelStyle::FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base, LabelVariant variant) {
+        LabelStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        switch (variant) {
+            case LabelVariant::Muted: s.textColor = theme.Role("label.muted", r.inkMuted); break;
+            case LabelVariant::Faint: s.textColor = theme.Role("label.faint", r.inkFaint); break;
+            case LabelVariant::Heading: s.textColor = theme.Role("label.heading", r.ink); break;
+            default: s.textColor = r.ink; break;
+        }
+        s.disabledTextColor = r.inkFaint;
+        s.selectionColor = r.accent.WithAlpha(100);
+        return s;
+    }
 }

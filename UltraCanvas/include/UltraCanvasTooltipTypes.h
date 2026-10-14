@@ -2,6 +2,7 @@
 // Tooltip style and structured tooltip content types.
 // Shared by UltraCanvasTooltipManager (rendering) and UltraCanvasUIElement
 // (per-element tooltip storage) — keep this header lightweight.
+// Version: 1.3.0 - TooltipStyle::FromTheme
 // Version: 1.2.0 - offsetX / offsetY are the gap right of and above the pointer
 //                 (12 / 20 px; the tooltip sits above-right of it)
 // Version: 1.1.0
@@ -10,6 +11,7 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasTheme.h"
 #include <array>
 #include <optional>
 #include <string>
@@ -120,6 +122,21 @@ namespace UltraCanvas {
             s.shadowColor = Color(0, 0, 0, 60);
             return s;
         }
+
+        // Preset: the theme's roles - the raised surface for the panel,
+        // a hairline, ink and muted ink - over Dark() or Light()
+        static TooltipStyle FromTheme(const UltraCanvasTheme& theme, const TooltipStyle& base) {
+            TooltipStyle s = base;
+            const ThemeRoles& r = theme.roles;
+            s.backgroundColor = r.raised.WithAlpha(s.backgroundColor.a);
+            s.borderColor = r.line;
+            s.textColor = r.ink;
+            s.secondaryTextColor = r.inkMuted;
+            s.separatorColor = r.line;
+            return s;
+        }
+        static TooltipStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, theme.dark ? Dark() : Light()); }
+        static TooltipStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
         bool operator==(const TooltipStyle& other) const {
             return backgroundColor == other.backgroundColor

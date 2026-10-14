@@ -5,6 +5,7 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
+// Version: 4.6.0 - SetFollowTheme / ApplyTheme / OnThemeChanged: an element that follows the current UltraCanvasTheme
 // Version: 4.5.0 - the size-only constructor is border-box too, like the full-rect one
 // Version: 4.4.0 - GetPopupShadow: a soft drop shadow the window paints under a popup
 // Version: 4.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
@@ -20,6 +21,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasTooltipTypes.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasAccessibility.h"
 #include "CSSLayout/CSSLayout.h"
 #include <iostream>
@@ -672,6 +674,29 @@ namespace UltraCanvas {
         virtual void OnPopupOpened() {
             if (onPopupOpened) onPopupOpened();
         }
+
+    public:
+        // ===== THEME =====
+        // An element that follows the theme takes its colours from the
+        // current UltraCanvasTheme now and again whenever the theme changes
+        // (the application forwards UltraCanvasTheme::SetCurrent to every
+        // element of its windows). Off by default: an element styled by
+        // hand keeps its look. An element with a style built by FromTheme
+        // overrides ApplyTheme to set that style.
+        void SetFollowTheme(bool follow) {
+            followTheme = follow;
+            if (follow) ApplyTheme(UltraCanvasTheme::Current());
+        }
+        bool GetFollowTheme() const { return followTheme; }
+        virtual void ApplyTheme(const UltraCanvasTheme& theme) { (void)theme; }
+        // The theme changed: a following element re-styles; a container
+        // passes it on to its children
+        virtual void OnThemeChanged(const UltraCanvasTheme& theme) {
+            if (followTheme) ApplyTheme(theme);
+        }
+
+    private:
+        bool followTheme = false;
     };
 
 // ===== FACTORY SYSTEM =====

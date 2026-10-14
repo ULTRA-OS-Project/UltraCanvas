@@ -1,5 +1,6 @@
 // include/UltraCanvasSplitPane.h
 // Split pane container that divides content into N draggable panes along one axis
+// Version: 1.4.0 - SplitPaneStyle::FromTheme, ApplyTheme
 // Version: 1.3.0
 // Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
@@ -122,6 +123,11 @@ namespace UltraCanvas {
         Color splitterColor       = Color(220, 220, 220, 255);
         Color splitterHoverColor  = Color(180, 200, 240, 255);
         Color splitterActiveColor = Color(120, 160, 230, 255);
+        // The theme's roles: the window ground between the panes, the strong
+        // line under the pointer, the accent while dragging
+        static SplitPaneStyle FromTheme(const UltraCanvasTheme& theme, const SplitPaneStyle& base);
+        static SplitPaneStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SplitPaneStyle()); }
+        static SplitPaneStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
         bool  showSplitterBackground = true;
 
         SplitterHandleStyle handle;
@@ -218,6 +224,8 @@ namespace UltraCanvas {
         // ===== STYLE / ORIENTATION =====
         SplitOrientation GetOrientation() const { return orientation; }
         void SetSplitPaneStyle(const SplitPaneStyle& s);
+        // The theme's colours over the pane's own thickness, handle and icons
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetSplitPaneStyle(SplitPaneStyle::FromTheme(theme, splitStyle)); }
         const SplitPaneStyle& GetSplitPaneStyle() const { return splitStyle; }
 
         // ===== SPLITTER HANDLE =====
