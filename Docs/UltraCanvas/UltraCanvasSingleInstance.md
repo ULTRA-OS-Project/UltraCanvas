@@ -62,6 +62,17 @@ request on the topic `<appId>.show` to the running copy's endpoint
 when nothing else does. A copy started a moment earlier may not listen yet, so
 a later start keeps asking for up to ten seconds.
 
+The running copy **answers from the bus thread at once** and only then queues
+the request for its UI thread. A window that is busy - a native dialog that
+holds the event loop, a long load - therefore never makes the other start wait
+and give up; that start quits at once, and the request is carried out when the
+window is free. For the same reason an application calls `Listen` /
+`ListenOpen` **before** anything at start-up that can block, such as opening the
+command line's files (a file that cannot be read shows a native error
+dialog): a start made meanwhile is answered, and its request runs once the
+event loop does. A handler may therefore refer to windows that are still
+being built when `Listen` is called.
+
 | `Claim()` answers | Meaning |
 |---|---|
 | `First` | This process holds the lock: carry on. Also the answer when the lock cannot be taken for any other reason (an unwritable folder, a platform without locks) — better two copies than none. |

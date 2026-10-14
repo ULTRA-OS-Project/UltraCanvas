@@ -238,6 +238,13 @@ UltraVideo ~/Pictures/Trip        every readable file of a folder
 UltraVideo --version
 ```
 
+One UltraVideo runs per user. Starting it again while it runs hands the
+files to the running copy and quits: a project opens there (asking first
+whether to save the current one when it has changes, as *Open project*
+does), media files are imported into the open project as a drop on the
+window would, and the window comes forward. Started without a file, it
+just brings the running window forward.
+
 ## Building
 
 `BUILD_ULTRAVIDEO` (default ON) builds it whenever the framework and the

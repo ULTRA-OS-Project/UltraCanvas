@@ -8,8 +8,9 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
+// Version: 0.5.0 - OpenFiles: files handed over by a second start
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -59,6 +60,11 @@ public:
     // a new project
     bool Create(const std::vector<std::string>& paths);
     void Show();
+    // Files handed to the running window (a second start of UltraVideo): a
+    // .ultravideo project among them is opened - after asking to save the
+    // current project when it has changes - and the media files are imported
+    // into the project that is open then, as dropping them on the window does
+    void OpenFiles(const std::vector<std::string>& paths);
 
 private:
     using Button = UltraCanvas::UltraCanvasButton;
@@ -90,7 +96,7 @@ private:
     // files
     void NewProject();
     void OpenProject();
-    void OpenProjectFile(const std::string& path);
+    bool OpenProjectFile(const std::string& path);   // false: not opened (the error was shown)
     bool SaveProject();
     bool SaveProjectAs();
     bool SaveTo(const std::string& path);

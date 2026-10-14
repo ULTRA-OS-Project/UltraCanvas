@@ -119,6 +119,13 @@ drop is reported in the status bar. Without
 the Vector plugin (`-DULTRACANVAS_PLUGIN_VECTOR=ON`) the editor draws but
 has no file formats.
 
+One ArtCreator runs per user. `ArtCreator a.svg b.xar` opens one window
+each; starting it again while it runs hands the drawings to the running copy,
+which opens each in a new window of its own and brings it to the front (a
+drawing already open is never replaced), and a start without drawings just
+brings ArtCreator forward (`UltraCanvasSingleInstance`). `--help` and
+`--version` answer on their own.
+
 ## Source map
 
 | File | Contents |

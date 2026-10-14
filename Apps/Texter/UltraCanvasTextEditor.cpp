@@ -1,12 +1,15 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.3.7 - HasOpenFile / FindDocumentIndexByPath: the already-open check
+//                  of OpenFile, also asked across windows for a file a second
+//                  start hands over
 // Version: 2.3.6 - the autosave folder comes from the framework's data folder rule
 //                  (UltraCanvasDataFolder), every variable read as UTF-8
 // Version: 2.3.5 - the Recent files menu opens anchored to its toolbar button
 // Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
 //                  and shortcut colours
 // Version: 2.3.3 - The profile folder and comment author read as UTF-8
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -1771,18 +1774,11 @@ namespace {
     }
 
     int UltraCanvasTextEditor::OpenDocumentFromPath(const std::string& filePath) {
-        // Check if file is already open. Compare normalized so the same file
-        // reached through a relative path, a symlink or a resource path with
-        // ".." in it does not end up in two tabs.
-        std::string normalizedPath = TextEditorConfigFile::NormalizeRecentPath(filePath);
-        for (size_t i = 0; i < documents.size(); i++) {
-            if (documents[i]->filePath.empty()) continue;
-            if (documents[i]->filePath == filePath ||
-                TextEditorConfigFile::NormalizeRecentPath(documents[i]->filePath) == normalizedPath) {
-                // Switch to existing tab
-                SwitchToDocument(static_cast<int>(i));
-                return static_cast<int>(i);
-            }
+        // Already open: switch to that tab instead of opening a second one.
+        const int openIndex = FindDocumentIndexByPath(filePath);
+        if (openIndex >= 0) {
+            SwitchToDocument(openIndex);
+            return openIndex;
         }
 
         // Create new document
@@ -1815,6 +1811,25 @@ namespace {
         // whether it is spell checked and how.
         ApplySpellCheckToDocument(docIndex);
         return docIndex;
+    }
+
+    int UltraCanvasTextEditor::FindDocumentIndexByPath(const std::string& filePath) const {
+        // Compare normalized so the same file reached through a relative path,
+        // a symlink or a resource path with ".." in it does not end up in two
+        // tabs.
+        const std::string normalizedPath = TextEditorConfigFile::NormalizeRecentPath(filePath);
+        for (size_t i = 0; i < documents.size(); i++) {
+            if (documents[i]->filePath.empty()) continue;
+            if (documents[i]->filePath == filePath ||
+                TextEditorConfigFile::NormalizeRecentPath(documents[i]->filePath) == normalizedPath) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
+
+    bool UltraCanvasTextEditor::HasOpenFile(const std::string& filePath) const {
+        return FindDocumentIndexByPath(filePath) >= 0;
     }
 
     void UltraCanvasTextEditor::CloseDocument(int index) {

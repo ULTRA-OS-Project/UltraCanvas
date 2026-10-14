@@ -61,10 +61,12 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.31.0 - OpenFolders: a second start's folders open in new tabs
+//                  (an open one is switched to) and the window comes forward
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -1253,6 +1255,45 @@ void UltraFilerWindow::Show() {
     // The first fit: the text is measured with the window's render context,
     // which is there once the window is.
     ScheduleTreeFit();
+}
+
+void UltraFilerWindow::OpenFolders(const std::vector<std::string>& paths) {
+    // "/a/b/" and "/a/b" are one folder.
+    const auto folderKey = [](const fs::path& p) {
+        fs::path normal = p.lexically_normal();
+        if (!normal.has_filename() && normal != normal.root_path()) normal = normal.parent_path();
+        return normal;
+    };
+    for (const std::string& path : paths) {
+        std::error_code ec;
+        fs::path folder = folderKey(UltraCanvas::PathFromUtf8(path));
+        if (!fs::exists(folder, ec)) continue;          // gone, or a URL: nothing to show
+        if (!fs::is_directory(folder, ec)) folder = folder.parent_path();   // a file: its folder
+        if (folder.empty() || !fs::is_directory(folder, ec)) continue;
+        folder = folderKey(folder);
+
+        // A tab that shows the folder already is switched to, not doubled.
+        int existing = -1;
+        for (size_t i = 0; i < tabStates.size(); ++i) {
+            const auto& tab = tabStates[i];
+            if (!tab || !tab->filer) continue;
+            const std::string shown = tab->filer->GetPath();
+            if (!shown.empty() &&
+                folderKey(UltraCanvas::PathFromUtf8(shown)) == folder) {
+                existing = static_cast<int>(i);
+                break;
+            }
+        }
+        if (existing >= 0) {
+            ShowBrowsingView();
+            tabbedContainer->SetActiveTab(existing);
+        } else {
+            AddNewTab(PathToUtf8(folder), true);
+        }
+    }
+    if (!window) return;
+    if (window->IsMinimized()) window->Restore();
+    window->RaiseAndFocus();
 }
 
 // ===== EXTRAS (context menu: Print / Share / Attributes / Access) =====

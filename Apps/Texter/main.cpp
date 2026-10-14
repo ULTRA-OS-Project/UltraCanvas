@@ -1,7 +1,13 @@
 // Apps/UltraTexter/main.cpp
 // UltraTexter - Standalone Text Editor Application with Multi-Window Support
+// One copy per user: a second start hands its files to the running copy,
+// which opens them as File > Open does, and quits
+// (UltraCanvasSingleInstance.h).
+// Version: 2.1.0 - one UltraTexter per user: a second start's files open in
+//                  the running copy; every file named on the command line
+//                  opens, not only the last
 // Version: 2.0.3
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include <iostream>
@@ -14,6 +20,7 @@
 
 // UltraCanvas Core Headers
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasTextEditor.h"
 #include "UltraCanvasSplashScreen.h"
 
@@ -44,6 +51,8 @@ private:
     std::vector<std::shared_ptr<UltraCanvasTextEditor>> editors;
     TextEditorConfig baseConfig;
     bool useDarkTheme;
+    // The window the user worked in last: where handed-over files go.
+    std::weak_ptr<UltraCanvasTextEditor> lastActiveEditor;
 
     void WireEditorCallbacks(std::shared_ptr<UltraCanvasTextEditor> editor) {
         auto* editorPtr = editor.get();
@@ -85,6 +94,11 @@ private:
                 }
                 ed->RequestRedraw();
             }
+        };
+
+        // Focus: remember the window the user works in
+        editorPtr->onWindowFocus = [this, weakEditor]() {
+            lastActiveEditor = weakEditor;
         };
 
         // File saved
@@ -165,6 +179,36 @@ public:
     }
 
     int GetWindowCount() const { return static_cast<int>(editors.size()); }
+
+    // Files a later start handed over (UltraCanvasSingleInstance::ListenOpen),
+    // absolute and UTF-8: opened as File > Open opens several - each in a tab
+    // of the window the user worked in last - except that a file already open
+    // in any window is switched to there instead of opened a second time. The
+    // window that shows the last of them comes forward.
+    void OpenHandedOverFiles(const std::vector<std::string>& paths) {
+        std::shared_ptr<UltraCanvasTextEditor> target = lastActiveEditor.lock();
+        if (!target || std::find(editors.begin(), editors.end(), target) == editors.end()) {
+            target = editors.empty() ? nullptr : editors.front();
+        }
+        if (!target) target = CreateNewWindow();
+        if (!target) return;
+
+        std::shared_ptr<UltraCanvasTextEditor> shown;
+        for (const auto& path : paths) {
+            std::shared_ptr<UltraCanvasTextEditor> editor = target;
+            for (const auto& ed : editors) {
+                if (ed->HasOpenFile(path)) {
+                    editor = ed;
+                    break;
+                }
+            }
+            debugOutput << "Opening handed-over file: " << path << std::endl;
+            if (editor->OpenFile(path) >= 0) shown = editor;
+        }
+        if (!shown) shown = target;
+        if (shown->IsMinimized()) shown->Restore();
+        shown->RaiseAndFocus();
+    }
 };
 
 // ===== ERROR HANDLING =====
@@ -249,7 +293,7 @@ void ShutdownSystem() {
 void PrintUsage(const char* programName) {
     std::cout << "UltraTexter - Text Editor powered by UltraCanvas Framework" << std::endl;
     std::cout << std::endl;
-    std::cout << "Usage: " << programName << " [options] [file]" << std::endl;
+    std::cout << "Usage: " << programName << " [options] [file...]" << std::endl;
     std::cout << std::endl;
     std::cout << "Options:" << std::endl;
     std::cout << "  -h, --help        Show this help message" << std::endl;
@@ -262,6 +306,9 @@ void PrintUsage(const char* programName) {
     std::cout << "  " << programName << " myfile.cpp         # Open myfile.cpp" << std::endl;
     std::cout << "  " << programName << " -d myfile.py       # Open with dark theme" << std::endl;
     std::cout << "  " << programName << " -l Python script   # Open 'script' with Python highlighting" << std::endl;
+    std::cout << std::endl;
+    std::cout << "While UltraTexter is running, starting it again opens the files in the" << std::endl;
+    std::cout << "running copy (the options apply to a first start only)." << std::endl;
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
@@ -269,7 +316,7 @@ int main(int argc, char* argv[]) {
     debugOutput << std::endl;
 
     // Parse command line arguments
-    std::string fileToOpen;
+    std::vector<std::string> filesToOpen;
     std::string language;
     bool useDarkTheme = false;
 
@@ -294,13 +341,23 @@ int main(int argc, char* argv[]) {
             }
         } else if (arg[0] != '-') {
             // Assume it's a file path
-            fileToOpen = arg;
+            filesToOpen.push_back(arg);
         } else {
             std::cerr << "Unknown argument: " << arg << std::endl;
             std::cerr << "Use --help for usage information" << std::endl;
             return EXIT_FAILURE;
         }
     }
+
+    // One UltraTexter per user. --help and --version above print and quit
+    // without it. A later start hands its files to this copy; its --dark and
+    // --lang are not handed over - they choose how a first start sets itself
+    // up, and the running copy keeps the theme and languages it has.
+    // Outlives app.Run(), so it sits outside the try.
+    UltraCanvasSingleInstance instance("org.ultraos.ultratexter", "UltraTexter");
+    const UltraCanvasSingleInstance::Start start =
+            instance.Claim(UltraCanvasSingleInstance::MakeOpenRequest(filesToOpen));
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy opens them
 
     // Create application instance
     UltraCanvasApplication app;
@@ -309,6 +366,9 @@ int main(int argc, char* argv[]) {
         // Initialize system
         if (!InitializeSystem(app, "UltraTexter")) {
             return EXIT_FAILURE;
+        }
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning) {
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraTexter");
         }
 
         // Create editor configuration
@@ -335,6 +395,15 @@ int main(int argc, char* argv[]) {
             HandleFatalError("Failed to create main window");
             return EXIT_FAILURE;
         }
+
+        // A later start's files open here; a later start without files
+        // brings the window forward. Listening starts before the splash, the
+        // crash-recovery question and the command line's files, any of which
+        // can hold the start-up: a start made meanwhile is still answered,
+        // and its files open once the window is ready.
+        instance.ListenOpen([&windowManager](const std::vector<std::string>& paths) {
+            windowManager.OpenHandedOverFiles(paths);
+        });
 
         // Show splash screen
         UltraCanvasSplashScreen splash;
@@ -370,10 +439,10 @@ int main(int argc, char* argv[]) {
             firstWindow->PromptCrashRecovery();
         }
 
-        // Open file from command line
-        if (!fileToOpen.empty()) {
+        // Open the files from the command line
+        for (const auto& fileToOpen : filesToOpen) {
             debugOutput << "Opening file: " << fileToOpen << std::endl;
-            if (firstWindow->OpenFile(fileToOpen)) {
+            if (firstWindow->OpenFile(fileToOpen) >= 0) {
                 debugOutput << "✓ File loaded successfully" << std::endl;
             } else {
                 debugOutput << "Warning: Failed to load file: " << fileToOpen << std::endl;
@@ -390,6 +459,7 @@ int main(int argc, char* argv[]) {
 
         // Run application main loop
         app.Run();
+        instance.Close();   // no request reaches the windows once they start to go
 
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Unhandled exception: ") + e.what());

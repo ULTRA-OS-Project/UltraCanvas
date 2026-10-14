@@ -35,6 +35,8 @@
 // the build has it. Without UltraMessage the lock still stops a second copy;
 // it just cannot bring the first one forward, and Claim() answers
 // AlreadyRunning.
+// Version: 1.2.0 - answered from the bus thread; Listen before the start-up
+//                  files are opened
 // Version: 1.1.0 - MakeOpenRequest / ListenOpen: the second start's files go
 //                  to the running copy, as absolute paths
 // Version: 1.0.0
@@ -46,8 +48,10 @@
 #include "UltraCanvasInstanceLock.h"
 #include "DataFormats/UltraCanvasJSON.h"
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -81,8 +85,12 @@ namespace UltraCanvas {
                     const std::string& lockDirectory = std::string());
 
         // From now on a later start's request arrives in `handler`, on the UI
-        // thread, after the other start has been answered. Call after the
-        // application exists, from the First copy.
+        // thread. The other start is answered at once from the bus thread,
+        // so it quits even while this window is busy; the handler runs when
+        // the UI thread is free. Call after the application exists, from the
+        // First copy - and before anything at start-up that can block (opening
+        // the command line's files can show a native error dialog), so a
+        // start made meanwhile is answered.
         void Listen(Handler handler);
         // Listen() with the usual handler: BringToFront().
         void ListenRaise();
@@ -124,7 +132,9 @@ namespace UltraCanvas {
         InstanceLock lock_;
         uint64_t endpoint_ = 0;
         uint64_t subscription_ = 0;
-        Handler handler_;
+        // Cleared by Close(): a request already queued for the UI thread is
+        // then dropped instead of run.
+        std::shared_ptr<std::atomic<bool>> live_;
     };
 
 } // namespace UltraCanvas

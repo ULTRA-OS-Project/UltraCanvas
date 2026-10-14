@@ -1390,6 +1390,8 @@ if (BUILD_TEXTER_APP)
             Apps/Texter/main.cpp
             Apps/Texter/UltraCanvasSearchBar.cpp
     )
+    # One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(Texter)
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
     set_target_properties(Texter PROPERTIES ENABLE_EXPORTS ON)
@@ -1470,6 +1472,8 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerRamDisks.cpp
             Apps/UltraFiler/UltraFilerRamDiskDialog.cpp
     )
+    # One copy per user; a second start's folder opens here (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraFiler)
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
     set_target_properties(UltraFiler PROPERTIES ENABLE_EXPORTS ON)
@@ -1578,6 +1582,8 @@ if (BUILD_ULTRAVIEWER_APP)
             Apps/UltraViewer/main.cpp
             Apps/UltraViewer/UltraViewerWindow.cpp
     )
+    # One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraViewer)
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
     set_target_properties(UltraViewer PROPERTIES ENABLE_EXPORTS ON)
@@ -1649,6 +1655,8 @@ if (BUILD_ULTRAPAINT_APP)
             Apps/UltraPaint/UltraPaintDialogs.cpp
             Apps/UltraPaint/UltraPaintSettingsDialog.cpp
     )
+    # One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraPaint)
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
     set_target_properties(UltraPaint PROPERTIES ENABLE_EXPORTS ON)
@@ -1735,6 +1743,8 @@ if (BUILD_ARTCREATOR_APP)
             Apps/ArtCreator/ArtCreatorTools.cpp
             Apps/ArtCreator/ArtCreatorDialogs.cpp
     )
+    # One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(ArtCreator)
     set_target_properties(ArtCreator PROPERTIES ENABLE_EXPORTS ON)
 
     target_include_directories(ArtCreator PRIVATE

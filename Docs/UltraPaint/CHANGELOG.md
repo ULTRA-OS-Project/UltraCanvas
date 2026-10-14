@@ -1,3 +1,11 @@
+#### 2026-10-14 *0.2.21*
+- **One UltraPaint at a time.** Opening a file while UltraPaint is already
+  running opens it in the running copy (in a new window) instead of starting a
+  second one; starting it without a file brings the open window forward. Two
+  starts at the same moment cannot both stay, and a copy that does not answer
+  is reported with *"UltraPaint is already running"*. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
 #### 2026-10-13 *0.2.20*
 - **Open, Save As and Export offer every format this build has.** The
   editor kept lists of its own: Save As offered PNG, JPEG, WebP, TIFF, AVIF

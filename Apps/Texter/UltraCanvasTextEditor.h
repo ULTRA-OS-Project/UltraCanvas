@@ -1,7 +1,10 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
+// Version: 2.3.0 - HasOpenFile: whether a file is open in one of this window's
+//                  tabs, so a file handed over by a second start is not
+//                  opened twice across windows
 // Version: 2.2.0
-// Last Modified: 2026-08-28
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -391,6 +394,8 @@ namespace UltraCanvas {
         UltraCanvasRichTextEdit* RichSearchTarget(bool caseSensitive, bool wholeWord);
         void UpdateRichMatchCount(UltraCanvasRichTextEdit* rich, const std::string& text);
         int FindDocumentIndexById(int documentId) const;
+        // The tab showing `filePath` (compared normalized), or -1.
+        int FindDocumentIndexByPath(const std::string& filePath) const;
         void SetDocumentModified(int index, bool modified);
         // Record the current content as the clean baseline (call after load/save).
         void CaptureSavedContentBaseline(DocumentTab* doc);
@@ -850,6 +855,11 @@ namespace UltraCanvas {
 
         /// Get number of open documents
         int GetDocumentCount() const { return static_cast<int>(documents.size()); }
+
+        /// Whether `filePath` is open in one of this window's tabs - compared
+        /// the way OpenFile compares it before it switches to that tab instead
+        /// of opening a second one.
+        bool HasOpenFile(const std::string& filePath) const;
     };
 
 // ===== FACTORY FUNCTIONS =====
