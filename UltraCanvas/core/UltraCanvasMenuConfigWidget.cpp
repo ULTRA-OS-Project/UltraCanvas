@@ -1,10 +1,14 @@
 // core/UltraCanvasMenuConfigWidget.cpp
 // Implementation of the menu customisation widget.
-// Version: 1.0.0
+// Version: 1.0.1 - Add / Remove show chevron icons, not "→" / "←"; a separator
+//                 row reads "————", not "────" (the bundled UI font has
+//                 neither the arrows nor the box-drawing line)
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMenuConfigWidget.h"
-#include "UltraCanvasUtils.h"   // Split
+#include "UltraCanvasUtils.h"   // Split, NormalizePath
+#include "UltraCanvasConfig.h"  // GetResourcesDir
 #include "CSSLayout/CSSLayout.h"
 
 namespace UltraCanvas {
@@ -75,8 +79,18 @@ namespace UltraCanvas {
             midPane->AddChild(btn);
             return btn;
         };
-        makeMidButton("Add",    "Add \xE2\x86\x92",     [this]() { OnAddCommand(); });
-        makeMidButton("Remove", "\xE2\x86\x90 Remove",  [this]() { OnRemove(); });
+        // The direction is a chevron icon drawn in the text colour.
+        auto setChevron = [](UltraCanvasButton& btn, const char* file, ButtonIconPosition position) {
+            btn.SetIcon(NormalizePath(GetResourcesDir() + "media/icons/menu/" + file));
+            btn.SetIconSize(14, 14);
+            btn.SetIconPosition(position);
+            btn.SetUseIconAsMask(true);
+            btn.SetIconMaskColor(Colors::Transparent);   // follow the text colour
+        };
+        auto addBtn = makeMidButton("Add", "Add", [this]() { OnAddCommand(); });
+        setChevron(*addBtn, "chevron-right.svg", ButtonIconPosition::Right);
+        auto removeBtn = makeMidButton("Remove", "Remove", [this]() { OnRemove(); });
+        setChevron(*removeBtn, "chevron-left.svg", ButtonIconPosition::Left);
         makeMidButton("Up",     "Move Up",              [this]() { OnMove(-1); });
         makeMidButton("Down",   "Move Down",            [this]() { OnMove(+1); });
         makeMidButton("Sub",    "New Submenu",          [this]() { OnAddSubmenu(); });
@@ -142,7 +156,7 @@ namespace UltraCanvas {
     std::string UltraCanvasMenuConfigWidget::LeftNodeText(const MenuLayoutNode& node) const {
         switch (node.kind) {
             case MenuLayoutNode::Kind::Separator:
-                return "\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80"; // ────
+                return "\xE2\x80\x94\xE2\x80\x94\xE2\x80\x94\xE2\x80\x94"; // ———— (em dashes)
             case MenuLayoutNode::Kind::Group:
                 return node.label.empty() ? "(submenu)" : node.label;
             case MenuLayoutNode::Kind::Command:

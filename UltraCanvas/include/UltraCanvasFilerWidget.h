@@ -96,8 +96,10 @@
 // made and given up on. A thumbnail job running past 20 s gets another
 // worker started beside it, so one stuck file cannot stop every thumbnail.
 // TextPreviewLines gives the lines a document's preview page shows.
-// Version: 1.38.0
-// Last Modified: 2026-10-08
+// GetBottomStripsHeight says how much of the bottom edge the info bar and
+// the hidden-items notice take, for a host floating something in the corner.
+// Version: 1.39.1
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1011,18 +1013,35 @@ namespace UltraCanvas {
         // While the cursor stays inside the widget the drag is drawn in-widget
         // (badge under the cursor, drop folder highlighted) and dropping on a
         // folder shown in the view moves the files into it (see
-        // SetDropOnFolderCopies); once the cursor leaves the widget the set is
-        // handed to the native OS drag so other windows and applications can
-        // accept it. Turning this off leaves presses as plain clicks.
+        // SetDropOnFolderCopies). Over the rest of the window the badge keeps
+        // following the cursor, and the element under it is told about the
+        // drag (DragEnter / DragOver / DragLeave, then Drop on release), the
+        // way a drag from another program tells it - so a folder tree or a
+        // second file display of the window shows where the files would go.
+        // Only once the cursor leaves the window is the set handed to the
+        // native OS drag so other windows and applications can accept it.
+        // Turning this off leaves presses as plain clicks.
         void SetDragEnabled(bool enabled);
         bool IsDragEnabled() const { return dragEnabled; }
 
         // What dropping the dragged entries onto a folder of this view does
         // without a modifier: move them (false, the default) or copy them
         // (true). Either way Ctrl at the drop forces a copy and Shift forces a
-        // move, so the other action is always one modifier away.
+        // move, so the other action is always one modifier away. A drop onto
+        // another file display of the same window - a folder in it, or its
+        // empty space, which means the folder it shows - follows the same
+        // rule: it is the same gesture, made across a split.
         void SetDropOnFolderCopies(bool copies) { dropOnFolderCopies = copies; }
         bool GetDropOnFolderCopies() const { return dropOnFolderCopies; }
+
+        // Files dragged over this widget from elsewhere - another file display
+        // of the window, or another program - land in the folder under the
+        // pointer, framed while they are over it, or, over empty space, in
+        // the folder the widget shows, which is framed as a whole. This is
+        // that folder right now; empty while no such drag is over the widget.
+        // Files from another program are copied; from another display of the
+        // window they follow SetDropOnFolderCopies and the modifiers.
+        std::string GetIncomingDropFolder() const;
 
         // Whether a drop asks before it is carried out (see
         // FilerDropConfirmation). The question names what is about to happen -
@@ -1074,6 +1093,12 @@ namespace UltraCanvas {
         // by the Display > Info-Bar context-menu checkbox.
         void SetSelectionInfoVisible(bool visible);
         bool IsSelectionInfoVisible() const { return showSelectionInfo; }
+        // How much of the display's bottom edge its own strips take, in
+        // pixels: the selection info bar and the hidden-items notice above
+        // it, 0 while neither is up. Both come and go with the folder and
+        // the Display > Info-Bar switch, so a host floating something over
+        // the display's bottom corner asks this each time it places it.
+        int GetBottomStripsHeight() const { return InfoBarHeight(); }
 
         // ===== THUMBNAIL DATASET =====
         // Which extra facts are drawn under the file name in the thumbnail
@@ -1141,6 +1166,20 @@ namespace UltraCanvas {
         // the user changes desktop theme, or installs an application that
         // brings icons with it.
         void RefreshHostIcons();
+        // Draws, into `rect` (the context's coordinates), the icon this
+        // display gives the TYPE of `path` - a file name or a whole path,
+        // which need not exist - or a folder: the type glyph, or this
+        // desktop's icon under File icons = Host OS. Never a thumbnail or a
+        // preview of content, since there may be no file to take one from.
+        // For a host element that shows a file type the way the listing does
+        // (the file dialog's Save icon, UltraCanvasFileDragIcon).
+        void DrawTypeIcon(IRenderContext* ctx, const std::string& path, bool isFolder,
+                          const Rect2Di& rect);
+        // The colours this display gives that type (see EntryColorOf): the
+        // family colour of its glyph's band, and the ink for text on it - for
+        // a host that draws the type its own way in the listing's colours
+        // (the file dialog's big Save icon).
+        void GetTypeColors(const std::string& path, bool isFolder, Color& fill, Color& ink) const;
 
         // The name of `e` as this display draws it — the full name, or the
         // name without its extension while the names carry none. What a host
@@ -2001,9 +2040,15 @@ namespace UltraCanvas {
         //   * crossing the widget's border does NOT end the drag: the badge
         //     keeps following the cursor over the rest of the window (drawn
         //     through the window's drag overlay, since a widget cannot paint
-        //     outside its own bounds) and a release over another element hands
-        //     the files to it as a Drop event — that is how a file reaches a
-        //     folder tree or a second filer pane of the same window;
+        //     outside its own bounds). The element under the cursor is sent
+        //     DragEnter / DragOver as the cursor moves over it and DragLeave
+        //     when it moves on (dragHoverElement), so a folder tree highlights
+        //     the row a drop would land on. A release over another element
+        //     hands the files to it as a Drop event — that is how a file
+        //     reaches a folder tree. A second file display of the window is
+        //     handed them directly instead (DropOnOtherDisplay), with the
+        //     folder under the cursor and the move / copy the modifiers ask
+        //     for, which a Drop event cannot carry;
         //   * only when the cursor leaves the WINDOW is the same set handed to
         //     the native OS drag (window->StartNativeFileDrag), where the drop
         //     target performs the copy / move and a move refreshes this view.
@@ -2091,6 +2136,17 @@ namespace UltraCanvas {
         // implementation on this platform, grab denied): don't ask again for
         // the rest of this gesture, keep drawing the drag instead.
         bool dragNativeRefused = false;
+        // The element of the window outside this widget that the cursor of
+        // the running drag is over: it has been sent DragEnter and is sent
+        // DragOver on every move, and DragLeave when the cursor moves on or
+        // the drag ends. Weak, since it can leave the window meanwhile.
+        std::weak_ptr<UltraCanvasUIElement> dragHoverElement;
+        // A drag that started somewhere else is over THIS widget: another file
+        // display of the window, or another program (DragEnter / DragOver
+        // events). The folder entry it would be dropped into, framed, or -1
+        // for the folder the widget shows, which is then framed as a whole.
+        bool incomingDropActive = false;
+        int  incomingDropFolderIndex = -1;
         // Press on an already-selected item keeps the (multi-)selection so it
         // can be dragged; the usual "select only this item" collapse is
         // deferred to the release and recorded here (-1 = nothing deferred).
@@ -2295,6 +2351,18 @@ namespace UltraCanvas {
         bool hostIconShutdown = false;
         size_t   hostIconBytes = 0;       // what the held pixmaps occupy
         uint64_t hostIconTick = 0;        // LRU clock for hostIconSlots
+        // The clock as the current frame began, and as the frame before it
+        // began. A slot asked for after the earlier of the two was drawn in
+        // this frame or the last one, so it is on screen, and an eviction
+        // never drops it: dropping an icon that is still drawn re-queues
+        // it on the next frame, whose answer then evicts another drawn
+        // icon - a maximised window of ninety DLLs never settled, each
+        // tile flipping between the host's icon and the simple one for as
+        // long as the window was open. Two frames rather than one because
+        // an answer can land while a frame is half painted, when the
+        // tiles not yet reached in this frame only carry last frame's tick.
+        uint64_t hostIconFrameTick = 0;
+        uint64_t hostIconPreviousFrameTick = 0;
         // Bumped whenever the cache is dropped, so an answer already being
         // looked up when the user switched theme cannot land in the cache
         // that replaced it — it would be an icon from the old theme, kept
@@ -2304,7 +2372,10 @@ namespace UltraCanvas {
         // largest tile size one icon is a quarter of a megabyte, and a long
         // session across many folders would otherwise hold every type it ever
         // saw. Small next to the thumbnail budgets — these are icons, and
-        // re-resolving one is a theme read rather than a decode.
+        // re-resolving one is a theme read rather than a decode. It bounds
+        // what is kept BEYOND the screen: what is on screen is held whatever
+        // it costs (see hostIconFrameTick), and the ceiling is met again as
+        // soon as those tiles scroll away.
         static constexpr size_t kHostIconBudget = 8 * 1024 * 1024;
 
         // The host's icon for `e` at `rect`, or null while it is being
@@ -2319,11 +2390,17 @@ namespace UltraCanvas {
         // pixel size a view happens to use, so re-sizing tiles re-uses what
         // is already held instead of resolving the same types again.
         static int HostIconEdgeFor(const Rect2Di& rect, float deviceScale);
+        // Called as a frame begins: everything asked for from now on is
+        // what this frame draws, and is safe from eviction (with last
+        // frame's) until the frame after next.
+        void BeginHostIconFrame();
         void StartHostIconWorkerLocked();
         void StopHostIconWorker();
         void HostIconWorkerMain();
         // Drop the least-recently-drawn icons until the budget is met again.
-        // `keepKey` (the one just stored) is never dropped.
+        // `keepKey` (the one just stored) is never dropped, and neither is
+        // anything drawn in this frame or the last - so with a screen full
+        // of distinct types the cache runs over budget rather than thrash.
         void EvictHostIconsLocked(const std::string& keepKey);
         // Drop the resolved icons (Display > File icons switched, or the host
         // asked for a refresh). Safe to call with no worker running.
@@ -2765,6 +2842,12 @@ namespace UltraCanvas {
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);
+        // The widget's own drawing of a type, what the icons fall back to:
+        // the folder shape, or the sheet with the extension on its band.
+        void DrawTypeGlyph(IRenderContext* ctx, const FilerEntry& e, const Rect2Di& rect);
+        // An entry of `path`'s type and nothing else (DrawTypeIcon,
+        // GetTypeColors): name, extension, category, no file read.
+        FilerEntry TypeEntryFor(const std::string& path, bool isFolder) const;
         // The small arrow badge in the corner of a shortcut's icon - the one
         // mark that tells a shortcut apart from the file it points at, whose
         // icon it otherwise wears exactly.
@@ -3025,8 +3108,46 @@ namespace UltraCanvas {
         // Folder entry under a widget-local point that the running drag may be
         // dropped on (never one of the dragged items), or -1.
         int  DragDropFolderAt(const Point2Di& localPoint) const;
-        // Drop-folder highlight (the badge is drawn by the window overlay).
+        // The same for any set of dragged paths (empty when the drag does not
+        // say what it carries, as one from another program may not).
+        int  DropFolderAt(const Point2Di& localPoint,
+                          const std::vector<std::string>& dragged) const;
+        // Drop-folder highlight (the badge is drawn by the window overlay):
+        // this widget's own drag, or one from elsewhere over it.
         void DrawDragFeedback(IRenderContext* ctx, const Rect2Di& bounds);
+        // ----- the running drag over the rest of the window -----
+        // Tells the element under `windowPoint` about the drag (DragEnter the
+        // first time, DragOver on every move) and the one it was over before
+        // that it left. `overThisWidget`: the cursor is back over this widget,
+        // so no other element is under it.
+        void UpdateDragHoverElement(const Point2Di& windowPoint, bool overThisWidget);
+        // Sends DragLeave to the element the drag was over, if any.
+        void LeaveDragHoverElement();
+        // A drag event for `element` at `windowPoint`, carrying the dragged
+        // paths, delivered as the window delivers one (to the element, then up
+        // through the containers around it until one takes it).
+        void SendDragEvent(UltraCanvasUIElement* element, UCEventType type,
+                           const Point2Di& windowPoint);
+        // The file display of this window under `windowPoint` other than this
+        // one, or null: the release lands in it directly (DropOnOtherDisplay).
+        UltraCanvasFilerWidget* OtherDisplayAt(const Point2Di& windowPoint) const;
+        // ----- a drag from elsewhere over this widget -----
+        // Follows the cursor of a drag that started outside this widget: the
+        // folder under `localPoint` becomes the framed drop target, or the
+        // folder the widget shows when there is none.
+        void UpdateIncomingDrop(const Point2Di& localPoint,
+                                const std::vector<std::string>& dragged);
+        void ClearIncomingDrop();
+        // Where files dropped at `localPoint` go: the folder entry under it
+        // (never one of `dragged`), else the folder the widget shows.
+        std::string IncomingDropFolderAt(const Point2Di& localPoint,
+                                         const std::vector<std::string>& dragged) const;
+        // Files dragged here from another file display of the same window,
+        // released at `localPoint`: moved, or copied when `copy` (the source
+        // display read the setting and the modifiers), into the folder under
+        // the pointer or the one shown.
+        void DropOnOtherDisplay(const std::vector<std::string>& paths,
+                                const Point2Di& localPoint, bool copy);
         // ----- drag badge (window overlay, so it survives the widget border) -
         // Widget-local → window coordinates.
         Point2Di ToWindowPoint(const Point2Di& localPoint) const;
@@ -3041,17 +3162,22 @@ namespace UltraCanvas {
         void HideDragOverlay();
         // Paints the badge; `badgeRect` is in window coordinates.
         void DrawDragBadge(IRenderContext* ctx, const Rect2Di& badgeRect);
-        // Release over another element of the same window: the files are
-        // offered to it as a Drop event, exactly like an external drop.
+        // Release over another element of the same window (one that is not a
+        // file display - see DropOnOtherDisplay): the files are offered to it
+        // as a Drop event, exactly like an external drop.
         void DeliverInWindowDrop(const Point2Di& windowPoint,
                                  const std::vector<std::string>& paths);
         // Starts the native OS drag of the current selection (drag-out).
         bool StartNativeDragOfSelection();
         // Starts the native OS drag of an explicit file set.
         bool StartNativeDragOfPaths(const std::vector<std::string>& paths);
-        // Files dropped onto the widget from other applications / windows are
-        // copied into the current folder (sources already there are skipped).
-        void AcceptDroppedFiles(const std::vector<std::string>& paths);
+        // Files dropped onto the widget from somewhere else go into `destDir`
+        // (empty: the folder the widget shows) - moved, or copied when `copy`
+        // (sources already there are skipped). Local files dropped on a
+        // remote folder go up to it, a drive's entries dropped on a local
+        // folder come down into it.
+        void AcceptDroppedFiles(const std::vector<std::string>& paths,
+                                const std::string& destDir, bool copy);
         // The remote counterpart: the paths go to the host's remoteUpload,
         // which puts them onto the drive the shown folder is on. Nothing is
         // copied locally; what arrives is shown by the host's refresh.
@@ -3060,7 +3186,9 @@ namespace UltraCanvas {
         // application, or to the system clipboard - none of which can do
         // anything with an ultracloud:// path.
         bool AnyRemotePath(const std::vector<std::string>& paths) const;
-        void UploadDroppedFiles(const std::vector<std::string>& paths);
+        // `destDir` empty: the folder the widget shows.
+        void UploadDroppedFiles(const std::vector<std::string>& paths,
+                                const std::string& destDir = std::string());
         // The other direction: remote paths dropped on a LOCAL folder go to
         // the host's remoteDownload, which fetches them into it. Nothing is
         // copied here either; what arrives is shown by the host's refresh.

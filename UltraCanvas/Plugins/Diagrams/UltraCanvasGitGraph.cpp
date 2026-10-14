@@ -1802,7 +1802,7 @@ void UltraCanvasGitGraph::DrawRefChips(IRenderContext* ctx,
         }
 
         const std::string label = (ref.type == GitGraphRefType::Tag)
-                                      ? ("\xE2\x97\x86 " + ref.DisplayName())   // small diamond
+                                      ? ("\xE2\x97\x8A " + ref.DisplayName())   // lozenge ◊ (the UI font has no "◆")
                                       : ref.DisplayName();
 
         Point2Dd topLeft = IsHorizontalAxis()

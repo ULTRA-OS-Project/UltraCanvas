@@ -17,7 +17,7 @@ namespace UltraCanvasStart {
 std::string SdkArtifactName(Platform platform, const std::string& version,
                             const std::string& architecture);
 
-// The archive's file name: .tar.gz on Linux and macOS, .zip on Windows.
+// The archive's file name: .tar.xz on Linux, .tar.gz on macOS, .zip on Windows.
 std::string SdkArchiveName(Platform platform, const std::string& version,
                            const std::string& architecture);
 

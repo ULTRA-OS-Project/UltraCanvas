@@ -59,7 +59,7 @@ planned (see the status table below).
 | Transport | TCP, UDP | `UltraNet/UltraNetSocket.h` |
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
-| Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
+| Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
@@ -160,9 +160,33 @@ UltraNet_ResolveUrl("https://x.org/app/main.wasm", "../data/a.json", url);
 // url == "https://x.org/data/a.json"; a URL with a control character in it
 // (a CR or LF that would end the request line) is refused
 
-// File download streamed straight to disk
+// File download streamed straight to disk. No whole-transfer timeout (a
+// download is as long as the file is large), a 30 s stall timeout instead.
 UltraNet_HttpDownloadFile("https://cdn.example.com/big.zip",
                           "/tmp/big.zip");
+
+// A download that can be resumed, paused and checked before its body: any
+// request writes to a file through outputFilePath, on the async path too.
+UltraNetHttpRequest dl;
+dl.url = "https://cdn.example.com/big.zip";
+dl.options.outputFilePath     = "/tmp/big.zip.part";
+dl.options.resumeOutputFile   = true;   // the file's size is the Range start
+dl.options.httpsOnlyRedirects = true;   // never bounced onto http://
+dl.options.stallTimeoutMs     = 60000;  // Timeout when nothing moves for 60 s
+dl.onHeaders = [](const UltraNetResponse& head) {
+    // The final response's headers, before any body: 206 means the rest of
+    // the file is coming, 200 that the server sent it all and the partial
+    // file was replaced. Return false to end the transfer (Cancelled).
+    return head.contentLength <= kMaxPackageBytes;
+};
+dl.onDownloadProgress = [](int64_t now, int64_t total) {
+    // Figures of the whole file, the resumed bytes included.
+};
+UltraNetHandle dlHandle = UltraNet_HttpRequestAsync(dl, [](const UltraNetResponse& resp) {
+    // The file is closed and complete here when resp.IsComplete().
+});
+UltraNet_PauseRequest(dlHandle);    // nothing moves, the connection stays
+UltraNet_ResumeRequest(dlHandle);   // picks up where it stopped
 ```
 
 ```cpp
@@ -352,7 +376,32 @@ What a failure says, whether or not anyone reads the log:
 - A listing tries MLSD, then LIST, then NLST only when the server refused the
   command; a failure to connect, sign in, set up TLS or the data connection, or
   a timeout, is reported once rather than three times, and an empty folder is
-  listed with one request.
+  listed with one request - also when the server lists nothing but the
+  folder's own `.` / `..` (MLSD `cdir` / `pdir`, or `ls -la` style LIST),
+  which is never taken for an entry, whatever name a `cdir` carries. A server
+  that does not know MLSD (500 / 502 / 504) is remembered for the life of the
+  process and listed with LIST from then on; a 550 refuses the folder, not
+  the command, and is not taken as that.
+
+Connections are kept open between calls. Each thread's calls share a libcurl
+connection pool, so the next call on the same thread to the same server, as
+the same user with the same TLS settings, takes up the connection the last one
+left open - no connect, no login; the second pass of a listing that fell back
+from MLSD runs on it too. The log says *Using the open connection to host -
+already logged in*. A worker listing folder after folder therefore logs in
+once. libcurl drops a connection idle for two minutes and one the server has
+closed; `UltraNet_FtpCloseIdleConnections()` closes the calling thread's open
+connections now (each is sent QUIT), and a thread's are closed when it ends,
+every thread's by `UltraNet_Shutdown`. A caller whose work comes in bursts
+closes them when it falls idle: before libcurl 8.10 the QUIT of a connection
+whose network has since gone away waits up to two minutes for its reply.
+(One pool per thread: libcurl does not support sharing connections between
+threads that transfer at the same time.) A change - delete, rename, create or
+remove a folder - is the exception on FTP: it always logs in on a connection
+of its own and closes it, because libcurl sends those commands before it
+changes folder, and they name the entry from the folder a login lands in; on
+a kept connection that a listing left in a subfolder they would name another
+file.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.

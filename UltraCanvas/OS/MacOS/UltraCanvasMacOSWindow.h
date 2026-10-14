@@ -1,7 +1,10 @@
 // OS/MacOS/UltraCanvasMacOSWindow.h
 // macOS window implementation with Cocoa/Cairo support
+// Version: 2.4.0 - Input method composition: the content view is an
+//   NSTextInputClient, and an element that draws compositions gets
+//   TextComposition events (InterpretKeyDown, the Ime* callbacks)
 // Version: 2.3.0 - GetContentView() for the VoiceOver (NSAccessibility) bridge
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -50,6 +53,25 @@ namespace UltraCanvas {
         void* windowDelegate;  // NSWindowDelegate*
 
         bool pendingShow = false;
+
+        // ===== INPUT METHOD COMPOSITION =====
+        // The text an input method is composing (NSTextInputClient marked
+        // text), in UTF-8, with its length and selection in UTF-16 units as
+        // AppKit counts them. Empty when nothing is being composed.
+        std::string imeMarkedText;
+        unsigned long imeMarkedLength16 = 0;
+        unsigned long imeSelectionLocation16 = 0;
+        unsigned long imeSelectionLength16 = 0;
+        // The key event being interpreted by the input method (NSEvent*,
+        // unretained, only set during InterpretKeyDown); null otherwise.
+        void* imeKeyEvent = nullptr;
+        // Whether anything came back for that key (text, a composition, a
+        // command); a key the input method swallowed without either is
+        // delivered plain.
+        bool imeKeyDelivered = false;
+
+        void PushImeComposition(const std::string& text, int cursorBytes);
+        void PushImeCommit(const std::string& text, bool fromKey);
 
         // ===== THREAD SAFETY =====
         mutable std::mutex cairoMutex;
@@ -101,6 +123,32 @@ namespace UltraCanvas {
         // The flipped NSView the window draws into: window coordinates are its
         // coordinates (points). The accessibility bridge places elements in it.
         NSView* GetContentView() const { return contentView; }
+
+        // ===== INPUT METHOD COMPOSITION =====
+        // Hands a key press to the input method (interpretKeyEvents:) when
+        // the focused element draws compositions (DrawsTextComposition()) or
+        // a composition is in progress; the key then comes back as typed text
+        // (KeyDown with `text`), as a TextComposition, or as the plain
+        // KeyDown it would have been. False when the key is left to the
+        // ordinary path, unchanged: another element, or Command / Control held.
+        bool InterpretKeyDown(NSEvent* event);
+        // Ends a composition in progress, keeping its text as typed (a click
+        // elsewhere, the window losing the keyboard).
+        void CommitComposition();
+        // The content view's NSTextInputClient methods land here.
+        void ImeInsertText(const std::string& text);
+        void ImeSetMarkedText(const std::string& text, unsigned long length16,
+                              unsigned long selectionLocation16, unsigned long selectionLength16,
+                              int cursorBytes);
+        void ImeUnmarkText();
+        void ImeDoCommand();
+        bool ImeHasMarkedText() const { return imeMarkedLength16 > 0; }
+        unsigned long ImeMarkedLength16() const { return imeMarkedLength16; }
+        unsigned long ImeSelectionLocation16() const { return imeSelectionLocation16; }
+        unsigned long ImeSelectionLength16() const { return imeSelectionLength16; }
+        // Where the candidate window goes: the focused element's caret, in
+        // window coordinates (its bounds when it has no text interface).
+        Rect2Df ImeCaretRectInWindow();
 
         // ===== WINDOW DELEGATE CALLBACKS =====
         void OnWindowWillClose();

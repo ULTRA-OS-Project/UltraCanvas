@@ -321,13 +321,29 @@ viewer->SetVideoPreviewMode(VideoPreviewMode::PreviewClip);  // few seconds mute
 viewer->SetVideoPreviewMode(VideoPreviewMode::Still);        // paused first frame
 viewer->SetVideoPreviewClipSeconds(5.0f);                    // PreviewClip length
 viewer->StopPlayback();   // for hosts that hide/detach the viewer
+bool busy = viewer->IsPlayingMedia();   // a video or sound playing right now
 ```
+
+`IsPlayingMedia()` is true while the shown file is a video or a sound that is
+playing (the muted `PreviewClip` too), and false once it is paused, stopped or
+has ended. A host that reopens a file which changed on disk asks it first:
+reopening restarts playback from the beginning. UltraFiler's preview pane
+reopens a changed video only once its file has stopped changing and it is not
+playing.
 
 `PreviewClip` is silent end to end: the mute is decided before the source is
 opened (so the engine builds a muted session rather than muting one already
 wired for sound), and the clip stays muted while it sits paused at the end of
 the preview. The sound returns when the viewer resumes playback itself — press
 play on the transport bar and the clip continues audibly.
+
+## A file saved over
+
+Images are read with `UCImage::GetFresh()`, which checks the shared image
+cache against the file: a picture saved over since it was last shown opens as
+it is now, not as the cache remembered it. The viewer does not watch the file
+it shows; a host that wants it followed reopens it when the file changes, as
+UltraFiler's preview pane does after a rescan finds the selected file changed.
 
 ## Embedding as a preview pane
 
@@ -337,7 +353,15 @@ preview->SetTopBarsVisible(false);      // host provides the navigation
 preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
 preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
+preview->SetFitEnlarges(false);         // a small picture at its own size, not blown up
+preview->SetInfoBarVisible(false);      // nothing but the picture (UltraClipboard's classic preview)
 ```
+
+`SetFitEnlarges(false)` makes fit-to-window shrink only: a picture smaller
+than the pane is shown at its own size, centred, instead of being enlarged to
+fill it - what a hover preview wants, so an icon stays an icon rather than a
+blur the size of the pane. The wheel still zooms in from there, and the info
+bar reports the resulting zoom as always. The default (`true`) fills the pane.
 
 ### Taking the 3D view out of it
 
@@ -387,6 +411,28 @@ The adjustments panel (the `settings-sliders` toolbar toggle) drives `MediaAdjus
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
+
+*Save as* offers FileLoader's types - every bitmap type this build writes
+(`UltraCanvasFileLoader::AddImageSaveTypes`: PNG first, then JPEG, WebP,
+AVIF, HEIC, TIFF, GIF, QOI, ICO, … as available) - and tells the Save dialog
+how big the picture is, so the **Settings** of a bitmap type offer
+[another size](UltraCanvasFileDialog.md#the-pictures-size) for that save, and
+writes with the type's save settings (JPEG quality, PNG compression ...) once
+the user has stored any. An SVG has no pixel size of its own: it is offered as
+[a drawing](UltraCanvasFileDialog.md#a-drawing), at its size on the page, and
+written by drawing it again at the size chosen - sharp at any size, where the
+picture shown would blur when stretched. The surface does it:
+
+<!-- doc-check: std::shared_ptr<UltraCanvasMediaViewer> viewer; -->
+```cpp
+UltraCanvasMediaSurface* surface = viewer->GetSurface();
+const FileSavePicture picture = surface->GetSavePicture();   // turned as shown
+FileSaveImageSize size;
+size.width = picture.width * 2;
+size.height = picture.height * 2;
+std::string error;
+surface->SaveProcessed("twice.png", size, error);   // a drawing drawn again at that size
+```
 
 Each slider is **continuous over its whole range** and carries its live value in
 its caption (`Gamma  1.37`), so an edit can be read off and repeated. The

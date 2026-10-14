@@ -1,8 +1,10 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.6.0
-// Last Modified: 2026-10-07
+// Version: 0.14.0 - VideoFX_GetFileFormats: what this build reads and writes;
+//                  VideoFX_SetPictureReader: picture types the host application reads
+// Version: 0.12.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -67,9 +69,42 @@ std::string VideoFX_GetLastError();
 // Readable name of a result code ("Ok", "Encoder not available", ...)
 const char* VideoFX_ResultToString(VideoFXResult result);
 
-// Whether this build can encode the codec (e.g. H.265 needs libx265)
-bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec codec);
+// Whether this build can encode the codec (e.g. H.265 needs libx265) - with
+// an acceleration, whether an encoder of that kind works on this machine
+// (Hardware: any hardware encoder, not the software fallback)
+bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec codec,
+                                     VideoFXAcceleration acceleration = VideoFXAcceleration::Auto);
+
+// Every encoder this build has for a codec (Auto = for every codec),
+// software and hardware, each tried once on this machine: what a settings
+// dialog offers. The first call takes a moment (each hardware encoder
+// encodes a frame); the answers are kept.
+std::vector<VideoFXEncoderInfo> VideoFX_ListVideoEncoders(VideoFXVideoCodec codec = VideoFXVideoCodec::Auto);
+
+// The encoder an export with this codec and acceleration would use, e.g.
+// "h264_nvenc"; "" when there is none
+std::string VideoFX_ChooseVideoEncoder(VideoFXVideoCodec codec, VideoFXAcceleration acceleration);
+
+// "NVENC", "Quick Sync", ... - for a settings dialog
+const char* VideoFX_AccelerationName(VideoFXAcceleration acceleration);
+
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec codec);
+
+// The files this build reads and writes, asked of the FFmpeg it is linked
+// against: the video and sound containers (an import reads them, an export
+// writes those whose muxer and usual encoder are here) and the still
+// pictures its decoders open. An application's file dialogs - through its
+// framework's format registry - offer these, never a list of their own.
+// Empty when the module was built without its backend.
+std::vector<VideoFXFileFormat> VideoFX_GetFileFormats();
+
+// The host application's reader for picture types (VideoFXPictureReader).
+// VideoFX_Probe, VideoFX_ExtractFrame and VideoFX_ExtractThumbnails read
+// files of those types through it instead of FFmpeg, and so does
+// everything built on them: image segments, picture overlays, slideshows.
+// VideoFX_GetFileFormats then reports them read. A reader with no extensions
+// takes the reader away.
+void VideoFX_SetPictureReader(VideoFXPictureReader reader);
 
 // Whether text overlays can be drawn (FFmpeg built with libfreetype)
 bool VideoFX_IsTextOverlayAvailable();
@@ -109,6 +144,18 @@ VideoFXResult VideoFX_ExtractThumbnails(const std::string& path, int count,
 
 // Write a frame as PNG or JPEG, chosen by the extension (.png / .jpg / .jpeg)
 VideoFXResult VideoFX_SaveFrameImage(const VideoFXFrame& frame, const std::string& path);
+
+// The loudness envelope of a file's sound - a song, or a video's soundtrack -
+// mixed to mono and cut into `blocksPerSecond` blocks a second (1..1000),
+// each with its lowest and highest sample and its RMS: what a timeline or a
+// player draws as the waveform. Seconds `start`..`end` of the file (`end` 0 =
+// to the end). 50 blocks a second draws a clip at any zoom a timeline shows;
+// a whole three-minute song is then some 100 KB. The file is read from its
+// start, so a range saves memory, not time. NoMediaStreams for a file
+// without sound.
+VideoFXResult VideoFX_ExtractWaveform(const std::string& path, VideoFXWaveform& waveform,
+                                      double blocksPerSecond = 50.0,
+                                      double start = 0.0, double end = 0.0);
 
 // ============================================================================
 // EDITING AND EXPORT
@@ -174,6 +221,149 @@ VideoFXResult VideoFX_DetectBeats(const std::string& path, VideoFXBeatInfo& info
 // Finds faces looking roughly at the camera and at least about 1/40 of the
 // image's longer side; profiles and heavily tilted heads are missed.
 VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFXRect>& faces);
+
+// ============================================================================
+// PROJECT FILES
+// ============================================================================
+// Format version this build writes, and the newest it reads
+constexpr int kVideoFXProjectFormatVersion = 1;
+
+// Write `project` to `path` (a .vfxproj, UTF-8 JSON). The file is written
+// beside the old one and moved over it only when complete, so a crash or a
+// full disk never leaves half a project behind. Refused (InvalidArgument):
+// media given only as pixels in memory, which a file cannot point to.
+VideoFXResult VideoFX_SaveProject(const VideoFXProject& project, const std::string& path);
+
+// Read a project. Paths come back absolute. `missingMedia`, when given, lists
+// the media files that no longer exist - the project still loads, so an app
+// can offer to find them. A project from a newer VideoFX is refused
+// (InvalidArgument) rather than half-read; fields it does not know are ignored.
+VideoFXResult VideoFX_LoadProject(const std::string& path, VideoFXProject& project,
+                                  std::vector<std::string>* missingMedia = nullptr);
+
+// The same as text, for an app keeping projects elsewhere (a database, an
+// undo history). Relative paths are taken against / written relative to
+// `baseDirectory` ("" = keep them as they are).
+VideoFXResult VideoFX_ProjectToJson(const VideoFXProject& project, std::string& json,
+                                    const std::string& baseDirectory = "");
+VideoFXResult VideoFX_ProjectFromJson(const std::string& json, VideoFXProject& project,
+                                      const std::string& baseDirectory = "");
+
+// Render a project: to `outputPath`, or to its own outputPath when "" is given
+VideoFXResult VideoFX_RenderProject(const VideoFXProject& project, const std::string& outputPath = "",
+                                    const VideoFXProgressCallback& progress = {});
+
+// ============================================================================
+// PROXY MEDIA - small stand-ins for large clips while editing
+// ============================================================================
+// 4K phone clips are slow to scrub. A proxy is the same clip at 540 lines
+// with a keyframe every half second: make proxies once (in the background,
+// VideoFX_CreateProxies), preview and play the timeline that
+// VideoFX_UseProxies returns, and export the original timeline.
+//
+//     VideoFX_CreateProxies(timeline);                  // once; skips what exists
+//     preview.Open(VideoFX_UseProxies(timeline), settings);
+//     ...
+//     VideoFX_Export(timeline, "final.mp4", settings);  // the originals
+//
+// Give the export size in `settings` when previewing over proxies: with
+// width and height 0 the size is taken from the first segment, which is
+// then the proxy.
+
+// <user cache folder>/VideoFX/Proxies: ~/.cache (XDG_CACHE_HOME) on Linux,
+// ~/Library/Caches on macOS, %LOCALAPPDATA% on Windows
+std::string VideoFX_GetDefaultProxyDirectory();
+
+// Where the proxy of `clip` is (or would be) kept; "" when the clip does not
+// exist. Depends on the clip's path, size and modification time and on the
+// proxy settings, so it changes when any of them does.
+std::string VideoFX_ProxyPath(const std::string& clip, const VideoFXProxySettings& settings = {});
+
+// Whether that proxy has been made
+bool VideoFX_HasProxy(const std::string& clip, const VideoFXProxySettings& settings = {});
+
+// Make the proxy of `clip`, unless it exists. `editPath`, when given, gets
+// the file to edit with: the proxy - or the clip itself when it has no
+// picture or is no taller than a proxy, which then is not made. The proxy is
+// written under a temporary name and renamed when complete, so a crash or a
+// cancel never leaves a half proxy that would be taken for a whole one.
+VideoFXResult VideoFX_CreateProxy(const std::string& clip, const VideoFXProxySettings& settings = {},
+                                  const VideoFXProgressCallback& progress = {}, std::string* editPath = nullptr);
+
+// Proxies for every clip a timeline plays - its file segments and its
+// picture-in-picture videos - each once, the progress weighted by length.
+// Stops at the first failure.
+VideoFXResult VideoFX_CreateProxies(const std::vector<VideoFXSegment>& segments,
+                                    const VideoFXProxySettings& settings = {},
+                                    const VideoFXProgressCallback& progress = {});
+
+// The timeline with every clip that has a proxy replaced by it; the rest as
+// they are. A Crop effect, in the clip's pixels, is scaled to the proxy's.
+// A picture-in-picture video at its own pixel size (imageHeight 0) keeps its
+// original, which a proxy would shrink. `replaced`, when given, counts the
+// segments and overlays switched.
+std::vector<VideoFXSegment> VideoFX_UseProxies(const std::vector<VideoFXSegment>& segments,
+                                               const VideoFXProxySettings& settings = {},
+                                               int* replaced = nullptr);
+
+// Delete every proxy in the cache folder (and any left half-made); nothing
+// else there is touched. `filesRemoved` / `bytesFreed`, when given, say how
+// much went.
+VideoFXResult VideoFX_ClearProxies(const VideoFXProxySettings& settings = {}, int* filesRemoved = nullptr,
+                                   uint64_t* bytesFreed = nullptr);
+
+// ============================================================================
+// PREVIEW - frames of a timeline, for an editor's viewer
+// ============================================================================
+// The output frame at a time of a timeline, as an export would make it: the
+// segment playing then, trimmed, sped, filtered and fitted to the output
+// size the settings decide, its overlays drawn, and inside a transition's
+// overlap the two segments blended by that transition. Music is ignored.
+// Open plans the timeline once (every file probed, as an export does), and
+// RenderFrame then costs one frame: a seek and a decode of the one source
+// playing, and the segment's filter chain over that single frame. A viewer
+// scrubbing keeps one of these open; VideoFX_RenderFrame below does the
+// three steps in one call for a single picture.
+class VideoFXPreview {
+public:
+    VideoFXPreview();
+    ~VideoFXPreview();
+    VideoFXPreview(const VideoFXPreview&) = delete;
+    VideoFXPreview& operator=(const VideoFXPreview&) = delete;
+
+    VideoFXResult Open(const std::vector<VideoFXSegment>& segments, const VideoFXExportSettings& settings = {});
+    void Close();
+    bool IsOpen() const;
+    double GetDuration() const;      // seconds, the transitions' overlaps subtracted; 0 when the last segment is open-ended
+    int GetWidth() const;            // the output frame size the settings decide
+    int GetHeight() const;
+    double GetFrameRate() const;
+    // The segment playing at `seconds` - an index into the segments given to
+    // Open - and, when asked, how far into it; -1 before the start or past
+    // the end. Inside a transition's overlap it is the segment being entered.
+    int SegmentAt(double seconds, double* segmentSeconds = nullptr) const;
+    // The frame at `seconds`, RGBA, no larger than maxWidth x maxHeight (0 =
+    // the output size). InvalidArgument past the end.
+    VideoFXResult RenderFrame(double seconds, VideoFXFrame& frame, int maxWidth = 0, int maxHeight = 0);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+
+// One frame of a timeline in one call: Open, RenderFrame, Close
+VideoFXResult VideoFX_RenderFrame(const std::vector<VideoFXSegment>& segments, double seconds, VideoFXFrame& frame,
+                                  const VideoFXExportSettings& settings = {}, int maxWidth = 0, int maxHeight = 0);
+
+// The segments and settings a slideshow is exported from - what
+// VideoFX_CreateSlideshow builds before it exports: one image segment per
+// photo with its seconds (all alike, fitted to the music, or on the beat),
+// its motion, framing, regions kept in view, transition and caption, the
+// fades at the ends, and in `settingsOut` the size, rate and music. For
+// previewing a slideshow, or opening one on a timeline to change it.
+VideoFXResult VideoFX_PlanSlideshow(const std::vector<std::string>& imagePaths, const VideoFXSlideshowOptions& options,
+                                    const VideoFXExportSettings& settings, std::vector<VideoFXSegment>& segments,
+                                    VideoFXExportSettings& settingsOut);
 
 // A generated test clip (moving pattern + tone) - for tests and demos
 VideoFXResult VideoFX_GenerateTestClip(const std::string& outputPath, double seconds,

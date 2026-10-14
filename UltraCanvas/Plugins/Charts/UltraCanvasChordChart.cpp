@@ -548,7 +548,7 @@ namespace UltraCanvas {
         const auto& cats = chordMatrix.categories;
         if (flow.fromIndex >= cats.size() || flow.toIndex >= cats.size()) return "";
 
-        std::string text = cats[flow.fromIndex].name + " \xE2\x86\x92 " +
+        std::string text = cats[flow.fromIndex].name + " to " +   // the UI font has no "→"
                            cats[flow.toIndex].name;
         text += "\nFlow: " + FormatValue(flow.value);
 

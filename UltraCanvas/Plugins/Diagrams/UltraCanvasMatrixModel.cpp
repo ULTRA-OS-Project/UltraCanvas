@@ -1,13 +1,19 @@
 // Plugins/Diagrams/UltraCanvasMatrixModel.cpp
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.2.0 - House of Quality: symmetric (roof) panels, improvement direction and target per item, Correlation scale, relative weights, table import with importances
+// Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
+#include "UltraCanvasTextUtils.h"
 #include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <numeric>
 #include <sstream>
+#include <utility>
 
 namespace UltraCanvas {
 
@@ -32,7 +38,7 @@ namespace UltraCanvas {
             case MatrixShape::T:     return 2;
             case MatrixShape::Y:     return 3;
             case MatrixShape::X:     return 4;
-            case MatrixShape::House: return 2;   // the body plus the correlation roof
+            case MatrixShape::House: return 1;   // the body; the correlation roof is optional
         }
         return 0;
     }
@@ -91,6 +97,22 @@ namespace UltraCanvas {
         MatrixScale s;
         s.title = "Applies";
         s.levels.emplace_back("yes", "Yes", Color(35, 35, 40, 255), 1.0, MatrixMarkShape::Disc);
+        return s;
+    }
+
+    MatrixScale MatrixScale::Correlation() {
+        MatrixScale s;
+        s.title = "Correlation";
+        // U+2212 MINUS SIGN rather than a hyphen: the same width as the plus,
+        // and in every UI font.
+        s.levels.emplace_back("strongpositive", "Strong positive", Color( 20, 110,  60, 255), 2.0, MatrixMarkShape::Text);
+        s.levels.back().glyph = "++";
+        s.levels.emplace_back("positive",       "Positive",        Color( 60, 150,  90, 255), 1.0, MatrixMarkShape::Text);
+        s.levels.back().glyph = "+";
+        s.levels.emplace_back("negative",       "Negative",        Color(200,  80,  60, 255), -1.0, MatrixMarkShape::Text);
+        s.levels.back().glyph = "\xE2\x88\x92";
+        s.levels.emplace_back("strongnegative", "Strong negative", Color(160,  30,  30, 255), -2.0, MatrixMarkShape::Text);
+        s.levels.back().glyph = "\xE2\x88\x92\xE2\x88\x92";
         return s;
     }
 
@@ -178,9 +200,26 @@ namespace UltraCanvas {
         return SetCellAt(panel, row, col, levelId);
     }
 
+    namespace {
+
+        // A symmetric panel keeps one cell per pair, above the diagonal.
+        // Returns false for the diagonal, which relates an item to itself and
+        // so has no cell.
+        bool NormalizeSymmetric(const std::vector<MatrixPanel>& panels, int panel,
+                                int& row, int& col) {
+            if (panel < 0 || panel >= static_cast<int>(panels.size())) return true;
+            if (!panels[static_cast<size_t>(panel)].symmetric) return true;
+            if (row == col) return false;
+            if (row > col) std::swap(row, col);
+            return true;
+        }
+
+    } // namespace
+
     bool MatrixModel::SetCellAt(int panel, int row, int col, const std::string& levelId,
                                 const std::string& note) {
         if (panel < 0 || panel >= static_cast<int>(panels.size())) return false;
+        if (!NormalizeSymmetric(panels, panel, row, col)) return false;
 
         const MatrixItemSet* rows = RowSet(panel);
         const MatrixItemSet* cols = ColSet(panel);
@@ -210,6 +249,7 @@ namespace UltraCanvas {
     }
 
     bool MatrixModel::ClearCell(int panel, int row, int col) {
+        if (!NormalizeSymmetric(panels, panel, row, col)) return false;
         auto it = std::find_if(cells.begin(), cells.end(), [&](const MatrixCell& c) {
             return c.panel == panel && c.row == row && c.col == col;
         });
@@ -223,6 +263,7 @@ namespace UltraCanvas {
     }
 
     const MatrixCell* MatrixModel::FindCell(int panel, int row, int col) const {
+        if (!NormalizeSymmetric(panels, panel, row, col)) return nullptr;
         for (const MatrixCell& cell : cells) {
             if (cell.panel == panel && cell.row == row && cell.col == col) return &cell;
         }
@@ -264,6 +305,32 @@ namespace UltraCanvas {
             total += scale.WeightOf(cell.levelId);
         }
         return total * rows->items[static_cast<size_t>(row)].importance;
+    }
+
+    std::vector<double> MatrixModel::RelativeColumnWeights(int panel) const {
+        const MatrixItemSet* cols = ColSet(panel);
+        if (!cols) return {};
+
+        std::vector<double> weights(static_cast<size_t>(cols->Count()), 0.0);
+        double total = 0.0;
+        for (int c = 0; c < cols->Count(); ++c) {
+            weights[static_cast<size_t>(c)] = ColumnScore(panel, c);
+            total += weights[static_cast<size_t>(c)];
+        }
+        // A panel with no score has no shares; dividing would give NaN.
+        if (total == 0.0) return std::vector<double>(weights.size(), 0.0);
+        for (double& w : weights) w = w * 100.0 / total;
+        return weights;
+    }
+
+    int MatrixModel::FindSymmetricPanel(const std::string& setId) const {
+        for (size_t p = 0; p < panels.size(); ++p) {
+            if (panels[p].symmetric && panels[p].rowSetId == setId &&
+                panels[p].colSetId == setId) {
+                return static_cast<int>(p);
+            }
+        }
+        return -1;
     }
 
     std::vector<int> MatrixModel::RankColumns(int panel) const {
@@ -341,6 +408,60 @@ namespace UltraCanvas {
             }
         }
 
+        // An X places sets[0] left, sets[1] top, sets[2] right, sets[3]
+        // bottom, so a panel is drawable only when it pairs a left/right set
+        // with a top/bottom one - that pair names its quadrant, and no two
+        // panels may claim the same quadrant. A Y has a panel between each two
+        // of its three seams, so it needs two different sets among the first
+        // three, each pair at most once.
+        if ((shape == MatrixShape::X && sets.size() >= 4) ||
+            (shape == MatrixShape::Y && sets.size() >= 3)) {
+            const int placed = (shape == MatrixShape::X) ? 4 : 3;
+            std::vector<std::pair<int, int>> claimed;
+            for (size_t p = 0; p < panels.size(); ++p) {
+                const std::string where = "panel " + std::to_string(p);
+                const int r = IndexOfSet(panels[p].rowSetId);
+                const int c = IndexOfSet(panels[p].colSetId);
+                if (r < 0 || c < 0) continue;   // already reported above
+                if (r >= placed || c >= placed) {
+                    fail(where + " uses a set beyond the " + std::to_string(placed)
+                         + " this shape places");
+                    continue;
+                }
+                if (shape == MatrixShape::X && (r % 2) == (c % 2)) {
+                    fail(where + " crosses two sets on the same axis of the X; pair a "
+                         "left/right set (0 or 2) with a top/bottom one (1 or 3)");
+                    continue;
+                }
+                if (shape == MatrixShape::Y && r == c) {
+                    fail(where + " crosses a set with itself, which a Y cannot place");
+                    continue;
+                }
+                const std::pair<int, int> key(std::min(r, c), std::max(r, c));
+                if (std::find(claimed.begin(), claimed.end(), key) != claimed.end()) {
+                    fail(where + " relates the same two sets as an earlier panel");
+                    continue;
+                }
+                claimed.push_back(key);
+            }
+        }
+
+        // A House is an L with a roof: panel 0 the body, crossing two
+        // different sets, and any roof a symmetric panel over the body's
+        // columns - the technical requirements it correlates.
+        if (shape == MatrixShape::House && !panels.empty()) {
+            const MatrixPanel& body = panels[0];
+            if (body.symmetric || body.rowSetId == body.colSetId) {
+                fail("panel 0 of a House must cross two different sets");
+            }
+            for (size_t p = 1; p < panels.size(); ++p) {
+                if (!panels[p].symmetric || panels[p].rowSetId != body.colSetId) {
+                    fail("panel " + std::to_string(p) + " of a House must be the symmetric "
+                         "roof over the body's column set '" + body.colSetId + "'");
+                }
+            }
+        }
+
         for (size_t c = 0; c < cells.size(); ++c) {
             const MatrixCell& cell = cells[c];
             const std::string where = "cell " + std::to_string(c);
@@ -358,6 +479,9 @@ namespace UltraCanvas {
             }
             if (cell.col < 0 || cell.col >= cols->Count()) {
                 fail(where + " column " + std::to_string(cell.col) + " is out of range");
+            }
+            if (panels[static_cast<size_t>(cell.panel)].symmetric && cell.row >= cell.col) {
+                fail(where + " lies on or below the diagonal of a symmetric panel");
             }
             if (panels[static_cast<size_t>(cell.panel)].scale.IndexOf(cell.levelId) < 0) {
                 fail(where + " uses level '" + cell.levelId + "' which its panel's scale lacks");
@@ -385,6 +509,7 @@ namespace UltraCanvas {
         sets.clear();
         panels.clear();
         cells.clear();
+        headerFields.clear();
     }
 
 // =============================================================================
@@ -443,7 +568,22 @@ namespace UltraCanvas {
 
     } // namespace
 
-    std::string ExportMatrixCsv(const MatrixModel& model, int panel) {
+    namespace {
+
+        std::string Lower(std::string text) {
+            for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return text;
+        }
+
+        // The header a column of row importances goes under.
+        bool IsImportanceHeader(const std::string& field) {
+            const std::string h = Lower(Trim(field));
+            return h == "importance" || h == "weight";
+        }
+
+    } // namespace
+
+    std::string ExportMatrixCsv(const MatrixModel& model, int panel, bool withImportance) {
         const MatrixItemSet* rows = model.RowSet(panel);
         const MatrixItemSet* cols = model.ColSet(panel);
         if (!rows || !cols) return std::string();
@@ -452,6 +592,7 @@ namespace UltraCanvas {
 
         // Header: an empty corner cell, then the column labels.
         out << "";
+        if (withImportance) out << ",Importance";
         for (const MatrixItem& col : cols->items) {
             out << ',' << CsvEscape(col.label);
         }
@@ -459,6 +600,9 @@ namespace UltraCanvas {
 
         for (int r = 0; r < rows->Count(); ++r) {
             out << CsvEscape(rows->items[static_cast<size_t>(r)].label);
+            if (withImportance) {
+                out << ',' << FormatFloatClassic(rows->items[static_cast<size_t>(r)].importance);
+            }
             for (int c = 0; c < cols->Count(); ++c) {
                 out << ',' << CsvEscape(model.LevelAt(panel, r, c));
             }
@@ -477,12 +621,17 @@ namespace UltraCanvas {
         if (!std::getline(in, line)) return false;
 
         std::vector<std::string> header = CsvSplit(line);
-        if (header.size() != static_cast<size_t>(cols->Count()) + 1) return false;
+        // An "Importance" column after the row labels, as ExportMatrixCsv
+        // writes with withImportance, shifts the marks one field right.
+        const size_t first = (header.size() == static_cast<size_t>(cols->Count()) + 2 &&
+                              IsImportanceHeader(header[1])) ? 2 : 1;
+        if (header.size() != static_cast<size_t>(cols->Count()) + first) return false;
         for (int c = 0; c < cols->Count(); ++c) {
-            if (header[static_cast<size_t>(c) + 1] != cols->items[static_cast<size_t>(c)].label) {
+            if (header[static_cast<size_t>(c) + first] != cols->items[static_cast<size_t>(c)].label) {
                 return false;
             }
         }
+        std::vector<double> importances;
 
         // Parse everything before touching the model, so a malformed file
         // leaves the caller's marks alone.
@@ -495,11 +644,16 @@ namespace UltraCanvas {
             if (rowIndex >= rows->Count()) return false;
 
             std::vector<std::string> fields = CsvSplit(line);
-            if (fields.size() != static_cast<size_t>(cols->Count()) + 1) return false;
+            if (fields.size() != static_cast<size_t>(cols->Count()) + first) return false;
             if (fields[0] != rows->items[static_cast<size_t>(rowIndex)].label) return false;
+            if (first == 2) {
+                double importance = 0.0;
+                if (!TryParseFloat(Trim(fields[1]), importance)) return false;
+                importances.push_back(importance);
+            }
 
             for (int c = 0; c < cols->Count(); ++c) {
-                const std::string& levelId = fields[static_cast<size_t>(c) + 1];
+                const std::string& levelId = fields[static_cast<size_t>(c) + first];
                 if (levelId.empty()) continue;
                 if (model.panels[static_cast<size_t>(panel)].scale.IndexOf(levelId) < 0) {
                     return false;
@@ -516,6 +670,113 @@ namespace UltraCanvas {
         for (const PendingCell& cell : pending) {
             model.SetCellAt(panel, cell.row, cell.col, cell.levelId);
         }
+        if (MatrixItemSet* rowSet = model.FindSet(model.panels[static_cast<size_t>(panel)].rowSetId)) {
+            for (size_t r = 0; r < importances.size() && r < rowSet->items.size(); ++r) {
+                rowSet->items[r].importance = importances[r];
+            }
+        }
+        return true;
+    }
+
+    bool ImportMatrixTable(const std::string& csv, const MatrixScale& scale, MatrixModel& out,
+                           const std::string& rowTitle, const std::string& colTitle,
+                           std::string* error) {
+        auto failWith = [error](const std::string& message) {
+            if (error) *error = message;
+            return false;
+        };
+        if (scale.levels.empty()) return failWith("the scale has no levels");
+
+        // A mark is matched by id, then label (any case), then glyph, then
+        // weight: the forms people actually type into a sheet.
+        auto levelFor = [&scale](const std::string& text, std::string& levelId) {
+            const std::string want = Lower(text);
+            for (const MatrixLevel& level : scale.levels) {
+                if (level.id == text || Lower(level.label) == want ||
+                    (!level.glyph.empty() && level.glyph == text)) {
+                    levelId = level.id;
+                    return true;
+                }
+            }
+            double weight = 0.0;
+            if (TryParseFloat(text, weight)) {
+                for (const MatrixLevel& level : scale.levels) {
+                    if (std::fabs(level.weight - weight) < 1e-9) {
+                        levelId = level.id;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        // Excel starts a UTF-8 CSV with a byte-order mark. It would land in
+        // the corner field, which is ignored; dropping it here keeps it from
+        // ever reaching a label should the layout of the sheet change.
+        const bool bom = csv.size() >= 3 && csv.compare(0, 3, "\xEF\xBB\xBF") == 0;
+        std::istringstream in(bom ? csv.substr(3) : csv);
+        std::string line;
+        if (!std::getline(in, line)) return failWith("the table is empty");
+
+        const std::vector<std::string> header = CsvSplit(line);
+        const size_t first = (header.size() >= 3 && IsImportanceHeader(header[1])) ? 2 : 1;
+        if (header.size() <= first) return failWith("the header row names no columns");
+
+        MatrixModel model;
+        model.shape = MatrixShape::L;
+        MatrixItemSet rows("rows", rowTitle);
+        MatrixItemSet cols("columns", colTitle);
+        for (size_t c = first; c < header.size(); ++c) {
+            const std::string label = Trim(header[c]);
+            if (label.empty()) return failWith("column " + std::to_string(c) + " has no label");
+            if (cols.IndexOf(label) >= 0) return failWith("column '" + label + "' appears twice");
+            cols.items.emplace_back(label, label);
+        }
+
+        struct PendingCell { int row; int col; std::string levelId; };
+        std::vector<PendingCell> pending;
+        int lineNumber = 1;
+        while (std::getline(in, line)) {
+            ++lineNumber;
+            if (Trim(line).empty()) continue;
+            const std::string where = "line " + std::to_string(lineNumber);
+
+            const std::vector<std::string> fields = CsvSplit(line);
+            if (fields.size() != header.size()) {
+                return failWith(where + " has " + std::to_string(fields.size()) + " fields, the header "
+                                + std::to_string(header.size()));
+            }
+            const std::string label = Trim(fields[0]);
+            if (label.empty()) return failWith(where + " has no row label");
+            if (rows.IndexOf(label) >= 0) return failWith("row '" + label + "' appears twice");
+
+            double importance = 1.0;
+            if (first == 2 && !Trim(fields[1]).empty() &&
+                !TryParseFloat(Trim(fields[1]), importance)) {
+                return failWith(where + ": importance '" + fields[1] + "' is not a number");
+            }
+            rows.items.emplace_back(label, label, importance);
+
+            const int row = rows.Count() - 1;
+            for (size_t c = first; c < fields.size(); ++c) {
+                const std::string mark = Trim(fields[c]);
+                if (mark.empty()) continue;
+                std::string levelId;
+                if (!levelFor(mark, levelId)) {
+                    return failWith(where + ": '" + mark + "' is not a level of the scale");
+                }
+                pending.push_back({row, static_cast<int>(c - first), levelId});
+            }
+        }
+        if (rows.items.empty()) return failWith("the table has no rows");
+
+        model.sets.push_back(rows);
+        model.sets.push_back(cols);
+        model.AddPanel("rows", "columns", scale);
+        for (const PendingCell& cell : pending) {
+            model.SetCellAt(0, cell.row, cell.col, cell.levelId);
+        }
+        out = model;
         return true;
     }
 
@@ -664,6 +925,165 @@ namespace UltraCanvas {
                                   row.marks[c]);
                 }
             }
+            return model;
+        }
+
+        MatrixModel SupplyChain() {
+            MatrixModel model;
+            model.title = "Supply chain matrix";
+            model.subtitle = "Who supplies which store, which store serves which customer, "
+                             "and which line builds for whom";
+            model.shape = MatrixShape::X;
+
+            model.headerFields = {
+                    {"PROJECT", "Warehouse consolidation"},
+                    {"AREA",    "Logistics"},
+                    {"TITLE",   "Material flow review"},
+                    {"TEAM",    "Ops planning"},
+                    {"DATE",    "2026-10-13"},
+            };
+
+            // Left, top, right, bottom - the order the X places them in.
+            model.AddSet("suppliers", "Suppliers",
+                         {"Supplier A", "Supplier B", "Supplier C", "Supplier D", "Supplier E"});
+            model.AddSet("storage", "Storage areas",
+                         {"W/H 1", "W/H 2", "W/H 3", "W/H 4"});
+            model.AddSet("customers", "Customers",
+                         {"P-1042", "P-1187", "P-2210", "P-3005", "P-3311"});
+            model.AddSet("lines", "Production lines",
+                         {"Line 1", "Line 2", "Line 3", "Line 4"});
+
+            // A x B, B x C, C x D, D x A. Each panel names a left/right set
+            // and a top/bottom one; which of the two is the row set is up to
+            // the caller - the layout turns the panel to fit its quadrant.
+            model.AddPanel("suppliers", "storage", MatrixScale::HighMediumLow());   // turned: rows run across
+            model.AddPanel("storage", "customers", MatrixScale::HighMediumLow());
+            model.AddPanel("lines", "customers", MatrixScale::HighMediumLow());
+            model.AddPanel("lines", "suppliers", MatrixScale::HighMediumLow());
+
+            struct Mark { int panel; const char* row; const char* col; const char* level; };
+            static const Mark marks[] = {
+                {0, "Supplier A", "W/H 1", "high"},   {0, "Supplier C", "W/H 1", "low"},
+                {0, "Supplier B", "W/H 2", "high"},   {0, "Supplier D", "W/H 2", "medium"},
+                {0, "Supplier C", "W/H 3", "medium"}, {0, "Supplier E", "W/H 3", "high"},
+                {0, "Supplier A", "W/H 4", "low"},    {0, "Supplier D", "W/H 4", "high"},
+
+                {1, "W/H 1", "P-1042", "high"},   {1, "W/H 1", "P-2210", "medium"},
+                {1, "W/H 2", "P-1187", "high"},   {1, "W/H 2", "P-3311", "low"},
+                {1, "W/H 3", "P-3005", "high"},   {1, "W/H 3", "P-2210", "low"},
+                {1, "W/H 4", "P-3311", "medium"}, {1, "W/H 4", "P-1187", "low"},
+
+                {2, "Line 1", "P-1042", "high"},   {2, "Line 1", "P-1187", "medium"},
+                {2, "Line 2", "P-2210", "high"},   {2, "Line 2", "P-3005", "low"},
+                {2, "Line 3", "P-3005", "high"},   {2, "Line 3", "P-3311", "medium"},
+                {2, "Line 4", "P-3311", "high"},   {2, "Line 4", "P-1042", "low"},
+
+                {3, "Line 1", "Supplier A", "high"},   {3, "Line 1", "Supplier B", "low"},
+                {3, "Line 2", "Supplier C", "high"},   {3, "Line 2", "Supplier D", "medium"},
+                {3, "Line 3", "Supplier E", "high"},   {3, "Line 3", "Supplier B", "medium"},
+                {3, "Line 4", "Supplier D", "high"},   {3, "Line 4", "Supplier A", "low"},
+            };
+            for (const Mark& m : marks) model.SetCell(m.panel, m.row, m.col, m.level);
+            return model;
+        }
+
+        MatrixModel DesignTraceability() {
+            MatrixModel model;
+            model.title = "Design traceability";
+            model.subtitle = "Requirements to functions to components, and back to requirements";
+            model.shape = MatrixShape::Y;
+
+            model.AddSet("requirements", "Requirements",
+                         {"Quiet", "Long battery life", "Easy to clean", "Compact"});
+            model.AddSet("functions", "Functions",
+                         {"Generate suction", "Store energy", "Filter air", "Collect dust"});
+            model.AddSet("components", "Components",
+                         {"Motor", "Battery pack", "HEPA filter", "Dust bin", "Housing"});
+
+            model.AddPanel("requirements", "functions", MatrixScale::QFD());
+            model.AddPanel("functions", "components", MatrixScale::QFD());
+            model.AddPanel("components", "requirements", MatrixScale::QFD());
+
+            struct Mark { int panel; const char* row; const char* col; const char* level; };
+            static const Mark marks[] = {
+                {0, "Quiet", "Generate suction", "strong"},
+                {0, "Quiet", "Filter air", "weak"},
+                {0, "Long battery life", "Store energy", "strong"},
+                {0, "Long battery life", "Generate suction", "moderate"},
+                {0, "Easy to clean", "Collect dust", "strong"},
+                {0, "Easy to clean", "Filter air", "moderate"},
+                {0, "Compact", "Store energy", "moderate"},
+                {0, "Compact", "Collect dust", "weak"},
+
+                {1, "Generate suction", "Motor", "strong"},
+                {1, "Generate suction", "Housing", "weak"},
+                {1, "Store energy", "Battery pack", "strong"},
+                {1, "Filter air", "HEPA filter", "strong"},
+                {1, "Filter air", "Housing", "moderate"},
+                {1, "Collect dust", "Dust bin", "strong"},
+
+                {2, "Motor", "Quiet", "strong"},
+                {2, "Motor", "Long battery life", "moderate"},
+                {2, "Battery pack", "Long battery life", "strong"},
+                {2, "Battery pack", "Compact", "moderate"},
+                {2, "HEPA filter", "Easy to clean", "weak"},
+                {2, "Dust bin", "Easy to clean", "strong"},
+                {2, "Housing", "Compact", "strong"},
+                {2, "Housing", "Quiet", "moderate"},
+            };
+            for (const Mark& m : marks) model.SetCell(m.panel, m.row, m.col, m.level);
+            return model;
+        }
+
+        MatrixModel HouseOfQuality() {
+            MatrixModel model = QualityFunctionDeployment();
+            model.title = "House of Quality - commuter bicycle";
+            model.subtitle = "Needs against requirements, with how the requirements help or "
+                             "hinder each other in the roof";
+            model.shape = MatrixShape::House;
+            model.headerFields = {
+                    {"PRODUCT", "Commuter bicycle"},
+                    {"TEAM",    "Product planning"},
+                    {"DATE",    "2026-10-14"},
+            };
+
+            struct Column { const char* id; MatrixImprovement direction; const char* target; };
+            static const Column columns[] = {
+                {"Frame mass",        MatrixImprovement::Minimize, "< 11 kg"},
+                {"Tyre width",        MatrixImprovement::Target,   "35 mm"},
+                {"Braking distance",  MatrixImprovement::Minimize, "< 4 m at 25 km/h"},
+                {"Gear range",        MatrixImprovement::Maximize, "> 400 %"},
+                {"Mudguard coverage", MatrixImprovement::Maximize, "full length"},
+                {"Lighting output",   MatrixImprovement::Maximize, "> 70 lux"},
+                {"Lock mounting",     MatrixImprovement::Target,   "frame lock"},
+            };
+            MatrixItemSet* requirements = model.FindSet("requirements");
+            for (const Column& c : columns) {
+                const int i = requirements->IndexOf(c.id);
+                if (i < 0) continue;
+                requirements->items[static_cast<size_t>(i)].improvement = c.direction;
+                requirements->items[static_cast<size_t>(i)].target = c.target;
+            }
+
+            MatrixPanel& roof = model.AddPanel("requirements", "requirements",
+                                               MatrixScale::Correlation());
+            roof.symmetric = true;
+
+            // Wider tyres and fuller mudguards add mass; a wider gear range
+            // needs a heavier drivetrain; wider tyres shorten braking.
+            struct Pair { const char* a; const char* b; const char* level; };
+            static const Pair pairs[] = {
+                {"Frame mass",       "Tyre width",        "negative"},
+                {"Frame mass",       "Gear range",        "strongnegative"},
+                {"Frame mass",       "Mudguard coverage", "negative"},
+                {"Frame mass",       "Lighting output",   "negative"},
+                {"Tyre width",       "Braking distance",  "strongpositive"},
+                {"Tyre width",       "Mudguard coverage", "negative"},
+                {"Braking distance", "Gear range",        "positive"},
+                {"Gear range",       "Lock mounting",     "negative"},
+                {"Lighting output",  "Lock mounting",     "positive"},
+            };
+            for (const Pair& pair : pairs) model.SetCell(1, pair.a, pair.b, pair.level);
             return model;
         }
 

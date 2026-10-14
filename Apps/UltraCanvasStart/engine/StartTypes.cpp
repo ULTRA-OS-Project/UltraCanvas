@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartTypes.cpp
+// Version: 0.1.1 - AssistantName, AssistantInstructionFile, AssistantFromName
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartTypes.h"
@@ -49,6 +50,33 @@ std::string NormalizeArchitecture(const std::string& raw) {
     if (lower == "arm64" || lower == "aarch64") return "arm64";
     if (lower.empty()) return "unknown";
     return lower;
+}
+
+std::string AssistantName(Assistant assistant) {
+    switch (assistant) {
+        case Assistant::ClaudeCode: return "Claude Code";
+        case Assistant::Codex:      return "Codex";
+        case Assistant::Copilot:    return "Copilot";
+        case Assistant::Gemini:     return "Gemini";
+        default:                    return "another assistant";
+    }
+}
+
+std::string AssistantInstructionFile(Assistant assistant) {
+    switch (assistant) {
+        case Assistant::ClaudeCode: return "CLAUDE.md";
+        case Assistant::Gemini:     return "GEMINI.md";
+        default:                    return "AGENTS.md";
+    }
+}
+
+bool AssistantFromName(const std::string& name, Assistant& out) {
+    if (name == "claude")  { out = Assistant::ClaudeCode; return true; }
+    if (name == "codex")   { out = Assistant::Codex;      return true; }
+    if (name == "copilot") { out = Assistant::Copilot;    return true; }
+    if (name == "gemini")  { out = Assistant::Gemini;     return true; }
+    if (name == "other")   { out = Assistant::Other;      return true; }
+    return false;
 }
 
 std::string DependencyGroupTitle(DependencyGroup group) {

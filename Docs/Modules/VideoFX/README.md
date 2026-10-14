@@ -13,12 +13,17 @@ segments.
 
 > **Status: stages 1 and 2 implemented, plus photos and music.** Probe,
 > frames, the segment timeline with 26 effects, speed, joins, 30 transitions
-> between segments, text and image overlays, still images with smooth pan and
+> between segments, text, image and video overlays (picture-in-picture),
+> still images with smooth pan and
 > zoom ("Ken Burns"), one-call slideshows, background music that dips under
-> speech, GIF and audio-only output, lossless cut, the background job and the
-> `videofx` command-line tool work today, on FFmpeg 4.4 to 8.x.
-> Picture-in-picture, keyframes, several free audio tracks and project files
-> are planned (see *Roadmap*).
+> speech, project files, waveforms for timelines and players, a preview
+> that renders any frame of a timeline without an export, proxy media for
+> smooth editing of large clips, hardware encoders (NVENC, Quick Sync,
+> VA-API, AMF, VideoToolbox, Media Foundation) by choice, voice-overs and
+> sound effects placed at any time, GIF and
+> audio-only output, lossless cut, the background job and the `videofx`
+> command-line tool work today, on FFmpeg 4.4 to 8.x.
+> Keyframed parameters are planned (see *Roadmap*).
 
 ---
 
@@ -80,6 +85,7 @@ Every blocking call returns a `VideoFXResult`; on anything but `Ok`,
 | `VideoFX_ExtractFrame(path, seconds, frame, maxW, maxH)` | The frame shown at that time as RGBA, upright, scaled to fit |
 | `VideoFX_ExtractThumbnails(path, count, frames, maxW, maxH)` | `count` frames spread over the whole video — a filmstrip |
 | `VideoFX_SaveFrameImage(frame, "shot.png")` | The frame as PNG or JPEG |
+| `VideoFX_ExtractWaveform(path, waveform, blocksPerSecond, start, end)` | The sound's loudness envelope, block by block — what a timeline or a player draws as the waveform |
 
 `VideoFXMediaInfo::width` / `height` are the *displayed* size: a phone video
 stored landscape with a 90° rotation flag reports portrait, and frames come
@@ -91,6 +97,78 @@ VideoFX_ExtractThumbnails("holiday.mp4", 10, strip, 160, 90);
 for (const VideoFXFrame& f : strip) {
     // f.pixels is width*height*4 bytes of RGBA
 }
+```
+
+**Waveforms.** `VideoFX_ExtractWaveform` mixes a file's sound — a song, or a
+video's soundtrack — to mono and cuts it into blocks of equal length, giving
+the lowest sample, the highest sample and the RMS of each (`VideoFXWaveform`:
+`minValues`, `maxValues`, `rmsValues`, `samplesPerBlock`, `sampleRate`,
+`start`, `duration`). Fifty blocks a second, the default, draws a clip at
+any zoom a timeline shows and holds a whole three-minute song in some 100 KB.
+Its member names match `UltraCanvasWaveformElement`'s `WaveformChannelData`,
+so an UltraCanvas application feeds it straight in:
+
+```cpp
+VideoFXWaveform envelope;
+if (VideoFX_ExtractWaveform("holiday.mp4", envelope) == VideoFXResult::Ok)
+    waveformElement->SetFromAudioFX(envelope);          // the element's field-by-field adapter
+
+VideoFX_ExtractWaveform("song.mp3", envelope, 50.0, 12.0, 20.0);   // seconds 12..20 only
+int block = envelope.BlockAt(15.0);                   // which block holds 15 s; -1 outside
+float peak = envelope.Peak();                         // the loudest sample, 0..1
+```
+
+The file is read from its start, so a range saves memory, not time. A file
+without sound fails with `NoMediaStreams`; a range beginning after the sound
+ends with `InvalidArgument`. `videofx waveform <file> [blocksPerSecond] [start [end]]`
+prints the same, one block a line.
+
+**Which files.** `VideoFX_GetFileFormats()` lists the files this build reads
+and writes, asking the FFmpeg it is linked against rather than a list kept
+by hand:
+
+- Films and sound (`VideoFXFileKind::Video` / `Audio`) are the containers it
+  knows by name: MP4, MOV, MKV, WebM, AVI, MPEG, transport streams, WMV, FLV,
+  Ogg, 3GP, MP3, M4A, AAC, WAV, FLAC, Opus, WMA, AIFF and others. Each is
+  `canRead` when FFmpeg has its demuxer, and `canWrite` when an export writes
+  it: the muxer and the container's usual encoders are there. `container`
+  then names the `VideoFXContainer` an export to it uses.
+- Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
+  FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its demuxer
+  opens it, but a phone's HEIC is a grid of tiles in a stream group, which
+  VideoFX does not put together. A host application's picture reader does
+  (below). GIF is also written, as the animation.
+
+The descriptions match the UltraCanvas codec registry's, so an application
+that brings VideoFX hands the films and sound to `RegisterMediaCodec`, and
+FileLoader's lists, and the dialogs built from them, then offer exactly what
+the engine handles. UltraVideo does this (`UltraVideoFormats.cpp`). The
+module built without FFmpeg returns an empty list.
+
+```cpp
+for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
+    if (f.kind == VideoFXFileKind::Video && f.canWrite)
+        std::printf("%s (%s) - an export writes it\n", f.description.c_str(), f.extension.c_str());
+```
+
+**Pictures the application reads.** A host with an image library of its own
+hands VideoFX a `VideoFXPictureReader`: the picture types it takes over, a
+cheap `size` (the upright size, from the header) and `decode` (the upright
+picture as RGBA). `VideoFX_Probe`, `VideoFX_ExtractFrame` and
+`VideoFX_ExtractThumbnails` read files of those types through it instead of
+FFmpeg, and so does everything built on them: image segments, picture
+overlays, slideshows. `VideoFX_GetFileFormats` then reports the types read.
+Both calls come from the engine's worker threads. UltraVideo gives VideoFX
+the UltraCanvas image reader (libvips, libheif) this way, for every picture
+type FileLoader reads and FFmpeg does not: a phone's HEIC comes in whole and
+upright, and so does a camera's raw file.
+
+```cpp
+VideoFXPictureReader reader;
+reader.extensions = {"heic", "heif"};
+reader.size = [](const std::string& path, int& w, int& h) { return MyImageSize(path, w, h); };
+reader.decode = [](const std::string& path, VideoFXFrame& frame) { return MyImageRgba(path, frame); };
+VideoFX_SetPictureReader(reader);             // a reader with no extensions takes it away
 ```
 
 ---
@@ -132,6 +210,131 @@ output (see `fitMode`) and picture and sound stay in sync across every join —
 a stream that runs short is padded before the next segment, video by holding
 its last frame, audio with silence. A file without a picture shows black for
 its length in a video export.
+
+---
+
+## Previewing a timeline
+
+An editor's viewer needs the *output* frame at a time of the timeline - the
+segment playing then, trimmed, sped, filtered and fitted to the output size,
+its overlays drawn, and inside a transition's overlap the two segments
+blended by that transition - without exporting anything. `VideoFXPreview`
+does that: `Open` plans the timeline once, as an export does (every file
+probed, the output size and rate decided from the settings), and
+`RenderFrame` then costs one frame - a seek and a decode of the one source
+playing, and the segment's filter chain over that single frame. Music is
+ignored; the preview is picture only.
+
+```cpp
+VideoFXPreview preview;
+if (preview.Open(timeline, VideoFXExportSettings::WebMP4(1080)) != VideoFXResult::Ok)
+    Show(VideoFX_GetLastError());
+
+double duration = preview.GetDuration();          // the transitions' overlaps subtracted
+double into = 0.0;
+int segment = preview.SegmentAt(12.5, &into);     // which segment plays at 12.5 s, and how far into it
+
+VideoFXFrame frame;                               // RGBA, no larger than the viewer
+if (preview.RenderFrame(12.5, frame, viewerWidth, viewerHeight) == VideoFXResult::Ok)
+    viewer->SetImage(frame.pixels, frame.width, frame.height);
+```
+
+A viewer scrubbing keeps one `VideoFXPreview` open and calls `RenderFrame`
+for every position; after an edit it calls `Open` again with the new
+timeline. `GetWidth` / `GetHeight` / `GetFrameRate` are what the export
+would produce. `RenderFrame` fails with `InvalidArgument` past the end or
+before the start. The frame's `timestamp` is the timeline time asked for.
+
+For a single picture - a thumbnail of a project, a poster frame -
+`VideoFX_RenderFrame(segments, seconds, frame, settings, maxW, maxH)` does
+the three steps in one call. `VideoFX_PlanSlideshow(imagePaths, options,
+settings, segments, settingsOut)` gives the segments and settings a
+slideshow would be exported from - one image segment per photo with its
+seconds, motion, framing, regions kept in view, transition and caption, the
+fades at the ends, and the size, rate and music in `settingsOut` - so a
+slideshow can be previewed, or opened on a timeline to be changed, before
+`VideoFX_CreateSlideshow` renders it.
+
+```cpp
+std::vector<VideoFXSegment> show;
+VideoFXExportSettings showSettings;
+VideoFX_PlanSlideshow(photos, options, VideoFXExportSettings::WebMP4(1080), show, showSettings);
+VideoFX_RenderFrame(show, 3.0, frame, showSettings, 320, 180);   // the show at 3 s, viewer sized
+```
+
+`videofx preview <project.vfxproj> <seconds> <out.png|out.jpg> [maxWidth maxHeight]`
+writes the frame of a saved project.
+
+---
+
+## Proxy media
+
+A 4K phone clip is slow to scrub: every seek decodes a large frame, often
+from a keyframe seconds back. A **proxy** is a small stand-in for it - the
+same picture and sound, timed the same, at 540 lines, as H.264 with a
+keyframe every half second. The editor previews and plays the timeline from
+the proxies, and the export reads the originals.
+
+```cpp
+VideoFXProxySettings proxies;                     // 540 lines, the user's cache folder
+
+// once, in the background (a job of the app's own, or a worker thread)
+VideoFX_CreateProxies(timeline, proxies, [&](double f) { gauge->SetValue(f * 100.0); return !cancelled; });
+
+// the viewer plays the proxies...
+preview.Open(VideoFX_UseProxies(timeline, proxies), settings);
+
+// ...the export reads the originals
+VideoFX_Export(timeline, "final.mp4", settings);
+```
+
+- **Where they live.** In a cache folder: `VideoFXProxySettings::cacheDirectory`,
+  or by default `VideoFX_GetDefaultProxyDirectory()` - `$XDG_CACHE_HOME`
+  (else `~/.cache`) on Linux, `~/Library/Caches` on macOS and
+  `%LOCALAPPDATA%` on Windows, each followed by `VideoFX/Proxies`.
+- **Named after the clip.** A proxy's name is the clip's own name plus a hash
+  of its full path, size and modification time and of the proxy settings,
+  for example `Trip_2026-3f9a0c41d27be805.mp4`. A clip that is edited or replaced
+  gets a new proxy, and the stale one is simply never used again.
+  `VideoFX_ProxyPath(clip)` says where a clip's proxy is, and
+  `VideoFX_HasProxy(clip)` whether it has been made.
+- **Made once.** `VideoFX_CreateProxy(clip, settings, progress, &editPath)`
+  skips a proxy that exists. A clip with no picture, or one no taller than
+  a proxy, gets none: `editPath` is then the clip itself.
+  `VideoFX_CreateProxies(timeline)` makes them for every file segment and
+  every sized picture-in-picture video, each clip once, with one progress
+  for the lot.
+- **Never half made.** A proxy is written under a temporary name and renamed
+  when complete. A crash, a full disk or a cancel leaves nothing that could
+  be taken for a whole proxy.
+- **Switching.** `VideoFX_UseProxies(timeline)` returns the timeline with
+  every clip that has a proxy replaced by it; trims, speed, effects and
+  overlays are kept. A `Crop` effect, which is in the clip's pixels, is
+  scaled to the proxy's. A picture-in-picture video at its own pixel size
+  (`imageHeight` 0) keeps its original, since a proxy would shrink it.
+- **Give the output size.** With `width` and `height` 0 an export or preview
+  takes its size from the first segment, which over proxies is the proxy.
+  Set the size in the settings, as a project does, so the preview frame is
+  the export's.
+- **Clearing.** `VideoFX_ClearProxies(settings, &files, &bytes)` deletes
+  every proxy in the cache folder, and any half-made one, and touches
+  nothing else there.
+
+Proxies keep the clip's timing to the frame, so a trim made on a proxy is
+the same trim on the original. Keyframes come from the new export setting
+`VideoFXExportSettings::keyframeInterval` (seconds, 0 = the encoder's
+default), which any export can use.
+
+From the command line:
+
+```
+videofx proxy clip1.mov clip2.mov                  # make proxies; prints each one's path
+videofx proxy trip.vfxproj                         # for every clip of a project
+videofx proxy clip.mov --proxy-height 360 --proxy-dir ~/proxies
+videofx preview trip.vfxproj 12.5 shot.png --proxies   # the frame, from the proxies
+videofx render trip.vfxproj draft.mp4 --proxies    # a quick draft from the proxies
+videofx proxy --clear                              # delete them all
+```
 
 ---
 
@@ -406,6 +609,67 @@ correctly timed (if unusual) export, and so is music under silent clips.
 
 ---
 
+## Voice-overs and sound effects
+
+Besides the segments' own sound and the music, an export can hold any
+number of **free audio clips**: a voice-over, a sound effect, a sting. Each
+is a sound file placed at a time on the timeline, independent of the cuts,
+in `VideoFXExportSettings::audioClips`.
+
+```cpp
+VideoFXExportSettings s = VideoFXExportSettings::WebMP4(1080);
+s.music = VideoFXMusic::FromFile("song.mp3");
+
+VideoFXAudioClip voice = VideoFXAudioClip::VoiceOver("narration.wav", 2.0);   // at 2 s
+voice.fadeOut = 0.5;
+s.audioClips.push_back(voice);                                     // the music dips under it
+
+VideoFXAudioClip whoosh = VideoFXAudioClip::Sound("whoosh.wav", 7.5, 0.8);    // at 7.5 s, 80 %
+whoosh.start = 0.1;                                                // skip the file's first 0.1 s
+whoosh.end = 0.9;                                                  // and stop at 0.9 s of it
+s.audioClips.push_back(whoosh);                                    // over the music, not ducking it
+
+VideoFX_Export(timeline, "story.mp4", s);
+```
+
+| Field | Default | Notes |
+|---|---|---|
+| `path` | - | A sound file, or a video whose sound is wanted |
+| `at` | 0 | Seconds into the export where it starts |
+| `start`, `end` | 0, 0 | The part of the file played; `end` 0 = to the file's end |
+| `volume` | 1 | 0..4 |
+| `fadeIn`, `fadeOut` | 0 | Seconds at the clip's own ends; fades longer than the clip share it |
+| `ducksMusic` | false | The music dips under it as under the segments' sound (`VoiceOver` sets it) |
+
+- **Mixing.** The clips are mixed with the segments' sound before the
+  music is added. The ducker hears the voice-overs, so the music dips under
+  narration exactly as it does under speech in a clip. Sound effects come
+  in after the ducker, so a whoosh does not pull the music down.
+- **Placement.** Clips may overlap each other and the cuts. A clip that
+  runs past the end of the export is cut off there: the export is not
+  lengthened.
+- **Sound in a silent export.** A timeline of photos or silent clips with a
+  voice-over gets a sound track.
+- **Resources.** Each clip's file is opened when the timeline reaches it and
+  let go when it has played, so a hundred sound effects do not keep a
+  hundred files open.
+- **Refused before anything is written:** a missing file (`FileNotFound`),
+  one without sound (`NoMediaStreams`), and a start past the file's end or
+  a value out of range (`InvalidArgument`).
+- **Elsewhere.** The clips are saved in project files, play in slideshows
+  (through the settings) and in drafts. The preview is picture only, and
+  ignores them like the music.
+
+From the command line, `--sound FILE@SECONDS[:VOLUME]` places a sound
+effect and `--voice FILE@SECONDS[:VOLUME]` a voice-over. Both can be
+repeated:
+
+```
+videofx concat story.mp4 a.mp4 b.mp4 --music song.mp3 --voice intro.wav@1.5 --sound whoosh.wav@8:0.8
+```
+
+---
+
 ## Effects
 
 Effects are typed values made by the `VideoFXEffect::` factories; VideoFX
@@ -470,12 +734,12 @@ VideoFX_Export({ a, b, c }, "joined.mp4");   // length: a + b + c - 1.5 s
 
 ---
 
-## Overlays: titles and logos
+## Overlays: titles, logos and picture-in-picture
 
-`VideoFXSegment::overlays` draws text and images over a segment, after its
-effects, on the **output** frame — a title sits in the same place whatever
-the source's size. Sizes and margins are fractions of the output height, so
-a layout looks the same at 480p and 4K.
+`VideoFXSegment::overlays` draws text, images and other videos over a
+segment, after its effects, on the **output** frame — a title sits in the
+same place whatever the source's size. Sizes and margins are fractions of
+the output height, so a layout looks the same at 480p and 4K.
 
 ```cpp
 VideoFXSegment clip = VideoFXSegment::FromFile("talk.mp4");
@@ -490,7 +754,11 @@ title.fadeOut = 0.5;
 VideoFXOverlay logo = VideoFXOverlay::Image("logo.png", VideoFXAnchor::TopRight, 0.10);
 logo.opacity = 0.8;
 
-clip.overlays = { title, logo };
+VideoFXOverlay cam = VideoFXOverlay::Video("speaker.mp4", VideoFXAnchor::BottomRight, 0.3, 12.0);
+cam.start = 5.0;                     // shown from 5 s into the segment
+cam.fadeIn = 0.5;                    // playing speaker.mp4 from its 12 s on
+
+clip.overlays = { title, logo, cam };
 ```
 
 | Field | Meaning |
@@ -500,6 +768,7 @@ clip.overlays = { title, logo };
 | `fadeIn`, `fadeOut`, `opacity` | Seconds; 0..1 |
 | **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = the default font (below) |
 | **Image:** `imagePath` or `image`, `imageHeight` | A PNG keeps its transparency; `image` takes RGBA pixels from memory (for example a picture UltraCanvas rendered); `imageHeight` 0 = its own pixel size |
+| **Video:** `videoPath`, `videoStart`, `imageHeight` | Picture-in-picture: the file's picture plays from `videoStart` seconds into it from the overlay's `start` on, at its own speed, upright, without its sound; when the file ends before the overlay does its last frame holds. `imageHeight` sizes it like an image (0 = the file's own pixels). `VideoFXOverlay::Video` makes one from a path, anchor, height and start second. The file is checked when the export is planned, so a missing one fails before anything is written. |
 
 Text is taken literally — `:`, quotes, `%` and backslashes need no escaping.
 
@@ -548,10 +817,17 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `quality` | codec default | 0..100 → CRF / qscale per encoder |
 | `videoBitRate`, `audioBitRate` | 0 | Set to use a bit rate instead of quality |
 | `encoderPreset` | — | e.g. `"veryfast"` for x264 / x265 |
+| `keyframeInterval` | encoder default | Seconds between keyframes; short = quick to seek (proxies use 0.5) |
+| `acceleration` | `Auto` | Software, any hardware encoder (`Hardware`), or one family; see *Hardware encoders* |
 | `sampleRate`, `channels` | first audio source / stereo | Mono only when every source is mono |
+| `music` | none | Background music; see *Background music* |
+| `audioClips` | none | Voice-overs and sound effects at given times; see *Voice-overs and sound effects* |
 
 Presets: `WebMP4(height)`, `WebM(height)`, `AnimatedGif(width, fps)`,
-`MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`.
+`MasterProRes()`, `AudioOnlyMP3(bitRate)`, `AudioOnlyWAV()`, and the draft
+preset `VideoFXExportSettings::Draft` - a 360p MP4 with the fastest H.264
+preset, a low quality and a small AAC, for playing a timeline back with
+sound while it is edited: seconds to render, never the file to deliver.
 
 Which encoders exist depends on the FFmpeg build — ask before offering a
 choice in the UI:
@@ -564,6 +840,55 @@ if (!VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H265))
 H.264 uses libx264, then the platform encoder (VideoToolbox on macOS, Media
 Foundation on Windows), then OpenH264; H.265, AV1 and ProRes likewise try the
 software encoder first.
+
+### Hardware encoders
+
+The graphics hardware can encode too: several times faster than software,
+with the processor left free, at some cost in quality for the same file
+size. `VideoFXExportSettings::acceleration` chooses:
+
+| Value | Encoder |
+|---|---|
+| `Auto` (default) | As before: software, then the platform's encoder (VideoToolbox, Media Foundation) |
+| `Software` | Software only: libx264, libx265, libvpx, SVT-AV1, ... |
+| `Hardware` | The first hardware encoder that works on this machine; software when none does |
+| `NVENC` | NVIDIA (`h264_nvenc`, `hevc_nvenc`, `av1_nvenc`) |
+| `QuickSync` | Intel (`h264_qsv`, `hevc_qsv`, `av1_qsv`, `vp9_qsv`) |
+| `VAAPI` | VA-API on Linux, Intel and AMD graphics (`h264_vaapi`, `hevc_vaapi`, `av1_vaapi`, `vp9_vaapi`) |
+| `AMF` | AMD on Windows (`h264_amf`, `hevc_amf`, `av1_amf`) |
+| `VideoToolbox` | macOS (`h264_videotoolbox`, `hevc_videotoolbox`, `prores_videotoolbox`) |
+| `MediaFoundation` | Windows (`h264_mf`, `hevc_mf`, `av1_mf`) |
+
+An FFmpeg build often carries hardware encoders the machine cannot run:
+Ubuntu's has `h264_nvenc` whether or not the computer has an NVIDIA card.
+So VideoFX tries each hardware encoder once, by encoding one small frame,
+before it chooses one, and keeps the answer for the rest of the process.
+`Hardware` never lands on an encoder that does not run here. A named family
+that cannot run fails with `EncoderNotAvailable`, and the error says
+whether FFmpeg lacks the encoder or the machine lacks the hardware.
+
+```cpp
+VideoFXExportSettings s = VideoFXExportSettings::WebMP4(1080);
+s.acceleration = VideoFXAcceleration::Hardware;           // fast where it can be
+
+// a settings dialog: what this machine can do
+for (const VideoFXEncoderInfo& e : VideoFX_ListVideoEncoders(VideoFXVideoCodec::H264))
+    if (e.works) encoderChoice->AddItem(VideoFX_AccelerationName(e.acceleration));
+
+std::string name = VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware);
+// "h264_nvenc" on an NVIDIA machine, "libx264" on one without hardware encoding
+```
+
+`VideoFX_IsVideoEncoderAvailable(codec, acceleration)` asks the same for one
+choice; with `Hardware` it means a hardware encoder, not the software one
+the export would fall back to. The first list takes a moment, typically
+under a second, because each hardware encoder is tried once; later lists
+answer at once. VA-API takes frames only in graphics memory, so each frame
+is uploaded before it is encoded. The other families take ordinary frames.
+Hardware encoders are driven by bit rate (`videoBitRate`, or one derived from
+`quality` and the picture size); `encoderPreset` and `keyframeInterval`
+reach them too. Proxies can be made on the hardware as well
+(`VideoFXProxySettings::acceleration`).
 
 ---
 
@@ -585,6 +910,104 @@ And one that is not:
 | Call | Does |
 |---|---|
 | `VideoFX_TrimLossless(in, out, start, end)` | Cut by copying the compressed streams: no quality loss and very fast, but the cut starts at the keyframe at or before `start` (often a few seconds earlier) |
+
+---
+
+## Project files
+
+A whole edit can be saved as one small JSON file, a `.vfxproj`. It holds the
+timeline (or a slideshow's photos and options), the music and the export
+settings. It refers to media by path and holds no media itself, so it stays
+a few kilobytes and an app can save it on every change.
+
+```cpp
+VideoFXProject project = VideoFXProject::FromSlideshow(photos, options, VideoFXExportSettings::WebMP4(1080));
+project.title = "Summer trip";
+project.outputPath = "trip.mp4";
+VideoFX_SaveProject(project, "Trip/trip.vfxproj");
+
+// later, perhaps on another machine
+VideoFXProject loaded;
+std::vector<std::string> missing;
+if (VideoFX_LoadProject("Trip/trip.vfxproj", loaded, &missing) == VideoFXResult::Ok) {
+    if (!missing.empty()) AskUserToFind(missing);   // the project still loaded
+    VideoFX_RenderProject(loaded);                   // to loaded.outputPath
+}
+```
+
+`VideoFXProject::FromTimeline(segments, settings)` makes a timeline project;
+`VideoFX_RenderProject` renders either kind, with `VideoFX_Export` or
+`VideoFX_CreateSlideshow`.
+
+The file looks like this (shortened):
+
+```json
+{
+  "format": "VideoFX project",
+  "version": 1,
+  "kind": "slideshow",
+  "title": "Summer trip",
+  "output": "trip.mp4",
+  "settings": {
+    "container": "auto",
+    "width": 1920,
+    "height": 1080,
+    "music": { "path": "music/song.mp3", "volume": 0.8, "duckingLevel": 0.3 }
+  },
+  "slideshow": {
+    "images": ["photos/a.jpg", "photos/b.jpg"],
+    "options": {
+      "secondsPerImage": 4.0,
+      "transition": { "type": "crossfade", "duration": 1.0 },
+      "captions": ["Arrival", ""],
+      "keepFacesInView": true
+    }
+  }
+}
+```
+
+The rules:
+
+- **Paths.** Media inside the project's folder are stored relative to it,
+  with `/` between folders on every system. Media elsewhere are stored
+  absolute. So a folder holding the project and its media can be moved or
+  copied as a whole, and moving the project file alone still finds media
+  stored elsewhere. Loaded paths come back absolute. Paths are UTF-8.
+- **Missing media.** `VideoFX_LoadProject` still loads a project whose
+  clips, photos, songs, LUTs, overlay images or fonts have gone. It lists
+  them in `missingMedia`, so the app can offer to find them.
+- **Versions.** `"version"` is the format version (`kVideoFXProjectFormatVersion`,
+  now 1). A file from a newer VideoFX is refused with `InvalidArgument`
+  rather than half-read. Keys the reader does not know are ignored, and a
+  key that is not there keeps its default, so older files keep loading.
+- **Every field is written**, defaults included, so a later change of a
+  default does not change how an old project renders.
+- **Errors name the place**, for example
+  `segments[2].transitionIn.type: unknown value "spin"`.
+- **Saving is atomic.** The file is written beside the old one and moved
+  over it only when it is complete, so a crash or a full disk never leaves
+  half a project behind.
+- **Not saved.** Media given only as pixels in memory
+  (`VideoFXSegment::FromImageFrame`, `VideoFXOverlay::ImageFromFrame`) are
+  refused with `InvalidArgument`, because a file cannot point to them. The
+  function `VideoFXSlideshowOptions::findKeepInView` is not saved either.
+
+`VideoFX_ProjectToJson` and `VideoFX_ProjectFromJson` give the same text
+without a file, for an app that keeps projects in a database or an undo
+history. Their `baseDirectory` says what relative paths are relative to.
+Project files work in the build without FFmpeg too: only rendering needs the
+engine.
+
+From the command line, any edit command saves a project instead of rendering
+when given `--save-project`. `videofx project` shows what a project holds and
+which media are missing; `videofx render` renders it:
+
+```
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --save-project trip.vfxproj
+videofx project trip.vfxproj            # summary; exit status 1 if media are missing
+videofx render trip.vfxproj             # to the output it was saved with
+videofx render trip.vfxproj draft.mp4   # somewhere else
+```
 
 ---
 
@@ -637,12 +1060,22 @@ videofx slideshow trip.mp4 *.jpg --music a.mp3 --music b.mp3 --music-crossfade 4
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --seconds 3
 videofx slideshow trip.mp4 *.jpg --music song.mp3 --beats-per-image 8 --transition cut
 videofx beats song.mp3                                   # tempo and beat times
+videofx waveform song.mp3 10                             # loudness envelope, 10 blocks a second
+videofx preview trip.vfxproj 12.5 shot.png 640 360        # the project's frame at 12.5 s, no export
 videofx slideshow trip.mp4 a.jpg b.jpg --keep 1:0.40,0.10,0.12,0.16 --keep 2:0.7,0.3,0.1,0.14
 videofx slideshow trip.mp4 *.jpg --no-faces                # plain motion, no face finding
 videofx faces family.jpg                                 # the faces the detector finds
 videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-threshold -15 --duck-hold 0.2
 videofx concat gig.mp4 live1.mp4 live2.mp4 --music song.mp3 --duck 0.4 --duck-preset loud
+videofx concat story.mp4 a.mp4 b.mp4 --music song.mp3 --voice intro.wav@1.5 --sound boom.wav@8
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --save-project trip.vfxproj
+videofx project trip.vfxproj                             # what it holds, missing media
+videofx render trip.vfxproj                              # render a saved project
+videofx proxy trip.vfxproj                               # proxies of its clips, for editing
+videofx render trip.vfxproj draft.mp4 --proxies          # a quick draft from the proxies
+videofx encoders h264                                    # the H.264 encoders, and which work here
+videofx transcode talk.mov talk.mp4 --hw hardware        # on the graphics hardware where there is one
 ```
 
 ---
@@ -661,6 +1094,16 @@ call returns `VideoFXResult::NotAvailable` — applications need no `#ifdef`.
 | Windows (MSYS2) | `pacman -S mingw-w64-clang-x86_64-ffmpeg` |
 
 Link `VideoFX::VideoFX`. FFmpeg stays a private dependency of the library.
+
+VideoFX is a **shared library of its own**: `libVideoFX.so` on Linux,
+`libVideoFX.dylib` on macOS and `libVideoFX.dll` / `VideoFX.dll` on Windows,
+next to `videofx` and `VideoFXTest` in `bin/`. It is not built into the
+UltraCanvas core, so an application that does no video never loads it or
+FFmpeg, and every application that does shares one copy. While VideoFX is
+0.x, every minor version may change the binary interface, so the minor
+version is part of the library's name (`libVideoFX.so.0.7`).
+`-DVIDEOFX_BUILD_SHARED=OFF` builds a static library instead (the default
+on Android).
 The test suite is `Tests/VideoFXTest.cpp` (`VideoFXTest` under ctest); it
 generates its own clips, so it needs no media files.
 
@@ -678,8 +1121,14 @@ generates its own clips, so it needs no media files.
 | 3c | Beat detection; slideshows changing on the beat | **Done** |
 | 3d | Faces (any region) kept in shot through pan and zoom; a hook for the app's face detector | **Done** |
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
-| 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
-| 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
-| 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |
+| 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
+| 3g | Free audio clips: voice-overs and sound effects at given times, trimmed, faded, the music ducking under voice-overs | **Done** |
+| 3 | Keyframed effect and overlay parameters | Planned |
+| 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
+| 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
+| 4c | Preview: any frame of a timeline rendered as the export would make it, without an export (`VideoFXPreview`); a slideshow's plan as segments | **Done** |
+| 4d | Proxy media: small stand-ins for large clips, made once into a cache folder, switched in for previews and drafts, the originals exported | **Done** |
+| 4e | Hardware encoders by choice: software, any that works, or NVENC / Quick Sync / VA-API / AMF / VideoToolbox / Media Foundation, each tried on the machine before it is used | **Done** |
+| 5 | A timeline editor element in UltraCanvas on top of the engine (`UltraCanvasVideoTimeline`, in the core) | **Done** |
 
 *VideoFX — part of the UltraCanvas framework.*

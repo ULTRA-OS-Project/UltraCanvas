@@ -1,3 +1,36 @@
+#### 2026-10-14 *1.0.7*
+- **One UltraViewer at a time.** Opening a file while UltraViewer is already
+  running opens it in the running copy (in the viewer, in place of what it
+  showed) instead of starting a second one; starting it without a file brings
+  the open window forward. Two starts at the same moment cannot both stay, and
+  a copy that does not answer is reported with *"UltraViewer is already
+  running"*. Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
+#### 2026-10-13 *1.0.6*
+- **Save image as: every type this build writes, at another size, with the
+  type's settings.** The Save dialog offered six types of the viewer's own
+  (PNG, JPEG, WebP, TIFF, AVIF, BMP); it now offers the framework's
+  FileLoader list - every bitmap type this build writes, GIF, HEIC, QOI and
+  icons among them. And its Settings button showed no size field here: the
+  viewer never told it how big the picture was. A bitmap type's Settings now
+  start with the picture's size - as shown, so a picture turned
+  a quarter starts on its turned sides - and the file is written at the size
+  chosen, with the type's settings (JPEG quality, PNG compression ...), which
+  the viewer ignored before. A drawing (SVG) has no pixel size of its own: it
+  is offered at its size on the page and drawn again at the size chosen, so it
+  stays sharp at any size instead of being stretched (framework changelog,
+  pending entry `save-size-for-drawings-and-the-viewer`).
+
+#### 2026-10-10 *1.0.5*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraViewer --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
+
 #### 2026-10-06 *1.0.4*
 - **Save image as saves an SVG.** Saving a drawing wrote nothing: the dialog
   offered `<name>.svg`, which the viewer cannot write, and the failure showed

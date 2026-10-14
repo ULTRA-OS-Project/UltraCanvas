@@ -7,6 +7,12 @@
 # without wasmtime it reports that it cannot run apps) and UltraNet, which
 # fetches apps from https:// addresses.
 #
+# Version: 0.7.0 - tabs (ui/UltraWebTab.cpp)
+# Version: 0.6.0 - a downloads list (host/UltraWebDownloadList.cpp, ui/UltraWebDownloadsPanel.cpp)
+# Version: 0.5.0 - downloads (host/UltraWebDownloads.cpp)
+# Version: 0.4.1 - file uploads (the file dialog), label clicks
+# Version: 0.4.0 - forms (POST through UltraNet in host/UltraWebPages.cpp)
+# Version: 0.3.0 - host/UltraWebPages.cpp: web pages
 # Version: 0.2.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -28,7 +34,12 @@ add_executable(UltraWeb
     host/UltraWebFetch.cpp
     host/UltraWebGuest.cpp
     host/UltraWebLoader.cpp
+    host/UltraWebPages.cpp
+    host/UltraWebDownloads.cpp
+    host/UltraWebDownloadList.cpp
     host/UltraWebStorage.cpp
+    ui/UltraWebDownloadsPanel.cpp
+    ui/UltraWebTab.cpp
     ui/UltraWebWindow.cpp
 )
 
@@ -42,20 +53,10 @@ target_include_directories(UltraWeb PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/UltraWeb/guest)
 
-# UltraNet as UltraMail links it: the archive with a static core; with a
-# shared one it is folded into libultracanvas and must not be linked twice.
-set(_uw_core_shared FALSE)
-get_target_property(_uw_core_type ${ULTRACANVAS_LIBRARY} TYPE)
-if(_uw_core_type STREQUAL "SHARED_LIBRARY")
-    set(_uw_core_shared TRUE)
-endif()
-if(_uw_core_shared)
-    target_include_directories(UltraWeb PRIVATE $<TARGET_PROPERTY:UltraNet,INTERFACE_INCLUDE_DIRECTORIES>)
-    target_link_libraries(UltraWeb PRIVATE WasmHost ${ULTRACANVAS_LIBRARY})
-else()
-    # Modules before the core on the link line: GNU ld resolves left to right.
-    target_link_libraries(UltraWeb PRIVATE WasmHost UltraNet ${ULTRACANVAS_LIBRARY})
-endif()
+# UltraNet through its home: the shared core that absorbed it, or the archive
+# under a static core ("MODULE HOMES" in UltraCanvas/CMakeLists.txt). The
+# module before the core on the link line: GNU ld resolves left to right.
+target_link_libraries(UltraWeb PRIVATE WasmHost UltraNet ${ULTRACANVAS_LIBRARY})
 find_package(Threads REQUIRED)
 target_link_libraries(UltraWeb PRIVATE Threads::Threads)
 target_compile_features(UltraWeb PRIVATE cxx_std_20)

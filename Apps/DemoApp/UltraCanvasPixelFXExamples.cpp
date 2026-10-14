@@ -8,8 +8,9 @@
 //                 or upload a custom one, choose a processing function from the
 //                 category tree in the middle, tune its options on the right
 //                 and watch the processed result on the left.
+// Version: 1.1.0 - the samples and Upload offer FileLoader's picture types
 // Version: 1.0.0
-// Last Modified: 2026-07-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -185,9 +186,9 @@ namespace {
                 { "rotate", "Rotate", "Rotates around the centre with bicubic resampling (Resample::Rotate).",
                   { { "Angle °", -180.0f, 180.0f, 30.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Resample::Rotate(src, p[0]); } },
-                { "fliph", "Flip horizontal", "Mirrors the image left ↔ right (Resample::FlipHorizontal).", {},
+                { "fliph", "Flip horizontal", "Mirrors the image left to right (Resample::FlipHorizontal).", {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Resample::FlipHorizontal(src); } },
-                { "flipv", "Flip vertical", "Mirrors the image top ↔ bottom (Resample::FlipVertical).", {},
+                { "flipv", "Flip vertical", "Mirrors the image top to bottom (Resample::FlipVertical).", {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Resample::FlipVertical(src); } },
                 { "scale", "Scale", "Resizes with a Lanczos3 kernel (Resample::Resize). The "
                   "preview grows or shrinks with the factor relative to the frame: 1.0 fits "
@@ -452,11 +453,12 @@ namespace {
         return s;
     }
 
-    // Raster image extensions offered in the sample dropdown / upload dialog.
+    // A picture this build reads (FileLoader's list): what the sample
+    // dropdown lists from media/images.
     bool IsSampleImageExtension(std::string ext) {
         for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         static const std::vector<std::string> exts =
-            { "jpg", "jpeg", "png", "webp", "bmp", "gif", "tif", "tiff", "avif", "heic" };
+            UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
         return std::find(exts.begin(), exts.end(), ext) != exts.end();
     }
 
@@ -1045,10 +1047,9 @@ namespace {
         // ----- Upload a custom image through the native file dialog -----
         uploadBtn->onClick = [state, sampleDropdown, loadSource, setStatus]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open image for PixelFX")
-                .AddFilter("Bitmap images",
-                           { "png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff", "avif", "heic" })
-                .AddFilter("All files", "*");
+            opts.SetTitle("Open image for PixelFX");
+            UltraCanvasFileLoader::AddLoadTypes(opts, "Bitmap images", {MediaFormatCategory::Bitmap});
+            opts.AddFilter("All files", "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [state, sampleDropdown, loadSource, setStatus](DialogResult result, const std::string& path) {

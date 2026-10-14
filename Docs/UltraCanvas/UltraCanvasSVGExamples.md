@@ -6,7 +6,7 @@ SVG goes through three parts of the framework, each for one job:
 
 | Job | Component | Behind it |
 |---|---|---|
-| Show an SVG file on screen, or a thumbnail of one | `UltraCanvasImageElement`, `UltraCanvasMediaViewer`, `UCImage` | librsvg, through the parse-once `UCSvgDocument` cache (`libspecific/Cairo/SvgDocumentCairo.h`) |
+| Show an SVG file on screen, or a thumbnail of one | `UltraCanvasImageElement`, `UltraCanvasMediaViewer`, `UCImage` | librsvg, through the parse-once `UCSvgDocument` cache (`libspecific/Cairo/SvgDocumentCairo.h`); where libvips has no `svgload` (the WebAssembly sysroot) or refuses the file, the Vector plugin's reader through the vector preview seam (`UltraCanvasVectorPreview.h`), the parsed document kept and rendered by the core's vector renderer at each requested size |
 | Turn an SVG into pixels at a chosen size | `UltraCanvasVectorRaster` (`InspectVectorFile`, `RasterizeVectorFile`) | librsvg via libvips, so the result is rendered *at* the requested size |
 | Read an SVG into an editable drawing, or write one | `VectorConverter::SVGConverter` in the Vector plugin | tinyxml2 and the `VectorStorage::VectorDocument` model; `<style>` sheets through the HTMLReader's CSS parser |
 
@@ -34,8 +34,10 @@ viewer->Show(path, UltraCanvasApplication::GetInstance()->GetFocusedWindow());
 
 The file is parsed once and the parsed document is cached by path
 (`UCSvgDocument::Get`), so zooming, HiDPI and relayout only pay for the
-vector render. `UCImageRaster::ClearCache` / `UCSvgDocument::RemoveFromCache`
-drop a document when the file changed on disk. CSS inside the file - a
+vector render. `UCImage::GetFresh(path)` reads a file that changed on disk
+since it was cached again (`UCImage::Get` never checks), and
+`UCImage::RemoveFromCache(path)` drops the raster, its pixmaps and the parsed
+document by hand. CSS inside the file - a
 `<style>` block, `class=""` attributes - is applied by librsvg.
 
 `Apps/DemoApp/UltraCanvasSVGExamples.cpp` is the demo page: one tile per

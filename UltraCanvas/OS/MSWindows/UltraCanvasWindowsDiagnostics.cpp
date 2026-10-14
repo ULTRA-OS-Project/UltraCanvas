@@ -698,7 +698,18 @@ namespace UltraCanvas {
         int CaptureCallStack(const CONTEXT& fault, DWORD64* frames, int capacity) {
             static CONTEXT context;   // static: 1.2 KB of stack the filter may not have
             context = fault;
+            // MinGW's NtCurrentTeb() reads %gs:0x30 through an inline-asm
+            // memory operand, which GCC's bounds check takes for a read of
+            // address 0x30 ("array subscript 0 is outside array bounds").
+            // Clang has a builtin for it and does not warn.
+#if defined(__GNUC__) && !defined(__clang__)
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
             const auto* tib = reinterpret_cast<const NT_TIB*>(NtCurrentTeb());
+#if defined(__GNUC__) && !defined(__clang__)
+    #pragma GCC diagnostic pop
+#endif
             const auto stackLow  = reinterpret_cast<DWORD64>(tib->StackLimit);
             const auto stackHigh = reinterpret_cast<DWORD64>(tib->StackBase);
 
@@ -949,6 +960,17 @@ namespace UltraCanvas {
         (void)std::freopen("CONIN$",  "r", stdin);
         std::setvbuf(stderr, nullptr, _IONBF, 0);
         return true;
+    }
+
+    bool ReleaseOwnConsole() {
+        // The log is written to this console when debugOutput is on, so a
+        // developer who asked for it keeps the window.
+        if (IsDebugOutputEnabled()) return false;
+        // One process attached: ours, so Windows made the console for us. A
+        // prompt that started us is attached as well; no console at all reads 0.
+        DWORD processes[2];
+        if (GetConsoleProcessList(processes, 2) != 1) return false;
+        return FreeConsole() != 0;
     }
 
     std::string GetWindowsVersionString() {

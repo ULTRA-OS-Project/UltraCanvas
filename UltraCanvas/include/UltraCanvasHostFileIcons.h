@@ -33,8 +33,8 @@
 // system image list, which is what Explorer itself draws from) and macOS
 // (NSWorkspace). Platforms with no desktop to ask — WebAssembly, Android —
 // report unavailable, and a caller then keeps its own drawn icons.
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+// Version: 1.2.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -57,13 +57,14 @@ namespace UltraCanvas {
     // not four thousand. Pure string work, no file access:
     //
     //   a directory                     → "dir"
-    //   a file carrying its own icon    → "file:<path>"  (.exe / .lnk / … —
-    //                                     those belong to the native module,
-    //                                     and are per file, not per type)
     //   a named file with no extension  → "name:<lowercased file name>"
     //                                     (the freedesktop database matches
     //                                     "makefile" and "README" by name)
     //   everything else                 → "ext:<lowercased extension>"
+    //
+    // A program, a shortcut or a bundle keys by its extension too: the icon
+    // it carries of its own is the native module's answer, not this one's,
+    // and what the host says for ".exe" is the same for every ".exe".
     std::string HostFileIconKey(const std::string& path, bool isDirectory);
 
     // The host's icon for `path`, rasterized at roughly `desiredSize` pixels.
@@ -85,5 +86,16 @@ namespace UltraCanvas {
     // package installs icons. The caller drops its own cached pixmaps; this
     // drops the lookups underneath them.
     void RefreshHostFileIcons();
+
+    // `pixmap` resampled so its longer edge is `desiredSize` pixels, when it
+    // is larger; returned as it is when it is not (never scaled up: a type
+    // whose icon only exists at 48 stays 48, and the caller scales it). What
+    // the backends hand back is held at the size it is drawn, because an
+    // icon source answers in its own sizes - the Windows shell's jumbo list
+    // is 256 a side whatever was asked, and an .ico's nearest frame may be
+    // larger than wanted - and a 256-pixel icon drawn in a 128-pixel tile
+    // held four times the memory it showed. Pure pixel work, no file access.
+    std::shared_ptr<UCPixmap> FitHostIconToSize(
+            const std::shared_ptr<UCPixmap>& pixmap, int desiredSize);
 
 } // namespace UltraCanvas

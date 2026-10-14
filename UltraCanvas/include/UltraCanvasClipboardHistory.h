@@ -16,9 +16,11 @@
 //   <data>/ultraos/clipboard/blobs/ab/….bin  one file per payload, named by a keyed hash, encrypted
 //   <data>/ultraos/clipboard/thumbs/….png    96 × 96 thumbnails of images
 //   <config>/ultraos/clipboard.key           the 256-bit key, owner-only, kept apart from the data
-// <data> is $XDG_DATA_HOME (~/.local/share), %LOCALAPPDATA% on Windows and
-// ~/Library/Application Support on macOS; <config> is the folder the
-// desktop's own settings use.
+// <data> is $XDG_DATA_HOME when it is set, on every platform (as for the
+// applications' data folders, UltraCanvasDataFolder.h), else ~/.local/share,
+// %LOCALAPPDATA% on Windows (a machine-local store, so not the applications'
+// roaming %APPDATA%) and ~/Library/Application Support on macOS; <config> is
+// the folder the desktop's own settings use.
 //
 // Titles, texts and payloads are encrypted with XChaCha20-Poly1305 when
 // UltraCrypt has libsodium. That protects a copy of the data folder and a
@@ -31,8 +33,8 @@
 // time, the holder of the recorder lease (AcquireRecorder).
 //
 // Not thread-safe: use one instance from one thread.
-// Version: 1.0.0
-// Last Modified: 2026-10-06
+// Version: 1.1.0 - ClipboardHistoryPolicy::previewStyle: how UltraClipboard previews an image
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -117,6 +119,12 @@ struct ClipboardHistoryQuery {
     bool newestFirst = false;
 };
 
+// How UltraClipboard previews an image whose thumbnail the pointer rests on.
+enum class ClipboardPreviewStyle : int {
+    Classic = 0,   // the picture alone, floating over the middle of the list
+    Modern = 1     // a pane over the right part of the list, with the viewer's info line
+};
+
 // Shared by every process that opens the history (kept in the database).
 struct ClipboardHistoryPolicy {
     int maxEntries = 500;                        // unpinned
@@ -125,6 +133,7 @@ struct ClipboardHistoryPolicy {
     uint64_t maxEntryBytes = 64ull << 20;
     bool recordingPaused = false;
     bool imageThumbnails = true;
+    ClipboardPreviewStyle previewStyle = ClipboardPreviewStyle::Modern;
     std::vector<std::string> excludedApplications;
 
     static ClipboardHistoryPolicy Defaults();

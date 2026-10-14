@@ -1,7 +1,9 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.7.1 - GetIconWidth / GetIconHeight
+// Version: 2.7.0 - onDoubleClick
 // Version: 2.6.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -232,6 +234,8 @@ namespace UltraCanvas {
         void SetIcon(std::shared_ptr<UCImage> image);
         void SetIconPosition(ButtonIconPosition position);
         void SetIconSize(int width, int height);
+        int GetIconWidth() const { return iconWidth; }
+        int GetIconHeight() const { return iconHeight; }
         void SetUseIconAsMask(bool useAsMask);
         void SetIconMaskColor(const Color& c);
         bool HasIcon() const { return icon != nullptr; }
@@ -266,6 +270,11 @@ namespace UltraCanvas {
         std::function<void()> onPress;      // When button is pressed down
         std::function<void()> onRelease;    // When button is released
         std::function<void(bool isPressed)> onToggle;      // When button is pressed down
+        // A left double-click. Set, it takes the double-click instead of the
+        // second press it otherwise counts as (the first click has already
+        // pressed, clicked or toggled the button): a list row that selects on
+        // a click and renames or opens on a double-click.
+        std::function<void()> onDoubleClick;
         std::function<void()> onSecondaryClick;  // For secondary section click
         // Right (secondary) mouse button pressed over the button; args are window-relative
         // coordinates, suitable for popping up a context menu there.

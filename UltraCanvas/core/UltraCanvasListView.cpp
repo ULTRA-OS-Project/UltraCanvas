@@ -1,7 +1,9 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Version: 1.3.0 - the hover follows the rows when they scroll under a still pointer
+// Version: 1.2.0 - model callbacks inert once the view is destroyed; OnModelChanged
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-11
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
@@ -275,6 +277,14 @@ namespace UltraCanvas {
             ScrollbarOrientation::Vertical);
 
         verticalScrollbar->onScrollChange = [this](int pos) {
+            if (pos != scrollOffsetY && pointerOver) {
+                // The rows moved under a still pointer: the hover - and
+                // whatever a host hangs on onCellHovered, such as a preview
+                // of the row's thumbnail - follows the row now under it.
+                scrollOffsetY = pos;
+                UpdateHover(lastPointer, lastPointerWindow, false);
+                hoverTooltipStale = true;
+            }
             scrollOffsetY = pos;
             RequestRedraw();
         };
@@ -946,6 +956,8 @@ namespace UltraCanvas {
             case UCEventType::MouseMove:
                 return HandleMouseMove(event);
             case UCEventType::MouseLeave:
+                pointerOver = false;
+                hoverTooltipStale = false;
                 if (onCellHovered) onCellHovered(-1, -1, Point2Di(-1, -1));
                 HideHoverTooltip();
                 pressedHeaderColumn = -1;
@@ -1016,31 +1028,40 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasListView::HandleMouseMove(const UCEvent& event) {
-        bool inside = Contains(event.pointer);
-        int newHovered = inside ? GetRowAtY(event.pointer.y) : -1;
+        lastPointer = event.pointer;
+        lastPointerWindow = event.pointerWindow;
+        pointerOver = Contains(event.pointer);
+        return UpdateHover(event.pointer, event.pointerWindow, true);
+    }
+
+    bool UltraCanvasListView::UpdateHover(const Point2Di& pointer, const Point2Di& pointerWindow, bool tooltip) {
+        bool inside = Contains(pointer);
+        int newHovered = inside ? GetRowAtY(pointer.y) : -1;
 
         int colX = 0;
-        int newColumn = (newHovered >= 0) ? GetColumnAt(event.pointer.x, &colX) : -1;
+        int newColumn = (newHovered >= 0) ? GetColumnAt(pointer.x, &colX) : -1;
         int newHeaderColumn = (inside && newHovered < 0)
-                                  ? GetHeaderColumnAt(event.pointer.x, event.pointer.y)
+                                  ? GetHeaderColumnAt(pointer.x, pointer.y)
                                   : -1;
 
         if (onCellHovered) {
             if (newHovered >= 0 && newColumn >= 0) {
                 auto rowRect = GetRowRect(newHovered);
-                onCellHovered(newHovered, newColumn, Point2Di(event.pointer.x - colX,
-                                                              event.pointer.y - rowRect.y));
+                onCellHovered(newHovered, newColumn, Point2Di(pointer.x - colX, pointer.y - rowRect.y));
             } else {
                 onCellHovered(-1, -1, Point2Di(-1, -1));
             }
         }
 
         // A tooltip belongs to one cell (or one header cell), so it is refreshed
-        // whenever the hovered cell changes -- not only on a row change.
-        if (newHovered != hoveredRow || newColumn != hoveredColumn ||
-            newHeaderColumn != hoveredHeaderColumn) {
-            UpdateHoverTooltip(event, newHovered, newColumn, newHeaderColumn);
+        // whenever the hovered cell changes -- not only on a row change. After
+        // a scroll under the pointer the cell changed without a move; the next
+        // move refreshes it wherever it lands.
+        if (tooltip && (hoverTooltipStale || newHovered != hoveredRow || newColumn != hoveredColumn ||
+                        newHeaderColumn != hoveredHeaderColumn)) {
+            UpdateHoverTooltip(pointerWindow, newHovered, newColumn, newHeaderColumn);
         }
+        if (tooltip) hoverTooltipStale = false;
         hoveredColumn = newColumn;
         hoveredHeaderColumn = newHeaderColumn;
 
@@ -1055,7 +1076,7 @@ namespace UltraCanvas {
 
     // ===== TOOLTIPS =====
 
-    void UltraCanvasListView::UpdateHoverTooltip(const UCEvent& event, int row, int column,
+    void UltraCanvasListView::UpdateHoverTooltip(const Point2Di& pointerWindow, int row, int column,
                                                  int headerColumn) {
         if (!showItemTooltips || !GetWindow()) return;
 
@@ -1070,8 +1091,7 @@ namespace UltraCanvas {
             HideHoverTooltip();
             return;
         }
-        UltraCanvasTooltipManager::UpdateAndShowTooltip(
-                GetWindow(), tip, Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tip, pointerWindow);
     }
 
     void UltraCanvasListView::HideHoverTooltip() {
@@ -1204,18 +1224,26 @@ namespace UltraCanvas {
 
     void UltraCanvasListView::ConnectModelSignals() {
         if (!model) return;
-        model->onDataChanged = [this]() {
+        // Each callback first asks whether the view still exists (see
+        // signalToken): the model, or a proxy's copy, may call it later.
+        std::weak_ptr<char> alive = signalToken;
+        model->onDataChanged = [this, alive]() {
+            if (alive.expired()) return;
             InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
+            OnModelChanged();
         };
-        model->onRowChanged = [this](int /*row*/) {
+        model->onRowChanged = [this, alive](int /*row*/) {
+            if (alive.expired()) return;
             // A row's content may change its variable height.
             InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
+            OnModelChanged();
         };
-        model->onRowInserted = [this](int row) {
+        model->onRowInserted = [this, alive](int row) {
+            if (alive.expired()) return;
             // The rows from `row` on moved down one: the selection, the
             // keyboard focus and the hover stay on the items they were on.
             if (selection) selection->ShiftRows(row, 1);
@@ -1224,8 +1252,10 @@ namespace UltraCanvas {
             InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
+            OnModelChanged();
         };
-        model->onRowRemoved = [this](int row) {
+        model->onRowRemoved = [this, alive](int row) {
+            if (alive.expired()) return;
             // The removed row leaves the selection (notified); the rows below
             // it moved up one, and the selection moves with them.
             if (selection) selection->ShiftRows(row, -1);
@@ -1236,6 +1266,7 @@ namespace UltraCanvas {
             InvalidateRowGeometry();
             UpdateScrollbar();
             RequestRedraw();
+            OnModelChanged();
         };
     }
 

@@ -1,7 +1,7 @@
 # Getting started: building an application with UltraCanvas and an AI assistant
 
-**Version:** 1.0.2
-**Last Modified:** 2026-10-09
+**Version:** 1.0.3
+**Last Modified:** 2026-10-10
 **Author:** UltraCanvas Framework
 
 This page is the step list for a programmer who has never built on UltraCanvas
@@ -13,16 +13,16 @@ and the hooks), but every step names what to do with another assistant too.
 **Choose your platform as you read.** Every step that differs by operating
 system offers one collapsed section per OS: Linux, macOS and Windows. Open the
 one you work on; open another to see what a colleague on that platform does.
-UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), presents
-the same choice on its first page, preselected to the machine it runs on, and
-then checks and installs the packages below, downloads the matching SDK,
-writes the project skeleton of step 3 and prepares the first prompt for the
-assistant. `UltraCanvasStart --check` does the checking in a terminal.
+UltraCanvasStart, the setup application (`Apps/UltraCanvasStart`), offers
+the same choice under its first step, preselected to the machine it runs on,
+and then walks through the rest: it checks and installs the packages below,
+downloads the matching SDK, writes the project skeleton of step 3 and
+prepares the first prompt for the assistant. `UltraCanvasStart --check` does the checking in a terminal.
 
 **On a computer with nothing yet, start with UltraCanvasStart.** Every
 release of the framework carries it on its own, built for each platform:
 `UltraCanvasStart-<OS>-<version>-<arch>` under
-`https://github.com/ULTRA-OS-Project/UltraCanvas/releases` (a `.tar.gz` on
+`https://github.com/ULTRA-OS-Project/UltraCanvas/releases` (a `.tar.xz` on
 Linux, a `.zip` on Windows, a signed `.dmg` on macOS). Unpack it, start it,
 and it does steps 1 to 3 below; the steps stay here for reading what it does
 and for doing it by hand.
@@ -172,8 +172,10 @@ turns them into bundles in step 10, with the core in the suite's shared
 
 Run the two commands in the MSYS2 CLANG64 shell with `-G Ninja`, and start
 `./build/bin/UltraCanvasDemo.exe`. `build-win.cmd` is the same for a plain
-command prompt with the MSYS2 `bin` directory on `PATH`. The executables are
-GUI-subsystem programs, so they print nothing to a console;
+command prompt with the MSYS2 `bin` directory on `PATH`. In a Release build
+the executables are GUI-subsystem programs, so they print nothing to a console
+(the few with command-line modes, such as DeviceExplorer, stay console
+programs and close the console a double-click opens for them);
 `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` explains how to see what a
 build that will not start is doing, and `scripts/uc-diagnose.ps1` collects it.
 
@@ -373,8 +375,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return main(__argc, __arg
 The `#ifdef` blocks are the whole of what differs per platform in an
 application's entry point: Linux needs X11 threading and the signal handlers,
 Windows needs `WinMain` because the executables are GUI-subsystem programs,
-and macOS needs neither. On Windows also mark the target `WIN32_EXECUTABLE TRUE`
-so no console opens beside the window, and embed the icon in the `.exe` with
+and macOS needs neither. On Windows also call `ultracanvas_windows_gui_app(MyApp)`
+(`cmake/UltraCanvasWindowsGuiApp.cmake`), which makes a Release build a
+GUI-subsystem program, so no console opens beside the window, and still lets
+`--help` print into the prompt it was typed at (for an app in this repository,
+add it to the list under *Hide console window on Windows Release builds* in the
+root `CMakeLists.txt`; an app whose command-line modes print into the prompt
+stays off that list), and embed the icon in the `.exe` with
 `ultracanvas_embed_app_icon(MyApp media/appicon/MyApp.png)`, which is what
 Explorer and the taskbar read.
 
@@ -594,12 +601,24 @@ it, and without the entitlement the device is refused.
 
 `./package-win.sh`, run from the CLANG64 or CLANGARM64 shell after the build,
 collects every application with the DLLs it needs into one standalone zip.
+`--installer` also builds `UltraCanvas-Setup-Windows-<version>-<arch>.exe`
+from the same folder (`Windows/Installer/UltraCanvasSetup.nsi`, through
+`scripts/build-windows-installer.sh`; `pacman -S nsis` first). It installs for
+the current account without administrator rights, into
+`%LOCALAPPDATA%\Programs\UltraCanvas`. Every GUI program gets a Start-menu
+entry, and the suite gets an *Apps & features* entry. The finish page offers
+UltraDesktop as the Windows desktop. The uninstaller gives the Windows desktop
+back first, then removes exactly the files it installed.
 `--no-sign` skips Authenticode signing when no certificate is present;
 `SignUltraDemo.ps1` and `SignUltraTexter.ps1` are the signing scripts the
-release uses. The version in the `.exe` resource and the manifest comes from
+release uses. They read the certificate's password from
+`ULTRACANVAS_SIGN_PFX_PASSWORD` - set it in the shell, or as a secret on a
+build machine - and stop, saying so, when it is not set. The `.pfx` they
+export next to themselves is ignored by git: it holds the private key. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
 copy, because `windres` reads them from disk: run `./set-version.sh` after
-bumping the version, and the CMake configure warns when they are stale.
+bumping the version; the CMake configure warns when they are stale and
+`scripts/check_changelog.py` fails CI on it.
 
 </details>
 

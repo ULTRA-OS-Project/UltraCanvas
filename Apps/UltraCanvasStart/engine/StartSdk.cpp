@@ -37,8 +37,12 @@ std::string SdkArtifactName(Platform platform, const std::string& version,
 
 std::string SdkArchiveName(Platform platform, const std::string& version,
                            const std::string& architecture) {
-    return SdkArtifactName(platform, version, architecture) +
-           (platform == Platform::Windows ? ".zip" : ".tar.gz");
+    // The extension the workflow's "Pack the SDK" step gives each platform.
+    switch (platform) {
+        case Platform::Windows: return SdkArtifactName(platform, version, architecture) + ".zip";
+        case Platform::Linux:   return SdkArtifactName(platform, version, architecture) + ".tar.xz";
+        default:                return SdkArtifactName(platform, version, architecture) + ".tar.gz";
+    }
 }
 
 std::string SdkDownloadPage() {
@@ -97,8 +101,9 @@ PlanStep UnpackStep(const std::string& archive, const std::string& destination) 
     step.kind = StepKind::Unpack;
     step.title = "Unpack the SDK";
     step.description = "Unpacks " + archive + " into " + destination;
-    // GNU tar on Linux and bsdtar on macOS and Windows 10+ all read a .tar.gz;
-    // bsdtar reads a .zip as well, and Windows ships it as tar.exe.
+    // GNU tar on Linux and bsdtar on macOS and Windows 10+ read a .tar.gz
+    // and a .tar.xz by their contents (-xf, no compression flag); bsdtar
+    // reads a .zip as well, and Windows ships it as tar.exe.
     step.argv = { "tar", "-xf", archive, "-C", destination };
     return step;
 }

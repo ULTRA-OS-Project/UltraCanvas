@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" viewBox="0 0 1000 888" role="img" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<title>UltraCanvasListView: model, delegate and selection, wired through the view</title>
+<desc>UltraCanvasListView is built from three pieces: a model supplies the data, a delegate decides how a single row is drawn, and a selection object defines what the user can select. Every call goes through the view. The view calls the model for GetRowCount and receives onRowInserted, onRowRemoved and onDataChanged back. For each visible row it calls the delegate's RenderItem, and GetRowHeight when rows have variable heights. It calls the selection for IsSelected while painting, Select and SelectRange on clicks and keys, and ShiftRows when rows are inserted or removed, and receives onSelectionChanged back. The delegate draws into the render context and reads cell data from the model through the pointer RenderItem passes in. None of the three pieces holds a reference to another, so swapping one leaves the other two untouched: a ListSortFilterProxy makes the list sortable and filterable, a custom delegate such as MessageColorDelegate changes how rows look, and MultiSelection (or no selection at all) changes what can be selected.</desc>
+<defs>
+<marker id="mk-call" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#3B4654"/></marker>
+<marker id="mk-model" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#0A7670"/></marker>
+<marker id="mk-select" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#4F44B5"/></marker>
+<marker id="mk-delegate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#B3530C"/></marker>
+<style>
+.bg{fill:#F5F7F9}
+.title{font-size:17px;font-weight:600;fill:#18212C}
+.name{font-size:15px;font-weight:600;fill:#18212C}
+.sub{font-size:12px;fill:#586473}
+.code{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace;font-size:11.5px;fill:#18212C}
+.when{font-size:11px;font-style:italic;fill:#586473}
+.legend{font-size:12px;fill:#586473}
+.body{font-size:12px;fill:#18212C}
+.slot-label{font-size:10.5px;font-weight:600;letter-spacing:0.06em}
+.n-ext{fill:#FFFFFF;stroke:#CDD4DD;stroke-width:1.25}
+.n-view{fill:#E7EBF1;stroke:#18212C;stroke-width:1.75}
+.n-model{fill:#E1F2F0;stroke:#0A7670;stroke-width:1.5}
+.n-delegate{fill:#FBEADB;stroke:#B3530C;stroke-width:1.5}
+.n-select{fill:#EBE9FB;stroke:#4F44B5;stroke-width:1.5}
+.panel{fill:#FFFFFF;stroke:#CDD4DD;stroke-width:1}
+.same{fill:none;stroke:#C2CAD5;stroke-width:1;stroke-dasharray:4 3}
+.e{fill:none;stroke-width:1.5}
+.e-call{stroke:#3B4654}
+.e-draw{stroke:#B3530C}
+.e-model{stroke:#0A7670;stroke-dasharray:6 4}
+.e-select{stroke:#4F44B5;stroke-dasharray:6 4}
+.e-read{stroke:#B3530C;stroke-dasharray:2 4;stroke-linecap:round}
+.rule{stroke:#CDD4DD;stroke-width:1}
+.c-model{fill:#0A7670}
+.c-delegate{fill:#B3530C}
+.c-select{fill:#4F44B5}
+.c-muted{fill:#586473}
+</style>
+</defs>
+
+<rect class="bg" x="0" y="0" width="1000" height="888" rx="12"/>
+
+<!-- Header -->
+<text class="title" x="24" y="36">UltraCanvasListView: three pieces, wired through the view</text>
+<text class="sub" x="976" y="36" text-anchor="end">none of the three pieces holds a reference to another</text>
+
+<g transform="translate(0,56)">
+<!-- Legend -->
+<line class="e e-call" x1="24" y1="48" x2="70" y2="48" marker-end="url(#mk-call)"/>
+<text class="legend" x="82" y="52">the view calls a piece</text>
+<line class="e e-model" x1="24" y1="74" x2="70" y2="74" marker-end="url(#mk-model)"/>
+<text class="legend" x="82" y="78">a piece signals the view (callback)</text>
+<line class="e e-read" x1="24" y1="100" x2="70" y2="100" marker-end="url(#mk-delegate)"/>
+<text class="legend" x="82" y="104">the delegate reads the model</text>
+
+<!-- Input -->
+<rect class="n-ext" x="400" y="36" width="200" height="64" rx="8"/>
+<text class="name" x="500" y="63" text-anchor="middle">Mouse &amp; keyboard</text>
+<text class="sub" x="500" y="84" text-anchor="middle">click · Ctrl/Shift-click · ↑ ↓</text>
+<line class="e e-call" x1="500" y1="100" x2="500" y2="194" marker-end="url(#mk-call)"/>
+<text class="code" x="510" y="146">OnEvent(event)</text>
+
+<!-- Render context -->
+<rect class="n-ext" x="790" y="36" width="190" height="64" rx="8"/>
+<text class="name" x="885" y="63" text-anchor="middle">IRenderContext</text>
+<text class="sub" x="885" y="84" text-anchor="middle">the pixels</text>
+<line class="e e-draw" x1="885" y1="196" x2="885" y2="102" marker-end="url(#mk-delegate)"/>
+<text class="sub" x="875" y="146" text-anchor="end">draws icon + text</text>
+
+<!-- View (hub) -->
+<rect class="n-view" x="400" y="196" width="200" height="104" rx="10"/>
+<text class="name" x="500" y="230" text-anchor="middle">UltraCanvasListView</text>
+<text class="sub" x="500" y="254" text-anchor="middle">layout · scrolling · input</text>
+<text class="sub" x="500" y="272" text-anchor="middle">sees all three pieces</text>
+
+<!-- Model -->
+<rect class="n-model" x="20" y="196" width="190" height="104" rx="10"/>
+<text class="name" x="115" y="230" text-anchor="middle">IListModel</text>
+<text class="sub" x="115" y="254" text-anchor="middle">supplies the data</text>
+<text class="sub" x="115" y="272" text-anchor="middle">rows · columns · roles</text>
+
+<!-- Delegate -->
+<rect class="n-delegate" x="790" y="196" width="190" height="104" rx="10"/>
+<text class="name" x="885" y="230" text-anchor="middle">IItemDelegate</text>
+<text class="sub" x="885" y="254" text-anchor="middle">draws one row</text>
+<text class="sub" x="885" y="272" text-anchor="middle">(one cell per column)</text>
+
+<!-- Selection -->
+<rect class="n-select" x="400" y="404" width="200" height="84" rx="10"/>
+<text class="name" x="500" y="438" text-anchor="middle">IListSelection</text>
+<text class="sub" x="500" y="462" text-anchor="middle">what the user can select</text>
+
+<!-- View <-> Model -->
+<line class="e e-call" x1="400" y1="224" x2="212" y2="224" marker-end="url(#mk-call)"/>
+<text class="code" x="305" y="214" text-anchor="middle">GetRowCount()</text>
+<line class="e e-model" x1="210" y1="272" x2="398" y2="272" marker-end="url(#mk-model)"/>
+<text class="code" x="305" y="290" text-anchor="middle">onRowInserted/Removed</text>
+<text class="code" x="305" y="305" text-anchor="middle">onDataChanged</text>
+
+<!-- View -> Delegate -->
+<text class="when" x="695" y="198" text-anchor="middle">each visible row</text>
+<line class="e e-call" x1="600" y1="224" x2="788" y2="224" marker-end="url(#mk-call)"/>
+<text class="code" x="695" y="214" text-anchor="middle">RenderItem(row, opt)</text>
+<line class="e e-call" x1="600" y1="272" x2="788" y2="272" marker-end="url(#mk-call)"/>
+<text class="code" x="695" y="290" text-anchor="middle">GetRowHeight(row)</text>
+<text class="when" x="695" y="305" text-anchor="middle">variable heights only</text>
+
+<!-- View <-> Selection -->
+<line class="e e-call" x1="470" y1="300" x2="470" y2="402" marker-end="url(#mk-call)"/>
+<text class="when" x="296" y="334" text-anchor="end">while painting</text>
+<text class="code" x="460" y="334" text-anchor="end">IsSelected(row)</text>
+<text class="when" x="296" y="356" text-anchor="end">on click / keys</text>
+<text class="code" x="460" y="356" text-anchor="end">Select · SelectRange</text>
+<text class="when" x="296" y="378" text-anchor="end">rows inserted / removed</text>
+<text class="code" x="460" y="378" text-anchor="end">ShiftRows(row, ±1)</text>
+<line class="e e-select" x1="530" y1="404" x2="530" y2="302" marker-end="url(#mk-select)"/>
+<text class="code" x="540" y="356">onSelectionChanged</text>
+
+<!-- Delegate -> Model read, routed under everything -->
+<path class="e e-read" d="M885 300 V528 H115 V304" marker-end="url(#mk-delegate)"/>
+<text class="code" x="372" y="518" text-anchor="end">GetData(row, role)</text>
+<text class="sub" x="380" y="518">read-only, through the model pointer that RenderItem passes in</text>
+</g>
+
+<!-- Swap one piece -->
+<line class="rule" x1="24" y1="616" x2="976" y2="616"/>
+<text class="name" x="24" y="648">Swap one piece, keep the other two</text>
+<text class="sub" x="976" y="648" text-anchor="end">lists that already exist in this repository</text>
+
+<!-- Panel 1: model -->
+<rect class="panel" x="24" y="664" width="302" height="200" rx="10"/>
+<text class="name" x="40" y="690">Swap the model</text>
+<rect class="n-model" x="40" y="704" width="270" height="24" rx="6"/>
+<text class="slot-label c-model" x="50" y="720">MODEL</text>
+<text class="code" x="134" y="720">ListSortFilterProxy</text>
+<rect class="same" x="40" y="734" width="270" height="24" rx="6"/>
+<text class="slot-label c-muted" x="50" y="750">DELEGATE</text>
+<text class="sub" x="134" y="750">unchanged</text>
+<rect class="same" x="40" y="764" width="270" height="24" rx="6"/>
+<text class="slot-label c-muted" x="50" y="780">SELECTION</text>
+<text class="sub" x="134" y="780">unchanged</text>
+<text class="body" x="40" y="812">Wraps the old model; the list becomes</text>
+<text class="body" x="40" y="830">sortable from the header and filterable.</text>
+<text class="when" x="40" y="850">UltraNetMonitor · UltraFIBU · DemoApp ListView</text>
+
+<!-- Panel 2: delegate -->
+<rect class="panel" x="349" y="664" width="302" height="200" rx="10"/>
+<text class="name" x="365" y="690">Swap the delegate</text>
+<rect class="same" x="365" y="704" width="270" height="24" rx="6"/>
+<text class="slot-label c-muted" x="375" y="720">MODEL</text>
+<text class="sub" x="459" y="720">unchanged</text>
+<rect class="n-delegate" x="365" y="734" width="270" height="24" rx="6"/>
+<text class="slot-label c-delegate" x="375" y="750">DELEGATE</text>
+<text class="code" x="459" y="750">MessageColorDelegate</text>
+<rect class="same" x="365" y="764" width="270" height="24" rx="6"/>
+<text class="slot-label c-muted" x="375" y="780">SELECTION</text>
+<text class="sub" x="459" y="780">unchanged</text>
+<text class="body" x="365" y="812">The same rows, drawn in read or unread</text>
+<text class="body" x="365" y="830">colours with a sender badge.</text>
+<text class="when" x="365" y="850">UltraMail inbox · DemoApp Dependencies</text>
+
+<!-- Panel 3: selection -->
+<rect class="panel" x="674" y="664" width="302" height="200" rx="10"/>
+<text class="name" x="690" y="690">Swap the selection</text>
+<rect class="same" x="690" y="704" width="270" height="24" rx="6"/>
+<text class="slot-label c-muted" x="700" y="720">MODEL</text>
+<text class="sub" x="784" y="720">unchanged</text>
+<rect class="same" x="690" y="734" width="270" height="24" rx="6"/>
+<text class="slot-label c-muted" x="700" y="750">DELEGATE</text>
+<text class="sub" x="784" y="750">unchanged</text>
+<rect class="n-select" x="690" y="764" width="270" height="24" rx="6"/>
+<text class="slot-label c-select" x="700" y="780">SELECTION</text>
+<text class="code" x="784" y="780">MultiSelection</text>
+<text class="body" x="690" y="812">Ctrl toggles rows, Shift selects a range.</text>
+<text class="body" x="690" y="830">With nullptr, rows cannot be selected.</text>
+<text class="when" x="690" y="850">DemoApp ListView · DemoApp Dependencies</text>
+</svg>

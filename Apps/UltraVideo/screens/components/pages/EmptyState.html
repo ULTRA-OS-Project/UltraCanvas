@@ -1,0 +1,18 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 1100x250. --><title>Empty state — preview</title>
+<style>html,body{margin:0;background:var(--bg-100)} .g{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--bg-000)} .g>div{background:var(--bg-100)}</style></head>
+<body class="uv">
+<div class="g" id="g"></div>
+<script>
+  var I = UltraVideo.icon;
+  function empty(drop) {
+    return '<div class="uv-empty' + (drop ? ' is-drop' : '') + '" style="height:226px">' + I(drop ? 'upload' : 'film', 'uv-empty__icon') +
+      '<h2 class="uv-empty__title">' + (drop ? 'Release to add 3 files' : 'Drop clips here to start') + '</h2>' +
+      '<div>' + (drop ? 'They are placed in order on the main track.' : 'Or drag from the media bin. Videos, photos and songs go in the order you drop them.') + '</div>' +
+      (drop ? '' : '<div class="uv-row" style="margin-top:8px"><button class="uv-btn uv-btn--primary">' + I('plus') + 'Import media</button><button class="uv-btn">' + I('music') + 'Add music</button></div>') + '</div>';
+  }
+  document.getElementById('g').innerHTML = '<div>' + empty(false) + '</div><div>' + empty(true) + '</div>';
+</script>
+</body>
+</html>

@@ -3,8 +3,9 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
-// Version: 1.1.0
-// Last Modified: 2026-09-30
+// Version: 1.3.0 - the Windows backend; ListNativeApplications;
+//                  in place of the system's desktop
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASDESKTOPSHELLBACKEND_H
@@ -16,7 +17,7 @@
 // compiled into the build. Everything else links the fallback in
 // core/UltraCanvasDesktopShell.cpp, which answers empty and says so.
 #if (defined(__linux__) && !defined(__ANDROID__)) || defined(__FreeBSD__) || \
-    defined(__OpenBSD__) || defined(__NetBSD__)
+    defined(__OpenBSD__) || defined(__NetBSD__) || defined(_WIN32)
     #define ULTRACANVAS_DESKTOPSHELL_NATIVE 1
 #endif
 
@@ -44,6 +45,20 @@ namespace DesktopShellBackend {
     bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom);
     bool CaptureScreen(const std::string& pngPath, std::string& error);
     bool CaptureScreenImage(DesktopScreenImage& out, std::string& error);
+
+    // The installed applications, where the platform keeps them somewhere
+    // other than freedesktop desktop entries: the Start menu's shortcuts on
+    // Windows. False where desktop entries are the answer, and the core then
+    // reads them itself; true with `out` filled (unsorted) otherwise.
+    bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out);
+
+    // In place of the system's desktop (UltraCanvasDesktopShell.h). The core
+    // has checked that `program` is an existing absolute path.
+    bool CanReplaceSystemDesktop();
+    bool IsSystemDesktopReplaced();
+    bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::string>& arguments,
+                              std::string& error);
+    bool RestoreSystemDesktop(std::string& error);
 
     // The parts of the device activity only the platform can read: audio
     // and video capture in use, playback running, the battery, the keyboard

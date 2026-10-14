@@ -1,6 +1,7 @@
 // Apps/UltraFiler/UltraFilerConnectionLogWindow.h
-// The connection log window, opened from the log button at the right of the
-// status bar: what the remote drives did in this session, in two tabs.
+// The connection log window, opened from the round network button in the
+// bottom-left corner of a folder display on an FTP drive: what the remote
+// drives did in this session, in two tabs.
 //
 //   Errors       the failed connections as a Markdown report, newest first -
 //                the message, the error class, the codes (the server's last
@@ -17,8 +18,8 @@
 //
 // The window keeps a copy of what it shows rather than a pointer into the
 // log, so it never outlives what it reads.
-// Version: 1.0.0
-// Last Modified: 2026-10-04
+// Version: 1.0.1
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -37,6 +38,8 @@
 
 namespace UltraCanvas {
 
+enum class FilerTabStripStyle;   // UltraFilerSettings.h
+
 class UltraFilerConnectionLogWindow : public UltraCanvasWindow {
 public:
     enum Tab { ErrorsTab = 0, MessageLogTab = 1 };
@@ -49,6 +52,11 @@ public:
     void Update(const std::vector<RemoteLogSession>& sessions);
 
     void ShowTab(Tab tab);
+
+    // Settings > Display > Tab style: the two tabs follow the main window's
+    // strip. The owner calls it when the window opens and when the setting
+    // changes.
+    void SetTabStripStyle(FilerTabStripStyle style);
 
     // Clear was pressed: the owner empties the log and calls Update again.
     std::function<void()> onClear;

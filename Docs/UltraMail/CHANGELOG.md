@@ -1,3 +1,172 @@
+#### 2026-10-13 *0.10.52*
+- **The data folder is `~/Library/Application Support/UltraMail` on macOS.**
+  macOS was treated like Linux, so the mailbox database, the credential vault
+  and the preferences went to `~/.local/share/UltraMail` - while UltraSocial
+  and the desktop's clipboard history already kept theirs in Application
+  Support, the place the platform means for them. The rule is now the
+  framework's one rule (`UltraCanvasDataFolder.h`, shared with UltraPassword,
+  UltraAuthenticator, UltraSocial and EmailCleaner), which
+  `engine/UltraMailPaths.h` applies: `%APPDATA%\UltraMail` on Windows,
+  Application Support on macOS, `$XDG_DATA_HOME` or `~/.local/share`
+  elsewhere, and `$XDG_DATA_HOME` wins everywhere when it is set. On the first
+  start a folder an earlier version left in `~/.local/share` on macOS is moved
+  into place whole, vault included, so the accounts, the mail and the saved
+  passwords open as before; the move is noted in the timing trace. Linux and
+  Windows installations are untouched.
+
+#### 2026-10-12 *0.10.51*
+- **One UltraMail at a time.** Starting UltraMail while it is already
+  running no longer opens a second copy - two copies on the one mailbox
+  synced the same accounts twice, wrote the database from two processes and
+  could send the outbox twice. The second start brings the running window
+  forward (restored if it was minimised; an open dialog comes forward with
+  it) and quits. A copy that is still starting is waited for for up to ten
+  seconds; one that does not answer at all is reported with *"UltraMail is
+  already running"* instead of a silent exit. Decided by the framework's new
+  single-instance helper (`UltraCanvasSingleInstance`) and its lock on
+  `instance.lock` in the data folder (framework changelog: `instance-lock`),
+  which the system releases when UltraMail ends - a crash
+  never stops the next start. The request to come forward travels over
+  UltraMessage (`org.ultraos.ultramail.show`); the timing trace says which
+  way a start went.
+
+#### 2026-10-11 *0.10.50*
+- **An attachment's menu no longer covers the chip.** At the foot of the
+  window a click on an attachment chip opens its Open / Save As menu above
+  the chip. The chip worked out where from a menu height of two rows, which
+  left out the menu's panel padding and border, so the menu came down over
+  the top of the chip - where the second click of a double-click landed on
+  *Open*. The chip now hands its bounds to the framework's new
+  `OpenMenuAnchored` (framework changelog: `menu-anchors-symbolic-icons`),
+  which measures the menu and ends it just above the chip; the preview's
+  More menu opens the same way. The menus' line icons also follow the theme
+  now: painted in the entry's text colour, light on a dark menu.
+
+#### 2026-10-11 *0.10.49*
+- **Privacy by default.** The two sender-icon downloads (*Settings → Privacy →
+  Sender icons*: the icons of known services, the website icons of other
+  senders) are **off** on a fresh install, and *Restore default* turns them
+  off. Each download tells a third party's web server the reader's IP
+  address; a new installation now contacts nobody but the reader's own mail
+  server until the reader decides otherwise. An existing `preferences.ini`
+  keeps whatever it says.
+- **The autoconfig lookup sends the domain only.** Adding an account at a
+  domain outside the preset table asked `autoconfig.<domain>` and
+  `<domain>/.well-known/autoconfig/` with `?emailaddress=<the full address>`,
+  as Thunderbird does. The address is not needed - a per-user value in the
+  published settings is a `%EMAILADDRESS%` placeholder UltraMail fills in on
+  the machine - so it is no longer sent. The Thunderbird database always
+  received the domain only.
+- The privacy declaration for UltraMail (English and German) lives in
+  `Docs/Legal/Privacy/`; `Docs/UltraMail/AccountSetup.md`,
+  `SenderBadges.md` and `Concept.md` (open question 4, resolved) describe the
+  two data flows.
+
+#### 2026-10-10 *0.10.48*
+- **Attachment chips show the paperclip.** The chips under a message showed a
+  type emoji (a page for a PDF, a picture for an image), which a font without
+  colour emoji - the usual case on Linux and Windows - drew as a box of
+  lines. They now show the paperclip the message list marks mail with
+  attachments with.
+- **One click on an attachment opens its menu.** A click on a chip opens
+  *Open* and *Save As…* under it - above it, at the foot of the window -
+  and a second click closes the menu again. A double-click still opens the
+  attachment straight away, and a right-click opens the same menu at the
+  pointer.
+- **HTML mail keeps the spacing its sender gave it.** Receipts and invoices
+  from Stripe (Anthropic's, among many others) lost every gap they make with
+  spacer cells - above the header, inside the cards, between the rows - and
+  their amount touched the line above it, so the text looked too large for
+  the mail. The sizes were right; the space around them was missing. The
+  mail is now laid out as a browser lays it out. Framework change - see
+  `Docs/UltraCanvas/changelog.d/html-mail-spacer-cells.md`.
+
+#### 2026-10-09 *0.10.47*
+- **Add and delete folders from the folder tree.** A right-click on a row of
+  the tree offers *Add folder…* and *Delete folder…*.
+  - *Add folder…* asks for the name. On a folder, the new one goes inside
+    it. On the account row or its inbox, it goes at the top of the account,
+    or below `INBOX` on a server that keeps every folder there
+    (Courier-style `INBOX.Drafts`). Any letter can be used: the name goes to
+    the server in IMAP's modified UTF-7, so "Bücher" arrives as
+    `B&APw-cher`. A name holding the server's separator, `*`, `%` or a
+    control character, or one a folder there already has, is refused with
+    the reason, and the box opens again with what was typed. The new folder
+    is in the tree as soon as the server has made it.
+  - *Delete folder…* asks first ("…and all the mail in it from the server?
+    This cannot be undone."), then deletes the folder on the server and
+    drops it here with its mail and downloaded bodies. It is greyed, with
+    the reason as its tooltip, for the inbox, a folder with a role (Sent,
+    Drafts, Trash, Junk, Archive) and a folder with folders inside it. If
+    the folder was on screen, the inbox is shown instead.
+  - `SyncEngine::CreateFolder` / `DeleteFolder`, and `NewFolderName` /
+    `CanDeleteFolder` in `UltraMailFolderNames`. They run on IMAP `CREATE` /
+    `DELETE` from the IMAP plug-in (framework changelog, "Mailbox plug-ins
+    can make and delete folders").
+- **Settings > Display > Treeview: the current account, or all.** *Show
+  current email account* lists only the account chosen in the account bar,
+  and a click on another tile shows that one's folders. *Show all email
+  accounts*, the default, lists every account, one below the other, as
+  before (`folder_tree_content` in `preferences.ini`).
+- **Drag the account tiles into another order.** With several accounts, a
+  tile of the account bar dragged sideways moves past the others, as a
+  toolbar button does. The tiles are now the items of an `UltraCanvasToolbar`
+  with item reordering on. The order is kept (`account_order` in
+  `preferences.ini`), and the folder tree lists the accounts in it. An
+  account added later comes after the others. A click still selects the
+  account, and a drag never starts before the pointer has moved 6 px.
+- Tests: `test_foldernames.cpp`, `test_syncengine.cpp`, `test_preferences.cpp`,
+  `AccountBarClickTest.cpp` (a tile dragged past the next one), and the new
+  `FolderTreeTest.cpp` (the menu's entries, and the tree with the current
+  account only), which runs under Xvfb like the account bar's.
+
+#### 2026-10-09 *0.10.46*
+- **Settings > Warnings > Trusted & blocked shows every entry.** A list
+  with more addresses than one row holds hid the rest: the field wrapped
+  them onto a second row but stayed one row tall, so the third blocked
+  address could not be seen or removed. The field grows to fit now - a fix
+  in the framework's tag field (`UltraCanvasTagInput`), which also shows
+  every trusted website and sender on *Privacy > Images*.
+- **A settings page taller than the window scrolls.** With the lists
+  growing, a long list of trusted websites and senders pushed the notes off
+  the foot of *Privacy > Images* with no way to reach them. Every page now
+  shows a vertical scrollbar when it needs one, as UltraFiler's long pages
+  do; a page that fits looks as before.
+- **The page's name fits the settings tree.** "Trusted and blocked senders"
+  was cut off to "Trusted and blocked se..."; the tree says *Trusted &
+  blocked*, and the page keeps its full title.
+
+#### 2026-10-09 *0.10.45*
+- **Yahoo accounts can sign in with an app password again.** The browser
+  sign-in only works once Yahoo grants UltraMail's OAuth client Mail access,
+  which Yahoo now does per app through a commercial application, not in the
+  developer console. Until then Yahoo users had no way in, because the
+  password field was hidden for Yahoo. It is back. The wizard asks for an app
+  password first (Account security > Generate app password), and the browser
+  sign-in stays available by leaving it empty. The server settings page has
+  the password field for Yahoo too (`ProviderAcceptsPassword`). Test:
+  `test_oauth.cpp`.
+- **A password typed on the server settings page replaces a browser
+  sign-in.** The account kept using its stored OAuth tokens, which take
+  precedence over a password, so switching an account from the browser
+  sign-in to an app password had no effect. Saving a new password now removes
+  the tokens.
+- **Yahoo sign-in checked against Thunderbird's.** Thunderbird signs in to
+  Yahoo with the same endpoints, PKCE (S256) and IMAP/SMTP servers as
+  UltraMail, but redirects to `https://127.0.0.1` instead of using the
+  out-of-band code page. UltraMail now handles that kind of redirect too: a
+  Yahoo client registered with an https redirect (`redirect_uri` in
+  `oauth_clients.ini`) takes the paste-back sign-in rather than the loopback
+  listener, which only speaks plain HTTP. The code dialog accepts either the
+  code or the whole address the browser landed on, and takes the `code`
+  parameter from it (`ExtractOAuthCode`, `OAuthUsesPastedCode`).
+- **More Yahoo addresses are recognised.** `rocketmail.com`, `myyahoo.com`
+  and Yahoo's country domains (`yahoo.co.uk`, `yahoo.fr`, `yahoo.it`,
+  `yahoo.es`, `yahoo.ca`, `yahoo.com.au`, `yahoo.co.in`, `yahoo.com.br`,
+  `yahoo.com.mx`) now get the Yahoo servers and the browser sign-in. Before,
+  only `yahoo.com`, `yahoo.de` and `ymail.com` did. Tests: `test_oauth.cpp`,
+  `test_discovery.cpp`.
+
 #### 2026-10-09 *0.10.44*
 - **The Date column is as wide as its dates.** It was a fixed 88 px, about
   twice what "Oct 07" needs. It is now the widest date in the list - in

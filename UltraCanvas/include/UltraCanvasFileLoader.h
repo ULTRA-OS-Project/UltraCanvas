@@ -2,17 +2,26 @@
 // Facade for native file selection dialogs and typed file loaders (e.g. images).
 // Owns FileDialogOptions/FileLoadResult and delegates raw dialog calls to
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
-// Version: 1.1.0
-// Last Modified: 2026-09-26
+// Save settings (SAVE SETTINGS below): what each format's writer can be
+// told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.5.0 - AddLoadTypes / AddSaveTypes (the inventory as a dialog's file types),
+//                  AddTextDocumentLoadTypes, SaveTextDocument, AddTextDocumentSaveTypes
+// Version: 1.4.0 - SaveVectorDocument writes bitmap types (the page drawn at a size),
+//                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
+//                  AddImageSaveTypes
+// Version: 1.3.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasModalDialog.h"   // FileFilter, DialogResult, UltraCanvasWindowBase
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasFileSaveSettings.h"
 #include <string>
 #include <vector>
 #include <memory>
 #include <functional>
+#include <initializer_list>
 
 namespace UltraCanvas {
 
@@ -21,6 +30,7 @@ namespace UltraCanvas {
     class UCAudio;
     class UCRichDocument;
     namespace VectorStorage { class VectorDocument; }
+    namespace UCImageSave { struct ImageExportOptions; }
 
     struct FileDialogOptions {
         std::string title;
@@ -46,6 +56,22 @@ namespace UltraCanvas {
         // dialog, framework or native, applies it.
         std::string defaultExtension;
         bool registerAsRecent = true;          // opt-out for NotifyRecentFile
+        // Save: the framework dialog's Settings button on the type row,
+        // which edits the chosen type's save settings (GetSaveSettings below;
+        // FileDialogConfig::saveSettingsButton). Turn it off when the file is
+        // written by a writer that does not read them.
+        bool saveSettingsButton = true;
+        // Save: the size of the picture being saved, in pixels (0: not a
+        // picture, or not said). With it, the settings of a bitmap type offer
+        // to write it at another size, and the size chosen comes back through
+        // the SaveFileDialog that reports a FileSaveImageSize
+        // (FileDialogConfig::imageWidth / imageHeight).
+        int imageWidth = 0;
+        int imageHeight = 0;
+        // ... and that picture is a drawing (SetDrawingSize): it has no pixel
+        // size of its own, so imageWidth x imageHeight is only the size it is
+        // drawn at unless another is chosen, and any size is drawn sharp.
+        bool imageIsDrawing = false;
         UltraCanvasWindowBase* parentWindow = nullptr;
 
         FileDialogOptions() = default;
@@ -67,6 +93,16 @@ namespace UltraCanvas {
         FileDialogOptions& SetHoverIconMenu(bool v)     { hoverIconMenu = v; return *this; }
         FileDialogOptions& SetDefaultExtension(const std::string& e) { defaultExtension = e; return *this; }
         FileDialogOptions& SetRegisterAsRecent(bool v)  { registerAsRecent = v; return *this; }
+        FileDialogOptions& SetSaveSettingsButton(bool v) { saveSettingsButton = v; return *this; }
+        FileDialogOptions& SetImageSize(int w, int h) {
+            imageWidth = w; imageHeight = h; imageIsDrawing = false; return *this;
+        }
+        // A drawing - SVG, a page of shapes - saved as a bitmap: `w` x `h` is
+        // the size it is drawn at unless the user picks another (its size on
+        // the page at 96 DPI, say). The caller draws it at the size chosen.
+        FileDialogOptions& SetDrawingSize(int w, int h) {
+            imageWidth = w; imageHeight = h; imageIsDrawing = true; return *this;
+        }
         FileDialogOptions& SetParentWindow(UltraCanvasWindowBase* p) { parentWindow = p; return *this; }
     };
 
@@ -128,6 +164,14 @@ namespace UltraCanvas {
 
         static void SaveFileDialog(const FileDialogOptions& opts,
                                    std::function<void(DialogResult, const std::string&)> onResult);
+        // The same, for a picture: `size` is the pixel size chosen for this
+        // save in the Settings of a bitmap type (the Size row, offered when
+        // opts carries the picture's size - SetImageSize), IsOriginal() when
+        // none was chosen, the type is not a bitmap format, or the dialog was
+        // the platform's. Write it with GetImageExportOptions(path, size, ...).
+        static void SaveFileDialog(const FileDialogOptions& opts,
+                                   std::function<void(DialogResult, const std::string&,
+                                                      const FileSaveImageSize& size)> onResult);
 
         static void SelectFolderDialog(const FileDialogOptions& opts,
                                        std::function<void(DialogResult, const std::string&)> onResult);
@@ -158,8 +202,8 @@ namespace UltraCanvas {
         // .md/.markdown parse as Markdown; anything
         // else readable as text becomes plain paragraphs. Legacy Word 97-2003
         // .doc files are detected and rejected with a clear loadError telling
-        // the user to convert to .docx. If the caller supplies no filters, a
-        // sensible set of document filters is added. On cancel, onResult fires
+        // the user to convert to .docx. If the caller supplies no filters,
+        // AddTextDocumentLoadTypes' are offered. On cancel, onResult fires
         // with dialogResult == Cancel and a null document; on parse failure,
         // loadError is populated and the document is null.
         static void OpenTextDocument(const FileDialogOptions& opts,
@@ -169,6 +213,17 @@ namespace UltraCanvas {
         // UCRichDocument. Returns null and fills outError on failure.
         static std::shared_ptr<UCRichDocument> LoadTextDocument(const std::string& filePath,
                                                                 std::string& outError);
+        // The Open dialog's file types for a text document: one "Documents"
+        // filter with every type LoadTextDocument reads (ODT, DOCX, DOC,
+        // LaTeX, Markdown, plain text), then each under its name.
+        // OpenTextDocument offers these when it is given no filters.
+        static void AddTextDocumentLoadTypes(FileDialogOptions& opts);
+        // Writes `document` as the type its path names: .odt or .docx.
+        static bool SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
+                                     std::string& outError);
+        // The Save dialog's file types for SaveTextDocument, each under its
+        // name, ODT first.
+        static void AddTextDocumentSaveTypes(FileDialogOptions& opts);
 
         // ===== VECTOR DOCUMENTS =====
         // Editable drawings: SVG, XAR, EMF, WMF, DXF, DWG, AI ... read into
@@ -194,6 +249,39 @@ namespace UltraCanvas {
         // also lets a content-decided format such as a DWG .bak claim it).
         static bool CanLoadVectorDocument(const std::string& extensionOrPath);
 
+        // ----- a drawing saved as a bitmap -----
+        // SaveVectorDocument writes a bitmap type too (CanSaveImage: PNG,
+        // JPEG, WebP, AVIF, HEIC, TIFF, GIF, QOI, ICO ... - whatever this
+        // build writes): the page is drawn at the size asked for - a drawing
+        // has no pixel size of its own, so it is sharp at any - and written
+        // with the format's save settings; a format without transparency
+        // (JPEG) gets it on white. The overload without a size draws it at
+        // GetVectorDocumentPixelSize. An application's Save / Export of a
+        // drawing is this call and AddVectorDocumentSaveTypes, so every
+        // format this build reads and writes is on offer, never a list of the
+        // application's own.
+        static bool SaveVectorDocument(const VectorStorage::VectorDocument& document,
+                                       const std::string& filePath, const FileSaveImageSize& size,
+                                       std::string& outError, std::vector<std::string>* notes = nullptr);
+        // The pixel size a drawing's page starts at as a bitmap: the page
+        // (its view box, else its Size) at 96 DPI - the model is in points.
+        static Size2Di GetVectorDocumentPixelSize(const VectorStorage::VectorDocument& document);
+        // A bitmap format this build writes (GetSupportedFormats: canSave).
+        static bool CanSaveImage(const std::string& extensionOrPath);
+        // A Save dialog's file types for a picture: every bitmap type this
+        // build writes, each with its name, PNG first. An application's
+        // Save / Export of a picture offers these - plus its own project
+        // type, if it has one - never a list of its own.
+        static void AddImageSaveTypes(FileDialogOptions& opts);
+        // The Save dialog's file types for a drawing: every vector writer this
+        // build has, then - `withBitmaps` - every bitmap type it writes, each
+        // with its name, and the drawing's size (SetDrawingSize), so a bitmap
+        // type's Settings offer any size. Hand SaveFileDialog's path and size
+        // to the SaveVectorDocument above.
+        static void AddVectorDocumentSaveTypes(FileDialogOptions& opts,
+                                               const VectorStorage::VectorDocument& document,
+                                               bool withBitmaps = true);
+
         // ===== SUPPORTED FORMAT INVENTORY =====
         // Runtime snapshot of every file format this build can load and/or
         // save, per media category, including the library or plugin providing
@@ -203,6 +291,105 @@ namespace UltraCanvas {
         static std::vector<MediaFormatInfo> GetSupportedFormats(MediaFormatCategory category);
         static std::vector<std::string> GetSupportedLoadExtensions(MediaFormatCategory category);
         static std::vector<std::string> GetSupportedSaveExtensions(MediaFormatCategory category);
+
+        // ----- the inventory as an Open or Save dialog's file types -----
+        // What an application's dialogs offer, so every type this build reads
+        // or writes is on offer and nothing it cannot - never a list of the
+        // application's own. (A codec an application brings itself joins
+        // these lists once it is registered: RegisterMediaCodec.)
+        //
+        // One Open filter, `label`, holding every extension this build reads
+        // in `categories` (aliases too), e.g. "Video, pictures and sound"
+        // for {Video, Bitmap, Audio}. Adds nothing when it reads none.
+        static void AddLoadTypes(FileDialogOptions& opts, const std::string& label,
+                                 std::initializer_list<MediaFormatCategory> categories);
+        // One Save filter for each format of `category` this build writes,
+        // under its name. AddImageSaveTypes is this for Bitmap. Like every
+        // Save-type call here, it puts the type the proposed name
+        // (SetDefaultFileName, set first) ends in first: the dialog starts
+        // on the first type.
+        static void AddSaveTypes(FileDialogOptions& opts, MediaFormatCategory category);
+
+        // ===== SAVE SETTINGS =====
+        // What each format's writer can be told (JPEG quality, PNG
+        // compression, TIFF codec ...) and what the user chose, per format,
+        // shared by every application and remembered between runs - see
+        // UltraCanvasFileSaveSettings.h. `extensionOrPath` is "jpg", ".JPG",
+        // "photo.jpeg" or a whole path: whichever of the format's extensions
+        // it ends in.
+        //
+        // The formats: the bitmap formats the image writer takes options for
+        // are built in; a plugin or an application adds its own (or replaces
+        // a built-in one: same first extension) with RegisterSaveFormat.
+        static void RegisterSaveFormat(const FileSaveFormat& format);
+        static std::vector<FileSaveFormat> GetSaveFormats();
+        // The format `extensionOrPath` is saved as, when it has settings.
+        static bool FindSaveFormat(const std::string& extensionOrPath, FileSaveFormat& out);
+        static bool HasSaveSettings(const std::string& extensionOrPath);
+
+        // The values: every setting of the format, the user's where they set
+        // it and the default elsewhere. Empty (no format) for a type without
+        // settings.
+        static FileSaveSettings GetSaveSettings(const std::string& extensionOrPath);
+        // Whether the user has set any of the format's settings. Until then a
+        // writer that has defaults of its own keeps them.
+        static bool HasStoredSaveSettings(const std::string& extensionOrPath);
+        // Remembers `settings` for the format they name (FileSaveSettings::
+        // format, or any of its extensions): every value is normalized to
+        // what its setting can hold, and a key the format does not have is
+        // dropped. False when there is no such format or the file could not
+        // be written.
+        static bool SetSaveSettings(const FileSaveSettings& settings);
+        // Forgets what the user set for the format: back to its defaults.
+        static bool ResetSaveSettings(const std::string& extensionOrPath);
+
+        // A dialog with the format's settings - a checkbox, a slider or a
+        // list per setting - which stores them on OK. `onClosed` gets OK or
+        // Cancel. Does nothing but call `onClosed` with Cancel for a type
+        // without settings. The framework Save dialog's Settings button opens
+        // this for the type being saved.
+        static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
+                                           UltraCanvasWindowBase* parent = nullptr,
+                                           std::function<void(DialogResult)> onClosed = nullptr);
+        // The same for a picture of `pictureWidth` x `pictureHeight` pixels:
+        // a bitmap format's dialog starts with a Size row (width x height,
+        // Keep proportions), opened on `size` (IsOriginal: the picture's own),
+        // so it is offered even for a bitmap format without settings. The
+        // size is not stored with the settings: `onClosed` hands it back, as
+        // IsOriginal() when it is the picture's own.
+        static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
+                                           int pictureWidth, int pictureHeight,
+                                           const FileSaveImageSize& size,
+                                           UltraCanvasWindowBase* parent,
+                                           std::function<void(DialogResult,
+                                                              const FileSaveImageSize&)> onClosed);
+        // The same for a picture that may be a drawing (FileSavePicture::
+        // drawing): its Size row opens on the size it is drawn at and says
+        // that a drawing is drawn sharp at whatever size is set.
+        static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
+                                           const FileSavePicture& picture,
+                                           const FileSaveImageSize& size,
+                                           UltraCanvasWindowBase* parent,
+                                           std::function<void(DialogResult,
+                                                              const FileSaveImageSize&)> onClosed);
+
+        // The image writer's options (UCImageRaster::Save, ExportVImage) for
+        // `path`: its format from the extension, and that format's save
+        // settings. False when the image writer does not write that
+        // extension; `out` is then untouched. UCRasterDocument::SaveToFile
+        // uses this when the user has stored settings for the format.
+        static bool GetImageExportOptions(const std::string& path,
+                                          UCImageSave::ImageExportOptions& out);
+        // ... written at `size` (targetWidth / targetHeight) unless it is the
+        // picture's own.
+        static bool GetImageExportOptions(const std::string& path, const FileSaveImageSize& size,
+                                          UCImageSave::ImageExportOptions& out);
+        // The other way: stores the options of `options.format` (its quality,
+        // compression, colour depth ... and transparency) as that format's
+        // save settings, as a dialog that edits ImageExportOptions does on
+        // Save (UltraCanvasImageExportDialog). The size is not stored. False
+        // for a format without settings, or when they could not be written.
+        static bool SetImageExportOptions(const UCImageSave::ImageExportOptions& options);
     };
 
 } // namespace UltraCanvas

@@ -3,8 +3,29 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.5.0 - BringForward: restores and raises the window
+// Version: 1.4.0 - Open / Import / Save As / Export offer FileLoader's format lists (every
+//                  bitmap type this build reads / writes), not the editor's own
+// Version: 1.3.1 - Shift+X picks the Eraser: a tool key can need Shift (it never matched with it)
+// Version: 1.3.0 - the tool palette groups its tools: tools of a kind share one slot
+//                  (UltraCanvasToolGroupButton) that shows the last one picked (adaptive)
+//                  or the group's main one (static, Settings > Display > Tool palette),
+//                  and a bar with the whole group folds out while the pointer rests on it
+// Version: 1.2.0 - the mouse pointer magnification glass: a loupe in a corner of the canvas
+//                  while the rectangle selection is active, that keeps out of the pointer's
+//                  way; Edit > Settings... (Display > Mouse pointer magnification glass)
+// Version: 1.1.3 - a double-click on a layer's name renames it in the list (a text
+//                  field in its place: Enter or a click elsewhere keeps the name,
+//                  Escape the old one); the name buttons say so in their tooltip
+// Version: 1.1.2 - the layer list is rebuilt after the click that changed it has been
+//                  handled (ScheduleLayerPanelRebuild): rebuilding it under the clicked
+//                  row's button freed the button mid-click and crashed
+// Version: 1.1.1 - the tool palette shows its tools' 28 px icons (media/icons/ultrapaint/28)
+//                  at 28 px, the grid they are drawn on, in 36 px buttons; flat
+//                  buttons in the palette and the toolbar; every menu entry has an
+//                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-09-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -51,18 +72,29 @@ namespace fs = std::filesystem;
 namespace UltraCanvas {
 
 namespace {
+    // A menu entry with an icon beside its check box.
+    MenuItemData WithIcon(MenuItemData item, const std::string& iconPath) {
+        item.iconPath = iconPath;
+        return item;
+    }
+
     constexpr int   kMenuHeight    = 28;
     constexpr int   kToolbarHeight = 38;
-    constexpr int   kPaletteWidth  = 46;
+    constexpr int   kPaletteWidth  = 48;
+    constexpr int   kToolButton    = 36;   // a tool's button, square, 4 px around its 28 px icon
+    constexpr int   kToolIcon      = 28;
     constexpr int   kRightWidth    = 300;
     constexpr int   kRightInner    = 262;   // what is visible next to the scrollbar
     constexpr int   kStatusHeight  = 24;
     constexpr float kRowH          = 24.0f;
 
-    const std::vector<std::string> kImageExtensions = {
-        "png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif", "avif", "jxl",
-        "tga", "ppm", "pgm", "pbm", "pnm", "psd", "qoi", "ico", "svg", "exr", "hdr", "dng", "cr2", "nef", "arw"
-    };
+    // The bitmap formats this build reads, as FileLoader's format inventory
+    // says (UltraCanvasFileLoader::GetSupportedLoadExtensions) - not a list
+    // of the editor's own, so a format a plugin or a libvips build adds is
+    // opened too.
+    std::vector<std::string> ReadableImageExtensions() {
+        return UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+    }
 
     std::string FileNameOf(const std::string& path) {
         if (path.empty()) return "Untitled";
@@ -83,7 +115,8 @@ namespace {
     bool IsOpenablePath(const std::string& path) {
         if (UCRasterDocument::IsProjectFile(path)) return true;
         const std::string ext = LowerExtOf(path);
-        if (std::find(kImageExtensions.begin(), kImageExtensions.end(), ext) != kImageExtensions.end()) return true;
+        const std::vector<std::string> images = ReadableImageExtensions();
+        if (std::find(images.begin(), images.end(), ext) != images.end()) return true;
         return IsVectorGraphicsPath(path) || IsModelGraphicsPath(path);
     }
 
@@ -186,6 +219,14 @@ std::string UltraPaintWindow::IconPath(const std::string& file) const {
     return NormalizePath(GetResourcesDir() + "media/icons/ultrapaint/" + file);
 }
 
+std::string UltraPaintWindow::MenuIconPath(const std::string& file) const {
+    return NormalizePath(GetResourcesDir() + "media/icons/ultrapaint/16/" + file);
+}
+
+std::string UltraPaintWindow::ToolIconPath(const std::string& file) const {
+    return NormalizePath(GetResourcesDir() + "media/icons/ultrapaint/28/" + file);
+}
+
 std::string UltraPaintWindow::TexterIconPath(const std::string& file) const {
     return NormalizePath(GetResourcesDir() + "media/icons/texter/" + file);
 }
@@ -205,6 +246,7 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     window->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window->SetBackgroundColor(Color(236, 236, 238, 255));
 
+    settings.Load();   // no file yet: the defaults stand
     tools = CreatePaintTools();
 
     BuildMenuBar();
@@ -222,6 +264,7 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     body->AddChild(surface);
 
     BuildRightPanel();
+    BuildMagnifier();
     BuildStatusBar();
 
     // ----- tool context -----
@@ -257,26 +300,36 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
         pointerX = e.x; pointerY = e.y; pointerInside = e.insideImage;
         if (auto* t = ActiveTool()) t->OnDrag(toolContext, e);
         UpdateStatus();
+        UpdateMagnifier(e.x, e.y, e.view);
     };
     surface->onToolRelease = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnRelease(toolContext, e); };
     surface->onToolHover = [this](const PaintPointerEvent& e) {
         pointerX = e.x; pointerY = e.y; pointerInside = e.insideImage;
         if (auto* t = ActiveTool()) t->OnHover(toolContext, e);
         UpdateStatus();
+        UpdateMagnifier(e.x, e.y, e.view);
     };
     surface->onToolDoubleClick = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnDoubleClick(toolContext, e); };
     surface->onToolKey = [this](const UCEvent& ev) { auto* t = ActiveTool(); return t && t->OnKey(toolContext, ev); };
     surface->onDrawOverlay = [this](IRenderContext* ctx, const PaintViewTransform& v) { if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v); };
-    surface->onViewChanged = [this]() { UpdateStatus(); };
+    surface->onViewChanged = [this]() {
+        UpdateStatus();
+        // The glass magnifies the view's own zoom, so it follows a zoom change.
+        if (magnifier && magnifier->IsVisible() && pointerInside)
+            magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, pointerX, pointerY);
+    };
     surface->onFilesDropped = [this](const std::vector<std::string>& files) { HandleDroppedFiles(files); };
 
     InstallShortcuts();
 
     window->onWindowClosing = [this]() -> bool {
-        if (!document || !document->IsModified()) return true;
+        if (!document || !document->IsModified()) {
+            if (auto dlg = settingsDialog.lock()) dlg->Close();
+            return true;
+        }
         ConfirmDiscard("The image has unsaved changes. Close anyway?", [this]() {
             document->SetModified(false);
-            window->Close();
+            window->Close();   // comes back through here, and closes the settings window
         });
         return false;
     };
@@ -319,6 +372,12 @@ std::vector<std::shared_ptr<UltraPaintWindow>>& UltraPaintWindow::OpenWindows() 
 
 int UltraPaintWindow::WindowCount() {
     return static_cast<int>(OpenWindows().size());
+}
+
+void UltraPaintWindow::BringForward() {
+    if (!window) return;
+    if (window->IsMinimized()) window->Restore();
+    window->RaiseAndFocus();
 }
 
 std::shared_ptr<UltraPaintWindow> UltraPaintWindow::OpenWindow(const std::vector<std::string>& paths) {
@@ -364,7 +423,7 @@ void UltraPaintWindow::BuildMenuBar() {
     std::vector<MenuItemData>* filterGroup = nullptr;
     for (const auto& f : PaintFilterCatalogue()) {
         const PaintFilter* fp = &f;
-        auto item = M::Action(f.name, [this, fp]() { CmdFilter(*fp); });
+        auto item = M::Action(f.name, MenuIconPath(f.id + ".svg"), [this, fp]() { CmdFilter(*fp); });
         if (f.category == "Adjust") {
             adjustItems.push_back(item);
         } else {
@@ -379,87 +438,91 @@ void UltraPaintWindow::BuildMenuBar() {
     }
     // Curves sits with the adjustments, right after Levels.
     adjustItems.insert(adjustItems.begin() + std::min<size_t>(4, adjustItems.size()),
-                       M::ActionWithShortcut("Curves...", "Ctrl+M", [this]() { CmdCurves(); }));
+                       M::ActionWithShortcut("Curves...", "Ctrl+M", MenuIconPath("curves.svg"), [this]() { CmdCurves(); }));
     // Colour to Alpha changes transparency rather than tone, so it sits on its own at the end.
     adjustItems.push_back(M::Separator());
-    adjustItems.push_back(M::Action("Colour to Alpha...", [this]() { CmdColourToAlpha(); }));
+    adjustItems.push_back(M::Action("Colour to Alpha...", MenuIconPath("colour-to-alpha.svg"), [this]() { CmdColourToAlpha(); }));
 
     menuBar = MenuBuilder("up-menubar", 0, 0, 0, kMenuHeight)
         .SetType(MenuType::Menubar)
         .AddSubmenu("File", {
-            M::ActionWithShortcut("New...", "Ctrl+N", TexterIconPath("add-document.svg"), [this]() { CmdNew(); }),
-            M::ActionWithShortcut("New Window", "Ctrl+Alt+N", [this]() { CmdNewWindow(); }),
-            M::ActionWithShortcut("Open...", "Ctrl+O", TexterIconPath("folder-open.svg"), [this]() { CmdOpen(); }),
-            M::Action("Import Image...", [this]() { CmdImport(); }),
+            M::ActionWithShortcut("New...", "Ctrl+N", MenuIconPath("new.svg"), [this]() { CmdNew(); }),
+            M::ActionWithShortcut("New Window", "Ctrl+Alt+N", MenuIconPath("new-window.svg"), [this]() { CmdNewWindow(); }),
+            M::ActionWithShortcut("Open...", "Ctrl+O", MenuIconPath("open.svg"), [this]() { CmdOpen(); }),
+            M::Action("Import Image...", MenuIconPath("import.svg"), [this]() { CmdImport(); }),
             M::Separator(),
-            M::ActionWithShortcut("Save", "Ctrl+S", TexterIconPath("save.svg"), [this]() { CmdSave(); }),
-            M::ActionWithShortcut("Save As...", "Ctrl+Shift+S", [this]() { CmdSaveAs(); }),
-            M::ActionWithShortcut("Export with Options...", "Ctrl+E", IconPath("export.svg"), [this]() { CmdExport(); }),
+            M::ActionWithShortcut("Save", "Ctrl+S", MenuIconPath("save.svg"), [this]() { CmdSave(); }),
+            M::ActionWithShortcut("Save As...", "Ctrl+Shift+S", MenuIconPath("save-as.svg"), [this]() { CmdSaveAs(); }),
+            M::ActionWithShortcut("Export with Options...", "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
             M::Separator(),
-            M::ActionWithShortcut("Quit", "Ctrl+Q", TexterIconPath("exit.svg"), [this]() { CmdQuit(); }),
+            M::ActionWithShortcut("Quit", "Ctrl+Q", MenuIconPath("quit.svg"), [this]() { CmdQuit(); }),
         })
         .AddSubmenu("Edit", {
-            M::ActionWithShortcut("Undo", "Ctrl+Z", TexterIconPath("undo.svg"), [this]() { CmdUndo(); }),
-            M::ActionWithShortcut("Redo", "Ctrl+Y", TexterIconPath("redo.svg"), [this]() { CmdRedo(); }),
+            M::ActionWithShortcut("Undo", "Ctrl+Z", MenuIconPath("undo.svg"), [this]() { CmdUndo(); }),
+            M::ActionWithShortcut("Redo", "Ctrl+Y", MenuIconPath("redo.svg"), [this]() { CmdRedo(); }),
             M::Separator(),
-            M::ActionWithShortcut("Cut", "Ctrl+X", TexterIconPath("scissors.svg"), [this]() { CmdCut(); }),
-            M::ActionWithShortcut("Copy", "Ctrl+C", TexterIconPath("copy.svg"), [this]() { CmdCopy(false); }),
-            M::ActionWithShortcut("Copy Merged", "Ctrl+Shift+C", [this]() { CmdCopy(true); }),
-            M::ActionWithShortcut("Paste as New Layer", "Ctrl+V", TexterIconPath("paste.svg"), [this]() { CmdPaste(); }),
-            M::ActionWithShortcut("Paste as New Image", "Ctrl+Shift+V", [this]() { CmdPasteAsNew(); }),
-            M::ActionWithShortcut("Paste Last Copied Image", "Ctrl+Alt+V", [this]() { CmdPasteLastImage(); }),
+            M::ActionWithShortcut("Cut", "Ctrl+X", MenuIconPath("cut.svg"), [this]() { CmdCut(); }),
+            M::ActionWithShortcut("Copy", "Ctrl+C", MenuIconPath("copy.svg"), [this]() { CmdCopy(false); }),
+            M::ActionWithShortcut("Copy Merged", "Ctrl+Shift+C", MenuIconPath("copy-merged.svg"), [this]() { CmdCopy(true); }),
+            M::ActionWithShortcut("Paste as New Layer", "Ctrl+V", MenuIconPath("paste-layer.svg"), [this]() { CmdPaste(); }),
+            M::ActionWithShortcut("Paste as New Image", "Ctrl+Shift+V", MenuIconPath("paste-image.svg"), [this]() { CmdPasteAsNew(); }),
+            M::ActionWithShortcut("Paste Last Copied Image", "Ctrl+Alt+V", MenuIconPath("paste-last.svg"), [this]() { CmdPasteLastImage(); }),
             M::Separator(),
-            M::ActionWithShortcut("Delete", "Del", [this]() { CmdDelete(); }),
-            M::ActionWithShortcut("Fill with Foreground", "Alt+Backspace", [this]() { CmdFill(true); }),
-            M::ActionWithShortcut("Fill with Background", "Ctrl+Backspace", [this]() { CmdFill(false); }),
+            M::ActionWithShortcut("Delete", "Del", MenuIconPath("delete.svg"), [this]() { CmdDelete(); }),
+            M::ActionWithShortcut("Fill with Foreground", "Alt+Backspace", MenuIconPath("fill-fg.svg"), [this]() { CmdFill(true); }),
+            M::ActionWithShortcut("Fill with Background", "Ctrl+Backspace", MenuIconPath("fill-bg.svg"), [this]() { CmdFill(false); }),
+            M::Separator(),
+            M::Action("Settings...", MenuIconPath("settings.svg"), [this]() { CmdSettings(); }),
         })
         .AddSubmenu("Image", {
-            M::Action("Scale Image...", [this]() { CmdScaleImage(); }),
-            M::Action("Canvas Size...", [this]() { CmdCanvasSize(); }),
-            M::ActionWithShortcut("Crop to Selection", "Ctrl+Shift+X", [this]() { CmdCropToSelection(); }),
+            M::Action("Scale Image...", MenuIconPath("scale.svg"), [this]() { CmdScaleImage(); }),
+            M::Action("Canvas Size...", MenuIconPath("canvas-size.svg"), [this]() { CmdCanvasSize(); }),
+            M::ActionWithShortcut("Crop to Selection", "Ctrl+Shift+X", MenuIconPath("crop-selection.svg"), [this]() { CmdCropToSelection(); }),
             M::Separator(),
-            M::Action("Flip Horizontal", [this]() { if (document) document->FlipHorizontal(); }),
-            M::Action("Flip Vertical", [this]() { if (document) document->FlipVertical(); }),
-            M::Action("Rotate 90° Clockwise", [this]() { if (document) { document->Rotate90(true); surface->ZoomToFit(); } }),
-            M::Action("Rotate 90° Counter-clockwise", [this]() { if (document) { document->Rotate90(false); surface->ZoomToFit(); } }),
-            M::Action("Rotate 180°", [this]() { if (document) document->Rotate180(); }),
+            M::Action("Flip Horizontal", MenuIconPath("flip-h.svg"), [this]() { if (document) document->FlipHorizontal(); }),
+            M::Action("Flip Vertical", MenuIconPath("flip-v.svg"), [this]() { if (document) document->FlipVertical(); }),
+            M::Action("Rotate 90° Clockwise", MenuIconPath("rotate-cw.svg"), [this]() { if (document) { document->Rotate90(true); surface->ZoomToFit(); } }),
+            M::Action("Rotate 90° Counter-clockwise", MenuIconPath("rotate-ccw.svg"), [this]() { if (document) { document->Rotate90(false); surface->ZoomToFit(); } }),
+            M::Action("Rotate 180°", MenuIconPath("rotate-180.svg"), [this]() { if (document) document->Rotate180(); }),
             M::Separator(),
-            M::Action("Flatten Image", [this]() { CmdFlatten(); }),
+            M::Action("Flatten Image", MenuIconPath("flatten.svg"), [this]() { CmdFlatten(); }),
         })
         .AddSubmenu("Layer", {
-            M::ActionWithShortcut("New Layer", "Ctrl+Shift+N", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); }),
-            M::ActionWithShortcut("Duplicate Layer", "Ctrl+J", IconPath("layer-duplicate.svg"), [this]() { CmdLayerDuplicate(); }),
-            M::Action("Delete Layer", IconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); }),
+            M::ActionWithShortcut("New Layer", "Ctrl+Shift+N", MenuIconPath("layer-add.svg"), [this]() { CmdLayerAdd(); }),
+            M::ActionWithShortcut("Duplicate Layer", "Ctrl+J", MenuIconPath("layer-duplicate.svg"), [this]() { CmdLayerDuplicate(); }),
+            M::Action("Delete Layer", MenuIconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); }),
             M::Separator(),
-            M::ActionWithShortcut("Merge Down", "Ctrl+Shift+M", IconPath("layer-merge.svg"), [this]() { CmdLayerMergeDown(); }),
-            M::Action("Move Layer Up", IconPath("layer-up.svg"), [this]() { CmdLayerMove(1); }),
-            M::Action("Move Layer Down", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); }),
+            M::ActionWithShortcut("Merge Down", "Ctrl+Shift+M", MenuIconPath("layer-merge.svg"), [this]() { CmdLayerMergeDown(); }),
+            M::Action("Move Layer Up", MenuIconPath("layer-up.svg"), [this]() { CmdLayerMove(1); }),
+            M::Action("Move Layer Down", MenuIconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); }),
             M::Separator(),
-            M::Action("Layer Properties...", IconPath("layer-props.svg"), [this]() { CmdLayerProperties(); }),
+            M::Action("Layer Properties...", MenuIconPath("layer-props.svg"), [this]() { CmdLayerProperties(); }),
         })
         .AddSubmenu("Select", {
-            M::ActionWithShortcut("All", "Ctrl+A", [this]() { CmdSelectAll(); }),
-            M::ActionWithShortcut("None", "Ctrl+Shift+A", [this]() { CmdSelectNone(); }),
-            M::ActionWithShortcut("Invert", "Ctrl+I", [this]() { CmdSelectInvert(); }),
-            M::Action("From Layer Alpha", [this]() { CmdSelectFromAlpha(); }),
+            M::ActionWithShortcut("All", "Ctrl+A", MenuIconPath("select-all.svg"), [this]() { CmdSelectAll(); }),
+            M::ActionWithShortcut("None", "Ctrl+Shift+A", MenuIconPath("select-none.svg"), [this]() { CmdSelectNone(); }),
+            M::ActionWithShortcut("Invert", "Ctrl+I", MenuIconPath("select-invert.svg"), [this]() { CmdSelectInvert(); }),
+            M::Action("From Layer Alpha", MenuIconPath("select-alpha.svg"), [this]() { CmdSelectFromAlpha(); }),
             M::Separator(),
-            M::Action("Feather...", [this]() { CmdSelectModify(0); }),
-            M::Action("Grow...", [this]() { CmdSelectModify(1); }),
-            M::Action("Shrink...", [this]() { CmdSelectModify(2); }),
+            M::Action("Feather...", MenuIconPath("select-feather.svg"), [this]() { CmdSelectModify(0); }),
+            M::Action("Grow...", MenuIconPath("select-grow.svg"), [this]() { CmdSelectModify(1); }),
+            M::Action("Shrink...", MenuIconPath("select-shrink.svg"), [this]() { CmdSelectModify(2); }),
         })
         .AddSubmenu("Adjust", adjustItems)
         .AddSubmenu("Filter", filterItems)
         .AddSubmenu("View", {
-            M::ActionWithShortcut("Zoom In", "+", IconPath("zoom.svg"), [this]() { surface->ZoomIn(); }),
-            M::ActionWithShortcut("Zoom Out", "-", [this]() { surface->ZoomOut(); }),
-            M::ActionWithShortcut("Fit to Window", "Ctrl+0", IconPath("zoom-fit.svg"), [this]() { surface->ZoomToFit(); }),
-            M::ActionWithShortcut("Actual Pixels", "Ctrl+1", IconPath("zoom-100.svg"), [this]() { surface->ZoomToActual(); }),
+            M::ActionWithShortcut("Zoom In", "+", MenuIconPath("zoom-in.svg"), [this]() { surface->ZoomIn(); }),
+            M::ActionWithShortcut("Zoom Out", "-", MenuIconPath("zoom-out.svg"), [this]() { surface->ZoomOut(); }),
+            M::ActionWithShortcut("Fit to Window", "Ctrl+0", MenuIconPath("zoom-fit.svg"), [this]() { surface->ZoomToFit(); }),
+            M::ActionWithShortcut("Actual Pixels", "Ctrl+1", MenuIconPath("zoom-100.svg"), [this]() { surface->ZoomToActual(); }),
             M::Separator(),
-            M::Checkbox("Pixel Grid (at 8x and above)", true, [this](bool on) { surface->SetShowPixelGrid(on); }),
-            M::Checkbox("Show Selection Outline", true, [this](bool on) { surface->SetShowSelection(on); }),
+            WithIcon(M::Checkbox("Pixel Grid (at 8x and above)", true, [this](bool on) { surface->SetShowPixelGrid(on); }),
+                     MenuIconPath("pixel-grid.svg")),
+            WithIcon(M::Checkbox("Show Selection Outline", true, [this](bool on) { surface->SetShowSelection(on); }),
+                     MenuIconPath("selection-outline.svg")),
         })
         .AddSubmenu("Help", {
-            M::Action("About UltraPaint", [this]() { CmdAbout(); }),
+            M::Action("About UltraPaint", MenuIconPath("about.svg"), [this]() { CmdAbout(); }),
         })
         .Build();
     menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -471,6 +534,8 @@ void UltraPaintWindow::BuildToolbar() {
     toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     ToolbarAppearance app = toolbar->GetAppearance();
     app.showIconLabels = false;
+    app.style = ToolbarStyle::Flat;
+    app.hoverBackgroundColor = Color(0, 0, 0, 18);
     toolbar->SetAppearance(app);
     toolbar->AddButton("up-tb-new", "", TexterIconPath("add-document.svg"), [this]() { CmdNew(); })->SetTooltip("New image (Ctrl+N)");
     toolbar->AddButton("up-tb-open", "", TexterIconPath("folder-open.svg"), [this]() { CmdOpen(); })->SetTooltip("Open (Ctrl+O)");
@@ -488,7 +553,53 @@ void UltraPaintWindow::BuildToolbar() {
     toolbar->AddSeparator("up-tb-s3");
     toolbar->AddButton("up-tb-layer", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip("New layer (Ctrl+Shift+N)");
     toolbar->AddButton("up-tb-export", "", IconPath("export.svg"), [this]() { CmdExport(); })->SetTooltip("Export with options (Ctrl+E)");
+    for (auto& c : toolbar->Children()) {
+        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
+            ButtonStyle flat = b->GetStyle();
+            flat.cornerRadius = 6.0f;
+            flat.pressedColor = Color(0, 0, 0, 30);
+            b->SetStyle(flat);
+        }
+    }
     window->AddChild(toolbar);
+}
+
+namespace {
+    // The palette's groups, top to bottom: tools of a kind share one slot,
+    // the group's main tool first. The slot shows the tool last picked from
+    // its group (an adaptive toolbar) or always the main one (a static
+    // toolbar, Settings > Display > Tool palette), and resting the pointer
+    // on it folds out a bar with the whole group. A group of one tool is a
+    // plain button. A tool missing here still gets a slot of its own, after
+    // these, so a tool added to CreatePaintTools() never goes missing.
+    struct PaletteGroup {
+        const char* id;
+        std::vector<PaintToolId> tools;
+    };
+    const std::vector<PaletteGroup>& PaletteGroups() {
+        using T = PaintToolId;
+        static const std::vector<PaletteGroup> groups = {
+            { "select",  { T::RectSelect, T::EllipseSelect, T::Lasso, T::MagicWand } },
+            { "pen",     { T::Brush, T::Pencil, T::Airbrush } },
+            { "lines",   { T::Line, T::Polyline, T::Arrow, T::Curve } },
+            { "shapes",  { T::Rectangle, T::Ellipse } },
+            { "morph",   { T::Smudge, T::Clone } },          // reshape the pixels already there
+            { "shading", { T::Dodge, T::Burn } },
+            { "move",    { T::Move } },
+            { "crop",    { T::Crop } },
+            { "picker",  { T::Eyedropper } },
+            { "eraser",  { T::Eraser } },
+            { "fill",    { T::Fill, T::Gradient } },
+            { "text",    { T::Text } },
+            { "view",    { T::Zoom, T::Pan } },
+        };
+        return groups;
+    }
+
+    // A tool's id among the palette's group items.
+    std::string ToolItemId(PaintToolId id) {
+        return "tool-" + std::to_string(static_cast<int>(id));
+    }
 }
 
 void UltraPaintWindow::BuildToolPalette() {
@@ -498,17 +609,66 @@ void UltraPaintWindow::BuildToolPalette() {
     app.showIconLabels = false;
     app.itemSpacing = 1.0f;
     palette->SetAppearance(app);
+    // The buttons keep their size: where the window is too short for all of
+    // them the column scrolls (wheel, or the hints at its ends) rather than
+    // squeezing every icon into a button too small for it.
+    palette->SetOverflowMode(ToolbarOverflowMode::Scroll);
     palette->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    toolButtons.clear();
+
+    auto findTool = [this](PaintToolId id) -> const PaintTool* {
+        for (const auto& t : tools) if (t->id == id) return t.get();
+        return nullptr;
+    };
+    auto itemOf = [this](const PaintTool& t) {
+        ToolGroupItem item;
+        item.id = ToolItemId(t.id);
+        item.iconPath = ToolIconPath(t.iconFile);
+        item.tooltip = t.name;
+        if (t.shortcutKey) item.tooltip += " (" + t.ShortcutLabel() + ")";
+        return item;
+    };
+
+    std::vector<std::pair<std::string, std::vector<ToolGroupItem>>> slots;
+    std::vector<PaintToolId> placed;
+    for (const auto& g : PaletteGroups()) {
+        std::vector<ToolGroupItem> items;
+        for (PaintToolId id : g.tools) {
+            if (const PaintTool* t = findTool(id)) { items.push_back(itemOf(*t)); placed.push_back(id); }
+        }
+        if (!items.empty()) slots.emplace_back(g.id, std::move(items));
+    }
     for (const auto& t : tools) {
-        const PaintToolId id = t->id;
-        auto b = palette->AddToggleButton("up-tool-" + std::to_string(static_cast<int>(id)), "", IconPath(t->iconFile),
-                                          [this, id](bool) { SelectTool(id); });
-        std::string tip = t->name;
-        if (t->shortcutKey) tip += std::string(" (") + t->shortcutKey + ")";
-        b->SetTooltip(tip);
-        b->SetIconSize(22, 22);
-        toolButtons.push_back(b);
+        if (std::find(placed.begin(), placed.end(), t->id) != placed.end()) continue;
+        slots.emplace_back(ToolItemId(t->id), std::vector<ToolGroupItem>{ itemOf(*t) });
+    }
+
+    toolSlots.clear();
+    for (auto& [groupId, items] : slots) {
+        auto b = palette->AddToolGroup("up-tools-" + groupId, items, [this](const std::string& itemId) {
+            for (const auto& t : tools) {
+                if (ToolItemId(t->id) == itemId) { SelectTool(t->id); return; }
+            }
+        });
+        b->SetSlotShowsLastPicked(settings.paletteAdaptive);
+        // The palette's icons are drawn on a 28-unit grid (media/icons/
+        // ultrapaint/28) with 2-unit strokes on whole units: shown at 28 px
+        // they land on whole pixels and stay sharp. The 24-unit set beside
+        // them is the same tools for 24 px and smaller (menus). Shown at a
+        // size of neither, every line falls between two pixels and blurs, as
+        // the old 24-unit icons did at 22 px. The fold-out bar's buttons
+        // take the slot's size, icon size and style.
+        b->SetIconSize(kToolIcon, kToolIcon);
+        b->SetElementSize(Size2Df(kToolButton, kToolButton));
+        // Flat: no box around a tool; a soft grey under the pointer and the
+        // active tool on a light blue, both rounded.
+        ButtonStyle flat = b->GetStyle();
+        flat.normalColor = Colors::Transparent;
+        flat.borderWidth = 0;
+        flat.cornerRadius = 6.0f;
+        flat.hoverColor = Color(0, 0, 0, 18);
+        flat.pressedColor = Color(0, 103, 192, 46);
+        b->SetStyle(flat);
+        toolSlots.push_back(b);
     }
     body->AddChild(palette);
 }
@@ -691,10 +851,16 @@ void UltraPaintWindow::InstallShortcuts() {
             colorPicker->SetBackgroundColor(background.ToColor());
             return true;
         }
-        // single-letter tool keys (not while a tool is mid-drag)
-        if (!e.alt && !e.shift && k >= UCKeys::A && k <= UCKeys::Z) {
+        // Single-letter tool keys, plain or with Shift as the tool says: the
+        // Eraser is Shift+X, plain X being the colour swap above. Matching the
+        // Shift as well is what makes it reachable - the loop used to skip any
+        // key pressed with Shift, so the Eraser had no working key at all.
+        if (!e.alt && k >= UCKeys::A && k <= UCKeys::Z) {
             for (const auto& t : tools) {
-                if (t->shortcutKey && t->shortcutKey == static_cast<char>(k)) { SelectTool(t->id); return true; }
+                if (t->shortcutKey && t->shortcutKey == static_cast<char>(k) && t->shortcutShift == e.shift) {
+                    SelectTool(t->id);
+                    return true;
+                }
             }
         }
         return false;
@@ -707,16 +873,18 @@ void UltraPaintWindow::InstallShortcuts() {
 
 void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const std::string& title) {
     (void)title;
+    if (document && documentListener) document->RemoveListener(documentListener);
     document = std::move(doc);
-    document->onStateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
+    renamingLayer = -1;
+    // The window's own listener beside the surfaces' (the editing view and
+    // the magnifying glass each add theirs in SetDocument): the panels and
+    // the title follow the document without chaining behind anyone's slot.
+    UCRasterDocument::Listener l;
+    l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
+    l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); };
+    documentListener = document->AddListener(std::move(l));
     surface->SetDocument(document);
-    // the surface installed its own structure hook; chain the panel refresh
-    auto surfaceStructure = document->onStructureChanged;
-    document->onStructureChanged = [this, surfaceStructure]() {
-        if (surfaceStructure) surfaceStructure();
-        RebuildLayerPanel();
-        UpdateStatus();
-    };
+    if (magnifier) magnifier->SetDocument(document);
     surface->ZoomToFit();
     RebuildLayerPanel();
     UpdateUndoButtons();
@@ -1034,15 +1202,25 @@ void UltraPaintWindow::ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dial
     dialog->Show();
 }
 
-bool UltraPaintWindow::SaveToPath(const std::string& path) {
+bool UltraPaintWindow::SaveToPath(const std::string& path, const FileSaveImageSize& size) {
     if (!document) return false;
     std::string error;
-    if (!document->SaveToFile(path, error)) {
+    // Another size than the picture's: the image writer's options at that
+    // size (and the format's save settings). Without one, SaveToFile takes
+    // the settings itself.
+    UCImageSave::ImageExportOptions options;
+    const bool resized = !size.IsOriginal() && !UCRasterDocument::IsProjectFile(path) &&
+                         UltraCanvasFileLoader::GetImageExportOptions(path, size, options);
+    if (!document->SaveToFile(path, error, resized ? &options : nullptr)) {
         UltraCanvasDialogManager::ShowError("Could not save " + path + "\n" + ShortError(error), "Save", nullptr, window.get());
         return false;
     }
     UpdateTitle();
-    if (statusHint) statusHint->SetText("Saved " + FileNameOf(path));
+    if (statusHint) {
+        statusHint->SetText(resized ? "Saved " + FileNameOf(path) + " at " + std::to_string(size.width) +
+                                              " x " + std::to_string(size.height) + " px"
+                                    : "Saved " + FileNameOf(path));
+    }
     return true;
 }
 
@@ -1095,9 +1273,12 @@ void UltraPaintWindow::SelectTool(PaintToolId id) {
     if (auto* old = ActiveTool()) { if (old->id != id) old->Deactivate(toolContext); }
     activeTool = id;
     PaintTool* t = ActiveTool();
-    for (size_t i = 0; i < tools.size() && i < toolButtons.size(); ++i) {
-        const bool on = tools[i]->id == id;
-        if (toolButtons[i]->IsPressed() != on) toolButtons[i]->SetPressed(on);
+    // The slot of the tool's group shows it (on an adaptive toolbar) and is
+    // pressed; every other slot is let go - however the tool was picked:
+    // in the palette, by its shortcut key or by a command (Paste picks Move).
+    for (const auto& slot : toolSlots) {
+        const bool on = slot->SetCurrentItem(ToolItemId(id));
+        if (slot->IsPressed() != on) slot->SetPressed(on);
     }
     if (!t) return;
     t->Activate(toolContext);
@@ -1106,7 +1287,130 @@ void UltraPaintWindow::SelectTool(PaintToolId id) {
     surface->SetCursorSquare(t->CursorSquare(toolContext));
     if (statusHint) statusHint->SetText(t->name + ": " + t->hint);
     RebuildToolOptions();
+    UpdateMagnifierVisibility();
     surface->Refresh();
+}
+
+// ===========================================================================
+// THE MOUSE POINTER MAGNIFICATION GLASS
+// ===========================================================================
+
+namespace {
+    // How far the glass keeps from the canvas's edges, and how near the
+    // pointer may come before it moves to another corner.
+    constexpr float kMagnifierMargin = 12.0f;
+    constexpr float kMagnifierAvoidDistance = 48.0f;
+}
+
+void UltraPaintWindow::BuildMagnifier() {
+    // The frame is the glass's border; it lies over the canvas, out of the
+    // body's flex flow, above the surface, and takes no pointer - the
+    // surface under it gets every event, so a drag can pass beneath it.
+    magnifierFrame = std::make_shared<UltraCanvasContainer>("up-magnifier-frame");
+    magnifierFrame->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    magnifierFrame->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+    if (!magnifierFrame->layoutItem.position) magnifierFrame->layoutItem.position = CSSLayout::Position();
+    magnifierFrame->SetZIndex(OverlayZOrder::Overlays);
+    magnifierFrame->SetBackgroundColor(Color(40, 40, 44, 255));
+    magnifierFrame->SetBorderLeft(1, Color(255, 255, 255, 200));
+    magnifierFrame->SetBorderRight(1, Color(255, 255, 255, 200));
+    magnifierFrame->SetBorderTop(1, Color(255, 255, 255, 200));
+    magnifierFrame->SetBorderBottom(1, Color(255, 255, 255, 200));
+    magnifierFrame->SetPadding(1);
+    magnifierFrame->SetInteractive(false);
+    magnifierFrame->SetVisible(false);
+
+    magnifier = CreatePaintSurface("up-magnifier");
+    magnifier->SetLoupeMode(true);
+    magnifier->SetCanvasColor(Color(40, 40, 44, 255));
+    magnifier->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The rubber band of the tool, magnified along with the pixels.
+    magnifier->onDrawOverlay = [this](IRenderContext* ctx, const PaintViewTransform& v) {
+        if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
+    };
+    magnifierFrame->AddChild(magnifier);
+    body->AddChild(magnifierFrame);
+    ApplySettings();
+}
+
+void UltraPaintWindow::ApplySettings() {
+    for (const auto& slot : toolSlots) slot->SetSlotShowsLastPicked(settings.paletteAdaptive);
+    if (!magnifierFrame) return;
+    const float size = static_cast<float>(std::clamp(settings.magnifierSize,
+            UltraPaintSettings::kMinMagnifierSize, UltraPaintSettings::kMaxMagnifierSize));
+    magnifierFrame->size.width  = CSSLayout::Dimension::Px(size);
+    magnifierFrame->size.height = CSSLayout::Dimension::Px(size);
+    PlaceMagnifier(magnifierCorner);
+    UpdateMagnifierVisibility();
+    if (magnifier && magnifier->IsVisible() && pointerInside)
+        magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, pointerX, pointerY);
+}
+
+void UltraPaintWindow::UpdateMagnifierVisibility() {
+    if (!magnifierFrame) return;
+    PaintTool* t = ActiveTool();
+    const bool show = settings.magnifierEnabled && t && t->WantsMagnifier() && document;
+    if (show == magnifierFrame->IsVisible()) return;
+    magnifierFrame->SetVisible(show);
+    if (show) {
+        // Until the pointer moves, the glass shows the middle of the image,
+        // or the last place the pointer was.
+        const double ix = pointerInside ? pointerX : document->GetWidth() * 0.5;
+        const double iy = pointerInside ? pointerY : document->GetHeight() * 0.5;
+        magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, ix, iy);
+        PlaceMagnifier(magnifierCorner);
+    }
+    body->RequestRedraw();
+}
+
+Rect2Df UltraPaintWindow::MagnifierRectForCorner(int corner) const {
+    const Rect2Df s = surface->GetBounds();   // in the body, where the frame lives
+    const float size = static_cast<float>(std::clamp(settings.magnifierSize,
+            UltraPaintSettings::kMinMagnifierSize, UltraPaintSettings::kMaxMagnifierSize));
+    const float x = (corner % 2 == 0) ? s.x + kMagnifierMargin : s.x + s.width - size - kMagnifierMargin;
+    const float y = (corner < 2) ? s.y + kMagnifierMargin : s.y + s.height - size - kMagnifierMargin;
+    return Rect2Df(x, y, size, size);
+}
+
+void UltraPaintWindow::PlaceMagnifier(int corner) {
+    if (!magnifierFrame || !surface) return;
+    magnifierCorner = std::clamp(corner, 0, 3);
+    const Rect2Df r = MagnifierRectForCorner(magnifierCorner);
+    magnifierFrame->layoutItem.position->left = CSSLayout::Dimension::Px(r.x);
+    magnifierFrame->layoutItem.position->top  = CSSLayout::Dimension::Px(r.y);
+    magnifierFrame->InvalidateLayout();
+    body->RequestRedraw();
+}
+
+void UltraPaintWindow::UpdateMagnifier(double imageX, double imageY, const Point2Di& view) {
+    if (!magnifier || !magnifierFrame || !magnifierFrame->IsVisible()) return;
+    magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, imageX, imageY);
+
+    // The canvas may have been resized since the glass was placed (the window
+    // or a panel): its corner is where it was placed in, not where it is.
+    {
+        const Rect2Df want = MagnifierRectForCorner(magnifierCorner);
+        const Rect2Df have = magnifierFrame->GetBounds();
+        if (std::fabs(want.x - have.x) > 0.5f || std::fabs(want.y - have.y) > 0.5f) PlaceMagnifier(magnifierCorner);
+    }
+
+    // Keep out of the pointer's way: when it comes within reach of the
+    // glass, move to the corner farthest from it.
+    const Rect2Df s = surface->GetBounds();
+    const Point2Df p(s.x + static_cast<float>(view.x), s.y + static_cast<float>(view.y));
+    auto distance = [&p](const Rect2Df& r) {
+        const float dx = std::max({r.x - p.x, 0.0f, p.x - (r.x + r.width)});
+        const float dy = std::max({r.y - p.y, 0.0f, p.y - (r.y + r.height)});
+        return std::sqrt(dx * dx + dy * dy);
+    };
+    if (distance(MagnifierRectForCorner(magnifierCorner)) >= kMagnifierAvoidDistance) return;
+    int best = magnifierCorner;
+    float bestDistance = -1.0f;
+    for (int c = 0; c < 4; ++c) {
+        const float d = distance(MagnifierRectForCorner(c));
+        if (d > bestDistance) { bestDistance = d; best = c; }
+    }
+    if (best != magnifierCorner) PlaceMagnifier(best);
 }
 
 void UltraPaintWindow::RebuildToolOptions() {
@@ -1128,11 +1432,47 @@ void UltraPaintWindow::RebuildToolOptions() {
     rightPanel->RequestRedraw();
 }
 
+void UltraPaintWindow::ScheduleLayerPanelRebuild() {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { RebuildLayerPanel(); return; }
+    if (layerPanelRebuildPending) return;
+    layerPanelRebuildPending = true;
+    std::weak_ptr<bool> alive = lifeToken;
+    app->PostToUIThread([this, alive]() {
+        if (alive.expired()) return;
+        layerPanelRebuildPending = false;
+        RebuildLayerPanel();
+    });
+}
+
+void UltraPaintWindow::StartLayerRename(int index) {
+    if (!document || !document->GetLayer(index)) return;
+    document->SetActiveLayerIndex(index);
+    renamingLayer = index;
+    // From the name button's own double-click: the rebuild that swaps the
+    // button for the field runs once that click has been handled.
+    ScheduleLayerPanelRebuild();
+}
+
+void UltraPaintWindow::FinishLayerRename(bool keep, const std::string& name) {
+    const int index = renamingLayer;
+    if (index < 0) return;
+    // First: the rebuild below removes the field, and its focus loss then
+    // finds no rename to finish again.
+    renamingLayer = -1;
+    const std::string trimmed = Trim(name);
+    if (keep && document && document->GetLayer(index) && !trimmed.empty())
+        document->SetLayerName(index, trimmed);   // undoable, as "Rename Layer"
+    ScheduleLayerPanelRebuild();   // the name button back, also when nothing changed
+}
+
 void UltraPaintWindow::RebuildLayerPanel() {
     if (!layerRows || !document) return;
     layerRows->ClearChildren();
     const int n = document->GetLayerCount();
     const int active = document->GetActiveLayerIndex();
+    if (renamingLayer >= n) renamingLayer = -1;   // the layer went (undo, delete)
+    std::shared_ptr<UltraCanvasTextInput> renameField;
     // top of the stack first
     for (int i = n - 1; i >= 0; --i) {
         auto layer = document->GetLayer(i);
@@ -1146,21 +1486,55 @@ void UltraPaintWindow::RebuildLayerPanel() {
         vis->onStateChanged = [this, i](CheckedState, CheckedState s) { document->SetLayerVisible(i, s == CheckedState::Checked); };
         vis->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         row->AddChild(vis);
-        std::string label = layer->name;
-        if (layer->locked) label += "  [locked]";
-        auto btn = std::make_shared<UltraCanvasButton>("up-lsel-" + std::to_string(i), 0, 0, 0, 24, label);
-        btn->SetCanToggled(true);
-        btn->SetPressed(i == active);
-        ButtonStyle st = btn->GetStyle();
-        st.fontSize = 11.0f;
-        btn->SetStyle(st);
-        btn->onToggle = [this, i](bool) {
-            document->SetActiveLayerIndex(i);
-            RebuildLayerPanel();
-        };
-        btn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        row->AddChild(btn);
+        if (i == renamingLayer) {
+            auto field = CreateTextInput("up-lname-" + std::to_string(i), 0, 0, 0, 24);
+            TextInputStyle ts = field->GetStyle();
+            ts.fontStyle.fontSize = 11.0f;
+            field->SetStyle(ts);
+            field->SetShowValidationState(false);   // a name, not a form
+            field->SetText(layer->name);
+            field->onEnterPressed = [this](const std::string& text) {
+                FinishLayerRename(true, text);
+                return true;
+            };
+            field->onEscapePressed = [this]() {
+                FinishLayerRename(false, "");
+                return true;
+            };
+            // A click anywhere else keeps the name, as Enter does.
+            UltraCanvasTextInput* raw = field.get();
+            field->onFocusLost = [this, raw]() { FinishLayerRename(true, raw->GetText()); };
+            field->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(field);
+            renameField = field;
+        } else {
+            std::string label = layer->name;
+            if (layer->locked) label += "  [locked]";
+            auto btn = std::make_shared<UltraCanvasButton>("up-lsel-" + std::to_string(i), 0, 0, 0, 24, label);
+            btn->SetCanToggled(true);
+            btn->SetPressed(i == active);
+            btn->SetTooltip("Double-click to rename");
+            ButtonStyle st = btn->GetStyle();
+            st.fontSize = 11.0f;
+            btn->SetStyle(st);
+            btn->onToggle = [this, i](bool) {
+                document->SetActiveLayerIndex(i);
+                // Also when `i` was already active: the click released the
+                // button, and the rebuild presses it again.
+                ScheduleLayerPanelRebuild();
+            };
+            // The first click has selected the layer; the second renames it.
+            btn->onDoubleClick = [this, i]() { StartLayerRename(i); };
+            btn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(btn);
+        }
         layerRows->AddChild(row);
+    }
+    if (renameField) {
+        // In the window now: it can take the keyboard. The whole name is
+        // selected, so typing replaces it.
+        renameField->SetFocus(true);
+        renameField->SelectAll();
     }
     layerRows->SetBounds(Rect2Df(0, 0, kRightInner, static_cast<float>(n) * 28.0f));
     if (auto layer = document->GetActiveLayer()) {
@@ -1225,7 +1599,7 @@ void UltraPaintWindow::CmdNewWindow() {
 // formats, the editor's own projects, and whatever vector artwork it can
 // rasterize (which depends on libvips and on the registered plugins).
 std::vector<std::string> UltraPaintWindow::OpenableExtensions() {
-    std::vector<std::string> exts = kImageExtensions;
+    std::vector<std::string> exts = ReadableImageExtensions();
     exts.push_back("ucraster");
     for (const auto& v : GetVectorRasterExtensions()) {
         if (std::find(exts.begin(), exts.end(), v) == exts.end()) exts.push_back(v);
@@ -1281,21 +1655,22 @@ void UltraPaintWindow::CmdSaveAs() {
     if (!document) return;
     FileDialogOptions opts;
     std::string def = document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath());
-    opts.SetTitle("Save image as")
-        .AddFilter("PNG", std::vector<std::string>{ "png" })
-        .AddFilter("JPEG", std::vector<std::string>{ "jpg", "jpeg" })
-        .AddFilter("WebP", std::vector<std::string>{ "webp" })
-        .AddFilter("TIFF", std::vector<std::string>{ "tif", "tiff" })
-        .AddFilter("AVIF", std::vector<std::string>{ "avif" })
-        .AddFilter("BMP", std::vector<std::string>{ "bmp" })
-        .AddFilter("UltraPaint project (layers kept)", std::vector<std::string>{ "ucraster" })
+    opts.SetTitle("Save image as");
+    // FileLoader's types - every bitmap type this build writes - and the
+    // editor's own project, which keeps the layers.
+    UltraCanvasFileLoader::AddImageSaveTypes(opts);
+    opts.AddFilter("UltraPaint project (layers kept)", std::vector<std::string>{ "ucraster" })
         .AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(def)
+        // The picture's size, so the Settings of a bitmap type offer to write
+        // it at another size.
+        .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
+                                                       const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
-        SaveToPath(path);
+        SaveToPath(path, size);
     });
 }
 
@@ -1303,18 +1678,24 @@ void UltraPaintWindow::CmdExport() {
 #ifdef HAS_LIBVIPS
     if (!document) return;
     FileDialogOptions opts;
-    opts.SetTitle("Export image")
-        .AddFilter("Images", kImageExtensions)
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.SetTitle("Export image");
+    UltraCanvasFileLoader::AddImageSaveTypes(opts);   // every bitmap type this build writes
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetDefaultFileName(document->GetFilePath().empty() ? "untitled.png" : FileNameOf(document->GetFilePath()))
+        .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
+                                                       const FileSaveImageSize& size) {
         if (r != DialogResult::OK || path.empty()) return;
         try {
             auto flat = document->Flatten();
             vips::VImage vimg = flat->ToPixelFX();
+            // The export dialog opens on the format the name has, with that
+            // format's save settings, and on the size chosen in the Save
+            // dialog's Settings, if one was.
             auto dlg = std::make_shared<UltraCanvasImageExportDialog>(vimg);
             dlg->SetFileName(path);
+            if (!size.IsOriginal()) dlg->SetTargetSize(size.width, size.height);
             dlg->onSave = [this, path](const UCImageSave::ImageExportOptions& options) {
                 std::string error;
                 if (!document->SaveToFile(path, error, &options))
@@ -1894,6 +2275,20 @@ void UltraPaintWindow::CmdColourToAlpha() {
 // ===========================================================================
 // HELP
 // ===========================================================================
+
+void UltraPaintWindow::CmdSettings() {
+    // Raise the open window instead of opening a second one.
+    if (auto open = settingsDialog.lock()) { open->Show(); return; }
+    auto dlg = std::make_shared<UltraPaintSettingsDialog>(&settings);
+    // The dialog reads this window's settings, so it must not outlive it:
+    // the editor's own close takes it down (onWindowClosing), and the token
+    // guards the callbacks for the turn of the loop in between.
+    std::weak_ptr<bool> alive = lifeToken;
+    dlg->onChanged = [this, alive]() { if (!alive.expired()) ApplySettings(); };
+    dlg->onWindowClosed = [this, alive]() { if (!alive.expired()) settingsDialog.reset(); };
+    settingsDialog = dlg;
+    ShowDialog(dlg);
+}
 
 void UltraPaintWindow::CmdAbout() {
     std::string text = "UltraPaint " ULTRAPAINT_VERSION "\n\n"

@@ -100,7 +100,7 @@ void SetThreatScanOptions(const ThreatScanOptions& options);
 ThreatScanOptions GetThreatScanOptions();
 
 // The reader's own lists: the sender menu's "Always trust this sender" and
-// "Block this sender" (Settings > Warnings > Trusted and blocked senders).
+// "Block this sender" (Settings > Warnings > Trusted & blocked).
 // Addresses are lower case; a blocked "@example.com" blocks the whole domain
 // and its subdomains.
 struct SenderLists {

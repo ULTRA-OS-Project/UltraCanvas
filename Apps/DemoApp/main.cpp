@@ -1,6 +1,8 @@
 // UltraCanvas Framework Demonstration Program Entry Point
-// Version: 1.0.1 - --no-about; --component starts without the About window
-// Last Modified: 2026-10-08
+// Version: 1.0.3 - Builds for the browser: the application object outlives
+//                 main(), and ?component= / ?about= stand in for the arguments
+// Version: 1.0.2 - --help prints to stdout, a bad argument to stderr
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include <iostream>
@@ -46,6 +48,11 @@
 #include <X11/Xlib.h>
 #include <signal.h>
 #include "UltraCanvasDebug.h"
+#endif
+
+#ifdef __EMSCRIPTEN__
+// The page's query string stands in for the command line (WASMURL).
+#include "OS/WASM/UltraCanvasWASMSupport.h"
 #endif
 
 using namespace UltraCanvas;
@@ -111,6 +118,8 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
 
 #elif __APPLE__
     debugOutput << "macOS";
+#elif __EMSCRIPTEN__
+    debugOutput << "WebAssembly";
     #else
         debugOutput << "Unknown";
 #endif
@@ -173,13 +182,33 @@ void ShutdownSystem() {
 // ===== MAIN APPLICATION ENTRY POINT =====
 int main(int argc, char* argv[]) {
     debugOutput << std::endl;
+#ifdef __EMSCRIPTEN__
+    // In the browser app.Run() never returns: emscripten_set_main_loop()
+    // unwinds main()'s frame while the loop keeps ticking, so a stack-local
+    // application would be destroyed under its own windows. Static storage
+    // keeps it alive for the page's lifetime (UltraCanvas/OS/WASM/README.md,
+    // "Application lifetime rule").
+    static UltraCanvasApplication g_app;
+#else
     UltraCanvasApplication g_app;
+#endif
     try {
         // Process command line arguments
         bool verboseMode = false;
         bool testMode = false;
         bool showAbout = true;
         std::string startupComponent = "";
+
+#ifdef __EMSCRIPTEN__
+        // A page has no command line; its query string carries the same two
+        // choices: UltraCanvasDemo.html?component=piecharts opens that page
+        // (and, like --component, leaves the About window out), and
+        // ?about=0 is --no-about.
+        startupComponent = WASMURL::GetQueryParameter("component");
+        if (!startupComponent.empty() || WASMURL::GetQueryParameter("about") == "0") {
+            showAbout = false;
+        }
+#endif
 
         for (int i = 1; i < argc; i++) {
             std::string arg = argv[i];
@@ -201,19 +230,19 @@ int main(int argc, char* argv[]) {
             } else if (arg == "--no-about") {
                 showAbout = false;
             } else if (arg == "--help" || arg == "-h") {
-                debugOutput << "UltraCanvas Demo Application" << std::endl;
-                debugOutput << "Usage: " << argv[0] << " [options]" << std::endl;
-                debugOutput << "Options:" << std::endl;
-                debugOutput << "  -v, --verbose     Enable verbose output" << std::endl;
-                debugOutput << "  -t, --test        Run in test mode" << std::endl;
-                debugOutput << "  -c, --component   Start with specific component selected" << std::endl;
-                debugOutput << "                    (implies --no-about)" << std::endl;
-                debugOutput << "      --no-about    Start without the \"About UltraCanvas\" window" << std::endl;
-                debugOutput << "  -h, --help        Show this help message" << std::endl;
+                std::cout << "UltraCanvas Demo Application" << std::endl;
+                std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
+                std::cout << "Options:" << std::endl;
+                std::cout << "  -v, --verbose     Enable verbose output" << std::endl;
+                std::cout << "  -t, --test        Run in test mode" << std::endl;
+                std::cout << "  -c, --component   Start with specific component selected" << std::endl;
+                std::cout << "                    (implies --no-about)" << std::endl;
+                std::cout << "      --no-about    Start without the \"About UltraCanvas\" window" << std::endl;
+                std::cout << "  -h, --help        Show this help message" << std::endl;
                 return 0;
             } else {
-                debugOutput << "Unknown argument: " << arg << std::endl;
-                debugOutput << "Use --help for usage information" << std::endl;
+                std::cerr << "Unknown argument: " << arg << std::endl;
+                std::cerr << "Use --help for usage information" << std::endl;
             }
         }
 

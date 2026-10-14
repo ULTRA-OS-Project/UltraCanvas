@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailAccountBar.cpp
+// Version: 0.6.0 - the tiles sit in a toolbar that lets them be dragged into
+//                  another order (onReorderAccounts)
 // Version: 0.5.0 - a click anywhere on a tile selects its account (its text
 //                  and counters took the click before, and only the tile's
 //                  padding answered); the counters' captions are in the
@@ -7,7 +9,7 @@
 //                  page: initial in a tinted avatar square, local part as the
 //                  name, and the three counters as tinted count · caption
 //                  pills instead of saturated badges.
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountBar.h"
 
@@ -92,6 +94,7 @@ void AccountBar::Rebuild(const std::vector<Account>& accounts,
     if (!root_) Build();
     root_->ClearChildren();
     tiles_.clear();
+    tileRow_.reset();
     if (accounts.empty()) return;
     if (accounts.size() == 1)
         BuildSummary(accounts.front(), StatusFor(status, accounts.front().accountId));
@@ -142,6 +145,30 @@ void AccountBar::BuildSummary(const Account& account, const AccountStatus& statu
 void AccountBar::BuildTiles(const std::vector<Account>& accounts,
                             const std::vector<AccountStatus>& status,
                             const std::string& selectedAccountId) {
+    // The tiles are a toolbar's items, for its drag into another order; the
+    // toolbar itself shows nothing of its own - no fill, frame or padding -
+    // and keeps the bar's gap between the tiles, which stretch to one height.
+    tileRow_ = std::make_shared<UltraCanvasToolbar>("acctTiles", 0, 0, 0, 0);
+    ToolbarAppearance look = ToolbarAppearance::Flat();
+    look.backgroundColor = Colors::Transparent;
+    look.itemSpacing = Theme::kGap;
+    tileRow_->SetAppearance(look);
+    tileRow_->SetBorders(0.0f, Colors::Transparent);
+    tileRow_->SetPadding(0);
+    tileRow_->layout.SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    tileRow_->EnableItemReordering(true);
+    tileRow_->onItemReordered = [this](int, int) {
+        if (!tileRow_) return;
+        std::vector<std::string> order;
+        for (const auto& item : tileRow_->GetItems())
+            for (const auto& [acc, tile] : tiles_)
+                if (tile.get() == item.get()) order.push_back(acc);
+        if (onReorderAccounts) onReorderAccounts(order);
+    };
+    root_->AddChild(tileRow_);
+    tileRow_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
     for (const auto& account : accounts) {
         const std::string acc = account.accountId;
         const AccountStatus& st = StatusFor(status, acc);
@@ -207,7 +234,7 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         // tile's: one target, with one tooltip that names the counters.
         tile->PassPointerThroughContent();
 
-        root_->AddChild(tile);
+        tileRow_->AddChild(tile);
         tiles_[acc] = tile;
     }
 }

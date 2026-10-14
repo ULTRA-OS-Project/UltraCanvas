@@ -1,3 +1,85 @@
+#### 2026-10-14 *1.67*
+- **One UltraTexter at a time.** Opening a file while UltraTexter is already
+  running opens it in the running copy - in a new tab of the window used
+  last, as *File > Open* does, or by switching to the tab of any window that
+  has it open already - and brings that window forward (restored if
+  minimised) instead of starting a second one; starting it without a file
+  brings the open window forward. Every file named on the command line opens
+  now, not only the last one. `--dark` and `--lang` keep choosing how a first
+  start sets itself up; a later start's are not handed over. Two starts at
+  the same moment cannot both stay, and a copy that does not answer is
+  reported with *"UltraTexter is already running"*. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
+#### 2026-10-14 *1.66*
+- **Sharp icons in the markdown side bar.** Italic, Unordered List, Ordered
+  List and Code Block were exports with fractional coordinates and hairline
+  strokes: at the 24 px the side bar draws them, the list bars fell between
+  two pixel rows and came out as grey double lines, and the italic *i*, the
+  numbers and the `{#}` were smeared. They are redrawn on the 24 px grid in
+  the weight of the bar's other icons - black, 1 px lines on whole pixels:
+  single-row bars, rings for the bullets, 1 2 3 in a 5 x 7 pixel face, upright
+  braces and hash, and a slanted *i* whose top and foot sit on whole rows.
+  The DemoApp's WYSIWYG page uses the same icons (framework changelog:
+  `demo-vector-toolbar-icons`).
+
+#### 2026-10-14 *1.65*
+- **Word documents go through FileLoader, and the dialogs offer its types.**
+  - Texter read and wrote `.odt`, `.docx` and `.doc` by calling the Word
+    document reader and writer itself. It now reads them with
+    `UltraCanvasFileLoader::LoadTextDocument` and saves them with
+    `SaveTextDocument`. A damaged package still opens in the plain view, and
+    a legacy `.doc` it cannot read still says so.
+  - The Open dialog's "Word Processing" place now holds FileLoader's
+    "Documents": every type `LoadTextDocument` reads.
+  - The Save dialogs offer ODT and DOCX, one type each. They used to offer
+    `.doc` too, which Texter then refused to write.
+  - Insert Image offers every picture type the build reads, and SVG, instead
+    of five types (framework changelog: `fileloader-type-lists`).
+
+#### 2026-10-13 *1.64*
+- **The settings and the autosave folder are found in a profile named in any
+  script.** The config folder (`config.ini`, the recent files, the session)
+  and the autosave folder were built by hand from `HOME`, `XDG_CONFIG_HOME`
+  and `XDG_DATA_HOME` read through the narrow `getenv`, which on Windows
+  answers in the ANSI code page. Both come from the framework's rules now -
+  the settings root (`UltraCanvasSettingsFolderRoot`) and the data folder
+  (`UltraCanvasDataFolder`), every variable read as UTF-8 - and land in the
+  same folders as before on every platform (framework changelog:
+  `settings-root-and-xdg-everywhere`).
+
+#### 2026-10-11 *1.63*
+- **Menus opened from buttons stay clear of them.** The Recent files menu of
+  the toolbar and the search bar's settings and history menus open with the
+  framework's `OpenMenuAnchored` (framework changelog:
+  `menu-anchors-symbolic-icons`): below their button, or above it when there
+  is no room below - a search bar at the foot of the window no longer opens
+  its menus over itself. The menus' line icons (zoom, theme and the rest)
+  are painted in the entry's text colour, so they are light in the dark
+  theme instead of black on dark grey.
+
+#### 2026-10-11 *1.62*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraTexter --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
+- **The standalone build (`Apps/Texter/CMakeLists.txt`) opens no console
+  window on Windows either.** Its `UltraTexter.exe` was a console program in
+  every build; a Release build is now a GUI program, like the editor the
+  root build makes.
+
+#### 2026-10-10 *1.61*
+- **Menus in the dark theme keep their separators and outline.** The
+  framework's menus took on the current desktop look (framework changelog:
+  `modern-menus`), whose hairlines are translucent black - invisible on the
+  dark theme's menubar and its drop-downs, which only had their background,
+  text and hover recoloured. The theme switch now also takes the outline,
+  separator, shortcut, disabled-entry and shadow colours from the matching
+  `MenuStyle` (`Dark()` or `Default()`).
+
 #### 2026-10-05 *1.60*
 - **Settings, autosave and comments work in a Windows profile named in any
   script.** The configuration folder (`config.ini`, the recent files, the

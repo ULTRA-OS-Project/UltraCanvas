@@ -1,79 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- James — simple 32px-friendly app icon -->
-  <circle cx="256" cy="256" r="235" fill="#A9D8F7"/>
-
-  <!-- Hair -->
-  <path d="M126 250
-           C112 191 146 124 220 103
-           C273 88 340 100 385 132
-           C405 146 421 163 426 180
-           C404 174 386 166 368 155
-           C373 171 367 185 355 195
-           C315 177 270 171 226 177
-           C205 180 187 188 171 202
-           L166 267 Z"
-        fill="#4A2A20"/>
-
-  <!-- Face, three-quarter view -->
-  <path d="M169 198
-           C191 174 231 160 278 164
-           C329 168 371 194 389 233
-           C402 261 402 307 389 349
-           C378 386 350 411 315 419
-           C278 428 232 414 205 390
-           C182 369 169 339 165 302
-           C161 267 160 227 169 198 Z"
-        fill="#FFC58F"/>
-
-  <!-- Ear -->
-  <path d="M169 263
-           C146 252 126 265 126 291
-           C126 318 144 336 169 329
-           C178 326 184 317 183 307
-           C175 310 166 306 163 298
-           C160 289 164 278 174 274 Z"
-        fill="#FFC58F"/>
-  <path d="M157 286 C149 278 145 292 153 300 C158 305 164 303 166 297"
-        fill="none" stroke="#D8875D" stroke-width="7" stroke-linecap="round"/>
-
-  <!-- Hair side lock -->
-  <path d="M166 199 C142 218 133 249 137 275 C142 295 154 306 166 311 L171 265 Z"
-        fill="#4A2A20"/>
-
-  <!-- Eyebrows -->
-  <path d="M222 237 C237 226 255 224 271 229"
-        fill="none" stroke="#4A2A20" stroke-width="12" stroke-linecap="round"/>
-  <path d="M318 239 C329 234 340 235 348 241"
-        fill="none" stroke="#4A2A20" stroke-width="11" stroke-linecap="round"/>
-
-  <!-- Eyes -->
-  <ellipse cx="251" cy="267" rx="17" ry="24" fill="#4A2A20"/>
-  <ellipse cx="335" cy="270" rx="13" ry="21" fill="#4A2A20"/>
-  <circle cx="257" cy="259" r="5" fill="#FFFFFF"/>
-  <circle cx="339" cy="263" r="4" fill="#FFFFFF"/>
-
-  <!-- Nose -->
-  <path d="M347 277 C352 289 359 300 365 306 C358 314 348 316 338 313"
-        fill="none" stroke="#D8875D" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <!-- Smile -->
-  <path d="M287 337 C307 351 332 353 350 341"
-        fill="none" stroke="#4A2A20" stroke-width="9" stroke-linecap="round"/>
-
-  <!-- Neck -->
-  <path d="M224 384 C229 407 232 425 223 443
-           L323 449 C312 430 313 413 318 400 Z"
-        fill="#FFC58F"/>
-
-  <!-- Shirt -->
-  <path d="M220 411
-           C181 424 142 449 108 484
-           L404 484
-           C374 450 338 428 310 414
-           C282 430 247 429 220 411 Z"
-        fill="#3474D1"/>
-
-  <!-- Simple shirt collar -->
-  <path d="M220 411 C244 431 282 435 310 414"
-        fill="none" stroke="#2859A8" stroke-width="10" stroke-linecap="round"/>
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!--Generator: Xara Designer (www.xara.com), SVG filter version: 6.7.0.0-->
+<svg fill="none" fill-rule="evenodd" stroke="black" stroke-width="0.501" stroke-linejoin="bevel" stroke-miterlimit="10" font-family="Times New Roman" font-size="16" style="font-variant-ligatures:none" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" version="1.1" overflow="visible" width="228.99pt" height="303.41pt" viewBox="150.399 -618.938 228.99 303.41">
+ <defs>
+	</defs>
+ <g id="Layer 1" transform="scale(1 -1)">
+  <path d="M 198.852,536.427 C 217.295,556.546 246.377,557.795 285.776,554.442 C 328.529,551.089 347.825,537.479 362.914,504.786 C 344.457,474.709 377.172,454.607 366.274,419.398 C 357.053,388.381 366.474,349.774 337.133,343.068 C 306.116,335.523 247.215,344.868 224.581,364.987 C 205.3,382.592 194.402,407.74 191.049,438.757 C 193.177,484.851 191.308,512.116 198.852,536.427 Z" fill-rule="nonzero" stroke-linejoin="miter" stroke="none" fill="#ffc58f" stroke-width="0.838" marker-start="none" marker-end="none"/>
+  <path d="M 194.402,471.45 C 175.121,480.672 158.355,469.774 158.355,447.978 C 158.355,425.344 173.445,410.255 194.402,416.123 C 201.946,418.638 206.977,426.183 206.138,434.566 C 199.432,432.051 191.887,435.404 189.372,442.11 C 186.858,449.655 190.21,458.876 198.594,462.23 Z" fill-rule="nonzero" stroke-linejoin="miter" stroke="none" fill="#ffc58f" stroke-width="0.838" marker-start="none" marker-end="none"/>
+  <path d="M 184.342,452.17 C 177.636,458.876 174.283,447.14 180.989,440.434 C 185.181,436.242 190.21,437.918 191.887,442.949" fill="none" fill-rule="nonzero" stroke-linejoin="miter" stroke="#d8875d" stroke-width="5.868" stroke-linecap="round"/>
+  <path d="M 191.887,525.101 C 171.768,509.174 163.457,493.767 166.81,471.971 C 178.043,475.915 188.017,475.869 196.078,469.774 Z" fill-rule="nonzero" stroke-linejoin="miter" stroke="none" fill="#4a2a20" stroke-width="0.838" marker-start="none" marker-end="none"/>
+  <path d="M 260.645,488.501 C 270.672,500.442 284.934,505.65 298.957,504.76" fill="none" fill-rule="nonzero" stroke-linejoin="miter" stroke="#4a2a20" stroke-width="10.06" stroke-linecap="round"/>
+  <path d="M 337.765,506.462 C 346.986,510.654 356.207,509.816 362.914,504.786" fill="none" fill-rule="nonzero" stroke-linejoin="miter" stroke="#4a2a20" stroke-width="9.222" stroke-linecap="round"/>
+  <ellipse rx="14.25" ry="20.119" transform="translate(283.317 468.097)" fill="#191919" fill-rule="nonzero" stroke-linejoin="miter" stroke="none" stroke-width="0.838"/>
+  <ellipse cx="343.633" cy="474.709" rx="10.479" ry="17.604" fill="#191919" fill-rule="nonzero" stroke-linejoin="miter" stroke="none" stroke-width="0.838"/>
+  <ellipse rx="6.705" ry="6.705" transform="translate(290.861 472.289)" fill-rule="nonzero" stroke-linejoin="miter" stroke="none" fill="#ffffff" stroke-width="1.341"/>
+  <ellipse rx="5.449" ry="5.449" transform="translate(348.663 478.481)" fill-rule="nonzero" stroke-linejoin="miter" stroke="none" fill="#ffffff" stroke-width="1.362"/>
+  <path d="M 327.271,449.068 C 331.463,439.009 337.331,429.788 342.361,424.758 C 336.493,418.052 328.11,416.375 319.727,418.89" fill="none" fill-rule="nonzero" stroke-linejoin="miter" stroke="#d8875d" stroke-width="5.868" stroke-linecap="round"/>
+  <path d="M 287.031,399.038 C 303.797,387.301 324.754,385.625 339.844,395.684" fill="none" fill-rule="nonzero" stroke-linejoin="miter" stroke="#4a2a20" stroke-width="7.545" stroke-linecap="round"/>
+  <path d="M 240.509,370.017 C 244.7,350.736 247.215,335.647 239.67,320.557 L 323.499,315.528 C 314.279,331.455 315.116,345.706 319.308,356.604 Z" fill-rule="nonzero" stroke-linejoin="miter" stroke="none" fill="#ffc58f" stroke-width="0.838" marker-start="none" marker-end="none"/>
+  <path d="M 271.678,347.007 L 318.109,327.997 C 317.598,332.851 316.684,334.764 318.442,340.618 C 311.386,339.265 302.108,340.742 271.678,347.007 Z" fill="#bf6200" stroke="none" stroke-width="0.838" stroke-linejoin="miter" marker-start="none" marker-end="none"/>
+  <path d="M 158.355,482.349 C 146.619,531.808 143.388,548.292 180.633,570.489 C 231.42,634.218 305.167,625.495 342.89,598.669 C 359.657,586.933 375.197,597.083 379.389,582.832 C 364.008,574.844 376.92,571.968 361.223,561.987 C 365.414,548.574 354.73,536.101 344.67,527.718 C 328.17,565.968 291.431,528.224 241.984,555.21 C 244.556,523.536 216.953,520.038 203.54,508.302 C 212.291,492.677 212.049,477.052 208.227,461.427 Z" fill-rule="nonzero" stroke-linejoin="miter" stroke="none" fill="#4a2a20" stroke-width="0.838" marker-start="none" marker-end="none"/>
+ </g>
 </svg>

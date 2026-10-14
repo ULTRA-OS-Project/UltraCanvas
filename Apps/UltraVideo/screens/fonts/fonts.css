@@ -1,0 +1,12 @@
+/* UltraVideo's type: IBM Plex Sans for the interface, IBM Plex Mono for every number that
+   changes over time (tabular figures, so timecode never jitters). Both are OFL and hosted
+   on Google Fonts; the stacks in tokens.css fall back to the framework's Ubuntu fonts,
+   declared here from media/fonts so the pages read the same offline. */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+@font-face { font-family: "Ubuntu"; font-weight: 400; font-style: normal; src: local("Ubuntu"), url("../../../../media/fonts/Ubuntu-R.ttf") format("truetype"); }
+@font-face { font-family: "Ubuntu"; font-weight: 500; font-style: normal; src: local("Ubuntu Medium"), url("../../../../media/fonts/Ubuntu-M.ttf") format("truetype"); }
+@font-face { font-family: "Ubuntu"; font-weight: 600; font-style: normal; src: local("Ubuntu Bold"), url("../../../../media/fonts/Ubuntu-B.ttf") format("truetype"); }
+@font-face { font-family: "Ubuntu"; font-weight: 400; font-style: italic; src: local("Ubuntu Italic"), url("../../../../media/fonts/Ubuntu-RI.ttf") format("truetype"); }
+@font-face { font-family: "Ubuntu Mono"; font-weight: 400; font-style: normal; src: local("Ubuntu Mono"), url("../../../../media/fonts/UbuntuMono-R.ttf") format("truetype"); }
+@font-face { font-family: "Ubuntu Mono"; font-weight: 700; font-style: normal; src: local("Ubuntu Mono Bold"), url("../../../../media/fonts/UbuntuMono-B.ttf") format("truetype"); }

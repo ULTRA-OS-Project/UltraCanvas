@@ -2,11 +2,13 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.3.1 - ConcatenateRunText counts the first run's line break, as the
+//                  editor's positions do: a block's leading empty line is kept
 // Version: 1.3.0 - FromHTML reads through the HTMLReader's importer
 //                  (ImportHTMLToRichDocument); its own tokenizer, entity table
 //                  and CSS reader are gone
 // Version: 1.2.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocument.h"
@@ -708,7 +710,10 @@ bool UCRichDocument::SniffImagePixelSize(const std::vector<uint8_t>& data, int& 
 std::string UCRichDocument::ConcatenateRunText(const std::vector<RichTextRun>& runs) {
     std::string out;
     for (const auto& run : runs) {
-        if (run.lineBreakBefore && !out.empty()) out.push_back('\n');
+        // Every line break counts, the first run's too: a block can start
+        // with an empty line (a code block whose first line is blank), and
+        // the editor's positions count that '\n' as well.
+        if (run.lineBreakBefore) out.push_back('\n');
         out += run.text;
     }
     return out;

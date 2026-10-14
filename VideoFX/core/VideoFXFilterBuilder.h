@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXFilterBuilder.h
 // Internal: turns typed VideoFX effects into backend filter-graph text.
 // Pure string code with no FFmpeg dependency, so it is unit-tested directly.
-// Version: 0.2.0
+// Version: 0.3.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once
@@ -79,6 +79,10 @@ std::string BuildTextOverlayFilter(const VideoFXOverlay& overlay, int outWidth, 
 void BuildImageOverlayFilters(const VideoFXOverlay& overlay, int outWidth, int outHeight, int imageHeight,
                               const std::string& frameRate, double segmentDuration,
                               std::string& inputChain, std::string& overlayFilter);
+// The input chain and overlay filter of a video overlay whose frames are
+// fed upright and RGBA at `videoHeight` pixels, timed on the segment's clock
+void BuildVideoOverlayFilters(const VideoFXOverlay& overlay, int outWidth, int outHeight, int videoHeight,
+                              double segmentDuration, std::string& inputChain, std::string& overlayFilter);
 
 } // namespace Internal
 } // namespace VideoFX

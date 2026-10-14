@@ -1,3 +1,29 @@
+#### 2026-10-13 *0.1.14*
+- **The endpoint settings are found in a profile named in any script.**
+  `endpoints.json`'s folder was built by hand from `HOME` and
+  `XDG_CONFIG_HOME` read through the narrow `getenv` on macOS and Linux; it
+  comes from the framework's settings root now
+  (`UltraCanvasSettingsFolderRoot`, every variable read as UTF-8) and lands in
+  the same folder as before on every platform (framework changelog:
+  `settings-root-and-xdg-everywhere`).
+
+#### 2026-10-12 *0.1.13*
+- **One UltraAI at a time.** Starting UltraAI while it is already running brings
+  the open window forward (restored if minimised; an open dialog comes forward
+  with it) instead of opening a second copy. Two starts at the same moment
+  cannot both stay, and a copy that does not answer is reported with
+  *"UltraAI is already running"*. Command-line modes are unaffected.
+  Framework: `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
+#### 2026-10-09 *0.1.12*
+- **New dashboard icon.** The face is drawn larger and without the light blue
+  disc behind it (`media/appicon/UltraAI.svg`, the uploaded artwork).
+  `media/appicon/UltraAI.png` is re-rendered from it at 256 px through
+  librsvg; the drawing is taller than wide (229 x 303 units), so it is padded
+  to a square on a transparent background. The window and taskbar icon, the
+  Windows `.exe` icon and the `hicolor` theme icons are all made from this
+  pair, so every one of them changes with it.
+
 #### 2026-10-07 *0.1.11*
 - **The Translation dialog takes the source language and the formality.**
   It sent only the texts and a target language, so the register and a known

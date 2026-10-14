@@ -6,8 +6,9 @@
 // formatting menu - alignment, number-format presets, colours and column/row
 // sizing - on the "Format" button and on a right-click in the grid - and the
 // header sort buttons that reorder just the selected block of rows.
+// Version: 1.2.0 - Open and Save offer FileLoader's spreadsheet types
 // Version: 1.1.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -142,7 +143,8 @@ namespace UltraCanvas {
         root->AddChild(saveBtn);
 
         auto formatBtn = std::make_shared<UltraCanvasButton>("ssFormatBtn", 494, 50, 130, 30,
-                                                             "Format Cells ▾");
+                                                             "Format Cells");
+        SetFlatButtonIcon(*formatBtn, "dropdown.svg", ButtonIconPosition::Right, 10);
         root->AddChild(formatBtn);
 
         auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 632, 56, 374, 22);
@@ -211,13 +213,9 @@ namespace UltraCanvas {
         // (the button does not own the container).
         openBtn->onClick = [sheet, status, hint, describeGrid]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open Spreadsheet File")
-                .AddFilter("Spreadsheet files", std::vector<std::string>{ "ods", "xlsx", "xls", "csv", "tsv" })
-                .AddFilter("OpenDocument Spreadsheet", "ods")
-                .AddFilter("Excel Workbook", "xlsx")
-                .AddFilter("Excel 97-2003 Workbook", "xls")
-                .AddFilter("CSV / TSV", std::vector<std::string>{ "csv", "tsv" })
-                .AddFilter("All files", "*");
+            opts.SetTitle("Open Spreadsheet File");
+            UltraCanvasFileLoader::AddLoadTypes(opts, "Spreadsheet files", {MediaFormatCategory::Spreadsheet});
+            opts.AddFilter("All files", "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [sheet, status, hint, describeGrid](DialogResult result, const std::string& path) {
@@ -279,19 +277,15 @@ namespace UltraCanvas {
         };
 
         // ===== SAVE -> file dialog (all supported formats) =====
-        // Offer every format the engine can write: OpenDocument (.ods), Excel
-        // (.xlsx) and CSV / TSV. When the chosen name ends in .csv or .tsv we open the CSV
+        // Offer every format the engine can write - FileLoader's list: OpenDocument
+        // (.ods), Excel (.xlsx) and CSV / TSV. When the chosen name ends in .csv or .tsv we open the CSV
         // export options dialog (separator, quoting, charset, line ending) so the
         // text file is written exactly as the user wants; .ods saves directly.
         saveBtn->onClick = [sheet, status]() {
             FileDialogOptions opts;
-            opts.SetTitle("Save Spreadsheet As")
-                .SetDefaultFileName("spreadsheet.ods")
-                .AddFilter("OpenDocument Spreadsheet", "ods")
-                .AddFilter("Excel Workbook", "xlsx")
-                .AddFilter("CSV (comma separated)", "csv")
-                .AddFilter("TSV (tab separated)", "tsv")
-                .AddFilter("All files", "*");
+            opts.SetTitle("Save Spreadsheet As").SetDefaultFileName("spreadsheet.ods");
+            UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::Spreadsheet);
+            opts.AddFilter("All files", "*");
 
             UltraCanvasFileLoader::SaveFileDialog(opts,
                 [sheet, status](DialogResult result, const std::string& path) {

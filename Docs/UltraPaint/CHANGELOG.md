@@ -1,3 +1,179 @@
+#### 2026-10-14 *0.2.21*
+- **One UltraPaint at a time.** Opening a file while UltraPaint is already
+  running opens it in the running copy (in a new window) instead of starting a
+  second one; starting it without a file brings the open window forward. Two
+  starts at the same moment cannot both stay, and a copy that does not answer
+  is reported with *"UltraPaint is already running"*. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
+#### 2026-10-13 *0.2.20*
+- **Open, Save As and Export offer every format this build has.** The
+  editor kept lists of its own: Save As offered PNG, JPEG, WebP, TIFF, AVIF
+  and BMP, Export one "Images" entry, and Open a fixed set of extensions. They
+  are now the framework's FileLoader lists - every bitmap type this build
+  reads for Open, Import and a drop, and every type it writes, each named,
+  for Save As and Export (beside the UltraPaint project) - so GIF, HEIC,
+  QOI, icons and whatever a libvips build or plugin adds are offered, and a
+  type this build cannot write (an AVIF without libheif's encoder) is not
+  (framework changelog, pending entry `save-size-for-drawings-and-the-viewer`).
+
+#### 2026-10-12 *0.2.19*
+- **Sharp toolbar and layer-panel icons.** Fit to Window, Actual Pixels, New
+  Layer and Export in the toolbar, and the seven buttons above the layer list,
+  were still the old 24-unit drawings with 1.8-unit strokes, shown at 20 px:
+  every line blurred, Actual Pixels read "100", and New Layer, Delete Layer
+  and Merge Down were a plus, a bin and an arrow with nothing of a layer about
+  them. They are redrawn like the tools, with 2 px strokes on whole pixels:
+  the layer buttons show a layer with a plus, a minus, an arrow up or down, a
+  copy, a merge or its settings, Actual Pixels reads "1:1", and the toolbars
+  draw them at the 24 px they are drawn for (framework changelog:
+  `toolbar-icon-size`).
+
+#### 2026-10-12 *0.2.18*
+- **Export opens on what was chosen.** The image export dialog after Export's
+  file dialog now opens on the format of the name given there (it opened on
+  PNG whatever the name, and "photo.jpg" was written as a PNG under a .jpg
+  name), with that format's save settings - the ones the Save dialog's
+  Settings button edits, and which Export's Save stores back - and at the
+  size chosen in those Settings, since Export now tells the Save dialog the
+  picture's size too (framework, pending changelog entry
+  "save-settings-followups").
+
+#### 2026-10-12 *0.2.17*
+- **Save As can write the picture at another size.** The Save dialog is told
+  the picture's size, so the Settings button on the type row - new in the
+  framework's Save dialog - opens a bitmap type's settings with a Size
+  row first: width x height in pixels, opened on the picture's own size, with
+  Keep proportions. The file is written at the size chosen there; the open
+  picture keeps its own size, and the next Save As starts on it again. The
+  rest of the type's settings (JPEG quality, PNG compression ...) are the
+  framework's per-format save settings, which a plain Save already follows
+  (framework, pending changelog entry "save-dialog-file-icon-and-settings").
+
+#### 2026-10-12 *0.2.16*
+- **The tool palette groups its tools.** Tools of a kind share one button,
+  so the palette shows 13 buttons for its 26 tools, where it showed 23 for
+  23, and fits a shorter window without scrolling. Resting the pointer on a button folds out a bar beside it with
+  the whole group, and a click there picks a tool; a click on the button
+  itself still picks the tool it shows. A small triangle in a button's
+  corner marks a group. The groups, top to bottom:
+  - *Select* - Rectangle Select, Ellipse Select, Lasso, Magic Wand
+  - *Pen* - Paintbrush, Pencil, Airbrush
+  - *Lines* - Line, Polyline, Arrow, Curve
+  - *Shapes* - Rectangle, Ellipse
+  - *Morph* - Smudge, Clone Stamp (they reshape the pixels already there)
+  - *Shading* - Dodge, Burn
+
+  then Move, Crop, Eyedropper, Eraser, *Fill* (Fill, Gradient), Text and
+  *View* (Zoom, Pan). A tool's shortcut key picks it as before and shows it
+  in its group's button.
+- **Three new line tools: Polyline, Arrow and Curve**, in the Lines group
+  beside Line, all in the foreground colour at the shared line width.
+  - *Polyline* (`Y`): click to add corners; double-click or Enter ends the
+    line, a click on the first corner closes it into a shape (filled in the
+    background colour with *Fill a closed shape*). Backspace takes the last
+    corner back, Escape cancels, Shift constrains a segment to 45°. The
+    first press can be dragged to pull out the first segment, as with Line.
+  - *Arrow* (`V`): drag from the tail to the tip; a filled head at the tip,
+    or at both ends. *Head size* in pixels, never less than three times the
+    line width.
+  - *Curve* (`J`): drag a straight line, then drag or click twice to bend
+    it - the first bend pulls the whole curve, the second its far half.
+    Enter keeps it as it is, Escape cancels.
+
+  A line in progress is kept when another tool is picked. Each is drawn in
+  one pass, so a translucent colour is no darker where a polyline turns or
+  where an arrow's shaft meets its head (framework changelog:
+  `raster-paint-curves-arrows`).
+- **Shift+X picks the Eraser.** The README promised it, but the Eraser had
+  no working shortcut at all: plain `X` is the colour swap, and the tool
+  keys ignored any letter pressed with Shift. A tool's key can now ask for
+  Shift, and the Eraser's tooltip says *Shift+X*.
+- **Settings > Display > Tool palette: an adaptive or a static toolbar.**
+  Adaptive (the default): a group's button shows the tool last picked from
+  it. Static: it always shows the group's main tool, stays highlighted while
+  any tool of the group is in use, and the bar marks which one. The choice
+  applies at once and is saved (`palette.toolbar = adaptive | static` in
+  `config.ini`). *Restore defaults* restores the page shown. The fold-out
+  is the framework's new tool group (framework changelog:
+  `toolbar-tool-groups`).
+
+#### 2026-10-12 *0.2.15*
+- **A magnifying glass for the rectangle selection.** While the Rectangle
+  Select tool is active a small view sits in a corner of the canvas and shows
+  the pixels around the pointer at two, three or four times the view's own
+  zoom, with a translucent diagonal crosshair that leaves the centre pixel -
+  the one under the pointer - clear, so a selection can be started and ended
+  on the exact pixel. The rubber band and the selection outline show in it
+  too, and the pixel grid from 8x. It keeps out of the way: when the pointer
+  comes within 48 px of it, it moves to the corner farthest from the pointer.
+  It takes no clicks, so a drag can pass under it. The framework's paint
+  surface grew a loupe mode for it, and the raster document takes several
+  observers now - the editing view, the glass and the window's panels each
+  listen on their own instead of chaining behind one another's slot
+  (framework changelog: `paint-surface-loupe-mode`,
+  `raster-document-listeners`).
+- **Edit > Settings...** opens UltraPaint's settings window: a tree of pages
+  on the left, so far *Display > Mouse pointer magnification glass* - on or
+  off, the magnification (2x / 3x / 4x) and the window size (100-400 px). A
+  change applies at once and is saved to
+  `UltraCanvasSettingsFolder()/UltraPaint/config.ini`
+  (`~/.config/UltraCanvas/UltraPaint/config.ini` on Linux); *Restore
+  defaults* puts the three back. The menu entry has a 16 px icon like the
+  rest (`media/icons/ultrapaint/16/settings.svg`).
+
+#### 2026-10-11 *0.2.14*
+- **Sharp, clearer tool icons.** The palette's icons were drawn on a 24-unit
+  grid with thin 1.8-unit strokes and shown at 22 px, half a pixel off: every
+  line fell between two pixels, the selection icons' dashes ran together and
+  several tools looked alike. All 23 are redrawn with 2 px strokes whose
+  straight edges sit on whole pixels, in two sets - `media/icons/ultrapaint/28/`
+  for the palette, shown at 28 px in 36 px buttons, and the 24-unit set for
+  24 px and smaller (menus). The rectangle, ellipse and lasso selections are
+  marching ants with gaps of 3 px or more, so they stay apart at 16 px; the
+  eyedropper, pencil, brush, airbrush (a spray can), clone stamp (a stamp),
+  smudge (a fingertip on a smear), dodge, burn, fill (the bucket with a
+  solid drop), gradient (a real gradient), line and text icons are each
+  their own shape. The framework now draws a button's icon on whole pixels
+  (framework changelog: `button-icon-pixel-grid`). Where the window is too
+  short for every tool's button, the palette scrolls instead of squeezing
+  them.
+- **Flat buttons.** The tool palette and the toolbar no longer draw a box
+  around each button: a soft grey rounded highlight marks the button under
+  the pointer and a light blue one the active tool.
+- **Every menu entry has an icon.** All 80 entries of File, Edit, Image,
+  Layer, Select, Adjust, Filter, View and Help - each adjustment and filter
+  included, found by its id - show an icon from a new 16 px set
+  (`media/icons/ultrapaint/16/`): a 16-unit grid with 1 px lines on whole
+  pixels, sharp at the menus' 16 px, in one style instead of Texter's filled
+  icons beside UltraPaint's line ones. They are drawn in one shade of grey,
+  so the menus paint them in the entry's text colour, greyed when disabled.
+- **Double-clicking a layer's name no longer crashes.** Each row's button
+  selected its layer and rebuilt the layer list at once, from inside its own
+  click - the rebuild destroyed the button while it was still handling the
+  click, and the next thing it did crashed UltraPaint (double-clicking
+  *Layer 2* after *New Layer* did it every time). The list is now rebuilt
+  once the click has been handled (`ScheduleLayerPanelRebuild`), and the
+  framework keeps a widget alive while it handles an event (framework
+  changelog: `keep-element-alive-during-event`). The side panel no longer
+  jumps 16 px when a layer is clicked with the panel scrolled to its end.
+- **Rename a layer by double-clicking its name.** The first click selects
+  the layer as before; the double-click puts a text field with the name,
+  selected, in its place. Enter or a click anywhere else keeps the new name,
+  Escape the old one, and an empty name is ignored. A rename is one undo step
+  ("Rename Layer"), as from Layer > Properties. The name buttons' tooltip
+  says *Double-click to rename*. Built on the button's new `onDoubleClick`
+  (framework changelog: `button-on-double-click`).
+
+#### 2026-10-10 *0.2.13*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraPaint --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
+
 #### 2026-10-09 *0.2.12*
 - **The Fill tool can make an area transparent.** Filling with a colour
   whose alpha is 0 did nothing at all: the fill only ever painted over the

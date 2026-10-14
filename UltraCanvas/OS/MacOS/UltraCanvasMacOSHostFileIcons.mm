@@ -77,7 +77,8 @@ namespace UltraCanvas {
         }
 
         // NSImage → a premultiplied ARGB32 pixmap, by drawing it into a
-        // bitmap of the size asked for.
+        // bitmap of the size asked for. That is why this backend needs no
+        // FitHostIconToSize: the answer is never larger than `edge`.
         std::shared_ptr<UCPixmap> PixmapFromImage(NSImage* image, int edge) {
             if (!image) return nullptr;
             NSBitmapImageRep* rep = [[NSBitmapImageRep alloc]

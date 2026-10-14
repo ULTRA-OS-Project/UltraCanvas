@@ -1,8 +1,14 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Version: 1.3.0 - the hover follows the rows when they scroll under a still
+//                  pointer (a wheel scroll, EnsureRowVisible): hoveredRow,
+//                  onItemHovered and onCellHovered are re-reported
+// Version: 1.2.0 - the callbacks the view puts on its model do nothing once the
+//                  view is gone (a model may outlive it); OnModelChanged for
+//                  subclasses, instead of wrapping those callbacks
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth: what fitting a
 //                  column to its title and its rows' text takes
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-11
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -247,6 +253,14 @@ namespace UltraCanvas {
         void SetWindow(UltraCanvasWindowBase* win) override;
         bool AcceptsFocus() const override { return true; }
 
+    protected:
+        // After the view has taken in a change its model signalled - the rows
+        // replaced, one changed, inserted or removed. A subclass that keeps
+        // something derived from the rows (a column fitted to their text)
+        // marks it stale here, rather than wrapping the model's callbacks,
+        // which would outlive it.
+        virtual void OnModelChanged() {}
+
     private:
         // Model / Delegate / Selection
         std::shared_ptr<IListModel> model;
@@ -276,6 +290,17 @@ namespace UltraCanvas {
         int hoveredColumn = -1;
         int hoveredHeaderColumn = -1;
         int focusedRow = -1;
+        // Where the pointer last was (element and window coordinates) and
+        // whether it is still over the view: the rows move under a still
+        // pointer when the view scrolls, so the hover is worked out again
+        // from here (UpdateHover) and re-reported, as a mouse move would.
+        Point2Di lastPointer;
+        Point2Di lastPointerWindow;
+        bool pointerOver = false;
+        // A scroll under the pointer changed the hovered cell without a
+        // mouse move; the tooltip is left hidden then (as after any wheel
+        // scroll) and shown again by the next move, wherever it lands.
+        bool hoverTooltipStale = false;
 
         bool showItemTooltips = true;
 
@@ -337,8 +362,15 @@ namespace UltraCanvas {
         void RenderRows(IRenderContext* ctx, const Rect2Di& contentRect);
 
         // Tooltips
-        void UpdateHoverTooltip(const UCEvent& event, int row, int column, int headerColumn);
+        void UpdateHoverTooltip(const Point2Di& pointerWindow, int row, int column, int headerColumn);
         void HideHoverTooltip();
+
+        // The hover for the cell under `pointer` (element coordinates):
+        // hoveredRow / hoveredColumn / hoveredHeaderColumn, onCellHovered,
+        // onItemHovered and - unless `tooltip` is false - the tooltip. True
+        // when the hovered row changed. A mouse move and a scroll under a
+        // still pointer both come here.
+        bool UpdateHover(const Point2Di& pointer, const Point2Di& pointerWindow, bool tooltip);
 
         // Event handlers
         bool HandleMouseDown(const UCEvent& event);
@@ -356,7 +388,13 @@ namespace UltraCanvas {
         void NavigateHome();
         void NavigateEnd();
 
-        // Model connection
+        // Model connection. The callbacks put on the model hold a weak handle
+        // to signalToken and do nothing once it is gone: the model can outlive
+        // the view (an application keeps it), and a proxy chained onto it
+        // keeps a copy of them (UltraCanvasListSortFilterProxy), so they are
+        // made harmless rather than removed - removing them from the model
+        // would cut off whoever chained on after the view.
+        std::shared_ptr<char> signalToken = std::make_shared<char>(0);
         void ConnectModelSignals();
         void DisconnectModelSignals();
     };

@@ -1,8 +1,11 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
+// Version: 2.9.0 - the Modern style's indicator line has a colour and a thickness of its own
+// Version: 2.8.0 - drag reorder on vertical bars, auto-scroll at the strip's ends, a pill ghost
+// Version: 2.7.0 - a truncated title fills its width, one X weight, the open tab's own X colour
+// Version: 2.6.0 - TabStyle::Pill, capsule tabs floating in the bar
 // Version: 2.5.0 - a tab list to screen readers, named after the open tab
-// Version: 2.3.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -14,6 +17,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasImageAnimation.h"
+#include "UltraCanvasTimer.h"
 #include "UltraCanvasUtils.h"
 #include <string>
 #include <vector>
@@ -38,6 +42,7 @@ namespace UltraCanvas {
         Modern,         // Flat with subtle borders
         Flat,           // Minimal style, no borders
         Rounded,        // Browser-style rounded tops
+        Pill,           // Capsules floating in the bar: the open tab outlined, the others plain
         Custom          // User-defined rendering
     };
 
@@ -152,6 +157,26 @@ namespace UltraCanvas {
         int closeButtonMargin = 4;
         bool showTabSeparators = false;
 
+        // ===== PILL STYLE =====
+        // TabStyle::Pill draws each tab as a capsule floating inside its slot
+        // of the tab bar, the way a browser or mail client shows its open
+        // pages as chips. The open tab is filled with activeTabColor and
+        // outlined with activeTabBorderColor; an inactive tab is filled with
+        // inactiveTabColor (set it transparent for a text-only tab) and
+        // outlined with inactiveTabBorderColor; a hovered one with
+        // hoveredTabColor and hoveredTabBorderColor. The capsule is inset
+        // from the slot by pillInsetY above and below and pillInsetX at each
+        // side, so neighbouring pills keep a gap even with tabSpacing 0, and
+        // a click in that gap still lands on the tab. The whole slot stays
+        // the hit area; icon, text and close button are laid out in it as in
+        // every other style, so tabPadding is measured from the slot edge.
+        int pillInsetX = 2;
+        int pillInsetY = 4;
+        float pillBorderWidth = 1.0f;
+        // 0 = a full capsule (half the pill's height); > 0 = a chip with
+        // corners of that radius.
+        float pillCornerRadius = 0.0f;
+
         // ===== COLORS =====
         Color tabBarColor = Colors::Transparent;
         Color activeTabColor = Color(255, 255, 255);
@@ -160,11 +185,23 @@ namespace UltraCanvas {
         Color disabledTabColor = Color(200, 200, 200);
         Color tabBorderColor = Colors::Gray;
         Color tabContentBorderColor = Colors::Gray;
+        // Outlines of the pills (TabStyle::Pill only); the other styles
+        // outline every tab with tabBorderColor.
+        Color activeTabBorderColor = Color(96, 146, 224);
+        Color inactiveTabBorderColor = Colors::Transparent;
+        Color hoveredTabBorderColor = Colors::Transparent;
+        // The line under (beside) the open tab in TabStyle::Modern.
+        Color activeTabIndicatorColor = Color(33, 150, 243);
+        int activeTabIndicatorThickness = 2;
         Color activeTabTextColor = Colors::Black;
         Color inactiveTabTextColor = Color(80, 80, 80);
         Color disabledTabTextColor = Color(150, 150, 150);
         Color closeButtonColor = Color(120, 120, 120);
+        // The X of the open tab, when it needs a colour of its own (white on
+        // a solid accent pill); transparent means closeButtonColor.
+        Color activeTabCloseButtonColor = Colors::Transparent;
         Color closeButtonHoverColor = Color(200, 50, 50);
+        float closeButtonStrokeWidth = 1.0f;
         Color contentAreaColor = Color(255, 255, 255);
         Color badgeTextColor = Colors::White;
         Color tabSeparatorColor = Color(200, 200, 200);
@@ -243,6 +280,17 @@ namespace UltraCanvas {
         Color dragInsertionColor = Color(0, 120, 215, 230);   // Blue insertion indicator
         Color dragGhostBorderColor = Color(0, 120, 215, 120); // Ghost tab border
 
+        // ===== DRAG AUTO-SCROLL =====
+        // While a tab is dragged into the last dragAutoScrollZone pixels at
+        // either end of the strip (or past it), it is carried one place
+        // towards that end every dragAutoScrollIntervalMs and the strip
+        // scrolls to keep it in view, so a tab reaches a place beyond the
+        // visible range in one drag with the pointer held still.
+        int dragAutoScrollZone = 24;
+        unsigned int dragAutoScrollIntervalMs = 250;
+        int dragAutoScrollDirection = 0;                      // -1, 0 or +1 during a drag
+        TimerId dragAutoScrollTimer = InvalidTimerId;
+
         // ===== TAB CONTEXT MENU =====
         std::shared_ptr<UltraCanvasMenu> tabContextMenu;
         int contextMenuTabIndex = -1;  // Index of the tab that was right-clicked
@@ -272,6 +320,7 @@ namespace UltraCanvas {
         std::function<int(const TabTransferData& data, int insertionIndex)> onTabDragIn;
 
         UltraCanvasTabbedContainer(const std::string& elementId, float posX, float posY, float w, float h);
+        ~UltraCanvasTabbedContainer() override;
 
         UltraCanvasTabbedContainer(const std::string& elementId, float w, float h)
             : UltraCanvasTabbedContainer(elementId, -1, -1, w, h) {}
@@ -310,8 +359,44 @@ namespace UltraCanvas {
         float GetNewTabButtonCornerRadius() const { return newTabButtonCornerRadius; }
         void SetInactiveTabBackgroundColor(const Color& c) { inactiveTabColor = c; }
         void SetActiveTabBackgroundColor(const Color& c) { activeTabColor = c; }
+        void SetHoveredTabBackgroundColor(const Color& c) { hoveredTabColor = c; }
         void SetInactiveTabTextColor(const Color& c) { inactiveTabTextColor = c; }
+        void SetActiveTabTextColor(const Color& c) { activeTabTextColor = c; }
+        void SetTabBarColor(const Color& c) { tabBarColor = c; RequestRedraw(); }
         void SetNewButtonColor(const Color& c) { newTabButtonColor = c; }
+        void SetCloseButtonColor(const Color& c) { closeButtonColor = c; RequestRedraw(); }
+        void SetActiveTabCloseButtonColor(const Color& c) { activeTabCloseButtonColor = c; RequestRedraw(); }
+        Color GetActiveTabCloseButtonColor() const { return activeTabCloseButtonColor; }
+        void SetCloseButtonHoverColor(const Color& c) { closeButtonHoverColor = c; RequestRedraw(); }
+        void SetCloseButtonStrokeWidth(float width) { closeButtonStrokeWidth = std::max(0.5f, width); RequestRedraw(); }
+        float GetCloseButtonStrokeWidth() const { return closeButtonStrokeWidth; }
+
+        // ===== PILL STYLE CONFIGURATION (TabStyle::Pill) =====
+        void SetPillInset(int horizontal, int vertical) {
+            pillInsetX = std::max(0, horizontal);
+            pillInsetY = std::max(0, vertical);
+            InvalidateTabbar();
+        }
+        int GetPillInsetX() const { return pillInsetX; }
+        int GetPillInsetY() const { return pillInsetY; }
+        void SetPillBorderWidth(float width) { pillBorderWidth = std::max(0.0f, width); InvalidateTabbar(); }
+        float GetPillBorderWidth() const { return pillBorderWidth; }
+        // 0 keeps the full capsule; a positive radius makes a rounded chip.
+        void SetPillCornerRadius(float radius) { pillCornerRadius = std::max(0.0f, radius); InvalidateTabbar(); }
+        float GetPillCornerRadius() const { return pillCornerRadius; }
+        void SetActiveTabIndicatorColor(const Color& c) { activeTabIndicatorColor = c; RequestRedraw(); }
+        Color GetActiveTabIndicatorColor() const { return activeTabIndicatorColor; }
+        void SetActiveTabIndicatorThickness(int px) { activeTabIndicatorThickness = std::max(1, px); RequestRedraw(); }
+        int GetActiveTabIndicatorThickness() const { return activeTabIndicatorThickness; }
+        void SetActiveTabBorderColor(const Color& c) { activeTabBorderColor = c; RequestRedraw(); }
+        Color GetActiveTabBorderColor() const { return activeTabBorderColor; }
+        void SetInactiveTabBorderColor(const Color& c) { inactiveTabBorderColor = c; RequestRedraw(); }
+        Color GetInactiveTabBorderColor() const { return inactiveTabBorderColor; }
+        void SetHoveredTabBorderColor(const Color& c) { hoveredTabBorderColor = c; RequestRedraw(); }
+        Color GetHoveredTabBorderColor() const { return hoveredTabBorderColor; }
+        // The capsule drawn for a tab in TabStyle::Pill: its slot (GetTabBounds)
+        // inset by pillInsetX / pillInsetY. Empty for a tab that is not shown.
+        Rect2Di GetPillBounds(int index);
 
         // ===== OVERFLOW DROPDOWN CONFIGURATION =====
         void SetOverflowDropdownPosition(OverflowDropdownPosition position);
@@ -459,6 +544,31 @@ namespace UltraCanvas {
         /// Enable/disable drag-out support
         void SetAllowTabDragOut(bool allow) { allowTabDragOut = allow; }
         bool GetAllowTabDragOut() const { return allowTabDragOut; }
+
+        /// Enable/disable reordering by dragging a tab along the bar
+        void SetAllowTabReordering(bool allow) { allowTabReordering = allow; }
+        bool GetAllowTabReordering() const { return allowTabReordering; }
+        void SetDragAutoScrollZone(int pixels) { dragAutoScrollZone = std::max(0, pixels); }
+        int GetDragAutoScrollZone() const { return dragAutoScrollZone; }
+        void SetDragAutoScrollInterval(unsigned int milliseconds) { dragAutoScrollIntervalMs = std::max(16u, milliseconds); }
+        unsigned int GetDragAutoScrollInterval() const { return dragAutoScrollIntervalMs; }
+
+        bool IsVerticalTabBar() const { return tabPosition == TabPosition::Left || tabPosition == TabPosition::Right; }
+
+        // ===== DRAG REORDER STEPS (public so a test can drive a drag without a window) =====
+        /// Swap the dragged tab with the tab under (x, y) once the pointer has
+        /// passed that tab's centre along the bar's axis; otherwise mark it as
+        /// the insertion target.
+        void UpdateDragReorder(int x, int y);
+        /// Start, keep or stop the auto-scroll timer for a pointer at (x, y).
+        void UpdateDragAutoScroll(int x, int y);
+        /// One auto-scroll step: carry the dragged tab one place in
+        /// dragAutoScrollDirection and scroll the strip to keep it in view.
+        void DragAutoScrollTick();
+        void StopDragAutoScroll();
+        /// The next tab shown in the bar from `from` in `direction` (+1 / -1),
+        /// skipping hidden tabs; -1 at the end.
+        int NextVisibleTab(int from, int direction) const;
 
         /// Accept an external tab transfer into this container at the given position.
         /// If onTabDragIn callback is set, it is called first and can reject by returning -1.

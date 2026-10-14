@@ -76,7 +76,9 @@ struct RichTextEditStyle {
     std::array<float, 6> headingSizeMultipliers = {2.0f, 1.6f, 1.35f, 1.2f, 1.1f, 1.0f};
     bool headingsBold = true;
 
-    // Nested bullet characters (level 0, 1, 2+; UTF-8).
+    // Nested bullet characters (level 0, 1, 2+; UTF-8). These three are drawn
+    // as shapes (the bundled UI font has no ◦ or ▪); any other string is
+    // drawn as text.
     std::array<std::string, 3> bulletCharacters = {
         "\xe2\x80\xa2",         // •
         "\xe2\x97\xa6",         // ◦

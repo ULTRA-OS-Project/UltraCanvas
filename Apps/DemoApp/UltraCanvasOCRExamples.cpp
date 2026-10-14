@@ -3,8 +3,9 @@
 // Loads OCR-demo.png by default and lets the user open an alternative
 // image via the native file dialog. Recognised text is shown in a
 // read-only text area.
+// Version: 0.2.0 - Open offers FileLoader's picture types
 // Version: 0.1.0
-// Last Modified: 2026-05-21
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -125,7 +126,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
             if (lang.isScript) continue; // hide osd/equ helper models
             const bool have = installed.count(lang.code) > 0;
             std::string label = lang.englishName + " (" + lang.code + ")";
-            if (!have) label += "  \xE2\xAC\x87"; // ⬇ = not installed, will download
+            if (!have) label += "  (download)"; // not installed: picking it downloads the model
             langDropdown->AddItem(label, lang.code);
             if (lang.code == "eng") selectIndex = idx;
             ++idx;
@@ -208,7 +209,8 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     const int btnY = leftH - 80;
     auto openBtn = std::make_shared<UltraCanvasButton>(
         "OCROpenBtn", 16, btnY, 160, 36);
-    openBtn->SetText("📂 Open image…");
+    openBtn->SetText("Open image…");
+    SetFlatButtonIcon(*openBtn, "menu/folder.svg");
     openBtn->SetFontSize(12);
     openBtn->SetColors(Color(241, 245, 249, 255), Color(226, 232, 240, 255));
     openBtn->SetTextColors(Color(30, 41, 59, 255));
@@ -218,7 +220,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
         FileDialogOptions opts;
         opts.title = "Choose an image to OCR";
         opts.parentWindow = parentWin;
-        opts.AddFilter("Images", {"png", "jpg", "jpeg", "webp", "tiff", "bmp"});
+        UltraCanvasFileLoader::AddLoadTypes(opts, "Images", {MediaFormatCategory::Bitmap});
         UltraCanvasFileLoader::OpenFileDialog(opts,
             [image, pathLabel, currentPath]
             (DialogResult r, const std::string& path) {
@@ -233,7 +235,8 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
 
     auto runBtn = std::make_shared<UltraCanvasButton>(
         "OCRRunBtn", 188, btnY, 160, 36);
-    runBtn->SetText("🔍 Run OCR");
+    runBtn->SetText("Run OCR");
+    SetFlatButtonIcon(*runBtn, "menu/search.svg");
     runBtn->SetFontSize(12);
     runBtn->SetColors(Color(37, 99, 235, 255), Color(29, 78, 216, 255));
     runBtn->SetTextColors(Color(255, 255, 255, 255));

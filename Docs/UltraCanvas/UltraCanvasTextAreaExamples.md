@@ -5,8 +5,8 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 
 **Header:** `UltraCanvasTextArea.h`  
 **Implementation:** `UltraCanvasTextArea.cpp`  
-**Version:** 2.0.1  
-**Last Modified:** 2026-10-07  
+**Version:** 2.0.2  
+**Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework  
 
 <!-- doc-check: void SendChatText(); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
@@ -561,6 +561,36 @@ The text area handles the following events:
 - **Drag**: Text selection
 - **Wheel**: Vertical scrolling (3 lines per notch)
 
+### Input Method Composition
+
+While an input method (Japanese, Chinese, Korean, ...) is composing, the text
+it has so far is laid out **in the caret's line, at the caret, underlined**,
+with the caret inside it where the input method puts it; the view scrolls to
+keep that caret visible, and a wrapped line grows as the composition does.
+The area says so through `DrawsTextComposition()`, and the platform backend
+then sends it `UCEventType::TextComposition` events instead of opening the
+input method's own composition window (on a backend that does not report
+compositions the window is used as before).
+
+- The composition is **not** part of the text: `GetText()`, `onTextChanged`,
+  syntax state and the undo stack never see it. `GetCompositionText()` returns
+  it (`""` when nothing is being composed).
+- The committed result arrives as ordinary typing (`KeyDown` with `text`),
+  which ends the composition and is inserted like any typed text.
+- An empty composition ends it without typing anything, and so does losing
+  the focus, turning the area read-only or changing the editing mode.
+- Starting to compose over a selection deletes the selection, as typing would
+  (that deletion is a normal edit: one undo step, one `onTextChanged`).
+- A composition never breaks the line: a line break in it is shown as a space.
+- `DrawsTextComposition()` is `false` for a read-only or display-only area and
+  in hex mode, where a key is a hex digit rather than text.
+
+```cpp
+auto notes = std::make_shared<UltraCanvasTextArea>("Notes", 0, 0, 400, 200);
+bool inPlace = notes->DrawsTextComposition();          // true: editable
+const std::string& composing = notes->GetCompositionText();
+```
+
 ## Usage Example
 
 ```cpp
@@ -837,6 +867,21 @@ machinery so the edit is undoable and raises `onTextChanged` like a typed one:
 bool ReplaceTextRange(size_t startByte, size_t byteLength, const std::string& replacement);
 ```
 
+## Links in Markdown mode
+
+A `[text](url)` link is drawn in `MarkdownHybridStyle::linkColor`, underlined
+while `linkUnderline` is true (the default), with the hand cursor over it; a
+click reaches `onMarkdownLinkClick` with the address. A view whose links are
+file names and addresses full of hyphens and underscores reads better with
+the colour alone:
+
+```cpp
+auto& md = area->GetMarkdownStyleMutable();
+md.linkColor = Color(37, 99, 235);
+md.linkUnderline = false;
+area->onMarkdownLinkClick = [](const std::string& url) { OpenURL(url); };
+```
+
 ## Math in Markdown mode
 
 In `MarkdownHybrid` editing mode a formula between dollar signs is typeset
@@ -896,6 +941,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)
 - **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
 - **3.8.0** (2026-08-24): Spell checking, `GetCharacterRangeBounds()`, `ReplaceTextRange()`
 - **2.0.0** (2024-12-20): Added syntax highlighting and themes

@@ -49,19 +49,33 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   clock) shows **two folder displays side by side** in place of the folder
   tree and the single display: the active tab's display on the left and a
   second display on the right, which has a Back / Forward history of its own
-  and is in no tab. The two share the width the tree and the display had,
-  with a draggable splitter between them. Each pane carries a **header row**
-  of a folder-tree button and the pane's own breadcrumb, which navigates that
-  pane. The **tree button** docks the folder tree down the left of that
-  display, under its header, and takes it away again (also **Esc**); there is
-  one tree, so pressing the other pane's button moves it over. A docked tree
-  follows and navigates the display it sits beside. **The display clicked
+  and is in no tab. The two displays are **equal halves**: they are put back
+  to the same width when the split view opens, when the preview pane opens
+  or closes, when the tree docks or leaves and when the window is resized,
+  and the splitter between them can still be dragged in between. Each pane
+  carries a **header row** of a folder-tree button and the pane's own path
+  bar, which navigates that pane - so the navigation row's path bar is
+  hidden while the split view is on. The **preview pane** sits under the
+  right-hand pane's path bar, beside that display, with a splitter of its
+  own; the two displays stay equal beside it. The **tree button** docks the
+  folder tree down the left of that display, under its header, and takes it
+  away again (also **Esc**); the button is highlighted while the tree is
+  docked there. There is one tree, so pressing the other pane's button moves
+  it over. A docked tree fits into its pane - the display beside it narrows,
+  the other pane keeps its half - and follows and navigates the display it
+  sits beside. **The display clicked
   last is the active one** — its header is tinted — and it is what the
   navigation row, the command bar, the search field, the status bar and the
   preview pane act on, exactly as they act on the active tab; clicking a tab
   makes the left-hand pane active again, and the Computer page always opens
-  in the left-hand pane. Files drag and drop between the two displays like
-  between any two displays of the window. The right-hand display's folder
+  in the left-hand pane. **Files drag and drop between the two displays**:
+  released on a folder of the other display they go into that folder, and
+  on its empty space into the folder it shows. While they are over it, the
+  other display frames the folder they would land in (the whole display for
+  its own folder). It is a move, as a drop on a folder of the same display
+  is - Ctrl copies, Shift moves, and Settings > Handling > Drag & Drop sets
+  the plain drop - and it asks first under the same confirmation (Handling >
+  File operations; moves ask by default). The right-hand display's folder
   and the switch itself are saved with the settings (`view.split`,
   `view.split.second.folder`), so the next start opens the pair as it was
   left. Pressing the button again brings the tree pane back as wide as it
@@ -236,17 +250,28 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     to the settings (the 512 most recently used folders; only names, sizes
     and dates are stored, never credentials). On the next start a folder
     from that file shows at once and is checked with the server in the
-    background. Cloud drives (Nextcloud, Dropbox, …) do neither, because
+    background when it is opened; a remembered folder is not fetched ahead
+    again. Cloud drives (Nextcloud, Dropbox, …) do neither, because
     their providers limit API calls. The toolbar's *Refresh* on a remote
     folder still asks the server directly.
+  - **One login per burst.** The drive's requests run one after another on
+    one connection: a folder and the subfolders fetched ahead after it are
+    one login, not one each, and a server that has refused `MLSD` (vsftpd
+    does) is asked with `LIST` from then on rather than refused again on
+    every folder. The connection log shows *Using the open connection to
+    ... - already logged in* for a request that needed no login. The
+    connection is closed once the drive has been quiet for 15 seconds.
   - **Every connection step is shown, and kept.** While a drive is busy the
     status bar shows the step its connection is at — *Connecting to
     203.0.113.7:21...*, *Response: 230 Logged in*, *Command: MLSD* — and the
     folder view's *Loading folder* notice names the same step with how long
     it has waited. Every job (opening a folder, an upload, a delete, a
-    folder fetched ahead) is recorded in the **connection log**: the button
-    with the clipboard icon at the right of the status bar opens it, and
-    counts in red the failures not looked at yet. Its *Errors* tab is a
+    folder fetched ahead) is recorded in the **connection log**: the round
+    button with the network symbol in the bottom-left corner of a folder
+    display opens it. It is there only while that display shows a folder on
+    an FTP / FTPS / SFTP drive (in the split view each display has its own),
+    sits above the display's info bar, and turns red with a count on its
+    corner for the failures not looked at yet. Its *Errors* tab is a
     Markdown report of each failure — the message, the error class, the
     codes (libcurl's error number, the server's last reply), the likely
     cause, the last steps and the diagnostics chain; its *Message log* tab
@@ -363,7 +388,7 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   **Extras > Set folder icon** gives *any* folder a picture of the user's
   choosing: it opens the file dialog filtered to the image formats the build
   can read, and converts the chosen file to a QOI icon kept in the config
-  directory (`~/.config/UltraFiler/foldericons`), so the icon survives the
+  directory (`~/.config/UltraCanvas/UltraFiler/foldericons`), so the icon survives the
   original being moved or deleted. It is drawn everywhere the folder appears —
   every tab, the folder preview, the History and Favorites lists, the tree row
   and its Pinned bookmark — and beats the built-in icon of a main user folder.
@@ -448,13 +473,18 @@ notes explaining the setting set apart in a tinted block at the foot of the
 page. A page's *Restore default ...* button sits at the left end of the
 window's bottom bar, opposite *Close*. Clicking a section opens it and moves on
 to its first page, since a section has no page of its own. Every change applies
-to the running application immediately and is saved to the config file
-(`~/.config/UltraFiler/config.ini`, `%APPDATA%\UltraFiler\config.ini`,
-`~/Library/Application Support/UltraFiler/config.ini`).
+to the running application immediately and is saved to the config file in
+UltraFiler's folder of the shared UltraCanvas settings folder
+(`~/.config/UltraCanvas/UltraFiler/config.ini`,
+`%APPDATA%\UltraCanvas\UltraFiler\config.ini`,
+`~/Library/Application Support/UltraCanvas/UltraFiler/config.ini`). A folder
+from before 1.72.4 (`~/.config/UltraFiler` and the like) is moved there, whole,
+the first time the new version runs.
 
 | Page | Setting |
 |---|---|
 | Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker`. And its width: **Auto** (the default) fits the tree to the rows it shows, 10 px wider than the longest, and fits it again as branches open and close and drives come and go - up to 600 px, never squeezing the file display below its minimum, and following the window as it is resized; **Fixed width** keeps it at the pixels set beside it (100–600, 280 to start with). Dragging the divider still resizes the tree for the moment |
+| Display > Tab style | How the window's tab strip draws its tabs: **Modern** (the default since 1.71.0), each tab a capsule floating in a blue-grey strip, the open one white with a blue outline and the others plain text until the pointer is over them; **Simple modern**, flat tabs with a blue line under the open one; or **Classic**, the rounded tabs joined to the page that every release before 1.71.0 drew. The choice dresses every tab strip UltraFiler shows - the window's own, the History and Favorites views' and the Connection log window's - and shows at once on the open window; the tabs behave the same under all three |
 | Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
 | Display > Files | **Show hidden files** — whether the file displays list what the platform calls hidden: a dot name everywhere, the hidden attribute on Windows (`NTUSER.DAT`, the profile junctions), the hidden flag on macOS. Off by default, as every file manager ships. It is what each folder display *starts* with: one display can still be switched on its own (its **Display > Hidden files** context-menu entry, or the Home folder's **Show hidden files** button) without changing the setting. Showing hidden files also shows the Home folder whole, whatever *Display > Home folder* says; the folder tree leaves hidden folders out either way |
 | Display > Ignored files | **Hide known clutter files** — the built-in pattern list (`Sti_Trace.log`, `desktop.ini`, `Thumbs.db`, `ehthumbs.db`, `ntuser.dat*`, `ntuser.ini`, `.DS_Store`, `._*`, `.Trash-*`, `.directory`), each switchable on its own — plus **own patterns** typed into the field below it (globs: `*` any run, `?` one character, matched ignoring case), and whether they apply **only in the Home folder** (the default) or **in every folder**. This is what leaves out the clutter no hidden-file setting can reach, because the system gave it an ordinary unhidden name. Nothing is moved or deleted: an ignored file is only left out of the display, a search still finds it, and *Show hidden files* brings it back |
@@ -479,6 +509,11 @@ program in the field right away to check the path.
 UltraFiler                  # opens the home folder
 UltraFiler /path/to/folder  # opens a specific folder
 ```
+
+One UltraFiler runs per user. Starting it again while it is running opens the
+folder in a new tab of the running window (a tab that already shows it is
+switched to; a file opens its folder) instead of starting a second copy, and a
+start without a folder brings the window forward.
 
 ## Building
 

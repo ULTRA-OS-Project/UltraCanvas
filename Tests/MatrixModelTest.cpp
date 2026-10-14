@@ -10,12 +10,15 @@
 // tools" matrix that drove the 5/3/1 preset: its printed row totals are the
 // arithmetic these tests pin down.
 //
+// Version: 1.2.0 - symmetric panels, House validation, relative weights, the importance column, ImportMatrixTable, the House sample
+// Version: 1.1.0 - X and Y panel validation, form header fields, the X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -379,6 +382,295 @@ static void TestSamples() {
           "the ranking is in descending score order");
 }
 
+// Four sets in the order the X places them: left, top, right, bottom.
+static MatrixModel MakeXModel() {
+    MatrixModel model;
+    model.shape = MatrixShape::X;
+    model.AddSet("left", "Left", {"L1", "L2"});
+    model.AddSet("top", "Top", {"T1", "T2", "T3"});
+    model.AddSet("right", "Right", {"R1"});
+    model.AddSet("bottom", "Bottom", {"B1", "B2"});
+    return model;
+}
+
+static void TestXValidation() {
+    std::printf("\n[X shape]\n");
+
+    MatrixModel model = MakeXModel();
+    model.AddPanel("top", "left", MatrixScale::Presence());
+    model.AddPanel("top", "right", MatrixScale::Presence());
+    model.AddPanel("bottom", "right", MatrixScale::Presence());
+    model.AddPanel("bottom", "left", MatrixScale::Presence());
+    CHECK(model.Validate().valid, "four panels, one per quadrant, validate");
+
+    // Which set is the row set is the caller's choice: the layout turns the
+    // panel to fit its quadrant, so the model must accept either order.
+    MatrixModel turned = MakeXModel();
+    turned.AddPanel("left", "top", MatrixScale::Presence());
+    turned.AddPanel("top", "right", MatrixScale::Presence());
+    turned.AddPanel("right", "bottom", MatrixScale::Presence());
+    turned.AddPanel("bottom", "left", MatrixScale::Presence());
+    CHECK(turned.Validate().valid, "a panel may name its side set as the row set");
+    CHECK(turned.SetCell(0, "L2", "T3", "yes"), "a turned panel addresses its own rows");
+    CHECK(turned.LevelAt(0, 1, 2) == "yes", "and stores the mark at (row, col) as given");
+
+    MatrixModel sameAxis = MakeXModel();
+    sameAxis.AddPanel("left", "right", MatrixScale::Presence());
+    sameAxis.AddPanel("top", "right", MatrixScale::Presence());
+    sameAxis.AddPanel("bottom", "right", MatrixScale::Presence());
+    sameAxis.AddPanel("bottom", "left", MatrixScale::Presence());
+    CHECK(!sameAxis.Validate().valid,
+          "a panel crossing left with right has no quadrant and is rejected");
+
+    MatrixModel twice = MakeXModel();
+    twice.AddPanel("top", "left", MatrixScale::Presence());
+    twice.AddPanel("left", "top", MatrixScale::Presence());
+    twice.AddPanel("bottom", "right", MatrixScale::Presence());
+    twice.AddPanel("bottom", "left", MatrixScale::Presence());
+    CHECK(!twice.Validate().valid, "two panels claiming one quadrant are rejected");
+
+    MatrixModel extra = MakeXModel();
+    extra.AddSet("fifth", "Fifth", {"F1"});
+    extra.AddPanel("top", "left", MatrixScale::Presence());
+    extra.AddPanel("top", "right", MatrixScale::Presence());
+    extra.AddPanel("bottom", "right", MatrixScale::Presence());
+    extra.AddPanel("fifth", "left", MatrixScale::Presence());
+    CHECK(!extra.Validate().valid, "a panel on a fifth set, which the X cannot place, is rejected");
+
+    // The same panels under an L are not the X's business.
+    sameAxis.shape = MatrixShape::L;
+    CHECK(sameAxis.Validate().valid, "the X placement rules apply only to the X");
+}
+
+static void TestYValidation() {
+    std::printf("\n[Y shape]\n");
+
+    MatrixModel model;
+    model.shape = MatrixShape::Y;
+    model.AddSet("a", "A", {"a1", "a2"});
+    model.AddSet("b", "B", {"b1"});
+    model.AddSet("c", "C", {"c1", "c2", "c3"});
+    model.AddPanel("a", "b", MatrixScale::QFD());
+    model.AddPanel("b", "c", MatrixScale::QFD());
+    model.AddPanel("c", "a", MatrixScale::QFD());
+    CHECK(model.Validate().valid, "A x B, B x C, C x A validates");
+
+    MatrixModel self = model;
+    self.panels[2] = MatrixPanel("c", "c", MatrixScale::QFD());
+    CHECK(!self.Validate().valid, "a Y panel crossing a set with itself is rejected");
+
+    MatrixModel repeat = model;
+    repeat.panels[2] = MatrixPanel("b", "a", MatrixScale::QFD());
+    CHECK(!repeat.Validate().valid, "a Y relating the same two sets twice is rejected");
+}
+
+static void TestHeaderFields() {
+    std::printf("\n[header fields]\n");
+
+    MatrixModel model = MatrixSamples::SupplyChain();
+    CHECK(model.headerFields.size() == 5, "the supply-chain sample fills the form header");
+    CHECK(model.headerFields[0].label == "PROJECT", "fields keep their order");
+    model.Clear();
+    CHECK(model.headerFields.empty(), "Clear() drops the header fields too");
+}
+
+static void TestPhase2Samples() {
+    std::printf("\n[X and Y samples]\n");
+
+    MatrixModel x = MatrixSamples::SupplyChain();
+    MatrixValidation xv = x.Validate();
+    CHECK(xv.valid, "the supply-chain sample validates");
+    CHECK(x.shape == MatrixShape::X, "it is X-shaped");
+    CHECK(x.sets.size() == 4 && x.panels.size() == 4, "four sets, four panels");
+    CHECK(x.panels[0].rowSetId == "suppliers",
+          "one of its panels is turned, so the demo exercises both orientations");
+    CHECK(x.cells.size() == 32, "every listed mark landed");
+
+    MatrixModel y = MatrixSamples::DesignTraceability();
+    CHECK(y.Validate().valid, "the design-traceability sample validates");
+    CHECK(y.shape == MatrixShape::Y, "it is Y-shaped");
+    CHECK(y.panels.size() == 3, "a Y carries three panels");
+    CHECK(y.cells.size() == 22, "every listed mark landed");
+    // The motor carries the quiet requirement strongly and battery life
+    // moderately: 9 + 3.
+    CHECK(NearlyEqual(y.RowScore(2, 0), 12.0), "the closing panel rolls up like any other");
+}
+
+static void TestSymmetricPanel() {
+    std::printf("\n[symmetric panel]\n");
+
+    MatrixModel model;
+    model.AddSet("req", "Requirements", {"A", "B", "C", "D"});
+    MatrixPanel& roof = model.AddPanel("req", "req", MatrixScale::Correlation());
+    roof.symmetric = true;
+
+    CHECK(model.SetCellAt(0, 3, 1, "positive"), "a lower-triangle pair is accepted");
+    CHECK(model.cells.size() == 1 && model.cells[0].row == 1 && model.cells[0].col == 3,
+          "and stored above the diagonal, as (1, 3)");
+    CHECK(model.LevelAt(0, 3, 1) == "positive" && model.LevelAt(0, 1, 3) == "positive",
+          "it reads back either way round");
+    CHECK(model.SetCell(0, "B", "D", "negative") && model.cells.size() == 1,
+          "setting the same pair the other way round replaces it");
+    CHECK(!model.SetCellAt(0, 2, 2, "positive"), "the diagonal has no cell");
+    CHECK(model.FindCell(0, 2, 2) == nullptr, "and finds none");
+    CHECK(model.ClearCell(0, 3, 1) && model.cells.empty(), "clearing works either way round");
+
+    MatrixModel handMade = model;
+    MatrixCell below;
+    below.panel = 0; below.row = 3; below.col = 1; below.levelId = "positive";
+    handMade.cells.push_back(below);
+    CHECK(!handMade.Validate().valid,
+          "a hand-assembled cell below the diagonal is rejected by Validate()");
+
+    CHECK(model.FindSymmetricPanel("req") == 0, "FindSymmetricPanel finds the roof");
+    CHECK(model.FindSymmetricPanel("other") == -1, "and nothing for another set");
+
+    MatrixScale c = MatrixScale::Correlation();
+    CHECK(c.levels.size() == 4 && c.levels[0].shape == MatrixMarkShape::Text,
+          "the Correlation preset has four text levels");
+    CHECK(c.WeightOf("strongnegative") < 0.0, "its negative levels carry negative weights");
+}
+
+static void TestHouseValidation() {
+    std::printf("\n[House shape]\n");
+
+    MatrixModel house = MatrixSamples::HouseOfQuality();
+    CHECK(house.Validate().valid, "the House of Quality sample validates");
+    CHECK(house.shape == MatrixShape::House, "it is House-shaped");
+    CHECK(house.panels.size() == 2 && house.panels[1].symmetric, "its second panel is the roof");
+    CHECK(house.panels[1].rowSetId == house.panels[0].colSetId,
+          "the roof correlates the body's columns");
+    CHECK(house.LevelAt(1, 1, 2) == "strongpositive",
+          "tyre width strongly helps braking distance");
+    const MatrixItemSet* reqs = house.FindSet("requirements");
+    CHECK(reqs && reqs->items[0].improvement == MatrixImprovement::Minimize &&
+          reqs->items[0].target == "< 11 kg",
+          "columns carry a direction of improvement and a target");
+
+    MatrixModel symmetricBody = house;
+    symmetricBody.panels[0].symmetric = true;
+    CHECK(!symmetricBody.Validate().valid, "a House whose body is symmetric is rejected");
+
+    MatrixModel wrongRoof = house;
+    wrongRoof.panels[1].rowSetId = wrongRoof.panels[1].colSetId = "needs";
+    CHECK(!wrongRoof.Validate().valid, "a roof over the rows rather than the columns is rejected");
+
+    MatrixModel noRoof = house;
+    noRoof.panels.pop_back();
+    noRoof.cells.erase(std::remove_if(noRoof.cells.begin(), noRoof.cells.end(),
+                                      [](const MatrixCell& c) { return c.panel == 1; }),
+                       noRoof.cells.end());
+    CHECK(noRoof.Validate().valid, "a House without a roof is still a valid House");
+
+    MatrixModel plainRoof = house;
+    plainRoof.panels[1].symmetric = false;
+    CHECK(!plainRoof.Validate().valid, "a roof that is not symmetric is rejected");
+}
+
+static void TestRelativeWeights() {
+    std::printf("\n[relative weights]\n");
+
+    MatrixModel qfd = MatrixSamples::QualityFunctionDeployment();
+    std::vector<double> weights = qfd.RelativeColumnWeights(0);
+    double sum = 0.0;
+    for (double w : weights) sum += w;
+    CHECK(weights.size() == 7, "one weight per column");
+    CHECK(std::fabs(sum - 100.0) < 1e-9, "the weights add up to 100 percent");
+
+    double total = 0.0;
+    for (int c = 0; c < 7; ++c) total += qfd.ColumnScore(0, c);
+    const int braking = qfd.sets[1].IndexOf("Braking distance");
+    CHECK(NearlyEqual(weights[static_cast<size_t>(braking)], 84.0 * 100.0 / total),
+          "each is its column's share of the total score");
+
+    MatrixModel empty = MakeToolsMatrix();
+    empty.ClearCells();
+    std::vector<double> none = empty.RelativeColumnWeights(0);
+    bool allZero = true;
+    for (double w : none) allZero = allZero && w == 0.0;
+    CHECK(!none.empty() && allZero, "a panel with no score gives zeros, not NaN");
+}
+
+static void TestImportanceColumn() {
+    std::printf("\n[importance column]\n");
+
+    MatrixModel qfd = MatrixSamples::QualityFunctionDeployment();
+    const std::string csv = ExportMatrixCsv(qfd, 0, true);
+    CHECK(csv.rfind(",Importance,", 0) == 0, "the header names the importance column");
+    CHECK(csv.find("\nLight to carry,5,") != std::string::npos,
+          "importances are written dot-decimal next to their row");
+
+    MatrixModel copy = qfd;
+    for (MatrixItem& item : copy.sets[0].items) item.importance = 1.0;
+    copy.ClearCells();
+    CHECK(ImportMatrixCsv(csv, copy, 0), "ImportMatrixCsv reads the importance column");
+    CHECK(NearlyEqual(copy.sets[0].items[0].importance, 5.0) &&
+          NearlyEqual(copy.sets[0].items[1].importance, 4.0),
+          "and restores the importances");
+    CHECK(NearlyEqual(copy.ColumnScore(0, 2), qfd.ColumnScore(0, 2)),
+          "so the weighted scores survive the round trip");
+}
+
+static void TestImportTable() {
+    std::printf("\n[ImportMatrixTable]\n");
+
+    // Marks typed four ways: id, label in another case, glyph-less weight,
+    // and blank. Quoted fields and CRLF line ends, as a spreadsheet writes.
+    const std::string sheet =
+            ",Importance,Frame mass,\"Tyre, width\",Braking\r\n"
+            "Light,5,strong,3,\r\n"
+            "Safe,4.5,,Moderate,9\r\n"
+            "Cheap,,weak,,1\r\n";
+    MatrixModel model;
+    std::string error;
+    CHECK(ImportMatrixTable(sheet, MatrixScale::QFD(), model, "Needs", "Requirements", &error),
+          "a spreadsheet-style table imports");
+    CHECK(model.Validate().valid, "into a valid model");
+    CHECK(model.shape == MatrixShape::L && model.sets.size() == 2 && model.panels.size() == 1,
+          "an L with two sets and one panel");
+    CHECK(model.sets[0].title == "Needs" && model.sets[1].title == "Requirements",
+          "titled as asked");
+    CHECK(model.sets[1].Count() == 3 && model.sets[1].items[1].label == "Tyre, width",
+          "quoted column labels keep their commas");
+    CHECK(model.LevelAt(0, 0, 0) == "strong", "a mark by id");
+    CHECK(model.LevelAt(0, 1, 1) == "moderate", "a mark by label, any case");
+    CHECK(model.LevelAt(0, 0, 1) == "moderate" && model.LevelAt(0, 1, 2) == "strong",
+          "a mark by weight");
+    CHECK(model.LevelAt(0, 0, 2).empty(), "a blank cell stays empty");
+    CHECK(NearlyEqual(model.sets[0].items[1].importance, 4.5),
+          "importances read dot-decimal");
+    CHECK(NearlyEqual(model.sets[0].items[2].importance, 1.0),
+          "a blank importance defaults to 1");
+
+    MatrixModel before = model;
+    CHECK(!ImportMatrixTable(",A,B\nRow,strong,huge\n", MatrixScale::QFD(), model, "R", "C", &error),
+          "an unknown mark fails");
+    CHECK(error.find("huge") != std::string::npos, "and the error names it");
+    CHECK(model.sets[0].Count() == before.sets[0].Count(), "leaving the model untouched");
+    CHECK(!ImportMatrixTable(",A,B\nRow,strong\n", MatrixScale::QFD(), model, "R", "C", &error),
+          "a ragged row fails");
+    CHECK(!ImportMatrixTable(",Importance,A\nRow,five,strong\n", MatrixScale::QFD(), model,
+                             "R", "C", &error),
+          "an importance that is not a number fails");
+    CHECK(!ImportMatrixTable(",A,A\nRow,strong,weak\n", MatrixScale::QFD(), model, "R", "C", &error),
+          "a repeated column label fails");
+
+    // Excel writes a UTF-8 byte-order mark first; the sheet must read the same.
+    MatrixModel withBom;
+    CHECK(ImportMatrixTable("\xEF\xBB\xBF,Importance,A\nRow,2,strong\n", MatrixScale::QFD(),
+                            withBom, "R", "C", &error) &&
+          withBom.sets[1].items[0].label == "A" &&
+          NearlyEqual(withBom.sets[0].items[0].importance, 2.0),
+          "a sheet starting with a byte-order mark imports unchanged");
+
+    // The tabular form is what ExportMatrixCsv writes, so the two round-trip.
+    MatrixModel tools = MakeToolsMatrix();
+    MatrixModel reread;
+    CHECK(ImportMatrixTable(ExportMatrixCsv(tools, 0), MatrixScale::Strength531(), reread),
+          "an exported panel imports as a table");
+    CHECK(NearlyEqual(reread.RowScore(0, 0), 18.0), "with the same totals");
+}
+
 // =============================================================================
 
 int main() {
@@ -395,6 +687,15 @@ int main() {
     TestCsvRoundTrip();
     TestCsvQuoting();
     TestSamples();
+    TestXValidation();
+    TestYValidation();
+    TestHeaderFields();
+    TestPhase2Samples();
+    TestSymmetricPanel();
+    TestHouseValidation();
+    TestRelativeWeights();
+    TestImportanceColumn();
+    TestImportTable();
 
     std::printf("\n================================\n");
     if (g_failures == 0) {

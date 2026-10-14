@@ -1,3 +1,13 @@
+#### 2026-10-12 *0.4.1*
+- **One UltraClaude at a time.** Starting UltraClaude while it is already
+  running brings the open window forward (restored if minimised; an open
+  dialog comes forward with it) instead of opening a second copy. Two starts
+  at the same moment cannot both stay, and a copy that does not answer is
+  reported with *"UltraClaude is already running"*. Command-line modes
+  (`--print`, `--list-chats`, `--count-lines`, `--help`, `--version`) are
+  unaffected. Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
 #### 2026-10-09 *0.4.0*
 - **Each chat shows the lines not yet PRed.** A badge on the right of every
   row in the chat list counts the lines the chat's folder holds that its

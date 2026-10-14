@@ -13,15 +13,21 @@
 // by themselves - plus the lists of trusted websites and senders) and
 // Privacy > Sender icons (whether the known senders' icons are downloaded),
 // Display > Links (a link's address in the status bar or in a tooltip) and
-// Display > Notifications (a notification on screen when new mail arrives) and
+// Display > Notifications (a notification on screen when new mail arrives),
+// Display > Treeview (the folder tree lists the current account or all) and
 // Warnings > Spam/scam warnings (which kinds of warning the content scan gives)
-// and Warnings > Trusted and blocked senders (the sender menu's lists).
+// and Warnings > Trusted & blocked (the sender menu's lists).
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.11.0 - Privacy > Sender icons: both downloads are off by default,
+//                   and "Restore default" turns them off
+// Version: 1.10.0 - Display > Treeview: the current account or all accounts
+// Version: 1.9.1 - the tree names the page "Trusted & blocked": the whole title
+//                  did not fit the tree; a page taller than the window scrolls
 // Version: 1.9.0 - Warnings > Trusted and blocked senders
 // Version: 1.8.0 - Warnings > Spam/scam warnings: one switch per kind of warning
 // Version: 1.7.0 - Display > Notifications: new mail on screen, or not
@@ -34,7 +40,7 @@
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -99,6 +105,7 @@ namespace {
     constexpr const char* kPageDisplay     = "display";
     constexpr const char* kPageLinks       = "display/links";
     constexpr const char* kPageNotify      = "display/notifications";
+    constexpr const char* kPageTreeview    = "display/treeview";
     constexpr const char* kPageWarnings    = "warnings";
     constexpr const char* kPageScamWarnings = "warnings/spam-scam";
     constexpr const char* kPageSenderLists  = "warnings/senders";
@@ -178,11 +185,16 @@ namespace {
         // Display > Notifications
         std::shared_ptr<UltraCanvasCheckbox> notifyBox;
 
+        // Display > Treeview
+        std::shared_ptr<UltraCanvasRadio> treeCurrentRadio;
+        std::shared_ptr<UltraCanvasRadio> treeAllRadio;
+        UltraCanvasRadioGroup             treeContentGroup;
+
         // Warnings > Spam/scam warnings: one box per kind, with the option it sets
         std::vector<std::pair<bool ThreatScanOptions::*,
                               std::shared_ptr<UltraCanvasCheckbox>>> warningBoxes;
 
-        // Warnings > Trusted and blocked senders
+        // Warnings > Trusted & blocked
         std::shared_ptr<UltraCanvasTagInput> trustedSendersInput;
         std::shared_ptr<UltraCanvasTagInput> blockedSendersInput;
 
@@ -240,6 +252,18 @@ namespace {
         parts.page->layout.SetFlexColumn().SetFlexGap(0)
                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         parts.page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+        // A page taller than the window scrolls: the lists of trusted
+        // websites and senders grow a row at a time, and without this the
+        // notes were pushed off the foot of the page with no way to reach
+        // them. Containers scroll only when asked; a page that fits shows no
+        // scrollbar. Vertically only - the vertical bar narrows the viewport,
+        // which would otherwise make a horizontal overflow of its own width.
+        {
+            ContainerStyle cs;
+            cs.autoShowScrollbars = true;
+            cs.autoShowHorizontalScrollbar = false;
+            parts.page->SetContainerStyle(cs);
+        }
         auto titleLabel = MakeLabel(id + "-title", title, kTitleFontSize);
         titleLabel->SetFontWeight(FontWeight::Bold);
         parts.page->AddChild(titleLabel);
@@ -397,6 +421,10 @@ namespace {
             d->linksGroup.SelectButton(p.linkDisplay == LinkDisplay::Tooltip
                                        ? d->linksTooltipRadio : d->linksStatusRadio);
         if (d->notifyBox) d->notifyBox->SetChecked(p.notifyNewMail);
+        if (d->treeAllRadio)
+            d->treeContentGroup.SelectButton(
+                p.folderTreeContent == FolderTreeContent::CurrentAccount ? d->treeCurrentRadio
+                                                                         : d->treeAllRadio);
         for (const auto& [option, box] : d->warningBoxes)
             if (box) box->SetChecked(p.scamWarnings.*option);
         if (d->trustedSendersInput)
@@ -780,8 +808,8 @@ namespace {
 
         d->resets[kPageSenderIcons] = PageReset{ "Restore default", 140, [d]() {
             if (!d->prefs) return;
-            d->prefs->fetchSenderIcons = true;
-            d->prefs->fetchSiteIcons   = true;
+            d->prefs->fetchSenderIcons = false;
+            d->prefs->fetchSiteIcons   = false;
             SyncControls(d);
             ApplyAndSave(d);
         } };
@@ -845,6 +873,50 @@ namespace {
         AddNote(parts, "um-set-links-note3",
                 "Either way, check where a link really goes before you click it: "
                 "the words of a link can name one website and lead to another.");
+        return parts.page;
+    }
+
+    // ===== DISPLAY > TREEVIEW =====
+    std::shared_ptr<UltraCanvasContainer> BuildTreeviewPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-treeview", "Treeview",
+                "Treeview content:");
+
+        const bool current = d->prefs->folderTreeContent == FolderTreeContent::CurrentAccount;
+        d->treeCurrentRadio = MakeChoice("um-set-tree-current",
+                "Show current email account", current);
+        d->treeAllRadio = MakeChoice("um-set-tree-all",
+                "Show all email accounts", !current);
+        d->treeContentGroup.AddRadioButton(d->treeCurrentRadio);
+        d->treeContentGroup.AddRadioButton(d->treeAllRadio);
+        d->treeContentGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            d->prefs->folderTreeContent = selected == d->treeCurrentRadio
+                                          ? FolderTreeContent::CurrentAccount
+                                          : FolderTreeContent::AllAccounts;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->treeCurrentRadio);
+        parts.body->AddChild(d->treeAllRadio);
+
+        d->resets[kPageTreeview] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->folderTreeContent = FolderTreeContent::AllAccounts;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-treeview-note1",
+                "With the current account only, the folder tree on the left lists "
+                "the folders of the account chosen in the account bar, and a click "
+                "on another account there shows that one's folders instead.");
+        AddNote(parts, "um-set-treeview-note2",
+                "With all accounts, every account is listed with its folders, one "
+                "below the other, in the order of the account bar - drag an "
+                "account there to move it.");
+        AddNote(parts, "um-set-treeview-note3",
+                "A right-click on a folder in the tree adds a folder inside it or "
+                "deletes it; on an account or its inbox, it adds a folder at the "
+                "top of the account.");
         return parts.page;
     }
 
@@ -1028,8 +1100,9 @@ namespace {
                 "by themselves), and whether the known senders' icons are fetched.");
         AddNote(parts, "um-set-start-note3",
                 "Display - whether a link's address is shown in the status bar or "
-                "as a tooltip, and whether new mail shows a notification on the "
-                "screen.");
+                "as a tooltip, whether new mail shows a notification on the "
+                "screen, and whether the folder tree lists the current account "
+                "or all of them.");
         AddNote(parts, "um-set-start-note5",
                 "Warnings - which kinds of spam and scam UltraMail warns about: "
                 "phishing, romance scams, advance-fee letters, letters in an "
@@ -1130,9 +1203,12 @@ namespace {
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
         AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
+        AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
         AddTreeNode(d, "settings", kPageWarnings, "Warnings");
         AddTreeNode(d, kPageWarnings, kPageScamWarnings, "Spam/scam warnings");
-        AddTreeNode(d, kPageWarnings, kPageSenderLists, "Trusted and blocked senders");
+        // The page's title is "Trusted and blocked senders"; the tree has
+        // room for less.
+        AddTreeNode(d, kPageWarnings, kPageSenderLists, "Trusted & blocked");
         // After the nodes: hiding the root promotes the sections to the top.
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
@@ -1152,6 +1228,7 @@ namespace {
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
         AddPage(d, kPageLinks, BuildLinksPage(d));
         AddPage(d, kPageNotify, BuildNotificationsPage(d));
+        AddPage(d, kPageTreeview, BuildTreeviewPage(d));
         AddPage(d, kPageScamWarnings, BuildScamWarningsPage(d));
         AddPage(d, kPageSenderLists, BuildSenderListsPage(d));
         AddPage(d, kPageStart, BuildStartPage());

@@ -1,13 +1,14 @@
 // core/UltraNet/UltraNetHttpEasy.cpp
 // Shared libcurl easy-handle plumbing: callbacks, option-setting,
 // finalisation. Used by both the sync and the async HTTP code paths.
-// Version: 0.2.0 (Stage 2)
+// Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNetHttpEasy.h"
 #include "UltraNet/UltraNetCurlTls.h"
 #include "UltraNet/UltraNetTls.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -262,29 +263,110 @@ std::size_t WriteCallback(char* data, std::size_t size,
         }
         if (sink->file) {
             std::size_t written = std::fwrite(data, 1, total, sink->file);
-            if (written != total) return written;
+            if (written != total) {
+                sink->writeFailed = true;
+                return written;
+            }
         }
     }
     sink->received += static_cast<int64_t>(total);
     return total;
 }
 
+void WriteSink::CloseFile() {
+    if (ownsFile && file) std::fclose(file);
+    if (ownsFile) file = nullptr;
+    ownsFile = false;
+}
+
+bool WriteSink::RestartFile() {
+    if (!ownsFile || outputPath.empty()) return false;
+    if (file) std::fclose(file);
+    file = UltraCanvas::OpenFileUtf8(outputPath, "wb");
+    resumeOffset = 0;
+    received = 0;
+    return file != nullptr;
+}
+
+UltraNetResult OpenOutputFile(const UltraNetHttpOptions& options, WriteSink& sink) {
+    if (options.outputFilePath.empty()) return UltraNetResult::Ok();
+    std::FILE* fp = UltraCanvas::OpenFileUtf8(options.outputFilePath,
+                                              options.resumeOutputFile ? "ab" : "wb");
+    if (!fp) {
+        return UltraNetResult::Error(UltraNetResultCode::AccessDenied,
+                                     "cannot open local file for write: " +
+                                         options.outputFilePath);
+    }
+    sink.file       = fp;
+    sink.ownsFile   = true;
+    sink.outputPath = options.outputFilePath;
+    if (options.resumeOutputFile) {
+        // "ab" positions every write at the end; the size is the offset.
+#if defined(_WIN32)
+        _fseeki64(fp, 0, SEEK_END);
+        const long long size = _ftelli64(fp);
+#else
+        std::fseek(fp, 0, SEEK_END);
+        const long long size = static_cast<long long>(std::ftell(fp));
+#endif
+        if (size > 0) sink.resumeOffset = static_cast<int64_t>(size);
+    }
+    return UltraNetResult::Ok();
+}
+
 std::size_t HeaderCallback(char* data, std::size_t size,
                            std::size_t nmemb, void* userdata) {
-    UltraNetResponse* resp = static_cast<UltraNetResponse*>(userdata);
+    WriteSink* sink = static_cast<WriteSink*>(userdata);
     const std::size_t total = size * nmemb;
+    UltraNetResponse* resp = sink ? sink->response : nullptr;
+    if (!resp) return total;
     std::string line(data, total);
     while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
         line.pop_back();
     }
-    if (line.empty()) return total;
     if (line.rfind("HTTP/", 0) == 0) {
+        // A new response: a redirect being followed, a 100 Continue, the
+        // final one. "HTTP/1.1 206 Partial Content", "HTTP/2 200".
         std::size_t firstSpace  = line.find(' ');
         std::size_t secondSpace = line.find(' ', firstSpace + 1);
-        if (secondSpace != std::string::npos) {
-            resp->statusMessage = line.substr(secondSpace + 1);
+        if (firstSpace != std::string::npos) {
+            resp->statusCode = std::atoi(line.c_str() + firstSpace + 1);
         }
+        resp->statusMessage = secondSpace != std::string::npos
+                                  ? line.substr(secondSpace + 1) : std::string();
         resp->headers.Clear();
+        return total;
+    }
+    if (line.empty()) {
+        // End of a header block. Only the final response counts: not an
+        // interim 1xx, not a redirect libcurl is about to follow.
+        const int status = resp->statusCode;
+        if (status >= 100 && status < 200) return total;
+        if (status >= 300 && status < 400 && sink->followRedirects &&
+            resp->headers.Has("Location")) {
+            return total;
+        }
+        resp->contentType = resp->headers.Get("Content-Type");
+        const std::string len = resp->headers.Get("Content-Length");
+        resp->contentLength = len.empty() ? -1 : std::atoll(len.c_str());
+
+        // A resume answered with the whole body: the server ignored the
+        // range. A partial file is replaced rather than appended to, and the
+        // progress figures no longer count an offset the body starts before.
+        if (sink->resumeOffset > 0 && status == 200) {
+            if (sink->ownsFile && !sink->RestartFile()) {
+                sink->writeFailed = true;
+                return 0;
+            }
+            sink->resumeOffset = 0;
+        }
+        if (sink->onHeaders && !sink->headersReported) {
+            sink->headersReported = true;
+            if (!sink->onHeaders(*resp)) {
+                sink->headersAborted = true;
+                return 0;
+            }
+        }
         return total;
     }
     std::size_t colon = line.find(':');
@@ -302,8 +384,14 @@ namespace {
     int ProgressCallback(void* userdata,
                          curl_off_t dltotal, curl_off_t dlnow,
                          curl_off_t ultotal, curl_off_t ulnow) {
-        // Per-request callbacks first — they're more specific.
+        // Per-request callbacks first — they're more specific. A resumed
+        // download counts the bytes the caller already holds, so the figures
+        // are of the whole file, as a progress bar wants them.
         auto* sink = static_cast<WriteSink*>(userdata);
+        if (sink && sink->resumeOffset > 0) {
+            dlnow += static_cast<curl_off_t>(sink->resumeOffset);
+            if (dltotal > 0) dltotal += static_cast<curl_off_t>(sink->resumeOffset);
+        }
         if (sink) {
             if (sink->perRequestDownload && dlnow > 0) {
                 sink->perRequestDownload(static_cast<int64_t>(dlnow),
@@ -387,6 +475,15 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
     } else if (opt.authType == UltraNetAuthType::ApiKey && !opt.credentials.token.empty()) {
         headers.Set("Authorization", opt.credentials.token);
     }
+    // A partial copy the caller holds - a file being resumed, or an offset of
+    // its own: ask for the rest. A server that ignores it answers 200 with
+    // the whole body; HeaderCallback starts the file over in that case.
+    if (sink->resumeOffset <= 0 && opt.resumeFromOffset > 0) {
+        sink->resumeOffset = opt.resumeFromOffset;
+    }
+    if (sink->resumeOffset > 0) {
+        headers.Set("Range", "bytes=" + std::to_string(sink->resumeOffset) + "-");
+    }
     curl_slist* slist = BuildSlist(headers);
     if (slist) curl_easy_setopt(easy, CURLOPT_HTTPHEADER, slist);
 
@@ -397,16 +494,42 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
         curl_easy_setopt(easy, CURLOPT_PASSWORD, opt.credentials.password.c_str());
     }
 
-    curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION,
-                     (opt.followRedirects && cfg.followRedirects) ? 1L : 0L);
+    sink->followRedirects    = opt.followRedirects && cfg.followRedirects;
+    sink->httpsOnlyRedirects = opt.httpsOnlyRedirects;
+    curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, sink->followRedirects ? 1L : 0L);
     curl_easy_setopt(easy, CURLOPT_MAXREDIRS,
                      static_cast<long>(opt.maxRedirects > 0 ? opt.maxRedirects
                                                             : cfg.maxRedirects));
+    // Where a redirect may go: https only when asked, otherwise http or
+    // https - never ftp or another scheme, which libcurl's default allows.
+#if LIBCURL_VERSION_NUM >= 0x075500
+    curl_easy_setopt(easy, CURLOPT_REDIR_PROTOCOLS_STR,
+                     opt.httpsOnlyRedirects ? "https" : "http,https");
+#else
+    curl_easy_setopt(easy, CURLOPT_REDIR_PROTOCOLS,
+                     opt.httpsOnlyRedirects ? CURLPROTO_HTTPS
+                                            : (CURLPROTO_HTTP | CURLPROTO_HTTPS));
+#endif
 
+    // Timeouts. A transfer into a file is as long as the file is large, so
+    // by default it has no whole-transfer limit and a stall limit instead;
+    // every other transfer keeps the config default unless the options say.
+    const bool toFile   = sink->file != nullptr;
     const int connectTo = opt.connectTimeoutMs > 0 ? opt.connectTimeoutMs : cfg.connectTimeoutMs;
-    const int overallTo = opt.timeoutMs > 0       ? opt.timeoutMs       : cfg.defaultTimeoutMs;
+    int overallTo = opt.timeoutMs;
+    if (overallTo == 0) overallTo = toFile ? -1 : cfg.defaultTimeoutMs;
+    int stallTo = opt.stallTimeoutMs;
+    if (stallTo == 0 && toFile) stallTo = cfg.defaultTimeoutMs;
     curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT_MS, static_cast<long>(connectTo));
-    curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS,        static_cast<long>(overallTo));
+    curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, static_cast<long>(overallTo > 0 ? overallTo : 0));
+    sink->stallTimeoutMs = stallTo > 0 ? stallTo : 0;
+    if (stallTo > 0) {
+        // libcurl counts whole seconds: under one byte a second for that long
+        // is a stall.
+        curl_easy_setopt(easy, CURLOPT_LOW_SPEED_LIMIT, 1L);
+        curl_easy_setopt(easy, CURLOPT_LOW_SPEED_TIME,
+                         static_cast<long>(std::max(1, (stallTo + 999) / 1000)));
+    }
 
     const bool verify = opt.verifyTls && cfg.verifyTlsPeer && !opt.acceptInvalidCert;
     curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, verify ? 1L : 0L);
@@ -506,10 +629,12 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
     if (request.onDataChunk)         sink->onChunk            = request.onDataChunk;
     if (request.onDownloadProgress)  sink->perRequestDownload = request.onDownloadProgress;
     if (request.onUploadProgress)    sink->perRequestUpload   = request.onUploadProgress;
+    if (request.onHeaders)           sink->onHeaders          = request.onHeaders;
+    sink->response = responseForHeaders;
     curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, &WriteCallback);
     curl_easy_setopt(easy, CURLOPT_WRITEDATA, sink);
     curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, &HeaderCallback);
-    curl_easy_setopt(easy, CURLOPT_HEADERDATA, responseForHeaders);
+    curl_easy_setopt(easy, CURLOPT_HEADERDATA, sink);
 
     curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(easy, CURLOPT_FAILONERROR, 0L);
@@ -528,7 +653,8 @@ UltraNetResult FinalizeFromEasy(CURL* easy,
                                 CURLcode rc,
                                 const std::string& url,
                                 UltraNetResponse& response,
-                                bool exceededLimit) {
+                                const WriteSink& sink) {
+    const bool exceededLimit = sink.exceededLimit;
     long status = 0;
     curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &status);
     response.statusCode = static_cast<int>(status);
@@ -577,6 +703,45 @@ UltraNetResult FinalizeFromEasy(CURL* easy,
     result.url            = url;
     result.httpStatus     = static_cast<int>(status);
     result.processingTime = elapsed;
+    if (sink.headersAborted) {
+        // onHeaders said no: libcurl reports the refused header write as
+        // CURLE_WRITE_ERROR, which is not what happened.
+        result.code    = UltraNetResultCode::Cancelled;
+        result.success = false;
+        result.message = "transfer ended by onHeaders";
+        response.transferError = result.message;
+        return result;
+    }
+    if (sink.writeFailed) {
+        result.code    = UltraNetResultCode::AccessDenied;
+        result.success = false;
+        result.message = "could not write the output file (disk full?)";
+        response.transferError = result.message;
+        return result;
+    }
+    if (rc == CURLE_UNSUPPORTED_PROTOCOL && sink.httpsOnlyRedirects &&
+        status >= 300 && status < 400) {
+        result.code    = UltraNetResultCode::RedirectRefused;
+        result.success = false;
+        result.message = "redirect to a URL that is not https:// refused: " +
+                         response.headers.Get("Location");
+        response.transferError = result.message;
+        return result;
+    }
+    if (rc == CURLE_OK && status == 416 && sink.resumeOffset > 0) {
+        // Range Not Satisfiable on a resume: when the server's total is the
+        // size already held, the file was complete before the request.
+        const std::string range = response.headers.Get("Content-Range");
+        const std::size_t slash = range.find("*/");
+        const long long totalBytes = slash == std::string::npos
+                                         ? -1 : std::atoll(range.c_str() + slash + 2);
+        if (totalBytes == static_cast<long long>(sink.resumeOffset)) {
+            result.code    = UltraNetResultCode::Success;
+            result.success = true;
+            result.message = "already complete";
+            return result;
+        }
+    }
     if (rc == CURLE_OK) {
         if (status >= 400) {
             result.code    = UltraNetResultCode::HttpError;

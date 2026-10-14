@@ -1,7 +1,10 @@
 // UltraCanvasVipsQoiLoader.cpp
-// libvips foreign loader for QOI (Quite OK Image) format - Implementation
+// libvips foreign loader and saver for QOI (Quite OK Image) format -
+// Implementation. Both go through the bundled codec (qoi.cpp), so a .qoi
+// file is read and written without ImageMagick.
+// Version: 1.1.0 - qoisave: the saver, registered for ".qoi"
 // Version: 1.0.0
-// Last Modified: 2025-12-26
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include <vips/vips.h>
@@ -331,8 +334,174 @@ vips_foreign_load_qoi_buffer_class_init(VipsForeignLoadQoiBufferClass *klass)
 }
 
 // ============================================================================
+// SAVER
+// ============================================================================
+typedef struct _VipsForeignSaveQoi {
+    VipsForeignSave parent_object;
+    VipsTarget *target;
+} VipsForeignSaveQoi;
+
+typedef VipsForeignSaveClass VipsForeignSaveQoiClass;
+
+G_DEFINE_ABSTRACT_TYPE(VipsForeignSaveQoi,
+                       vips_foreign_save_qoi,
+                       VIPS_TYPE_FOREIGN_SAVE)
+
+static void
+vips_foreign_save_qoi_dispose(GObject *gobject)
+{
+    VipsForeignSaveQoi *qoi = (VipsForeignSaveQoi *) gobject;
+
+    VIPS_UNREF(qoi->target);
+
+    G_OBJECT_CLASS(vips_foreign_save_qoi_parent_class)->dispose(gobject);
+}
+
+static int
+vips_foreign_save_qoi_build(VipsObject *object)
+{
+    VipsObjectClass *klass = VIPS_OBJECT_GET_CLASS(object);
+    VipsForeignSave *save = (VipsForeignSave *) object;
+    VipsForeignSaveQoi *qoi = (VipsForeignSaveQoi *) object;
+
+    if (VIPS_OBJECT_CLASS(vips_foreign_save_qoi_parent_class)->build(object))
+        return -1;
+
+    // `ready` is 8-bit RGB or RGBA (the class's saveable and format table),
+    // which is what QOI holds.
+    VipsImage *ready = save->ready;
+    size_t size = 0;
+    void *pixels = vips_image_write_to_memory(ready, &size);
+    if (!pixels)
+        return -1;
+
+    qoi_desc desc;
+    desc.width = (unsigned int) ready->Xsize;
+    desc.height = (unsigned int) ready->Ysize;
+    desc.channels = (unsigned char) ready->Bands;
+    desc.colorspace = QOI_SRGB;
+    int length = 0;
+    void *encoded = qoi_encode(pixels, &desc, &length);
+    g_free(pixels);
+    if (!encoded) {
+        vips_error(klass->nickname, "QOI encode failed");
+        return -1;
+    }
+    const int written = vips_target_write(qoi->target, encoded, (size_t) length);
+    free(encoded);
+    if (written)
+        return -1;
+#if VIPS_MAJOR_VERSION > 8 || (VIPS_MAJOR_VERSION == 8 && VIPS_MINOR_VERSION >= 13)
+    if (vips_target_end(qoi->target))
+        return -1;
+#else
+    vips_target_finish(qoi->target);
+#endif
+    return 0;
+}
+
+// Every band format is saved as 8 bits.
+static VipsBandFormat vips_foreign_save_qoi_format_table[10] = {
+    VIPS_FORMAT_UCHAR, VIPS_FORMAT_UCHAR, VIPS_FORMAT_UCHAR, VIPS_FORMAT_UCHAR, VIPS_FORMAT_UCHAR,
+    VIPS_FORMAT_UCHAR, VIPS_FORMAT_UCHAR, VIPS_FORMAT_UCHAR, VIPS_FORMAT_UCHAR, VIPS_FORMAT_UCHAR
+};
+
+static void
+vips_foreign_save_qoi_init(VipsForeignSaveQoi *qoi)
+{
+}
+
+static void
+vips_foreign_save_qoi_class_init(VipsForeignSaveQoiClass *klass)
+{
+    GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
+    VipsObjectClass *object_class = VIPS_OBJECT_CLASS(klass);
+    VipsForeignClass *foreign_class = (VipsForeignClass *) klass;
+    VipsForeignSaveClass *save_class = (VipsForeignSaveClass *) klass;
+
+    gobject_class->dispose = vips_foreign_save_qoi_dispose;
+    gobject_class->set_property = vips_object_set_property;
+    gobject_class->get_property = vips_object_get_property;
+
+    object_class->nickname = "qoisave_base";
+    object_class->description = "save as QOI";
+    object_class->build = vips_foreign_save_qoi_build;
+
+    foreign_class->suffs = vips__qoi_suffs;
+
+#if VIPS_MAJOR_VERSION > 8 || (VIPS_MAJOR_VERSION == 8 && VIPS_MINOR_VERSION >= 17)
+    save_class->saveable = (VipsForeignSaveable) (VIPS_FOREIGN_SAVEABLE_RGB | VIPS_FOREIGN_SAVEABLE_ALPHA);
+#else
+    save_class->saveable = VIPS_SAVEABLE_RGBA_ONLY;
+#endif
+    save_class->format_table = vips_foreign_save_qoi_format_table;
+}
+
+typedef struct _VipsForeignSaveQoiFile {
+    VipsForeignSaveQoi parent;
+    char *filename;
+} VipsForeignSaveQoiFile;
+
+typedef VipsForeignSaveQoiClass VipsForeignSaveQoiFileClass;
+
+G_DEFINE_TYPE(VipsForeignSaveQoiFile,
+              vips_foreign_save_qoi_file,
+              vips_foreign_save_qoi_get_type())
+
+static int
+vips_foreign_save_qoi_file_build(VipsObject *object)
+{
+    VipsForeignSaveQoi *qoi = (VipsForeignSaveQoi *) object;
+    VipsForeignSaveQoiFile *file = (VipsForeignSaveQoiFile *) object;
+
+    if (!(qoi->target = vips_target_new_to_file(file->filename)))
+        return -1;
+
+    return VIPS_OBJECT_CLASS(vips_foreign_save_qoi_file_parent_class)->build(object);
+}
+
+static void
+vips_foreign_save_qoi_file_init(VipsForeignSaveQoiFile *file)
+{
+}
+
+static void
+vips_foreign_save_qoi_file_class_init(VipsForeignSaveQoiFileClass *klass)
+{
+    GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
+    VipsObjectClass *object_class = VIPS_OBJECT_CLASS(klass);
+
+    gobject_class->set_property = vips_object_set_property;
+    gobject_class->get_property = vips_object_get_property;
+
+    object_class->nickname = "qoisave";
+    object_class->description = "save as a QOI file";
+    object_class->build = vips_foreign_save_qoi_file_build;
+
+    VIPS_ARG_STRING(klass, "filename", 1,
+                    "Filename",
+                    "Filename to save to",
+                    VIPS_ARGUMENT_REQUIRED_INPUT,
+                    G_STRUCT_OFFSET(VipsForeignSaveQoiFile, filename),
+                    NULL);
+}
+
+// ============================================================================
 // PUBLIC API FUNCTIONS
 // ============================================================================
+
+int
+vips_qoisave(VipsImage *in, const char *filename, ...)
+{
+    va_list ap;
+    int result;
+
+    va_start(ap, filename);
+    result = vips_call_split("qoisave", ap, in, filename);
+    va_end(ap);
+
+    return result;
+}
 
 int
 vips_qoiload(const char *filename, VipsImage **out, ...)
@@ -395,4 +564,6 @@ void vips_foreign_load_qoi_init_types(void)
     vips_foreign_load_qoi_get_type();
     vips_foreign_load_qoi_file_get_type();
     vips_foreign_load_qoi_buffer_get_type();
+    vips_foreign_save_qoi_get_type();
+    vips_foreign_save_qoi_file_get_type();
 }

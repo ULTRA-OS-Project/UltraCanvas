@@ -77,12 +77,16 @@ Apps/UltraMail/
                                   .eml body cache, two-sided flag changes;
                                   RefreshFolder also reconciles with the
                                   server's list and fetches what an earlier
-                                  sync missed (by UID, blank rows, bodies)
+                                  sync missed (by UID, blank rows, bodies);
+                                  CreateFolder / DeleteFolder (IMAP CREATE /
+                                  DELETE, then the folder list again)
     UltraMailMessageSort.{h,cpp}  the message list's order (sender, kind of
                                   sender, subject without Re:/Fwd:, date)
     UltraMailFolderNames.{h,cpp}  how a folder name reads: its levels by the
                                   server's separator ("INBOX.Drafts" -> Drafts),
-                                  decoded from modified UTF-7
+                                  decoded from modified UTF-7; NewFolderName
+                                  (a typed name placed and encoded, or why
+                                  not) and CanDeleteFolder
     UltraMailDiscovery.{h,cpp}    account auto-discovery: provider presets +
                                   Mozilla-autoconfig XML (over UltraNet HTTP);
                                   ForAccount (stored settings, else presets)
@@ -136,19 +140,24 @@ Apps/UltraMail/
                                   account" button, nothing else (no account yet)
     UltraMailAccountBar.{h,cpp}   one account: summary strip (provider initial ·
                                   name · New today / Unread / Waiting for reply
-                                  badges); several: a clickable tile per account
+                                  badges); several: a clickable tile per account,
+                                  dragged sideways into another order (the
+                                  tiles are an UltraCanvasToolbar's items)
     UltraMailMailView.{h,cpp}     split pane: "Inbox" group box with the message
                                   list (From · sender badge · Subject · Date,
                                   sorted by the header clicked) | "Message"
-                                  group box with the preview
+                                  group box with the preview; the folder
+                                  tree's right-click menu (Add folder…,
+                                  Delete folder…)
     UltraMailMessagePreview.{h,cpp} message details: headers, Reply, body (HTML via
                                   HTMLReader/CSSLayout, text in a read-only area),
                                   attachment strip; the text selectable and
                                   copyable (header and body, right-click Copy /
                                   Select All), a copy button on a one-time code
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
-    UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
-                                  (Open / Save As…) opens content in UltraCanvasMediaViewer
+    UltraMailAttachmentStrip.{h,cpp} attachment chips (paperclip, name, size); a click
+                                  opens the Open / Save As… menu, a double-click
+                                  opens content in UltraCanvasMediaViewer
     UltraMailOutboxView.{h,cpp}   the Outbox window (toolbar "Outbox (N)"): the
                                   waiting messages (To · Subject · From · Tries
                                   · Status) with Send now, Edit… and Delete
@@ -174,7 +183,7 @@ Apps/UltraMail/
                                   UltraFiler): Mail > New mail, Reading >
                                   Layout / Messages, Privacy > Images /
                                   Sender icons, Display > Links /
-                                  Notifications
+                                  Notifications / Treeview
     UltraMailPreferences.{h,cpp}  app-wide preferences.ini behind it
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
@@ -206,13 +215,34 @@ each page, *Restore default* in the bottom bar). Changes apply and are saved
   scam check). Icons are fetched in the background for the rows on screen.
 - *Display > Notifications* — whether new mail puts a notification on the
   screen (on by default).
+- *Display > Treeview* — what the folder tree lists: **Show current email
+  account** (the account chosen in the account bar; a click on another tile
+  shows that one's folders) or **Show all email accounts** (the default),
+  one below the other in the account bar's order.
 
 An account's servers and sign-in stay in its own *Account Settings*.
 
+**Folders and accounts:** a right-click on a row of the folder tree offers
+*Add folder…* and *Delete folder…*. On a folder, *Add folder…* makes one
+inside it; on the account row or its inbox, at the top of the account - below
+`INBOX` on a server that keeps every folder there (Courier-style
+`INBOX.Drafts`). The name may hold any letter (it goes to the server in
+IMAP's modified UTF-7) but not the server's separator, `*`, `%` or a control
+character, and not the name of a folder already there. *Delete folder…* asks
+first, then removes the folder and all the mail in it from the server; it is
+greyed, with the reason, for the inbox, a folder with a role (Sent, Drafts,
+Trash, Junk, Archive) and a folder with folders inside it. With several
+accounts, a tile of the account bar dragged sideways takes another place;
+the order is kept (`account_order` in `preferences.ini`) and the folder tree
+follows it.
+
 **Attachments:** a message's MIME parts are decoded by `MimeCodec` (over
 `UltraNet_MimeParse`); the attachment strip under the message body shows one
-chip per part. Double-clicking a chip — or the right-click **Open** — writes
-the bytes to the cache and opens them in **`UltraCanvasMediaViewer`** (images,
+chip per part: the paperclip, the file name and its size. A click on a chip
+opens its menu (**Open**, **Save As…**) under the chip - above it at the foot
+of the window - and a second click closes it again; a right-click opens the
+same menu at the pointer. Double-clicking a chip — or **Open** — writes the
+bytes to the cache and opens them in **`UltraCanvasMediaViewer`** (images,
 PDF, text, audio/video, …). Try it: run with `ULTRAMAIL_DEMO_MAIL=1`, which
 seeds a demo inbox (two messages dated today, one with an attachment) so the
 whole main window can be exercised without a live sync.
@@ -271,7 +301,7 @@ works the classic way (an *app password*).
 The sign-in runs as an OAuth *client* that the provider must know. Register one
 per provider once and give it to UltraMail through `oauth.ini` in the data
 folder (`~/.local/share/UltraMail/` on Linux, `%APPDATA%\UltraMail\` on
-Windows):
+Windows, `~/Library/Application Support/UltraMail/` on macOS):
 
 ```ini
 [google]
@@ -318,7 +348,8 @@ admin must leave IMAP and *Authenticated SMTP* enabled for the mailbox.
 
 UltraMail writes what it is doing, step by step and with its times, to
 `trace.log` in the data folder (`%APPDATA%\UltraMail\trace.log` on Windows,
-`~/.local/share/UltraMail/trace.log` on Linux), which is emptied at each
+`~/.local/share/UltraMail/trace.log` on Linux,
+`~/Library/Application Support/UltraMail/trace.log` on macOS), which is emptied at each
 start, and to the console it was started from. Windows Release builds open no
 console window of their own; started from a command prompt they write into
 it, and Debug builds keep their console window. Every line carries the time of day, the seconds since the

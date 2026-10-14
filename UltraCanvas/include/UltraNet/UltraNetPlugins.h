@@ -3,6 +3,7 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.4.2 - IMailboxProtocolPlugin::CreateFolder / DeleteFolder
 // Version: 0.4.1 - IMailboxProtocolPlugin::ExpungeMessage
 // Version: 0.4.0 (Stage 3)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -387,6 +388,30 @@ public:
                 if (std::binary_search(wanted.begin(), wanted.end(), e.uid)) onEnvelope(e);
             },
             options);
+    }
+
+    // Make a mailbox (IMAP CREATE) / remove one with the mail in it (DELETE).
+    // `folder` is the full name in its wire form - modified UTF-7 for IMAP
+    // (UltraNet_ImapUtf7Encode), with the server's hierarchy separator between
+    // its levels. The server decides what it allows: most refuse to delete a
+    // mailbox that has mailboxes below it, and every one refuses INBOX. The
+    // defaults report "not implemented" (test fakes, backends without it).
+    // Added last, like FetchAllFlags, so the existing vtable is undisturbed.
+    virtual UltraNetResult CreateFolder(
+        const std::string& serverUrl,
+        const std::string& folder,
+        const UltraNetMailOptions& options) {
+        (void)serverUrl; (void)folder; (void)options;
+        return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                     "CreateFolder not implemented");
+    }
+    virtual UltraNetResult DeleteFolder(
+        const std::string& serverUrl,
+        const std::string& folder,
+        const UltraNetMailOptions& options) {
+        (void)serverUrl; (void)folder; (void)options;
+        return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                     "DeleteFolder not implemented");
     }
 };
 

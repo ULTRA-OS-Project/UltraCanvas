@@ -1,0 +1,20 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 900x150. --><title>Button — preview</title></head>
+<body class="uv uv-frame">
+<div class="uv-col" id="r"></div>
+<script>
+  var I = UltraVideo.icon;
+  document.getElementById('r').innerHTML =
+    '<div class="uv-row"><button class="uv-btn uv-btn--primary">' + I('export') + 'Export</button>' +
+    '<button class="uv-btn uv-btn--primary is-hover">Export</button>' +
+    '<button class="uv-btn">' + I('plus') + 'Import media</button><button class="uv-btn is-hover">Hover</button><button class="uv-btn is-pressed">Pressed</button>' +
+    '<button class="uv-btn is-focus">Focused</button><button class="uv-btn" disabled>Disabled</button><button class="uv-btn uv-btn--danger">' + I('trash') + 'Delete clip</button></div>' +
+    '<div class="uv-row"><button class="uv-btn uv-btn--ghost">Ghost</button>' +
+    '<button class="uv-btn uv-btn--ghost uv-btn--icon">' + I('undo') + '</button><button class="uv-btn uv-btn--ghost uv-btn--icon is-hover">' + I('redo') + '</button>' +
+    '<button class="uv-btn uv-btn--ghost uv-btn--icon is-on" aria-pressed="true">' + I('magnet') + '</button><button class="uv-btn uv-btn--ghost uv-btn--icon is-on" aria-pressed="true">' + I('snap') + '</button>' +
+    '<button class="uv-btn uv-btn--ghost uv-btn--icon is-focus">' + I('beat') + '</button><button class="uv-btn uv-btn--icon">' + I('play') + '</button><button class="uv-btn uv-btn--ghost uv-btn--icon" disabled>' + I('split') + '</button></div>' +
+    '<div class="uv-cap">Toggle on = accent-soft fill + accent icon · focus = 2 px focus ring, 2 px offset · disabled = opacity-disabled</div>';
+</script>
+</body>
+</html>

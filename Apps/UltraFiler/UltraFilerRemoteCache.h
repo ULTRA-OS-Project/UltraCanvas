@@ -20,13 +20,14 @@
 // to start a record of its own. Anything that does not parse drops the
 // listing it belongs to, not the file: a cache is an optimisation, and a bad
 // line in it is a reason to ask the server again, never a reason to fail.
-// Version: 1.0.0
-// Last Modified: 2026-09-27
+// Version: 1.1.0
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraFilerRemotePath.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
@@ -53,12 +54,22 @@ struct RemoteCachedListing {
     std::vector<RemoteCachedEntry> entries;
 };
 
-// How many subfolders of one opened folder are fetched ahead. Every FTP
-// listing is a login of its own, so a folder of a thousand subfolders must
-// not become a thousand connections the moment it is opened: the first ones,
-// in the order the server listed them (folders first, by name), are what the
-// user is most likely to open next.
+// How many subfolders of one opened folder are fetched ahead. Each is a
+// listing - a CWD, a data connection and a LIST on the connection the drive
+// already has open - so a folder of a thousand subfolders must not become a
+// thousand requests the moment it is opened: the first ones, in the order the
+// server listed them (folders first, by name), are what the user is most
+// likely to open next.
 inline constexpr std::size_t kRemotePrefetchPerFolder = 24;
+
+// How long the drive worker keeps an FTP connection open with nothing to do.
+// The listings of one burst - a folder, its subfolders fetched ahead, the
+// next folder opened while they come in - share one login; a drive left
+// alone is let go. Short, because closing sends QUIT and waits for the reply:
+// a connection whose network went away since (a laptop moved to another
+// network) does not answer, and libcurl before 8.10 waits up to two minutes,
+// with the next request - or the window closing - waiting behind it.
+inline constexpr std::chrono::seconds kRemoteConnectionIdleClose{15};
 
 // How many listings are kept on disk. Enough for the folders of a working
 // session on a few servers; a cache that grows without bound slows every

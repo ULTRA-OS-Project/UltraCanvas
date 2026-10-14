@@ -1,8 +1,10 @@
 // VideoFX/core/VideoFXProbe.cpp
 // Media inspection: VideoFX_Probe, frame and thumbnail extraction, saving a
-// frame as PNG / JPEG.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// frame as PNG / JPEG; the host application's picture reader.
+// Version: 0.14.0 - VideoFX_SetPictureReader: picture types the host reads
+//                  go through its reader in Probe, ExtractFrame, ExtractThumbnails
+// Version: 0.10.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -15,6 +17,8 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <memory>
+#include <mutex>
 
 namespace VideoFX {
 
@@ -43,20 +47,117 @@ std::string LowerExtension(const std::string& path) {
     return ext;
 }
 
-// ===== single-frame decoding =====
+// ===== the host application's picture reader =====
 
-struct OpenVideo {
-    FormatInputPtr fmt;
-    CodecContextPtr dec;
-    int stream = -1;
-    int rotation = 0;
-    AVRational tb{1, 1};
-    int64_t startTs = 0;          // stream timestamps are relative to this
-    double duration = 0.0;
-    std::string path;
-    bool fresh = true;            // nothing read since the file was opened
-    bool still = false;           // a single image (image2 / *_pipe demuxers)
-};
+std::mutex pictureReaderMutex;
+std::shared_ptr<const VideoFXPictureReader> pictureReader;
+
+// The host's reader when it takes this file's type
+std::shared_ptr<const VideoFXPictureReader> HostReaderFor(const std::string& path) {
+    std::string ext = LowerExtension(path);
+    if (ext.size() < 2) return nullptr;
+    ext.erase(0, 1);
+    std::shared_ptr<const VideoFXPictureReader> reader;
+    {
+        std::lock_guard<std::mutex> lock(pictureReaderMutex);
+        reader = pictureReader;
+    }
+    if (reader && std::find(reader->extensions.begin(), reader->extensions.end(), ext) != reader->extensions.end())
+        return reader;
+    return nullptr;
+}
+
+VideoFXResult ReadHostPicture(const VideoFXPictureReader& reader, const std::string& path, VideoFXFrame& frame) {
+    std::error_code ec;
+    if (path.empty() || !std::filesystem::exists(UltraCanvas::PathFromUtf8(path), ec))
+        return Fail(VideoFXResult::FileNotFound, "File not found: " + path);
+    frame = VideoFXFrame{};
+    if (!reader.decode || !reader.decode(path, frame) || !frame.IsValid()) {
+        frame = VideoFXFrame{};
+        return Fail(VideoFXResult::DecodeError, "The application could not read the picture " + path);
+    }
+    frame.timestamp = 0.0;
+    return VideoFXResult::Ok;
+}
+
+// Shrunk to fit maxWidth x maxHeight (0: no limit), never enlarged - what
+// ConvertToRgba does with a decoded frame
+VideoFXResult FitFrame(VideoFXFrame& frame, int maxWidth, int maxHeight) {
+    double scale = 1.0;
+    if (maxWidth > 0) scale = std::min(scale, maxWidth / static_cast<double>(frame.width));
+    if (maxHeight > 0) scale = std::min(scale, maxHeight / static_cast<double>(frame.height));
+    if (scale >= 1.0) return VideoFXResult::Ok;
+    const int w = std::max(1, static_cast<int>(std::lround(frame.width * scale)));
+    const int h = std::max(1, static_cast<int>(std::lround(frame.height * scale)));
+    SwsPtr sws(sws_getContext(frame.width, frame.height, AV_PIX_FMT_RGBA, w, h, AV_PIX_FMT_RGBA, SWS_BICUBIC,
+                              nullptr, nullptr, nullptr));
+    if (!sws) return Fail(VideoFXResult::DecodeError, "Cannot scale the picture");
+    std::vector<uint8_t> scaled(static_cast<size_t>(w) * h * 4);
+    const uint8_t* srcData[4] = {frame.pixels.data(), nullptr, nullptr, nullptr};
+    const int srcLines[4] = {frame.width * 4, 0, 0, 0};
+    uint8_t* dstData[4] = {scaled.data(), nullptr, nullptr, nullptr};
+    const int dstLines[4] = {w * 4, 0, 0, 0};
+    sws_scale(sws.get(), srcData, srcLines, 0, frame.height, dstData, dstLines);
+    frame.width = w;
+    frame.height = h;
+    frame.pixels = std::move(scaled);
+    return VideoFXResult::Ok;
+}
+
+// What VideoFX_Probe says of a picture the host reads: one picture stream,
+// no length
+VideoFXResult ProbeHostPicture(const VideoFXPictureReader& reader, const std::string& path, VideoFXMediaInfo& info) {
+    std::error_code ec;
+    if (path.empty() || !std::filesystem::exists(UltraCanvas::PathFromUtf8(path), ec))
+        return Fail(VideoFXResult::FileNotFound, "File not found: " + path);
+    int width = 0, height = 0;
+    bool read = reader.size && reader.size(path, width, height) && width > 0 && height > 0;
+    if (!read) {
+        VideoFXFrame frame;
+        if (ReadHostPicture(reader, path, frame) != VideoFXResult::Ok) return VideoFXResult::DecodeError;
+        width = frame.width;
+        height = frame.height;
+    }
+    info.path = path;
+    info.formatName = "picture";
+    info.formatLongName = "a picture read by the application";
+    const auto bytes = std::filesystem::file_size(UltraCanvas::PathFromUtf8(path), ec);
+    if (!ec) info.fileSize = static_cast<int64_t>(bytes);
+    VideoFXStreamInfo s;
+    s.index = 0;
+    s.kind = VideoFXStreamKind::Video;
+    s.codecName = "picture";
+    s.width = width;
+    s.height = height;
+    info.streams.push_back(s);
+    info.videoStreamIndex = 0;
+    info.width = width;
+    info.height = height;
+    return VideoFXResult::Ok;
+}
+
+} // namespace
+
+void VideoFX_SetPictureReader(VideoFXPictureReader reader) {
+    for (std::string& ext : reader.extensions) {
+        if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    }
+    reader.extensions.erase(std::remove(reader.extensions.begin(), reader.extensions.end(), std::string()),
+                            reader.extensions.end());
+    std::lock_guard<std::mutex> lock(pictureReaderMutex);
+    if (reader.extensions.empty()) pictureReader.reset();
+    else pictureReader = std::make_shared<const VideoFXPictureReader>(std::move(reader));
+}
+
+// ===== single-frame decoding (declared in VideoFXBackend.h, shared with the preview) =====
+
+namespace Internal {
+
+std::vector<std::string> HostPictureExtensions() {
+    std::lock_guard<std::mutex> lock(pictureReaderMutex);
+    return pictureReader ? pictureReader->extensions : std::vector<std::string>{};
+}
 
 VideoFXResult OpenVideoStream(const std::string& path, OpenVideo& v) {
     VideoFXResult r = OpenInput(path, v.fmt);
@@ -94,16 +195,23 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
             if (r != VideoFXResult::Ok) return r;
             v = std::move(reopened);
         }
-    } else if (!attachedPicture && !(v.fresh && seconds <= 0.0)) {
+    }
+    const double halfFrame = st->avg_frame_rate.num > 0 ? 0.5 / av_q2d(st->avg_frame_rate) : 0.02;
+    // Shortly after the last frame decoded, decoding goes on from there
+    // (scrubbing forward through a GOP decodes nothing twice); anywhere else
+    // seeks to the keyframe before the time
+    const bool onward = !v.still && !attachedPicture && v.lastTime >= 0.0 &&
+                        seconds > v.lastTime + halfFrame && seconds - v.lastTime < 2.0;
+    if (!v.still && !attachedPicture && !onward && !(v.fresh && seconds <= 0.0)) {
         const int64_t target = v.startTs + static_cast<int64_t>(seconds / av_q2d(v.tb));
         if (av_seek_frame(v.fmt.get(), v.stream, target, AVSEEK_FLAG_BACKWARD) < 0)
             av_seek_frame(v.fmt.get(), -1, 0, AVSEEK_FLAG_BACKWARD);   // unseekable: from the start
         avcodec_flush_buffers(v.dec.get());
+        v.spent = false;
     }
 
     v.fresh = false;
-    st = v.fmt->streams[v.stream];
-    const double halfFrame = st->avg_frame_rate.num > 0 ? 0.5 / av_q2d(st->avg_frame_rate) : 0.02;
+    v.lastTime = -1.0;
     PacketPtr pkt = MakePacket();
     FramePtr frame = MakeFrame();
     bool haveFrame = false;
@@ -113,8 +221,9 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
         if (!draining) {
             int err = av_read_frame(v.fmt.get(), pkt.get());
             if (err < 0) {
-                draining = true;
-                avcodec_send_packet(v.dec.get(), nullptr);
+                draining = true;    // the decoder is spent after this: the next call seeks
+                if (!v.spent) avcodec_send_packet(v.dec.get(), nullptr);
+                v.spent = true;
             } else {
                 if (pkt->stream_index == v.stream) avcodec_send_packet(v.dec.get(), pkt.get());
                 av_packet_unref(pkt.get());
@@ -133,9 +242,42 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
             av_frame_move_ref(out, frame.get());
             frameTime = t;
             haveFrame = true;
-            if (attachedPicture || v.still || t >= seconds - halfFrame) return VideoFXResult::Ok;
+            // (a little slack, so a time that is a frame boundary in floating
+            // point picks the frame shown there whichever way it was computed)
+            if (attachedPicture || v.still || t >= seconds - halfFrame - 1e-6) {
+                if (!draining && !attachedPicture && !v.still) v.lastTime = t;
+                return VideoFXResult::Ok;
+            }
         }
         if (draining && !haveFrame) return Fail(VideoFXResult::DecodeError, "No frame at the requested time");
+    }
+}
+
+VideoFXResult DecodeNextFrame(OpenVideo& v, AVFrame* out, double& frameTime, bool& endOfStream) {
+    endOfStream = false;
+    if (v.still) { endOfStream = true; return VideoFXResult::Ok; }   // a still has the one frame
+    PacketPtr pkt = MakePacket();
+    while (true) {
+        int err = avcodec_receive_frame(v.dec.get(), out);
+        if (err >= 0) {
+            const int64_t ts = out->best_effort_timestamp;
+            frameTime = ts == AV_NOPTS_VALUE ? (v.lastTime < 0.0 ? 0.0 : v.lastTime) : ToSeconds(ts - v.startTs, v.tb);
+            v.lastTime = frameTime;
+            v.fresh = false;
+            return VideoFXResult::Ok;
+        }
+        if (err == AVERROR_EOF) { endOfStream = true; return VideoFXResult::Ok; }
+        if (err != AVERROR(EAGAIN)) return Fail(VideoFXResult::DecodeError, "Decoding failed", err);
+        if (v.spent) { endOfStream = true; return VideoFXResult::Ok; }
+        err = av_read_frame(v.fmt.get(), pkt.get());
+        if (err < 0) {
+            avcodec_send_packet(v.dec.get(), nullptr);
+            v.spent = true;
+            continue;
+        }
+        if (pkt->stream_index == v.stream) avcodec_send_packet(v.dec.get(), pkt.get());
+        av_packet_unref(pkt.get());
+        v.fresh = false;
     }
 }
 
@@ -194,7 +336,7 @@ VideoFXResult ConvertToRgba(const AVFrame* src, int rotation, int maxWidth, int 
     return VideoFXResult::Ok;
 }
 
-} // namespace
+} // namespace Internal
 
 // ============================================================================
 // PROBE
@@ -203,6 +345,7 @@ VideoFXResult ConvertToRgba(const AVFrame* src, int rotation, int maxWidth, int 
 VideoFXResult VideoFX_Probe(const std::string& path, VideoFXMediaInfo& info) {
     ClearError();
     info = VideoFXMediaInfo{};
+    if (auto reader = HostReaderFor(path)) return ProbeHostPicture(*reader, path, info);
     FormatInputPtr fmt;
     VideoFXResult r = OpenInput(path, fmt);
     if (r != VideoFXResult::Ok) return r;
@@ -285,6 +428,10 @@ VideoFXResult VideoFX_ExtractFrame(const std::string& path, double seconds, Vide
     ClearError();
     frame = VideoFXFrame{};
     if (!std::isfinite(seconds)) return Fail(VideoFXResult::InvalidArgument, "Time is not a number");
+    if (auto reader = HostReaderFor(path)) {
+        VideoFXResult r = ReadHostPicture(*reader, path, frame);
+        return r != VideoFXResult::Ok ? r : FitFrame(frame, maxWidth, maxHeight);
+    }
     OpenVideo v;
     VideoFXResult r = OpenVideoStream(path, v);
     if (r != VideoFXResult::Ok) return r;
@@ -302,6 +449,15 @@ VideoFXResult VideoFX_ExtractThumbnails(const std::string& path, int count, std:
     ClearError();
     frames.clear();
     if (count <= 0 || count > 10000) return Fail(VideoFXResult::InvalidArgument, "Thumbnail count must be 1..10000");
+    if (auto reader = HostReaderFor(path)) {
+        // A still: the same picture in every slice, as FFmpeg gives a still
+        VideoFXFrame picture;
+        VideoFXResult r = ReadHostPicture(*reader, path, picture);
+        if (r == VideoFXResult::Ok) r = FitFrame(picture, maxWidth, maxHeight);
+        if (r != VideoFXResult::Ok) return r;
+        frames.assign(static_cast<size_t>(count), picture);
+        return VideoFXResult::Ok;
+    }
     OpenVideo v;
     VideoFXResult r = OpenVideoStream(path, v);
     if (r != VideoFXResult::Ok) return r;

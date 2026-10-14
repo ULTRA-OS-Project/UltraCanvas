@@ -70,7 +70,6 @@ the result over.
 
 ```cpp
 #include "UltraCanvasFileLoader.h"
-#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
 std::string error;
 if (auto document = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
@@ -79,8 +78,10 @@ if (auto document = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
     ShowError(error);
 }
 
-// Saving: the element hands back the same document, edits included.
-UCWordDocumentIO::Save(savePath, *editor->GetDocument(), error);
+// Saving: the element hands back the same document, edits included. The
+// Save dialog's types are AddTextDocumentSaveTypes (ODT, DOCX), its Open
+// dialog's AddTextDocumentLoadTypes.
+UltraCanvasFileLoader::SaveTextDocument(*editor->GetDocument(), savePath, error);
 ```
 
 Because the element shares ownership of the document (`std::shared_ptr`), an
@@ -141,8 +142,9 @@ toolbar, `IncreaseQuoteLevel()` / `DecreaseQuoteLevel()` move every block the
 selection touches (or the caret's) one level in or out, between 0 and 8.
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
-the reader produced, hands it to the element, and hands the same object back to
-`UCWordDocumentIO::Save` — no conversion in either direction. See
+`UltraCanvasFileLoader::LoadTextDocument` produced, hands it to the element, and
+hands the same object back to `SaveTextDocument` — no conversion in either
+direction. See
 `Apps/Texter/UltraCanvasTextEditor.cpp` (`LoadWordIntoDocument`,
 `SaveRichDocumentAs`) for a worked integration, including how the element is
 swapped into an existing tab layout and how a shared formatting toolbar drives
@@ -612,7 +614,12 @@ composition as `UCEventType::TextComposition` (`event.text`,
 `event.compositionCursor`) to an element whose `DrawsTextComposition()` is
 true: on X11 through an on-the-spot input context used while such an element
 has focus (other widgets keep the input method's own window), on Windows
-through the IMM composition string. `GetCompositionText()` reads it.
+through the IMM composition string, on macOS through the window's
+`NSTextInputClient` marked text (keys go through the input method only while
+such an element has focus), and in the browser (WebAssembly) through a
+transparent `<textarea>` that takes the keyboard while such an element has
+focus and whose `compositionupdate` / `compositionend` events are forwarded.
+`GetCompositionText()` reads it.
 
 ## Right-to-left text
 
@@ -995,7 +1002,8 @@ Honest limits of this first version — none of them silently misbehave:
   and NSAccessibility bridges compile but have not yet been run against
   Narrator, NVDA, JAWS or VoiceOver; the AT-SPI bridge is tested end to end.
 - **The input method's candidate window** is placed by the input method, not
-  next to the caret.
+  next to the caret, on X11 and Windows. On macOS and in the browser it opens
+  at the caret (where the composition starts).
 
 ## Related
 

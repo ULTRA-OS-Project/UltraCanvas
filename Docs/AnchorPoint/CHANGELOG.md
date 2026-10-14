@@ -1,3 +1,25 @@
+#### 2026-10-14 *0.2.4*
+- **One AnchorPoint at a time.** Starting AnchorPoint while it is already
+  running brings the open window forward (restored if minimised; an open
+  dialog comes forward with it) instead of starting a second one - the GUI
+  opens no files from its command line, so there is nothing to hand over.
+  Two starts at the same moment cannot both stay, and a copy that does not
+  answer is reported with *"AnchorPoint is already running"*. The headless
+  `anchorpoint` is unaffected and runs as many times as it is started.
+  Framework: `UltraCanvasSingleInstance` (framework changelog:
+  `instance-lock`).
+
+#### 2026-10-10 *0.2.3*
+- **Windows: no empty console window beside AnchorPoint's.** The GUI was a
+  console program, so a double-click opened a console window that nothing
+  was ever written to. A Release build is now a GUI-subsystem program
+  (`cmake/UltraCanvasWindowsGuiApp.cmake`); the headless `anchorpoint` stays
+  a console program.
+- **The build reports the right version.** `Apps/AnchorPoint/CMakeLists.txt`
+  set `project(... VERSION 0.2.1)` by hand, so the configure line still said
+  0.2.1 two releases later. It takes the number from this changelog's first
+  line now, as the window title already did.
+
 #### 2026-09-28 *0.2.2*
 - **The version is in the window title** — `AnchorPoint 0.2.2` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

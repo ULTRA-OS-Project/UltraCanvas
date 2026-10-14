@@ -59,11 +59,18 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.27.0
-// Last Modified: 2026-10-08
+// A previewed file that changes on disk is reopened in the preview pane
+// (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.31.0 - OpenFolders: a second start's folders open in new tabs
+//                  (an open one is switched to) and the window comes forward
+// Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
+//                  (OpenMenuAnchored): above them when there is no room below
+// Version: 1.30.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
+#include "UltraFilerTabStripStyle.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasModalDialog.h"
@@ -244,6 +251,12 @@ namespace {
     // interval.
     constexpr unsigned int kFolderPreviewClickDelayMs = 500;
 
+    // Least time between two reopenings of a previewed file that keeps
+    // changing on disk (see ReloadChangedPreview): a growing log or a
+    // download is shown again every couple of seconds, not on every write.
+    // Also how often a change held back by a playing video is looked at again.
+    constexpr unsigned int kPreviewReloadIntervalMs = 2000;
+
     // The round button that floats over the left edge of the detail pane
     // while that pane shows a folder, and moves the folder into the folder
     // display. Its diameter, and how far its left edge sits from the pane's
@@ -251,6 +264,12 @@ namespace {
     // the entry underneath is still recognisable.
     constexpr int kPromoteButtonSize      = 32;
     constexpr int kPromoteButtonLeftInset = 8;
+
+    // The round button in a folder display's bottom-left corner that opens
+    // the connection log while the display is on an FTP drive: its diameter,
+    // and how far it sits from the display's left and bottom edges.
+    constexpr int kConnectionLogButtonSize  = 30;
+    constexpr int kConnectionLogButtonInset = 10;
 
     // ===== COMPUTER PAGE =====
     // The folder tiles row: one row of medium thumbnails (the tile edge, the
@@ -651,32 +670,97 @@ namespace {
     // A round icon button that floats over the edge of a pane rather than
     // sitting in a row: no label, a full circle, and a light border so it
     // stays legible over whatever it overlays.
+    void StyleFloatingRoundButton(UltraCanvasButton& b, const std::string& iconFile,
+                                  int diameter, const std::string& tooltip,
+                                  std::function<void()> onClick) {
+        b.SetCornerRadius(diameter / 2.0f);
+        b.SetColors(Color(255, 255, 255, 255), Color(219, 233, 250, 255));
+        b.SetBorder(1.0f, Color(0, 0, 0, 70));
+        b.SetIcon(IconPath(iconFile));
+        b.SetIconSize(diameter / 2, diameter / 2);
+        b.SetIconSpacing(0);
+        b.SetUseIconAsMask(true);
+        b.SetIconMaskColor(Color(55, 55, 60, 255));
+        b.SetTooltip(tooltip);
+        if (onClick) b.SetOnClick(std::move(onClick));
+    }
+
     std::shared_ptr<UltraCanvasButton> MakeFloatingRoundButton(
             const std::string& id, const std::string& iconFile, int diameter,
             const std::string& tooltip, std::function<void()> onClick) {
         auto b = std::make_shared<UltraCanvasButton>(
                 id, 0, 0, static_cast<float>(diameter),
                 static_cast<float>(diameter), "");
-        b->SetCornerRadius(diameter / 2.0f);
-        b->SetColors(Color(255, 255, 255, 255), Color(219, 233, 250, 255));
-        b->SetBorder(1.0f, Color(0, 0, 0, 70));
-        b->SetIcon(IconPath(iconFile));
-        b->SetIconSize(diameter / 2, diameter / 2);
-        b->SetIconSpacing(0);
-        b->SetUseIconAsMask(true);
-        b->SetIconMaskColor(Color(55, 55, 60, 255));
-        b->SetTooltip(tooltip);
-        if (onClick) b->SetOnClick(std::move(onClick));
+        StyleFloatingRoundButton(*b, iconFile, diameter, tooltip, std::move(onClick));
         return b;
     }
+
+    // A floating round button that keeps to the bottom-left corner of a
+    // folder display's file area: `inset` from its left edge, and `inset`
+    // above the display's own strips along its bottom edge (the selection
+    // info bar, the hidden-items notice) rather than over them. Those strips
+    // come and go with the folder and the Display > Info-Bar switch without
+    // telling anybody, so the button checks where they end each time it is
+    // painted - the way an anchored UltraCanvasBadge follows its anchor -
+    // and its layout insets are kept in step so the next layout pass agrees.
+    // It is the display's sibling in the same page.
+    class FileAreaCornerButton : public UltraCanvasButton {
+    public:
+        FileAreaCornerButton(const std::string& id, int diameter, int inset,
+                             std::weak_ptr<UltraCanvasFilerWidget> display)
+            : UltraCanvasButton(id, 0, 0, static_cast<float>(diameter),
+                                static_cast<float>(diameter), ""),
+              diameter(static_cast<float>(diameter)),
+              inset(static_cast<float>(inset)),
+              display(std::move(display)) {
+            layoutItem.SetPositionType(CSSLayout::PositionType::Absolute)
+                      .SetPositionInsets(CSSLayout::Position{
+                              CSSLayout::Dimension::Auto(),                       // top
+                              CSSLayout::Dimension::Auto(),                       // right
+                              CSSLayout::Dimension::Px(static_cast<float>(inset)),   // bottom
+                              CSSLayout::Dimension::Px(static_cast<float>(inset))}); // left
+        }
+
+        void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+            KeepToCorner();
+            UltraCanvasButton::Render(ctx, dirtyRect);
+        }
+
+    private:
+        void KeepToCorner() {
+            std::shared_ptr<UltraCanvasFilerWidget> filer = display.lock();
+            if (!filer) return;
+            const float bottom = inset + static_cast<float>(filer->GetBottomStripsHeight());
+            if (layoutItem.position && layoutItem.position->bottom.value != bottom)
+                layoutItem.position->bottom = CSSLayout::Dimension::Px(bottom);
+            const Rect2Df area = filer->GetBounds();
+            const float x = area.x + inset;
+            const float y = area.y + area.height - bottom - diameter;
+            if (std::abs(x - GetX()) > 0.5f || std::abs(y - GetY()) > 0.5f) {
+                SetBounds(x, y, diameter, diameter);
+                // This frame may already have been placed where the button
+                // was; the next one has it where it is.
+                InvalidateLayout();
+                RequestRedraw();
+            }
+        }
+
+        float diameter;
+        float inset;
+        std::weak_ptr<UltraCanvasFilerWidget> display;
+    };
 
     // Mark / unmark a toggle-style tool button (the Preview switch).
     void StyleToggleButton(UltraCanvasButton* b, bool active) {
         if (!b) return;
-        b->SetColors(active ? Color(208, 228, 250, 255) : Color(249, 249, 251, 255),
-                     Color(233, 238, 244, 255));
+        // On: a clear blue that stays blue under the pointer - the pressed
+        // look must survive the hover right after the click that turned it
+        // on, and stand out on the tinted header of the active split-view
+        // pane (224, 236, 250), which the lighter blue it used to be did not.
+        b->SetColors(active ? Color(184, 212, 246, 255) : Color(249, 249, 251, 255),
+                     active ? Color(170, 202, 242, 255) : Color(233, 238, 244, 255));
         b->SetBorder(active ? 1.0f : 0.0f,
-                     active ? Color(60, 140, 220, 255) : Color(0, 0, 0, 0));
+                     active ? Color(40, 120, 210, 255) : Color(0, 0, 0, 0));
     }
 
     BreadcrumbStyle MakePathBreadcrumbStyle() {
@@ -839,10 +923,16 @@ UltraFilerWindow::~UltraFilerWindow() {
     volumeMonitor.Stop();
     probeAlive->store(false);   // neutralize queued cross-thread tree updates
     CancelFolderPreviewTimer(); // its callback captures `this`
+    CancelPreviewReloadTimer(); // and so does this one's
     StopSubfolderSearch();
     ReapSearchWorkers(true);    // now the search threads are waited for
     exportWindows.clear();      // each joins the walk building its text
     StopSubfolderProbeWorker();
+    // Short - one question to the system - and its callback is already
+    // neutralised by the flag above.
+    if (ramDiskProbeWorker.joinable()) ramDiskProbeWorker.join();
+    if (ramDiskFactsWorker.joinable()) ramDiskFactsWorker.join();
+    if (driveListWorker.joinable()) driveListWorker.join();
     StopCloudStorageDiscovery();
     // Its worker posts into this window, so it has to be joined here like the
     // others - and before the widgets its callback touches are destroyed. The
@@ -879,19 +969,10 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     window = CreateWindow(config);
     if (!window || !window->IsCreated()) return false;
 
-    // Programs started by Extract and Run in an earlier session whose
-    // folders could not be removed then (UltraFiler closed while they ran):
-    // gone now, unless they still run. Off the UI thread - it is a walk of
-    // folders that may be large - and on paths only, never on this window.
-    {
-        std::vector<std::string> runRoots{DefaultArchiveRunRoot()};
-        if (UltraFilerRamDisks::Available())
-            for (const auto& disc : UltraFilerRamDisks::List())
-                runRoots.push_back(RamDiscRunRoot(disc.mountPath));
-        std::thread([runRoots]() {
-            for (const std::string& root : runRoots) SweepArchiveRunFolders(root);
-        }).detach();
-    }
+    // Whether this system can make RAM discs, and which are mounted: asked
+    // on a worker, since the first question launches a shell on Windows and
+    // macOS. The sweep of Extract and Run's leftover folders rides on it.
+    StartRamDiskProbe();
 
     window->layout.SetFlexColumn()
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -1133,19 +1214,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     statusProgress->SetVisible(false);
     statusRow->AddChild(statusProgress);
 
-    // The connection log: every step of every remote-drive connection, and
-    // the failed ones with their codes. The button names how many failures
-    // the log window has not shown yet, in red, so a failure that scrolled
-    // past on the status line is not lost.
-    statusLogButton = MakeToolButton("ufl-status-log", "", "clipboard-list.svg", 0,
-                                     [this]() { OpenConnectionLog(); });
-    statusLogButton->size.height = CSSLayout::Dimension::Px(20);
-    statusLogButton->SetIconSize(13, 13);
-    statusLogButton->SetVisible(false);
-    statusRow->AddChild(statusLogButton);
-
     window->AddChild(statusRow);
-    UpdateConnectionLogButton();
 
     std::string start = startFolder;
     std::error_code ec;
@@ -1186,6 +1255,45 @@ void UltraFilerWindow::Show() {
     // The first fit: the text is measured with the window's render context,
     // which is there once the window is.
     ScheduleTreeFit();
+}
+
+void UltraFilerWindow::OpenFolders(const std::vector<std::string>& paths) {
+    // "/a/b/" and "/a/b" are one folder.
+    const auto folderKey = [](const fs::path& p) {
+        fs::path normal = p.lexically_normal();
+        if (!normal.has_filename() && normal != normal.root_path()) normal = normal.parent_path();
+        return normal;
+    };
+    for (const std::string& path : paths) {
+        std::error_code ec;
+        fs::path folder = folderKey(UltraCanvas::PathFromUtf8(path));
+        if (!fs::exists(folder, ec)) continue;          // gone, or a URL: nothing to show
+        if (!fs::is_directory(folder, ec)) folder = folder.parent_path();   // a file: its folder
+        if (folder.empty() || !fs::is_directory(folder, ec)) continue;
+        folder = folderKey(folder);
+
+        // A tab that shows the folder already is switched to, not doubled.
+        int existing = -1;
+        for (size_t i = 0; i < tabStates.size(); ++i) {
+            const auto& tab = tabStates[i];
+            if (!tab || !tab->filer) continue;
+            const std::string shown = tab->filer->GetPath();
+            if (!shown.empty() &&
+                folderKey(UltraCanvas::PathFromUtf8(shown)) == folder) {
+                existing = static_cast<int>(i);
+                break;
+            }
+        }
+        if (existing >= 0) {
+            ShowBrowsingView();
+            tabbedContainer->SetActiveTab(existing);
+        } else {
+            AddNewTab(PathToUtf8(folder), true);
+        }
+    }
+    if (!window) return;
+    if (window->IsMinimized()) window->Restore();
+    window->RaiseAndFocus();
 }
 
 // ===== EXTRAS (context menu: Print / Share / Attributes / Access) =====
@@ -1431,6 +1539,9 @@ void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target
 }
 
 void UltraFilerWindow::ApplySettings() {
+    // Display > Tab style. The strip does not exist yet on the call during
+    // start-up; BuildTabbedContainer applies the style itself then.
+    ApplyTabStripStyle();
     if (preview) {
         preview->SetTransparentBackground(settings.previewCheckeredBackground
                 ? TransparentImageBackground::Checkered
@@ -2055,16 +2166,9 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     // entries of one folder.
     addDriveButton = MakeToolButton("ufl-add-drive", "Drive", "add-folder.svg", 0,
             [this]() { ShowAddDriveMenu(); });
-    {
-        const bool remote = UltraFilerRemoteDrives::Available();
-        const bool ram = UltraFilerRamDisks::Available();
-        addDriveButton->SetTooltip(
-                remote && ram ? "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc"
-                : remote      ? "Add a drive: an FTP / SFTP server or a cloud account"
-                : ram         ? "Add a drive: a RAM disc (FTP and cloud drives need UltraCloud)"
-                              : "Add a drive - not available in this build");
-        addDriveButton->SetDisabled(!remote && !ram);
-    }
+    // From what the build has: the system has not been asked yet, and is
+    // not asked here (see StartRamDiskProbe). Set again when it answers.
+    UpdateAddDriveButton();
     row->AddChild(addDriveButton);
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
@@ -2072,6 +2176,12 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
     row->AddChild(breadcrumb);
+    // In the split view the path bar is hidden - each pane has its own - and
+    // this takes its room, so the gear stays at the far right.
+    navPathSpacer = MakeLayoutBox("ufl-nav-path-spacer");
+    navPathSpacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    navPathSpacer->SetVisible(false);
+    row->AddChild(navPathSpacer);
 
     // The gear at the far right opens the settings window.
     auto settingsButton = MakeToolButton("ufl-settings", "", "settings.svg", 30,
@@ -2156,18 +2266,73 @@ void UltraFilerWindow::ShowNewEntryMenu() {
                     t.label, [this, copy]() { CreateNewDocumentCommand(copy); }));
         }
     }
-    newEntryMenu->OpenMenu(
-            Point2Di(newButton->GetXInWindow(),
-                     newButton->GetYInWindow() + (int)newButton->GetHeight() + 1),
-            *window, PopupElementSettings());
+    newEntryMenu->OpenMenuAnchored(newButton->GetBoundsInWindow(), *window,
+                                   PopupElementSettings(), 1);
 }
 
 // ===== REMOTE DRIVES =====
 
+void UltraFilerWindow::UpdateAddDriveButton() {
+    if (!addDriveButton) return;
+    const bool remote = UltraFilerRemoteDrives::Available();
+    const bool ram = RamDisksOffered();
+    addDriveButton->SetTooltip(
+            remote && ram ? "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc"
+            : remote      ? "Add a drive: an FTP / SFTP server or a cloud account"
+            : ram         ? "Add a drive: a RAM disc (FTP and cloud drives need UltraCloud)"
+                          : "Add a drive - not available in this build");
+    addDriveButton->SetDisabled(!remote && !ram);
+}
+
+bool UltraFilerWindow::RamDisksOffered() const {
+    return ramDiskProbed ? ramDiskAvailable : UltraFilerRamDisks::BuiltIn();
+}
+
+void UltraFilerWindow::StartRamDiskProbe() {
+    if (ramDiskProbeWorker.joinable()) return;   // once per window
+    auto alive = probeAlive;
+    ramDiskProbeWorker = std::thread([this, alive]() {
+        bool available = false;
+        std::vector<UltraFilerRamDisks::RamDisc> discs;
+        try {
+            // The first Available() is the slow one, and this is where it is
+            // paid for: VirtualFS keeps the answer, so every later call - the
+            // menu, the dialog, the tooltip - answers at once.
+            available = UltraFilerRamDisks::Available();
+            if (available) discs = UltraFilerRamDisks::List();
+        } catch (const std::exception&) {
+            // An exception leaving a std::thread ends the process; a system
+            // that cannot be asked is one without RAM discs.
+            available = false;
+            discs.clear();
+        }
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (app) {
+            app->PostToUIThread([this, alive, available, discs]() {
+                if (!alive->load()) return;   // window destroyed meanwhile
+                ramDiskProbed = true;
+                ramDiskAvailable = available;
+                UpdateAddDriveButton();
+                ApplyRamDiskList(discs);
+            });
+        }
+        // Programs started by Extract and Run in an earlier session whose
+        // folders could not be removed then (UltraFiler closed while they
+        // ran): gone now, unless they still run. A walk of folders that may
+        // be large, on paths only, never on this window - and on a thread of
+        // its own, so closing the window does not wait for it.
+        std::vector<std::string> runRoots{DefaultArchiveRunRoot()};
+        for (const auto& disc : discs) runRoots.push_back(RamDiscRunRoot(disc.mountPath));
+        std::thread([runRoots]() {
+            for (const std::string& root : runRoots) SweepArchiveRunFolders(root);
+        }).detach();
+    });
+}
+
 void UltraFilerWindow::ShowAddDriveMenu() {
     if (!window || !addDriveButton) return;
     const bool remote = UltraFilerRemoteDrives::Available();
-    const bool ram = UltraFilerRamDisks::Available();
+    const bool ram = RamDisksOffered();
     if (!remote && !ram) {
         // The button is disabled in such a build, so this is belt and braces -
         // but saying why beats a button that does nothing.
@@ -2203,10 +2368,8 @@ void UltraFilerWindow::ShowAddDriveMenu() {
     addDriveMenu->AddItem(cloudItem);
     addDriveMenu->AddItem(MenuItemData::Separator());
     addDriveMenu->AddItem(ramItem);
-    addDriveMenu->OpenMenu(
-            Point2Di(addDriveButton->GetXInWindow(),
-                     addDriveButton->GetYInWindow() + (int)addDriveButton->GetHeight() + 1),
-            *window, PopupElementSettings());
+    addDriveMenu->OpenMenuAnchored(addDriveButton->GetBoundsInWindow(), *window,
+                                   PopupElementSettings(), 1);
 }
 
 void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
@@ -2260,30 +2423,71 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
 
 void UltraFilerWindow::AddRamDisk() {
     if (!window) return;
-    ShowRamDiskDialog([this](const std::string& name, uint64_t sizeBytes) {
-        UltraFilerRamDisks::RamDisc disc;
-        std::string error;
-        if (!UltraFilerRamDisks::Create(name, sizeBytes, disc, error)) {
-            UltraCanvasAlert::Error(error, "New RAM disc", nullptr, window.get());
-            return;
+    if (ramDiskDialogPending) return;   // a click while the facts are read
+    ramDiskDialogPending = true;
+    // What the dialog shows about the machine - the memory free now, a name
+    // no disc uses - is a hardware-information capture and a pass over the
+    // mounted discs: read on a worker, and the dialog opens when it is in.
+    // Normally a moment; when it is not (a drive that answers slowly), the
+    // busy pointer says so and the window stays alive. The worker holds only
+    // the alive flag: a window closed meanwhile drops the answer.
+    window->ShowBusyPointer(UltraCanvasWindowBase::kBusyPointerDelayMs,
+                            UltraCanvasWindowBase::kBusyPointerHoldMs);
+    // Joined here, not detached: the previous one is done, since the flag
+    // above is cleared only by its posted callback.
+    if (ramDiskFactsWorker.joinable()) ramDiskFactsWorker.join();
+    auto alive = probeAlive;
+    ramDiskFactsWorker = std::thread([this, alive]() {
+        RamDiskDialogFacts facts;
+        try {
+            facts = GatherRamDiskDialogFacts();
+        } catch (const std::exception&) {
+            // An exception leaving a std::thread ends the process; without
+            // the facts every size is offered and the name field is empty.
+            facts = RamDiskDialogFacts();
         }
-        RefreshRamDiskNodes();
-        // The disc was made to be used: open it, like a folder just created.
-        NavigateTo(disc.mountPath);
-        if (statusLabel) {
-            statusLabel->SetText("RAM disc \"" + disc.name + "\" created" +
-                    (disc.trueRam ? std::string()
-                                  : std::string(" - on disk, not in memory")));
-        }
-    }, window.get());
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, alive, facts]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            ramDiskDialogPending = false;
+            if (!window) return;
+            window->HideBusyPointer();
+            ShowRamDiskDialog(facts, [this](const std::string& name, uint64_t sizeBytes) {
+                UltraFilerRamDisks::RamDisc disc;
+                std::string error;
+                if (!UltraFilerRamDisks::Create(name, sizeBytes, disc, error)) {
+                    UltraCanvasAlert::Error(error, "New RAM disc", nullptr, window.get());
+                    return;
+                }
+                RefreshRamDiskNodes();
+                // The disc was made to be used: open it, like a folder just
+                // created.
+                NavigateTo(disc.mountPath);
+                if (statusLabel) {
+                    statusLabel->SetText("RAM disc \"" + disc.name + "\" created" +
+                            (disc.trueRam ? std::string()
+                                          : std::string(" - on disk, not in memory")));
+                }
+            }, window.get());
+        });
+    });
 }
 
 void UltraFilerWindow::RefreshRamDiskNodes() {
+    if (!folderTree || !folderTree->FindNode(kRamNodeId)) return;
+    // Not before the probe has answered: List() would ask the system on the
+    // UI thread, which is what the probe exists to avoid, and the probe
+    // applies its own list when it is in.
+    if (!ramDiskProbed) return;
+    ApplyRamDiskList(UltraFilerRamDisks::List());
+}
+
+void UltraFilerWindow::ApplyRamDiskList(const std::vector<UltraFilerRamDisks::RamDisc>& discs) {
     if (!folderTree) return;
     TreeNode* section = folderTree->FindNode(kRamNodeId);
     if (!section) return;
 
-    const std::vector<UltraFilerRamDisks::RamDisc> discs = UltraFilerRamDisks::List();
     std::set<std::string> mounted;
     for (const auto& disc : discs) mounted.insert(disc.mountPath);
 
@@ -2513,7 +2717,7 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     ApplyTreeColors();
     folderTree->RequestRedraw();
     ScheduleTreeFit();
-    // The log button comes with the first drive.
+    // A display on a drive that has just gone loses its log button.
     UpdateConnectionLogButton();
 }
 
@@ -3399,7 +3603,8 @@ void UltraFilerWindow::BuildFolderTree() {
     treeChildrenLoaded.insert(kRamNodeId);
     if (TreeNode* ram = folderTree->FindNode(kRamNodeId))
         ram->data.visible = false;
-    RefreshRamDiskNodes();
+    // Its rows come from the start-up probe (StartRamDiskProbe), which lists
+    // the discs off the UI thread and applies them when it has them.
 
     // ListMountedVolumes() reads the mount table in one pass (the drive
     // letters on Windows, the directories volumes are mounted under
@@ -3411,8 +3616,10 @@ void UltraFilerWindow::BuildFolderTree() {
     // RHEL, Arch and openSUSE, used to be missed entirely.
     //
     // This is only the first fill: RefreshDriveNodes keeps the rows in step
-    // with what is mounted from here on.
-    for (const MountedVolume& volume : ListMountedVolumes())
+    // with what is mounted from here on. On the UI thread, since the rows
+    // belong in the first frame; one pass over the mount table, no probe.
+    knownVolumes = ListMountedVolumes();
+    for (const MountedVolume& volume : knownVolumes)
         AddTreeDriveNode(volume.path, DriveNodeLabel(volume));
 
     if (root) root->Expand();
@@ -3490,7 +3697,8 @@ void UltraFilerWindow::BuildFolderTree() {
         alert.message = message;
         // The message says what failed; the log says how far it got.
         alert.details = "Every step of the connection, with the error codes, is in "
-                        "the connection log - the button at the right of the status bar.";
+                        "the connection log - the round network button in the bottom-left "
+                        "corner of the folder display.";
         alert.parent = window.get();
         UltraCanvasAlert::Show(alert);
     };
@@ -3758,12 +3966,59 @@ void UltraFilerWindow::AddTreeDriveNode(const std::string& path,
 
 void UltraFilerWindow::RefreshDriveNodes() {
     if (!folderTree) return;
+    // One reading at a time; a request during a reading is remembered and
+    // served by that reading's completion, so the newest set of mounts is
+    // what the tree ends up showing.
+    if (driveListBusy.exchange(true)) {
+        driveListPending.store(true);
+        return;
+    }
+    if (driveListWorker.joinable()) driveListWorker.join();
+    auto alive = probeAlive;
+    driveListWorker = std::thread([this, alive]() {
+        // Both lists in one pass, off the UI thread: the mount table is
+        // cheap, but a RAM disc listing reads volume labels, and a drive
+        // that answers slowly - a share, a sleeping disk - is paid for here.
+        std::vector<UltraFilerRamDisks::RamDisc> discs;
+        std::vector<MountedVolume> volumes;
+        try {
+            // Waits for the start-up probe's answer if it is not in yet (the
+            // answer is kept once given) - off the UI thread, so nothing
+            // shows it.
+            if (UltraFilerRamDisks::Available()) discs = UltraFilerRamDisks::List();
+            volumes = ListMountedVolumes();
+        } catch (const std::exception&) {
+            // An exception leaving a std::thread ends the process; a listing
+            // that failed is a listing with nothing new to show.
+            discs.clear();
+            volumes.clear();
+        }
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app || !alive->load()) {
+            driveListBusy.store(false);
+            return;
+        }
+        app->PostToUIThread([this, alive, discs = std::move(discs),
+                             volumes = std::move(volumes)]() {
+            if (!alive->load()) return;   // window destroyed meanwhile
+            driveListBusy.store(false);
+            // A failed listing (empty volumes - the system root is always
+            // among them) must not strip every drive row.
+            if (!volumes.empty()) ApplyDriveLists(discs, volumes);
+            if (driveListPending.exchange(false)) RefreshDriveNodes();
+        });
+    });
+}
+
+void UltraFilerWindow::ApplyDriveLists(const std::vector<UltraFilerRamDisks::RamDisc>& discs,
+                                       const std::vector<MountedVolume>& volumes) {
+    if (!folderTree) return;
     // RAM discs first, for the same one-row-per-path reason as at start-up -
     // and because this pass is also how a disc another program made or
     // removed reaches the tree.
-    RefreshRamDiskNodes();
+    ApplyRamDiskList(discs);
 
-    const std::vector<MountedVolume> volumes = ListMountedVolumes();
+    knownVolumes = volumes;
     std::set<std::string> mounted;
     for (const MountedVolume& volume : volumes) mounted.insert(volume.path);
 
@@ -3910,23 +4165,27 @@ void UltraFilerWindow::PlaceTreeWidth(int width) {
     } else if (treeDockShown && folderTree) {
         // Docked beside a display in the split view: the pane keeps its
         // width and the display beside the tree takes the difference, down
-        // to the display's own minimum.
+        // to the display's own minimum. On the right, the pane is the part
+        // beside the preview (rightDisplayPane).
         UltraCanvasContainer* pane = treeDockSide == SplitSide::Right
-                ? rightPane.get() : filerPane.get();
-        const int paneW = pane ? static_cast<int>(pane->GetWidth()) : 0;
-        if (paneW > 0)
-            width = std::max(UltraFilerSettings::kMinTreeWidth,
-                             std::min(width, paneW - kSplitPaneMinWidth));
-        if (width == treePaneWidth) return;
-        treePaneWidth = width;
-        folderTree->layoutItem.SetFlexBasis(
-                CSSLayout::Dimension::Px(static_cast<float>(width)));
-        folderTree->InvalidateLayout();
-        ApplySplitPaneMinSizes();
+                ? rightDisplayPane.get() : filerPane.get();
+        SetDockedTreeWidth(width, pane ? static_cast<int>(pane->GetWidth()) : 0);
     } else {
         // Out of the split view, hidden: the width it comes back with.
         treePaneWidth = width;
     }
+}
+
+void UltraFilerWindow::SetDockedTreeWidth(int width, int paneWidth) {
+    if (!treeDockShown || !folderTree) return;
+    if (paneWidth > 0)
+        width = std::max(UltraFilerSettings::kMinTreeWidth,
+                         std::min(width, paneWidth - kSplitPaneMinWidth));
+    if (width == treePaneWidth) return;
+    treePaneWidth = width;
+    folderTree->layoutItem.SetFlexBasis(
+            CSSLayout::Dimension::Px(static_cast<float>(width)));
+    folderTree->InvalidateLayout();
 }
 
 void UltraFilerWindow::FitTreeToRoom() {
@@ -4545,7 +4804,6 @@ void UltraFilerWindow::BuildTabbedContainer() {
     tabbedContainer->SetTabHeight(kTabStripHeight);
     tabbedContainer->SetTabMinWidth(90);
     tabbedContainer->SetCloseMode(TabCloseMode::Closable);
-    tabbedContainer->tabBarColor = Color(249, 249, 251, 255);
     tabbedContainer->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -4561,11 +4819,12 @@ void UltraFilerWindow::BuildTabbedContainer() {
     // Tabs. The current folder is what it always was and stays the default.
     tabbedContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
     tabbedContainer->SetShowNewTabButton(true);
-    // Idle it is just the "+" on the strip; the rounded square only shows
-    // while the mouse is over it, a gap clear of the last tab's outline.
-    tabbedContainer->SetNewTabButtonShape(NewTabButtonShape::RoundedSquare);
+    // Idle it is just the "+" on the strip; its shape and hover colour only
+    // show while the mouse is over it, a gap clear of the last tab's outline,
+    // and follow the tab style (ApplyTabStripStyle).
     tabbedContainer->SetNewButtonColor(Colors::Transparent);
-    tabbedContainer->newTabButtonHoverColor = Color(228, 228, 232, 255);
+    // Settings > Display > Tab style, loaded before the strip was built.
+    ApplyTabStripStyle();
     tabbedContainer->onNewTabRequest = [this]() {
         std::string path;
         if (!settings.newTabOpensHome && filer) path = filer->GetPath();
@@ -4599,6 +4858,17 @@ void UltraFilerWindow::BuildTabbedContainer() {
         tabStates.erase(tabStates.begin() + from);
         tabStates.insert(tabStates.begin() + to, std::move(st));
     };
+}
+
+void UltraFilerWindow::ApplyTabStripStyle() {
+    // Every strip the window shows, and the Connection log window's when it
+    // is open; a view built later (History, Favorites) applies the style as
+    // it is built.
+    for (UltraCanvasTabbedContainer* tabs :
+         {tabbedContainer.get(), historyTabs.get(), favoritesTabs.get()})
+        if (tabs) ApplyFilerTabStripStyle(*tabs, settings.tabStripStyle);
+    if (auto logWindow = connectionLogWindow.lock())
+        logWindow->SetTabStripStyle(settings.tabStripStyle);
 }
 
 void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
@@ -4668,6 +4938,35 @@ UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);
+
+    // The connection log: every step of every connection to an FTP drive,
+    // and the failed ones with their codes. Opened from a round button with
+    // the network symbol floating in this display's bottom-left corner -
+    // in the display, not the window's status bar, because it is about the
+    // drive the display is on, and it is there only while it is on one
+    // (UpdateConnectionLogButton). The count of failures the log window has
+    // not shown yet rides on its corner in red, so a failure that scrolled
+    // past on the status line is not lost.
+    // Out of the display's flow, in the corner of its file area - above the
+    // info bar, not over it.
+    auto logButton = std::make_shared<FileAreaCornerButton>(
+            "ufl-connection-log-" + suffix, kConnectionLogButtonSize,
+            kConnectionLogButtonInset, state->filer);
+    StyleFloatingRoundButton(*logButton, "network.svg", kConnectionLogButtonSize,
+                             "Connection log", [this]() { OpenConnectionLog(); });
+    state->connectionLogButton = logButton;
+    // Over the entries, not behind them.
+    state->connectionLogButton->SetZIndex(OverlayZOrder::Overlays);
+    state->connectionLogButton->SetVisible(false);
+    state->page->AddChild(state->connectionLogButton);
+
+    state->connectionLogBadge = CreateCountBadge(
+            "ufl-connection-log-badge-" + suffix, 0, 0, 0, BadgeVariant::Danger);
+    state->connectionLogBadge->AnchorTo(state->connectionLogButton,
+                                        BadgeCorner::TopRight, -3, 3);
+    state->connectionLogBadge->onClick = [this]() { OpenConnectionLog(); };
+    state->connectionLogBadge->SetVisible(false);
+    state->page->AddChild(state->connectionLogBadge);
 
     WireFilerCallbacks(state.get());
     return state;
@@ -4994,7 +5293,8 @@ void UltraFilerWindow::BuildSplitLayout() {
 
     auto splitPane = std::make_shared<UltraFilerSplitPane>("ufl-split",
                                                            SplitOrientation::Horizontal);
-    // A resized window changes the room beside the tree: keep the tree to it.
+    // A resized window changes the room beside the tree: keep the tree to it,
+    // and the split view's two displays to equal halves of it.
     splitPane->onWidthChanged = [this](int) {
         if (treeRoomFitPosted) return;
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
@@ -5005,6 +5305,7 @@ void UltraFilerWindow::BuildSplitLayout() {
             if (!alive->load()) return;   // window destroyed meanwhile
             treeRoomFitPosted = false;
             FitTreeToRoom();
+            BalanceSplitPanes();
         });
     };
     split = splitPane;
@@ -5070,6 +5371,7 @@ void UltraFilerWindow::BuildHistoryView() {
     historyTabs->SetCloseMode(TabCloseMode::NoClose);
     historyTabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    ApplyFilerTabStripStyle(*historyTabs, settings.tabStripStyle);   // Display > Tab style
     historyTabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) {
         UpdateStatusBar();
         SyncCommandBarToVisibleDisplay();   // each page has its own view
@@ -5330,6 +5632,7 @@ void UltraFilerWindow::BuildFavoritesView() {
     favoritesTabs->SetCloseMode(TabCloseMode::NoClose);
     favoritesTabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    ApplyFilerTabStripStyle(*favoritesTabs, settings.tabStripStyle);   // Display > Tab style
     favoritesTabs->onTabChange = [this](int /*oldIndex*/, int /*newIndex*/) {
         UpdateStatusBar();
         SyncCommandBarToVisibleDisplay();   // each page has its own view
@@ -5607,7 +5910,9 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
 
 void UltraFilerWindow::RefreshComputerPage() {
     RefreshComputerFolders();
-    RebuildComputerDriveCards(ListMountedVolumes());
+    // The volumes as last listed (the start-up fill, then every drive pass):
+    // the cards follow the tree's rows, and the page shows without a listing.
+    RebuildComputerDriveCards(knownVolumes);
     QueueVolumeSpaceQuery();
 }
 
@@ -5895,6 +6200,8 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
         tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
         tabbedContainer->SetTabIcon(index, TabIconForPath(path));
     }
+    // The connection log button comes with an FTP drive and goes with it.
+    UpdateConnectionLogButton(tab);
 
     // Entering a folder ends a search-result display (SetPath leaves it) and
     // the scan that was filling it.
@@ -6115,12 +6422,32 @@ void UltraFilerWindow::UpdateRemoteProgressBar() {
     statusProgress->SetValue(percent < 0.0 ? 0.0 : percent > 100.0 ? 100.0 : percent);
 }
 
+bool UltraFilerWindow::IsFtpDrivePath(const std::string& path) const {
+    if (!remoteDrives || !IsRemoteFilerPath(path)) return false;
+    RemoteDrive drive;
+    return remoteDrives->Find(RemoteFilerAccountId(path), drive) &&
+           UltraFilerRemoteDrives::ProviderBelongsToKind(drive.providerId,
+                                                         RemoteDriveKind::FtpOrSftp);
+}
+
 void UltraFilerWindow::UpdateConnectionLogButton() {
-    if (!statusLogButton) return;
-    if (!remoteDrives) {
-        statusLogButton->SetVisible(false);
+    for (const std::unique_ptr<FilerTabState>& tab : tabStates)
+        UpdateConnectionLogButton(tab.get());
+    UpdateConnectionLogButton(secondPane.get());
+}
+
+void UltraFilerWindow::UpdateConnectionLogButton(FilerTabState* display) {
+    if (!display || !display->connectionLogButton) return;
+    UltraCanvasButton& button = *display->connectionLogButton;
+    UltraCanvasBadge* badge = display->connectionLogBadge.get();
+
+    const bool show = display->filer && IsFtpDrivePath(display->filer->GetPath());
+    if (button.IsVisible() != show) button.SetVisible(show);
+    if (!show) {
+        if (badge && badge->IsVisible()) badge->SetVisible(false);
         return;
     }
+
     const RemoteConnectionLog& log = remoteDrives->ConnectionLog();
     const std::size_t sessions = log.SessionCount();
     const std::size_t errors = log.ErrorCount();
@@ -6129,23 +6456,7 @@ void UltraFilerWindow::UpdateConnectionLogButton() {
     if (connectionLogSeenErrors > errors) connectionLogSeenErrors = errors;
     const std::size_t unseen = errors - connectionLogSeenErrors;
 
-    const bool show = sessions > 0 || !remoteDrives->Drives().empty();
-    if (statusLogButton->IsVisible() != show) statusLogButton->SetVisible(show);
-    if (!show) return;
-
-    // Called for every line a running connection logs, so the button is
-    // only restyled when what it says changes.
-    const std::string label = unseen > 0 ? std::to_string(unseen) : std::string();
-    if (statusLogButton->GetText() != label) {
-        const Color quiet(55, 55, 60, 255);
-        const Color alarm(200, 30, 30, 255);
-        statusLogButton->SetText(label);
-        statusLogButton->SetIconSpacing(unseen > 0 ? 4 : 0);
-        statusLogButton->SetIconMaskColor(unseen > 0 ? alarm : quiet);
-        statusLogButton->SetTextColors(unseen > 0 ? alarm : quiet);
-    }
-
-    std::string tip = "Connection log - every step of the remote drive connections";
+    std::string tip = "Connection log - every step of the connections to the FTP drives";
     if (sessions > 0) {
         tip += " (" + std::to_string(sessions) +
                (sessions == 1 ? " connection" : " connections");
@@ -6156,7 +6467,29 @@ void UltraFilerWindow::UpdateConnectionLogButton() {
         tip += ". " + std::to_string(unseen) +
                (unseen == 1 ? " failure not looked at yet" : " failures not looked at yet") +
                " - click for the error codes.";
-    statusLogButton->SetTooltip(tip);
+
+    // Called for every line a running connection logs, so the button and
+    // the badge are only touched when what they say changes.
+    if (button.GetTooltip() != tip) {
+        const Color quiet(55, 55, 60, 255);
+        const Color alarm(200, 30, 30, 255);
+        button.SetIconMaskColor(unseen > 0 ? alarm : quiet);
+        button.SetBorder(1.0f, unseen > 0 ? alarm : Color(0, 0, 0, 70));
+        button.SetTooltip(tip);
+        if (badge) badge->SetTooltip(tip);
+    }
+    if (badge) {
+        const int count = static_cast<int>(unseen);
+        if (badge->GetCount() != count) badge->SetCount(count);
+        if (badge->IsVisible() != (unseen > 0)) {
+            // Anchored afresh as it comes up: anchoring places it at the
+            // button's corner as the button is now. It follows the button
+            // from its own paint, which is a frame too late for the first.
+            if (unseen > 0)
+                badge->AnchorTo(display->connectionLogButton, BadgeCorner::TopRight, -3, 3);
+            badge->SetVisible(unseen > 0);
+        }
+    }
 }
 
 void UltraFilerWindow::OpenConnectionLog() {
@@ -6168,6 +6501,7 @@ void UltraFilerWindow::OpenConnectionLog() {
         logWindow->RaiseAndFocus();
     } else {
         logWindow = ShowConnectionLogWindow(sessions, window.get());
+        logWindow->SetTabStripStyle(settings.tabStripStyle);   // Display > Tab style
         // Raw `this`: the main window outlives the log window's callback -
         // its destructor clears it before going.
         logWindow->onClear = [this]() {
@@ -6281,7 +6615,7 @@ void UltraFilerWindow::UpdateStatusBar() {
             !error.empty()) {
             statusLabel->SetText("Error: " + error +
                                  "  -  every step and the error codes are in the "
-                                 "connection log (button on the right)");
+                                 "connection log (the network button at the bottom left)");
             return;
         }
     }
@@ -6368,6 +6702,86 @@ void UltraFilerWindow::CancelFolderPreviewTimer() {
     if (auto* app = UltraCanvasApplication::GetInstance())
         app->StopTimer(folderPreviewDelayTimer);
     folderPreviewDelayTimer = InvalidTimerId;
+}
+
+void UltraFilerWindow::OpenPreviewFile(const std::string& path, bool asCopy) {
+    CancelPreviewReloadTimer();
+    // Stamped before the viewer reads the file, so a save that lands while
+    // it opens is a change the next rescan reopens for, not one it misses.
+    previewOpenedPath = path;
+    previewOpenedAsCopy = asCopy;
+    previewOpenedStamp = StampFile(path);
+    previewOpenedAt = std::chrono::steady_clock::now();
+    previewChangeStamp = FileStamp{};
+    if (asCopy) preview->SetFiles({path});
+    else        preview->OpenFile(path);
+}
+
+void UltraFilerWindow::ReloadChangedPreview() {
+    // The pane moved on - to another file, to a folder, or folded away -
+    // and has nothing of this file left to bring up to date.
+    if (!preview || previewOpenedPath.empty() || !previewShown ||
+        previewShowsFolder || preview->GetCurrentPath() != previewOpenedPath) {
+        CancelPreviewReloadTimer();
+        return;
+    }
+    const FileStamp now = StampFile(previewOpenedPath);
+    // Unchanged (or changed back), or gone: nothing to reopen. A file that
+    // was deleted or moved is the rescan's to handle - it moves or clears the
+    // selection - and reopening it would only show an error in the pane.
+    if (!now.valid || now == previewOpenedStamp) {
+        CancelPreviewReloadTimer();
+        return;
+    }
+    // A video or sound is reopened only once its file has settled and it is
+    // not playing. Reopening one starts it from the beginning - playing,
+    // under the default Autoplay - so reopening a video that is still
+    // downloading would restart it on every pause; one being watched is left
+    // alone until it is paused or ends. The timer looks again meanwhile.
+    const MediaKind kind = UltraCanvasMediaViewer::ClassifyFile(previewOpenedPath);
+    if (kind == MediaKind::Video || kind == MediaKind::Audio) {
+        const auto clock = std::chrono::steady_clock::now();
+        if (now != previewChangeStamp) {
+            previewChangeStamp = now;          // still being written
+            previewChangeSeenAt = clock;
+        }
+        const bool settled = clock - previewChangeSeenAt >=
+                             std::chrono::milliseconds(kPreviewReloadIntervalMs);
+        if (!settled || preview->IsPlayingMedia()) {
+            ArmPreviewReloadTimer(kPreviewReloadIntervalMs);
+            return;
+        }
+        OpenPreviewFile(previewOpenedPath, previewOpenedAsCopy);
+        return;
+    }
+    // A file written continuously is reopened at most once per interval;
+    // the timer applies whatever the last write left.
+    const auto sinceOpened = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - previewOpenedAt).count();
+    if (sinceOpened < static_cast<long long>(kPreviewReloadIntervalMs)) {
+        ArmPreviewReloadTimer(static_cast<unsigned int>(
+                kPreviewReloadIntervalMs - sinceOpened));
+        return;
+    }
+    OpenPreviewFile(previewOpenedPath, previewOpenedAsCopy);
+}
+
+void UltraFilerWindow::ArmPreviewReloadTimer(unsigned int delayMs) {
+    if (previewReloadTimer != InvalidTimerId) return;   // one is already due
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    previewReloadTimer = app->StartTimer(std::max(delayMs, 50u), false,
+            [this](TimerId) {
+        previewReloadTimer = InvalidTimerId;
+        ReloadChangedPreview();
+    });
+}
+
+void UltraFilerWindow::CancelPreviewReloadTimer() {
+    if (previewReloadTimer == InvalidTimerId) return;
+    if (auto* app = UltraCanvasApplication::GetInstance())
+        app->StopTimer(previewReloadTimer);
+    previewReloadTimer = InvalidTimerId;
 }
 
 void UltraFilerWindow::AttachFolderPreview() {
@@ -6495,13 +6909,27 @@ void UltraFilerWindow::UpdatePreviewPane() {
         folderPreviewReadyPath.clear();
     }
     if (wantFolder || !mediaPath.empty()) {
-        if (!previewShown) {
+        if (!previewShown && splitViewShown && rightSplit) {
+            // The split view: under the right-hand pane's path bar, beside
+            // its display. That pane grows by the preview's width and the two
+            // displays stay equal (BalanceSplitPanes).
+            previewShown = true;
+            previewShowsFolder = wantFolder;
+            previewPane = rightSplit->AddPane(1.0);
+            rightSplit->SetPaneMinSize(rightSplit->PaneCount() - 1, kPreviewMinWidth);
+            previewPane->layout.SetFlexColumn()
+                               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            if (wantFolder) AttachFolderPreview();
+            else            previewPane->AddChild(preview);
+            ApplySplitPaneMinSizes();
+            BalanceSplitPanes();
+            if (filer) filer->EnsureSelectionVisible();
+        } else if (!previewShown) {
             // Pane sizing is weight-proportional, so plain AddPane would
             // shrink every pane — visibly moving the tree | filer splitter.
             // Capture the arranged widths first and hand the preview its
-            // width from the folder display beside it only - the last pane
-            // (the tab's display, or the split view's right-hand one); the
-            // tree, and the other display, keep their positions.
+            // width from the folder display beside it only; the tree keeps
+            // its position.
             std::vector<int> sizes;
             bool arranged = true;
             for (size_t i = 0; i < split->PaneCount(); ++i) {
@@ -6522,9 +6950,9 @@ void UltraFilerWindow::UpdatePreviewPane() {
             if (arranged && !sizes.empty()) {
                 // The new split line takes its thickness from the donors
                 // too, so the sizes sum to exactly the available axis. The
-                // donors are the weighted panes - the one display, or the
-                // split view's two, each giving in proportion to its width;
-                // the tree pane is fixed and keeps what it has.
+                // donors are the weighted panes - the display - each giving
+                // in proportion to its width; the tree pane is fixed and
+                // keeps what it has.
                 const int line = split->EffectiveSplitterThickness();
                 std::vector<size_t> donors;
                 int donorSum = 0, donorMin = 0;
@@ -6570,57 +6998,74 @@ void UltraFilerWindow::UpdatePreviewPane() {
             if (folderPreview->GetPath() != folderPath)
                 folderPreview->SetPath(folderPath);
         } else {
-            if (preview->GetCurrentPath() != mediaPath) {
-                if (mediaIsRemoteCopy) preview->SetFiles({mediaPath});
-                else                   preview->OpenFile(mediaPath);
-            }
+            if (preview->GetCurrentPath() != mediaPath)
+                OpenPreviewFile(mediaPath, mediaIsRemoteCopy);
+            else
+                ReloadChangedPreview();   // same file - changed since?
         }
     } else if (previewShown) {
         // Nothing to preview - give the folder display the whole width.
-        previewShown = false;
-        std::vector<int> sizes;
-        bool arranged = true;
+        ClosePreviewPane();
+    }
+}
+
+void UltraFilerWindow::ClosePreviewPane() {
+    if (!previewShown || !previewPane) return;
+    previewShown = false;
+    const bool inRightPane = rightSplit && rightSplit->GetPaneIndex(previewPane.get()) >= 0;
+    std::vector<int> sizes;
+    bool arranged = !inRightPane;
+    if (!inRightPane) {
         for (size_t i = 0; i + 1 < split->PaneCount(); ++i) {
             const int w = static_cast<int>(split->GetPane(i)->GetWidth());
             if (w <= 0) arranged = false;
             sizes.push_back(w);
         }
-        const int prevW  = static_cast<int>(previewPane->GetWidth());
-        if (prevW > 0) previewPaneWidth = prevW;   // restored on reopen
-        if (previewShowsFolder) {
-            DetachFolderPreview();
-            previewShowsFolder = false;
-        } else {
-            // Let go of the file, not just of the playback: a document engine
-            // that still holds the previewed file open blocks moving, renaming
-            // or deleting it (on Windows an open handle refuses the rename
-            // outright).
-            preview->CloseFile();
-            previewPane->RemoveChild(preview);
-        }
-        split->RemovePane(previewPane.get());
+    }
+    const int prevW  = static_cast<int>(previewPane->GetWidth());
+    if (prevW > 0) previewPaneWidth = prevW;   // restored on reopen
+    if (previewShowsFolder) {
+        DetachFolderPreview();
+        previewShowsFolder = false;
+    } else {
+        // Let go of the file, not just of the playback: a document engine
+        // that still holds the previewed file open blocks moving, renaming
+        // or deleting it (on Windows an open handle refuses the rename
+        // outright).
+        preview->CloseFile();
+        previewPane->RemoveChild(preview);
+    }
+    if (inRightPane) {
+        // Under the right-hand path bar: that pane gives the width back and
+        // the two displays are put back to halves.
+        rightSplit->RemovePane(previewPane.get());
         previewPane.reset();
-        // Return the preview's width (and its split line) to the displays it
-        // came from, in proportion, keeping the tree pane where the user put
-        // it.
-        if (arranged && !sizes.empty() && prevW > 0) {
-            const int line = split->EffectiveSplitterThickness();
-            std::vector<size_t> takers;
-            for (size_t i = 0; i < sizes.size(); ++i)
-                if (split->GetPaneFixedSize(i) == 0) takers.push_back(i);
-            if (takers.empty()) takers.push_back(sizes.size() - 1);
-            TakeFromPanes(sizes, takers, -(line + prevW));
-            split->SetPaneSizes(sizes);
-        }
+        ApplySplitPaneMinSizes();
+        BalanceSplitPanes();
+        return;
+    }
+    split->RemovePane(previewPane.get());
+    previewPane.reset();
+    // Return the preview's width (and its split line) to the displays it
+    // came from, in proportion, keeping the tree pane where the user put
+    // it.
+    if (arranged && !sizes.empty() && prevW > 0) {
+        const int line = split->EffectiveSplitterThickness();
+        std::vector<size_t> takers;
+        for (size_t i = 0; i < sizes.size(); ++i)
+            if (split->GetPaneFixedSize(i) == 0) takers.push_back(i);
+        if (takers.empty()) takers.push_back(sizes.size() - 1);
+        TakeFromPanes(sizes, takers, -(line + prevW));
+        split->SetPaneSizes(sizes);
     }
 }
 
 int UltraFilerWindow::FolderPaneMinWidth(const UltraCanvasContainer* pane) const {
     if (!splitViewShown) return kFilerMinWidth;
     int min = kSplitPaneMinWidth;
-    if (treeDockShown &&
-        pane == (treeDockSide == SplitSide::Right ? rightPane.get() : filerPane.get()))
-        min += treePaneWidth;
+    const bool rightSide = pane == rightPane.get() || pane == rightDisplayPane.get();
+    if (treeDockShown && (treeDockSide == SplitSide::Right ? rightSide : pane == filerPane.get()))
+        min += UltraFilerSettings::kMinTreeWidth;   // it narrows to fit the pane
     return min;
 }
 
@@ -6695,7 +7140,19 @@ void UltraFilerWindow::BuildSplitViewPanes() {
     rightPaneHeader = makeHeader("right", SplitSide::Right, rightTreeButton, rightPaneBreadcrumb);
     rightPaneBody = makeBody("right");
     rightPaneBox->AddChild(rightPaneHeader);
-    rightPaneBox->AddChild(rightPaneBody);
+    // Under the header, a split of its own: the body, and - while it is up -
+    // the preview pane beside it, so the preview sits under this pane's path
+    // bar instead of beside the header.
+    rightSplit = std::make_shared<UltraCanvasSplitPane>("ufl-pane-split-right",
+                                                        SplitOrientation::Horizontal);
+    rightSplit->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    rightDisplayPane = rightSplit->AddPane(1.0);
+    rightSplit->SetPaneMinSize(0, kSplitPaneMinWidth);
+    rightDisplayPane->layout.SetFlexColumn()
+                            .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    rightDisplayPane->AddChild(rightPaneBody);
+    rightPaneBox->AddChild(rightSplit);
 
     // The second display: everything a tab's display is, in no tab. Its
     // folder is set when the split view first shows it.
@@ -6708,8 +7165,13 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
     // The split has to be on screen for the change to mean anything - and
     // showing a second folder is showing a folder.
     ShowBrowsingView();
-    // The sizes as they are, before the panes change: what the two displays
-    // share out between them, or what the tree pane gets back.
+    // The preview pane changes homes with the split view (a pane of the
+    // window's split, or under the right-hand path bar): it is taken down
+    // here and UpdatePreviewPane, at the end, puts it up again where it now
+    // belongs.
+    if (previewShown) ClosePreviewPane();
+    // The sizes as they are, before the panes change: what the tree pane
+    // gets back when the split view goes off.
     std::vector<int> sizes;
     bool arranged = true;
     for (size_t i = 0; i < split->PaneCount(); ++i) {
@@ -6730,7 +7192,6 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             const int treeW = static_cast<int>(treePane->GetWidth());
             if (treeW > 0) treePaneWidth = treeW;
             treeDockShown = false;
-            treeDockTakenFromOther = treeDockTakenFromRest = 0;
             folderTree->SetVisible(false);
             leftPaneBody->AddChild(folderTree);
             split->RemovePane(treePane.get());
@@ -6738,31 +7199,24 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         }
         const int leftIndex = split->GetPaneIndex(filerPane.get());
         split->SetPaneMinSize(static_cast<size_t>(leftIndex), kSplitPaneMinWidth);
-        // The right-hand pane joins right after the left one - before the
-        // preview pane, when that is up.
+        // The right-hand pane joins right after the left one.
         rightPane = split->InsertPane(static_cast<size_t>(leftIndex) + 1, 1.0);
         split->SetPaneMinSize(static_cast<size_t>(leftIndex) + 1, kSplitPaneMinWidth);
         rightPane->layout.SetFlexColumn()
                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         rightPane->AddChild(rightPaneBox);
         leftPaneHeader->SetVisible(true);
+        // Each pane has a path bar of its own now; the navigation row's,
+        // which only ever said where the active one is, gives way.
+        if (breadcrumb) breadcrumb->SetVisible(false);
+        if (navPathSpacer) navPathSpacer->SetVisible(true);
 
-        // The two displays share what the tree pane and the folder pane
-        // had (the tree's split line went, the new one came: a wash).
-        if (arranged && sizes.size() > static_cast<size_t>(folderIndex)) {
-            std::vector<int> next;
-            int shared = sizes[folderIndex];
-            if (folderIndex > 0) shared += sizes[folderIndex - 1];
-            const int left = shared / 2;
-            for (int i = 0; i < folderIndex - 1; ++i) next.push_back(sizes[i]);
-            next.push_back(left);
-            next.push_back(shared - left);
-            for (size_t i = folderIndex + 1; i < sizes.size(); ++i) next.push_back(sizes[i]);
-            split->SetPaneSizes(next);
-        } else {
-            split->SetPaneWeight(static_cast<size_t>(leftIndex), 1.0);
-            split->SetPaneWeight(static_cast<size_t>(leftIndex) + 1, 1.0);
-        }
+        // The two displays share the width equally - as weights until the
+        // split has been laid out, in pixels from then on.
+        split->SetPaneWeight(static_cast<size_t>(leftIndex), 1.0);
+        split->SetPaneWeight(static_cast<size_t>(leftIndex) + 1, 1.0);
+        ApplySplitPaneMinSizes();
+        BalanceSplitPanes();
 
         // The right-hand display opens where it was last, or, the first
         // time, on the folder the active display shows.
@@ -6782,10 +7236,11 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         // re-homed below), the right-hand pane leaves, and the tree pane
         // comes back in front.
         treeDockShown = false;
-        treeDockTakenFromOther = treeDockTakenFromRest = 0;
         // The left-hand display is the active one again.
         ActivateSplitSide(SplitSide::Left);
         leftPaneHeader->SetVisible(false);
+        if (breadcrumb) breadcrumb->SetVisible(true);
+        if (navPathSpacer) navPathSpacer->SetVisible(false);
         int rightW = 0;
         if (rightPane) {
             rightW = static_cast<int>(rightPane->GetWidth());
@@ -6869,71 +7324,9 @@ void UltraFilerWindow::ActivateSplitSide(SplitSide side) {
 
 void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
     if (!splitViewShown || !folderTree || !leftPaneBody || !rightPaneBody) return;
-    // The two displays' widths before the change. The tree's width moves
-    // between them with the tree: the pane it docks into grows by it at the
-    // other display's expense, and an undocked tree gives that width back
-    // to the display it was taken from - rather than leaving the pane the
-    // tree left as wide as it was, with the display beside it squeezed.
-    std::vector<int> sizes;
-    bool arranged = split && rightPane && filerPane;
-    if (arranged) {
-        for (size_t i = 0; i < split->PaneCount(); ++i) {
-            const int w = static_cast<int>(split->GetPane(i)->GetWidth());
-            if (w <= 0) arranged = false;
-            sizes.push_back(w);
-        }
-    }
-    const int leftIndex  = arranged ? split->GetPaneIndex(filerPane.get()) : -1;
-    const int rightIndex = arranged ? split->GetPaneIndex(rightPane.get()) : -1;
-    if (leftIndex < 0 || rightIndex < 0) arranged = false;
-    auto paneOf = [&](SplitSide s) { return s == SplitSide::Right ? rightIndex : leftIndex; };
-    auto otherOf = [](SplitSide s) { return s == SplitSide::Right ? SplitSide::Left : SplitSide::Right; };
-    // The panes that are neither display: the preview pane, when it is up.
-    std::vector<size_t> rest;
-    if (arranged) {
-        for (size_t i = 0; i < sizes.size(); ++i)
-            if (static_cast<int>(i) != leftIndex && static_cast<int>(i) != rightIndex)
-                rest.push_back(i);
-    }
-    if (arranged) {
-        const bool wasDocked = treeDockShown;
-        const SplitSide wasSide = treeDockSide;
-        if (wasDocked && (!visible || side != wasSide)) {
-            // The tree leaves its pane: what docking took goes back where it
-            // came from, as far as the pane can give it (it keeps its own
-            // minimum), and what the preview pane gave but cannot take back
-            // - it has gone meanwhile - goes to the other display.
-            const int from = paneOf(wasSide);
-            const int to = paneOf(otherOf(wasSide));
-            int give = std::min(treeDockTakenFromOther + treeDockTakenFromRest,
-                                sizes[from] - kSplitPaneMinWidth);
-            int toRest = rest.empty() ? 0 : std::min(treeDockTakenFromRest, give);
-            if (toRest > 0) TakeFromPanes(sizes, rest, -toRest);
-            sizes[from] -= give;
-            sizes[to] += give - toRest;
-            treeDockTakenFromOther = treeDockTakenFromRest = 0;
-        }
-        if (visible && !(wasDocked && side == wasSide)) {
-            // The tree's width comes out of the other display first, and
-            // when that display cannot spare it all, out of the preview
-            // pane - which takes its own width from the displays, so it is
-            // the one to give here rather than leave the docked display a
-            // sliver beside the tree.
-            const int to = paneOf(side);
-            const int from = paneOf(otherOf(side));
-            int want = treePaneWidth;
-            const int fromOther = std::clamp(sizes[from] - kSplitPaneMinWidth, 0, want);
-            want -= fromOther;
-            int restSpare = 0;
-            for (size_t i : rest) restSpare += std::max(0, sizes[i] - kPreviewMinWidth);
-            const int fromRest = std::min(want, restSpare);
-            if (fromRest > 0) TakeFromPanes(sizes, rest, fromRest);
-            sizes[from] -= fromOther;
-            sizes[to] += fromOther + fromRest;
-            treeDockTakenFromOther = fromOther;
-            treeDockTakenFromRest = fromRest;
-        }
-    }
+    // The tree is part of the pane it docks into: the pane keeps its half
+    // of the width and the display beside the tree narrows, so docking it
+    // moves no divider (BalanceSplitPanes below keeps the halves equal).
     if (visible) {
         // Into the body row of that pane, in front of its display: the tree
         // has a width of its own and the display takes the rest.
@@ -6966,7 +7359,7 @@ void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
         treeDockShown = false;
     }
     ApplySplitPaneMinSizes();
-    if (arranged) split->SetPaneSizes(sizes);
+    BalanceSplitPanes();
     StyleSplitHeaders();
 }
 
@@ -6978,11 +7371,66 @@ void UltraFilerWindow::ApplySplitPaneMinSizes() {
     const int leftIndex  = split->GetPaneIndex(filerPane.get());
     const int rightIndex = split->GetPaneIndex(rightPane.get());
     if (leftIndex < 0 || rightIndex < 0) return;
-    const int treeExtra = treeDockShown ? treePaneWidth : 0;
+    // A docked tree narrows to fit its pane (SetDockedTreeWidth), so the pane
+    // needs only the tree's own minimum beside its display's.
+    const int treeExtra = treeDockShown ? UltraFilerSettings::kMinTreeWidth : 0;
+    const int rightDisplayMin = kSplitPaneMinWidth +
+            (treeDockShown && treeDockSide == SplitSide::Right ? treeExtra : 0);
+    // The preview under the right-hand path bar is part of that pane too.
+    const int previewExtra = PreviewInRightPane()
+            ? rightSplit->EffectiveSplitterThickness() + kPreviewMinWidth : 0;
     split->SetPaneMinSize(static_cast<size_t>(leftIndex), kSplitPaneMinWidth +
             (treeDockShown && treeDockSide == SplitSide::Left ? treeExtra : 0));
-    split->SetPaneMinSize(static_cast<size_t>(rightIndex), kSplitPaneMinWidth +
-            (treeDockShown && treeDockSide == SplitSide::Right ? treeExtra : 0));
+    split->SetPaneMinSize(static_cast<size_t>(rightIndex), rightDisplayMin + previewExtra);
+    if (rightSplit && rightDisplayPane) {
+        const int displayIndex = rightSplit->GetPaneIndex(rightDisplayPane.get());
+        if (displayIndex >= 0)
+            rightSplit->SetPaneMinSize(static_cast<size_t>(displayIndex), rightDisplayMin);
+    }
+}
+
+bool UltraFilerWindow::PreviewInRightPane() const {
+    return previewShown && previewPane && rightSplit &&
+           rightSplit->GetPaneIndex(previewPane.get()) >= 0;
+}
+
+void UltraFilerWindow::BalanceSplitPanes() {
+    if (!splitViewShown || !split || !filerPane || !rightPane) return;
+    const int leftIndex  = split->GetPaneIndex(filerPane.get());
+    const int rightIndex = split->GetPaneIndex(rightPane.get());
+    if (leftIndex < 0 || rightIndex < 0 || split->PaneCount() != 2) return;
+    // Not laid out yet: the split's first width change balances it.
+    const int axis = static_cast<int>(split->GetWidth());
+    if (axis <= 0) return;
+    const int room = axis - split->EffectiveSplitterThickness();
+    // What the right-hand pane holds beside its display: the preview, at the
+    // width it was dragged to (or last had), within what leaves both
+    // displays their minimum.
+    int beside = 0;
+    if (PreviewInRightPane()) {
+        const int previewIndex = rightSplit->GetPaneIndex(previewPane.get());
+        const int line = rightSplit->EffectiveSplitterThickness();
+        int previewW = rightSplit->GetPaneFixedSize(static_cast<size_t>(previewIndex));
+        if (previewW <= 0) previewW = previewPaneWidth;
+        if (previewW <= 0) previewW = static_cast<int>(std::lround(room * 1.4 / 4.1));
+        const int displayMin = std::max(FolderPaneMinWidth(filerPane.get()),
+                                        FolderPaneMinWidth(rightPane.get()));
+        previewW = std::min(previewW, room - line - 2 * displayMin);
+        previewW = std::max(previewW, kPreviewMinWidth);
+        // Fixed: dragging the divider between the panes moves the right-hand
+        // display's edge, and the preview keeps its width.
+        rightSplit->SetPaneFixedSize(static_cast<size_t>(previewIndex), previewW);
+        beside = line + previewW;
+    }
+    const int left = std::max(0, (room - beside) / 2);
+    // The docked tree fits into its half: the left pane, or the right-hand
+    // display beside the preview - both `left` wide.
+    if (treeDockShown)
+        SetDockedTreeWidth(treeWantedWidth > 0 ? treeWantedWidth : treePaneWidth, left);
+    std::vector<int> sizes(2);
+    sizes[static_cast<size_t>(leftIndex)] = left;
+    sizes[static_cast<size_t>(rightIndex)] = room - left;
+    split->SetPaneSizes(sizes);
 }
 
 bool UltraFilerWindow::TreeFollowsActiveDisplay() const {

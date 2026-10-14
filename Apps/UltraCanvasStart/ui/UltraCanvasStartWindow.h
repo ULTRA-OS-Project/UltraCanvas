@@ -1,28 +1,47 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.h
-// UltraCanvasStart's window: a tabbed wizard. Platform (which OS the
-// instructions are for, preselected to the detected one), System (what was
-// found), Choices (which features, SDK or source, AI or not), Install (the
-// checks and the install step), Project (the skeleton), AI (Claude Code) and
-// Report (the whole plan as text, for the clipboard). Nothing is painted by
-// hand: every page is assembled from catalogue elements and laid out with the
-// CSS flex layout, as the other applications do.
+// UltraCanvasStart's window: a stepper (Docs/UltraCanvasStart/WorkflowProposal.md).
+// Six steps in the order the work happens - Your computer (what was found,
+// with the guide for any platform under it), Features (what for, and which
+// assistant), Tools (the checks and the install), Framework (the prebuilt
+// SDK or a clone), Project (name, folder, create), Build (the skeleton
+// compiled the way a programmer does, as the proof that the installation
+// works, then the first prompt and the report for the hand-over) - an
+// UltraCanvasStepper above one pane that shows the current step, Back /
+// Next below it. The header offers the Guide and the Report as
+// dialogs at any time, so neither is a step. Nothing is painted by hand:
+// every pane is assembled from catalogue elements and laid out with the CSS
+// flex layout, as the other applications do, and styled through
+// UltraCanvasStartTheme.h (UltraMail's values).
 //
-// The checks and the install run a package manager and block on it, so they
-// run on a worker thread; results come back through a queue a UI timer
+// The panes' prose comes from the engine as Markdown (StartGuide) and is
+// shown in read-only Markdown views: links open in the browser, commands
+// stand out, one action per step. The Tools step lists the checks as rows
+// instead, a switch on each showing whether that tool is there, under a
+// line saying what Install will do.
+//
+// The checks, the install and the build run a package manager or cmake and
+// block on it, so they run on a worker thread; results come back through a queue a UI timer
 // drains, the pattern UltraCleaner and UltraSocial use.
+// Version: 0.4.0 - step 6, Build: the skeleton compiled from the window, the
+//                  first prompt and the report after it
+// Version: 0.3.0 - the stepper: five steps, Back / Next, the Guide and the
+//                  Report as dialogs (the workflow proposal, implemented)
+// Version: 0.2.0 - UltraMail's look: theme header, cards, Markdown views
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "StartAi.h"
+#include "StartBuild.h"
 #include "StartTypes.h"
 
+#include "UltraCanvasBadge.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
-#include "UltraCanvasRadio.h"
-#include "UltraCanvasTabbedContainer.h"
+#include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasStepper.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
@@ -38,6 +57,17 @@
 
 namespace UltraCanvasStart {
 
+// The steps, in order.
+enum class Step : int {
+    Computer = 0,
+    Features,
+    Tools,
+    Framework,
+    Project,
+    Build,
+    Count
+};
+
 class UltraCanvasStartWindow {
 public:
     ~UltraCanvasStartWindow();
@@ -45,43 +75,75 @@ public:
     bool Initialize();
     void Show();
 
+    // Opens a step (1 to 6; --step). False for another number.
+    bool ShowStep(int number);
+    // The page names of versions before 0.3.0 (--page): "platform" and
+    // "system" are step 1, "choices" and "ai" step 2, "install" step 3,
+    // "project" step 5, "build" step 6; "guide" and "report" open the dialogs. False for a
+    // name that is no page. Call it after Show(): a dialog needs the window.
+    bool ShowPage(const std::string& name);
+    // Selects the platform the guide is for (--for in window mode).
+    void PreselectPlatform(Platform platform);
+    // Selects the assistant (--assistant).
+    void PreselectAssistant(Assistant assistant);
+
 private:
     // ===== CONSTRUCTION =====
     void LayoutForSize(float width, float height);
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> NewPage(const std::string& id);
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel> Heading(const std::string& id,
-                                                           const std::string& text);
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> ReadOnlyText(const std::string& id,
-                                                                   float height);
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> ButtonRow(const std::string& id);
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> NewPane(const std::string& id);
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildHeader();
+    std::shared_ptr<UltraCanvas::UltraCanvasStepper> BuildStepper();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildNavigation();
 
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildPlatformPage();
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSystemPage();
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildChoicesPage();
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildInstallPage();
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildProjectPage();
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAiPage();
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildReportPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildComputerStep();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildFeaturesStep();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildToolsStep();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildFrameworkStep();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildProjectStep();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildCompileStep();
+
+    // The guide for a platform (the picker and the Markdown view), used by
+    // step 1 and by the Guide dialog.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildGuideCard(
+        const std::string& id, std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl>& picker,
+        std::shared_ptr<UltraCanvas::UltraCanvasTextArea>& view, float height);
+
+    // ===== NAVIGATION =====
+    void ShowStepPane(int index);        // the stepper's onStepChanged
+    void GoNext();
+    void GoBack();
+    void OnLeaveStep(int index);         // marks the step's error state
+    void OnEnterStep(int index);         // runs the checks, refreshes the plan
+    void UpdateNavigation();
 
     // ===== ACTIONS =====
-    void SelectPlatform(Platform platform);
+    void SelectGuidePlatform(Platform platform);
+    void SelectAssistant(Assistant assistant);
+    void SelectFrameworkWay(bool useSdk);
     void StartChecks();
     void StartInstall();
     void ChooseProjectFolder();
+    void FindSdk();
     // Downloads this version's SDK from its GitHub release into a folder the
     // user picks, unpacks it there and fills in the SDK prefix.
     void DownloadAndUnpackSdk();
     void CreateProject();
+    // Compiles the created project on the worker thread (StartBuild), the
+    // output in the Build step's console.
+    void StartBuild();
     void CopyReport();
     void CopyPrompt();
-    void OnTabEntered(int index);
+    void ShowGuideDialog();
+    void ShowReportDialog();
 
     // ===== VIEW UPDATES =====
-    void ReadChoicesFromPage();
-    void RefreshSystemText();
-    void RefreshChecksText();
+    void ReadChoicesFromPanes();
+    void RefreshCheckRows();
+    void RefreshInstallPreview();      // from the plan; RefreshPlan calls it
+    bool CanInstall() const;           // something missing, and a package manager here to install it
+    void RefreshFrameworkStep();
+    void RefreshBuildStep();           // the folder's commands, the button, the badge
     void RefreshPlan();
-    void RefreshAiText();
     void SetBusy(bool busy);
     void SetStatus(const std::string& text);
 
@@ -90,50 +152,75 @@ private:
     void DrainUiQueue();
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> header_;
+    std::shared_ptr<UltraCanvas::UltraCanvasStepper> stepper_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> paneHost_;
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasContainer>> panes_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> navigation_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> stepHint_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> backButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> nextButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> statusBand_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel_;
 
-    // Platform page
-    UltraCanvas::UltraCanvasRadioGroup platformGroup_;
-    std::map<Platform, std::shared_ptr<UltraCanvas::UltraCanvasRadio>> platformRadios_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> platformNotes_;
+    // Step 1: the computer, and the guide
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> guidePicker_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> guideView_;
 
-    // System page
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> systemText_;
-
-    // Choices page
+    // Step 2: features and the assistant
     std::map<DependencyGroup, std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>> groupBoxes_;
-    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> sdkBox_;
-    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> cloneBox_;
     std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> aiBox_;
     std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> cloudBox_;
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> assistantPicker_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> aiView_;
 
-    // Install page
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> checksText_;
+    // Step 3: tools
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> checksList_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> installOutput_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> checkButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> installButton_;
-    std::shared_ptr<UltraCanvas::UltraCanvasButton> downloadButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBadge> installBadge_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> installSummary_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> installCommand_;
 
-    // Project page
+    // Step 4: the framework
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> wayPicker_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> sdkRow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> sdkPrefixInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> findButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> downloadButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBadge> frameworkBadge_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> frameworkView_;
+
+    // Step 5: the project, then what was written
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> projectCard_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> appNameInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> folderInput_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> sdkPrefixInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> createButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> previewCard_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> projectPreview_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> doneCard_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> doneView_;
 
-    // AI page
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> aiText_;
+    // Step 6: the build, then the hand-over
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> buildCard_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> buildCommands_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> buildButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBadge> buildBadge_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> buildOutput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> promptCard_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> promptText_;
-
-    // Report page
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> reportText_;
 
     SystemProfile profile_;
     Choices choices_;
     std::vector<CheckResult> checks_;
     Plan plan_;
     AiStatus ai_;
+    Platform guidePlatform_ = Platform::Unknown;
+    int currentStep_ = 0;
+    bool projectCreated_ = false;
+    bool projectBuilt_ = false;
+    bool buildFailed_ = false;
 
     std::atomic<bool> working_{ false };
     std::thread worker_;

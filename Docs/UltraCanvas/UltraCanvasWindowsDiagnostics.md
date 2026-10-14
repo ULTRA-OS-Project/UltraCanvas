@@ -9,7 +9,12 @@ on another.
 
 Windows applications built from this repository are linked as **GUI-subsystem**
 executables (`set_target_properties(... WIN32_EXECUTABLE TRUE)` in
-`CMakeLists.txt`). A GUI-subsystem process is not given a console, so:
+`CMakeLists.txt`). The exceptions are the apps whose command-line modes print
+into the prompt they were typed at (DeviceExplorer, UltraCleaner,
+UltraNetMonitor and a few more, listed there): they stay console programs, and
+started by a double-click they close the console Windows opened for them as
+their window comes up (`ReleaseOwnConsole()`), so what follows applies to them
+too. A GUI-subsystem process is not given a console, so:
 
 - `std::cerr`, `printf` and the framework's `debugOutput` have nowhere to write;
 - an unhandled exception kills the process without printing anything;
@@ -483,9 +488,20 @@ bundled fonts alone (`fonts-startup.conf`) and the full set (`fonts.conf`) is
 scanned on a thread. `LoadBundledFontsNative()` waits up to 400 ms for it
 (`AdoptSystemFontsWithin`): a warm cache ends well within that, and the full
 set is used from the start. Otherwise the application starts with the bundled
-fonts and Windows' two symbol fonts, and every window switches to the full set
-when the scan ends. `GetSystemFontScanStatus()` says which happened, and
+fonts and Windows' symbol fonts (Segoe UI Symbol, Segoe UI Emoji and Cambria
+Math, for the UI's marks, emoji and mathematical symbols), and every window
+switches to the full set when the scan ends - laid out and drawn again
+(`RefreshAfterFontChange()`), so a character the start's fonts lacked does not
+stay a box. `GetSystemFontScanStatus()` says which happened, and
 `SetSystemFontsSwitchedHandler()` hears of the switch.
+
+Text goes through Pango's fontconfig font map on every thread: the main
+thread's is made in `LoadBundledFontsNative()`, and `PANGOCAIRO_BACKEND=fc` is
+set once it exists, so a worker thread (or libvips and librsvg laying out
+text) gets one too rather than Pango's Win32 map, which never reads fontconfig
+and draws a box for any character its font lacks. The debug log
+(`ULTRACANVAS_DEBUG_LOG`) names the map: "UltraCanvas: text font map
+PangoCairoFcFontMap ...".
 
 An application that starts but takes ten seconds to show anything - its
 console window alone on screen, or nothing - spends that time in one of
@@ -713,12 +729,21 @@ Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
 #include "../OS/MSWindows/UltraCanvasWindowsDiagnostics.h"   // from UltraCanvas/include
 
 bool        AttachParentConsole();
+bool        ReleaseOwnConsole();     // closes a console only this process is attached to, unless debugOutput is on
 std::string GetWindowsVersionString();
 void        LogWindowsStartupBanner(const std::string& appName);
 void        InstallWindowsCrashReporter(const std::string& appName);   // the filter, the log line and the minidump
 void        ReportWindowsStartupFailure(const std::string& stage, const std::string& detail);
 std::string DescribeWin32Error(unsigned long error);
 ```
+
+`InitializeNative()` attaches as the window opens, which is after `main()`
+has printed `--help`, `--version` or a bad argument. A target made a GUI
+program with `ultracanvas_windows_gui_app()` (`cmake/UltraCanvasWindowsGuiApp.cmake`)
+therefore also gets `OS/MSWindows/AppEntry/UltraCanvasWindowsAttachConsole.cpp`
+compiled in, which calls `AttachParentConsole()` before `main()`. It is part of
+the executable, not of the core: a DLL's static initialisers run under the
+loader lock.
 
 An application embedding the framework in its own `WinMain` gets all of this by
 calling `UltraCanvasApplication::Initialize()` as usual; nothing extra is

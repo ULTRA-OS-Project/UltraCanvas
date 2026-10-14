@@ -1,7 +1,8 @@
 // Tests/FilerHostIconsTest.cpp
 // Display > File icons: the setting itself (UltraCanvasFilerWidget), the
 // cache key the host icon service answers by (UltraCanvasHostFileIcons), and
-// UltraFiler's saved choice (Apps/UltraFiler/UltraFilerSettings.h).
+// UltraFiler's saved choice (Apps/UltraFiler/UltraFilerSettings.h), and its
+// saved tab style (Settings > Display > Tab style) read back the same way.
 //
 // The rule this guards: a host icon is the icon of a TYPE, and the key says
 // which type. Key two file kinds the same and a folder draws one of them with
@@ -21,8 +22,8 @@
 // first start, both choices across a restart, and the files earlier releases
 // left behind - every one of which says "simple" under the old key, chosen or
 // not, and must take the new default rather than keep the old one forever.
-// Version: 1.1.0
-// Last Modified: 2026-10-06
+// Version: 1.3.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
@@ -30,6 +31,9 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraFilerSettings.h"        // Apps/UltraFiler
 
+#include <cairo/cairo.h>
+
+#include <cstdint>
 #include <cstdlib>   // setenv
 #include <filesystem>
 #include <fstream>
@@ -139,6 +143,61 @@ void TestUltraFilerSavedChoice() {
     std::filesystem::remove_all(root, ec);
 }
 
+// Settings > Display > Tab style, read back the same way: the window's tab
+// strip has been Modern - the capsules - since 1.71.0, a saved choice comes
+// back after a restart, and a value a later release might add reads back as
+// the default.
+FilerTabStripStyle LoadedTabStyle() {
+    UltraFilerSettings settings;
+    settings.Load();
+    return settings.tabStripStyle;
+}
+
+void TestTabStripStyleSavedChoice() {
+    std::cout << "\n-- UltraFiler's saved tab style --\n";
+    std::error_code ec;
+    const std::filesystem::path root =
+            std::filesystem::temp_directory_path(ec) / "ultrafiler-tab-style-test";
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    if (ec) {
+        Check(false, "a temporary config directory can be made");
+        return;
+    }
+    RedirectConfigDirectory(root);
+
+    Check(UltraFilerSettings().tabStripStyle == FilerTabStripStyle::Modern,
+          "the tab strip is Modern by default");
+    Check(LoadedTabStyle() == FilerTabStripStyle::Modern,
+          "a first start, with no config file, draws the Modern strip");
+
+    struct Named { FilerTabStripStyle style; const char* name; };
+    for (Named n : {Named{FilerTabStripStyle::Modern, "Modern"},
+                    Named{FilerTabStripStyle::SimpleModern, "Simple modern"},
+                    Named{FilerTabStripStyle::Classic, "Classic"}}) {
+        UltraFilerSettings settings;
+        settings.tabStripStyle = n.style;
+        Check(settings.Save(), "the tab style is saved with the other settings");
+        Check(LoadedTabStyle() == n.style,
+              std::string("\"") + n.name + "\" comes back after a restart");
+    }
+
+    WriteConfig("display.tabs.style = classic\n");
+    Check(LoadedTabStyle() == FilerTabStripStyle::Classic,
+          "the key reads \"classic\" by name");
+    WriteConfig("display.tabs.style = simple-modern\n");
+    Check(LoadedTabStyle() == FilerTabStripStyle::SimpleModern,
+          "and \"simple-modern\"");
+    WriteConfig("display.tabs.style = some-later-style\n");
+    Check(LoadedTabStyle() == FilerTabStripStyle::Modern,
+          "an unknown style reads back as Modern");
+    WriteConfig("display.file.icons.style = simple\n");
+    Check(LoadedTabStyle() == FilerTabStripStyle::Modern,
+          "a config from before 1.71.0, with no tab style key, draws the Modern strip");
+
+    std::filesystem::remove_all(root, ec);
+}
+
 } // namespace
 
 int main() {
@@ -179,12 +238,19 @@ int main() {
     Check(FileKey("/a/.bashrc") != FileKey("/a/config.bashrc"),
           "a leading dot is part of the name, not a suffix");
 
-    // A file that carries its own icon is not a type at all - two programs
-    // must never share a key, or a folder of them would draw one icon.
-    Check(FileKey("/a/first.exe") != FileKey("/a/second.exe"),
-          "programs key per file, not per extension");
-    Check(FileKey("/a/link.lnk") != FileKey("/a/other.lnk"),
-          "shortcuts key per file, not per extension");
+    // A program's own icon is the native module's answer; what the host
+    // says for ".exe" is per type like anything else, so a folder of ninety
+    // DLLs asks once and holds one picture - not ninety, which was three
+    // times the cache's budget and kept a maximised window re-resolving
+    // them for as long as it was open.
+    Check(FileKey("/a/first.exe") == FileKey("/a/second.exe"),
+          "programs key per extension, like every other type");
+    Check(FileKey("/a/libaom.dll") == FileKey("/b/libcurl-4.dll"),
+          "libraries key per extension, like every other type");
+    Check(FileKey("/a/link.lnk") == FileKey("/a/other.lnk"),
+          "shortcuts key per extension, like every other type");
+    Check(FileKey("/a/first.exe") != FileKey("/a/first.dll"),
+          "a program and a library key differently");
 
     std::cout << "\n-- asking the host --\n";
     // Available or not, a lookup answers rather than throws, and an answer of
@@ -204,6 +270,45 @@ int main() {
     auto again = LoadHostFileIconPixmap("/", true, 48);
     Check(again == nullptr || again->IsValid(),
           "the same question after a refresh answers the same way");
+
+    std::cout << "\n-- the size --\n";
+    // What a backend hands back is held at the size it is drawn: the
+    // Windows shell's jumbo list is 256 a side whatever was asked, and an
+    // .ico's nearest frame may be larger than wanted. A 256 canvas with a
+    // 192x128 picture in it, asked for at 128, comes back 128x128 with the
+    // picture halved; a smaller one is never scaled up.
+    {
+        auto big = std::make_shared<UCPixmap>(256, 256);
+        Check(big->IsValid(), "a 256-pixel pixmap can be made");
+        cairo_t* cr = cairo_create(big->GetSurface());
+        cairo_set_source_rgba(cr, 1, 0, 0, 1);
+        cairo_rectangle(cr, 32, 32, 192, 128);
+        cairo_fill(cr);
+        cairo_destroy(cr);
+        big->MarkDirty();
+        auto fit = FitHostIconToSize(big, 128);
+        Check(fit && fit->GetRawWidth() == 128 && fit->GetRawHeight() == 128,
+              "a 256-pixel icon asked for at 128 is held at 128");
+        auto same = FitHostIconToSize(fit, 256);
+        Check(same == fit, "a smaller icon is never scaled up");
+        Check(FitHostIconToSize(fit, 0) == fit && FitHostIconToSize(nullptr, 64) == nullptr,
+              "no size, or no icon, passes through");
+        if (fit) {
+            cairo_surface_t* surface = fit->GetSurface();
+            cairo_surface_flush(surface);
+            const uint32_t* row = reinterpret_cast<const uint32_t*>(
+                    cairo_image_surface_get_data(surface) +
+                    static_cast<size_t>(64) * cairo_image_surface_get_stride(surface));
+            // (64, 64) is inside the red block (which spans 16..112 after
+            // the halving); (64, 4) is in the transparent border.
+            Check((row[64] >> 24) == 0xff && ((row[64] >> 16) & 0xff) == 0xff,
+                  "the picture survives the resample");
+            const uint32_t* top = reinterpret_cast<const uint32_t*>(
+                    cairo_image_surface_get_data(surface) +
+                    static_cast<size_t>(4) * cairo_image_surface_get_stride(surface));
+            Check((top[64] >> 24) == 0, "and so does the transparent border");
+        }
+    }
 
     std::cout << "\n-- the setting --\n";
     UltraCanvasFilerWidget filer("host-icons-test", 0, 0, 800, 600);
@@ -237,6 +342,7 @@ int main() {
     filer.SetFileIconStyle(FilerFileIconStyle::Simple);
 
     TestUltraFilerSavedChoice();
+    TestTabStripStyleSavedChoice();
 
     std::cout << "\n";
     if (g_failures == 0) {

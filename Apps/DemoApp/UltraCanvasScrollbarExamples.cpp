@@ -46,7 +46,7 @@ namespace UltraCanvas {
         sb->SetScrollPosition(120);
         if (status) {
             sb->onScrollChange = [status, caption](int pos) {
-                status->SetText(caption + " → position " + std::to_string(pos));
+                status->SetText(caption + ": position " + std::to_string(pos));
             };
         }
         parent->AddChild(sb);
@@ -73,7 +73,7 @@ namespace UltraCanvas {
         sb->SetScrollPosition(80);
         if (status) {
             sb->onScrollChange = [status, caption](int pos) {
-                status->SetText(caption + " → position " + std::to_string(pos));
+                status->SetText(caption + ": position " + std::to_string(pos));
             };
         }
         parent->AddChild(sb);
@@ -173,7 +173,7 @@ namespace UltraCanvas {
 
         // ===== 3. CORNER RADIUS / END SHAPE =====
         root->AddChild(SectionHeader("hdrShape", 20, 592,
-                                     "3. Corner radius / end shape  —  square → soft → round (pill) ends"));
+                                     "3. Corner radius / end shape  —  square, soft and round (pill) ends"));
         {
             float y = 620.0f;
             auto mk = [](int thumbR, int trackR) {

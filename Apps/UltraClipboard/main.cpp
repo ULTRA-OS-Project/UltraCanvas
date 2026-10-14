@@ -2,14 +2,18 @@
 // Entry point: the clipboard history's main window. UltraDesktop's quick
 // panel starts it with --search TEXT (the panel's search, carried over) or
 // --edit ID (an entry's edit dialog at once). When UltraClipboard is already
-// running, the request goes to it and this start quits (SingleInstance.h).
+// running, the request goes to it and this start quits
+// (UltraCanvasSingleInstance.h).
+// Version: 0.2.0 - the framework's single-instance helper: two starts at the
+//                  same moment no longer both stay, and a copy that does not
+//                  answer is reported instead of joined by a second one
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
-#include "SingleInstance.h"
 #include "ui/UltraClipboardWindow.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 
 #ifdef __linux__
@@ -83,8 +87,14 @@ int main(int argc, char* argv[]) {
     UltraCanvasApplication app;
     std::unique_ptr<UltraClipboard::UltraClipboardWindow> window;
     // Declared after the window, so it stops listening before the window goes.
-    UltraClipboard::SingleInstance instance;
-    if (instance.HandOff({search, editId})) {
+    // The request travels as {search, editId}, on the bus topic
+    // org.ultraos.ultraclipboard.show.
+    UltraCanvasSingleInstance instance("org.ultraos.ultraclipboard", "UltraClipboard");
+    JSONValue request = JSONValue::MakeObject();
+    if (!search.empty()) request.Set("search", search);
+    if (editId != 0) request.Set("editId", editId);
+    const UltraCanvasSingleInstance::Start start = instance.Claim(request);
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) {
         std::cout << "UltraClipboard is already running: brought it forward.\n";
         return EXIT_SUCCESS;
     }
@@ -94,6 +104,8 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraClipboard.png"));
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraClipboard");
         window = std::make_unique<UltraClipboard::UltraClipboardWindow>(app);
         if (!window->Create(search, editId)) {
             std::cerr << "Failed to create the main window\n";
@@ -101,8 +113,8 @@ int main(int argc, char* argv[]) {
         }
         window->Show();
         UltraClipboard::UltraClipboardWindow* shown = window.get();
-        instance.Listen([shown](const UltraClipboard::SingleInstance::Request& request) {
-            shown->Present(request.search, request.editId);
+        instance.Listen([shown](const JSONValue& request) {
+            shown->Present(request.Get("search").GetString(), request.Get("editId").GetInteger());
         });
         app.Run();
     } catch (const std::exception& e) {

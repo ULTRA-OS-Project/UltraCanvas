@@ -1,5 +1,7 @@
 # UltraCanvas Raster Editing: PaintSurface, RasterDocument, Brush Engine
 
+<!-- doc-check: void RebuildLayerPanel(); void UpdateUndoButtons(); -->
+
 ## Overview
 
 The **raster-editing layer** is what a bitmap editor needs on top of the
@@ -19,8 +21,8 @@ them back. The first application built on it is **UltraPaint**
 | `UCBrushStroke`, `RasterPaint` | The brush engine: interactive strokes (dabs with spacing, hardness, opacity vs flow, paint / erase / clone / smudge / dodge / burn) and one-shot operations (anti-aliased shapes, flood fill, magic wand, gradients, mask stamping, eyedropper) | `include/UltraCanvasBrushEngine.h`, `core/UltraCanvasBrushEngine.cpp` |
 | `UltraCanvasPaintSurface` | The element: zoom / pan view of a document with checkerboard, pixel grid, selection ants and brush cursor; forwards pointer events in image coordinates to the tool the host installs | `include/UltraCanvasPaintSurface.h`, `core/UltraCanvasPaintSurface.cpp` |
 
-**Version**: 1.0.0
-**Last Modified**: 2026-09-06
+**Version**: 1.0.1 - `DrawCurve`, `DrawArrow`
+**Last Modified**: 2026-10-12
 **Author**: UltraCanvas Framework
 
 None of the model classes touch a window; `UltraCanvasPaintSurface` is the
@@ -72,7 +74,8 @@ doc->ApplyFilter("Colour to Alpha", [](const PixelFX::PFXImage& img) {
 
 doc->Undo();
 std::string err;
-doc->SaveToFile("out.png", err);               // flattened, format by extension
+doc->SaveToFile("out.png", err);               // flattened, format by extension, with the
+                                               // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
 ```
 
@@ -110,9 +113,27 @@ rather than installing a mask of the wrong shape.
 | `onSelectionChanged()` | the selection changed, including when a canvas-geometry change dropped it |
 | `onStateChanged()` | modified flag or undo / redo availability changed |
 
-`UltraCanvasPaintSurface::SetDocument()` installs the first three; a host
-that needs them too chains its own handler after the surface's (see
-`UltraPaintWindow::SetDocument`).
+Those four are single slots, for the one-observer case. Several observers -
+an editing view, a magnifying glass on the same document, the window's
+panels - each add a **listener** of their own and remove it when they let
+the document go, so none has to chain itself behind another's slot:
+
+```cpp
+UCRasterDocument::Listener l;
+l.pixelsChanged    = [&](const Rect2Di& r) { view->InvalidateRect(r); };
+l.structureChanged = [&]() { RebuildLayerPanel(); };
+l.selectionChanged = [&]() { /* ... */ };
+l.stateChanged     = [&]() { UpdateUndoButtons(); };
+const UCRasterDocument::ListenerId id = doc->AddListener(std::move(l));
+// ...
+doc->RemoveListener(id);    // an id that is not listening is ignored
+```
+
+Every notification fires the slot first, then every listener, on the list
+as it was when the notification began - a callback may remove its own
+listener. `UltraCanvasPaintSurface::SetDocument()` adds the surface's
+listener and `SetDocument(nullptr)` or the surface's destruction removes
+it; `UltraPaintWindow::SetDocument` adds the window's beside it.
 
 ## The brush engine
 
@@ -146,7 +167,11 @@ stroke.End();
 
 `RasterPaint` holds the one-shot operations: `DrawLine`, `DrawRectangle`,
 `DrawEllipse`, `DrawPolygon` (outline and fill, 4×4 supersampled
-anti-aliasing through `FillCoverage`), `FloodFill` (tolerance, contiguous or
+anti-aliasing through `FillCoverage`; open, it is a polyline whose joins are
+painted once), `DrawCurve` (a cubic Bezier curve; `FlattenCubicBezier` gives
+its points for a preview), `DrawArrow` (a shaft with a filled head at the
+tip, or at both ends, in one pass; `ArrowShape` gives its geometry),
+`FloodFill` (tolerance, contiguous or
 global, optionally sampling a merged layer; `FillCompositing::Replace` sets
 the region to the colour, alpha included, where the default `Blend` paints
 over it - the way to fill with transparency), `MagicWandMask` (the same
@@ -185,7 +210,9 @@ over the canvas. The surface handles what every tool shares:
 - **Checkerboard** behind transparent pixels, a drop shadow and border, the
   **pixel grid** from 8× (`SetPixelGridThreshold`), the **selection
   outline** as marching ants (animated on an application timer only while
-  a selection exists), and a **brush cursor** circle / square of
+  a selection exists - one clock per document, shared by every surface
+  showing it, so a loupe's ants march in step with the editing view's), and
+  a **brush cursor** circle / square of
   `SetCursorRadius()`.
 - Keyboard events go to `onToolKey` first, then to the zoom keys.
 - Dropped files arrive through `onFilesDropped`.
@@ -193,6 +220,47 @@ over the canvas. The surface handles what every tool shares:
 It is distinct from `UltraCanvasZoomPanImage` (a read-only viewer of a
 `UCImage`) and `UltraCanvasMediaSurface` (the media viewer's display): this
 one edits, and its picture is the document's live composite.
+
+### Loupe mode: a magnifying glass on the same document
+
+A second surface on the same document can show the pixels around a point
+magnified - the magnifying glass a bitmap editor keeps beside its editing
+view while a tool places things to the pixel. In loupe mode the host alone
+sets the view and nothing else moves it: the view is never clamped to the
+element or fitted on the first frame, the pointer, wheel and keyboard are
+ignored, and the element takes neither focus nor hit-tests
+(`SetInteractive(false)`), so it can lie over the editing view - an
+absolutely positioned child with `OverlayZOrder::Overlays` - without taking
+its events.
+
+```cpp
+auto loupe = CreatePaintSurface("loupe");
+loupe->SetLoupeMode(true);
+loupe->SetDocument(doc);
+loupe->onDrawOverlay = surface->onDrawOverlay;   // the tool's rubber band, magnified too
+surface->onToolHover = [&](const PaintPointerEvent& e) {
+    // three times the editing view's zoom, the pointer's pixel at the centre
+    loupe->SetLoupeView(surface->GetZoom() * 3.0, e.x, e.y);
+};
+loupe->SetLoupeCrosshair(true, 8.0);   // the default: two diagonals, 8 px clear of the centre
+```
+
+- `SetLoupeView(zoom, imageX, imageY)` puts that image point at the centre
+  of the element at that zoom (clamped to the surface's own 1 %..12800 %).
+- The **crosshair** is two translucent diagonals from the corners that stop
+  `gap` pixels short of the centre, so the pixel under the pointer stays
+  clear; a light line under a dark one reads on dark and light pixels alike.
+  `SetLoupeCrosshair(false)` hides it; it is never drawn outside loupe mode.
+- A loupe listens to the document like the editing view does
+  (`UCRasterDocument::AddListener`), so pixels, the selection and its
+  marching ants (in step with the editing view's, on the one clock both
+  share), and the layers follow by themselves.
+- The checkerboard, the pixel grid from 8x and `onDrawOverlay` work as in
+  the editing view, in the loupe's own transform.
+
+UltraPaint shows one in a corner of the canvas while the rectangle selection
+is active (Settings > Display > Mouse pointer magnification glass: size and
+2x / 3x / 4x) and moves it to another corner when the pointer comes near it.
 
 ## `IRenderContext::SetImageSmoothing`
 

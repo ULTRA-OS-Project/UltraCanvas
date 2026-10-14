@@ -8,7 +8,11 @@
 // --scan / --clean it runs headless, which is what makes it usable over ssh
 // and testable in CI. Removal never happens by accident: --clean simulates
 // unless it is given --trash or --delete, and --delete additionally needs
-// --yes.
+// --yes. One UltraCleaner window per user: a second start brings the running
+// one forward and quits (UltraCanvasSingleInstance.h); the headless modes do
+// not take part.
+// Version: 0.2.0 - one UltraCleaner per user: a second start brings the first
+//                  one's window forward instead of opening another copy
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraCleanerWindow.h"
@@ -24,6 +28,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
@@ -343,6 +348,13 @@ int main(int argc, char* argv[]) {
         return RunHeadless(headlessClean, mode, includeAll);
     }
 
+    // One UltraCleaner window per user: two would scan, and remove from, the
+    // same folders at once. A second start - with an album folder or
+    // without - brings the running window forward.
+    UltraCanvasSingleInstance instance("org.ultraos.ultracleaner", "UltraCleaner");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;
+
     UltraCanvasApplication app;
 
 #ifdef __linux__
@@ -359,6 +371,10 @@ int main(int argc, char* argv[]) {
                         << std::endl;
             return EXIT_FAILURE;
         }
+        // The other copy holds the lock but did not answer: say so rather
+        // than vanish without a word.
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraCleaner");
         // One icon, everywhere the app is drawn: the window and the taskbar
         // entry that follows it read this file; the .ico embedded in the
         // Windows binary and the desktop entry's theme icon are rendered from
@@ -377,7 +393,10 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         window.Show();
+        // A later start asks this window to come forward.
+        instance.ListenRaise();
         app.Run();
+        instance.Close();   // no request reaches the window once it starts to go
     } catch (const std::exception& e) {
         debugOutput << "Unhandled exception: " << e.what() << std::endl;
         return EXIT_FAILURE;

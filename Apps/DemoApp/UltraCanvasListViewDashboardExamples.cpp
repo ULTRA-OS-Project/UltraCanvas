@@ -129,11 +129,14 @@ namespace UltraCanvas {
                 if (role == ListDataRole::DisplayRole) {
                     switch (index.column) {
                         case ColDomain:   return r.domain;
-                        case ColStatus:   return std::string(r.active ? "\xE2\x9C\x93 Active" : "\xE2\x9C\x95 Inactive");
-                        case ColInsights: return std::string(r.insightsEnabled ? "\xE2\x9C\x93 Enabled" : "Enable");
+                        // The tick and the cross before these, and the menu's three
+                        // dots, are drawn by DomainRowDelegate: "✓", "✕" and "⋮"
+                        // are not in the bundled UI font.
+                        case ColStatus:   return std::string(r.active ? "Active" : "Inactive");
+                        case ColInsights: return std::string(r.insightsEnabled ? "Enabled" : "Enable");
                         case ColVisitors: return FormatVisitors(r.visitors);
                         case ColPlan:     return r.plan;
-                        case ColMenu:     return std::string("\xE2\x8B\xAE");   // ⋮
+                        case ColMenu:     return std::string("More actions");
                         default:          return {};
                     }
                 }
@@ -215,6 +218,13 @@ namespace UltraCanvas {
                     DrawSparkline(ctx, r.history, Rect2Dd(cell.x, cell.y + 8, cell.width, cell.height - 16));
                     return;
                 }
+                if (column == ColMenu) {
+                    // Three dots, one above the other.
+                    ctx->SetFillPaint(hoverRow == row && hoverColumn == ColMenu ? kTextColor : kMutedColor);
+                    const Point2Dd centre(cell.x + cell.width / 2, cell.y + cell.height / 2);
+                    for (int i = -1; i <= 1; ++i) ctx->FillCircle(Point2Dd(centre.x, centre.y + i * 5.0), 1.7);
+                    return;
+                }
 
                 const std::string text = GetStringValue(model->GetData({row, column}, ListDataRole::DisplayRole));
                 if (text.empty()) return;
@@ -241,7 +251,15 @@ namespace UltraCanvas {
                 ctx->SetTextAlignment(option.columnAlignment);
                 ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
                 ctx->SetTextPaint(color);
-                ctx->DrawTextInRect(text, cell);
+                Rect2Dd textBox = cell;
+                if (column == ColStatus || (column == ColInsights && r.insightsEnabled)) {
+                    // A tick before the word, or a cross for an inactive domain.
+                    DrawMark(ctx, column == ColInsights || r.active, color,
+                             Point2Dd(cell.x + 5, cell.y + cell.height / 2));
+                    textBox.x += 14;
+                    textBox.width -= 14;
+                }
+                ctx->DrawTextInRect(text, textBox);
 
                 if (column == ColDomain || (column == ColInsights && !r.insightsEnabled)) {
                     const int width = ctx->GetTextLineWidth(text);
@@ -275,6 +293,27 @@ namespace UltraCanvas {
 
         private:
             std::unordered_map<std::string, int> textWidth;
+
+            static void DrawMark(IRenderContext* ctx, bool tick, const Color& color, const Point2Dd& c) {
+                ctx->PushState();
+                ctx->SetStrokePaint(color);
+                ctx->SetStrokeWidth(1.6);
+                ctx->SetLineCap(LineCap::Round);
+                ctx->SetLineJoin(LineJoin::Round);
+                ctx->ClearPath();
+                if (tick) {
+                    ctx->MoveTo(c.x - 4.0, c.y);
+                    ctx->LineTo(c.x - 1.5, c.y + 2.8);
+                    ctx->LineTo(c.x + 4.0, c.y - 3.2);
+                } else {
+                    ctx->MoveTo(c.x - 3.2, c.y - 3.2);
+                    ctx->LineTo(c.x + 3.2, c.y + 3.2);
+                    ctx->MoveTo(c.x + 3.2, c.y - 3.2);
+                    ctx->LineTo(c.x - 3.2, c.y + 3.2);
+                }
+                ctx->Stroke();
+                ctx->PopState();
+            }
 
             static void DrawSparkline(IRenderContext* ctx, const std::vector<float>& values, const Rect2Dd& box) {
                 if (values.size() < 2 || box.width <= 0 || box.height <= 0) return;
@@ -401,7 +440,7 @@ namespace UltraCanvas {
         page->AddChild(title);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("DashboardSubtitle", 20, 44, 960, 36);
-        subtitle->SetText("Click a domain to open it, \"Enable\" to turn on security insights, \xE2\x8B\xAE (or right-click a row) "
+        subtitle->SetText("Click a domain to open it, \"Enable\" to turn on security insights, the three dots (or right-click a row) "
                           "for its menu, and a column header to sort. Every row is painted by one IItemDelegate.");
         subtitle->SetFontSize(11);
         subtitle->SetWrap(TextWrap::WrapWordChar);

@@ -4,6 +4,10 @@
 
 **UltraCanvasListView** is a Model-View-Delegate list widget in the UltraCanvas framework. It cleanly separates data (the *model*), per-row drawing (the *delegate*), and selection state (the *selection*), allowing simple single-column lists, multi-column tables with headers, icon lists, and fully custom-painted rows to all share the same view class.
 
+![UltraCanvasListView: the model, delegate and selection, wired through the view](UltraCanvasListView2.svg)
+
+Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
+
 **Version:** 1.0.1
 **Headers:**
 - `include/UltraCanvasListView.h`
@@ -61,6 +65,27 @@ IListSelection* GetSelection() const;
 ```
 
 The view shares ownership of the model, the delegate and the selection: all three are passed as `std::shared_ptr`, and the getters return plain pointers for reading.
+
+`SetModel` puts the view's callbacks on the model (`onDataChanged`,
+`onRowChanged`, `onRowInserted`, `onRowRemoved`). The model may outlive the
+view - an application usually keeps it - so once the view is destroyed those
+callbacks do nothing; they are not taken off the model, because a
+`UltraCanvasListSortFilterProxy` chained on after the view keeps a copy of them
+and must go on hearing its source. A subclass that keeps something derived from
+the rows overrides `OnModelChanged()`, called after the view has taken in each
+change, instead of wrapping the model's callbacks itself (which would outlive
+it):
+
+```cpp
+class FittedList : public UltraCanvasListView {
+public:
+    using UltraCanvasListView::UltraCanvasListView;
+protected:
+    void OnModelChanged() override { columnStale = true; }   // measure again at the next paint
+private:
+    bool columnStale = true;
+};
+```
 
 ### Styling
 
@@ -447,7 +472,10 @@ std::function<void(int row)> onItemHovered;
 
 // Cell-level (multi-column aware). posInCell is relative to the cell's
 // top-left corner. onCellHovered reports (-1, -1) when the pointer leaves
-// the rows area.
+// the rows area. The hover follows the rows when they scroll under a still
+// pointer (a wheel scroll, EnsureRowVisible): the row highlight moves, and
+// onItemHovered and onCellHovered are reported again for the row now under
+// the pointer, so a preview hung on them follows the scroll too.
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
 
