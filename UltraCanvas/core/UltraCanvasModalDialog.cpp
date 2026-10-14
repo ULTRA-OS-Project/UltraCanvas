@@ -1,9 +1,9 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.7.0 - ModalDialogStyle::FromTheme, ApplyTheme
-// Version: 3.6.1
-// Last Modified: 2026-10-11
+// Version: 3.9.0 - ModalDialogStyle::FromTheme, ApplyTheme
+// Version: 3.8.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
@@ -16,7 +16,8 @@
 #include "UltraCanvasFilerWidget.h"     // the file dialog's listing
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasFileDialogSettings.h"
-#include "UltraCanvasFileLoader.h"       // NotifyRecentFile
+#include "UltraCanvasFileLoader.h"       // NotifyRecentFile, save settings
+#include "UltraCanvasFileDragIcon.h"     // the Save dialog's file icon
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -645,7 +646,11 @@ namespace UltraCanvas {
             }
         }
 
-        float textHeight = messageArea->MeasureContentHeight();
+        // A hidden message area - a dialog of controls only - takes no room:
+        // measured, its one empty line and the slack under it left a gap
+        // above the buttons.
+        const bool showsMessage = messageArea->IsVisible();
+        float textHeight = showsMessage ? messageArea->MeasureContentHeight() : 0.0f;
 
         // Everything AddDialogElement() put below the message — switches, radio
         // rows, an input label — sits in the same column and needs its own room.
@@ -671,7 +676,7 @@ namespace UltraCanvas {
         // an icon-less dialog is as tall as its own content needs.
         const float iconBlock = IsIconVisible() ? style.iconSize : 0.0f;
         float contentBlock = std::max(iconBlock,
-                                      textHeight + 10.0f + extrasHeight);
+                                      (showsMessage ? textHeight + 10.0f : 0.0f) + extrasHeight);
         int desired = static_cast<int>(std::ceil(
                 2.0f * style.padding + contentBlock + style.buttonAreaHeight));
 
@@ -1448,6 +1453,10 @@ namespace UltraCanvas {
         constexpr int kFileDialogMinHeight = 380;
         constexpr int kFileDialogMaxSide = 8000;
         constexpr int kFileDialogMinColumn = 44;     // the widget's own minimum
+        // The Save dialog's file icon, and the block it sits in with its
+        // "Drag to Folder" caption, left of the name and type rows.
+        constexpr int kSaveIconSize = 64;
+        constexpr int kSaveIconBlockWidth = 96;
         constexpr int kFileDialogMaxColumn = 2000;
 
         // The name the running application registered with
@@ -1532,7 +1541,7 @@ namespace UltraCanvas {
         PopulateFolderTree();
         RefreshFileList();
         SyncFolderTree();
-        if (fileNameInput) fileNameInput->SetText(fileConfig.defaultFileName);
+        SetNameText(fileConfig.defaultFileName);
     }
 
     void UltraCanvasFileDialog::BuildFileInterface() {
@@ -1576,7 +1585,7 @@ namespace UltraCanvas {
                        std::filesystem::is_directory(typed.parent_path(), ec)) {
                 // A file path: open its folder and put the name in the name field.
                 GoToDirectory(PathToUtf8(typed.parent_path()), true);
-                if (fileNameInput) fileNameInput->SetText(PathToUtf8(typed.filename()));
+                SetNameText(PathToUtf8(typed.filename()));
             } else if (pathInput) {
                 pathInput->SetText(currentDirectory);
             }
@@ -1629,6 +1638,15 @@ namespace UltraCanvas {
             const std::string& id = node->data.nodeId;
             if (TreeNodeTag(id) != kPlaceTag && TreeNodeTag(id) != kDriveTag) return;
             GoToDirectory(TreeNodePath(id), false);
+        };
+        // The Save icon dragged over the tree: every folder row is a place it
+        // can be dropped (OnFileIconDropped). Files dragged from the listing
+        // are not taken here - the dialog chooses files, it does not move
+        // them.
+        folderTree->onFilesDragAccept = [this](TreeNode* node) {
+            if (!node || !fileIcon || !fileIcon->IsDragging()) return false;
+            const std::string& id = node->data.nodeId;
+            return TreeNodeTag(id) == kPlaceTag || TreeNodeTag(id) == kDriveTag;
         };
         panes->AddChild(folderTree);
 
@@ -1711,7 +1729,81 @@ namespace UltraCanvas {
                 HandleOkButton();
                 return true;
             };
-            inputColumn->AddChild(fileNameInput);
+            if (fileConfig.dialogType == FileDialogType::Save) {
+                // The save box: the big icon of the type being saved at the
+                // left of the name and type rows ("Drag to Folder" under it),
+                // the name, and that type's settings after it. The icon is the
+                // one the listing draws for the type, and dropping it on a
+                // folder of the listing or the tree opens that folder - where
+                // the file goes.
+                auto iconBlock = std::make_shared<UltraCanvasContainer>("FileDialogFileIconBlock");
+                iconBlock->size.width = CSSLayout::Dimension::Px(static_cast<float>(kSaveIconBlockWidth));
+                iconBlock->layout.SetFlexColumn().SetFlexGap(2)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+                iconBlock->layoutItem.SetFlexShrink(0);
+
+                fileIcon = std::make_shared<UltraCanvasFileDragIcon>(
+                        "FileDialogFileIcon", 0, 0, kSaveIconSize, kSaveIconSize);
+                fileIcon->size.width = CSSLayout::Dimension::Px(static_cast<float>(kSaveIconSize));
+                fileIcon->size.height = CSSLayout::Dimension::Px(static_cast<float>(kSaveIconSize));
+                fileIcon->layoutItem.SetFlexShrink(0);
+                fileIcon->SetTooltip("Drag onto a folder to save the file there");
+                // The type's logo in the colour the listing gives the type, or
+                // this desktop's icon for it when the listing shows those.
+                fileIcon->SetIconPainter([listing = filerView.get()](
+                        IRenderContext* ctx, const std::string& name, bool isFolder,
+                        const Rect2Di& rect) {
+                    if (!listing) return;
+                    if (isFolder || (listing->GetFileIconStyle() == FilerFileIconStyle::HostOperatingSystem &&
+                                     UltraCanvasFilerWidget::AreHostFileIconsAvailable())) {
+                        listing->DrawTypeIcon(ctx, name, isFolder, rect);
+                        return;
+                    }
+                    Color band, ink;
+                    listing->GetTypeColors(name, isFolder, band, ink);
+                    UltraCanvasFileDragIcon::DrawDocumentGlyph(ctx, rect, name, band, ink);
+                });
+                fileIcon->onDropped = [this](UltraCanvasUIElement* target, const Point2Di& point) {
+                    OnFileIconDropped(target, point);
+                };
+                iconBlock->AddChild(fileIcon);
+
+                auto iconCaption = std::make_shared<UltraCanvasLabel>(
+                        "FileDialogFileIconCaption", 0, 0, kSaveIconBlockWidth, 14, "Drag to Folder");
+                iconCaption->SetFontSize(std::max(8.0f, fontSize - 2.0f));
+                iconCaption->SetTextColor(Color(90, 90, 96, 255));
+                iconCaption->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+                iconCaption->size.width = CSSLayout::Dimension::Px(static_cast<float>(kSaveIconBlockWidth));
+                iconCaption->size.height = CSSLayout::Dimension::Px(14.0f);
+                iconCaption->layoutItem.SetFlexShrink(0);
+                iconBlock->AddChild(iconCaption);
+                fields->AddChild(iconBlock);
+
+                // The type's settings: a button at the end of the type row,
+                // added there below.
+                if (fileConfig.saveSettingsButton) {
+                    saveSettingsButton = std::make_shared<UltraCanvasButton>(
+                            "FileDialogSaveSettings", 0, 0, fieldHeight, fieldHeight);
+                    saveSettingsButton->SetIcon(FileDialogIconPath("settings.svg"));
+                    saveSettingsButton->layoutItem.SetFlexShrink(0);
+                    saveSettingsButton->onClick = [this]() { ShowSaveTypeSettings(); };
+                }
+                // The name takes the whole width of its row.
+                auto nameRow = std::make_shared<UltraCanvasContainer>("FileDialogNameRow");
+                nameRow->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
+                nameRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+                fileNameInput->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+                nameRow->AddChild(fileNameInput);
+                inputColumn->AddChild(nameRow);
+            } else {
+                inputColumn->AddChild(fileNameInput);
+            }
+            // Typing a name narrows the listing to the files whose name has
+            // it in; and in a Save the type follows the name: "photo.jpg"
+            // under All files is a JPEG, and its icon and settings are JPEG's.
+            fileNameInput->onTextChanged = [this](const std::string& text) {
+                OnNameTyped(text);
+            };
 
             if (fileConfig.filterToggles) {
                 // One button per kind of file, any number on, sized to their
@@ -1727,12 +1819,17 @@ namespace UltraCanvas {
                 filterToggleBar->SetWidthMode(SegmentWidthMode::FitContent);
                 filterToggleBar->layoutItem.SetFlexShrink(1);
                 toggleRow->AddChild(filterToggleBar);
+                if (saveSettingsButton) {
+                    toggleRow->layout.SetFlexGap(6);
+                    toggleRow->AddChild(saveSettingsButton);
+                }
                 inputColumn->AddChild(toggleRow);
                 RebuildFilterToggles();
                 ApplyListingFilter();   // the listing was set up before the toggles
                 filterToggleBar->onSelectionChanged = [this](const std::vector<int>& on) {
                     activeFilters = std::set<int>(on.begin(), on.end());
                     ApplyListingFilter();
+                    UpdateSaveTypeDecorations();
                 };
             } else {
                 addLabel("FileDialogTypeLabel", "Files of type:");
@@ -1748,16 +1845,30 @@ namespace UltraCanvas {
                     if (fileConfig.dialogType == FileDialogType::Save && fileNameInput) {
                         const std::string name = fileNameInput->GetText();
                         const std::string renamed = WithSaveExtension(name);
-                        if (!name.empty() && renamed != name) fileNameInput->SetText(renamed);
+                        if (!name.empty() && renamed != name) SetNameText(renamed);
                     }
+                    UpdateSaveTypeDecorations();
                 };
-                inputColumn->AddChild(filterDropdown);
+                if (saveSettingsButton) {
+                    // The type, and the settings of the type, on one line.
+                    auto typeRow = std::make_shared<UltraCanvasContainer>("FileDialogTypeRow");
+                    typeRow->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
+                    typeRow->layout.SetFlexRow().SetFlexGap(6)
+                            .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+                    filterDropdown->layoutItem.SetFlexShrink(1);
+                    typeRow->AddChild(filterDropdown);
+                    typeRow->AddChild(saveSettingsButton);
+                    inputColumn->AddChild(typeRow);
+                } else {
+                    inputColumn->AddChild(filterDropdown);
+                }
                 RebuildFilterDropdown();
             }
 
             fields->AddChild(labelColumn);
             fields->AddChild(inputColumn);
             browser->AddChild(fields);
+            UpdateSaveTypeDecorations();
         }
 
         AddDialogElement(browser);
@@ -2073,6 +2184,9 @@ namespace UltraCanvas {
         settingListingPath = true;
         filerView->SetPath(currentDirectory);
         settingListingPath = false;
+        // A new folder ends the listing's name filter; the name typed still
+        // stands, so it narrows this folder too.
+        if (!nameFilter.empty()) filerView->SetNameFilter(nameFilter);
     }
 
     void UltraCanvasFileDialog::ApplyListingFilter() {
@@ -2108,15 +2222,37 @@ namespace UltraCanvas {
         });
     }
 
+    void UltraCanvasFileDialog::OnNameTyped(const std::string& text) {
+        // The name part of what was typed, without the spaces round it: a
+        // path typed into the field narrows the listing by its last part.
+        std::string typed = text;
+        while (!typed.empty() && std::isspace(static_cast<unsigned char>(typed.back()))) typed.pop_back();
+        while (!typed.empty() && std::isspace(static_cast<unsigned char>(typed.front()))) typed.erase(0, 1);
+        const size_t slash = typed.find_last_of("/\\");
+        if (slash != std::string::npos) typed = typed.substr(slash + 1);
+        SetNameFilter(typed);
+        UpdateSaveTypeDecorations();
+    }
+
+    void UltraCanvasFileDialog::SetNameFilter(const std::string& typed) {
+        nameFilter = typed;
+        // The listing's own filter-as-you-type: it narrows what was already
+        // read, so no keystroke reads the folder again.
+        if (filerView) filerView->SetNameFilter(nameFilter);
+    }
+
     void UltraCanvasFileDialog::OnListingPathChanged(const std::string& path) {
         if (settingListingPath) return;
         // The user opened a folder in the listing: the dialog follows it.
         currentDirectory = path;
         selectedFiles.clear();
         if (fileNameInput && !autoFileName.empty() && fileNameInput->GetText() == autoFileName) {
-            fileNameInput->SetText("");
+            SetNameText("");
         }
         autoFileName.clear();
+        // Opening the folder ended the listing's name filter (SetPath); the
+        // name typed still stands, so it narrows this folder too.
+        if (filerView && !nameFilter.empty()) filerView->SetNameFilter(nameFilter);
         if (pathInput) pathInput->SetText(currentDirectory);
         SyncFolderTree();
         if (onDirectoryChanged) onDirectoryChanged(currentDirectory);
@@ -2140,7 +2276,7 @@ namespace UltraCanvas {
             }
         }
         autoFileName = text;
-        fileNameInput->SetText(text);
+        SetNameText(text);
     }
 
 // ----- filters and options -----
@@ -2201,7 +2337,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFileDialog::SetDefaultFileName(const std::string& fileName) {
         fileConfig.defaultFileName = fileName;
-        if (fileNameInput) fileNameInput->SetText(fileName);
+        SetNameText(fileName);
     }
 
     std::string UltraCanvasFileDialog::GetDefaultFileName() const {
@@ -2271,7 +2407,7 @@ namespace UltraCanvas {
         const std::string full = CombinePath(currentDirectory, typed);
         std::error_code ec;
         if (std::filesystem::is_directory(PathFromUtf8(full), ec)) {
-            fileNameInput->SetText("");
+            SetNameText("");
             GoToDirectory(full, true);
             return;
         }
@@ -2280,7 +2416,7 @@ namespace UltraCanvas {
             // the "Replace it?" question is asked about the file that will
             // be written. The field shows the name as it will be saved.
             const std::string named = WithSaveExtension(typed);
-            if (named != typed) fileNameInput->SetText(named);
+            if (named != typed) SetNameText(named);
             // A name the file system cannot hold is refused here, with the
             // reason, rather than failing later in the caller's write.
             if (fileConfig.validateNames) {
@@ -2408,6 +2544,127 @@ namespace UltraCanvas {
             named = ApplyDefaultExtension(named, fileConfig.defaultExtension);
         }
         return named;
+    }
+
+// ----- save: the file icon and the type's settings -----
+    std::string UltraCanvasFileDialog::GetSaveTypeName() const {
+        std::string typed = fileNameInput ? fileNameInput->GetText() : std::string();
+        while (!typed.empty() && std::isspace(static_cast<unsigned char>(typed.back()))) typed.pop_back();
+        while (!typed.empty() && std::isspace(static_cast<unsigned char>(typed.front()))) typed.erase(0, 1);
+        // Nothing typed yet is still a file of the chosen type.
+        return WithSaveExtension(typed.empty() ? std::string("untitled") : typed);
+    }
+
+    void UltraCanvasFileDialog::SetNameText(const std::string& text) {
+        if (!fileNameInput) return;
+        // SetText is not an edit, so the field's onTextChanged does not run:
+        // what follows the name is brought along here. The listing stays
+        // narrowed by what the user typed - a name the dialog puts in (the
+        // file clicked, the type's extension) is no search - until the field
+        // is emptied.
+        fileNameInput->SetText(text);
+        if (text.empty()) SetNameFilter(std::string());
+        UpdateSaveTypeDecorations();
+    }
+
+    void UltraCanvasFileDialog::UpdateSaveTypeDecorations() {
+        if (fileConfig.dialogType != FileDialogType::Save) return;
+        const std::string name = GetSaveTypeName();
+        // The last component: a name typed with a folder in front of it is
+        // still that file.
+        const size_t slash = name.find_last_of("/\\");
+        const std::string leaf = slash == std::string::npos ? name : name.substr(slash + 1);
+        if (fileIcon) fileIcon->SetFileName(leaf);
+        if (!saveSettingsButton) return;
+
+        const size_t dot = leaf.find_last_of('.');
+        const std::string type = (dot == std::string::npos || dot == 0 || dot + 1 >= leaf.size())
+                                         ? std::string() : leaf.substr(dot + 1);
+        FileSaveFormat format;
+        const bool known = !type.empty() && UltraCanvasFileLoader::FindSaveFormat(type, format);
+        // A picture of known size in a pixel format can at least be given
+        // another size, settings of its own or not (BMP).
+        const bool offersSize = known && format.bitmap && HasPictureSize();
+        const bool hasSettings = known && (!format.settings.empty() || offersSize);
+        saveSettingsButton->SetDisabled(!hasSettings);
+        if (hasSettings) {
+            saveSettingsButton->SetTooltip(format.settings.empty()
+                    ? format.name + " settings: the size it is written at"
+                    : format.name + " settings: how the file is written");
+        } else if (type.empty()) {
+            saveSettingsButton->SetTooltip("Settings: the name has no type to choose settings for");
+        } else {
+            saveSettingsButton->SetTooltip("Settings: ." + type + " files have none to choose");
+        }
+    }
+
+    void UltraCanvasFileDialog::ShowSaveTypeSettings() {
+        if (fileConfig.dialogType != FileDialogType::Save) return;
+        std::weak_ptr<UltraCanvasUIElement> weak = weak_from_this();
+        FileSavePicture picture;
+        picture.width = fileConfig.imageWidth;
+        picture.height = fileConfig.imageHeight;
+        picture.drawing = fileConfig.imageIsDrawing;
+        UltraCanvasFileLoader::ShowSaveSettingsDialog(
+                GetSaveTypeName(), picture, saveImageSize, this,
+                [weak, this](DialogResult result, const FileSaveImageSize& size) {
+                    if (weak.expired() || result != DialogResult::OK) return;
+                    saveImageSize = size;
+                });
+    }
+
+    bool UltraCanvasFileDialog::HasPictureSize() const {
+        return fileConfig.imageWidth > 0 && fileConfig.imageHeight > 0;
+    }
+
+    FileSaveImageSize UltraCanvasFileDialog::GetSaveImageSize() const {
+        if (fileConfig.dialogType != FileDialogType::Save || !HasPictureSize() ||
+            saveImageSize.IsOriginal())
+            return FileSaveImageSize();
+        // Only a pixel format is written at a size: the type may have been
+        // switched to another since the size was chosen.
+        FileSaveFormat format;
+        if (!UltraCanvasFileLoader::FindSaveFormat(GetSaveTypeName(), format) || !format.bitmap)
+            return FileSaveImageSize();
+        return saveImageSize;
+    }
+
+    void UltraCanvasFileDialog::OnFileIconDropped(UltraCanvasUIElement* target,
+                                                  const Point2Di& windowPoint) {
+        (void)windowPoint;   // the targets already know where the pointer is
+        // The folder the target showed as the drop's destination: the folder
+        // framed in the listing (or, over its empty space, the folder it
+        // shows), or the highlighted row of the tree.
+        std::string folder;
+        for (UltraCanvasUIElement* e = target; e; e = e->GetParentContainer()) {
+            if (filerView && e == filerView.get()) {
+                folder = filerView->GetIncomingDropFolder();
+                break;
+            }
+            if (folderTree && e == folderTree.get()) {
+                if (TreeNode* node = folderTree->GetDropTargetNode()) {
+                    const std::string& id = node->data.nodeId;
+                    if (TreeNodeTag(id) == kPlaceTag || TreeNodeTag(id) == kDriveTag)
+                        folder = TreeNodePath(id);
+                }
+                break;
+            }
+        }
+        if (folder.empty() || folder == currentDirectory) return;
+        // A folder of an archive the listing is browsing is not a place a
+        // file can be written to.
+        std::error_code ec;
+        if (!std::filesystem::is_directory(PathFromUtf8(folder), ec) || ec) return;
+        GoToDirectory(folder, true);
+    }
+
+    bool UltraCanvasFileDialog::OnEvent(const UCEvent& event) {
+        if (event.type == UCEventType::KeyDown && event.virtualKey == UCKeys::Escape &&
+            fileIcon && fileIcon->IsDragging()) {
+            fileIcon->CancelDrag();
+            return true;
+        }
+        return UltraCanvasModalDialog::OnEvent(event);
     }
 
     bool UltraCanvasFileDialog::IsFileMatchingFilter(const std::string& fileName) const {

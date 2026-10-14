@@ -106,10 +106,25 @@ stop, text, transparency ramps and mixes, shadows and feathers, clip
 views, contours, blends, moulds and bevels all round trip as Xara's own
 records; Xara's own arrowheads as Xara arrowheads, the rest of the line
 gallery as plain shapes that read back as strokes), SVG (shapes, fills,
-text - no effects), DXF, EMF, WMF; exports PDF, AI, EPS and CDR too. What
-a reader or writer had to drop is reported in the status bar. Without
+text - no effects), DXF, EMF, WMF; exports PDF, AI, EPS and CDR too, and the
+page as a bitmap at any size - PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, QOI
+or a Windows icon, each one this build can write (AVIF and HEIC need
+libheif's encoders): the Export dialog's Settings for those types open on
+the page at 96 DPI and take any other size, and the page is drawn at that
+size - as sharp at 8000 pixels as at 800 - with the format's save settings
+(JPEG quality, PNG compression ...). A PNG keeps what the page leaves
+transparent; a JPEG is laid on white; an icon holds the page fitted into
+16, 32, 48 and 256 pixel squares. What a reader or writer had to
+drop is reported in the status bar. Without
 the Vector plugin (`-DULTRACANVAS_PLUGIN_VECTOR=ON`) the editor draws but
 has no file formats.
+
+One ArtCreator runs per user. `ArtCreator a.svg b.xar` opens one window
+each; starting it again while it runs hands the drawings to the running copy,
+which opens each in a new window of its own and brings it to the front (a
+drawing already open is never replaced), and a start without drawings just
+brings ArtCreator forward (`UltraCanvasSingleInstance`). `--help` and
+`--version` answer on their own.
 
 ## Source map
 
@@ -120,4 +135,4 @@ has no file formats.
 | `ArtCreatorTools.{h,cpp}` | The `ArtTool` base, the 15 tools, the line gallery's named choices, the option-widget helpers |
 | `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup and Text |
 | `ArtCreator.desktop` | The freedesktop launcher |
-| `../../media/icons/artcreator/` | Tool and command icons, flat and one-tone like `../../media/icons/menu/` (which gives the file, edit and zoom ones); `../../media/appicon/ArtCreator.{png,svg}` the app icon |
+| `../../media/icons/artcreator/` | Tool and command icons in one shade, each set drawn on the pixel grid of the size it is shown at, so its lines land on whole pixels: the 24 px set (toolbar and panel buttons), `28/` (the tool palette, 28 px icons in 36 px buttons) and `16/` (every menu entry). The toolbar's file, edit and zoom buttons use `../../media/icons/menu/`; `../../media/appicon/ArtCreator.{png,svg}` is the app icon |

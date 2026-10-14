@@ -7,7 +7,11 @@
 // Without arguments it opens the window on step 1, what was found, with the
 // guide for any platform under it - the same choice Docs/GettingStarted.md
 // offers, so a programmer can read another platform's instructions too. With --check
-// or --plan it runs headless, which is what CI uses to smoke-test it.
+// or --plan it runs headless, which is what CI uses to smoke-test it, and
+// --create writes the project skeleton headless, which CI builds against
+// the SDK it just installed, so the skeleton is known to compile.
+// Version: 0.2.2 - --step reaches 6 (Build); --page build
+// Version: 0.2.1 - --create <folder> (--name, --sdk) writes the skeleton headless
 // Version: 0.2.0 - --step <n>; --page maps the old names to steps
 // Version: 0.1.2 - --assistant <ai> chooses the assistant
 // Version: 0.1.1 - --page <name> opens the window on a page
@@ -16,6 +20,7 @@
 
 #include "StartChecks.h"
 #include "StartPlan.h"
+#include "StartProject.h"
 #include "StartSystem.h"
 #include "StartTypes.h"
 
@@ -66,17 +71,22 @@ void PrintUsage(const char* programName) {
         "                    (in the window: preselect that platform's guide)\n"
         "  --all             Check every feature group, not only the toolchain\n"
         "                    and the framework core\n"
-        "  --step <n>        Open the window on step 1 to 5 (your computer, features,\n"
-        "                    tools, framework, project)\n"
+        "  --step <n>        Open the window on step 1 to 6 (your computer, features,\n"
+        "                    tools, framework, project, build)\n"
         "  --page <name>     The page names before 0.3.0 (platform, system, choices,\n"
-        "                    install, project, ai) mapped to their step; guide and\n"
-        "                    report open those dialogs\n"
+        "                    install, project, ai) and build, mapped to their step;\n"
+        "                    guide and report open those dialogs\n"
         "  --assistant <ai>  claude, codex, copilot, gemini or other: the assistant\n"
         "                    the plan and the project are for (default claude)\n"
+        "  --create <folder> Write the project skeleton into the folder (as the\n"
+        "                    Project step does) and exit; no window\n"
+        "  --name <app>      The application's name for --create (default MyApp)\n"
+        "  --sdk <prefix>    The SDK prefix --create points the skeleton at\n"
         "  -v, --version     Show version information\n"
         "  -h, --help        Show this message\n"
         "\n"
-        "Exit status with --check: 0 when nothing is missing, 2 when something is.\n",
+        "Exit status with --check: 0 when nothing is missing, 2 when something is.\n"
+        "Exit status with --create: 0 when the files were written, 1 otherwise.\n",
         programName);
 }
 
@@ -101,6 +111,18 @@ int RunHeadless(bool withPlan, const UltraCanvasStart::Choices& choicesIn) {
     return plan.MissingCount() == 0 ? EXIT_SUCCESS : 2;
 }
 
+// --create: the Project step's files, written without a window. The
+// folder must be empty of a CMakeLists.txt, as in the window.
+int RunCreate(const UltraCanvasStart::ProjectOptions& options) {
+    const UltraCanvasStart::ProjectResult result = UltraCanvasStart::ScaffoldProject(options);
+    if (!result.ok) {
+        std::fprintf(stderr, "%s\n", result.error.c_str());
+        return EXIT_FAILURE;
+    }
+    for (const auto& path : result.written) std::printf("wrote %s\n", path.c_str());
+    return EXIT_SUCCESS;
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -109,6 +131,8 @@ int main(int argc, char* argv[]) {
     std::string page;
     int step = 0;
     UltraCanvasStart::Choices choices;
+    UltraCanvasStart::ProjectOptions project;   // --create, --name, --sdk
+    bool create = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -134,14 +158,14 @@ int main(int argc, char* argv[]) {
                 choices.Set(group, true);
             }
         } else if (arg == "--step") {
-            if (i + 1 >= argc || (step = std::atoi(argv[i + 1])) < 1 || step > 5) {
-                std::printf("--step needs a number from 1 to 5\n");
+            if (i + 1 >= argc || (step = std::atoi(argv[i + 1])) < 1 || step > 6) {
+                std::printf("--step needs a number from 1 to 6\n");
                 return EXIT_FAILURE;
             }
             ++i;
         } else if (arg == "--page") {
             if (i + 1 >= argc) {
-                std::printf("--page needs platform, system, choices, install, project, ai or report\n");
+                std::printf("--page needs platform, system, choices, install, project, build, ai, guide or report\n");
                 return EXIT_FAILURE;
             }
             page = argv[++i];
@@ -151,6 +175,25 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
             ++i;
+        } else if (arg == "--create") {
+            if (i + 1 >= argc) {
+                std::printf("--create needs a folder\n");
+                return EXIT_FAILURE;
+            }
+            project.folder = argv[++i];
+            create = true;
+        } else if (arg == "--name") {
+            if (i + 1 >= argc) {
+                std::printf("--name needs the application's name\n");
+                return EXIT_FAILURE;
+            }
+            project.appName = argv[++i];
+        } else if (arg == "--sdk") {
+            if (i + 1 >= argc) {
+                std::printf("--sdk needs the SDK prefix\n");
+                return EXIT_FAILURE;
+            }
+            project.sdkPrefix = argv[++i];
         } else if (arg == "--for") {
             if (i + 1 >= argc) {
                 std::printf("--for needs linux, macos or windows\n");
@@ -172,6 +215,10 @@ int main(int argc, char* argv[]) {
 
     if (headlessCheck || headlessPlan) {
         return RunHeadless(headlessPlan, choices);
+    }
+    if (create) {
+        project.assistant = choices.assistant;
+        return RunCreate(project);
     }
 
     UltraCanvasApplication app;

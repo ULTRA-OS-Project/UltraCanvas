@@ -1,11 +1,13 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.h
 // UltraCanvasStart's window: a stepper (Docs/UltraCanvasStart/WorkflowProposal.md).
-// Five steps in the order the work happens - Your computer (what was found,
+// Six steps in the order the work happens - Your computer (what was found,
 // with the guide for any platform under it), Features (what for, and which
 // assistant), Tools (the checks and the install), Framework (the prebuilt
-// SDK or a clone), Project (name, folder, create, and the Done page with the
-// first prompt) - an UltraCanvasStepper above one pane that shows the current
-// step, Back / Next below it. The header offers the Guide and the Report as
+// SDK or a clone), Project (name, folder, create), Build (the skeleton
+// compiled the way a programmer does, as the proof that the installation
+// works, then the first prompt and the report for the hand-over) - an
+// UltraCanvasStepper above one pane that shows the current step, Back /
+// Next below it. The header offers the Guide and the Report as
 // dialogs at any time, so neither is a step. Nothing is painted by hand:
 // every pane is assembled from catalogue elements and laid out with the CSS
 // flex layout, as the other applications do, and styled through
@@ -17,9 +19,11 @@
 // instead, a switch on each showing whether that tool is there, under a
 // line saying what Install will do.
 //
-// The checks and the install run a package manager and block on it, so they
-// run on a worker thread; results come back through a queue a UI timer
+// The checks, the install and the build run a package manager or cmake and
+// block on it, so they run on a worker thread; results come back through a queue a UI timer
 // drains, the pattern UltraCleaner and UltraSocial use.
+// Version: 0.4.0 - step 6, Build: the skeleton compiled from the window, the
+//                  first prompt and the report after it
 // Version: 0.3.0 - the stepper: five steps, Back / Next, the Guide and the
 //                  Report as dialogs (the workflow proposal, implemented)
 // Version: 0.2.0 - UltraMail's look: theme header, cards, Markdown views
@@ -28,6 +32,7 @@
 #pragma once
 
 #include "StartAi.h"
+#include "StartBuild.h"
 #include "StartTypes.h"
 
 #include "UltraCanvasBadge.h"
@@ -59,6 +64,7 @@ enum class Step : int {
     Tools,
     Framework,
     Project,
+    Build,
     Count
 };
 
@@ -69,11 +75,11 @@ public:
     bool Initialize();
     void Show();
 
-    // Opens a step (1 to 5; --step). False for another number.
+    // Opens a step (1 to 6; --step). False for another number.
     bool ShowStep(int number);
     // The page names of versions before 0.3.0 (--page): "platform" and
     // "system" are step 1, "choices" and "ai" step 2, "install" step 3,
-    // "project" step 5; "guide" and "report" open the dialogs. False for a
+    // "project" step 5, "build" step 6; "guide" and "report" open the dialogs. False for a
     // name that is no page. Call it after Show(): a dialog needs the window.
     bool ShowPage(const std::string& name);
     // Selects the platform the guide is for (--for in window mode).
@@ -94,6 +100,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildToolsStep();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildFrameworkStep();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildProjectStep();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildCompileStep();
 
     // The guide for a platform (the picker and the Markdown view), used by
     // step 1 and by the Guide dialog.
@@ -121,6 +128,9 @@ private:
     // user picks, unpacks it there and fills in the SDK prefix.
     void DownloadAndUnpackSdk();
     void CreateProject();
+    // Compiles the created project on the worker thread (StartBuild), the
+    // output in the Build step's console.
+    void StartBuild();
     void CopyReport();
     void CopyPrompt();
     void ShowGuideDialog();
@@ -132,6 +142,7 @@ private:
     void RefreshInstallPreview();      // from the plan; RefreshPlan calls it
     bool CanInstall() const;           // something missing, and a package manager here to install it
     void RefreshFrameworkStep();
+    void RefreshBuildStep();           // the folder's commands, the button, the badge
     void RefreshPlan();
     void SetBusy(bool busy);
     void SetStatus(const std::string& text);
@@ -181,7 +192,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasBadge> frameworkBadge_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> frameworkView_;
 
-    // Step 5: the project, then Done
+    // Step 5: the project, then what was written
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> projectCard_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> appNameInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> folderInput_;
@@ -190,6 +201,13 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> projectPreview_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> doneCard_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> doneView_;
+
+    // Step 6: the build, then the hand-over
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> buildCard_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> buildCommands_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> buildButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBadge> buildBadge_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> buildOutput_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> promptCard_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> promptText_;
 
@@ -201,6 +219,8 @@ private:
     Platform guidePlatform_ = Platform::Unknown;
     int currentStep_ = 0;
     bool projectCreated_ = false;
+    bool projectBuilt_ = false;
+    bool buildFailed_ = false;
 
     std::atomic<bool> working_{ false };
     std::thread worker_;

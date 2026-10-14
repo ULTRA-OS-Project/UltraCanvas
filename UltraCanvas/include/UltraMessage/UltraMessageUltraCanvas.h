@@ -6,6 +6,7 @@
 // and UltraVault), and only programs that already link UltraCanvas include
 // this file.
 //
+// doc-check: example
 //   #include <UltraMessage/UltraMessageUltraCanvas.h>
 //   UltraMsg_UseUltraCanvasApplication();   // once, after the application exists
 //

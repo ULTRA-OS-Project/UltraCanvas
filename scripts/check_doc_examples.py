@@ -55,6 +55,24 @@ out.
 
 Missing `#include` targets are reported too.
 
+A header can opt an example in its comments into the same check, so that
+the sketch at the top of a header cannot drift from the API under it
+either. A `// doc-check: example` line marks it; the example is the comment
+lines after the marker that are indented two spaces or more past the `//`,
+up to the first line of prose or code, and a bare `//` is a blank line of
+it. Any other `// doc-check: ...` line in the header declares what its
+examples assume, as the HTML comment does in a doc:
+
+    // doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar;
+    // doc-check: example
+    //   for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows())
+    //       taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile);
+
+Errors are reported at the header's own lines. --all checks every marked
+header under UltraCanvas/include, UltraCanvas/Plugins and VirtualFS/include;
+a header named on the command line is checked the same way. A header's
+example is not required: the marker is for the ones worth keeping right.
+
 Needs clang++ and pkg-config (cairo, pango, glib); Linux. The first run
 builds a precompiled header of all public headers in --work (about 1 min).
 
@@ -65,7 +83,9 @@ builds a precompiled header of all public headers in --work (about 1 min).
 Exit status 1 when a doc has findings.
 
 CI (.github/workflows/doc-examples.yml) checks every doc - all of
-Docs/UltraCanvas/*.md but the changelog - and fails only on findings that
+Docs/UltraCanvas/*.md but the changelog, the module docs listed in
+CHECKED_MODULE_DOCS (Docs/Modules/<Name>/*.md) and the marked headers -
+and fails only on findings that
 are not in scripts/doc_examples_baseline.txt. The component docs all pass;
 the design documents (a name with Proposal, Plan or Investigation in it)
 describe APIs not written yet, so their code is listed there until the API
@@ -78,6 +98,7 @@ A baseline entry is the doc and the message, without the line, so editing
 elsewhere in a doc does not disturb it. The file only shrinks: fix a doc's
 findings and rewrite it, never add to it to let a new one through.
 """
+# Version: 1.5.0 - a header's `// doc-check: example` comment is checked too
 # Version: 1.4.0 - a name the checker declares is a member when a [this]
 #                 lambda uses it; a name clang misreads as a template's
 #                 (`name <`) is declared from the parse error that follows
@@ -96,7 +117,7 @@ findings and rewrite it, never add to it to let a new one through.
 #                 what the doc's own headers and doc-check comment declare;
 #                 `Name (` with a space is prose, not a call
 # Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
-# Last Modified: 2026-10-10
+# Last Modified: 2026-10-12
 # Author: UltraCanvas Framework
 
 import argparse
@@ -186,6 +207,19 @@ def public_headers():
     return sorted(str(p.relative_to(INCLUDE)).replace(os.sep, "/") for p in INCLUDE.rglob("*.h"))
 
 
+def newest_header_mtime():
+    """The newest header the shared header may have pulled in. It lists
+    include/ only, but a public header includes further ones - UltraCanvasImage.h
+    takes libspecific/Cairo/ImageCairo.h - and clang refuses a precompiled
+    header older than any file it was built from ("has been modified since
+    the precompiled header"), which came out of run_clang as "a header
+    changed while the docs were being checked" until something under
+    include/ was touched. So every header under the include roots counts."""
+    roots = [d for d in INCLUDE_DIRS if d.exists()
+             and not any(o != d and d.is_relative_to(o) for o in INCLUDE_DIRS)]
+    return max((p.stat().st_mtime for r in roots for p in r.rglob("*.h")), default=0.0)
+
+
 def build_pch(work, name, flags, clang):
     headers = [h for h in public_headers() if h not in STANDALONE_EXCLUDED]
     text = "".join('#include "%s"\n' % (INCLUDE / h) for h in headers)
@@ -195,7 +229,7 @@ def build_pch(work, name, flags, clang):
     header = work / ("%s.h" % name)
     pch = work / ("%s.h.pch" % name)
     stamp = work / ("%s.stamp" % name)
-    newest = max(p.stat().st_mtime for p in INCLUDE.rglob("*.h"))
+    newest = newest_header_mtime()
     if pch.exists() and stamp.exists() and stamp.read_text() == digest and pch.stat().st_mtime > newest:
         return header
     header.write_text(text)
@@ -437,6 +471,70 @@ def read_blocks(path):
     for n, b in enumerate(blocks):
         b.index = n
     return lines, blocks
+
+
+# A header's comment opts an example into the check with a marker line; other
+# doc-check lines declare what its examples assume.
+HEADER_EXAMPLE = re.compile(r"^\s*//\s*doc-check:\s*example\s*$")
+HEADER_DECLS = re.compile(r"^\s*//\s*doc-check:(?!\s*example\s*$)(.*)$")
+# Where --all looks for marked headers.
+HEADER_ROOTS = [INCLUDE, ROOT / "UltraCanvas" / "Plugins", ROOT / "VirtualFS" / "include"]
+
+
+def read_header_examples(path):
+    """A header's marked examples, as blocks at the header's own lines:
+    (lines, blocks, declarations, problems). An example is the comment lines
+    after `// doc-check: example`, indented past the comment's prose (two
+    spaces or more after the `//`, as the headers write them), up to the
+    first line that is code or prose again; a bare `//` is a blank line of
+    it. The other `// doc-check: ...` lines of the header declare what its
+    examples assume, as a doc's HTML comment does."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    blocks, decls, problems = [], [], []
+    for i, line in enumerate(lines):
+        m = HEADER_DECLS.match(line)
+        if m:
+            decls.append(m.group(1).strip())
+            continue
+        if not HEADER_EXAMPLE.match(line):
+            continue
+        body, indent = [], None
+        for later in lines[i + 1:]:
+            m = re.match(r"^\s*//(.*)$", later)
+            if not m:
+                break
+            text = m.group(1)
+            if not text.strip():
+                body.append("")
+                continue
+            lead = len(text) - len(text.lstrip(" "))
+            if lead < (indent or 2):
+                break
+            indent = indent or lead
+            body.append(text[indent:])
+        while body and not body[-1].strip():
+            body.pop()
+        if body:
+            blocks.append(Block(i + 2, body))
+        else:
+            problems.append((i + 1, "doc-check: example has no example under it (its lines are "
+                                    "indented two spaces or more past the `//`)"))
+    for n, b in enumerate(blocks):
+        b.index = n
+    return lines, blocks, decls, problems
+
+
+def marked_headers():
+    """The headers with a `// doc-check: example`, which --all checks too."""
+    out = []
+    for base in HEADER_ROOTS:
+        for p in base.rglob("*.h"):
+            if "third_party" in p.parts:
+                continue
+            text = p.read_text(encoding="utf-8", errors="replace")
+            if "doc-check:" in text and any(HEADER_EXAMPLE.match(l) for l in text.splitlines()):
+                out.append(p)
+    return sorted(out)
 
 
 # --------------------------------------------------------------------------
@@ -816,8 +914,17 @@ class Doc:
         self.work = args.work / "docs"
         self.work.mkdir(parents=True, exist_ok=True)
         self.tag = re.sub(r"\W", "_", path.stem) + "_" + hashlib.sha1(str(path).encode()).hexdigest()[:6]
-        self.lines, self.blocks = read_blocks(path)
-        self.text = "\n".join(self.lines)
+        self.is_header = path.suffix == ".h"
+        self.problems = []
+        if self.is_header:
+            # The text the checks search: the declarations as a doc's
+            # comment would hold them, and the examples.
+            self.lines, self.blocks, decls, self.problems = read_header_examples(path)
+            self.text = "<!-- doc-check:\n%s\n-->\n" % "\n".join(decls)
+            self.text += "\n".join("\n".join(b.lines) for b in self.blocks)
+        else:
+            self.lines, self.blocks = read_blocks(path)
+            self.text = "\n".join(self.lines)
         self.classes = doc_classes(path.stem.replace("Examples", ""), self.text, index)
         self.findings = []
         self.notes = []
@@ -828,7 +935,7 @@ class Doc:
     def extra_includes(self):
         """Headers outside the shared one that the checks need: the doc's
         own includes, and where the types it uses or copies are defined."""
-        paths = []
+        paths = [self.path.resolve()] if self.is_header else []     # a plugin's header
         for b in self.blocks:
             for kind, i, j in b.chunks:
                 m = re.match(r'\s*#\s*include\s*"([^"]+)"', b.lines[i]) if kind == "pp" else None
@@ -979,7 +1086,9 @@ class Doc:
         self.check_examples()
         self.check_copies()
         self.check_listing()
-        self.check_prose()
+        if not self.is_header:
+            self.check_prose()      # a header's prose is its own business
+        self.findings += self.problems
         self.findings = sorted(set(self.findings))
         return {"doc": self.rel, "blocks": len(self.blocks), "findings": self.findings, "notes": self.notes,
                 "context": {k: sorted(set(v)) for k, v in self.context_left.items()}}
@@ -1501,12 +1610,24 @@ BASELINE_HEADER = """\
 """
 
 
+# The module docs (Docs/Modules/<Name>/*.md) --all checks along with the
+# component docs. A module joins once its examples compile: its findings are
+# mistakes in a description of an API that exists, not a design document's
+# unwritten one, so they are fixed, never baselined. The FileLoader README had
+# eight broken examples for months because nothing compiled it.
+CHECKED_MODULE_DOCS = ["FileLoader"]
+
+
 def component_docs():
-    """Every doc --all checks: Docs/UltraCanvas/*.md but the changelog. The
-    design documents are in, with their findings baselined; the changelog
-    is a record of what shipped, not a description of an API."""
-    return sorted(p for p in (ROOT / "Docs" / "UltraCanvas").glob("*.md")
-                  if p.name != "CHANGELOG.md")
+    """Every doc --all checks: Docs/UltraCanvas/*.md but the changelog, and
+    the docs of the modules in CHECKED_MODULE_DOCS. The design documents are
+    in, with their findings baselined; the changelog is a record of what
+    shipped, not a description of an API."""
+    docs = [p for p in (ROOT / "Docs" / "UltraCanvas").glob("*.md")
+            if p.name != "CHANGELOG.md"]
+    for module in CHECKED_MODULE_DOCS:
+        docs += (ROOT / "Docs" / "Modules" / module).glob("*.md")
+    return sorted(docs)
 
 
 def finding_key(doc, message):
@@ -1543,7 +1664,7 @@ def main():
     parser.add_argument("--show-context", action="store_true",
                         help="also list the names a doc's snippets use without declaring")
     parser.add_argument("--all", action="store_true",
-                        help="every component doc, not only the Examples docs (what CI checks)")
+                        help="every component doc and marked header, not only the Examples docs (what CI checks)")
     parser.add_argument("--strict", action="store_true",
                         help="fail only on findings not in the baseline (CI gate)")
     parser.add_argument("--baseline", type=Path, default=BASELINE,
@@ -1554,7 +1675,7 @@ def main():
     if args.docs:
         docs = args.docs
     elif args.all:
-        docs = component_docs()
+        docs = component_docs() + marked_headers()
     else:
         docs = sorted((ROOT / "Docs" / "UltraCanvas").glob("*Examples*.md"))
     docs = [d.resolve() for d in docs]

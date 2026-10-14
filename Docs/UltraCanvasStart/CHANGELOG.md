@@ -1,3 +1,36 @@
+#### 2026-10-12 *0.4.0*
+- **Step 6, Build: the project compiled from the window.** The proof that
+  the installation works: the two commands a programmer runs are shown for
+  the project folder, *Build the project* runs them on the worker thread
+  (`engine/StartBuild`: `cmake -S <folder> --preset default`, then
+  `cmake --build <folder>/build --parallel N`, with the cmake the checks
+  found and, on Windows, the MSYS2 bin directories on the child's PATH),
+  cmake's output lands in a console, and a badge says *not built yet*,
+  *building...*, *built* or *failed*. A failed build marks the step; so does
+  leaving step 5 without a project. The first prompt and *Copy the report*
+  move here, after the build, where the hand-over happens; step 5 keeps
+  what was written. `--step 6` and `--page build` open it.
+- **The engine tests compile the skeleton** against the SDK that
+  `ULTRACANVAS_SDK_PREFIX` names, through `BuildProject`, and are skipped
+  without the variable. CI sets it on every leg, so the guard runs there
+  as well as on a developer's machine before a push.
+- **The consoles are dark again.** The theme set a text area's
+  `style.backgroundColor`, which the element never reads; the Install and
+  Build output were light grey text on white. The background is set on
+  the element now (`UltraCanvasStartTheme.h` 0.3.1), and the light
+  consoles (the files preview, the first prompt) take the sidebar tint.
+
+#### 2026-10-11 *0.3.2*
+- **The project skeleton builds again.** Its `main.cpp` called
+  `app.CreateWindow(config)`, a method the application class does not
+  have, so `cmake --build` failed on the first line that mattered; it calls
+  the framework's `CreateWindow(config)` now, as `Docs/GettingStarted.md`
+  does. `test_project.cpp` pins the line.
+- **`--create <folder>` writes the skeleton headless** (`--name <app>`,
+  `--sdk <prefix>`, `--assistant <ai>`), and CI builds what it writes
+  against the SDK of every leg with `cmake --preset default`, the way a
+  programmer does, so the skeleton cannot stop compiling unnoticed again.
+
 #### 2026-10-10 *0.3.1*
 - **The Tools step shows each check with a switch, not a mark.** The list
   wrote a check mark or a cross before each tool and library, characters the

@@ -47,6 +47,7 @@ below it cannot overwrite the entry's own name or command.
 | `categories` | `Categories=` — the menu categories it belongs to (`Graphics`, `RasterGraphics`, `TextEditor`, …) |
 | `startupWMClass` | `StartupWMClass=` — the `WM_CLASS` its windows carry, which ties a running window to its entry |
 | `terminal` / `noDisplay` / `hidden` | the flags, reported rather than acted on |
+| `shortcutPath` | not from a desktop entry: the Windows shortcut (`.lnk`) an entry was read from when `UltraCanvasDesktopShell::ListApplications` lists the Start menu; launching opens it as Explorer does. Empty for a desktop entry |
 
 **Localization** follows the specification: `Name[de_DE]` beats `Name[de]`
 beats `Name`, whichever order the file lists them in, matched against

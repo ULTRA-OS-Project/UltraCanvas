@@ -121,7 +121,9 @@ report success unless the received bytes hash-match the source.
 
 ## GUI usage (M2)
 
-Launch `AnchorPoint`. The window has two halves:
+Launch `AnchorPoint`. One copy runs per user: launching it again brings the
+running window forward (the headless `anchorpoint` is not limited). The
+window has two halves:
 
 * **Send a file** — click *Choose File…*, type the peer's address
   (`host` or `host:port`, default port 5040), and click *Send*.

@@ -2,7 +2,7 @@
 // Implementation of the new RAM disc dialog. Construction follows
 // UltraFilerFindTextDialog (flex-column content, custom Create / Cancel
 // buttons so Create can refuse a bad name without closing).
-// Version: 1.0.1 - the name field holds what the system can keep
+// Version: 1.1.0 - the facts about the machine come from the caller
 // Author: UltraCanvas Framework
 
 #include "UltraFilerRamDiskDialog.h"
@@ -50,7 +50,7 @@ std::string PlatformNote(uint64_t largest) {
 
 }  // namespace
 
-void UltraFilerRamDiskDialog::Initialize() {
+void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     DialogConfig cfg;
     cfg.title = "New RAM disc";
     cfg.width = 460;
@@ -77,7 +77,7 @@ void UltraFilerRamDiskDialog::Initialize() {
         "uf-ramdisk-name", 0, 0, kContentWidth, 30.0f);
     // 23 on Windows, where the name has to fit the disc's volume label.
     nameInput_->SetMaxLength(static_cast<int>(UltraFilerRamDisks::MaxNameLength()));
-    nameInput_->SetText(UltraFilerRamDisks::SuggestName());
+    nameInput_->SetText(facts.suggestedName);
     nameInput_->onEnterPressed = [this](const std::string&) {
         Accept();
         return true;
@@ -91,7 +91,7 @@ void UltraFilerRamDiskDialog::Initialize() {
     // Only sizes that fit: a choice that can only fail is not a choice. When
     // free memory cannot be read every size is offered and Create says so if
     // one does not fit.
-    const uint64_t largest = UltraFilerRamDisks::LargestPossibleBytes();
+    const uint64_t largest = facts.largestBytes;
     int preselect = 0;
     for (uint64_t size : kPresetSizes) {
         if (largest > 0 && size > largest && !sizes_.empty()) break;
@@ -163,11 +163,19 @@ void UltraFilerRamDiskDialog::Accept() {
     if (callback) callback(name, sizeBytes);
 }
 
+RamDiskDialogFacts GatherRamDiskDialogFacts() {
+    RamDiskDialogFacts facts;
+    facts.largestBytes = UltraFilerRamDisks::LargestPossibleBytes();
+    facts.suggestedName = UltraFilerRamDisks::SuggestName();
+    return facts;
+}
+
 std::shared_ptr<UltraFilerRamDiskDialog> ShowRamDiskDialog(
+    const RamDiskDialogFacts& facts,
     std::function<void(const std::string& name, uint64_t sizeBytes)> onCreate,
     UltraCanvasWindowBase* parent) {
     auto dialog = std::make_shared<UltraFilerRamDiskDialog>();
-    dialog->Initialize();
+    dialog->Initialize(facts);
     dialog->onCreate = std::move(onCreate);
     dialog->ShowModal(parent);
     return dialog;

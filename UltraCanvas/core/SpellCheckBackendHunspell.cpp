@@ -1,5 +1,7 @@
 // core/SpellCheckBackendHunspell.cpp
 // Portable Hunspell spell check backend with dictionary discovery
+// Version: 1.0.3 - the user's dictionaries folder is searched under the framework's data
+//                  root first (Application Support on macOS); every variable read as UTF-8
 // Version: 1.0.2 - %APPDATA% read as UTF-8; a dictionary Hunspell cannot open is not listed
 // Last Modified: 2026-10-05
 // Author: UltraCanvas Framework
@@ -19,7 +21,8 @@
 // unavailable rather than silently flagging every accented word as wrong.
 
 #include "ISpellCheckBackend.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+#include "UltraCanvasDataFolder.h"   // UltraCanvasDataFolderRoot
+#include "UltraCanvasPathUtf8.h"     // PathFromUtf8 / PathToUtf8 / GetEnvUtf8
 
 #include <algorithm>
 #include <cctype>
@@ -206,13 +209,15 @@ struct DictionaryEntry {
 std::vector<std::string> BuildDictionarySearchPaths() {
     std::vector<std::string> paths;
 
-    if (const char* custom = std::getenv("ULTRACANVAS_DICT_PATH")) {
+    // Every variable read as UTF-8 (GetEnvUtf8): the paths are opened through
+    // PathFromUtf8, and a narrow getenv would have spelled a profile folder in
+    // the ANSI code page.
+    if (const std::string value = GetEnvUtf8("ULTRACANVAS_DICT_PATH"); !value.empty()) {
 #if defined(_WIN32)
         const char separator = ';';
 #else
         const char separator = ':';
 #endif
-        std::string value(custom);
         size_t start = 0;
         while (start <= value.size()) {
             size_t end = value.find(separator, start);
@@ -223,18 +228,23 @@ std::vector<std::string> BuildDictionarySearchPaths() {
         }
     }
 
-    if (const char* xdg = std::getenv("XDG_DATA_HOME")) {
-        paths.push_back(std::string(xdg) + "/UltraCanvas/dictionaries");
+    // The person's own dictionaries: UltraCanvas/dictionaries under the
+    // framework's data root (UltraCanvasDataFolder.h - %APPDATA%, Application
+    // Support, $XDG_DATA_HOME or ~/.local/share), then the folders earlier
+    // versions and other spell checkers use.
+    if (const std::filesystem::path root = UltraCanvasDataFolderRoot(); !root.empty()) {
+        paths.push_back(PathToUtf8(root / "UltraCanvas" / "dictionaries"));
     }
-    if (const char* home = std::getenv("HOME")) {
-        paths.push_back(std::string(home) + "/.local/share/UltraCanvas/dictionaries");
-        paths.push_back(std::string(home) + "/.local/share/hunspell");
-        paths.push_back(std::string(home) + "/Library/Spelling");
+    if (const std::string xdg = GetEnvUtf8("XDG_DATA_HOME"); !xdg.empty()) {
+        paths.push_back(PathToUtf8(PathFromUtf8(xdg) / "UltraCanvas" / "dictionaries"));
     }
-    // Asked wide: the path is opened as UTF-8, and a narrow getenv would
-    // have spelled the profile folder in the ANSI code page.
+    if (const std::string home = GetEnvUtf8("HOME"); !home.empty()) {
+        paths.push_back(PathToUtf8(PathFromUtf8(home) / ".local" / "share" / "UltraCanvas" / "dictionaries"));
+        paths.push_back(PathToUtf8(PathFromUtf8(home) / ".local" / "share" / "hunspell"));
+        paths.push_back(PathToUtf8(PathFromUtf8(home) / "Library" / "Spelling"));
+    }
     if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty()) {
-        paths.push_back(appData + "\\UltraCanvas\\dictionaries");
+        paths.push_back(PathToUtf8(PathFromUtf8(appData) / "UltraCanvas" / "dictionaries"));
     }
 
     paths.push_back("dictionaries");

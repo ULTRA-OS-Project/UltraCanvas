@@ -8,11 +8,16 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.4.0 - BringForward: restores and raises the window (a file handed over by a
+//                  second start opens in a window of its own and comes to the front)
+// Version: 1.3.0 - toolSlots: the palette's tools in groups, one slot each, with a fold-out bar
+// Version: 1.2.0 - the mouse pointer magnification glass (a loupe over the canvas while the
+//                  rectangle selection is active) and Edit > Settings... with its page
 // Version: 1.1.3 - StartLayerRename / FinishLayerRename: a layer is renamed in the list
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,10 +33,13 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasRasterDocument.h"
+#include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
 
 #include "UltraPaintTools.h"
 #include "UltraPaintFilters.h"
 #include "UltraPaintDialogs.h"
+#include "UltraPaintSettings.h"
+#include "UltraPaintSettingsDialog.h"
 
 #include <memory>
 #include <string>
@@ -58,6 +66,9 @@ public:
     // application exits with the last of them — so the pointer may be ignored.
     static std::shared_ptr<UltraPaintWindow> OpenWindow(const std::vector<std::string>& paths);
     static int WindowCount();
+    // Restores the window when minimised and raises it with the keyboard
+    // focus: what a file a second start handed over opened in comes forward.
+    void BringForward();
 
 private:
     // ----- window registry -----
@@ -115,7 +126,9 @@ private:
     // Merges a document's flattened pixels into the open image as a new layer.
     void MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
                        const std::string& path, bool scaleToFit);
-    bool SaveToPath(const std::string& path);
+    // `size`: the pixel size chosen in the Save dialog's Settings for this
+    // save (Save As); the picture's own size otherwise.
+    bool SaveToPath(const std::string& path, const FileSaveImageSize& size = FileSaveImageSize());
     // Opens a dialog as this window's own: created, marked transient for the
     // editor and centred on it. A dialog that skips this is a top-level window
     // as far as the desktop is concerned, and gets placed like one — behind
@@ -166,6 +179,7 @@ private:
     void CmdCurves();
     void CmdColourToAlpha();
     void CmdFilter(const PaintFilter& filter);
+    void CmdSettings();
     void CmdAbout();
     void CmdQuit();
 
@@ -184,6 +198,25 @@ private:
     void FinishLayerRename(bool keep, const std::string& name);
     PaintTool* ActiveTool() const;
     void PlaceText(double x, double y, const UltraPaintTextResult& r);
+
+    // ----- the mouse pointer magnification glass -----
+    // A loupe over a corner of the canvas (a UltraCanvasPaintSurface in loupe
+    // mode inside a framed container) that shows the pixels around the
+    // pointer at the view's zoom times the configured factor, with a
+    // crosshair on the pointer's pixel. Shown while the active tool asks for
+    // it (PaintTool::WantsMagnifier) and Settings > Display has it on.
+    void BuildMagnifier();
+    // Applies settings.magnifier*: size, zoom, and whether it shows at all.
+    void ApplySettings();
+    // Shows or hides it for the active tool and the settings.
+    void UpdateMagnifierVisibility();
+    // Follows the pointer: the view, and the corner when the pointer comes
+    // near. `view` is the pointer in the surface's own coordinates.
+    void UpdateMagnifier(double imageX, double imageY, const Point2Di& view);
+    // Moves the glass to `corner` (0 top-left, 1 top-right, 2 bottom-left,
+    // 3 bottom-right) of the canvas.
+    void PlaceMagnifier(int corner);
+    Rect2Df MagnifierRectForCorner(int corner) const;
 
     // ----- filters with preview -----
 #ifdef HAS_LIBVIPS
@@ -212,9 +245,18 @@ private:
     std::shared_ptr<UltraCanvasContainer>      statusBar;
     std::shared_ptr<UltraCanvasLabel>          statusPos, statusZoom, statusSize, statusHint;
     std::shared_ptr<UltraCanvasButton>         undoButton, redoButton;
-    std::vector<std::shared_ptr<UltraCanvasButton>> toolButtons;
+    // The palette's slots, one per tool group (UltraPaintWindow.cpp:
+    // PaletteGroups), top to bottom.
+    std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
+    std::shared_ptr<UltraCanvasContainer>      magnifierFrame;   // the glass's border, over the canvas
+    std::shared_ptr<UltraCanvasPaintSurface>   magnifier;        // the loupe inside it
+    int magnifierCorner = 1;                                      // where it sits now
+    std::weak_ptr<UltraPaintSettingsDialog>    settingsDialog;   // raised instead of reopened
+
+    UltraPaintSettings settings;
 
     std::shared_ptr<UCRasterDocument> document;
+    UCRasterDocument::ListenerId documentListener = 0;   // the panels' and title's
     std::vector<std::unique_ptr<PaintTool>> tools;
     PaintToolOptions toolOptions;
     PaintToolContext toolContext;

@@ -1,3 +1,24 @@
+#### 2026-10-13 *0.4.8*
+- **UltraMail's mail is found on macOS and Windows.** EmailCleaner looked for
+  UltraMail's data folder, and kept its own, under `$XDG_DATA_HOME` or
+  `~/.local/share` only - so on macOS it read a folder UltraMail no longer
+  uses, and on Windows, where `HOME` is normally unset, it looked in the
+  working directory and found nothing. Both folders now follow the
+  framework's rule (`UltraCanvasDataFolder.h`), the same one UltraMail
+  resolves its folder with: `%APPDATA%` on Windows, Application Support on
+  macOS, XDG elsewhere, read as UTF-8 so a profile named in any script works.
+  The analysis database and the rules an earlier version left in
+  `~/.local/share` or in the working directory are moved into place on the
+  first start. `EMAILCLEANER_MAIL_DIR` still overrides the mail folder.
+
+#### 2026-10-12 *0.4.7*
+- **One EmailCleaner at a time.** Starting EmailCleaner while it is already
+  running brings the open window forward (restored if minimised; an open
+  dialog comes forward with it) instead of opening a second copy. Two starts
+  at the same moment cannot both stay, and a copy that does not answer is
+  reported with *"EmailCleaner is already running"*. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
 #### 2026-10-09 *0.4.6*
 - **New app icon.** The trash can keeps its red @ and gains ribs down its side
   (`media/appicon/EmailCleaner.svg`, the uploaded artwork).

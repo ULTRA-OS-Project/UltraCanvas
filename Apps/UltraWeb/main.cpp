@@ -1,20 +1,24 @@
 // Apps/UltraWeb/main.cpp
-// UltraWeb - the ULTRA OS browser. This first version runs WebAssembly apps
-// that build their UI out of UltraCanvas elements through the element ABI
-// (UltraWeb/guest/ultraweb.h); HTML pages and JavaScript follow the phase
-// plan in Docs/UltraWeb/UltraWebProposal.md.
+// UltraWeb - the ULTRA OS browser. It runs WebAssembly apps that build their
+// UI out of UltraCanvas elements through the element ABI
+// (UltraWeb/guest/ultraweb.h), and shows web pages through the HTML reader
+// (no JavaScript yet); the phase plan is Docs/UltraWeb/UltraWebProposal.md.
 //
 //   UltraWeb [address]          the window, opening address (default about:demo)
 //   UltraWeb --check <address>  load and start an app without a window, print
 //                               what it built or why it failed, exit 0 / 1
+//   UltraWeb --page <address>   load a web page without a window, print its
+//                               title, address, charset, warnings and text
 //   UltraWeb --version | --help
 //
+// Version: 0.3.0 - web pages; --page
 // Version: 0.2.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "host/UltraWebGuest.h"
 #include "host/UltraWebLoader.h"
+#include "host/UltraWebPages.h"
 #include "ui/UltraWebWindow.h"
 
 #include "UltraCanvasApplication.h"
@@ -27,7 +31,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>
+#include <condition_variable>
+#include <deque>
 #include <exception>
+#include <mutex>
 #include <string>
 
 #ifdef __linux__
@@ -49,11 +57,12 @@ namespace {
 void SignalHandler(int) { UltraCanvasApplicationBase::RequestExitFromSignal(); }
 
 void PrintUsage() {
-    std::printf("UltraWeb %s - runs WebAssembly apps built on UltraCanvas elements\n\n"
+    std::printf("UltraWeb %s - web pages, and WebAssembly apps built on UltraCanvas elements\n\n"
                 "  UltraWeb [address]          open the window at address (default about:demo)\n"
                 "  UltraWeb --check <address>  start an app without a window and report\n"
+                "  UltraWeb --page <address>   load a page without a window and print its text\n"
                 "  UltraWeb --version\n\n"
-                "An address is about:demo, a .wasm (or .wat) file, a file:// URL or an https:// URL.\n"
+                "An address is a web address, a file, a file:// URL, about:demo or a .wasm (.wat) app.\n"
                 "Engine: %s\n",
                 ULTRAWEB_VERSION, UltraCanvasWasm_EngineDescription().c_str());
 }
@@ -91,6 +100,54 @@ int RunCheck(const std::string& address) {
     return failure.empty() ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+// --page: the window's page loader, without a window. Answers that come
+// back on UltraNet's worker are queued and run here, as the UI loop would.
+int RunPage(const std::string& typed) {
+    const UltraNetResult net = UltraNet_Initialize();
+    if (!net.success) std::fprintf(stderr, "UltraNet: %s - only local pages will load\n", net.message.c_str());
+    std::mutex lock;
+    std::condition_variable wake;
+    std::deque<std::function<void()>> queue;
+    auto post = [&](std::function<void()> task) {
+        { std::lock_guard<std::mutex> guard(lock); queue.push_back(std::move(task)); }
+        wake.notify_one();
+    };
+    HTML::PageLoader loader(UltraWeb::MakePageServices(post));
+    bool done = false;
+    HTML::LoadedPage result;
+    loader.Load(UltraWeb::ToPageUrl(UltraWeb::UltraWebLoader::Normalise(typed)), [&](HTML::LoadedPage page) {
+        result = std::move(page);
+        done = true;
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (!done) {
+        std::function<void()> task;
+        {
+            std::unique_lock<std::mutex> guard(lock);
+            if (!wake.wait_until(guard, deadline, [&] { return !queue.empty(); })) break;
+            task = std::move(queue.front());
+            queue.pop_front();
+        }
+        task();
+    }
+    UltraNet_Shutdown();
+    if (!done) { std::fprintf(stderr, "%s: no answer in 60 s\n", typed.c_str()); return EXIT_FAILURE; }
+    if (result.kind == HTML::PageKind::Error) {
+        std::fprintf(stderr, "%s: %s\n", result.url.c_str(), result.error.c_str());
+        return EXIT_FAILURE;
+    }
+    if (!result.document) {
+        std::printf("%s: not a page (%s)\n", result.url.c_str(), result.contentType.c_str());
+        return EXIT_FAILURE;
+    }
+    std::printf("title:    %s\naddress:  %s\nstatus:   %d\ncharset:  %s\nsheets:   %zu linked\n",
+                result.document->title.c_str(), result.url.c_str(), result.status,
+                result.charset.c_str(), result.document->styleSheetLinks.size());
+    for (const auto& warning : result.warnings) std::printf("warning:  %s\n", warning.c_str());
+    std::printf("\n%s\n", HTML::ExtractPlainText(*result.document->Body()).c_str());
+    return result.status >= 400 ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -111,6 +168,13 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
             return RunCheck(argv[i + 1]);
+        }
+        if (std::strcmp(arg, "--page") == 0) {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "--page needs an address\n");
+                return EXIT_FAILURE;
+            }
+            return RunPage(argv[i + 1]);
         }
         if (arg[0] == '-') {
             std::fprintf(stderr, "Unknown option %s\n\n", arg);
@@ -137,7 +201,7 @@ int main(int argc, char* argv[]) {
         // read this file; the .ico in the Windows binary and the desktop
         // entry's theme icon come from the same media/appicon/UltraWeb.svg.
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraWeb.png"));
-        // Apps fetched from https:// come through UltraNet.
+        // Pages and apps fetched from http(s):// come through UltraNet.
         const UltraNetResult net = UltraNet_Initialize();
         if (!net.success) debugOutput << "UltraNet: " << net.message << " - only local apps will load" << std::endl;
 

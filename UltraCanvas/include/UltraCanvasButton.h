@@ -3,9 +3,10 @@
 // Version: 2.9.0 - ButtonVariant (Standard, Ghost, Primary, Selected): FromTheme maps the
 //                 theme onto a button's part; SetThemeVariant on the element
 // Version: 2.8.0 - ButtonStyle::FromTheme, ApplyTheme
+// Version: 2.7.1 - GetIconWidth / GetIconHeight
 // Version: 2.7.0 - onDoubleClick
 // Version: 2.6.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -259,6 +260,8 @@ namespace UltraCanvas {
         void SetIcon(std::shared_ptr<UCImage> image);
         void SetIconPosition(ButtonIconPosition position);
         void SetIconSize(int width, int height);
+        int GetIconWidth() const { return iconWidth; }
+        int GetIconHeight() const { return iconHeight; }
         void SetUseIconAsMask(bool useAsMask);
         void SetIconMaskColor(const Color& c);
         bool HasIcon() const { return icon != nullptr; }

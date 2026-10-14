@@ -14,14 +14,17 @@ UltraVideoWindow.{h,cpp}    the editor window: app bar, panes, media bin, timeli
                             playback, the timeline's change loop, files, export
 UltraVideoDocument.{h,cpp}  the document (the VideoFX project, clip ids, the bin, markers,
                             the view) and the .ultravideo file
+UltraVideoFormats.{h,cpp}   the files it takes and makes: the engine's registered with the
+                            codec registry, the dialogs offered FileLoader's lists
 UltraVideoMapping.{h,cpp}   BuildTimelineModel / ApplyChange: the document <-> the element
 UltraVideoHistory.{h,cpp}   undo and redo, the clean mark
 UltraVideoPreview.{h,cpp}   the engine's worker thread: frames for the viewer, thumbnails,
                             peaks
+UltraVideoProxies.{h,cpp}   proxies of the bin's videos, made on a thread of their own;
+                            the viewer and the draft play the timeline through them
 UltraVideoViewer.{h,cpp}    the frame surface, Fit, the transport
 UltraVideoInspector.{h,cpp} the Clip, Audio and Project tabs
 UltraVideoDialogs.{h,cpp}   the export dialog, the unsaved-changes question
-UltraVideoPresets.{h,cpp}   the effect presets: lists of engine effects, applied to a clip
 UltraVideoStory.{h,cpp}     the story wizard: three steps in a modal, PlanStory and
                             BuildStoryDocument in UltraVideoMapping make the project
 UltraVideoTheme.h           the tokens applied to elements: buttons, the timeline's and the

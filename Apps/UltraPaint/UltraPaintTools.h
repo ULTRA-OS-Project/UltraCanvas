@@ -7,8 +7,10 @@
 // Tools are stateless between activations except for what their options
 // hold; PaintToolOptions is the shared, user-editable state (brush sizes,
 // tolerances, shape style, …) that survives tool switches.
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.2.1 - shortcutShift / ShortcutLabel: a tool's key can need Shift (the Eraser's Shift+X)
+// Version: 1.2.0 - Polyline, Arrow and Curve, the Lines group's tools beside Line
+// Version: 1.1.0 - WantsMagnifier: a tool that places things to the pixel asks for the magnifying glass
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -27,7 +29,7 @@ namespace UltraCanvas {
 enum class PaintToolId {
     Move = 0, RectSelect, EllipseSelect, Lasso, MagicWand, Crop, Eyedropper,
     Pencil, Brush, Airbrush, Eraser, Clone, Smudge, Dodge, Burn,
-    Fill, Gradient, Line, Rectangle, Ellipse, Text, Zoom, Pan,
+    Fill, Gradient, Line, Polyline, Arrow, Curve, Rectangle, Ellipse, Text, Zoom, Pan,
     Count
 };
 
@@ -56,7 +58,9 @@ struct PaintToolOptions {
     RasterPaint::GradientKind gradientKind = RasterPaint::GradientKind::Linear;
     float gradientOpacity = 1.0f;
 
-    float shapeStrokeWidth = 2.0f;
+    float shapeStrokeWidth = 2.0f;      // also the Lines group's width
+    float arrowHeadSize = 16.0f;        // px; at least three times the line width
+    bool  arrowBothEnds = false;
     bool  shapeStroke = true;
     bool  shapeFill = false;
     bool  shapeAntialias = true;
@@ -95,8 +99,12 @@ struct PaintToolContext {
 
 class PaintTool {
 public:
-    PaintTool(PaintToolId toolId, std::string toolName, std::string icon, char key, std::string toolHint)
-        : id(toolId), name(std::move(toolName)), iconFile(std::move(icon)), shortcutKey(key), hint(std::move(toolHint)) {}
+    // `shift`: the shortcut is Shift + `key` - the Eraser's Shift+X, its
+    // plain X being the colour swap.
+    PaintTool(PaintToolId toolId, std::string toolName, std::string icon, char key, std::string toolHint,
+              bool shift = false)
+        : id(toolId), name(std::move(toolName)), iconFile(std::move(icon)), shortcutKey(key),
+          shortcutShift(shift), hint(std::move(toolHint)) {}
     virtual ~PaintTool() = default;
 
     virtual void Activate(PaintToolContext&) {}
@@ -122,12 +130,23 @@ public:
     // Radius of the brush outline to draw at the pointer (image pixels), 0 = none.
     virtual double CursorRadius(PaintToolContext&) const { return 0.0; }
     virtual bool CursorSquare(PaintToolContext&) const { return false; }
+    // True for a tool that places things to the pixel: while it is active
+    // the window shows the mouse pointer magnification glass (Settings >
+    // Display), a magnified view of the pixels around the pointer.
+    virtual bool WantsMagnifier() const { return false; }
 
     const PaintToolId id;
     const std::string name;
     const std::string iconFile;     // relative to media/icons/ultrapaint/
     const char shortcutKey;         // single letter, 0 for none
+    const bool shortcutShift;       // with Shift
     const std::string hint;         // status-bar text while active
+
+    // How the shortcut reads in a tooltip: "B", "Shift+X"; "" for none.
+    std::string ShortcutLabel() const {
+        if (!shortcutKey) return "";
+        return (shortcutShift ? "Shift+" : "") + std::string(1, shortcutKey);
+    }
 };
 
 // Every tool in palette order.

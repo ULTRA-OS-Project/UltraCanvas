@@ -4,9 +4,12 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
-// Version: 2.11.0 - LabelVariant (Body, Muted, Faint, Heading): FromTheme maps the theme's
+// Version: 2.13.0 - LabelVariant (Body, Muted, Faint, Heading): FromTheme maps the theme's
 //                  ink onto a label's part; SetThemeVariant on the element
-// Version: 2.10.0 - LabelStyle::FromTheme, ApplyTheme
+// Version: 2.12.0 - LabelStyle::FromTheme, ApplyTheme
+// Version: 2.11.0 - LabelTextLink::quiet: a link with no tooltip or hover report
+// Version: 2.10.0 - LabelTextBox / SetTextBoxes: backgrounds and borders around
+//                  byte ranges of the text (CSS inline boxes), a piece per line
 // Version: 2.9.0 - selectable text: SetSelectable / SetTextSelection, a drag
 //                 selects, a double-click a word, a triple-click all of it,
 //                 Ctrl+C copies (UltraCanvasTextSelection.h)
@@ -101,6 +104,10 @@ namespace UltraCanvas {
         int startByte = 0;
         int endByte = 0;      // exclusive
         std::string href;
+        // Clickable without showing it: no tooltip, and onLinkHovered is
+        // told nothing (the HTML reader's <label> text, which acts on its
+        // form control).
+        bool quiet = false;
     };
 
     // An image flowing in the text, like a browser's inline <img>: it stands on
@@ -162,6 +169,23 @@ namespace UltraCanvas {
         LabelInlineImageFrame frame;   // none by default: the picture alone
     };
 
+    // The box of an inline element in the text (CSS's inline box): its
+    // background and border drawn around the bytes [startByte, endByte),
+    // one piece per line, behind the text. The bytes hold its horizontal
+    // padding and border as room (the HTML reader's U+FFFC placeholders), so
+    // the box's sides fall at the room's outer edges; the vertical padding
+    // reaches above and below the text without moving the lines, as in CSS.
+    // When the element breaks across lines, the left border is on its first
+    // piece and the right one on its last (box-decoration-break: slice).
+    struct LabelTextBox {
+        int startByte = 0;
+        int endByte = 0;
+        Color background = Colors::Transparent;
+        LabelInlineImageBorder borderTop, borderRight, borderBottom, borderLeft;
+        float paddingTop = 0.f, paddingBottom = 0.f;
+        float borderRadius = 0.f;           // on a box that fits on one line
+    };
+
 // ===== LABEL COMPONENT =====
     class UltraCanvasLabel : public UltraCanvasUIElement {
     private:
@@ -175,6 +199,7 @@ namespace UltraCanvas {
         std::vector<LabelInlineImage> inlineImages;
         float inlineFitWidth = -1.f;   // line width the image shapes were sized for; -1 = none
         std::vector<float> inlineAscents;   // per image: its top above the baseline, as laid out
+        std::vector<LabelTextBox> textBoxes;
 
         // ===== TEXT SELECTION =====
         std::shared_ptr<UltraCanvasTextSelection> textSelection;
@@ -238,6 +263,16 @@ namespace UltraCanvas {
         bool GetShowLinkTooltips() const { return showLinkTooltips; }
         // Index into GetTextLinks() of the link at a label-local point, or -1.
         int LinkIndexAtPoint(const Point2Di& localPoint);
+
+        // ===== INLINE BOXES =====
+        // Backgrounds and borders around byte ranges of the text (see
+        // LabelTextBox), drawn in order: an enclosing box before the boxes
+        // inside it.
+        void SetTextBoxes(std::vector<LabelTextBox> boxes);
+        const std::vector<LabelTextBox>& GetTextBoxes() const { return textBoxes; }
+        // Where box `index` is drawn, label-local: one rectangle per line it
+        // spans (its border box). Empty before the first layout.
+        std::vector<Rect2Df> TextBoxPieces(size_t index);
 
         // ===== INLINE IMAGES =====
         // Images drawn at U+FFFC placeholders of the text (see LabelInlineImage).
@@ -389,6 +424,7 @@ namespace UltraCanvas {
     private:
         // The display size of an inline image on a line `inlineFitWidth` wide.
         Size2Df InlineImageSize(const LabelInlineImage& image) const;
+        void RenderTextBoxes(IRenderContext* ctx);
         // Natural (max-content) text width that keeps the natural line breaks.
         float NaturalTextWidth();
         // The margin box an inline image reserves on its line, label-local.

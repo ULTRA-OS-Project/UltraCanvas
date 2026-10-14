@@ -1,8 +1,14 @@
 // dialogs/UltraCanvasImageExportDialog.cpp
 // The bitmap save dialog: format list, the knobs each format exposes, the
 // size estimate, and the metadata the image carries.
-// Version: 3.0.0
-// Last Modified: 2026-09-13
+// Version: 3.2.0 - lists only the formats this build can encode (VipsCanEncode:
+//                 no AVIF / HEIC without libheif's encoder; ICO and QOI through
+//                 the framework's own savers)
+// Version: 3.1.0 - opens on the user's save settings per format and stores them
+//                 on Save (UltraCanvasFileLoader); the file name picks the
+//                 format; the colour depth list applies; SetOptions moves the
+//                 controls
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 //
 // Every captioned row is a row of one two-column grid (see the header), so
@@ -16,6 +22,7 @@
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasImageExportDialog.h"
 #include "UltraCanvasMetadataDialog.h"
+#include "UltraCanvasFileLoader.h"   // the save settings per format
 #include "PixelFX/PixelFX.h"
 #include <algorithm>
 #include <sstream>
@@ -383,6 +390,10 @@ namespace UltraCanvas {
 
         BuildLayout();
         WireCallbacks();
+        // The knobs open on what the user chose for each format, not on the
+        // dialog's own defaults.
+        LoadSavedFormatOptions();
+        SelectFormat(currentFormat);
     }
 
     UltraCanvasImageExportDialog::UltraCanvasImageExportDialog(vips::VImage& img)
@@ -509,12 +520,13 @@ namespace UltraCanvas {
                                                                static_cast<int>(style.controlHeight));
 
         // Filter the format list against the installed libvips build —
-        // hide entries whose saver isn't compiled in. PNG is always kept
+        // hide entries whose saver isn't compiled in, or cannot encode (an
+        // AVIF / HEIC saver without libheif's encoder). PNG is always kept
         // as a safe fallback so the dropdown is never empty.
         availableFormats.clear();
         for (const auto& fmt : ImageFormatInfo::GetAllFormats()) {
             const std::string dotExt = "." + fmt.extension;
-            if (VipsCanSave(dotExt) || fmt.format == UCImageSaveFormat::PNG) {
+            if (VipsCanEncode(dotExt) || fmt.format == UCImageSaveFormat::PNG) {
                 availableFormats.push_back(fmt);
             }
         }
@@ -927,13 +939,21 @@ namespace UltraCanvas {
         // ----- Format dropdown -----
         formatDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
             if (index >= 0 && index < static_cast<int>(availableFormats.size())) {
-                currentFormat = availableFormats[index].format;
-                options.format = currentFormat;
-                UpdateFormatOptions();
-                UpdateFileSizeEstimate();
+                if (availableFormats[index].format == currentFormat) return;
+                SelectFormat(availableFormats[index].format);
                 if (onFormatChange) onFormatChange(currentFormat);
                 if (onOptionsChange) onOptionsChange(options);
             }
+        };
+
+        // ----- Colour depth -----
+        // The list holds the format's supportedDepths, in that order.
+        colorDepthDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+            const auto depths = ImageFormatInfo::GetInfo(currentFormat).supportedDepths;
+            if (index < 0 || index >= static_cast<int>(depths.size())) return;
+            SetCurrentColorDepth(depths[static_cast<size_t>(index)]);
+            UpdateFileSizeEstimate();
+            if (onOptionsChange) onOptionsChange(options);
         };
 
         // ----- Quality slider -----
@@ -948,6 +968,7 @@ namespace UltraCanvas {
                 case UCImageSaveFormat::HEIF: options.heif.quality = intVal; break;
                 case UCImageSaveFormat::PNG: options.png.compressionLevel = intVal; break;
                 case UCImageSaveFormat::JPEG2000: options.jpeg2000.quality = intVal; break;
+                case UCImageSaveFormat::JXL: options.jxl.quality = intVal; break;
                 default: break;
             }
             UpdateFileSizeEstimate();
@@ -1116,6 +1137,10 @@ namespace UltraCanvas {
 
         saveButton->onClick = [this]() {
             ApplyOptionsFromUI();
+            // What the dialog was left on becomes the format's save settings,
+            // for every application and the next save. The size is this
+            // export's own and is not among them.
+            UltraCanvasFileLoader::SetImageExportOptions(options);
             if (onSave) {
                 onSave(options);
             } else {
@@ -1253,6 +1278,12 @@ namespace UltraCanvas {
                 qualitySlider->SetValue(static_cast<float>(options.jpeg2000.quality));
                 qualityValueLabel->SetText(std::to_string(options.jpeg2000.quality) + "%");
                 break;
+            case UCImageSaveFormat::JXL:
+                qualityLabel->SetText("Quality:");
+                qualitySlider->SetRange(0, 100);
+                qualitySlider->SetValue(static_cast<float>(options.jxl.quality));
+                qualityValueLabel->SetText(std::to_string(options.jxl.quality) + "%");
+                break;
             default:
                 qualityLabel->SetText("Quality:");
                 qualitySlider->SetRange(0, 100);
@@ -1283,8 +1314,39 @@ namespace UltraCanvas {
             colorDepthDropdown->AddItem(depthStr);
         }
 
+        // The depth the options hold for the format, else the first.
+        int selected = 0;
+        const UCImageSave::ColorDepth current = CurrentColorDepth();
+        for (size_t i = 0; i < info.supportedDepths.size(); ++i) {
+            if (info.supportedDepths[i] == current) { selected = static_cast<int>(i); break; }
+        }
         if (colorDepthDropdown->GetItemCount() > 0) {
-            colorDepthDropdown->SetSelectedIndex(0);
+            colorDepthDropdown->SetSelectedIndex(selected, false);
+            SetCurrentColorDepth(info.supportedDepths[static_cast<size_t>(selected)]);
+        }
+    }
+
+    UCImageSave::ColorDepth UltraCanvasImageExportDialog::CurrentColorDepth() const {
+        switch (currentFormat) {
+            case UCImageSaveFormat::PNG:  return options.png.colorDepth;
+            case UCImageSaveFormat::GIF:  return options.gif.colorDepth;
+            case UCImageSaveFormat::TIFF: return options.tiff.colorDepth;
+            case UCImageSaveFormat::AVIF: return options.avif.colorDepth;
+            case UCImageSaveFormat::HEIF: return options.heif.colorDepth;
+            case UCImageSaveFormat::TGA:  return options.tga.colorDepth;
+            default:                      return UCImageSave::ColorDepth::RGB_8bit;
+        }
+    }
+
+    void UltraCanvasImageExportDialog::SetCurrentColorDepth(UCImageSave::ColorDepth depth) {
+        switch (currentFormat) {
+            case UCImageSaveFormat::PNG:  options.png.colorDepth = depth; break;
+            case UCImageSaveFormat::GIF:  options.gif.colorDepth = depth; break;
+            case UCImageSaveFormat::TIFF: options.tiff.colorDepth = depth; break;
+            case UCImageSaveFormat::AVIF: options.avif.colorDepth = depth; break;
+            case UCImageSaveFormat::HEIF: options.heif.colorDepth = depth; break;
+            case UCImageSaveFormat::TGA:  options.tga.colorDepth = depth; break;
+            default: break;
         }
     }
 
@@ -1451,17 +1513,13 @@ namespace UltraCanvas {
 
     void UltraCanvasImageExportDialog::SetOptions(const UCImageSave::ImageExportOptions& opts) {
         options = opts;
-        currentFormat = opts.format;
-
-        for (size_t i = 0; i < availableFormats.size(); ++i) {
-            if (availableFormats[i].format == currentFormat) {
-                if (formatDropdown) formatDropdown->SetSelectedIndex(static_cast<int>(i));
-                break;
-            }
-        }
-
-        UpdateFormatOptions();
-        UpdateFileSizeEstimate();
+        // The caller's transparency stands for this format.
+        savedTransparency[opts.format] = opts.preserveTransparency;
+        SelectFormat(opts.format);
+        if (widthInput && opts.targetWidth > 0) widthInput->SetText(std::to_string(opts.targetWidth));
+        if (heightInput && opts.targetHeight > 0) heightInput->SetText(std::to_string(opts.targetHeight));
+        if (aspectRatioCheckbox) aspectRatioCheckbox->SetChecked(opts.maintainAspectRatio);
+        if (preserveMetadataCheckbox) preserveMetadataCheckbox->SetChecked(opts.preserveMetadata);
     }
 
     UCImageSave::ImageExportOptions UltraCanvasImageExportDialog::GetOptions() const {
@@ -1469,18 +1527,103 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageExportDialog::SetFormat(UCImageSaveFormat format) {
+        SelectFormat(format);
+    }
+
+    void UltraCanvasImageExportDialog::SelectFormat(UCImageSaveFormat format) {
         currentFormat = format;
         options.format = format;
 
         for (size_t i = 0; i < availableFormats.size(); ++i) {
             if (availableFormats[i].format == format) {
-                if (formatDropdown) formatDropdown->SetSelectedIndex(static_cast<int>(i));
+                if (formatDropdown) formatDropdown->SetSelectedIndex(static_cast<int>(i), false);
                 break;
             }
         }
+        // The transparency this format keeps, as its settings say.
+        auto kept = savedTransparency.find(format);
+        if (transparencyCheckbox) transparencyCheckbox->SetChecked(kept == savedTransparency.end() || kept->second);
 
         UpdateFormatOptions();
+        SyncControlsFromOptions();
         UpdateFileSizeEstimate();
+    }
+
+    void UltraCanvasImageExportDialog::LoadSavedFormatOptions() {
+        for (const ImageFormatInfo& info : availableFormats) {
+            UCImageSave::ImageExportOptions saved;
+            if (!UltraCanvasFileLoader::GetImageExportOptions("image." + info.extension, saved)) continue;
+            savedTransparency[info.format] = saved.preserveTransparency;
+            switch (info.format) {
+                case UCImageSaveFormat::PNG:      options.png = saved.png; break;
+                case UCImageSaveFormat::JPEG:     options.jpeg = saved.jpeg; break;
+                case UCImageSaveFormat::WEBP:     options.webp = saved.webp; break;
+                case UCImageSaveFormat::AVIF:     options.avif = saved.avif; break;
+                case UCImageSaveFormat::HEIF:     options.heif = saved.heif; break;
+                case UCImageSaveFormat::GIF:      options.gif = saved.gif; break;
+                case UCImageSaveFormat::TIFF:     options.tiff = saved.tiff; break;
+                case UCImageSaveFormat::JXL:      options.jxl = saved.jxl; break;
+                case UCImageSaveFormat::JPEG2000: options.jpeg2000 = saved.jpeg2000; break;
+                case UCImageSaveFormat::PPM:
+                case UCImageSaveFormat::PGM:
+                case UCImageSaveFormat::PBM:
+                case UCImageSaveFormat::PFM:      options.pnm = saved.pnm; break;
+                case UCImageSaveFormat::TGA:      options.tga = saved.tga; break;
+                case UCImageSaveFormat::PCX:      options.pcx = saved.pcx; break;
+                case UCImageSaveFormat::EXR:      options.exr = saved.exr; break;
+                case UCImageSaveFormat::DPX:      options.dpx = saved.dpx; break;
+                case UCImageSaveFormat::CIN:      options.cin = saved.cin; break;
+                case UCImageSaveFormat::PSD:      options.psd = saved.psd; break;
+                case UCImageSaveFormat::SGI:      options.sgi = saved.sgi; break;
+                default: break;
+            }
+        }
+    }
+
+    void UltraCanvasImageExportDialog::SyncControlsFromOptions() {
+        // Each control's own callback writes back the value it is given,
+        // which is the value it came from: nothing changes but the control.
+        auto check = [](const std::shared_ptr<UltraCanvasCheckbox>& box, bool on) {
+            if (box) box->SetChecked(on);
+        };
+        auto slide = [](const std::shared_ptr<UltraCanvasSlider>& slider, int value) {
+            if (slider) slider->SetValue(static_cast<float>(value));
+        };
+        auto pick = [](const std::shared_ptr<UltraCanvasDropdown>& list, int index) {
+            if (list && index >= 0 && index < list->GetItemCount()) list->SetSelectedIndex(index, false);
+        };
+        auto depthIndex = [](int bits) {
+            switch (bits) { case 8: return 0; case 10: return 1; case 12: return 2; case 16: return 3; default: return 1; }
+        };
+
+        check(pngInterlaceCheckbox, options.png.interlace);
+        check(jpegProgressiveCheckbox, options.jpeg.progressive);
+        check(jpegSubsamplingCheckbox, options.jpeg.subsampling);
+        check(jpegOptimizeHuffmanCheckbox, options.jpeg.optimizeHuffman);
+        check(webpLosslessCheckbox, options.webp.lossless);
+        slide(webpEffortSlider, options.webp.effort);
+        slide(webpAlphaQualitySlider, options.webp.alphaQuality);
+        check(avifLosslessCheckbox, options.avif.lossless);
+        slide(avifSpeedSlider, options.avif.speed);
+        check(gifDitheringCheckbox, options.gif.dithering);
+        check(gifInterlaceCheckbox, options.gif.interlace);
+        pick(tiffCompressionDropdown, static_cast<int>(options.tiff.compression));
+        check(tiffMultiPageCheckbox, options.tiff.multiPage);
+        check(qoiAlphaCheckbox, options.qoi.hasAlpha);
+        check(qoiLinearColorspaceCheckbox, options.qoi.linearColorspace);
+        check(tgaRleCheckbox, options.tga.rleCompression);
+        check(pcxRleCheckbox, options.pcx.rleCompression);
+        check(pnmBinaryCheckbox, options.pnm.binary);
+        pick(exrCompressionDropdown, static_cast<int>(options.exr.compression));
+        pick(dpxBitDepthDropdown, depthIndex(options.dpx.bitDepth));
+        pick(cinBitDepthDropdown, depthIndex(options.cin.bitDepth));
+        check(psdCompressedCheckbox, options.psd.compressed);
+        check(sgiRleCheckbox, options.sgi.rleCompression);
+
+        // The shared rows follow the format: its quality (or PNG's
+        // compression), and its colour depth.
+        UpdateQualityRange();
+        if (colorDepthDropdown && colorDepthDropdown->IsVisible()) UpdateColorDepthOptions();
     }
 
     UCImageSaveFormat UltraCanvasImageExportDialog::GetFormat() const {
@@ -1489,6 +1632,25 @@ namespace UltraCanvas {
 
     void UltraCanvasImageExportDialog::SetFileName(const std::string& name) {
         if (fileNameInput) fileNameInput->SetText(name);
+        // "photo.jpg" is a JPEG: the format follows a name that says one, so
+        // the file written is what its extension promises.
+        const size_t slash = name.find_last_of("/\\");
+        const std::string leaf = slash == std::string::npos ? name : name.substr(slash + 1);
+        const size_t dot = leaf.find_last_of('.');
+        if (dot == std::string::npos || dot == 0 || dot + 1 >= leaf.size()) return;
+        std::string ext = leaf.substr(dot + 1);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        // FromExtension answers PNG for what it does not know; only a name
+        // that is that format's chooses it.
+        const UCImageSaveFormat format = ImageFormatInfo::FromExtension(ext);
+        if (format == UCImageSaveFormat::PNG && ext != "png") return;
+        for (const ImageFormatInfo& info : availableFormats) {
+            if (info.format == format) {
+                if (format != currentFormat) SelectFormat(format);
+                return;
+            }
+        }
     }
 
     std::string UltraCanvasImageExportDialog::GetFileName() const {
@@ -1496,10 +1658,21 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageExportDialog::SetTargetSize(int width, int height) {
+        // A size in another shape than the picture's is meant exactly: with
+        // the proportions kept the writer would fit it inside instead.
+        if (sourceWidth > 0 && sourceHeight > 0 && width > 0 && height > 0) {
+            const double expected = static_cast<double>(width) * sourceHeight / sourceWidth;
+            if (std::abs(expected - height) > 1.0) {
+                options.maintainAspectRatio = false;
+                if (aspectRatioCheckbox) aspectRatioCheckbox->SetChecked(false);
+            }
+        }
+        syncingSize = true;   // the fields must not re-derive each other
         options.targetWidth = width;
         options.targetHeight = height;
         if (widthInput) widthInput->SetText(std::to_string(width));
         if (heightInput) heightInput->SetText(std::to_string(height));
+        syncingSize = false;
         UpdateFileSizeEstimate();
     }
 

@@ -8,13 +8,15 @@
 // place — they replace it with a new object — so unchanged layers are shared
 // between the snapshots and cost nothing. Attribute edits (name, opacity,
 // visibility, blend, lock) record just the attribute set.
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.2.0 - SaveToFile without options writes with the user's save
+//                 settings for the format (UltraCanvasFileLoader), once set
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasZipPackage.h"
 #include "DataFormats/UltraCanvasJSON.h"
+#include "UltraCanvasFileLoader.h"   // the user's save settings per format
 
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
@@ -85,11 +87,48 @@ void UCRasterDocument::SetActiveLayerIndex(int index) {
 void UCRasterDocument::SetModified(bool m) {
     if (modified == m) return;
     modified = m;
-    if (onStateChanged) onStateChanged();
+    EmitState();
+}
+
+// ===== NOTIFICATIONS =====
+// The slot first, then every listener - on a copy of the list, so a
+// callback that removes its own listener (or adds one) does not pull the
+// list out from under the loop.
+
+UCRasterDocument::ListenerId UCRasterDocument::AddListener(Listener listener) {
+    const ListenerId id = nextListenerId++;
+    listeners.emplace_back(id, std::move(listener));
+    return id;
+}
+
+void UCRasterDocument::RemoveListener(ListenerId id) {
+    listeners.erase(std::remove_if(listeners.begin(), listeners.end(),
+                                   [id](const std::pair<ListenerId, Listener>& l) { return l.first == id; }),
+                    listeners.end());
 }
 
 void UCRasterDocument::EmitStructure() {
     if (onStructureChanged) onStructureChanged();
+    const auto snapshot = listeners;
+    for (const auto& l : snapshot) if (l.second.structureChanged) l.second.structureChanged();
+}
+
+void UCRasterDocument::EmitPixels(const Rect2Di& rect) {
+    if (onPixelsChanged) onPixelsChanged(rect);
+    const auto snapshot = listeners;
+    for (const auto& l : snapshot) if (l.second.pixelsChanged) l.second.pixelsChanged(rect);
+}
+
+void UCRasterDocument::EmitSelection() {
+    if (onSelectionChanged) onSelectionChanged();
+    const auto snapshot = listeners;
+    for (const auto& l : snapshot) if (l.second.selectionChanged) l.second.selectionChanged();
+}
+
+void UCRasterDocument::EmitState() {
+    if (onStateChanged) onStateChanged();
+    const auto snapshot = listeners;
+    for (const auto& l : snapshot) if (l.second.stateChanged) l.second.stateChanged();
 }
 
 std::vector<std::shared_ptr<UCRasterLayer>> UCRasterDocument::CloneLayers() const {
@@ -137,7 +176,7 @@ void UCRasterDocument::EndStructuralUndo() {
     PushUndo(std::move(pendingStructural));
     SetModified(true);
     EmitStructure();
-    if (selectionChanged && onSelectionChanged) onSelectionChanged();
+    if (selectionChanged) EmitSelection();
 }
 
 void UCRasterDocument::ApplyStructural(const RasterUndoEntry& e, bool toAfter) {
@@ -155,7 +194,7 @@ void UCRasterDocument::ApplyStructural(const RasterUndoEntry& e, bool toAfter) {
     else selection.Resize(width, height);
     if (sizeChanged) ResetComposite(); else InvalidateComposite();
     EmitStructure();
-    if (onSelectionChanged) onSelectionChanged();
+    EmitSelection();
 }
 
 // ===========================================================================
@@ -322,8 +361,8 @@ void UCRasterDocument::CommitSelectionChange(const std::string& label) {
     e.selectionAfter = std::make_shared<UCRasterSelection>(selection);
     lastCommittedSelection = e.selectionAfter;
     PushUndo(std::move(e));
-    if (onSelectionChanged) onSelectionChanged();
-    if (onStateChanged) onStateChanged();
+    EmitSelection();
+    EmitState();
 }
 
 // ===========================================================================
@@ -464,7 +503,7 @@ void UCRasterDocument::EndEdit() {
     PushUndo(std::move(pendingEdit));
     SetModified(true);
     NotifyChanged(r);
-    if (onStateChanged) onStateChanged();
+    EmitState();
 }
 
 void UCRasterDocument::RecordEdit(const std::string& label, int layerIndex, const Rect2Di& rect,
@@ -483,7 +522,7 @@ void UCRasterDocument::RecordEdit(const std::string& label, int layerIndex, cons
     PushUndo(std::move(e));
     SetModified(true);
     NotifyChanged(r);
-    if (onStateChanged) onStateChanged();
+    EmitState();
 }
 
 void UCRasterDocument::CancelEdit() {
@@ -498,7 +537,7 @@ void UCRasterDocument::CancelEdit() {
 
 void UCRasterDocument::NotifyChanged(const Rect2Di& rect) {
     InvalidateComposite(rect);
-    if (onPixelsChanged) onPixelsChanged(rect);
+    EmitPixels(rect);
 }
 
 void UCRasterDocument::ApplyPixels(const RasterUndoEntry& e, bool toAfter) {
@@ -668,7 +707,7 @@ void UCRasterDocument::Undo() {
     lastCommittedSelection = std::make_shared<UCRasterSelection>(selection);
     redoStack.push_back(std::move(e));
     SetModified(true);
-    if (onStateChanged) onStateChanged();
+    EmitState();
 }
 
 void UCRasterDocument::Redo() {
@@ -679,7 +718,7 @@ void UCRasterDocument::Redo() {
     lastCommittedSelection = std::make_shared<UCRasterSelection>(selection);
     undoStack.push_back(std::move(e));
     SetModified(true);
-    if (onStateChanged) onStateChanged();
+    EmitState();
 }
 
 void UCRasterDocument::ClearHistory() {
@@ -687,7 +726,7 @@ void UCRasterDocument::ClearHistory() {
     redoStack.clear();
     undoMemoryUsed = 0;
     lastCommittedSelection = std::make_shared<UCRasterSelection>(selection);
-    if (onStateChanged) onStateChanged();
+    EmitState();
 }
 
 // ===========================================================================
@@ -789,8 +828,8 @@ bool UCRasterDocument::LoadFromFile(const std::string& path, std::string& error)
         modified = false;
         ClearHistory();
         EmitStructure();
-        if (onSelectionChanged) onSelectionChanged();
-        if (onStateChanged) onStateChanged();
+        EmitSelection();
+        EmitState();
         return true;
     } catch (const std::exception& e) {
         error = e.what();
@@ -834,6 +873,14 @@ bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
         // it is complete. A failure - no space left, a codec error, a
         // destination another program holds - therefore leaves the image the
         // user had, not the remains of the write.
+        // No options from the caller: the user's save settings for the
+        // format, once they have chosen any (the Save dialog's Settings
+        // button). Until then the writer keeps its own defaults.
+        UCImageSave::ImageExportOptions stored;
+        if (!options && UltraCanvasFileLoader::HasStoredSaveSettings(path) &&
+            UltraCanvasFileLoader::GetImageExportOptions(path, stored)) {
+            options = &stored;
+        }
         if (options) {
             const std::string err = ExportVImage(img, path, *options);
             if (!err.empty()) { error = err; return false; }
@@ -945,8 +992,8 @@ bool UCRasterDocument::LoadProject(const std::string& path, std::string& error) 
     modified = false;
     ClearHistory();
     EmitStructure();
-    if (onSelectionChanged) onSelectionChanged();
-    if (onStateChanged) onStateChanged();
+    EmitSelection();
+    EmitState();
     return true;
 #else
     (void)path;

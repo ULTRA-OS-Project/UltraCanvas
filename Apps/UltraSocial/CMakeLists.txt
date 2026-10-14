@@ -80,6 +80,8 @@ set(ULTRASOCIAL_UI_SOURCES
 )
 
 add_executable(UltraSocial main.cpp ${ULTRASOCIAL_UI_SOURCES})
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraSocial)
 target_include_directories(UltraSocial PRIVATE
     ${ULTRACANVAS_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}

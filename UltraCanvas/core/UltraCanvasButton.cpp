@@ -2,11 +2,12 @@
 // Interactive button component implementation with secondary icon support
 // Version: 2.11.0 - FromTheme by ButtonVariant
 // Version: 2.10.0 - ButtonStyle::FromTheme
+// Version: 2.9.1 - SetTextAlign is honoured: DrawText aligns as style.textAlign says
 // Version: 2.9.0 - onDoubleClick takes a left double-click instead of a second press
 // Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
 //                  centred half a pixel off was resampled and blurred
 // Version: 2.7.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -844,7 +845,9 @@ namespace UltraCanvas {
         const bool useMarkup = HasMnemonic();
         ctx->SetTextIsMarkup(useMarkup);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->SetTextAlignment(TextAlignment::Center);
+        // style.textAlign (SetTextAlign): Center unless the application asked
+        // otherwise - a list of flat buttons reads as a list only left-aligned.
+        ctx->SetTextAlignment(style.textAlign);
 
         const std::string drawnText = useMarkup ? BuildMnemonicMarkup() : text;
 

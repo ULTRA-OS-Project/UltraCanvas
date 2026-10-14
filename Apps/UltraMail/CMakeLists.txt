@@ -47,6 +47,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailNewMail.cpp
     engine/UltraMailTrace.cpp
     engine/UltraMailOneTimeCode.cpp
+    engine/UltraMailPaths.cpp
 )
 
 # ── Built-in OAuth client credentials (compiled-in fallback) ─────────────────
@@ -194,6 +195,8 @@ set(ULTRAMAIL_UI_SOURCES
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})
+# One UltraMail per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraMail)
 # Windows Release builds open no console window (the GUI subsystem), like the
 # other apps' (root CMakeLists.txt, "Hide console window on Windows Release
 # builds"). The timing trace still goes to trace.log in the data folder, and

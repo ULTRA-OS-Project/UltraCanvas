@@ -349,7 +349,9 @@ and maps common codes (`AuthenticationFailed`,
 (via VirtualFS):
 
 ```
-~/.local/share/UltraMail/           (per-platform user-data dir)
+~/.local/share/UltraMail/           (per-platform user-data dir: %APPDATA%\UltraMail on
+                                    Windows, ~/Library/Application Support/UltraMail on
+                                    macOS - engine/UltraMailPaths.h)
   accounts.json                     account list & settings (no secrets)
   <account-id>/
     folders.json                    folder tree, UIDVALIDITY, sync state

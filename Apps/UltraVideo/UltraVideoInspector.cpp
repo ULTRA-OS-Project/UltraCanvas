@@ -1,15 +1,11 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
-// Version: 0.2.3 - the labels follow the theme by variant
-// Version: 0.2.2 - the buttons follow the theme by variant
-// Version: 0.2.1 - the sliders and switches follow the theme too
-// Version: 0.2.0 - the tabs, dropdowns and fields follow the theme
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.5.0 - the tabs, dropdowns, fields, sliders, switches, buttons and labels follow the theme
+// Version: 0.4.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
-#include "UltraVideoPresets.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasVideoTimelineModel.h"
@@ -125,7 +121,6 @@ void Inspector::Edit(const std::string& label, std::function<void(Document&)> ed
 }
 
 std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
-    palette = &p;
     tabs = std::make_shared<UltraCanvasTabbedContainer>("uv.inspector", 0, 0, kPageWidth + 24, 600);
     tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     tabs->SetCloseMode(TabCloseMode::NoClose);
@@ -238,37 +233,6 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     mute->layoutItem.SetFlexShrink(0);
     switches.push_back(mute);
     clipFields->AddChild(mute);
-
-    // ---- the effects on the clip: a row each, a cross to take one off ----
-    effectRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.effects", 0, 0, kPageWidth, 80);
-    effectRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    effectRows->layoutItem.SetFlexShrink(0);
-    auto effectsHead = std::make_shared<UltraCanvasContainer>("uv.insp.effects.head", 0, 0, kPageWidth, 26);
-    effectsHead->layout.SetFlexRow().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    effectsHead->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(26));
-    auto effectsTitle = CreateLabel("uv.insp.effects.heading", 0, 0, 160, 22, "Effects");
-    effectsTitle->SetFont(Tokens::Title.family, Tokens::Title.size * 0.75f, FontWeight::Bold);
-    FollowTheme(effectsTitle, LabelVariant::Heading);
-    effectsHead->AddChild(effectsTitle);
-    clearEffects = MakeTextButton("uv.insp.effects.clear", "Clear", 64);
-    clearEffects->SetOnClick([this]() {
-        const int index = segment;
-        Edit("Remove effects", [index](Document& d) {
-            if (index >= 0 && static_cast<size_t>(index) < d.project.segments.size()) d.project.segments[static_cast<size_t>(index)].effects.clear();
-        });
-    });
-    effectsHead->AddChild(clearEffects);
-    effectRows->AddChild(effectsHead);
-    effectsEmpty = CreateLabel("uv.insp.effects.empty", 0, 0, kPageWidth, 18, "None: the bin's Effects tab has the presets.");
-    effectsEmpty->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
-    effectsEmpty->layoutItem.SetFlexShrink(0);
-    FollowTheme(effectsEmpty, LabelVariant::Muted);
-    effectRows->AddChild(effectsEmpty);
-    effectList = std::make_shared<UltraCanvasContainer>("uv.insp.effects.list", 0, 0, kPageWidth, 0);
-    effectList->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    effectList->layoutItem.SetFlexShrink(0).SetFlexGrow(0);
-    effectRows->AddChild(effectList);
-    clipFields->AddChild(effectRows);
 
     imageRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.image", 0, 0, kPageWidth, 110);
     imageRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -511,6 +475,52 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
                   [](OverlaySpan& v, double s) { v.fadeOut = s; }, [](double v) { return Seconds(v); });
     clipFields->AddChild(overlayRows);
 
+    // ---- a voice-over or sound effect (A2): how loud, its fades, the music under it ----
+    soundRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.sound", 0, 0, kPageWidth, 160);
+    soundRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    soundRows->layoutItem.SetFlexShrink(0);
+    auto soundSlider = [&](const std::string& id, float lo, float hi, float step, std::shared_ptr<Slider>& out,
+                           std::shared_ptr<Label>& value, const std::string& caption, const std::string& label,
+                           std::function<void(SoundSpan&, double)> apply, std::function<std::string(double)> format) {
+        out = CreateSlider(id, 0, 0, 110, ctl);
+        out->SetRange(lo, hi);
+        out->SetStep(step);
+        out->SetValueDisplay(SliderValueDisplay::NoDisplay);
+        auto row = Row(soundRows, id + ".row", caption, out);
+        value = CreateLabel(id + ".value", 0, 0, 50, ctl, "");
+        value->SetFont(Tokens::Timecode.family, Tokens::Timecode.size * 0.75f);
+        FollowTheme(value, LabelVariant::Muted);
+        row->AddChild(value);
+        sliders.push_back(out);
+        Label* valuePtr = value.get();
+        out->onValueChanged = [this, valuePtr, label, apply, format](float v) {
+            valuePtr->SetText(format(v));
+            const int index = sound;
+            const double d = v;
+            Edit(label, [index, apply, d](Document& doc) {
+                if (index >= 0 && static_cast<size_t>(index) < doc.sounds.size()) apply(doc.sounds[static_cast<size_t>(index)], d);
+            });
+        };
+    };
+    soundSlider("uv.insp.soundVolume", 0.0f, 2.0f, 0.05f, soundVolume, soundVolumeValue, "Volume", "Set sound volume",
+                [](SoundSpan& a, double v) { a.volume = v; }, percent);
+    soundSlider("uv.insp.soundFadeIn", 0.0f, 5.0f, 0.1f, soundFadeIn, soundFadeInValue, "Fade in", "Set sound fade in",
+                [](SoundSpan& a, double s) { a.fadeIn = s; }, [](double v) { return Seconds(v); });
+    soundSlider("uv.insp.soundFadeOut", 0.0f, 5.0f, 0.1f, soundFadeOut, soundFadeOutValue, "Fade out", "Set sound fade out",
+                [](SoundSpan& a, double s) { a.fadeOut = s; }, [](double v) { return Seconds(v); });
+    soundDucks = UltraCanvasSwitch::Create("uv.insp.soundDucks", 0, 0, "The music dips under it", true);
+    soundDucks->onStateChanged = [this](CheckedState, CheckedState now) {
+        const int index = sound;
+        const bool on = now == CheckedState::Checked;
+        Edit(on ? "Make voice-over" : "Make sound effect", [index, on](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.sounds.size()) d.sounds[static_cast<size_t>(index)].ducksMusic = on;
+        });
+    };
+    soundDucks->layoutItem.SetFlexShrink(0);
+    switches.push_back(soundDucks);
+    soundRows->AddChild(soundDucks);
+    clipFields->AddChild(soundRows);
+
     transitionRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.transition", 0, 0, kPageWidth, 100);
     transitionRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     transitionRows->layoutItem.SetFlexShrink(0);
@@ -546,6 +556,77 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     FollowTheme(transitionMax, LabelVariant::Muted);
     lengthRow->AddChild(transitionMax);
     clipFields->AddChild(transitionRows);
+
+    // ---- the effects on a main-track clip, from the bin's Effects tab ----
+    effectRows = std::make_shared<UltraCanvasContainer>("uv.insp.clip.effects", 0, 0, kPageWidth, 120);
+    effectRows->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    effectRows->layoutItem.SetFlexShrink(0);
+    Heading(effectRows, "uv.insp.effects.heading", "Effects");
+    effectsNone = CreateLabel("uv.insp.effects.none", 0, 0, kPageWidth, 32, "None. The bin's Effects tab puts a look or a blur on this clip.");
+    effectsNone->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    effectsNone->layoutItem.SetFlexShrink(0);
+    FollowTheme(effectsNone, LabelVariant::Muted);
+    effectRows->AddChild(effectsNone);
+    for (int i = 0; i < kEffectRows; ++i) {
+        const std::string id = "uv.insp.effect." + std::to_string(i);
+        auto row = std::make_shared<UltraCanvasContainer>(id, 0, 0, kPageWidth, ctl);
+        row->layout.SetFlexRow().SetFlexGap(static_cast<int>(Tokens::Space2)).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexShrink(0);
+        auto name = CreateLabel(id + ".name", 0, 0, kPageWidth - kEffectSliderWidth - ctl - 16, ctl, "");
+        name->SetFont(Tokens::Label.family, Tokens::Label.size * 0.75f);
+        name->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        FollowTheme(name, LabelVariant::Muted);
+        row->AddChild(name);
+        // How strong: the name follows the slider, the edit goes through undo
+        auto amount = CreateSlider(id + ".amount", 0, 0, kEffectSliderWidth, ctl);
+        amount->SetValueDisplay(SliderValueDisplay::NoDisplay);
+        amount->layoutItem.SetFlexShrink(0);
+        Label* namePtr = name.get();
+        amount->onValueChanged = [this, i, namePtr](float v) {
+            if (static_cast<size_t>(i) >= shownEffects.size()) return;
+            VideoFXEffect shown = shownEffects[static_cast<size_t>(i)];
+            shown.amount = v;
+            namePtr->SetText(DescribeEffect(shown));
+            const int index = segment;
+            const double value = v;
+            Edit("Set effect strength", [index, i, value](Document& d) {
+                if (index >= 0) d.SetEffectAmount(static_cast<size_t>(index), static_cast<size_t>(i), value);
+            });
+        };
+        sliders.push_back(amount);
+        row->AddChild(amount);
+        auto remove = MakeIconButton(id + ".remove", "trash", "Remove this effect");
+        remove->SetOnClick([this, i]() {
+            const int index = segment;
+            Edit("Remove effect", [index, i](Document& d) {
+                if (index < 0 || static_cast<size_t>(index) >= d.project.segments.size()) return;
+                std::vector<VideoFXEffect>& effects = d.project.segments[static_cast<size_t>(index)].effects;
+                if (static_cast<size_t>(i) < effects.size()) effects.erase(effects.begin() + i);
+            });
+        });
+        row->AddChild(remove);
+        effectRow.push_back(row);
+        effectName.push_back(name);
+        effectAmount.push_back(amount);
+        effectRemove.push_back(remove);
+        effectRows->AddChild(row);
+    }
+    effectsMore = CreateLabel("uv.insp.effects.more", 0, 0, kPageWidth, 18, "");
+    effectsMore->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    effectsMore->layoutItem.SetFlexShrink(0);
+    FollowTheme(effectsMore, LabelVariant::Muted);
+    effectRows->AddChild(effectsMore);
+    removeEffects = MakeTextButton("uv.insp.removeEffects", "Remove all effects", 150);
+    removeEffects->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
+    removeEffects->SetOnClick([this]() {
+        const int index = segment;
+        Edit("Remove effects", [index](Document& d) {
+            if (index >= 0 && static_cast<size_t>(index) < d.project.segments.size())
+                d.project.segments[static_cast<size_t>(index)].effects.clear();
+        });
+    });
+    effectRows->AddChild(removeEffects);
+    clipFields->AddChild(effectRows);
     clipPage->AddChild(clipFields);
     tabs->AddTab("Clip", clipPage);
 
@@ -654,6 +735,15 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     };
     dropdowns.push_back(fitMode);
     Row(projectPage, "uv.insp.row.fitMode", "Clips that differ", fitMode);
+    // Proxies: small stand-ins the viewer plays while large clips are edited
+    useProxies = UltraCanvasSwitch::Create("uv.insp.proxies", 0, 0, "Preview from proxies", true);
+    useProxies->onStateChanged = [this](CheckedState, CheckedState now) {
+        if (updating || !onUseProxies) return;
+        onUseProxies(now == CheckedState::Checked);
+    };
+    useProxies->layoutItem.SetFlexShrink(0);
+    switches.push_back(useProxies);
+    projectPage->AddChild(useProxies);
     tabs->AddTab("Project", projectPage);
 
     // The controls' shape once; their colours follow the theme
@@ -683,12 +773,12 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
 }
 
 void Inspector::StyleControls(const Palette& p) {
-    // the dropdowns, text fields, sliders, switches and tabs follow the theme (Build)
+    // the dropdowns, text fields, sliders, switches, buttons, labels and
+    // tabs follow the theme (Build); the timecode fields take the tokens' fonts
     for (auto& t : timecodes) t->SetStyle(TimecodeStyleFor(p));
 }
 
 void Inspector::ApplyPalette(const Palette& p) {
-    palette = &p;
     if (!tabs) return;
     tabs->SetBackgroundColor(ToColor(p.Bg100));
     tabs->SetInactiveTabBorderColor(ToColor(p.Line));   // the theme leaves these transparent
@@ -708,11 +798,12 @@ void Inspector::ShowAudioTab() {
     if (tabs) tabs->SetActiveTab(1);
 }
 
-void Inspector::Show(const Document& doc, int index, int titleIndex, int overlayIndex) {
+void Inspector::Show(const Document& doc, int index, int titleIndex, int overlayIndex, int soundIndex) {
     updating = true;
     segment = index;
     title = titleIndex;
     overlay = overlayIndex;
+    sound = soundIndex;
     documentFrameRate = doc.FrameRate();
     for (auto& t : timecodes) t->SetFrameRate(documentFrameRate);
 
@@ -720,10 +811,55 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
     const bool hasClip = index >= 0 && static_cast<size_t>(index) < doc.project.segments.size();
     const bool hasTitle = !hasClip && titleIndex >= 0 && static_cast<size_t>(titleIndex) < doc.titles.size();
     const bool hasOverlay = !hasClip && !hasTitle && overlayIndex >= 0 && static_cast<size_t>(overlayIndex) < doc.overlays.size();
-    clipEmpty->SetVisible(!hasClip && !hasTitle && !hasOverlay);
-    clipFields->SetVisible(hasClip || hasTitle || hasOverlay);
+    const bool hasSound = !hasClip && !hasTitle && !hasOverlay && soundIndex >= 0 && static_cast<size_t>(soundIndex) < doc.sounds.size();
+    clipEmpty->SetVisible(!hasClip && !hasTitle && !hasOverlay && !hasSound);
+    clipFields->SetVisible(hasClip || hasTitle || hasOverlay || hasSound);
     titleRows->SetVisible(hasTitle);
     overlayRows->SetVisible(hasOverlay);
+    soundRows->SetVisible(hasSound);
+    effectRows->SetVisible(hasClip);
+    if (hasClip) {
+        const std::vector<VideoFXEffect>& effects = doc.project.segments[static_cast<size_t>(index)].effects;
+        shownEffects = effects;
+        effectsNone->SetVisible(effects.empty());
+        for (int i = 0; i < kEffectRows; ++i) {
+            const size_t at = static_cast<size_t>(i);
+            const bool shown = at < effects.size();
+            effectRow[at]->SetVisible(shown);
+            if (!shown) continue;
+            const EffectRange range = RangeOfEffect(effects[at].type);
+            effectAmount[at]->SetVisible(range.adjustable);
+            if (range.adjustable) {
+                effectAmount[at]->SetRange(static_cast<float>(range.low), static_cast<float>(range.high));
+                effectAmount[at]->SetStep(static_cast<float>(range.step));
+                effectAmount[at]->SetValue(static_cast<float>(std::clamp(effects[at].amount, range.low, range.high)));
+            }
+            effectName[at]->SetText(DescribeEffect(effects[at]));   // after the slider, which may report as it is set
+        }
+        const size_t more = effects.size() > static_cast<size_t>(kEffectRows) ? effects.size() - kEffectRows : 0;
+        effectsMore->SetVisible(more > 0);
+        if (more > 0) effectsMore->SetText("and " + std::to_string(more) + " more");
+        removeEffects->SetVisible(!effects.empty());
+    }
+    if (hasSound) {
+        const SoundSpan& a = doc.sounds[static_cast<size_t>(soundIndex)];
+        clipName->SetText(a.Name());
+        clipKind->SetText(a.ducksMusic ? "Voice-over on Voice & sound" : "Sound effect on Voice & sound");
+        fileRows->SetVisible(false);
+        stillRow->SetVisible(false);
+        imageRows->SetVisible(false);
+        transitionRows->SetVisible(false);
+        mute->SetVisible(false);
+        clipDuration->SetText(Seconds(a.duration) + " on the timeline, from " + TimelineTimecode(a.start, documentFrameRate) +
+                              (a.sourceIn <= 0.0 ? "" : ", the file from " + Seconds(a.sourceIn)));
+        soundVolume->SetValue(static_cast<float>(a.volume));
+        soundVolumeValue->SetText(std::to_string(static_cast<int>(std::lround(a.volume * 100))) + " %");
+        soundFadeIn->SetValue(static_cast<float>(a.fadeIn));
+        soundFadeInValue->SetText(Seconds(a.fadeIn));
+        soundFadeOut->SetValue(static_cast<float>(a.fadeOut));
+        soundFadeOutValue->SetText(Seconds(a.fadeOut));
+        soundDucks->SetChecked(a.ducksMusic);
+    }
     if (hasOverlay) {
         const OverlaySpan& v = doc.overlays[static_cast<size_t>(overlayIndex)];
         clipName->SetText(v.Name());
@@ -785,43 +921,9 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
         titleFadeOut->SetValue(static_cast<float>(t.fadeOut));
         titleFadeOutValue->SetText(Seconds(t.fadeOut));
     }
-    effectRows->SetVisible(hasClip);
     if (hasClip) {
         mute->SetVisible(true);
         const VideoFXSegment& s = doc.project.segments[static_cast<size_t>(index)];
-        // the effects, a row each
-        effectList->ClearChildren();
-        effectButtons.clear();
-        const int rowH = static_cast<int>(Tokens::ControlH);
-        const int gap = static_cast<int>(Tokens::Space1);
-        for (size_t k = 0; k < s.effects.size(); ++k) {
-            auto row = std::make_shared<UltraCanvasContainer>("uv.insp.effect.row" + std::to_string(k), 0, 0, kPageWidth - 8, rowH);
-            row->layout.SetFlexRow().SetFlexGap(gap).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-            row->layoutItem.SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Px(rowH));
-            auto name = CreateLabel("uv.insp.effect.name" + std::to_string(k), 0, 0, kPageWidth - rowH - 24, rowH, EffectName(s.effects[k]));
-            name->layoutItem.SetFlexShrink(0);
-            name->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
-            FollowTheme(name, LabelVariant::Body);
-            row->AddChild(name);
-            auto remove = MakeIconButton("uv.insp.effect.remove" + std::to_string(k), "trash", "Take this effect off");
-            const int at = static_cast<int>(k);
-            remove->SetOnClick([this, at]() {
-                const int seg = segment;
-                Edit("Remove effect", [seg, at](Document& d) {
-                    if (seg < 0 || static_cast<size_t>(seg) >= d.project.segments.size()) return;
-                    std::vector<VideoFXEffect>& effects = d.project.segments[static_cast<size_t>(seg)].effects;
-                    if (at >= 0 && static_cast<size_t>(at) < effects.size()) effects.erase(effects.begin() + at);
-                });
-            });
-            effectButtons.push_back(remove);
-            row->AddChild(remove);
-            effectList->AddChild(row);
-        }
-        const int listH = s.effects.empty() ? 0 : static_cast<int>(s.effects.size()) * (rowH + gap);
-        effectList->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(listH));
-        effectsEmpty->SetVisible(s.effects.empty());
-        clearEffects->SetVisible(!s.effects.empty());
-        effectRows->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(26 + gap + (s.effects.empty() ? 18 : listH) + gap));
         clipName->SetText(ClipName(doc, static_cast<size_t>(index)));
         const bool isFile = s.kind == VideoFXSourceKind::File;
         const bool isImage = s.kind == VideoFXSourceKind::Image;
@@ -915,6 +1017,7 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
     frameRate->SetSelectedIndex(rateIndex, false);
     fitMode->SetSelectedIndex(doc.project.settings.fitMode == VideoFXFitMode::Fill ? 1
                               : doc.project.settings.fitMode == VideoFXFitMode::Stretch ? 2 : 0, false);
+    useProxies->SetChecked(doc.view.useProxies);
     updating = false;
 }
 

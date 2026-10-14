@@ -3,16 +3,24 @@
 # Run from an MSYS2 CLANG64 (x86_64) or CLANGARM64 (arm64) shell after building the project
 #
 # Usage:
-#   ./package-win.sh [--no-sign] [package-name.zip]
-#     --no-sign   Skip Authenticode signing of the EXEs
+#   ./package-win.sh [--no-sign] [--installer] [package-name.zip]
+#     --no-sign     Skip Authenticode signing of the EXEs. Signing reads the
+#                   certificate's password from ULTRACANVAS_SIGN_PFX_PASSWORD
+#                   (SignUltraDemo.ps1 / SignUltraTexter.ps1)
+#     --installer   Also build the installer from the same folder:
+#                   UltraCanvas-Setup-Windows-<version>-<arch>.exe beside the
+#                   zip (scripts/build-windows-installer.sh; needs NSIS -
+#                   `pacman -S nsis` in the MSYS2 shell)
 #
 set -e
 
 DO_SIGN=true
+DO_INSTALLER=false
 PACKAGE_ZIP=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-sign) DO_SIGN=false; shift ;;
+        --installer) DO_INSTALLER=true; shift ;;
         *)         PACKAGE_ZIP="$1"; shift ;;
     esac
 done
@@ -56,8 +64,9 @@ mkdir -p "$DIST_DIR"
 # Verhaltensschutz quarantined UltraNetApiStatus.exe from the 0.3.50 package
 # as IDP.Generic. End users have no use for them anyway.
 # Both locations: most targets output to the build root, but some set
-# RUNTIME_OUTPUT_DIRECTORY to bin/ (UltraFIBU does), and globbing only the
-# root is why such an app is built by CI and then missing from the package.
+# RUNTIME_OUTPUT_DIRECTORY to bin/ (UltraFIBU and ultrapress do), and globbing
+# only the root is why such an app is built by CI and then missing from the
+# package.
 for exe in ./build/*.exe ./build/bin/*.exe; do
     [ -e "$exe" ] || continue
     case "$(basename "$exe")" in
@@ -419,3 +428,16 @@ TOTAL_DLLS=$(find "$DIST_DIR" -maxdepth 1 -name '*.dll' | wc -l)
 echo "=== Package complete ==="
 echo "  Files: $EXE_NAME + $TOTAL_DLLS DLLs"
 echo "  Location: $DIST_DIR/"
+
+# The installer: the same folder, installed per user with Start-menu entries,
+# an Apps & features entry and the choice of UltraDesktop as the desktop.
+if $DO_INSTALLER; then
+    SETUP_EXE="UltraCanvas-Setup-Windows-$VERSION-$ARCH.exe"
+    echo ""
+    echo "Building the installer..."
+    "$SCRIPT_DIR/scripts/build-windows-installer.sh" "$DIST_DIR" "$VERSION" "$ARCH" "$SETUP_EXE"
+    if $DO_SIGN; then
+        powershell -ExecutionPolicy Bypass -File SignUltraDemo.ps1 -Mode Sign -ExePath "$SETUP_EXE" \
+            -Description "UltraCanvas Setup"
+    fi
+fi

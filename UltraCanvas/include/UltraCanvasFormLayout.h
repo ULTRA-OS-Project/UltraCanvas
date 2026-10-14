@@ -10,6 +10,8 @@
 // language the captions are in, and every control starts where that column
 // ends.
 //
+// doc-check: std::shared_ptr<UltraCanvasTextInput> nameInput; std::shared_ptr<UltraCanvasContainer> sizeRow;
+// doc-check: example
 //     auto form = CreateFormGrid("settings");
 //     window->AddChild(form);
 //     AddFormRow(form, "name", "Name:", nameInput);

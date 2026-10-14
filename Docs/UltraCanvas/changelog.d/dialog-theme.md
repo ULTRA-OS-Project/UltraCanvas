@@ -1,4 +1,4 @@
-- **`UltraCanvasModalDialog` 3.7.0 follows the theme.** `ModalDialogStyle::FromTheme`
+- **`UltraCanvasModalDialog` 3.9.0 follows the theme.** `ModalDialogStyle::FromTheme`
   puts the theme's ink on the message and muted ink on the details over a
   style's own sizes, and the dialog's `ApplyTheme` colours its surface with
   the panel role and its footer buttons by their role (the default answer

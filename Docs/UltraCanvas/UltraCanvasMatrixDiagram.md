@@ -3,12 +3,14 @@
 <!-- doc-check: int row; int col; void Log(const std::string& line); -->
 
 A matrix diagram — one of the Seven Management and Planning Tools — makes the
-relationships between two or three ordered lists visible and countable. Rows and
+relationships between two to four ordered lists visible and countable. Rows and
 columns are things; each intersection carries a symbol from a small named scale,
 and the weights behind those symbols roll up into per-row and per-column totals.
 
-**Status:** Phase 1 — the `L` and `T` shapes. `Y`, `X` and the QFD `House`
-composite are planned; see
+**Status:** Phases 1–3 — the `L`, `T`, `X`, `Y` and QFD `House` shapes, the
+form header band, cell tint, hover bands that run across panels, a ranked bar
+strip for the column totals, and spreadsheet import. Phase 4 (pan/zoom,
+keyboard navigation, JSON, editing) is still open; see
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Which element do I want?
@@ -18,7 +20,7 @@ composite are planned; see
 | Continuous numeric cell values, a colour map, a colour bar | `UltraCanvasHeatmapChartElement` |
 | Items positioned at continuous (x, y) in a 2×2 space (BCG, Eisenhower, risk) | `UltraCanvasQuadrantChart` |
 | Rooms and their required adjacencies | `UltraCanvasAdjacencyDiagram` — it owns that data and draws its own matrix view |
-| Named relationship levels between two or three ordered lists, with totals | **this element** |
+| Named relationship levels between two to four ordered lists, with totals | **this element** |
 
 The distinction that matters is the cell datum. A heatmap cell holds a *number*
 and encodes it as a fill; a matrix diagram cell holds a *named level* and draws
@@ -81,12 +83,13 @@ Cells are stored **sparsely** — set the marks you have; the rest stay empty.
 |---|---|---|---|
 | `MatrixShape::L` | 2 | 1 | A × B — the basic form |
 | `MatrixShape::T` | 3 | 2 | B × A and A × C, A being the shared row axis |
-| `MatrixShape::Y` | 3 | 3 | *planned* |
-| `MatrixShape::X` | 4 | 4 | *planned* |
-| `MatrixShape::House` | 2 | 2 | *planned* — QFD composite with the correlation roof |
+| `MatrixShape::X` | 4 | 4 | A × B, B × C, C × D, D × A — four panels round a hub |
+| `MatrixShape::Y` | 3 | 3 | A × B, B × C, C × A — three rhombic panels between seams 120° apart |
+| `MatrixShape::House` | 2 | 1–2 | the QFD House of Quality: an L plus the correlation roof |
 
-Unimplemented shapes fall back to the `L` layout of panel 0 rather than drawing
-nothing, so data set against them is still visible.
+An `X`, `Y` or `House` whose model the shape cannot place (see *Validation*)
+falls back to the `L` layout of panel 0 rather than drawing nothing, so its
+data is still visible.
 
 A `T` shares its row axis between two wings. Panel 0 is the left wing, panel 1
 the right, and the shared row labels are drawn once between them:
@@ -103,6 +106,117 @@ model.AddPanel("employees", "skills",   MatrixScale::HighMediumLow());
 ```
 
 That is why the scale lives on the **panel** and not on the model.
+
+### The X shape
+
+An `X` puts its four sets on the arms of a cross, in model order: `sets[0]`
+left, `sets[1]` top, `sets[2]` right, `sets[3]` bottom. The top and bottom arms
+list their items as rows, the left and right arms as columns, and each panel
+fills the quadrant between its two arms — so every panel must pair a left/right
+set with a top/bottom one. Which of the two is the panel's row set is up to
+you: a panel whose rows are a side arm's items is turned to fit.
+
+```cpp
+MatrixModel x;
+x.shape = MatrixShape::X;
+x.AddSet("suppliers", "Suppliers",        {"Supplier A", "Supplier B"});   // left
+x.AddSet("storage",   "Storage areas",    {"W/H 1", "W/H 2"});             // top
+x.AddSet("customers", "Customers",        {"P-1042", "P-1187"});           // right
+x.AddSet("lines",     "Production lines", {"Line 1", "Line 2"});           // bottom
+
+x.AddPanel("suppliers", "storage",   MatrixScale::HighMediumLow());   // top-left, turned
+x.AddPanel("storage",   "customers", MatrixScale::HighMediumLow());   // top-right
+x.AddPanel("lines",     "customers", MatrixScale::HighMediumLow());   // bottom-right
+x.AddPanel("lines",     "suppliers", MatrixScale::HighMediumLow());   // bottom-left
+
+auto xDiagram = CreateMatrixDiagramElement("supply", 10, 10, 760, 560, x);
+xDiagram->SetHubMode(MatrixHubMode::Captions);
+```
+
+The middle of the cross is the **hub**. `MatrixHubMode::Blank` leaves it empty
+and draws each set's title at the outer end of its arm; `MatrixHubMode::Captions`
+puts the four titles in boxes in the hub with arrows out to their arms, and the
+hub grows to hold them. One cell width serves both left quadrants and both right
+ones, one cell height every row, so the quadrants always line up across the hub.
+
+### The Y shape
+
+A `Y` runs three seams out of a centre point, 120° apart — `sets[0]` straight
+up, `sets[1]` down-right, `sets[2]` down-left. Each seam is a band listing its
+set, and between two seams sits the panel crossing their sets, drawn as a
+rhombus whose cells step along both seams. A row starts at its label on one
+seam and runs parallel to the other.
+
+```cpp
+MatrixModel y;
+y.shape = MatrixShape::Y;
+y.AddSet("requirements", "Requirements", {"Quiet", "Compact"});
+y.AddSet("functions",    "Functions",    {"Generate suction", "Store energy"});
+y.AddSet("components",   "Components",   {"Motor", "Battery pack"});
+y.AddPanel("requirements", "functions",    MatrixScale::QFD());
+y.AddPanel("functions",    "components",   MatrixScale::QFD());
+y.AddPanel("components",   "requirements", MatrixScale::QFD());
+```
+
+The cell size is the largest that fits the whole figure, labels and titles
+included, between the style's `minCellSize` and `maxCellSize`.
+
+`X` and `Y` draw no totals gutters — their outer edges are other panels' arms or
+open space, and the totals are one call away on the model.
+
+### The House of Quality
+
+`MatrixShape::House` is the QFD composite: customer needs (`sets[0]`) against
+technical requirements (`sets[1]`) in panel 0, and over the requirements'
+header a **roof** — a second, *symmetric* panel that relates the requirements
+to each other. Round the grid it adds an importance column (the rows'
+`importance`), a direction-of-improvement row and a target row from the
+requirements' own fields:
+
+```cpp
+MatrixModel house = MatrixSamples::QualityFunctionDeployment();   // needs x requirements
+house.shape = MatrixShape::House;
+
+MatrixItemSet* reqs = house.FindSet("requirements");
+reqs->items[0].improvement = MatrixImprovement::Minimize;   // Maximize | Minimize | Target
+reqs->items[0].target = "< 11 kg";                          // free text, read by people
+
+MatrixPanel& roof = house.AddPanel("requirements", "requirements",
+                                   MatrixScale::Correlation());
+roof.symmetric = true;
+house.SetCell(1, "Frame mass", "Gear range", "strongnegative");
+
+auto houseDiagram = CreateMatrixDiagramElement("hoq", 10, 10, 900, 680, house);
+houseDiagram->SetTotals(MatrixTotals::Both);
+houseDiagram->SetRollUp(MatrixRollUp::Bars);
+```
+
+A **symmetric panel** crosses one set with itself and keeps one cell per pair,
+above the diagonal: `SetCellAt(1, 4, 0, ...)` is stored as `(0, 4)`, `LevelAt`
+and `FindCell` answer either way round, and the diagonal has no cell at all.
+`MatrixScale::Correlation()` is the roof's usual scale — `++`, `+`, `−`, `−−`,
+with signed weights that the roll-ups never use. The roof is drawn at 45°, one
+diamond per pair, each standing over the boundary between its two columns; the
+diagram trades cell width for row height so the roof cannot squeeze the rows
+(`MatrixDiagramStyle::maxRoofShare`, `minRowAspect`). `SetShowImportance(false)`
+hides the importance column. A House without a roof panel draws without one.
+
+`MatrixSamples::HouseOfQuality()` is a complete example.
+
+### The form header band
+
+Many printed matrix diagrams carry a form header — PROJECT, AREA, TITLE, TEAM,
+DATE. Put the fields on the model and the element draws them as a row of boxes
+above the grid, in any shape:
+
+```cpp
+x.headerFields = {
+        {"PROJECT", "Warehouse consolidation"},
+        {"TEAM",    "Ops planning"},
+        {"DATE",    "2026-10-13"},
+};
+xDiagram->SetShowHeaderBand(true);   // the default; false hides it
+```
 
 ## Relationship scales
 
@@ -168,6 +282,16 @@ gutter underneath — the presentation the printed form uses. Because they are
 computed from the marks they are consistent by construction, which a hand-built
 version is not.
 
+The column totals can instead be a **strip of bars** with each column's rank,
+the way a QFD exercise presents its result; the top three ranks stand out:
+
+```cpp
+diagram->SetRollUp(MatrixRollUp::Bars);      // Numbers is the default
+std::vector<double> shares = model.RelativeColumnWeights(0);   // percent of the total
+```
+
+A column's tooltip gives its total, rank, share and target.
+
 ## Presentation
 
 ```cpp
@@ -182,7 +306,10 @@ diagram->SetShowCellValues(false);           // draw each cell's weight as text
 `MatrixHeaderFit::Auto` measures the column labels once and picks the cheapest
 form that fits — `Horizontal`, then `Wrapped`, then `Rotated45`, then
 `Rotated90`. It never iterates: the cell width settles first, the fit follows
-from the width, and the band height follows from the fit. The grid has first
+from the width, and the band height follows from the fit. A rotated header leans
+right past its column, so when the fit is rotated the cells are then narrowed
+just enough for the last label to end inside the element - which cannot change
+the fit, because a rotated label does not depend on the cell width. The grid has first
 claim on the vertical space, so a very long header is ellipsised rather than
 squeezing the rows out.
 
@@ -193,11 +320,20 @@ MatrixDiagramStyle style = diagram->GetStyle();
 style.alternateRowBands = true;
 style.fillLabelBands = false;      // the solid label band behind row labels
 style.markSize = 0.5;              // fraction of the cell's short side
+style.tintCellsByLevel = true;     // fill each marked cell with its level's colour
+style.cellTintAlpha = 56;          // ... this faintly, under the mark
 diagram->SetStyle(style);
 ```
 
-`SetDarkTheme(true)` applies the dark palette to the whole style; call it before
-your own overrides, since it replaces the struct.
+The tint gives a heatmap-like read of where the strong relationships cluster;
+the mark stays the datum, and a level filtered out through the legend fades its
+tint along with its mark.
+
+`SetDarkTheme(true)` and `SetDarkTheme(false)` swap the palette and nothing
+else: sizes, fonts and switches such as `alternateRowBands` or
+`tintCellsByLevel` survive a round trip. Colours you set yourself are replaced,
+so set them after choosing the theme. `MatrixDiagramStyle::ApplyDarkTheme()`
+and `ApplyLightTheme()` do the same to a style you hold.
 
 ## Interaction
 
@@ -211,7 +347,11 @@ diagram->onColumnClick = [](int panel, int index, const MatrixItem& item) { };
 click landed in a label band. `onCellClick` fires for empty cells too — check
 `GetModel().LevelAt(...)` to tell them apart.
 
-Hovering highlights the cell's row and column and shows a tooltip. Clicking a
+Hovering highlights the cell's row and column and shows a tooltip. The bands
+follow the *items*, not the panel: a T's shared row lights up in both wings, and
+an X's column lights up in both quadrants that list it. In an `X` or `Y`, a
+click on an arm label reports a whole row or column of the first panel that
+lists the item. Clicking a
 legend entry filters the marks to that level; `SetLevelFilter("")` clears it.
 
 ## Interchange
@@ -222,16 +362,41 @@ bool ok = ImportMatrixCsv(csv, model, 0);
 ```
 
 The CSV is a header row of column labels then one row per row item, with level
-ids in the cells and empty fields for empty cells. Import fills in marks; it
-does not invent items, so the sets and the scale must already exist. It parses
-the whole file before touching the model, so a malformed file leaves your data
-alone.
+ids in the cells and empty fields for empty cells. `ExportMatrixCsv(model, 0,
+true)` adds an `Importance` column after the row labels, and `ImportMatrixCsv`
+reads it back. Import fills in marks; it does not invent items, so the sets and
+the scale must already exist. It parses the whole file before touching the
+model, so a malformed file leaves your data alone.
+
+To build a model **from** a spreadsheet, use `ImportMatrixTable`. It creates the
+items from the header row and the first column, and reads each mark by level
+id, label (any case), glyph or weight — so a QFD sheet typed with `9`, `3`, `1`
+imports as it is. An `Importance` (or `Weight`) second column sets the row
+importances. Numbers are dot-decimal whatever the locale.
+
+<!-- doc-check: std::string sheetCsv; -->
+
+A leading UTF-8 byte-order mark, as Excel writes, is skipped. The DemoApp's
+**Import table...** button reads a sheet this way, trying each built-in scale
+until one reads every mark; `media/diagrams/matrix/` holds two sample sheets.
+
+```cpp
+MatrixModel imported;
+std::string error;
+if (!ImportMatrixTable(sheetCsv, MatrixScale::QFD(), imported,
+                       "Customer needs", "Technical requirements", &error)) {
+    Log(error);   // names the line and the mark it could not read
+}
+```
 
 ## Samples
 
-`MatrixSamples::ImprovementTools()`, `MatrixSamples::EmployeeAllocation()` and
-`MatrixSamples::QualityFunctionDeployment()` build the three models the demo
-shows (`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
+`MatrixSamples::ImprovementTools()` (L), `MatrixSamples::EmployeeAllocation()`
+(T), `MatrixSamples::QualityFunctionDeployment()` (L, weighted),
+`MatrixSamples::SupplyChain()` (X, with a form header),
+`MatrixSamples::DesignTraceability()` (Y) and `MatrixSamples::HouseOfQuality()`
+(House) build the models the demo shows
+(`Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp`).
 
 ## Validation
 
@@ -243,7 +408,12 @@ if (!result.valid) { for (const auto& e : result.errors) Log(e); }   // Log: you
 ```
 
 Checks the set count against the shape, panel set references, cell indices,
-level ids and duplicate cells. `warnings` collects things that are drawable but
+level ids and duplicate cells. For an `X` it also checks that every panel pairs
+a left/right set with a top/bottom one and that no two panels claim the same
+quadrant; for a `Y`, that every panel crosses two different sets among the first
+three and that no pair appears twice; for a `House`, that panel 0 crosses two
+different sets and any further panel is the symmetric roof over its columns.
+A cell of a symmetric panel on or below the diagonal is an error. `warnings` collects things that are drawable but
 suspicious, such as an empty item set.
 
 The guarded mutators (`SetCell`, `SetCellAt`) already reject unknown panels,

@@ -15,15 +15,18 @@ add_executable(UltraVideo
     main.cpp
     UltraVideoDialogs.cpp
     UltraVideoDocument.cpp
+    UltraVideoFormats.cpp
     UltraVideoHistory.cpp
     UltraVideoInspector.cpp
     UltraVideoMapping.cpp
-    UltraVideoPresets.cpp
     UltraVideoPreview.cpp
+    UltraVideoProxies.cpp
     UltraVideoStory.cpp
     UltraVideoViewer.cpp
     UltraVideoWindow.cpp
 )
+# One copy per user; a second start's files open here (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraVideo)
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols
 # when the core is linked statically, as the other applications do.

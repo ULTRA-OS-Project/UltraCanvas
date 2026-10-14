@@ -121,6 +121,20 @@ std::string DesktopSettings::ToJson() const {
         notes.Append(std::move(note));
     }
     root.Set("stickers", std::move(notes));
+    JSONValue board = JSONValue::MakeObject();
+    board.Set("visible", categoryBoard.visible);
+    board.Set("design", categoryBoard.design);
+    board.Set("x", static_cast<double>(categoryBoard.x));
+    board.Set("y", static_cast<double>(categoryBoard.y));
+    board.Set("width", static_cast<double>(categoryBoard.width));
+    board.Set("height", static_cast<double>(categoryBoard.height));
+    if (!categoryBoard.board.empty()) {
+        // Kept as a nested object, not a string, so the file stays readable.
+        JSONParseResult parsed;
+        JSONValue kanban = JSON::Parse(categoryBoard.board, &parsed);
+        if (parsed.success && kanban.IsObject()) board.Set("board", std::move(kanban));
+    }
+    root.Set("categoryBoard", std::move(board));
     JSONSerializeOptions options;
     options.pretty = true;
     return JSON::Serialize(root, options);
@@ -159,6 +173,18 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
             s.color = note.Get("color").GetString(s.color);
             loaded.stickers.push_back(std::move(s));
         }
+    }
+    const JSONValue& board = root.Get("categoryBoard");
+    if (board.IsObject()) {
+        CategoryBoardSettings& cb = loaded.categoryBoard;
+        cb.visible = board.Get("visible").GetBoolean(false);
+        cb.design = board.Get("design").GetString(cb.design);
+        cb.x = static_cast<float>(board.Get("x").GetNumber(cb.x));
+        cb.y = static_cast<float>(board.Get("y").GetNumber(cb.y));
+        cb.width = static_cast<float>(board.Get("width").GetNumber(cb.width));
+        cb.height = static_cast<float>(board.Get("height").GetNumber(cb.height));
+        const JSONValue& kanban = board.Get("board");
+        if (kanban.IsObject()) cb.board = JSON::Serialize(kanban);
     }
     *this = std::move(loaded);
     return true;

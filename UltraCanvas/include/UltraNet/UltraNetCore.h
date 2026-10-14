@@ -82,7 +82,11 @@ enum class UltraNetResultCode {
     // answered, or the device was given a new key. Kept apart from
     // TlsCertificateInvalid because the remedy differs - nothing about the
     // certificate is wrong except that it is not the one remembered.
-    TlsPublicKeyMismatch
+    TlsPublicKeyMismatch,
+    // A redirect the request was not allowed to follow: with
+    // UltraNetHttpOptions::httpsOnlyRedirects, one to a URL that is not
+    // https://. UltraNetResult::httpStatus is the 3xx.
+    RedirectRefused
 };
 
 // ============================================================================
@@ -298,6 +302,18 @@ void UltraNet_DisableProxy();
 UltraNetResult         UltraNet_CancelRequest(UltraNetHandle handle);
 bool                   UltraNet_IsRequestActive(UltraNetHandle handle);
 UltraNetTransferStats  UltraNet_GetTransferStats(UltraNetHandle handle);
+
+// Pause an async transfer: nothing more is read from or written to the
+// connection, no data or progress callback fires, the connection stays open,
+// and the stall timeout is suspended (a whole-transfer timeout keeps
+// counting, so a pausable download leaves timeoutMs at its no-limit default).
+// Resume continues where it stopped. Both act on the next turn of the worker
+// and may be called before the request has started; a transfer that ends
+// while paused (the server closes, a cancel) reports as usual. InvalidHandle
+// when no such request is live.
+UltraNetResult         UltraNet_PauseRequest(UltraNetHandle handle);
+UltraNetResult         UltraNet_ResumeRequest(UltraNetHandle handle);
+bool                   UltraNet_IsRequestPaused(UltraNetHandle handle);
 
 // ============================================================================
 // Global transfer progress callback bag. Set once on the module, every HTTP

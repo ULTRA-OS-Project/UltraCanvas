@@ -1,7 +1,7 @@
 // Apps/UltraDesktop/main.cpp
 // UltraDesktop - the ULTRA OS desktop: the taskbar with the running
 // applications, the desktop organiser with the virtual desktops, the
-// Stickerboard, the clipboard and the screenshot, and the info panel with
+// Sticker board, the notes, the clipboard and the screenshot, and the info panel with
 // the devices and services - on one screen-sized window under everything
 // else, built from UltraCanvas elements on the UltraCanvasDesktopShell
 // module.
@@ -10,6 +10,12 @@
 // module sees and exit, which is what makes the module checkable over ssh:
 // --windows lists the open windows, --apps the installed applications,
 // --devices the device activity, --screenshot takes one.
+//
+// On Windows it can also take the place of the Windows desktop for this
+// user: --use-as-desktop makes the sign-in start it (with --session) and
+// hides Explorer's taskbar, --restore-desktop undoes that - the way back the
+// installer's uninstaller and a stuck user (Ctrl+Shift+Esc, Run new task)
+// take.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -64,6 +70,11 @@ void PrintUsage(const char* programName) {
         "  --apps              Print the installed applications and exit\n"
         "  --devices           Print the device activity and exit\n"
         "  --screenshot [file] Capture the screen to file (default: the Pictures folder)\n"
+        "  --use-as-desktop    Windows: start UltraDesktop at sign-in in place of the\n"
+        "                      Windows desktop (Explorer's taskbar hides), then open it\n"
+        "  --restore-desktop   Windows: back to the Windows desktop - no start at\n"
+        "                      sign-in, the taskbar as it was - and exit\n"
+        "  --session           Started by the sign-in: close when switched back\n"
         "  -v, --version       Show version information\n"
         "  -h, --help          Show this message\n",
         programName);
@@ -120,6 +131,18 @@ int PrintDevices() {
     return EXIT_SUCCESS;
 }
 
+// The way back: no start at sign-in, the taskbar as it was. A running
+// session desktop sees the switch is gone and closes within a second.
+int RestoreDesktop() {
+    std::string error;
+    if (!UltraCanvasDesktopShell::RestoreSystemDesktop(&error)) {
+        std::printf("The Windows desktop could not be restored: %s\n", error.c_str());
+        return EXIT_FAILURE;
+    }
+    std::printf("The Windows desktop is back: UltraDesktop no longer starts at sign-in.\n");
+    return EXIT_SUCCESS;
+}
+
 int Screenshot(const std::string& file) {
     const std::string path = file.empty() ? UltraCanvasDesktopShell::DefaultScreenshotPath() : file;
     std::string error;
@@ -137,6 +160,7 @@ int main(int argc, char* argv[]) {
     std::string settingsPath = UltraDesktop::DesktopSettings::DefaultPath();
     bool haveEdge = false;
     UltraDesktop::TaskbarEdge edge = UltraDesktop::TaskbarEdge::Left;
+    bool sessionDesktop = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -156,6 +180,18 @@ int main(int argc, char* argv[]) {
             std::string file;
             if (i + 1 < argc && argv[i + 1][0] != '-') file = argv[++i];
             return Screenshot(file);
+        } else if (arg == "--restore-desktop") {
+            return RestoreDesktop();
+        } else if (arg == "--use-as-desktop") {
+            std::string error;
+            if (!UltraCanvasDesktopShell::ReplaceSystemDesktop(UltraCanvasDesktopShell::FindProgram("UltraDesktop"),
+                                                               {"--session"}, &error)) {
+                std::printf("UltraDesktop cannot take the place of the desktop: %s\n", error.c_str());
+                return EXIT_FAILURE;
+            }
+            sessionDesktop = true;
+        } else if (arg == "--session") {
+            sessionDesktop = true;
         } else if (arg == "--edge") {
             if (i + 1 >= argc || !UltraDesktop::ParseTaskbarEdge(argv[i + 1], edge)) {
                 std::printf("--edge needs a value: left, top or bottom\n");
@@ -197,6 +233,7 @@ int main(int argc, char* argv[]) {
         // The desktop outlives the loop it runs: its destructor stops the
         // monitor and the device poll before the application goes.
         UltraDesktop::UltraDesktopWindow desktop;
+        desktop.SetSessionDesktop(sessionDesktop);
         if (!desktop.Initialize(settingsPath, haveEdge ? &edge : nullptr)) {
             debugOutput << "Failed to create the desktop window" << std::endl;
             exitCode = EXIT_FAILURE;

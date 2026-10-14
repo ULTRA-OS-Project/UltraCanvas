@@ -1,7 +1,10 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.9 - The image performance page is registered only with libvips, as it is built
+// Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
+//                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-13
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -902,6 +905,11 @@ namespace UltraCanvas {
                                 "Docs/UltraCanvas/UltraCanvasListViewExamples.md");
 
         // ===== BITMAP ELEMENTS =====
+        // Only with libvips: the format pages (UltraCanvasBitmapFormatDemo.cpp)
+        // and the performance page benchmark its codecs, and both files are
+        // built only with it (CMakeLists.txt, "These files depend on libvips").
+        // Without it the category has no pages and gets no tree node.
+#ifdef HAS_LIBVIPS
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
 
         bitmapBuilder.AddItem("pngimages", "PNG Images", "PNG Image display and manipulation",
@@ -996,6 +1004,7 @@ namespace UltraCanvas {
                 .AddVariant("imageperformance", "Full Pipeline Test")
                 .AddVariant("imageperformance", "Decompress + Draw Test")
                 .AddVariant("imageperformance", "Draw Only Test");
+#endif  // HAS_LIBVIPS
 
         // ("drawing" / "Drawing Surface" placeholder removed: no
         // UltraCanvasDrawingSurface was ever built, so the page rendered an
@@ -1240,23 +1249,6 @@ namespace UltraCanvas {
                 .AddVariant("timelinechart", "Dark")
                 .AddVariant("timelinechart", "Swimlanes");
 
-        chartBuilder.AddItem("kanbanboards", "Kanban Board",
-                             "Workflow boards with WIP limits, swimlanes, drag & drop, "
-                             "a built-in card editor, Mermaid text definitions and "
-                             "design presets",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateKanbanBoardExamples(); },
-                             "DemoApp/UltraCanvasKanbanBoardExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasKanbanBoard.md")
-                .AddVariant("kanbanboards", "Interactive Editor")
-                .AddVariant("kanbanboards", "Sticky Notes")
-                .AddVariant("kanbanboards", "Poster")
-                .AddVariant("kanbanboards", "Schematic")
-                .AddVariant("kanbanboards", "Timeline / Swimlanes")
-                .AddVariant("kanbanboards", "Dark Theme")
-                .AddVariant("kanbanboards", "Text Definition")
-                .AddVariant("kanbanboards", "Cumulative Flow");
-
         chartBuilder.AddItem("polarcharts", "Polar Chart",
                              "Angle/radius plots: scatter, line, spline, area and "
                              "column series with categorical or numeric angle axes, "
@@ -1307,6 +1299,7 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasJitterPlotExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasJitterPlotExamples.md");
 
+#ifndef __EMSCRIPTEN__
         chartBuilder.AddItem("waveform", "Waveform Chart",
                              "Audio amplitude min/max envelope with RMS overlay, a "
                              "click-to-seek playhead, and a selectable display range",
@@ -1318,7 +1311,9 @@ namespace UltraCanvas {
                 .AddVariant("waveform", "RMS Overlay")
                 .AddVariant("waveform", "Display Range")
                 .AddVariant("waveform", "Click-to-seek Playhead");
+#endif
 
+#ifndef __EMSCRIPTEN__
         chartBuilder.AddItem("spectrogram", "Spectrogram Chart",
                              "STFT time x frequency analysis of audio signals with every "
                              "transform and display option adjustable live",
@@ -1331,7 +1326,9 @@ namespace UltraCanvas {
                 .AddVariant("spectrogram", "Window Functions")
                 .AddVariant("spectrogram", "Magnitude & Dynamic Range")
                 .AddVariant("spectrogram", "Frequency Cap & Colour Maps");
+#endif
 
+#ifndef __EMSCRIPTEN__
         chartBuilder.AddItem("audioanalysis", "Audio Analysis Charts",
                              "Spectrum plot, amplitude envelope and correlogram built with "
                              "the generic area / bar chart elements",
@@ -1342,6 +1339,7 @@ namespace UltraCanvas {
                 .AddVariant("audioanalysis", "Spectrum Plot (Averaged FFT)")
                 .AddVariant("audioanalysis", "Amplitude Envelope (RMS)")
                 .AddVariant("audioanalysis", "Correlogram (Autocorrelation)");
+#endif
 
         chartBuilder.AddItem("dumbbell", "Dumbbell Chart",
                              "Paired value comparison with connected dots - gender gaps, "
@@ -1369,22 +1367,6 @@ namespace UltraCanvas {
                 .AddVariant("funnel", "Presentation Infographic")
                 .AddVariant("funnel", "Horizontal Funnel")
                 .AddVariant("funnel", "Playground");
-
-        chartBuilder.AddItem("pyramid", "Pyramid Diagram",
-                             "Level hierarchies - extruded 3D tiers, colour ribbon and icon "
-                             "callouts, outlined and flat presentation layouts, and "
-                             "area-proportional data pyramids with a reference shape",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreatePyramidChartExamples(); },
-                             "DemoApp/UltraCanvasPyramidChartExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasPyramidChart.md")
-                .AddVariant("pyramid", "3D Ribbon Pyramid")
-                .AddVariant("pyramid", "Spectrum 3D")
-                .AddVariant("pyramid", "Outline Hierarchy")
-                .AddVariant("pyramid", "Flat & Minimal")
-                .AddVariant("pyramid", "Alternating Infographic")
-                .AddVariant("pyramid", "Data Pyramid")
-                .AddVariant("pyramid", "Playground");
 
         chartBuilder.AddItem("bubblecharts", "Bubble Chart",
                              "Scatter bubbles, packed bubbles, bubble matrix and an "
@@ -1613,7 +1595,7 @@ namespace UltraCanvas {
                 .AddVariant("requirementdiagram", "ReqIF + overlays");
 
     diagramBuilder.AddItem("matrixdiagram", "Matrix Diagram",
-                           "Relationships between two or three ordered lists, marked from a "
+                           "Relationships between two to four ordered lists, marked from a "
                            "named scale and rolled up into weighted row and column totals",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateMatrixDiagramExamples(); },
@@ -1621,7 +1603,55 @@ namespace UltraCanvas {
                            "Docs/UltraCanvas/UltraCanvasMatrixDiagram.md")
                 .AddVariant("matrixdiagram", "L-Shaped")
                 .AddVariant("matrixdiagram", "T-Shaped")
-                .AddVariant("matrixdiagram", "Weighted (QFD)");
+                .AddVariant("matrixdiagram", "Weighted (QFD)")
+                .AddVariant("matrixdiagram", "X-Shaped")
+                .AddVariant("matrixdiagram", "Y-Shaped")
+                .AddVariant("matrixdiagram", "House of Quality");
+
+        diagramBuilder.AddItem("kanbanboards", "Kanban Board",
+                               "Workflow boards with WIP limits, swimlanes, drag & drop, "
+                               "a built-in card editor, Mermaid text definitions and "
+                               "design presets",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateKanbanBoardExamples(); },
+                               "DemoApp/UltraCanvasKanbanBoardExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasKanbanBoard.md")
+                .AddVariant("kanbanboards", "Interactive Editor")
+                .AddVariant("kanbanboards", "Sticky Notes")
+                .AddVariant("kanbanboards", "Poster")
+                .AddVariant("kanbanboards", "Schematic")
+                .AddVariant("kanbanboards", "Timeline / Swimlanes")
+                .AddVariant("kanbanboards", "Dark Theme")
+                .AddVariant("kanbanboards", "Text Definition")
+                .AddVariant("kanbanboards", "Cumulative Flow");
+
+        diagramBuilder.AddItem("pyramid", "Pyramid Diagram",
+                               "Level hierarchies - extruded 3D tiers, colour ribbon and icon "
+                               "callouts, outlined and flat presentation layouts, and "
+                               "area-proportional data pyramids with a reference shape",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreatePyramidChartExamples(); },
+                               "DemoApp/UltraCanvasPyramidChartExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasPyramidChart.md")
+                .AddVariant("pyramid", "3D Ribbon Pyramid")
+                .AddVariant("pyramid", "Spectrum 3D")
+                .AddVariant("pyramid", "Outline Hierarchy")
+                .AddVariant("pyramid", "Flat & Minimal")
+                .AddVariant("pyramid", "Alternating Infographic")
+                .AddVariant("pyramid", "Data Pyramid")
+                .AddVariant("pyramid", "Playground");
+
+    diagramBuilder.AddItem("tickerboard", "Ticker Board",
+                           "Labels, values and changes crawling across a band: set in a font, "
+                           "or lit on a 5x7 LED dot grid that the text steps across",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateTickerBoardExamples(); },
+                           "DemoApp/UltraCanvasTickerBoardExamples.cpp",
+                           "Docs/UltraCanvas/UltraCanvasTickerBoard.md")
+                .AddVariant("tickerboard", "Market Quotes")
+                .AddVariant("tickerboard", "LED Sign")
+                .AddVariant("tickerboard", "Live Dot-Matrix Quotes")
+                .AddVariant("tickerboard", "Headline Crawl");
 
 //        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
 //                               ImplementationStatus::NotImplemented,
@@ -1741,11 +1771,14 @@ namespace UltraCanvas {
 
         // Outside the GL guard: UltraCanvasSTLElement falls back to a mesh summary
         // without GL, so the loader and its statistics stay demonstrable there.
+        // Not in the browser: the only sample is a 25 MB STL, left out of the page's bundle.
+#ifndef __EMSCRIPTEN__
         graphics3DBuilder.AddItem("stlmodels", "STL 3D Models", "Stereolithography meshes (ASCII and binary) read by the self-contained STL loader and shaded in an orbiting OpenGL view",
                                   ImplementationStatus::FullyImplemented,
                                   [this]() { return CreateSTLModelExamples(); },
                                   "DemoApp/UltraCanvasSTLExamples.cpp",
                                   "Docs/UltraCanvas/UltraCanvasSTLElement.md");
+#endif
 
 #ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
         // The rest of the 3D matrix, one entry per format the way STL has its
@@ -1795,6 +1828,8 @@ namespace UltraCanvas {
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);
 
+        // Not in the browser: no video backend (ULTRACANVAS_ENABLE_VIDEO is off).
+#ifndef __EMSCRIPTEN__
         videoBuilder.AddItem("video", "Video Player", "Video playback and recording",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateVideoExamples(); },
@@ -1803,6 +1838,7 @@ namespace UltraCanvas {
                 .AddVariant("video", "MP4 Playback")
                 .AddVariant("video", "Camera Recording")
                 .AddVariant("video", "Custom Controls");
+#endif
 
         videoBuilder.AddItem("videotimeline", "Video Timeline",
                              "A media timeline to edit: clips on tracks under a ruler, trim, reorder, "
@@ -1876,12 +1912,16 @@ namespace UltraCanvas {
                 .AddVariant("ebook", "Kindle (MOBI / AZW)")
                 .AddVariant("ebook", "Plain Text");
 
+// The page's source is only built with the plugin (CMakeLists.txt): its
+// CreateLaTeXView() comes from the on-demand loader the plugin brings.
+#ifdef ULTRACANVAS_PLUGIN_LATEX
         textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents",
                                "LaTeX documents typeset live from source by the UltraCanvas math "
                                "engine — rendered output and source per document",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateLaTeXExamples(); },
                                "DemoApp/UltraCanvasLaTeXExamples.cpp");
+#endif
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
         textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents",
@@ -1917,6 +1957,9 @@ namespace UltraCanvas {
 
 
         // ===== AUDIO ELEMENTS =====
+        // Not in the browser: no audio backend (ULTRACANVAS_ENABLE_AUDIO is off),
+        // so the players and meters would stay silent.
+#ifndef __EMSCRIPTEN__
         auto audioBuilder = DemoCategoryBuilder(this, DemoCategory::AudioElements);
 
         audioBuilder.AddItem("audio", "Audio Player", "Audio playback and waveform display",
@@ -1940,6 +1983,7 @@ namespace UltraCanvas {
                 .AddVariant("levelmeter", "Custom Colour Themes")
                 .AddVariant("levelmeter", "Live Playback Levels")
                 .AddVariant("levelmeter", "Manual Control & Reset");
+#endif
 
         auto toolsBuilder = DemoCategoryBuilder(this, DemoCategory::Tools);
 
@@ -1971,7 +2015,7 @@ namespace UltraCanvas {
         toolsBuilder.AddItem("ocr", "OCR", "Optical Character Recognition",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateOCRExamples(); },
-                             "Apps/DemoApp/UltraCanvasOCRExamples.cpp",
+                             "DemoApp/UltraCanvasOCRExamples.cpp",
                              "Docs/Modules/OCR/README.md");
 #else
         toolsBuilder.AddItem("ocr", "OCR", "Optical Character Recognition",
@@ -1983,7 +2027,7 @@ namespace UltraCanvas {
         toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image to SVG vector tracer",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateVectorizerExamples(); },
-                             "Apps/DemoApp/UltraCanvasVectorizerExamples.cpp",
+                             "DemoApp/UltraCanvasVectorizerExamples.cpp",
                              "Docs/Modules/Vectorizer/README.md");
 #else
         toolsBuilder.AddItem("vectorizer", "Vectorizer", "Raster image to SVG vector tracer",
@@ -1999,15 +2043,18 @@ namespace UltraCanvas {
                              "Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md");
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
+        // Not in the browser: no audio backend (ULTRACANVAS_ENABLE_AUDIO is off).
+#ifndef __EMSCRIPTEN__
         modulesBuilder.AddItem("audiofx", "Audio FX", "Audio FX",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateAudioFXExamples(); },
-                               "Apps/DemoApp/UltraCanvasAudioFXExamples.cpp",
+                               "DemoApp/UltraCanvasAudioFXExamples.cpp",
                                "Docs/Modules/AudioFX/README.md");
+#endif
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateFileLoaderExamples(); },
-                               "Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp",
+                               "DemoApp/UltraCanvasFileLoaderExamples.cpp",
                                "Docs/Modules/FileLoader/README.md");
         // Specification only — no IODeviceManager sources, no build target, and no
         // application consumes the scanner / camera / printer API described in
@@ -2020,7 +2067,7 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreatePixelFXExamples(); },
-                               "Apps/DemoApp/UltraCanvasPixelFXExamples.cpp",
+                               "DemoApp/UltraCanvasPixelFXExamples.cpp",
                                "Docs/Modules/PixelFX/README.md");
 #else
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
@@ -2042,7 +2089,7 @@ namespace UltraCanvas {
                                "Print, messages and input, as ULTRA OS or native dialogs",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateSystemDialogsExamples(); },
-                               "Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp",
+                               "DemoApp/UltraCanvasSystemDialogsExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasSystemDialogs.md")
                 .AddVariant("systemdialogs", "File Open / Open multiple")
                 .AddVariant("systemdialogs", "File Save")
@@ -2100,7 +2147,7 @@ namespace UltraCanvas {
                                "UltraNet_HttpGet + UCImageRaster::LoadFromMemory)",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateNetworkingExamples(); },
-                               "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp",
+                               "DemoApp/UltraCanvasNetworkingExamples.cpp",
                                "Docs/Modules/UltraNet/README.md");
         // Built module (target UltraVault) used by UltraAIApp for provider API
         // keys and by UltraMail for account credentials.
@@ -2298,11 +2345,18 @@ namespace UltraCanvas {
 
         TreeNode* modulesNode = nullptr;
         for (const auto& [category, catName] : categoryNames) {
+            // A category with no pages in this build (the browser build
+            // leaves the audio pages out) gets no node: a childless folder
+            // in the tree is a page that cannot be opened.
+            const auto itemsIt = categoryItems.find(category);
+            if (itemsIt == categoryItems.end() || itemsIt->second.empty()) {
+                continue;
+            }
+            const auto& items = itemsIt->second;
             TreeNodeData categoryData(
                     "cat_" + std::to_string(static_cast<int>(category)),
                     catName
             );
-            auto items = categoryItems[category];
             categoryData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
             TreeNode* categoryNode = categoryTreeView->AddNode("root", categoryData);
             if (category == DemoCategory::Modules) {
@@ -2559,6 +2613,10 @@ namespace UltraCanvas {
         debugOutput << "Select items from the tree view to see implementation examples." << std::endl;
 
         if (mainWindow) {
+#ifdef __EMSCRIPTEN__
+            // The page is the screen: fill the browser viewport.
+            mainWindow->Maximize();
+#endif
             mainWindow->Show();
             // The application will handle the event loop
         }

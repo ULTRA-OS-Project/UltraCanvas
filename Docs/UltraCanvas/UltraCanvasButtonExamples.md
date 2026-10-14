@@ -3,7 +3,7 @@
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
 **Version:** 1.1.0 - the theme and the button's variant  
-**Last Modified:** 2026-10-11  
+**Last Modified:** 2026-10-14  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -152,7 +152,13 @@ void SetPadding(float all);                                      // inherited fr
 void SetPadding(float vertical, float horizontal);
 void SetPadding(float top, float right, float bottom, float left);
 void SetIconSpacing(int spacing);
+void SetIconSize(int width, int height);   // the size the icon is drawn at
 void SetCornerRadius(float radius);
+
+// The icon's size as set with SetIconSize - what a twin of the button
+// (a tool group's fold-out bar) copies
+int GetIconWidth() const;
+int GetIconHeight() const;
 
 // Shadow configuration
 void SetShadow(
@@ -499,6 +505,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
 | 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |
 | 1.0.3 | 2026-10-07 | Match the header: real `ButtonStyle` fields and `ButtonBuilder` methods, `ElementState`/`GetPrimaryState()` instead of a `ButtonState` enum, layout sizing instead of auto-resize, `SetDisabled()`, `SetPadding()` overloads |
