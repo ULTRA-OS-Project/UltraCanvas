@@ -2023,7 +2023,18 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     # default abort-on-throw. PUBLIC so app executables inherit both.
     if(ULTRACANVAS_WASM_THREADS)
         set(_uc_wasm_thread_compile -pthread)
-        set(_uc_wasm_thread_link -pthread -sPTHREAD_POOL_SIZE=8)
+        # Growth with threads otherwise costs every JS-side heap access a
+        # check that the buffer was not replaced (Emscripten warns "-pthread
+        # + ALLOW_MEMORY_GROWTH may run non-wasm code slowly"). 1 uses the
+        # browser's growable SharedArrayBuffer where it exists (Chromium,
+        # Safari; Firefox from 154) and keeps the checked path elsewhere; 2
+        # would require it. Threaded builds only: Emscripten copies through
+        # a temporary buffer before handing shared memory to a Web API, but
+        # hands a single-threaded program's heap over directly, and with
+        # this option that heap is a resizable ArrayBuffer, which
+        # crypto.getRandomValues refuses ("must not be resizable") the
+        # first time anything asks for random bytes.
+        set(_uc_wasm_thread_link -pthread -sPTHREAD_POOL_SIZE=8 -sGROWABLE_ARRAYBUFFERS=1)
     else()
         set(_uc_wasm_thread_compile)
         set(_uc_wasm_thread_link)
@@ -2039,13 +2050,6 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
             ${_uc_wasm_thread_link}
             -fwasm-exceptions
             -sALLOW_MEMORY_GROWTH=1
-            # Growth with threads otherwise costs every JS-side heap access
-            # a check that the buffer was not replaced (Emscripten warns
-            # "-pthread + ALLOW_MEMORY_GROWTH may run non-wasm code
-            # slowly"). 1 uses the browser's growable SharedArrayBuffer
-            # where it exists (Chromium, Safari; Firefox from 154) and keeps
-            # the checked path elsewhere; 2 would require it.
-            -sGROWABLE_ARRAYBUFFERS=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1
             # The backend's EM_ASM bridges (clipboard, dialogs, downloads,
