@@ -76,7 +76,7 @@ namespace UltraCanvas {
         auto tab = std::make_shared<UltraCanvasContainer>("ReqHybridTab", 0, 0, 1020, 700);
 
         auto desc = std::make_shared<UltraCanvasLabel>("ReqHybridDesc", 10, 8, 990, 22);
-        desc->SetText("Containment tree with ⊕ crosshairs, «stereotype» headers and "
+        desc->SetText("Containment tree with crosshair circles, «stereotype» headers and "
                       "id/source/text/verifyMethod/risk compartments. Colour comes from the category.");
         desc->SetFontSize(11);
         tab->AddChild(desc);
@@ -555,7 +555,7 @@ namespace UltraCanvas {
         auto tab = std::make_shared<UltraCanvasContainer>("ReqMermaidTab", 0, 0, 1020, 700);
 
         auto desc = std::make_shared<UltraCanvasLabel>("ReqMermaidDesc", 10, 8, 990, 22);
-        desc->SetText("Parsed from Mermaid requirementDiagram text. Use the ⊖ toggles to collapse "
+        desc->SetText("Parsed from Mermaid requirementDiagram text. Use the minus toggles to collapse "
                       "a sub-tree; the buttons switch edit mode. F2 renames, Delete removes.");
         desc->SetFontSize(11);
         tab->AddChild(desc);
@@ -930,7 +930,7 @@ refunds - derives -> card_payments
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("ReqSub");
         subtitle->SetText("SysML requirement diagram: compartmented requirement boxes, "
-                          "containment with ⊕ crosshairs, and dashed deriveReqt / satisfy / "
+                          "containment with crosshair circles, and dashed deriveReqt / satisfy / "
                           "verify / refine / trace relationships.");
         subtitle->SetFontSize(11);
         subtitle->SetWrap(TextWrap::WrapWord);

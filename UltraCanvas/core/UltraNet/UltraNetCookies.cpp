@@ -174,6 +174,10 @@ UltraNetResult PerformSessionRequest(Session& s,
     const UltraNetConfig cfg = UltraNet_GetConfig();
     ultranet_internal::WriteSink sink;
     sink.body = &outResponse.body;
+    const UltraNetResult opened =
+        ultranet_internal::OpenOutputFile(merged.options, sink);
+    if (!opened) return opened;
+    if (sink.ownsFile) sink.body = nullptr;
 
     curl_slist* slist = ultranet_internal::ConfigureEasyHandle(
         easy.get(), merged, cfg, &sink, &outResponse);
@@ -207,8 +211,9 @@ UltraNetResult PerformSessionRequest(Session& s,
     // a handle that goes back to the pool is not, so it is written now.
     if (!s.cookieJar.empty())
         curl_easy_setopt(easy.get(), CURLOPT_COOKIELIST, "FLUSH");
+    sink.CloseFile();
     return ultranet_internal::FinalizeFromEasy(
-        easy.get(), rc, request.url, outResponse, sink.exceededLimit);
+        easy.get(), rc, request.url, outResponse, sink);
 }
 
 } // namespace

@@ -1,8 +1,12 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.7.0
-// Last Modified: 2026-08-11
+// Version: 1.9.0
+// Last Modified: 2026-10-10
+// V1.8.0: A picture saved over shows its new content. The paths a paint drew
+//   go to an UltraCanvasImageFileWatch, whose worker checks the files and
+//   drops a changed one from the image cache; the album then relayouts and
+//   repaints. Nothing touches the disk on the paint path for it.
 // V1.7.0: Video tiles extract their own poster frame (AlbumConfig::
 //   videoPosterFrames) — a Video item with no thumbnailPath gets one frame of
 //   the clip decoded on a background worker and cached in memory, so the tile
@@ -851,11 +855,13 @@ namespace UltraCanvas {
             ctx->SetFontSize(14.0f);
             ctx->DrawTextInRect("(empty album)", Rect2Dd(bounds));
             ctx->PopState();
+            imageFileWatch.SetDrawnImages({});
             return;
         }
 
         actionHits.clear();
         linkHits.clear();
+        drawnImages.clear();
 
         // Translate the whole content by the scroll offset.
         ctx->PushState();
@@ -876,6 +882,8 @@ namespace UltraCanvas {
         DrawScrollbar(ctx);
         if (dragging) DrawDragGhost(ctx);
         ctx->PopState();
+        // What this paint drew is what is watched for being saved over.
+        imageFileWatch.SetDrawnImages(drawnImages);
     }
 
     void UltraCanvasAlbum::DrawTile(IRenderContext* ctx, const TileLayout& tile, bool hovered) {
@@ -979,6 +987,8 @@ namespace UltraCanvas {
                                            const Rect2Di& rect, float zoomExtra) {
         std::string path = ThumbPathFor(item);
         std::shared_ptr<UCImage> img = path.empty() ? nullptr : UCImage::Get(path);
+        if (!path.empty())
+            drawnImages.push_back({path, img ? img->GetSourceStamp() : FileStamp{}});
         if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) {
             // No still cover: a Video tile falls back to a frame of its own clip
             // (queued here, decoded on a worker, cached). Drawn through the
@@ -1478,6 +1488,18 @@ namespace UltraCanvas {
         activePopupMenu->OpenMenu(winPos, *win, settings);
     }
 
+    // A tile dragged past the album's edge: the reorder is over, the app
+    // carries the item on from here
+    void UltraCanvasAlbum::DragOut(const Point2Di& windowPos) {
+        if (!dragging || dragItem < 0 || dragItem >= static_cast<int>(items.size()) || !onItemDraggedOut) return;
+        const size_t index = static_cast<size_t>(dragItem);
+        dragging = false;
+        dragArmed = false;
+        dragItem = -1;
+        RequestRedraw();
+        onItemDraggedOut(index, windowPos);
+    }
+
     void UltraCanvasAlbum::FinishDrag() {
         if (dragItem >= 0 && dragItem < static_cast<int>(items.size())) {
             Point2Di cp = ToContentPoint(dragCurrent);
@@ -1700,6 +1722,7 @@ namespace UltraCanvas {
                 }
                 dragArmed = false;
                 draggingScrollbar = false;
+                DragOut(Point2Di(event.pointerWindow.x, event.pointerWindow.y));
                 return true;
             }
             case UCEventType::MouseWheel: {
@@ -1734,6 +1757,11 @@ namespace UltraCanvas {
                     if (dx * dx + dy * dy >= kDragThreshold * kDragThreshold) {
                         dragging = true;
                     }
+                }
+                if (dragging && onItemDraggedOut &&
+                    !Rect2Di(0, 0, static_cast<int>(GetWidth()), static_cast<int>(GetHeight())).Contains(local)) {
+                    DragOut(Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+                    return true;
                 }
                 int newHover = TileAt(ToContentPoint(local));
                 if (dragging || newHover != hoveredItem) {

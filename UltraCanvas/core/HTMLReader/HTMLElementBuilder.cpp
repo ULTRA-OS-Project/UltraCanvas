@@ -1,5 +1,30 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.33.0 - file uploads (a chooser button, BuildOptions::onChooseFiles);
+//                   a <label>'s text acts on its control
+// Version: 1.32.0 - BuildOptions::interactiveForms: real form widgets on the line
+//                   with their text, held by a FormController per <form>
+// Version: 1.31.0 - an inline element's background and border, at any depth in
+//                   a run, drawn by the label around its text (LabelTextBox),
+//                   across lines; only vertical padding makes it a box
+// Version: 1.30.0 - inline elements' backgrounds: a Pango background over the
+//                   text and its padding; one with a border, or a background
+//                   with vertical padding (the mail button), is a box on the line;
+//                   a space between a box and the text beside it is kept
+// Version: 1.29.0 - @import: imported sheets come before the importing sheet's
+//                   rules (in an @media block when the import names media)
+// Version: 1.28.0 - an inline element's horizontal margin, border and padding
+//                   keep its text apart from its neighbours (placeholders of
+//                   that width in the label's run)
+// Version: 1.27.0 - display: flex / grid (and inline-flex / inline-grid) lay their
+//                   children out on the CSSLayout flex and grid engines: elements
+//                   are items of their own size with real margins, text between
+//                   them anonymous items; flex / order / align-self, grid lines,
+//                   spans and named areas; repeat(auto-fill / auto-fit) counted
+//                   against the grid's estimated width
+// Version: 1.26.0 - a table cell ignores min-height / max-height (mail's spacer
+//                  cells, max-height:1px, kept their height); an inline
+//                  element's line-height sets its line's height
 // Version: 1.25.0 - <img> with a height and no width is as wide as the picture's
 //                   shape makes it (it took the picture's own width, and fill
 //                   stretched it); with a width and a height it keeps that
@@ -75,7 +100,7 @@
 //                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -83,17 +108,29 @@
 #include <functional>
 
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasDropdown.h"
+#include "UltraCanvasRadio.h"
+#include "UltraCanvasTextArea.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasTextSelection.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 
 namespace UltraCanvas {
 namespace HTML {
 
 namespace {
+
+// line-height: normal, as a factor of the font size - what browsers use for
+// the common sans faces, where a run's line height has to be reckoned before
+// the text is shaped.
+constexpr float kNormalLineHeight = 1.2f;
 
 Color ToColor(const CssColor& c) { return Color(c.r, c.g, c.b, c.a); }
 
@@ -237,6 +274,29 @@ ImagePosition ToImagePosition(const BackgroundPosition& p) {
 
 // Whether a run holds nothing but whitespace text (spaces, newlines, &nbsp;)
 // - between two images it is the space that separates them on their line.
+// Whether the text at the start (atEnd false) or the end of `run` is
+// collapsible white space - the space a label trims, which a box next to
+// the run must keep as a gap ("Order now: [Buy] today").
+const Node* EdgeText(const Node& node, bool atEnd) {
+    if (node.type == NodeType::Text) return node.text.empty() ? nullptr : &node;
+    if (!node.IsElement() || node.children.empty()) return nullptr;
+    const size_t n = node.children.size();
+    for (size_t k = 0; k < n; ++k) {
+        const Node& child = *node.children[atEnd ? n - 1 - k : k];
+        if (child.type == NodeType::Text && child.text.empty()) continue;
+        return EdgeText(child, atEnd);
+    }
+    return nullptr;
+}
+
+bool RunEdgeIsSpace(const std::vector<Node*>& run, bool atEnd) {
+    if (run.empty()) return false;
+    const Node* text = EdgeText(*(atEnd ? run.back() : run.front()), atEnd);
+    if (!text) return false;
+    const unsigned char c = static_cast<unsigned char>(atEnd ? text->text.back() : text->text.front());
+    return std::isspace(c) != 0;
+}
+
 bool OnlyWhitespace(const std::vector<Node*>& run) {
     for (const Node* n : run) {
         if (n->type != NodeType::Text) return false;
@@ -369,6 +429,300 @@ std::string AncestorLink(const Node& node) {
     return std::string();
 }
 
+// ---- flex and grid: the resolver's values in the layout engine's terms ----
+
+CSSLayout::JustifyContent ToJustifyContent(BoxAlignMode a) {
+    using J = CSSLayout::JustifyContent;
+    switch (a) {
+        case BoxAlignMode::End:          return J::FlexEnd;
+        case BoxAlignMode::Center:       return J::Center;
+        case BoxAlignMode::SpaceBetween: return J::SpaceBetween;
+        case BoxAlignMode::SpaceAround:  return J::SpaceAround;
+        case BoxAlignMode::SpaceEvenly:  return J::SpaceEvenly;
+        default:                         return J::FlexStart;   // normal, start, stretch
+    }
+}
+
+// align-items: CSS's normal stretches; baseline sits at the start (the
+// engine aligns no baselines).
+CSSLayout::AlignItems ToAlignItems(BoxAlignMode a) {
+    using A = CSSLayout::AlignItems;
+    switch (a) {
+        case BoxAlignMode::Start:    return A::Start;
+        case BoxAlignMode::Baseline: return A::Start;
+        case BoxAlignMode::End:      return A::End;
+        case BoxAlignMode::Center:   return A::Center;
+        default:                     return A::Stretch;
+    }
+}
+
+CSSLayout::AlignContent ToAlignContent(BoxAlignMode a) {
+    using A = CSSLayout::AlignContent;
+    switch (a) {
+        case BoxAlignMode::Start:        return A::Start;
+        case BoxAlignMode::Baseline:     return A::Start;
+        case BoxAlignMode::End:          return A::End;
+        case BoxAlignMode::Center:       return A::Center;
+        case BoxAlignMode::SpaceBetween: return A::SpaceBetween;
+        case BoxAlignMode::SpaceAround:  return A::SpaceAround;
+        case BoxAlignMode::SpaceEvenly:  return A::SpaceEvenly;
+        default:                         return A::Stretch;
+    }
+}
+
+CSSLayout::AlignSelf ToAlignSelf(BoxAlignMode a) {
+    using A = CSSLayout::AlignSelf;
+    switch (a) {
+        case BoxAlignMode::Start:    return A::Start;
+        case BoxAlignMode::Baseline: return A::Start;
+        case BoxAlignMode::End:      return A::End;
+        case BoxAlignMode::Center:   return A::Center;
+        case BoxAlignMode::Stretch:  return A::Stretch;
+        default:                     return A::Auto;
+    }
+}
+
+CSSLayout::JustifyItems ToJustifyItems(BoxAlignMode a) {
+    using J = CSSLayout::JustifyItems;
+    switch (a) {
+        case BoxAlignMode::Start:    return J::Start;
+        case BoxAlignMode::Baseline: return J::Start;
+        case BoxAlignMode::End:      return J::End;
+        case BoxAlignMode::Center:   return J::Center;
+        default:                     return J::Stretch;   // normal stretches a box
+    }
+}
+
+CSSLayout::JustifySelf ToJustifySelf(BoxAlignMode a) {
+    using J = CSSLayout::JustifySelf;
+    switch (a) {
+        case BoxAlignMode::Start:    return J::Start;
+        case BoxAlignMode::Baseline: return J::Start;
+        case BoxAlignMode::End:      return J::End;
+        case BoxAlignMode::Center:   return J::Center;
+        case BoxAlignMode::Stretch:  return J::Stretch;
+        default:                     return J::Auto;
+    }
+}
+
+CSSLayout::Dimension TrackBoundDimension(const GridTrackBound& b) {
+    switch (b.kind) {
+        case GridTrackBound::Kind::Px:      return CSSLayout::Dimension::Px(b.value);
+        case GridTrackBound::Kind::Percent: return CSSLayout::Dimension::Pct(b.value);
+        default:                            return CSSLayout::Dimension::Auto();
+    }
+}
+
+// One track. minmax(<min>, <n>fr) is n fr: the engine resolves no fr inside
+// minmax(), and its fr tracks have no content floor anyway - the minimum
+// still decides how many auto-fill repetitions fit (ExpandTracks).
+CSSLayout::GridTrackSize ToGridTrack(const GridTrackSpec& t) {
+    using K = CSSLayout::GridTrackSizeKind;
+    CSSLayout::GridTrackSize out;
+    const GridTrackBound& b = t.max;
+    if (!t.IsMinMax() || b.kind == GridTrackBound::Kind::Fr) {
+        switch (b.kind) {
+            case GridTrackBound::Kind::Px:
+                out.kind = K::Fixed; out.value = CSSLayout::Dimension::Px(b.value); break;
+            case GridTrackBound::Kind::Percent:
+                out.kind = K::Percent; out.value = CSSLayout::Dimension::Pct(b.value); break;
+            case GridTrackBound::Kind::Fr:
+                out.kind = K::Fr; out.value = CSSLayout::Dimension::Fr(b.value); break;
+            case GridTrackBound::Kind::MinContent: out.kind = K::MinContent; break;
+            case GridTrackBound::Kind::MaxContent: out.kind = K::MaxContent; break;
+            case GridTrackBound::Kind::FitContent:
+                out.kind = K::FitContent; out.value = CSSLayout::Dimension::Px(b.value); break;
+            case GridTrackBound::Kind::Auto: out.kind = K::Auto; break;
+        }
+        return out;
+    }
+    out.kind = K::MinMax;
+    out.minValue = TrackBoundDimension(t.min);
+    out.maxValue = TrackBoundDimension(t.max);
+    return out;
+}
+
+// A track's size where it is definite before layout (px, or a percentage of
+// `extent`): the max bound if it is, else the min; nullopt for neither.
+std::optional<float> DefiniteTrackSize(const GridTrackSpec& t, float extent) {
+    auto definite = [&](const GridTrackBound& b) -> std::optional<float> {
+        if (b.kind == GridTrackBound::Kind::Px) return b.value;
+        if (b.kind == GridTrackBound::Kind::Percent && extent > 0.f) return b.value * extent / 100.f;
+        return std::nullopt;
+    };
+    if (auto v = definite(t.max)) return v;
+    return definite(t.min);
+}
+
+// grid-template-columns / -rows as engine tracks, a repeat(auto-fill |
+// auto-fit, ...) written out as many times as fit `extent` (0: unknown - one
+// repetition). auto-fit keeps no more repetitions than there are items, so
+// the items share the width as auto-fit's collapsed tracks let them.
+std::vector<CSSLayout::GridTrackSize> ExpandTracks(const GridTemplate& tpl, float gap,
+                                                    float extent, int itemCount) {
+    std::vector<CSSLayout::GridTrackSize> out;
+    int repeats = 0;
+    if (!tpl.autoRepeat.empty()) {
+        repeats = 1;
+        float fixed = 0.f;
+        for (const auto& t : tpl.tracks) fixed += DefiniteTrackSize(t, extent).value_or(0.f);
+        float one = 0.f;
+        bool definite = extent > 0.f;
+        for (const auto& t : tpl.autoRepeat) {
+            auto v = DefiniteTrackSize(t, extent);
+            if (!v || *v <= 0.f) { definite = false; break; }
+            one += *v;
+        }
+        if (definite) {
+            const int perRepeat = static_cast<int>(tpl.autoRepeat.size());
+            const int fixedCount = static_cast<int>(tpl.tracks.size());
+            const int limit = std::max(1, (kMaxGridLines - fixedCount) / perRepeat);
+            // The most repetitions whose tracks and gaps fit the extent.
+            while (repeats < limit) {
+                const int n = repeats + 1;
+                const int tracks = fixedCount + n * perRepeat;
+                if (fixed + n * one + gap * static_cast<float>(tracks - 1) > extent) break;
+                repeats = n;
+            }
+            if (tpl.autoFit) repeats = std::min(repeats, std::max(1, itemCount));
+        }
+    }
+    for (size_t i = 0; i <= tpl.tracks.size(); ++i) {
+        if (i == tpl.autoRepeatAt) {
+            for (int r = 0; r < repeats; ++r)
+                for (const auto& t : tpl.autoRepeat) out.push_back(ToGridTrack(t));
+        }
+        if (i < tpl.tracks.size()) out.push_back(ToGridTrack(tpl.tracks[i]));
+    }
+    return out;
+}
+
+// A named area of grid-template-areas: its lines, 1-based (start inclusive,
+// end exclusive: an area in column 2 alone runs from line 2 to line 3).
+struct GridAreaLines { int rowStart, rowEnd, columnStart, columnEnd; };
+
+std::unordered_map<std::string, GridAreaLines> GridAreaMap(
+    const std::vector<std::vector<std::string>>& rows) {
+    std::unordered_map<std::string, GridAreaLines> areas;
+    for (size_t r = 0; r < rows.size(); ++r) {
+        for (size_t c = 0; c < rows[r].size(); ++c) {
+            const std::string& name = rows[r][c];
+            if (name.empty()) continue;
+            const int row = static_cast<int>(r) + 1, column = static_cast<int>(c) + 1;
+            auto [it, fresh] = areas.try_emplace(name, GridAreaLines{ row, row + 1, column, column + 1 });
+            if (fresh) continue;
+            GridAreaLines& a = it->second;   // grow to the bounding box
+            a.rowStart = std::min(a.rowStart, row);
+            a.rowEnd = std::max(a.rowEnd, row + 1);
+            a.columnStart = std::min(a.columnStart, column);
+            a.columnEnd = std::max(a.columnEnd, column + 1);
+        }
+    }
+    return areas;
+}
+
+// One end of grid-column / grid-row in the engine's terms. A negative line
+// counts back from the end of the explicit grid (-1 is its last line); a
+// name is that area's start or end line, or auto for an unknown name.
+CSSLayout::GridLine ToGridLine(const GridLineSpec& spec, int explicitTracks,
+                               const std::unordered_map<std::string, GridAreaLines>& areas,
+                               bool isStart, bool isRow) {
+    CSSLayout::GridLine line;
+    switch (spec.kind) {
+        case GridLineSpec::Kind::Auto:
+            break;
+        case GridLineSpec::Kind::Line: {
+            int n = spec.value > 0 ? spec.value : explicitTracks + 2 + spec.value;
+            line.type = CSSLayout::GridLineKind::Line;
+            line.index = std::clamp(n, 1, kMaxGridLines + 1);
+            break;
+        }
+        case GridLineSpec::Kind::Span:
+            line.type = CSSLayout::GridLineKind::Span;
+            line.index = std::clamp(spec.value, 1, kMaxGridLines);
+            break;
+        case GridLineSpec::Kind::Name: {
+            auto it = areas.find(spec.name);
+            if (it == areas.end()) break;
+            const GridAreaLines& a = it->second;
+            line.type = CSSLayout::GridLineKind::Line;
+            line.index = isRow ? (isStart ? a.rowStart : a.rowEnd)
+                               : (isStart ? a.columnStart : a.columnEnd);
+            break;
+        }
+    }
+    return line;
+}
+
+// The engine places "span N / <line>" from the start of the grid; CSS
+// counts the span back from the end line - so make it two lines.
+void FixBackwardSpan(CSSLayout::GridLine& start, CSSLayout::GridLine& end) {
+    if (start.type == CSSLayout::GridLineKind::Span && end.type == CSSLayout::GridLineKind::Line) {
+        const int first = std::max(1, end.index - start.index);
+        start.type = CSSLayout::GridLineKind::Line;
+        start.index = first;
+        if (end.index <= first) end.index = first + 1;
+    }
+}
+
+// `ref` read relative to `base` (a sheet's own href): an absolute URL, a
+// scheme, a /root path or no base leaves it as it is; otherwise it goes in
+// base's folder, "." and ".." resolved. A sheet named by an absolute URL
+// (PageLoader rewrites imports to those) is never changed.
+std::string JoinHref(const std::string& base, const std::string& ref) {
+    if (ref.empty() || base.empty() || ref[0] == '/' || ref[0] == '#') return ref;
+    for (char c : ref) {
+        if (c == ':') return ref;                         // a scheme: absolute
+        if (c == '/' || c == '?' || c == '#') break;
+    }
+    std::string dir = base.substr(0, base.find_first_of("?#"));
+    const size_t slash = dir.rfind('/');
+    dir = slash == std::string::npos ? std::string() : dir.substr(0, slash + 1);
+    // Keep "scheme://host/" out of the path arithmetic.
+    size_t rootEnd = 0;
+    if (const size_t scheme = dir.find("://"); scheme != std::string::npos) {
+        const size_t pathStart = dir.find('/', scheme + 3);
+        rootEnd = pathStart == std::string::npos ? dir.size() : pathStart + 1;
+    }
+    std::vector<std::string> parts;
+    std::string joined = dir.substr(rootEnd) + ref;
+    const size_t query = joined.find_first_of("?#");
+    const std::string tail = query == std::string::npos ? std::string() : joined.substr(query);
+    if (query != std::string::npos) joined.resize(query);
+    size_t start = 0;
+    while (start <= joined.size()) {
+        size_t end = joined.find('/', start);
+        if (end == std::string::npos) end = joined.size();
+        const std::string part = joined.substr(start, end - start);
+        if (part == "..") { if (!parts.empty() && parts.back() != "..") parts.pop_back(); else if (rootEnd == 0) parts.push_back(part); }
+        else if (part != "." && !(part.empty() && end != joined.size())) parts.push_back(part);
+        start = end + 1;
+    }
+    std::string out = dir.substr(0, rootEnd);
+    for (size_t k = 0; k < parts.size(); ++k) {
+        if (k) out += '/';
+        out += parts[k];
+    }
+    return out + tail;
+}
+
+// True when the run's text is nothing but room (picture-less placeholders,
+// their word joiners) and white space: empty inline elements with margins.
+bool OnlyRoom(const std::string& plain, const std::vector<LabelInlineImage>& images) {
+    for (const auto& image : images) {
+        if (image.image) return false;
+    }
+    for (size_t i = 0; i < plain.size(); ) {
+        if (plain.compare(i, 3, "\xEF\xBF\xBC") == 0 || plain.compare(i, 3, "\xE2\x81\xA0") == 0) {
+            i += 3;
+            continue;
+        }
+        if (!std::isspace(static_cast<unsigned char>(plain[i]))) return false;
+        ++i;
+    }
+    return true;
+}
+
 bool MarkupHasVisibleText(const std::string& markup) {
     bool inTag = false;
     for (char c : markup) {
@@ -388,6 +742,33 @@ bool MarkupHasVisibleText(const std::string& markup) {
 // ENTRY POINTS
 // ============================================================================
 
+std::string ElementBuilder::ExpandImports(const std::string& css, const std::string& sheetHref,
+                                          int depth, std::vector<std::string>& seen) {
+    const std::vector<StyleImport> imports = StyleSheet::ParseImports(css);
+    if (imports.empty()) return css;
+    std::string out;
+    for (const StyleImport& import : imports) {
+        const std::string href = JoinHref(sheetHref, import.href);
+        if (std::find(seen.begin(), seen.end(), href) != seen.end()) continue;   // once (and no cycles)
+        if (depth >= kMaxImportDepth || seen.size() >= kMaxImportedSheets) {
+            warnings.push_back("style sheet not imported (too many or too deep): " + href);
+            continue;
+        }
+        seen.push_back(href);
+        if (!opts.resourceLoader) continue;
+        const std::vector<uint8_t> bytes = opts.resourceLoader(href);
+        if (bytes.empty()) {
+            warnings.push_back("stylesheet not found: " + href);
+            continue;
+        }
+        std::string sheet = ExpandImports(std::string(bytes.begin(), bytes.end()), href, depth + 1, seen);
+        if (!import.media.empty()) sheet = "@media " + import.media + " {\n" + sheet + "\n}";
+        out += sheet;
+        out += '\n';
+    }
+    return out + css;
+}
+
 BuildResult ElementBuilder::Build(const std::string& html, const BuildOptions& options) {
     Parser parser;
     Document doc = parser.Parse(html);
@@ -400,21 +781,31 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     anchors.clear();
     elementCount = 0;
     nextId = 0;
+    currentDocument = &document;
+    labelTargets = std::make_shared<LabelTargets>();
+    builtForms.clear();
+    formByNode.clear();
+    formless.reset();
 
     resolver.ClearStyleSheets();
     resolver.SetMediaWidth(opts.viewportWidth > 0.f ? opts.viewportWidth : 800.f);
+    // A sheet's @import rules bring their sheets in ahead of its own rules;
+    // one sheet is imported once however many sheets name it.
+    std::vector<std::string> importedSheets(document.styleSheetLinks.begin(),
+                                            document.styleSheetLinks.end());
     for (const auto& href : document.styleSheetLinks) {
         if (opts.resourceLoader) {
             std::vector<uint8_t> bytes = opts.resourceLoader(href);
             if (!bytes.empty()) {
-                resolver.AddStyleSheet(std::string(bytes.begin(), bytes.end()));
+                resolver.AddStyleSheet(ExpandImports(std::string(bytes.begin(), bytes.end()),
+                                                     href, 0, importedSheets));
             } else {
                 warnings.push_back("stylesheet not found: " + href);
             }
         }
     }
     for (const auto& css : document.styleSheets) {
-        resolver.AddStyleSheet(css);
+        resolver.AddStyleSheet(ExpandImports(css, std::string(), 0, importedSheets));
     }
     if (!opts.userCss.empty()) {
         resolver.AddStyleSheet(opts.userCss);
@@ -442,6 +833,11 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     result.warnings = warnings;
     result.elementCount = elementCount;
     result.anchors = std::move(anchors);
+    result.forms = std::move(builtForms);
+    if (formless) result.forms.push_back(std::move(formless));
+    builtForms.clear();
+    formByNode.clear();
+    currentDocument = nullptr;
     return result;
 }
 
@@ -495,8 +891,222 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildBlock(Node& element) 
     ConfigureBlockLayout(*container);
     ApplyBackgroundImage(*container, style);
 
-    BuildChildrenInto(*container, element);
+    BuildContentInto(*container, element);
     return container;
+}
+
+void ElementBuilder::BuildContentInto(UltraCanvasContainer& parent, Node& element) {
+    if (resolver.StyleOf(&element).layoutMode == BoxLayoutMode::Flow) {
+        BuildChildrenInto(parent, element);
+    } else {
+        BuildItemsInto(parent, element);
+    }
+}
+
+// ============================================================================
+// FLEX AND GRID CONTAINERS
+// ============================================================================
+
+void ElementBuilder::BuildItemsInto(UltraCanvasContainer& parent, Node& element) {
+    const ComputedStyle& cs = resolver.StyleOf(&element);
+    const bool grid = cs.layoutMode == BoxLayoutMode::Grid;
+
+    // The items: elements, and the runs of text between them. A run of
+    // whitespace alone is no item.
+    struct Item { Node* element = nullptr; std::vector<Node*> text; };
+    std::vector<Item> items;
+    std::vector<Node*> run;
+    auto endRun = [&]() {
+        if (!run.empty() && !OnlyWhitespace(run)) items.push_back({ nullptr, run });
+        run.clear();
+    };
+    for (const auto& childPtr : element.children) {
+        Node& child = *childPtr;
+        if (child.type == NodeType::Text) { run.push_back(&child); continue; }
+        if (!child.IsElement() || child.tag == "br") continue;
+        if (resolver.StyleOf(&child).display == DisplayMode::Hidden) continue;
+        endRun();
+        items.push_back({ &child, {} });
+    }
+    endRun();
+
+    // The container.
+    std::unordered_map<std::string, GridAreaLines> areas;
+    int explicitColumns = 0, explicitRows = 0;
+    if (grid) {
+        const int itemCount = static_cast<int>(items.size());
+        std::vector<CSSLayout::GridTrackSize> columns =
+            ExpandTracks(cs.gridColumns, cs.columnGapPx, EstimateContentWidth(element), itemCount);
+        std::vector<CSSLayout::GridTrackSize> rows = ExpandTracks(cs.gridRows, cs.rowGapPx, 0.f, itemCount);
+        // grid-template-areas sizes the explicit grid where the templates
+        // leave it short: auto tracks, as in CSS.
+        if (!cs.gridAreas.empty()) {
+            areas = GridAreaMap(cs.gridAreas);
+            while (columns.size() < cs.gridAreas.front().size()) columns.push_back({});
+            while (rows.size() < cs.gridAreas.size()) rows.push_back({});
+        }
+        // No columns at all: one column the width of the grid. (CSS's
+        // implicit auto column stretches to it; the engine's would be as
+        // wide as its widest content.)
+        if (columns.empty() && !cs.gridAutoFlowColumn) {
+            CSSLayout::GridTrackSize whole;
+            whole.kind = CSSLayout::GridTrackSizeKind::Fr;
+            whole.value = CSSLayout::Dimension::Fr(1.f);
+            columns.push_back(whole);
+        }
+        explicitColumns = static_cast<int>(columns.size());
+        explicitRows = static_cast<int>(rows.size());
+        parent.layout.SetGrid();
+        parent.layout.SetGridColumns(std::move(columns));
+        parent.layout.SetGridRows(std::move(rows));
+        parent.layout.SetGridGap(cs.rowGapPx, cs.columnGapPx);
+        parent.layout.SetGridAutoFlow(cs.gridAutoFlowColumn ? CSSLayout::GridAutoFlow::Column
+                                                            : CSSLayout::GridAutoFlow::Row);
+        parent.layout.SetGridJustifyItems(ToJustifyItems(cs.justifyItems));
+        parent.layout.SetGridAlignItems(ToAlignItems(cs.alignItems));
+    } else {
+        CSSLayout::FlexDirection direction = CSSLayout::FlexDirection::Row;
+        switch (cs.flexDirection) {
+            case FlexDirectionMode::RowReverse:    direction = CSSLayout::FlexDirection::RowReverse; break;
+            case FlexDirectionMode::Column:        direction = CSSLayout::FlexDirection::Column; break;
+            case FlexDirectionMode::ColumnReverse: direction = CSSLayout::FlexDirection::ColumnReverse; break;
+            case FlexDirectionMode::Row:           break;
+        }
+        CSSLayout::FlexWrap wrap = CSSLayout::FlexWrap::NoWrap;
+        if (cs.flexWrap == FlexWrapMode::Wrap) wrap = CSSLayout::FlexWrap::Wrap;
+        else if (cs.flexWrap == FlexWrapMode::WrapReverse) wrap = CSSLayout::FlexWrap::WrapReverse;
+        parent.layout.SetFlex(direction, wrap)
+                     .SetFlexJustifyContent(ToJustifyContent(cs.justifyContent))
+                     .SetFlexAlignItems(ToAlignItems(cs.alignItems))
+                     .SetFlexAlignContent(ToAlignContent(cs.alignContent))
+                     .SetFlexGap(cs.rowGapPx, cs.columnGapPx);
+    }
+    const bool row = cs.flexDirection == FlexDirectionMode::Row ||
+                     cs.flexDirection == FlexDirectionMode::RowReverse;
+
+    for (Item& entry : items) {
+        std::shared_ptr<UltraCanvasUIElement> item;
+        if (entry.element) {
+            item = BuildItem(*entry.element);
+        } else {
+            // An anonymous item: the run's text, formatted as the container's.
+            auto label = BuildInlineRun(entry.text, cs, std::string(), &element);
+            for (const Node* node : entry.text) {
+                RegisterAnchors(*node, label ? std::static_pointer_cast<UltraCanvasUIElement>(label)
+                                             : std::static_pointer_cast<UltraCanvasUIElement>(
+                                                   parent.shared_from_this()), /*deep=*/true);
+            }
+            if (label) label->size.width = CSSLayout::Dimension::Auto();
+            item = label;
+        }
+        if (!item) continue;
+
+        static const ComputedStyle kAnonymous;
+        const ComputedStyle& st = entry.element ? resolver.StyleOf(entry.element) : kAnonymous;
+        if (grid) {
+            CSSLayout::GridLine cStart = ToGridLine(st.gridColumnStart, explicitColumns, areas, true, false);
+            CSSLayout::GridLine cEnd   = ToGridLine(st.gridColumnEnd,   explicitColumns, areas, false, false);
+            CSSLayout::GridLine rStart = ToGridLine(st.gridRowStart,    explicitRows,    areas, true, true);
+            CSSLayout::GridLine rEnd   = ToGridLine(st.gridRowEnd,      explicitRows,    areas, false, true);
+            FixBackwardSpan(cStart, cEnd);
+            FixBackwardSpan(rStart, rEnd);
+            item->layoutItem.SetGridColumn(cStart, cEnd);
+            item->layoutItem.SetGridRow(rStart, rEnd);
+            item->layoutItem.SetJustifySelf(ToJustifySelf(st.justifySelf));
+            item->layoutItem.SetGridAlignSelf(ToAlignSelf(st.alignSelf));
+        } else {
+            // flex-basis: a px basis is the content box's, like width, unless
+            // box-sizing: border-box; a percentage is of the container.
+            CSSLayout::Dimension basis = CSSLayout::Dimension::Auto();
+            const float around = (!entry.element || st.borderBox) ? 0.f
+                : row ? st.paddingLeft + st.paddingRight + st.BorderHorizontal()
+                      : st.paddingTop + st.paddingBottom + st.BorderVertical();
+            if (st.flexBasisPx) basis = CSSLayout::Dimension::Px(*st.flexBasisPx + around);
+            else if (st.flexBasisPercent) basis = CSSLayout::Dimension::PctPlus(*st.flexBasisPercent, around);
+            item->layoutItem.SetFlex(st.flexGrow, st.flexShrink, basis);
+            item->layoutItem.SetFlexOrder(st.order);
+            item->layoutItem.SetAlignSelf(ToAlignSelf(st.alignSelf));
+        }
+        parent.AddChild(item);
+        ++elementCount;
+    }
+}
+
+std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildItem(Node& element) {
+    const ComputedStyle& style = resolver.StyleOf(&element);
+    // A picture is the image element itself, not the full-width line
+    // BuildImage puts it on.
+    auto unwrapImage = [&](Node& source) -> std::shared_ptr<UltraCanvasUIElement> {
+        if (!opts.enableImages) return nullptr;
+        auto row = std::dynamic_pointer_cast<UltraCanvasContainer>(BuildImage(source, AncestorLink(element)));
+        if (!row || row->GetChildren().empty()) return nullptr;
+        std::shared_ptr<UltraCanvasUIElement> image = row->GetChildren().front();
+        row->RemoveChild(image);
+        // In a flex or grid line its margins are its own (BuildImage left the
+        // vertical ones to the flow's spacers).
+        image->box.margin.top = CSSLayout::Dimension::Px(style.marginTop);
+        image->box.margin.bottom = CSSLayout::Dimension::Px(style.marginBottom);
+        RegisterAnchors(element, image, /*deep=*/true);
+        return image;
+    };
+    if (element.tag == "img" || element.tag == "image") return unwrapImage(element);
+    if (element.tag == "svg") {
+        Node* raster = element.FindFirst("image");
+        if (!raster) raster = element.FindFirst("img");
+        if (!raster) {
+            warnings.push_back("svg without raster <image> skipped");
+            return nullptr;
+        }
+        return unwrapImage(*raster);
+    }
+    if (element.tag == "table" || style.display == DisplayMode::Table) {
+        return BuildTable(element, /*inlineBox=*/true);
+    }
+    if (element.tag == "hr") {
+        auto rule = BuildRule(element);
+        if (rule) RegisterAnchors(element, rule);
+        return rule;
+    }
+    if (element.tag == "input" || element.tag == "textarea" ||
+        element.tag == "button" || element.tag == "select") {
+        if (opts.interactiveForms) return BuildFormWidget(element);   // a search bar's field and button
+        return BuildFormControl(element);
+    }
+    // Any other element is a box (a <span> or <a> item is blockified), as
+    // wide as its content unless it has a width - the flex or grid line
+    // sizes and stretches it - with real margins: they do not collapse here.
+    auto box = MakeContainer(element.tag);
+    RegisterAnchors(element, box);
+    ApplyBoxStyle(*box, style, /*fillWidth=*/false, /*realMargins=*/true);
+    if (style.display == DisplayMode::Inline) {
+        // A plain inline element drawn as a box: its vertical margins do
+        // not move its line (CSS 2 §10.6.1), only its horizontal ones count.
+        box->box.margin.top = CSSLayout::Dimension::Px(0.f);
+        box->box.margin.bottom = CSSLayout::Dimension::Px(0.f);
+    }
+    ConfigureBlockLayout(*box);
+    ApplyBackgroundImage(*box, style);
+    BuildContentInto(*box, element);
+    return box;
+}
+
+float ElementBuilder::EstimateContentWidth(const Node& element) const {
+    std::vector<const Node*> chain;
+    for (const Node* n = &element; n && n->IsElement(); n = n->parent) chain.push_back(n);
+    float width = opts.viewportWidth > 0.f ? opts.viewportWidth : 800.f;
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+        const ComputedStyle& st = resolver.StyleOf(*it);
+        const float around = st.paddingLeft + st.paddingRight + st.BorderHorizontal();
+        // The border box: its width (a content-box width gains the padding
+        // and border), else what its margins leave of the line.
+        float box = width - st.marginLeft - st.marginRight;
+        if (st.widthPx) box = *st.widthPx + (st.borderBox ? 0.f : around);
+        else if (st.widthPercent) box = width * *st.widthPercent / 100.f + (st.borderBox ? 0.f : around);
+        if (st.maxWidthPx) box = std::min(box, *st.maxWidthPx + (st.borderBox ? 0.f : around));
+        else if (st.maxWidthPercent) box = std::min(box, width * *st.maxWidthPercent / 100.f);
+        width = std::max(0.f, box - around);
+    }
+    return width;
 }
 
 void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& element,
@@ -612,12 +1222,30 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             ++elementCount;
         };
         if (!marker.empty() && lineParts.front().box) addLabel({});
-        for (auto& part : lineParts) {
+        for (size_t k = 0; k < lineParts.size(); ++k) {
+            LinePart& part = lineParts[k];
             if (!part.box) {
                 addLabel(part.run);
                 continue;
             }
             if (auto box = BuildInlineBox(*part.box)) {
+                // The labels trim their outer spaces; a space between a run
+                // and the box stays as a gap beside the box. White space at
+                // the start of the line, or alone between two boxes, is one
+                // gap (after the first box) or none.
+                const ComputedStyle& boxStyle = resolver.StyleOf(part.box);
+                const LinePart* before = k > 0 ? &lineParts[k - 1] : nullptr;
+                const LinePart* after = k + 1 < lineParts.size() ? &lineParts[k + 1] : nullptr;
+                const bool spaceBefore = before && !before->box && !OnlyWhitespace(before->run) &&
+                                         RunEdgeIsSpace(before->run, /*atEnd=*/true);
+                const bool spaceAfter = after && !after->box && RunEdgeIsSpace(after->run, /*atEnd=*/false) &&
+                                        (!OnlyWhitespace(after->run) ||
+                                         (k + 2 < lineParts.size() && lineParts[k + 2].box));
+                const float space = (spaceBefore || spaceAfter) ? SpaceWidth(blockStyle) : 0.f;
+                if (spaceBefore)
+                    box->box.margin.left = CSSLayout::Dimension::Px(std::max(0.f, boxStyle.marginLeft) + space);
+                if (spaceAfter)
+                    box->box.margin.right = CSSLayout::Dimension::Px(std::max(0.f, boxStyle.marginRight) + space);
                 // vertical-align: top / bottom on the box (side-by-side mail
                 // columns are top); otherwise centred on its neighbours.
                 switch (resolver.StyleOf(part.box).verticalAlign) {
@@ -837,6 +1465,19 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         // into children and emits nothing since the value lives in an attribute.
         if (child.tag == "input" || child.tag == "textarea" ||
             child.tag == "button" || child.tag == "select") {
+            // Real widgets sit on the line with their text, as a browser's
+            // inline-block controls do ("Name: [______] [Search]").
+            if (opts.interactiveForms) {
+                if (!IsBlockDisplay(childStyle.display)) {
+                    addBox(child);
+                    return;
+                }
+                flushRun();            // display: block - a line of its own
+                if (auto widget = BuildFormWidget(child)) {
+                    addFlowChild(widget, childStyle.marginTop, childStyle.marginBottom);
+                }
+                return;
+            }
             flushRun();
             if (auto control = BuildFormControl(child)) {
                 addFlowChild(control, childStyle.marginTop, childStyle.marginBottom);
@@ -905,7 +1546,10 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         // An inline element around a block or a table (<a href><table>,
         // <font><div>): as in a browser, the block breaks the line and the
         // inline's formatting carries on inside it - so look through it.
-        if (HasBlockDescendant(child)) {
+        // Likewise an inline element around a form control (<label>Name
+        // <input></label>) when the controls are widgets: a run of text
+        // cannot hold a widget.
+        if (HasBlockDescendant(child) || (opts.interactiveForms && ContainsFormControl(child))) {
             RegisterAnchors(child, std::static_pointer_cast<UltraCanvasUIElement>(
                                        parent.shared_from_this()));
             for (const auto& grand : child.children) processChild(*grand);
@@ -978,6 +1622,10 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     runPlain.clear();
     runLinks.clear();
     runImages.clear();
+    runBoxes.clear();
+    runRoomEnd = std::string::npos;
+    runLineHeightPx = 0.f;
+    runLineHeightSet = false;
     if (!markerPrefix.empty()) {
         markup += EscapeMarkup(markerPrefix);
         runPlain += markerPrefix;
@@ -1021,6 +1669,16 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
         if (end > start) {
             std::string href = AncestorLink(*node);
             if (!href.empty()) runLinks.push_back({ start, end, href });
+            // Inside a <label> the builder looked through (it holds its
+            // control): a click on the text acts on the control.
+            else if (opts.interactiveForms)
+                for (const Node* a = node->parent; a && a != blockNode; a = a->parent)
+                    if (a->IsElement("label")) {
+                        const int target = LabelTargetIndex(*a);
+                        if (target >= 0)
+                            runLinks.push_back({ start, end, "#ucform-label:" + std::to_string(target), true });
+                        break;
+                    }
         }
     }
     const bool runNoWrap = blockStyle.noWrap || (anyText && allNoWrap);
@@ -1038,6 +1696,10 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
             link.endByte -= static_cast<int>(begin);
         }
         for (auto& image : runImages) image.byteOffset -= static_cast<int>(begin);
+        for (auto& box : runBoxes) {
+            box.startByte = std::max(0, box.startByte - static_cast<int>(begin));
+            box.endByte -= static_cast<int>(begin);
+        }
     }
     while (!markup.empty() && markup.back() == ' ') {
         markup.pop_back();
@@ -1052,7 +1714,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
                                   }),
                    runLinks.end());
 
-    if (!MarkupHasVisibleText(markup)) return nullptr;
+    if (!MarkupHasVisibleText(markup) || OnlyRoom(runPlain, runImages)) return nullptr;
     // The block's own letter-spacing: around the whole run (its inline
     // elements' own spacing, where it differs, is a span inside).
     if (std::fabs(blockStyle.letterSpacingPx) > 0.01f) {
@@ -1060,8 +1722,21 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
                  "\">" + markup + "</span>";
     }
 
+    // The line's height, where the run's text sets one: the tallest of its
+    // inline boxes', and at least the block's own (its strut) - Stripe's
+    // receipt puts "Receipt from ..." (line-height 20px) and the amount
+    // (36px text on 40px lines) in cells of their own, and both were laid
+    // out at the font's height, the amount touching the line above it.
+    float runLineHeight = 0.f;
+    if (runLineHeightSet) {
+        const float strut = blockStyle.lineHeightSet
+                ? (blockStyle.lineHeightPx ? *blockStyle.lineHeightPx
+                                           : blockStyle.lineHeight * blockStyle.fontSizePx)
+                : kNormalLineHeight * blockStyle.fontSizePx;
+        runLineHeight = std::max(strut, runLineHeightPx);
+    }
     auto label = std::make_shared<UltraCanvasLabel>(MakeId("text"));
-    ConfigureLabel(*label, blockStyle, runNoWrap);
+    ConfigureLabel(*label, blockStyle, runNoWrap, runLineHeight);
     label->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
     label->size.width = CSSLayout::Dimension::Pct(100.f);
     label->SetTextIsMarkup(true);
@@ -1069,19 +1744,44 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
 
     // Attach the link byte ranges; the label hit-tests clicks against the
     // rendered text, so only the link actually under the pointer activates.
-    if (!runLinks.empty() && opts.onLinkActivated) {
+    const bool labelLinks = std::any_of(runLinks.begin(), runLinks.end(),
+                                        [](const LabelTextLink& l) { return l.quiet; });
+    if (!runLinks.empty() && (opts.onLinkActivated || labelLinks)) {
         label->SetTextLinks(runLinks);
-        label->onLinkActivated = opts.onLinkActivated;
+        if (labelLinks) {
+            // A <label>'s text acts on its control; any other link is the page's.
+            auto targets = labelTargets;
+            auto follow = opts.onLinkActivated;
+            label->onLinkActivated = [targets, follow](const std::string& href) {
+                static const std::string kLabel = "#ucform-label:";
+                if (href.compare(0, kLabel.size(), kLabel) == 0) {
+                    const size_t n = static_cast<size_t>(std::strtoul(href.c_str() + kLabel.size(), nullptr, 10));
+                    if (!targets || n >= targets->targets.size()) return;
+                    auto it = targets->controls.find(targets->targets[n]);
+                    if (it == targets->controls.end()) return;
+                    if (auto form = it->second.first.lock()) form->ActivateControl(it->second.second);
+                    return;
+                }
+                if (follow) follow(href);
+            };
+        } else {
+            label->onLinkActivated = opts.onLinkActivated;
+        }
         label->onLinkHovered = opts.onLinkHovered;
         label->SetShowLinkTooltips(opts.linkTooltips);
     }
     if (!runImages.empty()) label->SetInlineImages(runImages);
+    for (auto& box : runBoxes) box.endByte = std::min(box.endByte, static_cast<int>(runPlain.size()));
+    runBoxes.erase(std::remove_if(runBoxes.begin(), runBoxes.end(),
+                                  [](const LabelTextBox& b) { return b.endByte <= b.startByte; }),
+                   runBoxes.end());
+    if (!runBoxes.empty()) label->SetTextBoxes(runBoxes);
     return label;
 }
 
 void ElementBuilder::StyleWrap(const ComputedStyle& style, const ComputedStyle& runStyle,
                                std::string& prefix, std::string& suffix,
-                               const std::string& tag) {
+                               const std::string& tag, bool withBackground) {
     auto wrap = [&](const std::string& open, const std::string& close) {
         prefix += open;
         suffix = close + suffix;
@@ -1108,6 +1808,13 @@ void ElementBuilder::StyleWrap(const ComputedStyle& style, const ComputedStyle& 
     if (colorDiffers) {
         wrap("<span foreground=\"" + ColorHex(style.color) + "\">", "</span>");
     }
+    // An inline element's own background (it is not inherited: runStyle's
+    // is its block's, painted by the block's box), as tall as the text. In
+    // a run AppendInlineMarkup draws it as a LabelTextBox instead; this is
+    // for the text of an inline the builder looked through.
+    if (withBackground && style.backgroundColor && style.backgroundColor->a > 0) {
+        wrap("<span background=\"" + ColorHex(*style.backgroundColor) + "\">", "</span>");
+    }
 }
 
 void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
@@ -1115,8 +1822,14 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
     // runPlain mirrors the text the layout will render (markup stripped,
     // entities decoded); link byte ranges are recorded against it.
     if (node.type == NodeType::Text) {
+        for (unsigned char c : node.text) {
+            if (!std::isspace(c)) { NoteRunLineHeight(runStyle); break; }
+        }
+        // Right after room, white space collapses against the text before it.
+        const bool afterRoom = runRoomEnd == runPlain.size();
         std::string plain = preserveWhitespace
-            ? node.text : CollapseWhitespace(node.text, runPlain);
+            ? node.text
+            : CollapseWhitespace(node.text, afterRoom ? std::string(1, runBeforeRoom) : runPlain);
         out += EscapeMarkup(plain);
         runPlain += plain;
         return;
@@ -1196,14 +1909,52 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 
     // Span wrappers derived from the difference to the enclosing run style.
     std::string prefix, suffix;
-    StyleWrap(style, runStyle, prefix, suffix, node.tag);
+    StyleWrap(style, runStyle, prefix, suffix, node.tag, /*withBackground=*/false);
 
+    // Its margin, border and padding on the left and the right: room before
+    // its first letter and after its last (CSS 2 §10.3.1 - an inline box's
+    // vertical ones do not move its line).
+    // The margin is outside the element's span; the border and padding
+    // inside it, where its background (StyleWrap) paints them, and inside
+    // its link: a click on a link's padding follows it, as in a browser.
+    const float marginBefore = std::max(0.f, style.marginLeft);
+    const float marginAfter = std::max(0.f, style.marginRight);
+    const float insideBefore = style.borderLeft.Width() + std::max(0.f, style.paddingLeft);
+    const float insideAfter = style.borderRight.Width() + std::max(0.f, style.paddingRight);
+
+    AppendInlineSpace(marginBefore, /*glueAfter=*/true, out);
     out += prefix;
     const int linkStart = static_cast<int>(runPlain.size());
+    // Its background and border: a box the label draws around its bytes,
+    // the room for its padding and border included. Pushed before the boxes
+    // inside it, so it is drawn under them.
+    const bool paints = style.backgroundColor && style.backgroundColor->a > 0;
+    size_t boxIndex = std::string::npos;
+    if (paints || style.HasBorder()) {
+        LabelTextBox box;
+        box.startByte = linkStart;
+        if (paints) box.background = ToColor(*style.backgroundColor);
+        auto side = [&](const BorderSide& b) {
+            return LabelInlineImageBorder{ b.Width(), ToColor(b.color), BorderDash(b) };
+        };
+        box.borderTop = side(style.borderTop);
+        box.borderRight = side(style.borderRight);
+        box.borderBottom = side(style.borderBottom);
+        box.borderLeft = side(style.borderLeft);
+        box.paddingTop = std::max(0.f, style.paddingTop);
+        box.paddingBottom = std::max(0.f, style.paddingBottom);
+        // In px; the label caps it at half the piece (a percentage is not kept).
+        box.borderRadius = style.borderRadiusPercent > 0.f ? 0.f : std::max(0.f, style.borderRadius);
+        boxIndex = runBoxes.size();
+        runBoxes.push_back(box);
+    }
+    AppendInlineSpace(insideBefore, /*glueAfter=*/true, out);
     bool childPre = preserveWhitespace || style.preserveWhitespace;
     for (const auto& child : node.children) {
         AppendInlineMarkup(*child, style, childPre, out);
     }
+    AppendInlineSpace(insideAfter, /*glueAfter=*/false, out);
+    if (boxIndex != std::string::npos) runBoxes[boxIndex].endByte = static_cast<int>(runPlain.size());
     out += suffix;
 
     if (style.isLink && !style.href.empty()) {
@@ -1211,7 +1962,31 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
         if (linkEnd > linkStart) {
             runLinks.push_back({linkStart, linkEnd, style.href});
         }
+    } else if (node.tag == "label" && opts.interactiveForms) {
+        // <label for="id">Name</label>: a click on its text acts on the control.
+        const int linkEnd = static_cast<int>(runPlain.size());
+        const int target = LabelTargetIndex(node);
+        if (target >= 0 && linkEnd > linkStart)
+            runLinks.push_back({ linkStart, linkEnd, "#ucform-label:" + std::to_string(target), true });
     }
+    // After the link's range: a click on the margin is not a click on it.
+    AppendInlineSpace(marginAfter, /*glueAfter=*/false, out);
+}
+
+void ElementBuilder::AppendInlineSpace(float px, bool glueAfter, std::string& out) {
+    if (!(px >= 0.5f)) return;
+    static const char kPlaceholder[] = "\xEF\xBF\xBC";   // U+FFFC
+    static const char kWordJoiner[] = "\xE2\x81\xA0";   // U+2060
+    if (runRoomEnd != runPlain.size()) runBeforeRoom = runPlain.empty() ? '\n' : runPlain.back();
+    if (!glueAfter) { out += kWordJoiner; runPlain += kWordJoiner; }
+    LabelInlineImage room;
+    room.byteOffset = static_cast<int>(runPlain.size());
+    room.frame.marginLeft = std::min(px, 10000.f);   // no picture: only the width counts
+    runImages.push_back(std::move(room));
+    out += kPlaceholder;
+    runPlain += kPlaceholder;
+    if (glueAfter) { out += kWordJoiner; runPlain += kWordJoiner; }
+    runRoomEnd = runPlain.size();
 }
 
 // ============================================================================
@@ -1391,6 +2166,304 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildFormControl(Node& ele
     return box;
 }
 
+// ============================================================================
+// INTERACTIVE FORMS
+// ============================================================================
+
+bool ElementBuilder::IsFormControl(const Node& node) {
+    return node.IsElement() && (node.tag == "input" || node.tag == "textarea" ||
+                                node.tag == "button" || node.tag == "select");
+}
+
+bool ElementBuilder::ContainsFormControl(const Node& node) const {
+    for (const auto& child : node.children) {
+        if (!child->IsElement()) continue;
+        if (resolver.StyleOf(child.get()).display == DisplayMode::Hidden) continue;
+        if (IsFormControl(*child) || ContainsFormControl(*child)) return true;
+    }
+    return false;
+}
+
+int ElementBuilder::LabelTargetIndex(const Node& label) {
+    if (!labelTargets) return -1;
+    const Node* target = nullptr;
+    const std::string forId = TrimAscii(label.GetAttribute("for"));
+    if (!forId.empty()) {
+        if (currentDocument && currentDocument->root)
+            currentDocument->root->ForEachElement([&](Node& n) {
+                if (n.GetAttribute("id") == forId) { target = IsFormControl(n) ? &n : nullptr; return false; }
+                return true;
+            });
+    } else {
+        std::function<const Node*(const Node&)> first = [&](const Node& n) -> const Node* {
+            for (const auto& c : n.children) {
+                if (!c->IsElement()) continue;
+                if (IsFormControl(*c)) {
+                    std::string type = c->GetAttribute("type");
+                    std::transform(type.begin(), type.end(), type.begin(), [](unsigned char ch) { return char(std::tolower(ch)); });
+                    if (TrimAscii(type) != "hidden") return c.get();
+                    continue;
+                }
+                if (const Node* found = first(*c)) return found;
+            }
+            return nullptr;
+        };
+        target = first(label);
+    }
+    if (!target) return -1;
+    auto& targets = labelTargets->targets;
+    for (size_t i = 0; i < targets.size(); ++i)
+        if (targets[i] == target) return static_cast<int>(i);
+    targets.push_back(target);
+    return static_cast<int>(targets.size()) - 1;
+}
+
+FormController& ElementBuilder::FormFor(const Node& control) {
+    // form="id" names the form; else the nearest <form> around the control.
+    const Node* form = nullptr;
+    const std::string formId = control.GetAttribute("form");
+    if (!formId.empty() && currentDocument && currentDocument->root) {
+        currentDocument->root->ForEachElement([&](Node& n) {
+            if (n.tag == "form" && n.GetAttribute("id") == formId) { form = &n; return false; }
+            return true;
+        });
+    }
+    if (!form && formId.empty())
+        for (const Node* p = control.parent; p; p = p->parent)
+            if (p->IsElement("form")) { form = p; break; }
+    if (!form) {
+        if (!formless) {
+            formless = std::make_shared<FormController>();
+            formless->inForm = false;
+        }
+        return *formless;
+    }
+    auto it = formByNode.find(form);
+    if (it != formByNode.end()) return *it->second;
+    auto controller = std::make_shared<FormController>();
+    controller->inForm = true;
+    controller->action = TrimAscii(form->GetAttribute("action"));
+    std::string method = form->GetAttribute("method");
+    std::transform(method.begin(), method.end(), method.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    controller->method = TrimAscii(method) == "post" ? "post" : "get";
+    std::string enctype = form->GetAttribute("enctype");
+    std::transform(enctype.begin(), enctype.end(), enctype.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    enctype = TrimAscii(enctype);
+    if (enctype == "multipart/form-data" || enctype == "text/plain") controller->enctype = enctype;
+    controller->target = form->GetAttribute("target");
+    controller->onSubmit = opts.onFormSubmit;
+    formByNode.emplace(form, controller);
+    builtForms.push_back(controller);
+    return *controller;
+}
+
+std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildFormWidget(Node& element) {
+    const ComputedStyle& style = resolver.StyleOf(&element);
+    FormController& form = FormFor(element);
+    std::weak_ptr<FormController> formRef;
+    for (const auto& f : builtForms) if (f.get() == &form) formRef = f;
+    if (!form.inForm) formRef = formless;
+    const int index = static_cast<int>(form.controls.size());
+    if (labelTargets) labelTargets->controls[&element] = { formRef, index };
+
+    FormController::Control control;
+    control.name = element.GetAttribute("name");
+    control.disabled = element.HasAttribute("disabled");
+    for (const Node* p = element.parent; p && !control.disabled; p = p->parent)
+        if (p->IsElement("fieldset") && p->HasAttribute("disabled")) control.disabled = true;
+
+    // Sizes from the font, as a browser sizes a control with no CSS size.
+    const float fs = style.fontSizePx > 0.f ? style.fontSizePx : 14.f;
+    const float charWidth = fs * 0.55f;
+    const float lineHeight = std::round(fs * 1.25f + 10.f);
+    auto attrInt = [&](const char* name, int fallback, int lo, int hi) {
+        const std::string v = TrimAscii(element.GetAttribute(name));
+        if (v.empty() || !std::isdigit(static_cast<unsigned char>(v[0]))) return fallback;
+        int n = 0;
+        for (char c : v) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) break;
+            n = std::min(hi, n * 10 + (c - '0'));
+        }
+        return std::max(lo, n);
+    };
+    auto size = [&](UltraCanvasUIElement& w, float width, float height) {
+        if (style.widthPercent) w.size.width = CSSLayout::Dimension::Pct(*style.widthPercent);
+        else w.size.width = CSSLayout::Dimension::Px(style.widthPx ? *style.widthPx : std::round(width));
+        w.size.height = CSSLayout::Dimension::Px(style.heightPx ? *style.heightPx : std::round(height));
+        w.box.margin.left = CSSLayout::Dimension::Px(std::max(0.f, style.marginLeft));
+        w.box.margin.right = CSSLayout::Dimension::Px(std::max(0.f, style.marginRight));
+        w.layoutItem.SetFlexGrow(0.f).SetFlexShrink(style.widthPercent ? 1.f : 0.f);
+        if (style.widthPercent) w.layoutItem.SetFlexBasis(CSSLayout::Dimension::Pct(*style.widthPercent));
+    };
+    std::string type = element.GetAttribute("type");
+    std::transform(type.begin(), type.end(), type.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    type = TrimAscii(type);
+
+    std::shared_ptr<UltraCanvasUIElement> widget;
+    auto submitOnEnter = [formRef](const std::string&) {
+        if (auto f = formRef.lock(); f && f->inForm) { f->Submit(-1); return true; }
+        return false;
+    };
+
+    if (element.tag == "textarea") {
+        auto area = std::make_shared<UltraCanvasTextArea>(MakeId("textarea"));
+        std::string text = element.TextContent();
+        if (!text.empty() && text[0] == '\n') text.erase(0, 1);     // the newline after <textarea>
+        area->SetText(text, false);
+        area->SetBorders(1.f, Color(118, 118, 118, 255));   // a browser's field edge
+        control.kind = FormController::Kind::Text;
+        control.initialText = text;
+        size(*area, attrInt("cols", 20, 1, 500) * charWidth + 16.f,
+             attrInt("rows", 2, 1, 200) * fs * 1.3f + 12.f);
+        widget = area;
+    } else if (element.tag == "select") {
+        auto dropdown = std::make_shared<UltraCanvasDropdown>(MakeId("select"));
+        int selected = -1, longest = 4;
+        std::function<void(const Node&)> addOptions = [&](const Node& n) {
+            for (const auto& c : n.children) {
+                if (c->IsElement("optgroup")) { addOptions(*c); continue; }
+                if (!c->IsElement("option")) continue;
+                const std::string text = CollapseWhitespace(TrimAscii(c->TextContent()), "\n");
+                const std::string value = c->HasAttribute("value") ? c->GetAttribute("value") : text;
+                dropdown->AddItem(text.empty() ? std::string(" ") : text, value);
+                control.optionValues.push_back(value);
+                if (c->HasAttribute("selected")) selected = static_cast<int>(control.optionValues.size()) - 1;
+                longest = std::max(longest, static_cast<int>(text.size()));
+            }
+        };
+        addOptions(element);
+        if (selected < 0 && !control.optionValues.empty()) selected = 0;
+        if (selected >= 0) dropdown->SetSelectedIndex(selected, false);
+        control.kind = FormController::Kind::Select;
+        control.initialIndex = selected;
+        size(*dropdown, std::min(longest, 40) * charWidth + 36.f, lineHeight);
+        widget = dropdown;
+    } else if (element.tag == "button" || type == "submit" || type == "reset" ||
+               type == "button" || type == "image") {
+        std::string buttonType = element.tag == "button" ? type : type;
+        if (element.tag == "button" && buttonType != "reset" && buttonType != "button") buttonType = "submit";
+        std::string text = element.tag == "button" ? TrimAscii(element.TextContent())
+                                                    : element.GetAttribute("value");
+        if (text.empty() && element.tag == "input" && type == "image") text = element.GetAttribute("alt");
+        if (text.empty()) text = buttonType == "reset" ? "Reset" : buttonType == "submit" ? "Submit" : " ";
+        control.kind = buttonType == "reset" ? FormController::Kind::Reset
+                     : buttonType == "button" ? FormController::Kind::Button
+                                              : FormController::Kind::Submit;
+        control.value = element.GetAttribute("value");
+        if (element.tag == "button" && !element.HasAttribute("value")) control.value = std::string();
+        auto button = std::make_shared<UltraCanvasButton>(MakeId("button"), text);
+        const FormController::Kind kind = control.kind;
+        button->onClick = [formRef, index, kind]() {
+            auto f = formRef.lock();
+            if (!f) return;
+            if (kind == FormController::Kind::Submit) f->Submit(index);
+            else if (kind == FormController::Kind::Reset) f->Reset();
+        };
+        size(*button, static_cast<float>(std::min<size_t>(text.size(), 60)) * fs * 0.6f + 24.f, lineHeight);
+        widget = button;
+    } else if (type == "checkbox" || type == "radio") {
+        const bool checked = element.HasAttribute("checked");
+        control.kind = type == "radio" ? FormController::Kind::Radio : FormController::Kind::Checkbox;
+        control.value = element.HasAttribute("value") ? element.GetAttribute("value") : "on";
+        control.initialChecked = checked;
+        std::shared_ptr<UltraCanvasLabeledToggleBase> toggle;
+        if (type == "radio") {
+            auto radio = std::make_shared<UltraCanvasRadio>(MakeId("radio"), std::string());
+            // Radios with one name in one form are one group.
+            auto& group = form.radioGroups[control.name.empty() ? MakeId("unnamed") : control.name];
+            if (!group) group = std::make_shared<UltraCanvasRadioGroup>();
+            radio->SetChecked(checked);
+            group->AddRadioButton(radio);
+            toggle = radio;
+        } else {
+            auto box = std::make_shared<UltraCanvasCheckbox>(MakeId("checkbox"), std::string());
+            box->SetChecked(checked);
+            toggle = box;
+        }
+        size(*toggle, 18.f, 18.f);
+        if (style.marginLeft <= 0.f) toggle->box.margin.left = CSSLayout::Dimension::Px(3.f);
+        if (style.marginRight <= 0.f) toggle->box.margin.right = CSSLayout::Dimension::Px(3.f);
+        widget = toggle;
+    } else if (type == "hidden") {
+        control.kind = FormController::Kind::Hidden;
+        control.value = element.GetAttribute("value");
+        form.controls.push_back(std::move(control));
+        return nullptr;
+    } else if (type == "file") {
+        // A button that asks the host for files, and the names chosen.
+        control.kind = FormController::Kind::File;
+        control.multiple = element.HasAttribute("multiple");
+        control.accept = element.GetAttribute("accept");
+        auto row = MakeContainer("file");
+        row->layout.SetFlex(CSSLayout::FlexDirection::Row, CSSLayout::FlexWrap::NoWrap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        const std::string buttonText = control.multiple ? "Choose files\xE2\x80\xA6" : "Choose file\xE2\x80\xA6";
+        auto button = std::make_shared<UltraCanvasButton>(MakeId("choose"), buttonText);
+        button->size.width = CSSLayout::Dimension::Px(std::round(13.f * fs * 0.6f + 24.f));
+        button->size.height = CSSLayout::Dimension::Px(lineHeight);
+        button->layoutItem.SetFlexShrink(0.f);
+        auto names = std::make_shared<UltraCanvasLabel>(MakeId("files"));
+        ConfigureLabel(*names, style);
+        names->SetText(control.multiple ? "No files chosen" : "No file chosen");
+        names->box.margin.left = CSSLayout::Dimension::Px(6.f);
+        names->layoutItem.SetFlexShrink(1.f);
+        row->AddChild(button);
+        row->AddChild(names);
+        control.fileNames = names;
+        const bool multiple = control.multiple;
+        const std::string accept = control.accept;
+        if (opts.onChooseFiles) {
+            auto choose = opts.onChooseFiles;
+            control.openChooser = [formRef, index, choose, multiple, accept]() {
+                choose(multiple, accept, [formRef, index](std::vector<std::string> paths) {
+                    if (paths.empty()) return;                  // cancelled: the choice stays
+                    if (auto f = formRef.lock()) f->SetFiles(index, std::move(paths));
+                });
+            };
+            button->onClick = [formRef, index]() {
+                auto f = formRef.lock();
+                if (f && index < static_cast<int>(f->controls.size()) && f->controls[static_cast<size_t>(index)].openChooser)
+                    f->controls[static_cast<size_t>(index)].openChooser();
+            };
+        } else {
+            button->SetDisabled(true);                          // nowhere to choose files from
+        }
+        if (control.disabled) button->SetDisabled(true);
+        row->box.margin.left = CSSLayout::Dimension::Px(std::max(0.f, style.marginLeft));
+        row->box.margin.right = CSSLayout::Dimension::Px(std::max(0.f, style.marginRight));
+        row->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+        control.element = row;
+        form.controls.push_back(std::move(control));
+        RegisterAnchors(element, row);
+        return row;
+    } else if (type == "color" || type == "range") {
+        // Shown as the page wrote it, not sent.
+        control.kind = FormController::Kind::Other;
+        form.controls.push_back(std::move(control));
+        return BuildFormControl(element);
+    } else {
+        auto input = std::make_shared<UltraCanvasTextInput>(MakeId("input"));
+        if (type == "password") input->SetInputType(TextInputType::Password);
+        const std::string value = element.GetAttribute("value");
+        input->SetText(value);
+        input->SetPlaceholder(element.GetAttribute("placeholder"));
+        if (element.HasAttribute("readonly")) input->SetReadOnly(true);
+        if (element.HasAttribute("maxlength")) input->SetMaxLength(attrInt("maxlength", 524288, 0, 524288));
+        input->onEnterPressed = submitOnEnter;
+        control.kind = FormController::Kind::Text;
+        control.initialText = value;
+        size(*input, attrInt("size", 20, 1, 500) * charWidth + 16.f, lineHeight);
+        widget = input;
+    }
+
+    if (control.disabled) widget->SetDisabled(true);
+    control.element = widget;
+    form.controls.push_back(std::move(control));
+    RegisterAnchors(element, widget);
+    return widget;
+}
+
+
 bool ElementBuilder::HasBlockDescendant(const Node& element) const {
     for (const auto& childPtr : element.children) {
         const Node& child = *childPtr;
@@ -1398,6 +2471,8 @@ bool ElementBuilder::HasBlockDescendant(const Node& element) const {
         const ComputedStyle& style = resolver.StyleOf(&child);
         if (style.display == DisplayMode::Hidden) continue;
         if (child.tag == "table" || IsBlockDisplay(style.display)) return true;
+        // A control drawn for display only is a block of its own.
+        if (!opts.interactiveForms && IsFormControl(child)) return true;
         if (style.display == DisplayMode::InlineBlock) continue;   // a box of its own
         if (HasBlockDescendant(child)) return true;
     }
@@ -1406,8 +2481,21 @@ bool ElementBuilder::HasBlockDescendant(const Node& element) const {
 
 bool ElementBuilder::NeedsInlineBox(const Node& element) const {
     const ComputedStyle& style = resolver.StyleOf(&element);
-    if (style.display != DisplayMode::InlineBlock) return false;
     if (element.tag == "img" || element.tag == "image" || element.tag == "svg") return false;
+    if (style.display == DisplayMode::Inline) {
+        // A plain inline element whose background or border reaches past its
+        // text (vertical padding - the mail "button" <a
+        // style="background:#07f;padding:12px 24px;color:#fff">) is a box on
+        // the line, which grows the line to hold it. Any other background or
+        // border is drawn by the label around the element's text
+        // (LabelTextBox), breaking across lines with it.
+        if (element.tag == "br" || HasBlockDescendant(element)) return false;
+        const bool paints = style.backgroundColor.has_value() && style.backgroundColor->a > 0;
+        return (paints || style.HasBorder()) &&
+               (style.paddingTop > 0.f || style.paddingBottom > 0.f);
+    }
+    if (style.display != DisplayMode::InlineBlock) return false;
+    if (style.layoutMode != BoxLayoutMode::Flow) return true;   // inline-flex / inline-grid
     if (HasBlockDescendant(element)) return true;
     return style.backgroundColor.has_value() || style.HasBorder() ||
            style.paddingTop > 0.f || style.paddingRight > 0.f ||
@@ -1416,6 +2504,7 @@ bool ElementBuilder::NeedsInlineBox(const Node& element) const {
 }
 
 std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildInlineBox(Node& element) {
+    if (opts.interactiveForms && IsFormControl(element)) return BuildFormWidget(element);
     const ComputedStyle& style = resolver.StyleOf(&element);
     if (element.tag == "table" || style.display == DisplayMode::Table) {
         return BuildTable(element, /*inlineBox=*/true);
@@ -1425,7 +2514,7 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildInlineBox(Node& eleme
     ApplyBoxStyle(*box, style, /*fillWidth=*/false, /*realMargins=*/true);
     ConfigureBlockLayout(*box);
     ApplyBackgroundImage(*box, style);
-    BuildChildrenInto(*box, element);
+    BuildContentInto(*box, element);
     // As wide as its content (shrink-to-fit), narrower only when the line is.
     box->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
     return box;
@@ -1571,6 +2660,19 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
             rule.color = CssColor{128, 128, 128, 255};
             rule.currentColor = false;
             boxStyle.SetAllBorders(rule);
+        }
+        // min-height and max-height do not apply to a table cell (CSS 2.1
+        // §10.7 leaves them undefined; browsers ignore both). Stripe's - and
+        // many mailers' - spacer cell is <td height="32" style="font-size:1px;
+        // line-height:1px; max-height:1px">: honoured, every such gap in a
+        // receipt collapsed to 1px and the text was packed together. A cell
+        // made a block (display:block, mail columns on a phone) is a block,
+        // and keeps them.
+        if (cellStyle.display == DisplayMode::TableCell) {
+            boxStyle.minHeightPx.reset();
+            boxStyle.minHeightPercent.reset();
+            boxStyle.maxHeightPx.reset();
+            boxStyle.maxHeightPercent.reset();
         }
         CellEntry entry{ cellBox, static_cast<int>(r), c, rowSpan, colSpan, boxStyle };
         if (style.borderCollapse) {
@@ -1926,14 +3028,27 @@ float ElementBuilder::SpaceWidth(const ComputedStyle& style) {
     return width;
 }
 
+void ElementBuilder::NoteRunLineHeight(const ComputedStyle& style) {
+    const float height = style.lineHeightSet
+            ? (style.lineHeightPx ? *style.lineHeightPx : style.lineHeight * style.fontSizePx)
+            : kNormalLineHeight * style.fontSizePx;
+    runLineHeightPx = std::max(runLineHeightPx, height);
+    if (style.lineHeightSet) runLineHeightSet = true;
+}
+
 void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
-                                    bool noWrap) {
+                                    bool noWrap, float runLineHeightPx) {
     LabelStyle labelStyle;
     labelStyle.fontStyle = FontOf(style);
-    // line-height as set: px, or a factor of this text's font size.
-    if (style.lineHeightSet) {
+    // line-height as set: px, or a factor of this text's font size - or the
+    // inline run's, where its text sets one (BuildInlineRun).
+    if (runLineHeightPx > 0.f) {
+        labelStyle.lineHeightPx = runLineHeightPx;
+    } else if (style.lineHeightSet) {
         labelStyle.lineHeightPx = style.lineHeightPx ? *style.lineHeightPx
                                                      : style.lineHeight * style.fontSizePx;
+    }
+    if (runLineHeightPx > 0.f || style.lineHeightSet) {
         // line-height: 0 (spacer cells) is next to nothing, not "the font's".
         labelStyle.lineHeightPx = std::max(labelStyle.lineHeightPx, 0.01f);
     }

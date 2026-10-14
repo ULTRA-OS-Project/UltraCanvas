@@ -1,0 +1,80 @@
+// Apps/UltraPassword/core/VaultLocation.h
+// Where UltraPassword keeps its vault when no --vault path is given: one
+// per-user application data folder holding vault.upwvault.
+//
+//   Windows  %APPDATA%\UltraPassword
+//   macOS    ~/Library/Application Support/UltraPassword
+//   others   $XDG_DATA_HOME/UltraPassword, else ~/.local/share/UltraPassword
+//
+// $XDG_DATA_HOME, when set, wins on every platform, so a test or a portable
+// setup can point the app elsewhere. The rule is the framework's
+// (UltraCanvasDataFolder.h), shared with UltraMail, UltraAuthenticator,
+// UltraSocial and EmailCleaner; this file adds UltraPassword's folder name,
+// the vault file that marks a folder as its own, and where earlier versions
+// kept it.
+//
+// Up to 0.1.2 macOS was treated like Linux and the folder was
+// ~/.local/share/UltraPassword there (as it was on Windows without
+// %APPDATA%). AdoptLegacyDataDir moves such a folder into place once, whole,
+// so the vault opens as before.
+//
+// All strings are UTF-8 (UltraCanvasPathUtf8.h).
+// Version: 0.1.1 - the rule and the move come from the framework's UltraCanvasDataFolder.h
+// Version: 0.1.0 - the per-platform application data folder
+// Last Modified: 2026-10-13
+// Author: UltraCanvas Framework / ULTRA OS
+#pragma once
+
+#include "UltraCanvasDataFolder.h"   // DataFolderPlatform
+
+#include <string>
+#include <vector>
+
+namespace UltraPassword {
+
+// The folder's name under the platform's application data root, and the
+// vault file in it.
+inline constexpr const char* kDataFolderName = "UltraPassword";
+inline constexpr const char* kVaultFileName  = "vault.upwvault";
+
+using DataDirPlatform = UltraCanvas::DataFolderPlatform;
+
+// The platform this build runs on.
+DataDirPlatform CurrentDataDirPlatform();
+
+// The data folder for the given platform and environment values (each may be
+// empty). Pure, so every platform's rule is testable anywhere. Empty when the
+// environment names no place for it.
+std::string ResolveDataDir(DataDirPlatform platform,
+                           const std::string& xdgDataHome,
+                           const std::string& appData,
+                           const std::string& home);
+
+// Where earlier versions may have left the vault on this platform, other than
+// where it goes now: ~/.local/share/UltraPassword on macOS, and on Windows
+// when HOME is set (what 0.1.2 used there without %APPDATA%). Pure, like
+// ResolveDataDir. Linux kept its folder, so it has none.
+std::vector<std::string> LegacyDataDirs(DataDirPlatform platform,
+                                        const std::string& home);
+
+// When `dataDir` holds no vault file yet, move the first of `candidates` that
+// does - the whole folder - to `dataDir`: renamed when it can be, copied and
+// then removed when the two are on different drives. Returns the folder the
+// vault came from; empty when nothing was moved. A failure leaves the old
+// folder where it was and says why in `error`.
+std::string AdoptLegacyDataDir(const std::string& dataDir,
+                               const std::vector<std::string>& candidates,
+                               std::string& error);
+
+// <dataDir>/vault.upwvault
+std::string VaultPathIn(const std::string& dataDir);
+
+// The default vault file: ResolveDataDir for this platform (XDG_DATA_HOME,
+// APPDATA and HOME read as UTF-8), the working directory when the environment
+// names no home; a vault an earlier version left elsewhere is moved into place
+// first (AdoptLegacyDataDir), and the folder is created. `movedFrom`, when
+// given, receives the folder the vault was moved from, and `error` what went
+// wrong moving it; neither stops the path from being returned.
+std::string DefaultVaultPath(std::string* movedFrom = nullptr, std::string* error = nullptr);
+
+} // namespace UltraPassword

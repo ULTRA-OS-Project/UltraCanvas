@@ -3,6 +3,7 @@
 // This layer is framework-independent (std C++ only) so it can be unit-tested
 // without linking the UltraCanvas library. The DOM is consumed by
 // HTMLStyleResolver (CSS cascade) and HTMLElementBuilder (native element trees).
+// Version: 1.4.0 - EscapeText: text made safe to put in HTML (the inverse of DecodeEntities)
 // Version: 1.3.1 - merged: the Lines layout (1.3.0) beside the inline-aware single
 //                  line and the node overload (1.2.1, 1.2.2), made side by side
 // Version: 1.3.0 - ExtractPlainText(html, PlainTextLayout::Lines): the text with
@@ -13,7 +14,7 @@
 // Version: 1.2.0 - foreign content keeps its vocabulary's case; attribute lookup
 //                  is exact, then ASCII case-insensitive
 // Version: 1.1.0 - doctype and quirksMode
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -122,6 +123,10 @@ bool IsQuirksDoctype(const std::string& doctype, bool present);
 
 // Decode HTML entities (&amp;, &#233;, &#x2019;, ...) into UTF-8.
 std::string DecodeEntities(const std::string& text);
+
+// Text as HTML that shows it: & < > " and ' as entities, so it can go in an
+// element or a quoted attribute value. The inverse of DecodeEntities.
+std::string EscapeText(const std::string& text);
 
 // How ExtractPlainText lays the text out.
 enum class PlainTextLayout {

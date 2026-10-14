@@ -2,20 +2,29 @@
 # Build configuration for the VideoFX module (video editing / conversion).
 # FFmpeg is optional: without it the same API is built from a stub whose calls
 # return VideoFXResult::NotAvailable, so consumers never need an #ifdef.
-# Version: 0.6.0
-# Last Modified: 2026-10-07
+# VideoFX is a shared library of its own (libVideoFX.so, libVideoFX.dylib,
+# VideoFX.dll / libVideoFX.dll) - not absorbed into the UltraCanvas core, so an
+# application that does no video never loads it or FFmpeg.
+# Version: 0.13.0
+# Last Modified: 2026-10-13
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 
 project(VideoFX
-    VERSION 0.6.0
+    VERSION 0.13.0
     DESCRIPTION "VideoFX - video editing and conversion engine"
     LANGUAGES CXX
 )
 
 option(VIDEOFX_USE_FFMPEG "Build VideoFX on FFmpeg (libavformat/avcodec/avfilter/swscale)" ON)
 option(VIDEOFX_BUILD_TOOL "Build the videofx command-line tool" ON)
+# Shared by default, like the UltraCanvas core; Android keeps static libraries
+if(ANDROID)
+    option(VIDEOFX_BUILD_SHARED "Build VideoFX as a shared library" OFF)
+else()
+    option(VIDEOFX_BUILD_SHARED "Build VideoFX as a shared library" ON)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,8 +72,21 @@ set(VIDEOFX_SOURCES
     core/VideoFXFaces.cpp
     core/VideoFXFaces.h
     core/VideoFXFaceCascade.inc
+    core/VideoFXProject.cpp
+    core/VideoFXProject.h
+    core/VideoFXProxy.cpp
+    core/VideoFXProxy.h
+    core/VideoFXPlatform.h
     core/VideoFXJob.cpp
 )
+# The per-user cache folder, where proxies go - the stub has it too
+if(WIN32)
+    list(APPEND VIDEOFX_SOURCES OS/MSWindows/VideoFXCacheDir.cpp)
+elseif(APPLE)
+    list(APPEND VIDEOFX_SOURCES OS/MacOS/VideoFXCacheDir.cpp)
+else()
+    list(APPEND VIDEOFX_SOURCES OS/Linux/VideoFXCacheDir.cpp)
+endif()
 
 if(VIDEOFX_FFMPEG_FOUND)
     list(APPEND VIDEOFX_SOURCES
@@ -74,7 +96,6 @@ if(VIDEOFX_FFMPEG_FOUND)
         core/VideoFXExport.cpp
         core/VideoFXRemux.cpp
         core/VideoFXFonts.cpp
-        core/VideoFXPlatform.h
     )
     # The executable's directory, where bundled fonts are looked for
     if(WIN32)
@@ -88,7 +109,11 @@ else()
     list(APPEND VIDEOFX_SOURCES core/VideoFXUnavailable.cpp)
 endif()
 
-add_library(VideoFX STATIC ${VIDEOFX_SOURCES} ${VIDEOFX_HEADERS})
+if(VIDEOFX_BUILD_SHARED)
+    add_library(VideoFX SHARED ${VIDEOFX_SOURCES} ${VIDEOFX_HEADERS})
+else()
+    add_library(VideoFX STATIC ${VIDEOFX_SOURCES} ${VIDEOFX_HEADERS})
+endif()
 add_library(VideoFX::VideoFX ALIAS VideoFX)
 
 target_include_directories(VideoFX
@@ -98,9 +123,29 @@ target_include_directories(VideoFX
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core
 )
-# The single source of VideoFX's version (VideoFX_GetVersion)
+# The single source of VideoFX's version (VideoFX_GetVersion): the VERSION in
+# project() above. The "// Version:" line at the top of each source file is
+# not a copy of it - it names the release in which that file last changed, as
+# every file of the framework does, so a file untouched since 0.5.0 says
+# 0.5.0 and only a file a release changes moves to that release's number.
 target_compile_definitions(VideoFX PRIVATE VIDEOFX_VERSION_STRING="${PROJECT_VERSION}")
 set_target_properties(VideoFX PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(VIDEOFX_BUILD_SHARED)
+    # 0.x: every minor version may change the ABI, so it is in the soname
+    # (libVideoFX.so.0.9). The DLL goes to bin/ beside videofx.exe and
+    # VideoFXTest.exe, where Windows looks for it.
+    set_target_properties(VideoFX PROPERTIES
+        VERSION ${PROJECT_VERSION}
+        SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    if(WIN32)
+        # No __declspec(dllexport) in the sources, as in the core: export
+        # everything (the tests reach VideoFX::Internal too) and emit an
+        # import library.
+        set_target_properties(VideoFX PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    endif()
+endif()
 
 find_package(Threads REQUIRED)
 target_link_libraries(VideoFX PUBLIC Threads::Threads)
@@ -141,4 +186,9 @@ if(VIDEOFX_FFMPEG_FOUND)
 else()
     set(VIDEOFX_ENGINE "stub (no FFmpeg)")
 endif()
-message(STATUS "VideoFX ${PROJECT_VERSION}: engine=${VIDEOFX_ENGINE}, tool=${VIDEOFX_BUILD_TOOL}")
+if(VIDEOFX_BUILD_SHARED)
+    set(VIDEOFX_LINKAGE "shared")
+else()
+    set(VIDEOFX_LINKAGE "static")
+endif()
+message(STATUS "VideoFX ${PROJECT_VERSION}: engine=${VIDEOFX_ENGINE}, library=${VIDEOFX_LINKAGE}, tool=${VIDEOFX_BUILD_TOOL}")

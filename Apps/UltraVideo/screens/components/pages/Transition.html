@@ -1,0 +1,24 @@
+<!doctype html>
+<html data-theme="dark">
+<head><link rel="stylesheet" href="../../fonts/fonts.css"><link rel="stylesheet" href="../../tokens/tokens.css"><link rel="stylesheet" href="../bundle.css"><script src="../bundle.js"></script><meta charset="utf-8"><!-- Switch theme: set data-theme="light" on <html>. Card size 1000x184. --><title>Transition — preview</title>
+<style>html,body{margin:0;background:var(--bg-100)} .g{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:28px 12px 12px} .c .uv-lane{height:64px;border-radius:var(--radius-sm)} .c .uv-cap{margin-bottom:4px}</style></head>
+<body class="uv">
+<div class="g" id="g"></div>
+<script>
+  var U = UltraVideo, I = U.icon;
+  function lane(badge, extra) {
+    return '<div class="uv-lane">' + U.clip({ name: 'Beach_wide.mp4', dur: 6, shots: [0] }, 4, 110, 64) + U.clip({ name: 'Forest_walk.mp4', dur: 5, shots: [1] }, 115, 110, 64) + (badge || '') + (extra || '') + '</div>';
+  }
+  function badge(w, cls, label, edges) {
+    return '<div class="uv-trans ' + (cls || '') + '" style="left:' + (115 - w / 2) + 'px;width:' + w + 'px;top:28px;margin:0">' + I('transition', 'uv-ico--sm') + (label ? '<span>' + label + '</span>' : '') +
+      (edges ? '<span class="uv-trans__edge uv-trans__edge--l"></span><span class="uv-trans__edge uv-trans__edge--r"></span>' : '') + '</div>';
+  }
+  var h = '';
+  h += '<div class="c"><div class="uv-cap">Cross dissolve · 0.5 s</div>' + lane(badge(24)) + '</div>';
+  h += '<div class="c"><div class="uv-cap">Selected · edges drag the length</div>' + lane(badge(60, 'is-selected', '1.5 s', true)) + '</div>';
+  h += '<div class="c"><div class="uv-cap">Dragging the right edge · engine limit shown</div>' + lane(badge(80, 'is-selected', '2.0 s', true), '<div class="uv-tip uv-tip--readout" style="position:absolute;left:150px;top:70px">2.0 s · max 2.0 s</div>') + '</div>';
+  h += '<div class="c"><div class="uv-cap">Dropping a transition onto a cut</div>' + lane('', '<div class="uv-insert uv-insert--drop" style="left:115px"></div><div class="uv-trans" style="left:91px;width:48px;top:28px;margin:0;opacity:.7">' + I('transition', 'uv-ico--sm') + '</div>') + '</div>';
+  document.getElementById('g').innerHTML = h;
+</script>
+</body>
+</html>

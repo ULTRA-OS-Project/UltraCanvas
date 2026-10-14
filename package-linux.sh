@@ -55,9 +55,13 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
 # UltraCanvasStart, the setup application, is in the bundle like every app;
 # scripts/package-ultracanvasstart.sh cuts it out of the bundle on its own.
+# `ultrapress` is one program too (Apps/UltraPress): the commands - a
+# starter site, the check, a page's HTML shadow, the static publish, the
+# WordPress import - and, given a site folder, the editor window. Outputs
+# to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart)
+      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
@@ -152,6 +156,8 @@ fi
 if compgen -G "$BUILDDIR/lib/*.so*" > /dev/null; then
     cp -a "$BUILDDIR"/lib/*.so* "$PKG/lib/"
 fi
+# libVideoFX ships with the rest: UltraVideo links it (and FFmpeg through it),
+# so the package carries the engine since UltraVideo 0.1.0.
 
 # --- UltraNet plug-ins (dlopened by UltraMail, UltraNetMonitor, …) -----------
 

@@ -11,7 +11,12 @@ told apart:
   a declaration whose type is taken from the doc (`auto label =
   std::make_shared<UltraCanvasLabel>(...)` elsewhere in it) or guessed from
   the name; a name that can't be typed is listed as context, not as an
-  error. A framework class's member defined out of line (`void
+  error. Such a name is a local of the snippet's statements, or a member
+  when a `[this]` lambda uses it, as it would be in the application. A
+  name before `<` that C++20 takes for a template's (`globalIdx <
+  static_cast<int>(n)`, where clang reports "expected '>'" and not the
+  name) is found from the line of that error. A framework class's member
+  defined out of line (`void
   UltraCanvasUIElement::Render(...) {`) is compiled in the class's
   namespace, and a line that is only a macro call without `;`
   (`ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)`) at file scope.
@@ -50,6 +55,24 @@ out.
 
 Missing `#include` targets are reported too.
 
+A header can opt an example in its comments into the same check, so that
+the sketch at the top of a header cannot drift from the API under it
+either. A `// doc-check: example` line marks it; the example is the comment
+lines after the marker that are indented two spaces or more past the `//`,
+up to the first line of prose or code, and a bare `//` is a blank line of
+it. Any other `// doc-check: ...` line in the header declares what its
+examples assume, as the HTML comment does in a doc:
+
+    // doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar;
+    // doc-check: example
+    //   for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows())
+    //       taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile);
+
+Errors are reported at the header's own lines. --all checks every marked
+header under UltraCanvas/include, UltraCanvas/Plugins and VirtualFS/include;
+a header named on the command line is checked the same way. A header's
+example is not required: the marker is for the ones worth keeping right.
+
 Needs clang++ and pkg-config (cairo, pango, glib); Linux. The first run
 builds a precompiled header of all public headers in --work (about 1 min).
 
@@ -60,7 +83,9 @@ builds a precompiled header of all public headers in --work (about 1 min).
 Exit status 1 when a doc has findings.
 
 CI (.github/workflows/doc-examples.yml) checks every doc - all of
-Docs/UltraCanvas/*.md but the changelog - and fails only on findings that
+Docs/UltraCanvas/*.md but the changelog, the module docs listed in
+CHECKED_MODULE_DOCS (Docs/Modules/<Name>/*.md) and the marked headers -
+and fails only on findings that
 are not in scripts/doc_examples_baseline.txt. The component docs all pass;
 the design documents (a name with Proposal, Plan or Investigation in it)
 describe APIs not written yet, so their code is listed there until the API
@@ -73,6 +98,10 @@ A baseline entry is the doc and the message, without the line, so editing
 elsewhere in a doc does not disturb it. The file only shrinks: fix a doc's
 findings and rewrite it, never add to it to let a new one through.
 """
+# Version: 1.5.0 - a header's `// doc-check: example` comment is checked too
+# Version: 1.4.0 - a name the checker declares is a member when a [this]
+#                 lambda uses it; a name clang misreads as a template's
+#                 (`name <`) is declared from the parse error that follows
 # Version: 1.3.1 - --all covers the design documents too; their findings
 #                 are baselined until their APIs exist
 # Version: 1.3.0 - a member of a header class defined out of line goes in
@@ -88,7 +117,7 @@ findings and rewrite it, never add to it to let a new one through.
 #                 what the doc's own headers and doc-check comment declare;
 #                 `Name (` with a space is prose, not a call
 # Version: 1.0.1 - a snippet's #include "..." is honoured, not only <...>
-# Last Modified: 2026-10-08
+# Last Modified: 2026-10-12
 # Author: UltraCanvas Framework
 
 import argparse
@@ -400,6 +429,7 @@ class Block:
         self.index = 0
         self.context = {}
         self.bad_context = set()
+        self.members = set()        # context names a [this] lambda uses: members, not locals
         self.uses = set()           # using __dc_bK::X; for a type an earlier block defined
 
     def last(self):
@@ -428,6 +458,70 @@ def read_blocks(path):
     for n, b in enumerate(blocks):
         b.index = n
     return lines, blocks
+
+
+# A header's comment opts an example into the check with a marker line; other
+# doc-check lines declare what its examples assume.
+HEADER_EXAMPLE = re.compile(r"^\s*//\s*doc-check:\s*example\s*$")
+HEADER_DECLS = re.compile(r"^\s*//\s*doc-check:(?!\s*example\s*$)(.*)$")
+# Where --all looks for marked headers.
+HEADER_ROOTS = [INCLUDE, ROOT / "UltraCanvas" / "Plugins", ROOT / "VirtualFS" / "include"]
+
+
+def read_header_examples(path):
+    """A header's marked examples, as blocks at the header's own lines:
+    (lines, blocks, declarations, problems). An example is the comment lines
+    after `// doc-check: example`, indented past the comment's prose (two
+    spaces or more after the `//`, as the headers write them), up to the
+    first line that is code or prose again; a bare `//` is a blank line of
+    it. The other `// doc-check: ...` lines of the header declare what its
+    examples assume, as a doc's HTML comment does."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    blocks, decls, problems = [], [], []
+    for i, line in enumerate(lines):
+        m = HEADER_DECLS.match(line)
+        if m:
+            decls.append(m.group(1).strip())
+            continue
+        if not HEADER_EXAMPLE.match(line):
+            continue
+        body, indent = [], None
+        for later in lines[i + 1:]:
+            m = re.match(r"^\s*//(.*)$", later)
+            if not m:
+                break
+            text = m.group(1)
+            if not text.strip():
+                body.append("")
+                continue
+            lead = len(text) - len(text.lstrip(" "))
+            if lead < (indent or 2):
+                break
+            indent = indent or lead
+            body.append(text[indent:])
+        while body and not body[-1].strip():
+            body.pop()
+        if body:
+            blocks.append(Block(i + 2, body))
+        else:
+            problems.append((i + 1, "doc-check: example has no example under it (its lines are "
+                                    "indented two spaces or more past the `//`)"))
+    for n, b in enumerate(blocks):
+        b.index = n
+    return lines, blocks, decls, problems
+
+
+def marked_headers():
+    """The headers with a `// doc-check: example`, which --all checks too."""
+    out = []
+    for base in HEADER_ROOTS:
+        for p in base.rglob("*.h"):
+            if "third_party" in p.parts:
+                continue
+            text = p.read_text(encoding="utf-8", errors="replace")
+            if "doc-check:" in text and any(HEADER_EXAMPLE.match(l) for l in text.splitlines()):
+                out.append(p)
+    return sorted(out)
 
 
 # --------------------------------------------------------------------------
@@ -807,8 +901,17 @@ class Doc:
         self.work = args.work / "docs"
         self.work.mkdir(parents=True, exist_ok=True)
         self.tag = re.sub(r"\W", "_", path.stem) + "_" + hashlib.sha1(str(path).encode()).hexdigest()[:6]
-        self.lines, self.blocks = read_blocks(path)
-        self.text = "\n".join(self.lines)
+        self.is_header = path.suffix == ".h"
+        self.problems = []
+        if self.is_header:
+            # The text the checks search: the declarations as a doc's
+            # comment would hold them, and the examples.
+            self.lines, self.blocks, decls, self.problems = read_header_examples(path)
+            self.text = "<!-- doc-check:\n%s\n-->\n" % "\n".join(decls)
+            self.text += "\n".join("\n".join(b.lines) for b in self.blocks)
+        else:
+            self.lines, self.blocks = read_blocks(path)
+            self.text = "\n".join(self.lines)
         self.classes = doc_classes(path.stem.replace("Examples", ""), self.text, index)
         self.findings = []
         self.notes = []
@@ -819,7 +922,7 @@ class Doc:
     def extra_includes(self):
         """Headers outside the shared one that the checks need: the doc's
         own includes, and where the types it uses or copies are defined."""
-        paths = []
+        paths = [self.path.resolve()] if self.is_header else []     # a plugin's header
         for b in self.blocks:
             for kind, i, j in b.chunks:
                 m = re.match(r'\s*#\s*include\s*"([^"]+)"', b.lines[i]) if kind == "pp" else None
@@ -970,7 +1073,9 @@ class Doc:
         self.check_examples()
         self.check_copies()
         self.check_listing()
-        self.check_prose()
+        if not self.is_header:
+            self.check_prose()      # a header's prose is its own business
+        self.findings += self.problems
         self.findings = sorted(set(self.findings))
         return {"doc": self.rel, "blocks": len(self.blocks), "findings": self.findings, "notes": self.notes,
                 "context": {k: sorted(set(v)) for k, v in self.context_left.items()}}
@@ -1042,11 +1147,21 @@ class Doc:
                     out.append('#line %d "%s"' % (b.first + i, self.rel))
                     out.extend(b.lines[i:j + 1])
             if any(kind == "stmt" for kind, i, j in code):
+                # A context name is a local of the statements, unless a
+                # [this] lambda uses it: then it is what it would be in the
+                # application, a member.
                 out.append(self.gen(None))
-                out.append("struct __Run { auto __run() {")
+                out.append("struct __Run {")
                 for name, t in sorted(b.context.items()):
-                    out.append(self.gen(("context", b.index, name)))
-                    out.append("%s& %s = *static_cast<%s*>(nullptr);" % (t, name, t))
+                    if name in b.members:
+                        out.append(self.gen(("context", b.index, name)))
+                        out.append("%s& %s = *static_cast<%s*>(nullptr);" % (t, name, t))
+                out.append(self.gen(None))
+                out.append("auto __run() {")
+                for name, t in sorted(b.context.items()):
+                    if name not in b.members:
+                        out.append(self.gen(("context", b.index, name)))
+                        out.append("%s& %s = *static_cast<%s*>(nullptr);" % (t, name, t))
                 for kind, i, j in b.chunks:
                     if kind == "stmt" or (kind, i, j) in pp:
                         out.append('#line %d "%s"' % (b.first + i, self.rel))
@@ -1081,6 +1196,22 @@ class Doc:
         if not qs:
             return None
         return sorted(qs, key=lambda q: q.count("::"))[0].rsplit("::", 1)[0]
+
+    @staticmethod
+    def misread_names(b, line):
+        """The names compared with `<` on a line with an error and the three
+        before it, in the same chunk. C++20 reads an undeclared name before
+        `<` as a template's (`globalIdx < static_cast<int>(n)`), so clang
+        reports the parse error that follows ("expected '>'") and never the
+        name: these are the names it may have meant."""
+        for kind, i, j in b.chunks:
+            if kind == "pp" or not b.first + i <= line <= b.first + j:
+                continue
+            k = line - b.first
+            text = "\n".join(b.clean[max(i, k - 3):k + 1])
+            names = re.findall(r"(?<![\w.:>~])([A-Za-z_]\w*)\s*<(?![<=])", text)
+            return list(dict.fromkeys(n for n in names if n not in KEYWORDS and not n.endswith("_cast")))
+        return []
 
     def check_examples(self):
         declared = context_types("\n".join("\n".join(b.clean) for b in self.blocks), self.index)
@@ -1133,19 +1264,31 @@ class Doc:
                         grew.add(b.index)
                         changed = True
                     continue
-                m = re.match(r"use of undeclared identifier '(\w+)'", msg)
-                if not m or f != self.rel:
-                    continue
-                name = m.group(1)
-                if not (name[0].islower() or name[0] == "_"):
+                if f != self.rel:
                     continue
                 b = next((b for b in self.blocks if b.first <= line <= b.last()), None)
-                if b is None or name in b.context or name in b.bad_context:
+                if b is None:
                     continue
-                t = guess_type(name, declared, main, self.index)
-                if t:
-                    b.context[name] = t
-                    changed = True
+                m = re.match(r"variable '(\w+)' cannot be implicitly captured in a lambda", msg)
+                if m:
+                    if m.group(1) in b.context and m.group(1) not in b.members:
+                        b.members.add(m.group(1))
+                        changed = True
+                    continue
+                m = re.match(r"use of undeclared identifier '(\w+)'", msg)
+                if m:
+                    names = [m.group(1)]
+                else:
+                    names = [n for n in self.misread_names(b, line) if n in declared]
+                for name in names:
+                    if not (name[0].islower() or name[0] == "_"):
+                        continue
+                    if name in b.context or name in b.bad_context:
+                        continue
+                    t = guess_type(name, declared, main, self.index)
+                    if t:
+                        b.context[name] = t
+                        changed = True
             # A name fails on two generated lines, and clang may suggest the
             # other block's type on one of them only: a block that got a
             # `using` in this pass is compiled again before a name of it is
@@ -1454,12 +1597,24 @@ BASELINE_HEADER = """\
 """
 
 
+# The module docs (Docs/Modules/<Name>/*.md) --all checks along with the
+# component docs. A module joins once its examples compile: its findings are
+# mistakes in a description of an API that exists, not a design document's
+# unwritten one, so they are fixed, never baselined. The FileLoader README had
+# eight broken examples for months because nothing compiled it.
+CHECKED_MODULE_DOCS = ["FileLoader"]
+
+
 def component_docs():
-    """Every doc --all checks: Docs/UltraCanvas/*.md but the changelog. The
-    design documents are in, with their findings baselined; the changelog
-    is a record of what shipped, not a description of an API."""
-    return sorted(p for p in (ROOT / "Docs" / "UltraCanvas").glob("*.md")
-                  if p.name != "CHANGELOG.md")
+    """Every doc --all checks: Docs/UltraCanvas/*.md but the changelog, and
+    the docs of the modules in CHECKED_MODULE_DOCS. The design documents are
+    in, with their findings baselined; the changelog is a record of what
+    shipped, not a description of an API."""
+    docs = [p for p in (ROOT / "Docs" / "UltraCanvas").glob("*.md")
+            if p.name != "CHANGELOG.md"]
+    for module in CHECKED_MODULE_DOCS:
+        docs += (ROOT / "Docs" / "Modules" / module).glob("*.md")
+    return sorted(docs)
 
 
 def finding_key(doc, message):
@@ -1496,7 +1651,7 @@ def main():
     parser.add_argument("--show-context", action="store_true",
                         help="also list the names a doc's snippets use without declaring")
     parser.add_argument("--all", action="store_true",
-                        help="every component doc, not only the Examples docs (what CI checks)")
+                        help="every component doc and marked header, not only the Examples docs (what CI checks)")
     parser.add_argument("--strict", action="store_true",
                         help="fail only on findings not in the baseline (CI gate)")
     parser.add_argument("--baseline", type=Path, default=BASELINE,
@@ -1507,7 +1662,7 @@ def main():
     if args.docs:
         docs = args.docs
     elif args.all:
-        docs = component_docs()
+        docs = component_docs() + marked_headers()
     else:
         docs = sorted((ROOT / "Docs" / "UltraCanvas").glob("*Examples*.md"))
     docs = [d.resolve() for d in docs]

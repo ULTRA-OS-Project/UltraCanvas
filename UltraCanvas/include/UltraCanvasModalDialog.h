@@ -1,8 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.6.0
-// Last Modified: 2026-08-23
+// Version: 3.8.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -16,6 +16,7 @@
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
 #include <string>
 #include <vector>
 #include <memory>
@@ -380,6 +381,21 @@ namespace UltraCanvas {
         // recent files (UltraCanvasFileLoader::NotifyRecentFile).
         // UltraCanvasFileLoader sets it from FileDialogOptions::registerAsRecent.
         bool addToRecent = true;
+        // Save: a Settings button at the end of the type row, for the save
+        // settings of the type being saved (UltraCanvasFileLoader::
+        // ShowSaveSettingsDialog); it is greyed out while that type has none.
+        // Off for a caller whose writer does not read the settings.
+        bool saveSettingsButton = true;
+        // Save: the size of the picture being saved, in pixels (0: not a
+        // picture, or not said). With it, the Settings of a bitmap type start
+        // with a Size row, to write the picture at another size this once;
+        // the size chosen is GetSaveImageSize().
+        int imageWidth = 0;
+        int imageHeight = 0;
+        // ... and it is a drawing (a vector picture): it has no pixel size of
+        // its own, imageWidth x imageHeight is the size it is drawn at unless
+        // another is chosen, and the Size row says it is drawn sharp at any.
+        bool imageIsDrawing = false;
 
         FileDialogConfig();
 
@@ -649,6 +665,7 @@ namespace UltraCanvas {
     class UltraCanvasFileDialog;
     class UltraCanvasFilerWidget;   // UltraCanvasFilerWidget.h includes this header
     class UltraCanvasSegmentedControl;
+    class UltraCanvasFileDragIcon;
     struct FilerEntry;
     class UltraCanvasDialogManager {
         friend class UltraCanvasModalDialog;
@@ -791,7 +808,12 @@ namespace UltraCanvas {
     // pickers). It is assembled from elements: an editable path field with an
     // "up" button, a folder tree (the user's places and every mounted drive,
     // loaded as it is expanded) beside the listing of the current folder, and
-    // the file-name field and file-type dropdown below them.
+    // the file-name field and file-type dropdown below them. Typing a name
+    // narrows the listing to the files whose name has it in. A Save dialog
+    // puts the big icon of the type being saved left of the name and type -
+    // drop it on a folder of the listing or the tree and that folder is where
+    // the file goes - and a Settings button for that type's save settings at
+    // the end of the type row.
     class UltraCanvasFileDialog : public UltraCanvasModalDialog {
     private:
         FileDialogConfig fileConfig;
@@ -814,11 +836,23 @@ namespace UltraCanvas {
         int typeColumnWidth = 105;
         int modifiedColumnWidth = 145;
         std::shared_ptr<UltraCanvasTextInput> fileNameInput;
+        // Save: the big icon of the type being saved, left of the name and
+        // type rows with "Drag to Folder" under it, which is dragged onto a
+        // folder to save there; and the Settings button at the end of the
+        // type row (FileDialogConfig::saveSettingsButton).
+        std::shared_ptr<UltraCanvasFileDragIcon> fileIcon;
+        std::shared_ptr<UltraCanvasButton> saveSettingsButton;
+        // The size chosen in the Settings for this save (GetSaveImageSize).
+        FileSaveImageSize saveImageSize;
         std::shared_ptr<UltraCanvasDropdown> filterDropdown;
         // The filters as toggle buttons, in place of the dropdown, when
         // fileConfig.filterToggles is set; activeFilters holds the ones on.
         std::shared_ptr<UltraCanvasSegmentedControl> filterToggleBar;
         std::set<int> activeFilters;
+        // What the user typed into the name field (its last path part,
+        // trimmed): the listing shows only the entries whose name has it in,
+        // in every folder the dialog goes to. Empty: no narrowing.
+        std::string nameFilter;
         // A "Replace it?" question is showing: OK and activation wait for it.
         bool overwritePromptOpen = false;
 
@@ -879,9 +913,24 @@ namespace UltraCanvas {
         std::string GetSelectedFilePath() const;
         std::vector<std::string> GetSelectedFilePaths() const;
 
+        // Save: the name of the file the dialog would write as things stand -
+        // the name field's text with the chosen type's extension (and the
+        // default extension), or "untitled" with them while the field is
+        // empty. Its extension is the type the big icon beside the name and
+        // type shows and the Settings button on the type row edits.
+        std::string GetSaveTypeName() const;
+        // Save: the pixel size chosen for this save in the Settings (the Size
+        // row of a bitmap type), or IsOriginal() - none chosen, no picture
+        // size given (FileDialogConfig::imageWidth), or a type that is not a
+        // bitmap format.
+        FileSaveImageSize GetSaveImageSize() const;
+
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
         // Remembers the view and the window size for the next file dialog.
         void PerformClose() override;
+        // Escape while the Save icon is being dragged ends the drag, not the
+        // dialog.
+        bool OnEvent(const UCEvent& event) override;
 
     protected:
         // The name field takes the focus (the listing for a folder picker),
@@ -904,6 +953,23 @@ namespace UltraCanvas {
         // the selected dropdown entry, or the first toggle that is on.
         std::string WithSaveExtension(const std::string& name) const;
 
+        // ===== SAVE: ICON AND SETTINGS =====
+        // Puts `text` into the name field - the dialog's own changes to the
+        // name, which are not edits and so fire no onTextChanged - and brings
+        // the icon and the Settings button along.
+        void SetNameText(const std::string& text);
+        // Points the icon and the Settings button at the type being saved,
+        // after the name or the chosen type changed.
+        void UpdateSaveTypeDecorations();
+        // The icon was dropped on `target` at `windowPoint`: a folder of the
+        // listing or the tree under it becomes the current folder.
+        void OnFileIconDropped(UltraCanvasUIElement* target, const Point2Di& windowPoint);
+        // The Settings button: the save settings of the type being saved,
+        // and the picture's size for this save when the caller gave it.
+        void ShowSaveTypeSettings();
+        // The caller said how big the picture being saved is.
+        bool HasPictureSize() const;
+
         // ===== FOLDER TREE =====
         void PopulateFolderTree();
         void AddFolderTreeNode(const std::string& parentId, const std::string& nodeId,
@@ -920,6 +986,12 @@ namespace UltraCanvas {
         // Applies the file-type filter (and folders-only for a folder
         // picker) to the listing.
         void ApplyListingFilter();
+        // The user edited the name field: the listing is narrowed to the
+        // entries whose name has the typed name in (the listing's own
+        // UltraCanvasFilerWidget::SetNameFilter), and a Save's icon and
+        // Settings follow the name's type.
+        void OnNameTyped(const std::string& text);
+        void SetNameFilter(const std::string& typed);
 
         // ===== NAVIGATION =====
         // Makes `directory` the current folder. syncTree: select its row in

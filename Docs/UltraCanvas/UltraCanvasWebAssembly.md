@@ -1,6 +1,6 @@
 # UltraCanvas on WebAssembly
 
-<!-- doc-check: std::vector<uint8_t> documentBytes; -->
+<!-- doc-check: std::vector<uint8_t> documentBytes; void ShowPageFor(const std::string& url); -->
 
 **Status: experimental.** The framework builds with Emscripten and runs in
 Chromium: windows render through the same Cairo/Pango pipeline as the desktop
@@ -35,7 +35,7 @@ onto an HTML `<canvas>`.
 | Printing | Native print dialog | `ShowPrintDialog()` opens the text in a new window and calls `window.print()`. |
 | Folder watch, file lock, volume monitor, hardware info | Native probes | The core fallbacks: polling, "unknown", "null" backend. |
 | Spell checking | System service or Hunspell | Hunspell only, with dictionaries preloaded into the virtual FS. |
-| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. |
+| Threads | `std::thread` | Web Workers from a preallocated pool (`-sPTHREAD_POOL_SIZE=8`); needs cross-origin isolation headers on the page. `-DULTRACANVAS_WASM_THREADS=OFF` builds single-threaded against a sysroot built with `WASM_THREADS=0`: no headers needed, and `std::thread` fails at run time. |
 | Networking (UltraNet), OpenGL, audio, video, most file-type plugins | Available | Compiled out (`UltraCanvas/CMakeLists.txt` forces them off for `EMSCRIPTEN`). |
 
 ### Application lifetime
@@ -132,9 +132,23 @@ WASMResourceLoader::LoadFont("Inter", "fonts/Inter.ttf", [](bool ok, const std::
 
 `WASMBrowser` also wraps `alert` / `confirm` / `prompt`, the console,
 `navigator.userAgent`, the screen size and `localStorage`. `WASMURL` reads the
-page URL, its query parameters (`GetQueryParameter`, `GetAllQueryParameters`)
-and hash, and can navigate or reload. `WASMTime` exposes `performance.now()`
-and performance marks.
+page URL, its path, its query parameters (`GetQueryParameter`,
+`GetAllQueryParameters`) and hash, and can navigate or reload. An application
+that shows several pages from one module uses its History API instead of
+navigating: `PushUrl` changes the address bar and adds an entry the back
+button returns to, `ReplaceUrl` rewrites the current entry, and
+`SetOnNavigate` hears the back and forward buttons (every `popstate`, a hash
+change included) with the new URL, on the main thread:
+
+```cpp
+WASMURL::SetOnNavigate([](const std::string& url) { ShowPageFor(url); });
+WASMURL::PushUrl("/the-plan/");          // on a click; does not call the callback
+```
+
+`WASMTime` exposes `performance.now()` and performance marks. The window logs
+its first presented frame to the browser console once, as `first frame
+presented N ms after navigation start`: the time to first paint including the
+download, compilation and start-up, from the browser's own clock.
 
 ## Serving an application
 
@@ -148,7 +162,63 @@ Cross-Origin-Embedder-Policy: require-corp
 
 `UltraCanvas/OS/WASM/demo/serve.py` is a minimal server that sets both. The
 bundled fonts must be preloaded into the virtual FS at `/share/media/fonts`
-(`--preload-file media/fonts@/share/media/fonts`).
+(`--preload-file media/fonts@/share/media/fonts`), and so must any other
+file the application reads through `GetResourcesDir()` - the front-page demo
+preloads its logo at `/share/media/images/...` the same way.
+
+Two sample applications live in `UltraCanvas/OS/WASM/demo/`: `wasm-demo.cpp`,
+a window with labels and a button, and `ultraos-frontpage.cpp`, the
+https://ultraos.eu front page as a scrolling page of UltraCanvas elements
+(a navigation with popup menus, hero, card rows, offers, an FAQ accordion,
+forms with text inputs, a text area and a checkbox, a footer). The second
+is the pattern for a web-page-like application: one scrollable container
+filling the window, sections stacked by Block layout so wrapped text gets
+its real height, Flex rows for the horizontal pieces, popup menus anchored
+under their buttons, `Maximize()` under `__EMSCRIPTEN__` to fill the
+viewport, and several pages from one module through the History API: a
+link into the site pushes `?page=<site path>` and rebuilds the page's
+sections, `SetOnNavigate` rebuilds them for the back and forward buttons,
+and the address read at start decides the first page, so a reload keeps it.
+The rebuild is posted to the UI thread (`PostToUIThread`), never done inside
+the click of a button the rebuild removes. Both also build as desktop applications (`-DBUILD_WASM_DEMOS=ON`
+at the repository root).
+
+## The demo application in the browser
+
+The framework's demo application (`Apps/DemoApp/`) builds as a page too:
+`emcmake cmake` at the repository root produces `UltraCanvasDemo.html`, the
+whole page tree of the desktop demo - the elements, the layout system, the
+charts and diagrams, the vector and bitmap formats, the 3D model readers,
+the text documents, the Filer and Album widgets, the module pages - less
+what the browser has no backend for:
+
+| Left out | Why |
+|---|---|
+| Audio Player, Level Meter, Audio FX, and the Waveform, Spectrogram and Audio Analysis charts | `ULTRACANVAS_ENABLE_AUDIO` is off in the browser: no playback, and the sample tracks the charts analyse are decoded by the audio module |
+| Video Player | `ULTRACANVAS_ENABLE_VIDEO` is off: the null backend plays nothing (the Video Timeline, a pure element, stays) |
+| STL 3D Models | its one sample is a 25 MB file; the model formats page shows the other readers from the smaller samples |
+| OpenGL, CDR, XAR, EPS, PDF, OCR, Vectorizer, LaTeX, Ultra Net | compiled out by `UltraCanvas/CMakeLists.txt` for every WebAssembly build, so their pages are absent or say so, as on a desktop build without them |
+
+**SVG** takes a different road in the browser: the wasm sysroot's libvips has
+no SVG loader, so `UCImage` reads an .svg through the vector preview seam
+the Vector plugin installs and renders it with the core's vector renderer
+(`UltraCanvasVectorConverters.md`, *the vector preview provider*). The
+demo registers the plugin in its `main.cpp`, so its SVG page and every SVG
+icon - the toolbars', the flat buttons', the tree's - render as on the
+desktop; an application that registers no plugins gets "format not
+supported" for them.
+
+The pages' files - the fonts, icons, images, vector samples, the smaller 3D
+models, the docs and the demo's own sources for the source button - are
+preloaded into the virtual filesystem at `/share/...` by the demo's CMake
+block, about 50 MB downloaded once. The page's query string replaces the
+command line: `UltraCanvasDemo.html?component=piecharts` opens that page
+(and, like `--component`, leaves the About window out), and `?about=0` is
+`--no-about`. The main window maximizes to the browser viewport. The source
+is three `__EMSCRIPTEN__` branches: the static application object in
+`main.cpp`, the query string there, and the page registrations left out in
+`UltraCanvasDemo.cpp`. `wasm-build.yml` builds the page in CI, with the two
+sample applications.
 
 ## Known limitations
 

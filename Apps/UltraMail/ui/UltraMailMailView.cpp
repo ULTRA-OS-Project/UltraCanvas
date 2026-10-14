@@ -382,6 +382,9 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
         if (acct != curAccount_ && onSelectAccount) onSelectAccount(acct);
         ShowFolder(acct, folder);
     };
+    folderTree_->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) {
+        ShowFolderMenu(node, event);
+    };
     // A fitted tree follows the rows on show.
     folderTree_->onNodeExpanded  = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
     folderTree_->onNodeCollapsed = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
@@ -1017,6 +1020,9 @@ void MailView::RebuildFolderTree() {
     folderTree_->SetRootNode(rootData);
 
     for (const auto& account : accounts_) {
+        // Settings > Display > Treeview: the account on screen only.
+        if (treeCurrentAccountOnly_ && !curAccount_.empty() && account.accountId != curAccount_)
+            continue;
         const std::string accId  = account.accountId;
         const std::string accNode = kAccountNodePrefix + accId;
         TreeNodeData accData(accNode, account.email.empty() ? account.displayName
@@ -1104,6 +1110,66 @@ void MailView::SelectFolderNode(const std::string& accountId, const std::string&
     suppressTreeCallback_ = false;
 }
 
+void MailView::SetTreeCurrentAccountOnly(bool currentOnly) {
+    if (treeCurrentAccountOnly_ == currentOnly) return;
+    treeCurrentAccountOnly_ = currentOnly;
+    RebuildFolderTree();
+}
+
+std::vector<MenuItemData> MailView::FolderMenuItems(const std::string& nodeId) {
+    std::vector<MenuItemData> items;
+    const auto it = folderNodeId_.find(nodeId);
+    if (it == folderNodeId_.end()) return items;
+    const std::string accountId = it->second.first;
+    const bool accountRow = nodeId == kAccountNodePrefix + accountId;
+    const std::string folder = it->second.second;
+    // The account row and its inbox add at the top of the account.
+    const bool top = accountRow || folder == "INBOX";
+
+    std::vector<Folder> folders;
+    if (store_) store_->ListFolders(accountId, folders);
+    std::string why = "The inbox cannot be deleted.";
+    bool deletable = false;
+    if (!top) {
+        why = "The folder is not in the list yet.";
+        for (const auto& f : folders)
+            if (f.name == folder) { deletable = CanDeleteFolder(f, folders, &why); break; }
+    }
+
+    // What the menu is about: the account, or the folder as it reads.
+    std::string title = FolderDisplayPath(folder, DelimiterOf(accountId, folder));
+    if (accountRow) {
+        for (const auto& a : accounts_)
+            if (a.accountId == accountId) title = a.email.empty() ? a.displayName : a.email;
+    }
+    items.push_back(MenuItemData::Header(title));
+    items.push_back(MenuItemData::Separator());
+    const std::string parent = top ? std::string() : folder;
+    items.push_back(MenuItemData::Action("Add folder…", [this, accountId, parent]() {
+        if (onAddFolder) onAddFolder(accountId, parent);
+    }));
+    MenuItemData remove = MenuItemData::Action("Delete folder…", [this, accountId, folder]() {
+        if (onDeleteFolder) onDeleteFolder(accountId, folder);
+    });
+    remove.enabled = deletable;
+    if (!deletable) remove.tooltip = why;
+    items.push_back(remove);
+    return items;
+}
+
+void MailView::ShowFolderMenu(TreeNode* node, const UCEvent& event) {
+    if (!folderTree_ || !node) return;
+    UltraCanvasWindowBase* window = folderTree_->GetWindow();
+    if (!window) return;
+    std::vector<MenuItemData> items = FolderMenuItems(node->data.nodeId);
+    if (items.empty()) return;
+    treeMenu_ = std::make_shared<UltraCanvasMenu>("folderTree.ctx", 0, 0, 200, 0);
+    treeMenu_->SetMenuType(MenuType::PopupMenu);
+    for (auto& item : items) treeMenu_->AddItem(item);
+    PopupElementSettings settings;
+    treeMenu_->OpenMenu(event.pointerWindow, *window, settings);
+}
+
 void MailView::ShowAccount(const std::string& accountId) {
     const bool sameAccount = (accountId == curAccount_);
     curAccount_ = accountId;
@@ -1133,9 +1199,12 @@ std::string MailView::DelimiterOf(const std::string& accountId, const std::strin
 
 void MailView::ShowFolder(const std::string& accountId, const std::string& folder) {
     if (accountId != curAccount_ || folder != curFolder_) filter_ = MessageFilter{};
+    const bool otherAccount = accountId != curAccount_;
     curAccount_ = accountId;
     curFolder_  = folder;
-    SelectFolderNode(accountId, folder);
+    // A tree of the current account only shows the other one's folders now.
+    if (otherAccount && treeCurrentAccountOnly_) RebuildFolderTree();
+    else SelectFolderNode(accountId, folder);
     // A user folder switch: in the reading pane the auto-shown top message is
     // being read, so mark it read (Gmail/Thunderbird style).
     RebuildList(/*markTopRead=*/true);

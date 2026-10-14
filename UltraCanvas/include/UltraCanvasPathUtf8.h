@@ -15,6 +15,8 @@
 // So every conversion between a path and a std::string goes through these two
 // functions (scripts/check_path_string.py enforces it):
 //
+// doc-check: std::filesystem::directory_entry entry; std::string utf8Path;
+// doc-check: example
 //     const std::string name = PathToUtf8(entry.path().filename());
 //     std::ifstream in(PathFromUtf8(utf8Path), std::ios::binary);
 //

@@ -40,6 +40,8 @@
 
 namespace UltraCanvas {
 
+enum class FilerTabStripStyle;   // UltraFilerSettings.h
+
 class UltraFilerConnectionLogWindow : public UltraCanvasWindow {
 public:
     enum Tab { ErrorsTab = 0, MessageLogTab = 1 };
@@ -52,6 +54,11 @@ public:
     void Update(const std::vector<RemoteLogSession>& sessions);
 
     void ShowTab(Tab tab);
+
+    // Settings > Display > Tab style: the two tabs follow the main window's
+    // strip. The owner calls it when the window opens and when the setting
+    // changes.
+    void SetTabStripStyle(FilerTabStripStyle style);
 
     // Clear was pressed: the owner empties the log and calls Update again.
     std::function<void()> onClear;

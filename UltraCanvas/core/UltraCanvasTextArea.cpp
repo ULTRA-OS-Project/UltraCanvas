@@ -1,11 +1,17 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.7.5 - scrolling down to the caret puts a whole line at the top of
+//                 the view, not the tail of one (consoles that append); a line
+//                 ending at the viewport's top edge is not drawn
+// Version: 3.7.4 - list bullets "•" "◦" "▪" are drawn as shapes; an image placeholder
+//                 says "Remote image:" / "Missing image:" instead of "🌐" / "⚠"
 // Version: 3.7.3 - style.scrollbarWidth / scrollbarCornerRadius / scrollbarThumbInset
 //                 replace the fixed 15px square scrollbar
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
@@ -1115,8 +1121,9 @@ namespace UltraCanvas {
                 if (!ll) continue;
                 int lineTop    = ll->bounds.y;
                 int lineBottom = lineTop + ll->bounds.height;
-                if (lineBottom < viewportTop)  continue;
-                if (lineTop    > viewportBottom) break;
+                // A line that ends at the viewport's top has no visible pixel.
+                if (lineBottom <= viewportTop) continue;
+                if (lineTop    >= viewportBottom) break;
 
                 RenderLineLayout(ctx, ll);
             }
@@ -2002,7 +2009,24 @@ namespace UltraCanvas {
         if (cursorContentTop < verticalScrollOffset) {
             verticalScrollOffset = cursorContentTop;
         } else if (cursorContentBottom > verticalScrollOffset + visibleTextArea.height) {
-            verticalScrollOffset = cursorContentBottom - visibleTextArea.height;
+            // Scrolling down to the caret - what every append to a console does -
+            // puts a whole line at the top of the view rather than the tail of
+            // one: the lowest line top at or past the minimal offset, as long as
+            // the caret's line still fits. The gap this leaves at the bottom is
+            // less than a line.
+            const float minimal = static_cast<float>(cursorContentBottom) - visibleTextArea.height;
+            // The caret's line itself is a candidate (its top is known); the
+            // lines above it come from the layout cache.
+            float aligned = static_cast<float>(cursorContentTop) >= minimal
+                                ? static_cast<float>(cursorContentTop) : -1.0f;
+            for (int li = cursorPosition.lineIndex - 1; li >= 0 && li < static_cast<int>(lineLayouts.size()); --li) {
+                const LineLayoutBase* layout = GetActualLineLayout(li);
+                if (!layout) break;
+                const float top = layout->bounds.y;
+                if (top < minimal) break;
+                aligned = top;
+            }
+            verticalScrollOffset = aligned >= 0.0f ? aligned : minimal;
         }
         if (verticalScrollOffset < 0) verticalScrollOffset = 0;
 
@@ -3641,12 +3665,17 @@ namespace UltraCanvas {
                                          static_cast<int>(bullets.size()) - 1);
                 const std::string& bullet = bullets[bulletIdx];
                 int markerX = posOrigin.x + (depth - 1) * listIndentPx;
-                ctx->PushState();
-                ctx->SetFontStyle(style.fontStyle);
-                ctx->SetTextPaint(markerColor);
-                ctx->DrawText(bullet, Point2Dd(static_cast<float>(markerX),
-                                               static_cast<float>(posOrigin.y)));
-                ctx->PopState();
+                const Point2Dd markerPos(static_cast<float>(markerX), static_cast<float>(posOrigin.y));
+                // The standard bullets are drawn: the bundled UI font has no
+                // "◦" or "▪", which showed as hex boxes where no fallback font
+                // has them either. Any other bullet string is drawn as text.
+                if (!DrawBulletMark(ctx, bullet, markerPos, style.fontStyle, markerColor)) {
+                    ctx->PushState();
+                    ctx->SetFontStyle(style.fontStyle);
+                    ctx->SetTextPaint(markerColor);
+                    ctx->DrawText(bullet, markerPos);
+                    ctx->PopState();
+                }
                 drawLayout();
                 return;
             }
@@ -3762,8 +3791,8 @@ namespace UltraCanvas {
                                              1.0f, markdownStyle.imagePlaceholderBorderColor);
                     std::string label = !il->altText.empty()
                             ? il->altText
-                            : ((il->isRemote ? std::string("\xF0\x9F\x8C\x90 ")    // 🌐
-                                             : std::string("\xE2\x9A\xA0 "))       // ⚠
+                            : ((il->isRemote ? std::string("Remote image: ")
+                                             : std::string("Missing image: "))
                                + il->sourceUrl);
                     ctx->PushState();
                     ctx->SetFontStyle(style.fontStyle);

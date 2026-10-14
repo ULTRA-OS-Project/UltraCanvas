@@ -55,7 +55,7 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | The presenters' shared half: what a notification says, which update shows where, what a click publishes | `Internal::ReadPresentedContent`, `PresentedNotifications`, `PublishPresenterResponse` in `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h` |
 | UltraMail → `mail.message`, and its new-mail notification | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`, `Apps/UltraMail/engine/UltraMailNewMail.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
-| UltraClipboard's single-instance hand-off (`org.ultraos.ultraclipboard.show`, request / reply) | `Apps/UltraClipboard/SingleInstance.{h,cpp}` |
+| One copy per application: the single-instance hand-off (`<appId>.show`, request / reply, endpoint `<appId>.instance`) that UltraMail, UltraClipboard and the other single-window apps use | `UltraCanvas/include/UltraCanvasSingleInstance.h`, `UltraCanvas/core/AppEntry/UltraCanvasSingleInstance.cpp` (compiled into each app by `ultracanvas_single_instance()`) |
 | `UltraCanvasMessageCenter` element (target `UltraMessageCenter`) | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp` |
 | `UltraCanvasNotificationToast` element and `UltraCanvasNotificationToastHost` (target `UltraMessageCenter`): notifications on screen where nothing else draws them | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasNotificationToast.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasNotificationToast.cpp` |
 | Tests (41 cases; the adapter and presenter ones on a private D-Bus session, the presenters' shared half on every platform; 11 more for the message centre and the toasts in-tree) | `Tests/UltraMessage/` |
@@ -173,10 +173,13 @@ can find again. Text search is a `LIKE` over the extracted text (`text`,
 
 Default locations: bus `$XDG_RUNTIME_DIR/ultramessage/bus.sock` (Linux),
 `$TMPDIR/ultramessage/bus.sock` (macOS), `\\.\pipe\UltraMessage-<session>`
-(Windows); journal `~/.local/share/ultramessage/journal.db`,
+(Windows); journal `~/.local/share/UltraMessage/journal.db`,
 `~/Library/Application Support/UltraMessage/journal.db`,
-`%LOCALAPPDATA%\UltraMessage\journal.db`. Socket, lock file and directories
-are owner-only.
+`%LOCALAPPDATA%\UltraMessage\journal.db` - or under `$XDG_DATA_HOME` when
+that is set, on every platform: the framework's machine-local data root
+(`UltraCanvasDataFolder.h`). A `ultramessage` folder an earlier version left
+on Linux is moved into `UltraMessage` on the first broker start. Socket, lock
+file and directories are owner-only.
 
 ### 3.5 Schemas and topics
 

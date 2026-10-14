@@ -30,6 +30,8 @@ MIRRORED_READMES = {
     "UltraAI/README.md":   "Docs/Modules/UltraAI/README.md",
     "UltraNet/README.md":  "Docs/Modules/UltraNet/README.md",
     "VirtualFS/README.md": "Docs/Modules/VirtualFS/README.md",
+    # The setup application's README lives with its code, like a module's.
+    "Apps/UltraCanvasStart/README.md": "Docs/UltraCanvasStart/README.md",
 }
 MIRROR_NOTICE = ("<!-- Generated from {source} by scripts/generate_llms_txt.py; "
                  "edit that file, then rerun the script. -->")
@@ -49,8 +51,11 @@ EXCLUDE_PATTERNS = ("Proposal", "Plan", "DesignVariants")
 # sibling directories (Research, Video, VideoScripts) hold material that is
 # not developer documentation, and sweeping them in would dilute the corpus.
 # Add a directory here when its contents are meant for the LLM-facing docs.
+# Docs/Legal holds the privacy declarations: they describe each product's
+# data flows from its source, which is exactly what an assistant asked "what
+# does UltraMail send, and to whom?" should find, so they are indexed.
 APP_DOC_DIRS = ("UltraAuthenticator", "UltraPassword", "UltraClipboard", "UltraPaint", "ArtCreator", "DeviceExplorer",
-                "UltraDesktop")
+                "UltraDesktop", "UltraCanvasStart", "UltraMail", "UltraVideo", "UltraPress", "Legal")
 
 SUMMARY = (
     "UltraCanvas is a modular cross-platform C++20 UI and rendering framework "

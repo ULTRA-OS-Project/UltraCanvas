@@ -112,6 +112,24 @@ before adding cross-module code.
   `scripts/locale_numbers_baseline.txt` lists the sites still to fix. A number
   a person typed or reads follows their locale on purpose and says so at the
   site with `// locale-ok: <why>`.
+- **Every file the user loads or saves goes through `UltraCanvasFileLoader`.**
+  An application built on UltraCanvas opens, saves, imports and exports
+  through FileLoader: its dialogs (`OpenFileDialog`, `SaveFileDialog`), its
+  readers and writers (`LoadVectorDocument` / `SaveVectorDocument`,
+  `LoadTextDocument`, the image writer it hands options to), its format
+  inventory (`GetSupportedFormats`, `CanSaveImage`) and its save settings
+  (`GetSaveSettings`, `GetImageExportOptions`, the Save dialog's Settings).
+  That is what gives the user every format this build reads and writes -
+  a plugin registered once is offered everywhere - and the conversions
+  between them: a drawing saved as a bitmap is
+  `SaveVectorDocument(document, path, size, ...)` with the types from
+  `AddVectorDocumentSaveTypes`, drawn at the size the Settings give. Never a
+  list of formats an application keeps for itself, a writer it calls
+  directly, or a raster step of its own for something FileLoader does. What
+  FileLoader cannot yet do is added to FileLoader, not worked around in the
+  application. The exception is the program's own internal files - its
+  settings, caches, logs, state, a temporary file - which it reads and writes
+  directly.
 - **File paths and names are UTF-8, on every platform, in every
   application.** Any file or folder name must work, whatever script it is
   in: Thai, CJK, Cyrillic, emoji, accents. Convert between
@@ -377,12 +395,15 @@ executables carried the whole framework, and on Linux and Windows an app that
 linked a module archive next to the shared core got a second copy of that
 module - two registries, two connection tables. The rules:
 
-- **Link a module by its public name** - `UltraDatabase`, `UltraVault`,
-  `UltraCrypt`, `UltraMessage`, `NetworkMonitor` - never by its archive
-  (`uc-database`, `uc-vault`, …). The public name is an INTERFACE target that
-  resolves to the shared core, or to the archive under a static core, and
-  carries the module's headers and switches either way. Only
-  `UltraCanvas/CMakeLists.txt` and the other archives name an archive.
+- **Link a module by its public name** - `UltraNet`, `UltraWin`,
+  `UltraDatabase`, `UltraVault`, `UltraCrypt`, `UltraMessage`,
+  `NetworkMonitor` - never by its archive (`uc-net`, `uc-database`, …). The
+  public name is an INTERFACE target that resolves to the shared core, or to
+  the archive under a static core, and carries the module's headers and
+  switches either way. Only `UltraCanvas/CMakeLists.txt` and the other
+  archives name an archive - and the one exception, a test that must put the
+  archive in a rescanned link group with a *static* core
+  (`Tests/UltraNet/CMakeLists.txt` says why), names it only on that branch.
 - **A new UI-free module follows the pattern**: `add_library(uc-<name> STATIC …)`,
   dependencies on other modules by *their* archive names,
   `_ultracanvas_module_home(<Name> uc-<name>)`, and its archive added to the
@@ -391,7 +412,9 @@ module - two registries, two connection tables. The rules:
   UltraMessageCenter) is not absorbed; it links the core and the homes it needs.
 - **Do not link a module archive and the core on one line**, and do not add a
   `_uc_core_shared` conditional of your own: that was the workaround for
-  UltraNet and UltraWin before the homes existed.
+  UltraNet and UltraWin before they had homes, and every one of them is gone
+  (UltraMail, UltraSocial, UltraCanvasStart, UltraWeb, UltraCloud and the
+  tests simply link `UltraNet` now).
 
 ### Packaging a new app for macOS
 
@@ -478,7 +501,9 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
+| `Docs/UltraVideo/CHANGELOG.md` | UltraVideo — the video editor |
 | `Docs/UltraWeb/CHANGELOG.md` | UltraWeb — the browser for WebAssembly apps |
+| `Docs/UltraPress/CHANGELOG.md` | UltraPress — the website and shop builder that publishes WebAssembly |
 
 Format: `#### YYYY-MM-DD *x.y.z*`. **For the framework changelog you do not
 write that line at all**: drop your bullets in a new file under
@@ -584,7 +609,9 @@ number anywhere else, and never introduce a new literal copy of one:
   them from disk: `Apps/Texter/UltraTexter.{rc,manifest}` and
   `Apps/UltraFiler/UltraFiler.{rc,manifest}`. Run `./set-version.sh` after
   bumping either app's version; a CMake configure on any platform warns when
-  they are stale. Nothing else may hold a literal — UltraFiler's compile
+  they are stale, and `scripts/check_changelog.py` (CI's `changelog.yml`)
+  fails the pull request - the warning alone let UltraFiler 1.72.4 ship with
+  a 1.72.3 version resource. Nothing else may hold a literal — UltraFiler's compile
   definition did, and titled its window `UltraFiler 0.8.0` for thirteen
   releases while its changelog said 1.17.0.
 
@@ -621,9 +648,11 @@ number anywhere else, and never introduce a new literal copy of one:
    it compiles the doc's C++ against the headers and reports each function,
    field or signature the headers don't have (Linux, clang++). All
    `*Examples.md` docs pass it. CI runs it over every doc under
-   `Docs/UltraCanvas/` but the changelog (`--all --strict`,
-   `doc-examples.yml`) whenever a doc or a public header changes, and fails
-   on any finding a component doc has. The design documents (a Proposal,
+   `Docs/UltraCanvas/` but the changelog, and over the module docs listed in
+   `CHECKED_MODULE_DOCS` in the script (`Docs/Modules/FileLoader/` so far)
+   (`--all --strict`, `doc-examples.yml`) whenever a doc or a public header
+   changes, and fails on any finding a component doc has. A module doc
+   joins that list once its examples compile, and is fixed, not baselined. The design documents (a Proposal,
    Plan or Investigation) describe APIs not written yet, so their findings
    are listed in `scripts/doc_examples_baseline.txt` until the API exists;
    a component doc must never be added there.
@@ -632,6 +661,11 @@ number anywhere else, and never introduce a new literal copy of one:
    `window`, a callback the reader writes, a version macro - is declared in
    a `<!-- doc-check: ... -->` comment with its real type, never a framework
    API that does not exist.
+   A header's usage example is checked only when it opts in: a
+   `// doc-check: example` line above it (and `// doc-check: <declarations>`
+   for the names it assumes) puts it in the same CI run, at the header's own
+   lines. Mark an example worth keeping right; leave a sketch with `...` in
+   it unmarked.
 4. Keep platform-independent logic out of `OS/<Platform>/` and vice versa.
 5. Do not introduce new third-party dependencies without updating
    `Docs/Dependencies.md`, `master_dependencies.yaml` and

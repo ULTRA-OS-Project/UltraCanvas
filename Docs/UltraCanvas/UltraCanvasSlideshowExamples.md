@@ -80,6 +80,13 @@ size_t GetSlideCount() const;
 const std::vector<SlideshowSlide>& GetSlides() const;
 ```
 
+A picture saved over while the slideshow shows it - the slide, a slide in a
+transition, a thumbnail indicator - is drawn as it is now within a couple of
+seconds: the paths each paint drew go to an
+[`UltraCanvasImageFileWatch`](UltraCanvasImageFileWatch.md), which checks the
+files on a worker thread and repaints the slideshow when one changed. Nothing
+touches the disk on the paint path for it.
+
 ### Playback Control
 
 ```cpp

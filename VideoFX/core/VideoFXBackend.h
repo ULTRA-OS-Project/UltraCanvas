@@ -6,8 +6,8 @@
 // channel-layout API (AVChannelLayout, FFmpeg 5.1), the stream side-data move
 // (codecpar->coded_side_data, 6.1) and the supported-config query (7.1) are
 // wrapped here so the pipeline code does not care which one it runs on.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.12.0
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -22,6 +22,7 @@ extern "C" {
 #include <libavutil/audio_fifo.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/display.h>
+#include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
@@ -31,6 +32,7 @@ extern "C" {
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 24, 100)
 #define VIDEOFX_HAS_CH_LAYOUT 1
@@ -60,6 +62,7 @@ struct PacketDeleter       { void operator()(AVPacket* p) const { av_packet_free
 struct FilterGraphDeleter  { void operator()(AVFilterGraph* g) const { avfilter_graph_free(&g); } };
 struct SwsDeleter          { void operator()(SwsContext* s) const { sws_freeContext(s); } };
 struct AudioFifoDeleter    { void operator()(AVAudioFifo* f) const { av_audio_fifo_free(f); } };
+struct BufferRefDeleter    { void operator()(AVBufferRef* b) const { av_buffer_unref(&b); } };
 
 using FormatInputPtr  = std::unique_ptr<AVFormatContext, FormatInputDeleter>;
 using CodecContextPtr = std::unique_ptr<AVCodecContext, CodecContextDeleter>;
@@ -68,6 +71,7 @@ using PacketPtr       = std::unique_ptr<AVPacket, PacketDeleter>;
 using FilterGraphPtr  = std::unique_ptr<AVFilterGraph, FilterGraphDeleter>;
 using SwsPtr          = std::unique_ptr<SwsContext, SwsDeleter>;
 using AudioFifoPtr    = std::unique_ptr<AVAudioFifo, AudioFifoDeleter>;
+using BufferRefPtr    = std::unique_ptr<AVBufferRef, BufferRefDeleter>;
 
 inline FramePtr MakeFrame()   { return FramePtr(av_frame_alloc()); }
 inline PacketPtr MakePacket() { return PacketPtr(av_packet_alloc()); }
@@ -116,8 +120,68 @@ bool FontconfigCanDrawText();
 // ===== CODEC SELECTION =====
 // Encoder for a codec choice, trying the usual implementations in order
 // (libx264, then platform encoders, ...). nullptr = none in this build.
-const AVCodec* FindVideoEncoder(VideoFXVideoCodec codec);
+// With an acceleration other than Auto, only encoders of that kind that
+// work on this machine (EncoderWorks); Hardware falls back to software.
+const AVCodec* FindVideoEncoder(VideoFXVideoCodec codec,
+                                VideoFXAcceleration acceleration = VideoFXAcceleration::Auto);
+
+// Every encoder name VideoFX knows for a codec, software first, each with
+// its kind - whether or not this build has it
+struct EncoderCandidate {
+    const char* name;
+    VideoFXAcceleration kind;           // Software, or the hardware family
+};
+std::vector<EncoderCandidate> VideoEncoderCandidates(VideoFXVideoCodec codec);
+
+// The kind of an encoder from its name: "h264_nvenc" -> NVENC, "libx264" -> Software
+VideoFXAcceleration AccelerationOfEncoder(const std::string& name);
+
+// Whether an encoder works here: software ones always; a hardware one is
+// opened and given one frame, once per process (the answer is kept)
+bool EncoderWorks(const AVCodec* codec);
+
+// A hardware encoder that takes only frames in graphics memory (VA-API):
+// the device and frame pool it needs, the frames' system-memory format
+// (NV12) and the hardware format. false when the encoder takes system
+// memory frames itself (NVENC, QSV, AMF, VideoToolbox, Media Foundation).
+bool NeedsHardwareFrames(const AVCodec* codec, AVPixelFormat* hwFormat);
+// Sets codec->hw_frames_ctx on `c` (width / height already set); `device`
+// and `frames` keep them alive. Returns an FFmpeg error code (0 = ok).
+int SetUpHardwareFrames(AVCodecContext* c, AVPixelFormat hwFormat, BufferRefPtr& device, BufferRefPtr& frames);
 const AVCodec* FindAudioEncoder(VideoFXAudioCodec codec);
+
+// ---- single-frame decoding (VideoFXProbe.cpp), shared with the preview ----
+
+// A file opened for its video stream
+struct OpenVideo {
+    FormatInputPtr fmt;
+    CodecContextPtr dec;
+    int stream = -1;
+    int rotation = 0;
+    AVRational tb{1, 1};
+    int64_t startTs = 0;          // stream timestamps are relative to this
+    double duration = 0.0;
+    std::string path;
+    bool fresh = true;            // nothing read since the file was opened
+    bool still = false;           // a single image (image2 / *_pipe demuxers)
+    double lastTime = -1.0;       // time of the last frame decoded, -1 = none (a seek is needed)
+    bool spent = false;           // the decoder has been flushed: a seek is needed before more frames
+};
+
+VideoFXResult OpenVideoStream(const std::string& path, OpenVideo& v);
+// Decode the frame displayed at `seconds` into `out`, seeking first unless
+// it lies shortly after the last frame decoded (then decoding just goes on,
+// which is what scrubbing forward wants); `frameTime` receives the frame's
+// own time
+VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& frameTime);
+// The frame after the last one decoded, in stream order, without seeking;
+// `endOfStream` is set (with Ok) when the file has no more. For a video
+// overlay, which plays on from where DecodeFrameAt put it.
+VideoFXResult DecodeNextFrame(OpenVideo& v, AVFrame* out, double& frameTime, bool& endOfStream);
+// The stream's rotation, or for a still without one its EXIF orientation
+int DisplayRotation(const OpenVideo& v, const AVFrame* frame);
+// Convert a decoded frame to upright RGBA no larger than maxWidth x maxHeight (0 = no limit)
+VideoFXResult ConvertToRgba(const AVFrame* src, int rotation, int maxWidth, int maxHeight, VideoFXFrame& dst);
 
 } // namespace Internal
 } // namespace VideoFX

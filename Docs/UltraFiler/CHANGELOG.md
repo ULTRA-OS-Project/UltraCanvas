@@ -1,4 +1,4 @@
-#### 2026-10-09 *1.71.0*
+#### 2026-10-14 *1.73.0*
 - **Cloud drives have a connection log too.** The round network button in
   a folder display's bottom-left corner was only there on FTP / FTPS / SFTP
   drives; a cloud drive's log held one line per job, so a failed Dropbox or
@@ -27,8 +27,208 @@
     server error.
   - Nothing secret is logged: no access token, no password, no request or
     answer body, and no value of a URL parameter that carries a key.
-  - `FilerConnectionLogTest` covers a cloud session's labels, its report and
-    its hints.
+  - `FilerConnectionLogTest` covers a cloud session's labels, its report, its
+    hints and the status line's short form of a request.
+- **A cloud service that limits requests is waited out.** When Dropbox,
+  OneDrive, Google Drive, Nextcloud or a WebDAV server answers that it is
+  limiting requests (429, a 503 that says when to come back, Google Drive's
+  403 *userRateLimitExceeded*), the drive now waits as long as the service
+  asks - or 1, 2 and 4 s when it does not say - and sends the request again,
+  up to three times, instead of failing the folder at once. The status line
+  and the connection log say what it is waiting for (*The service is
+  limiting requests: it asks to wait 20 s - trying again in 20 s (try 2 of
+  4)*). A wait longer than a minute is not sat out: the failure is reported
+  with the time the service asked for. A folder read ahead is not waited
+  for at all - nobody is looking at it, and reading ahead is what ran into
+  the limit - and closing the window ends a wait at once. The waiting itself
+  is UltraCloud's (`RateLimitPolicy`, see the framework changelog).
+- **Adding a drive is in the connection log.** A sign-in from the *Add a
+  cloud drive* or *Add an FTP / SFTP drive* dialog that failed left only the
+  dialog's one-line message. Each attempt is now an *Add drive* session of
+  the connection log, with its steps: for a cloud drive the browser sign-in
+  (*Opening the sign-in page in the browser: https://www.dropbox.com/oauth2/
+  authorize*, *Signed in*, or why it did not complete), then the requests
+  that check the account; for an FTP drive every command and reply, as when
+  browsing. A failed one counts as a failure on the log button. The *+
+  Drive* menu has a *Connection log...* entry, so the log can be opened
+  before there is a drive to open it from.
+- **Shorter requests on the status line.** While a cloud drive works, the
+  status line showed each request's whole address, query and all. It now
+  shows the method, the server and the end of the path - *Request: PROPFIND
+  cloud.example.org/.../erika/Fotos Mai/* - with the folder or file name
+  decoded; the connection log keeps the whole address.
+
+#### 2026-10-13 *1.72.6*
+- **The *+ Drive* menu opens at once.** Clicking *+ Drive* took several
+  seconds before the menu with *FTP / SFTP server...*, *Cloud storage...* and
+  *RAM disc...* appeared, on Windows and macOS: each click asked the system
+  whether it can make RAM discs, which launches a shell (`where imdisk`,
+  `command -v hdiutil`), and the same question was asked again when the
+  toolbar was built at start-up and twice more when the *New RAM disc*
+  dialog opened. The question is now put to the system once, on a worker
+  thread right after the window is created, together with the list of RAM
+  discs mounted now; the *+ Drive* button, its menu and the *RAM Discs*
+  section of the folder tree are brought in line when the answer arrives,
+  and every later question answers from it (framework changelog, pending
+  entry `ramdisk-backing-probed-once`). Until the answer is in, the menu
+  offers *RAM disc...* whenever the build has the facility; a click in that
+  moment waits for the answer in the dialog, once, rather than the menu
+  waiting for it every time. The sweep of *Extract and Run*'s leftover
+  folders, which needs the list of discs too, rides on the same worker.
+- **Listing RAM discs no longer waits on a network drive.** On Windows the
+  *RAM Discs* section, refreshed on every mount and unmount, read the volume
+  label of every drive letter to find ImDisk discs - a mapped network drive
+  whose server is away, or an empty CD drive, held the window for as long as
+  Windows took to give up. Only local fixed, removable and RAM drives from
+  D: to Z: are read now; nothing else can hold an ImDisk disc (framework
+  changelog, pending entry `ramdisk-backing-probed-once`).
+- **The *New RAM disc* dialog reads the machine on a worker.** How much
+  memory is free, which decides the sizes offered, and a name no disc uses
+  yet were read on the UI thread when the dialog opened - a hardware
+  information capture and a pass over the mounted discs. Both are read on a
+  worker now and the dialog opens when they are in, with the busy pointer
+  shown if that takes longer than a moment; a second click meanwhile does
+  nothing rather than opening two dialogs.
+- **Plugging a drive in or out no longer lists the drives on the UI thread.**
+  Each mount or unmount, and *Refresh drives* in the tree's menu, listed the
+  mounted volumes and the RAM discs while the window waited. The listing
+  runs on a worker now and the tree's drive rows and the Computer page's
+  drive cards are brought in line when it is in, one listing at a time;
+  the Computer page itself shows from the last listing instead of making
+  one of its own.
+
+#### 2026-10-12 *1.72.5*
+- **Icons no longer flicker in a maximised window.** With *Display > File
+  icons = Host OS* and a folder of DLLs, a window large enough to show more
+  files than the icon cache held never settled: every tile switched between
+  the system's icon and the simple one, back and forth, for as long as the
+  window was open, while a smaller window on the same folder was fine. The
+  framework's icon cache evicted icons that were still on screen and then
+  re-resolved them, and kept one copy of the library icon per file rather
+  than per type (framework changelog, pending entry
+  `filer-host-icons-thrash`).
+
+#### 2026-10-12 *1.72.4*
+- **The settings live in the shared UltraCanvas settings folder.** Every
+  newer UltraCanvas application keeps its settings under
+  `UltraCanvasSettingsFolder()` (`~/.config/UltraCanvas` on Linux,
+  `%APPDATA%\UltraCanvas` on Windows, `~/Library/Application
+  Support/UltraCanvas` on macOS); UltraFiler had a folder of its own beside
+  it, built from a narrow `getenv("HOME")`. Its folder is
+  `UltraCanvas/UltraFiler` now - `config.ini`, the history, favorites, folder
+  views, folder icons and the remote drive list with it. The first run moves
+  the old folder there, whole, so nothing is lost; where a move is not
+  possible (another file system) it is copied and the old one left behind.
+
+#### 2026-10-11 *1.72.3*
+- **Menus follow the theme and stay clear of their buttons.** The context
+  menu's line icons are painted in the entry's text colour - light on a dark
+  menu, greyed with a disabled entry - while application icons in *Open
+  with* keep their colours (framework changelog:
+  `menu-anchors-symbolic-icons`). The New and Add drive menus open with the
+  framework's `OpenMenuAnchored`: below their button, or above it when there
+  is no room below.
+
+#### 2026-10-11 *1.72.2*
+- **`--help` and `--version` print again.** Both wrote to the framework's
+  debug log, which a Release build keeps off, so `UltraFiler --help` printed
+  nothing at all - on Linux and macOS as much as on Windows. They now write
+  to stdout, and an unknown argument is reported on stderr. On Windows the
+  text reaches the prompt as well: the framework attaches a GUI program to
+  the prompt's console before `main()` now (framework changelog, pending
+  entry `windows-gui-apps-print-help`).
+
+#### 2026-10-10 *1.72.1*
+- **Display > Tab style reaches every tab strip.** 1.71.0 dressed only the
+  window's own strip; the three tabs of the History and Favorites views and
+  the two of the Connection log window kept the rounded tabs whatever was
+  chosen. All of them follow the setting now, at once when it changes, with
+  the Modern capsule 24px tall in the 28px Connection log strip as in the
+  30px window strip.
+
+#### 2026-10-10 *1.72.0*
+- **Split view: a layout of its own.**
+  - **The navigation row's path bar is hidden** while the split view is on:
+    each pane has a path bar of its own, and the one above only repeated
+    whichever was active. It comes back with the single display.
+  - **The preview pane sits under the right-hand pane's path bar**, beside
+    that display, with a splitter of its own - it used to stand beside the
+    pane headers as a third column from the top of the split.
+  - **The two displays are equal halves.** They are put back to the same
+    width when the split view opens, when the preview pane opens or closes,
+    when the tree docks or leaves and when the window is resized; the
+    splitter between them can still be dragged in between. With the preview
+    up, the left-hand pane is as wide as the right-hand display beside it.
+    Before, the preview took its width from the two displays in proportion,
+    so a difference between them - left by docking the tree, or by a drag -
+    stayed until the splitter was dragged back.
+  - **A docked tree fits into its pane.** It used to widen its pane at the
+    other display's expense; it now narrows to the room its pane leaves
+    beside the display's minimum, and the other pane keeps its half.
+  - **The tree buttons show plainly when the tree is docked.** Their pressed
+    look was a pale blue barely different from the active pane's tinted
+    header, and it turned grey while the pointer was still on the button
+    after the click. It is a clear blue now, under the pointer too - so are
+    the navigation row's toggles (split view, History, Favorites, Preview).
+- **Split view: files dropped on a folder of the other pane go into that
+  folder.** Dragged from one pane and released on a folder of the other,
+  files were copied into the folder that pane showed instead - out of sight
+  among its other files, without a question, so it looked as if nothing had
+  happened. They now go into the folder under the pointer, and onto the
+  pane's empty space into the folder it shows. While they are over the other
+  pane it frames the folder they would land in, or the whole pane when that
+  is its own folder. A drop across the split is a move, like a drop on a
+  folder of the same pane: Ctrl copies, Shift moves, Settings > Handling >
+  Drag & Drop sets what a plain drop does, and it asks first under Handling >
+  File operations - moves ask by default, with Move, Copy and Cancel. A drop
+  on the folder tree now shows the row it would land on while the files are
+  still being dragged. Files dropped from another program onto a folder in a
+  pane go into that folder too (still copied). Framework change - see
+  `Docs/UltraCanvas/changelog.d/filer-drop-on-other-display.md`.
+  If an earlier drop seemed to do nothing, look in the folder the target pane
+  showed: the files were copied there.
+
+#### 2026-10-10 *1.71.0*
+- **Settings > Display > Tab style: Modern, Simple modern or Classic.** The
+  window's tab strip can now draw its tabs as capsules floating in a
+  blue-grey strip - the open tab white with a blue outline, the others
+  plain text until the pointer is over them - which is *Modern* and the
+  default from this release; as flat tabs with a blue line under the open
+  one, *Simple modern*; or as the rounded tabs joined to the page that every
+  release before this one drew, *Classic*. The choice shows at once on the
+  open window and is kept in `display.tabs.style`. The tabs behave the same
+  under all three: click to switch, the X or a middle click to close, drag
+  to reorder, and the + at the end opens another tab. Built on the
+  framework's new `TabStyle::Pill` and the `TabStyle::Modern` indicator
+  colour (see the framework changelog).
+
+#### 2026-10-10 *1.70.1*
+- **Thumbnails follow a file's new content.** A picture edited and saved over
+  (in an image editor, by a script, or by a camera upload overwriting it) kept
+  its old thumbnail: the folder was rescanned when the save landed, but the
+  thumbnail was made again from a copy of the picture still held in memory,
+  and that old thumbnail was then kept on disk under the new file's date, so
+  it came back on every later start too. The thumbnail is now made from the
+  file as it is after the save, and a thumbnail is only kept on disk when the
+  file did not change while it was being made. Thumbnails kept by earlier
+  versions are made again once, so pictures already showing an old thumbnail
+  are corrected on the first look. A picture caught while it was still being
+  written, and so failed to show at first, gets its thumbnail once the write
+  finishes, instead of keeping the type icon. The dimensions shown for a
+  changed picture are its new ones. Framework changes - see
+  `Docs/UltraCanvas/changelog.d/image-cache-freshness.md`.
+- **The preview pane follows a file that changes while it is selected.** A
+  picture, document or text file edited and saved by another program while
+  UltraFiler shows it in the preview pane is shown again as it is now, a
+  moment after the save - it used to keep the version it was opened with until
+  something else was selected and it was selected again. A file that keeps
+  changing (a log being written, a download in progress) is shown again at
+  most every 2 seconds, and the last change is always shown. A video or sound
+  is shown again only once its file has stopped changing for 2 seconds and it
+  is not playing - reopening one starts it from the beginning, so a video that
+  is still downloading is not restarted while it grows, and one being watched
+  is left alone until it is paused or ends. Reopening shows the file from the
+  top and at its fitted size, as selecting it does.
 
 #### 2026-10-09 *1.70.0*
 - **FTP drives log in once per burst, not once per folder.** Opening a

@@ -2,8 +2,9 @@
 // Editable raster view: zoom / pan, checkerboard, pixel grid, marching-ants
 // selection, brush cursor, and pointer events forwarded to the active tool
 // in image coordinates.
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.1.1 - the surfaces showing one document share one marching-ants clock
+// Version: 1.1.0 - loupe mode: a second surface that shows the pixels around a point magnified
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPaintSurface.h"
@@ -12,6 +13,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -38,32 +41,34 @@ UltraCanvasPaintSurface::~UltraCanvasPaintSurface() {
 // ===========================================================================
 
 void UltraCanvasPaintSurface::HookDocument() {
-    if (!document) return;
-    document->onPixelsChanged = [this](const Rect2Di& r) {
+    if (!document || documentListener) return;
+    UCRasterDocument::Listener l;
+    l.pixelsChanged = [this](const Rect2Di& r) {
         const Rect2Dd v = view.ImageToView(Rect2Dd(r.x, r.y, r.width, r.height));
         InvalidateRect(Rect2Df(static_cast<float>(std::floor(v.x)) - 2.0f, static_cast<float>(std::floor(v.y)) - 2.0f,
                                static_cast<float>(std::ceil(v.width)) + 4.0f, static_cast<float>(std::ceil(v.height)) + 4.0f));
     };
-    document->onStructureChanged = [this]() { ClampView(); RequestRedraw(); };
-    document->onSelectionChanged = [this]() {
+    l.structureChanged = [this]() { ClampView(); RequestRedraw(); };
+    l.selectionChanged = [this]() {
         if (document->GetSelection().IsActive()) StartAntsTimer(); else StopAntsTimer();
         RequestRedraw();
     };
+    documentListener = document->AddListener(std::move(l));
 }
 
 void UltraCanvasPaintSurface::UnhookDocument() {
-    if (!document) return;
-    document->onPixelsChanged = nullptr;
-    document->onStructureChanged = nullptr;
-    document->onSelectionChanged = nullptr;
+    if (!document || !documentListener) return;
+    document->RemoveListener(documentListener);
+    documentListener = 0;
 }
 
 void UltraCanvasPaintSurface::SetDocument(std::shared_ptr<UCRasterDocument> doc) {
     UnhookDocument();
+    StopAntsTimer();   // before the old document goes: the clock is keyed by it
     document = std::move(doc);
     HookDocument();
-    fitPending = true;
-    if (document && document->GetSelection().IsActive()) StartAntsTimer(); else StopAntsTimer();
+    fitPending = !loupeMode;
+    if (document && document->GetSelection().IsActive()) StartAntsTimer();
     RequestRedraw();
 }
 
@@ -72,7 +77,7 @@ void UltraCanvasPaintSurface::SetDocument(std::shared_ptr<UCRasterDocument> doc)
 // ===========================================================================
 
 void UltraCanvasPaintSurface::ClampView() {
-    if (!document) return;
+    if (!document || loupeMode) return;
     const Rect2Df b = GetLocalBounds();
     const double imgW = document->GetWidth() * view.zoom;
     const double imgH = document->GetHeight() * view.zoom;
@@ -156,23 +161,117 @@ void UltraCanvasPaintSurface::ScrollToImagePoint(double ix, double iy) {
 }
 
 // ===========================================================================
+// LOUPE
+// ===========================================================================
+
+void UltraCanvasPaintSurface::SetLoupeMode(bool on) {
+    if (loupeMode == on) return;
+    loupeMode = on;
+    SetInteractive(!on);
+    if (on) {
+        hasHover = false;
+        panning = false;
+        toolDragging = false;
+    }
+    fitPending = !on;
+    RequestRedraw();
+}
+
+void UltraCanvasPaintSurface::SetLoupeView(double zoom, double imageX, double imageY) {
+    const Rect2Df b = GetLocalBounds();
+    view.zoom = std::clamp(zoom, kMinZoom, kMaxZoom);
+    view.originX = b.width * 0.5 - imageX * view.zoom;
+    view.originY = b.height * 0.5 - imageY * view.zoom;
+    fitPending = false;
+    if (onViewChanged) onViewChanged();
+    RequestRedraw();
+}
+
+void UltraCanvasPaintSurface::DrawLoupeCrosshair(IRenderContext* ctx) {
+    if (!loupeMode || !loupeCrosshair) return;
+    const Rect2Df b = GetLocalBounds();
+    // The centre of the element is the image point SetLoupeView was given.
+    const double cx = b.x + b.width * 0.5, cy = b.y + b.height * 0.5;
+    const double gap = std::max(0.0, loupeCrosshairGap);
+    // Along each diagonal, the unit step from the centre towards a corner.
+    const double d = std::sqrt(0.5);
+    const double reach = std::max(b.width, b.height);
+    ctx->SetLineDash(UCDashPattern());
+    // A translucent light line under a translucent dark one reads on dark
+    // and on light pixels alike, and lets both show through.
+    for (int pass = 0; pass < 2; ++pass) {
+        ctx->SetStrokeWidth(pass == 0 ? 3.0 : 1.0);
+        ctx->SetStrokePaint(pass == 0 ? Color(255, 255, 255, 96) : Color(0, 0, 0, 128));
+        ctx->ClearPath();
+        for (int sx = -1; sx <= 1; sx += 2) {
+            for (int sy = -1; sy <= 1; sy += 2) {
+                ctx->MoveTo(cx + sx * gap * d, cy + sy * gap * d);
+                ctx->LineTo(cx + sx * reach * d, cy + sy * reach * d);
+            }
+        }
+        ctx->Stroke();
+    }
+}
+
+// ===========================================================================
 // MARCHING ANTS
 // ===========================================================================
 
+namespace {
+    // One marching-ants clock per document, shared by every surface showing
+    // it - the editing view and a magnifying glass - so the ants march in
+    // step in both and there is one timer per document rather than one per
+    // view. The first view with a selection to draw starts it, the last one
+    // to let go stops it. Keyed by the document's address, which is only
+    // ever compared: a surface leaves the clock before it lets its document go.
+    struct AntsClock {
+        TimerId timer = 0;
+        double offset = 0.0;
+        std::vector<UltraCanvasPaintSurface*> views;
+    };
+    std::map<const UCRasterDocument*, AntsClock>& AntsClocks() {
+        static std::map<const UCRasterDocument*, AntsClock> clocks;
+        return clocks;
+    }
+}
+
 void UltraCanvasPaintSurface::StartAntsTimer() {
-    if (antsTimer) return;
+    if (antsJoined || !document) return;
     auto* app = UltraCanvasApplication::GetInstance();
     if (!app) return;
-    antsTimer = app->StartTimer(120, true, [this](TimerId) {
-        antsOffset = std::fmod(antsOffset + 1.0, 8.0);
-        if (IsVisible() && showSelection) RequestRedraw();
+    const UCRasterDocument* key = document.get();
+    AntsClock& clock = AntsClocks()[key];
+    clock.views.push_back(this);
+    antsJoined = true;
+    antsClockKey = key;
+    antsOffset = clock.offset;
+    if (clock.timer) return;
+    clock.timer = app->StartTimer(120, true, [key](TimerId) {
+        auto it = AntsClocks().find(key);
+        if (it == AntsClocks().end()) return;
+        AntsClock& c = it->second;
+        c.offset = std::fmod(c.offset + 1.0, 8.0);
+        // On a copy: a redraw request must not reshape the list under the loop.
+        const std::vector<UltraCanvasPaintSurface*> views = c.views;
+        for (UltraCanvasPaintSurface* v : views) {
+            v->antsOffset = c.offset;
+            if (v->IsVisible() && v->showSelection) v->RequestRedraw();
+        }
     });
 }
 
 void UltraCanvasPaintSurface::StopAntsTimer() {
-    if (!antsTimer) return;
-    if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(antsTimer);
-    antsTimer = 0;
+    if (!antsJoined) return;
+    antsJoined = false;
+    auto& clocks = AntsClocks();
+    auto it = clocks.find(antsClockKey);
+    antsClockKey = nullptr;
+    if (it == clocks.end()) return;
+    AntsClock& clock = it->second;
+    clock.views.erase(std::remove(clock.views.begin(), clock.views.end(), this), clock.views.end());
+    if (!clock.views.empty()) return;
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(clock.timer);
+    clocks.erase(it);
 }
 
 // ===========================================================================
@@ -312,6 +411,7 @@ void UltraCanvasPaintSurface::Render(IRenderContext* ctx, const Rect2Df& /*dirty
 
     if (onDrawOverlay) onDrawOverlay(ctx, view);
     DrawBrushCursor(ctx);
+    DrawLoupeCrosshair(ctx);
     ctx->PopState();
 }
 
@@ -333,6 +433,8 @@ PaintPointerEvent UltraCanvasPaintSurface::MakePointerEvent(const UCEvent& e) co
 }
 
 bool UltraCanvasPaintSurface::OnEvent(const UCEvent& event) {
+    // A loupe is looked at, never operated: its view is its host's to set.
+    if (loupeMode) return false;
     switch (event.type) {
         case UCEventType::MouseWheel: {
             if (!Contains(event.pointer)) return false;

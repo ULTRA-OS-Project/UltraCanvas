@@ -42,3 +42,28 @@
   body, `Retry-After`, the throttled OneDrive 429 and Google 403, a sign-in
   refusal, a Nextcloud server that never answered, the Dropbox log lines
   without the token, and a token renewal succeeding and refused.
+- **A throttled cloud request is sent again after the wait the service
+  asks for.** `HttpProviderBase::Send` used to return the first 429 as the
+  failure. It now waits as long as `Retry-After` says - or 1, 2, 4 s when
+  the service gives no time - and sends the same request again: the service
+  did not act on it, so this is safe for every method, uploads included.
+  `RateLimitPolicy` (`UltraCloudHttp.h`), set per thread with
+  `SetThreadRateLimitPolicy`, says how many tries (3 after the first by
+  default), the longest wait sat out (30 s by default; a longer one fails at
+  once as `RateLimited`) and how to wait - a function a worker can return
+  `false` from to stop waiting when it is shut down; the default sleeps.
+  Each wait, and a request given up, is a line in the thread's log.
+- **The browser sign-in says its steps.** `OAuthProviderBase::SignIn` logs
+  where it waits for the browser's answer, the sign-in page it opens
+  (without its query: the one-time state and code challenge stay out), and
+  whether the service gave an access token or why the sign-in did not
+  complete.
+- **The add-account dialog can be watched.** `ShowAddAccountDialog` takes
+  an optional `AddAccountWatch`: `onBegin` and `onEnd` run on the dialog's
+  sign-in thread around each sign-in, so a host can set that thread's log
+  sinks and record the attempt - UltraFiler puts it in its connection log.
+- `UltraCloudTests`: a throttled request sent again and answered, Google
+  Drive's 403 waited out 1, 2 and 4 s and then given up, a wait longer than
+  the policy allows, a wait interrupted, and the browser sign-in's lines
+  without its state, code challenge or tokens - with a recorded wait, so no
+  test sleeps.

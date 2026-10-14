@@ -121,7 +121,7 @@ namespace UltraCanvas {
         // Description
         auto barDescription = std::make_shared<UltraCanvasLabel>("BarDesc", 350, 130, 350, 58);
         barDescription->SetText("Real-time strength indicator with animated\n"
-                                "color transitions (red → yellow → green).\n"
+                                "color transitions (red, then yellow, then green).\n"
                                 "Click the eye icon in the field to show the password.");
         barDescription->SetFontSize(11);
         barDescription->SetTextColor(Color(100, 100, 100));
@@ -203,7 +203,7 @@ namespace UltraCanvas {
 
         // Description
         auto checklistDescription = std::make_shared<UltraCanvasLabel>("ChecklistDesc", 350, 415, 350, 58);
-        checklistDescription->SetText("Interactive checklist with ✓/✗ indicators\n"
+        checklistDescription->SetText("Interactive checklist with met / unmet indicators\n"
                                       "showing real-time validation status.\n"
                                       "\"Show password\" flag unmasks the field.");
         checklistDescription->SetFontSize(11);

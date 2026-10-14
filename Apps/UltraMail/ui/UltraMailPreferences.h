@@ -4,6 +4,11 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.14.0 - fetchSenderIcons and fetchSiteIcons default to off: a fresh
+//                   install contacts no third-party website until the reader
+//                   turns the download on (privacy by default)
+// Version: 0.13.0 - folderTreeContent (Settings > Display > Treeview) and
+//                   accountOrder (account tiles dragged into another order)
 // Version: 0.12.0 - senderLists: trusted and blocked senders
 // Version: 0.11.0 - scamWarnings: which kinds of spam/scam warning are given
 //                   (Settings > Spam/scam warnings)
@@ -25,6 +30,7 @@
 
 #include "UltraMailMessageSort.h"
 #include "UltraMailThreatScan.h"
+#include "UltraMailTypes.h"
 
 #include <set>
 #include <string>
@@ -47,6 +53,12 @@ enum class FolderTreeWidthMode {
     FixedWidth   // folderTreeWidth pixels
 };
 
+// Which mail accounts the folder tree on the left lists.
+enum class FolderTreeContent {
+    CurrentAccount,   // only the account chosen in the account bar
+    AllAccounts       // every account, one below the other
+};
+
 // Where the address behind a link in a message is shown.
 enum class LinkDisplay {
     StatusBar,   // the status bar lists the message's links and shows the hovered one
@@ -65,14 +77,17 @@ struct Preferences {
     // Whether UltraMail may download the icons of the services in its known-
     // sender registry into the sender-icon cache, once each. Off means the
     // badge shows the sender's monogram in the brand's colour instead - and
-    // nothing at all is downloaded, website icons included.
-    bool fetchSenderIcons = true;
+    // nothing at all is downloaded, website icons included. Off by default:
+    // each download tells a third party's web server the reader's IP address,
+    // and a fresh install contacts nobody but the reader's own mail server
+    // until the reader decides otherwise (Settings > Privacy > Sender icons).
+    bool fetchSenderIcons = false;
     // Whether a sender that is no known service gets its website's icon:
     // the home page of the domain it writes from is read for its icon, once
     // a week at most, and only for mail that passed the content scan. That
     // tells the sender's web server that someone looked; off, only the
-    // registry's icons are fetched.
-    bool fetchSiteIcons = true;
+    // registry's icons are fetched. Off by default, as above.
+    bool fetchSiteIcons = false;
 
     // Senders whose remote (web) images load without asking ("Always from
     // <sender>" in the reading pane), lower-cased addresses.
@@ -98,6 +113,17 @@ struct Preferences {
     static constexpr int kFolderTreeDefaultWidth = 200;
     FolderTreeWidthMode folderTreeWidthMode = FolderTreeWidthMode::FitToText;
     int                 folderTreeWidth     = kFolderTreeDefaultWidth;
+
+    // Settings > Display > Treeview: the folder tree lists every account, or
+    // only the one chosen in the account bar.
+    FolderTreeContent folderTreeContent = FolderTreeContent::AllAccounts;
+
+    // The accounts' order in the account bar and the folder tree, as the
+    // reader dragged the account tiles: account ids, first to last. Accounts
+    // it does not name (added since) follow, in the order they came.
+    std::vector<std::string> accountOrder;
+    // `accounts` put in accountOrder.
+    void OrderAccounts(std::vector<Account>& accounts) const;
 
     // Settings > Display > Links: where a link's address is shown.
     LinkDisplay linkDisplay = LinkDisplay::StatusBar;
@@ -137,7 +163,7 @@ struct Preferences {
     // attachments, the server's spam verdict. All on.
     ThreatScanOptions scamWarnings;
     // The sender menu's "Always trust this sender" and "Block this sender"
-    // (Settings > Warnings > Trusted and blocked senders): addresses, lower
+    // (Settings > Warnings > Trusted & blocked): addresses, lower
     // case, and "@example.com" for a blocked domain.
     SenderLists senderLists;
 

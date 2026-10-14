@@ -3,8 +3,10 @@
 // one per AI capability. Clicking an icon opens a modal dialog
 // driven by the matching in-process mock adapter — no network or
 // external models required.
+// Version: 0.1.3 - one UltraAI per user: a second start brings the running
+//                  dashboard forward instead of opening another copy
 // Version: 0.1.2
-// Last Modified: 2026-09-21
+// Last Modified: 2026-10-12
 // Author: UltraAI Module
 
 #include "UltraAIDashboard.h"
@@ -12,6 +14,7 @@
 #include "UltraAIAppSettings.h"
 #include "UltraAISettingsWindow.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasSingleInstance.h"
 #ifdef ULTRAAI_HAS_ULTRAVAULT
 #include <UltraVault/UltraVault.h>
 #endif
@@ -76,6 +79,13 @@ int main(int argc, char* argv[]) {
     std::signal(SIGTERM, OnSignal);
 #endif
 
+    // One UltraAI per user: a second start brings the running dashboard
+    // forward and quits. Decided after the command line (--help/--version
+    // never claim) and before anything is opened.
+    UltraCanvasSingleInstance instance("org.ultraos.ultraai", "UltraAI");
+    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;
+
     UltraCanvasApplication app;
 
     try {
@@ -83,6 +93,9 @@ int main(int argc, char* argv[]) {
             std::cerr << "Failed to initialize UltraCanvas application\n";
             return EXIT_FAILURE;
         }
+        // Another copy holds the lock but did not answer: say so, quit.
+        if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
+            return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraAI");
         // One icon, everywhere the app is drawn: the window and the taskbar
         // entry that follows it read this file; the .ico embedded in the
         // Windows binary and the desktop entry's theme icon are the same
@@ -116,8 +129,10 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         dashboard.Show();
+        instance.ListenRaise();   // a later start brings the dashboard forward
 
         app.Run();
+        instance.Close();         // no request reaches the window once it starts to go
         UltraAIApp::UltraAISettingsWindow::Shutdown();
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << "\n";

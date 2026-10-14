@@ -10,8 +10,8 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.6.0
-// Last Modified: 2026-10-07
+// Version: 0.13.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -20,6 +20,8 @@
 #include "VideoFXFilterBuilder.h"
 #include "VideoFXKenBurns.h"
 #include "VideoFXMusic.h"
+#include "VideoFXProject.h"
+#include "VideoFXProxy.h"
 #include "VideoFXPlatform.h"
 
 #include "UltraCanvasPathUtf8.h"
@@ -231,6 +233,24 @@ static void TestTransitionAndOverlayText() {
     bad.end = 2.0;
     CHECK(!ValidateOverlay(bad, 5.0, error), "end before start refused");
     CHECK(!ValidateOverlay(VideoFXOverlay::Image(""), 5.0, error), "image without a picture refused");
+    CHECK(!ValidateOverlay(VideoFXOverlay::Video(""), 5.0, error), "video without a file refused");
+    const VideoFXExportSettings draft = VideoFXExportSettings::Draft();
+    CHECK(draft.container == VideoFXContainer::MP4 && draft.videoCodec == VideoFXVideoCodec::H264 && draft.height == 360 &&
+          draft.encoderPreset == "ultrafast" && draft.quality == 30 && draft.audioBitRate == 96000, "the draft preset: a quick small MP4");
+    VideoFXOverlay pip = VideoFXOverlay::Video("cam.mp4", VideoFXAnchor::BottomRight, 0.25, 1.5);
+    CHECK(ValidateOverlay(pip, 5.0, error) && pip.kind == VideoFXOverlayKind::Video && Near(pip.videoStart, 1.5, 1e-12),
+          "a video overlay with its start");
+    pip.start = 1.0;
+    pip.end = 3.0;
+    pip.fadeIn = 0.5;
+    pip.opacity = 0.8;
+    BuildVideoOverlayFilters(pip, 640, 360, 90, 5.0, chain, ov);
+    CHECK(chain == "format=rgba,setsar=1,colorchannelmixer=aa=0.8,fade=t=in:st=1:d=0.5:alpha=1",
+          "video chain: no scale at the fed height, opacity, a fade on the stream's own clock");
+    CHECK(ov.find("eof_action=repeat") != std::string::npos && ov.find("enable=between(t\\,1\\,3)") != std::string::npos,
+          "the last frame holds; shown in its window");
+    BuildVideoOverlayFilters(pip, 640, 360, 200, 5.0, chain, ov);
+    CHECK(chain.find("scale=-1:90") != std::string::npos, "scaled when fed at another height");
 }
 
 static VideoFXFrame SolidFrame(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) {
@@ -530,6 +550,47 @@ static std::vector<float> ClickTrack(int rate, double bpm, double offset, double
     return s;
 }
 
+// Free audio clips without the engine: values, gain, length
+static void TestAudioClipMath() {
+    std::printf("Free audio clips: values, envelope, length\n");
+    std::string error;
+    VideoFXAudioClip c = VideoFXAudioClip::Sound("boom.wav", 2.0);
+    CHECK(ValidateAudioClip(c, error) && !c.ducksMusic, "a sound effect: valid, does not duck the music");
+    CHECK(VideoFXAudioClip::VoiceOver("voice.wav", 1.0).ducksMusic, "a voice-over ducks it");
+    VideoFXAudioClip bad = c;
+    bad.path.clear();
+    CHECK(!ValidateAudioClip(bad, error), "no file refused");
+    bad = c; bad.at = -1.0;
+    CHECK(!ValidateAudioClip(bad, error), "a time before the start refused");
+    bad = c; bad.start = 3.0; bad.end = 2.0;
+    CHECK(!ValidateAudioClip(bad, error), "an end before the start refused");
+    bad = c; bad.volume = 5.0;
+    CHECK(!ValidateAudioClip(bad, error), "volume over 4 refused");
+    bad = c; bad.fadeIn = -0.5;
+    CHECK(!ValidateAudioClip(bad, error) && !error.empty(), "a negative fade refused, with a reason");
+
+    c.volume = 0.5;
+    c.fadeIn = 1.0;
+    c.fadeOut = 2.0;
+    CHECK(Near(AudioClipGain(c, 0.0, 10.0), 0.0, 1e-12) && Near(AudioClipGain(c, 0.5, 10.0), 0.25, 1e-12) &&
+          Near(AudioClipGain(c, 5.0, 10.0), 0.5, 1e-12) && Near(AudioClipGain(c, 9.0, 10.0), 0.25, 1e-12),
+          "volume times the fades in and out");
+    CHECK(AudioClipGain(c, -0.1, 10.0) == 0.0 && AudioClipGain(c, 10.1, 10.0) == 0.0, "silent outside the clip");
+    CHECK(Near(AudioClipGain(c, 5.0, 0.0), 0.5, 1e-12), "an unknown length: no fade-out");
+    // fades longer than the clip shrink to half each, meeting in the middle
+    CHECK(Near(AudioClipGain(c, 1.0, 2.0), 0.5, 1e-12) && Near(AudioClipGain(c, 0.5, 2.0), 0.25, 1e-12),
+          "fades that would overlap share the clip");
+
+    VideoFXAudioClip r = VideoFXAudioClip::Sound("x.wav", 0.0);
+    CHECK(Near(AudioClipSeconds(r, 8.0), 8.0, 1e-12) && AudioClipSeconds(r, 0.0) == 0.0, "the whole file, or unknown");
+    r.start = 1.5;
+    CHECK(Near(AudioClipSeconds(r, 8.0), 6.5, 1e-12), "what is left after the start");
+    r.end = 4.0;
+    CHECK(Near(AudioClipSeconds(r, 8.0), 2.5, 1e-12) && Near(AudioClipSeconds(r, 0.0), 2.5, 1e-12), "start to end");
+    r.end = 20.0;
+    CHECK(Near(AudioClipSeconds(r, 8.0), 6.5, 1e-12), "an end past the file stops with the file");
+}
+
 static void TestBeatMath() {
     std::printf("Beat detection: tempo, beats, changes on the beat\n");
     const int r = kBeatSampleRate;
@@ -676,6 +737,362 @@ static void TestFaceDetector() {
     CHECK(VideoFX_DetectFaces(flat, faces) == VideoFXResult::Ok && faces.empty(), "noise: none");
 }
 
+// ---- project files ----
+
+// A project with every field away from its default, so a field the reader
+// forgets shows as a difference when the loaded project is written again
+static VideoFXProject RichTimeline(const std::string& dir) {
+    VideoFXSegment clip = VideoFXSegment::FromFile(dir + "/clips/beach.mp4", 2.5, 9.75);
+    clip.speed = 1.5;
+    clip.mute = true;
+    clip.effects = {VideoFXEffect::Brightness(0.25), VideoFXEffect::Crop(10, 20, 640, 360),
+                    VideoFXEffect::LUT(dir + "/looks/warm.cube", 0.7), VideoFXEffect::FadeOut(1.25)};
+    VideoFXOverlay title = VideoFXOverlay::Text("Sommer \xC3\xBC 2026\nZweite Zeile", VideoFXAnchor::Custom, 0.08);
+    title.fontPath = "/fonts/Brand.ttf";             // outside the project: stays absolute
+    title.textColor = 0x12AB9F;
+    title.shadow = false;
+    title.box = true;
+    title.boxColor = 0x203040;
+    title.boxOpacity = 0.4;
+    title.x = 0.1; title.y = 0.2; title.opacity = 0.9;
+    title.start = 0.5; title.end = 4.0; title.fadeIn = 0.3; title.fadeOut = 0.6;
+    VideoFXOverlay logo = VideoFXOverlay::Image(dir + "/logo.png", VideoFXAnchor::TopRight, 0.15);
+    logo.margin = 0.03;
+    VideoFXOverlay pip = VideoFXOverlay::Video(dir + "/clips/cam.mp4", VideoFXAnchor::BottomLeft, 0.3, 1.5);
+    pip.start = 2.0; pip.end = 6.0; pip.fadeOut = 0.4;
+    clip.overlays = {title, logo, pip};
+    VideoFXSegment photo = VideoFXSegment::FromImage(dir + "/photos/a.jpg", 4.5,
+                                                     VideoFXImageMotion::Custom(1.1, 0.2, 0.3, 1.6, 0.7, 0.8));
+    photo.motion.easeInOut = false;
+    photo.imageFit = VideoFXImageFit::BlurredBackground;
+    photo.keepInView = {VideoFXRect::Make(0.1, 0.2, 0.15, 0.2), VideoFXRect::Make(0.6, 0.25, 0.1, 0.12)};
+    photo.keepFacesInView = true;
+    photo.transitionIn = VideoFXTransition::Make(VideoFXTransitionType::DiagonalBottomRight, 0.75);
+    VideoFXSegment card = VideoFXSegment::SolidColor(0xFF8800, 2.0);
+    card.transitionIn = VideoFXTransition::Make(VideoFXTransitionType::FadeThroughWhite, 0.5);
+    VideoFXSegment pattern = VideoFXSegment::TestPattern(1.5);
+
+    VideoFXExportSettings settings = VideoFXExportSettings::WebM(720);
+    settings.width = 1280;
+    settings.frameRate = 29.97;
+    settings.fitMode = VideoFXFitMode::Fill;
+    settings.quality = 77;
+    settings.videoBitRate = 4000000;
+    settings.encoderPreset = "slow";
+    settings.keyframeInterval = 1.5;
+    settings.acceleration = VideoFXAcceleration::QuickSync;
+    settings.sampleRate = 44100;
+    settings.channels = 1;
+    settings.audioBitRate = 96000;
+    settings.threads = 3;
+    settings.music = VideoFXMusic::FromFile(dir + "/music/one.mp3", 0.6);
+    settings.music.playlist = {dir + "/music/two.flac", "/library/three.ogg"};
+    settings.music.crossfade = 4.5;
+    settings.music.start = 12.0;
+    settings.music.loop = false;
+    settings.music.fadeIn = 2.0;
+    settings.music.fadeOut = 3.0;
+    settings.music.duckingLevel = 0.2;
+    settings.music.SetDuckingPreset(VideoFXDuckingPreset::LoudEvent);
+    VideoFXAudioClip voice = VideoFXAudioClip::VoiceOver(dir + "/sound/intro.wav", 1.25, 0.8);
+    voice.start = 0.5; voice.end = 7.5; voice.fadeIn = 0.2; voice.fadeOut = 0.3;
+    settings.audioClips = {voice, VideoFXAudioClip::Sound("/library/whoosh.wav", 9.0, 1.5)};
+
+    VideoFXProject p = VideoFXProject::FromTimeline({clip, photo, card, pattern}, settings);
+    p.title = "Ferien \xE2\x80\x93 Sommer";
+    p.outputPath = dir + "/out/holiday.webm";
+    return p;
+}
+
+static VideoFXProject RichSlideshow(const std::string& dir) {
+    VideoFXSlideshowOptions o;
+    o.secondsPerImage = 3.25;
+    o.transition = VideoFXTransition::Make(VideoFXTransitionType::SlideLeft, 0.6);
+    o.motion = VideoFXImageMotion::Make(VideoFXMotionStyle::ZoomOut);
+    o.imageFit = VideoFXImageFit::Contain;
+    o.captions = {"Arrival", "", "Old town"};
+    o.fadeInOut = false;
+    o.music = VideoFXMusic::FromFiles({dir + "/a.mp3", dir + "/b.mp3"}, 0.9);
+    o.matchMusicLength = true;
+    o.beatSync = true;
+    o.beatsPerImage = 8;
+    o.keepInView = {{VideoFXRect::Make(0.4, 0.1, 0.2, 0.25)}, {}, {VideoFXRect::Make(0.1, 0.1, 0.1, 0.1)}};
+    o.keepFacesInView = false;
+    VideoFXExportSettings settings;
+    settings.container = VideoFXContainer::MKV;
+    settings.videoCodec = VideoFXVideoCodec::FFV1;
+    settings.audioCodec = VideoFXAudioCodec::FLAC;
+    VideoFXProject p = VideoFXProject::FromSlideshow({dir + "/p/1.jpg", dir + "/p/2.jpg", "/elsewhere/3.png"}, o,
+                                                     settings);
+    p.title = "Trip";
+    return p;
+}
+
+static void TestProjectFiles() {
+    std::printf("Project files: round trip, paths, versions, errors\n");
+    namespace stdfs = std::filesystem;
+    const std::string dir = "/work/holiday";        // nothing is read: the paths are only text here
+    std::string json, again, error;
+
+    // ---- every field survives a save and a load ----
+    const VideoFXProject rich = RichTimeline(dir);
+    CHECK(VideoFX_ProjectToJson(rich, json, dir) == VideoFXResult::Ok, "a rich timeline written");
+    VideoFXProject loaded;
+    CHECK(VideoFX_ProjectFromJson(json, loaded, dir) == VideoFXResult::Ok, "and read back");
+    CHECK(VideoFX_ProjectToJson(loaded, again, dir) == VideoFXResult::Ok && again == json,
+          "written again it is the same text: every field read");
+    CHECK(loaded.segments.size() == 4 && loaded.title == rich.title, "four segments, the UTF-8 title");
+    if (loaded.segments.size() == 4) {
+        const VideoFXSegment& c = loaded.segments[0];
+        CHECK(c.path == dir + "/clips/beach.mp4" && Near(c.start, 2.5, 1e-12) && Near(c.end, 9.75, 1e-12) &&
+              Near(c.speed, 1.5, 1e-12) && c.mute, "the clip: path back absolute, range, speed, mute");
+        CHECK(c.effects.size() == 4 && c.effects[1].type == VideoFXEffectType::Crop && c.effects[1].width == 640 &&
+              c.effects[2].path == dir + "/looks/warm.cube", "effects: a crop's rectangle, a LUT's file");
+        CHECK(c.overlays.size() == 3 && c.overlays[0].text == rich.segments[0].overlays[0].text &&
+              c.overlays[0].textColor == 0x12AB9F && c.overlays[0].fontPath == "/fonts/Brand.ttf" &&
+              c.overlays[1].imagePath == dir + "/logo.png", "overlays: text, colour, font, image");
+        CHECK(c.overlays.size() == 3 && c.overlays[2].kind == VideoFXOverlayKind::Video &&
+              c.overlays[2].videoPath == dir + "/clips/cam.mp4" && Near(c.overlays[2].videoStart, 1.5, 1e-12) &&
+              Near(c.overlays[2].imageHeight, 0.3, 1e-12) && Near(c.overlays[2].end, 6.0, 1e-12),
+              "a video overlay: its file (relative in the text), start, size, window");
+        CHECK(json.find("\"video\": \"clips/cam.mp4\"") != std::string::npos, "the overlay's file stored relative to the project");
+        const VideoFXSegment& ph = loaded.segments[1];
+        CHECK(ph.kind == VideoFXSourceKind::Image && ph.motion.style == VideoFXMotionStyle::Custom &&
+              Near(ph.motion.endZoom, 1.6, 1e-12) && !ph.motion.easeInOut &&
+              ph.imageFit == VideoFXImageFit::BlurredBackground && ph.keepInView.size() == 2 &&
+              ph.keepFacesInView && ph.transitionIn.type == VideoFXTransitionType::DiagonalBottomRight,
+              "the photo: motion, framing, regions, faces, transition");
+        CHECK(loaded.segments[2].color == 0xFF8800 && loaded.segments[3].kind == VideoFXSourceKind::TestPattern,
+              "colour card and test pattern");
+    }
+    const VideoFXExportSettings& st = loaded.settings;
+    CHECK(st.container == VideoFXContainer::WebM && st.videoCodec == VideoFXVideoCodec::VP9 && st.width == 1280 &&
+          Near(st.frameRate, 29.97, 1e-12) && st.fitMode == VideoFXFitMode::Fill && st.quality == 77 &&
+          st.videoBitRate == 4000000 && st.encoderPreset == "slow" && st.channels == 1 && st.threads == 3 &&
+          Near(st.keyframeInterval, 1.5, 1e-12) && st.acceleration == VideoFXAcceleration::QuickSync &&
+          st.audioClips.size() == 2 && st.audioClips[0].path == dir + "/sound/intro.wav" && st.audioClips[0].ducksMusic &&
+          Near(st.audioClips[0].at, 1.25, 1e-12) && Near(st.audioClips[0].end, 7.5, 1e-12) &&
+          Near(st.audioClips[0].fadeOut, 0.3, 1e-12) && !st.audioClips[1].ducksMusic &&
+          st.audioClips[1].path == "/library/whoosh.wav" && Near(st.audioClips[1].volume, 1.5, 1e-12),
+          "export settings");
+    CHECK(st.music.Songs().size() == 3 && Near(st.music.crossfade, 4.5, 1e-12) && !st.music.loop &&
+          Near(st.music.duckingThresholdDb, -15.0, 1e-12) && Near(st.music.duckingLevel, 0.2, 1e-12),
+          "music: the song list, crossfade, loop, ducking");
+    CHECK(loaded.outputPath == dir + "/out/holiday.webm", "the output file");
+
+    const VideoFXProject show = RichSlideshow(dir);
+    CHECK(VideoFX_ProjectToJson(show, json, dir) == VideoFXResult::Ok &&
+          VideoFX_ProjectFromJson(json, loaded, dir) == VideoFXResult::Ok &&
+          VideoFX_ProjectToJson(loaded, again, dir) == VideoFXResult::Ok && again == json,
+          "a rich slideshow: the same text after a round trip");
+    CHECK(loaded.kind == VideoFXProjectKind::Slideshow && loaded.images.size() == 3 &&
+          loaded.slideshow.captions.size() == 3 && loaded.slideshow.keepInView.size() == 3 &&
+          loaded.slideshow.beatsPerImage == 8 && !loaded.slideshow.keepFacesInView &&
+          loaded.slideshow.music.playlist.size() == 2 && loaded.settings.videoCodec == VideoFXVideoCodec::FFV1,
+          "images, captions, regions, beats, faces off, songs, codecs");
+
+    // ---- paths: inside the project relative, outside absolute ----
+    CHECK(json.find("\"p/1.jpg\"") != std::string::npos && json.find("\"/elsewhere/3.png\"") != std::string::npos,
+          "media in the project's folder relative, others absolute");
+    CHECK(VideoFX_ProjectFromJson(json, loaded, "/moved/there") == VideoFXResult::Ok &&
+          loaded.images[0] == "/moved/there/p/1.jpg" && loaded.images[2] == "/elsewhere/3.png",
+          "a moved project finds its own media where it now is");
+    CHECK(VideoFX_ProjectToJson(show, json) == VideoFXResult::Ok && json.find("\"" + dir + "/p/1.jpg\"") != std::string::npos,
+          "no base directory: paths kept as given");
+
+    // ---- tolerant of what it does not know, strict about what it cannot read ----
+    const std::string minimal = R"({"format": "VideoFX project", "version": 1, "kind": "timeline",
+        "futureKey": {"anything": [1, 2]},
+        "segments": [{"kind": "color", "duration": 2.0, "color": "#00FF00", "newField": true}]})";
+    CHECK(VideoFX_ProjectFromJson(minimal, loaded) == VideoFXResult::Ok && loaded.segments.size() == 1 &&
+          loaded.segments[0].color == 0x00FF00 && Near(loaded.segments[0].speed, 1.0, 1e-12) &&
+          loaded.settings.quality == -1, "unknown keys ignored, missing ones at their defaults");
+    CHECK(VideoFX_ProjectFromJson(R"({"format": "VideoFX project", "version": 99})", loaded) ==
+              VideoFXResult::InvalidArgument && VideoFX_GetLastError().find("newer VideoFX") != std::string::npos,
+          "a newer format refused, and says so");
+    CHECK(VideoFX_ProjectFromJson(R"({"format": "Something else", "version": 1})", loaded) ==
+              VideoFXResult::InvalidArgument, "another program's JSON refused");
+    CHECK(VideoFX_ProjectFromJson("{\"format\": \"VideoFX project\", ", loaded) == VideoFXResult::InvalidArgument,
+          "broken JSON refused");
+    CHECK(VideoFX_ProjectFromJson(R"({"format": "VideoFX project", "version": 1,
+              "segments": [{"kind": "color", "transitionIn": {"type": "spin"}}]})", loaded) ==
+              VideoFXResult::InvalidArgument &&
+              VideoFX_GetLastError().find("segments[0].transitionIn.type") != std::string::npos,
+          "an unknown transition refused, naming where");
+    CHECK(VideoFX_ProjectFromJson(R"({"format": "VideoFX project", "version": 1,
+              "segments": [{"kind": "color", "duration": "long"}]})", loaded) == VideoFXResult::InvalidArgument,
+          "text where a number belongs refused");
+    VideoFXProject memory = VideoFXProject::FromTimeline({VideoFXSegment::FromImageFrame(SolidFrame(8, 8, 1, 2, 3), 1.0)});
+    CHECK(VideoFX_ProjectToJson(memory, json) == VideoFXResult::InvalidArgument, "a photo held only in memory refused");
+
+    // ---- files: written whole, read with missing media reported ----
+    const stdfs::path tmp = stdfs::temp_directory_path() /
+                            ("videofx-project-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    stdfs::create_directories(tmp / "photos");
+    const std::string base = UltraCanvas::PathToUtf8(tmp);
+    { std::ofstream(tmp / "photos" / "1.jpg") << "x"; }
+    VideoFXProject onDisk = VideoFXProject::FromSlideshow({base + "/photos/1.jpg", base + "/photos/2.jpg"});
+    const std::string file = base + "/Ferien \xC3\x9C.vfxproj";
+    CHECK(VideoFX_SaveProject(onDisk, file) == VideoFXResult::Ok, "saved to a UTF-8 file name");
+    CHECK(!stdfs::exists(UltraCanvas::PathFromUtf8(file + ".saving")), "no half-written file left beside it");
+    std::vector<std::string> missing;
+    CHECK(VideoFX_LoadProject(file, loaded, &missing) == VideoFXResult::Ok && loaded.images.size() == 2,
+          "loaded back");
+    CHECK(missing.size() == 1 && missing[0] == base + "/photos/2.jpg", "the one missing photo reported");
+    CHECK(VideoFX_LoadProject(base + "/none.vfxproj", loaded) == VideoFXResult::FileNotFound, "no such project");
+    CHECK(VideoFX_SaveProject(onDisk, base + "/no/such/dir/x.vfxproj") == VideoFXResult::WriteError,
+          "an unwritable place refused");
+    std::error_code ec;
+    stdfs::remove_all(tmp, ec);
+}
+
+// Proxies without the engine: names, what may be cleared, which clips, the
+// crop, and switching a timeline to proxies that exist
+static void TestProxyFiles() {
+    std::printf("Proxies: names, cache folder, switching, clearing\n");
+    namespace stdfs = std::filesystem;
+    VideoFXProxySettings ps;
+
+    // ---- the name: readable stem, a hash of everything that matters ----
+    const std::string a = ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, ps);
+    CHECK(a.rfind("Trip_2026_final-", 0) == 0 && a.size() == std::string("Trip_2026_final-").size() + 16 + 4 &&
+          a.compare(a.size() - 4, 4, ".mp4") == 0, "\"Trip_2026_final-<16 hex>.mp4\"");
+    CHECK(ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, ps) == a, "the same clip, the same name");
+    VideoFXProxySettings taller = ps;
+    taller.height = 720;
+    VideoFXProxySettings sharper = ps;
+    sharper.quality = 80;
+    VideoFXProxySettings sparser = ps;
+    sparser.keyframeInterval = 2.0;
+    VideoFXProxySettings elsewhere = ps;
+    elsewhere.cacheDirectory = "/tmp/somewhere";
+    CHECK(ProxyFileName("/v/Trip 2026 (final).MOV", 1001, 42, ps) != a &&
+          ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 43, ps) != a &&
+          ProxyFileName("/w/Trip 2026 (final).MOV", 1000, 42, ps) != a,
+          "a new name when the clip's size, time or folder differs");
+    CHECK(ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, taller) != a &&
+          ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, sharper) != a &&
+          ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, sparser) != a,
+          "and when the height, quality or keyframe interval does");
+    CHECK(ProxyFileName("/v/Trip 2026 (final).MOV", 1000, 42, elsewhere) == a, "the folder is not part of the name");
+    CHECK(ProxyFileName("/v/\xC3\x9C" "ber-See.mp4", 1, 1, ps).rfind("ber-See-", 0) == 0, "UTF-8 letters become '_', trimmed");
+    CHECK(ProxyFileName("/v/\xE6\x97\xA5\xE6\x9C\xAC.mp4", 1, 1, ps).rfind("clip-", 0) == 0, "nothing ASCII left: \"clip\"");
+    CHECK(ProxyFileName("C:\\Videos\\Day One.mov", 1, 1, ps).rfind("Day_One-", 0) == 0, "Windows separators");
+    CHECK(ProxyFileName("/v/" + std::string(90, 'x') + ".mp4", 1, 1, ps).size() == 40 + 1 + 16 + 4, "a long stem is cut to 40");
+
+    // ---- what Clear may delete ----
+    CHECK(IsProxyFileName(a), "its own names are proxies");
+    const std::string part = a.substr(0, a.size() - 4) + ".0badc0de.part.mp4";
+    CHECK(IsProxyFileName(part), "and its half-made ones");
+    CHECK(!IsProxyFileName("holiday.mp4") && !IsProxyFileName("x-0123456789ABCDEF.mp4") &&
+          !IsProxyFileName("x-0123456789abcdef.mov") && !IsProxyFileName(a.substr(0, a.size() - 4) + ".xyz.part.mp4") &&
+          !IsProxyFileName("notes.txt"), "nothing else");
+
+    // ---- settings ----
+    std::string error;
+    VideoFXProxySettings bad = ps;
+    bad.height = 8;
+    CHECK(!ValidateProxySettings(bad, error) && !error.empty(), "a height under 16 refused");
+    bad = ps;
+    bad.quality = 101;
+    CHECK(!ValidateProxySettings(bad, error), "quality over 100 refused");
+    bad = ps;
+    bad.keyframeInterval = -1.0;
+    CHECK(!ValidateProxySettings(bad, error), "a negative keyframe interval refused");
+    CHECK(ValidateProxySettings(ps, error), "the defaults are valid");
+
+    // ---- which clips a timeline plays ----
+    VideoFXSegment one = VideoFXSegment::FromFile("/v/a.mp4");
+    VideoFXSegment again = VideoFXSegment::FromFile("/v/a.mp4", 2.0, 3.0);
+    again.overlays = {VideoFXOverlay::Video("/v/pip.mp4", VideoFXAnchor::TopRight, 0.3),
+                      VideoFXOverlay::Video("/v/own-size.mp4", VideoFXAnchor::TopRight, 0.0)};
+    const std::vector<std::string> clips =
+        ProxyableClips({one, VideoFXSegment::FromImage("/v/photo.jpg"), again, VideoFXSegment::SolidColor(0, 1.0)});
+    CHECK(clips.size() == 2 && clips[0] == "/v/a.mp4" && clips[1] == "/v/pip.mp4",
+          "each clip once; no photos, colours or own-size picture-in-picture");
+
+    // ---- the crop, in the proxy's pixels ----
+    const VideoFXEffect half = ScaleCrop(VideoFXEffect::Crop(480, 270, 960, 540), 0.5, 0.5, 960, 540);
+    CHECK(half.x == 240 && half.y == 135 && half.width == 480 && half.height == 270, "a crop of a 1080p clip on its 540p proxy");
+    const VideoFXEffect edge = ScaleCrop(VideoFXEffect::Crop(1900, 1070, 20, 10), 0.25, 0.25, 480, 270);
+    CHECK(edge.x + edge.width <= 480 && edge.y + edge.height <= 270 && edge.width >= 1 && edge.height >= 1,
+          "a crop at the edge stays inside, never empty");
+
+    // ---- on disk: paths, switching, clearing ----
+    const stdfs::path dir = stdfs::temp_directory_path() /
+        ("videofx-proxy-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    stdfs::create_directories(dir / "cache");
+    ps.cacheDirectory = UltraCanvas::PathToUtf8(dir / "cache");
+    const std::string clip = UltraCanvas::PathToUtf8(dir / UltraCanvas::PathFromUtf8("Reise \xC3\xBC.mp4"));
+    const std::string pipClip = UltraCanvas::PathToUtf8(dir / "pip.mp4");
+    for (const std::string& f : {clip, pipClip}) {
+        std::ofstream(UltraCanvas::PathFromUtf8(f), std::ios::binary) << "not really a video";
+    }
+    CHECK(ProxyPathFor(UltraCanvas::PathToUtf8(dir / "gone.mp4"), ps).empty(), "no proxy path for a missing clip");
+    const std::string proxy = VideoFX_ProxyPath(clip, ps);
+    CHECK(!proxy.empty() && UltraCanvas::PathFromUtf8(proxy).parent_path() == dir / "cache", "the proxy goes in the cache folder");
+    CHECK(!VideoFX_HasProxy(clip, ps), "not made yet");
+    VideoFXSegment withCrop = VideoFXSegment::FromFile(clip);
+    withCrop.effects = {VideoFXEffect::Crop(0, 0, 4, 4)};
+    VideoFXSegment withPip = VideoFXSegment::FromFile(clip, 1.0, 2.0);
+    withPip.overlays = {VideoFXOverlay::Video(pipClip, VideoFXAnchor::TopRight, 0.3),
+                        VideoFXOverlay::Video(pipClip, VideoFXAnchor::TopLeft, 0.0)};
+    const std::vector<VideoFXSegment> timeline = {VideoFXSegment::FromFile(clip), withPip, withCrop};
+    int replaced = -1;
+    std::vector<VideoFXSegment> used = VideoFX_UseProxies(timeline, ps, &replaced);
+    CHECK(replaced == 0 && used.size() == 3 && used[0].path == clip, "without proxies the timeline is unchanged");
+
+    // a stand-in for a made proxy: Use switches by the file being there
+    std::ofstream(UltraCanvas::PathFromUtf8(proxy), std::ios::binary) << "proxy";
+    std::ofstream(UltraCanvas::PathFromUtf8(VideoFX_ProxyPath(pipClip, ps)), std::ios::binary) << "proxy";
+    CHECK(VideoFX_HasProxy(clip, ps), "made: HasProxy");
+    used = VideoFX_UseProxies(timeline, ps, &replaced);
+    CHECK(used.size() == 3 && used[0].path == proxy && used[1].path == proxy, "file segments switched to the proxy");
+    CHECK(used.size() == 3 && used[1].start == 1.0 && used[1].end == 2.0, "their trim kept: proxies keep the clip's timing");
+    CHECK(used.size() == 3 && used[1].overlays.size() == 2 && used[1].overlays[0].videoPath == VideoFX_ProxyPath(pipClip, ps) &&
+          used[1].overlays[1].videoPath == pipClip, "a sized picture-in-picture switched, an own-size one kept");
+    CHECK(used.size() == 3 && used[2].path == clip, "a cropped clip whose sizes cannot be read stays the original");
+    CHECK(replaced == 3, "three switched");
+
+    // changing the clip moves its proxy name: the old proxy is no longer used
+    std::ofstream(UltraCanvas::PathFromUtf8(clip), std::ios::binary | std::ios::app) << " - edited";
+    CHECK(VideoFX_ProxyPath(clip, ps) != proxy && !VideoFX_HasProxy(clip, ps), "an edited clip needs a new proxy");
+
+    // clearing: proxies and half-made ones go, nothing else
+    std::ofstream(dir / "cache" / UltraCanvas::PathFromUtf8(part), std::ios::binary) << "half";
+    std::ofstream(dir / "cache" / "notes.txt") << "keep me";
+    std::ofstream(dir / "cache" / "holiday.mp4", std::ios::binary) << "keep me too";
+    int files = 0;
+    uint64_t bytes = 0;
+    CHECK_OK(VideoFX_ClearProxies(ps, &files, &bytes), "clear the cache");
+    CHECK(files == 3 && bytes == 5 + 5 + 4, "two proxies and a half-made one, and their bytes");
+    CHECK(stdfs::exists(dir / "cache" / "notes.txt") && stdfs::exists(dir / "cache" / "holiday.mp4") &&
+          !stdfs::exists(UltraCanvas::PathFromUtf8(proxy)), "other files untouched");
+    VideoFXProxySettings none = ps;
+    none.cacheDirectory = UltraCanvas::PathToUtf8(dir / "never-made");
+    CHECK_OK(VideoFX_ClearProxies(none, &files), "clearing a folder that does not exist");
+    CHECK(files == 0, "removes nothing");
+#ifndef _WIN32
+    // the default folder follows XDG_CACHE_HOME
+    const std::string xdg = UltraCanvas::PathToUtf8(dir / "xdg");
+    ::setenv("XDG_CACHE_HOME", xdg.c_str(), 1);
+#ifdef __APPLE__
+    CHECK(VideoFX_GetDefaultProxyDirectory().find("/Library/Caches/VideoFX/Proxies") != std::string::npos,
+          "the default: ~/Library/Caches/VideoFX/Proxies");
+#else
+    CHECK(VideoFX_GetDefaultProxyDirectory() == xdg + "/VideoFX/Proxies", "the default: $XDG_CACHE_HOME/VideoFX/Proxies");
+#endif
+    ::unsetenv("XDG_CACHE_HOME");
+#endif
+#ifndef VIDEOFX_HAS_FFMPEG
+    std::string editPath;
+    CHECK(VideoFX_CreateProxy(clip, ps, {}, &editPath) == VideoFXResult::NotAvailable,
+          "without the engine a proxy cannot be made");
+#endif
+    std::error_code ec;
+    stdfs::remove_all(dir, ec);
+}
+
 #ifdef VIDEOFX_HAS_FFMPEG
 
 namespace fs = std::filesystem;
@@ -721,6 +1138,10 @@ static double StreamDuration(const VideoFXMediaInfo& info, VideoFXStreamKind kin
 static void TestTransitionsAndOverlays(const VideoFXExportSettings& base);
 static void TestStillImages(const VideoFXExportSettings& base);
 static void TestMusic(const VideoFXExportSettings& base);
+static void TestPreview(const VideoFXExportSettings& base);
+static void TestProxies(const VideoFXExportSettings& base);
+static void TestEncoders(const VideoFXExportSettings& base);
+static void TestAudioClips(const VideoFXExportSettings& base);
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -930,6 +1351,10 @@ static void TestEngine() {
     TestTransitionsAndOverlays(base);
     TestStillImages(base);
     TestMusic(base);
+    TestPreview(base);
+    TestProxies(base);
+    TestEncoders(base);
+    TestAudioClips(base);
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -1064,6 +1489,76 @@ static void TestTransitionsAndOverlays(const VideoFXExportSettings& base) {
     VideoFX_ExtractFrame(fadeOut, 0.0, f);
     PixelAt(f, f.width - 5, f.height - 5, pr, pg, pb);
     CHECK(pg < 40, "fully faded out at the start");
+
+    // ---- picture-in-picture: a video overlay on a card, a photo and a file ----
+    {
+        const std::string greenFile = TempPath("pip-green.mkv"), redFile = TempPath("pip-red.mkv");
+        CHECK_OK(VideoFX_Export({VideoFXSegment::SolidColor(0x00FF00, 3.0)}, greenFile, s), "a green clip to lay over");
+        CHECK_OK(VideoFX_Export({VideoFXSegment::SolidColor(0xFF0000, 1.0)}, redFile, s), "a red clip, 1 s");
+        VideoFXOverlay pip = VideoFXOverlay::Video(greenFile, VideoFXAnchor::TopLeft, 0.25);   // 40 x 30 px
+        pip.margin = 0.0;
+        pip.start = 0.5;
+        VideoFXSegment blueCard = VideoFXSegment::SolidColor(0x0000FF, 2.0);
+        blueCard.overlays = {pip};
+        const std::string onCard = TempPath("pip-card.mkv");
+        CHECK_OK(VideoFX_Export({blueCard}, onCard, s), "video overlay on a card");
+        CHECK_OK(VideoFX_Probe(onCard, info), "probe it");
+        CHECK(Near(info.duration, 2.0, 0.1), "the card's own length, not the overlay file's");
+        VideoFX_ExtractFrame(onCard, 0.2, f);
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pb > 200 && pg < 60, "before its start: the card");
+        VideoFX_ExtractFrame(onCard, 1.5, f);
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pg > 200 && pb < 60, "then the overlay's picture, top left, a quarter high");
+        PixelAt(f, 45, 10, pr, pg, pb);
+        CHECK(pb > 200 && pg < 60, "and nothing beyond its 40 px");
+        PixelAt(f, 100, 100, pr, pg, pb);
+        CHECK(pb > 200 && pg < 60, "the rest of the frame untouched");
+
+        VideoFXSegment photo = VideoFXSegment::FromImageFrame(SolidFrame(160, 120, 0, 0, 255), 2.0);
+        photo.motion = VideoFXImageMotion::Make(VideoFXMotionStyle::Still);
+        photo.overlays = {pip};
+        const std::string onPhoto = TempPath("pip-photo.mkv");
+        CHECK_OK(VideoFX_Export({photo}, onPhoto, s), "video overlay on a photo");
+        VideoFX_ExtractFrame(onPhoto, 1.5, f);
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pg > 200 && pb < 60, "over the photo too");
+
+        // on a file, from 0.5 s into a 1 s clip: it runs out after 0.5 s and its last frame holds
+        VideoFXOverlay late = VideoFXOverlay::Video(redFile, VideoFXAnchor::BottomRight, 0.5, 0.5);
+        late.margin = 0.0;
+        VideoFXSegment onFile = VideoFXSegment::FromFile(greenFile, 0.0, 2.0);
+        onFile.overlays = {late};
+        const std::string fileOut = TempPath("pip-file.mkv");
+        CHECK_OK(VideoFX_Export({onFile}, fileOut, s), "video overlay on a file");
+        VideoFX_ExtractFrame(fileOut, 0.2, f);
+        PixelAt(f, f.width - 5, f.height - 5, pr, pg, pb);
+        CHECK(pr > 200 && pg < 60, "the red clip from its half-second, bottom right");
+        PixelAt(f, 5, 5, pr, pg, pb);
+        CHECK(pg > 200 && pr < 60, "the green file behind it");
+        VideoFX_ExtractFrame(fileOut, 1.8, f);
+        PixelAt(f, f.width - 5, f.height - 5, pr, pg, pb);
+        CHECK(pr > 200 && pg < 60, "long after the clip ran out: its last frame holds");
+
+        VideoFXOverlay faded = pip;
+        faded.start = 0.0;
+        faded.end = 1.0;
+        faded.fadeIn = 1.0;
+        blueCard.overlays = {faded};
+        const std::string fadeOut = TempPath("pip-fade.mkv");
+        CHECK_OK(VideoFX_Export({blueCard}, fadeOut, s), "video overlay fading in");
+        VideoFX_ExtractFrame(fadeOut, 0.12, f);
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pg < 100 && pb > 150, "barely there at the start of the fade");
+        VideoFX_ExtractFrame(fadeOut, 1.5, f);
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pb > 200 && pg < 60, "gone after its end");
+
+        VideoFXOverlay missing = VideoFXOverlay::Video(TempPath("nowhere.mkv"));
+        blueCard.overlays = {missing};
+        CHECK(VideoFX_Export({blueCard}, TempPath("pip-missing.mkv"), s) != VideoFXResult::Ok &&
+              VideoFX_GetLastError().find("nowhere.mkv") != std::string::npos, "a missing overlay file fails before anything is written");
+    }
 
     // ---- text ----
     if (VideoFX_IsTextOverlayAvailable()) {
@@ -1346,6 +1841,22 @@ static void TestStillImages(const VideoFXExportSettings& base) {
         }
     }
 
+    // ---- a project renders as its timeline does ----
+    {
+        VideoFXProject project = VideoFXProject::FromTimeline(
+            {VideoFXSegment::TestPattern(1.0), VideoFXSegment::SolidColor(0x0000FF, 1.0)}, s);
+        project.segments[1].transitionIn = VideoFXTransition::Crossfade(0.5);
+        CHECK(VideoFX_RenderProject(project) == VideoFXResult::InvalidArgument, "no output named: refused");
+        const std::string projectFile = TempPath("timeline.vfxproj");
+        project.outputPath = TempPath("from-project.mkv");
+        CHECK_OK(VideoFX_SaveProject(project, projectFile), "save a timeline project");
+        VideoFXProject back;
+        CHECK_OK(VideoFX_LoadProject(projectFile, back), "load it");
+        CHECK_OK(VideoFX_RenderProject(back), "render it to its own output");
+        CHECK_OK(VideoFX_Probe(project.outputPath, info), "probe it");
+        CHECK(Near(info.duration, 1.5, 0.05), "1 s + 1 s with a 0.5 s crossfade: 1.5 s");
+    }
+
     // ---- errors ----
     CHECK(VideoFX_CreateSlideshow({}, TempPath("x.mkv")) == VideoFXResult::InvalidArgument, "no images");
     CHECK(VideoFX_CreateSlideshow({TempPath("none.jpg")}, TempPath("x.mkv")) == VideoFXResult::FileNotFound,
@@ -1566,6 +2077,39 @@ static void TestMusic(const VideoFXExportSettings& base) {
     CHECK(!beatInfo.HasBeat(), "a steady tone has no beat");
     CHECK(VideoFX_DetectBeats(TempPath("none.wav"), beatInfo) == VideoFXResult::FileNotFound, "missing file");
 
+    // ---- waveform: the loudness envelope a timeline draws ----
+    VideoFXWaveform wave;
+    CHECK_OK(VideoFX_ExtractWaveform(click, wave, 10.0), "waveform of the click track, 10 blocks a second");
+    CHECK(wave.IsValid() && wave.sampleRate == 44100 && wave.samplesPerBlock == 4410, "44.1 kHz, 4410 samples a block");
+    CHECK(wave.totalBlocks == 120 && Near(wave.duration, 12.0, 0.001) && wave.start == 0.0, "12 s: 120 blocks");
+    CHECK(wave.totalBlocks == 120 && wave.maxValues[0] == 0.0f && wave.minValues[0] == 0.0f && wave.rmsValues[0] == 0.0f,
+          "the first tenth of a second is silent");
+    CHECK(wave.totalBlocks == 120 && wave.maxValues[2] > 0.3f && wave.minValues[2] < -0.1f && wave.rmsValues[2] > 0.05f,
+          "the click at 0.25 s is in block 2");
+    CHECK(wave.totalBlocks == 120 && wave.maxValues[7] > 0.3f && wave.maxValues[8] == 0.0f,
+          "the next click at 0.75 s is in block 7, and block 8 is silent again");
+    CHECK(wave.Peak() > 0.3f && wave.Peak() <= 1.0f, "peak from the clicks, within 0..1");
+    CHECK(wave.BlockAt(0.25) == 2 && wave.BlockAt(11.99) == 119 && wave.BlockAt(12.0) == -1, "BlockAt");
+    CHECK_OK(VideoFX_ExtractWaveform(click, wave, 10.0, 1.0, 2.0), "seconds 1 to 2 only");
+    CHECK(wave.totalBlocks == 10 && Near(wave.start, 1.0, 0.001) && Near(wave.duration, 1.0, 0.001), "10 blocks from 1 s");
+    CHECK(wave.totalBlocks == 10 && wave.maxValues[2] > 0.3f && wave.maxValues[0] == 0.0f, "the click at 1.25 s is in its block 2");
+    CHECK(wave.BlockAt(0.5) == -1 && wave.BlockAt(1.25) == 2, "BlockAt counts from the range's start");
+    CHECK_OK(VideoFX_ExtractWaveform(click, wave, 10.0, 11.95), "the last 50 ms: one partial block");
+    CHECK(wave.totalBlocks == 1 && Near(wave.duration, 0.05, 0.001), "one block, 0.05 s");
+    CHECK_OK(VideoFX_ExtractWaveform(longSong, wave, 50.0), "waveform of the encoded 6 s tone");
+    CHECK(wave.IsValid() && Near(wave.duration, 6.0, 0.3) && Near(wave.totalBlocks, 300, 15), "about 300 blocks");
+    CHECK(Near(wave.Peak(), 0.125, 0.04), "the test tone peaks at 1/8");
+    CHECK(wave.IsValid() && Near(wave.rmsValues[wave.totalBlocks / 2], 0.125 / std::sqrt(2.0), 0.03),
+          "and its RMS is a sine's");
+    const std::string silentClip = TempPath("silent.mkv");
+    CHECK_OK(VideoFX_GenerateTestClip(silentClip, 1.0, 64, 48, 25.0, false), "make a clip without sound");
+    CHECK(VideoFX_ExtractWaveform(silentClip, wave) == VideoFXResult::NoMediaStreams, "no sound: NoMediaStreams");
+    CHECK(VideoFX_ExtractWaveform(TempPath("none.wav"), wave) == VideoFXResult::FileNotFound, "missing file");
+    CHECK(VideoFX_ExtractWaveform(click, wave, 0.5) == VideoFXResult::InvalidArgument, "blocksPerSecond below 1");
+    CHECK(VideoFX_ExtractWaveform(click, wave, 10.0, 2.0, 1.0) == VideoFXResult::InvalidArgument, "end before start");
+    CHECK(VideoFX_ExtractWaveform(click, wave, 10.0, 20.0) == VideoFXResult::InvalidArgument, "start past the end");
+    CHECK(!wave.IsValid(), "a failed call leaves an empty waveform");
+
     const uint32_t colours[4] = {0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF};
     std::vector<std::string> cardsOnBeat;
     for (int i = 0; i < 4; ++i) {
@@ -1635,6 +2179,489 @@ static void TestMusic(const VideoFXExportSettings& base) {
     CHECK(!Exists(TempPath("x.wav")) && !Exists(TempPath("x.mkv")), "nothing written by refused exports");
 }
 
+// ============================================================================
+// PREVIEW - a timeline's frames without an export
+// ============================================================================
+static void TestPreview(const VideoFXExportSettings& base) {
+    std::printf("\n-- preview --\n");
+    const std::string clip = TempPath("pattern.mkv");      // 320x240, 25 fps, 3 s, from TestEngine
+
+    // red card 1 s | pattern 0..2 s, cross-fade 0.5 in | blue card with text 1 s | green photo 1 s, fade in
+    VideoFXSegment red = VideoFXSegment::SolidColor(0xFF0000, 1.0);
+    VideoFXSegment file = VideoFXSegment::FromFile(clip, 0.0, 2.0);
+    file.transitionIn = VideoFXTransition::Crossfade(0.5);
+    VideoFXSegment blue = VideoFXSegment::SolidColor(0x0000FF, 1.0);
+    const std::string redClip = TempPath("preview-red.mkv");
+    {
+        VideoFXExportSettings small = base;
+        small.width = 160; small.height = 120; small.frameRate = 25.0;
+        CHECK_OK(VideoFX_Export({VideoFXSegment::SolidColor(0xFF0000, 1.0)}, redClip, small), "a red clip for picture-in-picture");
+    }
+    VideoFXOverlay pip = VideoFXOverlay::Video(redClip, VideoFXAnchor::TopLeft, 0.5);   // 160 x 120 of the 320 x 240
+    pip.margin = 0.0;
+    pip.start = 0.25;
+    blue.overlays = {VideoFXOverlay::Text("Preview", VideoFXAnchor::Bottom, 0.1), pip};
+    VideoFXSegment photo = VideoFXSegment::FromImageFrame(SolidFrame(320, 240, 0, 255, 0), 1.0);
+    photo.effects = {VideoFXEffect::FadeIn(0.5)};
+    const std::vector<VideoFXSegment> timeline = {red, file, blue, photo};
+
+    VideoFXExportSettings s = base;
+    s.width = 320; s.height = 240; s.frameRate = 25.0;
+
+    VideoFXPreview preview;
+    CHECK(!preview.IsOpen(), "closed before Open");
+    CHECK_OK(preview.Open(timeline, s), "open the timeline");
+    CHECK(preview.IsOpen(), "open");
+    CHECK(preview.GetWidth() == 320 && preview.GetHeight() == 240, "the settings' size");
+    CHECK(Near(preview.GetFrameRate(), 25.0, 0.01), "the settings' rate");
+    CHECK(Near(preview.GetDuration(), 4.5, 0.01), "1 + 2 + 1 + 1 less the 0.5 s overlap");
+
+    double into = -1.0;
+    CHECK(preview.SegmentAt(0.2, &into) == 0 && Near(into, 0.2, 1e-6), "the card at 0.2 s");
+    CHECK(preview.SegmentAt(0.7, &into) == 1 && Near(into, 0.2, 1e-6), "inside the overlap: the clip being entered");
+    CHECK(preview.SegmentAt(2.0, &into) == 1 && Near(into, 1.5, 1e-6), "the clip at 2.0 s");
+    CHECK(preview.SegmentAt(2.6, &into) == 2 && Near(into, 0.1, 1e-6), "the blue card at 2.6 s");
+    CHECK(preview.SegmentAt(3.6, &into) == 3 && Near(into, 0.1, 1e-6), "the photo at 3.6 s");
+    CHECK(preview.SegmentAt(4.5) == -1 && preview.SegmentAt(-0.1) == -1, "nothing at the end or before the start");
+
+    VideoFXFrame f;
+    double r, g, b;
+    CHECK_OK(preview.RenderFrame(0.2, f), "render the card");
+    CHECK(f.IsValid() && f.width == 320 && f.height == 240, "a 320x240 RGBA frame");
+    CHECK(Near(f.timestamp, 0.2, 1e-6), "stamped with the timeline time");
+    CentreColour(f, r, g, b);
+    CHECK(r > 200 && g < 40 && b < 40, "the card is red");
+
+    CHECK_OK(preview.RenderFrame(0.75, f), "render inside the cross-fade");
+    CentreColour(f, r, g, b);
+    CHECK(r > 40 && r < 220, "mid-fade: red blended with the pattern");
+
+    CHECK_OK(preview.RenderFrame(2.0, f), "render the file");
+    VideoFXFrame direct;
+    CHECK_OK(VideoFX_ExtractFrame(clip, 1.5, direct), "the same frame straight from the file");
+    double dr, dg, db;
+    CentreColour(f, r, g, b);
+    CentreColour(direct, dr, dg, db);
+    CHECK(std::fabs(r - dr) < 24 && std::fabs(g - dg) < 24 && std::fabs(b - db) < 24,
+          "the file's frame at its own 1.5 s");
+    bool onward = true;    // scrubbing forward decodes on without a seek: the frames must still be the right ones
+    for (double step : {0.04, 0.2, 0.4}) {    // the file plays until 2.5 s
+        CHECK_OK(preview.RenderFrame(2.0 + step, f), "render a little later");
+        CHECK_OK(VideoFX_ExtractFrame(clip, 1.5 + step, direct), "the same straight from the file");
+        onward = onward && f.width == direct.width && f.height == direct.height
+                 && std::equal(f.pixels.begin(), f.pixels.end(), direct.pixels.begin(),
+                               [](uint8_t p, uint8_t q) { return std::abs(int(p) - int(q)) <= 2; });
+    }
+    CHECK(onward, "scrubbing forward gives the frames a fresh seek would");
+    CHECK_OK(preview.RenderFrame(2.0, f), "and back again");
+    CHECK_OK(VideoFX_ExtractFrame(clip, 1.5, direct), "the file at 1.5 s again");
+    CHECK(std::equal(f.pixels.begin(), f.pixels.end(), direct.pixels.begin(),
+                     [](uint8_t p, uint8_t q) { return std::abs(int(p) - int(q)) <= 2; }),
+          "a seek back gives the right frame too");
+
+    CHECK_OK(preview.RenderFrame(2.6, f), "render the blue card with text");
+    CentreColour(f, r, g, b);
+    CHECK(b > 200 && r < 40, "blue in the middle");
+    int whiteish = 0;
+    for (int y = f.height * 3 / 4; y < f.height; ++y)
+        for (int x = 0; x < f.width; ++x) {
+            int pr, pg, pb;
+            PixelAt(f, x, y, pr, pg, pb);
+            if (pr > 180 && pg > 180) ++whiteish;
+        }
+    CHECK(whiteish > 50, "the text is drawn along the bottom");
+    {
+        int pr, pg, pb;
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pb > 200 && pr < 40, "at 0.1 s into the card the video overlay has not started");
+        CHECK_OK(preview.RenderFrame(3.0, f), "render the card with the overlay showing");
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pr > 200 && pb < 40, "the red clip in the top left");
+        PixelAt(f, 200, 200, pr, pg, pb);
+        CHECK(pb > 200 && pr < 40, "the card around it");
+        CHECK_OK(preview.RenderFrame(3.2, f), "render a little later");
+        PixelAt(f, 10, 10, pr, pg, pb);
+        CHECK(pr > 200 && pb < 40, "still there, decoded onward");
+    }
+
+    CHECK_OK(preview.RenderFrame(3.5, f), "render the photo at its first frame");
+    CentreColour(f, r, g, b);
+    CHECK(g < 60, "the fade-in starts black");
+    CHECK_OK(preview.RenderFrame(4.4, f), "render the photo faded in");
+    CentreColour(f, r, g, b);
+    CHECK(g > 200 && r < 40, "green once the fade is over");
+
+    CHECK_OK(preview.RenderFrame(2.0, f, 100, 100), "render scaled");
+    CHECK(f.width == 100 && f.height == 75, "scaled keeping 4:3");
+    CHECK(preview.RenderFrame(4.5, f) == VideoFXResult::InvalidArgument, "past the end is refused");
+    CHECK(preview.RenderFrame(-1.0, f) == VideoFXResult::InvalidArgument, "so is before the start");
+
+    preview.Close();
+    CHECK(!preview.IsOpen() && preview.GetDuration() == 0.0, "closed again");
+    CHECK(preview.RenderFrame(0.0, f) == VideoFXResult::InvalidArgument, "nothing to render when closed");
+
+    // ---- the one-call form ----
+    CHECK_OK(VideoFX_RenderFrame(timeline, 0.2, f, s), "one frame in one call");
+    CentreColour(f, r, g, b);
+    CHECK(r > 200 && g < 40, "and it is the red card");
+    CHECK_OK(VideoFX_RenderFrame({red, blue}, 1.5, f), "default settings take the first segment's size");
+    CHECK(f.width > 0 && f.height > 0, "a frame of some size");
+    CHECK(VideoFX_RenderFrame({}, 0.0, f) == VideoFXResult::InvalidArgument, "no segments");
+    VideoFXSegment missing = VideoFXSegment::FromFile(TempPath("nowhere.mkv"));
+    CHECK(VideoFX_RenderFrame({missing}, 0.0, f) == VideoFXResult::FileNotFound, "a missing file");
+
+    // ---- a slideshow's plan ----
+    std::vector<std::string> photos;
+    const uint8_t rgb[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
+    for (int i = 0; i < 3; ++i) {
+        photos.push_back(TempPath("plan" + std::to_string(i) + ".png"));
+        CHECK_OK(VideoFX_SaveFrameImage(SolidFrame(160, 120, rgb[i][0], rgb[i][1], rgb[i][2]), photos.back()),
+                 "a slideshow photo");
+    }
+    VideoFXSlideshowOptions options;
+    options.secondsPerImage = 2.0;
+    options.transition = VideoFXTransition::Crossfade(0.5);
+    options.captions = {"one", "", "three"};
+    options.keepFacesInView = false;
+    std::vector<VideoFXSegment> plan;
+    VideoFXExportSettings planned;
+    CHECK_OK(VideoFX_PlanSlideshow(photos, options, {}, plan, planned), "plan a slideshow");
+    CHECK(plan.size() == 3, "one segment per photo");
+    bool images = plan.size() == 3;
+    for (const auto& seg : plan) images = images && seg.kind == VideoFXSourceKind::Image && Near(seg.duration, 2.0, 1e-6);
+    CHECK(images, "image segments of two seconds");
+    CHECK(plan.size() == 3 && plan[0].path == photos[0] && plan[2].path == photos[2], "in the order given");
+    CHECK(plan.size() == 3 && plan[0].transitionIn.type == VideoFXTransitionType::Cut
+          && plan[1].transitionIn.type == VideoFXTransitionType::Crossfade && Near(plan[1].transitionIn.duration, 0.5, 1e-6),
+          "the transition on every cut but the first");
+    CHECK(plan.size() == 3 && plan[0].overlays.size() == 1 && plan[0].overlays[0].text == "one"
+          && plan[1].overlays.empty() && plan[2].overlays.size() == 1 && plan[2].overlays[0].text == "three",
+          "captions where given");
+    bool fades = plan.size() == 3 && !plan[0].effects.empty() && plan[0].effects.front().type == VideoFXEffectType::FadeIn
+                 && !plan[2].effects.empty() && plan[2].effects.back().type == VideoFXEffectType::FadeOut;
+    CHECK(fades, "fade in at the start, out at the end");
+    CHECK(planned.width == 1920 && planned.height == 1080, "the slideshow's default size");
+    CHECK_OK(VideoFX_RenderFrame(plan, 3.0, f, planned, 192, 108), "a frame of the plan");
+    CHECK(f.width == 192 && f.height == 108, "scaled to the request");
+    CentreColour(f, r, g, b);
+    CHECK(g > 150 && r < 80, "the second photo at 3 s");
+    CHECK(VideoFX_PlanSlideshow({}, options, {}, plan, planned) == VideoFXResult::InvalidArgument, "no photos");
+}
+
+// Mean absolute difference of two RGBA frames of one size, 0..255; -1 when they differ in size
+static double MeanDifference(const VideoFXFrame& a, const VideoFXFrame& b) {
+    if (a.width != b.width || a.height != b.height || a.pixels.size() != b.pixels.size()) return -1.0;
+    double sum = 0.0;
+    size_t n = 0;
+    for (size_t i = 0; i < a.pixels.size(); ++i) {
+        if (i % 4 == 3) continue;
+        sum += std::abs(static_cast<int>(a.pixels[i]) - static_cast<int>(b.pixels[i]));
+        ++n;
+    }
+    return n ? sum / n : 0.0;
+}
+
+static void TestProxies(const VideoFXExportSettings& base) {
+    std::printf("\n-- proxies --\n");
+    VideoFXProxySettings ps;
+    ps.height = 180;
+    ps.cacheDirectory = TempPath("proxies");
+
+    // a 640x360 clip with sound, under a UTF-8 name
+    const std::string clip = TempPath("Reise \xC3\xBC.mkv");
+    {
+        VideoFXExportSettings s = base;
+        s.width = 640; s.height = 360; s.frameRate = 25.0;
+        CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(3.0)}, clip, s), "a 640x360 clip");
+    }
+
+    std::string editPath;
+    double last = -1.0;
+    bool rising = true;
+    CHECK_OK(VideoFX_CreateProxy(clip, ps, [&](double f) { rising = rising && f >= last; last = f; return true; }, &editPath),
+             "make its proxy");
+    CHECK(editPath == VideoFX_ProxyPath(clip, ps) && Exists(editPath) && VideoFX_HasProxy(clip, ps), "the proxy is made where it belongs");
+    CHECK(rising && last > 0.9, "progress rises to the end");
+    CHECK(VideoFX_GetLastError().empty(), "no error left behind");
+    VideoFXMediaInfo info, orig;
+    CHECK_OK(VideoFX_Probe(editPath, info), "probe the proxy");
+    CHECK_OK(VideoFX_Probe(clip, orig), "probe the clip");
+    CHECK(info.width == 320 && info.height == 180, "320x180: the clip's shape at the proxy height");
+    CHECK(Near(info.frameRate, 25.0, 0.01) && info.HasAudio(), "its frame rate, and its sound");
+    CHECK(Near(info.duration, orig.duration, 0.1), "as long as the clip");
+    {
+        // the same picture at the same time: the clip scaled down vs the proxy
+        VideoFXFrame a, b, c;
+        CHECK_OK(VideoFX_ExtractFrame(clip, 1.2, a, 320, 180), "the clip's frame at 1.2 s");
+        CHECK_OK(VideoFX_ExtractFrame(editPath, 1.2, b), "the proxy's frame at 1.2 s");
+        CHECK_OK(VideoFX_ExtractFrame(editPath, 2.4, c), "and at 2.4 s");
+        const double same = MeanDifference(a, b), other = MeanDifference(a, c);
+        std::printf("        difference: same time %.1f, 1.2 s later %.1f\n", same, other);
+        CHECK(same >= 0.0 && same < 12.0, "the proxy shows the clip's picture at that time");
+        CHECK(other > same, "and not another moment's");
+    }
+
+    // made once
+    const auto before = fs::last_write_time(UltraCanvas::PathFromUtf8(editPath));
+    std::string again;
+    CHECK_OK(VideoFX_CreateProxy(clip, ps, {}, &again), "asked again");
+    CHECK(again == editPath && fs::last_write_time(UltraCanvas::PathFromUtf8(editPath)) == before, "the proxy is not made again");
+
+    // nothing to gain: a small clip, a sound file
+    const std::string small = TempPath("small.mkv");
+    const std::string wav = TempPath("tone.wav");
+    {
+        VideoFXExportSettings s = base;
+        s.width = 160; s.height = 120; s.frameRate = 25.0;
+        CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(1.0)}, small, s), "a 160x120 clip");
+        CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(1.0)}, wav, VideoFXExportSettings::AudioOnlyWAV()), "a WAV");
+    }
+    std::string edit;
+    CHECK_OK(VideoFX_CreateProxy(small, ps, {}, &edit), "a clip no taller than a proxy");
+    CHECK(edit == small && !VideoFX_HasProxy(small, ps), "is edited as it is: no proxy made");
+    CHECK_OK(VideoFX_CreateProxy(wav, ps, {}, &edit), "a sound file");
+    CHECK(edit == wav && !VideoFX_HasProxy(wav, ps), "is edited as it is too");
+
+    // refused and cancelled
+    CHECK(VideoFX_CreateProxy(TempPath("gone.mkv"), ps) == VideoFXResult::FileNotFound, "a missing clip: FileNotFound");
+    VideoFXProxySettings bad = ps;
+    bad.height = 0;
+    CHECK(VideoFX_CreateProxy(clip, bad) == VideoFXResult::InvalidArgument, "a height of 0: InvalidArgument");
+    VideoFXProxySettings other = ps;
+    other.height = 120;
+    CHECK(VideoFX_CreateProxy(clip, other, [](double) { return false; }) == VideoFXResult::Cancelled, "cancelled");
+    bool leftovers = false;
+    for (const auto& e : fs::directory_iterator(UltraCanvas::PathFromUtf8(ps.cacheDirectory)))
+        leftovers = leftovers || UltraCanvas::PathToUtf8(e.path().filename()).find(".part") != std::string::npos;
+    CHECK(!VideoFX_HasProxy(clip, other) && !leftovers, "a cancelled proxy leaves no file, whole or half");
+
+    // a timeline: every clip once, then played from the proxies
+    const std::string pipClip = TempPath("pip-source.mkv");
+    {
+        VideoFXExportSettings s = base;
+        s.width = 480; s.height = 270; s.frameRate = 25.0;
+        CHECK_OK(VideoFX_Export({VideoFXSegment::SolidColor(0xFF0000, 2.0)}, pipClip, s), "a 480x270 red clip");
+    }
+    VideoFXSegment first = VideoFXSegment::FromFile(clip, 0.0, 1.5);
+    VideoFXSegment second = VideoFXSegment::FromFile(clip, 1.0, 2.5);
+    second.effects = {VideoFXEffect::Crop(160, 90, 320, 180)};
+    VideoFXOverlay pip = VideoFXOverlay::Video(pipClip, VideoFXAnchor::TopLeft, 0.25);
+    pip.margin = 0.0;
+    second.overlays = {pip};
+    const std::vector<VideoFXSegment> timeline = {first, VideoFXSegment::FromFile(small), second};
+    CHECK_OK(VideoFX_ClearProxies(ps), "start from an empty cache");
+    CHECK(!VideoFX_HasProxy(clip, ps), "emptied");
+    double seen = -1.0;
+    bool monotone = true;
+    CHECK_OK(VideoFX_CreateProxies(timeline, ps, [&](double f) { monotone = monotone && f >= seen - 1e-9; seen = f; return true; }),
+             "proxies for a whole timeline");
+    CHECK(monotone && Near(seen, 1.0, 1e-9), "one progress from 0 to 1 over all of them");
+    CHECK(VideoFX_HasProxy(clip, ps) && VideoFX_HasProxy(pipClip, ps) && !VideoFX_HasProxy(small, ps),
+          "the clip and the picture-in-picture source; not the small clip");
+    int replaced = 0;
+    const std::vector<VideoFXSegment> proxied = VideoFX_UseProxies(timeline, ps, &replaced);
+    CHECK(replaced == 3, "two segments and the overlay switched");
+    CHECK(proxied[1].path == small, "the small clip plays itself");
+    CHECK(proxied[2].effects.size() == 1 && proxied[2].effects[0].x == 80 && proxied[2].effects[0].y == 45 &&
+          proxied[2].effects[0].width == 160 && proxied[2].effects[0].height == 90, "the crop scaled to the proxy");
+
+    // the preview over proxies matches the preview over the originals
+    VideoFXExportSettings s = base;
+    s.width = 320; s.height = 180; s.frameRate = 25.0;
+    for (double t : {0.6, 3.0}) {         // the first segment; the cropped one with its overlay
+        VideoFXFrame a, b;
+        CHECK_OK(VideoFX_RenderFrame(timeline, t, a, s), "a frame of the originals");
+        CHECK_OK(VideoFX_RenderFrame(proxied, t, b, s), "the same frame from the proxies");
+        const double d = MeanDifference(a, b);
+        std::printf("        at %.1f s: difference %.1f\n", t, d);
+        CHECK(d >= 0.0 && d < 14.0, "the proxies show the same picture");
+    }
+
+    // the keyframe interval of an export
+    VideoFXExportSettings k = base;
+    k.keyframeInterval = -1.0;
+    CHECK(VideoFX_Export({VideoFXSegment::TestPattern(0.5)}, TempPath("k.mkv"), k) == VideoFXResult::InvalidArgument,
+          "a negative keyframe interval: InvalidArgument");
+
+    int files = 0;
+    CHECK_OK(VideoFX_ClearProxies(ps, &files), "clear the proxies");
+    CHECK(files == 2 && !VideoFX_HasProxy(clip, ps), "both gone");
+}
+
+// Software, hardware, or one hardware family. The machine running the tests
+// may have no graphics hardware at all, so what is checked is that every
+// answer is consistent, a missing family fails cleanly, Hardware falls back,
+// and - where some hardware encoder does work - that it really encodes.
+static void TestEncoders(const VideoFXExportSettings& base) {
+    std::printf("\n-- encoders: software and hardware --\n");
+    const auto t0 = std::chrono::steady_clock::now();
+    const std::vector<VideoFXEncoderInfo> h264 = VideoFX_ListVideoEncoders(VideoFXVideoCodec::H264);
+    const double firstMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    bool allH264 = true, kindsMatch = true;
+    for (const VideoFXEncoderInfo& e : h264) {
+        std::printf("        %-20s %-16s %s\n", e.name.c_str(), VideoFX_AccelerationName(e.acceleration),
+                    e.works ? "works" : "not here");
+        allH264 = allH264 && e.codec == VideoFXVideoCodec::H264;
+        kindsMatch = kindsMatch && (e.acceleration == VideoFXAcceleration::Software) ==
+                     (e.name.rfind("lib", 0) == 0);
+    }
+    CHECK(allH264, "only H.264 encoders listed for H.264");
+    CHECK(kindsMatch, "software ones are the lib* encoders, the rest hardware");
+    const auto t1 = std::chrono::steady_clock::now();
+    const std::vector<VideoFXEncoderInfo> again = VideoFX_ListVideoEncoders(VideoFXVideoCodec::H264);
+    const double secondMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+    bool same = again.size() == h264.size();
+    for (size_t i = 0; same && i < again.size(); ++i) same = again[i].name == h264[i].name && again[i].works == h264[i].works;
+    std::printf("        first list %.0f ms, second %.1f ms\n", firstMs, secondMs);
+    CHECK(same && secondMs < 50.0, "each encoder tried once: the second answer is the same, at once");
+
+    const std::vector<VideoFXEncoderInfo> all = VideoFX_ListVideoEncoders();
+    bool mpeg4 = false;
+    for (const VideoFXEncoderInfo& e : all) mpeg4 = mpeg4 || (e.name == "mpeg4" && e.works);
+    CHECK(all.size() >= h264.size() && mpeg4, "all codecs: FFmpeg's own MPEG-4 among them, working");
+
+    // the choice follows the list
+    const std::string sw = VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::MPEG4, VideoFXAcceleration::Software);
+    CHECK(sw == "mpeg4", "Software MPEG-4: FFmpeg's encoder");
+    CHECK(VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::MPEG4, VideoFXAcceleration::Software), "available as software");
+    CHECK(!VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::MPEG4, VideoFXAcceleration::NVENC) &&
+          VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::MPEG4, VideoFXAcceleration::NVENC).empty(),
+          "no NVENC MPEG-4 exists: none chosen");
+    CHECK(VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::MPEG4, VideoFXAcceleration::Hardware) == "mpeg4",
+          "Hardware with no hardware encoder falls back to software");
+    std::string workingHw;
+    VideoFXAcceleration workingKind = VideoFXAcceleration::Software;
+    for (const VideoFXEncoderInfo& e : h264)
+        if (e.works && e.acceleration != VideoFXAcceleration::Software && workingHw.empty()) {
+            workingHw = e.name;
+            workingKind = e.acceleration;
+        }
+    const std::string hw = VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware);
+    CHECK(workingHw.empty() ? (hw.empty() || hw.rfind("lib", 0) == 0) : hw == workingHw,
+          "Hardware H.264: the first working hardware encoder, else software");
+    CHECK(VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware) == !workingHw.empty(),
+          "\"is hardware available\" agrees with the list");
+
+    // exports
+    const std::string out = TempPath("encoder.mkv");
+    VideoFXExportSettings s = base;
+    s.width = 320; s.height = 240; s.frameRate = 25.0;
+    s.acceleration = VideoFXAcceleration::Software;
+    CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(0.5)}, out, s), "export with Software");
+    s.acceleration = VideoFXAcceleration::Hardware;
+    CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(0.5)}, out, s), "export with Hardware (MPEG-4 has none: software)");
+    s.acceleration = VideoFXAcceleration::NVENC;
+    CHECK(VideoFX_Export({VideoFXSegment::TestPattern(0.5)}, out, s) == VideoFXResult::EncoderNotAvailable &&
+          VideoFX_GetLastError().find("NVENC") != std::string::npos, "a family that cannot encode it: EncoderNotAvailable, named");
+
+    // a hardware encoder that works here: a real file from it
+    if (!workingHw.empty()) {
+        VideoFXExportSettings h;
+        h.container = VideoFXContainer::MP4;
+        h.videoCodec = VideoFXVideoCodec::H264;
+        h.audioCodec = VideoFXAudioCodec::AAC;
+        h.width = 640; h.height = 360; h.frameRate = 25.0;
+        h.acceleration = workingKind;
+        const std::string hwOut = TempPath("hardware.mp4");
+        CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(2.0)}, hwOut, h), "export through the hardware encoder");
+        VideoFXMediaInfo info;
+        CHECK_OK(VideoFX_Probe(hwOut, info), "probe it");
+        CHECK(info.width == 640 && info.height == 360 && Near(info.duration, 2.0, 0.2), "640x360, two seconds");
+        VideoFXFrame a, b;
+        CHECK_OK(VideoFX_ExtractFrame(hwOut, 1.0, a), "a frame of it");
+        CHECK_OK(VideoFX_RenderFrame({VideoFXSegment::TestPattern(2.0)}, 1.0, b, h), "the same frame rendered");
+        const double d = MeanDifference(a, b);
+        std::printf("        %s: difference %.1f\n", workingHw.c_str(), d);
+        CHECK(d >= 0.0 && d < 20.0, "the hardware encoder's picture is the timeline's");
+    } else {
+        std::printf("        (no hardware encoder works on this machine: the hardware export is not tried)\n");
+    }
+}
+
+// The RMS of a file's sound in the 0.1 s block that holds `seconds`
+static double LevelAt(const VideoFXWaveform& w, double seconds) {
+    const int i = static_cast<int>(std::floor((seconds - w.start) * 10.0));
+    return i >= 0 && i < w.totalBlocks ? w.rmsValues[static_cast<size_t>(i)] : -1.0;
+}
+
+static void TestAudioClips(const VideoFXExportSettings& base) {
+    std::printf("\n-- free audio clips --\n");
+    // a 1 s tone, and a 6 s one for music
+    const std::string tone = TempPath("clip-tone.wav");
+    const std::string song = TempPath("clip-song.wav");
+    CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(1.0)}, tone, VideoFXExportSettings::AudioOnlyWAV()), "a 1 s tone");
+    CHECK_OK(VideoFX_Export({VideoFXSegment::TestPattern(6.0)}, song, VideoFXExportSettings::AudioOnlyWAV()), "a 6 s song");
+
+    // three silent seconds of picture with a tone at 1 s
+    VideoFXExportSettings s = base;
+    s.width = 160; s.height = 120; s.frameRate = 25.0;
+    const std::vector<VideoFXSegment> silent = {VideoFXSegment::SolidColor(0x000000, 3.0)};
+    const std::string out = TempPath("clips.mkv");
+    s.audioClips = {VideoFXAudioClip::Sound(tone, 1.0)};
+    CHECK_OK(VideoFX_Export(silent, out, s), "silent picture with a sound at 1 s");
+    VideoFXMediaInfo info;
+    CHECK_OK(VideoFX_Probe(out, info), "probe it");
+    CHECK(info.HasAudio() && Near(info.duration, 3.0, 0.15), "it has sound now, and is still three seconds");
+    VideoFXWaveform w;
+    CHECK_OK(VideoFX_ExtractWaveform(out, w, 10.0), "its waveform");
+    std::printf("        levels at 0.5 / 1.5 / 2.5 s: %.3f %.3f %.3f\n", LevelAt(w, 0.5), LevelAt(w, 1.5), LevelAt(w, 2.5));
+    CHECK(LevelAt(w, 0.5) < 0.01 && LevelAt(w, 1.5) > 0.05 && LevelAt(w, 2.5) < 0.01,
+          "silent before, the tone from 1 to 2 s, silent after");
+
+    // a part of the file, quieter, faded in
+    VideoFXAudioClip part = VideoFXAudioClip::Sound(tone, 0.5, 0.5);
+    part.start = 0.2;
+    part.end = 0.9;                              // 0.7 s: plays 0.5 .. 1.2
+    part.fadeIn = 0.4;
+    s.audioClips = {part, VideoFXAudioClip::Sound(tone, 2.6)};   // and one running past the end
+    CHECK_OK(VideoFX_Export(silent, out, s), "a trimmed, quieter, faded clip and one past the end");
+    CHECK_OK(VideoFX_ExtractWaveform(out, w, 10.0), "its waveform");
+    const double full = LevelAt(w, 2.8);
+    std::printf("        fade 0.55 s %.3f, held 1.05 s %.3f, after 1.35 s %.3f, late clip 2.8 s %.3f\n",
+                LevelAt(w, 0.55), LevelAt(w, 1.05), LevelAt(w, 1.35), full);
+    CHECK(LevelAt(w, 0.55) < LevelAt(w, 1.05) && LevelAt(w, 1.05) > 0.02, "it fades in");
+    CHECK(Near(LevelAt(w, 1.05), full * 0.5, full * 0.15), "at half the volume of the full one");
+    CHECK(LevelAt(w, 1.35) < 0.01, "and stops where its end says");
+    CHECK_OK(VideoFX_Probe(out, info), "probe it");
+    CHECK(Near(info.duration, 3.0, 0.15) && full > 0.05, "a clip running past the end is cut there, not the export lengthened");
+
+    // a voice-over ducks the music; a sound effect does not
+    VideoFXExportSettings m = s;
+    m.music = VideoFXMusic::FromFile(song, 0.5);
+    m.music.duckingLevel = 0.2;
+    m.music.fadeIn = 0.0;
+    m.music.fadeOut = 0.0;
+    const std::string voiced = TempPath("voiced.mkv"), effects = TempPath("effects.mkv");
+    m.audioClips = {VideoFXAudioClip::VoiceOver(tone, 1.0, 0.5)};
+    CHECK_OK(VideoFX_Export(silent, voiced, m), "music with a voice-over");
+    m.audioClips = {VideoFXAudioClip::Sound(tone, 1.0, 0.5)};
+    CHECK_OK(VideoFX_Export(silent, effects, m), "music with the same sound as an effect");
+    VideoFXWaveform a, b;
+    CHECK_OK(VideoFX_ExtractWaveform(voiced, a, 10.0), "waveform of the voiced one");
+    CHECK_OK(VideoFX_ExtractWaveform(effects, b, 10.0), "and of the other");
+    std::printf("        voice-over vs effect: before %.3f / %.3f, under it %.3f / %.3f\n",
+                LevelAt(a, 0.5), LevelAt(b, 0.5), LevelAt(a, 1.7), LevelAt(b, 1.7));
+    CHECK(Near(LevelAt(a, 0.5), LevelAt(b, 0.5), 0.01), "the same before the clip");
+    CHECK(LevelAt(a, 1.7) < LevelAt(b, 1.7) - 0.03, "under the voice-over the music has ducked; under the effect it has not");
+
+    // refused
+    VideoFXExportSettings e = s;
+    e.audioClips = {VideoFXAudioClip::Sound(TempPath("none.wav"), 1.0)};
+    CHECK(VideoFX_Export(silent, out, e) == VideoFXResult::FileNotFound, "a missing file: FileNotFound");
+    e.audioClips = {VideoFXAudioClip::Sound(tone, 1.0, 9.0)};
+    CHECK(VideoFX_Export(silent, out, e) == VideoFXResult::InvalidArgument, "volume 9: InvalidArgument");
+    VideoFXAudioClip late = VideoFXAudioClip::Sound(tone, 1.0);
+    late.start = 5.0;
+    e.audioClips = {late};
+    CHECK(VideoFX_Export(silent, out, e) == VideoFXResult::InvalidArgument, "a start past the file's end: InvalidArgument");
+    const std::string picture = TempPath("clip-picture.mkv");
+    VideoFXExportSettings p = base;
+    p.width = 160; p.height = 120; p.frameRate = 25.0;
+    CHECK_OK(VideoFX_Export(silent, picture, p), "a clip without sound");
+    e.audioClips = {VideoFXAudioClip::Sound(picture, 1.0)};
+    CHECK(VideoFX_Export(silent, out, e) == VideoFXResult::NoMediaStreams, "a file without sound: NoMediaStreams");
+}
+
 #else
 
 static void TestEngine() {
@@ -1642,6 +2669,10 @@ static void TestEngine() {
     VideoFXMediaInfo info;
     CHECK(!VideoFX_IsAvailable(), "stub says unavailable");
     CHECK(VideoFX_Probe("x.mp4", info) == VideoFXResult::NotAvailable, "stub returns NotAvailable");
+    CHECK(VideoFX_ListVideoEncoders().empty() &&
+          !VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H264, VideoFXAcceleration::Hardware) &&
+          VideoFX_ChooseVideoEncoder(VideoFXVideoCodec::H264, VideoFXAcceleration::Software).empty(),
+          "stub: no encoders of any kind");
 }
 
 #endif
@@ -1655,8 +2686,11 @@ int main() {
     TestTransitionAndOverlayText();
     TestKenBurnsMath();
     TestMusicMath();
+    TestAudioClipMath();
     TestBeatMath();
     TestFaceDetector();
+    TestProjectFiles();
+    TestProxyFiles();
     TestEngine();
     if (failures) {
         std::printf("\n%d check(s) FAILED\n", failures);

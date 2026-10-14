@@ -1,10 +1,16 @@
 // Plugins/Vector/CDR/UltraCanvasCDRPlugin.cpp
 // CorelDRAW CDR/CMX file format plugin implementation
+// Version: 1.2.3 - an object's opacity is applied once, by SetAlpha, now that the
+//                  context fades fills and strokes with it: the colours carry only
+//                  their fill / stroke opacity (they carried both and were faded twice)
+// Version: 1.2.2 - the recorded draw commands reach the document, not the
+//                  painter: the painter is a local of ParseCDRFile and was gone
+//                  when a page was drawn (a gradient fill read freed memory)
 // Version: 1.2.1 - ExportToXAR names the way to XAR (the Vector plugin's
 //                  CDRConverter + XARConverter) instead of a reason that
 //                  stopped being true
 // Version: 1.2.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCDRPlugin.h"
@@ -150,14 +156,16 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
         // Apply fill - handled in FillAndStroke with bounds
         if (style.hasFill && style.fillGradientId.empty()) {
             Color fillColor = style.fillColor;
-            fillColor.a = static_cast<uint8_t>(fillColor.a * style.fillOpacity * style.opacity);
+            // The object's opacity is SetAlpha's below, which fades the
+            // fill, the stroke and a gradient alike.
+            fillColor.a = static_cast<uint8_t>(fillColor.a * style.fillOpacity);
             ctx->SetFillPaint(fillColor);
         }
 
         // Apply stroke - handled in FillAndStroke with bounds for gradients
         if (style.hasStroke && style.strokeGradientId.empty()) {
             Color strokeColor = style.strokeColor;
-            strokeColor.a = static_cast<uint8_t>(strokeColor.a * style.strokeOpacity * style.opacity);
+            strokeColor.a = static_cast<uint8_t>(strokeColor.a * style.strokeOpacity);
             ctx->SetStrokePaint(strokeColor);
         }
 
@@ -177,14 +185,15 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
         ctx->SetAlpha(style.opacity);
     }
 
-    void UltraCanvasCDRPainterImpl::FillAndStroke(IRenderContext* ctx, const CDRStyleState& style) {
+    void UltraCanvasCDRPainterImpl::FillAndStroke(IRenderContext* ctx, const CDRStyleState& style,
+                                                  const CDRDocument& doc) {
         // Get path bounds for gradient calculation
         Rect2Dd bounds = ctx->GetPathExtents();
 
         if (style.hasFill) {
             if (!style.fillGradientId.empty()) {
                 // Apply gradient fill
-                auto gradientPattern = CreateGradientPattern(ctx, style.fillGradientId, bounds);
+                auto gradientPattern = CreateGradientPattern(ctx, doc, style.fillGradientId, bounds);
                 if (gradientPattern) {
                     ctx->SetFillPaint(gradientPattern);
                 }
@@ -195,7 +204,7 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
         if (style.hasStroke) {
             if (!style.strokeGradientId.empty()) {
                 // Apply gradient stroke
-                auto gradientPattern = CreateGradientPattern(ctx, style.strokeGradientId, bounds);
+                auto gradientPattern = CreateGradientPattern(ctx, doc, style.strokeGradientId, bounds);
                 if (gradientPattern) {
                     ctx->SetStrokePaint(gradientPattern);
                 }
@@ -209,11 +218,12 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
 
     std::shared_ptr<IPaintPattern> UltraCanvasCDRPainterImpl::CreateGradientPattern(
             IRenderContext* ctx,
+            const CDRDocument& doc,
             const std::string& gradientId,
             const Rect2Dd& bounds) {
 
-        auto it = document->gradients.find(gradientId);
-        if (it == document->gradients.end() || it->second.stops.empty()) {
+        auto it = doc.gradients.find(gradientId);
+        if (it == doc.gradients.end() || it->second.stops.empty()) {
             return nullptr;
         }
 
@@ -842,7 +852,7 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
 
         CDRStyleState style = styleStack.top();
 
-        AddDrawCommand([=,this](IRenderContext* ctx) {
+        AddDrawCommand([=, doc = document.get()](IRenderContext* ctx) {
             ctx->PushState();
             ApplyStyleToContext(ctx, style);
 
@@ -853,7 +863,7 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
                 ctx->Rect(x, y, width, height);
             }
 
-            FillAndStroke(ctx, style);
+            FillAndStroke(ctx, style, *doc);
             ctx->PopState();
         });
     }
@@ -866,14 +876,14 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
 
         CDRStyleState style = styleStack.top();
 
-        AddDrawCommand([=,this](IRenderContext* ctx) {
+        AddDrawCommand([=, doc = document.get()](IRenderContext* ctx) {
             ctx->PushState();
             ApplyStyleToContext(ctx, style);
 
             ctx->ClearPath();
             ctx->Ellipse(cx, cy, rx, ry, 0);
 
-            FillAndStroke(ctx, style);
+            FillAndStroke(ctx, style, *doc);
             ctx->PopState();
         });
     }
@@ -892,7 +902,7 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
 
         CDRStyleState style = styleStack.top();
 
-        AddDrawCommand([=, this](IRenderContext* ctx) {
+        AddDrawCommand([=](IRenderContext* ctx) {
             ctx->PushState();
             ApplyStyleToContext(ctx, style);
 
@@ -927,7 +937,7 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
 
         CDRStyleState style = styleStack.top();
 
-        AddDrawCommand([=, this](IRenderContext* ctx) {
+        AddDrawCommand([=, doc = document.get()](IRenderContext* ctx) {
             ctx->PushState();
             ApplyStyleToContext(ctx, style);
 
@@ -940,7 +950,7 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
                 ctx->ClosePath();
             }
 
-            FillAndStroke(ctx, style);
+            FillAndStroke(ctx, style, *doc);
             ctx->PopState();
         });
     }
@@ -1029,7 +1039,7 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
 
         CDRStyleState style = styleStack.top();
 
-        AddDrawCommand([=, this](IRenderContext* ctx) {
+        AddDrawCommand([=, doc = document.get()](IRenderContext* ctx) {
             ctx->PushState();
             ApplyStyleToContext(ctx, style);
 
@@ -1202,7 +1212,7 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
                 }
             }
 
-            FillAndStroke(ctx, style);
+            FillAndStroke(ctx, style, *doc);
             ctx->PopState();
         });
     }
@@ -1294,7 +1304,7 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
         bool capturedMirrorV = mirrorVertical;
         float capturedRotation = rotation;
 
-        AddDrawCommand([=, this](IRenderContext* ctx) {
+        AddDrawCommand([=](IRenderContext* ctx) {
             ctx->PushState();
 
             // Calculate center point for transforms

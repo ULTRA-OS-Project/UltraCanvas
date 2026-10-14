@@ -20,8 +20,9 @@
 //
 // Which one applies to a given file — and whether this build can rasterize it
 // at all — is what InspectVectorFile() reports; nothing here throws.
+// Version: 1.2.0 - RasterizeVectorDocument: a whole page at any size
 // Version: 1.1.0 - RasterizeVectorElements
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -119,5 +120,21 @@ std::shared_ptr<UCRasterLayer> RasterizeVectorElements(
         std::string& error,
         Rect2Dd* documentArea = nullptr,
         size_t maxPixels = 64u * 1024u * 1024u);
+
+// ===== A LOADED DRAWING'S PAGE =====
+// The whole page of `document` - its view box, or 0,0 to its Size where it
+// has none - drawn at `options.width` x `options.height` pixels: what a
+// drawing program exports as a bitmap. A drawing has no pixel size of its
+// own, so it is drawn at the size asked for, sharp at any; a side left 0
+// follows the page's shape, and both 0 give a pixel a document unit. Width
+// and height scale independently, so a size in another shape than the page
+// stretches it. The document's own background colour is drawn, and
+// `options.background` under it (transparent by default, so a drawing on no
+// background keeps its alpha). Null with `error` set when the document has no
+// page size or the size is refused (`options.maxPixels`).
+std::shared_ptr<UCRasterLayer> RasterizeVectorDocument(
+        const VectorStorage::VectorDocument& document,
+        const VectorRasterOptions& options,
+        std::string& error);
 
 } // namespace UltraCanvas

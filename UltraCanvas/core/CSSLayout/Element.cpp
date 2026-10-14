@@ -1,5 +1,7 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
+// Version: 1.13.0 - Measure answers from the element's last measurements under other
+//                  constraints too (measureCache), and every invalidation clears them
 // Version: 1.12.0 - widthSetByParent: an Exact width is the used width (table cells)
 // Version: 1.11.0 - min / max limits apply to the box its box-sizing names (border
 //                  box for widgets), as in the flex path and the docs
@@ -21,7 +23,7 @@
 //                 size, so a stretched/grown container reports and lays out its
 //                 children against its used size. Single-axis Exact (block fill
 //                 hint) still lets an explicit size win.
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -211,7 +213,7 @@ namespace UltraCanvas {
             // the window's geometry pass never runs. (Manifested as split-pane drags
             // not refreshing during a debug session.)
             if (measured.valid || arrangeValid) {
-                measured.valid  = false;
+                ForgetMeasurements();
                 intrinsic.valid = false;
                 arrangeValid    = false;
                 if (layoutComputed) layoutComputed->valid = false;
@@ -220,7 +222,7 @@ namespace UltraCanvas {
         }
 
         void Element::InvalidateSubtree() {
-            measured.valid  = false;
+            ForgetMeasurements();
             intrinsic.valid = false;
             arrangeValid    = false;
             if (layoutComputed) layoutComputed->valid = false;
@@ -235,6 +237,12 @@ namespace UltraCanvas {
             // its stale cached size. (Constraint-only keying was correct only while
             // resolveDimension ignored ctx.)
             if (measured.valid && measured.key == c && measured.ctxKey == ctx) return;
+            for (const MeasureResult& earlier : measureCache) {
+                if (earlier.valid && earlier.key == c && earlier.ctxKey == ctx) {
+                    measured = earlier;
+                    return;
+                }
+            }
             if (!intrinsic.valid) {
                 ComputeIntrinsicSizes(ctx);
                 intrinsic.valid = true;
@@ -267,6 +275,8 @@ namespace UltraCanvas {
             measured.key = c;
             measured.ctxKey = ctx;
             measured.valid = true;
+            measureCache[measureCacheNext] = measured;
+            measureCacheNext = (measureCacheNext + 1) % kMeasureCacheSize;
         }
 
         void Element::ComputeIntrinsicSizes(const LayoutContext& /*ctx*/) {
@@ -509,7 +519,7 @@ namespace UltraCanvas {
                 // height / min / max-height. A changed base voids its cached measure.
                 if (kid->percentHeightBase != own.contentHeight) {
                     kid->percentHeightBase = own.contentHeight;
-                    kid->measured.valid = false;
+                    kid->ForgetMeasurements();
                 }
                 AxisConstraint kh = narrowByMargins(childH, m.horizontal());
                 // A float is shrink-to-fit, never stretched to the line.

@@ -661,7 +661,7 @@ namespace UltraCanvas {
             lines.push_back(FormatValue(cachedTotal));
         }
         if (drilled && drillDownEnabled) {
-            lines.push_back("↑ back");
+            lines.push_back("Back");   // was "↑ back": the UI font has no "↑"
         }
         if (lines.empty()) return;
 

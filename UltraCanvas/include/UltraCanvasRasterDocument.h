@@ -14,8 +14,8 @@
 // layer as a PixelFX image and returns the processed one; the document
 // writes it back only where the selection covers, so every PixelFX
 // operation is selection-aware without knowing about selections.
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.1.0 - AddListener / RemoveListener: several observers of one document
+// Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -201,6 +201,10 @@ public:
     bool LoadFromFile(const std::string& path, std::string& error);
     // Save the flattened image through PixelFX with format from the
     // extension (`options` for the format-specific knobs when given).
+    // Without `options`, the user's save settings for the format
+    // (UltraCanvasFileLoader::GetImageExportOptions - the Save dialog's
+    // Settings button) once they have set any; until then the writer's own
+    // defaults.
     bool SaveToFile(const std::string& path, std::string& error,
                     const UCImageSave::ImageExportOptions* options = nullptr);
     // Layered project file (*.ucraster): a ZIP holding document.json and one
@@ -224,7 +228,30 @@ public:
     // Modified flag flipped, undo/redo availability changed.
     std::function<void()> onStateChanged;
 
+    // Several observers at once - the editing view, a magnifying glass on
+    // the same document, the window's panels and title: each adds a
+    // listener of its own and removes it when it lets the document go, so
+    // none has to chain itself behind another's slot. The four slots above
+    // are still fired, first, for the one-observer case. A listener may be
+    // removed from inside a callback; the callbacks of one notification
+    // run on the list as it was when it began.
+    struct Listener {
+        std::function<void(const Rect2Di&)> pixelsChanged;
+        std::function<void()> structureChanged;
+        std::function<void()> selectionChanged;
+        std::function<void()> stateChanged;
+    };
+    using ListenerId = unsigned int;      // never 0
+    ListenerId AddListener(Listener listener);
+    void RemoveListener(ListenerId id);   // an id that is not listening is ignored
+
 private:
+    void EmitPixels(const Rect2Di& rect);
+    void EmitSelection();
+    void EmitState();
+    std::vector<std::pair<ListenerId, Listener>> listeners;
+    ListenerId nextListenerId = 1;
+
     void PushUndo(RasterUndoEntry&& e);
     void TrimHistory();
     void ApplyStructural(const RasterUndoEntry& e, bool toAfter);

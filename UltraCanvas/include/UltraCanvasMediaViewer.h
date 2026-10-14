@@ -66,8 +66,16 @@
 // click, plus the checkered swatch (SetTransparencyPaletteVisible turns it
 // off, onTransparentBackgroundChanged reports what was picked).
 //
-// Version: 1.10.0
-// Last Modified: 2026-10-05
+// IsPlayingMedia says whether a shown video or sound is playing, so a host
+// that reopens a file which changed on disk can leave one being played alone.
+//
+// Save image as tells the Save dialog the picture's size - or, for an SVG, the
+// size the drawing is drawn at - so a bitmap type's Settings offer another
+// size, and writes with the type's save settings at the size chosen; a drawing
+// is drawn again at that size, sharp, rather than stretched.
+//
+// Version: 1.12.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -75,6 +83,7 @@
 #include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasFileSaveSettings.h"   // FileSavePicture, FileSaveImageSize
 #include "UltraCanvasImageAnimation.h"
 #include "UltraCanvasToneCurve.h"     // ToneCurveSet used by MediaAdjustments
 #include "Models/STL/UltraCanvas3DTypes.h"  // Mesh3D / ModelViewPose for the 3D pane
@@ -220,11 +229,29 @@ public:
     void ToggleFlipVertical();
     void ResetTransforms();                 // rotation + mirror only
 
-    // Bake the current adjustments + geometry into a file (PixelFX). Returns
-    // false and fills `error` on failure.
+    // What Save writes, as the Save dialog is told it (FileDialogOptions::
+    // SetImageSize / SetDrawingSize): the picture turned as shown - a quarter
+    // turn swaps its sides - and whether it is a drawing, an SVG, which has
+    // no pixels of its own and is drawn sharp at any size. No size without
+    // an image.
+    FileSavePicture GetSavePicture() const;
+    // Bake the current adjustments + geometry into a file (PixelFX), with the
+    // format's save settings once the user has stored any, at `size`
+    // (IsOriginal: as GetSavePicture says). A drawing is drawn again at that
+    // size rather than its picture stretched. Returns false and fills `error`
+    // on failure.
+    bool SaveProcessed(const std::string& path, const FileSaveImageSize& size, std::string& error);
     bool SaveProcessed(const std::string& path, std::string& error);
 
     void SetCanvasColor(const Color& c) { canvasColor = c; RequestRedraw(); }
+
+    // Whether fit-to-window enlarges a picture smaller than the surface (the
+    // default: the picture fills the pane) or shows it at its own size,
+    // centred, and only shrinks what does not fit. A hover preview turns it
+    // off, so an icon stays an icon instead of a blur the size of the pane;
+    // the wheel still zooms in from there.
+    void SetFitEnlarges(bool enlarges);
+    bool GetFitEnlarges() const { return fitEnlarges; }
 
     // ===== BACKDROP BEHIND TRANSPARENT IMAGES =====
     // Drawn under the image (matching its displayed rectangle) so transparent
@@ -296,6 +323,7 @@ private:
     UCImageAnimationController animator;
 
     Color canvasColor = Color(24, 24, 28, 255);
+    bool fitEnlarges = true;
 
     // Backdrop under transparent images (see SetTransparentBackground).
     TransparentImageBackground transparentBackground = TransparentImageBackground::SolidColor;
@@ -404,6 +432,11 @@ public:
     // timer). For hosts that hide or detach the viewer: without this the
     // sound would keep playing while nothing is visible.
     void StopPlayback();
+    // True while the shown file is a video or a sound that is playing (the
+    // muted PreviewClip included); false when it is paused, stopped, ended
+    // or not a video or sound at all. For a host deciding whether it may
+    // reopen the shown file - reopening restarts playback from the start.
+    bool IsPlayingMedia() const;
 
     UltraCanvasMediaSurface* GetSurface() const { return surface.get(); }
 
@@ -415,6 +448,11 @@ public:
     TransparentImageBackground GetTransparentBackground() const;
     void SetTransparentColor(const Color& c);
     Color GetTransparentColor() const;
+    // Forwarded to the display surface: whether fit-to-window enlarges a
+    // picture smaller than the pane (the default) or shows it at its own
+    // size. See UltraCanvasMediaSurface::SetFitEnlarges.
+    void SetFitEnlarges(bool enlarges);
+    bool GetFitEnlarges() const;
 
     // ===== BACKDROP PALETTE (UNDER THE PICTURE) =====
     // A strip of colours (greys first, then colours) shown directly beneath the
@@ -474,6 +512,11 @@ public:
     // provide their own navigation. Default: visible.
     void SetTopBarsVisible(bool visible);
     bool GetTopBarsVisible() const { return topBarsVisible; }
+    // Show/hide the info bar under the display surface (file name, size,
+    // zoom, the Details button). A host that wants nothing but the picture -
+    // UltraClipboard's classic hover preview - turns it off. Default: visible.
+    void SetInfoBarVisible(bool visible);
+    bool GetInfoBarVisible() const { return infoBarVisible; }
 
     // ===== TOOLS FOR THE SHOWN FILE =====
     // Which view / edit tools apply to what is on show (see MediaViewerTools),
@@ -634,6 +677,7 @@ private:
     size_t currentIndex = 0;
     std::string currentFolder;     // folder the breadcrumb reflects
     bool topBarsVisible = true;    // breadcrumb + toolbars above the surface
+    bool infoBarVisible = true;    // the info bar under it
 
     std::shared_ptr<UltraCanvasBreadcrumb>   breadcrumb;
     std::shared_ptr<UltraCanvasToolbar>      toolbar;   // navigation / slideshow row
@@ -709,6 +753,9 @@ private:
     int   pdfThumbWidthPx      = 56;
     float pdfThumbWidthFraction = 0.25f;
     bool  documentWheelZoom    = true;   // plain wheel zooms the PDF page
+    // The surface's size the info bar last reported for: a resize changes
+    // the fit, so the zoom it shows (Arrange refreshes it).
+    Size2Df infoBarSurfaceSize{0.0f, 0.0f};
     bool  transparencyPaletteEnabled = true;  // backdrop strip under the picture
 
     bool grabFocusOnAttach = true;   // claim the keyboard when attached to a window

@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.6.0
-// Last Modified: 2026-10-07
+// Version: 0.13.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -214,12 +214,16 @@ struct VideoFXTransition {
 };
 
 // ============================================================================
-// OVERLAYS (text and images on top of a segment)
+// OVERLAYS (text, images and video on top of a segment)
 // ============================================================================
 // Placed on the OUTPUT frame, so a title sits in the same spot whatever the
 // source's size. Sizes and margins are fractions of the output height, which
 // keeps a layout the same at 480p and 4K.
-enum class VideoFXOverlayKind { Text, Image };
+enum class VideoFXOverlayKind {
+    Text,
+    Image,
+    Video                           // picture-in-picture: another file's picture, silent
+};
 
 enum class VideoFXAnchor {
     TopLeft, Top, TopRight,
@@ -244,7 +248,15 @@ struct VideoFXOverlay {
     // ---- image ----
     std::string imagePath;          // PNG (alpha kept) / JPEG / anything FFmpeg decodes
     VideoFXFrame image;             // or pixels in memory - used when valid
-    double imageHeight = 0.0;       // fraction of output height, 0 = the image's own pixel size
+    double imageHeight = 0.0;       // image or video: fraction of output height, 0 = its own pixel size
+
+    // ---- video (picture-in-picture) ----
+    // The file's picture plays from `videoStart` seconds into it while the
+    // overlay is shown, at its own speed, upright (rotation applied), without
+    // its sound; when the file ends first its last frame holds. Sized by
+    // `imageHeight` and placed like an image.
+    std::string videoPath;
+    double videoStart = 0.0;        // seconds into the file where it begins
 
     // ---- placement ----
     VideoFXAnchor anchor = VideoFXAnchor::Bottom;
@@ -264,6 +276,8 @@ struct VideoFXOverlay {
                                 double heightFraction = 0.12);
     static VideoFXOverlay ImageFromFrame(const VideoFXFrame& frame, VideoFXAnchor anchor = VideoFXAnchor::TopRight,
                                          double heightFraction = 0.12);
+    static VideoFXOverlay Video(const std::string& path, VideoFXAnchor anchor = VideoFXAnchor::TopRight,
+                                double heightFraction = 0.3, double videoStart = 0.0);
 };
 
 // ============================================================================
@@ -387,6 +401,33 @@ enum class VideoFXVideoCodec {
     Disabled                        // no video stream in the output
 };
 
+// Which encoder makes the video: software, the graphics hardware, or one
+// hardware family by name. A hardware encoder is several times faster and
+// leaves the processor free, at some cost in quality for the same size.
+// Whether one works depends on the machine, not only on FFmpeg: the build
+// may carry h264_nvenc and the computer have no NVIDIA card. VideoFX tries
+// each one once (a frame through it) before choosing it, so a choice never
+// lands on an encoder that cannot run here.
+enum class VideoFXAcceleration {
+    Auto,               // as before: the software encoder, then the platform's (VideoToolbox, Media Foundation)
+    Software,           // software encoders only (libx264, libx265, ...)
+    Hardware,           // the first hardware encoder that works here; software when none does
+    NVENC,              // NVIDIA (h264_nvenc, hevc_nvenc, av1_nvenc)
+    QuickSync,          // Intel Quick Sync Video (h264_qsv, ...)
+    VAAPI,              // VA-API on Linux: Intel and AMD graphics (h264_vaapi, ...)
+    AMF,                // AMD on Windows (h264_amf, ...)
+    VideoToolbox,       // macOS (h264_videotoolbox, ...)
+    MediaFoundation     // Windows (h264_mf, ...)
+};
+
+// One encoder FFmpeg offers for a codec (VideoFX_ListVideoEncoders)
+struct VideoFXEncoderInfo {
+    std::string name;                                       // FFmpeg's name, e.g. "h264_nvenc"
+    VideoFXVideoCodec codec = VideoFXVideoCodec::Auto;
+    VideoFXAcceleration acceleration = VideoFXAcceleration::Software;   // Software or a hardware family
+    bool works = false;                                     // tried on this machine: it encodes
+};
+
 enum class VideoFXAudioCodec {
     Auto,                           // the container's usual codec (AAC for MP4, Opus for WebM ...)
     AAC, MP3, Opus, Vorbis, FLAC, PCM16,
@@ -483,6 +524,38 @@ struct VideoFXMusic {
     }
 };
 
+// A sound placed on the timeline: a voice-over, a sound effect, a sting. It
+// plays from `at` seconds of the export, `start`..`end` of its file, mixed
+// with the segments' own sound and before the music - so a voice-over can
+// duck the music as the segments' speech does. Any number of them, at any
+// times, overlapping each other and the cuts; what lies past the end of the
+// export is cut off there.
+struct VideoFXAudioClip {
+    std::string path;               // a sound file, or a video whose sound is wanted
+    double at = 0.0;                // seconds into the export where it starts
+    double start = 0.0;             // first second of the file used
+    double end = 0.0;               // last second used, 0 = to the file's end
+    double volume = 1.0;            // 0..4 (1 = as recorded)
+    double fadeIn = 0.0;            // seconds, at the clip's own ends
+    double fadeOut = 0.0;
+    // The background music dips under it, as under the segments' sound:
+    // true for a voice-over, false for a sound effect over the music
+    bool ducksMusic = false;
+
+    static VideoFXAudioClip Sound(const std::string& path, double at, double volume = 1.0) {
+        VideoFXAudioClip c;
+        c.path = path;
+        c.at = at;
+        c.volume = volume;
+        return c;
+    }
+    static VideoFXAudioClip VoiceOver(const std::string& path, double at, double volume = 1.0) {
+        VideoFXAudioClip c = Sound(path, at, volume);
+        c.ducksMusic = true;
+        return c;
+    }
+};
+
 struct VideoFXExportSettings {
     VideoFXContainer container = VideoFXContainer::Auto;
     VideoFXVideoCodec videoCodec = VideoFXVideoCodec::Auto;
@@ -500,6 +573,13 @@ struct VideoFXExportSettings {
     int quality = -1;
     int64_t videoBitRate = 0;       // bits per second, 0 = quality-driven
     std::string encoderPreset;      // e.g. "veryfast" for x264/x265; empty = default
+    // Seconds between keyframes, 0 = the encoder's default. Short intervals
+    // make a file quick to seek in (proxies use 0.5) at some cost in size.
+    double keyframeInterval = 0.0;
+    // Software, hardware, or one hardware family (see VideoFXAcceleration).
+    // A named family that does not work here fails with EncoderNotAvailable;
+    // Hardware falls back to software instead.
+    VideoFXAcceleration acceleration = VideoFXAcceleration::Auto;
 
     int sampleRate = 0;             // 0 = first audio segment's rate (48000 fallback)
     int channels = 0;               // 0 = stereo (mono if every source is mono)
@@ -508,9 +588,14 @@ struct VideoFXExportSettings {
     int threads = 0;                // 0 = automatic
 
     VideoFXMusic music;             // background music under the whole export (none by default)
+    std::vector<VideoFXAudioClip> audioClips;   // voice-overs and sound effects at given times
 
     // Presets for common targets
     static VideoFXExportSettings WebMP4(int height = 1080);     // H.264 + AAC, 1080p default
+    // A quick low-resolution MP4 for playback while editing: the fastest
+    // H.264 preset, a low quality, a small AAC. Seconds to render, not
+    // minutes; never the file to deliver.
+    static VideoFXExportSettings Draft(int height = 360);
     static VideoFXExportSettings WebM(int height = 720);        // VP9 + Opus
     static VideoFXExportSettings AnimatedGif(int width = 480, double fps = 12.0);
     static VideoFXExportSettings MasterProRes();                // ProRes 422 + PCM in MOV
@@ -553,6 +638,104 @@ struct VideoFXBeatInfo {
     std::vector<double> beats;      // seconds from the start of the file
 
     bool HasBeat() const { return bpm > 0.0 && !beats.empty(); }
+};
+
+// The loudness envelope of a file's sound (VideoFX_ExtractWaveform): the
+// sound mixed to mono and cut into blocks of equal length, with the lowest
+// sample, the highest sample and the RMS of each block. It is what a
+// timeline or an audio player draws as the waveform. The member names match
+// UltraCanvasWaveformElement's WaveformChannelData, so an UltraCanvas
+// application feeds it straight in: waveform->SetFromAudioFX(envelope).
+struct VideoFXWaveform {
+    std::vector<float> minValues;   // lowest sample of each block, -1..0
+    std::vector<float> maxValues;   // highest sample of each block, 0..1
+    std::vector<float> rmsValues;   // RMS of each block, 0..1
+    int samplesPerBlock = 0;        // at `sampleRate`
+    int totalBlocks = 0;            // == minValues.size(); the last block may be partial
+    int sampleRate = 0;             // Hz, the file's own rate
+    double start = 0.0;             // seconds into the file the first block begins
+    double duration = 0.0;          // seconds of sound the blocks cover
+
+    bool IsValid() const {
+        return totalBlocks > 0 && samplesPerBlock > 0 && sampleRate > 0 &&
+               minValues.size() == static_cast<size_t>(totalBlocks) &&
+               maxValues.size() == minValues.size() && rmsValues.size() == minValues.size();
+    }
+    double SecondsPerBlock() const {
+        return sampleRate > 0 ? static_cast<double>(samplesPerBlock) / sampleRate : 0.0;
+    }
+    // The block holding `seconds` into the file, or -1 outside the envelope
+    int BlockAt(double seconds) const {
+        if (!IsValid() || seconds < start) return -1;
+        const int block = static_cast<int>((seconds - start) / SecondsPerBlock());
+        return block < totalBlocks ? block : -1;
+    }
+    // The loudest sample in any block, 0..1
+    float Peak() const {
+        float peak = 0.0f;
+        for (size_t i = 0; i < maxValues.size(); ++i) {
+            if (maxValues[i] > peak) peak = maxValues[i];
+            if (-minValues[i] > peak) peak = -minValues[i];
+        }
+        return peak;
+    }
+};
+
+// ============================================================================
+// PROXY MEDIA (VideoFX_CreateProxy / VideoFX_UseProxies)
+// ============================================================================
+// A proxy is a small stand-in for a large clip: the same picture and sound,
+// timed the same, at a low resolution, with a keyframe every half second.
+// An editor previews and scrubs over proxies, and the export reads the
+// originals. Proxies live in a cache folder, named after the clip's path,
+// size and modification time, so an edited or replaced clip gets a new one.
+struct VideoFXProxySettings {
+    int height = 540;               // picture height; width follows the clip's shape
+    int quality = 50;               // 0..100, as VideoFXExportSettings::quality
+    double keyframeInterval = 0.5;  // seconds between keyframes: what makes scrubbing fast
+    std::string cacheDirectory;     // "" = VideoFX_GetDefaultProxyDirectory()
+    // The encoder that makes them; Hardware frees the processor for editing
+    // while proxies are made, and falls back to software where none works
+    VideoFXAcceleration acceleration = VideoFXAcceleration::Auto;
+};
+
+// ============================================================================
+// PROJECT FILES (VideoFX_SaveProject / VideoFX_LoadProject)
+// ============================================================================
+// A whole edit as one small JSON file (.vfxproj): the timeline - or the
+// photos and options of a slideshow - with its music and export settings.
+// It refers to media by path and holds no media itself; paths are stored
+// relative to the project file where they can be, so a folder holding the
+// project and its media can move as a whole.
+enum class VideoFXProjectKind {
+    Timeline,                       // `segments`, rendered with VideoFX_Export
+    Slideshow                       // `images` + `slideshow`, rendered with VideoFX_CreateSlideshow
+};
+
+struct VideoFXProject {
+    VideoFXProjectKind kind = VideoFXProjectKind::Timeline;
+    std::string title;
+    std::vector<VideoFXSegment> segments;       // Timeline
+    std::vector<std::string> images;            // Slideshow
+    VideoFXSlideshowOptions slideshow;          // Slideshow (findKeepInView, a function, is not saved)
+    VideoFXExportSettings settings;
+    std::string outputPath;                     // where it renders to by default; "" = the caller says
+
+    static VideoFXProject FromTimeline(std::vector<VideoFXSegment> segments, VideoFXExportSettings settings = {}) {
+        VideoFXProject p;
+        p.segments = std::move(segments);
+        p.settings = std::move(settings);
+        return p;
+    }
+    static VideoFXProject FromSlideshow(std::vector<std::string> images, VideoFXSlideshowOptions options = {},
+                                        VideoFXExportSettings settings = {}) {
+        VideoFXProject p;
+        p.kind = VideoFXProjectKind::Slideshow;
+        p.images = std::move(images);
+        p.slideshow = std::move(options);
+        p.settings = std::move(settings);
+        return p;
+    }
 };
 
 // Progress 0..1 of the whole export. Return false to cancel; the call then

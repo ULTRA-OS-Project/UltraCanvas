@@ -1,12 +1,19 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.8.0 - when the system fonts arrive after the start, or a font file is
+//                  registered, every window is drawn again, not only laid out:
+//                  boxes drawn for characters the start's fonts lacked stayed
+//                  on screen. Windows: PANGOCAIRO_BACKEND=fc, so every thread's
+//                  Pango font map reads fontconfig, not only the main thread's
+// Version: 1.7.1 - an element is kept alive while it handles an event, so a
+//                  handler that rebuilds the tree around it cannot free it mid-event
 // Version: 1.7.0 - a mouse press the element under the pointer does not take
 //                  climbs to the elements around it (DispatchPressToAncestors)
 // Version: 1.6.0 - Windows: the system fonts are scanned on a thread; the start uses
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -463,16 +470,6 @@ namespace UltraCanvas {
             return *scan;
         }
 
-        // Layout and text caches of every element of a window: the next
-        // frame measures all text again, in the fonts now available.
-        void InvalidateLayoutTree(UltraCanvasUIElement* element) {
-            if (!element) return;
-            element->InvalidateLayout();
-            if (auto* container = dynamic_cast<UltraCanvasContainer*>(element)) {
-                for (const auto& child : container->GetChildren()) InvalidateLayoutTree(child.get());
-            }
-        }
-
         // UI thread: the full set becomes the current one and every window is
         // laid out and drawn again with it.
         void SwitchToSystemFonts() {
@@ -512,8 +509,13 @@ namespace UltraCanvas {
             RefreshFontConfiguration();
 #endif
             RenderContextCairo::InvalidateAllFontMetricsCaches();
+            // Laid out and drawn again: a new layout alone repaints nothing,
+            // so the boxes drawn for characters the start's fonts lacked
+            // stayed on screen until something else redrew them.
             if (app) {
-                for (const auto& window : app->GetWindows()) InvalidateLayoutTree(window.get());
+                for (const auto& window : app->GetWindows()) {
+                    if (window) window->RefreshAfterFontChange();
+                }
             }
             debugOutput << "UltraCanvas: system fonts ready after "
                         << static_cast<long long>(status.ms + 0.5)
@@ -767,6 +769,11 @@ namespace UltraCanvas {
             return false;
         }
         RefreshFontConfiguration();
+        // Text already on screen in the new family, or in a fallback for a
+        // character it covers, is shaped and drawn again.
+        for (const auto& window : GetWindows()) {
+            if (window) window->RefreshAfterFontChange();
+        }
 
         std::lock_guard<std::mutex> lk(registeredFontsMutex_);
         registeredFontFiles_.push_back(std::move(key));
@@ -1781,6 +1788,13 @@ namespace UltraCanvas {
         }
 
         currentEvent = event;
+
+        // A handler can rebuild the part of the tree the element sits in -
+        // a list row whose button rebuilds the list - and so drop the last
+        // reference to the element while its OnEvent is still running; the
+        // code after the handler then touched freed memory. The element
+        // stays alive until OnEvent has returned, detached if it was removed.
+        const auto keepAlive = elem->weak_from_this().lock();
 
         if (window->HandleEventFilters(event)) {
             return true;

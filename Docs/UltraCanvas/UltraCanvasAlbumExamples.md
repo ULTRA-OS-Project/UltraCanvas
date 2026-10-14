@@ -13,7 +13,7 @@ Like the slideshow it paints all tiles, captions, badges and action buttons
 directly in `Render()` — there are no child UI elements — so a large album stays
 cheap and the whole look can be swapped by a single enum.
 
-**Version:** 1.7.1
+**Version:** 1.9.0
 **Header:** `include/UltraCanvasAlbum.h`
 **Source:** `core/UltraCanvasAlbum.cpp`
 **Namespace:** `UltraCanvas`
@@ -148,6 +148,17 @@ How it behaves:
 `UltraCanvasVideoThumbnail` (`include/UltraCanvasVideoThumbnail.h`) is the engine
 behind this and can be called directly when an app *does* want to keep poster
 files on disk — see its own docs.
+
+### Pictures saved over
+
+A photo edited and saved over while the album shows it is drawn as it is now,
+within a couple of seconds and without the app doing anything. Each paint
+hands the paths of the pictures it drew to an
+[`UltraCanvasImageFileWatch`](UltraCanvasImageFileWatch.md), whose worker
+thread checks those files every 1.5 s; a changed one is dropped from the
+shared image cache and the album relayouts (the new picture may have another
+shape) and repaints. Nothing touches the disk on the paint path for it, and
+only the tiles on screen are checked.
 
 ### Configuration
 
@@ -344,6 +355,7 @@ album->onLinkClicked = [album](size_t i){
 std::function<void(size_t)> onItemClicked;       // single click / tap
 std::function<void(size_t)> onItemActivated;     // double click: open / play
 std::function<void(size_t,size_t)> onItemsReordered;  // (from, to) — edit modes
+std::function<void(size_t, const Point2Di& windowPos)> onItemDraggedOut;  // a tile dragged past the edge (edit modes)
 std::function<void(size_t)> onItemRemoved;       // after RemoveItem
 std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 ```
@@ -354,6 +366,12 @@ std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 - **Double-click** → `onItemActivated` (open / play).
 - **Right-click** (or the kebab icon) → per-item action menu.
 - **Drag** a tile (edit / admin) → reorder; fires `onItemsReordered`.
+- **Drag** a tile past the album's edge (edit / admin) → the reorder ends
+  and `onItemDraggedOut(index, windowPos)` fires once, with the pointer's
+  window position. The app carries the item on from there with the window's
+  own mouse events - a media bin hands its file to a timeline's drop path,
+  say. Set the callback only where that is wanted; without it a drag that
+  leaves the album is simply a reorder that ends where the pointer returns.
 - **Mouse wheel** → scroll (vertical for grids, horizontal for the filmstrip).
 
 ## Demo

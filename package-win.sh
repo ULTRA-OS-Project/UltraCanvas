@@ -56,8 +56,9 @@ mkdir -p "$DIST_DIR"
 # Verhaltensschutz quarantined UltraNetApiStatus.exe from the 0.3.50 package
 # as IDP.Generic. End users have no use for them anyway.
 # Both locations: most targets output to the build root, but some set
-# RUNTIME_OUTPUT_DIRECTORY to bin/ (UltraFIBU does), and globbing only the
-# root is why such an app is built by CI and then missing from the package.
+# RUNTIME_OUTPUT_DIRECTORY to bin/ (UltraFIBU and ultrapress do), and globbing
+# only the root is why such an app is built by CI and then missing from the
+# package.
 for exe in ./build/*.exe ./build/bin/*.exe; do
     [ -e "$exe" ] || continue
     case "$(basename "$exe")" in

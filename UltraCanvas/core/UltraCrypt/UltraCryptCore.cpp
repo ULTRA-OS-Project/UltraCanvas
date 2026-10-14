@@ -8,7 +8,7 @@
 // fallback, which returned success while passing plaintext through). Nothing
 // here ever reports success without doing the work.
 //
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
 #include "UltraCanvasTextUtils.h"
@@ -1057,6 +1057,244 @@ UltraCryptResult UltraCrypt_DeriveKeyHkdf(
 
     outKey = std::move(okm);
     return UltraCryptResult::Ok();
+}
+
+// ============================================================================
+// Digital signatures (Ed25519)
+// ============================================================================
+// libsodium's crypto_sign is Ed25519 (RFC 8032) with the 64-byte secret key
+// form: the 32-byte seed followed by the public key. Signatures are detached
+// and deterministic. Every entry point checks lengths itself so a wrong key
+// is refused with a code of its own rather than disappearing into a failed
+// verification.
+namespace {
+
+constexpr size_t kEd25519PublicKeyBytes = 32;
+constexpr size_t kEd25519SecretKeyBytes = 64;
+constexpr size_t kEd25519SeedBytes      = 32;
+constexpr size_t kEd25519SignatureBytes = 64;
+
+bool KnownSignatureAlgorithm(UltraCryptSignatureAlgorithm algorithm) {
+    return algorithm == UltraCryptSignatureAlgorithm::Ed25519;
+}
+
+UltraCryptResult UnknownSignatureAlgorithm() {
+    return UltraCryptResult::Error(UltraCryptResultCode::NotSupported,
+                                   "unknown signature algorithm");
+}
+
+bool ReadWholeFile(const std::string& filePath, std::vector<uint8_t>& out) {
+    std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
+    if (!file) return false;
+    out.clear();
+    std::vector<char> chunk(64 * 1024);
+    while (file.read(chunk.data(), static_cast<std::streamsize>(chunk.size())) ||
+           file.gcount() > 0) {
+        out.insert(out.end(), chunk.data(), chunk.data() + file.gcount());
+        if (file.eof()) break;
+    }
+    return true;
+}
+
+} // namespace
+
+size_t UltraCrypt_GetSignaturePublicKeySize(UltraCryptSignatureAlgorithm algorithm) {
+    return KnownSignatureAlgorithm(algorithm) ? kEd25519PublicKeyBytes : 0;
+}
+
+size_t UltraCrypt_GetSignatureSecretKeySize(UltraCryptSignatureAlgorithm algorithm) {
+    return KnownSignatureAlgorithm(algorithm) ? kEd25519SecretKeyBytes : 0;
+}
+
+size_t UltraCrypt_GetSignatureSeedSize(UltraCryptSignatureAlgorithm algorithm) {
+    return KnownSignatureAlgorithm(algorithm) ? kEd25519SeedBytes : 0;
+}
+
+size_t UltraCrypt_GetSignatureSize(UltraCryptSignatureAlgorithm algorithm) {
+    return KnownSignatureAlgorithm(algorithm) ? kEd25519SignatureBytes : 0;
+}
+
+bool UltraCrypt_IsSignatureAvailable(UltraCryptSignatureAlgorithm algorithm) {
+    return KnownSignatureAlgorithm(algorithm) && EnsureReady();
+}
+
+UltraCryptResult UltraCrypt_GenerateSignatureKeyPair(
+        UltraCryptSignatureAlgorithm algorithm,
+        std::vector<uint8_t>& outPublicKey,
+        UltraCryptSecureBuffer& outSecretKey) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    static_assert(crypto_sign_PUBLICKEYBYTES == kEd25519PublicKeyBytes, "key size");
+    static_assert(crypto_sign_SECRETKEYBYTES == kEd25519SecretKeyBytes, "key size");
+    std::vector<uint8_t> pk(kEd25519PublicKeyBytes, 0);
+    UltraCryptSecureBuffer sk(kEd25519SecretKeyBytes);
+    if (sk.GetSize() != kEd25519SecretKeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "could not allocate buffer");
+    }
+    if (crypto_sign_keypair(pk.data(), sk.Data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::EntropyFailure,
+                                       "key pair generation failed");
+    }
+    outPublicKey = std::move(pk);
+    outSecretKey = std::move(sk);
+    return UltraCryptResult::Ok();
+#else
+    (void)outPublicKey; (void)outSecretKey;
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_SignatureKeyPairFromSeed(
+        UltraCryptSignatureAlgorithm algorithm,
+        const UltraCryptSecureBuffer& seed,
+        std::vector<uint8_t>& outPublicKey,
+        UltraCryptSecureBuffer& outSecretKey) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (seed.GetSize() != kEd25519SeedBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "seed must be 32 bytes");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    static_assert(crypto_sign_SEEDBYTES == kEd25519SeedBytes, "seed size");
+    std::vector<uint8_t> pk(kEd25519PublicKeyBytes, 0);
+    UltraCryptSecureBuffer sk(kEd25519SecretKeyBytes);
+    if (sk.GetSize() != kEd25519SecretKeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "could not allocate buffer");
+    }
+    if (crypto_sign_seed_keypair(pk.data(), sk.Data(), seed.Data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "key pair derivation failed");
+    }
+    outPublicKey = std::move(pk);
+    outSecretKey = std::move(sk);
+    return UltraCryptResult::Ok();
+#else
+    (void)outPublicKey; (void)outSecretKey;
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_GetSignaturePublicKey(
+        UltraCryptSignatureAlgorithm algorithm,
+        const UltraCryptSecureBuffer& secretKey,
+        std::vector<uint8_t>& outPublicKey) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (secretKey.GetSize() != kEd25519SecretKeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "secret key must be 64 bytes");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    std::vector<uint8_t> pk(kEd25519PublicKeyBytes, 0);
+    if (crypto_sign_ed25519_sk_to_pk(pk.data(), secretKey.Data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "public key extraction failed");
+    }
+    outPublicKey = std::move(pk);
+    return UltraCryptResult::Ok();
+#else
+    (void)outPublicKey;
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_Sign(UltraCryptSignatureAlgorithm algorithm,
+                                 const UltraCryptSecureBuffer& secretKey,
+                                 const void* data, size_t size,
+                                 std::vector<uint8_t>& outSignature) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (size > 0 && !data) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "null data with non-zero size");
+    }
+    if (secretKey.GetSize() != kEd25519SecretKeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "secret key must be 64 bytes");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    static_assert(crypto_sign_BYTES == kEd25519SignatureBytes, "signature size");
+    const unsigned char empty = 0;
+    const auto* in = data ? static_cast<const unsigned char*>(data) : &empty;
+    std::vector<uint8_t> sig(kEd25519SignatureBytes, 0);
+    unsigned long long sigLen = 0;
+    if (crypto_sign_detached(sig.data(), &sigLen, in, size, secretKey.Data()) != 0 ||
+        sigLen != kEd25519SignatureBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "signing failed");
+    }
+    outSignature = std::move(sig);
+    return UltraCryptResult::Ok();
+#else
+    (void)outSignature;
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_Verify(UltraCryptSignatureAlgorithm algorithm,
+                                   const std::vector<uint8_t>& publicKey,
+                                   const void* data, size_t size,
+                                   const std::vector<uint8_t>& signature) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (size > 0 && !data) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "null data with non-zero size");
+    }
+    if (publicKey.size() != kEd25519PublicKeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "public key must be 32 bytes");
+    }
+    if (signature.size() != kEd25519SignatureBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "signature must be 64 bytes");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    const unsigned char empty = 0;
+    const auto* in = data ? static_cast<const unsigned char*>(data) : &empty;
+    if (crypto_sign_verify_detached(signature.data(), in, size,
+                                    publicKey.data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::SignatureInvalid,
+                                       "signature verification failed");
+    }
+    return UltraCryptResult::Ok();
+#else
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_SignFile(UltraCryptSignatureAlgorithm algorithm,
+                                     const UltraCryptSecureBuffer& secretKey,
+                                     const std::string& filePath,
+                                     std::vector<uint8_t>& outSignature) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (!EnsureReady()) return NoBackend();
+    std::vector<uint8_t> bytes;
+    if (!ReadWholeFile(filePath, bytes)) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "could not open file: " + filePath);
+    }
+    return UltraCrypt_Sign(algorithm, secretKey, bytes.data(), bytes.size(),
+                           outSignature);
+}
+
+UltraCryptResult UltraCrypt_VerifyFile(UltraCryptSignatureAlgorithm algorithm,
+                                       const std::vector<uint8_t>& publicKey,
+                                       const std::string& filePath,
+                                       const std::vector<uint8_t>& signature) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (!EnsureReady()) return NoBackend();
+    std::vector<uint8_t> bytes;
+    if (!ReadWholeFile(filePath, bytes)) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "could not open file: " + filePath);
+    }
+    return UltraCrypt_Verify(algorithm, publicKey, bytes.data(), bytes.size(),
+                             signature);
 }
 
 // ============================================================================

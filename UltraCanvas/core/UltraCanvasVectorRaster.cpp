@@ -7,8 +7,9 @@
 // Both render *at* the requested size rather than rendering small and
 // scaling up: the whole point of a vector source is that the resolution is
 // chosen at rasterization time.
+// Version: 1.2.0 - RasterizeVectorDocument: a whole page at any size
 // Version: 1.1.0 - RasterizeVectorElements
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorRaster.h"
@@ -543,6 +544,63 @@ std::shared_ptr<UCRasterLayer> RasterizeVectorElements(
                                 (maxX - minX + 1) / pixelsPerPoint, (maxY - minY + 1) / pixelsPerPoint);
     }
     return LayerFromPremultiplied(src, w, minX, minY, maxX - minX + 1, maxY - minY + 1, "Drawing", error);
+}
+
+std::shared_ptr<UCRasterLayer> RasterizeVectorDocument(
+        const VectorStorage::VectorDocument& document,
+        const VectorRasterOptions& options,
+        std::string& error) {
+    error.clear();
+    Rect2Dd page = document.ViewBox;
+    if (!(page.width > 0) || !(page.height > 0)) page = Rect2Dd(0, 0, document.Size.width, document.Size.height);
+    if (!(page.width > 0) || !(page.height > 0) || !std::isfinite(page.width) || !std::isfinite(page.height) ||
+        !std::isfinite(page.x) || !std::isfinite(page.y)) {
+        error = "The drawing has no page size";
+        return nullptr;
+    }
+    int w = 0, h = 0;
+    ResolveTargetSize(std::max(1, static_cast<int>(std::lround(page.width))),
+                      std::max(1, static_cast<int>(std::lround(page.height))),
+                      options.width, options.height, w, h);
+    if (!SizeIsSane(w, h, options.maxPixels, error)) return nullptr;
+
+    UCPixmap pixmap;
+    if (!pixmap.Init(w, h)) {
+        error = "Could not allocate a " + std::to_string(w) + " x " + std::to_string(h) + " pixel buffer";
+        return nullptr;
+    }
+    std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(w, h), nullptr);
+    if (!ctx) {
+        error = "Could not create an offscreen render context";
+        return nullptr;
+    }
+    ctx->Clear(Color(0, 0, 0, 0));
+    ctx->PushState();
+    // The page onto the pixels, each side on its own: the size is the one
+    // chosen, whatever the page's shape. No viewport for the renderer, so it
+    // adds no fit of its own.
+    ctx->Scale(w / page.width, h / page.height);
+    ctx->Translate(-page.x, -page.y);
+    VectorRenderer renderer;
+    VectorRenderOptions renderOptions = renderer.GetOptions();
+    renderOptions.EnableCulling = false;
+    renderOptions.ClipToViewport = false;
+    renderOptions.ViewportBounds = Rect2Dd();
+    renderer.SetOptions(renderOptions);
+    renderer.RenderDocument(ctx.get(), document);
+    ctx->PopState();
+    ctx->FlushToSurface(pixmap.GetSurface(), Point2Dd(0, 0));
+    pixmap.MarkDirty();
+    pixmap.Flush();
+
+    const uint32_t* src = pixmap.GetPixelData();
+    if (!src) {
+        error = "The offscreen surface exposed no pixels";
+        return nullptr;
+    }
+    auto layer = LayerFromPremultiplied(src, w, 0, 0, w, h,
+                                        document.Title.empty() ? std::string("Drawing") : document.Title, error);
+    return layer ? ApplyBackground(layer, options.background) : nullptr;
 }
 
 } // namespace UltraCanvas

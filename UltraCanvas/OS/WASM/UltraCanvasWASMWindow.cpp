@@ -1,7 +1,8 @@
 // OS/WASM/UltraCanvasWASMWindow.cpp
 // WebAssembly (Emscripten) platform window implementation
+// Version: 2.1.0 - the first presented frame is logged with its time since navigation start
 // Version: 2.0.0
-// Last Modified: 2026-08-12
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -209,6 +210,19 @@ namespace UltraCanvas {
             pixels.set(new Uint8Array(HEAPU8.buffer, $1, $2 * $3 * 4));
             ctx.putImageData(new ImageData(pixels, $2, $3), 0, 0);
         }, canvasId.c_str(), reinterpret_cast<uintptr_t>(presentBuffer.data()), w, h);
+
+        // Time to first paint, for anyone measuring the port in a browser:
+        // one line in the console, once per page, from the browser's own
+        // clock (performance.now() counts from navigation start, so the
+        // download, compilation and start-up are all in it).
+        static bool firstFramePresented = false;
+        if (!firstFramePresented) {
+            firstFramePresented = true;
+            EM_ASM({
+                console.log('UltraCanvas WASM: first frame presented ' + Math.round(performance.now()) +
+                            ' ms after navigation start');
+            });
+        }
     }
 
 // ===== WINDOW OPERATIONS =====

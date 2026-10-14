@@ -200,7 +200,8 @@ A failure's `Result` says the same things without the log
   403 *not allowed*, a 404 *not found*, each with the status and the reason
   after it.
 - A request the service throttled - 429, a 503 with `Retry-After`, or Google
-  Drive's 403 `rateLimitExceeded` / `userRateLimitExceeded` - is
+  Drive's 403 `rateLimitExceeded` / `userRateLimitExceeded` - is first sent
+  again (below); when that does not get through it is
   `ResultCode::RateLimited`, and its message says how long the service asks
   to wait (`Retry-After` in seconds or as an HTTP date, `RetryAfterSeconds`).
 - `diagnostics` carries the HTTP status, the service's reason, `Retry-After`,
@@ -209,6 +210,46 @@ A failure's `Result` says the same things without the log
   took, then the transport's connection chain when the request never got an
   answer (UltraNet fills `UltraNetResult::diagnostics` for a failed HTTP
   transfer as it does for FTP).
+
+### Waiting out a service that limits requests
+
+A throttled request was not acted on, so `Send` waits as long as the service
+asks - or 1, 2, 4 s when it gives no time - and sends it again. How many
+times, how long at most and how to wait is the calling thread's
+`RateLimitPolicy`:
+
+```cpp
+UltraCloud::RateLimitPolicy policy;           // default: 3 more tries, waits up to 30 s, sleeps
+policy.maxRetries = backgroundWork ? 0 : 3;   // work nobody waits on: fail at once
+policy.maxWaitSeconds = 60;                   // a longer wait fails as RateLimited
+policy.wait = [&](long long seconds) {        // false: stop waiting, fail now
+    std::unique_lock<std::mutex> lock(mutex);
+    return !stopping.wait_for(lock, std::chrono::seconds(seconds), [&] { return quit; });
+};
+UltraCloud::RateLimitPolicy previous = UltraCloud::SetThreadRateLimitPolicy(std::move(policy));
+cloud.List(accountId, "/Photos", entries);
+UltraCloud::SetThreadRateLimitPolicy(std::move(previous));
+```
+
+Each wait is a line in the log - *The service is limiting requests: it asks
+to wait 20 s - trying again in 20 s (try 2 of 4)* - and so is a request given
+up.
+
+### Watching a sign-in
+
+The browser sign-in logs its steps too: where it waits for the browser's
+answer, the sign-in page it opens (its address without the query, which
+carries the one-time state and code challenge), and whether the service gave
+an access token or why it did not. The add-account dialog runs its sign-in on
+a thread of its own; `AddAccountWatch` lets a host set that thread's log
+sinks around it:
+
+```cpp
+UltraCloud::AddAccountWatch watch;
+watch.onBegin = [](const Account& a) { /* on the sign-in thread: SetThreadLog(...) */ };
+watch.onEnd = [](const Account& a, const Result& r) { /* put the sink back; r: how it ended */ };
+UltraCloud::ShowAddAccountDialog(window, cloud, onAdded, {}, "", watch);
+```
 
 ## Quick examples
 
@@ -285,7 +326,7 @@ providers.
 |---|---|
 | `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
-| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, HTTP → Result with the service's reason) |
+| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
@@ -298,7 +339,7 @@ providers.
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (with an optional provider filter and title), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing

@@ -1,0 +1,142 @@
+// Apps/UltraVideo/UltraVideoInspector.h
+// The inspector (Docs/Research/UltraVideoDesignProposal.md §6.4): three tabs
+// of catalogue elements. Clip - the selected clip's name, in and out, speed,
+// mute, its effects (each with a strength slider, each removable), the transition into it, a still's
+// motion and framing; a title's
+// text and look, an overlay's place and size, a voice-over's or sound
+// effect's volume, fades and ducking. Audio - the
+// music: the songs, volume, fades, crossfade, loop, ducking. Project - name,
+// size, frame rate, fit. Every field reports an edit as a closure over the
+// document; the window applies it through the undo history and shows the
+// document again, so the inspector never writes the document itself.
+// Version: 0.4.0
+// Last Modified: 2026-10-13
+// Author: UltraCanvas Framework
+#pragma once
+
+#include "UltraVideoDocument.h"
+#include "UltraVideoTheme.h"
+
+#include "UltraCanvasButton.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasSlider.h"
+#include "UltraCanvasSwitch.h"
+#include "UltraCanvasTabbedContainer.h"
+#include "UltraCanvasTextInput.h"
+#include "UltraCanvasTimecodeField.h"
+
+#include <functional>
+#include <memory>
+#include <string>
+
+namespace UltraVideo {
+
+class Inspector {
+public:
+    std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> Build(const Palette& palette);
+    void ApplyPalette(const Palette& palette);
+
+    // Show the document: `segment` is the selected clip's segment, `title`
+    // the selected title span, `overlay` the selected overlay clip and
+    // `sound` the selected clip on the voice-and-sound lane, -1 for none
+    void Show(const Document& document, int segment, int title = -1, int overlay = -1, int sound = -1);
+    void ShowClipTab();
+    void ShowAudioTab();
+
+    // An edit of the document, named for the history
+    std::function<void(const std::string& label, std::function<void(Document&)> edit)> onEdit;
+    std::function<void()> onAddMusic;      // the Audio tab's Add song: a file dialog, the window's
+    // The Project tab's "Preview from proxies": a view setting, not an edit
+    // (no undo step), the window's to apply
+    std::function<void(bool on)> onUseProxies;
+
+private:
+    using Label = UltraCanvas::UltraCanvasLabel;
+    using Dropdown = UltraCanvas::UltraCanvasDropdown;
+    using Slider = UltraCanvas::UltraCanvasSlider;
+    using Switch = UltraCanvas::UltraCanvasSwitch;
+    using TimecodeField = UltraCanvas::UltraCanvasTimecodeField;
+    using Container = UltraCanvas::UltraCanvasContainer;
+
+    std::shared_ptr<Container> Page(const std::string& id);
+    std::shared_ptr<Container> Row(const std::shared_ptr<Container>& page, const std::string& id, const std::string& caption,
+                                   std::shared_ptr<UltraCanvas::UltraCanvasUIElement> field);
+    std::shared_ptr<Label> Heading(const std::shared_ptr<Container>& page, const std::string& id, const std::string& text);
+    void Edit(const std::string& label, std::function<void(Document&)> edit);
+    void StyleControls(const Palette& palette);
+
+    std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs;
+    std::shared_ptr<Container> clipPage, audioPage, projectPage;
+    std::vector<std::shared_ptr<Label>> captions, headings;
+    std::vector<std::shared_ptr<Dropdown>> dropdowns;
+    std::vector<std::shared_ptr<Slider>> sliders;
+    std::vector<std::shared_ptr<Switch>> switches;
+    std::vector<std::shared_ptr<TimecodeField>> timecodes;
+
+    // Clip
+    std::shared_ptr<Label> clipName, clipKind, clipDuration, speedValue, transitionMax;
+    std::shared_ptr<Container> clipFields, clipEmpty, fileRows, imageRows, transitionRows;
+    std::shared_ptr<TimecodeField> inField, outField, transitionLength;
+    std::shared_ptr<Slider> speed;
+    std::shared_ptr<Switch> mute;
+    std::shared_ptr<Dropdown> transitionType, motion, imageFit;
+    std::shared_ptr<Switch> keepFaces;
+    std::shared_ptr<TimecodeField> stillLength;
+    std::shared_ptr<Container> stillRow;
+    // a title span
+    std::shared_ptr<Container> titleRows;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> titleText;
+    std::shared_ptr<Dropdown> titleStyle, titleAnchor, titleColor;
+    std::shared_ptr<Slider> titleSize, titleFadeIn, titleFadeOut;
+    std::shared_ptr<Label> titleSizeValue, titleFadeInValue, titleFadeOutValue;
+    std::shared_ptr<Switch> titleShadow, titleBox;
+    std::shared_ptr<TimecodeField> titleLength;
+    // an overlay clip (V2)
+    std::shared_ptr<Container> overlayRows;
+    std::shared_ptr<TimecodeField> overlayLength;
+    std::shared_ptr<Dropdown> overlayAnchor;
+    std::shared_ptr<Slider> overlaySize, overlayOpacity, overlayFadeIn, overlayFadeOut;
+    std::shared_ptr<Label> overlaySizeValue, overlayOpacityValue, overlayFadeInValue, overlayFadeOutValue;
+    // the effects on a main-track clip: a fixed set of rows, one per effect,
+    // each with its name, a strength slider (where the amount is adjustable)
+    // and a remove button
+    static constexpr int kEffectRows = 8;
+    static constexpr int kEffectSliderWidth = 90;
+    std::shared_ptr<Container> effectRows;
+    std::vector<std::shared_ptr<Container>> effectRow;
+    std::vector<std::shared_ptr<Label>> effectName;
+    std::vector<std::shared_ptr<Slider>> effectAmount;
+    std::vector<VideoFX::VideoFXEffect> shownEffects;   // as last shown, for the names while a slider moves
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasButton>> effectRemove;
+    std::shared_ptr<Label> effectsNone, effectsMore;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> removeEffects;
+    // a clip on the voice-and-sound lane (A2)
+    std::shared_ptr<Container> soundRows;
+    std::shared_ptr<Slider> soundVolume, soundFadeIn, soundFadeOut;
+    std::shared_ptr<Label> soundVolumeValue, soundFadeInValue, soundFadeOutValue;
+    std::shared_ptr<Switch> soundDucks;
+
+    // Audio
+    std::shared_ptr<Label> songs;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> addSong, removeSongs;
+    std::shared_ptr<Slider> musicVolume, fadeIn, fadeOut, crossfade, duckLevel;
+    std::shared_ptr<Label> musicVolumeValue, fadeInValue, fadeOutValue, crossfadeValue, duckValue;
+    std::shared_ptr<Switch> loop;
+    std::shared_ptr<Dropdown> ducking;
+
+    // Project
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> projectName;
+    std::shared_ptr<Dropdown> size, frameRate, fitMode;
+    std::shared_ptr<Switch> useProxies;
+
+    int segment = -1;
+    int title = -1;
+    int overlay = -1;
+    int sound = -1;
+    double documentFrameRate = 25.0;
+    bool updating = false;
+};
+
+} // namespace UltraVideo

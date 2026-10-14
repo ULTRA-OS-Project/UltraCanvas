@@ -1,7 +1,7 @@
 // Tests/UltraPasswordTests.cpp
 // Unit tests for UltraPassword's core: the group/entry model, the encrypted
-// vault file (which is also the export format), the CSV exchange and the
-// password generator.
+// vault file (which is also the export format), the CSV exchange, the
+// password generator and the default vault location.
 //
 // The properties that matter if the file is stolen or edited: no password is
 // on disk in the clear, a wrong password fails closed, any change to the file
@@ -18,6 +18,7 @@
 #include "core/PasswordGenerator.h"
 #include "core/PasswordVault.h"
 #include "core/VaultFile.h"
+#include "core/VaultLocation.h"
 
 #include "UltraCanvasPathUtf8.h"
 
@@ -368,6 +369,104 @@ static void TestGenerator() {
     Check(EstimateEntropyBits(GeneratePassword()) > 100.0, "20 mixed chars > 100 bits");
 }
 
+// Compared as paths, so the separator the platform joins with does not matter.
+static bool SamePath(const std::string& actual, const fs::path& expected) {
+    return UltraCanvas::PathFromUtf8(actual).lexically_normal() == expected.lexically_normal();
+}
+
+// The default vault folder (VaultLocation.h): each platform's rule, where
+// earlier versions left the vault on macOS, and moving a real vault into place
+// once - it opens there with its password - without touching a vault that is
+// already in place.
+static void TestVaultLocation(const fs::path& dir) {
+    std::printf("vault location\n");
+    using UltraCanvas::PathToUtf8;
+
+    // Windows: %APPDATA%; without it, the folder %APPDATA% would have named.
+    Check(SamePath(ResolveDataDir(DataDirPlatform::Windows, "", "C:/Users/erika/AppData/Roaming", ""),
+                   fs::path("C:/Users/erika/AppData/Roaming") / "UltraPassword"), "Windows: APPDATA");
+    Check(SamePath(ResolveDataDir(DataDirPlatform::Windows, "", "", "C:/Users/erika"),
+                   fs::path("C:/Users/erika") / "AppData" / "Roaming" / "UltraPassword"), "Windows without APPDATA");
+    // macOS: Application Support, not ~/.local/share.
+    Check(SamePath(ResolveDataDir(DataDirPlatform::MacOS, "", "", "/Users/erika"),
+                   fs::path("/Users/erika/Library/Application Support/UltraPassword")), "macOS: Application Support");
+    // Linux and the rest: XDG, unchanged.
+    Check(SamePath(ResolveDataDir(DataDirPlatform::Unix, "", "", "/home/erika"),
+                   fs::path("/home/erika/.local/share/UltraPassword")), "Linux: ~/.local/share");
+    Check(SamePath(ResolveDataDir(DataDirPlatform::Unix, "", "C:/AppData", "/home/erika"),
+                   fs::path("/home/erika/.local/share/UltraPassword")), "APPDATA means nothing outside Windows");
+    // XDG_DATA_HOME wins everywhere.
+    Check(SamePath(ResolveDataDir(DataDirPlatform::MacOS, "/Volumes/data", "", "/Users/erika"),
+                   fs::path("/Volumes/data/UltraPassword")), "XDG_DATA_HOME wins on macOS");
+    Check(SamePath(ResolveDataDir(DataDirPlatform::Windows, "D:/portable", "C:/AppData", ""),
+                   fs::path("D:/portable/UltraPassword")), "XDG_DATA_HOME wins on Windows");
+    Check(ResolveDataDir(DataDirPlatform::Unix, "", "", "").empty(), "no home: nothing");
+    Check(ResolveDataDir(DataDirPlatform::MacOS, "", "", "").empty(), "no home on macOS: nothing");
+    Check(VaultPathIn("/data/UltraPassword") == PathToUtf8(fs::path("/data/UltraPassword") / "vault.upwvault"),
+          "the vault file in the folder");
+
+    // Linux kept its folder; macOS moved, and so did Windows with HOME set.
+    Check(LegacyDataDirs(DataDirPlatform::Unix, "/home/erika").empty(), "Linux kept its folder");
+    Check(LegacyDataDirs(DataDirPlatform::Windows, "").empty(), "Windows without HOME: nothing to move");
+    const auto win = LegacyDataDirs(DataDirPlatform::Windows, "C:/Users/erika");
+    Check(win.size() == 1 && SamePath(win[0], fs::path("C:/Users/erika/.local/share/UltraPassword")),
+          "Windows with HOME: ~/.local/share/UltraPassword");
+    Check(LegacyDataDirs(DataDirPlatform::MacOS, "").empty(), "no home, no legacy folder");
+    const auto mac = LegacyDataDirs(DataDirPlatform::MacOS, "/Users/erika");
+    Check(mac.size() == 1 && SamePath(mac[0], fs::path("/Users/erika/.local/share/UltraPassword")),
+          "macOS: ~/.local/share/UltraPassword");
+
+    // A real vault in the old place moves whole, and opens in the new one.
+    const fs::path root   = dir / "location-ทดสอบ-🚀";
+    const fs::path legacy = root / "old" / "UltraPassword";
+    const fs::path target = root / "new" / "UltraPassword";
+    std::error_code ec;
+    fs::create_directories(legacy, ec);
+    {
+        PasswordVault v;
+        FillSample(v);
+        VaultFile file;
+        Check(file.Create(VaultPathIn(PathToUtf8(legacy)), Buf("correct horse"), v, FastCost()).Ok(),
+              "a vault in the old folder");
+    }
+    WriteBytes(PathToUtf8(legacy / "notes.txt"), {'n', 'o', 't', 'e'});
+    std::string error;
+    Check(SamePath(AdoptLegacyDataDir(PathToUtf8(target), {PathToUtf8(legacy)}, error), legacy),
+          "moved from the old folder");
+    Check(error.empty(), "moved without error");
+    Check(!fs::exists(legacy), "nothing left behind");
+    Check(fs::is_regular_file(target / "notes.txt"), "the whole folder came along");
+    {
+        VaultFile file;
+        PasswordVault out;
+        Check(file.Open(VaultPathIn(PathToUtf8(target)), Buf("correct horse"), out).Ok() && out.EntryCount() == 4,
+              "the moved vault opens with its password");
+    }
+    // A second start finds it in place and moves nothing.
+    Check(AdoptLegacyDataDir(PathToUtf8(target), {PathToUtf8(legacy)}, error).empty() && error.empty(),
+          "nothing to move the second time");
+
+    // A vault already in place is never replaced by an old one.
+    const fs::path other = root / "older" / "UltraPassword";
+    fs::create_directories(other, ec);
+    WriteBytes(PathToUtf8(other / "vault.upwvault"), {'o', 'l', 'd'});
+    Check(AdoptLegacyDataDir(PathToUtf8(target), {PathToUtf8(other)}, error).empty(),
+          "a vault in place is kept");
+    Check(fs::is_regular_file(other / "vault.upwvault"), "and the old one is untouched");
+
+    // Nothing to adopt: a missing candidate, a folder without a vault, the target itself.
+    const fs::path fresh = root / "fresh" / "UltraPassword";
+    const fs::path stray = root / "stray" / "UltraPassword";
+    fs::create_directories(stray, ec);
+    WriteBytes(PathToUtf8(stray / "readme.txt"), {'x'});
+    Check(AdoptLegacyDataDir(PathToUtf8(fresh),
+                             {"", PathToUtf8(root / "missing"), PathToUtf8(stray), PathToUtf8(fresh)},
+                             error).empty() && error.empty(),
+          "nothing adopted from folders without a vault");
+    Check(!fs::exists(fresh), "and no folder is made for it");
+    Check(AdoptLegacyDataDir("", {PathToUtf8(stray)}, error).empty(), "an empty data folder resolves to nothing");
+}
+
 int main() {
     if (!UltraCrypt_IsAvailable()) {
         std::printf("UltraPasswordTests: no crypto backend, skipped\n");
@@ -384,6 +483,7 @@ int main() {
     TestThrottle();
     TestCsv(dir);
     TestGenerator();
+    TestVaultLocation(dir);
 
     fs::remove_all(dir, ec);
     std::printf("UltraPasswordTests: %d checks, %d failures\n", g_checks, g_failures);

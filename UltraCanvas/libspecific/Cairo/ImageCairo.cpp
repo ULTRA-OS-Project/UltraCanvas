@@ -1,7 +1,14 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.3.2 - a 16-bit image saved as an 8-bit PNG keeps its colours
-// Last Modified: 2026-10-06
+// Version: 2.6.0 - ICO and QOI written by the framework's own libvips savers
+//                  (VipsIcoPlugin, VipsQoiLoader), registered with the loaders;
+//                  no ImageMagick for either
+// Version: 2.5.0 - An SVG libvips cannot load is read through the vector preview seam
+//                 and rendered by the core's vector renderer (the WebAssembly build)
+// Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
+//                  drops it; RemoveFromCache releases libvips' cached operations
+//                  too; pixmap keys carry the source stamp
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -9,11 +16,15 @@
 #include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
 #include "UltraCanvasCoderModuleRepair.h"
+#include "UltraCanvasFileStamp.h"
+#include "UltraCanvasVectorPreview.h"              // LoadVectorPreviewDocument, RenderVectorDocumentPixmap
+#include "DataFormats/UltraCanvasVectorStorage.h"  // VectorDocument::Size, GetBoundingBox
 // The bundled QOI file-format codec (always compiled) - see
 // SavePixmapAsQoiFile at the bottom of this file.
 #include "qoi.h"
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
+#include "VipsIcoPlugin.h"
 #include "UltraCanvasGifEncoder.h"
 #endif
 #ifdef HAS_LIBRSVG
@@ -26,6 +37,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <mutex>
 #include <memory>
@@ -178,6 +190,7 @@ namespace UltraCanvas {
 #endif
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
+        vips_foreign_ico_init_types();
         return true;
     }
 
@@ -212,6 +225,31 @@ namespace UltraCanvas {
         return im;
     }
 
+    bool UCImageRaster::SourceChangedOnDisk() const {
+        return StampFile(fileName) != source;
+    }
+
+    std::shared_ptr<UCImageRaster> UCImageRaster::GetFresh(const std::string &imagePath) {
+        if (std::shared_ptr<UCImageRaster> cached = g_ImagesCache.GetFromCache(imagePath)) {
+            // A cached decode failure is an answer about the moment it was
+            // made, not about the file: a picture caught half-written, or
+            // held open by the program saving it, fails once and decodes a
+            // moment later. Get() would keep answering with the failure.
+            if (!cached->IsValid() || cached->SourceChangedOnDisk())
+                RemoveFromCache(imagePath);
+            else
+                return cached;
+        }
+        return Get(imagePath);
+    }
+
+    bool UCImageRaster::RemoveFromCacheIfChanged(const std::string &imagePath) {
+        std::shared_ptr<UCImageRaster> cached = g_ImagesCache.GetFromCache(imagePath);
+        if (!cached || !cached->SourceChangedOnDisk()) return false;
+        RemoveFromCache(imagePath);
+        return true;
+    }
+
     void UCImageRaster::RemoveFromCache(const std::string &path) {
         // Loaded raster (keyed by the exact path).
         g_ImagesCache.RemoveFromCache(path);
@@ -226,6 +264,21 @@ namespace UltraCanvas {
         if (UCSvgDocument::IsSvgPath(path)) {
             UCSvgDocument::RemoveFromCache(path);
         }
+#endif
+#ifdef HAS_LIBVIPS
+        // libvips caches finished operations too, file loads among them, keyed
+        // by their arguments - the file NAME, not its content. Without this the
+        // next Load() of a file saved over was handed the old file's header
+        // (its width and height) from that cache. Releasing one file's
+        // operations needs the "revalidate" load option of libvips 8.15, which
+        // the Ubuntu 22.04 builds do not have, so the cache is trimmed to
+        // nothing and allowed to grow again - PixelFX's ReleaseCachedFiles does
+        // the same, and says why vips_cache_drop_all() is not the call for it.
+        // Nothing is lost but a few cached headers, and this runs only when a
+        // file is known to have changed.
+        const int maxOperations = vips_cache_get_max();
+        vips_cache_set_max(0);
+        vips_cache_set_max(maxOperations);
 #endif
     }
 
@@ -289,9 +342,102 @@ namespace UltraCanvas {
         return imgDataPtr != nullptr;
     }
 
+    namespace {
+        bool IsSvgFileName(const std::string& path) {
+            const std::string ext = GetFileExtension(path);   // lowercase, no dot
+            return ext == "svg" || ext == "svgz";
+        }
+
+#ifdef HAS_LIBVIPS
+        // Whether this libvips carries svgload (librsvg). The WebAssembly
+        // sysroot's does not; a desktop build normally does. Asked once, after
+        // libvips is up - Load() runs no earlier.
+        bool PipelineHasSvgLoader() {
+            static const bool has = VipsCanLoad(".svg");
+            return has;
+        }
+#endif
+    }
+
+    bool UCImageRaster::LoadVectorDocument(const std::string& imagePath) {
+        auto document = LoadVectorPreviewDocument(imagePath);
+        if (!document) return false;
+        // The natural size: what the drawing asks to be drawn at, else what
+        // it paints - the same answer RenderVectorDocumentPixmap fits to.
+        double dw = document->Size.width;
+        double dh = document->Size.height;
+        if (dw <= 0.0 || dh <= 0.0) {
+            const Rect2Dd bounds = document->GetBoundingBox();
+            dw = bounds.width;
+            dh = bounds.height;
+        }
+        if (dw <= 0.0 || dh <= 0.0) return false;
+        vectorDocument = std::move(document);
+        width = std::max(1, static_cast<int>(std::lround(dw)));
+        height = std::max(1, static_cast<int>(std::lround(dh)));
+        transparency = 1;        // a drawing shows what is behind it
+        errorMessage.clear();
+        return true;
+    }
+
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapFromVectorDocument(int w, int h,
+                                                                                ImageFitMode fitMode,
+                                                                                float scale) {
+        if (!vectorDocument || width <= 0 || height <= 0 || w <= 0 || h <= 0) return nullptr;
+        if (scale <= 0.0f) scale = 1.0f;
+        // The box the drawing is rendered into, by the fit mode, with the
+        // same meaning as the libvips thumbnail path: Contain and ScaleDown
+        // fit the box (ScaleDown never past the natural size), Cover covers
+        // it and is cropped to it, NoScale is the natural size. Fill keeps
+        // the aspect ratio too, letterboxed inside the box, where libvips
+        // would stretch - a drawing is never asked for stretched. The box
+        // follows the drawing's aspect, so the renderer's own fit-and-centre
+        // leaves no margin.
+        const double sx = static_cast<double>(w) / width;
+        const double sy = static_cast<double>(h) / height;
+        double s = 1.0;
+        switch (fitMode) {
+            case ImageFitMode::Fill:
+            case ImageFitMode::Contain:   s = std::min(sx, sy); break;
+            case ImageFitMode::ScaleDown: s = std::min(1.0, std::min(sx, sy)); break;
+            case ImageFitMode::Cover:     s = std::max(sx, sy); break;
+            case ImageFitMode::NoScale:   s = 1.0; break;
+        }
+        const int tw = std::max(1, static_cast<int>(std::lround(width * s)));
+        const int th = std::max(1, static_cast<int>(std::lround(height * s)));
+        std::shared_ptr<UCPixmapCairo> pm = RenderVectorDocumentPixmap(*vectorDocument, tw, th, scale);
+        if (!pm || !pm->IsValid()) {
+            errorMessage = "The drawing could not be rendered: " + fileName;
+            return nullptr;
+        }
+        if (fitMode == ImageFitMode::Cover && (tw > w || th > h)) {
+            // Centre crop to the box, in device pixels.
+            const int bw = std::max(1, static_cast<int>(std::lround(w * scale)));
+            const int bh = std::max(1, static_cast<int>(std::lround(h * scale)));
+            auto cropped = std::make_shared<UCPixmapCairo>(bw, bh);
+            if (!cropped->IsValid()) return nullptr;
+            cairo_t* cr = cairo_create(cropped->GetSurface());
+            cairo_set_source_surface(cr, pm->GetSurface(),
+                                     -(pm->GetRawWidth() - bw) / 2.0, -(pm->GetRawHeight() - bh) / 2.0);
+            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+            cairo_paint(cr);
+            cairo_destroy(cr);
+            cropped->MarkDirty();
+            cropped->Flush();
+            pm = cropped;
+        }
+        if (scale != 1.0f) {
+            pm->SetDeviceScale(scale);
+        }
+        return pm;
+    }
+
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCImageRaster> UCImageRaster::Load(const std::string &imagePath, bool loadOnlyHeader) {
         auto result = std::make_shared<UCImageRaster>(imagePath);
+        // Before the file is read, so a write racing the read leaves the
+        // stamp behind the content and GetFresh() reads the file again.
+        result->source = StampFile(imagePath);
 #ifdef HAS_LIBRSVG
         // SVG parse-once path: take the dimensions from the retained parsed
         // document instead of a vips header read (which parses the XML too).
@@ -307,6 +453,13 @@ namespace UltraCanvas {
             // Parse failed — fall through to vips for its detailed error reporting.
         }
 #endif
+        // An SVG this libvips has no loader for (the WebAssembly sysroot)
+        // goes to the vector preview seam; with no Vector plugin registered
+        // the pipeline reports the failure below as it always did.
+        const bool svg = IsSvgFileName(imagePath);
+        if (svg && !PipelineHasSvgLoader() && result->LoadVectorDocument(imagePath)) {
+            return result;
+        }
         try {
             vips::VImage vipsImage = result->GetVImage();
             result->width = vipsImage.width();
@@ -316,6 +469,11 @@ namespace UltraCanvas {
                 result->LoadFileToMemory(imagePath);
             }
         } catch (vips::VError& err) {
+            // The loader is there but refused the file: the plugin's reader
+            // is another reader, and may not.
+            if (svg && result->LoadVectorDocument(imagePath)) {
+                return result;
+            }
             debugOutput << "UCImage::Load: Failed Failed to load image for " << imagePath << " Err:" << err.what() << std::endl;
             // Prefer a clear file-access reason (missing / locked / no permission);
             // otherwise the file opened but the format is unsupported or damaged.
@@ -443,6 +601,12 @@ namespace UltraCanvas {
 #else
     std::shared_ptr<UCImageRaster> UCImageRaster::Load(const std::string &imagePath, bool loadOnlyHeader) {
         auto result = std::make_shared<UCImageRaster>(imagePath);
+        (void)loadOnlyHeader;
+        // No image pipeline, but a drawing the Vector plugin reads still
+        // renders through the core's vector renderer.
+        if (IsSvgFileName(imagePath) && result->LoadVectorDocument(imagePath)) {
+            return result;
+        }
         result->LoadFileToMemory(imagePath);
         result->errorMessage = "Image loading not yet implemented (no libvips)";
         return result;
@@ -568,13 +732,21 @@ namespace UltraCanvas {
 #endif
 
     std::string UCImageRaster::MakePixmapCacheKey(int w, int h, ImageFitMode fitMode, float scale) {
-        char key[300];
         // Including `scale` prevents 1x and 2x rasterizations of the same
         // file/size from colliding in the shared cache (would otherwise show
         // the wrong pixmap on a window dragged between Retina/non-Retina).
-        snprintf(key, sizeof(key) - 1, "%s?w:%dh:%dc:%dr:%g",
-                 fileName.c_str(), w, h, static_cast<int>(fitMode), static_cast<double>(scale));
-        return std::string(key);
+        // The source stamp ends the key: the pixmaps and the rasters are
+        // evicted on separate budgets, so a pixmap of a file's previous
+        // content can outlive its raster, and the raster loaded from the file
+        // as it is now must not find it. The path is joined on rather than
+        // printed into a fixed buffer, which cut long paths short and let two
+        // files deep in one folder share a key.
+        char tail[160];
+        snprintf(tail, sizeof(tail), "?w:%dh:%dc:%dr:%gs:%llut:%lld",
+                 w, h, static_cast<int>(fitMode), static_cast<double>(scale),
+                 static_cast<unsigned long long>(source.size),
+                 static_cast<long long>(source.time));
+        return fileName + tail;
     }
 
     std::shared_ptr<UCPixmapCairo> UCImageRaster::GetPixmap(int w, int h, ImageFitMode fitMode, float scale) {
@@ -604,6 +776,9 @@ namespace UltraCanvas {
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode, float scale) {
         if (scale <= 0.0f) scale = 1.0f;
+        if (vectorDocument) {
+            return CreatePixmapFromVectorDocument(w, h, fitMode, scale);
+        }
 #ifdef HAS_LIBRSVG
         // SVG fast path: rasterize from the cached parsed document — no file
         // read and no XML re-parse per requested size (each zoom level /
@@ -772,7 +947,10 @@ namespace UltraCanvas {
         return nullptr;
     }
 #else
-    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int, int, ImageFitMode, float) {
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode, float scale) {
+        if (vectorDocument) {
+            return CreatePixmapFromVectorDocument(w, h, fitMode, scale);
+        }
         return nullptr;
     }
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
@@ -1048,14 +1226,20 @@ namespace UltraCanvas {
                             ->set("ascii", !opts.pnm.binary));
                     break;
 
-                case UCImageSaveFormat::ICO:
+                case UCImageSaveFormat::ICO: {
+                    // The framework's own icon saver (VipsIcoPlugin): one
+                    // PNG picture per size, no ImageMagick.
+                    auto icoOpts = vips::VImage::option()
+                            ->set("in", vImg)
+                            ->set("filename", imagePath.c_str());
+                    if (!opts.ico.sizes.empty()) icoOpts->set("sizes", opts.ico.sizes);
+                    vips::VImage::call("icosave", icoOpts);
+                    break;
+                }
+
                 case UCImageSaveFormat::BMP: {
                     auto magickOpts = vips::VImage::option();
-                    if (opts.format == UCImageSaveFormat::BMP) {
-                        magickOpts->set("format", "bmp");
-                    } else {
-                        magickOpts->set("format", "ico");
-                    }
+                    magickOpts->set("format", "bmp");
                     vImg.magicksave(imagePath.c_str(), magickOpts);
                     break;
                 }
@@ -1069,13 +1253,11 @@ namespace UltraCanvas {
                     break;
 
                 case UCImageSaveFormat::QOI: {
-                    // QOI export goes through ImageMagick. The custom
-                    // VipsQoiLoader plugin only registers a LOADER; if the
-                    // local libvips/ImageMagick build lacks QOI write
-                    // support the runtime probe filter in the dialog will
-                    // hide this option.
-                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
-                            ->set("format", "qoi"));
+                    // The framework's own QOI saver (VipsQoiLoader: the
+                    // bundled codec), no ImageMagick.
+                    vips::VImage::call("qoisave", vips::VImage::option()
+                            ->set("in", vImg)
+                            ->set("filename", imagePath.c_str()));
                     break;
                 }
 
@@ -1183,6 +1365,35 @@ namespace UltraCanvas {
         if (extensionWithDot.empty()) return false;
         const std::string dummy = std::string("probe") + extensionWithDot;
         return vips_foreign_find_save(dummy.c_str()) != nullptr;
+    }
+
+    bool VipsCanEncode(const std::string& extensionWithDot) {
+        if (!VipsCanSave(extensionWithDot)) return false;
+        std::string ext = extensionWithDot;
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const bool av1 = ext == ".avif";
+        const bool hevc = ext == ".heic" || ext == ".heif";
+        if (!av1 && !hevc) return true;
+        static std::mutex mutex;
+        static std::map<std::string, bool> known;
+        const std::string key = av1 ? "av1" : "hevc";
+        std::lock_guard<std::mutex> lock(mutex);
+        auto it = known.find(key);
+        if (it != known.end()) return it->second;
+        bool works = false;
+        try {
+            vips::VImage probe = vips::VImage::black(2, 2, vips::VImage::option()->set("bands", 3));
+            VipsBlob* blob = probe.heifsave_buffer(vips::VImage::option()->set(
+                    "compression", av1 ? VIPS_FOREIGN_HEIF_COMPRESSION_AV1 : VIPS_FOREIGN_HEIF_COMPRESSION_HEVC));
+            size_t length = 0;
+            works = blob && vips_blob_get(blob, &length) && length > 0;
+            if (blob) vips_area_unref(VIPS_AREA(blob));
+        } catch (...) {
+            works = false;
+        }
+        vips_error_clear();
+        known[key] = works;
+        return works;
     }
 
     namespace {

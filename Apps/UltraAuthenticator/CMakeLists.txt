@@ -3,7 +3,8 @@
 #
 # Two targets:
 #   UltraAuthenticatorCore  static lib: OTP engine, otpauth:// parser, encrypted
-#                           vault and the account layer. Depends only on
+#                           vault, the account layer and the default vault
+#                           location. Depends only on
 #                           UltraCrypt, so the whole security-relevant surface
 #                           builds and tests without the UI stack — which is why
 #                           the test suites in Tests/ can run headless in CI.
@@ -24,6 +25,7 @@ set(ULTRAAUTHENTICATOR_CORE_SOURCES
     AccountExport.cpp
     LockPolicy.cpp
     Preferences.cpp
+    VaultLocation.cpp
     # The backup file is sealed with UCDCrypto::Seal, the framework's
     # password envelope. It is compiled here rather than linked because
     # nothing else builds it: the source lives under Plugins/Documents but the
@@ -38,8 +40,11 @@ set_target_properties(UltraAuthenticatorCore PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME "ultraauthenticator_core")
 target_compile_features(UltraAuthenticatorCore PUBLIC cxx_std_20)
+# UltraCanvasPathUtf8.h and UltraCanvasDataFolder.h are header-only and have
+# no link dependency.
 target_include_directories(UltraAuthenticatorCore PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR})
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
 target_link_libraries(UltraAuthenticatorCore PUBLIC UltraCrypt)
 
 # ===========================================================================
@@ -63,6 +68,8 @@ add_executable(UltraAuthenticator
     SettingsDialog.cpp
     NewVaultDialog.cpp
 )
+# One copy per user (UltraCanvasSingleInstance.h).
+ultracanvas_single_instance(UltraAuthenticator)
 
 # --version reports the release recorded in Docs/UltraAuthenticator/CHANGELOG.md.
 target_compile_definitions(UltraAuthenticator PRIVATE

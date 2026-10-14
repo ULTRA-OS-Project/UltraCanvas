@@ -1,8 +1,8 @@
 // VideoFX/core/VideoFXProbe.cpp
 // Media inspection: VideoFX_Probe, frame and thumbnail extraction, saving a
 // frame as PNG / JPEG.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.10.0
+// Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -43,20 +43,11 @@ std::string LowerExtension(const std::string& path) {
     return ext;
 }
 
-// ===== single-frame decoding =====
+} // namespace
 
-struct OpenVideo {
-    FormatInputPtr fmt;
-    CodecContextPtr dec;
-    int stream = -1;
-    int rotation = 0;
-    AVRational tb{1, 1};
-    int64_t startTs = 0;          // stream timestamps are relative to this
-    double duration = 0.0;
-    std::string path;
-    bool fresh = true;            // nothing read since the file was opened
-    bool still = false;           // a single image (image2 / *_pipe demuxers)
-};
+// ===== single-frame decoding (declared in VideoFXBackend.h, shared with the preview) =====
+
+namespace Internal {
 
 VideoFXResult OpenVideoStream(const std::string& path, OpenVideo& v) {
     VideoFXResult r = OpenInput(path, v.fmt);
@@ -94,16 +85,23 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
             if (r != VideoFXResult::Ok) return r;
             v = std::move(reopened);
         }
-    } else if (!attachedPicture && !(v.fresh && seconds <= 0.0)) {
+    }
+    const double halfFrame = st->avg_frame_rate.num > 0 ? 0.5 / av_q2d(st->avg_frame_rate) : 0.02;
+    // Shortly after the last frame decoded, decoding goes on from there
+    // (scrubbing forward through a GOP decodes nothing twice); anywhere else
+    // seeks to the keyframe before the time
+    const bool onward = !v.still && !attachedPicture && v.lastTime >= 0.0 &&
+                        seconds > v.lastTime + halfFrame && seconds - v.lastTime < 2.0;
+    if (!v.still && !attachedPicture && !onward && !(v.fresh && seconds <= 0.0)) {
         const int64_t target = v.startTs + static_cast<int64_t>(seconds / av_q2d(v.tb));
         if (av_seek_frame(v.fmt.get(), v.stream, target, AVSEEK_FLAG_BACKWARD) < 0)
             av_seek_frame(v.fmt.get(), -1, 0, AVSEEK_FLAG_BACKWARD);   // unseekable: from the start
         avcodec_flush_buffers(v.dec.get());
+        v.spent = false;
     }
 
     v.fresh = false;
-    st = v.fmt->streams[v.stream];
-    const double halfFrame = st->avg_frame_rate.num > 0 ? 0.5 / av_q2d(st->avg_frame_rate) : 0.02;
+    v.lastTime = -1.0;
     PacketPtr pkt = MakePacket();
     FramePtr frame = MakeFrame();
     bool haveFrame = false;
@@ -113,8 +111,9 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
         if (!draining) {
             int err = av_read_frame(v.fmt.get(), pkt.get());
             if (err < 0) {
-                draining = true;
-                avcodec_send_packet(v.dec.get(), nullptr);
+                draining = true;    // the decoder is spent after this: the next call seeks
+                if (!v.spent) avcodec_send_packet(v.dec.get(), nullptr);
+                v.spent = true;
             } else {
                 if (pkt->stream_index == v.stream) avcodec_send_packet(v.dec.get(), pkt.get());
                 av_packet_unref(pkt.get());
@@ -133,9 +132,42 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
             av_frame_move_ref(out, frame.get());
             frameTime = t;
             haveFrame = true;
-            if (attachedPicture || v.still || t >= seconds - halfFrame) return VideoFXResult::Ok;
+            // (a little slack, so a time that is a frame boundary in floating
+            // point picks the frame shown there whichever way it was computed)
+            if (attachedPicture || v.still || t >= seconds - halfFrame - 1e-6) {
+                if (!draining && !attachedPicture && !v.still) v.lastTime = t;
+                return VideoFXResult::Ok;
+            }
         }
         if (draining && !haveFrame) return Fail(VideoFXResult::DecodeError, "No frame at the requested time");
+    }
+}
+
+VideoFXResult DecodeNextFrame(OpenVideo& v, AVFrame* out, double& frameTime, bool& endOfStream) {
+    endOfStream = false;
+    if (v.still) { endOfStream = true; return VideoFXResult::Ok; }   // a still has the one frame
+    PacketPtr pkt = MakePacket();
+    while (true) {
+        int err = avcodec_receive_frame(v.dec.get(), out);
+        if (err >= 0) {
+            const int64_t ts = out->best_effort_timestamp;
+            frameTime = ts == AV_NOPTS_VALUE ? (v.lastTime < 0.0 ? 0.0 : v.lastTime) : ToSeconds(ts - v.startTs, v.tb);
+            v.lastTime = frameTime;
+            v.fresh = false;
+            return VideoFXResult::Ok;
+        }
+        if (err == AVERROR_EOF) { endOfStream = true; return VideoFXResult::Ok; }
+        if (err != AVERROR(EAGAIN)) return Fail(VideoFXResult::DecodeError, "Decoding failed", err);
+        if (v.spent) { endOfStream = true; return VideoFXResult::Ok; }
+        err = av_read_frame(v.fmt.get(), pkt.get());
+        if (err < 0) {
+            avcodec_send_packet(v.dec.get(), nullptr);
+            v.spent = true;
+            continue;
+        }
+        if (pkt->stream_index == v.stream) avcodec_send_packet(v.dec.get(), pkt.get());
+        av_packet_unref(pkt.get());
+        v.fresh = false;
     }
 }
 
@@ -194,7 +226,7 @@ VideoFXResult ConvertToRgba(const AVFrame* src, int rotation, int maxWidth, int 
     return VideoFXResult::Ok;
 }
 
-} // namespace
+} // namespace Internal
 
 // ============================================================================
 // PROBE

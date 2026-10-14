@@ -1,4 +1,5 @@
 // UltraCanvas/Plugins/UltraNet/imap/ImapPlugin.cpp
+// Version: 0.9.0 - CreateFolder / DeleteFolder (CREATE, DELETE)
 // Version: 0.8.0 - one sign-in serves many checks: sessions are kept in a pool
 //                  (SessionPool, per server, user and credentials, up to 330 s
 //                  idle) and every command that can runs on one (WithSession):
@@ -912,6 +913,26 @@ public:
         return RunCommand(base + EncodeMailboxPath(srcFolder), cmd.str(), options, tls, body);
     }
 
+    // CREATE / DELETE: on a pooled session, else on a connection of its own.
+    // Neither selects a mailbox, so the command runs against the server URL.
+    UltraNetResult CreateFolder(const std::string& serverUrl,
+                                const std::string& folder,
+                                const UltraNetMailOptions& options) override {
+        return RunMailboxCommand(serverUrl, CreateMailboxCommand(folder), options);
+    }
+
+    UltraNetResult DeleteFolder(const std::string& serverUrl,
+                                const std::string& folder,
+                                const UltraNetMailOptions& options) override {
+        if (folder.empty() || Lower(folder) == "inbox")
+            return UltraNetResult::Error(UltraNetResultCode::AccessDenied,
+                                         "The inbox cannot be deleted.");
+        // A kept session may have the mailbox open: the inbox is opened
+        // instead first, so the server is not asked to delete the mailbox in
+        // use and the session does not take a deleted one for still open.
+        return RunMailboxCommand(serverUrl, DeleteMailboxCommand(folder), options, folder);
+    }
+
     UltraNetResult AppendMessage(const std::string& serverUrl,
                                  const std::string& folder,
                                  const std::string& rawMessage,
@@ -1075,6 +1096,27 @@ private:
     // given this long to answer: a dead connection must not hold up a check.
     static constexpr long long   kRecheckAfterMs   = 15000;
     static constexpr long        kAliveCheckMs     = 8000;
+
+    // One command that names a mailbox but opens none (CREATE, DELETE), on a
+    // kept session when there is one, else on a connection of its own. When
+    // the session has `leaving` open, the inbox is opened first (read-only).
+    UltraNetResult RunMailboxCommand(const std::string& serverUrl, const std::string& command,
+                                     const UltraNetMailOptions& options,
+                                     const std::string& leaving = std::string()) {
+        std::string base; bool tls = false;
+        if (!ParseServerBase(serverUrl, base, tls))
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
+        bool unavailable = false;
+        UltraNetResult r = WithSession(base, tls, options, [&](ImapSession& s) {
+            if (!leaving.empty() && s.Selected() == leaving) {
+                if (UltraNetResult away = s.Examine("INBOX"); !away) return away;
+            }
+            return s.Run(command);
+        }, &unavailable);
+        if (r || !unavailable) return r;
+        std::string body;
+        return RunCommand(base, command, options, tls, body);
+    }
 
     // Run `work` on a signed-in session for the server and user of `base`
     // and `options`: one kept from an earlier call when there is one, else a

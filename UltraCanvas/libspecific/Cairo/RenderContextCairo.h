@@ -1,8 +1,9 @@
 // libspecific/Cairo/RenderContextCairo.h
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.3.0 - CompositeToSurfaceWithOpacity (an OVER composite at an opacity)
 // Version: 1.2.0 - FlushToSurfaceWithOpacity (a flush mixed with the destination)
 // Version: 1.1.0 - blend modes, groups, masks, hit testing, conic / mesh / pixmap patterns, text outlines
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-10
 // Author: UltraCanvas Framework
 //
 
@@ -67,7 +68,15 @@ namespace UltraCanvas {
         std::vector<RenderState> stateStack;
         RenderState currentState;
 
+        // Sets the source: a colour with its alpha scaled by the global alpha
+        // (SetAlpha), or a pattern as it is.
         void ApplySource(const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern = nullptr);
+        // A pattern cannot have its alpha scaled, so a fill, stroke or text
+        // painted with one under a global alpha below one goes through a
+        // group, laid down at that alpha by EndAlphaGroup. True when the
+        // group was opened (pass it to EndAlphaGroup); a colour needs none.
+        bool BeginAlphaGroup(const Color& sourceColor, const std::shared_ptr<IPaintPattern>& sourcePattern);
+        void EndAlphaGroup(bool opened);
         void ApplyTextSource() {
             ApplySource(currentState.textSourceColor, currentState.textSourcePattern);
         }
@@ -110,6 +119,8 @@ namespace UltraCanvas {
         void FlushToSurfaceWithOpacity(NativeSurfacePtr flushToSurface, const Point2Dd& pos,
                                        double opacity) override;
         void CompositeToSurface(NativeSurfacePtr flushToSurface, const Point2Dd& pos) override;
+        void CompositeToSurfaceWithOpacity(NativeSurfacePtr flushToSurface, const Point2Dd& pos,
+                                           double opacity) override;
         void FlushRegionToSurface(NativeSurfacePtr flushToSurface,
                                   const Rect2Dd& region, const Point2Dd& destPos) override;
         float GetDeviceScale() const override {

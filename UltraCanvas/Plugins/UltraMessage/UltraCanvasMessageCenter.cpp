@@ -731,7 +731,8 @@ void UltraCanvasMessageCenter::RebuildVisible() {
     int selectedRow = -1;
     for (size_t row = 0; row < visible_.size(); ++row) {
         const MessageCenterEntry& entry = entries_[visible_[row]];
-        MultiColumnListItem item({entry.unread ? "\xE2\x97\x8F" : "", entry.title, FormatTime(entry.timeMs, now)});
+        // "•" marks an unread entry; the UI font has no "●".
+        MultiColumnListItem item({entry.unread ? "\xE2\x80\xA2" : "", entry.title, FormatTime(entry.timeMs, now)});
         item.tooltip = entry.snippet;
         model_->AddItem(item);
         if (entry.message.envelope.id == selectedId_) selectedRow = static_cast<int>(row);

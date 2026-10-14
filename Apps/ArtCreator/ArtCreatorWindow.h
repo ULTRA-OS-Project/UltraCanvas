@@ -7,8 +7,10 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
+// Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-09-22
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -25,6 +27,7 @@
 #include "UltraCanvasVectorCanvas.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
+#include "UltraCanvasFileSaveSettings.h"   // FileSaveImageSize
 
 #include "ArtCreatorTools.h"
 #include "ArtCreatorDialogs.h"
@@ -67,14 +70,25 @@ private:
     void BuildRightPanel();
     void BuildStatusBar();
     void InstallShortcuts();
+    // The app's icons come in three sizes, each drawn on its own pixel grid
+    // so its lines land on whole pixels at the size it is shown at:
+    // media/icons/artcreator/ (24 px: toolbar and panel buttons), .../28/
+    // (the tool palette) and .../16/ (the menus).
     std::string IconPath(const std::string& file) const;
-    std::string TexterIconPath(const std::string& file) const;
+    std::string ToolIconPath(const std::string& file) const;
+    std::string MenuIconPath(const std::string& file) const;
+    // The framework's shared line icons (media/icons/menu/, 24 px): the
+    // toolbar's New, Open, Save, Undo, Redo and zoom buttons.
+    std::string SharedIconPath(const std::string& file) const;
 
     // ----- document -----
     void NewDrawing(const ArtCreatorPageResult& page);
     void SetDocument(std::shared_ptr<VectorStorage::VectorDocument> doc, const std::string& path);
     bool OpenFile(const std::string& path);
-    bool SaveToPath(const std::string& path);
+    // Saves through UltraCanvasFileLoader::SaveVectorDocument: a vector type
+    // through its writer, a bitmap one with the page drawn at `size`
+    // (IsOriginal: the page at 96 DPI). False, after saying why, on failure.
+    bool SaveToPath(const std::string& path, const FileSaveImageSize& size = FileSaveImageSize());
     void ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dialog);
     void ConfirmDiscard(const std::string& question, const std::function<void()>& proceed);
     void OnDocumentChanged();

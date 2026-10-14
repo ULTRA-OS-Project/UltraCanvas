@@ -1,0 +1,26 @@
+{
+  "slug": "the-plan",
+  "title": "The development plan",
+  "kind": "page",
+  "status": "published",
+  "date": "2026-10-13",
+  "template": "default",
+  "pinned": false,
+  "seo": {
+    "description": "How ULTRA OS is being built: the framework first, then the applications, then the system.",
+    "noindex": false
+  },
+  "blocks": [
+    {"type": "text", "props": {
+      "text": "ULTRA OS is built in stages: the UltraCanvas framework and its modules first, the applications on top of it, and the operating system around them.\n\nThis page of the example site stands in for the real one at ultraos.eu."
+    }},
+    {"type": "quote", "props": {
+      "text": "It’s time to build on what we’ve learned.",
+      "cite": "ULTRA OS"
+    }},
+    {"type": "cta", "props": {
+      "title": "Read the real page",
+      "buttons": [{"title": "ultraos.eu/the-plan", "url": "https://ultraos.eu/the-plan/", "primary": true}]
+    }}
+  ]
+}

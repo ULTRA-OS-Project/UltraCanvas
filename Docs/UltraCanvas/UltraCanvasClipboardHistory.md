@@ -1,6 +1,6 @@
 # UltraCanvasClipboardHistory
 
-<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); UltraCanvasClipboardRecorder recorder; -->
+<!-- doc-check: std::string ActiveApplicationName(); void RefreshList(); void Copy(int64_t id); void Edit(int64_t id); void Delete(int64_t id); void Preview(int64_t id); UltraCanvasClipboardRecorder recorder; -->
 
 The clipboard history of ULTRA OS: every copy, in every format the
 framework's clipboard reads, kept on disk so it outlives the program that
@@ -95,9 +95,12 @@ The same content copied again is not a second entry: it moves to the top
 
 `ClipboardHistoryPolicy` holds `maxEntries` (500 unpinned), `maxAgeDays` (30,
 by last use), `maxTotalBytes` (512 MB), `maxEntryBytes` (64 MB; a larger copy
-is not recorded), `recordingPaused`, `imageThumbnails` and
-`excludedApplications` (`Defaults()`: UltraPassword, UltraAuthenticator,
-KeePassXC, Bitwarden, 1Password).
+is not recorded), `recordingPaused`, `imageThumbnails`, `previewStyle` (how
+UltraClipboard previews an image whose thumbnail the pointer rests on:
+`ClipboardPreviewStyle::Modern`, a pane over the right part of the list with
+the viewer's info line, or `Classic`, the picture alone floating over the
+middle of the list) and `excludedApplications` (`Defaults()`: UltraPassword,
+UltraAuthenticator, KeePassXC, Bitwarden, 1Password).
 
 `EditClipboardText(text, edit)` is the edit dialog's text tools:
 `ClipboardTextEdit::Trim`, `JoinLines`, `Upper`, `Lower`, `Title`,
@@ -168,9 +171,11 @@ between them.
 | `<data>/ultraos/clipboard/thumbs/<hash>.png` | image thumbnails |
 | `<config>/ultraos/clipboard.key` | the 256-bit key, owner-only |
 
-`<data>` is `$XDG_DATA_HOME` (`~/.local/share`), `%LOCALAPPDATA%` on Windows,
-`~/Library/Application Support` on macOS; `<config>` is the folder the
-desktop's settings use. The folders are owner-only.
+`<data>` is `$XDG_DATA_HOME` when it is set, on every platform (as for the
+applications' data folders, `UltraCanvasDataFolder.h`), else `~/.local/share`,
+`%LOCALAPPDATA%` on Windows (a machine-local store, so not the applications'
+roaming `%APPDATA%`) and `~/Library/Application Support` on macOS; `<config>`
+is the folder the desktop's settings use. The folders are owner-only.
 
 With libsodium, titles, previews and payloads are sealed with
 XChaCha20-Poly1305 under the key file, kept apart from the data: a copy of the
@@ -202,8 +207,14 @@ listView->SetVariableRowHeights(true);      // headers are lower than rows
 model->SetEntries(history.List(), ClipboardHistoryListModel::Sections::ByDay);
 
 // Raw pointers: a lambda stored in the list must not own the list.
-listView->onCellHovered = [rows = rows.get(), view = listView.get()](int row, int, const Point2Di& at) {
+listView->onCellHovered = [this, rows = rows.get(), model = model.get(), view = listView.get()](
+                                  int row, int, const Point2Di& at) {
     if (rows->SetHover(row, at)) view->RequestRedraw();
+    // The thumbnail's column of an entry row: UltraClipboard opens its hover
+    // preview of an image from here. The list re-reports the hover when it
+    // scrolls under a still pointer, so the preview follows the wheel too.
+    const ClipboardHistoryEntry* entry = model->GetEntry(row);
+    if (entry && rows->IsOverThumbnail(at)) Preview(entry->id);
 };
 listView->onCellClicked = [this, rows = rows.get(), model = model.get()](int row, int, const Point2Di& at) {
     const ClipboardHistoryEntry* entry = model->GetEntry(row);
@@ -233,6 +244,10 @@ listView->tooltipProvider = [rows = rows.get()](int row, int) {
   style shows the actions on every row, the compact one on the hovered and
   selected rows only. `ShowCopied(id)` turns Copy into a check with a
   "Copied" pill for a moment; redraw while `IsShowingCopied()`.
+  `IsOverThumbnail(posInCell)` says whether a point of a row is on the
+  thumbnail's column (the tile's width, the row's whole height, so a pointer
+  resting there keeps its answer while the rows scroll under it); the caller
+  checks the row is an entry, not a header.
 - The action glyphs are `media/icons/clipboard/*.svg`, drawn as masks;
   `iconsDir` points elsewhere.
 - Helpers: `FormatClipboardAge`, `FormatClipboardSize`,
