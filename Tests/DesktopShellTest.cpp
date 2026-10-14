@@ -219,9 +219,15 @@ int main() {
         const fs::path userPrograms = user / "Microsoft" / "Windows" / "Start Menu" / "Programs";
         const fs::path machinePrograms = machine / "Microsoft" / "Windows" / "Start Menu" / "Programs";
 
-        WriteShortcut(userPrograms / "Writer.lnk", "C:\\Tools\\Writer\\writer.exe", "Writes");
+        // Programs that exist: an entry's program is resolved against this
+        // machine and stays empty for a file that is not there.
+        const fs::path writer = (scratch / "Tools" / "Writer" / "writer.exe").make_preferred();
+        const fs::path tool = (scratch / "Tools" / "tool.exe").make_preferred();
+        WriteFile(writer, "MZ");
+        WriteFile(tool, "MZ");
+        WriteShortcut(userPrograms / "Writer.lnk", PathToUtf8(writer), "Writes");
         WriteShortcut(machinePrograms / "Writer.lnk", "C:\\Program Files\\Writer\\writer-old.exe");
-        WriteShortcut(machinePrograms / "Accessories" / "Tool.lnk", "C:\\Tools\\tool.exe");
+        WriteShortcut(machinePrograms / "Accessories" / "Tool.lnk", PathToUtf8(tool));
         WriteFile(machinePrograms / "Accessories" / "desktop.ini",
                   "[LocalizedFileNames]\r\nTool.lnk=Localized Tool\r\n");
         WriteShortcut(machinePrograms / "Writer" / "Uninstall Writer.lnk",
@@ -236,8 +242,9 @@ int main() {
                                                         apps[0].name);
             Check(apps[1].name == "Writer", "a shortcut is named after its file");
             Check(apps[1].comment == "Writes", "the user's shortcut shadows the machine's");
-            Check(apps[1].program == "C:\\Tools\\Writer\\writer.exe", "the program is the shortcut's target: " +
-                                                                           apps[1].program);
+            std::error_code same;
+            Check(!apps[1].program.empty() && fs::equivalent(PathFromUtf8(apps[1].program), writer, same),
+                  "the program is the shortcut's target: " + apps[1].program);
             Check(apps[1].startupWMClass == "writer", "its windows are the program's: " + apps[1].startupWMClass);
             Check(IsShellLinkPath(apps[1].shortcutPath), "launching opens the shortcut: " + apps[1].shortcutPath);
             DesktopWindowInfo window;
