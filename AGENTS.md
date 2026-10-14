@@ -123,9 +123,14 @@ before adding cross-module code.
   a plugin registered once is offered everywhere - and the conversions
   between them: a drawing saved as a bitmap is
   `SaveVectorDocument(document, path, size, ...)` with the types from
-  `AddVectorDocumentSaveTypes`, drawn at the size the Settings give. Never a
-  list of formats an application keeps for itself, a writer it calls
-  directly, or a raster step of its own for something FileLoader does. What
+  `AddVectorDocumentSaveTypes`, drawn at the size the Settings give. A
+  dialog's file types are `AddLoadTypes(opts, label, {categories})` and
+  `AddSaveTypes(opts, category)` (`AddImageSaveTypes`,
+  `AddTextDocumentLoadTypes` / `AddTextDocumentSaveTypes`); a codec the
+  application brings itself joins them through `RegisterMediaCodec`, as
+  UltraVideo's FFmpeg engine does. Never a list of formats an application
+  keeps for itself, a writer it calls directly, or a raster step of its own
+  for something FileLoader does. What
   FileLoader cannot yet do is added to FileLoader, not worked around in the
   application. The exception is the program's own internal files - its
   settings, caches, logs, state, a temporary file - which it reads and writes

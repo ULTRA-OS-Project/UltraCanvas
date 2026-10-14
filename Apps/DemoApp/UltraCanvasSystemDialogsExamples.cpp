@@ -8,8 +8,9 @@
 //                one either as the ULTRA OS dialog (the framework's own) or as
 //                the host platform's, and every answer is written to the log.
 //   * Details  - Docs/UltraCanvas/UltraCanvasSystemDialogs.md.
+// Version: 1.1.0 - the file dialogs offer FileLoader's types
 // Version: 1.0.0
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraCanvasDemo.h"
@@ -248,10 +249,11 @@ namespace {
         // ----- File dialogs -----
         openBtn->onClick = [write, style, fileOptions]() {
             auto opts = fileOptions("Open a file");
-            opts.AddFilter("Images", std::vector<std::string>{"png", "jpg", "jpeg", "gif", "webp", "svg"})
-                .AddFilter("Documents", std::vector<std::string>{"txt", "md", "pdf", "odt", "docx"})
-                .AddFilter("Audio and video", std::vector<std::string>{"mp3", "wav", "flac", "ogg", "mp4", "mkv", "webm"})
-                .AddFilter("All files", "*");
+            // The types this build reads, from FileLoader's inventory
+            UltraCanvasFileLoader::AddLoadTypes(opts, "Pictures", {MediaFormatCategory::Bitmap, MediaFormatCategory::Vector});
+            UltraCanvasFileLoader::AddLoadTypes(opts, "Documents", {MediaFormatCategory::Document});
+            UltraCanvasFileLoader::AddLoadTypes(opts, "Audio and video", {MediaFormatCategory::Audio, MediaFormatCategory::Video});
+            opts.AddFilter("All files", "*");
             WithDialogStyle(style(), [&]() {
                 UltraCanvasFileLoader::OpenFileDialog(opts,
                     [write](DialogResult result, const std::string& path) {
@@ -280,10 +282,9 @@ namespace {
 
         saveBtn->onClick = [write, style, fileOptions]() {
             auto opts = fileOptions("Save a file");
-            opts.SetDefaultFileName("Untitled.txt")
-                .AddFilter("Text document", "txt")
-                .AddFilter("Markdown", "md")
-                .AddFilter("All files", "*");
+            opts.SetDefaultFileName("Untitled.odt");
+            UltraCanvasFileLoader::AddTextDocumentSaveTypes(opts);
+            opts.AddFilter("All files", "*");
             WithDialogStyle(style(), [&]() {
                 // Only the chosen name is reported: the demo writes nothing.
                 UltraCanvasFileLoader::SaveFileDialog(opts,

@@ -2,6 +2,7 @@
 // Base interface for cross-platform image handling in UltraCanvas
 // Version: 1.6.0 - VipsCanEncode: a saver that can encode here (AVIF / HEIC need
 //                  libheif's encoder)
+// Version: 1.6.0 - ...and so is one that arrives as bytes (LoadFromMemory)
 // Version: 1.5.0 - An SVG libvips cannot load is read through the vector preview seam
 // Version: 1.4.0 - GetFresh: the cached image checked against the file
 // Last Modified: 2026-10-13
@@ -159,7 +160,9 @@ namespace VectorStorage { class VectorDocument; }
         // an application that registers no Vector plugin gets the pipeline's
         // error as before. Set by Load(), read by CreatePixmap().
         std::shared_ptr<VectorStorage::VectorDocument> vectorDocument;
+        bool AdoptVectorDocument(std::shared_ptr<VectorStorage::VectorDocument> document);
         bool LoadVectorDocument(const std::string& imagePath);
+        bool LoadVectorDocumentFromMemory(const uint8_t* data, size_t size);   // bytes that read as SVG
         std::shared_ptr<UCPixmapCairo> CreatePixmapFromVectorDocument(int width, int height,
                                                                      ImageFitMode fitMode, float scale);
 

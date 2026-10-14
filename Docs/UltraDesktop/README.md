@@ -184,6 +184,9 @@ UltraDesktop --windows          print the open windows and exit
 UltraDesktop --apps             print the installed applications and exit
 UltraDesktop --devices          print the device activity and exit
 UltraDesktop --screenshot [f]   capture the screen (default: the Pictures folder)
+UltraDesktop --use-as-desktop   Windows: in place of the Windows desktop from now on
+UltraDesktop --restore-desktop  Windows: back to the Windows desktop, and exit
+UltraDesktop --session          started by the sign-in: close when switched back
 UltraDesktop --version | --help
 ```
 
@@ -192,7 +195,8 @@ ssh (`--windows` needs a display; `--apps` and `--devices` do not).
 
 ## Settings file
 
-`~/.config/ultraos/desktop.json` (`$XDG_CONFIG_HOME` when set):
+`~/.config/ultraos/desktop.json` (`$XDG_CONFIG_HOME` when set;
+`%APPDATA%\ultraos\desktop.json` on Windows):
 
 ```json
 {
@@ -208,7 +212,9 @@ ssh (`--windows` needs a display; `--apps` and `--devices` do not).
 }
 ```
 
-An empty wallpaper shows the framework's `media/images/landscape.jpg`.
+An empty wallpaper shows the framework's `media/images/landscape.jpg`. An
+empty `ramDiscPath` leaves the RAM disc button out; on Windows, which has no
+RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
@@ -225,6 +231,62 @@ the ones it has an icon for.
 ## Platform
 
 The window list, the virtual desktops, the screenshot and the device markers
-need the module's X11 backend (Linux, the BSDs). Elsewhere the desktop still
-runs — application list, launcher, settings, the Sticker board and the notes work — but the
-running-apps group stays empty and the Task Manager says so.
+come from the module's backends: X11 on Linux and the BSDs, Win32 on Windows.
+Elsewhere (macOS) the desktop still runs — application list, launcher,
+settings, the Sticker board and the notes work — but the running-apps group
+stays empty and the Task Manager says so.
+
+## On Windows
+
+UltraDesktop runs on Windows too, from the same suite folder as the other
+applications, and can take the place of the Windows desktop for one account
+— with the way back always one click away.
+
+### Trying it
+
+Start `UltraDesktop.exe`. It covers the main screen below every window, its
+bars keep their room (maximised windows stop beside them), and Explorer goes
+on running underneath with its own taskbar along the bottom, over the foot of
+the right bar. *Close UltraDesktop* on the settings button's right-click menu
+ends the trial.
+
+### In place of the Windows desktop
+
+Any one of these switches over, for this account only, without administrator
+rights:
+
+- **UOS-Settings → Desktop → At sign-in**: *UltraDesktop in place of the
+  Windows desktop*;
+- the settings button's right-click menu: *Use as the Windows desktop*;
+- `UltraDesktop --use-as-desktop` (what the installer's finish page runs).
+
+From then on the sign-in starts UltraDesktop (an entry *UltraCanvas Desktop*
+in Task Manager's startup apps) and Explorer's taskbar hides itself; it slides
+in when the pointer touches the bottom edge. Explorer keeps running, so its
+notification area, its notifications and the programs that rely on it work as
+before.
+
+### Back to the Windows desktop
+
+- UOS-Settings → Desktop: turn the switch off;
+- the settings button's right-click menu: *Switch back to the Windows
+  desktop*;
+- `UltraDesktop --restore-desktop` — also from Task Manager when nothing else
+  is at hand: Ctrl+Shift+Esc, *Run new task*;
+- uninstalling the suite does the same.
+
+Each of them removes the start at sign-in and gives the taskbar back the
+state it had before the switch — auto-hide or not, as you had it — and a
+desktop the sign-in started closes within a second.
+
+### What works, and what differs from Linux
+
+| | On Windows |
+|---|---|
+| Running applications | every window Explorer's taskbar would show, with its program's icon; Microsoft Store apps by the program inside their frame |
+| Applications window | the Start menu's programs, named as the Start menu names them; Microsoft Store apps are not listed yet |
+| Virtual desktops | the organiser follows Windows' desktops and switches between them; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
+| Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead |
+| RAM disc | no button unless a folder is set (UOS-Settings → Desktop → RAM disc) |
+| Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, battery, keyboard layout, network, USB and Bluetooth |
+| Notifications | other programs' notifications are drawn by Windows, as before |

@@ -2,9 +2,18 @@
 # Self-signed code signing certificate generator and EXE signer for UltraTexter
 # Run once as Administrator to create the cert, then use sign mode for each build
 # Usage:
-#   First time:  powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode CreateAndSign -ExePath "path\to\UltraTexter.exe"
-#   Subsequent:  powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode Sign       -ExePath "path\to\UltraTexter.exe"
-#   Verify only: powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode Verify     -ExePath "path\to\UltraTexter.exe"
+#   First time:  powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode CreateAndSign -ExePath "path\to\app.exe"
+#   Subsequent:  powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode Sign       -ExePath "path\to\app.exe"
+#   Verify only: powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode Verify     -ExePath "path\to\app.exe"
+#
+# The PFX password is not kept in this file: set ULTRACANVAS_SIGN_PFX_PASSWORD
+# in the environment (a CI secret on a build machine), or pass -PfxPassword,
+# before CreateAndSign or Sign. Anything written here is readable by everyone
+# who can read the repository, and with the PFX it unlocks the private key.
+# To change the password: delete the PFX, set the new password, and run
+# -Mode CreateAndSign - the certificate already in the store is exported again
+# under it. -Description is the name the signature shows (what Windows names
+# in its prompts), "UltraTexter" unless given.
 
 param(
     [Parameter(Mandatory=$true)]
@@ -18,7 +27,8 @@ param(
     [string]$CertFriendly   = "UltraCanvasTexter Code Signing",
     [string]$CertStore      = "Cert:\CurrentUser\My",
     [string]$PfxPath        = "$PSScriptRoot\UltraCanvasTexterSign.pfx",
-    [string]$PfxPassword    = "UltraCanvas2026!",
+    [string]$PfxPassword    = $env:ULTRACANVAS_SIGN_PFX_PASSWORD,
+    [string]$Description    = "UltraTexter",
     [int]$CertYears         = 5
 )
 
@@ -62,6 +72,21 @@ function Find-SignTool {
     return $null
 }
 
+# The PFX password, from -PfxPassword or ULTRACANVAS_SIGN_PFX_PASSWORD - never
+# a default in this file.
+function Get-PfxPassword {
+    if ([string]::IsNullOrEmpty($PfxPassword)) {
+        throw "No PFX password: set ULTRACANVAS_SIGN_PFX_PASSWORD (or pass -PfxPassword)."
+    }
+    return $PfxPassword
+}
+
+function Export-Pfx($cert) {
+    $secPwd = ConvertTo-SecureString -String (Get-PfxPassword) -Force -AsPlainText
+    Export-PfxCertificate -Cert $cert -FilePath $PfxPath -Password $secPwd | Out-Null
+    Write-Ok "PFX exported to: $PfxPath"
+}
+
 function Get-ExistingCert {
     return Get-ChildItem -Path $CertStore -ErrorAction SilentlyContinue |
            Where-Object { $_.Subject -eq $CertSubject -and $_.NotAfter -gt (Get-Date) } |
@@ -73,12 +98,19 @@ function Get-ExistingCert {
 
 function New-SelfSignedCodeCert {
     Write-Step "Creating self-signed code signing certificate"
+    # Before anything is created: a certificate without its PFX is no use.
+    Get-PfxPassword | Out-Null
 
     $existing = Get-ExistingCert
     if ($existing) {
         Write-Warn "Valid cert already exists (expires $($existing.NotAfter.ToString('yyyy-MM-dd')))"
         Write-Warn "Thumbprint: $($existing.Thumbprint)"
-        Write-Warn "Skipping creation. Delete it manually to recreate."
+        if (-not (Test-Path $PfxPath)) {
+            # A new password: the same certificate, exported again under it.
+            Export-Pfx $existing
+        } else {
+            Write-Warn "Skipping creation. Delete it manually to recreate."
+        }
         return $existing
     }
 
@@ -98,9 +130,7 @@ function New-SelfSignedCodeCert {
     Write-Ok "Expires    : $($cert.NotAfter.ToString('yyyy-MM-dd'))"
 
     # Export PFX for use in post-build signing without admin rights
-    $secPwd = ConvertTo-SecureString -String $PfxPassword -Force -AsPlainText
-    Export-PfxCertificate -Cert $cert -FilePath $PfxPath -Password $secPwd | Out-Null
-    Write-Ok "PFX exported to: $PfxPath"
+    Export-Pfx $cert
 
     # Trust the cert on this machine (adds to Trusted Publishers + Root)
     $rootStore = New-Object System.Security.Cryptography.X509Certificates.X509Store("Root", "LocalMachine")
@@ -136,11 +166,12 @@ function Invoke-SignExe([string]$path) {
     # Prefer PFX file (works without admin, good for CI/post-build)
     if (Test-Path $PfxPath) {
         Write-Ok "Signing with PFX file"
+        $password = Get-PfxPassword
         & $signtool sign `
             /fd   SHA256 `
             /f    $PfxPath `
-            /p    $PfxPassword `
-            /d    "UltraTexter" `
+            /p    $password `
+            /d    $Description `
             /du   "https://ultracanvas.dev" `
             /t    "http://timestamp.digicert.com" `
             $path
@@ -155,7 +186,7 @@ function Invoke-SignExe([string]$path) {
         & $signtool sign `
             /fd  SHA256 `
             /sha1 $cert.Thumbprint `
-            /d   "UltraTexter" `
+            /d   $Description `
             /du  "https://ultracanvas.dev" `
             /t   "http://timestamp.digicert.com" `
             $path
@@ -165,10 +196,10 @@ function Invoke-SignExe([string]$path) {
         # Timestamp server may be unreachable — retry without timestamp
         Write-Warn "Timestamp server unreachable, signing without timestamp..."
         if (Test-Path $PfxPath) {
-            & $signtool sign /fd SHA256 /f $PfxPath /p $PfxPassword /d "UltraTexter" $path
+            & $signtool sign /fd SHA256 /f $PfxPath /p $password /d $Description $path
         } else {
             $cert = Get-ExistingCert
-            & $signtool sign /fd SHA256 /sha1 $cert.Thumbprint /d "UltraTexter" $path
+            & $signtool sign /fd SHA256 /sha1 $cert.Thumbprint /d $Description $path
         }
         if ($LASTEXITCODE -ne 0) { throw "signtool failed with exit code $LASTEXITCODE" }
         Write-Warn "Signed without timestamp (signature will expire with the cert)"
@@ -197,7 +228,7 @@ function Invoke-Verify([string]$path) {
 
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Magenta
-Write-Host "  UltraTexter Code Signing Tool" -ForegroundColor Magenta
+Write-Host "  Code Signing Tool: $Description" -ForegroundColor Magenta
 Write-Host "  Mode: $Mode" -ForegroundColor Magenta
 Write-Host "==========================================" -ForegroundColor Magenta
 

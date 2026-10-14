@@ -1,7 +1,8 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
+// Version: 2.3.0 - DialogFileFilters: the Word Processing filter is FileLoader's text document types
 // Version: 2.2.0
-// Last Modified: 2026-08-28
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -94,7 +95,10 @@ namespace UltraCanvas {
         int autosaveIntervalSeconds = 60;  // Autosave every 60 seconds
         std::string autosaveDirectory = "";  // Empty = use system temp directory
 
-        // File filters for Open/Save dialogs
+        // File filters for Open/Save dialogs. The "Word Processing" entry is
+        // a place: a dialog shows FileLoader's text document types there -
+        // what LoadTextDocument reads when opening, ODT and DOCX
+        // (SaveTextDocument) when saving.
         std::vector<FileFilter> fileFilters = {
                 FileFilter("All Files", "*"),
                 FileFilter("Text Files", {"txt", "log", "md", "ini", "cfg"}),
@@ -425,6 +429,10 @@ namespace UltraCanvas {
                                        const std::string& content, const std::string& encoding,
                                        const std::string& language);
         void OfferRecoveryForBackup(const std::string& backupPath);
+
+        // config.fileFilters, its "Word Processing" place filled with
+        // FileLoader's text document types for an Open or a Save dialog
+        std::vector<FileFilter> DialogFileFilters(bool forSave) const;
 
         // ===== MENU HANDLERS =====
         void OnFileNew();

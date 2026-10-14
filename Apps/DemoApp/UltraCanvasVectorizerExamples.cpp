@@ -5,9 +5,11 @@
 // is exposed in a middle "Tracing parameters" column (quality presets plus
 // per-parameter dropdowns and sliders); the resulting SVG is written to a
 // temp file, rendered through the existing image element (which understands
-// SVG) and can be saved anywhere via the native save dialog.
+// SVG) and can be saved anywhere, as any type FileLoader writes.
+// Version: 0.3.0 - Save offers every vector and bitmap type FileLoader writes
+//                  (a bitmap drawn at any size); Open its picture types
 // Version: 0.2.0
-// Last Modified: 2026-08-04
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -22,6 +24,7 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasFileLoader.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasVectorizerPlugin.h"
@@ -710,29 +713,53 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     };
 
     // ===== Saving =====
-    // Writes the SVG produced by the last successful trace wherever the user
-    // wants it; the temp preview file is only an implementation detail.
+    // The last successful trace, as every type FileLoader writes: the SVG as
+    // traced, any other vector type, or a bitmap drawn sharp at the size
+    // chosen in its Settings. The temp preview file is the drawing FileLoader
+    // reads it from.
     saveBtn->onClick = [pageRaw, statusLabel, detailLabel, lastSvg, currentPath]() {
         if (lastSvg->empty()) {
             statusLabel->SetText("Nothing to save yet — press \"Vectorize\" first.");
             return;
         }
+        std::string readError;
+        std::shared_ptr<VectorStorage::VectorDocument> drawing;
+        if (WriteFile(TempSvgPath(), *lastSvg))
+            drawing = UltraCanvasFileLoader::LoadVectorDocument(TempSvgPath(), readError);
         FileDialogOptions opts;
-        opts.SetTitle("Save vectorized SVG")
+        opts.SetTitle("Save vectorized drawing")
             .SetDefaultFileName(SuggestedSvgName(*currentPath))
             .SetInitialDirectory(ParentDir(*currentPath))
-            .AddFilter("SVG image", "svg")
-            .AddFilter("All files", "*")
             .SetParentWindow(pageRaw ? pageRaw->GetWindow() : nullptr);
+        if (drawing) UltraCanvasFileLoader::AddVectorDocumentSaveTypes(opts, *drawing);
+        else opts.AddFilter("SVG image", "svg");       // no vector writers installed: the SVG as traced
+        opts.AddFilter("All files", "*");
 
         UltraCanvasFileLoader::SaveFileDialog(opts,
-            [statusLabel, detailLabel, lastSvg]
-            (DialogResult result, const std::string& path) {
+            [statusLabel, detailLabel, lastSvg, drawing]
+            (DialogResult result, const std::string& path, const FileSaveImageSize& size) {
                 if (result != DialogResult::OK || path.empty()) {
                     statusLabel->SetText("Save cancelled.");
                     return;
                 }
-                const std::string target = EnsureSvgExtension(path);
+                std::string target = drawing ? path : EnsureSvgExtension(path);
+                std::string ext = PathToUtf8(PathFromUtf8(target).extension());
+                std::transform(ext.begin(), ext.end(), ext.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (ext.empty()) {                          // a bare name: the SVG as traced
+                    target = EnsureSvgExtension(target);
+                    ext = ".svg";
+                }
+                if (ext != ".svg") {
+                    std::string error;
+                    if (!UltraCanvasFileLoader::SaveVectorDocument(*drawing, target, size, error)) {
+                        statusLabel->SetText("Could not save " + BaseName(target) + ": " + error);
+                        return;
+                    }
+                    statusLabel->SetText("Saved the drawing as " + BaseName(target));
+                    detailLabel->SetText(target);
+                    return;
+                }
                 if (!WriteFile(target, *lastSvg)) {
                     statusLabel->SetText("Could not write " + target);
                     return;
@@ -759,9 +786,9 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
                         statusLabel, detailLabel, saveBtn, lastSvg]() {
         FileDialogOptions opts;
         opts.SetTitle("Choose a raster image to vectorize")
-            .SetParentWindow(pageRaw ? pageRaw->GetWindow() : nullptr)
-            .AddFilter("Images", {"png", "jpg", "jpeg", "webp", "tiff", "bmp", "gif"})
-            .AddFilter("All files", "*");
+            .SetParentWindow(pageRaw ? pageRaw->GetWindow() : nullptr);
+        UltraCanvasFileLoader::AddLoadTypes(opts, "Images", {MediaFormatCategory::Bitmap});
+        opts.AddFilter("All files", "*");
         UltraCanvasFileLoader::OpenFileDialog(opts,
             [inputImage, inputPathLabel, currentPath, describeInput,
              statusLabel, detailLabel, saveBtn, lastSvg]
