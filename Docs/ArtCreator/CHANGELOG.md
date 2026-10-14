@@ -26,6 +26,26 @@
     same pixels on the page when zoomed in.
   - *Export* writes the icon at its size unless another is chosen, its file
     name starting as a `.png`.
+  - *Object* has line widths in pixels beside those in points: 1, 2, 3 and
+    4 px, the icon's own pixels in icon mode - so a line covers whole pixel
+    rows - and 96 DPI pixels (0.75 pt) otherwise.
+- **The tool palette groups its tools, as UltraPaint's does.** Tools of a
+  kind share one button, so the palette shows 8 buttons for its 19 tools
+  and fits a short window without scrolling. The button shows the tool last
+  picked from its group; resting the pointer on it folds out a bar with the
+  whole group, and a click there picks a tool. A small triangle in a
+  button's corner marks a group. The groups, top to bottom:
+  - *Select* - Selector, Shape Editor
+  - *Draw* - Pen, Freehand, Straight Line
+  - *Shapes* - Rectangle, Ellipse, Quick Shape
+  - Text
+  - *Fill* - Fill, Transparency
+  - *Effects* - Shadow, Feather, Contour, Bevel (drawn around a shape)
+  - *Blend and Mould* (shapes made into new ones)
+  - *View* - Zoom, Push
+
+  A tool's key picks it as before and shows it in its group's button (the
+  framework's `AddToolGroup`, as in UltraPaint 0.2.16).
 
 #### 2026-10-13 *0.6.11*
 - **Export as a bitmap, at any size.** File > Export offers PNG, JPEG, WebP,

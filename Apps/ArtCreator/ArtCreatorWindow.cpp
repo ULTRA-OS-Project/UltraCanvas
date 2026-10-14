@@ -6,7 +6,9 @@
 //                 icon size, a pixel grid, pointer snapping that puts lines of odd
 //                 pixel widths on pixel centres, Arrange > Snap to Pixels, the page
 //                 drawn at the icon's size with its soft pixels, marked on the canvas
-//                 too; Export writes the icon at its size
+//                 too; Export writes the icon at its size; Object > line widths in
+//                 pixels (1 to 4 px: icon pixels in icon mode); the tool palette in
+//                 groups with fold-out bars, as UltraPaint's
 // Version: 1.6.0 - Export offers FileLoader's types (AddVectorDocumentSaveTypes):
 //                 every vector writer and every bitmap type this build writes -
 //                 PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, QOI, ICO ... - and
@@ -423,13 +425,18 @@ void ArtCreatorWindow::BuildMenuBar() {
             M::Action("No Fill", MenuIconPath("no-fill.svg"), [this]() { CmdRemoveFill(); }),
             M::Action("No Line", MenuIconPath("no-line.svg"), [this]() { CmdRemoveLine(); }),
             M::Separator(),
-            M::Header("Line width"),
+            M::Header("Line width in points"),
             M::Action("Hairline (0.25 pt)", MenuIconPath("line-hairline.svg"), [this]() { CmdLineWidth(0.25f); }),
             M::Action("0.5 pt", MenuIconPath("line-05.svg"), [this]() { CmdLineWidth(0.5f); }),
             M::Action("1 pt", MenuIconPath("line-1.svg"), [this]() { CmdLineWidth(1.0f); }),
             M::Action("2 pt", MenuIconPath("line-2.svg"), [this]() { CmdLineWidth(2.0f); }),
             M::Action("4 pt", MenuIconPath("line-4.svg"), [this]() { CmdLineWidth(4.0f); }),
             M::Action("8 pt", MenuIconPath("line-8.svg"), [this]() { CmdLineWidth(8.0f); }),
+            M::Header("Line width in pixels"),
+            M::Action("1 px", MenuIconPath("line-1.svg"), [this]() { CmdLineWidthPixels(1); }),
+            M::Action("2 px", MenuIconPath("line-2.svg"), [this]() { CmdLineWidthPixels(2); }),
+            M::Action("3 px", MenuIconPath("line-3.svg"), [this]() { CmdLineWidthPixels(3); }),
+            M::Action("4 px", MenuIconPath("line-4.svg"), [this]() { CmdLineWidthPixels(4); }),
         })
         .AddSubmenu("Layer", {
             M::ActionWithShortcut("New Layer", "Ctrl+Shift+N", MenuIconPath("layer-add.svg"), [this]() { CmdLayerAdd(); }),
@@ -549,6 +556,38 @@ void ArtCreatorWindow::SetDisplayQuality(int level) {
     if (canvas) canvas->SetDisplayQuality(quality);
 }
 
+namespace {
+    // The palette's groups, top to bottom, as UltraPaint's: tools of a kind
+    // share one slot, the group's main tool first. The slot shows the tool
+    // last picked from its group, and resting the pointer on it folds out a
+    // bar with the whole group. A group of one tool is a plain button. A
+    // tool missing here still gets a slot of its own, after these, so a tool
+    // added to CreateArtTools() never goes missing.
+    struct PaletteGroup {
+        const char* id;
+        std::vector<ArtToolId> tools;
+    };
+    const std::vector<PaletteGroup>& PaletteGroups() {
+        using T = ArtToolId;
+        static const std::vector<PaletteGroup> groups = {
+            { "select",  { T::Selector, T::ShapeEditor } },
+            { "draw",    { T::Pen, T::Freehand, T::Line } },
+            { "shapes",  { T::Rectangle, T::Ellipse, T::QuickShape } },
+            { "text",    { T::Text } },
+            { "fill",    { T::Fill, T::Transparency } },
+            { "effects", { T::Shadow, T::Feather, T::Contour, T::Bevel } },   // drawn around a shape
+            { "combine", { T::Blend, T::Mould } },                             // shapes into new ones
+            { "view",    { T::Zoom, T::Push } },
+        };
+        return groups;
+    }
+
+    // A tool's id among the palette's group items.
+    std::string ToolItemId(ArtToolId id) {
+        return "tool-" + std::to_string(static_cast<int>(id));
+    }
+}
+
 void ArtCreatorWindow::BuildToolPalette() {
     palette = std::make_shared<UltraCanvasToolbar>("ac-palette", 0, 0, kPaletteWidth, 0);
     palette->SetOrientation(ToolbarOrientation::Vertical);
@@ -561,19 +600,48 @@ void ArtCreatorWindow::BuildToolPalette() {
     // squeezing every icon into a button too small for it.
     palette->SetOverflowMode(ToolbarOverflowMode::Scroll);
     palette->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    toolButtons.clear();
+
+    auto findTool = [this](ArtToolId id) -> const ArtTool* {
+        for (const auto& t : tools) if (t->id == id) return t.get();
+        return nullptr;
+    };
+    auto itemOf = [this](const ArtTool& t) {
+        ToolGroupItem item;
+        item.id = ToolItemId(t.id);
+        item.iconPath = ToolIconPath(t.iconFile);
+        item.tooltip = t.name;
+        if (t.shortcutKey) item.tooltip += std::string(" (") + t.shortcutKey + ")";
+        return item;
+    };
+
+    std::vector<std::pair<std::string, std::vector<ToolGroupItem>>> slots;
+    std::vector<ArtToolId> placed;
+    for (const auto& g : PaletteGroups()) {
+        std::vector<ToolGroupItem> items;
+        for (ArtToolId id : g.tools) {
+            if (const ArtTool* t = findTool(id)) { items.push_back(itemOf(*t)); placed.push_back(id); }
+        }
+        if (!items.empty()) slots.emplace_back(g.id, std::move(items));
+    }
     for (const auto& t : tools) {
-        const ArtToolId id = t->id;
-        auto b = palette->AddToggleButton("ac-tool-" + std::to_string(static_cast<int>(id)), "", ToolIconPath(t->iconFile),
-                                          [this, id](bool) { SelectTool(id); });
-        std::string tip = t->name;
-        if (t->shortcutKey) tip += std::string(" (") + t->shortcutKey + ")";
-        b->SetTooltip(tip);
+        if (std::find(placed.begin(), placed.end(), t->id) != placed.end()) continue;
+        slots.emplace_back(ToolItemId(t->id), std::vector<ToolGroupItem>{ itemOf(*t) });
+    }
+
+    toolSlots.clear();
+    for (auto& [groupId, items] : slots) {
+        auto b = palette->AddToolGroup("ac-tools-" + groupId, items, [this](const std::string& itemId) {
+            for (const auto& t : tools) {
+                if (ToolItemId(t->id) == itemId) { SelectTool(t->id); return; }
+            }
+        });
+        b->SetSlotShowsLastPicked(true);
         // The palette's icons are drawn on a 28 px grid (media/icons/
         // artcreator/28) with 2 px strokes on whole units: shown at 28 px
         // they land on whole pixels and stay sharp. Shown at any other size
         // every line falls between two pixels and blurs, as the 24 px icons
-        // did at 22 px.
+        // did at 22 px. The fold-out bar's buttons take the slot's size, icon
+        // size and style.
         b->SetIconSize(kToolIcon, kToolIcon);
         b->SetElementSize(Size2Df(kToolButton, kToolButton));
         // Flat: no box around a tool; a soft grey under the pointer and the
@@ -585,7 +653,7 @@ void ArtCreatorWindow::BuildToolPalette() {
         flat.hoverColor = Color(0, 0, 0, 18);
         flat.pressedColor = Color(0, 103, 192, 46);
         b->SetStyle(flat);
-        toolButtons.push_back(b);
+        toolSlots.push_back(b);
     }
     body->AddChild(palette);
 }
@@ -1443,6 +1511,21 @@ void ArtCreatorWindow::CmdLineWidth(float width) {
     Reselect(ids);
 }
 
+// A line width in pixels: in icon mode the icon's own, so the line covers
+// whole rows of the pixels it is shown at; otherwise the page's 96 DPI pixel
+// (0.75 pt), the px of Document Setup.
+void ArtCreatorWindow::CmdLineWidthPixels(int pixels) {
+    const double pixel = IconPixel() > 0 ? IconPixel() : 72.0 / 96.0;
+    CmdLineWidth(static_cast<float>(pixels * pixel));
+    if (!statusHint) return;
+    std::string hint = "Line width " + std::to_string(pixels) + " px";
+    // A line that turns odd (or even) wants the other half of the grid.
+    if (IconPixel() > 0 && !selection->Empty())
+        hint += pixels % 2 ? " - on pixel centres it is sharp: Snap to Pixels (Ctrl+Shift+P) moves it there"
+                           : " - on pixel edges it is sharp: Snap to Pixels (Ctrl+Shift+P) moves it there";
+    statusHint->SetText(hint);
+}
+
 // ===========================================================================
 // LAYER COMMANDS
 // ===========================================================================
@@ -1495,9 +1578,10 @@ void ArtCreatorWindow::SelectTool(ArtToolId id) {
     if (auto* old = ActiveTool()) { if (old->id != id) old->Deactivate(toolContext); }
     activeTool = id;
     ArtTool* t = ActiveTool();
-    for (size_t i = 0; i < tools.size() && i < toolButtons.size(); ++i) {
-        const bool on = tools[i]->id == id;
-        if (toolButtons[i]->IsPressed() != on) toolButtons[i]->SetPressed(on);
+    // The slot of the tool's group shows it and is pressed; the others not.
+    for (const auto& slot : toolSlots) {
+        const bool on = slot->SetCurrentItem(ToolItemId(id));
+        if (slot->IsPressed() != on) slot->SetPressed(on);
     }
     if (!t) return;
     t->Activate(toolContext);

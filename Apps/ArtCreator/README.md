@@ -39,6 +39,16 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 
 ## Tools
 
+The palette groups its 19 tools as UltraPaint's does: tools of a kind share
+one button, which shows the tool last picked from its group. Resting the
+pointer on it folds out a bar with the whole group, and a click there picks
+a tool; a small triangle in a button's corner marks a group. A tool's key
+picks it as before and shows it in its group's button. The groups, top to
+bottom: *Select* (Selector, Shape Editor), *Draw* (Pen, Freehand, Straight
+Line), *Shapes* (Rectangle, Ellipse, Quick Shape), Text, *Fill* (Fill,
+Transparency), *Effects* (Shadow, Feather, Contour, Bevel), *Blend and
+Mould*, *View* (Zoom, Push).
+
 | Key | Tool | What it does |
 |---|---|---|
 | V | Selector | Click / shift-click / marquee; drag to move (ctrl constrains); handles scale (shift: keep aspect, ctrl: about the centre); click a selected shape again for rotate (corners, ctrl: 15° steps) and skew (edges) with a movable centre; arrows nudge (shift: 10 px); double-click a shape to edit its nodes |
@@ -89,7 +99,9 @@ the selection and to every line drawn afterwards.
   Apply ClipView (Ctrl+K: the front shape becomes the keyhole the others
   show through), Remove ClipView, Blend or Mould, Convert to Editable
   Shapes, Snap to Pixels (Ctrl+Shift+P, in icon mode).
-- **Object**: No Fill, No Line, line widths.
+- **Object**: No Fill, No Line, line widths in points (hairline to 8 pt)
+  and in pixels (1 to 4 px: the icon's pixels in icon mode, 96 DPI pixels
+  otherwise).
 - **Layer**: New (Ctrl+Shift+N), Delete, Move Up / Down, Show / Hide; the
   layers panel toggles visible / locked and picks the active layer.
 - **View**: zoom, rulers, grid, guides, snap to grid / guides / objects /
@@ -121,7 +133,8 @@ drawing it so.
   the shape editor, the selection's line - is an odd number of pixels
   wide, onto pixel edges otherwise. A 1 px line on a pixel centre covers
   one row of pixels fully; on an edge it would cover two half grey. New
-  lines are made a whole number of pixels wide.
+  lines are made a whole number of pixels wide; Object > 1 px to 4 px set
+  a width in the icon's pixels.
 - **Snap to Pixels** (Arrange, Ctrl+Shift+P, or the panel's button) does
   the same to what is already drawn - the selection, or everything on the
   visible, unlocked layers: line widths become whole pixels, points go to

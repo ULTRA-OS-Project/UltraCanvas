@@ -9,7 +9,8 @@
 // to it and the application exits with the last of them.
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.5.0 - icon mode: an icon size, a pixel grid, pixel snapping aware of the
-//                  line width, Snap to Pixels and the pixel preview
+//                  line width, Snap to Pixels and the pixel preview; the palette's
+//                  tools in groups (toolSlots)
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
 // Last Modified: 2026-10-13
@@ -19,6 +20,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
+#include "UltraCanvasToolGroupButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -141,6 +143,8 @@ private:
     void CmdRemoveFill();
     void CmdRemoveLine();
     void CmdLineWidth(float width);
+    // `pixels` icon pixels in icon mode, 96 DPI pixels (0.75 pt) otherwise.
+    void CmdLineWidthPixels(int pixels);
     void CmdLayerAdd();
     void CmdLayerDelete();
     void CmdLayerMove(int delta);
@@ -213,7 +217,8 @@ private:
     std::shared_ptr<UltraCanvasButton>          undoButton, redoButton;
     std::shared_ptr<UltraCanvasSlider>          qualitySlider;
     std::shared_ptr<UltraCanvasLabel>           qualityLabel;
-    std::vector<std::shared_ptr<UltraCanvasButton>> toolButtons;
+    // The palette's slots: one per group of tools (see PaletteGroups()).
+    std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
     std::shared_ptr<UltraCanvasContainer>       iconPanel;
     std::shared_ptr<UltraCanvasDropdown>        iconSizeBox;
     std::shared_ptr<ArtIconPreview>             iconPreview;
