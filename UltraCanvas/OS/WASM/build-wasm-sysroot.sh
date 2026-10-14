@@ -44,15 +44,22 @@ export PKG_CONFIG="pkg-config --static"
 export CPATH="$SYSROOT/include"
 WASM_THREADS=${WASM_THREADS:-1}
 if [ "$WASM_THREADS" = "0" ]; then
-  THREAD_FLAG=""          # compiler / linker flag
-  MESON_THREAD=""         # the same inside the meson cross file's lists
+  # The define, not __EMSCRIPTEN_PTHREADS__: glib's .pc carries -pthread in
+  # its Cflags, so every consumer of glib compiles with that macro set,
+  # threads or not. See patches/pango-1.52-wasm-no-threads.patch.
+  THREAD_FLAG="-DPANGO_FC_NO_THREAD=1"   # compiler flag
+  MESON_THREAD="'-DPANGO_FC_NO_THREAD=1', "  # the same inside the meson cross file's lists
+  LINK_THREAD_FLAG=""
+  MESON_LINK_THREAD=""
 else
   THREAD_FLAG="-pthread"
   MESON_THREAD="'-pthread', "
+  LINK_THREAD_FLAG="-pthread"
+  MESON_LINK_THREAD="'-pthread', "
 fi
 export CFLAGS="-O2 $THREAD_FLAG -fwasm-exceptions -fvisibility=hidden -msimd128"
 export CXXFLAGS="$CFLAGS"
-export LDFLAGS="$THREAD_FLAG -fwasm-exceptions -L$SYSROOT/lib"
+export LDFLAGS="$LINK_THREAD_FLAG -fwasm-exceptions -L$SYSROOT/lib"
 export CHOST=wasm32-unknown-linux
 export MAKEFLAGS="-j$(nproc)"
 
@@ -80,9 +87,9 @@ exe_wrapper = '$NODE_BIN'
 
 [built-in options]
 c_args = ['-O2', $MESON_THREAD'-fwasm-exceptions', '-fvisibility=hidden', '-msimd128']
-c_link_args = [$MESON_THREAD'-fwasm-exceptions']
+c_link_args = [$MESON_LINK_THREAD'-fwasm-exceptions']
 cpp_args = ['-O2', $MESON_THREAD'-fwasm-exceptions', '-fvisibility=hidden', '-msimd128']
-cpp_link_args = [$MESON_THREAD'-fwasm-exceptions']
+cpp_link_args = [$MESON_LINK_THREAD'-fwasm-exceptions']
 default_library = 'static'
 # Keep -sPTHREAD_POOL_SIZE out of generated .pc files
 c_thread_count = 0
@@ -277,6 +284,14 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   # signature checking: one-arg callbacks cast to GInterfaceInitFunc/GFunc.
   grep -q 'iface_data G_GNUC_UNUSED' pango/fonts.c || \
     patch -p1 < "$SCRIPT_DIR/patches/pango-1.52-wasm-function-pointers.patch"
+  # pango hands fontconfig's work (FcInit, matching, sorting) to a worker
+  # thread it starts with g_thread_new. A program built without -pthread
+  # cannot start one - Emscripten answers ENOTSUP and GLib aborts on that
+  # at the first text - so without __EMSCRIPTEN_PTHREADS__ the jobs run on
+  # the caller's thread. The threaded build keeps its worker; the patch
+  # goes in either way so both sysroots build the same source.
+  grep -q 'PANGO_FC_NO_THREAD' pango/pangofc-fontmap.c || \
+    patch -p1 < "$SCRIPT_DIR/patches/pango-1.52-wasm-no-threads.patch"
   meson setup _build $MESON_ARGS \
     -Dintrospection=disabled -Dgtk_doc=false -Dinstall-tests=false \
     -Dcairo=enabled -Dfontconfig=enabled -Dfreetype=enabled -Dxft=disabled \

@@ -66,9 +66,15 @@ jobs:
             threads: 1
             configure: -DCMAKE_BUILD_TYPE=Release "-DUC_WASM_FONTS=Ubuntu-R.ttf;Ubuntu-B.ttf;Ubuntu-RI.ttf;Ubuntu-BI.ttf"
             experimental: true
+          # Without libvips as well: it runs every image on a worker thread,
+          # which a program built without -pthread cannot start (run 23 ended
+          # every page on GLib's "error 'Not supported' during
+          # 'pthread_create'"), so the library's CMake forces it off for a
+          # single-threaded build; named here so the smoke step's page list
+          # and the sizes table read right.
           - variant: single-thread
             threads: 0
-            configure: -DCMAKE_BUILD_TYPE=Release -DULTRACANVAS_WASM_THREADS=OFF
+            configure: -DCMAKE_BUILD_TYPE=Release -DULTRACANVAS_WASM_THREADS=OFF -DULTRACANVAS_ENABLE_VIPS=OFF
             experimental: true
     env:
       # One sysroot per thread setting: objects built with -pthread do not
@@ -225,3 +231,42 @@ jobs:
           name: wasm-demo-${{ matrix.variant }}
           path: wasm-demo
           if-no-files-found: error
+
+      # The pages opened in the runner's Google Chrome, headless, served by
+      # serve.py as a visitor's host would serve them: each must present a
+      # frame and keep a clean console. A page whose builder threw says
+      # "Error creating example for ..." there and fails the job, which is
+      # how the JPEG page's blank came to light (#845) - after the download.
+      # The variants that build a reduced catalogue (no-vips) skip the
+      # pages that catalogue does not register. Playwright's package only;
+      # the browser is the runner's.
+      - name: Smoke test the pages in Chrome
+        env:
+          SMOKE_CHANNEL: chrome
+          SMOKE_OUT: smoke-${{ matrix.variant }}
+          CONFIGURE: ${{ matrix.configure }}
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          pages="UltraCanvasDemo.html wasm-demo.html ultraos-frontpage.html
+                 UltraCanvasDemo.html?component=svg
+                 UltraCanvasDemo.html?component=piecharts"
+          case "$CONFIGURE" in
+            *ULTRACANVAS_ENABLE_VIPS=OFF*) ;;
+            *) pages="$pages
+                 UltraCanvasDemo.html?component=pngimages
+                 UltraCanvasDemo.html?component=jpegimages
+                 UltraCanvasDemo.html?component=tiffimages
+                 UltraCanvasDemo.html?component=webpimages
+                 UltraCanvasDemo.html?component=gifimages
+                 UltraCanvasDemo.html?component=bmpimages" ;;
+          esac
+          # shellcheck disable=SC2086
+          node UltraCanvas/OS/WASM/demo/smoke.mjs wasm-demo $pages
+
+      - name: Upload the smoke screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wasm-smoke-${{ matrix.variant }}
+          path: smoke-${{ matrix.variant }}
+          if-no-files-found: ignore

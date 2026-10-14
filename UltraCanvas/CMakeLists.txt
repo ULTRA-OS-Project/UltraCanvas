@@ -96,14 +96,17 @@ option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires bac
 # libvips is ON by default (desktop builds keep the hard requirement), but can
 # be opted out for platforms where its dependency graph is impractical
 # (Android, WASM). Without it, raster image loading/saving and PixelFX compile
-# to their HAS_LIBVIPS-guarded fallbacks; the QOI codec keeps working.
+# to their HAS_LIBVIPS-guarded fallbacks: PNG is read through cairo's own
+# reader, SVG through the Vector plugin, QOI is written but not read.
 option(ULTRACANVAS_ENABLE_VIPS "Enable libvips-backed raster image processing" ON)
 # WebAssembly only. ON builds with -pthread (Web Workers; the page then needs
 # the cross-origin isolation headers for SharedArrayBuffer). OFF builds a
 # single-threaded program that any static host can serve; it must link
 # against a sysroot built with WASM_THREADS=0 (OS/WASM/build-wasm-sysroot.sh),
-# and std::thread fails at run time, so Album / Filer background scans do not
-# run. Measured against each other by the wasm-build workflow's variants.
+# std::thread fails at run time, so Album / Filer background scans do not
+# run, and libvips is left out (it runs every image on a worker thread; see
+# the WASM platform block below). Measured against each other by the
+# wasm-build workflow's variants.
 option(ULTRACANVAS_WASM_THREADS "WebAssembly: build with -pthread (Web Workers)" ON)
 option(ULTRACANVAS_ENABLE_VIDEO "Enable video playback & recording (requires platform media framework)" ON)
 option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
@@ -212,6 +215,19 @@ if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     set(ULTRACANVAS_PLUGIN_OCR OFF CACHE BOOL "Build OCR plugin (requires tesseract + leptonica)" FORCE)
     set(ULTRACANVAS_PLUGIN_VECTORIZER OFF CACHE BOOL "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" FORCE)
     set(ULTRACANVAS_PLUGIN_LATEX OFF CACHE BOOL "Build LaTeX math plugin (embedded MicroTeX)" FORCE)
+    # libvips evaluates every image on worker threads (its threadset starts
+    # one for the first decode), a program built without -pthread cannot
+    # start any (Emscripten's pthread_create answers ENOTSUP), and GLib
+    # treats that answer as a programming error: run 23 of wasm-build.yml
+    # ended every page of the single-threaded variant with "GLib-ERROR
+    # (g_system_thread_new): error 'Not supported' during 'pthread_create'"
+    # at the first icon. wasm-vips itself requires threads. So a
+    # single-threaded program is a libvips-free one: PNG through cairo's
+    # reader, SVG through the Vector plugin, QOI written but not read.
+    if(NOT ULTRACANVAS_WASM_THREADS AND ULTRACANVAS_ENABLE_VIPS)
+        message(STATUS "WebAssembly: single-threaded build - libvips needs worker threads, ULTRACANVAS_ENABLE_VIPS is OFF (PNG through cairo's reader, SVG through the Vector plugin)")
+        set(ULTRACANVAS_ENABLE_VIPS OFF CACHE BOOL "Enable libvips-backed raster image processing" FORCE)
+    endif()
 endif()
 
 
