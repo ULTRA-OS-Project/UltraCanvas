@@ -207,6 +207,19 @@ def public_headers():
     return sorted(str(p.relative_to(INCLUDE)).replace(os.sep, "/") for p in INCLUDE.rglob("*.h"))
 
 
+def newest_header_mtime():
+    """The newest header the shared header may have pulled in. It lists
+    include/ only, but a public header includes further ones - UltraCanvasImage.h
+    takes libspecific/Cairo/ImageCairo.h - and clang refuses a precompiled
+    header older than any file it was built from ("has been modified since
+    the precompiled header"), which came out of run_clang as "a header
+    changed while the docs were being checked" until something under
+    include/ was touched. So every header under the include roots counts."""
+    roots = [d for d in INCLUDE_DIRS if d.exists()
+             and not any(o != d and d.is_relative_to(o) for o in INCLUDE_DIRS)]
+    return max((p.stat().st_mtime for r in roots for p in r.rglob("*.h")), default=0.0)
+
+
 def build_pch(work, name, flags, clang):
     headers = [h for h in public_headers() if h not in STANDALONE_EXCLUDED]
     text = "".join('#include "%s"\n' % (INCLUDE / h) for h in headers)
@@ -216,7 +229,7 @@ def build_pch(work, name, flags, clang):
     header = work / ("%s.h" % name)
     pch = work / ("%s.h.pch" % name)
     stamp = work / ("%s.stamp" % name)
-    newest = max(p.stat().st_mtime for p in INCLUDE.rglob("*.h"))
+    newest = newest_header_mtime()
     if pch.exists() and stamp.exists() and stamp.read_text() == digest and pch.stat().st_mtime > newest:
         return header
     header.write_text(text)
