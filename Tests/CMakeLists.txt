@@ -5460,8 +5460,9 @@ endif()
 
 # ===== FILELOADER TYPE LISTS TEST =====
 # The format inventory as an Open or Save dialog's file types (AddLoadTypes,
-# AddSaveTypes), a registered codec joining them, and the text document
-# types LoadTextDocument reads and SaveTextDocument writes. Headless.
+# AddSaveTypes), a registered codec joining them, the text document types
+# LoadTextDocument reads and SaveTextDocument writes, and HEIC / AVIF offered
+# where they decode (media/images/test_small.*). Headless.
 if(TARGET UltraCanvas)
     message(STATUS "  Building FileLoaderTypeListsTest...")
     add_executable(FileLoaderTypeListsTest
@@ -5470,6 +5471,11 @@ if(TARGET UltraCanvas)
     target_include_directories(FileLoaderTypeListsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(FileLoaderTypeListsTest PRIVATE cxx_std_20)
     target_link_libraries(FileLoaderTypeListsTest PRIVATE UltraCanvas)
+    # With libheif's headers the inventory knows which HEIF codecs decode, and
+    # the test holds it to the very answer a decode gives
+    target_compile_definitions(FileLoaderTypeListsTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media"
+        $<$<BOOL:${ULTRACANVAS_HAS_LIBHEIF}>:UC_TEST_HAS_LIBHEIF=1>)
     set_target_properties(FileLoaderTypeListsTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )

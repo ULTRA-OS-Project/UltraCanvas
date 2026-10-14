@@ -11,14 +11,19 @@
 //     LoadTextDocument reads and SaveTextDocument writes - no PDF or e-book
 //     the text reader cannot open;
 //   - SaveTextDocument writes ODT and DOCX that LoadTextDocument reads back,
-//     and refuses a type it does not write, with a reason.
+//     and refuses a type it does not write, with a reason;
+//   - HEIC and AVIF are offered where they decode: libvips' HEIF loader takes
+//     both wherever libheif is, but libheif decodes them only with its HEVC /
+//     AV1 plug-ins (media/images/test_small.heic and .avif decide).
 //
 // Headless.
+// Version: 1.1.0 - HEIC and AVIF offered where they decode
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasRichDocument.h"
@@ -161,6 +166,25 @@ int main() {
     Check(!UltraCanvasFileLoader::SaveTextDocument(document, PathToUtf8(dir / "saved.tex"), error) && !error.empty(),
           "... and refuses a type it does not write, with a reason");
     fs::remove_all(dir, ec);
+
+    // ----- pictures: offered where they decode -----
+    // A HEIC this build cannot decode, offered in an Open dialog, is a file
+    // that fails once chosen. The libvips loader's file endings say yes
+    // wherever libheif is; the decode says whether its codec is.
+    const std::vector<std::string> pictures = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+    for (const std::string type : {"heic", "avif"}) {
+        auto image = UCImageRaster::Load(std::string(UC_MEDIA_DIR) + "/images/test_small." + type, true);
+        auto pixmap = image && image->IsValid() ? image->CreatePixmap(image->GetWidth(), image->GetHeight()) : nullptr;
+        const bool decodes = pixmap && pixmap->IsValid();
+        const bool offered = std::find(pictures.begin(), pictures.end(), type) != pictures.end();
+#ifdef UC_TEST_HAS_LIBHEIF
+        Check(offered == decodes, type + (decodes ? ": decodes here and is offered" : ": does not decode here and is not offered"));
+#else
+        // Without libheif's headers the inventory goes by the loader's file
+        // endings: it cannot leave out what does not decode
+        Check(offered || !decodes, type + (decodes ? ": decodes here and is offered" : ": does not decode here"));
+#endif
+    }
 
     std::cout << (g_failures == 0 ? "All type list checks passed.\n" : "Type list checks FAILED.\n");
     return g_failures == 0 ? 0 : 1;

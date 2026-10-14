@@ -30,7 +30,8 @@ folder imports its files). The dialogs offer FileLoader's types that the
 engine reads: at start-up UltraVideo tells the framework's codec registry
 which films and sound VideoFX's FFmpeg reads and writes, and gives the engine
 the framework's image reader for the pictures FFmpeg does not open whole - a
-phone's HEIC (a grid of tiles libheif puts together), a camera's raw file.
+phone's HEIC (a grid of tiles libheif puts together, offered where libheif
+has its HEVC decoder, libde265), a camera's raw file.
 Every file is probed by the engine and shows a duration badge, *photo*, or
 *unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on

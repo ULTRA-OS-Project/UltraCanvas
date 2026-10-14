@@ -1,5 +1,7 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.7.0 - VipsCanDecode asks libheif whether it decodes HEIC (HEVC) and
+//                  AVIF (AV1) here
 // Version: 2.6.0 - ICO and QOI written by the framework's own libvips savers
 //                  (VipsIcoPlugin, VipsQoiLoader), registered with the loaders;
 //                  no ImageMagick for either
@@ -8,7 +10,7 @@
 // Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
 //                  drops it; RemoveFromCache releases libvips' cached operations
 //                  too; pixmap keys carry the source stamp
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -26,6 +28,9 @@
 #include "VipsQoiLoader.h"
 #include "VipsIcoPlugin.h"
 #include "UltraCanvasGifEncoder.h"
+#endif
+#ifdef HAS_LIBHEIF
+#include <libheif/heif.h>                          // VipsCanDecode: which codecs decode here
 #endif
 #ifdef HAS_LIBRSVG
 #include "SvgDocumentCairo.h"
@@ -1394,6 +1399,38 @@ namespace UltraCanvas {
         vips_error_clear();
         known[key] = works;
         return works;
+    }
+
+#ifdef HAS_LIBHEIF
+    namespace {
+        // libheif loads its codec plug-ins in heif_init (1.14 on), which
+        // counts its callers; this one stays for the program's life.
+        bool HeifDecodes(heif_compression_format format) {
+#if defined(LIBHEIF_NUMERIC_VERSION) && LIBHEIF_NUMERIC_VERSION >= 0x010d0000
+            static const bool initialised = [] { heif_init(nullptr); return true; }();
+            (void)initialised;
+#endif
+            return heif_have_decoder_for_format(format) != 0;
+        }
+    }
+#endif
+
+    bool VipsCanDecode(const std::string& extensionWithDot) {
+        if (!VipsCanLoad(extensionWithDot)) return false;
+#ifdef HAS_LIBHEIF
+        std::string ext = extensionWithDot;
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        // Asked once each: the plug-ins do not change while the program runs
+        if (ext == ".heic" || ext == ".heif") {
+            static const bool hevc = HeifDecodes(heif_compression_HEVC);
+            return hevc;
+        }
+        if (ext == ".avif") {
+            static const bool av1 = HeifDecodes(heif_compression_AV1);
+            return av1;
+        }
+#endif
+        return true;
     }
 
     namespace {

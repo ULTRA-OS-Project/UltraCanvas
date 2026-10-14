@@ -4018,7 +4018,10 @@ Optional plug-ins add their libraries: `libcdr-dev librevenge-dev` with
 `libboost-dev liblcms2-dev libicu-dev` for CDR, `libzbar-dev` for barcode
 decoding, `libsodium-dev` for UltraCrypt, `libtesseract-dev libleptonica-dev`
 for OCR, a Rust toolchain for the Vectorizer, and `libmupdf-dev` for PDF
-(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). The complete
+(Ubuntu 22.04's is too old; CI builds MuPDF 1.23 from source). Phone photos
+(HEIC) need libheif's HEVC decoder, `libheif-plugin-libde265`; with
+`libheif-dev`, which `libvips-dev` brings along, the build asks libheif and
+offers HEIC only where it decodes. The complete
 list is the *Install dependencies (Linux)* step in `.github/workflows/build.yml`.
 Other distributions use the same library names under their package manager.
 
@@ -71632,8 +71635,12 @@ this build writes a bitmap type. A picture's Save offers
 `AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
 and its Open `AddLoadTypes(opts, "Pictures", {MediaFormatCategory::Bitmap})`
 (see *A Dialog's File Types* below), as UltraPaint and the media viewer do. Windows icons and QOI are read and written
-by the framework's own libvips plugins, and an AVIF or HEIC type is offered
-only where libheif can encode it.
+by the framework's own libvips plugins. An AVIF or HEIC type is offered to
+save only where libheif can encode it, and to open only where it can decode
+it: libvips' HEIF loader takes both file endings wherever libheif is, but
+libheif decodes a HEIC only with its HEVC plug-in (libde265) and an AVIF only
+with an AV1 one (aomdec, dav1d). The build asks libheif when its headers are
+installed; without them, the inventory goes by the loader's file endings.
 
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
@@ -85232,7 +85239,8 @@ folder imports its files). The dialogs offer FileLoader's types that the
 engine reads: at start-up UltraVideo tells the framework's codec registry
 which films and sound VideoFX's FFmpeg reads and writes, and gives the engine
 the framework's image reader for the pictures FFmpeg does not open whole - a
-phone's HEIC (a grid of tiles libheif puts together), a camera's raw file.
+phone's HEIC (a grid of tiles libheif puts together, offered where libheif
+has its HEVC decoder, libde265), a camera's raw file.
 Every file is probed by the engine and shows a duration badge, *photo*, or
 *unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
