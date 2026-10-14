@@ -1,11 +1,12 @@
 // include/Plugins/Diagrams/UltraCanvasMatrixDiagram.h
-// Matrix diagram element: item sets crossed in L, T, X and Y arrangements, cell
+// Matrix diagram element: item sets crossed in L, T, X, Y and House arrangements, cell
 // marks drawn from an ordinal relationship scale, and weighted roll-up gutters.
+// Version: 1.2.0 - Phase 3: the House of Quality (roof, importance column, direction and target rows), roll-up bar strip with ranks
 // Version: 1.1.1 - rotated column headers get room on the right instead of being clipped; SetDarkTheme(false) keeps non-colour settings
 // Version: 1.1.0 - Phase 2: the X shape (blank or captioned hub), the Y shape, the form header band, cell tint by level, hover bands across panels
 // Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 //
 // The matrix diagram is one of the Seven Management and Planning Tools: it
@@ -27,8 +28,8 @@
 //   * Named relationship levels between two or three ordered lists, with
 //     totals -> this element.
 //
-// Implemented: the L, T, X and Y shapes. The QFD House composite is planned;
-// see Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md.
+// Implemented: the L, T, X, Y and House (QFD) shapes; see
+// Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md for what remains.
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -67,6 +68,13 @@ namespace UltraCanvas {
         Rows,
         Columns,
         Both
+    };
+
+    // How the column totals are presented: as numbers in a gutter, or as a
+    // strip of bars with each column's rank - the QFD presentation.
+    enum class MatrixRollUp {
+        Numbers,
+        Bars
     };
 
     // What sits in the middle of an X-shaped diagram: nothing, or the four set
@@ -150,6 +158,21 @@ namespace UltraCanvas {
         Color   headerBandBackground     = Color(255, 255, 255, 255);
         Color   headerBandBorderColor    = Color(190, 196, 205, 255);
 
+        // ---- Roll-up bar strip ----
+        double  barStripHeight      = 84.0;     // replaces totalsGutterSize for column bars
+        Color   rollUpBarColor      = Color(70, 122, 190, 255);
+        Color   rollUpTopBarColor   = Color(214, 110, 40, 255);   // the top three ranks
+        Color   rankTextColor       = Color(96, 102, 112, 255);
+
+        // ---- House of Quality ----
+        double  importanceColumnWidth = 44.0;
+        double  improvementRowHeight  = 22.0;
+        double  targetRowHeight       = 32.0;   // two lines of target text
+        float   targetFontSize        = 9.0f;
+        double  maxRoofShare          = 0.38;   // of the content height, at most
+        double  minRowAspect          = 0.6;    // rows at least this fraction of the cell width
+        Color   improvementColor      = Color(60, 66, 76, 255);
+
         // ---- Cell tint ----
         // Fill each populated cell with its level's colour at this alpha,
         // under the mark - a heatmap look for readers who want one. Off by
@@ -208,6 +231,16 @@ namespace UltraCanvas {
         void SetTotals(MatrixTotals which);
         MatrixTotals GetTotals() const { return totals; }
 
+        // Column totals as numbers, or as bars ranked by score. Row totals
+        // stay numbers either way.
+        void SetRollUp(MatrixRollUp presentation);
+        MatrixRollUp GetRollUp() const { return rollUp; }
+
+        // House only: the column of row importances between the row labels
+        // and the grid. On by default.
+        void SetShowImportance(bool on);
+        bool GetShowImportance() const { return showImportance; }
+
         void SetShowAxisTitles(bool on);
 
         // X shape only: a blank hub, or the four set titles in captioned
@@ -260,6 +293,8 @@ namespace UltraCanvas {
         bool            darkTheme       = false;
         MatrixHeaderFit headerFit       = MatrixHeaderFit::Auto;
         MatrixTotals    totals          = MatrixTotals::NoTotals;
+        MatrixRollUp    rollUp          = MatrixRollUp::Numbers;
+        bool            showImportance  = true;
         bool            showAxisTitles  = true;
         bool            showLegend      = true;
         bool            showCellValues  = false;
@@ -292,6 +327,7 @@ namespace UltraCanvas {
             Point2Dd rowStep;
             Point2Dd colStep;
             bool    axisAligned  = true;
+            bool    upperTriangle = false;              // a symmetric roof: cells with col > row only
             Rect2Dd rowLabels;                  // band left of the grid
             Rect2Dd colLabels;                  // band above the grid
             Rect2Dd rowTotals;                  // gutter right of the grid
@@ -303,6 +339,12 @@ namespace UltraCanvas {
             MatrixHeaderFit fit  = MatrixHeaderFit::Horizontal;
             int     headerLines  = 1;           // for MatrixHeaderFit::Wrapped
             bool    rowLabelsOnRight = false;   // the left wing of a T
+
+            // House of Quality bands, empty elsewhere.
+            Rect2Dd importance;                 // row importances, left of the grid
+            Rect2Dd improvementRow;             // direction arrows, above the grid
+            Rect2Dd targetRow;                  // target values, below the grid
+            bool    colTitleInCorner = false;   // the roof takes the space above the header
         };
 
         // A band listing one item set, used by the X and Y shapes, where the
@@ -363,6 +405,8 @@ namespace UltraCanvas {
         void LayoutT(IRenderContext* ctx, const Rect2Dd& area);
         bool LayoutX(IRenderContext* ctx, const Rect2Dd& area);
         bool LayoutY(IRenderContext* ctx, const Rect2Dd& area);
+        bool LayoutHouse(IRenderContext* ctx, const Rect2Dd& area);
+        double ColumnGutterHeight() const;
         void LayoutHeaderBand(IRenderContext* ctx, Rect2Dd& area);
         void LayoutHubCaptions(IRenderContext* ctx, double& minWidth, double& minHeight);
         void PlaceHubCaptions();
@@ -410,6 +454,8 @@ namespace UltraCanvas {
         void RenderArmTitle(IRenderContext* ctx, const ArmLayout& arm);
         void RenderHub(IRenderContext* ctx);
         void RenderHeaderBand(IRenderContext* ctx);
+        void RenderHouseBands(IRenderContext* ctx, const PanelLayout& pl);
+        void RenderColumnBars(IRenderContext* ctx, const PanelLayout& pl);
 
         // One column label inside a header band of the given fit, centred on
         // `centerX` and sitting on `bandBottom`.

@@ -1,10 +1,13 @@
 // Apps/UltraAIApp/UltraAIEndpoints.cpp
+// Version: 0.1.1 - the config folder comes from the framework's settings root
+//                  (UltraCanvasSettingsFolderRoot), every variable read as UTF-8
 // Version: 0.1.0
 
 #include "UltraAIEndpoints.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasSettingsFolder.h"   // UltraCanvasSettingsFolderRoot
 
 #include <algorithm>
 #include <cctype>
@@ -53,34 +56,20 @@ EndpointStore& EndpointStore::Instance() {
     return instance;
 }
 
+// UltraAI under the framework's settings root (UltraCanvasSettingsFolderRoot:
+// %APPDATA%, Application Support, $XDG_CONFIG_HOME or ~/.config), every
+// variable read as UTF-8 since the JSON file helpers open the file with
+// OpenFileUtf8 and the narrow getenv answers in the ANSI code page, which
+// cannot spell a profile folder named in Thai under code page 1252. "UltraAI"
+// in the working directory when the environment names no home.
 std::string EndpointStore::ConfigDir() {
-#if defined(_WIN32)
-    // Read as UTF-8 from the process's UTF-16 environment (GetEnvUtf8): the
-    // JSON file helpers open it with OpenFileUtf8, and the narrow getenv
-    // answers in the ANSI code page, which cannot spell a profile folder
-    // named in Thai under code page 1252.
-    if (const std::string appdata = UltraCanvas::GetEnvUtf8("APPDATA"); !appdata.empty())
-        return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(appdata) / "UltraAI");
-    return "UltraAI";
-#elif defined(__APPLE__)
-    if (const char* home = std::getenv("HOME"); home && *home)
-        return std::string(home) + "/Library/Application Support/UltraAI";
-    return "UltraAI";
-#else
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg)
-        return std::string(xdg) + "/UltraAI";
-    if (const char* home = std::getenv("HOME"); home && *home)
-        return std::string(home) + "/.config/UltraAI";
-    return "UltraAI";
-#endif
+    const std::filesystem::path root = UltraCanvas::UltraCanvasSettingsFolderRoot();
+    if (root.empty()) return "UltraAI";
+    return UltraCanvas::PathToUtf8(root / "UltraAI");
 }
 
 std::string EndpointStore::ConfigPath() {
-#if defined(_WIN32)
-    return ConfigDir() + "\\endpoints.json";
-#else
-    return ConfigDir() + "/endpoints.json";
-#endif
+    return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(ConfigDir()) / "endpoints.json");
 }
 
 std::vector<Endpoint> EndpointStore::ForCapability(AICapability c) const {

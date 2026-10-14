@@ -1,12 +1,16 @@
 // Plugins/Diagrams/UltraCanvasMatrixModel.cpp
 // Matrix diagram model: item sets, panels, cell marks and the weighted roll-ups
+// Version: 1.2.0 - House of Quality: symmetric (roof) panels, improvement direction and target per item, Correlation scale, relative weights, table import with importances
 // Version: 1.1.0 - form header fields; X and Y panel checks in Validate(); X and Y samples
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixModel.h"
+#include "UltraCanvasTextUtils.h"
 #include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <numeric>
 #include <sstream>
 #include <utility>
@@ -34,7 +38,7 @@ namespace UltraCanvas {
             case MatrixShape::T:     return 2;
             case MatrixShape::Y:     return 3;
             case MatrixShape::X:     return 4;
-            case MatrixShape::House: return 2;   // the body plus the correlation roof
+            case MatrixShape::House: return 1;   // the body; the correlation roof is optional
         }
         return 0;
     }
@@ -93,6 +97,22 @@ namespace UltraCanvas {
         MatrixScale s;
         s.title = "Applies";
         s.levels.emplace_back("yes", "Yes", Color(35, 35, 40, 255), 1.0, MatrixMarkShape::Disc);
+        return s;
+    }
+
+    MatrixScale MatrixScale::Correlation() {
+        MatrixScale s;
+        s.title = "Correlation";
+        // U+2212 MINUS SIGN rather than a hyphen: the same width as the plus,
+        // and in every UI font.
+        s.levels.emplace_back("strongpositive", "Strong positive", Color( 20, 110,  60, 255), 2.0, MatrixMarkShape::Text);
+        s.levels.back().glyph = "++";
+        s.levels.emplace_back("positive",       "Positive",        Color( 60, 150,  90, 255), 1.0, MatrixMarkShape::Text);
+        s.levels.back().glyph = "+";
+        s.levels.emplace_back("negative",       "Negative",        Color(200,  80,  60, 255), -1.0, MatrixMarkShape::Text);
+        s.levels.back().glyph = "\xE2\x88\x92";
+        s.levels.emplace_back("strongnegative", "Strong negative", Color(160,  30,  30, 255), -2.0, MatrixMarkShape::Text);
+        s.levels.back().glyph = "\xE2\x88\x92\xE2\x88\x92";
         return s;
     }
 
@@ -180,9 +200,26 @@ namespace UltraCanvas {
         return SetCellAt(panel, row, col, levelId);
     }
 
+    namespace {
+
+        // A symmetric panel keeps one cell per pair, above the diagonal.
+        // Returns false for the diagonal, which relates an item to itself and
+        // so has no cell.
+        bool NormalizeSymmetric(const std::vector<MatrixPanel>& panels, int panel,
+                                int& row, int& col) {
+            if (panel < 0 || panel >= static_cast<int>(panels.size())) return true;
+            if (!panels[static_cast<size_t>(panel)].symmetric) return true;
+            if (row == col) return false;
+            if (row > col) std::swap(row, col);
+            return true;
+        }
+
+    } // namespace
+
     bool MatrixModel::SetCellAt(int panel, int row, int col, const std::string& levelId,
                                 const std::string& note) {
         if (panel < 0 || panel >= static_cast<int>(panels.size())) return false;
+        if (!NormalizeSymmetric(panels, panel, row, col)) return false;
 
         const MatrixItemSet* rows = RowSet(panel);
         const MatrixItemSet* cols = ColSet(panel);
@@ -212,6 +249,7 @@ namespace UltraCanvas {
     }
 
     bool MatrixModel::ClearCell(int panel, int row, int col) {
+        if (!NormalizeSymmetric(panels, panel, row, col)) return false;
         auto it = std::find_if(cells.begin(), cells.end(), [&](const MatrixCell& c) {
             return c.panel == panel && c.row == row && c.col == col;
         });
@@ -225,6 +263,7 @@ namespace UltraCanvas {
     }
 
     const MatrixCell* MatrixModel::FindCell(int panel, int row, int col) const {
+        if (!NormalizeSymmetric(panels, panel, row, col)) return nullptr;
         for (const MatrixCell& cell : cells) {
             if (cell.panel == panel && cell.row == row && cell.col == col) return &cell;
         }
@@ -266,6 +305,32 @@ namespace UltraCanvas {
             total += scale.WeightOf(cell.levelId);
         }
         return total * rows->items[static_cast<size_t>(row)].importance;
+    }
+
+    std::vector<double> MatrixModel::RelativeColumnWeights(int panel) const {
+        const MatrixItemSet* cols = ColSet(panel);
+        if (!cols) return {};
+
+        std::vector<double> weights(static_cast<size_t>(cols->Count()), 0.0);
+        double total = 0.0;
+        for (int c = 0; c < cols->Count(); ++c) {
+            weights[static_cast<size_t>(c)] = ColumnScore(panel, c);
+            total += weights[static_cast<size_t>(c)];
+        }
+        // A panel with no score has no shares; dividing would give NaN.
+        if (total == 0.0) return std::vector<double>(weights.size(), 0.0);
+        for (double& w : weights) w = w * 100.0 / total;
+        return weights;
+    }
+
+    int MatrixModel::FindSymmetricPanel(const std::string& setId) const {
+        for (size_t p = 0; p < panels.size(); ++p) {
+            if (panels[p].symmetric && panels[p].rowSetId == setId &&
+                panels[p].colSetId == setId) {
+                return static_cast<int>(p);
+            }
+        }
+        return -1;
     }
 
     std::vector<int> MatrixModel::RankColumns(int panel) const {
@@ -381,6 +446,22 @@ namespace UltraCanvas {
             }
         }
 
+        // A House is an L with a roof: panel 0 the body, crossing two
+        // different sets, and any roof a symmetric panel over the body's
+        // columns - the technical requirements it correlates.
+        if (shape == MatrixShape::House && !panels.empty()) {
+            const MatrixPanel& body = panels[0];
+            if (body.symmetric || body.rowSetId == body.colSetId) {
+                fail("panel 0 of a House must cross two different sets");
+            }
+            for (size_t p = 1; p < panels.size(); ++p) {
+                if (!panels[p].symmetric || panels[p].rowSetId != body.colSetId) {
+                    fail("panel " + std::to_string(p) + " of a House must be the symmetric "
+                         "roof over the body's column set '" + body.colSetId + "'");
+                }
+            }
+        }
+
         for (size_t c = 0; c < cells.size(); ++c) {
             const MatrixCell& cell = cells[c];
             const std::string where = "cell " + std::to_string(c);
@@ -398,6 +479,9 @@ namespace UltraCanvas {
             }
             if (cell.col < 0 || cell.col >= cols->Count()) {
                 fail(where + " column " + std::to_string(cell.col) + " is out of range");
+            }
+            if (panels[static_cast<size_t>(cell.panel)].symmetric && cell.row >= cell.col) {
+                fail(where + " lies on or below the diagonal of a symmetric panel");
             }
             if (panels[static_cast<size_t>(cell.panel)].scale.IndexOf(cell.levelId) < 0) {
                 fail(where + " uses level '" + cell.levelId + "' which its panel's scale lacks");
@@ -484,7 +568,22 @@ namespace UltraCanvas {
 
     } // namespace
 
-    std::string ExportMatrixCsv(const MatrixModel& model, int panel) {
+    namespace {
+
+        std::string Lower(std::string text) {
+            for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return text;
+        }
+
+        // The header a column of row importances goes under.
+        bool IsImportanceHeader(const std::string& field) {
+            const std::string h = Lower(Trim(field));
+            return h == "importance" || h == "weight";
+        }
+
+    } // namespace
+
+    std::string ExportMatrixCsv(const MatrixModel& model, int panel, bool withImportance) {
         const MatrixItemSet* rows = model.RowSet(panel);
         const MatrixItemSet* cols = model.ColSet(panel);
         if (!rows || !cols) return std::string();
@@ -493,6 +592,7 @@ namespace UltraCanvas {
 
         // Header: an empty corner cell, then the column labels.
         out << "";
+        if (withImportance) out << ",Importance";
         for (const MatrixItem& col : cols->items) {
             out << ',' << CsvEscape(col.label);
         }
@@ -500,6 +600,9 @@ namespace UltraCanvas {
 
         for (int r = 0; r < rows->Count(); ++r) {
             out << CsvEscape(rows->items[static_cast<size_t>(r)].label);
+            if (withImportance) {
+                out << ',' << FormatFloatClassic(rows->items[static_cast<size_t>(r)].importance);
+            }
             for (int c = 0; c < cols->Count(); ++c) {
                 out << ',' << CsvEscape(model.LevelAt(panel, r, c));
             }
@@ -518,12 +621,17 @@ namespace UltraCanvas {
         if (!std::getline(in, line)) return false;
 
         std::vector<std::string> header = CsvSplit(line);
-        if (header.size() != static_cast<size_t>(cols->Count()) + 1) return false;
+        // An "Importance" column after the row labels, as ExportMatrixCsv
+        // writes with withImportance, shifts the marks one field right.
+        const size_t first = (header.size() == static_cast<size_t>(cols->Count()) + 2 &&
+                              IsImportanceHeader(header[1])) ? 2 : 1;
+        if (header.size() != static_cast<size_t>(cols->Count()) + first) return false;
         for (int c = 0; c < cols->Count(); ++c) {
-            if (header[static_cast<size_t>(c) + 1] != cols->items[static_cast<size_t>(c)].label) {
+            if (header[static_cast<size_t>(c) + first] != cols->items[static_cast<size_t>(c)].label) {
                 return false;
             }
         }
+        std::vector<double> importances;
 
         // Parse everything before touching the model, so a malformed file
         // leaves the caller's marks alone.
@@ -536,11 +644,16 @@ namespace UltraCanvas {
             if (rowIndex >= rows->Count()) return false;
 
             std::vector<std::string> fields = CsvSplit(line);
-            if (fields.size() != static_cast<size_t>(cols->Count()) + 1) return false;
+            if (fields.size() != static_cast<size_t>(cols->Count()) + first) return false;
             if (fields[0] != rows->items[static_cast<size_t>(rowIndex)].label) return false;
+            if (first == 2) {
+                double importance = 0.0;
+                if (!TryParseFloat(Trim(fields[1]), importance)) return false;
+                importances.push_back(importance);
+            }
 
             for (int c = 0; c < cols->Count(); ++c) {
-                const std::string& levelId = fields[static_cast<size_t>(c) + 1];
+                const std::string& levelId = fields[static_cast<size_t>(c) + first];
                 if (levelId.empty()) continue;
                 if (model.panels[static_cast<size_t>(panel)].scale.IndexOf(levelId) < 0) {
                     return false;
@@ -557,6 +670,113 @@ namespace UltraCanvas {
         for (const PendingCell& cell : pending) {
             model.SetCellAt(panel, cell.row, cell.col, cell.levelId);
         }
+        if (MatrixItemSet* rowSet = model.FindSet(model.panels[static_cast<size_t>(panel)].rowSetId)) {
+            for (size_t r = 0; r < importances.size() && r < rowSet->items.size(); ++r) {
+                rowSet->items[r].importance = importances[r];
+            }
+        }
+        return true;
+    }
+
+    bool ImportMatrixTable(const std::string& csv, const MatrixScale& scale, MatrixModel& out,
+                           const std::string& rowTitle, const std::string& colTitle,
+                           std::string* error) {
+        auto failWith = [error](const std::string& message) {
+            if (error) *error = message;
+            return false;
+        };
+        if (scale.levels.empty()) return failWith("the scale has no levels");
+
+        // A mark is matched by id, then label (any case), then glyph, then
+        // weight: the forms people actually type into a sheet.
+        auto levelFor = [&scale](const std::string& text, std::string& levelId) {
+            const std::string want = Lower(text);
+            for (const MatrixLevel& level : scale.levels) {
+                if (level.id == text || Lower(level.label) == want ||
+                    (!level.glyph.empty() && level.glyph == text)) {
+                    levelId = level.id;
+                    return true;
+                }
+            }
+            double weight = 0.0;
+            if (TryParseFloat(text, weight)) {
+                for (const MatrixLevel& level : scale.levels) {
+                    if (std::fabs(level.weight - weight) < 1e-9) {
+                        levelId = level.id;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        // Excel starts a UTF-8 CSV with a byte-order mark. It would land in
+        // the corner field, which is ignored; dropping it here keeps it from
+        // ever reaching a label should the layout of the sheet change.
+        const bool bom = csv.size() >= 3 && csv.compare(0, 3, "\xEF\xBB\xBF") == 0;
+        std::istringstream in(bom ? csv.substr(3) : csv);
+        std::string line;
+        if (!std::getline(in, line)) return failWith("the table is empty");
+
+        const std::vector<std::string> header = CsvSplit(line);
+        const size_t first = (header.size() >= 3 && IsImportanceHeader(header[1])) ? 2 : 1;
+        if (header.size() <= first) return failWith("the header row names no columns");
+
+        MatrixModel model;
+        model.shape = MatrixShape::L;
+        MatrixItemSet rows("rows", rowTitle);
+        MatrixItemSet cols("columns", colTitle);
+        for (size_t c = first; c < header.size(); ++c) {
+            const std::string label = Trim(header[c]);
+            if (label.empty()) return failWith("column " + std::to_string(c) + " has no label");
+            if (cols.IndexOf(label) >= 0) return failWith("column '" + label + "' appears twice");
+            cols.items.emplace_back(label, label);
+        }
+
+        struct PendingCell { int row; int col; std::string levelId; };
+        std::vector<PendingCell> pending;
+        int lineNumber = 1;
+        while (std::getline(in, line)) {
+            ++lineNumber;
+            if (Trim(line).empty()) continue;
+            const std::string where = "line " + std::to_string(lineNumber);
+
+            const std::vector<std::string> fields = CsvSplit(line);
+            if (fields.size() != header.size()) {
+                return failWith(where + " has " + std::to_string(fields.size()) + " fields, the header "
+                                + std::to_string(header.size()));
+            }
+            const std::string label = Trim(fields[0]);
+            if (label.empty()) return failWith(where + " has no row label");
+            if (rows.IndexOf(label) >= 0) return failWith("row '" + label + "' appears twice");
+
+            double importance = 1.0;
+            if (first == 2 && !Trim(fields[1]).empty() &&
+                !TryParseFloat(Trim(fields[1]), importance)) {
+                return failWith(where + ": importance '" + fields[1] + "' is not a number");
+            }
+            rows.items.emplace_back(label, label, importance);
+
+            const int row = rows.Count() - 1;
+            for (size_t c = first; c < fields.size(); ++c) {
+                const std::string mark = Trim(fields[c]);
+                if (mark.empty()) continue;
+                std::string levelId;
+                if (!levelFor(mark, levelId)) {
+                    return failWith(where + ": '" + mark + "' is not a level of the scale");
+                }
+                pending.push_back({row, static_cast<int>(c - first), levelId});
+            }
+        }
+        if (rows.items.empty()) return failWith("the table has no rows");
+
+        model.sets.push_back(rows);
+        model.sets.push_back(cols);
+        model.AddPanel("rows", "columns", scale);
+        for (const PendingCell& cell : pending) {
+            model.SetCellAt(0, cell.row, cell.col, cell.levelId);
+        }
+        out = model;
         return true;
     }
 
@@ -812,6 +1032,58 @@ namespace UltraCanvas {
                 {2, "Housing", "Quiet", "moderate"},
             };
             for (const Mark& m : marks) model.SetCell(m.panel, m.row, m.col, m.level);
+            return model;
+        }
+
+        MatrixModel HouseOfQuality() {
+            MatrixModel model = QualityFunctionDeployment();
+            model.title = "House of Quality - commuter bicycle";
+            model.subtitle = "Needs against requirements, with how the requirements help or "
+                             "hinder each other in the roof";
+            model.shape = MatrixShape::House;
+            model.headerFields = {
+                    {"PRODUCT", "Commuter bicycle"},
+                    {"TEAM",    "Product planning"},
+                    {"DATE",    "2026-10-14"},
+            };
+
+            struct Column { const char* id; MatrixImprovement direction; const char* target; };
+            static const Column columns[] = {
+                {"Frame mass",        MatrixImprovement::Minimize, "< 11 kg"},
+                {"Tyre width",        MatrixImprovement::Target,   "35 mm"},
+                {"Braking distance",  MatrixImprovement::Minimize, "< 4 m at 25 km/h"},
+                {"Gear range",        MatrixImprovement::Maximize, "> 400 %"},
+                {"Mudguard coverage", MatrixImprovement::Maximize, "full length"},
+                {"Lighting output",   MatrixImprovement::Maximize, "> 70 lux"},
+                {"Lock mounting",     MatrixImprovement::Target,   "frame lock"},
+            };
+            MatrixItemSet* requirements = model.FindSet("requirements");
+            for (const Column& c : columns) {
+                const int i = requirements->IndexOf(c.id);
+                if (i < 0) continue;
+                requirements->items[static_cast<size_t>(i)].improvement = c.direction;
+                requirements->items[static_cast<size_t>(i)].target = c.target;
+            }
+
+            MatrixPanel& roof = model.AddPanel("requirements", "requirements",
+                                               MatrixScale::Correlation());
+            roof.symmetric = true;
+
+            // Wider tyres and fuller mudguards add mass; a wider gear range
+            // needs a heavier drivetrain; wider tyres shorten braking.
+            struct Pair { const char* a; const char* b; const char* level; };
+            static const Pair pairs[] = {
+                {"Frame mass",       "Tyre width",        "negative"},
+                {"Frame mass",       "Gear range",        "strongnegative"},
+                {"Frame mass",       "Mudguard coverage", "negative"},
+                {"Frame mass",       "Lighting output",   "negative"},
+                {"Tyre width",       "Braking distance",  "strongpositive"},
+                {"Tyre width",       "Mudguard coverage", "negative"},
+                {"Braking distance", "Gear range",        "positive"},
+                {"Gear range",       "Lock mounting",     "negative"},
+                {"Lighting output",  "Lock mounting",     "positive"},
+            };
+            for (const Pair& pair : pairs) model.SetCell(1, pair.a, pair.b, pair.level);
             return model;
         }
 

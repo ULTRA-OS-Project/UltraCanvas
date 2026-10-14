@@ -11,6 +11,7 @@
 
 #include "UltraDesktopWindow.h"
 #include "UltraDesktopAppStarter.h"
+#include "UltraDesktopCategoryBoard.h"
 #include "UltraDesktopClipboardPanel.h"
 #include "UltraDesktopStickerboard.h"
 #include "UltraDesktopTasksWindow.h"
@@ -375,7 +376,11 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
                      [this, i](bool) { SwitchToDesktop(i); });
     }
     organiser_->AddSeparator();
-    AddBarToggle(organiser_, "stickerboard", "Stickerboard", IconPath("pinboard.svg"), "",
+    // The pinboard is the Sticker board; the free-form notes keep a note
+    // of their own.
+    AddBarToggle(organiser_, "categoryboard", "Sticker board: drop files into categories",
+                 IconPath("pinboard.svg"), "", [this](bool on) { ToggleCategoryBoard(on); });
+    AddBarToggle(organiser_, "stickerboard", "Notes on the wallpaper", IconPath("notes.svg"), "",
                  [this](bool on) { ToggleStickerboard(on); });
     auto clipboard = AddBarButton(organiser_, "clipboard", "Clipboard history (Super+V)",
                                   IconPath("clipboard.svg"), nullptr);
@@ -459,9 +464,25 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     stickerboard_->SetVisible(settings_.stickerboardVisible);
     stickerboard_->LoadFrom(settings_);
     area->AddChild(stickerboard_);
+
+    // The Sticker board too, above the notes: its panel is the one place it
+    // answers, so the notes stay reachable around it.
+    categoryBoard_ = std::make_shared<UltraDesktopCategoryBoard>("CategoryBoard", this);
+    if (!categoryBoard_->layoutItem.position) categoryBoard_->layoutItem.position = CSSLayout::Position();
+    categoryBoard_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
+    categoryBoard_->layoutItem.position->top = CSSLayout::Dimension::Px(0);
+    categoryBoard_->layoutItem.position->right = CSSLayout::Dimension::Px(0);
+    categoryBoard_->layoutItem.position->bottom = CSSLayout::Dimension::Px(0);
+    categoryBoard_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+    categoryBoard_->SetVisible(settings_.categoryBoard.visible);
+    categoryBoard_->LoadFrom(settings_);
+    area->AddChild(categoryBoard_);
     if (organiser_) {
         if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("stickerboard"))) {
             toggle->SetPressed(settings_.stickerboardVisible);
+        }
+        if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("categoryboard"))) {
+            toggle->SetPressed(settings_.categoryBoard.visible);
         }
     }
     return area;
@@ -531,6 +552,16 @@ void UltraDesktopWindow::ToggleStickerboard(bool visible) {
     settings_.stickerboardVisible = visible;
     if (stickerboard_) {
         stickerboard_->SetVisible(visible);
+        if (workArea_) workArea_->InvalidateLayout();
+        window_->RequestRedraw();
+    }
+    SaveSettings();
+}
+
+void UltraDesktopWindow::ToggleCategoryBoard(bool visible) {
+    settings_.categoryBoard.visible = visible;
+    if (categoryBoard_) {
+        categoryBoard_->SetVisible(visible);
         if (workArea_) workArea_->InvalidateLayout();
         window_->RequestRedraw();
     }

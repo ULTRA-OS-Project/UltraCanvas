@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
-// Version: 0.2.0
-// Last Modified: 2026-10-12
+// Version: 0.4.0
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
 #include "UltraVideoMapping.h"
@@ -286,6 +286,25 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
                     AddOverlay(document_.media[binRows_[row]].path, document_.view.playhead);
             };
             album->AddAction(over);
+        } else {
+            AlbumAction voice;
+            voice.id = "voice";
+            voice.label = "Voice-over at the playhead (A2)";
+            voice.iconPath = IconPath("wave");
+            voice.onTrigger = [this](size_t row) {
+                if (row < musicRows_.size() && musicRows_[row] < document_.media.size())
+                    AddSound(document_.media[musicRows_[row]].path, document_.view.playhead, true);
+            };
+            album->AddAction(voice);
+            AlbumAction effect;
+            effect.id = "effect";
+            effect.label = "Sound effect at the playhead (A2)";
+            effect.iconPath = IconPath("speaker");
+            effect.onTrigger = [this](size_t row) {
+                if (row < musicRows_.size() && musicRows_[row] < document_.media.size())
+                    AddSound(document_.media[musicRows_[row]].path, document_.view.playhead, false);
+            };
+            album->AddAction(effect);
         }
         AlbumAction remove;
         remove.id = "remove";
@@ -359,12 +378,35 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     }
     binTabs_->AddTab("Titles", titlesPage);
 
+    // Effects: one button per preset, each putting it on the selected clip
     auto effectsPage = std::make_shared<UltraCanvasContainer>("uv.bin.effectsPage", 0, 0, static_cast<int>(Tokens::BinW), 480);
+    effectsPage->layout.SetFlexColumn().SetFlexGap(static_cast<int>(Tokens::Space1)).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     effectsPage->SetPadding(static_cast<float>(Tokens::Space3));
-    effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 80,
-                               "Effect presets come in a later release. Transitions are chosen on a cut: right-click it, or use the inspector.");
-    effectsNote_->SetFont(Tokens::Body.family, Tokens::Body.size * 0.75f);
+    effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 40,
+                               "A click puts the effect on the selected clip; the inspector lists the clip's effects and removes them.");
+    effectsNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    effectsNote_->layoutItem.SetFlexShrink(0);
     effectsPage->AddChild(effectsNote_);
+    for (const bool blurGroup : {false, true}) {
+        auto heading = CreateLabel(blurGroup ? "uv.bin.effects.detail" : "uv.bin.effects.looks", 0, 0, 240, 22,
+                                   blurGroup ? "Blur and detail" : "Colour looks");
+        heading->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+        heading->layoutItem.SetFlexShrink(0);
+        effectHeadings_.push_back(heading);
+        effectsPage->AddChild(heading);
+        for (const EffectPreset& e : EffectPresets()) {
+            if (e.blur != blurGroup) continue;
+            auto button = MakeTextButton(std::string("uv.bin.effect.") + e.key, e.label, p, 240);
+            button->SetIcon(IconPath("fx"));
+            button->SetIconSize(16, 16);
+            button->SetTooltip(e.hint);
+            button->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
+            const std::string key = e.key;
+            button->SetOnClick([this, key]() { ApplyEffect(key); });
+            effectButtons_.push_back(button);
+            effectsPage->AddChild(button);
+        }
+    }
     binTabs_->AddTab("Effects", effectsPage);
 
     (void)p;
@@ -556,6 +598,15 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
             }
             return;
         }
+        if (trackId == kSoundTrackId) {
+            double at = seconds;
+            for (const std::string& f : files) {
+                const size_t before = document_.sounds.size();
+                AddSound(f, at, true);
+                if (document_.sounds.size() > before) at = document_.sounds.back().End();
+            }
+            return;
+        }
         ImportFiles(files, seconds);
     };
     timeline_->onContextMenuRequested = [this](const std::string& trackId, double seconds, const std::string& clipId, int x, int y) {
@@ -645,6 +696,8 @@ void UltraVideoWindow::ApplyPalette() {
     for (auto& b : titleButtons_) b->SetStyle(PlainButtonStyle(p));
     for (auto& h : titleHints_) h->SetTextColor(ToColor(p.InkFaint));
     effectsNote_->SetTextColor(ToColor(p.InkMuted));
+    for (auto& b : effectButtons_) b->SetStyle(PlainButtonStyle(p));
+    for (auto& h : effectHeadings_) h->SetTextColor(ToColor(p.InkFaint));
     viewer_.ApplyPalette(p);
     inspector_.ApplyPalette(p);
 
@@ -796,6 +849,7 @@ void UltraVideoWindow::RefreshTimeline() {
     }
     timeline_->SetModel(model);
     if (!selectedClip_.empty() && SegmentOfClip(document_, selectedClip_) < 0 && document_.TitleIndex(selectedClip_) < 0 &&
+        document_.OverlayIndex(selectedClip_) < 0 && document_.SoundIndex(selectedClip_) < 0 &&
         !(SongOfClip(selectedClip_) >= 0 && static_cast<size_t>(SongOfClip(selectedClip_)) < music.Songs().size()))
         selectedClip_.clear();
     const double length = document_.Length();
@@ -811,7 +865,7 @@ void UltraVideoWindow::RefreshTimeline() {
 
 void UltraVideoWindow::RefreshInspector() {
     inspector_.Show(document_, SegmentOfClip(document_, selectedClip_), document_.TitleIndex(selectedClip_),
-                    document_.OverlayIndex(selectedClip_));
+                    document_.OverlayIndex(selectedClip_), document_.SoundIndex(selectedClip_));
 }
 
 void UltraVideoWindow::RefreshPreview() {
@@ -995,7 +1049,7 @@ void UltraVideoWindow::BeginBinDrag(const std::string& path) {
     const MediaItem* m = document_.FindMedia(path);
     if (!m || !m->error.empty()) return;
     binDrag_ = path;
-    Message(m->kind == MediaKind::Audio ? "Drop it on the music lane, or anywhere on the timeline, to make it the music."
+    Message(m->kind == MediaKind::Audio ? "Drop it on the music lane to make it the music, or on Voice & sound (A2) at a time."
                                         : "Drop it on the main track at a time, or on the overlay lane to put it over the picture.");
 }
 
@@ -1104,6 +1158,7 @@ void UltraVideoWindow::RenderDraft() {
     if (segments.empty()) return;
     VideoFXExportSettings settings = VideoFXExportSettings::Draft(360);
     settings.music = document_.project.settings.music;
+    PutSounds(document_, settings);
     settings.fitMode = document_.project.settings.fitMode;
     settings.frameRate = document_.FrameRate();
     std::error_code ec;
@@ -1338,6 +1393,7 @@ void UltraVideoWindow::SplitAtPlayhead() {
     if (!main) return;
     if (document_.TitleIndex(selectedClip_) >= 0) main = model.FindTrack(kTitleTrackId);   // a selected title splits instead
     if (document_.OverlayIndex(selectedClip_) >= 0) main = model.FindTrack(kOverlayTrackId);   // or overlay
+    if (document_.SoundIndex(selectedClip_) >= 0) main = model.FindTrack(kSoundTrackId);       // or sound
     if (!main) return;
     std::string target = selectedClip_;
     if (target.empty() || !main->FindClip(target)) {
@@ -1359,7 +1415,8 @@ void UltraVideoWindow::SplitAtPlayhead() {
     change.before = {*clip};
     change.after = {*track.FindClip(target), *track.FindClip(target + ":2")};
     change.at = at;
-    Edit(main->id == kTitleTrackId ? "Split title" : main->id == kOverlayTrackId ? "Split overlay" : "Split clip",
+    Edit(main->id == kTitleTrackId ? "Split title" : main->id == kOverlayTrackId ? "Split overlay"
+         : main->id == kSoundTrackId ? "Split sound" : "Split clip",
          [&change](Document& d) { ApplyChange(d, change); });
 }
 
@@ -1391,6 +1448,11 @@ void UltraVideoWindow::DeleteSelection() {
                 d.overlays.erase(d.overlays.begin() + overlayIndex);
                 continue;
             }
+            const int soundIndex = d.SoundIndex(id);
+            if (soundIndex >= 0) {
+                d.sounds.erase(d.sounds.begin() + soundIndex);
+                continue;
+            }
             const int index = SegmentOfClip(d, id);
             if (index < 0) continue;
             d.project.segments.erase(d.project.segments.begin() + index);
@@ -1414,6 +1476,24 @@ void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
         inspector_.ShowClipTab();
         Message("A title at the playhead: set its text in the inspector.");
     }
+}
+
+void UltraVideoWindow::ApplyEffect(const std::string& key) {
+    const EffectPreset* preset = FindEffectPreset(key);
+    if (!preset) return;
+    const int index = SegmentOfClip(document_, selectedClip_);
+    if (index < 0) {
+        Message("Select a clip on the main track first: an effect goes on a clip.");
+        return;
+    }
+    Document trial = document_;
+    if (!trial.ApplyEffectPreset(static_cast<size_t>(index), key)) {
+        Message(std::string(preset->label) + " is already on this clip.");
+        return;
+    }
+    Edit(std::string("Apply ") + preset->label, [index, key](Document& d) { d.ApplyEffectPreset(static_cast<size_t>(index), key); });
+    inspector_.ShowClipTab();
+    Message(std::string(preset->label) + " on " + ClipName(document_, static_cast<size_t>(index)) + ": the inspector lists its effects.");
 }
 
 void UltraVideoWindow::AddOverlay(const std::string& path, double at) {
@@ -1447,6 +1527,40 @@ void UltraVideoWindow::ChooseOverlay(double at) {
     UltraCanvasFileLoader::OpenFileDialog(opts, [this, at](DialogResult result, const std::string& path) {
         if (result == DialogResult::OK && !path.empty()) AddOverlay(path, at);
     });
+}
+
+void UltraVideoWindow::AddSound(const std::string& path, double at, bool voiceOver) {
+    std::string id;
+    Edit(voiceOver ? "Add voice-over" : "Add sound effect", [path, at, voiceOver, &id](Document& d) {
+        const int index = d.AddSound(path, at, voiceOver);
+        if (index >= 0) id = d.sounds[static_cast<size_t>(index)].id;
+    });
+    if (id.empty()) {
+        Message("That file has no sound to put on the timeline.");
+        return;
+    }
+    selectedClip_ = id;
+    if (timeline_) timeline_->SetSelection({id});
+    RefreshInspector();
+    inspector_.ShowClipTab();
+    Message(voiceOver ? "A voice-over on A2: the music dips under it. Volume and fades are in the inspector."
+                      : "A sound effect on A2, over the music. Volume and fades are in the inspector.");
+}
+
+void UltraVideoWindow::ChooseSound(double at, bool voiceOver) {
+    FileDialogOptions opts;
+    opts.SetTitle(voiceOver ? "A voice-over" : "A sound effect").SetParentWindow(window_.get());
+    std::vector<std::string> exts;
+    for (const std::string& e : MediaExtensions())
+        if (Document::KindOfPath("x." + e) != MediaKind::Image) exts.push_back(e);
+    opts.AddFilter("Sound, and video with sound", exts);
+    UltraCanvasFileLoader::OpenFileDialog(opts, [this, at, voiceOver](DialogResult result, const std::string& path) {
+        if (result == DialogResult::OK && !path.empty()) AddSound(path, at, voiceOver);
+    });
+}
+
+void UltraVideoWindow::PutSounds(const Document& document, VideoFXExportSettings& settings) const {
+    settings.audioClips = document.AudioClipsForEngine();
 }
 
 void UltraVideoWindow::RequestBeats() {
@@ -1515,6 +1629,43 @@ void UltraVideoWindow::ShowTimelineMenu(const std::string& trackId, double secon
             if (offered > 8) break;
             const std::string path = m.path;
             menu_->AddItem(MenuItemData::Action(m.name + " here", [this, path, seconds]() { AddOverlay(path, seconds); }));
+        }
+    } else if (trackId == kSoundTrackId && document_.SoundIndex(clipId) >= 0) {
+        const SoundSpan& a = document_.sounds[static_cast<size_t>(document_.SoundIndex(clipId))];
+        menu_->AddItem(MenuItemData::Header(a.Name()));
+        menu_->AddItem(MenuItemData::Action("Volume, fades and ducking\xE2\x80\xA6", [this, clipId]() {
+            selectedClip_ = clipId;
+            RefreshInspector();
+            inspector_.ShowClipTab();
+        }));
+        menu_->AddItem(MenuItemData::Action(a.ducksMusic ? "Make it a sound effect (the music stays)" : "Make it a voice-over (the music dips)",
+                                            [this, clipId, ducks = !a.ducksMusic]() {
+            Edit(ducks ? "Make voice-over" : "Make sound effect", [clipId, ducks](Document& d) {
+                const int i = d.SoundIndex(clipId);
+                if (i >= 0) d.sounds[static_cast<size_t>(i)].ducksMusic = ducks;
+            });
+        }));
+        menu_->AddItem(MenuItemData::ActionWithShortcut("Split at the playhead", "S", [this, clipId]() {
+            selectedClip_ = clipId;
+            SplitAtPlayhead();
+        }));
+        menu_->AddItem(MenuItemData::Separator());
+        menu_->AddItem(MenuItemData::ActionWithShortcut("Delete", "Del", [this, clipId]() {
+            selectedClip_ = clipId;
+            if (timeline_) timeline_->SetSelection({clipId});
+            DeleteSelection();
+        }));
+    } else if (trackId == kSoundTrackId) {
+        menu_->AddItem(MenuItemData::Header("Voice & sound"));
+        menu_->AddItem(MenuItemData::Action("Add a voice-over here\xE2\x80\xA6", [this, seconds]() { ChooseSound(seconds, true); }));
+        menu_->AddItem(MenuItemData::Action("Add a sound effect here\xE2\x80\xA6", [this, seconds]() { ChooseSound(seconds, false); }));
+        size_t offered = 0;
+        for (const MediaItem& m : document_.media) {
+            if (!m.error.empty() || !(m.kind == MediaKind::Audio || (m.kind == MediaKind::Video && m.hasAudio))) continue;
+            if (offered++ == 0) menu_->AddItem(MenuItemData::Separator());
+            if (offered > 8) break;
+            const std::string path = m.path;
+            menu_->AddItem(MenuItemData::Action(m.name + " here", [this, path, seconds]() { AddSound(path, seconds, true); }));
         }
     } else if (trackId == kTitleTrackId && titleIndex >= 0) {
         menu_->AddItem(MenuItemData::Header(document_.titles[static_cast<size_t>(titleIndex)].Name()));
@@ -1699,6 +1850,18 @@ void UltraVideoWindow::StartExport(const ExportChoice& choice) {
             pips.push_back(v);
         }
         exported.overlays = pips;
+        std::vector<SoundSpan> lane;
+        for (SoundSpan a : document_.sounds) {
+            const double from = std::max(a.start, rangeIn), to = std::min(a.End(), rangeOut);
+            if (to - from < 0.04) continue;
+            a.sourceIn += from - a.start;
+            if (from > a.start) a.fadeIn = 0.0;
+            if (to < a.End()) a.fadeOut = 0.0;
+            a.start = from - rangeIn;
+            a.duration = to - from;
+            lane.push_back(a);
+        }
+        exported.sounds = lane;
     }
     std::vector<VideoFXSegment> segments = exported.SegmentsForEngine();
     if (segments.empty()) {
@@ -1707,6 +1870,7 @@ void UltraVideoWindow::StartExport(const ExportChoice& choice) {
     }
     VideoFXExportSettings settings = choice.settings;
     settings.music = document_.project.settings.music;
+    PutSounds(exported, settings);
     if (settings.frameRate <= 0.0 && document_.project.settings.frameRate > 0.0) settings.frameRate = document_.project.settings.frameRate;
     settings.fitMode = document_.project.settings.fitMode;
     job_ = std::make_unique<VideoFXExportJob>();

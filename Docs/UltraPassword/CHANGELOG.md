@@ -1,3 +1,18 @@
+#### 2026-10-13 *0.1.4*
+- **The vault lives in `~/Library/Application Support/UltraPassword` on
+  macOS.** macOS was treated like Linux, so the default vault went to
+  `~/.local/share/UltraPassword` - while UltraMail, UltraSocial and the
+  desktop's clipboard history keep their data in Application Support, the
+  place the platform means for it. The rule is now the framework's one rule
+  (`UltraCanvasDataFolder.h`, shared with UltraMail, UltraAuthenticator,
+  UltraSocial and EmailCleaner), which `core/VaultLocation.h` applies:
+  `%APPDATA%\UltraPassword` on Windows,
+  Application Support on macOS, `$XDG_DATA_HOME` or `~/.local/share`
+  elsewhere, and `$XDG_DATA_HOME` wins everywhere when it is set. On the
+  first start a vault folder an earlier version left in `~/.local/share` on
+  macOS is moved into place whole and opens with its master password as
+  before. `--vault PATH` is unaffected, as are Linux and Windows.
+
 #### 2026-10-12 *0.1.3*
 - **One UltraPassword at a time.** Starting UltraPassword while it is already
   running brings the open window forward (restored if minimised; an open

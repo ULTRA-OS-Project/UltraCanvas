@@ -67,6 +67,7 @@ namespace UltraDesktop {
 class UltraDesktopAppStarter;
 class UltraDesktopClipboardPanel;
 class UltraDesktopStickerboard;
+class UltraDesktopCategoryBoard;
 class UltraDesktopTasksWindow;
 
 class UltraDesktopWindow {
@@ -101,6 +102,7 @@ public:
     void OpenFiler(const std::string& path = "");
     void TakeScreenshot();
     void ToggleStickerboard(bool visible);
+    void ToggleCategoryBoard(bool visible);
     void SwitchToDesktop(int index);
     // Save the settings object and rebuild the bars from it.
     void ApplySettings();
@@ -192,6 +194,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasToolbar> info_;
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> popupMenu_;
     std::shared_ptr<UltraDesktopStickerboard> stickerboard_;
+    std::shared_ptr<UltraDesktopCategoryBoard> categoryBoard_;
     std::shared_ptr<UltraDesktopAppStarter> appStarter_;
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
     std::unique_ptr<UltraCanvas::UltraCanvasNotificationToastHost> toasts_;

@@ -1,3 +1,11 @@
+#### 2026-10-13 *0.16*
+- **The activity store is found in a home folder named in any script.**
+  `HOME` and `XDG_DATA_HOME` were read through the narrow `getenv`, which
+  on Windows answers in the ANSI code page; they go through the framework's
+  `GetEnvUtf8` now, as `LOCALAPPDATA` already did, so every variable the
+  store's folder comes from is read the same way (framework changelog:
+  `env-narrow`).
+
 #### 2026-10-13 *0.15*
 - **One UltraNetMonitor at a time.** Starting UltraNetMonitor while it is
   already running brings the open window forward (restored if minimised; an

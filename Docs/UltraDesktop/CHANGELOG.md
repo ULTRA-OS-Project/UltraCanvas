@@ -1,4 +1,4 @@
-#### 2026-10-12 *0.3.0*
+#### 2026-10-14 *0.3.0*
 - **UltraDesktop can take the place of the Windows desktop, and give it
   back.** On Windows it now has running windows, the Start menu's programs,
   reserved bars and a screenshot (framework changelog:
@@ -16,6 +16,25 @@
 - **No RAM disc button without a RAM disc.** An empty RAM disc folder leaves
   the button out. That is the default on Windows, which has no RAM disc of
   its own; `/dev/shm` stays the default elsewhere.
+
+#### 2026-10-13 *0.2.2*
+- **The Sticker board: files sorted into categories on the desktop.** The
+  pinboard on the right bar shows a Kanban board over the wallpaper with three
+  categories to begin with - Docs, Work, Home. Drop files on a category from
+  the file manager and they join it at once, no question asked; a file
+  dropped again moves to the new category instead of appearing twice. Each
+  file is a card with its name and its type (`pdf`, `folder`, ...), the full
+  path in the tooltip; a double-click opens it with its default application.
+  *+ Add category* adds a category and opens its name for typing. The style
+  picker switches between *Sticky notes*, *Poster*, *Schematic* and *Dark*.
+  Cards are dragged between categories, the board's own *+ Add card* makes
+  a plain note, the panel is dragged by its title and resized by the grip in
+  its corner, and all of it comes back where it was. A new category the
+  board is too wide to show is scrolled into view (framework changelog:
+  `kanban-file-drop`).
+- **The pinboard button opens the Sticker board.** The free notes that
+  button used to show keep a button of their own, a note, right below it;
+  notes already written are where they were.
 
 #### 2026-10-08 *0.2.1*
 - **The clipboard panel offers first what you are pasting into.** Super+V
