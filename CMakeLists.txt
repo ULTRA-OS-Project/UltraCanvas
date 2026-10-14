@@ -1747,6 +1747,7 @@ if (BUILD_ARTCREATOR_APP)
             Apps/ArtCreator/ArtCreatorWindow.cpp
             Apps/ArtCreator/ArtCreatorTools.cpp
             Apps/ArtCreator/ArtCreatorDialogs.cpp
+            Apps/ArtCreator/ArtCreatorIcon.cpp
     )
     set_target_properties(ArtCreator PROPERTIES ENABLE_EXPORTS ON)
 

@@ -25,9 +25,10 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 ┌ menu bar ─────────────────────────────────────────────────────────────┐
 ├ toolbar: new open save | undo redo | zoom- zoom+ page 100% | group … | mirror | quality ┤
 ├──────┬────────────────────────────────────────────┬────────────────────┤
-│ tool │  rulers                                     │ Colour (fill/line) │
-│ pal- │ ┌──────────────────────────────────────┐    │ swatches           │
-│ ette │ │ pasteboard, page, grid, guides,       │    │ Fill (gradient     │
+│ tool │  rulers                                     │ Icon (icon mode)   │
+│ pal- │ ┌──────────────────────────────────────┐    │ Colour (fill/line) │
+│ ette │ │                                       │    │ swatches           │
+│      │ │ pasteboard, page, grid, guides,       │    │ Fill (gradient     │
 │      │ │ the drawing, selection handles        │    │   ramp)            │
 │      │ │                                       │    │ Tool Options       │
 │      │ └──────────────────────────────────────┘    │ Layers             │
@@ -74,7 +75,7 @@ the selection and to every line drawn afterwards.
 ## Menus and shortcuts
 
 - **File**: New (Ctrl+N; page presets, mm / cm / in / pt / px, orientation),
-  New Window (Ctrl+Alt+N), Open (Ctrl+O), Save (Ctrl+S), Save As
+  New Window (Ctrl+Alt+N), New Icon (16 to 256 px, see *Icon mode*), Open (Ctrl+O), Save (Ctrl+S), Save As
   (Ctrl+Shift+S), Export (Ctrl+E), Document Setup, Quit (Ctrl+Q).
 - **Edit**: Undo / Redo (Ctrl+Z / Ctrl+Y), Cut / Copy / Paste (in-app
   clipboard, pastes offset), Duplicate (Ctrl+D), Delete, Select All / None.
@@ -87,16 +88,56 @@ the selection and to every line drawn afterwards.
   others and is removed; Add and Intersect keep the back shape's style),
   Apply ClipView (Ctrl+K: the front shape becomes the keyhole the others
   show through), Remove ClipView, Blend or Mould, Convert to Editable
-  Shapes.
+  Shapes, Snap to Pixels (Ctrl+Shift+P, in icon mode).
 - **Object**: No Fill, No Line, line widths.
 - **Layer**: New (Ctrl+Shift+N), Delete, Move Up / Down, Show / Hide; the
   layers panel toggles visible / locked and picks the active layer.
 - **View**: zoom, rulers, grid, guides, snap to grid / guides / objects /
-  page, clear guides.
+  page, clear guides, Icon Size (icon mode for any drawing, or off).
 - **Display quality** (the *Quality* slider at the end of the toolbar):
   *Outlines* - every shape as a thin line, nothing filled, clips and effects
   off, for finding and picking shapes in a dense drawing; *Fills + lines* -
   the colours without antialiasing; *Antialiased* - full quality (default).
+
+## Icon mode
+
+An icon is drawn for the size it is shown at - 16 px in a menu, 24 px on a
+toolbar, up to the 256 px of a macOS Dock or taskbar icon - and is sharp
+there only where its straight edges land on whole pixels. Icon mode is for
+drawing it so.
+
+- **Starting**: File > New Icon makes a square page of 16, 20, 24, 28, 32,
+  40, 48, 64, 96, 128 or 256 px with one document unit a pixel, as icons
+  are saved (an SVG of `width="24" viewBox="0 0 24 24"`). Opening a square
+  SVG of one of those sizes starts icon mode at that size; View > Icon Size
+  (or the Icon panel's Size) checks any drawing at an icon size, a pixel
+  then being the page's width divided by it.
+- **The grid**: a line every pixel once the view is close enough to tell
+  them apart, and a darker one every 4 px (8 from 40 px, 16 from 128 px).
+  The rulers and the status bar count in the icon's pixels, and the arrow
+  keys nudge by one.
+- **Snapping** (the panel's *Snap*): the pointer goes to the pixel grid,
+  onto pixel centres while the line being drawn - or, for the selector and
+  the shape editor, the selection's line - is an odd number of pixels
+  wide, onto pixel edges otherwise. A 1 px line on a pixel centre covers
+  one row of pixels fully; on an edge it would cover two half grey. New
+  lines are made a whole number of pixels wide.
+- **Snap to Pixels** (Arrange, Ctrl+Shift+P, or the panel's button) does
+  the same to what is already drawn - the selection, or everything on the
+  visible, unlocked layers: line widths become whole pixels, points go to
+  pixel centres or edges by that rule, circles and ellipses by the edges of
+  their bounds, and a curve too small to show as one (the round end of a
+  bar a pixel wide) becomes straight. Text, pictures and rotated shapes are
+  left as they are. It is `VectorEdit::SnapToPixels`, a framework operation.
+- **The preview** (the top of the right panel): the page drawn at the
+  icon's size, as Export writes it, on a light and a dark ground, and
+  enlarged up to eight times with every *soft* pixel - one the drawing
+  covers by more than 10 % and less than 90 % - outlined in red; the
+  caption counts them. Curves and slants always leave some; a straight
+  edge should leave none. *Mark soft* tints the same pixels on the page
+  once they are 4 screen pixels wide.
+- **Export** writes a bitmap at the icon's size unless another is chosen;
+  its file name starts as a `.png`.
 
 ## Files
 
@@ -127,5 +168,6 @@ has no file formats.
 | `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, menus, panels, status bar, shortcuts, file open / save, every command |
 | `ArtCreatorTools.{h,cpp}` | The `ArtTool` base, the 15 tools, the line gallery's named choices, the option-widget helpers |
 | `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup and Text |
+| `ArtCreatorIcon.{h,cpp}` | Icon mode's sizes, the page drawn at the icon's size with its soft pixels, and the preview element |
 | `ArtCreator.desktop` | The freedesktop launcher |
 | `../../media/icons/artcreator/` | Tool and command icons in one shade, each set drawn on the pixel grid of the size it is shown at, so its lines land on whole pixels: the 24 px set (toolbar and panel buttons), `28/` (the tool palette, 28 px icons in 36 px buttons) and `16/` (every menu entry). The toolbar's file, edit and zoom buttons use `../../media/icons/menu/`; `../../media/appicon/ArtCreator.{png,svg}` is the app icon |

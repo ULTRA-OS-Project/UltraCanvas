@@ -8,6 +8,8 @@
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
+// Version: 1.5.0 - icon mode: an icon size, a pixel grid, pixel snapping aware of the
+//                  line width, Snap to Pixels and the pixel preview
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
 // Last Modified: 2026-10-13
@@ -21,6 +23,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasSlider.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasColorPicker.h"
 #include "UltraCanvasColorSwatchBar.h"
 #include "UltraCanvasGradientEditor.h"
@@ -31,6 +34,7 @@
 
 #include "ArtCreatorTools.h"
 #include "ArtCreatorDialogs.h"
+#include "ArtCreatorIcon.h"
 
 #include <memory>
 #include <string>
@@ -144,6 +148,28 @@ private:
     void CmdAbout();
     void CmdQuit();
 
+    // ----- icon mode -----
+    // An icon is drawn for the size it is shown at (16 to 256 px). Icon mode
+    // lays a grid of that many pixels across the page, snaps the pointer to
+    // it - onto pixel centres for a line an odd number of pixels wide, onto
+    // pixel edges otherwise - and shows the page drawn at that size with the
+    // pixels it leaves soft (ArtCreatorIcon.h). Off is 0.
+    void CmdNewIcon(int pixels);
+    void CmdSnapToPixels();
+    void SetIconSize(int pixels);
+    // The width of one icon pixel in document units; 0 when icon mode is off.
+    double IconPixel() const;
+    int IconRasterHeight() const;
+    // Whether the pointer should go to pixel centres for what the active
+    // tool does: a new line of an odd number of pixels, or a selection whose
+    // first line is one.
+    bool IconCentred() const;
+    VectorPointerEvent IconEvent(const VectorPointerEvent& e) const;
+    void BuildIconPanel();
+    void LayoutIconPanel();
+    void RefreshIconPreview();
+    void DrawIconOverlay(IRenderContext* ctx, const VectorViewTransform& view);
+
     // ----- tools and panels -----
     void SelectTool(ArtToolId id);
     ArtTool* ActiveTool() const;
@@ -188,6 +214,10 @@ private:
     std::shared_ptr<UltraCanvasSlider>          qualitySlider;
     std::shared_ptr<UltraCanvasLabel>           qualityLabel;
     std::vector<std::shared_ptr<UltraCanvasButton>> toolButtons;
+    std::shared_ptr<UltraCanvasContainer>       iconPanel;
+    std::shared_ptr<UltraCanvasDropdown>        iconSizeBox;
+    std::shared_ptr<ArtIconPreview>             iconPreview;
+    std::shared_ptr<UltraCanvasLabel>           iconCaption;
 
     std::shared_ptr<VectorStorage::VectorDocument> document;
     std::shared_ptr<VectorEdit::VectorSelection>   selection;
@@ -204,6 +234,11 @@ private:
     Color lineColour = Color(30, 30, 40, 255);
     bool syncingColours = false;
     ArtCreatorPageResult lastPage;
+    int iconSize = 0;
+    bool iconGrid = true, iconSnap = true, iconMarkSoft = true;
+    VectorGridSpec gridBeforeIcon;
+    VectorSnapOptions snapBeforeIcon;
+    std::shared_ptr<const ArtIconRaster> iconRaster;
     ArtCreatorTextResult lastText;
 
     // in-app clipboard: clones of the copied elements

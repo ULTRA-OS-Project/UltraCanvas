@@ -1,3 +1,32 @@
+#### 2026-10-14 *0.7.0*
+- **Icon mode: draw an icon for the size it is shown at.** An icon shown at
+  24 px is sharp only where its straight edges land on whole pixels; drawn
+  by eye, a line half a pixel off turns into a grey two-pixel smear. Icon
+  mode puts the pixels of the target size on the page:
+  - *File > New Icon* makes a square page of 16, 20, 24, 28, 32, 40, 48,
+    64, 96, 128 or 256 px - up to a macOS Dock or taskbar icon - one
+    document unit a pixel, so it saves as an SVG of `viewBox="0 0 24 24"`
+    like the framework's icons. Opening a square SVG of one of those sizes
+    starts icon mode at its size; *View > Icon Size* and the panel's Size
+    check any drawing at an icon size.
+  - A pixel grid: a line every pixel once the view is close enough, a
+    darker one every 4 px (8 from 40 px, 16 from 128 px). Rulers and the
+    status bar count in the icon's pixels; the arrow keys nudge by one.
+  - Snapping that knows the line width: lines an odd number of pixels wide
+    are drawn on pixel centres, even ones and fills on pixel edges, and new
+    lines are a whole number of pixels wide.
+  - *Arrange > Snap to Pixels* (Ctrl+Shift+P) does the same to shapes
+    already drawn - the selection, or everything - through the framework's
+    new `VectorEdit::SnapToPixels` (framework changelog, pending entry
+    `vector-snap-to-pixels`).
+  - An *Icon* panel at the top of the right panel, shown in icon mode: the
+    page drawn at the icon's size on a light and a dark ground, enlarged up
+    to eight times with every soft pixel - one the drawing only partly
+    covers - outlined in red, and a count of them. *Mark soft* tints the
+    same pixels on the page when zoomed in.
+  - *Export* writes the icon at its size unless another is chosen, its file
+    name starting as a `.png`.
+
 #### 2026-10-13 *0.6.11*
 - **Export as a bitmap, at any size.** File > Export offers PNG, JPEG, WebP,
   AVIF, HEIC, TIFF, GIF, QOI and Windows icons beside the vector formats -
