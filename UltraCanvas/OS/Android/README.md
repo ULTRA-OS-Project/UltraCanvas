@@ -31,6 +31,7 @@ Android).
 | `java/org/ultraos/ultracanvas/UltraCanvasActivity.java` | Optional `NativeActivity` subclass hosting everything that needs a real Activity on the Java UI thread: `AlertDialog` (message and text-input), the SAF picker with its `onActivityResult`, and the invisible input view whose `InputConnection` gives the IME something to compose into. Compiled against `android.jar` in CI by `scripts/android-java-check.sh`. |
 | `UltraCanvasAndroidTextInput.cpp` | JNI entry points for that `InputConnection`: committed text, the text being composed, key events routed through the input view, and `deleteSurroundingText` replayed as Backspace presses. They arrive on the Java UI thread and are queued, in order, for the glue thread (`DrainImeQueue`). |
 | `UltraCanvasAndroidAssets.{h,cpp}` | Unpacks the APK's `assets/` tree into `$HOME/share` on the first launch after an install or update (stamped against the APK's mtime+size). Inside an APK nothing is on the filesystem, so without this every path-based `fopen` for a font, icon or media file fails. Uses Java `AssetManager.list()` to walk the tree — the NDK's `AAssetDir` cannot see subdirectories — and the native `AAssetManager` to read contents. |
+| `UltraCanvasAndroidPermissions.{h,cpp}` | Runtime permissions (`IsGranted`, `Request` with the answer posted to the UI thread) and the display rotation, over JNI. `Request` needs `UltraCanvasActivity`, whose `onRequestPermissionsResult` carries the answer back. Used by the video backend for CAMERA and RECORD_AUDIO. |
 | `packaging/` | Manifest + Gradle **scaffolding** for building an APK, and the sysroot blocker that stops one being built today. |
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` no-op. |
 | `GLContextManagerEGL_Android.cpp` | EGL + **OpenGL ES** context manager (ES 3 preferred, ES 2 fallback) behind the same `CreateGLContextManagerEGL()` factory symbol the dispatcher uses on Linux. Same offscreen model as the Linux EGL manager: 1×1 pbuffer made current, all real rendering into FBOs (`GLFramebuffer.cpp` compiles against `<GLES3/gl3.h>` on Android, and `ICompositeStrategy.cpp` reads back `GL_RGBA` + swizzles to Cairo's word order, since core GLES has no `GL_BGRA` readback). `GLSurfaceConfig`'s desktop fields (`glVersionMajor/Minor`, `coreProfile`) are ignored. Note: the FBO layer uses ES 3 sized formats (`GL_RGBA8`), so the ES 2 fallback context is best-effort only — every `minSdk 26` device ships ES 3.x. |
@@ -301,6 +302,57 @@ Whoever implements it needs a `ContentProvider` subclass (`openFile` plus
 the `ClipData` — hand-written rather than AndroidX's `FileProvider`, since the
 Java here is compiled against `android.jar` alone.
 
+## Video: playback, thumbnails and the camera
+
+The video backend lives with the other platforms' in
+`libspecific/Video/VideoBackendAndroid*.cpp` and is **on by default**: it uses
+only the NDK's own libraries (`mediandk`, `camera2ndk`, `aaudio`, all present
+at minSdk 26), so unlike most of the stack it does not wait on the
+cross-compiled sysroot.
+
+- **Playback.** `AMediaExtractor` demuxes; `AMediaCodec` decodes the video
+  into an `AImageReader` as YUV_420_888, a layout every decoder can produce
+  whatever its private one is. Frames are converted to BGRA, cropped to the
+  picture and turned upright by the track's rotation (phones record sideways
+  and say so in metadata). Audio is decoded to PCM and played through AAudio.
+  A session clock decides when each frame is shown, and is re-anchored to the
+  audio device's own timestamps while sound plays, so picture follows what is
+  heard. Local files are opened by descriptor; `http(s)://` goes to the
+  platform's data source. Seeking is frame-accurate (decode from the previous
+  sync frame, drop up to the target), and a paused session shows the frame it
+  seeked to.
+- **Playback rate.** Any rate works for the picture. Sound plays only at 1×:
+  AAudio cannot change speed, and pitch-shifted sound is worse than none.
+  Going back to 1× resynchronises the audio.
+- **Thumbnails.** `GrabThumbnail` runs the same video pipeline for one frame,
+  synchronously, without an audio device.
+- **Camera.** Camera2 through the NDK. Cameras are listed with their YUV
+  output sizes, and the first back-facing one is the default. The preview is
+  turned upright for the display rotation at `Open()` and mirrored for a front
+  camera. Recording feeds the camera straight into an H.264 or H.265 encoder
+  through its input surface, records the microphone through AAudio into AAC,
+  and writes **MP4** with `AMediaMuxer`, with the orientation as a hint so the
+  file plays upright. `Pause`/`Resume` cut the pause out of the file. Other
+  containers and codecs fail `Start()` with a message: the platform muxer
+  writes MP4 and WebM, but Android has no Vorbis encoder and only newer
+  releases an Opus one.
+- **Permissions.** The camera needs `android.permission.CAMERA` in the manifest
+  (see `packaging/AndroidManifest.xml`) and at runtime:
+  `UltraCanvasVideoDevices::RequestCameraPermission` shows the system prompt
+  through `UltraCanvasActivity`. `GetCameraPermission` reports `Granted` or
+  `Undetermined`: Android cannot tell "never asked" from "refused but may ask
+  again" without asking. Recording without `RECORD_AUDIO` records silently.
+
+Limits to know:
+
+- The preview rotation is fixed when the camera opens. Rotating the device
+  while it is open needs a `Close()`/`Open()`.
+- Each recorded track starts at zero on its own clock. The camera's and the
+  microphone's timestamps come from different clocks on many devices, so they
+  cannot be compared directly. Sync is therefore as good as the two streams'
+  start latencies are equal, which is typically within a frame.
+- Like everything here, none of it has run on a device yet.
+
 ## Diagnostics: seeing anything at all
 
 The single thing to set up before a first run on a device or emulator, because
@@ -375,8 +427,9 @@ everything below, since nothing can be observed until then), clipboard
 images/files **copying** (pasting is done — it needs an app-declared
 `ContentProvider`, see above), inline composition in `UltraCanvasTextInput`
 and `UltraCanvasTextArea` (only `UltraCanvasRichTextEdit` draws one so far, on
-every platform), and video and PDF. **Audio is on**: its backend is miniaudio, which is vendored
-rather than waiting on the sysroot and speaks AAudio (with OpenSL ES beneath
+every platform), and PDF. **Video is on** (see Video above). **Audio is
+on**: its backend is miniaudio, which is vendored rather than waiting on the
+sysroot and speaks AAudio (with OpenSL ES beneath
 it) natively — both runtime-linked, so there is nothing extra to link. Only
 the optional codec libraries are missing from a minimal sysroot, which costs
 formats rather than the backend. Playback needs no manifest permission;

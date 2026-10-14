@@ -3,7 +3,8 @@
 //
 // NativeActivity alone cannot host anything that needs a real Activity on the
 // Java UI thread - AlertDialog, the Storage Access Framework's
-// startActivityForResult/onActivityResult, an InputConnection for full IME.
+// startActivityForResult/onActivityResult, an InputConnection for full IME,
+// and the answer to a runtime permission request.
 // This subclass supplies those, and the C++ side calls into it over JNI.
 //
 // Declare it in the manifest INSTEAD of android.app.NativeActivity:
@@ -28,6 +29,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
@@ -569,6 +571,69 @@ public class UltraCanvasActivity extends NativeActivity {
         try { c.close(); } catch (Throwable ignored) { }
     }
 
+    // ===== RUNTIME PERMISSIONS =====
+
+    // Offset that keeps permission request codes clear of anything else the
+    // activity may request; requestPermissions takes the low 16 bits only.
+    private static final int PERMISSION_REQUEST_BASE = 0x4000;
+    // UI thread only: request code -> the native side's request id, which
+    // may outgrow the request code's 14 bits in a long-running app.
+    private final android.util.SparseIntArray permissionRequests =
+            new android.util.SparseIntArray();
+    private int nextPermissionCode;
+
+    /**
+     * Ask for one runtime permission (CAMERA, RECORD_AUDIO, ...). Called from
+     * the native glue thread; the answer goes back through
+     * nativeOnPermissionResult with the same request id. Implemented by
+     * UltraCanvasAndroidPermissions.cpp.
+     */
+    public void requestPermissionAsync(final String permission, final int requestId) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
+                    nativeOnPermissionResult(requestId, true);
+                    return;
+                }
+                int code = PERMISSION_REQUEST_BASE + (nextPermissionCode++ & 0x3FFF);
+                permissionRequests.put(code, requestId);
+                requestPermissions(new String[] { permission }, code);
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                           int[] grantResults) {
+        int index = permissionRequests.indexOfKey(requestCode);
+        if (index < 0) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+            return;
+        }
+        int requestId = permissionRequests.valueAt(index);
+        permissionRequests.removeAt(index);
+        // An empty result means the request was interrupted (the activity
+        // went away): that is a refusal, not silence, so the caller hears it.
+        boolean granted = grantResults != null && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        nativeOnPermissionResult(requestId, granted);
+    }
+
+    /**
+     * The display's clockwise rotation from the device's natural orientation,
+     * in degrees - what a camera frame needs, with the sensor's orientation,
+     * to come out upright.
+     */
+    @SuppressWarnings("deprecation")
+    public int getDisplayRotationDegrees() {
+        try {
+            return getWindowManager().getDefaultDisplay().getRotation() * 90;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
     // ===== TEXT INPUT (soft keyboard + IME) =====
 
     private InputView inputView;
@@ -795,6 +860,9 @@ public class UltraCanvasActivity extends NativeActivity {
      * library NativeActivity already loaded for us.
      */
     private static native void nativeOnDialogResult(int requestId, int result, String value);
+
+    // Implemented in UltraCanvasAndroidPermissions.cpp.
+    private static native void nativeOnPermissionResult(int requestId, boolean granted);
 
     /**
      * The composition's caret as a UTF-8 byte offset into it - the unit the
