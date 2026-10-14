@@ -5,6 +5,7 @@
 // model and re-renders the preview; Save writes the site folder; Publish
 // writes the static site and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.7.3 - a richtext block edited in place with the RichTextEdit
 // Version: 0.7.0 - text edited in place on the page
 // Version: 0.6.0 - the media library: Pick... on a picture property, Media library... in the side column
 // Version: 0.5.0 - Publish and Host...
@@ -19,6 +20,7 @@
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
@@ -75,7 +77,8 @@ public:
     // Text edited in place: a click on a piece of text on the page (a
     // binding of the rendered page) selects its block and puts an input
     // where the text was - a single line for a title, an area for a
-    // paragraph. Enter (Ctrl+Enter in an area) commits, Escape cancels, and
+    // paragraph, the rich text editor with Done and Cancel for a richtext
+    // block. Enter (Ctrl+Enter in an area) commits, Escape cancels, and
     // so does leaving the field; a commit writes the block and re-renders.
     const RenderedPage& Shown() const { return shown; }
     bool IsEditingText() const { return editing >= 0; }
@@ -113,6 +116,9 @@ private:
     int editing = -1;                      // the binding being edited, or -1
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> editInput;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> editArea;
+    std::shared_ptr<UltraCanvas::UltraCanvasRichTextEdit> editRich;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> editButtons;   // Done / Cancel under the rich editor
+    std::vector<std::string> editPictures;                             // the rich editor's pictures, by media index
 
     std::weak_ptr<UltraCanvas::UltraCanvasWindow> windowRef;
     std::shared_ptr<Hosts> hosts;          // opened on the first Publish or Host...

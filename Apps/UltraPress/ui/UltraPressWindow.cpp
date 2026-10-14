@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.7.3 - a richtext block edits in place
 // Version: 0.7.2 - an FAQ question edits in place; a paragraph field keeps its text when left
 // Version: 0.7.0 - text edited in place
 // Version: 0.6.0 - the media library
@@ -22,6 +23,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasPathUtf8.h"
+#include "HTMLReader/HTMLRichDocumentImporter.h"
 
 // The hosts and their dialog: module headers after the UI headers (X11
 // macro ordering), and only where the build has them.
@@ -37,6 +39,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 
 using namespace UltraCanvas;
 
@@ -450,7 +454,51 @@ void EditorWindow::BeginTextEdit(int binding) {
     }
     editing = binding;
     bound.slot->RemoveChild(bound.element);
-    if (bound.multiline) {
+    if (bound.rich) {
+        // The block's HTML as a rich document; its pictures come from the
+        // site folder, and go back out as the paths they came in with.
+        editPictures.clear();
+        HTMLRichImportOptions import;
+        import.resolveImage = [this](const std::string& src, HTMLRichImportImage& out) {
+            if (src.empty() || src.find("://") != std::string::npos) return false;
+            const std::string relative = src[0] == '/' ? src.substr(1) : src;
+            std::ifstream in(PathFromUtf8(siteDir) / PathFromUtf8(relative), std::ios::binary);
+            if (!in) return false;
+            out.data.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+            if (out.data.empty()) return false;
+            editPictures.push_back(src);
+            return true;
+        };
+        auto document = std::make_shared<UCRichDocument>(ImportHTMLToRichDocument(bound.text, import));
+        editRich = CreateRichTextEdit("EditRich", 0, 0, 0, 320);
+        editRich->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(320));
+        editRich->SetDocument(document);
+        bound.slot->AddChild(editRich);
+        editButtons = CreateContainer("EditRichButtons", 0, 0, 0, 36);
+        editButtons->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        editButtons->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(36));
+        auto done = CreateButton("EditRichDone", 0, 0, 90, 30, "Done");
+        done->SetFont(kFont, 13, FontWeight::Bold);
+        done->SetColors(kAccent, Color(130, 5, 5, 255));
+        done->SetTextColors(kPaper);
+        done->SetBorder(0, Colors::Transparent);
+        done->SetCornerRadius(6);
+        done->SetElementSize(CSSLayout::Dimension::Px(90), CSSLayout::Dimension::Px(30));
+        done->onClick = [this]() { Later([this]() { CommitTextEdit(); }); };
+        auto cancel = CreateButton("EditRichCancel", 0, 0, 90, 30, "Cancel");
+        cancel->SetFont(kFont, 13);
+        cancel->SetColors(kPaperSoft, kRule);
+        cancel->SetTextColors(kInk);
+        cancel->SetBorder(1, kRule);
+        cancel->SetCornerRadius(6);
+        cancel->SetElementSize(CSSLayout::Dimension::Px(90), CSSLayout::Dimension::Px(30));
+        cancel->onClick = [this]() { Later([this]() { CancelTextEdit(); }); };
+        editButtons->AddChild(done);
+        editButtons->AddChild(cancel);
+        bound.slot->AddChild(editButtons);
+        editRich->SetFocus(true);
+        SetStatus("Editing rich text; Done keeps it, Cancel drops the change");
+    } else if (bound.multiline) {
         const float height = std::max(120.f, bound.size * 1.5f * 4);
         editArea = std::make_shared<UltraCanvasTextArea>("EditArea", 0, 0, 0, height);
         editArea->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(height));
@@ -482,7 +530,19 @@ void EditorWindow::BeginTextEdit(int binding) {
 
 bool EditorWindow::CommitTextEdit() {
     if (editing < 0) return false;
-    const std::string text = editArea ? editArea->GetText() : editInput ? editInput->GetText() : std::string();
+    std::string text;
+    if (editRich) {
+        RichDocumentHTMLOptions out;
+        out.imageSource = [this](int mediaIndex) {
+            return mediaIndex >= 0 && mediaIndex < static_cast<int>(editPictures.size()) ? editPictures[static_cast<size_t>(mediaIndex)]
+                                                                                         : std::string();
+        };
+        text = editRich->GetDocument()->ToHTML(out);
+    } else if (editArea) {
+        text = editArea->GetText();
+    } else if (editInput) {
+        text = editInput->GetText();
+    }
     return CommitTextEdit(text);
 }
 
@@ -504,6 +564,8 @@ bool EditorWindow::CommitTextEdit(const std::string& text) {
     editing = -1;
     editInput.reset();
     editArea.reset();
+    editRich.reset();
+    editButtons.reset();
     RenderPreview();
     RebuildSide();
     RebuildProperties();
@@ -518,10 +580,21 @@ void EditorWindow::CancelTextEdit() {
     if (bound.slot) {
         if (editInput) bound.slot->RemoveChild(editInput);
         if (editArea) bound.slot->RemoveChild(editArea);
+        if (editRich) bound.slot->RemoveChild(editRich);
+        if (editButtons) bound.slot->RemoveChild(editButtons);
         if (bound.element) bound.slot->AddChild(bound.element);
+        // The slot's handle button sits after the element; the element goes
+        // back in front of it so the page reads as before.
+        if (bound.rich && bound.slot->GetChildren().size() == 2) {
+            auto handle = bound.slot->GetChildren()[0];
+            bound.slot->RemoveChild(handle);
+            bound.slot->AddChild(handle);
+        }
     }
     editInput.reset();
     editArea.reset();
+    editRich.reset();
+    editButtons.reset();
     SetStatus(dirty ? "Unsaved changes" : "");
 }
 

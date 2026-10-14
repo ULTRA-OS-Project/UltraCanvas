@@ -6,6 +6,7 @@
 // desktop, and under Emscripten the published page itself; the two share
 // the Cairo + Pango pipeline, so the preview is the page
 // (Docs/Research/UltraPressDesignProposal.md §5.2).
+// Version: 0.7.3 - a richtext block is a binding too (TextBinding::rich): its HTML, edited with the RichTextEdit
 // Version: 0.7.2 - an FAQ question is a binding too: TextBinding::element is the label or the button in the slot
 // Version: 0.7.0 - editable: every piece of block text is a binding the editor can edit in place
 // Version: 0.2.0
@@ -58,6 +59,7 @@ struct TextBinding {
     TextLocation where;                    // the property, item, key, paragraph
     std::string text;                      // as the block holds it (a kicker is shown upper-case)
     bool multiline = false;                // a long text: an area, Ctrl+Enter commits
+    bool rich = false;                     // a richtext block: `text` is its HTML, edited with the RichTextEdit
     float size = 16;                       // the label's font size, for the input
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> slot;
     // What shows the text in the slot: a label, or the FAQ question's button.

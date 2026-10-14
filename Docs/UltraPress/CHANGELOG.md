@@ -1,3 +1,12 @@
+#### 2026-10-14 *0.7.3*
+- **Rich text edited in place.** A `richtext` block has an *Edit text…*
+  handle under it on the page; it opens the framework's rich text editor
+  in the block's place with the HTML as a document (the HTMLReader's
+  importer; the pictures from the site folder), **Done** writes the
+  document's HTML back into the block and **Cancel** drops it. The last
+  text of a page that still needed the property pane. An `html` block is
+  the owner's own markup and keeps the pane.
+
 #### 2026-10-14 *0.7.2*
 - **The FAQ's questions edit in place too.** A click on a closed question
   opens it as before; a click on an open one puts the field there, like

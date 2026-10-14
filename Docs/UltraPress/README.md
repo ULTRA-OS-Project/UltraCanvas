@@ -240,8 +240,9 @@ paragraph, a feature, an answer - and a field takes its place with the text
 in it; the block is selected on the left and the right. Enter keeps a
 title, Ctrl+Enter a paragraph, Escape drops the change, and so does leaving
 a field. One paragraph of a long text is edited on its own; an FAQ's
-question on a second click, once it is open. Rich text and HTML blocks are
-edited in the properties pane.
+question on a second click, once it is open. A rich text block has an
+*Edit text…* handle that opens the rich text editor in its place, with
+Done and Cancel. An HTML block is edited in the properties pane.
 
 **Pictures.** A picture property (the hero's and the card's `picture`, the
 picture block's `src`) has **Pick…** beside its path. It opens the media
@@ -256,8 +257,7 @@ writes the folder to upload by other means.
 
 ## Not yet
 
-New pages and menus from the window, undo, rich text edited in place (the
-RichTextEdit module on a `richtext` block), the WebAssembly renderer release
+New pages and menus from the window, undo, the WebAssembly renderer release
 and its reference from the shadow, the newsletter's e-mail mode of the
 emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a

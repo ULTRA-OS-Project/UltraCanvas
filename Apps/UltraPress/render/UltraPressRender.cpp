@@ -4,6 +4,7 @@
 // full-width bands whose centred column is Block-laid-out so wrapped text
 // measures, wrapping Flex rows for columns and buttons - with the texts,
 // colours and menus read from the site instead of tables in the source.
+// Version: 0.7.3 - a richtext block edited in place
 // Version: 0.7.2 - the FAQ's question edited in place on a second click
 // Version: 0.7.1 - a picture keeps its own shape (ImageDimensions), the given size is the frame it fits
 // Version: 0.7.0 - text bindings for editing in place
@@ -383,9 +384,36 @@ PageRenderer::Element PageRenderer::RenderBlock(const Block& block, RenderedPage
         HTML::ElementBuilder builder;
         HTML::BuildResult built = builder.Build(block.Text("html"), buildOptions);
         for (const std::string& warning : built.warnings) page.warnings.push_back(type + ": " + warning);
-        if (!built.root) return Column(id);
-        built.root->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
-        return built.root;
+        Element content = built.root ? Element(built.root) : Element(Column(id));
+        content->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
+        // In the editor a richtext block is a binding whose text is its
+        // HTML: a click on it opens the rich text editor in its slot. An
+        // `html` block is the owner's own markup and keeps the property pane.
+        if (!options.editable || type != "richtext") return content;
+        auto slot = CreateContainer(id + "Slot");
+        slot->layout.SetDisplay(CSSLayout::DisplayType::Block);
+        slot->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
+        slot->AddChild(content);
+        TextBinding binding;
+        binding.blockPath = blockPath;
+        binding.where = TextLocation{"html"};
+        binding.text = block.Text("html");
+        binding.multiline = true;
+        binding.rich = true;
+        binding.slot = slot;
+        binding.element = content;
+        page.bindings.push_back(std::move(binding));
+        const int index = static_cast<int>(page.bindings.size()) - 1;
+        // The built tree has no click of its own; a thin button under it is
+        // the handle, labelled for what it does.
+        auto handle = Flat(id + "Edit", "Edit text\xE2\x80\xA6", 13, palette.accent, palette.accentHover);
+        handle->SetPadding(0, 0);
+        handle->SetTextAlign(TextAlignment::Left);
+        handle->onClick = [callback = options.onEditText, index]() {
+            if (callback) callback(index);
+        };
+        slot->AddChild(handle);
+        return slot;
     }
     if (type == "hero") {
         auto column = Column(id);

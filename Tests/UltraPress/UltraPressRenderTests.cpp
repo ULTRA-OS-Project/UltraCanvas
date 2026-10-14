@@ -345,6 +345,38 @@ static void TestEditor() {
               editor.CurrentSite().FindPage("home")->blocks[editor.SelectedBlock()].Items("items")[0]["q"].GetString() == "Is it edited?",
           "and it is edited in place like the rest");
 
+    std::printf("Rich text edited in place\n");
+    editor.SelectBlock(-1);
+    editor.AddBlock("richtext");
+    Check(editor.SetProperty("html", "<p>Hello <b>there</b></p>"), "a richtext block with HTML");
+    int richBinding = -1;
+    for (size_t i = 0; i < editor.Shown().bindings.size(); ++i) {
+        if (editor.Shown().bindings[i].rich) richBinding = static_cast<int>(i);
+    }
+    Check(richBinding >= 0 && editor.Shown().bindings[static_cast<size_t>(richBinding)].where.property == "html" &&
+              editor.Shown().bindings[static_cast<size_t>(richBinding)].text == "<p>Hello <b>there</b></p>",
+          "the richtext block is a binding of its HTML");
+    editor.BeginTextEdit(richBinding);
+    {
+        const auto& children = editor.Shown().bindings[static_cast<size_t>(richBinding)].slot->GetChildren();
+        bool rich = false;
+        for (const auto& child : children) rich = rich || std::dynamic_pointer_cast<UltraCanvas::UltraCanvasRichTextEdit>(child) != nullptr;
+        Check(editor.IsEditingText() && rich, "the slot holds the rich text editor");
+    }
+    editor.CommitTextEdit();   // what the editor's document gives back, whether or not it reads as a change
+    Check(!editor.IsEditingText(), "Done closes the editor");
+    const std::string roundTrip = editor.CurrentSite().FindPage("home")->blocks[editor.SelectedBlock()].Text("html");
+    Check(roundTrip.find("Hello") != std::string::npos && roundTrip.find("<b>there</b>") != std::string::npos,
+          "the HTML survives the editor's document and back: " + roundTrip);
+    editor.BeginTextEdit(richBinding);
+    Check(editor.CommitTextEdit("<p>Changed</p>") && editor.CurrentSite().FindPage("home")->blocks[editor.SelectedBlock()].Text("html") == "<p>Changed</p>",
+          "Done writes the editor's HTML into the block");
+    editor.BeginTextEdit(richBinding);
+    editor.CancelTextEdit();
+    Check(!editor.IsEditingText() && editor.Shown().bindings[static_cast<size_t>(richBinding)].slot->GetChildren().size() == 2,
+          "Cancel puts the content and its handle back");
+    editor.RemoveBlock(editor.SelectedBlock());   // the page as the checks below expect it
+
     std::printf("The editor's media library\n");
     Check(editor.Media().empty(), "no media to start");
     const fs::path source = dir / "A Photo.PNG";
