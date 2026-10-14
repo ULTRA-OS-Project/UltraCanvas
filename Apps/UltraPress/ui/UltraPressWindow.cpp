@@ -455,6 +455,12 @@ void EditorWindow::BeginTextEdit(int binding) {
     editing = binding;
     bound.slot->RemoveChild(bound.element);
     if (bound.rich) {
+        // The handle under the content goes too while the editor is open.
+        editHandle.reset();
+        if (bound.slot->GetChildren().size() == 1) {
+            editHandle = bound.slot->GetChildren()[0];
+            bound.slot->RemoveChild(editHandle);
+        }
         // The block's HTML as a rich document; its pictures come from the
         // site folder, and go back out as the paths they came in with.
         editPictures.clear();
@@ -566,6 +572,7 @@ bool EditorWindow::CommitTextEdit(const std::string& text) {
     editArea.reset();
     editRich.reset();
     editButtons.reset();
+    editHandle.reset();
     RenderPreview();
     RebuildSide();
     RebuildProperties();
@@ -583,18 +590,13 @@ void EditorWindow::CancelTextEdit() {
         if (editRich) bound.slot->RemoveChild(editRich);
         if (editButtons) bound.slot->RemoveChild(editButtons);
         if (bound.element) bound.slot->AddChild(bound.element);
-        // The slot's handle button sits after the element; the element goes
-        // back in front of it so the page reads as before.
-        if (bound.rich && bound.slot->GetChildren().size() == 2) {
-            auto handle = bound.slot->GetChildren()[0];
-            bound.slot->RemoveChild(handle);
-            bound.slot->AddChild(handle);
-        }
+        if (editHandle) bound.slot->AddChild(editHandle);   // after the content, as rendered
     }
     editInput.reset();
     editArea.reset();
     editRich.reset();
     editButtons.reset();
+    editHandle.reset();
     SetStatus(dirty ? "Unsaved changes" : "");
 }
 

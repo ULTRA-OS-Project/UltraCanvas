@@ -118,6 +118,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> editArea;
     std::shared_ptr<UltraCanvas::UltraCanvasRichTextEdit> editRich;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> editButtons;   // Done / Cancel under the rich editor
+    std::shared_ptr<UltraCanvas::UltraCanvasUIElement> editHandle;    // the slot's "Edit text..." handle, out while editing
     std::vector<std::string> editPictures;                             // the rich editor's pictures, by media index
 
     std::weak_ptr<UltraCanvas::UltraCanvasWindow> windowRef;
