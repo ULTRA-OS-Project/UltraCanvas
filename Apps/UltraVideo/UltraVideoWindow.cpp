@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
 #include "UltraVideoMapping.h"
@@ -1481,19 +1481,22 @@ void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
 void UltraVideoWindow::ApplyEffect(const std::string& key) {
     const EffectPreset* preset = FindEffectPreset(key);
     if (!preset) return;
-    const int index = SegmentOfClip(document_, selectedClip_);
-    if (index < 0) {
-        Message("Select a clip on the main track first: an effect goes on a clip.");
+    // a main-track clip, or an overlay clip's own picture
+    const EffectTarget target{SegmentOfClip(document_, selectedClip_), document_.OverlayIndex(selectedClip_)};
+    if (target.segment < 0 && target.overlay < 0) {
+        Message("Select a clip on the main track or the overlay lane first: an effect goes on a clip.");
         return;
     }
     Document trial = document_;
-    if (!trial.ApplyEffectPreset(static_cast<size_t>(index), key)) {
+    if (!trial.ApplyEffectPreset(target, key)) {
         Message(std::string(preset->label) + " is already on this clip.");
         return;
     }
-    Edit(std::string("Apply ") + preset->label, [index, key](Document& d) { d.ApplyEffectPreset(static_cast<size_t>(index), key); });
+    Edit(std::string("Apply ") + preset->label, [target, key](Document& d) { d.ApplyEffectPreset(target, key); });
     inspector_.ShowClipTab();
-    Message(std::string(preset->label) + " on " + ClipName(document_, static_cast<size_t>(index)) + ": the inspector lists its effects.");
+    const std::string name = target.segment >= 0 ? ClipName(document_, static_cast<size_t>(target.segment))
+                                                 : document_.overlays[static_cast<size_t>(target.overlay)].Name();
+    Message(std::string(preset->label) + " on " + name + ": the inspector lists its effects.");
 }
 
 void UltraVideoWindow::AddOverlay(const std::string& path, double at) {

@@ -4,10 +4,10 @@
 // from the document, every reported change written back, undo and redo, and
 // the .ultravideo file round trip with relative media paths and missing
 // media reported; the title, overlay and voice-and-sound lanes; the effect
-// presets and their strength. Needs the VideoFX engine (FFmpeg) for the probes and the
+// presets and their strength, on main-track clips and overlay clips. Needs the VideoFX engine (FFmpeg) for the probes and the
 // clips it generates; without it the suite skips itself.
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoHistory.h"
@@ -653,6 +653,36 @@ int main() {
             }
         }
         CHECK(ends, ("every slider's ends render a frame" + endsFailed).c_str());
+
+        // an overlay clip's own picture
+        Document od = plain;
+        CHECK(od.AddOverlay(clip, 0.5) == 0, "an overlay clip");
+        const EffectTarget pipTarget{-1, 0};
+        CHECK(od.EffectsOf(pipTarget) == &od.overlays[0].look.effects && od.EffectsOf(EffectTarget{}) == nullptr &&
+              od.EffectsOf(EffectTarget{-1, 4}) == nullptr, "an overlay's effects are its look's; none or no such clip: nothing");
+        CHECK(od.ApplyEffectPreset(pipTarget, "bw") && od.overlays[0].look.effects.size() == 2 && od.project.segments[0].effects.empty(),
+              "Black and white on the overlay, not on the clip under it");
+        CHECK(!od.ApplyEffectPreset(pipTarget, "bw"), "a second click does not double it");
+        CHECK(od.ApplyEffectPreset(pipTarget, "strongblur") && Near(od.overlays[0].look.effects[2].amount, 3.5, 1e-9),
+              "a blur from the overlay's own 240 lines (its effects work before it is sized)");
+        CHECK(od.SetEffectAmount(pipTarget, 2, 6.0) && Near(od.overlays[0].look.effects[2].amount, 6.0, 1e-9), "its strength set");
+        const std::vector<VideoFXSegment> pipEngine = od.SegmentsForEngine();
+        CHECK(pipEngine[0].overlays.size() == 1 && pipEngine[0].overlays[0].effects.size() == 3, "the engine's overlay carries them");
+        const TimelineModel om = BuildTimelineModel(od);
+        const TimelineTrack* ovLane = om.FindTrack(kOverlayTrackId);
+        CHECK(ovLane && ovLane->clips.size() == 1 && ovLane->clips[0].hasEffects, "the overlay clip shows the effects badge");
+        VideoFXFrame pipFrame;
+        CHECK(VideoFX_RenderFrame(pipEngine, 1.0, pipFrame, {}, 160, 120) == VideoFXResult::Ok && pipFrame.IsValid(), "and renders");
+        const std::string ofx = TempPath("overlay-effects.ultravideo");
+        std::string oerr;
+        CHECK(od.Save(ofx, oerr), ("save with overlay effects: " + oerr).c_str());
+        Document oback;
+        CHECK(Document::Load(ofx, oback, oerr, nullptr), ("load with overlay effects: " + oerr).c_str());
+        CHECK(oback.overlays.size() == 1 && oback.overlays[0].look.effects.size() == 3 &&
+              oback.overlays[0].look.effects[0].type == VideoFXEffectType::Grayscale && Near(oback.overlays[0].look.effects[2].amount, 6.0, 1e-9),
+              "the overlay's effects come back");
+        CHECK(oback.SegmentsForEngine()[0].overlays.size() == 1 && oback.SegmentsForEngine()[0].overlays[0].effects.size() == 3,
+              "and are not doubled by the engine's copy in the file");
 
         const std::string efile = TempPath("effects.ultravideo");
         std::string eerror;

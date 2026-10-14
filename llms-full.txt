@@ -2344,7 +2344,8 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXSegment`, `VideoFXSourceKind`, `VideoFXExportSettings`,
   `VideoFXContainer`, `VideoFXVideoCodec`, `VideoFXAudioCodec`,
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
-  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
+  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay` (an image
+  or video overlay's own colour and detail `effects`),
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
@@ -80229,8 +80230,10 @@ VideoFX_Export(timeline, "final.mp4", settings);
   be taken for a whole proxy.
 - **Switching.** `VideoFX_UseProxies(timeline)` returns the timeline with
   every clip that has a proxy replaced by it; trims, speed, effects and
-  overlays are kept. A `Crop` effect, which is in the clip's pixels, is
-  scaled to the proxy's. A picture-in-picture video at its own pixel size
+  overlays are kept. The effects measured in the clip's pixels - a
+  `Crop`'s rectangle and a `Blur`'s radius, on a segment or on a
+  picture-in-picture video - are scaled to the proxy's, so the preview looks
+  as the export will. A picture-in-picture video at its own pixel size
   (`imageHeight` 0) keeps its original, since a proxy would shrink it.
 - **Give the output size.** With `width` and `height` 0 an export or preview
   takes its size from the first segment, which over proxies is the proxy.
@@ -80688,6 +80691,7 @@ clip.overlays = { title, logo, cam };
 | `fadeIn`, `fadeOut`, `opacity` | Seconds; 0..1 |
 | **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = the default font (below) |
 | **Image:** `imagePath` or `image`, `imageHeight` | A PNG keeps its transparency; `image` takes RGBA pixels from memory (for example a picture UltraCanvas rendered); `imageHeight` 0 = its own pixel size |
+| **Image or video:** `effects` | The picture's own look: colour and detail effects (brightness, contrast, saturation, gamma, exposure, hue, temperature, greyscale, sepia, invert, blur, sharpen, denoise, vignette) applied in order to the overlay's picture before it is sized, in its own pixels; its transparency is kept. Geometry, fades, LUTs and sound effects are refused here, as are effects on a text overlay (`InvalidArgument` when the export is planned). Saved in project files. |
 | **Video:** `videoPath`, `videoStart`, `imageHeight` | Picture-in-picture: the file's picture plays from `videoStart` seconds into it from the overlay's `start` on, at its own speed, upright, without its sound; when the file ends before the overlay does its last frame holds. `imageHeight` sizes it like an image (0 = the file's own pixels). `VideoFXOverlay::Video` makes one from a path, anchor, height and start second. The file is checked when the export is planned, so a missing one fails before anything is written. |
 
 Text is taken literally — `:`, quotes, `%` and backslashes need no escaping.
@@ -81043,6 +81047,7 @@ generates its own clips, so it needs no media files.
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
 | 3g | Free audio clips: voice-overs and sound effects at given times, trimmed, faded, the music ducking under voice-overs | **Done** |
+| 3h | Effects on image and video overlays: colour and detail, transparency kept | **Done** |
 | 3 | Keyframed effect and overlay parameters | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
@@ -84840,7 +84845,8 @@ lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
 playhead. The *Effects* tab holds one-click presets for the selected
-clip on the main track: the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
+clip, on the main track or the overlay lane (an overlay clip's effects
+change its own picture only): the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
 *Dramatic*, *Black and white*, *Sepia*, *Vintage* and *Brighter*, and under
 *Blur and detail* *Soft blur*, *Strong blur*, *Sharpen* and *Reduce noise*.
 A preset is the engine's own effects (a look is a few of them: Warm is
@@ -84925,7 +84931,7 @@ drop files on the lane. An overlay clip is moved, trimmed, split and
 deleted like any clip; trimming its left edge moves into the file, and a
 video clip cannot be stretched past the file's end. The inspector sets its
 length, place (nine positions), size as a share of the frame's height,
-opacity and fades. The viewer shows it while editing, and like a title it
+opacity, fades and its effects (from the bin's *Effects* tab). The viewer shows it while editing, and like a title it
 is cut into one overlay per main-track clip it crosses when the engine
 renders, so it runs across a cut.
 
@@ -85051,8 +85057,7 @@ the engine).
 
 ## Not yet
 
-Effect presets on overlay clips and stills of the overlay lane, effects
-dragged from the bin onto a clip, and the mapping of the design's tokens onto the framework's theme roles (the app colours
+Effects dragged from the bin onto a clip, and the mapping of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.
 

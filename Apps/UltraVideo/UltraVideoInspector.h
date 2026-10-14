@@ -1,7 +1,8 @@
 // Apps/UltraVideo/UltraVideoInspector.h
 // The inspector (Docs/Research/UltraVideoDesignProposal.md §6.4): three tabs
 // of catalogue elements. Clip - the selected clip's name, in and out, speed,
-// mute, its effects (each with a strength slider, each removable), the transition into it, a still's
+// mute, its effects (each with a strength slider, each removable; an
+// overlay clip's too), the transition into it, a still's
 // motion and framing; a title's
 // text and look, an overlay's place and size, a voice-over's or sound
 // effect's volume, fades and ducking. Audio - the
@@ -10,7 +11,7 @@
 // document; the window applies it through the undo history and shows the
 // document again, so the inspector never writes the document itself.
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -66,6 +67,7 @@ private:
     std::shared_ptr<Label> Heading(const std::shared_ptr<Container>& page, const std::string& id, const std::string& text);
     void Edit(const std::string& label, std::function<void(Document&)> edit);
     void StyleControls(const Palette& palette);
+    EffectTarget Target() const;    // whose effects the rows edit: the segment, else the overlay clip
 
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs;
     std::shared_ptr<Container> clipPage, audioPage, projectPage;

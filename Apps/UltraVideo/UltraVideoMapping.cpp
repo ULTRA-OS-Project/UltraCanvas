@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoMapping.cpp
 // Document <-> timeline model (UltraVideoMapping.h).
-// Version: 0.3.0
-// Last Modified: 2026-10-13
+// Version: 0.4.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraVideoMapping.h"
 
@@ -305,6 +305,7 @@ TimelineModel BuildTimelineModel(const Document& doc) {
         clip.sourceIn = v.sourceIn;
         const MediaItem* m = doc.FindMedia(v.path);
         clip.sourceLength = m && !v.IsStill() ? m->duration : 0.0;
+        clip.hasEffects = !v.look.effects.empty();
         overlayTrack.clips.push_back(clip);
     }
     std::stable_sort(overlayTrack.clips.begin(), overlayTrack.clips.end(),

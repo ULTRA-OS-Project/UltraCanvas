@@ -1,6 +1,7 @@
 #### 2026-10-13 *0.4.0*
 - **Effect presets in the bin.** The bin's *Effects* tab is no longer a
-  placeholder. It holds one-click presets for the selected main-track clip.
+  placeholder. It holds one-click presets for the selected clip: a clip on
+  the main track, or a clip on the overlay lane.
   - Nine colour looks: *Warm*, *Cool*, *Vivid*, *Faded*, *Dramatic*,
     *Black and white*, *Sepia*, *Vintage* and *Brighter*.
   - Four presets under *Blur and detail*: *Soft blur*, *Strong blur*,
@@ -22,9 +23,22 @@
       look's amounts, up to 50 px for a blur, -180° to 180° for a hue.
     - Switches (black and white, sepia, a flip, a quarter turn) and a crop
       have no slider.
+  - **Effects on overlay clips.** A clip on the overlay lane takes the same
+    presets on its own picture, such as a picture-in-picture video in
+    black and white or a softened logo. The picture under it is not
+    touched.
+    - The inspector lists the overlay clip's effects, with their sliders
+      and remove buttons, as it does for a main-track clip.
+    - A blur's radius follows the overlay file's own height.
+    - The clip shows its effects badge on the overlay lane, and the
+      `.ultravideo` file keeps the effects with the overlay span.
+    - This needs VideoFX 0.14.0 (`VideoFXOverlay::effects`).
+  - In the preview over proxies, a blur now looks as strong as in the
+    export: VideoFX 0.14.0 scales its radius to the proxy's picture.
   - Every change is an undo step.
   - (`EffectPresets`, `Document::ApplyEffectPreset`, `DescribeEffect`,
-    `RangeOfEffect`, `Document::SetEffectAmount`; tested in
+    `RangeOfEffect`, `EffectTarget`, `Document::EffectsOf`,
+    `Document::SetEffectAmount`; tested in
     `UltraVideoDocumentTest`. The test renders a frame with every preset
     and at both ends of every slider's range, and checks that *Black and
     white* turns the picture grey.)

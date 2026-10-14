@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
@@ -585,21 +585,20 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
             VideoFXEffect shown = shownEffects[static_cast<size_t>(i)];
             shown.amount = v;
             namePtr->SetText(DescribeEffect(shown));
-            const int index = segment;
+            const EffectTarget target = Target();
             const double value = v;
-            Edit("Set effect strength", [index, i, value](Document& d) {
-                if (index >= 0) d.SetEffectAmount(static_cast<size_t>(index), static_cast<size_t>(i), value);
+            Edit("Set effect strength", [target, i, value](Document& d) {
+                d.SetEffectAmount(target, static_cast<size_t>(i), value);
             });
         };
         sliders.push_back(amount);
         row->AddChild(amount);
         auto remove = MakeIconButton(id + ".remove", "trash", "Remove this effect", p);
         remove->SetOnClick([this, i]() {
-            const int index = segment;
-            Edit("Remove effect", [index, i](Document& d) {
-                if (index < 0 || static_cast<size_t>(index) >= d.project.segments.size()) return;
-                std::vector<VideoFXEffect>& effects = d.project.segments[static_cast<size_t>(index)].effects;
-                if (static_cast<size_t>(i) < effects.size()) effects.erase(effects.begin() + i);
+            const EffectTarget target = Target();
+            Edit("Remove effect", [target, i](Document& d) {
+                std::vector<VideoFXEffect>* effects = d.EffectsOf(target);
+                if (effects && static_cast<size_t>(i) < effects->size()) effects->erase(effects->begin() + i);
             });
         });
         row->AddChild(remove);
@@ -617,10 +616,9 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     removeEffects = MakeTextButton("uv.insp.removeEffects", "Remove all effects", p, 150);
     removeEffects->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
     removeEffects->SetOnClick([this]() {
-        const int index = segment;
-        Edit("Remove effects", [index](Document& d) {
-            if (index >= 0 && static_cast<size_t>(index) < d.project.segments.size())
-                d.project.segments[static_cast<size_t>(index)].effects.clear();
+        const EffectTarget target = Target();
+        Edit("Remove effects", [target](Document& d) {
+            if (std::vector<VideoFXEffect>* effects = d.EffectsOf(target)) effects->clear();
         });
     });
     effectRows->AddChild(removeEffects);
@@ -822,6 +820,10 @@ void Inspector::ApplyPalette(const Palette& p) {
 // ============================================================================
 // showing the document
 // ============================================================================
+EffectTarget Inspector::Target() const {
+    return segment >= 0 ? EffectTarget{segment, -1} : EffectTarget{-1, overlay};
+}
+
 void Inspector::ShowClipTab() {
     if (tabs) tabs->SetActiveTab(0);
 }
@@ -849,9 +851,10 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
     titleRows->SetVisible(hasTitle);
     overlayRows->SetVisible(hasOverlay);
     soundRows->SetVisible(hasSound);
-    effectRows->SetVisible(hasClip);
-    if (hasClip) {
-        const std::vector<VideoFXEffect>& effects = doc.project.segments[static_cast<size_t>(index)].effects;
+    // a main-track clip's effects, or an overlay clip's own picture's
+    effectRows->SetVisible(hasClip || hasOverlay);
+    if (hasClip || hasOverlay) {
+        const std::vector<VideoFXEffect>& effects = *doc.EffectsOf(Target());
         shownEffects = effects;
         effectsNone->SetVisible(effects.empty());
         for (int i = 0; i < kEffectRows; ++i) {

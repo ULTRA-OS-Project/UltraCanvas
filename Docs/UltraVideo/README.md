@@ -41,7 +41,8 @@ lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
 playhead. The *Effects* tab holds one-click presets for the selected
-clip on the main track: the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
+clip, on the main track or the overlay lane (an overlay clip's effects
+change its own picture only): the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
 *Dramatic*, *Black and white*, *Sepia*, *Vintage* and *Brighter*, and under
 *Blur and detail* *Soft blur*, *Strong blur*, *Sharpen* and *Reduce noise*.
 A preset is the engine's own effects (a look is a few of them: Warm is
@@ -126,7 +127,7 @@ drop files on the lane. An overlay clip is moved, trimmed, split and
 deleted like any clip; trimming its left edge moves into the file, and a
 video clip cannot be stretched past the file's end. The inspector sets its
 length, place (nine positions), size as a share of the frame's height,
-opacity and fades. The viewer shows it while editing, and like a title it
+opacity, fades and its effects (from the bin's *Effects* tab). The viewer shows it while editing, and like a title it
 is cut into one overlay per main-track clip it crosses when the engine
 renders, so it runs across a cut.
 
@@ -252,7 +253,6 @@ the engine).
 
 ## Not yet
 
-Effect presets on overlay clips and stills of the overlay lane, effects
-dragged from the bin onto a clip, and the mapping of the design's tokens onto the framework's theme roles (the app colours
+Effects dragged from the bin onto a clip, and the mapping of the design's tokens onto the framework's theme roles (the app colours
 its elements from the tokens directly). The proposal's roadmap (§11) has
 the order.

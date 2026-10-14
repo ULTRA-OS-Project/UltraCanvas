@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXFilterBuilder.cpp
 // Effect list -> filter-graph text, and the effect / segment / preset factories.
-// Version: 0.4.0
-// Last Modified: 2026-09-29
+// Version: 0.14.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFXFilterBuilder.h"
@@ -507,8 +507,47 @@ namespace {
     }
 }
 
+bool IsOverlayEffect(VideoFXEffectType type) {
+    switch (type) {
+        case VideoFXEffectType::Brightness: case VideoFXEffectType::Contrast: case VideoFXEffectType::Saturation:
+        case VideoFXEffectType::Gamma: case VideoFXEffectType::Exposure: case VideoFXEffectType::Hue:
+        case VideoFXEffectType::Temperature: case VideoFXEffectType::Grayscale: case VideoFXEffectType::Sepia:
+        case VideoFXEffectType::Invert: case VideoFXEffectType::Blur: case VideoFXEffectType::Sharpen:
+        case VideoFXEffectType::Denoise: case VideoFXEffectType::Vignette:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool BuildOverlayEffectGraph(const std::vector<VideoFXEffect>& effects, const std::string& input,
+                             const std::string& output, const std::string& prefix,
+                             std::string& graph, std::string& error) {
+    graph.clear();
+    if (effects.empty()) return true;
+    for (const VideoFXEffect& e : effects) {
+        if (!IsOverlayEffect(e.type)) {
+            error = "An overlay takes colour and detail effects only (no LUT, geometry, fades or sound)";
+            return false;
+        }
+    }
+    std::string chain;
+    if (!BuildVideoEffectChain(effects, 0.0, chain, error)) return false;
+    if (chain.empty()) chain = "null";      // every effect a no-op (a blur of 0)
+    // The effects work on the colour; the picture's alpha goes round them
+    const std::string a = prefix + "a", b = prefix + "b", al = prefix + "al", c = prefix + "c";
+    graph = "[" + input + "]format=rgba,split[" + a + "][" + b + "];[" + b + "]alphaextract[" + al + "];[" + a + "]" +
+            chain + "[" + c + "];[" + c + "][" + al + "]alphamerge[" + output + "];";
+    return true;
+}
+
 bool ValidateOverlay(const VideoFXOverlay& o, double segmentDuration, std::string& error) {
     (void)segmentDuration;
+    if (!o.effects.empty()) {
+        if (o.kind == VideoFXOverlayKind::Text) { error = "A text overlay takes no effects"; return false; }
+        std::string graph;
+        if (!BuildOverlayEffectGraph(o.effects, "in", "out", "check", graph, error)) return false;
+    }
     if (o.kind == VideoFXOverlayKind::Text) {
         if (o.text.empty()) { error = "Text overlay has no text"; return false; }
         if (!InRange(o.fontSize, 0.005, 1.0)) { error = "Text size must be 0.005..1 of the frame height"; return false; }

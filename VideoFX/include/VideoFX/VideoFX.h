@@ -1,8 +1,8 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.12.0
-// Last Modified: 2026-10-12
+// Version: 0.14.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -280,7 +280,9 @@ VideoFXResult VideoFX_CreateProxies(const std::vector<VideoFXSegment>& segments,
                                     const VideoFXProgressCallback& progress = {});
 
 // The timeline with every clip that has a proxy replaced by it; the rest as
-// they are. A Crop effect, in the clip's pixels, is scaled to the proxy's.
+// they are. The effects in the clip's pixels - a Crop's rectangle, a Blur's
+// radius, on the segment or on a picture-in-picture video - are scaled to
+// the proxy's, so the preview looks as the export will.
 // A picture-in-picture video at its own pixel size (imageHeight 0) keeps its
 // original, which a proxy would shrink. `replaced`, when given, counts the
 // segments and overlays switched.

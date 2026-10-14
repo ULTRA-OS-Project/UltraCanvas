@@ -10,8 +10,8 @@
 //     "title": "...", "output": "out.mp4", "settings": {...},
 //     "segments": [ {...}, ... ] }                       a timeline, or
 //     "slideshow": { "images": [...], "options": {...} } a slideshow
-// Version: 0.13.0
-// Last Modified: 2026-10-13
+// Version: 0.14.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFXProject.h"
@@ -287,6 +287,8 @@ Json EffectOut(const VideoFXEffect& e, const Paths& paths) {
 }
 
 Json OverlayOut(const VideoFXOverlay& o, const Paths& paths) {
+    Json effects = Json::array();
+    for (const VideoFXEffect& e : o.effects) effects.push_back(EffectOut(e, paths));
     return Json{{"kind", NameOf(MakeNames(kOverlayKinds, "overlay kind"), o.kind)},
                 {"text", o.text}, {"font", paths.Out(o.fontPath)}, {"fontSize", o.fontSize},
                 {"textColor", ColourOut(o.textColor)}, {"shadow", o.shadow}, {"box", o.box},
@@ -295,7 +297,8 @@ Json OverlayOut(const VideoFXOverlay& o, const Paths& paths) {
                 {"video", paths.Out(o.videoPath)}, {"videoStart", o.videoStart},
                 {"anchor", NameOf(MakeNames(kAnchors, "anchor"), o.anchor)}, {"margin", o.margin},
                 {"x", o.x}, {"y", o.y}, {"opacity", o.opacity},
-                {"start", o.start}, {"end", o.end}, {"fadeIn", o.fadeIn}, {"fadeOut", o.fadeOut}};
+                {"start", o.start}, {"end", o.end}, {"fadeIn", o.fadeIn}, {"fadeOut", o.fadeOut},
+                {"effects", effects}};
 }
 
 Json SegmentOut(const VideoFXSegment& s, const Paths& paths) {
@@ -418,6 +421,9 @@ VideoFXOverlay OverlayIn(const Json& j, const Paths& paths, const std::string& a
     Get(j, "margin", o.margin, at); Get(j, "x", o.x, at); Get(j, "y", o.y, at); Get(j, "opacity", o.opacity, at);
     Get(j, "start", o.start, at); Get(j, "end", o.end, at);
     Get(j, "fadeIn", o.fadeIn, at); Get(j, "fadeOut", o.fadeOut, at);
+    const Json& effects = Array(j, "effects", at);
+    for (size_t i = 0; i < effects.size(); ++i)
+        o.effects.push_back(EffectIn(effects[i], paths, Where(at, "effects") + "[" + std::to_string(i) + "]"));
     return o;
 }
 
