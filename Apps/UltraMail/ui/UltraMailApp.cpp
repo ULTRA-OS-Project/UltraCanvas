@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.32 - the cloud stores and service are shared, and the compose
+//                   window gets the shared service for the cloud link picker
 // Version: 0.9.31 - a password typed on the server settings page drops stored
 //                   OAuth tokens, so the account switches to it
 // Version: 0.9.30 - trusted and blocked senders: set at start, changed from the
@@ -55,7 +57,7 @@
 // Version: 0.9.8 - replies and forwards of HTML mail keep the formatting
 // Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
 //                  style, no master-password prompt); old vaults migrate once
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 #include "UltraMailHeaderText.h"
@@ -333,9 +335,9 @@ void UltraMailApp::FinishStartup() {
     // Cloud storage accounts (UltraCloud) for "Attach cloud link".
     step.emplace("Cloud storage accounts (cloud.db)", 0);
     UltraCloud::RegisterBuiltInProviders();
-    cloudAccounts_.Open("ultramail-cloud", dataDir_ + "/cloud.db");
-    cloudSecrets_ = std::make_unique<UltraCloud::VaultSecretStore>();   // in vault_
-    cloud_ = std::make_unique<UltraCloud::CloudService>(cloudAccounts_, *cloudSecrets_);
+    cloudAccounts_->Open("ultramail-cloud", dataDir_ + "/cloud.db");
+    cloudSecrets_ = std::make_shared<UltraCloud::VaultSecretStore>();   // in vault_
+    cloud_ = std::make_shared<UltraCloud::CloudService>(cloudAccounts_, cloudSecrets_);
 
     // The UltraNet plug-in registry, so the SMTP / IMAP DSOs load. The
     // registry's default directory is relative to the working directory, which
@@ -1096,7 +1098,7 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     auto view = std::make_shared<ComposeView>();
     view->SetDraft(draft);
     view->SetParentWindow(win.get());
-    view->SetCloud(cloud_.get());
+    view->SetCloud(cloud_);
     // To / Cc / Bcc complete from the address book as it is when the window
     // opens (one read, then matched in memory as the writer types), the
     // addresses written to most - by the mail in the Sent folders, recent
@@ -2960,7 +2962,7 @@ void UltraMailApp::EditFromOutbox(int64_t id) {
 void UltraMailApp::MigrateCloudSecrets() {
     if (!cloudSecrets_ || !vault_.IsUnlocked() || dataDir_.empty()) return;
     std::vector<UltraCloud::Account> known;
-    cloudAccounts_.List(known);
+    cloudAccounts_->List(known);
     UltraCloud::MigrateLegacyFileSecrets(dataDir_ + "/cloud-vault", known, *cloudSecrets_);
 }
 

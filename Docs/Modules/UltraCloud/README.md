@@ -344,6 +344,13 @@ selected file. When no account exists yet it offers the add-account dialog,
 whose "Add account" button becomes "Sign in in browser" for the OAuth
 providers.
 
+Both dialogs do their work on threads of their own - the picker's listings,
+uploads and links, the add-account dialog's sign-in - and any of it can still
+be running after the dialog, or the window that opened it, has closed. Give
+them a `std::shared_ptr<CloudService>` made with the shared_ptr constructor
+and each thread holds the service, and through it the stores, until it ends;
+the `CloudService&` forms leave keeping the service alive to the caller.
+
 ## Public surface
 
 | Header | Contents |
@@ -363,7 +370,7 @@ providers.
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (over a shared or a caller-kept service) (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing

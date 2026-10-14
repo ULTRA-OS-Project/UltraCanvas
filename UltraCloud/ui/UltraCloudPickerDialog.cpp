@@ -1,6 +1,7 @@
 // UltraCloud/ui/UltraCloudPickerDialog.cpp
-// Version: 0.2.1 - the captioned header rows come from UltraCanvasFormLayout
-// Last Modified: 2026-09-22
+// Version: 0.3.0 - the worker threads and the add-account dialog hold the
+//                  shared service until they end
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudPickerDialog.h"
 #include "UltraCloudUiStyle.h"
@@ -56,9 +57,10 @@ std::string ParentPath(const std::string& path) {
 
 // Everything the picker's callbacks share. Held by shared_ptr from the
 // widgets' callbacks (the dialog owns the widgets; the state does not own the
-// dialog, so no cycle) and by the worker threads.
+// dialog, so no cycle) and by the worker threads, which also hold the service
+// itself until they end - an upload can outlast the picker and its window.
 struct PickerState {
-    CloudService* service = nullptr;
+    std::shared_ptr<CloudService> service;
     UltraCanvasWindowBase* parent = nullptr;
     std::weak_ptr<UltraCanvasModalDialog> dialog;
     UltraCanvasModalDialog* dlg = nullptr;
@@ -142,7 +144,7 @@ void Navigate(const std::shared_ptr<PickerState>& st, const std::string& path) {
     UpdateButtons(st);
     SetStatus(st, "Loading " + target + "…");
 
-    CloudService* service = st->service;
+    std::shared_ptr<CloudService> service = st->service;
     std::thread([st, service, accountId, target, gen]() {
         std::vector<Entry> entries;
         Result r = service->List(accountId, target, entries);
@@ -202,7 +204,7 @@ void UploadHere(const std::shared_ptr<PickerState>& st) {
         st->busy = true;
         UpdateButtons(st);
         SetStatus(st, "Uploading " + name + "…");
-        CloudService* service = st->service;
+        std::shared_ptr<CloudService> service = st->service;
         std::thread([st, service, accountId, local, remote, folder]() {
             Result r = service->Upload(accountId, local, remote);
             Post([st, r, folder]() {
@@ -224,7 +226,7 @@ void MakeLinkAndClose(const std::shared_ptr<PickerState>& st) {
     st->busy = true;
     UpdateButtons(st);
     SetStatus(st, "Creating link for " + entry.name + "…");
-    CloudService* service = st->service;
+    std::shared_ptr<CloudService> service = st->service;
     std::thread([st, service, account, entry]() {
         ShareLink link;
         Result r = service->CreateShareLink(account.accountId, entry.path, {}, link);
@@ -245,6 +247,15 @@ void MakeLinkAndClose(const std::shared_ptr<PickerState>& st) {
 
 void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, CloudService& service,
                          std::function<void(const CloudLinkPick&)> onPicked) {
+    // Not owned: an aliasing pointer with no owner, so the caller's promise
+    // to keep the service alive is what keeps it alive, as it always was.
+    std::shared_ptr<CloudService> unowned(std::shared_ptr<CloudService>(), &service);
+    ShowCloudLinkPicker(parent, std::move(unowned), std::move(onPicked));
+}
+
+void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService> service,
+                         std::function<void(const CloudLinkPick&)> onPicked) {
+    if (!service) return;
     DialogConfig config;
     config.title      = "Attach cloud link";
     config.width      = 640;
@@ -254,7 +265,7 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, CloudService& service,
 
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
     auto st = std::make_shared<PickerState>();
-    st->service = &service;
+    st->service = std::move(service);
     st->parent  = parent;
     st->dialog  = dialog;
     st->dlg     = dialog.get();
@@ -373,8 +384,10 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, CloudService& service,
     st->uploadBtn->onClick = [st]() { UploadHere(st); };
     st->linkBtn->onClick   = [st]() { MakeLinkAndClose(st); };
     cancelBtn->onClick     = [st]() { if (st->dlg) st->dlg->CloseDialog(DialogResult::Cancel); };
-    addBtn->onClick = [st, &service]() {
-        ShowAddAccountDialog(st->parent, service, [st](const Account& added) {
+    // The shared form: the add-account dialog's sign-in holds the service
+    // until it ends, as the picker's own threads do.
+    addBtn->onClick = [st]() {
+        ShowAddAccountDialog(st->parent, st->service, [st](const Account& added) {
             ReloadAccounts(st, added.accountId);
         });
     };

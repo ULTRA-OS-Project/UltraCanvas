@@ -16,6 +16,8 @@
 // held by a shared_ptr: the answers that can come after its window closed -
 // the file and cloud pickers, the plain-text question, a Link… or Picture…
 // dialog - hold it weakly and find nothing to change.
+// Version: 0.8.1 - the cloud service is shared, and handed to the cloud link
+//                  picker as it is, so its uploads and sign-ins can hold it
 // Version: 0.8.0 - To / Cc / Bcc complete from the address book (suggestRecipients);
 //                  the Bcc toggle
 // Version: 0.7.0 - one view per window: owned by a shared_ptr, late dialog
@@ -23,7 +25,7 @@
 // Version: 0.6.0 - the full formatting toolbar, and the Plain text | Formatted
 //                  switch
 // Version: 0.5.0
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -57,7 +59,9 @@ public:
     // The window the composer lives in (parent of its file and cloud dialogs).
     void SetParentWindow(UltraCanvas::UltraCanvasWindowBase* window) { parent_ = window; }
     // The cloud service behind "Attach cloud link" (null = button disabled).
-    void SetCloud(UltraCloud::CloudService* cloud) { cloud_ = cloud; }
+    // Shared: the cloud link picker hands it to its upload and sign-in
+    // threads, which can outlast this window.
+    void SetCloud(std::shared_ptr<UltraCloud::CloudService> cloud) { cloud_ = std::move(cloud); }
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
     // Size the view to the window's client area (call on window resize).
@@ -98,7 +102,7 @@ private:
 
     Draft draft_;
     UltraCanvas::UltraCanvasWindowBase* parent_ = nullptr;
-    UltraCloud::CloudService* cloud_ = nullptr;
+    std::shared_ptr<UltraCloud::CloudService> cloud_;
     AttachmentStrip attachments_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> to_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> cc_;

@@ -1,3 +1,14 @@
+#### 2026-10-14 *0.10.53*
+- **Closing a compose window during a cloud upload no longer risks a
+  crash.** *Attach cloud link* uploads a file, lists folders and makes the
+  link on threads of their own, and its *Add account…* waits for the browser
+  sign-in; each of them used the application's cloud service through a
+  plain pointer, so one still running when the window - or UltraMail - closed
+  could use it after it was freed. UltraMail now keeps its cloud accounts,
+  their secrets and the service in shared ownership, and hands the picker
+  the shared service, which every one of those threads holds until it ends
+  (`ShowCloudLinkPicker`'s new shared form, see the framework changelog).
+
 #### 2026-10-13 *0.10.52*
 - **The data folder is `~/Library/Application Support/UltraMail` on macOS.**
   macOS was treated like Linux, so the mailbox database, the credential vault

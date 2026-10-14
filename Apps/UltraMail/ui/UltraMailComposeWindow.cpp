@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.10.1 - the cloud link picker gets the shared cloud service
 // Version: 0.10.0 - To / Cc / Bcc complete names and addresses from the address book
 // Version: 0.9.0 - a Bcc toggle beside Cc shows the Bcc row; a draft with blind
 //                  copies (a mailto: link's bcc) opens with it shown, so none is
@@ -14,7 +15,7 @@
 //                  a body that takes the remaining height, an attachment row
 //                  shown only while there are attachments, and a bottom
 //                  toolbar (Send primary, Attach…, Cancel on the right).
-// Last Modified: 2026-10-03
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -394,7 +395,9 @@ void ComposeView::ChooseCloudLink() {
             nullptr, parent_);
         return;
     }
-    UltraCloud::ShowCloudLinkPicker(parent_, *cloud_,
+    // The shared form: an upload or a sign-in the picker starts holds the
+    // service until it ends, even after this window has closed.
+    UltraCloud::ShowCloudLinkPicker(parent_, cloud_,
         [weak = weak_from_this()](const UltraCloud::CloudLinkPick& pick) {
             if (auto self = weak.lock()) self->InsertLink(pick.entry.name, pick.link.url);
         });

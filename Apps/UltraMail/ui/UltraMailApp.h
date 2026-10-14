@@ -3,6 +3,8 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.5 - the cloud stores and service are shared (shared_ptr), so
+//                   the cloud link picker's uploads and sign-ins can hold them
 // Version: 0.12.4 - HandleAddFolder / HandleDeleteFolder (the folder tree's
 //                   menu), the tree's content (Settings > Display > Treeview),
 //                   LoadAccounts / HandleReorderAccounts (the account order the
@@ -29,7 +31,7 @@
 //                   (RunOutboxJob)
 // Version: 0.9.0 - server settings per account (provider table, autoconfig
 //                  lookup, manual page with a login check); stored on the account.
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -539,9 +541,14 @@ private:
     // "Attach cloud link". The secrets live in the mail vault (vault_) under
     // "cloud.<accountId>.*"; MigrateCloudSecrets() carries the obfuscated
     // cloud-vault/ files of earlier releases into it once it is unlocked.
-    UltraCloud::AccountStore cloudAccounts_;
-    std::unique_ptr<UltraCloud::VaultSecretStore> cloudSecrets_;
-    std::unique_ptr<UltraCloud::CloudService> cloud_;
+    // Shared rather than owned: the service keeps the two stores alive, and
+    // the cloud link picker's uploads, listings and add-account sign-ins hold
+    // the service until they end - which can be after the compose window, or
+    // the application, has closed.
+    std::shared_ptr<UltraCloud::AccountStore> cloudAccounts_ =
+            std::make_shared<UltraCloud::AccountStore>();
+    std::shared_ptr<UltraCloud::VaultSecretStore> cloudSecrets_;
+    std::shared_ptr<UltraCloud::CloudService> cloud_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
     // Non-empty when a store the app needs could not be opened; the matching
