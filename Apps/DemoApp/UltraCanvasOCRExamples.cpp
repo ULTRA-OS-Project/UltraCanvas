@@ -3,8 +3,9 @@
 // Loads OCR-demo.png by default and lets the user open an alternative
 // image via the native file dialog. Recognised text is shown in a
 // read-only text area.
+// Version: 0.2.0 - Open offers FileLoader's picture types
 // Version: 0.1.0
-// Last Modified: 2026-05-21
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -219,7 +220,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
         FileDialogOptions opts;
         opts.title = "Choose an image to OCR";
         opts.parentWindow = parentWin;
-        opts.AddFilter("Images", {"png", "jpg", "jpeg", "webp", "tiff", "bmp"});
+        UltraCanvasFileLoader::AddLoadTypes(opts, "Images", {MediaFormatCategory::Bitmap});
         UltraCanvasFileLoader::OpenFileDialog(opts,
             [image, pathLabel, currentPath]
             (DialogResult r, const std::string& path) {

@@ -177,6 +177,10 @@ bool ExportToImage(const std::string& filename,
                    QRImageFormat format,
                    int moduleSize = 10,
                    std::string* errorMessage = nullptr);
+// The type the name ends in: any picture type FileLoader writes (CanSaveImage)
+bool ExportToImage(const std::string& filename,
+                   int moduleSize = 10,
+                   std::string* errorMessage = nullptr);
 ```
 
 ### Free Functions — `QRCodeUtils`
@@ -366,7 +370,7 @@ qr->SetContent(CreateGeoContent(37.7749, -122.4194));
 
 ### 8. Exporting to Image and SVG
 
-`ExportToImage` writes a raster file in the chosen format; `ExportToSVG` writes a vector file. `moduleSize` is the pixel size of one module. Writing the raster file goes through libvips, so in a build without it (the no-vips wasm variant, for one) `ExportToImage` fails with an error naming libvips and `ExportToSVG` is the way to save a QR code to disk.
+`ExportToImage` writes a raster file; `ExportToSVG` writes a vector file. `moduleSize` is the pixel size of one module. Given a format, `ExportToImage` adds its extension to the name when the name lacks it. Given none, it writes the type the name ends in: any picture type FileLoader writes (`UltraCanvasFileLoader::CanSaveImage`), ICO, TIFF and GIF included. An application's Save dialog offers those types with `AddImageSaveTypes`:
 
 ```cpp
 std::string err;
@@ -375,7 +379,21 @@ if (!qr->ExportToImage("ultracanvas_url.png", QRImageFormat::PNG, 12, &err)) {
 }
 
 qr->ExportToSVG("ultracanvas_url.svg", 10);
+
+// Every picture type this build writes, and SVG
+FileDialogOptions opts;
+opts.SetDefaultFileName("ultracanvas_url.png");
+UltraCanvasFileLoader::AddImageSaveTypes(opts);
+opts.AddFilter("SVG image", "svg");
+UltraCanvasFileLoader::SaveFileDialog(opts, [qr](DialogResult result, const std::string& path) {
+    std::string error;
+    if (result != DialogResult::OK) return;
+    const bool svg = path.size() > 4 && path.compare(path.size() - 4, 4, ".svg") == 0;
+    if (!(svg ? qr->ExportToSVG(path, 10) : qr->ExportToImage(path, 12, &error))) std::cerr << error << "\n";
+});
 ```
+
+Writing the raster file goes through libvips, so in a build without it (the no-vips wasm variant, for one) `ExportToImage` fails with an error naming libvips and `ExportToSVG` is the way to save a QR code to disk.
 
 ### 9. Generating Without a Widget
 

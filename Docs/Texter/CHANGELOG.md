@@ -1,3 +1,17 @@
+#### 2026-10-14 *1.65*
+- **Word documents go through FileLoader, and the dialogs offer its types.**
+  - Texter read and wrote `.odt`, `.docx` and `.doc` by calling the Word
+    document reader and writer itself. It now reads them with
+    `UltraCanvasFileLoader::LoadTextDocument` and saves them with
+    `SaveTextDocument`. A damaged package still opens in the plain view, and
+    a legacy `.doc` it cannot read still says so.
+  - The Open dialog's "Word Processing" place now holds FileLoader's
+    "Documents": every type `LoadTextDocument` reads.
+  - The Save dialogs offer ODT and DOCX, one type each. They used to offer
+    `.doc` too, which Texter then refused to write.
+  - Insert Image offers every picture type the build reads, and SVG, instead
+    of five types (framework changelog: `fileloader-type-lists`).
+
 #### 2026-10-13 *1.64*
 - **The settings and the autosave folder are found in a profile named in any
   script.** The config folder (`config.ini`, the recent files, the session)

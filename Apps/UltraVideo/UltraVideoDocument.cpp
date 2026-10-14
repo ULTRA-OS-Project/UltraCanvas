@@ -1,9 +1,11 @@
 // Apps/UltraVideo/UltraVideoDocument.cpp
 // The document and the .ultravideo file (UltraVideoDocument.h).
+// Version: 0.5.0 - KindOfPath from the engine's and FileLoader's lists (UltraVideoFormats)
 // Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
+#include "UltraVideoFormats.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasPathUtf8.h"
@@ -29,12 +31,6 @@ namespace {
 
 constexpr int kFileVersion = 1;
 constexpr double kDefaultPictureSeconds = 4.0;
-
-std::string LowerExtension(const std::string& path) {
-    std::string ext = PathToUtf8(PathFromUtf8(path).extension());
-    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return ext;
-}
 
 std::string FileName(const std::string& path) {
     return PathToUtf8(PathFromUtf8(path).filename());
@@ -261,12 +257,8 @@ std::string MediaItem::Badge() const {
 }
 
 MediaKind Document::KindOfPath(const std::string& path) {
-    static const char* const images[] = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp",
-                                         ".avif", ".jxl", ".gif"};
-    static const char* const sounds[] = {".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".wma", ".aiff"};
-    const std::string ext = LowerExtension(path);
-    for (const char* e : images) if (ext == e) return MediaKind::Image;
-    for (const char* e : sounds) if (ext == e) return MediaKind::Audio;
+    if (IsPicturePath(path)) return MediaKind::Image;
+    if (IsSoundPath(path)) return MediaKind::Audio;
     return MediaKind::Unknown;
 }
 

@@ -26,8 +26,13 @@ button in the app bar switches to the light one.
 
 Import videos, photos and songs with the import button, `Ctrl+I`, by
 dropping them on the window, or by naming them on the command line (a
-folder imports its files). Every file is probed by the engine and shows a
-duration badge, *photo*, or *unreadable* with the reason in its tooltip.
+folder imports its files). The dialogs offer FileLoader's types that the
+engine reads: at start-up UltraVideo tells the framework's codec registry
+which films and sound VideoFX's FFmpeg reads and writes, and gives the engine
+the framework's image reader for the pictures FFmpeg does not open whole - a
+phone's HEIC (a grid of tiles libheif puts together), a camera's raw file.
+Every file is probed by the engine and shows a duration badge, *photo*, or
+*unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
 the timeline; a song becomes the music under the whole video. Or drag a
 tile onto the timeline: on the main track it goes in at the cut nearest the
@@ -222,7 +227,8 @@ UltraVideo, appear on the *Voice & sound* lane.
 
 **Export** (`Ctrl+E`) asks for a preset - web MP4 at 1080p, 720p or 4K,
 WebM, an animated GIF, a ProRes master, or sound only as MP3 - the output
-file, and whether to export the whole project or the work area set with
+file (*Browse* offers the presets' types; picking one there picks its
+preset), and whether to export the whole project or the work area set with
 `I` and `O` on the timeline. The export runs in the background with a
 progress dialog and can be cancelled; a cancelled or failed export leaves
 no file. Exporting the work area keeps the part of each sound clip inside

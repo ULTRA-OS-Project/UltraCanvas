@@ -8,8 +8,9 @@
 // document's own page size, margins, headers and footers, like Writer's
 // print layout. A standard sample document is loaded from
 // media/docs/document.odt on entry.
+// Version: 1.4.0 - Open offers what LoadTextDocument reads (AddTextDocumentLoadTypes)
 // Version: 1.3.0
-// Last Modified: 2026-09-25
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -127,15 +128,9 @@ namespace UltraCanvas {
         // callback; both are also owned by the container (no ownership cycle).
         openBtn->onClick = [view, status]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open Document")
-                .AddFilter("Documents",
-                           std::vector<std::string>{ "odt", "docx", "doc", "tex", "md" })
-                .AddFilter("OpenDocument Text (*.odt)", "odt")
-                .AddFilter("Word Document (*.docx)", "docx")
-                .AddFilter("Word 97-2003 (*.doc)", "doc")
-                .AddFilter("LaTeX (*.tex)", "tex")
-                .AddFilter("Markdown (*.md)", "md")
-                .AddFilter("All files", "*");
+            opts.SetTitle("Open Document");
+            UltraCanvasFileLoader::AddTextDocumentLoadTypes(opts);
+            opts.AddFilter("All files", "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [view, status](DialogResult result, const std::string& path) {

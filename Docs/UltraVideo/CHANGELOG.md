@@ -1,3 +1,30 @@
+#### 2026-10-14 *0.4.1*
+- **Import and Export offer FileLoader's file types.** UltraVideo kept lists
+  of its own, so its dialogs offered types the engine could not read and
+  missed ones it could.
+  - At start-up UltraVideo now tells the framework's codec registry which
+    films and sound VideoFX (FFmpeg) reads and writes
+    (`VideoFX_GetFileFormats`). FileLoader's lists then include them; on
+    macOS, for example, the registry alone knew only MP4, MOV and 3GP.
+  - Import media, the file over the picture, a voice-over or sound effect
+    on A2, and the story's photos, clips and songs offer FileLoader's types
+    that the engine reads.
+  - **HEIC photos import whole.** Picture types FileLoader reads and FFmpeg
+    does not are read through the framework's image reader
+    (`VideoFX_SetPictureReader`): HEIC, a camera's raw files, FITS and so on.
+    For HEIC this is libheif, which puts a phone photo's grid of tiles
+    together and turns it upright. FFmpeg 6 refused HEIC, and FFmpeg 7 would
+    have given one tile of the photo.
+  - Whether a file is a picture or sound is decided by the same lists, so a
+    picture this build cannot decode (a HEIC where libheif lacks its HEVC
+    decoder) still shows as a photo, marked unreadable.
+  - Export's Browse offers the presets' types under FileLoader's names.
+    Picking a type there selects the preset that writes it, so an MP4 can
+    no longer be saved under a `.wav` name.
+  - The bare `.ts` extension is no longer offered: the framework decides it
+    by the file's contents, since it is far more often TypeScript. `.mts` and
+    `.m2ts` are offered.
+  - New file `UltraVideoFormats.{h,cpp}`, checked in `UltraVideoDocumentTest`.
 #### 2026-10-13 *0.4.0*
 - **Effect presets in the bin.** The bin's *Effects* tab is no longer a
   placeholder. It holds one-click presets for the selected main-track clip.

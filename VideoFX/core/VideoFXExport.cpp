@@ -12,8 +12,11 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
+// Version: 0.14.0 - VideoFX_GetFileFormats: the containers and pictures this
+//                  build reads (the host's picture types too), and the ones an
+//                  export writes
 // Version: 0.13.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -3185,6 +3188,183 @@ VideoFXResult PlanSlideshowSegments(const std::vector<std::string>& imagePaths, 
 }
 
 } // namespace
+
+// ============================================================================
+// FILE FORMATS
+// ============================================================================
+
+namespace {
+
+// A container this engine knows by name: the demuxer that reads it and the
+// container an export writes it as (Auto: none does). The descriptions are
+// the framework format registry's, so registering one there renames nothing.
+struct KnownContainer {
+    const char* extension;
+    std::vector<std::string> aliases;
+    const char* description;
+    VideoFXFileKind kind;
+    const char* demuxer;
+    VideoFXContainer container;
+};
+
+const std::vector<KnownContainer>& KnownContainers() {
+    using K = VideoFXFileKind;
+    using C = VideoFXContainer;
+    static const std::vector<KnownContainer> containers = {
+        {"mp4",  {"m4v"},          "MPEG-4 container",              K::Video, "mov",      C::MP4},
+        {"mov",  {},               "QuickTime movie",               K::Video, "mov",      C::MOV},
+        {"mkv",  {},               "Matroska video",                K::Video, "matroska", C::MKV},
+        {"webm", {},               "WebM video",                    K::Video, "matroska", C::WebM},
+        {"avi",  {},               "AVI video",                     K::Video, "avi",      C::AVI},
+        {"mpg",  {"mpeg", "m2v"},  "MPEG program stream",           K::Video, "mpeg",     C::Auto},
+        {"m2ts", {"mts"},          "MPEG transport stream",         K::Video, "mpegts",   C::Auto},
+        {"wmv",  {"asf"},          "Windows Media video",           K::Video, "asf",      C::Auto},
+        {"flv",  {},               "Flash video",                   K::Video, "flv",      C::Auto},
+        {"ogv",  {"ogm"},          "Ogg video",                     K::Video, "ogg",      C::Auto},
+        {"3gp",  {"3g2"},          "3GPP video",                    K::Video, "mov",      C::Auto},
+        {"mp3",  {},               "MPEG layer III audio",          K::Audio, "mp3",      C::MP3},
+        {"m4a",  {"m4b"},          "MPEG-4 audio (AAC)",            K::Audio, "mov",      C::M4A},
+        {"aac",  {},               "Raw AAC bitstream (ADTS)",      K::Audio, "aac",      C::Auto},
+        {"wav",  {},               "Waveform audio",                K::Audio, "wav",      C::WAV},
+        {"flac", {},               "Free Lossless Audio Codec",     K::Audio, "flac",     C::FLAC},
+        {"ogg",  {"oga"},          "Ogg Vorbis audio",              K::Audio, "ogg",      C::OGG},
+        {"opus", {},               "Opus audio",                    K::Audio, "ogg",      C::Auto},
+        {"mka",  {},               "Matroska audio",                K::Audio, "matroska", C::Auto},
+        {"wma",  {},               "Windows Media Audio",           K::Audio, "asf",      C::Auto},
+        {"aiff", {"aif", "aifc"},  "Audio Interchange File Format", K::Audio, "aiff",     C::Auto},
+    };
+    return containers;
+}
+
+// A still picture: the decoders that open it (any one will do) and, for the
+// ISO-BMFF pictures, the extension the mov demuxer has to claim - AVIF from
+// FFmpeg 6. HEIC is listed and not read by FFmpeg here: the mov demuxer
+// claims it from FFmpeg 7.0, but a phone's HEIC is a grid of 512 px tiles
+// that FFmpeg hands out as separate streams of a stream group, and the engine
+// does not put a grid together - it would import one tile of the photo. A
+// host application with an image library that does reads it instead
+// (VideoFX_SetPictureReader).
+struct KnownPicture {
+    const char* extension;
+    std::vector<std::string> aliases;
+    std::vector<const char*> decoders;
+    const char* movExtension;
+    VideoFXContainer container;
+};
+
+const std::vector<KnownPicture>& KnownPictures() {
+    using C = VideoFXContainer;
+    static const std::vector<KnownPicture> pictures = {
+        {"png",  {},              {"png"},                         nullptr, C::Auto},
+        {"jpg",  {"jpeg", "jpe"}, {"mjpeg"},                       nullptr, C::Auto},
+        {"webp", {},              {"webp", "libwebp"},             nullptr, C::Auto},
+        {"tif",  {"tiff"},        {"tiff"},                        nullptr, C::Auto},
+        {"bmp",  {},              {"bmp"},                         nullptr, C::Auto},
+        {"gif",  {},              {"gif"},                         nullptr, C::GIF},
+        {"ico",  {},              {"bmp"},                         nullptr, C::Auto},
+        {"qoi",  {},              {"qoi"},                         nullptr, C::Auto},
+        {"jxl",  {},              {"libjxl", "jpegxl"},            nullptr, C::Auto},
+        {"jp2",  {"j2k", "j2c"},  {"jpeg2000", "libopenjpeg"},     nullptr, C::Auto},
+        {"ppm",  {},              {"ppm"},                         nullptr, C::Auto},
+        {"pgm",  {},              {"pgm"},                         nullptr, C::Auto},
+        {"pbm",  {},              {"pbm"},                         nullptr, C::Auto},
+        {"pam",  {},              {"pam"},                         nullptr, C::Auto},
+        {"exr",  {},              {"exr"},                         nullptr, C::Auto},
+        {"hdr",  {},              {"hdr"},                         nullptr, C::Auto},
+        {"tga",  {},              {"targa"},                       nullptr, C::Auto},
+        {"psd",  {},              {"psd"},                         nullptr, C::Auto},
+        {"avif", {},              {"libdav1d", "libaom-av1", "av1"}, "avif", C::Auto},
+        {"heic", {"heif"},        {},                              "heic",  C::Auto},   // tile grids: not yet
+    };
+    return pictures;
+}
+
+bool AnyDecoder(const std::vector<const char*>& names) {
+    for (const char* name : names)
+        if (avcodec_find_decoder_by_name(name)) return true;
+    return false;
+}
+
+// Whether the mov demuxer lists `extension` among its own
+bool MovDemuxerClaims(const char* extension) {
+    const AVInputFormat* mov = av_find_input_format("mov");
+    if (!mov || !mov->extensions) return false;
+    std::stringstream list(mov->extensions);
+    std::string item;
+    while (std::getline(list, item, ','))
+        if (item == extension) return true;
+    return false;
+}
+
+// Whether an export to `container` works here: its muxer, an encoder for its
+// usual picture codec (a film, an animation) and one for its usual sound
+// codec (a film, a sound file - an animation has none)
+bool ExportWrites(VideoFXContainer container, VideoFXFileKind kind) {
+    const char* muxerName = MuxerName(container);
+    const AVOutputFormat* muxer = muxerName ? av_guess_format(muxerName, nullptr, nullptr) : nullptr;
+    if (!muxer) return false;
+    auto picture = [muxer]() {
+        for (VideoFXVideoCodec c : DefaultVideoCodecs(muxer->name))
+            if (FindVideoEncoder(c, VideoFXAcceleration::Auto)) return true;
+        return false;
+    };
+    auto sound = [muxer]() {
+        for (VideoFXAudioCodec c : DefaultAudioCodecs(muxer->name))
+            if (FindAudioEncoder(c)) return true;
+        return false;
+    };
+    switch (kind) {
+        case VideoFXFileKind::Video:   return picture() && sound();
+        case VideoFXFileKind::Audio:   return sound();
+        case VideoFXFileKind::Picture: return picture();
+    }
+    return false;
+}
+
+} // namespace
+
+std::vector<VideoFXFileFormat> VideoFX_GetFileFormats() {
+    EnsureBackendInitialised();
+    std::vector<VideoFXFileFormat> out;
+    for (const KnownContainer& k : KnownContainers()) {
+        VideoFXFileFormat f;
+        f.extension = k.extension;
+        f.aliases = k.aliases;
+        f.description = k.description;
+        f.kind = k.kind;
+        f.canRead = av_find_input_format(k.demuxer) != nullptr;
+        f.canWrite = k.container != VideoFXContainer::Auto && ExportWrites(k.container, k.kind);
+        f.container = f.canWrite ? k.container : VideoFXContainer::Auto;
+        out.push_back(std::move(f));
+    }
+    for (const KnownPicture& k : KnownPictures()) {
+        VideoFXFileFormat f;
+        f.extension = k.extension;
+        f.aliases = k.aliases;
+        f.kind = VideoFXFileKind::Picture;
+        f.canRead = AnyDecoder(k.decoders) && (!k.movExtension || MovDemuxerClaims(k.movExtension));
+        f.canWrite = k.container != VideoFXContainer::Auto && ExportWrites(k.container, f.kind);
+        f.container = f.canWrite ? k.container : VideoFXContainer::Auto;
+        out.push_back(std::move(f));
+    }
+    // The picture types the host application reads (VideoFX_SetPictureReader)
+    for (const std::string& ext : HostPictureExtensions()) {
+        auto known = std::find_if(out.begin(), out.end(), [&ext](const VideoFXFileFormat& f) {
+            return f.kind == VideoFXFileKind::Picture &&
+                   (f.extension == ext || std::find(f.aliases.begin(), f.aliases.end(), ext) != f.aliases.end());
+        });
+        if (known != out.end()) {
+            known->canRead = true;
+            continue;
+        }
+        VideoFXFileFormat f;
+        f.extension = ext;
+        f.kind = VideoFXFileKind::Picture;
+        f.canRead = true;
+        out.push_back(std::move(f));
+    }
+    return out;
+}
 
 // ============================================================================
 // PREVIEW
