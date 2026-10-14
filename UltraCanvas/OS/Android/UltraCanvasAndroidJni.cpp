@@ -111,6 +111,54 @@ namespace AndroidJni {
         return result;
     }
 
+    jstring ToJString(JNIEnv* env, const std::string& utf8) {
+        std::vector<jchar> units;
+        units.reserve(utf8.size());
+        const auto* p = reinterpret_cast<const unsigned char*>(utf8.data());
+        const size_t n = utf8.size();
+        size_t i = 0;
+        while (i < n) {
+            const unsigned char c = p[i];
+            uint32_t cp = 0xFFFD;
+            size_t len = 1;
+            if (c < 0x80) {
+                cp = c;
+            } else if (c >= 0xC2 && c <= 0xF4) {
+                len = c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+                uint32_t value = c & (len == 2 ? 0x1F : len == 3 ? 0x0F : 0x07);
+                bool valid = i + len <= n;
+                for (size_t k = 1; valid && k < len; ++k) {
+                    if ((p[i + k] & 0xC0) != 0x80) valid = false;
+                    else value = (value << 6) | (p[i + k] & 0x3F);
+                }
+                // Overlong forms, surrogates and values past U+10FFFF are
+                // malformed too.
+                if (valid && ((len == 3 && value < 0x800) ||
+                              (len == 4 && (value < 0x10000 || value > 0x10FFFF)) ||
+                              (value >= 0xD800 && value <= 0xDFFF))) {
+                    valid = false;
+                }
+                if (valid) cp = value;
+                else len = 1;                 // resynchronise on the next byte
+            }
+            i += len;
+            if (cp >= 0x10000) {
+                cp -= 0x10000;
+                units.push_back(static_cast<jchar>(0xD800 + (cp >> 10)));
+                units.push_back(static_cast<jchar>(0xDC00 + (cp & 0x3FF)));
+            } else {
+                units.push_back(static_cast<jchar>(cp));
+            }
+        }
+        jstring result = env->NewString(units.data(), static_cast<jsize>(units.size()));
+        if (ClearException(env, "NewString")) return nullptr;
+        return result;
+    }
+
+    jstring ToJString(JNIEnv* env, const char* utf8) {
+        return ToJString(env, std::string(utf8 ? utf8 : ""));
+    }
+
     std::vector<std::string> SplitLines(const std::string& text) {
         std::vector<std::string> lines;
         std::string::size_type start = 0;

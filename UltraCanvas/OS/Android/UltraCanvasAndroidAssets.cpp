@@ -126,7 +126,7 @@ namespace UltraCanvas {
                                             jmethodID midList,
                                             const std::string& path) {
             std::vector<std::string> names;
-            jstring jPath = env->NewStringUTF(path.c_str());
+            jstring jPath = AndroidJni::ToJString(env, path);
             auto array = static_cast<jobjectArray>(
                     env->CallObjectMethod(assetManager, midList, jPath));
             env->DeleteLocalRef(jPath);
