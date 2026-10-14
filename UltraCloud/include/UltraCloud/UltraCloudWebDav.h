@@ -4,8 +4,8 @@
 // links exist only when the account has a public base URL that mirrors the
 // DAV root (a plain web folder), in which case the link is base + path.
 // Nextcloud derives from this and adds real share links.
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.3.0 - WebDavErrorMessage
+// Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -28,6 +28,12 @@ std::string NormalizePath(const std::string& path);
 std::vector<Entry> ParseMultistatus(const std::string& xml, const std::string& folderPath);
 // The link a plain web folder gives: publicBaseUrl + encoded path.
 std::string PublicFolderLink(const std::string& publicBaseUrl, const std::string& path);
+
+// The message of a WebDAV error body - SabreDAV's (Nextcloud, ownCloud)
+// "<d:error><s:exception>...</s:exception><s:message>File with name x could
+// not be located</s:message></d:error>" - with its entities decoded; "" when
+// the body carries none.
+std::string WebDavErrorMessage(const std::string& xml);
 
 class WebDavProvider : public HttpProviderBase {
 public:

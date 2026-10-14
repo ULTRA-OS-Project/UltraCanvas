@@ -307,6 +307,28 @@ TEST(oauth2_wait_for_callback_times_out) {
     REQUIRE(r.code == UltraNetResultCode::Timeout);
 }
 
+// A sign-in the user walked away from: the dialog is closed, and the wait has
+// to let its thread go then, not when the five minutes are up.
+TEST(oauth2_wait_for_callback_can_be_cancelled) {
+    UltraNet_Initialize();
+    std::atomic<bool> cancelled{false};
+    UltraNetOAuth2CallbackResult cb;
+    UltraNetResult waitResult;
+    const auto started = std::chrono::steady_clock::now();
+    std::thread waiter([&] {
+        waitResult = UltraNet_OAuth2WaitForCallback(
+            "http://127.0.0.1:18478/cb", cb, 60000, std::string(),
+            [&cancelled] { return cancelled.load(); });
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    cancelled = true;
+    waiter.join();
+    const auto took = std::chrono::steady_clock::now() - started;
+    REQUIRE(!waitResult);
+    REQUIRE(waitResult.code == UltraNetResultCode::Cancelled);
+    REQUIRE(took < std::chrono::seconds(5));
+}
+
 TEST(oauth2_wait_for_callback_receives_redirect) {
     UltraNet_Initialize();
     constexpr int port = 18472;

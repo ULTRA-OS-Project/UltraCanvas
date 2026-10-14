@@ -20,8 +20,8 @@
 // to start a record of its own. Anything that does not parse drops the
 // listing it belongs to, not the file: a cache is an optimisation, and a bad
 // line in it is a reason to ask the server again, never a reason to fail.
-// Version: 1.1.0
-// Last Modified: 2026-10-09
+// Version: 1.2.0 - kRemoteRateLimitMaxWaitSeconds
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -70,6 +70,12 @@ inline constexpr std::size_t kRemotePrefetchPerFolder = 24;
 // network) does not answer, and libcurl before 8.10 waits up to two minutes,
 // with the next request - or the window closing - waiting behind it.
 inline constexpr std::chrono::seconds kRemoteConnectionIdleClose{15};
+
+// The longest wait a cloud drive sits out when the service limits requests
+// and asks to come back later (UltraCloud::RateLimitPolicy). The drive has one
+// worker, so a wait holds every job queued behind it; the status line says
+// what it is waiting for. A longer wait is reported as the failure instead.
+inline constexpr long long kRemoteRateLimitMaxWaitSeconds = 60;
 
 // How many listings are kept on disk. Enough for the folders of a working
 // session on a few servers; a cache that grows without bound slows every

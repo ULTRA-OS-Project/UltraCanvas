@@ -96,7 +96,10 @@ PKCE authorization-code flow against a loopback redirect
 (`UltraNet_OAuth2AuthorizeInteractive`), the tokens land in the secret
 store, and the provider's account-info call fills the user name. An expired
 access token is renewed from the refresh token inside `CloudService::Resolve`
-before any call uses it, and the renewal is stored.
+before any call uses it, and the renewal is stored. A token the service
+rejects (HTTP 401) although it had not expired here - revoked early, a clock
+that is off, or one that ran out while a request waited on a service
+limiting requests - is renewed the same way and the call made once more.
 
 Each provider needs an **OAuth app registration** — a client id (and, for
 confidential clients, a secret) the ULTRA OS project or the app vendor
@@ -149,6 +152,128 @@ and `UltraCloud::LoadProviderPlugins()` dlopens every library in the plug-in
 directory (`ULTRACLOUD_PLUGIN_DIR`, else `<executable dir>/plugins/ultracloud`)
 and calls it. A plug-in derives from `HttpProviderBase` or `OAuthProviderBase`
 like the built-in providers do.
+
+## The session log, and what a refusal says
+
+Every request a cloud provider makes goes through `HttpProviderBase::Send`,
+so that is where it is logged. A caller that wants the lines sets a sink for
+its thread around the calls it makes - UltraFiler's drive worker does, and
+shows them in its connection log next to an FTP drive's commands and replies:
+
+```cpp
+UltraCloud::LogCallback previous = UltraCloud::SetThreadLog(
+        [](const UltraCloud::LogLine& line) { Show(line.kind, line.text, line.httpStatus); });
+cloud.List(accountId, "/Photos", entries);
+UltraCloud::SetThreadLog(std::move(previous));
+```
+
+```
+Step:      The access token has expired - renewing it
+Step:      Access token renewed
+Request:   POST https://api.dropboxapi.com/2/files/list_folder
+Response:  200 OK - 420 ms
+Step:      The listing continues - page 2 (2000 entries so far)
+Request:   POST https://api.dropboxapi.com/2/files/list_folder/continue
+Response:  429 Too Many Requests - too_many_requests (80 ms)
+Step:      The service is limiting requests: it asks to wait 30 s
+```
+
+- **Request** lines are the method and the URL; **Response** lines the
+  status, the service's own reason when it refused, and how long it took
+  (`LogLine::httpStatus` carries the number). A request that got no answer
+  at all is an **Error** line with the transport's reason.
+- **Step** lines come from `CloudService` (an access token renewed, or the
+  renewal refused - `invalid_grant` when the user revoked the access) and
+  from the providers that page through a long folder (Dropbox, OneDrive,
+  Google Drive).
+- Nothing secret is written: no header (the `Authorization` bearer token
+  among them), no body, and no value of a query parameter whose name says it
+  carries one - `LoggableUrl` masks `tempauth=`, `key=`, `code=`, `sig=` and
+  the like as `***` and drops a URL's user name and password.
+- With no sink set on the thread nothing is formatted.
+
+A failure's `Result` says the same things without the log
+(`HttpProviderBase::FromHttp`):
+
+- `message` keeps the service's reason, read from each service's error body
+  (`ServerErrorReason`: Dropbox's `error_summary`, Graph's `error.code` and
+  `message`, Google's `errors[].reason`, OAuth's `error` /
+  `error_description`, the WebDAV `<s:message>`) - `list /Photos: HTTP 409 -
+  path/not_found` rather than `HTTP 409`. A 401 says *sign-in rejected*, a
+  403 *not allowed*, a 404 *not found*, each with the status and the reason
+  after it.
+- A request the service throttled - 429, a 503 with `Retry-After`, or Google
+  Drive's 403 `rateLimitExceeded` / `userRateLimitExceeded` - is first sent
+  again (below); when that does not get through it is
+  `ResultCode::RateLimited`, and its message says how long the service asks
+  to wait (`Retry-After` in seconds or as an HTTP date, `RetryAfterSeconds`).
+- `diagnostics` carries the HTTP status, the service's reason, `Retry-After`,
+  the request ID the service's support asks for (`x-dropbox-request-id`,
+  `request-id`, `x-request-id`, ...), the URL that answered and the time it
+  took, then the transport's connection chain when the request never got an
+  answer (UltraNet fills `UltraNetResult::diagnostics` for a failed HTTP
+  transfer as it does for FTP).
+
+### Waiting out a service that limits requests
+
+A throttled request was not acted on, so `Send` waits as long as the service
+asks - or 1, 2, 4 s when it gives no time - and sends it again. How many
+times, how long at most and how to wait is the calling thread's
+`RateLimitPolicy`:
+
+```cpp
+UltraCloud::RateLimitPolicy policy;           // default: 3 more tries, waits up to 30 s, sleeps
+policy.maxRetries = backgroundWork ? 0 : 3;   // work nobody waits on: fail at once
+policy.maxWaitSeconds = 60;                   // a longer wait fails as RateLimited
+policy.wait = [&](long long seconds) {        // false: stop waiting, fail now
+    std::unique_lock<std::mutex> lock(mutex);
+    return !stopping.wait_for(lock, std::chrono::seconds(seconds), [&] { return quit; });
+};
+UltraCloud::RateLimitPolicy previous = UltraCloud::SetThreadRateLimitPolicy(std::move(policy));
+cloud.List(accountId, "/Photos", entries);
+UltraCloud::SetThreadRateLimitPolicy(std::move(previous));
+```
+
+Each wait is a line in the log - *The service is limiting requests: it asks
+to wait 20 s - trying again in 20 s (try 2 of 4)* - and so is a request given
+up.
+
+### Watching a sign-in
+
+The browser sign-in logs its steps too: where it waits for the browser's
+answer, the sign-in page it opens (its address without the query, which
+carries the one-time state and code challenge), and whether the service gave
+an access token or why it did not. The add-account dialog runs its sign-in on
+a thread of its own; `AddAccountWatch` lets a host set that thread's log
+sinks around it:
+
+```cpp
+UltraCloud::AddAccountWatch watch;
+watch.onBegin = [](const Account& a) { /* on the sign-in thread: SetThreadLog(...) */ };
+watch.onEnd = [](const Account& a, const Result& r) { /* put the sink back; r: how it ended */ };
+watch.cancelled = [&] { return shuttingDown.load(); };   // optional: call it off
+UltraCloud::ShowAddAccountDialog(window, cloud, onAdded, {}, "", watch);
+```
+
+The dialog's sign-in thread can outlive the dialog and the window that
+opened it. Given a `std::shared_ptr<CloudService>`, the thread holds the
+service until the sign-in ends; a service made with the shared_ptr
+constructor keeps its stores alive too, so nothing the sign-in uses is freed
+under it:
+
+```cpp
+auto accounts = std::make_shared<AccountStore>();
+accounts->Open("myapp-cloud", dataDir + "/cloud.db");
+auto cloud = std::make_shared<CloudService>(accounts, std::make_shared<VaultSecretStore>());
+UltraCloud::ShowAddAccountDialog(window, cloud, onAdded);   // the thread holds `cloud`
+```
+
+A sign-in waits on the user for up to five minutes, and the user can walk
+away. The thread that signs in sets a check for itself
+(`SetThreadSignInCancel`); once it says true the wait for the browser ends
+within a fraction of a second, the sign-in ends as `ResultCode::Cancelled`,
+and `CloudService::AddAccount` / `SignInAccount` store no account. The
+dialog's *Cancel* and close box set it, and so does `watch.cancelled`.
 
 ## Quick examples
 
@@ -223,9 +348,10 @@ providers.
 
 | Header | Contents |
 |---|---|
-| `UltraCloudTypes.h` | `Result` / `ResultCode` (a failure carries `diagnostics`, the transport's connection chain - the FTP provider fills it from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
-| `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
-| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
+| `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request, `Cancelled` for a sign-in called off; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
+| `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory`; `SetThreadSignInCancel`, `SignInCancelled` |
+| `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
+| `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
@@ -233,11 +359,11 @@ providers.
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
-| `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
-| `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
+| `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
+| `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (with an optional provider filter and title), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing

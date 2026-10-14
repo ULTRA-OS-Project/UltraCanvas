@@ -2,8 +2,8 @@
 // Core data types of the UltraCloud module: results, accounts, credentials,
 // remote entries and share links. Provider-independent; every provider and
 // every app-facing call speaks in these.
-// Version: 0.3.0 - Result::diagnostics
-// Last Modified: 2026-10-04
+// Version: 0.5.0 - ResultCode::Cancelled
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -22,7 +22,13 @@ enum class ResultCode {
     Server,          // the server answered with an error (see httpStatus)
     InvalidArgument, // a bad path, URL or option
     IoError,         // local filesystem failure
-    Unknown
+    Unknown,
+    RateLimited,     // the service is limiting requests (HTTP 429, or a 503 /
+                     // Google 403 that says so); the message says how long it
+                     // asks to wait. After the older codes, so they keep their
+                     // numbers.
+    Cancelled        // the caller called it off - a sign-in whose dialog was
+                     // closed (SetThreadSignInCancel). Not a failure to report.
 };
 
 struct Result {
