@@ -422,7 +422,7 @@ pcp->AddDimension("Sepal Width",  sepalWidth);
 pcp->SetRecordGroups(species);                 // "setosa" / "versicolor" / "virginica"
 
 pcp->SetNormalizationMode(UltraCanvas::PCPNormalization::CommonScale);
-pcp->SetScale(UltraCanvas::PCPScale::ZScore);  // standardise every column
+pcp->SetScale(PCPScale::ZScore);  // standardise every column
 pcp->SetShowSharedValueAxis(true);             // the "value" axis on the left
 pcp->SetShowVertexMarkers(true, 3.0f);
 

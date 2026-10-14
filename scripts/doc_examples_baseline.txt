@@ -99,6 +99,14 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::signature differs: `void Add
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'Size2Di': expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'UCPixmap': expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'ValueFormatter': expected expression
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'AxisDistribution'
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'AxisDistributionKind'
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'AxisDistributionSide'
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartAxisSpec'
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartEngine'
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartFrame'
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartHit'
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartInteractionState'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Both'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Bottom'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'ChartBackgroundScope'
@@ -241,11 +249,13 @@ Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::too many arguments to func
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::too many arguments to function call, expected 5, have 6
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::too many arguments to function call, expected 5, have 6
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::too many arguments to function call, expected 5, have 6
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::unknown type name 'PacketDeliveryState'
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::unknown type name 'PacketNodeRole'
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::unknown type name 'PacketNodeRole'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::use of undeclared identifier 'SetInteractionLocked'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::use of undeclared identifier 'SetShowControls'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPBrush::dimensionIndex' does not exist (no member named 'dimensionIndex' in 'UltraCanvas::PCPBrush')
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPBrush::inverted' does not exist (no member named 'inverted' in 'UltraCanvas::PCPBrush')
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPScale' is not a class, namespace, or enumeration
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'FormatNumber' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPAxisTitlePosition' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPCurveType' in namespace 'UltraCanvas'

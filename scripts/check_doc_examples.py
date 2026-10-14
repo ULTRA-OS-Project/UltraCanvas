@@ -84,7 +84,8 @@ findings and rewrite it, never add to it to let a new one through.
 #                 file is rewritten (--all also for a doc that is gone); the
 #                 reported errors come from a -fno-spell-checking pass, so an
 #                 undeclared name is one finding, not a chain of them in the
-#                 terms of clang's guess at what was meant
+#                 terms of clang's guess at what was meant; a design doc's
+#                 unknown type is a finding, not the reader's own type
 # Version: 1.4.0 - a name the checker declares is a member when a [this]
 #                 lambda uses it; a name clang misreads as a template's
 #                 (`name <`) is declared from the parse error that follows
@@ -833,6 +834,7 @@ class Doc:
         self.args = args
         self.flags = flags
         self.report_flags = report_flags(flags)
+        self.design = bool(DESIGN_DOC.search(Path(path).name))
         self.pch = pch
         self.work = args.work / "docs"
         self.work.mkdir(parents=True, exist_ok=True)
@@ -1249,8 +1251,13 @@ class Doc:
                 continue
             if msg.startswith("redefinition of") or "redeclaration of" in msg:
                 continue
+            # A type a component doc names and no header has is the reader's
+            # own (a model, a handler), unless its name says framework. A
+            # design document is held to its proposed types: one it names and
+            # does not declare is what the proposal still waits for.
             m = re.match(r"unknown type name '(\w+)'$", msg)
-            if m and m.group(1) not in self.index.types and not m.group(1).startswith(("UltraCanvas", "UC")):
+            if m and m.group(1) not in self.index.types and not m.group(1).startswith(("UltraCanvas", "UC")) \
+                    and not self.design:
                 self.context_left.setdefault(m.group(1), []).append(line)
                 continue
             self.add(line, msg)

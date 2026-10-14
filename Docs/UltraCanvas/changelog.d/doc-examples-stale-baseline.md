@@ -6,4 +6,6 @@
   pass with clang's spell-checking off (`-fno-spell-checking`): an undeclared
   name is one finding, not the chain of follow-on errors in the terms of
   clang's guess at what was meant, and the finding's wording no longer changes
-  when a header gains a type of a similar name.
+  when a header gains a type of a similar name. A design document is held to
+  its proposed types: a type it names and does not declare is a finding, where
+  a component doc's is taken for the reader's own.
