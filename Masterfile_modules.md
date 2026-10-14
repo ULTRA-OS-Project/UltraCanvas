@@ -1298,6 +1298,15 @@ which has no pixel size and is drawn sharp at any) comes back through the
 Save image as (UltraViewer) offers it and draws an SVG again at the size
 chosen.
 
+A dialog's file types come from the format inventory, never an application's
+own list: `AddLoadTypes(opts, label, {categories})` (one Open filter of every
+type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
+(one Save filter per type it writes, the proposed name's type first),
+`AddTextDocumentLoadTypes` / `AddTextDocumentSaveTypes` with
+`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
+codec an application brings joins them through `RegisterMediaCodec`, as
+UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
+
 ### **4. Plug-ins for File Types**
 
 Per-format plug-ins under `UltraCanvas/Plugins/` (Charts, Diagrams, Text,
@@ -2185,12 +2194,16 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
   `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
-  (`VideoFXExportSettings::keyframeInterval`)
+  (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
+  `VideoFXPictureReader`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
   `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
-  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`
+  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`,
+  `VideoFX_GetFileFormats` (the films, sound and pictures the linked FFmpeg
+  reads, and the ones an export writes), `VideoFX_SetPictureReader` (picture
+  types the host application reads for the engine)
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in

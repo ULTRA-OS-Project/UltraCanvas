@@ -6,16 +6,24 @@
 // media reported; the title, overlay and voice-and-sound lanes; the effect
 // presets and their strength. Needs the VideoFX engine (FFmpeg) for the probes and the
 // clips it generates; without it the suite skips itself.
+// Version: 0.6.0 - a HEIC imported and exported through the framework's image reader
+// Version: 0.5.0 - the files it takes are FileLoader's lists, as the engine reads them
 // Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
+#include "UltraVideoFormats.h"
 #include "UltraVideoHistory.h"
 #include "UltraVideoMapping.h"
 #include "UltraVideoProxies.h"
 
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasImage.h"
+#include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasPathUtf8.h"
 #include "VideoFX/VideoFX.h"
+
+#include <algorithm>
 
 #include <chrono>
 #include <cmath>
@@ -839,6 +847,137 @@ int main() {
                   !maker.Error(TempPath("media/gone.mkv")).empty(), "a missing clip fails, with the reason");
         }
         VideoFX_ClearProxies(ps);
+    }
+
+    std::printf("\n-- the files it takes: FileLoader's lists --\n");
+    {
+        UCImage::InitializeImageSubsysterm("UltraVideoDocumentTest");
+        RegisterEngineFormats();
+        RegisterEngineFormats();     // once is once
+        auto holds = [](const std::vector<std::string>& list, const std::string& ext) {
+            return std::find(list.begin(), list.end(), ext) != list.end();
+        };
+        const std::vector<std::string> films = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Video);
+        const std::vector<std::string> sounds = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Audio);
+        const std::vector<std::string> filmsOut = UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCategory::Video);
+        const std::vector<std::string> soundsOut = UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCategory::Audio);
+        bool listed = true;
+        std::string missing;
+        for (const VideoFXFileFormat& f : VideoFX_GetFileFormats()) {
+            if (f.kind == VideoFXFileKind::Picture) continue;
+            const bool audio = f.kind == VideoFXFileKind::Audio;
+            const bool in = !f.canRead || holds(audio ? sounds : films, f.extension);
+            const bool out = !f.canWrite || holds(audio ? soundsOut : filmsOut, f.extension);
+            if (!in || !out) { listed = false; missing += " " + f.extension; }
+        }
+        if (!missing.empty()) std::printf("        not in FileLoader's lists:%s\n", missing.c_str());
+        CHECK(listed, "every film and sound file the engine reads or writes is in FileLoader's lists");
+
+        const std::vector<std::string> offered = ImportExtensions(true, true, true);
+        bool engineReadsAll = true;
+        for (const std::string& ext : offered) {
+            bool reads = false;
+            for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
+                if (f.canRead && (f.extension == ext || std::find(f.aliases.begin(), f.aliases.end(), ext) != f.aliases.end()))
+                    reads = true;
+            engineReadsAll = engineReadsAll && reads;
+        }
+        CHECK(holds(offered, "mkv") && holds(offered, "mp4") && holds(offered, "png") && holds(offered, "jpg") &&
+              holds(offered, "wav") && holds(offered, "mp3"),
+              "an import offers films, pictures and sound");
+        CHECK(engineReadsAll, "... each one a file the engine reads - nothing offered and then refused");
+        const std::vector<std::string> pictures = ImportExtensions(false, true, false);
+        CHECK(!pictures.empty() && !holds(pictures, "mp4") && !holds(pictures, "wav") && !holds(pictures, "txt"),
+              "pictures alone are pictures alone");
+        FileDialogOptions opts;
+        AddImportTypes(opts, "Music", false, false, true);
+        CHECK(opts.filters.size() == 1 && opts.filters[0].description == "Music" && holds(opts.filters[0].extensions, "flac") &&
+              !holds(opts.filters[0].extensions, "png"),
+              "AddImportTypes: one filter of them, under its label");
+        CHECK(FormatName("mp4") == "MPEG-4 container" && FormatName(".MOV") == "QuickTime movie" && FormatName("xyz") == "XYZ",
+              "a type's name is FileLoader's; an unknown one its extension");
+        // A HEIC through the framework's image reader: FFmpeg would give one
+        // tile of a phone's photo, libheif the whole of it, upright
+        const std::vector<std::string> bitmaps = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
+        if (holds(bitmaps, "heic")) {
+            CHECK(holds(ImportExtensions(false, true, false), "heic"), "a HEIC is offered: the engine reads it through the framework");
+            Document heicDoc;
+            const MediaItem heic = heicDoc.Import(std::string(UC_MEDIA_DIR) + "/images/dice.heic");
+            CHECK(heic.error.empty() && heic.kind == MediaKind::Image && heic.width == 800 && heic.height == 600,
+                  "... imported as a photo of its own size, 800 x 600");
+            // Its pixels need libheif's HEVC decoder (libde265), which a
+            // libheif built with plugins may lack while it reads the header
+            auto probe = UCImageRaster::Load(heic.path, true);
+            auto pixmap = probe && probe->IsValid() ? probe->CreatePixmap(probe->GetWidth(), probe->GetHeight()) : nullptr;
+            if (!pixmap || !pixmap->IsValid()) {
+                std::printf("  SKIP  this build's libheif has no HEVC decoder: the HEIC's pixels are not checked\n");
+            } else {
+                VideoFXFrame shown;
+                CHECK(VideoFX_ExtractFrame(heic.path, 0.0, shown, 400, 400) == VideoFXResult::Ok && shown.width == 400 &&
+                      shown.height == 300, "... its picture, fitted for the bin");
+                VideoFXExportSettings s;
+                s.container = VideoFXContainer::MKV;
+                s.videoCodec = VideoFXVideoCodec::MPEG4;
+                s.width = 320; s.height = 240; s.frameRate = 10.0;
+                const std::string film = TempPath("media/dice.mkv");
+                VideoFXFrame exported;
+                CHECK(VideoFX_Export({VideoFXSegment::FromImage(heic.path, 0.5)}, film, s) == VideoFXResult::Ok &&
+                      VideoFX_ExtractFrame(film, 0.2, exported) == VideoFXResult::Ok && exported.IsValid(),
+                      "... and exported into a film");
+                long sum = 0;
+                for (size_t i = 0; i < exported.pixels.size(); i += 4) sum += exported.pixels[i] + exported.pixels[i + 1] + exported.pixels[i + 2];
+                CHECK(sum > static_cast<long>(exported.pixels.size() / 4) * 30, "... showing the photo, not black");
+            }
+        } else {
+            std::printf("  SKIP  this build's image reader has no HEIC\n");
+        }
+
+        // The same road end to end with a type the framework reads and the
+        // engine's FFmpeg is not asked to: a FITS picture, 64 x 48, grey 200
+        if (holds(bitmaps, "fits")) {
+            const std::string fits = TempPath("media/sky.fits");
+            {
+                std::string header;
+                auto card = [&header](const std::string& text) {
+                    header += text + std::string(80 - text.size(), ' ');
+                };
+                card("SIMPLE  =                    T");
+                card("BITPIX  =                    8");
+                card("NAXIS   =                    2");
+                card("NAXIS1  =                   64");
+                card("NAXIS2  =                   48");
+                card("END");
+                header.resize(2880, ' ');
+                std::string data(64 * 48, static_cast<char>(200));
+                data.resize((data.size() + 2879) / 2880 * 2880, '\0');      // whole 2880-byte blocks
+                std::FILE* f = OpenFileUtf8(fits, "wb");
+                if (f) { std::fwrite(header.data(), 1, header.size(), f); std::fwrite(data.data(), 1, data.size(), f); std::fclose(f); }
+            }
+            Document fitsDoc;
+            const MediaItem sky = fitsDoc.Import(fits);
+            CHECK(holds(ImportExtensions(false, true, false), "fits") && sky.error.empty() && sky.kind == MediaKind::Image &&
+                  sky.width == 64 && sky.height == 48,
+                  "a picture the framework reads for the engine is offered, and imported at its size");
+            VideoFXFrame shown, filmed;
+            VideoFXExportSettings s;
+            s.container = VideoFXContainer::MKV;
+            s.videoCodec = VideoFXVideoCodec::MPEG4;
+            s.width = 64; s.height = 48; s.frameRate = 10.0;
+            const std::string film = TempPath("media/sky.mkv");
+            CHECK(VideoFX_ExtractFrame(fits, 0.0, shown) == VideoFXResult::Ok && shown.width == 64 &&
+                  std::abs(shown.pixels[0] - 200) < 3 && shown.pixels[3] == 255,
+                  "... its pixels are the framework's: grey 200, opaque");
+            CHECK(VideoFX_Export({VideoFXSegment::FromImage(fits, 0.5)}, film, s) == VideoFXResult::Ok &&
+                  VideoFX_ExtractFrame(film, 0.2, filmed) == VideoFXResult::Ok &&
+                  std::abs(filmed.pixels[(24 * 64 + 32) * 4] - 200) < 16,
+                  "... and a film of it shows them");
+        } else {
+            std::printf("  SKIP  this build's image reader has no FITS\n");
+        }
+        CHECK(Document::KindOfPath("a/holiday.HEIC") == MediaKind::Image && Document::KindOfPath("x.jxl") == MediaKind::Image &&
+              Document::KindOfPath("x.opus") == MediaKind::Audio && Document::KindOfPath("x.m2ts") == MediaKind::Unknown &&
+              Document::KindOfPath("notes.txt") == MediaKind::Unknown,
+              "what a file is goes by its type, readable here or not: a HEIC is a photo, an Opus file sound");
     }
 
     fs::remove_all(PathFromUtf8(TempPath("")), ec);

@@ -3038,6 +3038,7 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
     add_executable(UltraVideoDocumentTest
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraVideoDocumentTest.cpp
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoDocument.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoFormats.cpp
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoMapping.cpp
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoHistory.cpp
         ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoProxies.cpp
@@ -3047,6 +3048,7 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
         ${ULTRACANVAS_INCLUDE_DIR}
     )
     target_link_libraries(UltraVideoDocumentTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_compile_definitions(UltraVideoDocumentTest PRIVATE UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
     target_compile_features(UltraVideoDocumentTest PRIVATE cxx_std_20)
     set_target_properties(UltraVideoDocumentTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -5454,6 +5456,28 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FileLoaderDrawingSaveTest")
 else()
     message(STATUS "  FileLoaderDrawingSaveTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILELOADER TYPE LISTS TEST =====
+# The format inventory as an Open or Save dialog's file types (AddLoadTypes,
+# AddSaveTypes), a registered codec joining them, and the text document
+# types LoadTextDocument reads and SaveTextDocument writes. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FileLoaderTypeListsTest...")
+    add_executable(FileLoaderTypeListsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FileLoaderTypeListsTest.cpp
+    )
+    target_include_directories(FileLoaderTypeListsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FileLoaderTypeListsTest PRIVATE cxx_std_20)
+    target_link_libraries(FileLoaderTypeListsTest PRIVATE UltraCanvas)
+    set_target_properties(FileLoaderTypeListsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FileLoaderTypeListsTest COMMAND FileLoaderTypeListsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FileLoaderTypeListsTest")
+else()
+    message(STATUS "  FileLoaderTypeListsTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== TAB PILL STYLE SCREENSHOT TEST =====

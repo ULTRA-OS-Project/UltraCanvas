@@ -1,9 +1,11 @@
 // Apps/UltraVideo/UltraVideoDialogs.cpp
 // The export dialog and the unsaved-changes question (UltraVideoDialogs.h).
+// Version: 0.2.0 - Browse offers the presets' types under FileLoader's names, and a type picked there picks its preset
 // Version: 0.1.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 #include "UltraVideoDialogs.h"
+#include "UltraVideoFormats.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasButton.h"
@@ -16,6 +18,8 @@
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <memory>
 #include <vector>
@@ -107,17 +111,38 @@ void ShowExportDialog(UltraCanvasWindow* parent, const Document& doc, const Pale
     pathRow->AddChild(path);
     auto browse = MakeTextButton("uv.export.browse", "Browse\xE2\x80\xA6", p, 84);
     UltraCanvasTextInput* pathField = path.get();
-    browse->SetOnClick([state, pathField, presets, parent]() {
+    UltraCanvasDropdown* presetBox = preset.get();
+    // The presets' file types, the chosen one's first, under FileLoader's
+    // names; a type picked here picks the preset that writes it, so the
+    // name and what is written in it always agree
+    browse->SetOnClick([state, pathField, presets, presetBox, parent]() {
         FileDialogOptions opts;
         opts.SetTitle("Export to").SetDefaultFileName(PathToUtf8(PathFromUtf8(state->outputPath).filename()))
             .SetConfirmOverwrite(true).SetParentWindow(parent);
         const fs::path folder = PathFromUtf8(state->outputPath).parent_path();
         if (!folder.empty()) opts.SetInitialDirectory(PathToUtf8(folder));
-        opts.AddFilter("Video", std::vector<std::string>{"mp4", "mov", "mkv", "webm", "gif", "mp3", "wav"});
-        UltraCanvasFileLoader::SaveFileDialog(opts, [state, pathField](DialogResult result, const std::string& chosen) {
+        const int current = std::max(0, presetBox->GetSelectedIndex());
+        std::vector<std::string> offered;
+        auto offer = [&opts, &offered](const char* extension) {
+            const std::string ext = std::string(extension).substr(1);
+            if (std::find(offered.begin(), offered.end(), ext) != offered.end()) return;
+            offered.push_back(ext);
+            opts.AddFilter(FormatName(ext), ext);
+        };
+        if (static_cast<size_t>(current) < presets->size()) offer((*presets)[static_cast<size_t>(current)].extension);
+        for (const Preset& pr : *presets) offer(pr.extension);
+        UltraCanvasFileLoader::SaveFileDialog(opts, [state, pathField, presets, presetBox](DialogResult result,
+                                                                                            const std::string& chosen) {
             if (result != DialogResult::OK || chosen.empty()) return;
             state->outputPath = chosen;
             pathField->SetText(chosen);
+            std::string ext = PathToUtf8(PathFromUtf8(chosen).extension());
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            const int current = presetBox->GetSelectedIndex();
+            if (current >= 0 && static_cast<size_t>(current) < presets->size() && ext == (*presets)[static_cast<size_t>(current)].extension)
+                return;
+            for (size_t i = 0; i < presets->size(); ++i)
+                if (ext == (*presets)[i].extension) { presetBox->SetSelectedIndex(static_cast<int>(i)); return; }
         });
     });
     pathRow->AddChild(browse);

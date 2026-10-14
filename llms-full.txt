@@ -1477,6 +1477,15 @@ which has no pixel size and is drawn sharp at any) comes back through the
 Save image as (UltraViewer) offers it and draws an SVG again at the size
 chosen.
 
+A dialog's file types come from the format inventory, never an application's
+own list: `AddLoadTypes(opts, label, {categories})` (one Open filter of every
+type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
+(one Save filter per type it writes, the proposed name's type first),
+`AddTextDocumentLoadTypes` / `AddTextDocumentSaveTypes` with
+`SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
+codec an application brings joins them through `RegisterMediaCodec`, as
+UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
+
 ### **4. Plug-ins for File Types**
 
 Per-format plug-ins under `UltraCanvas/Plugins/` (Charts, Diagrams, Text,
@@ -2364,12 +2373,16 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXSlideshowOptions::keepInView` / `findKeepInView`),
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
   `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
-  (`VideoFXExportSettings::keyframeInterval`)
+  (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
+  `VideoFXPictureReader`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
   `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
-  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`
+  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`,
+  `VideoFX_GetFileFormats` (the films, sound and pictures the linked FFmpeg
+  reads, and the ones an export writes), `VideoFX_SetPictureReader` (picture
+  types the host application reads for the engine)
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
@@ -48094,6 +48107,10 @@ bool ExportToImage(const std::string& filename,
                    QRImageFormat format,
                    int moduleSize = 10,
                    std::string* errorMessage = nullptr);
+// The type the name ends in: any picture type FileLoader writes (CanSaveImage)
+bool ExportToImage(const std::string& filename,
+                   int moduleSize = 10,
+                   std::string* errorMessage = nullptr);
 ```
 
 ### Free Functions — `QRCodeUtils`
@@ -48283,7 +48300,7 @@ qr->SetContent(CreateGeoContent(37.7749, -122.4194));
 
 ### 8. Exporting to Image and SVG
 
-`ExportToImage` writes a raster file in the chosen format; `ExportToSVG` writes a vector file. `moduleSize` is the pixel size of one module.
+`ExportToImage` writes a raster file; `ExportToSVG` writes a vector file. `moduleSize` is the pixel size of one module. Given a format, `ExportToImage` adds its extension to the name when the name lacks it. Given none, it writes the type the name ends in: any picture type FileLoader writes (`UltraCanvasFileLoader::CanSaveImage`), ICO, TIFF and GIF included. An application's Save dialog offers those types with `AddImageSaveTypes`:
 
 ```cpp
 std::string err;
@@ -48292,6 +48309,18 @@ if (!qr->ExportToImage("ultracanvas_url.png", QRImageFormat::PNG, 12, &err)) {
 }
 
 qr->ExportToSVG("ultracanvas_url.svg", 10);
+
+// Every picture type this build writes, and SVG
+FileDialogOptions opts;
+opts.SetDefaultFileName("ultracanvas_url.png");
+UltraCanvasFileLoader::AddImageSaveTypes(opts);
+opts.AddFilter("SVG image", "svg");
+UltraCanvasFileLoader::SaveFileDialog(opts, [qr](DialogResult result, const std::string& path) {
+    std::string error;
+    if (result != DialogResult::OK) return;
+    const bool svg = path.size() > 4 && path.compare(path.size() - 4, 4, ".svg") == 0;
+    if (!(svg ? qr->ExportToSVG(path, 10) : qr->ExportToImage(path, 12, &error))) std::cerr << error << "\n";
+});
 ```
 
 ### 9. Generating Without a Widget
@@ -50653,7 +50682,6 @@ the result over.
 
 ```cpp
 #include "UltraCanvasFileLoader.h"
-#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
 std::string error;
 if (auto document = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
@@ -50662,8 +50690,10 @@ if (auto document = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
     ShowError(error);
 }
 
-// Saving: the element hands back the same document, edits included.
-UCWordDocumentIO::Save(savePath, *editor->GetDocument(), error);
+// Saving: the element hands back the same document, edits included. The
+// Save dialog's types are AddTextDocumentSaveTypes (ODT, DOCX), its Open
+// dialog's AddTextDocumentLoadTypes.
+UltraCanvasFileLoader::SaveTextDocument(*editor->GetDocument(), savePath, error);
 ```
 
 Because the element shares ownership of the document (`std::shared_ptr`), an
@@ -50724,8 +50754,9 @@ toolbar, `IncreaseQuoteLevel()` / `DecreaseQuoteLevel()` move every block the
 selection touches (or the caret's) one level in or out, between 0 and 8.
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
-the reader produced, hands it to the element, and hands the same object back to
-`UCWordDocumentIO::Save` — no conversion in either direction. See
+`UltraCanvasFileLoader::LoadTextDocument` produced, hands it to the element, and
+hands the same object back to `SaveTextDocument` — no conversion in either
+direction. See
 `Apps/Texter/UltraCanvasTextEditor.cpp` (`LoadWordIntoDocument`,
 `SaveRichDocumentAs`) for a worked integration, including how the element is
 swapped into an existing tab layout and how a shared formatting toolbar drives
@@ -71507,7 +71538,7 @@ UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_p
     if (r.IsSuccess()) Play(audio);
 });
 
-// Parse a word-processing document into a UCRichDocument (ODT/DOCX/Markdown/TXT)
+// Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT)
 UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
     if (r.IsSuccess()) ShowDocument(doc);
 });
@@ -71599,8 +71630,8 @@ UltraCanvasFileLoader::SaveFileDialog(opts, [drawing](DialogResult r, const std:
 the model is in points), and `CanSaveImage(extensionOrPath)` says whether
 this build writes a bitmap type. A picture's Save offers
 `AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
-and its Open `GetSupportedLoadExtensions(MediaFormatCategory::Bitmap)`, as
-UltraPaint and the media viewer do. Windows icons and QOI are read and written
+and its Open `AddLoadTypes(opts, "Pictures", {MediaFormatCategory::Bitmap})`
+(see *A Dialog's File Types* below), as UltraPaint and the media viewer do. Windows icons and QOI are read and written
 by the framework's own libvips plugins, and an AVIF or HEIC type is offered
 only where libheif can encode it.
 
@@ -71646,6 +71677,49 @@ auto imgSave = UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCate
 // Alias-aware lookup: ".JPEG", "jpg" and "jpeg" all resolve to the same entry
 auto info = UltraCanvasSupportedFormats::FindByExtension(".heic");
 ```
+
+### A Dialog's File Types
+An application's Open and Save dialogs offer the inventory, never a list of
+their own (the rule in `AGENTS.md`), so every type this build reads or
+writes is on offer and nothing it cannot:
+
+<!-- doc-check: std::shared_ptr<UCRichDocument> letter; void ShowError(const std::string& message); -->
+```cpp
+// Open: one filter holding every type this build reads in the categories
+FileDialogOptions open;
+open.SetTitle("Import media");
+UltraCanvasFileLoader::AddLoadTypes(open, "Video, pictures and sound",
+    {MediaFormatCategory::Video, MediaFormatCategory::Bitmap, MediaFormatCategory::Audio});
+open.AddFilter("All files", "*");
+
+// Save: one filter per type it writes, under its name - the type the
+// proposed name ends in first, since the dialog starts on the first
+FileDialogOptions save;
+save.SetDefaultFileName("table.ods");
+UltraCanvasFileLoader::AddSaveTypes(save, MediaFormatCategory::Spreadsheet);
+
+// A text document: what LoadTextDocument reads (ODT, DOCX, DOC, LaTeX,
+// Markdown, text - not the PDFs and e-books the Document category also
+// holds) and what SaveTextDocument writes (ODT, DOCX)
+FileDialogOptions saveLetter;
+saveLetter.SetDefaultFileName("letter.odt");
+UltraCanvasFileLoader::AddTextDocumentSaveTypes(saveLetter);
+UltraCanvasFileLoader::SaveFileDialog(saveLetter, [document = letter](DialogResult r, const std::string& path) {
+    std::string error;
+    if (r == DialogResult::OK && !UltraCanvasFileLoader::SaveTextDocument(*document, path, error))
+        ShowError(error);
+});
+```
+
+`AddTextDocumentLoadTypes(opts)` is the Open side: one "Documents" filter,
+then each type under its name. A codec an application brings itself joins
+the lists once it is registered: UltraVideo registers what its FFmpeg engine
+reads and writes (`VideoFX_GetFileFormats`) with `RegisterMediaCodec`, and
+FileLoader's Video and Audio lists then hold MKV, WebM and AVI on a macOS
+whose platform backend reads only MP4, MOV and 3GP. The other way round, it
+hands its engine the framework's image reader (`UCImageRaster`, through
+`VideoFX_SetPictureReader`) for the picture types FileLoader reads and FFmpeg
+does not open whole, so a phone's HEIC comes in as the whole photo.
 
 ### Extensible Plugin Architecture
 Add support for proprietary or specialized graphics formats without modifying
@@ -80276,6 +80350,54 @@ without sound fails with `NoMediaStreams`; a range beginning after the sound
 ends with `InvalidArgument`. `videofx waveform <file> [blocksPerSecond] [start [end]]`
 prints the same, one block a line.
 
+**Which files.** `VideoFX_GetFileFormats()` lists the files this build reads
+and writes, asking the FFmpeg it is linked against rather than a list kept
+by hand:
+
+- Films and sound (`VideoFXFileKind::Video` / `Audio`) are the containers it
+  knows by name: MP4, MOV, MKV, WebM, AVI, MPEG, transport streams, WMV, FLV,
+  Ogg, 3GP, MP3, M4A, AAC, WAV, FLAC, Opus, WMA, AIFF and others. Each is
+  `canRead` when FFmpeg has its demuxer, and `canWrite` when an export writes
+  it: the muxer and the container's usual encoders are there. `container`
+  then names the `VideoFXContainer` an export to it uses.
+- Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
+  FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its demuxer
+  opens it, but a phone's HEIC is a grid of tiles in a stream group, which
+  VideoFX does not put together. A host application's picture reader does
+  (below). GIF is also written, as the animation.
+
+The descriptions match the UltraCanvas codec registry's, so an application
+that brings VideoFX hands the films and sound to `RegisterMediaCodec`, and
+FileLoader's lists, and the dialogs built from them, then offer exactly what
+the engine handles. UltraVideo does this (`UltraVideoFormats.cpp`). The
+module built without FFmpeg returns an empty list.
+
+```cpp
+for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
+    if (f.kind == VideoFXFileKind::Video && f.canWrite)
+        std::printf("%s (%s) - an export writes it\n", f.description.c_str(), f.extension.c_str());
+```
+
+**Pictures the application reads.** A host with an image library of its own
+hands VideoFX a `VideoFXPictureReader`: the picture types it takes over, a
+cheap `size` (the upright size, from the header) and `decode` (the upright
+picture as RGBA). `VideoFX_Probe`, `VideoFX_ExtractFrame` and
+`VideoFX_ExtractThumbnails` read files of those types through it instead of
+FFmpeg, and so does everything built on them: image segments, picture
+overlays, slideshows. `VideoFX_GetFileFormats` then reports the types read.
+Both calls come from the engine's worker threads. UltraVideo gives VideoFX
+the UltraCanvas image reader (libvips, libheif) this way, for every picture
+type FileLoader reads and FFmpeg does not: a phone's HEIC comes in whole and
+upright, and so does a camera's raw file.
+
+```cpp
+VideoFXPictureReader reader;
+reader.extensions = {"heic", "heif"};
+reader.size = [](const std::string& path, int& w, int& h) { return MyImageSize(path, w, h); };
+reader.decode = [](const std::string& path, VideoFXFrame& frame) { return MyImageRgba(path, frame); };
+VideoFX_SetPictureReader(reader);             // a reader with no extensions takes it away
+```
+
 ---
 
 ## The timeline: segments
@@ -85106,8 +85228,13 @@ button in the app bar switches to the light one.
 
 Import videos, photos and songs with the import button, `Ctrl+I`, by
 dropping them on the window, or by naming them on the command line (a
-folder imports its files). Every file is probed by the engine and shows a
-duration badge, *photo*, or *unreadable* with the reason in its tooltip.
+folder imports its files). The dialogs offer FileLoader's types that the
+engine reads: at start-up UltraVideo tells the framework's codec registry
+which films and sound VideoFX's FFmpeg reads and writes, and gives the engine
+the framework's image reader for the pictures FFmpeg does not open whole - a
+phone's HEIC (a grid of tiles libheif puts together), a camera's raw file.
+Every file is probed by the engine and shows a duration badge, *photo*, or
+*unreadable* with the reason in its tooltip.
 Double-click a video or a photo, or press its *Add* button, to put it on
 the timeline; a song becomes the music under the whole video. Or drag a
 tile onto the timeline: on the main track it goes in at the cut nearest the
@@ -85302,7 +85429,8 @@ UltraVideo, appear on the *Voice & sound* lane.
 
 **Export** (`Ctrl+E`) asks for a preset - web MP4 at 1080p, 720p or 4K,
 WebM, an animated GIF, a ProRes master, or sound only as MP3 - the output
-file, and whether to export the whole project or the work area set with
+file (*Browse* offers the presets' types; picking one there picks its
+preset), and whether to export the whole project or the work area set with
 `I` and `O` on the timeline. The export runs in the background with a
 progress dialog and can be cancelled; a cancelled or failed export leaves
 no file. Exporting the work area keeps the part of each sound clip inside

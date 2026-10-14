@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
 // Bitmap codec comparison benchmark: file size / encode time / decode time per format
+// Version: 2.6.0 - Choose Image offers FileLoader's picture types, through its dialog
 // Version: 2.5.9
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 //
 // ================================================================================
@@ -232,7 +233,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasImage.h"
-#include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"   // for FileFilter
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasApplication.h"
@@ -1874,20 +1875,19 @@ namespace UltraCanvas {
         };
 
         // [Choose Image...] click handler — opens dialog, loads, auto-runs.
-        state->chooseBtn->SetOnClick([state, loadSourceImage, root]() {
-            std::vector<FileFilter> filters = {
-                    FileFilter("Bitmap Images",
-                               {"png","jpg","jpeg","bmp","tiff","tif","gif",
-                                "webp","avif","heif","heic","qoi","jp2"}),
-                    FileFilter("All Files", { std::string("*") })
-            };
-            std::string path = UltraCanvasNativeDialogs::OpenFile(
-                    "Choose Image for Benchmark",
-                    filters,
-                    InitialImageDir(),
-                    root->GetWindow());
-            if (path.empty()) return;   // user cancelled
-            loadSourceImage(path);
+        // Every picture type this build reads - FileLoader's list.
+        state->chooseBtn->SetOnClick([loadSourceImage, root]() {
+            FileDialogOptions opts;
+            opts.SetTitle("Choose Image for Benchmark")
+                .SetInitialDirectory(InitialImageDir())
+                .SetParentWindow(root->GetWindow());
+            UltraCanvasFileLoader::AddLoadTypes(opts, "Bitmap Images", {MediaFormatCategory::Bitmap});
+            opts.AddFilter("All Files", "*");
+            UltraCanvasFileLoader::OpenFileDialog(opts,
+                [loadSourceImage](DialogResult result, const std::string& path) {
+                    if (result != DialogResult::OK || path.empty()) return;   // user cancelled
+                    loadSourceImage(path);
+                });
         });
 
         // [x] Include BMP toggle handler — rebuild active codec set, sync the

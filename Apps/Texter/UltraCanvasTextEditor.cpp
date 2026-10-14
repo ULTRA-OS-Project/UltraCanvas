@@ -1,12 +1,15 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.4.0 - Word documents are read and written through FileLoader
+//                  (LoadTextDocument, SaveTextDocument), and the dialogs offer its
+//                  text document and picture types
 // Version: 2.3.6 - the autosave folder comes from the framework's data folder rule
 //                  (UltraCanvasDataFolder), every variable read as UTF-8
 // Version: 2.3.5 - the Recent files menu opens anchored to its toolbar button
 // Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
 //                  and shortcut colours
 // Version: 2.3.3 - The profile folder and comment author read as UTF-8
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -555,7 +558,7 @@ namespace {
                                             }
                                             FileDialogOptions opts;
                                             opts.title = "Open File(s)";
-                                            opts.filters = config.fileFilters;
+                                            opts.filters = DialogFileFilters(false);
                                             opts.initialDirectory = folderCopy;
                                             opts.parentWindow = GetWindow();
 
@@ -2389,9 +2392,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             // The element shares ownership of the document, so the tab can
             // hand the very same blocks back to the writer on save.
-            auto document = std::make_shared<UCRichDocument>();
-            std::string loadError;
-            if (!UCWordDocumentIO::Load(filePath, *document, loadError)) {
+            // Read through FileLoader - only a real word-processing file,
+            // so a damaged one still falls back to the plain view below
+            std::string loadError = "not a word-processing document";
+            std::shared_ptr<UCRichDocument> document;
+            if (DetectWordDocumentFormat(filePath) != WordDocumentFormat::Unknown)
+                document = UltraCanvasFileLoader::LoadTextDocument(filePath, loadError);
+            if (!document) {
                 if (DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc) {
                     UltraCanvasDialogManager::ShowError(loadError, "Unsupported Format",
                                                         nullptr, this);
@@ -2588,7 +2595,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     PathToUtf8(PathFromUtf8(filePath).stem());
             }
             std::string saveError;
-            if (!UCWordDocumentIO::Save(filePath, *document, saveError)) {
+            if (!UltraCanvasFileLoader::SaveTextDocument(*document, filePath, saveError)) {
                 debugOutput << "Failed to save document: " << saveError << std::endl;
                 UltraCanvasDialogManager::ShowError(saveError, "Save Failed",
                                                     nullptr, this);
@@ -2719,7 +2726,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     UCRichDocument::FromMarkdown(doc->textArea->GetText(), baseDir);
                 rich.metadata.title = PathToUtf8(PathFromUtf8(filePath).stem());
                 std::string saveError;
-                if (!UCWordDocumentIO::Save(filePath, rich, saveError)) {
+                if (!UltraCanvasFileLoader::SaveTextDocument(rich, filePath, saveError)) {
                     debugOutput << "Failed to save document: " << saveError << std::endl;
                     UltraCanvasDialogManager::ShowError(saveError, "Save Failed",
                                                         nullptr, this);
@@ -3202,11 +3209,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     opts.title = "Insert Image";
                     opts.initialDirectory = lastOpenedDirectory;
                     opts.parentWindow = GetWindow();
-                    opts.filters = {
-                        FileFilter("Images", std::vector<std::string>{
-                            "png", "jpg", "jpeg", "gif", "bmp", "svg"}),
-                        FileFilter("All Files", "*"),
-                    };
+                    // Every picture type this build reads (FileLoader's
+                    // list), and SVG, which the image reader draws too
+                    UltraCanvasFileLoader::AddLoadTypes(opts, "Images", {MediaFormatCategory::Bitmap});
+                    if (!opts.filters.empty()) opts.filters.back().extensions.push_back("svg");
+                    opts.AddFilter("All Files", "*");
                     UltraCanvasFileLoader::OpenFileDialog(
                         opts,
                         [this](DialogResult result, const std::string& path) {
@@ -3564,10 +3571,29 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         CreateNewDocument();
     }
 
+    std::vector<FileFilter> UltraCanvasTextEditor::DialogFileFilters(bool forSave) const {
+        std::vector<FileFilter> out;
+        for (const FileFilter& filter : config.fileFilters) {
+            if (filter.description != "Word Processing") {
+                out.push_back(filter);
+                continue;
+            }
+            FileDialogOptions types;
+            if (forSave) {
+                UltraCanvasFileLoader::AddTextDocumentSaveTypes(types);     // ODT, DOCX - one each
+                out.insert(out.end(), types.filters.begin(), types.filters.end());
+            } else {
+                UltraCanvasFileLoader::AddTextDocumentLoadTypes(types);     // "Documents": all it reads
+                if (!types.filters.empty()) out.push_back(types.filters.front());
+            }
+        }
+        return out;
+    }
+
     void UltraCanvasTextEditor::OnFileOpen() {
         FileDialogOptions opts;
         opts.title = "Open File(s)";
-        opts.filters = config.fileFilters;
+        opts.filters = DialogFileFilters(false);
         opts.initialDirectory = lastOpenedDirectory;
         opts.parentWindow = GetWindow();
 
@@ -3677,7 +3703,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         FileDialogOptions opts;
         opts.title = "Save File As";
-        opts.filters = config.fileFilters;
+        opts.filters = DialogFileFilters(true);
         opts.initialDirectory = lastOpenedDirectory;
         opts.defaultFileName = defaultName;
         opts.parentWindow = GetWindow();
@@ -4849,7 +4875,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                         if (doc->filePath.empty()) {
                             FileDialogOptions opts;
                             opts.title = "Save File";
-                            opts.filters = config.fileFilters;
+                            opts.filters = DialogFileFilters(true);
                             opts.defaultFileName = doc->fileName;
                             opts.parentWindow = GetWindow();
 
@@ -4953,7 +4979,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
                             FileDialogOptions opts;
                             opts.title = "Save File";
-                            opts.filters = config.fileFilters;
+                            opts.filters = DialogFileFilters(true);
                             opts.defaultFileName = doc->fileName;
                             opts.parentWindow = GetWindow();
 
