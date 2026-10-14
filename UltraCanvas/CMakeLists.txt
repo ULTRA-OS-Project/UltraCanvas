@@ -1872,10 +1872,17 @@ if(ULTRACANVAS_HAS_LIBHEIF)
     # Only libspecific/Cairo/ImageCairo.cpp includes libheif's header, so the
     # define and the include path go on that one source: on the whole library
     # they would recompile every object of it whenever libheif comes or goes.
+    # The compiler's own directories are left out, as CMake does for a
+    # target's: Debian's libheif names /usr/include/x86_64-linux-gnu, and as
+    # an -I ahead of the system paths it breaks <cstdlib>'s #include_next.
+    set(_uc_heif_includes ${LIBHEIF_INCLUDE_DIRS})
+    if(_uc_heif_includes AND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+        list(REMOVE_ITEM _uc_heif_includes ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+    endif()
     set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
                  APPEND PROPERTY COMPILE_DEFINITIONS HAS_LIBHEIF=1)
     set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
-                 APPEND PROPERTY INCLUDE_DIRECTORIES ${LIBHEIF_INCLUDE_DIRS})
+                 APPEND PROPERTY INCLUDE_DIRECTORIES ${_uc_heif_includes})
     # PUBLIC, and its -L with it, as the vips libraries below: a static core
     # never links them itself, the application does.
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBHEIF_LIBRARIES})
