@@ -32078,6 +32078,7 @@ opts.userCss = "body { margin: 0 }";          // the reader's own sheet, after t
 opts.enableImages = true;
 opts.resourceLoader = [&](const std::string& href) { return LoadBytes(href); };   // <img src>, <link rel=stylesheet>
 opts.onLinkActivated = [&](const std::string& href) { Open(href); };
+opts.onLinkActivatedNewWindow = [&](const std::string& href) { Open(href); };   // target="_blank": a new tab
 opts.onLinkHovered = [&](const std::string& href) { status->SetText(href); };
 opts.linkTooltips = false;                    // the status line shows the address instead
 opts.selectableText = true;                   // the text selects and copies, as in a browser
@@ -32236,7 +32237,15 @@ position), scrolls to `#fragments`, builds again when its width changes or
 pictures arrive (on a later turn of the UI loop, never inside layout), and
 shows an error page when a page cannot be loaded. `mailto:` and other
 schemes go to `onExternalLink`, and a non-HTML answer to `onNonHtml`.
-`<script>` is not run, and `<noscript>` and its content are shown.
+A link that asks for another window - `target="_blank"`, a target naming a
+window, or no target under `<base target="_blank">` - goes to
+`onOpenInNewWindow` with its absolute address (a browser opens a new tab);
+`_self`, `_parent` and `_top` open in the view, and so does every link when
+`onOpenInNewWindow` is unset. The builder sorts the links: such a click
+goes to `BuildOptions::onLinkActivatedNewWindow` when that is set, else to
+`onLinkActivated` like any other. (Two links to the same address in one
+run of text, one with and one without a new-window target, both open the
+other window.) `<script>` is not run, and `<noscript>` and its content are shown.
 `Tests/HTMLPageLoaderTest.cpp` and `Tests/WebViewTest.cpp` cover both
 against a fake web. UltraWeb is the browser around it
 (`Docs/UltraWeb/UltraWeb.md`).
@@ -32246,6 +32255,7 @@ auto view = std::make_shared<UltraCanvasWebView>("web");
 view->SetServices(services);
 view->onTitleChanged = [](const std::string& title) { /* the window title */ };
 view->onExternalLink = [](const std::string& url) { /* the system's mail client */ };
+view->onOpenInNewWindow = [](const std::string& url) { /* a new tab opening url */ };
 view->Navigate("https://example.org/");
 ```
 

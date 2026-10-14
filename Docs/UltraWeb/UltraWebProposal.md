@@ -407,7 +407,8 @@ and the eBook viewer can later delegate to it.
   search URL template.
 - Tabs on `UltraCanvasTabbedContainer`, its strip above the toolbar and
   its pages in a detached content host (done in 0.7.0, with Ctrl+T,
-  Ctrl+W, Ctrl+Tab and Ctrl+L).
+  Ctrl+W, Ctrl+Tab and Ctrl+L; `target="_blank"` links open a new tab
+  since 0.8.0).
 - A status bar.
 - Keyboard: Ctrl+L, Ctrl+T, Ctrl+W, Ctrl+R / F5, Alt+Left / Alt+Right,
   Ctrl+F, and Ctrl+plus / minus / 0.
@@ -757,9 +758,9 @@ Done in UltraWeb 0.3.0 ([`UltraWeb.md`](UltraWeb.md#web-pages)):
 
 Next:
 - A history and bookmarks kept across runs, with the downloads list and
-  the open tabs; `target="_blank"` links in a new tab (downloads are done
-  since UltraWeb 0.5.0, a list of this run's since 0.6.0, both
-  2026-10-12, and tabs since 0.7.0, 2026-10-14).
+  the open tabs (downloads are done since UltraWeb 0.5.0, a list of this
+  run's since 0.6.0, both 2026-10-12, tabs since 0.7.0 and
+  `target="_blank"` links in a new tab since 0.8.0, both 2026-10-14).
 - (`@import`, inline elements' margins, padding, backgrounds and borders,
   and forms with file uploads and label clicks (§6.5) are done since
   2026-10-12.)
