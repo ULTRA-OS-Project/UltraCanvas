@@ -245,7 +245,8 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
 - **Custom cursor images** fall back to the standard cursor (CSS cannot
   reference files inside the Emscripten virtual FS).
 - **IME composition** reaches only an element that draws compositions
-  (`DrawsTextComposition()`, the rich text editor): while one has focus a
+  (`DrawsTextComposition()`: an editable text input,
+  text area or rich text editor): while one has focus a
   transparent `<textarea>` at its caret takes the keyboard and forwards its
   composition events (`UltraCanvasWASMApplication::UpdateImeTarget`). Other
   elements keep the canvas, which gets no input method.

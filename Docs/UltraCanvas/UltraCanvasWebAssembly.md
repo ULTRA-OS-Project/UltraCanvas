@@ -224,8 +224,8 @@ sample applications.
 
 - Keyboard: typed text arrives on KeyDown like the desktop backends. Input
   method composition (CJK input methods, dead keys) reaches only an element
-  that draws compositions itself (`DrawsTextComposition()`, e.g.
-  `UltraCanvasRichTextEdit`): while one has focus, a transparent `<textarea>`
+  that draws compositions itself (`DrawsTextComposition()`: an editable
+  text input, text area or rich text editor): while one has focus, a transparent `<textarea>`
   at its caret takes the keyboard, its `compositionupdate` events arrive as
   `TextComposition` events and `compositionend` commits the text as a KeyDown
   with `text`; keys the input method is processing (`keyCode` 229) are not

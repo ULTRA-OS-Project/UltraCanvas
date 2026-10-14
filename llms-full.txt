@@ -51234,7 +51234,12 @@ composition as `UCEventType::TextComposition` (`event.text`,
 `event.compositionCursor`) to an element whose `DrawsTextComposition()` is
 true: on X11 through an on-the-spot input context used while such an element
 has focus (other widgets keep the input method's own window), on Windows
-through the IMM composition string. `GetCompositionText()` reads it.
+through the IMM composition string, on macOS through the window's
+`NSTextInputClient` marked text (keys go through the input method only while
+such an element has focus), and in the browser (WebAssembly) through a
+transparent `<textarea>` that takes the keyboard while such an element has
+focus and whose `compositionupdate` / `compositionend` events are forwarded.
+`GetCompositionText()` reads it.
 
 ## Right-to-left text
 
@@ -51617,7 +51622,8 @@ Honest limits of this first version — none of them silently misbehave:
   and NSAccessibility bridges compile but have not yet been run against
   Narrator, NVDA, JAWS or VoiceOver; the AT-SPI bridge is tested end to end.
 - **The input method's candidate window** is placed by the input method, not
-  next to the caret.
+  next to the caret, on X11 and Windows. On macOS and in the browser it opens
+  at the caret (where the composition starts).
 
 ## Related
 
@@ -68677,8 +68683,17 @@ sample applications.
 
 ## Known limitations
 
-- Keyboard: no IME composition events (dead keys and CJK input methods are not
-  handled); typed text arrives on KeyDown like the desktop backends.
+- Keyboard: typed text arrives on KeyDown like the desktop backends. Input
+  method composition (CJK input methods, dead keys) reaches only an element
+  that draws compositions itself (`DrawsTextComposition()`: an editable
+  text input, text area or rich text editor): while one has focus, a transparent `<textarea>`
+  at its caret takes the keyboard, its `compositionupdate` events arrive as
+  `TextComposition` events and `compositionend` commits the text as a KeyDown
+  with `text`; keys the input method is processing (`keyCode` 229) are not
+  delivered as key presses as well. Any other element keeps the canvas, where
+  the browser offers no input method. Mobile soft keyboards beyond plain text
+  and compositions (deleting through the input method, autocorrect
+  replacements) are not handled.
 - Mouse: drags that leave the canvas stop receiving moves until the pointer
   re-enters (no pointer capture yet).
 - Touch is synthesized into left-button mouse events.

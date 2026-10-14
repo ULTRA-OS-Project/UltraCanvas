@@ -1,6 +1,6 @@
 - **Input method composition on macOS and in the browser.** An element that
-  draws compositions itself (`DrawsTextComposition()`, today the rich text
-  editor) now gets the pre-edit text as `TextComposition` events on these two
+  draws compositions itself (`DrawsTextComposition()`: an editable text
+  input, text area or rich text editor) now gets the pre-edit text as `TextComposition` events on these two
   platforms too, as it already did on X11, Windows and Android, with the
   committed text arriving as a KeyDown with `text`.
   - macOS: the window's content view is an `NSTextInputClient`. While such an
