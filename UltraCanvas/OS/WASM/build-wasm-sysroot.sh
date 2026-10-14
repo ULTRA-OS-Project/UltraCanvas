@@ -44,9 +44,10 @@ export PKG_CONFIG="pkg-config --static"
 export CPATH="$SYSROOT/include"
 WASM_THREADS=${WASM_THREADS:-1}
 if [ "$WASM_THREADS" = "0" ]; then
-  # The define, not __EMSCRIPTEN_PTHREADS__: glib's .pc carries -pthread in
-  # its Cflags, so every consumer of glib compiles with that macro set,
-  # threads or not. See patches/pango-1.52-wasm-no-threads.patch.
+  # The switch pango's no-threads patch reads
+  # (patches/pango-1.52-wasm-no-threads.patch). An explicit define rather
+  # than __EMSCRIPTEN_PTHREADS__ alone: the macro is reliable only because
+  # scrub_pthread below keeps -pthread out of the installed .pc files.
   THREAD_FLAG="-DPANGO_FC_NO_THREAD=1"   # compiler flag
   MESON_THREAD="'-DPANGO_FC_NO_THREAD=1', "  # the same inside the meson cross file's lists
   LINK_THREAD_FLAG=""
@@ -106,7 +107,19 @@ needs_exe_wrapper = true
 EOF
 MESON_ARGS="--cross-file=$WORK/emscripten-cross.ini --prefix=$SYSROOT --default-library=static --buildtype=release"
 
-stage() { echo -e "\n===== $1 ====="; }
+# A sysroot without -pthread: glib's and libvips' meson put -pthread into
+# their .pc files' Cflags and Libs (meson's threads dependency), and every
+# consumer then compiled with it, __EMSCRIPTEN_PTHREADS__ set, in a program
+# that has no threads - which is how pango's no-threads guard first missed.
+# Scrubbed from every installed .pc at the start of each stage, before the
+# next library's meson reads them, and once more at the end for the
+# application build.
+scrub_pthread() {
+  [ "$WASM_THREADS" = "0" ] || return 0
+  find "$SYSROOT/lib/pkgconfig" "$SYSROOT/share/pkgconfig" -name '*.pc' \
+    -exec sed -i -e 's/ -pthread$//' -e 's/ -pthread / /g' {} + 2>/dev/null || true
+}
+stage() { scrub_pthread; echo -e "\n===== $1 ====="; }
 
 # Fetch an Ubuntu 24.04 source package when the upstream (freedesktop/GNOME)
 # release host is unreachable. Requires deb-src entries in apt sources.

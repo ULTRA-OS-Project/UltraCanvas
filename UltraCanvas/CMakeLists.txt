@@ -97,7 +97,8 @@ option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires bac
 # be opted out for platforms where its dependency graph is impractical
 # (Android, WASM). Without it, raster image loading/saving and PixelFX compile
 # to their HAS_LIBVIPS-guarded fallbacks: PNG is read through cairo's own
-# reader, SVG through the Vector plugin, QOI is written but not read.
+# reader, JPEG / BMP / GIF through the bundled stb_image, SVG through the
+# Vector plugin, QOI is written but not read.
 option(ULTRACANVAS_ENABLE_VIPS "Enable libvips-backed raster image processing" ON)
 # WebAssembly only. ON builds with -pthread (Web Workers; the page then needs
 # the cross-origin isolation headers for SharedArrayBuffer). OFF builds a
@@ -223,9 +224,10 @@ if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     # (g_system_thread_new): error 'Not supported' during 'pthread_create'"
     # at the first icon. wasm-vips itself requires threads. So a
     # single-threaded program is a libvips-free one: PNG through cairo's
-    # reader, SVG through the Vector plugin, QOI written but not read.
+    # reader, JPEG / BMP / GIF through stb_image, SVG through the Vector
+    # plugin, QOI written but not read.
     if(NOT ULTRACANVAS_WASM_THREADS AND ULTRACANVAS_ENABLE_VIPS)
-        message(STATUS "WebAssembly: single-threaded build - libvips needs worker threads, ULTRACANVAS_ENABLE_VIPS is OFF (PNG through cairo's reader, SVG through the Vector plugin)")
+        message(STATUS "WebAssembly: single-threaded build - libvips needs worker threads, ULTRACANVAS_ENABLE_VIPS is OFF (PNG through cairo's reader, JPEG / BMP / GIF through stb_image, SVG through the Vector plugin)")
         set(ULTRACANVAS_ENABLE_VIPS OFF CACHE BOOL "Enable libvips-backed raster image processing" FORCE)
     endif()
 endif()
@@ -1406,6 +1408,7 @@ endif()
 
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/StbRasterDecode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UCTextLayout.cpp
         # UltraCanvasPdfSurface: PDF output through the render context.
