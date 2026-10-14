@@ -14,8 +14,8 @@
 //     and refuses a type it does not write, with a reason;
 //   - HEIC and AVIF are offered where they decode: libvips' HEIF loader takes
 //     both wherever libheif is, but libheif decodes them only with its HEVC /
-//     AV1 plug-ins (media/images/test_small.heic and .avif, against
-//     test_small.png, decide).
+//     AV1 plug-ins (media/images/test_small.heic and .avif decide: the
+//     size of test_small.png, and not black).
 //
 // Headless.
 // Version: 1.1.0 - HEIC and AVIF offered where they decode
@@ -30,7 +30,6 @@
 #include "UltraCanvasRichDocument.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -64,9 +63,10 @@ const FileFilter* FilterFor(const FileDialogOptions& opts, const std::string& ex
     return nullptr;
 }
 
-// A picture's mean level (red, green and blue, 0..255) and size, or -1 when
-// it does not load. A load alone proves nothing: libvips hands back a HEIC
-// whose codec libheif lacks as a black picture of the right size.
+// A picture's mean level (red, green and blue as stored, premultiplied,
+// 0..255) and size, or -1 when it does not load. A load alone proves
+// nothing: libvips hands back a HEIC whose codec libheif lacks as a black
+// picture of the right size.
 double MeanLevel(const std::string& path, int& width, int& height) {
     auto image = UCImageRaster::Load(path, true);
     auto pixmap = image && image->IsValid() ? image->CreatePixmap(image->GetWidth(), image->GetHeight()) : nullptr;
@@ -190,16 +190,20 @@ int main() {
     // A HEIC this build cannot decode, offered in an Open dialog, is a file
     // that opens black. The libvips loader's file endings say yes wherever
     // libheif is; the decode says whether its codec is. test_small.png is
-    // the same picture, the reference.
+    // the same picture, the reference for its size. Levels are not compared:
+    // the PNG and the AVIF carry transparency (premultiplied, so darker),
+    // the HEIC none; a picture that did not decode is black.
     const std::vector<std::string> pictures = UltraCanvasFileLoader::GetSupportedLoadExtensions(MediaFormatCategory::Bitmap);
     int refWidth = 0, refHeight = 0;
     const double reference = MeanLevel(std::string(UC_MEDIA_DIR) + "/images/test_small.png", refWidth, refHeight);
-    Check(reference > 20.0, "the reference picture (test_small.png) loads");
+    Check(reference > 8.0, "the reference picture (test_small.png) loads, and is not black");
     for (const std::string type : {"heic", "avif"}) {
         int width = 0, height = 0;
         const double level = MeanLevel(std::string(UC_MEDIA_DIR) + "/images/test_small." + type, width, height);
-        const bool decodes = level >= 0.0 && width == refWidth && height == refHeight && std::abs(level - reference) < 16.0;
+        const bool decodes = level > 8.0 && width == refWidth && height == refHeight;
         const bool offered = std::find(pictures.begin(), pictures.end(), type) != pictures.end();
+        std::cout << "  " << type << ": " << width << " x " << height << ", level " << level << " (the PNG: " << refWidth
+                  << " x " << refHeight << ", level " << reference << ")\n";
 #ifdef UC_TEST_HAS_LIBHEIF
         Check(offered == decodes, type + (decodes ? ": decodes here and is offered" : ": does not decode here and is not offered"));
 #else

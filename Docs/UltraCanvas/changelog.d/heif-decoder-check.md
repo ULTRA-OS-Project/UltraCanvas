@@ -16,5 +16,6 @@
     (`HAS_LIBHEIF`). Without them, the inventory goes by the loader's file
     endings, as before.
   - `FileLoaderTypeListsTest` decodes `media/images/test_small.heic` and
-    `.avif`, compares their pixels with `test_small.png` (the same picture),
-    and checks that each type is offered exactly when its sample decodes.
+    `.avif`. A sample counts as decoded when it has `test_small.png`'s size
+    and is not black, and each type must be offered exactly when its sample
+    decodes.
