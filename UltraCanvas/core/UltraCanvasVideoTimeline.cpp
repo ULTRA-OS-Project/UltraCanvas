@@ -4,8 +4,9 @@
 // drag feedback, readouts), hit testing and the interactions that turn into
 // reported changes. The model operations it previews with live in
 // UltraCanvasVideoTimelineModel.cpp.
+// Version: 1.1.0 - the drop-target clip's ring
 // Version: 1.0.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraCanvasVideoTimeline.h"
 #include "UltraCanvasEvent.h"
@@ -284,6 +285,12 @@ std::vector<std::string> UltraCanvasVideoTimeline::GetSelection() const {
 
 void UltraCanvasVideoTimeline::SetSelectedTransition(const std::string& clipId) {
     selectedTransition = clipId;
+    RequestRedraw();
+}
+
+void UltraCanvasVideoTimeline::SetDropTargetClip(const std::string& clipId) {
+    if (dropTargetClip == clipId) return;
+    dropTargetClip = clipId;
     RequestRedraw();
 }
 
@@ -912,6 +919,13 @@ void UltraCanvasVideoTimeline::DrawClip(IRenderContext* ctx, const TimelineTrack
         ctx->SetStrokePaint(style.accent);
         ctx->SetStrokeWidth(2.0f);
         ctx->DrawRoundedRectangle(Rect2Dd(r.x + 1.0, r.y + 1.0, r.width - 2.0, r.height - 2.0), style.cornerRadius);
+    }
+    if (!dropTargetClip.empty() && dropTargetClip == clip.id) {   // where a carried drop would land
+        ctx->SetStrokePaint(style.focus);
+        ctx->SetStrokeWidth(2.0f);
+        ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
+        ctx->DrawRoundedRectangle(Rect2Dd(r.x + 1.0, r.y + 1.0, r.width - 2.0, r.height - 2.0), style.cornerRadius);
+        ctx->SetLineDash(UCDashPattern());
     }
     ctx->PopState();
 }

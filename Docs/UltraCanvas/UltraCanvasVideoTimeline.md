@@ -36,8 +36,8 @@ child elements of its own)
 **Tests:** `Tests/VideoTimelineModelTest.cpp` (the model, without a display)
 **Design:** the screens and specifications in `Apps/UltraVideo/screens/`, and
 `Docs/Research/UltraVideoDesignProposal.md` §7
-**Version:** 1.0.0
-**Last Modified:** 2026-10-11
+**Version:** 1.2.0
+**Last Modified:** 2026-10-14
 **Author:** UltraCanvas Framework
 
 ## Status
@@ -158,6 +158,8 @@ double seconds = timeline->XToSeconds(400.0f);   // local x -> time
 float x = timeline->SecondsToX(seconds);
 std::string trackId;
 std::string clipId = timeline->ClipAt(400.0f, 120.0f, &trackId);
+timeline->SetDropTargetClip(clipId);         // a dashed focus ring: where a drop the app carries lands
+timeline->SetDropTargetClip("");             // ... cleared
 ```
 
 ### Providers

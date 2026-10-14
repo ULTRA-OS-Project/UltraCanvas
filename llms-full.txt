@@ -67855,8 +67855,8 @@ child elements of its own)
 **Tests:** `Tests/VideoTimelineModelTest.cpp` (the model, without a display)
 **Design:** the screens and specifications in `Apps/UltraVideo/screens/`, and
 `Docs/Research/UltraVideoDesignProposal.md` §7
-**Version:** 1.0.0
-**Last Modified:** 2026-10-11
+**Version:** 1.2.0
+**Last Modified:** 2026-10-14
 **Author:** UltraCanvas Framework
 
 ## Status
@@ -67977,6 +67977,8 @@ double seconds = timeline->XToSeconds(400.0f);   // local x -> time
 float x = timeline->SecondsToX(seconds);
 std::string trackId;
 std::string clipId = timeline->ClipAt(400.0f, 120.0f, &trackId);
+timeline->SetDropTargetClip(clipId);         // a dashed focus ring: where a drop the app carries lands
+timeline->SetDropTargetClip("");             // ... cleared
 ```
 
 ### Providers
@@ -85867,8 +85869,10 @@ field filters the bin by name. The *Music* tab lists the songs, each with
 lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. The *Effects* tab holds one-click presets for the selected
-clip on the main track: the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
+playhead. The *Effects* tab holds the presets for the clips on the main
+track - a click puts one on the selected clip, or drag one onto a clip
+(the clip under the pointer shows a dashed ring and the status line names
+it; `Esc` lets go): the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
 *Dramatic*, *Black and white*, *Sepia*, *Vintage* and *Brighter*, and under
 *Blur and detail* *Soft blur*, *Strong blur*, *Sharpen* and *Reduce noise*.
 A preset is the engine's own effects (a look is a few of them: Warm is
@@ -86092,9 +86096,8 @@ headless, the player part skips itself without GStreamer plugins).
 
 ## Not yet
 
-Effect presets on overlay clips and stills of the overlay lane, and effects
-dragged from the bin onto a clip. The proposal's roadmap (§11) has the
-order.
+Effect presets on overlay clips and stills of the overlay lane (an effect
+dropped on one says so). The proposal's roadmap (§11) has the order.
 
 ==============================================================================
 FILE: Docs/UltraPress/README.md

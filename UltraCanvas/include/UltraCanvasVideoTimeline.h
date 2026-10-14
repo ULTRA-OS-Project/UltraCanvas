@@ -14,6 +14,7 @@
 // track places clips freely. That is the shape of an engine whose export is
 // a list of segments (VideoFX) with free overlays and music beside it.
 //
+// Version: 1.2.0 - SetDropTargetClip: the clip an application-carried drop (an effect) would land on
 // Version: 1.1.0 - ApplyTheme
 // Version: 1.0.0
 // Last Modified: 2026-10-11
@@ -173,6 +174,11 @@ public:
     float SecondsToX(double seconds) const;
     // The clip under a local point, or "" (and the track, when `trackId` is given)
     std::string ClipAt(float x, float y, std::string* trackId = nullptr) const;
+    // The clip a drop the application carries itself (an effect dragged
+    // from its bin) would land on: drawn with a dashed focus ring until
+    // cleared with "". The element's own drop path (files) does not use it.
+    void SetDropTargetClip(const std::string& clipId);
+    std::string GetDropTargetClip() const { return dropTargetClip; }
 
     // ===== PROVIDERS =====
     TimelineThumbnailProvider thumbnailProvider;
@@ -331,6 +337,7 @@ private:
     size_t dropTrackIndex = 0;
     double dropSeconds = 0.0;
     int dropCount = 0;
+    std::string dropTargetClip;        // SetDropTargetClip
     double scrollDragStart = 0.0;
 
     std::shared_ptr<bool> aliveToken = std::make_shared<bool>(true);   // providers answering after the element is gone are ignored

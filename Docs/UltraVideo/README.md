@@ -46,8 +46,10 @@ field filters the bin by name. The *Music* tab lists the songs, each with
 lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. The *Effects* tab holds one-click presets for the selected
-clip on the main track: the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
+playhead. The *Effects* tab holds the presets for the clips on the main
+track - a click puts one on the selected clip, or drag one onto a clip
+(the clip under the pointer shows a dashed ring and the status line names
+it; `Esc` lets go): the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
 *Dramatic*, *Black and white*, *Sepia*, *Vintage* and *Brighter*, and under
 *Blur and detail* *Soft blur*, *Strong blur*, *Sharpen* and *Reduce noise*.
 A preset is the engine's own effects (a look is a few of them: Warm is
@@ -271,6 +273,5 @@ headless, the player part skips itself without GStreamer plugins).
 
 ## Not yet
 
-Effect presets on overlay clips and stills of the overlay lane, and effects
-dragged from the bin onto a clip. The proposal's roadmap (§11) has the
-order.
+Effect presets on overlay clips and stills of the overlay lane (an effect
+dropped on one says so). The proposal's roadmap (§11) has the order.

@@ -269,6 +269,11 @@ int main() {
     TEST("the clip under the pointer is b", timeline->ClipAt(headerW + 80.0f * 4.0f, mainY, &trackId) == "b" && trackId == "V1");
     TEST("the music bar is found on A1", timeline->ClipAt(headerW + 100.0f, musicY, &trackId) == "song" && trackId == "A1");
     TEST("empty lane space is no clip", timeline->ClipAt(headerW + 80.0f * 6.0f, overlayY, &trackId).empty() && trackId == "V2");
+    timeline->SetDropTargetClip("b");
+    DisplayTest::Frame(window, {timeline});
+    TEST("a drop-target clip is kept until cleared", timeline->GetDropTargetClip() == "b");
+    timeline->SetDropTargetClip("");
+    TEST("and cleared with an empty id", timeline->GetDropTargetClip().empty());
 
     std::cerr << "\n--- Selection ---" << std::endl;
     timeline->OnEvent(MouseEvent(UCEventType::MouseDown, headerW + 80.0f * 4.0f, mainY));

@@ -8,6 +8,7 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
+// Version: 0.6.0 - an effect preset dragged from its bin button onto a clip
 // Version: 0.5.0 - OpenFiles: files handed over by a second start
 // Version: 0.4.0
 // Last Modified: 2026-10-14
@@ -109,6 +110,12 @@ private:
     // the lane and time under the pointer)
     void BeginBinDrag(const std::string& path);
     void DragToTimeline(const UltraCanvas::UCEvent& event, bool drop);
+    // An effect preset dragged from its bin button onto a clip: the press
+    // arms it, the pointer leaving the button starts it, the timeline rings
+    // the main-track clip under the pointer, the drop applies the preset
+    void BeginEffectDrag(std::string presetKey);
+    void DragEffect(const UltraCanvas::UCEvent& event, bool drop);
+    void CancelEffectDrag();
     void ConfirmThen(std::function<void()> then);   // asks to save first when dirty
 
     // playback and the playhead
@@ -136,6 +143,7 @@ private:
     void AddMarker();
     void AddTitle(const std::string& styleKey, double at);
     void ApplyEffect(const std::string& presetKey);         // a bin preset on the selected main-track clip
+    void ApplyEffectTo(const std::string& presetKey, const std::string& clipId);
     void AddOverlay(const std::string& path, double at);     // a file over the picture, on V2
     void ChooseOverlay(double at);                           // ... from a file dialog
     void AddSound(const std::string& path, double at, bool voiceOver);   // a file's sound on A2
@@ -212,6 +220,11 @@ private:
     int messageTicks_ = 0;
     std::string selectedClip_;
     std::string binDrag_;              // the file being dragged from the bin, "" when none
+    bool pointerDown_ = false;         // the mouse button is held (a keyboard press arms no drag)
+    std::string effectPress_;          // the preset whose button is held down, "" when none
+    UltraCanvas::Point2Di effectPressAt_;   // where the button was pressed, window coordinates
+    std::string effectDrag_;           // the preset being dragged, "" when none
+    std::string effectHover_;          // what the drag is over: "clip:<id>", "other" (a clip off the main track) or ""
     bool snapping_ = true;
     bool showBeats_ = false;
     std::map<std::string, std::vector<double>> songBeats_;   // per song path; empty = none found
