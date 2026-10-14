@@ -2,10 +2,11 @@
 // The persistent clipboard history: SQLite index (UltraDatabase), payloads as
 // encrypted files named by a keyed hash, image thumbnails, retention, the
 // recorder lease. See include/UltraCanvasClipboardHistory.h.
+// Version: 1.2.0 - the policy's iconSide
 // Version: 1.1.2 - the folder is the framework's machine-local data root (UltraCanvasLocalDataFolderRoot)
 // Version: 1.1.1 - $XDG_DATA_HOME names the data folder on every platform, as for the applications
 // Version: 1.1.0 - the policy's previewStyle
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboardHistory.h"
@@ -359,6 +360,7 @@ JSONValue PolicyToJson(const ClipboardHistoryPolicy& policy) {
     root.Set("recordingPaused", policy.recordingPaused);
     root.Set("imageThumbnails", policy.imageThumbnails);
     root.Set("previewStyle", policy.previewStyle == ClipboardPreviewStyle::Classic ? "classic" : "modern");
+    root.Set("iconSide", policy.iconSide == ClipboardIconSide::Left ? "left" : "right");
     JSONValue excluded = JSONValue::MakeArray();
     for (const std::string& name : policy.excludedApplications) excluded.Append(JSONValue(name));
     root.Set("excludedApplications", std::move(excluded));
@@ -377,6 +379,7 @@ ClipboardHistoryPolicy PolicyFromJson(const JSONValue& root) {
     policy.recordingPaused = root.Get("recordingPaused").GetBoolean(policy.recordingPaused);
     policy.imageThumbnails = root.Get("imageThumbnails").GetBoolean(policy.imageThumbnails);
     if (root.Get("previewStyle").GetString("") == "classic") policy.previewStyle = ClipboardPreviewStyle::Classic;
+    if (root.Get("iconSide").GetString("") == "left") policy.iconSide = ClipboardIconSide::Left;
     const JSONValue& excluded = root.Get("excludedApplications");
     if (excluded.IsArray()) {
         policy.excludedApplications.clear();
