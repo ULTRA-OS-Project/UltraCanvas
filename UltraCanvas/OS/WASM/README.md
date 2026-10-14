@@ -219,6 +219,23 @@ configuration, so a page that fails to build says why there
 `Module.ENV.ULTRACANVAS_DEBUG_LOG = "0"` in a `preRun` hook. The last three variants
 are measurements that may fail to build; they never fail the run.
 
+After the upload, each variant's job opens its pages in the runner's Google
+Chrome, headless, with `demo/smoke.mjs`: every page must present a frame
+(the `first frame presented` line) and keep a console free of
+`Error creating example`, uncaught errors and Emscripten aborts, or the job
+fails. The demo's start page, a few of its pages (`?component=...`) and the
+two validation apps are opened; the screenshots and console logs are the
+`wasm-smoke-<variant>` artifact. The same script runs on a local build:
+
+```
+npm install --no-save playwright          # the package; the browser is yours
+SMOKE_CHANNEL=chrome node UltraCanvas/OS/WASM/demo/smoke.mjs build-wasm \
+    UltraCanvasDemo.html 'UltraCanvasDemo.html?component=jpegimages'
+```
+
+`SMOKE_CHROME=<binary>` names a Chromium instead of a channel, and
+`SMOKE_OUT` the directory for the screenshots and logs.
+
 The same two sources build as desktop applications - configure the
 repository root with `-DBUILD_WASM_DEMOS=ON` and run `build/ultraos-frontpage`
 or `build/wasm-demo` - so a page can be checked on the desktop before the
