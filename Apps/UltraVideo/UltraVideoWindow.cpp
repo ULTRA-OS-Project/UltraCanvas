@@ -1,8 +1,9 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.6.0 - OpenFiles: files handed over by a second start
 // Version: 0.5.0 - Import, the overlay and a sound on A2 offer FileLoader's types the engine reads
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
 #include "UltraVideoFormats.h"
@@ -907,13 +908,13 @@ void UltraVideoWindow::OpenProject() {
     });
 }
 
-void UltraVideoWindow::OpenProjectFile(const std::string& path) {
+bool UltraVideoWindow::OpenProjectFile(const std::string& path) {
     Document loaded;
     std::string error;
     std::vector<std::string> missing;
     if (!Document::Load(path, loaded, error, &missing)) {
         UltraCanvasAlert::Error(error, "Open project", nullptr, window_.get());
-        return;
+        return false;
     }
     SetDocument(std::move(loaded));
     history_.MarkClean();
@@ -925,6 +926,7 @@ void UltraVideoWindow::OpenProjectFile(const std::string& path) {
                                   "Open project", nullptr, window_.get());
     }
     Message("Opened " + document_.Name() + ".");
+    return true;
 }
 
 bool UltraVideoWindow::SaveProject() {
@@ -1038,6 +1040,32 @@ void UltraVideoWindow::ImportFiles(const std::vector<std::string>& files, double
     for (const std::string& p : paths) if (const MediaItem* m = document_.FindMedia(p)) if (!m->error.empty()) ++unreadable;
     if (unreadable > 0) Message(std::to_string(unreadable) + " of the files cannot be read; the bin shows them with the reason.");
     else Message(paths.size() == 1 ? "Imported." : "Imported " + std::to_string(paths.size()) + " files.");
+}
+
+void UltraVideoWindow::OpenFiles(const std::vector<std::string>& paths) {
+    std::string project;
+    std::vector<std::string> media;
+    size_t otherProjects = 0;
+    for (const std::string& p : paths) {
+        if (!IsProjectFile(p)) media.push_back(p);
+        else if (project.empty()) project = p;
+        else ++otherProjects;
+    }
+    if (project.empty()) {
+        ImportFiles(media);   // what a drop on the window does
+        return;
+    }
+    // One project at a time: the first one opens, through the same question
+    // File > Open asks when the current project has changes
+    ConfirmThen([this, project, media, otherProjects]() {
+        // Media that came with a project belongs to it: when the project
+        // does not open, nothing goes into the one that stays
+        if (!OpenProjectFile(project)) return;
+        if (!media.empty()) ImportFiles(media);
+        if (otherProjects > 0)
+            Message("UltraVideo opens one project at a time: " + std::to_string(otherProjects) +
+                    (otherProjects == 1 ? " other project was" : " other projects were") + " not opened.");
+    });
 }
 
 void UltraVideoWindow::BeginBinDrag(const std::string& path) {

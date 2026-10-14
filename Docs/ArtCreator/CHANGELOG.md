@@ -47,6 +47,14 @@
   A tool's key picks it as before and shows it in its group's button (the
   framework's `AddToolGroup`, as in UltraPaint 0.2.16).
 
+#### 2026-10-14 *0.6.12*
+- **One ArtCreator at a time.** Opening a file while ArtCreator is already
+  running opens it in the running copy (in a new window) instead of starting a
+  second one; starting it without a file brings the open window forward. Two
+  starts at the same moment cannot both stay, and a copy that does not answer
+  is reported with *"ArtCreator is already running"*. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
 #### 2026-10-13 *0.6.11*
 - **Export as a bitmap, at any size.** File > Export offers PNG, JPEG, WebP,
   AVIF, HEIC, TIFF, GIF, QOI and Windows icons beside the vector formats -

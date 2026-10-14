@@ -3,7 +3,7 @@
 **Status:** Phases 1 and 2 under way. UltraWeb 0.3.0 runs WebAssembly
 apps on Linux, with timers, fetch, storage and the clipboard, and shows web
 pages through the HTML reader, without JavaScript.
-**Last Modified:** 2026-10-12
+**Last Modified:** 2026-10-14
 **Author:** UltraCanvas Framework / ULTRA OS
 
 UltraWeb is the ULTRA OS browser. It shows **web pages** - HTML and CSS
@@ -40,6 +40,17 @@ everything else opens as a page, and a page address that turns out to serve
 come through UltraNet with TLS verification on. The status bar shows the
 page's address (or the link under the pointer), or what app is running, how
 many elements it holds and the engine.
+
+**Tabs.** Each tab holds its own page, with its own back / forward history,
+or its own running app; the tab strip sits above the toolbar, which acts on
+the active tab. The **+** at the end of the strip, or **Ctrl+T**, opens an
+empty tab with the address bar ready for typing; a tab's **×**, or
+**Ctrl+W**, closes it (the last tab stays). **Ctrl+Tab** and
+**Ctrl+Shift+Tab** go to the next and previous tab, **Ctrl+L** selects the
+address. Tabs can be dragged along the strip to reorder them. A tab shows
+its page's title (its address for an app); the window's title follows the
+active tab. An app in a background tab keeps running. Links that ask for a
+new window (`target="_blank"`) still open in the same tab.
 
 `--check` loads local addresses only (about:, paths, `file://`), starts the
 app with an invisible root, and exits 0 when it started — useful for an app's
@@ -89,12 +100,18 @@ both framework pieces (`Docs/UltraCanvas/UltraCanvasHTMLReader.md`):
   "Downloads (2)" while two run) shows or hides a panel above the status
   bar, which opens by itself when a streamed download starts. Each
   download of this run has a row: its name, then how far it got
-  ("5.3 MB of 20.0 MB (26%)", rewritten as it goes) or how it ended
+  ("5.3 MB of 20.0 MB (26%) - 1.8 MB/s, 9 s left", rewritten as it goes:
+  the speed is smoothed over the last seconds, the time left follows from
+  it, and with no size from the server it reads "3.0 MB so far -
+  1.8 MB/s") or how it ended
   ("Saved - 20.0 MB", "Failed: the server answered 404", "Cancelled").
   A running one has **Cancel**; a saved one **Open** and **Show folder**,
   which go to the system's default application; a finished one
   **Remove**, which drops the row and keeps the file. **Clear finished**
-  drops every finished row. The list is not kept across runs.
+  drops every finished row. A name longer than 36 characters is cut in the
+  middle with "…" - keeping its start and its extension - so the state
+  keeps its room; the whole name is the row's tooltip. The list is not kept
+  across runs.
 - **Forms.** Text and password fields, text areas, checkboxes, radio
   groups, dropdowns and buttons are real widgets. A submit button or Enter
   sends the form: GET opens the action with the fields as its query, POST
@@ -339,7 +356,8 @@ full length returned.
 ```
 Apps/UltraWeb/
 ├── main.cpp                  window, --check, --page, --version
-├── ui/UltraWebWindow.*       address bar, back / forward, app area (UC_ROOT_HANDLE) or web view, status bar
+├── ui/UltraWebWindow.*       tab strip, address bar, back / forward, downloads, status bar; shortcuts
+├── ui/UltraWebTab.*          one tab: its area (UC_ROOT_HANDLE) or web view, history, title, status
 ├── ui/UltraWebDownloadsPanel.*  the downloads panel: a row per download, Cancel / Open / Show folder / Remove
 └── host/
     ├── UltraWebGuest.*       the bridge: handle table, the imports, events → uc_event, timers, fetches
@@ -386,6 +404,7 @@ a compiled-module cache; per-app permissions — with them reading the
 clipboard, fetching beyond the app's origin without CORS, a larger store,
 and keeping a private-network address from a public app; CORS preflight
 requests; C++ element proxies generated from the framework headers; the
-macOS, Windows and packaging builds. For pages (Phase 2): tabs,
-bookmarks, and a history and downloads list kept across runs;
+macOS, Windows and packaging builds. For pages (Phase 2): bookmarks, a
+history, the downloads list and the open tabs kept across runs, and links
+with `target="_blank"` in a new tab;
 then modern layout beyond flex and grid, the live DOM, and JavaScript.

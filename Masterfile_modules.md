@@ -531,7 +531,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 - **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
   copy of an application per user, built on UltraCanvasInstanceLock: a second
   start asks the running copy over UltraMessage (`<appId>.show`) to come
-  forward and quits. `Claim()`, `ListenRaise()` / `Listen(handler)`,
+  forward - or hands it its files to open - and quits. `Claim()`,
+  `ListenRaise()` / `ListenOpen(openPaths)` with `MakeOpenRequest(paths)` /
+  `Listen(handler)`,
   `Close()`, `BringToFront()`, `RunAlreadyRunningAlert()`. Not in the core
   library: `ultracanvas_single_instance(<target>)`
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
@@ -539,7 +541,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   UltraMessage where present. Used by the single-window applications (UltraMail,
   UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
-  UltraSocial, UltraFIBU, UltraWin Manager). See
+  UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
+  the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
+  ArtCreator, UltraVideo, AnchorPoint). See
   `Docs/UltraCanvas/UltraCanvasSingleInstance.md`.
 
 - **UltraCanvasArchiveRun** (`UltraCanvasArchiveRun.h`) — "Extract and

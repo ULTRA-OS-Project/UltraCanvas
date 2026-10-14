@@ -2,13 +2,14 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
-// Version: 1.7.0 - icon mode: File > New Icon (16 to 256 px), an Icon panel with the
+// Version: 1.8.0 - icon mode: File > New Icon (16 to 256 px), an Icon panel with the
 //                 icon size, a pixel grid, pointer snapping that puts lines of odd
 //                 pixel widths on pixel centres, Arrange > Snap to Pixels, the page
 //                 drawn at the icon's size with its soft pixels, marked on the canvas
 //                 too; Export writes the icon at its size; Object > line widths in
 //                 pixels (1 to 4 px: icon pixels in icon mode); the tool palette in
 //                 groups with fold-out bars, as UltraPaint's
+// Version: 1.7.0 - BringForward: restores and raises the window
 // Version: 1.6.0 - Export offers FileLoader's types (AddVectorDocumentSaveTypes):
 //                 every vector writer and every bitmap type this build writes -
 //                 PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, QOI, ICO ... - and
@@ -316,6 +317,12 @@ std::vector<std::shared_ptr<ArtCreatorWindow>>& ArtCreatorWindow::OpenWindows() 
 
 int ArtCreatorWindow::WindowCount() {
     return static_cast<int>(OpenWindows().size());
+}
+
+void ArtCreatorWindow::BringForward() {
+    if (!window) return;
+    if (window->IsMinimized()) window->Restore();
+    window->RaiseAndFocus();
 }
 
 std::shared_ptr<ArtCreatorWindow> ArtCreatorWindow::OpenWindow(const std::vector<std::string>& paths) {

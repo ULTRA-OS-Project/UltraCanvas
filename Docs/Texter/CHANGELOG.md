@@ -1,3 +1,28 @@
+#### 2026-10-14 *1.67*
+- **One UltraTexter at a time.** Opening a file while UltraTexter is already
+  running opens it in the running copy - in a new tab of the window used
+  last, as *File > Open* does, or by switching to the tab of any window that
+  has it open already - and brings that window forward (restored if
+  minimised) instead of starting a second one; starting it without a file
+  brings the open window forward. Every file named on the command line opens
+  now, not only the last one. `--dark` and `--lang` keep choosing how a first
+  start sets itself up; a later start's are not handed over. Two starts at
+  the same moment cannot both stay, and a copy that does not answer is
+  reported with *"UltraTexter is already running"*. Framework:
+  `UltraCanvasSingleInstance` (framework changelog: `instance-lock`).
+
+#### 2026-10-14 *1.66*
+- **Sharp icons in the markdown side bar.** Italic, Unordered List, Ordered
+  List and Code Block were exports with fractional coordinates and hairline
+  strokes: at the 24 px the side bar draws them, the list bars fell between
+  two pixel rows and came out as grey double lines, and the italic *i*, the
+  numbers and the `{#}` were smeared. They are redrawn on the 24 px grid in
+  the weight of the bar's other icons - black, 1 px lines on whole pixels:
+  single-row bars, rings for the bullets, 1 2 3 in a 5 x 7 pixel face, upright
+  braces and hash, and a slanted *i* whose top and foot sit on whole rows.
+  The DemoApp's WYSIWYG page uses the same icons (framework changelog:
+  `demo-vector-toolbar-icons`).
+
 #### 2026-10-14 *1.65*
 - **Word documents go through FileLoader, and the dialogs offer its types.**
   - Texter read and wrote `.odt`, `.docx` and `.doc` by calling the Word

@@ -1,3 +1,16 @@
+#### 2026-10-14 *0.4.2*
+- **One UltraVideo at a time.** Opening a project or media files while
+  UltraVideo is already running handles them in the running copy instead of
+  starting a second one: a `.ultravideo` project opens there - asking first
+  whether to save the current project when it has changes, as *Open project*
+  does - and media files are imported into the open project, as dropping
+  them on the window does; the window, or its save question, comes forward.
+  Starting it without a file brings the open window forward. Two starts at
+  the same moment cannot both stay, and a copy that does not answer is
+  reported with *"UltraVideo is already running"*. `--help` and `--version`
+  are unaffected. Framework: `UltraCanvasSingleInstance` (framework
+  changelog: `instance-lock`).
+
 #### 2026-10-14 *0.4.1*
 - **Import and Export offer FileLoader's file types.** UltraVideo kept lists
   of its own, so its dialogs offered types the engine could not read and
