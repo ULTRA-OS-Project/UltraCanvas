@@ -52,6 +52,24 @@
   browsing. A failed one counts as a failure on the log button. The *+
   Drive* menu has a *Connection log...* entry, so the log can be opened
   before there is a drive to open it from.
+- **A cloud drive whose access token the service rejects signs in again by
+  itself.** The access token was renewed only when it had expired by this
+  computer's clock; one the service rejected anyway - revoked early, a clock
+  that is off, or one that ran out while the drive waited on a service that
+  limits requests - failed the folder with *sign-in rejected (HTTP 401)*. The
+  token is now renewed from the drive's stored sign-in and the request made
+  once more; only when the service refuses that too does the folder fail,
+  with a hint to sign in again. The connection log says *The service
+  rejected the access token - renewing it and trying again*.
+- **Cancelling the add-drive dialog cancels the sign-in.** Pressing *Cancel*
+  or closing the dialog while it waited for the browser sign-in left the
+  sign-in waiting for up to five minutes - and when the user went on to
+  sign in in the browser anyway, the drive was added after all, appearing
+  only at the next start. The wait now ends at once and no drive is stored;
+  the connection log's *Add drive* session ends with *The sign-in was
+  cancelled* and does not count as a failure. Closing UltraFiler's window
+  does the same for a sign-in still running, and waits up to two seconds
+  for it to end.
 - **Shorter requests on the status line.** While a cloud drive works, the
   status line showed each request's whole address, query and all. It now
   shows the method, the server and the end of the path - *Request: PROPFIND

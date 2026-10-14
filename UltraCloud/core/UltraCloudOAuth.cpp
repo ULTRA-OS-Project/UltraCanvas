@@ -1,5 +1,6 @@
 // UltraCloud/core/UltraCloudOAuth.cpp
-// Version: 0.4.0 - the browser sign-in says its steps in the thread's log
+// Version: 0.5.0 - the browser sign-in says its steps in the thread's log,
+//                  and can be called off (SetThreadSignInCancel)
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudOAuth.h>
@@ -8,6 +9,18 @@
 #include <ctime>
 
 namespace UltraCloud {
+
+namespace {
+thread_local std::function<bool()> t_signInCancelled;
+} // namespace
+
+std::function<bool()> SetThreadSignInCancel(std::function<bool()> cancelled) {
+    std::function<bool()> previous = std::move(t_signInCancelled);
+    t_signInCancelled = std::move(cancelled);
+    return previous;
+}
+
+bool SignInCancelled() { return t_signInCancelled && t_signInCancelled(); }
 
 void EnsureOAuthAppsRegistered() {
     static const bool once = [] {
@@ -44,7 +57,10 @@ OAuthProviderBase::OAuthProviderBase(HttpFn http, OAuthHooks hooks)
         hooks_.authorize = [](const UltraNetOAuth2Config& cfg,
                               const std::function<void(const std::string&)>& openUrl,
                               UltraNetOAuth2Token& out) {
-            return UltraNet_OAuth2AuthorizeInteractive(cfg, openUrl, out);
+            // The calling thread's cancel check, asked while the browser
+            // answer is awaited.
+            return UltraNet_OAuth2AuthorizeInteractive(cfg, openUrl, out, 300000,
+                                                       [] { return SignInCancelled(); });
         };
     if (!hooks_.refresh)
         hooks_.refresh = [](const UltraNetOAuth2Config& cfg, const std::string& refreshToken,
@@ -85,6 +101,10 @@ Result OAuthProviderBase::SignIn(const Account& account,
                                app.redirectUri);
     UltraNetOAuth2Token token;
     UltraNetResult r = hooks_.authorize(OAuthConfig(app), logOpen, token);
+    if (SignInCancelled()) {
+        LogToThread(LogKind::Step, "The sign-in was cancelled");
+        return Result::Error(ResultCode::Cancelled, "sign-in cancelled");
+    }
     if (!r || !token.IsValid()) {
         const std::string why = r.message.empty() ? "no token" : r.message;
         LogToThread(LogKind::Step, "The browser sign-in did not complete: " + why);

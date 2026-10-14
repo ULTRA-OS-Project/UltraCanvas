@@ -235,7 +235,11 @@ cfg.redirectUri           = "http://127.0.0.1:0/callback";  // 0 = ephemeral por
 
 UltraNetOAuth2Token token;
 auto r = UltraNet_OAuth2AuthorizeInteractive(
-    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token);
+    cfg, [](const std::string& url) { UltraCanvas::OpenURL(url); }, token,
+    300000,                                  // how long the browser may take
+    [&] { return dialogClosed.load(); });    // optional: ends the wait early
+// A wait called off ends as UltraNetResultCode::Cancelled within a fraction
+// of a second, rather than holding its thread until the timeout.
 if (r) {
     // token.accessToken -> "authorization: Bearer ..." on API calls
     // token.refreshToken -> store in the credential vault;

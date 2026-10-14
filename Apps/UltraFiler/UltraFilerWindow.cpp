@@ -2373,6 +2373,8 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
     watch.onEnd = [signInLog](const UltraCloud::Account&, const UltraCloud::Result& result) {
         signInLog->End(result);
     };
+    // Closing the window calls a sign-in still waiting on the browser off.
+    watch.cancelled = [signInLog]() { return signInLog->Cancelled(); };
     UltraCloud::ShowAddAccountDialog(
             window.get(), *service,
             [this](const UltraCloud::Account&) {

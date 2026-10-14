@@ -135,6 +135,8 @@ std::string DescribeResultCode(UltraCloud::ResultCode code) {
         case UltraCloud::ResultCode::Unknown:         words = "Unknown"; break;
         case UltraCloud::ResultCode::RateLimited:
             words = "Rate limited - the service asks to wait before more requests"; break;
+        case UltraCloud::ResultCode::Cancelled:
+            words = "Cancelled"; break;
     }
     return words + " (UltraCloud code " + std::to_string(static_cast<int>(code)) + ")";
 }
@@ -1120,6 +1122,17 @@ void UltraFilerRemoteDrives::Stop() {
     }
     cond_.notify_all();
     if (worker_.joinable()) worker_.join();
+    // A sign-in from the add-drive dialog still running is called off - the
+    // wait for the browser ends within a fraction of a second - and given a
+    // moment to end: it runs on the service this object owns. One stuck in a
+    // request to a server that does not answer is not waited out; called
+    // off, it stores nothing when that request ends.
+    signIns_->stopping.store(true);
+    {
+        std::unique_lock<std::mutex> lk(signIns_->mutex);
+        signIns_->ended.wait_for(lk, std::chrono::seconds(2),
+                                 [this]() { return signIns_->running == 0; });
+    }
     // After the join: the worker writes the cache, and what it was fetching
     // when asked to stop is either in by now or never will be.
     SaveDiskCache();
@@ -1565,6 +1578,9 @@ struct RemoteSignInLog::State {
     // The session the running sign-in writes to: the id is set and read on
     // the UI thread only, by the tasks posted to it in order.
     std::shared_ptr<uint64_t> sessionId;
+    // Shared with the drives: whether they are stopping, and how many
+    // sign-ins are still running.
+    std::shared_ptr<RemoteSignInTracker> tracker;
     UltraNetFtpLogCallback previousFtpLog;
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
     UltraCloud::LogCallback previousCloudLog;
@@ -1574,6 +1590,7 @@ struct RemoteSignInLog::State {
 std::shared_ptr<RemoteSignInLog> UltraFilerRemoteDrives::MakeSignInLog() {
     auto log = std::make_shared<RemoteSignInLog>();
     log->state_ = std::make_shared<RemoteSignInLog::State>();
+    log->state_->tracker = signIns_;
     auto alive = alive_;
     log->state_->onDrives = [this, alive](std::function<void(UltraFilerRemoteDrives&)> work) {
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
@@ -1600,6 +1617,10 @@ void RemoteSignInLog::Begin(const std::string& providerId, const std::string& dr
     header.server = server;
     header.http = ProviderSpeaksHttp(providerId);
 
+    {
+        std::lock_guard<std::mutex> lk(state_->tracker->mutex);
+        ++state_->tracker->running;
+    }
     auto id = std::make_shared<uint64_t>(0);
     state_->sessionId = id;
     state_->onDrives([id, header](UltraFilerRemoteDrives& drives) {
@@ -1625,6 +1646,10 @@ void RemoteSignInLog::Begin(const std::string& providerId, const std::string& dr
 #endif
 }
 
+bool RemoteSignInLog::Cancelled() const {
+    return state_ && state_->tracker && state_->tracker->stopping.load();
+}
+
 void RemoteSignInLog::End(const UltraCloud::Result& result) {
     if (!state_ || !state_->sessionId) return;
     UltraNet_SetThreadFtpLog(std::move(state_->previousFtpLog));
@@ -1632,7 +1657,9 @@ void RemoteSignInLog::End(const UltraCloud::Result& result) {
     std::string message, category, diagnostics;
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
     UltraCloud::SetThreadLog(std::move(state_->previousCloudLog));
-    failed = !result;
+    // Called off - the dialog's Cancel, or the window closing - is not a
+    // failure for the log button to count; its last line says so.
+    failed = !result && result.code != UltraCloud::ResultCode::Cancelled;
     if (failed) {
         message = result.message;
         category = DescribeResultCode(result.code);
@@ -1642,6 +1669,11 @@ void RemoteSignInLog::End(const UltraCloud::Result& result) {
     (void)result;
 #endif
     std::shared_ptr<uint64_t> id = std::move(state_->sessionId);
+    {
+        std::lock_guard<std::mutex> lk(state_->tracker->mutex);
+        --state_->tracker->running;
+    }
+    state_->tracker->ended.notify_all();
     state_->onDrives([id, failed, message, category, diagnostics](UltraFilerRemoteDrives& drives) {
         if (*id == 0) return;
         drives.log_.Finish(*id, failed, message, category, diagnostics);

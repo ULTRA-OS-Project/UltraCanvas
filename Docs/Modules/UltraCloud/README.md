@@ -96,7 +96,10 @@ PKCE authorization-code flow against a loopback redirect
 (`UltraNet_OAuth2AuthorizeInteractive`), the tokens land in the secret
 store, and the provider's account-info call fills the user name. An expired
 access token is renewed from the refresh token inside `CloudService::Resolve`
-before any call uses it, and the renewal is stored.
+before any call uses it, and the renewal is stored. A token the service
+rejects (HTTP 401) although it had not expired here - revoked early, a clock
+that is off, or one that ran out while a request waited on a service
+limiting requests - is renewed the same way and the call made once more.
 
 Each provider needs an **OAuth app registration** — a client id (and, for
 confidential clients, a secret) the ULTRA OS project or the app vendor
@@ -248,8 +251,16 @@ sinks around it:
 UltraCloud::AddAccountWatch watch;
 watch.onBegin = [](const Account& a) { /* on the sign-in thread: SetThreadLog(...) */ };
 watch.onEnd = [](const Account& a, const Result& r) { /* put the sink back; r: how it ended */ };
+watch.cancelled = [&] { return shuttingDown.load(); };   // optional: call it off
 UltraCloud::ShowAddAccountDialog(window, cloud, onAdded, {}, "", watch);
 ```
+
+A sign-in waits on the user for up to five minutes, and the user can walk
+away. The thread that signs in sets a check for itself
+(`SetThreadSignInCancel`); once it says true the wait for the browser ends
+within a fraction of a second, the sign-in ends as `ResultCode::Cancelled`,
+and `CloudService::AddAccount` / `SignInAccount` store no account. The
+dialog's *Cancel* and close box set it, and so does `watch.cancelled`.
 
 ## Quick examples
 
@@ -324,8 +335,8 @@ providers.
 
 | Header | Contents |
 |---|---|
-| `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
-| `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
+| `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request, `Cancelled` for a sign-in called off; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
+| `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory`; `SetThreadSignInCancel`, `SignInCancelled` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
 | `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |

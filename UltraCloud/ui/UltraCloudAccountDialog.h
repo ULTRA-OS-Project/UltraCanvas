@@ -3,7 +3,8 @@
 // password (app password), public URL (WebDAV), upload folder, default flag.
 // Verifies the sign-in through the provider before storing. One dialog for
 // every app that links UltraCloudUI.
-// Version: 0.2.0 - AddAccountWatch: a host can watch the sign-in it runs
+// Version: 0.3.0 - AddAccountWatch: a host can watch the sign-in it runs, and
+//                  call it off; Cancel and closing the dialog call it off
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -25,12 +26,18 @@ namespace UltraCloud {
 // onEnd: UltraFiler records each attempt in its connection log that way.
 // `account` is what was entered - an Account holds no password - and, in
 // onEnd, what the sign-in filled in; `result` is how it ended. Once per press
-// of Add; a second press waits for the first sign-in to end. The dialog may
-// be closed while a sign-in waits on the browser, and onEnd still comes, so
-// neither may count on the dialog or its window being there.
+// of Add; a second press waits for the first sign-in to end.
+//
+// Cancel, or closing the dialog, calls a running sign-in off
+// (SetThreadSignInCancel): the wait for the browser ends at once, no account
+// is stored, and onEnd comes with ResultCode::Cancelled. `cancelled`, when
+// set, is asked from the sign-in thread as well and calls it off the same way
+// once it says true - a host that is shutting down. onEnd may come after the
+// dialog and its window are gone; neither callback may count on them.
 struct AddAccountWatch {
     std::function<void(const Account& account)> onBegin;
     std::function<void(const Account& account, const Result& result)> onEnd;
+    std::function<bool()> cancelled;
 };
 
 // Show the dialog modally over `parent`. `onAdded` receives the stored

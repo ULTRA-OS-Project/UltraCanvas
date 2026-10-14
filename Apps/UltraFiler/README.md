@@ -307,7 +307,13 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     the connection log - the browser sign-in's steps or the FTP commands and
     replies, and the requests that check the account - so a sign-in that
     failed can be read step by step. *+ Drive > Connection log...* opens the
-    log when no folder display is on a drive.
+    log when no folder display is on a drive. *Cancel*, or closing the
+    dialog or the window, ends a sign-in still waiting for the browser at
+    once, and no drive is added.
+  - **A rejected sign-in is renewed by itself.** When a cloud service
+    rejects the drive's access token before it was due to expire, the drive
+    renews it from its stored sign-in and asks again; only when that is
+    refused too does it ask for a new sign-in.
   - **Remote files preview too.** A picture, a vector drawing (SVG, DXF,
     CorelDRAW, EPS, ...) or a 3D model (STL, OBJ, ...) selected on an FTP or
     cloud drive is downloaded into `remote-previews` under UltraCanvas's

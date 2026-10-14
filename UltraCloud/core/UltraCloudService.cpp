@@ -1,6 +1,7 @@
 // UltraCloud/core/UltraCloudService.cpp
-// Version: 0.4.0 - an access token renewal is logged (UltraCloudLog.h)
-// Last Modified: 2026-10-09
+// Version: 0.5.0 - a rejected access token is renewed and the call made once
+//                  more; a cancelled sign-in stores nothing
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudService.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -22,7 +23,8 @@ std::shared_ptr<ICloudProvider> CloudService::ProviderFor(const Account& account
 
 Result CloudService::Resolve(const std::string& accountId, Account& account,
                              Credentials& credentials,
-                             std::shared_ptr<ICloudProvider>& provider) {
+                             std::shared_ptr<ICloudProvider>& provider, bool* renewed) {
+    if (renewed) *renewed = false;
     Result got = accounts_.Get(accountId, account);
     if (!got) return got;
     provider = ProviderFor(account);
@@ -38,16 +40,47 @@ Result CloudService::Resolve(const std::string& accountId, Account& account,
     // worked yesterday stops working today.
     const int64_t now = static_cast<int64_t>(std::time(nullptr));
     if (credentials.TokenExpired(now)) {
-        LogToThread(LogKind::Step, "The access token has expired - renewing it");
-        Result refreshed = provider->RefreshCredentials(account, credentials);
-        if (!refreshed) {
-            LogToThread(LogKind::Step, "Renewing the access token failed: " + refreshed.message);
-            return refreshed;
-        }
-        LogToThread(LogKind::Step, "Access token renewed");
-        secrets_.Store(accountId, credentials);
+        Result refreshed = RenewToken(accountId, account, credentials, *provider,
+                                      "The access token has expired - renewing it");
+        if (!refreshed) return refreshed;
+        if (renewed) *renewed = true;
     }
     return Result::Ok();
+}
+
+Result CloudService::RenewToken(const std::string& accountId, const Account& account,
+                                Credentials& credentials, ICloudProvider& provider,
+                                const std::string& why) {
+    LogToThread(LogKind::Step, why);
+    Result refreshed = provider.RefreshCredentials(account, credentials);
+    if (!refreshed) {
+        LogToThread(LogKind::Step, "Renewing the access token failed: " + refreshed.message);
+        return refreshed;
+    }
+    LogToThread(LogKind::Step, "Access token renewed");
+    secrets_.Store(accountId, credentials);
+    return Result::Ok();
+}
+
+Result CloudService::Run(const std::string& accountId, const AccountCall& call) {
+    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
+    bool renewed = false;
+    Result r = Resolve(accountId, a, c, p, &renewed);
+    if (!r) return r;
+    r = call(a, c, *p);
+    // A 401 for a token that had not expired here: revoked early, a clock
+    // that is off, or one that ran out while a request waited on a service
+    // limiting requests. Renewed once - not when it was renewed a moment ago,
+    // which a second renewal would not change - and only an OAuth account has
+    // anything to renew it from.
+    if (r.code != ResultCode::AuthFailed || r.httpStatus != 401 || renewed ||
+        c.refreshToken.empty())
+        return r;
+    Result refreshed = RenewToken(accountId, a, c, *p,
+                                  "The service rejected the access token - renewing it "
+                                  "and trying again");
+    if (!refreshed) return refreshed;
+    return call(a, c, *p);
 }
 
 Result CloudService::SignInAccount(Account& account,
@@ -61,6 +94,10 @@ Result CloudService::SignInAccount(Account& account,
     Credentials creds;
     Result signedIn = provider->SignIn(account, openUrl, creds);
     if (!signedIn) return signedIn;
+    if (SignInCancelled()) {
+        LogToThread(LogKind::Step, "The sign-in was cancelled - the account is not stored");
+        return Result::Error(ResultCode::Cancelled, "sign-in cancelled");
+    }
 
     std::string username, displayName;
     if (provider->AccountInfo(account, creds, username, displayName)) {
@@ -92,6 +129,12 @@ Result CloudService::AddAccount(Account& account, const Credentials& credentials
         Result v = provider->Verify(account, creds);
         if (!v) return v;
     }
+    // Asked last, right before anything is stored: a sign-in the user gave up
+    // on while it was being checked leaves no account behind.
+    if (SignInCancelled()) {
+        LogToThread(LogKind::Step, "The sign-in was cancelled - the account is not stored");
+        return Result::Error(ResultCode::Cancelled, "sign-in cancelled");
+    }
     if (!secrets_.Store(account.accountId, creds))
         return Result::Error(ResultCode::IoError, "could not store the account's credentials");
     Result stored = accounts_.Upsert(account);
@@ -110,77 +153,80 @@ Result CloudService::RemoveAccount(const std::string& accountId) {
 
 Result CloudService::List(const std::string& accountId, const std::string& path,
                           std::vector<Entry>& out) {
-    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
-    Result r = Resolve(accountId, a, c, p);
-    if (!r) return r;
-    return p->List(a, c, NormalizePath(path), out);
+    return Run(accountId, [&](const Account& a, const Credentials& c, ICloudProvider& p) {
+        return p.List(a, c, NormalizePath(path), out);
+    });
 }
 
 Result CloudService::Delete(const std::string& accountId, const std::string& path,
                             bool isDirectory) {
-    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
-    Result r = Resolve(accountId, a, c, p);
-    if (!r) return r;
-    return p->Delete(a, c, NormalizePath(path), isDirectory);
+    return Run(accountId, [&](const Account& a, const Credentials& c, ICloudProvider& p) {
+        return p.Delete(a, c, NormalizePath(path), isDirectory);
+    });
 }
 
 Result CloudService::Rename(const std::string& accountId, const std::string& path,
                             const std::string& newName) {
-    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
-    Result r = Resolve(accountId, a, c, p);
-    if (!r) return r;
-    return p->Rename(a, c, NormalizePath(path), newName);
+    return Run(accountId, [&](const Account& a, const Credentials& c, ICloudProvider& p) {
+        return p.Rename(a, c, NormalizePath(path), newName);
+    });
 }
 
 Result CloudService::MakeDirectory(const std::string& accountId,
                                    const std::string& path) {
-    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
-    Result r = Resolve(accountId, a, c, p);
-    if (!r) return r;
-    return p->MakeDirectory(a, c, NormalizePath(path));
+    return Run(accountId, [&](const Account& a, const Credentials& c, ICloudProvider& p) {
+        return p.MakeDirectory(a, c, NormalizePath(path));
+    });
 }
 
 Result CloudService::Upload(const std::string& accountId, const std::string& localPath,
                             const std::string& remotePath) {
-    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
-    Result r = Resolve(accountId, a, c, p);
-    if (!r) return r;
-    return p->Upload(a, c, localPath, NormalizePath(remotePath));
+    return Run(accountId, [&](const Account& a, const Credentials& c, ICloudProvider& p) {
+        return p.Upload(a, c, localPath, NormalizePath(remotePath));
+    });
 }
 
 Result CloudService::CreateShareLink(const std::string& accountId, const std::string& remotePath,
                                      const ShareLinkOptions& options, ShareLink& out) {
-    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
-    Result r = Resolve(accountId, a, c, p);
-    if (!r) return r;
-    return p->CreateShareLink(a, c, NormalizePath(remotePath), options, out);
+    return Run(accountId, [&](const Account& a, const Credentials& c, ICloudProvider& p) {
+        return p.CreateShareLink(a, c, NormalizePath(remotePath), options, out);
+    });
 }
 
 Result CloudService::Download(const std::string& accountId, const std::string& remotePath,
                               const std::string& localPath) {
-    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
-    Result r = Resolve(accountId, a, c, p);
-    if (!r) return r;
-    if (localPath.empty())
-        return Result::Error(ResultCode::InvalidArgument, "no local file given");
-    // The folder has to exist before the provider opens the file in it: every
-    // provider but FTP writes with an ofstream, which fails with nothing more
-    // useful than "cannot write" when the directory is missing.
-    std::error_code ec;
-    const std::filesystem::path parent = PathFromUtf8(localPath).parent_path();
-    if (!parent.empty() && !std::filesystem::is_directory(parent, ec))
-        return Result::Error(ResultCode::IoError,
-                             "no such folder: " + PathToUtf8(parent));
-    return p->Download(a, c, NormalizePath(remotePath), localPath);
+    return Run(accountId, [&](const Account& a, const Credentials& c, ICloudProvider& p) {
+        if (localPath.empty())
+            return Result::Error(ResultCode::InvalidArgument, "no local file given");
+        // The folder has to exist before the provider opens the file in it:
+        // every provider but FTP writes with an ofstream, which fails with
+        // nothing more useful than "cannot write" when the directory is
+        // missing.
+        std::error_code ec;
+        const std::filesystem::path parent = PathFromUtf8(localPath).parent_path();
+        if (!parent.empty() && !std::filesystem::is_directory(parent, ec))
+            return Result::Error(ResultCode::IoError,
+                                 "no such folder: " + PathToUtf8(parent));
+        return p.Download(a, c, NormalizePath(remotePath), localPath);
+    });
 }
 Result CloudService::UploadAndShare(const std::string& accountId, const std::string& localPath,
                                     const std::string& remoteFolder,
                                     const ShareLinkOptions& options, ShareLink& out,
                                     std::string* remotePathOut) {
-    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
-    Result r = Resolve(accountId, a, c, p);
-    if (!r) return r;
+    // The three steps run again as a whole when the token is renewed part of
+    // the way: the folder is "already there" then, and the upload replaces
+    // what the first try left.
+    return Run(accountId, [&](const Account& a, const Credentials& c, ICloudProvider& p) {
+        return UploadAndShareWith(a, c, p, localPath, remoteFolder, options, out, remotePathOut);
+    });
+}
 
+Result CloudService::UploadAndShareWith(const Account& a, const Credentials& c, ICloudProvider& p,
+                                        const std::string& localPath,
+                                        const std::string& remoteFolder,
+                                        const ShareLinkOptions& options, ShareLink& out,
+                                        std::string* remotePathOut) {
     std::error_code ec;
     if (!std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(localPath), ec))
         return Result::Error(ResultCode::IoError, "not a file: " + localPath);
@@ -188,17 +234,17 @@ Result CloudService::UploadAndShare(const std::string& accountId, const std::str
     const std::string folder = NormalizePath(remoteFolder.empty() ? a.remoteFolder : remoteFolder);
     if (folder != "/") {
         // Create the folder if it is missing; "already there" is not an error.
-        Result mk = p->MakeDirectory(a, c, folder);
+        Result mk = p.MakeDirectory(a, c, folder);
         if (!mk && mk.httpStatus != 405 && mk.httpStatus != 409 && mk.code != ResultCode::Unsupported)
             return mk;
     }
     const std::string name = PathToUtf8(PathFromUtf8(localPath).filename());
     const std::string remotePath = (folder == "/" ? "" : folder) + "/" + name;
 
-    Result up = p->Upload(a, c, localPath, remotePath);
+    Result up = p.Upload(a, c, localPath, remotePath);
     if (!up) return up;
     if (remotePathOut) *remotePathOut = remotePath;
-    return p->CreateShareLink(a, c, remotePath, options, out);
+    return p.CreateShareLink(a, c, remotePath, options, out);
 }
 
 } // namespace UltraCloud

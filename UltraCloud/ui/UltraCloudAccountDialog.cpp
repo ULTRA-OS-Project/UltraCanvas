@@ -1,5 +1,6 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
-// Version: 0.5.0 - AddAccountWatch around each sign-in
+// Version: 0.6.0 - AddAccountWatch around each sign-in; Cancel and closing the
+//                  dialog call a running sign-in off
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
@@ -19,6 +20,7 @@
 
 #include <UltraCloud/UltraCloudOAuth.h>
 
+#include <atomic>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -219,6 +221,11 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
 
     // The result travels from the worker to the close callback through here.
     auto added = std::make_shared<Account>();
+    // Set when the dialog goes without an account - Cancel, or the window's
+    // close box. A sign-in still running is called off then: it neither holds
+    // its thread waiting on the browser nor stores an account the user has
+    // given up on.
+    auto gaveUp = std::make_shared<std::atomic<bool>>(false);
 
     addBtn->onClick = [=, &service]() {
         int idx = provider->GetSelectedIndex();
@@ -252,15 +259,22 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
         // open the consent page in the system browser and wait for the
         // loopback redirect.
         const bool oauth = caps.needsOAuth;
-        std::thread([weak, dlg, added, addBtn, status, a, c, oauth, &service, watch]() mutable {
+        std::thread([weak, dlg, added, addBtn, status, a, c, oauth, &service, watch,
+                     gaveUp]() mutable {
+            std::function<bool()> previousCancel = SetThreadSignInCancel(
+                    [gaveUp, hostCancelled = watch.cancelled]() {
+                        return gaveUp->load() || (hostCancelled && hostCancelled());
+                    });
             if (watch.onBegin) watch.onBegin(a);
             Result r = oauth
                 ? service.SignInAccount(a, [](const std::string& url) { UltraCanvas::OpenURL(url); })
                 : service.AddAccount(a, c, /*verify=*/true);
             if (watch.onEnd) watch.onEnd(a, r);
+            SetThreadSignInCancel(std::move(previousCancel));
             auto* app = UltraCanvasApplicationBase::GetCurrent();
             auto finish = [weak, dlg, added, addBtn, status, a, r]() {
                 if (weak.expired()) return;   // dialog already closed
+                if (r.code == ResultCode::Cancelled) return;   // closed meanwhile
                 if (r) { *added = a; dlg->CloseDialog(DialogResult::OK); return; }
                 status->SetTextColor(Color(180, 40, 40, 255));
                 status->SetText(r.message);
@@ -269,12 +283,19 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
             if (app) app->PostToUIThread(finish); else finish();
         }).detach();
     };
-    cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
+    cancelBtn->onClick = [dlg, gaveUp]() {
+        gaveUp->store(true);
+        dlg->CloseDialog(DialogResult::Cancel);
+    };
 
     UltraCanvasDialogManager::ShowDialog(
         dialog,
-        [added, onAdded](DialogResult result) {
-            if (result == DialogResult::OK && onAdded && !added->accountId.empty()) onAdded(*added);
+        [added, onAdded, gaveUp](DialogResult result) {
+            if (result == DialogResult::OK && onAdded && !added->accountId.empty()) {
+                onAdded(*added);
+                return;
+            }
+            gaveUp->store(true);   // the close box: as Cancel
         },
         parent);
 }

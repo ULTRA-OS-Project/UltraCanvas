@@ -160,6 +160,16 @@ struct RemoteActivity {
 
 class UltraFilerRemoteDrives;
 
+// The add-drive dialog's sign-ins still running, shared between the drives
+// and each RemoteSignInLog: UltraFilerRemoteDrives::Stop() sets `stopping`,
+// which calls them off, and waits a moment for `running` to come down.
+struct RemoteSignInTracker {
+    std::atomic<bool> stopping{false};
+    std::mutex mutex;
+    std::condition_variable ended;
+    int running = 0;   // under mutex
+};
+
 // The add-drive dialog's sign-in, recorded in the connection log as a session
 // of its own ("Add drive"), so a sign-in that fails there can be read step by
 // step like any job the worker runs. Made on the UI thread
@@ -168,14 +178,19 @@ class UltraFilerRemoteDrives;
 // sign-in thread, around each sign-in. Begin sets that thread's log sinks -
 // UltraCloud's, and UltraNet's FTP log for an FTP drive - and End puts them
 // back and closes the session. The session is written on the UI thread, where
-// each line is posted, and only while the drives still exist: a sign-in still
-// waiting on the browser when the window closes writes nothing and touches
-// nothing that is gone.
+// each line is posted, and only while the drives still exist.
+//
+// Closing the window calls a running sign-in off (Cancelled, which the
+// dialog's watch asks) - a browser sign-in nobody will finish does not hold
+// its thread for minutes, and stores no account - and Stop() waits a moment
+// for it to end, since it runs on the service the drives own.
 class RemoteSignInLog {
 public:
     void Begin(const std::string& providerId, const std::string& driveName,
                const std::string& server);
     void End(const UltraCloud::Result& result);
+    // Whether the drives are shutting down; any thread.
+    bool Cancelled() const;
 
 private:
     friend class UltraFilerRemoteDrives;
@@ -362,9 +377,11 @@ public:
     // without UltraCloud.
     UltraCloud::CloudService* Service();
 
-    // Joins the worker, then writes the prefetching drives' listings to disk
-    // for the next run. Must run before the owner is destroyed - the worker
-    // posts into it. Idempotent.
+    // Joins the worker, calls off a sign-in the add-drive dialog is still
+    // running and waits up to two seconds for it to end (RemoteSignInLog),
+    // then writes the prefetching drives' listings to disk for the next run.
+    // Must run before the owner is destroyed - the worker posts into it.
+    // Idempotent.
     void Stop();
 
     // Where the listings are kept between runs: remote-listings.cache in
@@ -428,6 +445,8 @@ private:
     // way.
     void NotifyLogChanged();
     friend class RemoteSignInLog;   // writes its sessions on the UI thread
+    std::shared_ptr<RemoteSignInTracker> signIns_ =
+            std::make_shared<RemoteSignInTracker>();
     // Posts one activity report to the UI thread. `force` sends it even when
     // the thinning interval has not elapsed - used for the first and last
     // report of a job, which are the two nobody may miss.

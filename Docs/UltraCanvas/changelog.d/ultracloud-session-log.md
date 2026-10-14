@@ -67,3 +67,31 @@
   the policy allows, a wait interrupted, and the browser sign-in's lines
   without its state, code challenge or tokens - with a recorded wait, so no
   test sleeps.
+- **A rejected access token is renewed and the call made once more.**
+  `CloudService` renewed an OAuth token only when it had expired by the
+  local clock; a 401 for one the service rejected anyway - revoked early, a
+  clock that is off, or expired while `Send` waited out a service limiting
+  requests - failed the call. Every `CloudService` call now runs through
+  one helper (`Run`) that, on `AuthFailed` with HTTP 401 for an account
+  with a refresh token, renews the token, stores it and makes the call once
+  more - not when the token was renewed a moment before, and never more
+  than once. `UploadAndShare` runs its three steps again as a whole.
+- **A sign-in can be called off.** `UltraNet_OAuth2WaitForCallback` and
+  `UltraNet_OAuth2AuthorizeInteractive` take an optional `isCancelled`,
+  asked about five times a second while the loopback listener waits for
+  the browser; once it says true the wait ends as
+  `UltraNetResultCode::Cancelled` instead of holding the thread for up to
+  five minutes. UltraCloud's per-thread `SetThreadSignInCancel` /
+  `SignInCancelled` (`UltraCloudProvider.h`) feeds it: an OAuth sign-in
+  ends as the new `ResultCode::Cancelled` (after `RateLimited`; the other
+  codes keep their numbers), and `CloudService::AddAccount` /
+  `SignInAccount` store no account once the check says true. The
+  add-account dialog's *Cancel* and close box call a running sign-in off -
+  before, a sign-in the user went on to finish in the browser was stored
+  after the dialog had been cancelled - and `AddAccountWatch::cancelled`
+  lets a host call it off as well.
+- Tests: the redirect wait called off (`test_oauth2.cpp`); a rejected token
+  renewed and the call made again, renewed once and not in a loop, a
+  refused renewal, a token renewed a moment ago not renewed again, a
+  cancelled sign-in storing no account and a browser sign-in called off
+  (`test_log.cpp`).

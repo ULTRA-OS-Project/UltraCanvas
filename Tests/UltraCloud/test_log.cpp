@@ -21,6 +21,8 @@
 #include <UltraCloud/UltraCloudService.h>
 #include <UltraCloud/UltraCloudWebDav.h>
 
+#include <ctime>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -388,6 +390,8 @@ TEST(log_an_access_token_renewal_is_said) {
     std::vector<Entry> entries;
     REQUIRE(!service.List(a.accountId, "/", entries));
     REQUIRE(log.Has(LogKind::Step, "Renewing the access token failed: token refresh failed: invalid_grant"));
+    // The registry outlives the test; its fakes point at this test's locals.
+    RegisterProvider(std::make_shared<OneDriveProvider>());
 }
 
 // ===== Signing in through the browser =====
@@ -433,4 +437,169 @@ TEST(log_a_browser_sign_in_says_its_steps_and_keeps_its_state_out) {
     const Result r = dropbox.SignIn(a, openUrl, creds);
     REQUIRE(r.code == ResultCode::AuthFailed);
     REQUIRE(log.Has(LogKind::Step, "The browser sign-in did not complete: access_denied"));
+}
+
+// ===== A rejected access token =====
+
+namespace {
+// A OneDrive account whose token the service rejects until it is "fresh",
+// with the refresh hook under the test's control.
+struct RejectingDrive {
+    int requests = 0;
+    int renewals = 0;
+    bool refuseRenewal = false;
+    bool rejectEverything = false;
+    AccountStore accounts;
+    MemorySecretStore secrets;
+    std::unique_ptr<CloudService> service;
+    Account account;
+
+    explicit RejectingDrive(const std::string& dbName, int64_t expiresAt) {
+        OAuthApp app; app.clientId = "id";
+        SetOAuthApp("onedrive", app);
+        OAuthHooks hooks;
+        hooks.refresh = [this](const UltraNetOAuth2Config&, const std::string&,
+                               UltraNetOAuth2Token& out) {
+            ++renewals;
+            if (refuseRenewal) {
+                UltraNetResult r; r.success = false; r.message = "invalid_grant"; return r;
+            }
+            out.accessToken = "fresh"; out.expiresInSeconds = 3600;
+            return Ok();
+        };
+        HttpFn fake = [this](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+            ++requests;
+            if (rejectEverything || req.headers.Get("Authorization") != "Bearer fresh") {
+                Answer(resp, 401, R"({"error": {"code": "InvalidAuthenticationToken", "message": "Access token has expired or is not yet valid."}})",
+                       "Unauthorized");
+                UltraNetResult r; r.success = false; r.message = "HTTP 401"; return r;
+            }
+            Answer(resp, 200, R"({"value": []})", "OK");
+            return Ok();
+        };
+        RegisterProvider(std::make_shared<OneDriveProvider>(fake, hooks));
+        REQUIRE(accounts.Open(dbName, ":memory:"));
+        service = std::make_unique<CloudService>(accounts, secrets);
+        account.providerId = "onedrive"; account.username = "erika@outlook.com";
+        Credentials stale;
+        stale.token = "stale"; stale.refreshToken = "r"; stale.tokenExpiresAt = expiresAt;
+        REQUIRE(service->AddAccount(account, stale, /*verify=*/false));
+    }
+    // The registry outlives the test: the fakes above point into this object.
+    ~RejectingDrive() { RegisterProvider(std::make_shared<OneDriveProvider>()); }
+};
+int64_t InAnHour() { return static_cast<int64_t>(std::time(nullptr)) + 3600; }
+} // namespace
+
+TEST(log_a_rejected_access_token_is_renewed_and_the_call_made_again) {
+    // Not expired by the clock here - the service rejects it anyway: revoked
+    // early, or run out during a long wait on a service limiting requests.
+    RejectingDrive drive("uctest-log-rejected", InAnHour());
+    CollectedLog log;
+    std::vector<Entry> entries;
+    const Result r = drive.service->List(drive.account.accountId, "/", entries);
+    REQUIRE(static_cast<bool>(r));
+    REQUIRE_EQ(drive.renewals, 1);
+    REQUIRE_EQ(drive.requests, 2);
+    REQUIRE(log.Has(LogKind::Step, "The service rejected the access token - renewing it and "
+                                   "trying again"));
+    REQUIRE(log.Has(LogKind::Step, "Access token renewed"));
+    // Kept for the next call.
+    Credentials stored;
+    REQUIRE(drive.secrets.Retrieve(drive.account.accountId, stored));
+    REQUIRE_EQ(stored.token, std::string("fresh"));
+    REQUIRE(!log.Mentions("fresh"));
+}
+
+TEST(log_a_rejected_access_token_is_renewed_once_not_in_a_loop) {
+    RejectingDrive drive("uctest-log-rejected-again", InAnHour());
+    drive.rejectEverything = true;
+    std::vector<Entry> entries;
+    const Result r = drive.service->List(drive.account.accountId, "/", entries);
+    REQUIRE(r.code == ResultCode::AuthFailed);
+    REQUIRE_EQ(r.httpStatus, 401);
+    REQUIRE_EQ(drive.renewals, 1);
+    REQUIRE_EQ(drive.requests, 2);
+}
+
+TEST(log_a_refused_renewal_after_a_rejected_token_says_why) {
+    RejectingDrive drive("uctest-log-rejected-refused", InAnHour());
+    drive.refuseRenewal = true;
+    CollectedLog log;
+    std::vector<Entry> entries;
+    const Result r = drive.service->List(drive.account.accountId, "/", entries);
+    REQUIRE(r.code == ResultCode::AuthFailed);
+    REQUIRE(r.message.find("invalid_grant") != std::string::npos);
+    REQUIRE_EQ(drive.requests, 1);
+    REQUIRE(log.Has(LogKind::Step, "Renewing the access token failed"));
+}
+
+TEST(log_a_token_renewed_a_moment_ago_is_not_renewed_again) {
+    // Expired here, so renewed before the call; rejected all the same - a
+    // second renewal would change nothing.
+    RejectingDrive drive("uctest-log-rejected-fresh", 1);
+    drive.rejectEverything = true;
+    std::vector<Entry> entries;
+    const Result r = drive.service->List(drive.account.accountId, "/", entries);
+    REQUIRE(r.code == ResultCode::AuthFailed);
+    REQUIRE_EQ(drive.renewals, 1);
+    REQUIRE_EQ(drive.requests, 1);
+}
+
+// ===== Calling a sign-in off =====
+
+namespace {
+// The calling thread's sign-in cancel check for as long as it lives.
+struct CancelledSignIn {
+    std::function<bool()> previous;
+    explicit CancelledSignIn(std::function<bool()> check) {
+        previous = SetThreadSignInCancel(std::move(check));
+    }
+    ~CancelledSignIn() { SetThreadSignInCancel(std::move(previous)); }
+};
+} // namespace
+
+TEST(log_a_sign_in_called_off_stores_no_account) {
+    AccountStore accounts;
+    REQUIRE(accounts.Open("uctest-log-cancel-store", ":memory:"));
+    MemorySecretStore secrets;
+    CloudService service(accounts, secrets);
+    Account a; a.providerId = "memory"; a.username = "erika";
+    Credentials c; c.password = "pw";
+    {
+        CancelledSignIn cancel([] { return true; });
+        CollectedLog log;
+        const Result r = service.AddAccount(a, c, /*verify=*/true);
+        REQUIRE(r.code == ResultCode::Cancelled);
+        REQUIRE(log.Has(LogKind::Step, "The sign-in was cancelled - the account is not stored"));
+    }
+    std::vector<Account> all;
+    REQUIRE(accounts.List(all));
+    REQUIRE(all.empty());
+    // Without the check, the same account goes in.
+    REQUIRE(static_cast<bool>(service.AddAccount(a, c, /*verify=*/true)));
+}
+
+TEST(log_a_browser_sign_in_called_off_ends_as_cancelled) {
+    OAuthApp app; app.clientId = "id";
+    SetOAuthApp("dropbox", app);
+    OAuthHooks hooks;
+    // The browser never answers; what ends the wait is the dialog closing.
+    hooks.authorize = [](const UltraNetOAuth2Config&,
+                         const std::function<void(const std::string&)>&,
+                         UltraNetOAuth2Token&) {
+        REQUIRE(SignInCancelled());
+        UltraNetResult r; r.success = false; r.code = UltraNetResultCode::Cancelled;
+        r.message = "the sign-in was cancelled before the browser answered";
+        return r;
+    };
+    DropboxProvider dropbox(nullptr, hooks);
+    Account a; a.providerId = "dropbox";
+    CancelledSignIn cancel([] { return true; });
+    CollectedLog log;
+    Credentials creds;
+    const Result r = dropbox.SignIn(a, [](const std::string&) {}, creds);
+    REQUIRE(r.code == ResultCode::Cancelled);
+    REQUIRE(log.Has(LogKind::Step, "The sign-in was cancelled"));
+    REQUIRE(creds.token.empty());
 }
