@@ -256,8 +256,13 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
   the pointer re-enters (needs the Pointer Events capture API).
 - **Custom cursor images** fall back to the standard cursor (CSS cannot
   reference files inside the Emscripten virtual FS).
-- **IME composition, drag & drop between windows, window icons**: not
-  implemented.
+- **IME composition** reaches only an element that draws compositions
+  (`DrawsTextComposition()`: an editable text input,
+  text area or rich text editor): while one has focus a
+  transparent `<textarea>` at its caret takes the keyboard and forwards its
+  composition events (`UltraCanvasWASMApplication::UpdateImeTarget`). Other
+  elements keep the canvas, which gets no input method.
+- **Drag & drop between windows, window icons**: not implemented.
 - Presentation converts and uploads the full surface on every composition;
   damage-rect-limited `putImageData` is an easy future optimisation.
 - The browser logs a "blocking on the main thread" warning at startup

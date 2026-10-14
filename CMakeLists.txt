@@ -269,8 +269,7 @@ if(ANDROID)
     # minimal sysroot; the HAS_LIBVIPS fallbacks cover phase 1.
     set(ULTRACANVAS_ENABLE_VIPS OFF CACHE BOOL "Enable libvips-backed raster image processing")
     # Runtime-dlopen'ed plugin DSOs don't load from outside the APK on Android
-    # (investigation §4.3); miniaudio/GStreamer/MuPDF/tesseract/cargo builds are
-    # all post-phase-1.
+    # (investigation §4.3); MuPDF/tesseract/cargo builds are all post-phase-1.
     set(ULTRACANVAS_PLUGIN_LATEX OFF CACHE BOOL "Build LaTeX math plugin (embedded MicroTeX)")
     set(ULTRACANVAS_PLUGIN_CDR OFF CACHE BOOL "Build CDR plugin (requires libcdr)")
     set(ULTRACANVAS_PLUGIN_XAR OFF CACHE BOOL "Build XARA plugin")
@@ -285,7 +284,9 @@ if(ANDROID)
     # beneath it - both reached through dlopen, so there is nothing extra to
     # link and no NDK-side dependency. Only its optional codec libraries are
     # missing from a minimal sysroot, which costs formats, not the backend.
-    set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)")
+    # ULTRACANVAS_ENABLE_VIDEO stays ON for the same reason as audio: the
+    # Android backend (libspecific/Video/VideoBackendAndroid*.cpp) uses only
+    # the NDK's own media, camera and AAudio libraries.
     set(ULTRACANVAS_ENABLE_DATABASE OFF CACHE BOOL "Build the UltraDatabase data-access library")
     set(ULTRACANVAS_USE_VIRTUALFS OFF CACHE BOOL "Build the VirtualFS module and the UltraCanvas bridge to it")
     # UltraNet works on Android (Linux TLS/proxy sources + mandatory c-ares)

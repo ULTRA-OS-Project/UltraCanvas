@@ -57,7 +57,7 @@ namespace AndroidDialogs {
 
         // Null label -> Java null (button omitted).
         jstring MakeLabel(JNIEnv* env, const char* label) {
-            return label ? env->NewStringUTF(label) : nullptr;
+            return label ? AndroidJni::ToJString(env, label) : nullptr;
         }
 
         // Claim the result slot for a dialog about to be shown.
@@ -113,8 +113,8 @@ namespace AndroidDialogs {
 
         const int requestId = BeginRequest();
 
-        jstring jTitle = env->NewStringUTF(title.c_str());
-        jstring jMessage = env->NewStringUTF(message.c_str());
+        jstring jTitle = AndroidJni::ToJString(env, title);
+        jstring jMessage = AndroidJni::ToJString(env, message);
         jstring jPositive = MakeLabel(env, positiveLabel);
         jstring jNegative = MakeLabel(env, negativeLabel);
         jstring jNeutral = MakeLabel(env, neutralLabel);
@@ -159,9 +159,9 @@ namespace AndroidDialogs {
 
         const int requestId = BeginRequest();
 
-        jstring jTitle = env->NewStringUTF(title.c_str());
-        jstring jPrompt = env->NewStringUTF(prompt.c_str());
-        jstring jDefault = env->NewStringUTF(defaultValue.c_str());
+        jstring jTitle = AndroidJni::ToJString(env, title);
+        jstring jPrompt = AndroidJni::ToJString(env, prompt);
+        jstring jDefault = AndroidJni::ToJString(env, defaultValue);
 
         env->CallVoidMethod(activity, midShow, static_cast<jint>(requestId),
                             jTitle, jPrompt, jDefault,
@@ -199,7 +199,7 @@ namespace AndroidDialogs {
 
         const int requestId = BeginRequest();
 
-        jstring jMime = env->NewStringUTF(mimeTypesCsv.c_str());
+        jstring jMime = AndroidJni::ToJString(env, mimeTypesCsv);
         env->CallVoidMethod(activity, midShow, static_cast<jint>(requestId), jMime,
                             static_cast<jboolean>(allowMultiple));
         env->DeleteLocalRef(jMime);
@@ -246,8 +246,8 @@ namespace AndroidDialogs {
 
         const int requestId = BeginRequest();
 
-        jstring jMime = env->NewStringUTF(mimeType.c_str());
-        jstring jName = env->NewStringUTF(suggestedName.c_str());
+        jstring jMime = AndroidJni::ToJString(env, mimeType);
+        jstring jName = AndroidJni::ToJString(env, suggestedName);
         env->CallVoidMethod(activity, midShow, static_cast<jint>(requestId),
                             jMime, jName, content);
         env->DeleteLocalRef(jMime);

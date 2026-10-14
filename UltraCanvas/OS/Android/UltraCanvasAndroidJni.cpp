@@ -1,13 +1,14 @@
 // OS/Android/UltraCanvasAndroidJni.cpp
 // Minimal JNI plumbing shared by the Android backend's Java bridges.
 // Version: 1.0.0
-// Last Modified: 2026-08-16
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasAndroidJni.h"
 
+#include <cstdint>
 #include <vector>
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasDebug.h"
@@ -71,11 +72,91 @@ namespace AndroidJni {
 
     std::string ToStdString(JNIEnv* env, jstring str) {
         if (!str) return {};
-        const char* utf = env->GetStringUTFChars(str, nullptr);
-        if (!utf) return {};
-        std::string result(utf);
-        env->ReleaseStringUTFChars(str, utf);
+        // Not GetStringUTFChars: that is JNI's *modified* UTF-8, which writes
+        // a character outside the BMP (every emoji) as two 3-byte surrogate
+        // halves, so text widgets received six bytes no font could draw and
+        // byte offsets computed by Java's real UTF-8 no longer lined up.
+        const jsize length = env->GetStringLength(str);
+        std::vector<jchar> units(static_cast<size_t>(length));
+        if (length > 0) env->GetStringRegion(str, 0, length, units.data());
+        if (ClearException(env, "GetStringRegion")) return {};
+
+        std::string result;
+        result.reserve(units.size());
+        for (size_t i = 0; i < units.size(); ++i) {
+            uint32_t cp = units[i];
+            if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < units.size() &&
+                units[i + 1] >= 0xDC00 && units[i + 1] <= 0xDFFF) {
+                cp = 0x10000 + ((cp - 0xD800) << 10) + (units[i + 1] - 0xDC00);
+                ++i;
+            } else if (cp >= 0xD800 && cp <= 0xDFFF) {
+                cp = 0xFFFD;                  // unpaired surrogate
+            }
+            if (cp < 0x80) {
+                result += static_cast<char>(cp);
+            } else if (cp < 0x800) {
+                result += static_cast<char>(0xC0 | (cp >> 6));
+                result += static_cast<char>(0x80 | (cp & 0x3F));
+            } else if (cp < 0x10000) {
+                result += static_cast<char>(0xE0 | (cp >> 12));
+                result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                result += static_cast<char>(0x80 | (cp & 0x3F));
+            } else {
+                result += static_cast<char>(0xF0 | (cp >> 18));
+                result += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+                result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                result += static_cast<char>(0x80 | (cp & 0x3F));
+            }
+        }
         return result;
+    }
+
+    jstring ToJString(JNIEnv* env, const std::string& utf8) {
+        std::vector<jchar> units;
+        units.reserve(utf8.size());
+        const auto* p = reinterpret_cast<const unsigned char*>(utf8.data());
+        const size_t n = utf8.size();
+        size_t i = 0;
+        while (i < n) {
+            const unsigned char c = p[i];
+            uint32_t cp = 0xFFFD;
+            size_t len = 1;
+            if (c < 0x80) {
+                cp = c;
+            } else if (c >= 0xC2 && c <= 0xF4) {
+                len = c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+                uint32_t value = c & (len == 2 ? 0x1F : len == 3 ? 0x0F : 0x07);
+                bool valid = i + len <= n;
+                for (size_t k = 1; valid && k < len; ++k) {
+                    if ((p[i + k] & 0xC0) != 0x80) valid = false;
+                    else value = (value << 6) | (p[i + k] & 0x3F);
+                }
+                // Overlong forms, surrogates and values past U+10FFFF are
+                // malformed too.
+                if (valid && ((len == 3 && value < 0x800) ||
+                              (len == 4 && (value < 0x10000 || value > 0x10FFFF)) ||
+                              (value >= 0xD800 && value <= 0xDFFF))) {
+                    valid = false;
+                }
+                if (valid) cp = value;
+                else len = 1;                 // resynchronise on the next byte
+            }
+            i += len;
+            if (cp >= 0x10000) {
+                cp -= 0x10000;
+                units.push_back(static_cast<jchar>(0xD800 + (cp >> 10)));
+                units.push_back(static_cast<jchar>(0xDC00 + (cp & 0x3FF)));
+            } else {
+                units.push_back(static_cast<jchar>(cp));
+            }
+        }
+        jstring result = env->NewString(units.data(), static_cast<jsize>(units.size()));
+        if (ClearException(env, "NewString")) return nullptr;
+        return result;
+    }
+
+    jstring ToJString(JNIEnv* env, const char* utf8) {
+        return ToJString(env, std::string(utf8 ? utf8 : ""));
     }
 
     std::vector<std::string> SplitLines(const std::string& text) {

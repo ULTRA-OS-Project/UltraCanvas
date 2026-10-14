@@ -1462,8 +1462,10 @@ endif()
 # ULTRACANVAS_ENABLE_VIDEO is ON and a platform media framework is found, in
 # which case the platform-native backend replaces the null one).
 #   Linux  : GStreamer (which dispatches to V4L2 / VA-API under the hood)
-#   macOS  : AVFoundation   (TODO)
-#   Windows: Media Foundation (TODO)
+#   macOS  : AVFoundation
+#   Windows: Media Foundation
+#   Android: the NDK's MediaCodec / MediaExtractor / MediaMuxer, Camera2 and
+#            AAudio - all in the NDK sysroot, so nothing to cross-compile
 list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendNull.cpp
     # Always compiled: an application may register a video codec of its own on
@@ -1504,6 +1506,13 @@ if(ULTRACANVAS_ENABLE_VIDEO)
             PROPERTIES COMPILE_FLAGS "-fobjc-arc")
         set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
         message(STATUS "Video backend: AVFoundation")
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendAndroid.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendAndroidCapture.cpp
+        )
+        set(ULTRACANVAS_VIDEO_BACKEND_FOUND ON)
+        message(STATUS "Video backend: Android NDK media (MediaCodec + Camera2 + AAudio)")
     endif()
 endif()
 
@@ -2368,6 +2377,11 @@ if(ULTRACANVAS_ENABLE_VIDEO AND ULTRACANVAS_VIDEO_BACKEND_FOUND)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${AVFOUNDATION_FRAMEWORK} ${COREMEDIA_FRAMEWORK} ${COREVIDEO_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK} ${FOUNDATION_FRAMEWORK})
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
+        # All from the NDK sysroot (minSdk 26 has every one of them):
+        # mediandk = MediaCodec/Extractor/Muxer + AImageReader, camera2ndk =
+        # Camera2, aaudio = the audio device for playback and recording.
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC mediandk camera2ndk aaudio)
     endif()
 endif()
 
