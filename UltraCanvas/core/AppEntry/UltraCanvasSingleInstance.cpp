@@ -7,6 +7,7 @@
 // hand-off needs UltraMessage, a separate module the core does not link, and
 // the function defines ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE where
 // the build has it.
+// Version: 1.1.0 - MakeOpenRequest / RequestPaths / ListenOpen
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -22,6 +23,8 @@
 #include "UltraCanvasWindow.h"
 
 #include <cstdlib>
+#include <filesystem>
+#include <system_error>
 #include <utility>
 
 #ifdef ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE
@@ -167,6 +170,45 @@ namespace UltraCanvas {
 
     void UltraCanvasSingleInstance::ListenRaise() {
         Listen([](const JSONValue&) { BringToFront(); });
+    }
+
+    void UltraCanvasSingleInstance::ListenOpen(OpenHandler openPaths) {
+        Listen([openPaths = std::move(openPaths)](const JSONValue& request) {
+            const std::vector<std::string> paths = RequestPaths(request);
+            if (paths.empty() || !openPaths) {
+                BringToFront();
+                return;
+            }
+            openPaths(paths);
+        });
+    }
+
+    JSONValue UltraCanvasSingleInstance::MakeOpenRequest(const std::vector<std::string>& paths) {
+        JSONValue request = JSONValue::MakeObject();
+        JSONValue list = JSONValue::MakeArray();
+        for (const std::string& path : paths) {
+            if (path.empty()) continue;
+            if (path.find("://") != std::string::npos) {
+                list.Append(JSONValue(path));
+                continue;
+            }
+            std::error_code ec;
+            const std::filesystem::path absolute = std::filesystem::absolute(PathFromUtf8(path), ec);
+            list.Append(JSONValue(ec ? path : PathToUtf8(absolute.lexically_normal())));
+        }
+        request.Set("paths", list);
+        return request;
+    }
+
+    std::vector<std::string> UltraCanvasSingleInstance::RequestPaths(const JSONValue& request) {
+        std::vector<std::string> paths;
+        const JSONValue& list = request.Get("paths");
+        if (!list.IsArray()) return paths;
+        for (size_t i = 0; i < list.GetSize(); ++i) {
+            const JSONValue& path = list.At(i);
+            if (path.IsString() && !path.GetString().empty()) paths.push_back(path.GetString());
+        }
+        return paths;
     }
 
     void UltraCanvasSingleInstance::BringToFront() {

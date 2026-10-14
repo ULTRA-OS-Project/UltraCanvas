@@ -25,6 +25,22 @@ int main() {
 }
 ```
 
+An application that opens files hands the second start's files to the running
+copy instead of only raising it:
+
+```cpp
+int OpenFilesMain(const std::vector<std::string>& pathsFromCommandLine,
+                  const std::function<void(const std::vector<std::string>&)>& openInRunningCopy) {
+    UltraCanvasSingleInstance instance("org.ultraos.ultrapaint", "UltraPaint");
+    const auto start = instance.Claim(UltraCanvasSingleInstance::MakeOpenRequest(pathsFromCommandLine));
+    if (start == UltraCanvasSingleInstance::Start::HandedOff) return 0;   // the running copy opens them
+    // ... Initialize, open pathsFromCommandLine, show ...
+    instance.ListenOpen(openInRunningCopy);   // opens a later start's files, raises what shows them
+    // ... app.Run(); instance.Close(); ...
+    return 0;
+}
+```
+
 And in the application's `CMakeLists.txt`, after its `add_executable`:
 
 ```cmake
@@ -60,6 +76,9 @@ a later start keeps asking for up to ten seconds.
 | `Claim(request = {}, lockDirectory = "")` | Takes the lock; when another copy holds it, offers it `request` (a JSON object). Call **after** the command line is read — a mode that prints and exits (`--help`, `--list`) must not claim — and **before** `Initialize`, so a second start costs no window system. |
 | `Listen(handler)` | A later start's request arrives in `handler(const JSONValue&)` on the UI thread. UltraClipboard reads `search` and `editId` from it. |
 | `ListenRaise()` | `Listen` with `BringToFront()` as the handler — what a single-window application needs. |
+| `ListenOpen(openPaths)` | For an application that opens files: a later start's files arrive in `openPaths(const std::vector<std::string>&)` — absolute, UTF-8 — and the application opens them the way it opens a file while running (a new window, a tab, an import), then raises what shows them. A later start without files gets `BringToFront()`. |
+| `MakeOpenRequest(paths)` | The `Claim()` request carrying this start's files, `{"paths": [...]}`. Each path is made absolute against this process's working folder — the running copy was started somewhere else — and an argument containing `://` (a URL) passes through unchanged. |
+| `RequestPaths(request)` | The paths of such a request, for an application that uses `Listen` with a handler of its own. |
 | `Close()` | Stops listening. The lock stays until the object goes, so no second copy slips in while this one shuts down. |
 | `BringToFront()` | Restores and raises the first window that is not a dialog, or the open dialog, which keeps what is typed in it. |
 | `RunAlreadyRunningAlert(app, displayName)` | *"<displayName> is already running."*, then runs the event loop until it is dismissed. Returns `EXIT_SUCCESS`. |
@@ -79,8 +98,10 @@ UltraMail (lock in its data folder: one copy per mailbox), UltraClipboard
 (hands over the search and the entry to edit), DeviceExplorer, UOS-Settings,
 UltraNetMonitor, UltraPassword, UltraAuthenticator, UltraCleaner,
 EmailCleaner, UltraClaude, the UltraAI dashboard, UltraSocial, UltraFIBU and
-UltraWin Manager. Command-line tools (`ultramsg`, `anchorpoint`, `ultrafibu`)
-do not: scripts run several of them at once. Applications that open documents
-(Texter, UltraPaint, UltraViewer, UltraFiler, UltraVideo, ArtCreator,
-AnchorPoint) are not single-instance yet — they need the running copy to open
-the second start's files, which is a hook of their own.
+UltraWin Manager raise their window. The document applications - Texter,
+UltraFiler, UltraViewer, UltraPaint, ArtCreator, UltraVideo and AnchorPoint -
+use `ListenOpen`: a file opened from the file manager while one of them runs
+opens in the running copy. Command-line tools (`ultramsg`, `anchorpoint`,
+`ultrafibu`) do not use it: scripts run several of them at once, and a helper
+process an application starts itself (UltraFiler's elevated helper) must
+never claim.

@@ -15,6 +15,13 @@
 //   app.Run();
 //   instance.Close();            // before the windows go
 //
+// An application that opens files hands the second start's files over
+// instead, and the running copy opens them:
+//
+//   instance.Claim(UltraCanvasSingleInstance::MakeOpenRequest(paths));
+//   ...
+//   instance.ListenOpen([&](const std::vector<std::string>& paths) { window->OpenFiles(paths); });
+//
 // Who runs is decided by an operating-system lock (UltraCanvasInstanceLock.h)
 // on `<settings folder>/instances/<appId>.lock`, which the system drops when
 // the process ends, however it ends: two starts at the same moment can never
@@ -28,6 +35,8 @@
 // the build has it. Without UltraMessage the lock still stops a second copy;
 // it just cannot bring the first one forward, and Claim() answers
 // AlreadyRunning.
+// Version: 1.1.0 - MakeOpenRequest / ListenOpen: the second start's files go
+//                  to the running copy, as absolute paths
 // Version: 1.0.0
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework
@@ -40,6 +49,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -51,6 +61,7 @@ namespace UltraCanvas {
             AlreadyRunning   // another copy runs but did not answer: say so, quit
         };
         using Handler = std::function<void(const JSONValue& request)>;
+        using OpenHandler = std::function<void(const std::vector<std::string>& paths)>;
 
         // `appId` is reverse-DNS ("org.ultraos.deviceexplorer"): the lock
         // file's name and the bus topic come from it. `displayName` is what
@@ -75,6 +86,21 @@ namespace UltraCanvas {
         void Listen(Handler handler);
         // Listen() with the usual handler: BringToFront().
         void ListenRaise();
+        // Listen() for an application that opens files: a later start's
+        // files (MakeOpenRequest) arrive in `openPaths`, absolute and UTF-8,
+        // and the application opens them - in a new window, a tab, whatever
+        // it does with a file - and raises what it opened. A later start
+        // without files gets BringToFront() instead.
+        void ListenOpen(OpenHandler openPaths);
+
+        // The request for Claim() that carries this start's files:
+        // {"paths": [...]}. Each path is made absolute against this
+        // process's working folder first - the running copy was started
+        // somewhere else - and an argument with "://" in it (a URL) passes
+        // through as it is.
+        static JSONValue MakeOpenRequest(const std::vector<std::string>& paths);
+        // The paths of such a request; empty when it carries none.
+        static std::vector<std::string> RequestPaths(const JSONValue& request);
         // Stops listening and leaves the bus; no handler runs after it
         // returns. The lock is kept until the object goes, so no second copy
         // slips in while this one shuts down.
