@@ -1,3 +1,26 @@
+#### 2026-10-14 *0.9.292*
+- **HEIC and AVIF are offered to open only where they decode.** libvips'
+  HEIF loader takes `.heic`, `.heif` and `.avif` wherever it is built with
+  libheif, but libheif decodes them only with codec plug-ins it loads
+  separately: HEVC (libde265) for a HEIC, AV1 (aomdec, dav1d) for an AVIF.
+  Without the HEVC plug-in, FileLoader listed HEIC as readable, so Open
+  dialogs and UltraVideo's import offered phone photos that then failed to
+  load, or came up black: libvips reports each tile it cannot decode only
+  as a warning and returns a black picture of the right size.
+  - The new `VipsCanDecode` (`ImageCairo.h`) asks libheif which decoders it
+    has (`heif_have_decoder_for_format`). FileLoader's format inventory now
+    reports a bitmap type's `canLoad` with it, as `VipsCanEncode` already
+    decides `canSave`.
+  - ImageMagick no longer stands in for such a type: libvips hands the file
+    to its HEIF loader, and ImageMagick's HEIC reader is libheif as well.
+  - The framework links libheif when its development files are installed
+    (`HAS_LIBHEIF`). Without them, the inventory goes by the loader's file
+    endings, as before.
+  - `FileLoaderTypeListsTest` decodes `media/images/test_small.heic` and
+    `.avif`. A sample counts as decoded when it has `test_small.png`'s size
+    and is not black, and each type must be offered exactly when its sample
+    decodes.
+
 #### 2026-10-14 *0.9.291*
 - **Clipboard history rows: a Save as action, and the icons left of the
   text.** `ClipboardRowAction::SaveAs` is painted between Edit and Delete when
