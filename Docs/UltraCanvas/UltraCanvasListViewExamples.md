@@ -665,6 +665,27 @@ styledList->onSelectionChanged = [statusLabel, styledModel](const std::vector<in
 };
 ```
 
+### A list on a section card
+
+A list inside a `GroupBoxVisualStyle::SectionCard()` (see
+`UltraCanvasGroupBoxExamples.md`) takes the framework's list-row colours: a
+soft grey under the pointer, a light tint of the accent blue behind the
+selected row - the rows of UltraMail's message list and UltraPaint's layer
+list. On the light tint the selected row keeps its dark text.
+
+```cpp
+auto cardList = std::make_shared<UltraCanvasListView>("CardList", 0, 0, 260, 200);
+ListViewStyle cardStyle;
+cardStyle.backgroundColor          = Colors::SectionCardBackground;
+cardStyle.hoverBackgroundColor     = Colors::ListRowHover;
+cardStyle.selectionBackgroundColor = Colors::ListRowSelected;
+cardList->SetStyle(cardStyle);
+
+auto cardDelegate = std::make_shared<UltraCanvasDefaultListDelegate>();
+cardDelegate->SetSelectedTextColor(Colors::TextDefault);
+cardList->SetDelegate(cardDelegate);
+```
+
 ### Icon list with a customized delegate
 
 ```cpp

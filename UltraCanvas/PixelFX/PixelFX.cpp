@@ -3,6 +3,8 @@
 // Version: 1.4.0 - GetSupportedLoadFormats / GetSupportedSaveFormats are
 //                  FileLoader's lists, not a fixed one; SaveGif through
 //                  libvips' GIF saver, the framework's where it has none
+// Version: 1.3.1 - Generate::CopyBlank passes its 0.0 without braces (-Wbraced-scalar-init;
+//                 the same new_from_image(double) call)
 // Version: 1.3.0
 // Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
@@ -1047,7 +1049,7 @@ namespace PixelFX {
         PFXImage MaskGaussian(int width, int height, double frequencyCutoff, double amplitudeCutoff) { return PFXImage::mask_gaussian(width, height, frequencyCutoff, amplitudeCutoff); }
         PFXImage MaskRing(int width, int height, double frequency, double ringwidth) { return PFXImage::mask_ideal_ring(width, height, frequency, ringwidth); }
         PFXImage NewFromImage(const PFXImage& source, const std::vector<double>& pixel) { return PFXImage(source.new_from_image(pixel)); }
-        PFXImage CopyBlank(const PFXImage& source) { return PFXImage(source.new_from_image({0.0})); }
+        PFXImage CopyBlank(const PFXImage& source) { return PFXImage(source.new_from_image(0.0)); }
 
     } // namespace Generate
 

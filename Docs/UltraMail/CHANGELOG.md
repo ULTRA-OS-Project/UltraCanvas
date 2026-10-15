@@ -1,3 +1,13 @@
+#### 2026-10-15 *0.10.56*
+- **The cards and list rows are the framework's.** The page, the white cards
+  and their captions (the Folders, message list and Message panes) are drawn
+  from the framework's `GroupBoxVisualStyle::SectionCard()` preset and its
+  `Colors::SectionPage` / `SectionCard*` colours, and the rows' hover and
+  selected tints are `Colors::ListRowHover` / `ListRowSelected`, instead of
+  UltraMail's own copies of the same values. UltraPaint's side panel uses
+  them too, so the two keep looking alike. No visible change (framework
+  changelog: `section-card-and-light-picker`).
+
 #### 2026-10-15 *0.10.55*
 - **A browser sign-in that fails before the browser opens says what
   failed.** When the sign-in service could not be reached - its name did not
