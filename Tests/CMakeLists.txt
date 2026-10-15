@@ -3150,29 +3150,11 @@ add_test(NAME VirtualFSPathTest COMMAND VirtualFSPathTest
 message(STATUS "    Test registered: VirtualFSPathTest")
 
 # ===== VIDEOFX TEST =====
-# Effect -> filter text translation always; with FFmpeg the engine end to end
-# on clips it generates itself (probe, frames, trim, speed, joins, GIF / WAV,
-# lossless cut, cancel, background job, UTF-8 names, error codes).
-# The VideoFX tests go where VideoFX puts its DLL (VIDEOFX_RUNTIME_DIR: bin/,
-# the build root on Windows), so Windows finds it beside them.
-if(TARGET VideoFX)
-    message(STATUS "  Building VideoFXTest...")
-    add_executable(VideoFXTest ${CMAKE_CURRENT_SOURCE_DIR}/VideoFXTest.cpp)
-    target_include_directories(VideoFXTest PRIVATE
-        ${ULTRACANVAS_ROOT}/VideoFX/core          # VideoFXFilterBuilder.h (internal)
-        ${ULTRACANVAS_INCLUDE_DIR}                # UltraCanvasPathUtf8.h (header-only)
-    )
-    target_link_libraries(VideoFXTest PRIVATE VideoFX::VideoFX)
-    # A real face for the face detector's test (public domain, see its README)
-    target_compile_definitions(VideoFXTest PRIVATE
-        VIDEOFX_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/videofx")
-    set_target_properties(VideoFXTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
-    )
-    add_test(NAME VideoFXTest COMMAND VideoFXTest
-             WORKING_DIRECTORY ${VIDEOFX_RUNTIME_DIR})
-    message(STATUS "    Test registered: VideoFXTest")
-endif()
+# VideoFXTest is defined in VideoFXTests.cmake, which the top level also
+# includes on its own (ULTRACANVAS_BUILD_VIDEOFX_TESTS) where BUILD_TESTS is
+# off. The UltraVideo tests below go where it does (VIDEOFX_RUNTIME_DIR: bin/,
+# the build root on Windows), so Windows finds the VideoFX DLL beside them.
+include(${CMAKE_CURRENT_SOURCE_DIR}/VideoFXTests.cmake)
 
 # ===== ULTRAVIDEO DOCUMENT TEST =====
 # UltraVideo's document, mapping and history without a display: media the

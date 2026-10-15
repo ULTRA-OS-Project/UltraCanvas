@@ -16,3 +16,22 @@
   with the importer and the DLL named. The dependency closure follows only
   the MinGW prefix, so a DLL a CMakeLists sends outside the build root was
   left behind without a word - this is what let `libVideoFX.dll` go missing.
+- **The Windows package has the video engine.** The Windows CI rows install
+  MSYS2's FFmpeg (`-ffmpeg`, FFmpeg 9), so VideoFX there is built on it
+  rather than from its stub, and the package's UltraVideo can open, play and
+  export; `package-win.sh` ships FFmpeg's DLLs with the rest. MSYS2 builds
+  FFmpeg with `--enable-gpl --enable-version3` (libx264, libx265), so
+  libVideoFX and UltraVideo in the Windows package are GPL-3.0-or-later
+  (`THIRD_PARTY_LICENSES.md`). The Windows rows also run `VideoFXTest`
+  (`ULTRACANVAS_BUILD_VIDEOFX_TESTS`, `Tests/VideoFXTests.cmake`) after
+  checking that the engine, not the stub, was configured.
+- **VideoFX runs on FFmpeg 9** (the one MSYS2 ships, and the Windows package
+  now). A trim failed there with "Cannot feed the audio effect chain: End of
+  file": FFmpeg 9 closes a filter graph's buffer source once the filters
+  behind it are done - a trim past its end - and refuses every later frame
+  with `AVERROR_EOF`, where older versions took the frame and dropped it, and
+  VideoFX decodes on past a cut's end. Every frame now reaches a graph
+  through `FeedBufferSource` (`VideoFXBackend.h`, where the FFmpeg version
+  differences live), which takes that answer as success. Supported range:
+  FFmpeg 4.4 to 9.x. `VideoFXTest`'s pixel helpers no longer crash the run
+  on a frame that failed to extract; the failed step reports itself.

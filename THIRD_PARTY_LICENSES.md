@@ -315,7 +315,11 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
 - **License:** LGPL-2.1-or-later — https://ffmpeg.org/legal.html. **But** a
   build configured with `--enable-gpl` is GPL-2.0-or-later as a whole, and
   so is a program linking it. The Debian / Ubuntu packages are built that way
-  (they include libx264 / libx265), as is Homebrew's. A distributor who needs
+  (they include libx264 / libx265), as is Homebrew's, and MSYS2's is built
+  with `--enable-gpl --enable-version3`, which makes it GPL-3.0-or-later. The
+  Linux package ships Ubuntu's FFmpeg and the Windows package MSYS2's, so
+  libVideoFX and UltraVideo in those packages are distributed under the GPL
+  (GPL-3.0-or-later on Windows). A distributor who needs
   VideoFX under the LGPL must link an LGPL-only FFmpeg build, which then
   writes H.264 only through a platform encoder (VideoToolbox, Media
   Foundation) or OpenH264.
