@@ -2,22 +2,10 @@
 # Cross-compile UltraCanvas's dependency stack for Android via vcpkg, and print
 # the CMake invocation that consumes the result.
 #
-# ============================ READ THIS FIRST ============================
-# THIS SCRIPT HAS NEVER BEEN RUN. It was written in an environment with no
-# Android NDK and no route to download one, so nothing below has been executed
-# even once. It encodes the plan from
-# Docs/UltraCanvas/AndroidPortInvestigation.md §4 ("evaluate vcpkg's
-# arm64-android triplet first"), not a proven build.
-#
-# Expect to iterate on it. The likely failure points, in order:
-#   1. A port that has no arm64-android triplet support (pango and cairo are
-#      the ones to watch; freetype/harfbuzz/tinyxml2 are routine).
-#   2. glib - the investigation calls it "the heaviest pain point after GTK"
-#      for cross-builds, usually over iconv/locale.
-#   3. pkg-config files that hardcode host paths, so the repo's
-#      pkg_check_modules calls find nothing.
-# None of these mean the approach is wrong; they mean this needs a run.
-# =========================================================================
+# Status: runs in CI for arm64-v8a. .github/workflows/android-build.yml runs
+# this script on GitHub's runner, with its NDK, and compiles the core library
+# against the sysroot it builds. The other ABIs and --with-net have not been
+# run yet; a port that has no support for their triplet is the likely failure.
 #
 # Usage: scripts/android-bootstrap-sysroot.sh [--with-net] [ABI]
 #   ABI defaults to arm64-v8a (vcpkg triplet arm64-android).

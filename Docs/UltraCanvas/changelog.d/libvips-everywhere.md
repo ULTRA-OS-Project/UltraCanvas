@@ -21,5 +21,13 @@
 - **New `android-build.yml` workflow.** It builds that sysroot for
   arm64-android with the runner's NDK, keeps the libraries in vcpkg's binary
   cache, and compiles the core library against it.
+  - The whole core library now compiles for Android, the first time it has.
+    The 3D contour chart's GL surface (`UltraCanvasContourSurfaceGL.cpp`)
+    did not: like the STL viewer, it included desktop OpenGL's `<GL/gl.h>`.
+    On Android it now includes `<GLES3/gl3.h>`, and its shaders begin with
+    `#version 300 es`.
+  - The Android READMEs, the Gradle template and the bootstrap script's
+    header no longer say the sysroot has never been built. No APK has been
+    built yet.
 - **CI changes.** The Build workflow's Android configure test installs
   libvips. The WebAssembly workflow's `no-vips` variant is gone.
