@@ -366,11 +366,32 @@ done
 # before System32 in the search order. Any hit fails the build with the
 # file named, so the choice - drop it or rename it - is made here and not
 # by a loader box on a user's machine.
+#
+# The one kept choice: the Khronos loaders, vulkan-1.dll and OpenCL.dll. They
+# carry the system name because they are that library - what a GPU driver
+# installs into System32 under the name, the same API (the mpr.dll coder was
+# an unrelated DLL that happened to share one). MSYS2's FFmpeg imports them:
+# libavfilter links libplacebo, which links the Vulkan loader, and on ARM64
+# ggml (FFmpeg's whisper filter) links Vulkan and OpenCL. Dropped, they would
+# leave libavfilter - and with it libVideoFX and UltraVideo - unable to start
+# on a PC without a GPU driver (a VM, a server); shipped, ours serves this
+# process in place of the system's, where nothing else asks for them (the
+# framework uses neither API).
+is_khronos_loader() {
+    case "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" in
+        vulkan-1.dll|opencl.dll) return 0 ;;
+    esac
+    return 1
+}
 echo ""
 echo "Checking for DLLs named like Windows system DLLs..."
 SHADOW_HITS=0
 while IFS= read -r dll; do
     if is_system_dll_name "$(basename "$dll")"; then
+        if is_khronos_loader "$(basename "$dll")"; then
+            echo "  $dll: the Khronos loader of that name - shipped (see is_khronos_loader)"
+            continue
+        fi
         echo "  ERROR: $dll has a Windows system DLL's name and would shadow it in the process" >&2
         SHADOW_HITS=$((SHADOW_HITS + 1))
     fi
@@ -379,7 +400,7 @@ if [ "$SHADOW_HITS" -gt 0 ]; then
     echo "Error: $SHADOW_HITS DLL(s) would shadow a Windows system DLL (see above); drop or rename them" >&2
     exit 1
 fi
-echo "  none"
+echo "  done"
 
 # Every DLL of this build that a packaged executable or DLL imports must be in
 # the package beside the executables. The copy at the top takes only the build

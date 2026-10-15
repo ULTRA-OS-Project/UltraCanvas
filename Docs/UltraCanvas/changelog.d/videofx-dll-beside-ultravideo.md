@@ -19,7 +19,12 @@
 - **The Windows package has the video engine.** The Windows CI rows install
   MSYS2's FFmpeg (`-ffmpeg`, FFmpeg 9), so VideoFX there is built on it
   rather than from its stub, and the package's UltraVideo can open, play and
-  export; `package-win.sh` ships FFmpeg's DLLs with the rest. MSYS2 builds
+  export; `package-win.sh` ships FFmpeg's DLLs with the rest. That includes
+  the Khronos Vulkan loader, `vulkan-1.dll` (and on ARM64 `OpenCL.dll`):
+  MSYS2's libavfilter links libplacebo, which links it, so without it
+  UltraVideo would not start on a PC without a GPU driver. Its system name
+  is allowed by name (`is_khronos_loader`), being the very library a driver
+  installs under it; every other system name still fails the package. MSYS2 builds
   FFmpeg with `--enable-gpl --enable-version3` (libx264, libx265), so
   libVideoFX and UltraVideo in the Windows package are GPL-3.0-or-later
   (`THIRD_PARTY_LICENSES.md`). The Windows rows also run `VideoFXTest`
