@@ -1,3 +1,85 @@
+#### 2026-10-15 *0.9.305*
+- **The colour picker can offer its designs in a dropdown.**
+  `UltraCanvasColorPicker::SetShowWheelStyleSelector(true)` (picker 1.6.0)
+  puts a small dropdown in the top-right corner that switches between the
+  three designs, each shown by its icon: colour circle (`Ring`), colour
+  slider + square (`Bar`) and colour rectangle (`HueLightnessField`). Off by
+  default. On the rectangular designs it covers the corner of the colour
+  area, so it hides while a drag on the area or a colour bar runs and comes
+  back on release; beside the circle it stays. `onWheelStyleChanged` reports
+  the user's choice. The icons are `media/icons/colorpicker/{ring,bar,field}.svg`,
+  and the DemoApp's full picker shows the selector.
+  `ColorPickerDesignSelectorTest` covers it.
+- **A dropdown can show the selected item's icon alone.**
+  `DropdownStyle::buttonShowsText = false` leaves the text off the button and
+  centres the icon beside the arrow; the list still names every item. The
+  button also draws an icon now when the item has no text.
+- **The colour picker's saturation/value marker can be dragged again.**
+  `UltraCanvasColorPicker` (1.5.1) hit-tested only the area, while the marker
+  is centred on the colour's pixel, so at an edge or corner most of it lay
+  outside the area and a press on it did nothing. It showed on the ring
+  style: there a drag that overshoots the square is still over the picker,
+  so the marker ends clamped on an edge or in a corner, where in the
+  DemoApp 7 of 10 presses on it missed. A press within the marker's
+  radius of the area is now taken (one beside the area picks that edge), and
+  a press on the marker grabs it where it was hit instead of jumping the
+  colour to the pointer; the hue x lightness field does the same. Every drag
+  (area, ring, bars, channel sliders) now captures the mouse, as the slider
+  does: a drag that left the picker stopped short of the edge, and a release
+  outside it was lost, so the drag went on under a pointer with no button
+  down. `ColorPickerDragTest` covers it.
+- **The colour picker's HSV/HSL/RGB dropdown is a real dropdown.**
+  In `ColorPickerModeSelector::Dropdown` mode the picker (1.6.1) painted its
+  own button and three-row popup and hit-tested them itself. It is an
+  `UltraCanvasDropdown` child now, placed and styled as the button was, so
+  its list opens as a window popup above the rest of the window. Each entry
+  still explains its model when the pointer rests on it.
+  `ColorPickerModelDropdownTest` covers it.
+- **A dropdown entry can have a tooltip.** `DropdownItem::tooltip` is shown
+  when the pointer rests on the entry in the open list (the list's
+  `ToolTipRole`).
+- **Return chooses the highlighted item of an open dropdown.** The arrow
+  keys moved the highlight in an `UltraCanvasDropdown`'s list, but Return
+  chose nothing and left the list open: the dropdown does not take the
+  keyboard focus, so the window hands the keys to the open list, which
+  reports Return through `onItemActivated` - and the dropdown did not listen
+  to it. It does now, through the same path as a click. `DropdownKeyboardTest`
+  covers it.
+- **UltraNet signs in through an OAuth2 sign-in service:
+  `UltraNetOAuth2Service.h`.** A web service that holds the OAuth client
+  registrations - the client id and the secret - and is the public https
+  address the providers redirect to, so a desktop application ships no
+  secret and a provider that refuses loopback redirect URIs (Yahoo)
+  redirects like any other. `UltraNet_OAuth2AuthorizeViaService` is the
+  twin of `UltraNet_OAuth2AuthorizeInteractive`: it starts a session at the
+  service with the PKCE challenge, hands the consent URL to the browser,
+  polls the service for the authorization code and exchanges it through the
+  service, which adds the registration; `UltraNet_OAuth2ServiceRefresh`
+  refreshes the same way, and the steps and the answer parsers are exposed
+  for a caller that runs them itself. The verifier never leaves the
+  application. The service itself is `Server/OAuthCallback` (FastAPI, with
+  nginx and systemd files and its own tests), deployed for ULTRA OS at
+  `https://oauth-callback.ultraos.eu`; UltraMail is its first user. The
+  flat-JSON scanner the token parser used moved to the internal
+  `UltraNetFlatJson.h`, shared by both; `Tests/UltraNet/FakeHttpServer.h`
+  is the fake endpoint the OAuth2 and the service tests serve from.
+- **The sign-in service is a setting of UltraNet's OAuth2 app registry,
+  and UltraCloud signs in through it.** `UltraNet_OAuth2SignInServiceUrl()`
+  resolves the service's address through the registry's tiers - code,
+  the environment (`ULTRANET_OAUTH_SERVICE_URL`, and
+  `ULTRAMAIL_OAUTH_SERVICE_URL` / `ULTRACLOUD_OAUTH_SERVICE_URL` for the
+  modules' prefixes), an INI file's `[service] url`, and the address built
+  in by the new `ULTRANET_OAUTH_SERVICE_URL` CMake option (default
+  `https://oauth-callback.ultraos.eu`, `cmake/oauth.local.cmake` may set
+  it) - so every module in a process reads one setting; `off` turns it
+  off. UltraCloud's Google Drive, OneDrive and Dropbox providers go
+  through the service when no app of their own is registered (the
+  service's `google`, `microsoft` and `dropbox`), where a build without a
+  baked-in client could not sign in to them at all before;
+  `UsesSignInService` / `CanSignIn` say which way a provider goes, and the
+  add-account dialog asks `CanSignIn`. The service serves Dropbox too, and
+  OneDrive's `User.Read` scope.
+
 #### 2026-10-15 *0.9.304*
 - **DemoApp: the Domain Dashboard is part of the List View page.** It was a
   page of its own under Extended Functionality, right after List View, though
