@@ -1,7 +1,8 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
 // Version: 1.12.0 - SetClearButtonText: the clear button can carry a word
-//                  ("Reset") instead of the cross
+//                  ("Reset") instead of the cross; TextInputType::Search shows
+//                  the clear button, as its description always said
 // Version: 1.11.0 - TextInputStyle::FromTheme, ApplyTheme
 // Version: 1.10.0
 // Last Modified: 2026-10-15
@@ -71,7 +72,7 @@ enum class TextInputType {
     Time,           // Time input
     DateTime,       // Date and time
     URL,            // URL validation
-    Search,         // Search field with clear button
+    Search,         // Search field: shows the clear button (SetShowClearButton)
     Custom          // Custom validation rules
 };
 
@@ -394,6 +395,9 @@ private:
     Color clearButtonColor = Color(150, 150, 150);
     Color clearButtonHoverColor = Color(200, 50, 50);
     std::string clearButtonText;   // empty: the cross; else a small button with this word
+    // The clear button is on because the type is Search, not because the
+    // caller asked: leaving Search takes it away again.
+    bool clearButtonFromInputType = false;
     static constexpr int kClearButtonLabelPadding = 7;   // each side of the word
 
     // ===== PASSWORD REVEAL ("EYE") BUTTON =====
@@ -515,7 +519,14 @@ public:
     bool IsShowPlaceholderAlways() const { return showPlaceholderAlways; }
 
     // ===== CLEAR BUTTON =====
-    void SetShowClearButton(bool show) { showClearButton = show; RequestRedraw(); }
+    // TextInputType::Search turns it on; a call here is the caller's own
+    // choice, which a later change of type leaves alone.
+    void SetShowClearButton(bool show) {
+        showClearButton = show;
+        clearButtonFromInputType = false;
+        UpdateScrollOffset();
+        RequestRedraw();
+    }
     bool IsShowClearButton() const { return showClearButton; }
     // A word on the clear button ("Reset", "Clear") instead of the cross: it
     // becomes a small button inside the right end of the field, as wide as

@@ -78,7 +78,7 @@ enum class TextInputType {
     Time,          // Time input
     DateTime,      // Combined date and time
     URL,           // URL with validation
-    Search,        // Search field with clear button
+    Search,        // Search field: shows the clear button
     Custom         // Custom validation rules
 };
 ```
@@ -689,6 +689,10 @@ When on, a small button at the right of the field empties it. It is shown only
 while the field has text and is not read-only. Clicking it saves an undo state,
 clears the text and calls `onTextChanged` and then `onCleared`.
 
+`SetInputType(TextInputType::Search)` turns it on, and changing the type away
+from `Search` turns it off again - unless it was on before, or the caller
+switched it with `SetShowClearButton`, which is always the caller's own choice.
+
 The button is part of the text input; nothing is placed over the field. It is
 a cross by default. `SetClearButtonText` puts a word on it instead - "Reset",
 "Clear" - and it becomes a small button inside the right end of the field, as
@@ -909,9 +913,8 @@ phoneInput->SetFormatter(TextFormatter::Phone());
 ```cpp
 auto searchInput = std::make_shared<UltraCanvasTextInput>(
     "search", 50, 250, 250, 35);
-searchInput->SetInputType(TextInputType::Search);
+searchInput->SetInputType(TextInputType::Search);   // shows the clear button
 searchInput->SetPlaceholder("Search...");
-searchInput->SetShowClearButton(true);
 searchInput->onEnterPressed = [](const std::string& query) {
     std::cerr << "Search for: " << query << std::endl;
     return true;

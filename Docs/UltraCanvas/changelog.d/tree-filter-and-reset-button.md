@@ -18,3 +18,13 @@
   status line says how many matched; "Reset" inside the field, or Escape,
   brings the whole tree back. The *Text Input* page shows the in-field
   buttons: the clear cross and the same button as "Reset".
+- **A `TextInputType::Search` field has its clear button.** The type was
+  described as a "search field with clear button", but nothing read it: a
+  Search field looked and behaved like a plain one. `SetInputType(Search)`
+  now shows the clear button, and changing the type away from Search takes
+  it away again - unless the caller turned it on with `SetShowClearButton`.
+  `TextInputBehaviourTest` covers it.
+- **DemoApp's Text Input page: the two text areas have a frame** (a text area
+  has none of its own, so the empty one could not be seen at all), and the
+  titles "Basic Password Field (eye reveals text)" and "Complete Setup: ..."
+  are no longer cut off.

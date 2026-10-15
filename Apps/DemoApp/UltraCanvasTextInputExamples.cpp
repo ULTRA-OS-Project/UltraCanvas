@@ -1,6 +1,7 @@
 // Apps/DemoApp/UltraCanvasTextInputExamples.cpp
 // Implementation of all component example creators
-// Version: 1.3.0 - In-field buttons: the clear cross, and the same button as "Reset"
+// Version: 1.3.0 - In-field buttons: the clear cross, and the same button as "Reset";
+//                 the text areas get a frame, and no title is cut off
 // Version: 1.2.0
 // Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
@@ -49,13 +50,16 @@ namespace UltraCanvas {
         multiLineLabel->SetFontSize(12);
         container->AddChild(multiLineLabel);
 
+        // A text area has no frame of its own - it is also the editor that
+        // fills a window - so these two get the text inputs' border.
         auto multiLineInput = std::make_shared<UltraCanvasTextArea>("MultiLineInput", 20, 155, 300, 100);
+        multiLineInput->SetBorders(1.0f, Color(200, 200, 200, 255), 4.0f);
         multiLineInput->SetWordWrap(true);
         multiLineInput->SetPlaceholder("Enter multi-line text...\nSupports line breaks.");
         container->AddChild(multiLineInput);
 
 
-        auto passwordLabel = std::make_shared<UltraCanvasLabel>("PasswordLabel", 20, 280, 250, 20);
+        auto passwordLabel = std::make_shared<UltraCanvasLabel>("PasswordLabel", 20, 280, 300, 20);
         passwordLabel->SetText("Basic Password Field (eye reveals text)");
         passwordLabel->SetFontSize(12);
         container->AddChild(passwordLabel);
@@ -87,6 +91,8 @@ namespace UltraCanvas {
 
         // Text Area Component
         auto textAreaInput = std::make_shared<UltraCanvasTextArea>("TextArea", 20, 465, 300, 100);
+        textAreaInput->SetBorders(1.0f, Color(200, 200, 200, 255), 4.0f);
+        textAreaInput->SetPlaceholder("A plain text area: type, paste, undo...");
         container->AddChild(textAreaInput);
 
         // ===== IN-FIELD BUTTONS: CLEAR AND "RESET" =====
@@ -254,7 +260,8 @@ namespace UltraCanvas {
 
         // Width kept clear of the circular meter's column (x >= 710).
         auto passwordTitle4 = std::make_shared<UltraCanvasLabel>("PasswordTitle4", 350, 480, 355, 25);
-        passwordTitle4->SetText("Complete Setup: Circular Meter + Detailed Legend");
+        // Short enough to end before the circular meter at x = 710.
+        passwordTitle4->SetText("Complete Setup: Meter + Detailed Legend");
 //        passwordTitle4->SetFontSize(14);
         //passwordTitle4->SetFontWeight(FontWeight::Bold);
         container->AddChild(passwordTitle4);
