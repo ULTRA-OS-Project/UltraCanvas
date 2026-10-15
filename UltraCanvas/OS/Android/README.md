@@ -398,17 +398,21 @@ Native crashes are separate: those go to the tombstone, and
 ## Building
 
 Needs the NDK toolchain plus a cross-compiled dependency sysroot (cairo, pango,
-glib, harfbuzz, fontconfig, freetype, tinyxml2) reachable through
-`PKG_CONFIG_LIBDIR` — see investigation §4:
+glib, harfbuzz, fontconfig, freetype, tinyxml2, libvips) reachable through
+`PKG_CONFIG_LIBDIR` — `scripts/android-bootstrap-sysroot.sh` builds it with
+vcpkg and prints the configure line (investigation §4):
 
 ```sh
-cmake -B build-android \
+PKG_CONFIG_LIBDIR=$SYSROOT/lib/pkgconfig:$SYSROOT/share/pkgconfig \
+cmake -G Ninja -B build-android \
   -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
-  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 \
+  -DCMAKE_FIND_ROOT_PATH=$SYSROOT -DPKG_CONFIG_ARGN=--static
 ```
 
 The root CMakeLists defaults everything except the core library OFF for
-Android (apps, plugins, vips, video, UltraNet, database, VirtualFS);
+Android (apps, plugins, UltraNet, database, VirtualFS); libvips is part of
+the core library, as on every platform, and comes from the sysroot;
 each is an ordinary cache option that `-D...=ON` re-enables once its
 dependency exists in the sysroot. GL surfaces stay ON: EGL and GLESv3 come
 from the NDK sysroot itself (no pkg-config probing), wired through

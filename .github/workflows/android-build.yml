@@ -1,0 +1,137 @@
+name: Android build
+
+# Builds the framework for Android against a real cross-compiled sysroot:
+# scripts/android-bootstrap-sysroot.sh builds cairo, pango, glib, harfbuzz,
+# fontconfig, freetype, tinyxml2, fmt and libvips (with its JPEG, PNG, WebP,
+# TIFF, EXIF and colour management codecs) for arm64-android with vcpkg and
+# the runner's NDK, and the core library is then compiled with the NDK's
+# toolchain against them - libvips included, as on every platform. The Build
+# workflow's "Android backend check" only syntax-checks OS/Android with host
+# headers standing in; this is the build those headers stand in for.
+#
+# Runs on a pull request, and on a push to main, that touches what the
+# Android build is made of (the paths below). The sysroot takes the better
+# part of an hour to build from nothing; vcpkg's binary cache keeps every
+# library it built, so a run on a warm cache only builds the framework. A
+# manual dispatch from the Actions tab works against any branch.
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/android-build.yml'
+      - 'scripts/android-bootstrap-sysroot.sh'
+      - 'UltraCanvas/OS/Android/**'
+      - 'MacOS/deps/ports/libvips/**'
+      - 'CMakeLists.txt'
+      - 'UltraCanvas/CMakeLists.txt'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-build.yml'
+      - 'scripts/android-bootstrap-sysroot.sh'
+      - 'UltraCanvas/OS/Android/**'
+      - 'MacOS/deps/ports/libvips/**'
+      - 'CMakeLists.txt'
+      - 'UltraCanvas/CMakeLists.txt'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: android (arm64-v8a)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      ABI: arm64-v8a
+      TRIPLET: arm64-android
+      VCPKG_CACHE: ${{ github.workspace }}/.vcpkg/binary-cache
+    steps:
+      - uses: actions/checkout@v5
+
+      # What vcpkg's ports build with on a Linux host besides the compilers
+      # (the NDK's) and cmake / ninja / meson (vcpkg fetches its own):
+      # autotools for gettext, libiconv and libffi, gperf for fontconfig,
+      # bison and flex for the odd generator.
+      - name: Install host tools
+        timeout-minutes: 20
+        run: |
+          scripts/ci-apt.sh update
+          scripts/ci-apt.sh install --no-install-recommends \
+            autoconf autoconf-archive automake libtool gperf bison flex \
+            pkg-config python3 python3-venv curl zip unzip tar git
+
+      # vcpkg's binary cache: each library it built, as one archive per
+      # package. Keyed by the manifest, the libvips overlay and the script
+      # (which pins the vcpkg commit), and saved under a fresh key by every
+      # run - a failed one too, so the libraries it did build are kept -
+      # and `restore-keys` falls back to the newest cache.
+      - name: Restore vcpkg binary cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.VCPKG_CACHE }}
+          key: android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}
+          restore-keys: |
+            android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-
+            android-vcpkg-${{ env.TRIPLET }}-
+
+      # The runner's NDK (ANDROID_NDK_LATEST_HOME, preinstalled on GitHub's
+      # Ubuntu images).
+      - name: Build the sysroot
+        timeout-minutes: 120
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          mkdir -p "$VCPKG_CACHE"
+          export VCPKG_BINARY_SOURCES="clear;files,$VCPKG_CACHE,readwrite"
+          scripts/android-bootstrap-sysroot.sh "$ABI"
+
+      - name: Save vcpkg binary cache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.VCPKG_CACHE }}
+          key: android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}
+
+      # What vcpkg's logs say when a port fails: the build trees hold them.
+      - name: Upload vcpkg logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-vcpkg-logs
+          path: |
+            .vcpkg/vcpkg/buildtrees/*/*.log
+          if-no-files-found: ignore
+
+      # The command the script prints: the NDK's toolchain file, the sysroot
+      # as pkg-config's only search path and as CMake's find root, static
+      # pkg-config link lists (vcpkg's Android triplets build static
+      # libraries).
+      - name: Configure
+        run: |
+          sysroot="$PWD/build-android-sysroot/$TRIPLET"
+          export PKG_CONFIG_LIBDIR="$sysroot/lib/pkgconfig:$sysroot/share/pkgconfig"
+          cmake -G Ninja -B build-android \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ABI" \
+            -DANDROID_PLATFORM=android-26 \
+            -DCMAKE_FIND_ROOT_PATH="$sysroot" \
+            -DPKG_CONFIG_ARGN=--static \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build the core library
+        run: |
+          export PKG_CONFIG_LIBDIR="$PWD/build-android-sysroot/$TRIPLET/lib/pkgconfig:$PWD/build-android-sysroot/$TRIPLET/share/pkgconfig"
+          cmake --build build-android --target UltraCanvas --parallel "$(nproc)"
+
+      - name: Upload the CMake logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-cmake-logs
+          path: |
+            build-android/CMakeFiles/CMakeOutput.log
+            build-android/CMakeFiles/CMakeError.log
+            build-android/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: ignore

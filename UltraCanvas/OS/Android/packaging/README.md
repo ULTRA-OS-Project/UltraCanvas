@@ -4,8 +4,9 @@
 every attribute in it is load-bearing (each is annotated with what breaks
 without it). Everything else here — `vcpkg.json`, `build.gradle.template`, and
 `scripts/android-bootstrap-sysroot.sh` — has **never been run**, because
-UltraCanvas needs cairo, pango, glib, harfbuzz, fontconfig, freetype and
-tinyxml2 cross-compiled for `arm64-v8a`, and no such sysroot exists yet.
+UltraCanvas needs cairo, pango, glib, harfbuzz, fontconfig, freetype,
+tinyxml2 and libvips cross-compiled for `arm64-v8a`, and no such sysroot
+exists yet.
 Until one does, the native library cannot link and no APK can be produced.
 
 ## Building the sysroot (untested)
@@ -76,8 +77,7 @@ at runtime goes in `src/main/assets/`, and the backend unpacks it to
 Android arm points, so path-based loading keeps working unchanged.
 
 Keep `assets/` small: everything there is copied into the app's private storage
-on first launch, so it costs install size **and** disk. This is another reason
-the Android build defaults libvips off.
+on first launch, so it costs install size **and** disk.
 
 ## Signing
 
