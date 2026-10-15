@@ -18,7 +18,7 @@
     the default (`UltraCanvasColorPicker.h`).
 
   UltraMail, UltraPaint, UltraFiler and ArtCreator use them (their
-  changelogs: UltraMail 0.10.55, UltraPaint 0.2.22, UltraFiler 1.74.1,
+  changelogs: UltraMail 0.10.56, UltraPaint 0.2.22, UltraFiler 1.74.1,
   ArtCreator 0.7.1). Docs: `UltraCanvasGroupBoxExamples.md`,
   `UltraCanvasColorPicker.md`, `UltraCanvasListViewExamples.md`.
 - **The framework builds without the warnings it had.** Event and key

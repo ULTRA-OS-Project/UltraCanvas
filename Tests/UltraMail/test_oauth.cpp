@@ -477,6 +477,37 @@ TEST(oauth_sign_in_and_refresh_go_through_the_service_without_a_client) {
     OAuthApps::Clear();
 }
 
+TEST(oauth_sign_in_failure_text_names_the_service_when_it_was_out_of_reach) {
+    OAuthApps::Clear();
+    SetEnv("ULTRAMAIL_GOOGLE_CLIENT_ID", "");
+    OAuthApps::SetServiceUrl("https://cb.example");
+
+    // A transport failure on the way to the service: the framework's reason,
+    // then where the service is and how to check it - never "mail server".
+    UltraNetResult dns = UltraNetResult::Error(UltraNetResultCode::HostNotFound,
+        "the sign-in service did not answer: could not resolve host oauth-callback.example");
+    std::string text = OAuthSignInFailureText("google", dns);
+    REQUIRE(text.rfind("The sign-in service did not answer", 0) == 0);
+    REQUIRE(text.find("https://cb.example/healthz") != std::string::npos);
+    REQUIRE(text.find("mail server") == std::string::npos);
+
+    // The provider's refusal is not a reachability problem: no healthz hint.
+    UltraNetResult denied = UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,
+                                                  "authorization denied: access_denied");
+    text = OAuthSignInFailureText("google", denied);
+    REQUIRE_EQ(text, std::string("Authorization denied: access_denied."));
+
+    // Signing in directly with a client of its own: the service is not named.
+    OAuthApps::Set("google", TestApp());
+    text = OAuthSignInFailureText("google", dns);
+    REQUIRE(text.find("healthz") == std::string::npos);
+    REQUIRE(text.find("could not resolve host") != std::string::npos);
+
+    REQUIRE_EQ(OAuthSignInFailureText("google", UltraNetResult::Error(UltraNetResultCode::Unknown, "")),
+               std::string("The sign-in did not complete."));
+    OAuthApps::Clear();
+}
+
 TEST(oauth_ensure_fresh_refreshes_only_expired_tokens) {
     OAuthApps::Clear();
     OAuthApps::Set("google", TestApp());

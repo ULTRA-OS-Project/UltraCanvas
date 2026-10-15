@@ -1,4 +1,4 @@
-#### 2026-10-15 *0.10.55*
+#### 2026-10-15 *0.10.56*
 - **The cards and list rows are the framework's.** The page, the white cards
   and their captions (the Folders, message list and Message panes) are drawn
   from the framework's `GroupBoxVisualStyle::SectionCard()` preset and its
@@ -7,6 +7,22 @@
   UltraMail's own copies of the same values. UltraPaint's side panel uses
   them too, so the two keep looking alike. No visible change (framework
   changelog: `section-card-and-light-picker`).
+
+#### 2026-10-15 *0.10.55*
+- **A browser sign-in that fails before the browser opens says what
+  failed.** When the sign-in service could not be reached - its name did not
+  resolve, a proxy blocked it, the service was down - the alert said *The
+  mail server could not be found*, the wording for an IMAP server, and
+  dropped the real reason. It now gives the sign-in's own reason (*The
+  sign-in service did not answer: could not resolve host …*, or the
+  provider's refusal) and, for a service out of reach, the service's address
+  and its `/healthz` page to try. The timing trace (`trace.log`) says which
+  way every sign-in and token refresh goes - *through the sign-in service
+  https://…* or *directly, with this installation's own client (oauth.ini or
+  the environment)* - so an `oauth.ini` that still carries a `[google]`
+  client, which makes Google sign in directly and bypass the service, is
+  found in one look. Section 6 of `Docs/UltraMail/AccountSetup.md` has the
+  row.
 
 #### 2026-10-15 *0.10.54*
 - **No connection alert while a computer that was just switched on is still
