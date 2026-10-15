@@ -6,8 +6,8 @@
 
 The UltraCanvasDropDown is an interactive dropdown/combobox component that provides a user-friendly way to select from a list of options. It's part of the UltraCanvas Framework and offers styling, item icons, single or multiple selection, keyboard navigation, scrolling support, and event handling capabilities.
 
-**Version:** 1.2.5  
-**Last Modified:** 2026-10-07  
+**Version:** 1.3.0  
+**Last Modified:** 2026-10-15  
 **Author:** UltraCanvas Framework
 
 ## File Structure
@@ -183,6 +183,13 @@ void CloseDropdown();
 bool IsDropdownOpen() const;
 ```
 
+### Keyboard Focus
+
+```cpp
+bool AcceptsFocus() const;          // true by default: Tab and a click focus it
+void SetAcceptsFocus(bool accept);  // false: out of the Tab order, mouse only
+```
+
 ### Styling
 
 ```cpp
@@ -237,17 +244,23 @@ The dropdown handles various event types:
 - **Item hover, click and wheel scrolling** are handled by the popup list view
 
 ### Keyboard Events
-The dropdown does not take the keyboard focus (`AcceptsFocus()` is false), so
-it is opened with the mouse. While its list is open the window hands the keys
-to the list:
-- **Up/Down, Page Up/Page Down, Home/End**: Move the highlight through the list
-- **Return** or **Space**: Chooses the highlighted item and closes the list
-  (toggles it in multi-selection mode) - the list's `onItemActivated`
+A dropdown takes the keyboard focus as a button does: **Tab** reaches it and a
+click gives it the focus. It keeps the focus while its list is open - the
+popup list does not take it - so a click on an entry leaves the focus on the
+dropdown, drawn with `focusBorderColor`.
+- **Down/Space** (closed): Opens the dropdown
+- **Up/Down, Page Up/Page Down, Home/End** (open): Move the highlight through the list
+- **Return** (open): Chooses the highlighted item and closes the list (toggles
+  it in multi-selection mode)
+- **Space** (open, multi-selection): Toggles the highlighted item
 - **Escape**: Closes the list and keeps the chosen item
+- **Tab / Shift+Tab**: Move the focus on; an open list closes
+- `onKeyDown` sees every key the focused dropdown gets first; returning true
+  stops the default handling
 
-The dropdown's own key handling (Down/Space to open a closed dropdown,
-`onKeyDown` seeing each key first) applies only to keys delivered to the
-dropdown itself, which does not happen while it cannot take the focus.
+`SetAcceptsFocus(false)` leaves a dropdown out of the Tab order and a click no
+longer focuses it. Its open list still answers the keys then - the window hands
+them to the open popup - with Return or Space choosing the highlighted item.
 
 ### Focus Events
 - **FocusLost**: Closes the dropdown (not in multi-selection mode)
