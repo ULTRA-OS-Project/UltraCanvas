@@ -1,4 +1,5 @@
 // UltraCloud/providers/UltraCloudFtp.cpp
+// Version: 0.4.0 - SFTP with a private key (Credentials::privateKeyFile)
 // Version: 0.2.0 - a failure carries UltraNet's diagnostics
 // Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
@@ -193,6 +194,12 @@ UltraNetFtpOptions FtpProvider::OptionsFor(const Account& account,
     options.credentials.password = credentials.password;
     options.useTls = transport.useTls;
     options.implicitTls = transport.implicitTls;
+    // SFTP with a key: the path goes down as it is; the password field is
+    // the key's passphrase and, failing the key, the server's password.
+    if (transport.scheme == "sftp" && !credentials.privateKeyFile.empty()) {
+        options.sshPrivateKeyFile = credentials.privateKeyFile;
+        options.sshKeyPassphrase = credentials.password;
+    }
     return options;
 }
 

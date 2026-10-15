@@ -6,6 +6,9 @@
 // desktop, and under Emscripten the published page itself; the two share
 // the Cairo + Pango pipeline, so the preview is the page
 // (Docs/Research/UltraPressDesignProposal.md §5.2).
+// Version: 0.7.3 - a richtext block is a binding too (TextBinding::rich): its HTML, edited with the RichTextEdit
+// Version: 0.7.2 - an FAQ question is a binding too: TextBinding::element is the label or the button in the slot
+// Version: 0.7.0 - editable: every piece of block text is a binding the editor can edit in place
 // Version: 0.2.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -17,6 +20,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasUIElement.h"
 
@@ -40,6 +44,26 @@ struct RenderOptions {
     std::function<void(const std::string& formId, const std::vector<std::pair<std::string, std::string>>& fields)> onFormSubmit;
     // A newsletter block was submitted: the list's name and the address.
     std::function<void(const std::string& list, const std::string& email)> onNewsletterSubscribe;
+    // The editor's preview: every piece of block text becomes a binding
+    // (RenderedPage::bindings) in a slot of its own, and a click on it calls
+    // `onEditText` with the binding's index - the editor then swaps the
+    // label for an input in that slot. The published page leaves this off.
+    bool editable = false;
+    std::function<void(int binding)> onEditText;
+};
+
+// One piece of block text on the page, where it came from and what shows
+// it: the editor edits it in place by replacing `label` inside `slot`.
+struct TextBinding {
+    std::string blockPath;                 // "blocks[2]", "blocks[2].children[0]"
+    TextLocation where;                    // the property, item, key, paragraph
+    std::string text;                      // as the block holds it (a kicker is shown upper-case)
+    bool multiline = false;                // a long text: an area, Ctrl+Enter commits
+    bool rich = false;                     // a richtext block: `text` is its HTML, edited with the RichTextEdit
+    float size = 16;                       // the label's font size, for the input
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> slot;
+    // What shows the text in the slot: a label, or the FAQ question's button.
+    std::shared_ptr<UltraCanvas::UltraCanvasUIElement> element;
 };
 
 // The theme's colours as the renderer uses them, with the ultraos.eu
@@ -57,6 +81,7 @@ struct RenderedPage {
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasMenu>> menus;   // the header's drop-downs, alive with the page
     std::vector<std::string> warnings;                              // an unknown block, a missing picture
     int elementCount = 0;
+    std::vector<TextBinding> bindings;                              // with RenderOptions::editable
 };
 
 class PageRenderer {
@@ -84,9 +109,15 @@ private:
     Container Gap(float height) const;
     Element Text(const std::string& id, const std::string& text, float size, const UltraCanvas::Color& color,
                  bool bold = false, bool centered = false) const;
+    // The same, bound: with options.editable the label sits in a slot and
+    // is a binding of `page`; `shown` is what the label shows when it is not
+    // the text itself (a kicker's upper case).
+    Element Bound(const std::string& id, const std::string& text, float size, const UltraCanvas::Color& color,
+                  bool bold, bool centered, RenderedPage& page, const TextLocation& where, bool multiline,
+                  const std::string& shown = std::string());
     Element Paragraphs(const std::string& id, const std::string& longText, float size, const UltraCanvas::Color& color,
-                       bool centered = false) const;
-    Element Kicker(const std::string& id, const std::string& text, bool centered = true) const;
+                       bool centered, RenderedPage& page, const TextLocation& where);
+    Element Kicker(const std::string& id, const std::string& text, RenderedPage& page, const TextLocation& where);
     std::shared_ptr<UltraCanvas::UltraCanvasButton> Flat(const std::string& id, const std::string& text, float size,
                                                          const UltraCanvas::Color& color, const UltraCanvas::Color& hover) const;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> Action(const std::string& id, const std::string& text,
@@ -101,6 +132,7 @@ private:
     RenderOptions options;
     const BlockRegistry& registry;
     Palette palette;
+    std::string blockPath;                 // of the block being rendered, for the bindings
 };
 
 // How many elements a tree holds, root included.

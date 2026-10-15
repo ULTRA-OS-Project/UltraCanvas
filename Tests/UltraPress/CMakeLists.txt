@@ -6,6 +6,10 @@ cmake_minimum_required(VERSION 3.16)
 
 add_executable(UltraPressEngineTests UltraPressEngineTests.cpp)
 target_compile_features(UltraPressEngineTests PRIVATE cxx_std_20)
+# The hosts over UltraCloud's in-memory provider, where the module is built.
+if(TARGET UltraPressHosting)
+    target_link_libraries(UltraPressEngineTests PRIVATE UltraPressHosting)
+endif()
 target_link_libraries(UltraPressEngineTests PRIVATE UltraPressEngine ${ULTRACANVAS_LIBRARY})
 target_include_directories(UltraPressEngineTests PRIVATE ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
 target_compile_definitions(UltraPressEngineTests PRIVATE
@@ -21,7 +25,8 @@ add_test(NAME UltraPressEngine COMMAND UltraPressEngineTests
 # The editor window's model side (ui/UltraPressWindow.cpp) is compiled in
 # too: without Build() it edits the site and saves, and that is tested.
 add_executable(UltraPressRenderTests UltraPressRenderTests.cpp
-    ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressWindow.cpp)
+    ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressWindow.cpp
+    ${CMAKE_SOURCE_DIR}/Apps/UltraPress/ui/UltraPressMediaDialog.cpp)
 target_compile_features(UltraPressRenderTests PRIVATE cxx_std_20)
 target_link_libraries(UltraPressRenderTests PRIVATE UltraPressRender ${ULTRACANVAS_LIBRARY})
 target_include_directories(UltraPressRenderTests PRIVATE
