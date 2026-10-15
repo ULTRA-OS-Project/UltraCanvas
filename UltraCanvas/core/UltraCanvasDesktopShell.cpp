@@ -6,8 +6,10 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.4.0 - Microsoft Store applications launch (appUserModelId), ListScreens
+// Version: 1.3.0 - DesktopReplacement::Instead, the tray host's thread, EndSession
 // Version: 1.2.0 - the platform's own application list; shortcut entries launch
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -25,6 +27,7 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <future>
 #include <map>
 #include <set>
 #include <sstream>
@@ -223,6 +226,32 @@ bool UltraCanvasDesktopShell::GetScreenSize(int& width, int& height) {
     return DesktopShellBackend::GetScreenSize(width, height);
 }
 
+std::vector<DesktopScreenInfo> UltraCanvasDesktopShell::ListScreens() {
+    std::vector<DesktopScreenInfo> screens = DesktopShellBackend::ListScreens();
+    if (screens.empty()) {
+        DesktopScreenInfo only;
+        only.primary = true;
+        if (DesktopShellBackend::GetScreenSize(only.width, only.height)) screens.push_back(only);
+        return screens;
+    }
+    // The primary first, the rest left to right, top to bottom.
+    std::stable_sort(screens.begin(), screens.end(), [](const DesktopScreenInfo& a, const DesktopScreenInfo& b) {
+        if (a.primary != b.primary) return a.primary;
+        return a.x != b.x ? a.x < b.x : a.y < b.y;
+    });
+    // An X server names a primary monitor only once someone chose one; until
+    // then it is the one at the origin, else the leftmost.
+    if (!screens[0].primary) {
+        auto origin = std::find_if(screens.begin(), screens.end(), [](const DesktopScreenInfo& s) {
+            return s.x <= 0 && s.y <= 0 && s.x + s.width > 0 && s.y + s.height > 0;
+        });
+        if (origin == screens.end()) origin = screens.begin();
+        origin->primary = true;
+        std::rotate(screens.begin(), origin, origin + 1);
+    }
+    return screens;
+}
+
 bool UltraCanvasDesktopShell::ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom) {
     if (windowId == 0 || left < 0 || right < 0 || top < 0 || bottom < 0) return false;
     return DesktopShellBackend::ReserveScreenEdges(windowId, left, right, top, bottom);
@@ -392,6 +421,18 @@ const UCDesktopEntry* UltraCanvasDesktopShell::MatchApplication(const DesktopWin
 bool UltraCanvasDesktopShell::LaunchApplication(const UCDesktopEntry& entry,
                                                 const std::vector<std::string>& files,
                                                 std::string* error) {
+    if (!entry.appUserModelId.empty()) {
+        // A Microsoft Store application: no program file to hand files to -
+        // it opens them from its own dialog.
+        std::string reason;
+        if (!files.empty()) {
+            reason = "\"" + entry.name + "\" is a Microsoft Store application: open the files from inside it.";
+        } else if (DesktopShellBackend::LaunchPackagedApplication(entry.appUserModelId, reason)) {
+            return true;
+        }
+        if (error) *error = reason;
+        return false;
+    }
     if (!entry.shortcutPath.empty()) {
         // A Start-menu shortcut: opened the way Explorer opens it, so its
         // arguments, its working folder and the shortcuts that name no plain
@@ -399,7 +440,7 @@ bool UltraCanvasDesktopShell::LaunchApplication(const UCDesktopEntry& entry,
         std::string reason;
         bool ok = false;
         if (files.empty()) {
-            ok = FileAssociations::OpenWithDefaultApplication({entry.shortcutPath}, reason);
+            ok = DesktopShellBackend::LaunchShortcut(entry.shortcutPath, reason);
         } else if (!entry.program.empty()) {
             ok = FileAssociations::OpenWithApplicationPath(entry.program, files, reason);
         } else {
@@ -484,18 +525,29 @@ bool UltraCanvasDesktopShell::LaunchProgram(const std::string& program,
 
 // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
 
-bool UltraCanvasDesktopShell::CanReplaceSystemDesktop() { return DesktopShellBackend::CanReplaceSystemDesktop(); }
-bool UltraCanvasDesktopShell::IsSystemDesktopReplaced() { return DesktopShellBackend::IsSystemDesktopReplaced(); }
+bool UltraCanvasDesktopShell::CanReplaceSystemDesktop(DesktopReplacement how) {
+    return how != DesktopReplacement::Off && DesktopShellBackend::CanReplaceSystemDesktop(how);
+}
+
+DesktopReplacement UltraCanvasDesktopShell::GetSystemDesktopReplacement() {
+    return DesktopShellBackend::GetSystemDesktopReplacement();
+}
+
+bool UltraCanvasDesktopShell::IsSystemDesktopReplaced() {
+    return GetSystemDesktopReplacement() != DesktopReplacement::Off;
+}
 
 bool UltraCanvasDesktopShell::ReplaceSystemDesktop(const std::string& desktopProgram,
                                                    const std::vector<std::string>& arguments,
-                                                   std::string* error) {
+                                                   std::string* error, DesktopReplacement how) {
     std::string reason;
     std::error_code ec;
     const fs::path program = PathFromUtf8(desktopProgram);
-    if (desktopProgram.empty() || !program.is_absolute() || !fs::is_regular_file(program, ec)) {
+    if (how == DesktopReplacement::Off) {
+        reason = "Replacing the desktop with nothing is restoring it: call RestoreSystemDesktop.";
+    } else if (desktopProgram.empty() || !program.is_absolute() || !fs::is_regular_file(program, ec)) {
         reason = "\"" + desktopProgram + "\" is not a program this account can start at sign-in.";
-    } else if (DesktopShellBackend::ReplaceSystemDesktop(desktopProgram, arguments, reason)) {
+    } else if (DesktopShellBackend::ReplaceSystemDesktop(desktopProgram, arguments, how, reason)) {
         return true;
     }
     if (error) *error = reason;
@@ -505,6 +557,19 @@ bool UltraCanvasDesktopShell::ReplaceSystemDesktop(const std::string& desktopPro
 bool UltraCanvasDesktopShell::RestoreSystemDesktop(std::string* error) {
     std::string reason;
     if (DesktopShellBackend::RestoreSystemDesktop(reason)) return true;
+    if (error) *error = reason;
+    return false;
+}
+
+bool UltraCanvasDesktopShell::IsSystemDesktopRunning() { return DesktopShellBackend::IsSystemDesktopRunning(); }
+
+// ===== THE END OF THE SESSION =====
+
+bool UltraCanvasDesktopShell::CanEndSession() { return DesktopShellBackend::CanEndSession(); }
+
+bool UltraCanvasDesktopShell::EndSession(SessionEnd how, std::string* error) {
+    std::string reason;
+    if (DesktopShellBackend::EndSession(how, reason)) return true;
     if (error) *error = reason;
     return false;
 }
@@ -671,6 +736,80 @@ void UltraCanvasGlobalShortcut::Stop() {
     callback = nullptr;
 }
 
+// ===== THE NOTIFICATION AREA =====
+
+struct UltraCanvasTrayHost::Impl {
+    DesktopShellBackend::TrayHostState* state = nullptr;
+};
+
+UltraCanvasTrayHost::UltraCanvasTrayHost() : impl(std::make_unique<Impl>()) {}
+
+UltraCanvasTrayHost::~UltraCanvasTrayHost() {
+    Stop();
+}
+
+bool UltraCanvasTrayHost::Start(ChangedCallback onChanged, std::string* error) {
+    if (running.load()) return true;
+    std::string why;
+    if (!onChanged) why = "No action was given for the notification area's changes.";
+    if (why.empty()) impl->state = DesktopShellBackend::TrayHostOpen(why);
+    if (!impl->state) {
+        if (error) *error = why;
+        return false;
+    }
+    callback = std::move(onChanged);
+    running.store(true);
+    // The window the programs talk to belongs to the thread that makes it,
+    // so it is made there; Start waits to hear whether it could be. The
+    // promise lives with the thread, which may still be inside set_value
+    // when Start has its answer and returns.
+    std::promise<std::string> attached;
+    std::future<std::string> attachResult = attached.get_future();
+    worker = std::thread([this, attached = std::move(attached)]() mutable {
+        std::string attachError;
+        const bool ok = DesktopShellBackend::TrayHostAttach(impl->state, attachError);
+        attached.set_value(ok ? std::string() : (attachError.empty() ? std::string("failed") : attachError));
+        if (!ok) return;
+        while (running.load()) {
+            if (!DesktopShellBackend::TrayHostWait(impl->state)) break;
+            if (!running.load()) break;
+            if (callback) callback();
+        }
+    });
+    const std::string attachError = attachResult.get();
+    if (!attachError.empty()) {
+        running.store(false);
+        worker.join();
+        DesktopShellBackend::TrayHostClose(impl->state);
+        impl->state = nullptr;
+        callback = nullptr;
+        if (error) *error = attachError;
+        return false;
+    }
+    return true;
+}
+
+void UltraCanvasTrayHost::Stop() {
+    if (!running.exchange(false)) return;
+    if (impl->state) DesktopShellBackend::TrayHostWake(impl->state);
+    if (worker.joinable()) worker.join();
+    if (impl->state) {
+        DesktopShellBackend::TrayHostClose(impl->state);
+        impl->state = nullptr;
+    }
+    callback = nullptr;
+}
+
+std::vector<DesktopTrayIcon> UltraCanvasTrayHost::ListIcons() const {
+    if (!running.load() || !impl->state) return {};
+    return DesktopShellBackend::TrayHostIcons(impl->state);
+}
+
+bool UltraCanvasTrayHost::Click(const std::string& id, TrayClick button) {
+    if (!running.load() || !impl->state) return false;
+    return DesktopShellBackend::TrayHostClick(impl->state, id, button);
+}
+
 // ===== FALLBACK BACKEND =====
 
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE
@@ -691,6 +830,7 @@ namespace DesktopShellBackend {
     bool MoveWindowToVirtualDesktop(uint64_t, int) { return false; }
 
     bool GetScreenSize(int&, int&) { return false; }
+    std::vector<DesktopScreenInfo> ListScreens() { return {}; }
     bool ReserveScreenEdges(uint64_t, int, int, int, int) { return false; }
     bool CaptureScreen(const std::string&, std::string& error) {
         error = "Screenshots are not available on this platform yet.";
@@ -703,14 +843,29 @@ namespace DesktopShellBackend {
     }
 
     bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
+    bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
+        return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
+    }
+    bool LaunchPackagedApplication(const std::string&, std::string& error) {
+        error = "Microsoft Store applications run on Windows only.";
+        return false;
+    }
 
-    bool CanReplaceSystemDesktop() { return false; }
-    bool IsSystemDesktopReplaced() { return false; }
-    bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, std::string& error) {
+    bool CanReplaceSystemDesktop(DesktopReplacement) { return false; }
+    DesktopReplacement GetSystemDesktopReplacement() { return DesktopReplacement::Off; }
+    bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, DesktopReplacement,
+                              std::string& error) {
         error = "This platform has no switch for which desktop a session starts.";
         return false;
     }
     bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
+    bool IsSystemDesktopRunning() { return true; }              // whatever runs is the system's
+
+    bool CanEndSession() { return false; }
+    bool EndSession(SessionEnd, std::string& error) {
+        error = "Signing out, restarting and shutting down are not available on this platform yet.";
+        return false;
+    }
 
     void ReadDeviceActivity(DesktopDeviceActivity& activity) {
         activity.warnings.push_back(
@@ -731,6 +886,18 @@ namespace DesktopShellBackend {
     bool ShortcutWait(ShortcutState*) { return false; }
     void ShortcutWake(ShortcutState*) {}
     void ShortcutClose(ShortcutState*) {}
+
+    struct TrayHostState {};
+    TrayHostState* TrayHostOpen(std::string& error) {
+        error = "This platform has no notification area to host.";
+        return nullptr;
+    }
+    bool TrayHostAttach(TrayHostState*, std::string&) { return false; }
+    bool TrayHostWait(TrayHostState*) { return false; }
+    void TrayHostWake(TrayHostState*) {}
+    void TrayHostClose(TrayHostState*) {}
+    std::vector<DesktopTrayIcon> TrayHostIcons(TrayHostState*) { return {}; }
+    bool TrayHostClick(TrayHostState*, const std::string&, TrayClick) { return false; }
 
 } // namespace DesktopShellBackend
 #endif // !ULTRACANVAS_DESKTOPSHELL_NATIVE

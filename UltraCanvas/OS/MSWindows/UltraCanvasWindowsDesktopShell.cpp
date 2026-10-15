@@ -30,16 +30,33 @@
 //     own thread, which pumps its messages in MsgWaitForMultipleObjectsEx.
 //   - Global shortcut: RegisterHotKey on the shortcut's thread. Explorer
 //     keeps most Win-key combinations for itself (Win+V among them), so
-//     those are reported as taken while it runs.
+//     those are reported as taken while it runs. "Super" alone is a tap of
+//     the Win key, seen through a low-level keyboard hook on that thread.
 //   - Applications: the Start menu's shortcuts, the user's and the
 //     machine's, named as the Start menu names them (desktop.ini) and
-//     launched by opening the shortcut, as Explorer does.
-//   - In place of the system's desktop: a value under the user's Run key
-//     starts the desktop at sign-in, and Explorer's taskbar is set to hide
-//     itself; the taskbar's state before is kept and given back on the way
-//     back. Explorer keeps running beside it.
+//     launched by opening the shortcut, as Explorer does; and the Microsoft
+//     Store applications from the shell's Applications folder, launched
+//     through IApplicationActivationManager.
+//   - In place of the system's desktop, beside Explorer: a value under the
+//     user's Run key starts the desktop at sign-in, and Explorer's taskbar
+//     is set to hide itself; the taskbar's state before is kept and given
+//     back on the way back. Explorer keeps running beside it.
+//   - Instead of Explorer: the account's own shell setting (Winlogon's
+//     Shell under HKEY_CURRENT_USER, which sign-in reads before the
+//     machine's) names UltraCanvasShellGuard with the desktop after it; the
+//     guard is what keeps a failing desktop from leaving the screen empty
+//     (OS/MSWindows/ShellGuard/).
+//   - The notification area, when the desktop is the shell: Shell_TrayWnd,
+//     the window every program's Shell_NotifyIcon talks to
+//     (UltraCanvasWindowsTrayHost.cpp).
+//   - The end of the session: ExitWindowsEx.
+// Version: 1.3.0 - Microsoft Store applications (ListPackagedApplications,
+//                  LaunchPackagedApplication); "Super" alone, a tap of the
+//                  Win key
+// Version: 1.2.0 - DesktopReplacement::Instead, EndSession, LaunchShortcut;
+//                  our own Shell_TrayWnd is not Explorer's taskbar
 // Version: 1.1.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 
 // IVirtualDesktopManager, DWMWA_CLOAKED and the cloaking events are declared
@@ -57,9 +74,12 @@
 
 #include "UltraCanvasDesktopShellBackend.h"
 #include "UltraCanvasDiskCache.h"
+#include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasShellLink.h"
+#include "UltraCanvasUtils.h"           // LaunchDetachedProcess
+#include "UltraCanvasWindowsDesktopShellInternal.h"
 #include "UltraCanvasWindowsIcons.h"
 
 #include <windows.h>
@@ -68,8 +88,9 @@
 #include <mmdeviceapi.h>
 #include <objbase.h>
 #include <shellapi.h>
+#include <shlobj.h>     // SHGetKnownFolderItem
 #include <shlwapi.h>    // SHLoadIndirectString
-#include <shobjidl.h>   // IVirtualDesktopManager
+#include <shobjidl.h>   // IVirtualDesktopManager, IApplicationActivationManager
 
 #include <cairo/cairo.h>
 
@@ -81,6 +102,7 @@
 #include <cstring>
 #include <cwctype>
 #include <filesystem>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <mutex>
@@ -172,6 +194,12 @@ namespace {
         {0xAA509086, 0x5CA9, 0x4C25, {0x8F, 0x95, 0x58, 0x9D, 0x3C, 0x07, 0xB4, 0x8A}};
     const CLSID kClsidMMDeviceEnumerator =
         {0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};
+    const CLSID kClsidApplicationActivationManager =
+        {0x45BA127D, 0x10A8, 0x46EA, {0x8A, 0xB7, 0x56, 0xEA, 0x90, 0x78, 0x94, 0x3C}};
+    const GUID kFolderIdAppsFolder =
+        {0x1E87508D, 0x89C2, 0x42F0, {0x8A, 0x7E, 0x64, 0x5A, 0x0F, 0x50, 0xCA, 0x58}};
+    const GUID kBhidEnumItems =
+        {0x94F60519, 0x2850, 0x4924, {0xAA, 0x5A, 0xD1, 0x5E, 0x84, 0x86, 0x80, 0x39}};
 
     // ===== THE PNG CACHE FOR ICONS =====
     // The taskbar and the app starter draw image files. An executable's or a
@@ -414,8 +442,20 @@ namespace {
         return SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT)) == inputs.size();
     }
 
+    // Explorer's taskbar - not the Shell_TrayWnd this process may host
+    // itself as the shell's notification area.
+    HWND ExplorerTaskbarWindow() {
+        for (HWND tray = FindWindowExW(nullptr, nullptr, L"Shell_TrayWnd", nullptr); tray;
+             tray = FindWindowExW(nullptr, tray, L"Shell_TrayWnd", nullptr)) {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(tray, &pid);
+            if (pid != GetCurrentProcessId()) return tray;
+        }
+        return nullptr;
+    }
+
     bool ExplorerTaskbarRunning() {
-        return FindWindowW(L"Shell_TrayWnd", nullptr) != nullptr;
+        return ExplorerTaskbarWindow() != nullptr;
     }
 
     // ===== SCREEN EDGES =====
@@ -744,6 +784,59 @@ namespace {
         return stem.rfind(L"unins", 0) != 0 && stem.find(L"uninstall") == std::wstring::npos;
     }
 
+    // ===== MICROSOFT STORE APPLICATIONS =====
+    // A Store application has no shortcut on disk and no program file to
+    // start; the shell's Applications folder (shell:AppsFolder) - the list
+    // the Start menu itself is made from - names it by its AppUserModelID,
+    // "PackageFamilyName!AppId", with the name and the icon the Start menu
+    // shows. The desktop programs in the same folder come from the
+    // shortcuts already read, and carry no "!".
+
+    std::shared_ptr<UCPixmap> ShellItemIconPixmap(IShellItem* item, int size) {
+        IShellItemImageFactory* factory = nullptr;
+        if (FAILED(item->QueryInterface(__uuidof(IShellItemImageFactory), reinterpret_cast<void**>(&factory))))
+            return nullptr;
+        std::shared_ptr<UCPixmap> pixmap;
+        HBITMAP bitmap = nullptr;
+        if (SUCCEEDED(factory->GetImage(SIZE{size, size}, SIIGBF_ICONONLY, &bitmap)) && bitmap) {
+            pixmap = WindowsIcons::PixmapFromBitmap(bitmap);
+            DeleteObject(bitmap);
+        }
+        Release(factory);
+        return pixmap;
+    }
+
+    void ListPackagedApplications(int size, std::vector<UCDesktopEntry>& out) {
+        IShellItem* folder = nullptr;
+        if (FAILED(SHGetKnownFolderItem(kFolderIdAppsFolder, KF_FLAG_DEFAULT, nullptr, __uuidof(IShellItem),
+                                        reinterpret_cast<void**>(&folder))))
+            return;
+        IEnumShellItems* items = nullptr;
+        if (SUCCEEDED(folder->BindToHandler(nullptr, kBhidEnumItems, __uuidof(IEnumShellItems),
+                                            reinterpret_cast<void**>(&items)))) {
+            IShellItem* item = nullptr;
+            while (items->Next(1, &item, nullptr) == S_OK && item) {
+                PWSTR id = nullptr;
+                if (SUCCEEDED(item->GetDisplayName(SIGDN_PARENTRELATIVEPARSING, &id)) && id && std::wcschr(id, L'!')) {
+                    UCDesktopEntry entry;
+                    entry.kind = UCDesktopEntry::Kind::Application;
+                    entry.appUserModelId = Narrow(id);
+                    PWSTR name = nullptr;
+                    if (SUCCEEDED(item->GetDisplayName(SIGDN_NORMALDISPLAY, &name)) && name) entry.name = Narrow(name);
+                    CoTaskMemFree(name);
+                    if (entry.name.empty()) entry.name = entry.appUserModelId;
+                    entry.iconFile = CachedIconFile("aumid|" + entry.appUserModelId + "|" + std::to_string(size),
+                                                    [item, size]() { return ShellItemIconPixmap(item, size); });
+                    out.push_back(std::move(entry));
+                }
+                CoTaskMemFree(id);
+                Release(item);
+            }
+            Release(items);
+        }
+        Release(folder);
+    }
+
     std::vector<fs::path> StartMenuDirectories() {
         std::vector<fs::path> dirs;
         // The user's first, so that a user's shortcut wins over the
@@ -767,6 +860,12 @@ namespace {
     constexpr wchar_t kRunValue[] = L"UltraCanvas Desktop";
     constexpr wchar_t kShellStateKey[] = L"Software\\UltraCanvas\\DesktopShell";
     constexpr wchar_t kTaskbarStateValue[] = L"TaskbarStateBeforeReplacing";
+    // Instead of Explorer: the account's shell, which sign-in (userinit)
+    // reads from the user's hive before the machine's. Only a value naming
+    // the guard is ever ours to change; another program's shell is left be.
+    constexpr wchar_t kWinlogonKey[] = L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon";
+    constexpr wchar_t kShellValue[] = L"Shell";
+    constexpr wchar_t kShellGuardProgram[] = L"UltraCanvasShellGuard.exe";
 
     // An argument as the C runtime splits a command line back into argv:
     // quoted when it holds a space, a tab or a quote, with the backslashes
@@ -816,9 +915,84 @@ namespace {
     void SetTaskbarState(UINT state) {
         APPBARDATA data = {};
         data.cbSize = sizeof(data);
-        data.hWnd = FindWindowW(L"Shell_TrayWnd", nullptr);
+        data.hWnd = ExplorerTaskbarWindow();
         data.lParam = static_cast<LPARAM>(state);
         SHAppBarMessage(ABM_SETSTATE, &data);
+    }
+
+    // The taskbar as it was before the first switch, when Explorer is there
+    // to take it; kept for a later call otherwise.
+    void GiveTaskbarBack() {
+        DWORD previous = 0;
+        if (ReadDword(kShellStateKey, kTaskbarStateValue, previous) && ExplorerTaskbarRunning()) {
+            SetTaskbarState(previous);
+            RegDeleteKeyValueW(HKEY_CURRENT_USER, kShellStateKey, kTaskbarStateValue);
+        }
+    }
+
+    bool ReadString(const wchar_t* subKey, const wchar_t* name, std::wstring& out) {
+        DWORD size = 0;
+        if (RegGetValueW(HKEY_CURRENT_USER, subKey, name, RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
+                         nullptr, nullptr, &size) != ERROR_SUCCESS || size == 0)
+            return false;
+        std::wstring buffer(size / sizeof(wchar_t) + 1, L'\0');
+        if (RegGetValueW(HKEY_CURRENT_USER, subKey, name, RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
+                         nullptr, buffer.data(), &size) != ERROR_SUCCESS)
+            return false;
+        buffer.resize(wcsnlen(buffer.c_str(), buffer.size()));
+        out = buffer;
+        return true;
+    }
+
+    // The program a command line starts: its first word, quoted or not.
+    std::wstring FirstWord(const std::wstring& command) {
+        size_t at = command.find_first_not_of(L" \t");
+        if (at == std::wstring::npos) return {};
+        if (command[at] == L'"') {
+            const size_t end = command.find(L'"', at + 1);
+            return command.substr(at + 1, end == std::wstring::npos ? std::wstring::npos : end - at - 1);
+        }
+        const size_t end = command.find_first_of(L" \t", at);
+        return command.substr(at, end == std::wstring::npos ? std::wstring::npos : end - at);
+    }
+
+    // Whether the account's shell is the guard - ours to change and remove.
+    bool ShellIsOurGuard() {
+        std::wstring shell;
+        if (!ReadString(kWinlogonKey, kShellValue, shell)) return false;
+        return _wcsicmp(FileNameOf(FirstWord(shell)).c_str(), kShellGuardProgram) == 0;
+    }
+
+    bool RemoveOurShell(std::string& error) {
+        if (!ShellIsOurGuard()) return true;
+        const LSTATUS removed = RegDeleteKeyValueW(HKEY_CURRENT_USER, kWinlogonKey, kShellValue);
+        if (removed == ERROR_SUCCESS || removed == ERROR_FILE_NOT_FOUND) return true;
+        error = "The account's shell setting could not be put back to Explorer (Windows error " +
+                std::to_string(removed) + ").";
+        return false;
+    }
+
+    bool RemoveRunValue(std::string& error) {
+        const LSTATUS removed = RegDeleteKeyValueW(HKEY_CURRENT_USER, kRunKey, kRunValue);
+        if (removed == ERROR_SUCCESS || removed == ERROR_FILE_NOT_FOUND) return true;
+        error = "The desktop's start at sign-in could not be removed (Windows error " + std::to_string(removed) +
+                ").";
+        return false;
+    }
+
+    // A privilege the account holds but has not switched on - the right to
+    // shut the computer down - switched on for this process.
+    bool EnablePrivilege(const wchar_t* name) {
+        HANDLE token = nullptr;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token)) return false;
+        TOKEN_PRIVILEGES privileges = {};
+        privileges.PrivilegeCount = 1;
+        privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        bool ok = LookupPrivilegeValueW(nullptr, name, &privileges.Privileges[0].Luid) &&
+                  AdjustTokenPrivileges(token, FALSE, &privileges, 0, nullptr, nullptr) &&
+                  GetLastError() == ERROR_SUCCESS;   // ERROR_NOT_ALL_ASSIGNED: the account lacks it
+        CloseHandle(token);
+        return ok;
     }
 
     // ===== THE MONITOR =====
@@ -928,7 +1102,60 @@ namespace {
         return it == named.end() ? 0 : it->second;
     }
 
+    // A tap of the Win key alone - pressed and let go with no other key in
+    // between - as a low-level keyboard hook sees it. RegisterHotKey takes
+    // no combination without a key, and a hook is how Explorer itself tells
+    // a tap that opens the Start menu from Win+E.
+    struct WinKeyTap {
+        bool winDown = false;
+        bool other = false;      // another key went down while Win was held
+        bool tapped = false;
+    };
+
+    thread_local WinKeyTap* t_tap = nullptr;
+
+    LRESULT CALLBACK OnLowLevelKey(int code, WPARAM wParam, LPARAM lParam) {
+        if (code == HC_ACTION && t_tap) {
+            const auto* key = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+            const bool down = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
+            const bool win = key->vkCode == VK_LWIN || key->vkCode == VK_RWIN;
+            if (win) {
+                if (down) {
+                    if (!t_tap->winDown) {   // not the auto-repeat of a held key
+                        t_tap->winDown = true;
+                        t_tap->other = false;
+                    }
+                } else {
+                    if (t_tap->winDown && !t_tap->other) t_tap->tapped = true;
+                    t_tap->winDown = false;
+                }
+            } else if (down && t_tap->winDown) {
+                t_tap->other = true;
+            }
+        }
+        return CallNextHookEx(nullptr, code, wParam, lParam);
+    }
+
 } // namespace
+
+// ===== SHARED WITH THE TRAY HOST =====
+
+namespace Win32 {
+
+std::string CachedIconPng(const std::string& key, const std::function<std::shared_ptr<UCPixmap>()>& make) {
+    return CachedIconFile(key, make);
+}
+
+std::string ProgramNameOfProcess(DWORD pid) {
+    const std::wstring exe = ProcessImagePath(pid);
+    return exe.empty() ? std::string() : Narrow(StemOf(exe));
+}
+
+bool ForeignTrayWindowRunning() {
+    return ExplorerTaskbarRunning();
+}
+
+} // namespace Win32
 
 // ===== BACKEND =====
 
@@ -1130,6 +1357,28 @@ bool GetScreenSize(int& width, int& height) {
     return width > 0 && height > 0;
 }
 
+namespace {
+    BOOL CALLBACK CollectMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM param) {
+        MONITORINFO info = {};
+        info.cbSize = sizeof(info);
+        if (!GetMonitorInfoW(monitor, &info)) return TRUE;
+        DesktopScreenInfo screen;
+        screen.x = info.rcMonitor.left;
+        screen.y = info.rcMonitor.top;
+        screen.width = info.rcMonitor.right - info.rcMonitor.left;
+        screen.height = info.rcMonitor.bottom - info.rcMonitor.top;
+        screen.primary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0;
+        reinterpret_cast<std::vector<DesktopScreenInfo>*>(param)->push_back(screen);
+        return TRUE;
+    }
+} // namespace
+
+std::vector<DesktopScreenInfo> ListScreens() {
+    std::vector<DesktopScreenInfo> screens;
+    EnumDisplayMonitors(nullptr, nullptr, CollectMonitor, reinterpret_cast<LPARAM>(&screens));
+    return screens;
+}
+
 // Call it from the thread the window belongs to (the UI thread): the appbar
 // windows are made there.
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
@@ -1297,24 +1546,102 @@ bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out) {
             out.push_back(std::move(entry));
         }
     }
+    ListPackagedApplications(size, out);
     return true;
+}
+
+bool LaunchPackagedApplication(const std::string& appUserModelId, std::string& error) {
+    ComScope com;
+    const std::wstring id = Widen(appUserModelId);
+    IApplicationActivationManager* manager = nullptr;
+    HRESULT hr = CoCreateInstance(kClsidApplicationActivationManager, nullptr, CLSCTX_LOCAL_SERVER,
+                                  __uuidof(IApplicationActivationManager), reinterpret_cast<void**>(&manager));
+    if (SUCCEEDED(hr)) {
+        DWORD processId = 0;
+        hr = manager->ActivateApplication(id.c_str(), nullptr, AO_NONE, &processId);
+        Release(manager);
+        if (SUCCEEDED(hr)) return true;
+    }
+    // The shell's own way in: the Applications folder's item, opened.
+    const std::wstring item = L"shell:AppsFolder\\" + id;
+    SHELLEXECUTEINFOW info = {};
+    info.cbSize = sizeof(info);
+    info.fMask = SEE_MASK_FLAG_NO_UI;
+    info.lpFile = item.c_str();
+    info.nShow = SW_SHOWNORMAL;
+    if (ShellExecuteExW(&info)) return true;
+    char code[16] = {};
+    std::snprintf(code, sizeof code, "0x%08lX", static_cast<unsigned long>(hr));
+    error = "\"" + appUserModelId + "\" could not be started (error " + code + ").";
+    return false;
+}
+
+bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
+    // While this desktop is the shell, a shortcut to a bare explorer.exe
+    // (the Start menu's "File Explorer") would start a second desktop:
+    // Explorer takes over as the shell when it starts with nothing to open
+    // and no taskbar of its own around. Given a folder, it is a window.
+    if (!ExplorerTaskbarRunning()) {
+        UCShellLink link;
+        if (ReadShellLink(shortcutPath, link) && link.arguments.empty()) {
+            const std::string target = link.hostTargetPath.empty() ? link.targetPath : link.hostTargetPath;
+            if (!target.empty() && _wcsicmp(FileNameOf(Widen(target)).c_str(), L"explorer.exe") == 0) {
+                // This PC, the folder Explorer itself opens on a click.
+                return LaunchDetachedProcess({target, "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"},
+                                             link.workingDirectory, error);
+            }
+        }
+    }
+    return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
 }
 
 // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
 
-bool CanReplaceSystemDesktop() { return true; }
+bool CanReplaceSystemDesktop(DesktopReplacement how) {
+    return how == DesktopReplacement::Beside || how == DesktopReplacement::Instead;
+}
 
-bool IsSystemDesktopReplaced() {
+DesktopReplacement GetSystemDesktopReplacement() {
+    if (ShellIsOurGuard()) return DesktopReplacement::Instead;
     DWORD size = 0;
-    return RegGetValueW(HKEY_CURRENT_USER, kRunKey, kRunValue, RRF_RT_REG_SZ, nullptr, nullptr, &size) ==
-           ERROR_SUCCESS;
+    if (RegGetValueW(HKEY_CURRENT_USER, kRunKey, kRunValue, RRF_RT_REG_SZ, nullptr, nullptr, &size) == ERROR_SUCCESS)
+        return DesktopReplacement::Beside;
+    return DesktopReplacement::Off;
 }
 
 bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::string>& arguments,
-                          std::string& error) {
+                          DesktopReplacement how, std::string& error) {
+    const std::wstring wideProgram = Widen(program);
     // The program always in quotes: "C:\Program Files\..." has a space.
-    std::wstring command = L"\"" + Widen(program) + L"\"";
+    std::wstring command = L"\"" + wideProgram + L"\"";
     for (const std::string& argument : arguments) command += L" " + QuoteArgument(Widen(argument));
+
+    if (how == DesktopReplacement::Instead) {
+        // The guard, never the desktop itself: a desktop that crashes, or
+        // was half removed, must still leave the user a screen to work on.
+        const size_t slash = wideProgram.find_last_of(L"\\/");
+        const std::wstring guard =
+            (slash == std::wstring::npos ? std::wstring() : wideProgram.substr(0, slash + 1)) + kShellGuardProgram;
+        const DWORD attributes = GetFileAttributesW(guard.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            error = Narrow(kShellGuardProgram) + std::string(" is not installed beside ") + program +
+                    ". It is what brings Explorer back if the desktop fails, so without it the switch is not made.";
+            return false;
+        }
+        const std::wstring shell = L"\"" + guard + L"\" " + command;
+        const DWORD bytes = static_cast<DWORD>((shell.size() + 1) * sizeof(wchar_t));
+        if (!WriteValue(kWinlogonKey, kShellValue, REG_SZ, shell.c_str(), bytes)) {
+            error = "Windows did not let this account change its shell: the Winlogon key could not be written.";
+            return false;
+        }
+        // Not also beside: one desktop at sign-in. Explorer's taskbar goes
+        // back to how it was - the next session has no Explorer to hide,
+        // and the way back must find it as the user left it.
+        std::string ignored;
+        RemoveRunValue(ignored);
+        GiveTaskbarBack();
+        return true;
+    }
 
     // The taskbar as it is now, recorded once: switching again must not
     // record the hidden taskbar as the one to come back to.
@@ -1329,23 +1656,45 @@ bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::str
         error = "Windows did not let this account start a program at sign-in: the Run key could not be written.";
         return false;
     }
+    // Beside Explorer from now on, not instead of it.
+    if (!RemoveOurShell(error)) return false;
     if (explorer) SetTaskbarState(ABS_AUTOHIDE | ABS_ALWAYSONTOP);
     return true;
 }
 
 bool RestoreSystemDesktop(std::string& error) {
-    const LSTATUS removed = RegDeleteKeyValueW(HKEY_CURRENT_USER, kRunKey, kRunValue);
-    if (removed != ERROR_SUCCESS && removed != ERROR_FILE_NOT_FOUND) {
-        error = "The desktop's start at sign-in could not be removed (Windows error " + std::to_string(removed) +
-                ").";
-        return false;
-    }
+    if (!RemoveRunValue(error)) return false;
+    if (!RemoveOurShell(error)) return false;
     // The taskbar as it was. Kept for later when Explorer is not running to
     // be given it.
-    DWORD previous = 0;
-    if (ReadDword(kShellStateKey, kTaskbarStateValue, previous) && ExplorerTaskbarRunning()) {
-        SetTaskbarState(previous);
-        RegDeleteKeyValueW(HKEY_CURRENT_USER, kShellStateKey, kTaskbarStateValue);
+    GiveTaskbarBack();
+    return true;
+}
+
+bool IsSystemDesktopRunning() {
+    return ExplorerTaskbarRunning();
+}
+
+// ===== THE END OF THE SESSION =====
+
+bool CanEndSession() { return true; }
+
+bool EndSession(SessionEnd how, std::string& error) {
+    // A planned end, as the Start menu's: the reason Windows records.
+    const DWORD reason = SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER | SHTDN_REASON_FLAG_PLANNED;
+    UINT flags = EWX_LOGOFF;
+    if (how != SessionEnd::SignOut) {
+        // Every account that may shut the computer down holds the privilege
+        // switched off; a program switches it on for itself first.
+        if (!EnablePrivilege(SE_SHUTDOWN_NAME)) {
+            error = "This account is not allowed to shut the computer down.";
+            return false;
+        }
+        flags = how == SessionEnd::Restart ? EWX_REBOOT : EWX_POWEROFF;
+    }
+    if (!ExitWindowsEx(flags, reason)) {
+        error = "Windows refused (error " + std::to_string(GetLastError()) + ").";
+        return false;
     }
     return true;
 }
@@ -1432,6 +1781,10 @@ struct ShortcutState {
     UINT key = 0;
     HANDLE wake = nullptr;
     bool registered = false;
+    // "Super" alone: a tap of the Win key, through a low-level hook.
+    bool winTap = false;
+    HHOOK hook = nullptr;
+    WinKeyTap tap;
 };
 
 ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
@@ -1454,8 +1807,21 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
         start = plus + 1;
     }
     if (key.empty()) {
-        error = "\"" + accelerator + "\" names no key.";
-        return nullptr;
+        // The Win key alone is a tap of it; any other modifier alone is not
+        // a shortcut.
+        if (modifiers != MOD_WIN) {
+            error = "\"" + accelerator + "\" names no key.";
+            return nullptr;
+        }
+        auto* state = new ShortcutState();
+        state->winTap = true;
+        state->wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!state->wake) {
+            delete state;
+            error = "No event for the shortcut's thread.";
+            return nullptr;
+        }
+        return state;
     }
     const UINT vk = VirtualKeyFor(key);
     if (vk == 0) {
@@ -1492,8 +1858,39 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
 
 // WM_HOTKEY arrives once per press (MOD_NOREPEAT: holding the keys repeats
 // nothing).
+// The Win key's tap: the hook is set on the shortcut's own thread, whose
+// pump (MsgWaitForMultipleObjectsEx) is where Windows calls it - promptly,
+// or Windows drops a hook that keeps the keyboard waiting.
+static bool WaitForWinKeyTap(ShortcutState* state) {
+    if (!state->hook) {
+        t_tap = &state->tap;
+        state->hook = SetWindowsHookExW(WH_KEYBOARD_LL, OnLowLevelKey, ThisModule(), 0);
+        if (!state->hook) {
+            t_tap = nullptr;
+            return false;
+        }
+    }
+    auto finish = [state]() {
+        if (state->hook) UnhookWindowsHookEx(state->hook);
+        state->hook = nullptr;
+        if (t_tap == &state->tap) t_tap = nullptr;
+        return false;
+    };
+    for (;;) {
+        const DWORD result = MsgWaitForMultipleObjectsEx(1, &state->wake, 200, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        if (result == WAIT_OBJECT_0 || result == WAIT_FAILED) return finish();   // woken to stop
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&msg);
+        if (state->tap.tapped) {
+            state->tap.tapped = false;
+            return true;
+        }
+    }
+}
+
 bool ShortcutWait(ShortcutState* state) {
     if (!state || !state->wake) return false;
+    if (state->winTap) return WaitForWinKeyTap(state);
     if (!state->registered) {
         if (!RegisterHotKey(nullptr, state->id, state->modifiers, state->key)) return false;
         state->registered = true;
