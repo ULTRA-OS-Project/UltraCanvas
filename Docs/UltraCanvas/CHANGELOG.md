@@ -1,3 +1,28 @@
+#### 2026-10-15 *0.9.299*
+- **`UltraCanvasTextArea`: `onFocusGained` and `onFocusLost`**, the two
+  callbacks the text input already had, fired after the area's own focus
+  handling so a host reads the final text - what a field that keeps its
+  text when it is left needs, for a line and a paragraph alike
+  (`Docs/UltraCanvas/UltraCanvasTextAreaExamples.md`). UltraPress's
+  in-place paragraph field is the first user.
+- **UltraNet FTP: SFTP with a private key.** `UltraNetFtpOptions` carries
+  `sshPrivateKeyFile`, `sshPublicKeyFile` and `sshKeyPassphrase`; with a key
+  set an `sftp://` call offers the key first and the password, when there
+  is one, after it (libcurl's `CURLOPT_SSH_PRIVATE_KEYFILE` and
+  `CURLOPT_SSH_AUTH_TYPES`); the failure diagnostics name the key. Without
+  a key nothing changes (`UltraNet/UltraNetFtp.h`).
+- **UltraCloud: a WebDAV server is a drive, and SFTP signs in with a key.**
+  `WebDavProvider` - and Nextcloud with it - implements `Delete` (DELETE;
+  a folder's URL ends with `/`, the root is refused) and `Rename` (MOVE to
+  the same folder, `Overwrite: F`), so `Capabilities().modify` is set and
+  UltraFiler can carry one as a drive, and a publisher can prune.
+  `Credentials::privateKeyFile` is the SFTP key's path, kept in the vault
+  as `cloud.<id>.keyfile`; the FTP provider hands it to UltraNet for
+  `sftp://` accounts with the password as the key's passphrase. The shared
+  add-account dialog has a *Private key* row for the FTP provider. Tests
+  for the DAV verbs, the key in the options and the vault round trip
+  (`Docs/Modules/UltraCloud/README.md`).
+
 #### 2026-10-15 *0.9.298*
 - **A build without libvips reads JPEG, BMP and GIF.** `UCImage` in a build
   configured with `ULTRACANVAS_ENABLE_VIPS=OFF` (the WebAssembly `no-vips`
