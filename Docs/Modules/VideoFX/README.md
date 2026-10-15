@@ -1095,9 +1095,12 @@ call returns `VideoFXResult::NotAvailable` — applications need no `#ifdef`.
 
 Link `VideoFX::VideoFX`. FFmpeg stays a private dependency of the library.
 
-VideoFX is a **shared library of its own**: `libVideoFX.so` on Linux,
-`libVideoFX.dylib` on macOS and `libVideoFX.dll` / `VideoFX.dll` on Windows,
-next to `videofx` and `VideoFXTest` in `bin/`. It is not built into the
+VideoFX is a **shared library of its own**: `libVideoFX.so` on Linux and
+`libVideoFX.dylib` on macOS, in the build's `lib/` (`videofx` and
+`VideoFXTest` are in `bin/`), and `libVideoFX.dll` / `VideoFX.dll` on
+Windows, in the build root beside the applications that load it -
+`UltraVideo.exe`, `videofx.exe`, `VideoFXTest.exe` - because Windows looks
+for a DLL in the folder of the executable that loads it. It is not built into the
 UltraCanvas core, so an application that does no video never loads it or
 FFmpeg, and every application that does shares one copy. While VideoFX is
 0.x, every minor version may change the binary interface, so the minor

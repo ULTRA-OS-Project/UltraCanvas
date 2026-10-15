@@ -381,6 +381,34 @@ if [ "$SHADOW_HITS" -gt 0 ]; then
 fi
 echo "  none"
 
+# Every DLL of this build that a packaged executable or DLL imports must be in
+# the package beside the executables. The copy at the top takes only the build
+# root's DLLs, and the closure above follows only the MinGW prefix, so a
+# library a CMakeLists sends anywhere else is left behind unnoticed:
+# libVideoFX.dll went to build/bin/ until VideoFX 0.14.1, and UltraVideo.exe
+# from the package stopped at start with "libVideoFX.dll was not found". Here
+# that fails the build with the importer and the DLL named. One objdump per
+# file and one awk at the end: a grep per import costs minutes under MSYS2.
+echo ""
+echo "Checking that every DLL of this build that the package imports is in it..."
+UNPACKAGED=$(
+    find "$DIST_DIR" \( -iname '*.exe' -o -iname '*.dll' \) | while IFS= read -r bin; do
+        bin_name=${bin##*/}
+        "$OBJDUMP" -p "$bin" 2>/dev/null | sed -n 's/.*DLL Name:[[:space:]]*//p' | tr -d '\r' \
+            | while IFS= read -r name; do
+                [ -f "$DIST_DIR/$name" ] || printf '%s\t%s\n' "$bin_name" "$name"
+            done
+    done | awk -F'\t' 'FNR == NR { built[tolower($0)] = 1; next }
+                       built[tolower($2)] { print "  " $1 " imports " $2 }' \
+        <(find ./build -iname '*.dll' -printf '%f\n' 2>/dev/null) -
+)
+if [ -n "$UNPACKAGED" ]; then
+    echo "$UNPACKAGED" >&2
+    echo "Error: the package lacks DLLs this build made that the files above import; build them into the build root (CMAKE_RUNTIME_OUTPUT_DIRECTORY), where the executables are and the copy above looks" >&2
+    exit 1
+fi
+echo "  none missing"
+
 # Copy GLib schema files if they exist (needed by some GTK/GLib apps)
 #if [ -d "$MSYS_PREFIX/share/glib-2.0/schemas" ]; then
 #    mkdir -p "$DIST_DIR/share/glib-2.0/schemas"

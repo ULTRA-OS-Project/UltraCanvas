@@ -3153,6 +3153,8 @@ message(STATUS "    Test registered: VirtualFSPathTest")
 # Effect -> filter text translation always; with FFmpeg the engine end to end
 # on clips it generates itself (probe, frames, trim, speed, joins, GIF / WAV,
 # lossless cut, cancel, background job, UTF-8 names, error codes).
+# The VideoFX tests go where VideoFX puts its DLL (VIDEOFX_RUNTIME_DIR: bin/,
+# the build root on Windows), so Windows finds it beside them.
 if(TARGET VideoFX)
     message(STATUS "  Building VideoFXTest...")
     add_executable(VideoFXTest ${CMAKE_CURRENT_SOURCE_DIR}/VideoFXTest.cpp)
@@ -3165,10 +3167,10 @@ if(TARGET VideoFX)
     target_compile_definitions(VideoFXTest PRIVATE
         VIDEOFX_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/videofx")
     set_target_properties(VideoFXTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
     )
     add_test(NAME VideoFXTest COMMAND VideoFXTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+             WORKING_DIRECTORY ${VIDEOFX_RUNTIME_DIR})
     message(STATUS "    Test registered: VideoFXTest")
 endif()
 
@@ -3195,10 +3197,10 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
     target_compile_definitions(UltraVideoDocumentTest PRIVATE UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
     target_compile_features(UltraVideoDocumentTest PRIVATE cxx_std_20)
     set_target_properties(UltraVideoDocumentTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
     )
     add_test(NAME UltraVideoDocumentTest COMMAND UltraVideoDocumentTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+             WORKING_DIRECTORY ${VIDEOFX_RUNTIME_DIR})
     message(STATUS "    Test registered: UltraVideoDocumentTest")
 endif()
 
@@ -3225,10 +3227,10 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
     target_link_libraries(UltraVideoDraftTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
     target_compile_features(UltraVideoDraftTest PRIVATE cxx_std_20)
     set_target_properties(UltraVideoDraftTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
     )
     add_test(NAME UltraVideoDraftTest COMMAND UltraVideoDraftTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+             WORKING_DIRECTORY ${VIDEOFX_RUNTIME_DIR})
     message(STATUS "    Test registered: UltraVideoDraftTest")
 endif()
 
