@@ -1,10 +1,12 @@
 // Apps/UltraMail/engine/UltraMailOAuth.cpp
+// Version: 0.6.1 - OAuthSignInFailureText; the trace says which way a sign-in goes
 // Version: 0.6.0 - the sign-in service: no client secret in the application, Yahoo redirects
 // Version: 0.5.0 - Yahoo takes an app password again, beside the browser sign-in
 // Version: 0.4.0 - ExtractOAuthCode, OAuthUsesPastedCode (https redirects pasted back)
 // Version: 0.3.0 - OAuthApps is a profile of UltraNet's shared OAuth2 app registry
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOAuth.h"
+#include "UltraMailTrace.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -193,6 +195,39 @@ UltraNetOAuth2ServiceConfig OAuthServiceConfigFor(const std::string& providerId,
     return cfg;
 }
 
+std::string OAuthSignInFailureText(const std::string& providerId, const UltraNetResult& result) {
+    std::string text = result.message.empty() ? std::string("the sign-in did not complete")
+                                              : result.message;
+    text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
+    if (text.back() != '.' && text.back() != '!' && text.back() != '?') text += '.';
+    // A transport failure before the browser could open: the service itself
+    // was out of reach, which is where to look.
+    bool unreachable = false;
+    switch (result.code) {
+        case UltraNetResultCode::HostNotFound:
+        case UltraNetResultCode::ConnectionRefused:
+        case UltraNetResultCode::ConnectionReset:
+        case UltraNetResultCode::ConnectionTimeout:
+        case UltraNetResultCode::TlsHandshakeFailed:
+        case UltraNetResultCode::TlsCertificateInvalid:
+        case UltraNetResultCode::TlsCertificateExpired:
+        case UltraNetResultCode::TlsPublicKeyMismatch:
+        case UltraNetResultCode::SendFailed:
+        case UltraNetResultCode::ReceiveFailed:
+        case UltraNetResultCode::HttpError:
+            unreachable = true;
+            break;
+        default:
+            break;
+    }
+    if (unreachable && OAuthApps::UsesService(providerId)) {
+        const std::string url = OAuthApps::ServiceUrl();
+        text += " The sign-in service at " + url + " could not be reached: check the internet "
+                "connection, and that " + url + "/healthz answers in a browser.";
+    }
+    return text;
+}
+
 bool OAuthUsesPastedCode(const std::string& redirectUri) {
     return redirectUri == "oob" || redirectUri.rfind("https://", 0) == 0;
 }
@@ -282,16 +317,32 @@ UltraNetResult MailOAuth::SignIn(const std::string& providerId, const std::strin
                                  const std::function<void(const std::string& url)>& openUrl,
                                  OAuthTokens& out, int64_t now) {
     if (now <= 0) now = static_cast<int64_t>(std::time(nullptr));
+    const std::string name = OAuthProviderDisplayName(providerId);
     UltraNetOAuth2Token token;
     UltraNetResult r;
     if (OAuthApps::UsesService(providerId)) {
-        r = hooks_.serviceAuthorize(OAuthServiceConfigFor(providerId, email), openUrl, token);
+        const UltraNetOAuth2ServiceConfig cfg = OAuthServiceConfigFor(providerId, email);
+        Trace::Line("OAuth: signing in to " + name + " for " + email
+                    + " through the sign-in service " + cfg.serviceUrl);
+        r = hooks_.serviceAuthorize(cfg, openUrl, token);
     } else {
         const OAuthApp app = OAuthApps::Get(providerId);
-        if (!app.IsConfigured()) return NoClientError(providerId);
+        if (!app.IsConfigured()) {
+            Trace::Line("OAuth: cannot sign in to " + name + ": no client of this installation's "
+                        "own, and the sign-in service is off");
+            return NoClientError(providerId);
+        }
+        Trace::Line("OAuth: signing in to " + name + " for " + email
+                    + " directly, with this installation's own client (oauth.ini or the "
+                    "environment); the redirect goes to " + app.redirectUri);
         r = hooks_.authorize(OAuthConfigFor(providerId, app, email), openUrl, token);
     }
-    if (!r) return r;
+    if (!r) {
+        Trace::Line("OAuth: the " + name + " sign-in failed: " + r.message);
+        return r;
+    }
+    Trace::Line("OAuth: signed in to " + name + " for " + email
+                + (token.refreshToken.empty() ? " (no refresh token)" : ""));
     if (!token.IsValid())
         return UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,
                                      "the sign-in returned no access token");
@@ -349,16 +400,25 @@ UltraNetResult MailOAuth::EnsureFresh(const std::string& providerId, OAuthTokens
         return UltraNetResult::Error(UltraNetResultCode::AuthenticationRequired,
                                      "the " + OAuthProviderDisplayName(providerId)
                                      + " sign-in has expired; sign in again");
+    const std::string name = OAuthProviderDisplayName(providerId);
     UltraNetOAuth2Token token;
     UltraNetResult r;
     if (OAuthApps::UsesService(providerId)) {
-        r = hooks_.serviceRefresh(OAuthServiceConfigFor(providerId), tokens.refreshToken, token);
+        const UltraNetOAuth2ServiceConfig cfg = OAuthServiceConfigFor(providerId);
+        Trace::Line("OAuth: refreshing the " + name + " token through the sign-in service "
+                    + cfg.serviceUrl);
+        r = hooks_.serviceRefresh(cfg, tokens.refreshToken, token);
     } else {
         const OAuthApp app = OAuthApps::Get(providerId);
         if (!app.IsConfigured()) return NoClientError(providerId);
+        Trace::Line("OAuth: refreshing the " + name + " token directly, with this "
+                    "installation's own client");
         r = hooks_.refresh(OAuthConfigFor(providerId, app), tokens.refreshToken, token);
     }
-    if (!r) return r;
+    if (!r) {
+        Trace::Line("OAuth: the " + name + " token refresh failed: " + r.message);
+        return r;
+    }
     if (!token.IsValid())
         return UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,
                                      "the token refresh returned no access token");

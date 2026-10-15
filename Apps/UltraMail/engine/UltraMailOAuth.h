@@ -31,6 +31,7 @@
 // CMake option). The value "off" (or "none") at any tier turns the service
 // off. One setting for the process: UltraCloud's Drive and OneDrive sign-ins
 // read the same one.
+// Version: 0.6.1 - OAuthSignInFailureText; the trace says which way a sign-in goes
 // Version: 0.6.0 - the sign-in service: no client secret in the application, Yahoo redirects
 // Version: 0.5.0 - Yahoo takes an app password again, beside the browser sign-in
 // Version: 0.4.0 - ExtractOAuthCode, OAuthUsesPastedCode (https redirects pasted back)
@@ -159,6 +160,14 @@ UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthAp
 // provider - the mail scopes, the twin of OAuthConfigFor's.
 UltraNetOAuth2ServiceConfig OAuthServiceConfigFor(const std::string& providerId,
                                                   const std::string& loginHint = std::string());
+
+// What to tell the user when a browser sign-in failed with `result`: the
+// framework's own reason (which names the sign-in service or the provider's
+// error), in sentence case - and, when the provider signs in through the
+// service and the service could not be reached, the service's address and
+// the health check to try. Never the mail-server wording of FriendlyMessage:
+// no mail server was involved yet.
+std::string OAuthSignInFailureText(const std::string& providerId, const UltraNetResult& result);
 
 // Test seams: the interactive authorization and the refresh, directly
 // (authorize, refresh) and through the service (serviceAuthorize,
