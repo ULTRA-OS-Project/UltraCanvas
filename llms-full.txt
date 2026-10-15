@@ -71799,7 +71799,9 @@ this build writes a bitmap type. A picture's Save offers
 `AddImageSaveTypes(opts)` - every bitmap type this build writes, PNG first -
 and its Open `AddLoadTypes(opts, "Pictures", {MediaFormatCategory::Bitmap})`
 (see *A Dialog's File Types* below), as UltraPaint and the media viewer do. Windows icons and QOI are read and written
-by the framework's own libvips plugins. An AVIF or HEIC type is offered to
+by the framework's own libvips plugins, and GIF is written on every build:
+where libvips has no GIF writer of its own (cgif - not in the MSYS2 package or
+the macOS libraries), the framework's encoder takes the save. An AVIF or HEIC type is offered to
 save only where libheif can encode it, and to open only where it can decode
 it: libvips' HEIF loader takes both file endings wherever libheif is, but
 libheif decodes a HEIC only with its HEVC plug-in (libde265) and an AVIF only

@@ -1,5 +1,7 @@
 // libspecific/Cairo/UltraCanvasGifEncoder.h
 // Self-contained single-frame GIF89a encoder (median-cut quantisation + LZW).
+// Version: 1.1.0 - EncodeGif: the file in memory, for the libvips saver
+//                  (VipsGifPlugin)
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 //
@@ -14,7 +16,8 @@
 // with `magicksave: libMagick error: NoEncodeDelegateForThisImageFormat 'gif'`.
 //
 // So neither libvips nor ImageMagick can be relied upon to write a GIF. This
-// encoder removes that dependency entirely: it operates on a raw RGB(A) byte
+// encoder removes that dependency entirely, and VipsGifPlugin registers it
+// with libvips as a GIF saver, so every libvips save writes GIF: it operates on a raw RGB(A) byte
 // buffer and emits a complete, standards-compliant GIF89a with no external
 // library involved — mirroring the bundled BMP/QOI encoders already used in
 // the framework. It is deliberately free of any libvips type so it can be unit
@@ -121,17 +124,20 @@ namespace detail {
 
 } // namespace detail
 
-// Encode an RGB/RGBA image (row-major, 8-bit, no row padding) to a GIF89a file.
-// Returns "" on success or a human-readable error string on failure.
-inline std::string EncodeGifFile(const std::string& path,
-                                 const uint8_t* pixels,
-                                 int width, int height,
-                                 int channels,
-                                 int maxColorBits,
-                                 bool interlace) {
+// Encode an RGB/RGBA image (row-major, 8-bit, no row padding) as a GIF89a
+// file, into `out`. Returns "" on success or a human-readable error string on
+// failure.
+inline std::string EncodeGif(std::vector<uint8_t>& out,
+                             const uint8_t* pixels,
+                             int width, int height,
+                             int channels,
+                             int maxColorBits,
+                             bool interlace) {
     using namespace detail;
 
+    out.clear();
     if (!pixels || width <= 0 || height <= 0) return "GIF encode: invalid image dimensions";
+    if (width > 65535 || height > 65535)      return "GIF encode: a GIF is at most 65535 pixels wide and high";
     if (channels != 3 && channels != 4)       return "GIF encode: channels must be 3 or 4";
     if (maxColorBits < 1) maxColorBits = 1;
     if (maxColorBits > 8) maxColorBits = 8;
@@ -297,7 +303,6 @@ inline std::string EncodeGifFile(const std::string& path,
     }
 
     // ---- Assemble the file ---------------------------------------------------
-    std::vector<uint8_t> out;
     out.reserve(64 + palette.size() + lzw.size());
 
     const char* sig = "GIF89a";
@@ -334,8 +339,19 @@ inline std::string EncodeGifFile(const std::string& path,
     out.insert(out.end(), lzw.begin(), lzw.end());
 
     out.push_back(0x3B);   // trailer
+    return "";
+}
 
-    // ---- Write to disk -------------------------------------------------------
+// The same, written to a GIF89a file at `path`.
+inline std::string EncodeGifFile(const std::string& path,
+                                 const uint8_t* pixels,
+                                 int width, int height,
+                                 int channels,
+                                 int maxColorBits,
+                                 bool interlace) {
+    std::vector<uint8_t> out;
+    const std::string error = EncodeGif(out, pixels, width, height, channels, maxColorBits, interlace);
+    if (!error.empty()) return error;
     FILE* fp = UltraCanvas::OpenFileUtf8(path, "wb");
     if (!fp) return "GIF encode: failed to open output file";
     size_t written = std::fwrite(out.data(), 1, out.size(), fp);

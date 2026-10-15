@@ -1,9 +1,10 @@
 // PixelFX/core/PixelFX.cpp
 // Comprehensive bitmap processing module for UltraCanvas powered by libvips
 // Version: 1.4.0 - GetSupportedLoadFormats / GetSupportedSaveFormats are
-//                  FileLoader's lists, not a fixed one
+//                  FileLoader's lists, not a fixed one; SaveGif through
+//                  libvips' GIF saver, the framework's where it has none
 // Version: 1.3.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFX.h"
@@ -12,7 +13,7 @@
 #include "UltraCanvasFileLoader.h"              // the types Load and Save offer
 #include "UltraCanvasImage.h"                   // VipsCanDecode
 #include "../libspecific/Cairo/VipsQoiLoader.h"
-#include "../libspecific/Cairo/UltraCanvasGifEncoder.h"
+#include "../libspecific/Cairo/VipsGifPlugin.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -309,41 +310,11 @@ namespace PixelFX {
         }
 
         bool SaveGif(const PFXImage& image, const std::string& filename) {
+            // libvips' gifsave (cgif) where it has one, else the framework's
+            // encoder registered as ucgifsave (VipsGifPlugin.h) - by name, so
+            // the file is a GIF whatever it is called.
             return WriteStaged(filename, "Failed to save GIF: ", [&](const std::string& out) {
-                // gifsave only exists when libvips was built with cgif. On
-                // builds without it the old fallback used ImageMagick's
-                // magicksave, but that fails at run time when ImageMagick has
-                // no GIF encode delegate (NoEncodeDelegateForThisImageFormat
-                // `gif'). Use the bundled, dependency-free encoder instead.
-                if (vips_type_find("VipsOperation", "gifsave") != 0) {
-                    image.gifsave(out.c_str());
-                    return;
-                }
-                vips::VImage img = image;
-                if (img.interpretation() != VIPS_INTERPRETATION_sRGB) {
-                    img = img.colourspace(VIPS_INTERPRETATION_sRGB);
-                }
-                int bands = img.bands();
-                if (bands == 1) {
-                    img = img.bandjoin({ img, img });
-                    bands = 3;
-                } else if (bands == 2) {
-                    vips::VImage gray  = img.extract_band(0);
-                    vips::VImage alpha = img.extract_band(1);
-                    img = gray.bandjoin({ gray, gray, alpha });
-                    bands = 4;
-                } else if (bands > 4) {
-                    img = img.extract_band(0, vips::VImage::option()->set("n", 4));
-                    bands = 4;
-                }
-                if (img.format() != VIPS_FORMAT_UCHAR) {
-                    img = img.cast(VIPS_FORMAT_UCHAR);
-                }
-                img = img.copy_memory();
-                std::string err = UltraCanvas::GifEncode::EncodeGifFile(
-                        out, static_cast<const uint8_t*>(img.data()),
-                        img.width(), img.height(), bands, 8, false);
-                if (!err.empty()) throw PixelFXException("Failed to save GIF: " + err);
+                PFXImage::call(vips_foreign_gif_saver(), PFXImage::option()->set("in", image)->set("filename", out.c_str()));
             });
         }
 

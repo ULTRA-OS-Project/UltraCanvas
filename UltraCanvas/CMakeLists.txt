@@ -1402,10 +1402,12 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
 )
 if(ULTRACANVAS_HAS_VIPS)
     # vips foreign loader and saver for QOI — consumes the codec symbols
-    # above — and the framework's own Windows icon (.ico) loader and saver.
+    # above — the framework's own Windows icon (.ico) loader and saver, and
+    # its GIF saver for a libvips without one.
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsIcoPlugin.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsGifPlugin.cpp
     )
 endif()
 if(LIBRSVG_FOUND)

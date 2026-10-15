@@ -5482,6 +5482,29 @@ else()
     message(STATUS "  ImageIcoQoiTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== IMAGE GIF SAVER TEST =====
+# The framework's GIF saver for libvips (VipsGifPlugin): registered, picked
+# for a .gif only where libvips has no gifsave, pixels and transparency read
+# back, its options, the buffer saver, and GIF saving through write_to_file,
+# PixelFX and FileLoader's list on every build. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageGifSaverTest...")
+    add_executable(ImageGifSaverTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageGifSaverTest.cpp
+    )
+    target_include_directories(ImageGifSaverTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageGifSaverTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageGifSaverTest PRIVATE UltraCanvas)
+    set_target_properties(ImageGifSaverTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageGifSaverTest COMMAND ImageGifSaverTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageGifSaverTest")
+else()
+    message(STATUS "  ImageGifSaverTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILELOADER DRAWING SAVE TEST =====
 # UltraCanvasFileLoader saving a drawing as a bitmap: the page's pixel size,
 # the bitmap types it writes, the page drawn at the size asked for (sharp),
