@@ -32,15 +32,18 @@ std::string TempDir(const std::string& tag) {
 Credentials SampleCredentials() {
     Credentials in; in.username = "erika"; in.password = "s3cr3t-pass"; in.token = "";
     in.refreshToken = "rt-1"; in.tokenExpiresAt = 1'900'000'000;
+    in.privateKeyFile = "/home/erika/.ssh/id_ed25519";
     return in;
 }
 
-void RequireSample(const Credentials& out) {
+// `withKey`: the legacy files of earlier builds carried no key file.
+void RequireSample(const Credentials& out, bool withKey = true) {
     REQUIRE_EQ(out.username, std::string("erika"));
     REQUIRE_EQ(out.password, std::string("s3cr3t-pass"));
     REQUIRE_EQ(out.token, std::string(""));
     REQUIRE_EQ(out.refreshToken, std::string("rt-1"));
     REQUIRE_EQ(out.tokenExpiresAt, (int64_t)1'900'000'000);
+    REQUIRE_EQ(out.privateKeyFile, withKey ? std::string("/home/erika/.ssh/id_ed25519") : std::string());
 }
 } // namespace
 
@@ -119,7 +122,7 @@ TEST(legacy_file_secrets_migrate_once) {
 
     Credentials out;
     REQUIRE(into.Retrieve("nextcloud-erika", out));
-    RequireSample(out);
+    RequireSample(out, /*withKey=*/false);
     REQUIRE(into.Retrieve("dropbox-o", out));
     REQUIRE_EQ(out.token, std::string("tok"));
     REQUIRE_EQ(out.tokenExpiresAt, (int64_t)5);

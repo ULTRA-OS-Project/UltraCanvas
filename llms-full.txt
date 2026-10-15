@@ -1988,9 +1988,10 @@ the OAuth client id is configuration in UltraNet's shared app registry —
 `SetOAuthApp`, `ULTRACLOUD_<PROVIDER>_CLIENT_ID`, or the client UltraMail
 registered, since `googledrive` falls back to `google` and `onedrive` to
 `microsoft`), FTP / FTPS / SFTP over UltraNet's FTP
-surface (the one provider that can also delete and rename, so a file manager
-can carry an FTP server as a drive; no share links, and SFTP authenticates
-with a password only), and an in-memory demo provider. Providers
+surface (delete and rename too, so a file manager can carry an FTP server
+as a drive; no share links; SFTP signs in with a password or a private
+key), WebDAV and Nextcloud delete and rename as well (DELETE, MOVE), and an
+in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
 Accounts persist on UltraDatabase (`AccountStore`), secrets go to the
@@ -16887,7 +16888,10 @@ between them.
 applications' data folders, `UltraCanvasDataFolder.h`), else `~/.local/share`,
 `%LOCALAPPDATA%` on Windows (a machine-local store, so not the applications'
 roaming `%APPDATA%`) and `~/Library/Application Support` on macOS; `<config>`
-is the folder the desktop's settings use. The folders are owner-only.
+is the folder the desktop's settings use (`UltraCanvasDesktopSettingsFolder`:
+`%APPDATA%`, Application Support on macOS, `$XDG_CONFIG_HOME` or `~/.config`;
+on macOS a key kept under `~/.config` by earlier versions is moved there once).
+The folders are owner-only.
 
 With libsodium, titles, previews and payloads are sealed with
 XChaCha20-Poly1305 under the key file, kept apart from the data: a copy of the
@@ -29528,7 +29532,11 @@ surface->RequestRender();
 ## Platform Notes
 
 - **Linux:** uses EGL on top of the X11/Wayland surface
-- **macOS:** uses the OpenGL framework via `#include <OpenGL/gl3.h>`
+- **macOS:** uses the OpenGL framework via `#include <OpenGL/gl3.h>` (CGL).
+  Apple has deprecated OpenGL since macOS 10.14, so the framework is looked
+  up only when `ULTRACANVAS_ENABLE_GL` is on. An SDK without it turns the GL
+  surface off with a warning, as a missing GLEW does on Windows, and a build
+  with `-DULTRACANVAS_ENABLE_GL=OFF` needs no OpenGL at all.
 - **Windows:** uses WGL/EGL depending on the build configuration
 
 ## See Also
@@ -32244,6 +32252,7 @@ opts.userCss = "body { margin: 0 }";          // the reader's own sheet, after t
 opts.enableImages = true;
 opts.resourceLoader = [&](const std::string& href) { return LoadBytes(href); };   // <img src>, <link rel=stylesheet>
 opts.onLinkActivated = [&](const std::string& href) { Open(href); };
+opts.onLinkActivatedNewWindow = [&](const std::string& href) { Open(href); };   // target="_blank": a new tab
 opts.onLinkHovered = [&](const std::string& href) { status->SetText(href); };
 opts.linkTooltips = false;                    // the status line shows the address instead
 opts.selectableText = true;                   // the text selects and copies, as in a browser
@@ -32402,7 +32411,15 @@ position), scrolls to `#fragments`, builds again when its width changes or
 pictures arrive (on a later turn of the UI loop, never inside layout), and
 shows an error page when a page cannot be loaded. `mailto:` and other
 schemes go to `onExternalLink`, and a non-HTML answer to `onNonHtml`.
-`<script>` is not run, and `<noscript>` and its content are shown.
+A link that asks for another window - `target="_blank"`, a target naming a
+window, or no target under `<base target="_blank">` - goes to
+`onOpenInNewWindow` with its absolute address (a browser opens a new tab);
+`_self`, `_parent` and `_top` open in the view, and so does every link when
+`onOpenInNewWindow` is unset. The builder sorts the links: such a click
+goes to `BuildOptions::onLinkActivatedNewWindow` when that is set, else to
+`onLinkActivated` like any other. (Two links to the same address in one
+run of text, one with and one without a new-window target, both open the
+other window.) `<script>` is not run, and `<noscript>` and its content are shown.
 `Tests/HTMLPageLoaderTest.cpp` and `Tests/WebViewTest.cpp` cover both
 against a fake web. UltraWeb is the browser around it
 (`Docs/UltraWeb/UltraWeb.md`).
@@ -32412,6 +32429,7 @@ auto view = std::make_shared<UltraCanvasWebView>("web");
 view->SetServices(services);
 view->onTitleChanged = [](const std::string& title) { /* the window title */ };
 view->onExternalLink = [](const std::string& url) { /* the system's mail client */ };
+view->onOpenInNewWindow = [](const std::string& url) { /* a new tab opening url */ };
 view->Navigate("https://example.org/");
 ```
 
@@ -38858,8 +38876,9 @@ and the weights behind those symbols roll up into per-row and per-column totals.
 
 **Status:** Phases 1–3 — the `L`, `T`, `X`, `Y` and QFD `House` shapes, the
 form header band, cell tint, hover bands that run across panels, a ranked bar
-strip for the column totals, and spreadsheet import. Phase 4 (pan/zoom,
-keyboard navigation, JSON, editing) is still open; see
+strip for the column totals, and spreadsheet import - and Phase 4: pan and
+zoom, keyboard navigation, cycle-on-click editing and JSON save and load - and
+the House's competitive-assessment block. See
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Which element do I want?
@@ -39050,6 +39069,29 @@ diagram trades cell width for row height so the roof cannot squeeze the rows
 (`MatrixDiagramStyle::maxRoofShare`, `minRowAspect`). `SetShowImportance(false)`
 hides the importance column. A House without a roof panel draws without one.
 
+#### The competitive assessment
+
+Right of the grid, a House can show how customers rate your product and its
+rivals on each need - the gaps the technical requirements have to close. Each
+competitor is a marker per need on a 1-to-`ratingMax` track (5 by default),
+joined row to row:
+
+```cpp
+house.AddCompetitor("ours",    "Our bicycle",    Color(40, 44, 52, 255));
+house.AddCompetitor("cruiser", "City Cruiser X", Color(214, 110, 40, 255),
+                    MatrixMarkShape::Square);
+house.SetRating("light", "ours", 2.0);      // need id, competitor id, 1..ratingMax
+house.SetRating("light", "cruiser", 4.0);
+```
+
+`SetRating` refuses an item that is not one of panel 0's rows (the needs), an
+unknown competitor and a value outside `1..ratingMax`; `RatingOf` reads one back.
+The competitors join the legend - clicking one brings its line to the front and
+dims the others - and a need's tooltip lists its ratings. A rating left out
+breaks that competitor's line instead of bridging the gap. The block draws only
+while the model has competitors; `SetShowCompetitiveAssessment(false)` hides it
+and gives the cells its width back.
+
 `MatrixSamples::HouseOfQuality()` is a complete example.
 
 ### The form header band
@@ -39203,6 +39245,56 @@ click on an arm label reports a whole row or column of the first panel that
 lists the item. Clicking a
 legend entry filters the marks to that level; `SetLevelFilter("")` clears it.
 
+## Pan and zoom
+
+Off by default: a matrix laid out to fit its element needs neither. Turn it on
+for a large one:
+
+```cpp
+diagram->SetPanZoomEnabled(true);
+diagram->Viewport().SetControlsVisible(true);   // the zoom / fit buttons
+diagram->Viewport().SetMinimapVisible(true);    // optional overview
+```
+
+The wheel zooms about the pointer, dragging empty space (or with the middle
+button) pans, `Ctrl` `+` / `Ctrl` `-` zoom and `Ctrl` `0` resets. Only the matrix
+moves: the titles, the form header and the legend stay where they are, and
+nothing outside the matrix area can be hit. `ZoomViewIn()`, `ZoomViewOut()`,
+`ResetView()` and `GetViewZoom()` do the same from code, and `Viewport()` is the
+shared `UltraCanvasDiagramViewport` the node, compositor and mind-map diagrams
+use. Turning pan and zoom off resets the view.
+
+## Keyboard
+
+The diagram takes the focus when clicked. Then:
+
+| Key | Does |
+|---|---|
+| arrows | move the selected cell one step, in the direction the key points *on screen* - also on a turned X quadrant, a Y rhombus and the House roof |
+| `Tab` / `Shift` `Tab` | the first cell of the next / previous panel |
+| `Space` / `Enter` | edit the cell (when editable), and fire `onCellClick` |
+| `Delete` | clear the cell (when editable) |
+| `Escape` | clear the selection |
+
+The selected cell is outlined while the diagram has the focus, a zoomed view
+follows it, and `onSelectionChanged` reports every move. `SelectCell(ref)`
+selects from code.
+
+## Editing
+
+```cpp
+diagram->SetEditable(true);
+diagram->onCellEdited = [](const MatrixRef& ref, const std::string& levelId) {
+    // levelId is empty when the cell was cleared
+};
+```
+
+A click - or `Space` - steps a cell through its panel's scale, strongest first,
+then back to empty; `Shift` steps the other way and `Delete` clears it. The
+totals, ranks and bars follow at once. `CycleCell(ref)` does the same from code.
+Cycling is the whole editor on purpose: a level picker, a note field or an
+item list belongs in real elements beside the diagram, not painted into it.
+
 ## Interchange
 
 ```cpp
@@ -39216,6 +39308,27 @@ true)` adds an `Importance` column after the row labels, and `ImportMatrixCsv`
 reads it back. Import fills in marks; it does not invent items, so the sets and
 the scale must already exist. It parses the whole file before touching the
 model, so a malformed file leaves your data alone.
+
+The CSV forms carry one panel. The **whole model** - every set, panel, scale,
+cell and header field, in any shape - goes to JSON:
+
+<!-- doc-check: std::string jsonText; -->
+
+```cpp
+std::string json = ExportMatrixJson(model);          // pretty; false for compact
+MatrixModel loaded;
+std::string jsonError;
+if (!ImportMatrixJson(jsonText, loaded, &jsonError)) {
+    Log(jsonError);   // e.g. "cell 3 (HR x SPC = enormous) names ... that does not exist"
+}
+```
+
+Competitors and their ratings travel with the rest. Cells are written by item id rather than position, so a file whose items have
+been reordered still puts every mark where it belongs. The import refuses
+another format, a newer version, a cell naming an unknown item or level, and a
+model its shape cannot draw - and leaves `loaded` untouched when it does.
+`MatrixModelToJson` / `MatrixModelFromJson` work on a `JSONValue`
+(`DataFormats/UltraCanvasJSON.h`) for embedding in a larger document.
 
 To build a model **from** a spreadsheet, use `ImportMatrixTable`. It creates the
 items from the header row and the first column, and reads each mark by level
@@ -59977,7 +60090,7 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 **Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework  
 
-<!-- doc-check: void SendChatText(); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
+<!-- doc-check: void SendChatText(); void SaveNote(const std::string& text); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
 
 ## Class Hierarchy
 ```
@@ -60495,6 +60608,19 @@ std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 // Every KeyDown, before the area handles it (any editing mode, read-only too).
 // Return true to consume the key; false lets the area edit as usual.
 std::function<bool(const UCEvent&)> onBeforeKeyDown;
+
+// The keyboard focus arriving and leaving, the same two the text input has;
+// fired after the area's own handling, so onFocusLost reads the final text.
+std::function<void()> onFocusGained;
+std::function<void()> onFocusLost;
+```
+
+A field that keeps its text when it is left, whether it is a line or a
+paragraph:
+
+```cpp
+auto note = std::make_shared<UltraCanvasTextArea>("note", 0, 0, 400, 120);
+note->onFocusLost = [raw = note.get()]() { SaveNote(raw->GetText()); };   // your own save
 ```
 
 `onBeforeKeyDown` gives a key a meaning of its own without reimplementing the
@@ -76606,11 +76732,13 @@ same default.
 
 > **Status (2026-09, v0.2):** engine and dialogs implemented for
 > **Nextcloud / ownCloud** (WebDAV + OCS share links), **generic WebDAV**
-> (browse and upload; links only through a public web-folder URL),
+> (browse, upload, delete and rename; links only through a public
+> web-folder URL),
 > **Dropbox**, **OneDrive** and **Google Drive** (OAuth2 + PKCE through the
 > system browser, tokens refreshed automatically), **FTP / FTPS / SFTP**
-> (browse, upload, download, and - alone among the providers - delete and
-> rename, so a file manager can carry a server as a drive; no share links)
+> (browse, upload, download, delete and rename, so a file manager can carry
+> a server as a drive; SFTP with a password or a private key; no share
+> links)
 > and an **in-memory demo provider**. iCloud Drive cannot mint links from an app at all. Providers
 > can also ship as plug-in libraries. Sources under
 > `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud` (headless)
@@ -76645,11 +76773,11 @@ What already existed and stays where it is:
 | Provider | Upload | Link comes from | Auth | Link shape |
 |---|---|---|---|---|
 | Nextcloud / ownCloud | WebDAV PUT under `/remote.php/dav/files/<user>/` | OCS Share API (`shareType=3`), with password, expiry, label | app password (Basic) | `https://cloud.example.com/s/<token>` |
-| WebDAV server | WebDAV PUT | `publicBaseUrl` + path, when the DAV root is also served as a web folder | Basic | `https://files.example.org/pub/<path>` |
+| WebDAV server | WebDAV PUT; DELETE and MOVE, so it is a drive too | `publicBaseUrl` + path, when the DAV root is also served as a web folder | Basic | `https://files.example.org/pub/<path>` |
 | Dropbox | `files/upload` up to 150 MB, an upload session (`upload_session/start` → `append_v2` → `finish`) in 8 MiB chunks above | `sharing/create_shared_link_with_settings` (password + expiry on paid plans); an existing link is reused | OAuth2 + PKCE, offline access | `https://www.dropbox.com/scl/fi/…` |
 | OneDrive | Graph `PUT …:/content` up to 4 MB, an upload session in 10 MiB chunks above | Graph `createLink` (anonymous view; password + expiry on personal accounts) | OAuth2 + PKCE, `offline_access` | `https://1drv.ms/…` |
 | Google Drive | multipart `files.create` (or a media update when the name exists) up to 5 MB, a resumable upload in 8 MiB chunks above | `permissions.create` (anyone with the link) + the file's `webViewLink`; no password / expiry | OAuth2 + PKCE, `access_type=offline` | `https://drive.google.com/file/d/<id>/view` |
-| FTP / FTPS / SFTP | `UltraNet_FtpUpload`, missing folders created on the way | — (no FTP request mints a link) | user + password (`CURLOPT_USERNAME` / `CURLOPT_PASSWORD`); implicit TLS on `ftps://`, explicit on `ftpes://` | not possible from an app |
+| FTP / FTPS / SFTP | `UltraNet_FtpUpload`, missing folders created on the way | — (no FTP request mints a link) | user + password (`CURLOPT_USERNAME` / `CURLOPT_PASSWORD`); on `sftp://` a private key too (`Credentials::privateKeyFile`, the password as its passphrase); implicit TLS on `ftps://`, explicit on `ftpes://` | not possible from an app |
 | iCloud Drive | — | Finder / share sheet only | — | not possible from an app |
 | Demo (in memory) | in process | in process | — | `https://demo.ultra-os.local/s/<n>` |
 
@@ -76942,7 +77070,7 @@ providers.
 
 | Header | Contents |
 |---|---|
-| `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request, `Cancelled` for a sign-in called off; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
+| `UltraCloudTypes.h` | `Result` / `ResultCode` (`RateLimited` for a throttled request, `Cancelled` for a sign-in called off; a failure carries `diagnostics` - the HTTP providers' status, reason, request ID and timing, and the transport's connection chain, which the FTP provider fills from `UltraNetResult::diagnostics`), `Account`, `Credentials` (password or token + refresh token + expiry, and the SFTP private key's path), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory`; `SetThreadSignInCancel`, `SignInCancelled` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
@@ -76954,7 +77082,7 @@ providers.
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (over stores the caller keeps, or owning shared ones; AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
-| `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
+| `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
 | `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
@@ -83643,8 +83771,10 @@ UltraClipboard --version
 The history lives in `~/.local/share/ultraos/clipboard/` (`%LOCALAPPDATA%` on
 Windows, `~/Library/Application Support` on macOS, or under `$XDG_DATA_HOME`
 when that is set, on every platform), in folders only you can open. Titles, texts and copies are encrypted with a key kept apart from them
-in `~/.config/ultraos/clipboard.key`, so a copy of the history folder or a
-backup of it cannot be read without the key. Image thumbnails are not
+in `~/.config/ultraos/clipboard.key` (`%APPDATA%\ultraos` on Windows,
+`~/Library/Application Support/ultraos` on macOS, beside the desktop's
+settings), so a copy of the history folder or a backup of it cannot be read
+without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the
 encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
@@ -84183,7 +84313,9 @@ ssh (`--windows` needs a display; `--apps` and `--devices` do not).
 ## Settings file
 
 `~/.config/ultraos/desktop.json` (`$XDG_CONFIG_HOME` when set;
-`%APPDATA%\ultraos\desktop.json` on Windows):
+`%APPDATA%\ultraos\desktop.json` on Windows;
+`~/Library/Application Support/ultraos/desktop.json` on macOS, where a file
+earlier versions kept under `~/.config` is moved on the first start):
 
 ```json
 {
@@ -86313,13 +86445,17 @@ FILE: Docs/UltraPress/README.md
 
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.4.1 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.7.0 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
-renderer on real elements and the WordPress importer: a site as a folder of JSON files, the
+renderer on real elements, the WordPress importer, the publisher onto
+web hosts and the media library: a site as a folder of JSON files, the
 block registry, the HTML shadow of every page, the static publish, every
 block as UltraCanvas elements, blocks added, moved, removed and edited
-with the page re-rendered live, and a WordPress export read into a site.
-The publisher onto web hosts and the WebAssembly output follow
+with the page re-rendered live, a WordPress export read into a site, the
+published folder uploaded onto an FTP, SFTP, WebDAV or Nextcloud host
+through UltraCloud, only what changed, pictures and downloads brought
+into the site's media folder and picked from it, and text edited where it
+stands on the page. The WebAssembly output follows
 ([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
 **Last Modified:** 2026-10-13
 **Author:** UltraCanvas Framework / ULTRA OS
@@ -86339,9 +86475,18 @@ ultrapress mysite --check     # render every page without a window; element coun
 ```
 
 `ultrapress` is one program: a command word first (`new`, `check`, `page`,
-`publish`, `import`, `help`) runs that command without a window, a site
-folder opens the editor. There is no second `UltraPress` binary: two names
-that differ only in case are one name on macOS and Windows.
+`publish`, `import`, `hosts`, `help`) runs that command without a window, a
+site folder opens the editor. There is no second `UltraPress` binary: two
+names that differ only in case are one name on macOS and Windows.
+
+**Publish** writes the static site under `<site>/.ultrapress/publish` and
+uploads it onto the site's host on a worker thread; the status line under
+the site's name follows file by file. **Host…** opens UltraCloud's
+add-account dialog, limited to the web hosts - FTP / FTPS / SFTP, WebDAV,
+Nextcloud - and the host added becomes the site's (`hosting` in
+`site.json`, with the dialog's upload folder as the site's root on the
+host). Without a host of its own the site publishes to the default host;
+without any, Publish opens the dialog.
 
 The left column lists the pages and the current page's blocks: select one,
 move it with the arrows, remove it, or add one after the selection from
@@ -86377,6 +86522,17 @@ ultrapress page mysite home                                       # the front pa
 ultrapress publish mysite out                                     # the static tier, into out/
 ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the renderer referenced (later)
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
+ultrapress hosts                                                  # the hosts a site can be published to
+ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
+ultrapress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
+ultrapress publish mysite out --to site                           # write, then upload what changed onto the site's host
+ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
+ultrapress publish mysite out --to site --prune                   # and delete on the host what the site no longer has
+ultrapress hosts add ftp --server sftp://my.example --user me --key ~/.ssh/id_ed25519   # SFTP with a key (the password: its passphrase)
+ultrapress media mysite                                           # every file under media/: kind, size, uses
+ultrapress media mysite add ~/Pictures/launch.png                 # copied in as media/launch.png
+ultrapress media mysite remove media/launch.png                   # deleted, unless a page uses it
+ultrapress media mysite prune                                     # every unused file deleted
 ```
 
 `import` reads a WordPress export (Tools > Export in WordPress, the WXR
@@ -86387,7 +86543,7 @@ The block editor's markers map onto the registry where a block exists -
 paragraphs, headings, images, covers, quotes, buttons, columns, galleries,
 lists, spacers, HTML - and everything else, and classic content, becomes
 rich text; the report says what was kept that way. Attachment URLs are
-rewritten to `media/<year>/<month>/<file>` and fetched with `--media`
+rewritten to `media/<file>` under the library's clean names and fetched with `--media`
 (through UltraNet) or listed. A post's dated WordPress address is reported
 as a redirect to its new path. `--no-drafts` leaves drafts out.
 
@@ -86461,13 +86617,33 @@ against it.
 - `UltraPressModel.h` - `Site`, `Page`, `Block`, `Menu`, `Theme`; JSON in and
   out; `LoadSite` / `SaveSite`; `PagePath`, `PageUrl`, `LinkHref`;
   `SortedPages` (pinned first; stored, alphabetic or most popular) and
-  `MakeSlug`.
+  `MakeSlug`; text in a block: `SplitParagraphs`, `TextLocation` /
+  `SetBlockText` (a property, an item, an item's key, one paragraph) and
+  `ResolveBlockPath`.
 - `UltraPressBlocks.h` - the registry and `ValidateSite`.
 - `UltraPressHtml.h` - `HtmlEmitter`: `Page`, `Sitemap`, `Robots`, `Feed`,
-  `Block`; `HtmlOptions` names the renderer script and the UltraWeb app.
+  `Block`; `HtmlOptions` names the renderer script, the UltraWeb app and
+  the site folder, with which every `<img>` carries its width and height.
   Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
   blocks are the owner's own HTML and pass through.
-- `UltraPressPublish.h` - `PublishStatic` and `CreateStarterSite`.
+- `UltraPressPublish.h` - `PublishStatic` (the output mirrors the site:
+  what an earlier publish wrote and this one does not is removed, the
+  deploy manifest excepted; `removeStale` turns it off) and
+  `CreateStarterSite`.
+- `UltraPressMedia.h` - the media library: `ListMedia` (kind, size,
+  pixels, uses), `MediaReferences`, `ValidateMedia`, `ImportMedia` (a
+  clean, unique name under `media/`: `CleanMediaName`, the importer's rule
+  too), `RemoveMedia` (never a used file), `PruneMedia`, `ImageDimensions`
+  (from the header, no decoding), `MediaKind`, `HumanSize`.
+- `UltraPressDeploy.h` - `DeployFolder`: the published folder onto a host
+  through an `Uploader` (two functions: make a folder, put a file), the
+  root's folders created first, only the files whose `Fingerprint` changed
+  since the last upload to that host (`.ultrapress-deploy.json` beside the
+  output remembers them per host), stopping after three failures in a row.
+  With `prune`, what the manifest knew and the output no longer has is
+  deleted, then the folders that left empty, innermost first; never
+  anything the deploy did not upload itself. Headless and free of
+  UltraCloud; `--force` sends everything.
 - `UltraPressImport.h` - `ImportWordPress` / `ImportWordPressFile` with
   `ImportOptions` (the front page, a media fetcher, drafts) and
   `ImportReport`; `BlocksFromWordPressContent` maps the block editor's
@@ -86476,15 +86652,61 @@ against it.
 It links the core library for `UltraCanvasJSON` and the HTMLReader's
 `EscapeText`, and opens no window. Tests: `Tests/UltraPress/UltraPressEngineTests.cpp`,
 built with `-DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON`; they save and reload a
-site, validate a broken one, parse the shadow back with `HTML::Parser`, and
-publish the example site into a temporary folder.
+site, validate a broken one, parse the shadow back with `HTML::Parser`,
+publish the example site into a temporary folder, and deploy a folder
+through a recording uploader and through the hosts onto UltraCloud's
+in-memory provider.
+
+### The hosts
+
+`Apps/UltraPress/hosting/UltraPressHosting.h`, target `UltraPressHosting`,
+built where UltraCloud is (`-DBUILD_ULTRACLOUD=ON`, the default): `Hosts`
+opens the program's host list - UltraCloud accounts in `hosts.db` under
+`<settings folder>/UltraPress` (`UltraCanvasSettingsFolder()`), their
+passwords in the credential vault beside it, the way UltraFiler keeps its
+remote drives - and gives `DeployFolder` an `Uploader` onto one of them
+(`UploaderFor`). The providers are UltraCloud's: `ftp` (an `ftp://`,
+`ftps://`, `ftpes://` or `sftp://` server; the upload creates missing
+folders itself), `webdav` and `nextcloud` (`https://`; folders through
+MKCOL, outermost first). A site names its host and the folder on it in
+`site.json`:
+
+```json
+"hosting": { "account": "ftp-me-my-example", "path": "/public_html" }
+```
+
+`ultrapress hosts use` writes it; the window's Host… button does the same.
+An `sftp://` host signs in with a password or a private key (`--key`, or
+the dialog's *Private key* row; the password is then the key's passphrase).
+The window's Publish prunes; the command line prunes with `--prune`.
+
+**Text in place.** Click a piece of text on the page - a title, a
+paragraph, a feature, an answer - and a field takes its place with the text
+in it; the block is selected on the left and the right. Enter keeps a
+title, Ctrl+Enter a paragraph, Escape drops the change, and so does leaving
+a field. One paragraph of a long text is edited on its own; an FAQ's
+question on a second click, once it is open. A rich text block has an
+*Edit text…* handle that opens the rich text editor in its place, with a
+toolbar (bold, italic, underline, link, paragraph style, lists, quote,
+undo, redo) above it and Done and Cancel below. An HTML block is edited in
+the properties pane.
+
+**Pictures.** A picture property (the hero's and the card's `picture`, the
+picture block's `src`) has **Pick…** beside its path. It opens the media
+library: every file under `media/` with a thumbnail, its kind, pixels,
+size and how many places use it; **Add file…** opens the file dialog and
+copies the chosen file into `media/` under a clean name; **Remove** deletes
+a file nothing uses, **Remove unused** every such file; **Choose** puts the
+path into the property and the preview shows the picture in its own shape. **Media library…** in the side column opens the same
+dialog to browse.
+Without UltraCloud the program says so, and `ultrapress publish` still
+writes the folder to upload by other means.
 
 ## Not yet
 
-Text edited in place on the page, a picture picker and the media library,
-new pages and menus from the window, undo, the WebAssembly renderer release
-and its reference from the shadow, the publisher onto UltraCloud's FTP / SFTP / WebDAV providers,
-the newsletter's e-mail mode of the emitter, the Markdown block, and
+New pages and menus from the window, undo, the WebAssembly renderer release
+and its reference from the shadow, the newsletter's e-mail mode of the
+emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
 static site need a form service until then.
 
@@ -86524,7 +86746,7 @@ every statement in it is true of both.
 |---|---|---|
 | `UltraMail.md` | UltraMail, English | draft 1.0, needs the bracketed items and legal review |
 | `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.0, same |
-| `UltraPress.md` | UltraPress, English - the command line of 0.1.0, which contacts no server | draft 0.1, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
+| `UltraPress.md` | UltraPress, English - the program of 0.5, which contacts the web host the user configures and nothing else | draft 0.2, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change
@@ -87247,13 +87469,14 @@ FILE: Docs/Legal/Privacy/UltraPress.md
 
 # Privacy declaration — UltraPress
 
-**Version 0.1 (draft for legal review) · 13 October 2026**
+**Version 0.2 (draft for legal review) · 13 October 2026**
 
 This declaration explains what personal data the **UltraPress** application
 processes, where that processing happens, which third parties it contacts and
 why, and what rights you have under the General Data Protection Regulation
-(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.1 - the
-`ultrapress` command line - on Linux, Windows, macOS and ULTRA OS. It does
+(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.5 - the
+`ultrapress` program, its commands and its editor window - on Linux,
+Windows, macOS and ULTRA OS. It does
 not cover the website itself, other ULTRA OS applications, any ULTRA OS
 online service, or **the websites you build with UltraPress**: a site you
 publish is yours, served by the host you chose, and needs a declaration of
@@ -87283,11 +87506,14 @@ required to [confirm with legal review].
 
 ## 2. The short version
 
-- UltraPress 0.1 is a command-line program that runs **on your own
-  computer**. It reads a site folder you give it and writes files into a
-  folder you name. Nothing leaves your device.
-- It contacts **no server at all**: not ours, not anyone's. It has no
-  account, no sign-in, no update check, no telemetry and no advertising.
+- UltraPress runs **on your own computer**. It reads a site folder you
+  give it and writes files into a folder you name. Nothing leaves your
+  device unless you publish.
+- It contacts **one kind of server, and only when you ask**: the web host
+  you add with `ultrapress hosts add` or the window's Host… button - your
+  own FTP, SFTP, WebDAV or Nextcloud server - to upload the site you
+  publish. It contacts no server of ours. It has no account with us, no
+  update check, no telemetry and no advertising.
 - The pages it writes contain only what you put into the site folder. Where
   the pages reference a server - a contact form, a newsletter sign-up - that
   server is one you will run or choose; this version runs none.
@@ -87298,11 +87524,15 @@ required to [confirm with legal review].
 
 | Data | What it is | Where |
 |---|---|---|
-| The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you | the folder you name, e.g. `ultrapress new mysite` |
-| The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out` |
+| The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you; a file you add through the media library (`ultrapress media add`, the window's Add file…) is copied into `media/` | the folder you name, e.g. `ultrapress new mysite` |
+| The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out`; the window uses `<site>/.ultrapress/publish` |
+| The upload record | `.ultrapress-deploy.json`: for each host, the name and a fingerprint (size and a hash of the content, not the content) of every file uploaded, so the next publish sends only what changed | beside the published site |
+| The host list | the hosts you added: the kind (FTP, WebDAV, Nextcloud), the server address, your user name, the folder, a display name | `hosts.db` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere) |
+| The host passwords | the password of each host, and for an SFTP host the path of the private key file you named (the key itself stays where it is) | the encrypted credential vault `vault/` beside `hosts.db`, opened with a key file the program writes on your device (UltraVault) |
+| The site's host | the id of the host the site publishes to and the folder on it; no password | `hosting` in `site.json` |
 
-UltraPress writes no settings, caches, logs or history files of its own. Its
-messages go to the terminal it was started from.
+UltraPress writes no caches, logs or history files of its own. Its messages
+go to the terminal it was started from, or to the window's status line.
 
 The site folder and the published site contain whatever you wrote into
 them. If you put personal data there - your own name and address in the
@@ -87313,9 +87543,14 @@ purpose but writing the pages.
 
 ### 3.1 How sensitive data is protected
 
-UltraPress stores no passwords, keys or tokens. The files it writes are
-protected by your operating system's file permissions and nothing else; they
-are meant to be published.
+The host passwords are the one secret UltraPress stores. They are kept in
+an encrypted vault (UltraVault) under the settings folder; the key that
+opens it is a file the program writes beside the vault with permissions for
+your user alone, so the program can sign in to your host without asking
+again. Anyone who can read your user's files can open the vault. The site
+folder and the published site are protected by your operating system's file
+permissions and nothing else; they are meant to be published, and they
+never hold a password - `site.json` names the host by an id only.
 
 ### 3.2 Who can read this data
 
@@ -87332,11 +87567,25 @@ its own terms.
 
 ## 4. Data UltraPress sends to servers
 
-None. UltraPress 0.1 opens no network connection.
+Only to the web host you configured, and only when you publish (`ultrapress
+publish --to`, or the window's Publish button): the files of the published
+site, your user name and password to sign in, and the folder names it
+creates. The connection is to the address you entered; with `sftp://`,
+`ftps://`, `ftpes://` or `https://` it is encrypted, with plain `ftp://` or
+`http://` it is not, and the program says so in the error details when a
+sign-in fails. With `--prune` (the window's Publish always) the program
+also deletes on the host the files an earlier publish of yours put there
+and the site no longer has; it never deletes anything else. Verifying a new host (`ultrapress hosts add` without
+`--no-verify`, or the dialog) signs in once and lists a folder. Nothing is
+sent to ULTRA OS Development GmbH, and nothing is sent to any host you did
+not add.
 
 ## 5. Other servers UltraPress contacts, and why
 
-None.
+None besides the host above. `ultrapress import --media` fetches the
+attachments a WordPress export names, from the addresses in that export,
+when you ask for it with `--media`; that is your old site's server, or
+wherever it kept its pictures.
 
 The HTML pages UltraPress writes reference, by address only, three things a
 visitor's browser may request once the site is online: the site's own

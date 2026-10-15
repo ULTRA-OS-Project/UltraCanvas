@@ -196,7 +196,9 @@ ssh (`--windows` needs a display; `--apps` and `--devices` do not).
 ## Settings file
 
 `~/.config/ultraos/desktop.json` (`$XDG_CONFIG_HOME` when set;
-`%APPDATA%\ultraos\desktop.json` on Windows):
+`%APPDATA%\ultraos\desktop.json` on Windows;
+`~/Library/Application Support/ultraos/desktop.json` on macOS, where a file
+earlier versions kept under `~/.config` is moved on the first start):
 
 ```json
 {

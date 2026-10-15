@@ -313,7 +313,11 @@ removable only when all of these hold:
    `/usr` and `C:\` cannot be reached whatever a rule says.
 2. It lies **strictly inside** a root the current rule set resolved. A root
    is a container, never a target — rules clear a cache directory's contents,
-   they never remove the cache directory.
+   they never remove the cache directory. The guard holds each root under
+   two spellings: as the rule named it and with its symlinks resolved. A path
+   inside either one counts, because the scanner walks a root under its own
+   spelling. On macOS `$TMPDIR` is `/var/folders/…` and `/var` is a link to
+   `/private/var`.
 3. Neither it nor its symlink-resolved form is a protected location, and it
    is not an ancestor of one. `ProtectedPaths()` covers the filesystem and OS
    roots, the user's home, and the directories inside it that hold work

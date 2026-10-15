@@ -1,4 +1,4 @@
-#### 2026-10-14 *0.4.0*
+#### 2026-10-15 *0.4.0*
 - **UltraDesktop can run instead of Explorer, not only beside it.** On
   Windows, *UltraDesktop instead of Explorer* (UOS-Settings → Desktop → At
   sign-in, the settings button's right-click menu, or
@@ -26,6 +26,17 @@
   it, keeping Explorer beside it again, and the way back.
   *Switch back to the Windows desktop* as the shell closes UltraDesktop and
   Explorer starts in its place at once.
+
+#### 2026-10-14 *0.3.2*
+- **The settings file lives in Application Support on macOS.** `desktop.json`
+  was kept in `~/.config/ultraos` there, as on Linux, while every other
+  per-user file of the desktop and its applications is in
+  `~/Library/Application Support`. Its folder is now the framework's desktop
+  settings folder (`UltraCanvasDesktopSettingsFolder`): `%APPDATA%\ultraos`
+  on Windows, `~/Library/Application Support/ultraos` on macOS,
+  `$XDG_CONFIG_HOME` or `~/.config/ultraos` elsewhere, every variable read as
+  UTF-8. On the first start the old macOS folder is moved into place whole,
+  the clipboard history's key with it; Linux and Windows are untouched.
 
 #### 2026-10-14 *0.3.1*
 - **The clipboard quick panel follows UltraClipboard's *Display → Icons*.**

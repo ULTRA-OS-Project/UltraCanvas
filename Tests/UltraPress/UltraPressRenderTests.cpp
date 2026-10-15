@@ -16,12 +16,14 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextInput.h"
 
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <string>
 #include <vector>
@@ -284,6 +286,130 @@ static void TestEditor() {
     editor.RemoveBlock(99);
     Check(editor.CurrentSite().FindPage("home")->blocks.size() == 6, "an index past the end removes nothing");
 
+    std::printf("Text edited in place\n");
+    editor.ShowPage("home");
+    editor.SelectBlock(-1);
+    const RenderedPage& shown = editor.Shown();
+    Check(!shown.bindings.empty(), "the preview is rendered with bindings: " + std::to_string(shown.bindings.size()));
+    int titleBinding = -1;
+    for (size_t i = 0; i < shown.bindings.size(); ++i) {
+        if (shown.bindings[i].blockPath == "blocks[0]" && shown.bindings[i].where.property == "title") titleBinding = static_cast<int>(i);
+    }
+    Check(titleBinding >= 0 && shown.bindings[static_cast<size_t>(titleBinding)].text == "Edit" &&
+              !shown.bindings[static_cast<size_t>(titleBinding)].multiline &&
+              shown.bindings[static_cast<size_t>(titleBinding)].slot && shown.bindings[static_cast<size_t>(titleBinding)].element,
+          "the hero's title is a single-line binding with its slot and label");
+    int leadBinding = -1;
+    for (size_t i = 0; i < shown.bindings.size(); ++i) {
+        if (shown.bindings[i].blockPath == "blocks[0]" && shown.bindings[i].where.property == "text" && shown.bindings[i].where.paragraph == 0)
+            leadBinding = static_cast<int>(i);
+    }
+    Check(leadBinding >= 0 && shown.bindings[static_cast<size_t>(leadBinding)].multiline, "the hero's lead is a paragraph binding, multi-line");
+    Check(shown.bindings[static_cast<size_t>(titleBinding)].slot->GetChildren().size() == 1, "the slot holds the label");
+
+    editor.BeginTextEdit(titleBinding);
+    Check(editor.IsEditingText() && editor.SelectedBlock() == 0, "a click on the title starts an edit and selects the hero");
+    const auto slot = editor.Shown().bindings[static_cast<size_t>(titleBinding)].slot;
+    Check(slot->GetChildren().size() == 1 && std::dynamic_pointer_cast<UltraCanvas::UltraCanvasTextInput>(slot->GetChildren()[0]) != nullptr,
+          "the label gave way to a text input");
+    editor.CancelTextEdit();
+    Check(!editor.IsEditingText() && slot->GetChildren().size() == 1 &&
+              std::dynamic_pointer_cast<UltraCanvas::UltraCanvasLabel>(slot->GetChildren()[0]) != nullptr,
+          "Escape puts the label back");
+    editor.BeginTextEdit(titleBinding);
+    Check(editor.CommitTextEdit("Edited in place") && !editor.IsEditingText() &&
+              editor.CurrentSite().FindPage("home")->blocks[0].Text("title") == "Edited in place",
+          "Enter writes the title into the block");
+    Check(FindLabel(editor.Shown().root, "Edited in place") != nullptr, "and the page shows it");
+    editor.BeginTextEdit(leadBinding);
+    Check(std::dynamic_pointer_cast<UltraCanvas::UltraCanvasTextArea>(
+              editor.Shown().bindings[static_cast<size_t>(leadBinding)].slot->GetChildren()[0]) != nullptr,
+          "a paragraph gets an area");
+    Check(editor.CommitTextEdit("A new first paragraph.") &&
+              editor.CurrentSite().FindPage("home")->blocks[0].Text("text").rfind("A new first paragraph.", 0) == 0,
+          "the paragraph is written back: " + editor.CurrentSite().FindPage("home")->blocks[0].Text("text"));
+    editor.BeginTextEdit(leadBinding);
+    Check(!editor.CommitTextEdit("A new first paragraph.") && !editor.IsEditingText(), "the same text again is a cancel, not a change");
+    editor.BeginTextEdit(999);
+    Check(!editor.IsEditingText(), "a binding past the end starts nothing");
+    int questionBinding = -1;
+    for (size_t i = 0; i < editor.Shown().bindings.size(); ++i) {
+        const TextBinding& b = editor.Shown().bindings[i];
+        if (b.where.property == "items" && b.where.key == "q" && b.where.item == 0) questionBinding = static_cast<int>(i);
+    }
+    Check(questionBinding >= 0 && std::dynamic_pointer_cast<UltraCanvas::UltraCanvasButton>(
+                                      editor.Shown().bindings[static_cast<size_t>(questionBinding)].element) != nullptr,
+          "the FAQ's first question is a binding whose element is its button");
+    editor.BeginTextEdit(questionBinding);
+    Check(editor.IsEditingText() && editor.CommitTextEdit("Is it edited?") &&
+              editor.CurrentSite().FindPage("home")->blocks[editor.SelectedBlock()].Items("items")[0]["q"].GetString() == "Is it edited?",
+          "and it is edited in place like the rest");
+
+    std::printf("Rich text edited in place\n");
+    editor.SelectBlock(-1);
+    editor.AddBlock("richtext");
+    Check(editor.SetProperty("html", "<p>Hello <b>there</b></p>"), "a richtext block with HTML");
+    int richBinding = -1;
+    for (size_t i = 0; i < editor.Shown().bindings.size(); ++i) {
+        if (editor.Shown().bindings[i].rich) richBinding = static_cast<int>(i);
+    }
+    Check(richBinding >= 0 && editor.Shown().bindings[static_cast<size_t>(richBinding)].where.property == "html" &&
+              editor.Shown().bindings[static_cast<size_t>(richBinding)].text == "<p>Hello <b>there</b></p>",
+          "the richtext block is a binding of its HTML");
+    editor.BeginTextEdit(richBinding);
+    {
+        const auto& children = editor.Shown().bindings[static_cast<size_t>(richBinding)].slot->GetChildren();
+        bool rich = false, toolbar = false;
+        for (const auto& child : children) {
+            rich = rich || std::dynamic_pointer_cast<UltraCanvas::UltraCanvasRichTextEdit>(child) != nullptr;
+            toolbar = toolbar || std::dynamic_pointer_cast<UltraCanvas::UltraCanvasToolbar>(child) != nullptr;
+        }
+        Check(editor.IsEditingText() && rich, "the slot holds the rich text editor");
+        Check(toolbar && children.size() == 3 && std::dynamic_pointer_cast<UltraCanvas::UltraCanvasToolbar>(children[0]) != nullptr,
+              "with its toolbar above it and the buttons below");
+    }
+    editor.CommitTextEdit();   // what the editor's document gives back, whether or not it reads as a change
+    Check(!editor.IsEditingText(), "Done closes the editor");
+    const std::string roundTrip = editor.CurrentSite().FindPage("home")->blocks[editor.SelectedBlock()].Text("html");
+    Check(roundTrip.find("Hello") != std::string::npos && roundTrip.find("<b>there</b>") != std::string::npos,
+          "the HTML survives the editor's document and back: " + roundTrip);
+    editor.BeginTextEdit(richBinding);
+    Check(editor.CommitTextEdit("<p>Changed</p>") && editor.CurrentSite().FindPage("home")->blocks[editor.SelectedBlock()].Text("html") == "<p>Changed</p>",
+          "Done writes the editor's HTML into the block");
+    editor.BeginTextEdit(richBinding);
+    editor.CancelTextEdit();
+    Check(!editor.IsEditingText() && editor.Shown().bindings[static_cast<size_t>(richBinding)].slot->GetChildren().size() == 2,
+          "Cancel puts the content and its handle back");
+    editor.RemoveBlock(editor.SelectedBlock());   // the page as the checks below expect it
+
+    std::printf("The editor's media library\n");
+    Check(editor.Media().empty(), "no media to start");
+    const fs::path source = dir / "A Photo.PNG";
+    {
+        // A real 1x1 PNG: the preview loads the picture once it is set.
+        std::ofstream png(source, std::ios::binary);
+        const unsigned char bytes[] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+                                       0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+                                       0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+                                       0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+                                       0x42, 0x60, 0x82};
+        png.write(reinterpret_cast<const char*>(bytes), sizeof bytes);
+    }
+    std::string mediaPath, error;
+    Check(editor.AddMedia(UltraCanvas::PathToUtf8(source), mediaPath, error) && mediaPath == "media/a-photo.png",
+          "a picture is added under a clean name: " + mediaPath + " " + error);
+    Check(editor.Media().size() == 1 && editor.Media()[0].usedBy == 0, "it is listed, unused");
+    editor.SelectBlock(0);
+    Check(editor.SetProperty("picture", mediaPath), "the hero's picture is set to it");
+    Check(editor.Media()[0].usedBy == 1 && editor.CurrentSite().FindPage("home")->blocks[0].Text("picture") == mediaPath,
+          "and the library counts the use");
+    Check(!editor.RemoveMediaFile(mediaPath, error) && error.find("is used by home") != std::string::npos,
+          "a used picture is not removed: " + error);
+    Check(editor.SetProperty("picture", "") && editor.RemoveMediaFile(mediaPath, error) && editor.Media().empty(),
+          "unused, it is: " + error);
+    editor.SelectBlock(-1);
+    Check(!editor.SetProperty("picture", "x"), "no block selected, nothing set");
+
     Check(editor.Save(), "the site saves");
     Site saved;
     Check(LoadSite(UltraCanvas::PathToUtf8(dir), saved, errors) && saved.FindPage("home")->blocks.size() == 6 &&
@@ -298,6 +424,10 @@ static void TestEditor() {
 }
 
 int main() {
+    // The preview loads pictures through libvips, which the application
+    // initialises at start-up (UltraCanvasApplication::Initialize); a test
+    // without an application does it here.
+    UltraCanvas::UCImage::InitializeImageSubsysterm("UltraPressRenderTests");
     TestStarterSite();
     TestEveryBlock();
     TestPaletteAndExample();

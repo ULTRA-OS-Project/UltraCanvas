@@ -1,5 +1,6 @@
 // Apps/UltraPress/engine/UltraPressPublish.cpp
 // Static publishing and the starter site.
+// Version: 0.5.1 - the output mirrors the site: stale files removed
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -7,7 +8,9 @@
 
 #include "UltraCanvasPathUtf8.h"
 
+#include <algorithm>
 #include <filesystem>
+#include <set>
 #include <fstream>
 #include <sstream>
 
@@ -75,7 +78,9 @@ PublishResult PublishStatic(const Site& site, const std::string& siteDirectory,
         result.errors.push_back("cannot create " + outputDirectory + ": " + ec.message());
         return result;
     }
-    HtmlEmitter emitter(site, options.html);
+    HtmlOptions html = options.html;
+    if (html.siteDirectory.empty()) html.siteDirectory = siteDirectory;   // the pictures' sizes come from the site folder
+    HtmlEmitter emitter(site, html);
     bool ok = true;
     for (const Page& page : site.pages) {
         if (!page.IsPublished() && !options.includeDrafts) continue;
@@ -86,16 +91,45 @@ PublishResult PublishStatic(const Site& site, const std::string& siteDirectory,
     ok = WriteOutput(outDir, "robots.txt", emitter.Robots(), result) && ok;
     ok = WriteOutput(outDir, "feed.xml", emitter.Feed(), result) && ok;
     if (options.writeHtaccess) ok = WriteOutput(outDir, ".htaccess", kHtaccess, result) && ok;
-    if (options.copyMedia) {
-        const fs::path media = UltraCanvas::PathFromUtf8(siteDirectory) / "media";
-        if (fs::is_directory(media, ec)) {
-            fs::copy(media, outDir / "media", fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
-            if (ec) {
-                result.errors.push_back("cannot copy media: " + ec.message());
-                ok = false;
-            } else {
-                result.files.push_back("media/");
+    const fs::path media = UltraCanvas::PathFromUtf8(siteDirectory) / "media";
+    const bool hasMedia = options.copyMedia && fs::is_directory(media, ec);
+    if (hasMedia) {
+        fs::copy(media, outDir / "media", fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            result.errors.push_back("cannot copy media: " + ec.message());
+            ok = false;
+        } else {
+            result.files.push_back("media/");
+        }
+    }
+    if (options.removeStale) {
+        // What this publish did not write: every other regular file, except
+        // the deploy's manifest and, under media/, what the site's media
+        // still has. Then the folders left empty, innermost first.
+        std::set<std::string> written(result.files.begin(), result.files.end());
+        std::vector<fs::path> stale;
+        for (const fs::directory_entry& entry : fs::recursive_directory_iterator(outDir, ec)) {
+            if (!entry.is_regular_file(ec)) continue;
+            const fs::path relativePath = entry.path().lexically_relative(outDir);
+            std::string relative = UltraCanvas::PathToUtf8(relativePath);
+            std::replace(relative.begin(), relative.end(), '\\', '/');
+            if (relative == ".ultrapress-deploy.json" || written.count(relative)) continue;
+            if (relative.rfind("media/", 0) == 0) {
+                if (hasMedia && fs::exists(media / relativePath.lexically_relative("media"), ec)) continue;
             }
+            stale.push_back(entry.path());
+            result.removed.push_back(relative);
+        }
+        for (const fs::path& file : stale) fs::remove(file, ec);
+        std::vector<fs::path> folders;
+        for (const fs::directory_entry& entry : fs::recursive_directory_iterator(outDir, ec)) {
+            if (entry.is_directory(ec)) folders.push_back(entry.path());
+        }
+        std::sort(folders.begin(), folders.end(), [](const fs::path& a, const fs::path& b) {
+            return a.native().size() > b.native().size();
+        });
+        for (const fs::path& folder : folders) {
+            if (fs::is_empty(folder, ec)) fs::remove(folder, ec);
         }
     }
     result.ok = ok;

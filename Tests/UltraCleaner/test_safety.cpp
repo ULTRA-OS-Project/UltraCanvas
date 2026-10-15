@@ -130,6 +130,33 @@ TEST(GuardRefusesASymlinkThatEscapesTheRoot) {
                static_cast<int>(SafetyVerdict::SymlinkEscape));
 }
 
+// A root reached through a link - macOS's $TMPDIR, /var/folders/..., with
+// /var a link to /private/var - is walked under that spelling. Its contents
+// pass under it and under the resolved one; the root itself still does not.
+TEST(GuardAllowsContentInsideARootReachedThroughASymlink) {
+    TempTree tree;
+    tree.File("real/cache/a.bin", 4);
+    std::error_code ec;
+    std::filesystem::create_directory_symlink(
+        UltraCanvas::PathFromUtf8(tree.Path("real")),
+        UltraCanvas::PathFromUtf8(tree.Path("link")), ec);
+    if (ec) return;   // filesystem without symlinks (some CI Windows runners)
+
+    // Fully resolved, as the filesystem gives it back: the temp folder itself
+    // may sit behind a link too (it does on macOS).
+    const auto resolved = [&](const std::string& relative) {
+        return UltraCanvas::PathToUtf8(std::filesystem::weakly_canonical(
+            UltraCanvas::PathFromUtf8(tree.Path(relative))));
+    };
+
+    PathGuard guard;
+    guard.AllowRoot(tree.Path("link/cache"));
+    REQUIRE(guard.Check(tree.Path("link/cache/a.bin")).Allowed());
+    REQUIRE(guard.Check(resolved("real/cache/a.bin")).Allowed());
+    REQUIRE(!guard.Check(tree.Path("link/cache")).Allowed());
+    REQUIRE(!guard.Check(resolved("real/cache")).Allowed());
+}
+
 TEST(GuardRefusesSpecialFiles) {
     TempTree tree;
     const std::string cache = tree.Dir("cache");

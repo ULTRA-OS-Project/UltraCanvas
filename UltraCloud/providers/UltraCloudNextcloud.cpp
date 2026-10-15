@@ -1,4 +1,5 @@
 // UltraCloud/providers/UltraCloudNextcloud.cpp
+// Version: 0.1.1 - modify: Delete and Rename come with the WebDAV base
 // Version: 0.1.0
 // Last Modified: 2026-09-03
 // Author: UltraCanvas Framework / ULTRA OS
@@ -72,7 +73,7 @@ bool ParseOcsShareResponse(const std::string& json, ShareLink& out, std::string&
 
 ProviderCapabilities NextcloudProvider::Capabilities() const {
     ProviderCapabilities c;
-    c.browse = true; c.upload = true; c.shareLinks = true;
+    c.browse = true; c.upload = true; c.modify = true; c.shareLinks = true;
     c.passwordProtectedLinks = true; c.expiringLinks = true;
     c.needsServerUrl = true;
     return c;

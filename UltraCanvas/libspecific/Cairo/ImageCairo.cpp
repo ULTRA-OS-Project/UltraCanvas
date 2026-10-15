@@ -6,6 +6,8 @@
 //                  (VipsIcoPlugin, VipsQoiLoader), registered with the loaders;
 //                  no ImageMagick for either
 // Version: 2.6.0 - ...and so is one that arrives as bytes (LoadFromMemory sniffs the SVG)
+// Version: 2.8.0 - a build without libvips reads JPEG, BMP and GIF through the
+//                  bundled stb_image (StbRasterDecode)
 // Version: 2.7.0 - a build without libvips reads PNG through cairo's own reader
 // Version: 2.5.0 - An SVG libvips cannot load is read through the vector preview seam
 //                 and rendered by the core's vector renderer (the WebAssembly build)
@@ -19,6 +21,7 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
+#include "StbRasterDecode.h"
 #include "UltraCanvasCoderModuleRepair.h"
 #include "UltraCanvasFileStamp.h"
 #include "UltraCanvasVectorPreview.h"              // LoadVectorPreviewDocument, RenderVectorDocumentPixmap
@@ -382,9 +385,14 @@ namespace UltraCanvas {
         }
 
 #ifndef HAS_LIBVIPS
-        // Without libvips the one raster format read is PNG, through cairo's
+        // Without libvips the raster formats read are PNG, through cairo's
         // own reader (cairo-png is in every sysroot this build links): the
-        // icons, logos and status marks a program's chrome is made of.
+        // icons, logos and status marks a program's chrome is made of; and
+        // JPEG, BMP and GIF through the bundled stb_image (StbRasterDecode),
+        // for the photographs a static host serves.
+        const char* const kNoDecoderMessage =
+            "No decoder for this picture in a build without libvips (PNG, JPEG, BMP, GIF and SVG only)";
+
         bool LooksLikePng(const uint8_t* data, size_t size) {
             static const uint8_t signature[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
             return data && size >= 33 && std::memcmp(data, signature, 8) == 0;
@@ -722,27 +730,32 @@ namespace UltraCanvas {
         if (IsSvgFileName(imagePath) && result->LoadVectorDocument(imagePath)) {
             return result;
         }
-        if (result->LoadFileToMemory(imagePath) && result->AdoptPngBytes()) {
+        if (result->LoadFileToMemory(imagePath) && result->AdoptRasterBytes()) {
             return result;
         }
         if (result->errorMessage.empty())
-            result->errorMessage = "No decoder for this picture in a build without libvips (PNG and SVG only)";
+            result->errorMessage = kNoDecoderMessage;
         return result;
     }
 
-    // What the PNG header says: alpha when its colour type carries one. The
-    // other answer, "opaque", leaves a backdrop chooser out of the way.
+    // What the header says: alpha when the PNG colour type or the stb
+    // channel count carries one. The other answer, "opaque", leaves a
+    // backdrop chooser out of the way.
     bool UCImageRaster::HasTransparency() {
         return transparency == 1;
     }
 
-    // The bytes in imgDataPtr taken as a PNG: its size from the header now,
-    // the pixels when a pixmap is asked for.
-    bool UCImageRaster::AdoptPngBytes() {
-        if (!LooksLikePng(imgDataPtr, imgDataSize)) return false;
+    // The bytes in imgDataPtr taken as a PNG (cairo's reader) or a JPEG, BMP
+    // or GIF (stb_image): the size from the header now, the pixels when a
+    // pixmap is asked for.
+    bool UCImageRaster::AdoptRasterBytes() {
         int w = 0, h = 0;
         bool alpha = false;
-        ReadPngHeader(imgDataPtr, w, h, alpha);
+        if (LooksLikePng(imgDataPtr, imgDataSize)) {
+            ReadPngHeader(imgDataPtr, w, h, alpha);
+        } else if (!StbRaster::ReadHeader(imgDataPtr, imgDataSize, w, h, alpha)) {
+            return false;
+        }
         if (w <= 0 || h <= 0) return false;
         width = w;
         height = h;
@@ -776,10 +789,10 @@ namespace UltraCanvas {
         if (result->LoadVectorDocumentFromMemory(data, dataSize)) {
             return result;
         }
-        if (result->AdoptPngBytes()) {
+        if (result->AdoptRasterBytes()) {
             return result;
         }
-        result->errorMessage = "No decoder for this picture in a build without libvips (PNG and SVG only)";
+        result->errorMessage = kNoDecoderMessage;
         return result;
     }
 #endif
@@ -1089,11 +1102,16 @@ namespace UltraCanvas {
         if (vectorDocument) {
             return CreatePixmapFromVectorDocument(w, h, fitMode, scale);
         }
-        if (!LooksLikePng(imgDataPtr, imgDataSize) || w <= 0 || h <= 0) return nullptr;
+        if (!imgDataPtr || imgDataSize == 0 || w <= 0 || h <= 0) return nullptr;
         if (scale <= 0.0f) scale = 1.0f;
-        cairo_surface_t* source = DecodePngSurface(imgDataPtr, imgDataSize);
+        cairo_surface_t* source = nullptr;
+        if (LooksLikePng(imgDataPtr, imgDataSize)) {
+            source = DecodePngSurface(imgDataPtr, imgDataSize);
+        } else if (StbRaster::Recognises(imgDataPtr, imgDataSize)) {
+            source = StbRaster::Decode(imgDataPtr, imgDataSize);
+        }
         if (!source) {
-            errorMessage = "The PNG could not be decoded: " + fileName;
+            errorMessage = "The picture could not be decoded: " + fileName;
             return nullptr;
         }
         const int sw = cairo_image_surface_get_width(source);

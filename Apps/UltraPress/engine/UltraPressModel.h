@@ -4,6 +4,8 @@
 // ordered tree of blocks. Everything here is data; the renderers (the HTML
 // emitter, later the element renderer) read it and never change it.
 // Design: Docs/Research/UltraPressDesignProposal.md §5.1.
+// Version: 0.7.0 - SplitParagraphs, TextLocation / SetBlockText, ResolveBlockPath: text edited in place
+// Version: 0.5.0 - the hosting target (where Publish uploads to)
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -76,6 +78,15 @@ struct Theme {
     std::string fontFamily = "Ubuntu";
 };
 
+// Where "Publish" puts the site: an UltraPress host account (an UltraCloud
+// account id - FTP, SFTP, WebDAV, Nextcloud - kept by the ultrapress program
+// under the settings folder, never in the site) and the folder on it that
+// is the site's root, "/public_html" on a classic web host.
+struct Hosting {
+    std::string account;
+    std::string path = "/";
+};
+
 struct Site {
     std::string name;
     std::string tagline;
@@ -86,10 +97,36 @@ struct Site {
     Theme theme;
     std::vector<Menu> menus;
     std::vector<Page> pages;
+    Hosting hosting;
 
     const Page* FindPage(const std::string& slug) const;
     const Menu* FindMenu(const std::string& name) const;
 };
+
+// ----- Text in a block ----------------------------------------------------------
+// The paragraphs of a long text: split on blank lines, each trimmed. What the
+// renderer shows as separate labels and the shadow as separate <p>s.
+std::vector<std::string> SplitParagraphs(const std::string& text);
+
+// Where a piece of text sits in a block: a property ("title"); an item of a
+// Strings property ("items", 2) or of an Items property with its key
+// ("items", 0, "a"); and, for a long text, one of its paragraphs.
+struct TextLocation {
+    std::string property;
+    int item = -1;
+    std::string key;
+    int paragraph = -1;
+};
+
+// Writes `text` at the location: the whole property, the item, the item's
+// key, or the one paragraph with the others kept. False when the location
+// is not there (no such item, no such paragraph).
+bool SetBlockText(Block& block, const TextLocation& where, const std::string& text);
+
+// The block a path names: "blocks[2]", "blocks[2].children[0]". Null when
+// the path does not resolve.
+Block* ResolveBlockPath(Page& page, const std::string& path);
+const Block* ResolveBlockPath(const Page& page, const std::string& path);
 
 // ----- JSON -----------------------------------------------------------------
 UltraCanvas::JSONValue BlockToJson(const Block& block);

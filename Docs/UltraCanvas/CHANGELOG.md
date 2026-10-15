@@ -1,3 +1,143 @@
+#### 2026-10-15 *0.9.302*
+- **The desktop's settings folder is in the header too:
+  `UltraCanvasDesktopSettingsFolder()`.** `desktop.json` (UltraDesktop,
+  UOSSettings) and the clipboard history's key both named `<config>/ultraos`
+  with a rule of their own, and on macOS both kept it under `~/.config`, while
+  every other per-user folder of the framework there is in Application
+  Support. `UltraCanvasSettingsFolder.h` names the folder once -
+  `%APPDATA%\ultraos`, `~/Library/Application Support/ultraos`,
+  `$XDG_CONFIG_HOME` or `~/.config/ultraos` - and on macOS moves the old
+  folder into place on first use, settings and key together, so the history
+  still opens.
+
+#### 2026-10-15 *0.9.301*
+- **Links with `target="_blank"` can open in a new window.**
+  `UltraCanvasWebView::onOpenInNewWindow` (WebView 1.4.0) gets the absolute
+  address of a link that asks for another window: `target="_blank"`, a
+  target naming a window, or no target under `<base target="_blank">`.
+  `_self`, `_parent` and `_top` stay in the view. Such a link opens in the
+  view as before while the callback is unset, and `mailto:` still goes to
+  `onExternalLink`. Underneath, `HTML::BuildOptions::onLinkActivatedNewWindow`
+  (builder 1.34.0) takes those clicks, on text links and linked pictures
+  alike. `WebViewTest` and `HTMLImageAlignTest` cover it.
+
+#### 2026-10-15 *0.9.300*
+- **macOS: a build without the GL surface no longer needs OpenGL.framework.**
+  `UltraCanvas/CMakeLists.txt` looked the framework up as `REQUIRED` whatever
+  `ULTRACANVAS_ENABLE_GL` said, although only the GL surface links it. So
+  `-DULTRACANVAS_ENABLE_GL=OFF` could not configure on a macOS SDK without
+  OpenGL, which Apple has deprecated since 10.14. It is now looked up only
+  when the surface is on. If the SDK lacks it, configure warns and turns the
+  surface off, as a missing GLEW does on Windows. CI's "Verify OpenGL backend
+  enabled" step still fails when the CGL backend goes missing, so a release
+  cannot lose it unnoticed.
+- **CI runs UltraCleaner's engine tests.** `ULTRACANVAS_BUILD_ULTRACLEANER_TESTS`
+  was on in no build row, so the cleaner's suite - path guard, rule table,
+  scanner, remover, album logic - ran only on developers' machines. Every row
+  builds it now. Linux runs it in the full test pass, and macOS and Windows
+  run it in a step of their own: the recycle bin and UTF-16 paths on Windows,
+  `~/.Trash` and case-insensitive names on macOS, are code only those systems
+  exercise.
+
+#### 2026-10-15 *0.9.299*
+- **`UltraCanvasTextArea`: `onFocusGained` and `onFocusLost`**, the two
+  callbacks the text input already had, fired after the area's own focus
+  handling so a host reads the final text - what a field that keeps its
+  text when it is left needs, for a line and a paragraph alike
+  (`Docs/UltraCanvas/UltraCanvasTextAreaExamples.md`). UltraPress's
+  in-place paragraph field is the first user.
+- **UltraNet FTP: SFTP with a private key.** `UltraNetFtpOptions` carries
+  `sshPrivateKeyFile`, `sshPublicKeyFile` and `sshKeyPassphrase`; with a key
+  set an `sftp://` call offers the key first and the password, when there
+  is one, after it (libcurl's `CURLOPT_SSH_PRIVATE_KEYFILE` and
+  `CURLOPT_SSH_AUTH_TYPES`); the failure diagnostics name the key. Without
+  a key nothing changes (`UltraNet/UltraNetFtp.h`).
+- **UltraCloud: a WebDAV server is a drive, and SFTP signs in with a key.**
+  `WebDavProvider` - and Nextcloud with it - implements `Delete` (DELETE;
+  a folder's URL ends with `/`, the root is refused) and `Rename` (MOVE to
+  the same folder, `Overwrite: F`), so `Capabilities().modify` is set and
+  UltraFiler can carry one as a drive, and a publisher can prune.
+  `Credentials::privateKeyFile` is the SFTP key's path, kept in the vault
+  as `cloud.<id>.keyfile`; the FTP provider hands it to UltraNet for
+  `sftp://` accounts with the password as the key's passphrase. The shared
+  add-account dialog has a *Private key* row for the FTP provider. Tests
+  for the DAV verbs, the key in the options and the vault round trip
+  (`Docs/Modules/UltraCloud/README.md`).
+
+#### 2026-10-15 *0.9.298*
+- **A build without libvips reads JPEG, BMP and GIF.** `UCImage` in a build
+  configured with `ULTRACANVAS_ENABLE_VIPS=OFF` (the WebAssembly `no-vips`
+  and `single-thread` variants, the ones a static host without cross-origin
+  isolation headers serves) read PNG and SVG and nothing else, so a
+  photograph came up as "no decoder for this picture". The bundled
+  `stb_image` (`UltraCanvas/third_party/stb`, public domain, compiled to
+  nothing in a build with libvips) now decodes JPEG, BMP and the first
+  frame of a GIF through `libspecific/Cairo/StbRasterDecode`, on the same
+  road as PNG: size from the header at load, pixels when a pixmap is first
+  asked for, the fit modes as the libvips thumbnail path means them. The
+  demo's JPEG, BMP and GIF pages show their pictures in those variants; TIFF,
+  WebP, HEIC and AVIF still say the build cannot read them.
+- **The WebAssembly workflow runs on pull requests.** `wasm-build.yml` was
+  manual only, so a change to the port, the sysroot script, the Cairo image
+  code or the demo reached `main` untested in the browser. It now runs on a
+  pull request, and on a push to `main`, that touches one of those paths
+  (`.github/workflows/wasm-build.yml`, `UltraCanvas/OS/WASM/`,
+  `cmake/UltraCanvasWasmSysroot.cmake`, the two `CMakeLists.txt`,
+  `UltraCanvas/libspecific/Cairo/`, `UltraCanvas/third_party/stb/`,
+  `Apps/DemoApp/`); a manual dispatch still takes an emsdk version.
+- **The thread-less WebAssembly sysroot's `.pc` files no longer carry
+  `-pthread`.** glib's pkg-config file, and through it fontconfig's,
+  harfbuzz's, pixman's and libvips', added `-pthread` to the flags of every
+  consumer even in a sysroot built with `WASM_THREADS=0`, so a program
+  configured without threads was compiled with `__EMSCRIPTEN_PTHREADS__`
+  set - which is how pango's no-threads guard first missed. The sysroot
+  script now scrubs the flag from every installed `.pc` at the start of each
+  stage and at the end, so what `pkg-config` reports matches the sysroot.
+  Pango's no-threads patch still reads its explicit `PANGO_FC_NO_THREAD`
+  switch.
+
+#### 2026-10-14 *0.9.297*
+- **Matrix diagram: the House of Quality's competitive assessment.** Right of
+  the grid, how customers rate your product and its rivals on each need: one
+  marker per competitor per need on a 1-to-`ratingMax` track, joined row to row.
+  New `MatrixModel::competitors`, `ratings` and `ratingMax`, with
+  `AddCompetitor`, `SetRating` (refusing unknown needs or competitors and values
+  out of range) and `RatingOf`; `Validate()` and the JSON form carry them. The
+  competitors join the legend - a click brings one's line forward - a need's
+  tooltip lists its ratings, and `SetShowCompetitiveAssessment(false)` hides the
+  block. The House of Quality sample rates three bicycles.
+- **Matrix diagram, Phase 4.** Pan and zoom through the shared
+  `UltraCanvasDiagramViewport`, opt-in with `SetPanZoomEnabled(true)`: the wheel
+  zooms about the pointer, dragging empty space or the middle button pans,
+  Ctrl +/-/0 zoom and reset, and the viewport's zoom buttons and minimap are
+  available through `Viewport()`. Only the matrix moves; titles, the form header
+  and the legend stay put, and nothing outside the matrix area can be hit.
+- Matrix diagram: keyboard navigation. The diagram takes the focus when
+  clicked; the arrow keys move the selected cell in the direction they point on
+  screen - on turned X quadrants, Y rhombi and the House roof too - Tab moves
+  between panels, Escape clears, and the selected cell is outlined while
+  focused. New `SelectCell()` and `onSelectionChanged`.
+- Matrix diagram: editing, opt-in with `SetEditable(true)`. A click, Space or
+  Enter steps a cell through its panel's scale and back to empty, Shift steps
+  back, Delete clears; `onCellEdited` reports each change and `CycleCell()`
+  does it from code.
+- Matrix diagram: JSON for the whole model - `ExportMatrixJson` /
+  `ImportMatrixJson`, and `MatrixModelToJson` / `MatrixModelFromJson` on a
+  `JSONValue`. Cells are keyed by item id, so a file survives reordered items;
+  the import refuses another format, a newer version, unknown items or levels
+  and an undrawable model, and leaves the model untouched when it does.
+- DemoApp: Pan & zoom and Editable switches on the Matrix Diagram page, and Open
+  JSON... / Save JSON... beside Import table....
+
+#### 2026-10-14 *0.9.296*
+- **The WebAssembly workflow's `single-thread` variant is required.** It was
+  one of the three experimental variants that never failed the run, from
+  the days when its sysroot had never been built; now that it builds and
+  passes its browser smoke test, a regression in the single-threaded
+  program - the one a static host without cross-origin isolation headers
+  serves - fails the run like one in the baseline. `no-vips` and
+  `four-fonts` stay measurements.
+
 #### 2026-10-14 *0.9.295*
 - **The doc-examples check keeps its baseline honest and reports an undeclared
   name once.** `scripts/check_doc_examples.py --strict` now fails on a baseline

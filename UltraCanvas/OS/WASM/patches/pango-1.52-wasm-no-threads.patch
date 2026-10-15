@@ -1,23 +1,21 @@
 --- a/pango/pangofc-fontmap.c
 +++ b/pango/pangofc-fontmap.c
-@@ -120,6 +120,16 @@
+@@ -120,6 +120,14 @@
  static GCond fc_init_cond;
  static DefaultConfig fc_initialized = DEFAULT_CONFIG_NOT_INITIALIZED;
  
 +/* A WebAssembly program built without -pthread cannot start the fontconfig
 + * worker: Emscripten answers pthread_create with ENOTSUP, and GLib treats
 + * that as a programming error and aborts. With PANGO_FC_NO_THREAD defined
-+ * (the sysroot script passes it for a build without threads; the macro
-+ * __EMSCRIPTEN_PTHREADS__ is no guide, glib's .pc puts -pthread on every
-+ * consumer's compile line) every job the queue would hand the worker runs
-+ * on the caller's thread instead; the waits below then find their result
-+ * already there.
++ * (the sysroot script passes it for a build without threads) every job the
++ * queue would hand the worker runs on the caller's thread instead; the
++ * waits below then find their result already there.
 + */
 +
  
  typedef struct _PangoFcFontFaceData PangoFcFontFaceData;
  typedef struct _PangoFcFace         PangoFcFace;
-@@ -948,6 +958,7 @@
+@@ -948,6 +956,7 @@
    return NULL;
  }
  
@@ -25,7 +23,7 @@
  static gpointer
  fc_thread_func (gpointer data)
  {
-@@ -986,6 +997,39 @@
+@@ -986,6 +995,39 @@
  
    return NULL;
  }
@@ -65,7 +63,7 @@
  
  static PangoFcPatterns *
  pango_fc_patterns_new (FcPattern *pat, PangoFcFontMap *fontmap)
-@@ -1007,8 +1051,8 @@
+@@ -1007,8 +1049,8 @@
    g_mutex_init (&pats->mutex);
    g_cond_init (&pats->cond);
  
@@ -76,7 +74,7 @@
  
    g_hash_table_insert (fontmap->priv->patterns_hash, pats->pattern, pats);
  
-@@ -1458,6 +1502,25 @@
+@@ -1458,6 +1500,25 @@
  static void
  start_fontconfig_thread (PangoFcFontMap *fcfontmap)
  {
@@ -102,7 +100,7 @@
    GThread *thread;
  
    g_mutex_lock (&fc_init_mutex);
-@@ -1473,6 +1536,7 @@
+@@ -1473,6 +1534,7 @@
      }
  
    g_mutex_unlock (&fc_init_mutex);
@@ -110,7 +108,7 @@
  }
  
  static void
-@@ -1563,7 +1627,7 @@
+@@ -1563,7 +1625,7 @@
    priv->n_families = -1;
    priv->families = NULL;
  

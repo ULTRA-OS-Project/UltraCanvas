@@ -1,4 +1,5 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
+// Version: 0.7.1 - a private key row for SFTP
 // Version: 0.7.0 - the shared_ptr form: the sign-in thread holds the service
 //                  until it ends
 // Last Modified: 2026-10-14
@@ -153,6 +154,12 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
     password->SetPlaceholder("password or app password");
     auto passwordRow = addRow("cloudAccPass", "Password", password);
 
+    // SFTP with a key: the private key file's path; the password above is
+    // then its passphrase (and the server's password, failing the key).
+    auto keyFile = CreateTextInput("cloudAccKey", 0, 0, 0, UiStyle::kControlHeight);
+    keyFile->SetPlaceholder("~/.ssh/id_ed25519 (sftp:// only; optional)");
+    auto keyRow = addRow("cloudAccKey", "Private key", keyFile);
+
     auto publicUrl = CreateTextInput("cloudAccPublic", 0, 0, 0, UiStyle::kControlHeight);
     publicUrl->SetPlaceholder("https://files.example.org/pub (links = this URL + path)");
     auto publicRow = addRow("cloudAccPublic", "Public URL", publicUrl);
@@ -191,7 +198,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
 
     // Show only the rows the chosen provider needs. OAuth providers sign in
     // through the browser: no user / password rows, and the button says so.
-    auto applyProvider = [providers, serverRow, publicRow, passwordRow, userRow, provider,
+    auto applyProvider = [providers, serverRow, publicRow, passwordRow, userRow, keyRow, provider,
                           hint, addBtn]() {
         int idx = provider->GetSelectedIndex();
         if (idx < 0 || idx >= static_cast<int>(providers.size())) return;
@@ -202,6 +209,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
         publicRow.SetVisible(id == "webdav");
         userRow.SetVisible(!caps.needsOAuth);
         passwordRow.SetVisible(!caps.needsOAuth && id != "memory");
+        keyRow.SetVisible(id == "ftp");
         if (caps.needsOAuth) {
             addBtn->SetText("Sign in in browser");
             hint->SetText(HasOAuthApp(id)
@@ -213,6 +221,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
             hint->SetText(id == "nextcloud"
                 ? "Nextcloud: create an app password under Settings → Security and use it here."
                 : id == "webdav" ? "Links need a public URL that serves the same folder as the DAV root."
+                : id == "ftp" ? "ftp://, ftps://, ftpes:// or sftp://. An SFTP key: its file above, the passphrase as the password."
                 : "");
         }
     };
@@ -253,6 +262,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
         Credentials c;
         c.username = a.username;
         c.password = password->GetText();
+        c.privateKeyFile = a.providerId == "ftp" ? keyFile->GetText() : std::string();
 
         const auto caps = providers[static_cast<std::size_t>(idx)]->Capabilities();
         if (caps.needsServerUrl && a.serverUrl.empty()) { status->SetText("Enter the server URL."); return; }

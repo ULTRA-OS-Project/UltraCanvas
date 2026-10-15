@@ -14,6 +14,7 @@
 // Without a scheduler the view uses the running application's.
 //
 // No JavaScript: <script> is not run, <noscript> content is shown.
+// Version: 1.4.0 - onOpenInNewWindow: target="_blank" links go to the host
 // Version: 1.3.0 - a download keeps the page on show and its history
 // Version: 1.2.0 - onChooseFiles: file uploads
 // Version: 1.1.0 - SetInteractiveForms / SubmitForm: forms with real widgets,
@@ -87,6 +88,13 @@ public:
     std::function<void(const std::string& url)> onLinkHovered;
     // A link the view does not follow itself: mailto:, tel:, another scheme.
     std::function<void(const std::string& url)> onExternalLink;
+    // A link that asks for another window - <a target="_blank">, a named
+    // target, <base target="_blank"> - with the absolute address it leads
+    // to: a browser opens it in a new tab. Unset (or set after the page was
+    // built, until the next build), such links open in this view. Only
+    // addresses the view would open itself come here (http(s), and file:
+    // from a local page); mailto: and the like still go to onExternalLink.
+    std::function<void(const std::string& url)> onOpenInNewWindow;
     // A file input's button: show a file dialog (several files when
     // `multiple`; `accept` is the input's accept="" list as written) and
     // call `done` with the chosen UTF-8 paths, none when cancelled. Unset,
@@ -113,6 +121,7 @@ private:
     void Build();
     void ScheduleRebuild();
     void OnLink(const std::string& href);
+    void OnNewWindowLink(const std::string& href);
     void ShowErrorPage(const std::string& url, const std::string& message);
     void SetLoading(bool value);
     void RememberScroll();

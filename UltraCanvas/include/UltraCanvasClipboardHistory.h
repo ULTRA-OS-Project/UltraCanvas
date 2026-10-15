@@ -20,7 +20,8 @@
 // applications' data folders, UltraCanvasDataFolder.h), else ~/.local/share,
 // %LOCALAPPDATA% on Windows (a machine-local store, so not the applications'
 // roaming %APPDATA%) and ~/Library/Application Support on macOS; <config> is
-// the folder the desktop's own settings use.
+// the folder the desktop's own settings use (UltraCanvasDesktopSettingsFolder:
+// %APPDATA%, Application Support on macOS, $XDG_CONFIG_HOME or ~/.config).
 //
 // Titles, texts and payloads are encrypted with XChaCha20-Poly1305 when
 // UltraCrypt has libsodium. That protects a copy of the data folder and a

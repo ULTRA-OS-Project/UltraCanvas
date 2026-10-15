@@ -32,7 +32,8 @@ UOS-Settings opens on this page.
 A dropdown is saved when it changes, a text field when it is left or Return
 is pressed. The fields go to UltraDesktop's settings file -
 `<config dir>/ultraos/desktop.json` (`$XDG_CONFIG_HOME`, else `~/.config`;
-`%APPDATA%` on Windows) - read, changed and written back, so the sticky notes
+`%APPDATA%` on Windows; `~/Library/Application Support` on macOS) - read,
+changed and written back, so the sticky notes
 UltraDesktop keeps in the same file are not touched. A running UltraDesktop
 checks the file once a second and rebuilds its bars when one of these fields
 changed. The file is read and written by UltraDesktop's own settings code

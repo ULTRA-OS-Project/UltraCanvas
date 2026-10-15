@@ -1,12 +1,13 @@
 # Privacy declaration — UltraPress
 
-**Version 0.1 (draft for legal review) · 13 October 2026**
+**Version 0.2 (draft for legal review) · 13 October 2026**
 
 This declaration explains what personal data the **UltraPress** application
 processes, where that processing happens, which third parties it contacts and
 why, and what rights you have under the General Data Protection Regulation
-(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.1 - the
-`ultrapress` command line - on Linux, Windows, macOS and ULTRA OS. It does
+(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.5 - the
+`ultrapress` program, its commands and its editor window - on Linux,
+Windows, macOS and ULTRA OS. It does
 not cover the website itself, other ULTRA OS applications, any ULTRA OS
 online service, or **the websites you build with UltraPress**: a site you
 publish is yours, served by the host you chose, and needs a declaration of
@@ -36,11 +37,14 @@ required to [confirm with legal review].
 
 ## 2. The short version
 
-- UltraPress 0.1 is a command-line program that runs **on your own
-  computer**. It reads a site folder you give it and writes files into a
-  folder you name. Nothing leaves your device.
-- It contacts **no server at all**: not ours, not anyone's. It has no
-  account, no sign-in, no update check, no telemetry and no advertising.
+- UltraPress runs **on your own computer**. It reads a site folder you
+  give it and writes files into a folder you name. Nothing leaves your
+  device unless you publish.
+- It contacts **one kind of server, and only when you ask**: the web host
+  you add with `ultrapress hosts add` or the window's Host… button - your
+  own FTP, SFTP, WebDAV or Nextcloud server - to upload the site you
+  publish. It contacts no server of ours. It has no account with us, no
+  update check, no telemetry and no advertising.
 - The pages it writes contain only what you put into the site folder. Where
   the pages reference a server - a contact form, a newsletter sign-up - that
   server is one you will run or choose; this version runs none.
@@ -51,11 +55,15 @@ required to [confirm with legal review].
 
 | Data | What it is | Where |
 |---|---|---|
-| The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you | the folder you name, e.g. `ultrapress new mysite` |
-| The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out` |
+| The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you; a file you add through the media library (`ultrapress media add`, the window's Add file…) is copied into `media/` | the folder you name, e.g. `ultrapress new mysite` |
+| The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out`; the window uses `<site>/.ultrapress/publish` |
+| The upload record | `.ultrapress-deploy.json`: for each host, the name and a fingerprint (size and a hash of the content, not the content) of every file uploaded, so the next publish sends only what changed | beside the published site |
+| The host list | the hosts you added: the kind (FTP, WebDAV, Nextcloud), the server address, your user name, the folder, a display name | `hosts.db` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere) |
+| The host passwords | the password of each host, and for an SFTP host the path of the private key file you named (the key itself stays where it is) | the encrypted credential vault `vault/` beside `hosts.db`, opened with a key file the program writes on your device (UltraVault) |
+| The site's host | the id of the host the site publishes to and the folder on it; no password | `hosting` in `site.json` |
 
-UltraPress writes no settings, caches, logs or history files of its own. Its
-messages go to the terminal it was started from.
+UltraPress writes no caches, logs or history files of its own. Its messages
+go to the terminal it was started from, or to the window's status line.
 
 The site folder and the published site contain whatever you wrote into
 them. If you put personal data there - your own name and address in the
@@ -66,9 +74,14 @@ purpose but writing the pages.
 
 ### 3.1 How sensitive data is protected
 
-UltraPress stores no passwords, keys or tokens. The files it writes are
-protected by your operating system's file permissions and nothing else; they
-are meant to be published.
+The host passwords are the one secret UltraPress stores. They are kept in
+an encrypted vault (UltraVault) under the settings folder; the key that
+opens it is a file the program writes beside the vault with permissions for
+your user alone, so the program can sign in to your host without asking
+again. Anyone who can read your user's files can open the vault. The site
+folder and the published site are protected by your operating system's file
+permissions and nothing else; they are meant to be published, and they
+never hold a password - `site.json` names the host by an id only.
 
 ### 3.2 Who can read this data
 
@@ -85,11 +98,25 @@ its own terms.
 
 ## 4. Data UltraPress sends to servers
 
-None. UltraPress 0.1 opens no network connection.
+Only to the web host you configured, and only when you publish (`ultrapress
+publish --to`, or the window's Publish button): the files of the published
+site, your user name and password to sign in, and the folder names it
+creates. The connection is to the address you entered; with `sftp://`,
+`ftps://`, `ftpes://` or `https://` it is encrypted, with plain `ftp://` or
+`http://` it is not, and the program says so in the error details when a
+sign-in fails. With `--prune` (the window's Publish always) the program
+also deletes on the host the files an earlier publish of yours put there
+and the site no longer has; it never deletes anything else. Verifying a new host (`ultrapress hosts add` without
+`--no-verify`, or the dialog) signs in once and lists a folder. Nothing is
+sent to ULTRA OS Development GmbH, and nothing is sent to any host you did
+not add.
 
 ## 5. Other servers UltraPress contacts, and why
 
-None.
+None besides the host above. `ultrapress import --media` fetches the
+attachments a WordPress export names, from the addresses in that export,
+when you ask for it with `--media`; that is your old site's server, or
+wherever it kept its pictures.
 
 The HTML pages UltraPress writes reference, by address only, three things a
 visitor's browser may request once the site is online: the site's own

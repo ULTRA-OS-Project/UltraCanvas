@@ -5,6 +5,7 @@
 // address, the title, the status line, whether back / forward can go. The
 // window (UltraWebWindow) puts the area under its tab strip and points its
 // toolbar at the active tab.
+// Version: 0.2.0 - onOpenInNewTab: target="_blank" links
 // Version: 0.1.0
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
@@ -34,6 +35,9 @@ public:
         std::function<void(UltraWebTab& tab)> onChanged;
         // A link led to no page: a file to save.
         std::function<void(UltraWebTab& tab, const UltraCanvas::HTML::LoadedPage& page)> onDownload;
+        // A link that asks for another window (target="_blank"): open its
+        // absolute address in a new tab. Unset, it opens in this one.
+        std::function<void(UltraWebTab& tab, const std::string& url)> onOpenInNewTab;
     };
 
     UltraWebTab(const std::string& id, Host host);

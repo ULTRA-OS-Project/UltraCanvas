@@ -9,8 +9,9 @@ and the weights behind those symbols roll up into per-row and per-column totals.
 
 **Status:** Phases 1–3 — the `L`, `T`, `X`, `Y` and QFD `House` shapes, the
 form header band, cell tint, hover bands that run across panels, a ranked bar
-strip for the column totals, and spreadsheet import. Phase 4 (pan/zoom,
-keyboard navigation, JSON, editing) is still open; see
+strip for the column totals, and spreadsheet import - and Phase 4: pan and
+zoom, keyboard navigation, cycle-on-click editing and JSON save and load - and
+the House's competitive-assessment block. See
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md).
 
 ## Which element do I want?
@@ -201,6 +202,29 @@ diagram trades cell width for row height so the roof cannot squeeze the rows
 (`MatrixDiagramStyle::maxRoofShare`, `minRowAspect`). `SetShowImportance(false)`
 hides the importance column. A House without a roof panel draws without one.
 
+#### The competitive assessment
+
+Right of the grid, a House can show how customers rate your product and its
+rivals on each need - the gaps the technical requirements have to close. Each
+competitor is a marker per need on a 1-to-`ratingMax` track (5 by default),
+joined row to row:
+
+```cpp
+house.AddCompetitor("ours",    "Our bicycle",    Color(40, 44, 52, 255));
+house.AddCompetitor("cruiser", "City Cruiser X", Color(214, 110, 40, 255),
+                    MatrixMarkShape::Square);
+house.SetRating("light", "ours", 2.0);      // need id, competitor id, 1..ratingMax
+house.SetRating("light", "cruiser", 4.0);
+```
+
+`SetRating` refuses an item that is not one of panel 0's rows (the needs), an
+unknown competitor and a value outside `1..ratingMax`; `RatingOf` reads one back.
+The competitors join the legend - clicking one brings its line to the front and
+dims the others - and a need's tooltip lists its ratings. A rating left out
+breaks that competitor's line instead of bridging the gap. The block draws only
+while the model has competitors; `SetShowCompetitiveAssessment(false)` hides it
+and gives the cells its width back.
+
 `MatrixSamples::HouseOfQuality()` is a complete example.
 
 ### The form header band
@@ -354,6 +378,56 @@ click on an arm label reports a whole row or column of the first panel that
 lists the item. Clicking a
 legend entry filters the marks to that level; `SetLevelFilter("")` clears it.
 
+## Pan and zoom
+
+Off by default: a matrix laid out to fit its element needs neither. Turn it on
+for a large one:
+
+```cpp
+diagram->SetPanZoomEnabled(true);
+diagram->Viewport().SetControlsVisible(true);   // the zoom / fit buttons
+diagram->Viewport().SetMinimapVisible(true);    // optional overview
+```
+
+The wheel zooms about the pointer, dragging empty space (or with the middle
+button) pans, `Ctrl` `+` / `Ctrl` `-` zoom and `Ctrl` `0` resets. Only the matrix
+moves: the titles, the form header and the legend stay where they are, and
+nothing outside the matrix area can be hit. `ZoomViewIn()`, `ZoomViewOut()`,
+`ResetView()` and `GetViewZoom()` do the same from code, and `Viewport()` is the
+shared `UltraCanvasDiagramViewport` the node, compositor and mind-map diagrams
+use. Turning pan and zoom off resets the view.
+
+## Keyboard
+
+The diagram takes the focus when clicked. Then:
+
+| Key | Does |
+|---|---|
+| arrows | move the selected cell one step, in the direction the key points *on screen* - also on a turned X quadrant, a Y rhombus and the House roof |
+| `Tab` / `Shift` `Tab` | the first cell of the next / previous panel |
+| `Space` / `Enter` | edit the cell (when editable), and fire `onCellClick` |
+| `Delete` | clear the cell (when editable) |
+| `Escape` | clear the selection |
+
+The selected cell is outlined while the diagram has the focus, a zoomed view
+follows it, and `onSelectionChanged` reports every move. `SelectCell(ref)`
+selects from code.
+
+## Editing
+
+```cpp
+diagram->SetEditable(true);
+diagram->onCellEdited = [](const MatrixRef& ref, const std::string& levelId) {
+    // levelId is empty when the cell was cleared
+};
+```
+
+A click - or `Space` - steps a cell through its panel's scale, strongest first,
+then back to empty; `Shift` steps the other way and `Delete` clears it. The
+totals, ranks and bars follow at once. `CycleCell(ref)` does the same from code.
+Cycling is the whole editor on purpose: a level picker, a note field or an
+item list belongs in real elements beside the diagram, not painted into it.
+
 ## Interchange
 
 ```cpp
@@ -367,6 +441,27 @@ true)` adds an `Importance` column after the row labels, and `ImportMatrixCsv`
 reads it back. Import fills in marks; it does not invent items, so the sets and
 the scale must already exist. It parses the whole file before touching the
 model, so a malformed file leaves your data alone.
+
+The CSV forms carry one panel. The **whole model** - every set, panel, scale,
+cell and header field, in any shape - goes to JSON:
+
+<!-- doc-check: std::string jsonText; -->
+
+```cpp
+std::string json = ExportMatrixJson(model);          // pretty; false for compact
+MatrixModel loaded;
+std::string jsonError;
+if (!ImportMatrixJson(jsonText, loaded, &jsonError)) {
+    Log(jsonError);   // e.g. "cell 3 (HR x SPC = enormous) names ... that does not exist"
+}
+```
+
+Competitors and their ratings travel with the rest. Cells are written by item id rather than position, so a file whose items have
+been reordered still puts every mark where it belongs. The import refuses
+another format, a newer version, a cell naming an unknown item or level, and a
+model its shape cannot draw - and leaves `loaded` untouched when it does.
+`MatrixModelToJson` / `MatrixModelFromJson` work on a `JSONValue`
+(`DataFormats/UltraCanvasJSON.h`) for embedding in a larger document.
 
 To build a model **from** a spreadsheet, use `ImportMatrixTable`. It creates the
 items from the header row and the first column, and reads each mark by level

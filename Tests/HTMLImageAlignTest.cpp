@@ -8,6 +8,7 @@
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; inline images are laid out and drawn on an
 // offscreen render context - no window or display needed.
+// Version: 1.2.0 - a linked image with target="_blank"
 // Version: 1.1.0 - a width:100% picture in a 600px mail table stays 600px
 // Version: 1.0.0
 // Last Modified: 2026-10-01
@@ -351,6 +352,35 @@ int main() {
         Check(p.image != nullptr, "image built inside <a><span>");
         if (p.image && p.image->onClick) p.image->onClick();
         Check(activated == "https://shop.example/sale", "click activates the link");
+    }
+
+    std::printf("a linked image with target=_blank\n");
+    {
+        HTML::BuildOptions opts;
+        opts.enableImages = true;
+        opts.resourceLoader = [](const std::string&) {
+            return std::vector<uint8_t>(std::begin(kPng160x60), std::end(kPng160x60));
+        };
+        std::string same, other;
+        opts.onLinkActivated = [&same](const std::string& href) { same = href; };
+        opts.onLinkActivatedNewWindow = [&other](const std::string& href) { other = href; };
+        HTML::ElementBuilder builder;
+        HTML::BuildResult r = builder.Build(
+            "<p><a href=\"https://shop.example/sale\" target=\"_blank\"><img src=\"x\"></a></p>", opts);
+        Placed p;
+        FindImage(r.root.get(), nullptr, p);
+        if (p.image && p.image->onClick) p.image->onClick();
+        Check(other == "https://shop.example/sale" && same.empty(), "it goes to the new-window callback");
+
+        // Without that callback the link is followed as any other.
+        opts.onLinkActivatedNewWindow = nullptr;
+        HTML::ElementBuilder plain;
+        HTML::BuildResult r2 = plain.Build(
+            "<p><a href=\"https://shop.example/sale\" target=\"_blank\"><img src=\"x\"></a></p>", opts);
+        Placed p2;
+        FindImage(r2.root.get(), nullptr, p2);
+        if (p2.image && p2.image->onClick) p2.image->onClick();
+        Check(same == "https://shop.example/sale", "unset, onLinkActivated has it");
     }
 
     std::printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED", g_failures,

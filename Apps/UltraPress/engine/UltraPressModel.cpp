@@ -1,5 +1,7 @@
 // Apps/UltraPress/engine/UltraPressModel.cpp
 // The content model: JSON in and out, the site folder, addresses, the page list.
+// Version: 0.7.0 - text in a block: paragraphs, locations, block paths
+// Version: 0.5.0 - "hosting" in site.json
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -11,6 +13,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <cstdlib>
 #include <set>
 #include <sstream>
 
@@ -36,6 +39,107 @@ const JSONValue& Block::Items(const std::string& name) const {
 Block& Block::Set(const std::string& name, JSONValue value) {
     props.Set(name, std::move(value));
     return *this;
+}
+
+// ----- Text in a block ----------------------------------------------------------------
+
+std::vector<std::string> SplitParagraphs(const std::string& text) {
+    std::vector<std::string> out;
+    std::string paragraph;
+    auto flush = [&]() {
+        const size_t start = paragraph.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) { paragraph.clear(); return; }
+        const size_t end = paragraph.find_last_not_of(" \t\r\n");
+        out.push_back(paragraph.substr(start, end - start + 1));
+        paragraph.clear();
+    };
+    std::istringstream lines(text);
+    std::string line;
+    while (std::getline(lines, line)) {
+        if (line.find_first_not_of(" \t\r") == std::string::npos) flush();
+        else {
+            if (!paragraph.empty()) paragraph += '\n';
+            paragraph += line;
+        }
+    }
+    flush();
+    return out;
+}
+
+bool SetBlockText(Block& block, const TextLocation& where, const std::string& text) {
+    if (where.property.empty()) return false;
+    if (where.item >= 0) {
+        const JSONValue& items = block.props[where.property];
+        if (!items.IsArray() || where.item >= static_cast<int>(items.GetSize())) return false;
+        JSONValue copy = JSONValue::MakeArray();
+        int index = 0;
+        for (const JSONValue& item : items.GetElements()) {
+            if (index == where.item) {
+                if (where.key.empty()) copy.Append(text);
+                else {
+                    JSONValue changed = item.IsObject() ? item : JSONValue::MakeObject();
+                    if (where.paragraph >= 0) {
+                        std::vector<std::string> paragraphs = SplitParagraphs(changed[where.key].GetString());
+                        if (where.paragraph >= static_cast<int>(paragraphs.size())) return false;
+                        paragraphs[static_cast<size_t>(where.paragraph)] = text;
+                        std::string joined;
+                        for (const std::string& p : paragraphs) joined += (joined.empty() ? "" : "\n\n") + p;
+                        changed.Set(where.key, joined);
+                    } else {
+                        changed.Set(where.key, text);
+                    }
+                    copy.Append(changed);
+                }
+            } else {
+                copy.Append(item);
+            }
+            ++index;
+        }
+        block.Set(where.property, copy);
+        return true;
+    }
+    if (where.paragraph >= 0) {
+        std::vector<std::string> paragraphs = SplitParagraphs(block.Text(where.property));
+        if (where.paragraph >= static_cast<int>(paragraphs.size())) return false;
+        paragraphs[static_cast<size_t>(where.paragraph)] = text;
+        std::string joined;
+        for (const std::string& p : paragraphs) joined += (joined.empty() ? "" : "\n\n") + p;
+        block.Set(where.property, joined);
+        return true;
+    }
+    block.Set(where.property, text);
+    return true;
+}
+
+const Block* ResolveBlockPath(const Page& page, const std::string& path) {
+    // "blocks[i]" then any number of ".children[j]".
+    size_t pos = 0;
+    auto readIndex = [&](const std::string& word, int& out) {
+        if (path.compare(pos, word.size(), word) != 0) return false;
+        pos += word.size();
+        if (pos >= path.size() || path[pos] != '[') return false;
+        const size_t close = path.find(']', pos);
+        if (close == std::string::npos) return false;
+        const std::string digits = path.substr(pos + 1, close - pos - 1);
+        if (digits.empty() || digits.find_first_not_of("0123456789") != std::string::npos) return false;
+        out = std::atoi(digits.c_str());   // locale-ok: digits only
+        pos = close + 1;
+        return true;
+    };
+    int index = 0;
+    if (!readIndex("blocks", index) || index >= static_cast<int>(page.blocks.size())) return nullptr;
+    const Block* block = &page.blocks[static_cast<size_t>(index)];
+    while (pos < path.size()) {
+        if (path[pos] != '.') return nullptr;
+        ++pos;
+        if (!readIndex("children", index) || index >= static_cast<int>(block->children.size())) return nullptr;
+        block = &block->children[static_cast<size_t>(index)];
+    }
+    return block;
+}
+
+Block* ResolveBlockPath(Page& page, const std::string& path) {
+    return const_cast<Block*>(ResolveBlockPath(static_cast<const Page&>(page), path));
 }
 
 // ----- Site lookups --------------------------------------------------------------
@@ -192,6 +296,9 @@ JSONValue SiteToJson(const Site& site) {
     for (const std::string& language : site.languages) languages.Append(language);
     json.Set("languages", languages);
     json.Set("owner", site.owner);
+    if (!site.hosting.account.empty()) {
+        json.Set("hosting", JSONValue::MakeObject().Set("account", site.hosting.account).Set("path", site.hosting.path));
+    }
     return json;
 }
 
@@ -206,6 +313,12 @@ void SiteFromJson(const JSONValue& json, Site& site) {
         site.languages.push_back(language.GetString());
     }
     site.owner = json["owner"].GetString();
+    site.hosting = Hosting();
+    if (json.Contains("hosting")) {
+        site.hosting.account = json["hosting"]["account"].GetString();
+        site.hosting.path = json["hosting"]["path"].GetString("/");
+        if (site.hosting.path.empty()) site.hosting.path = "/";
+    }
 }
 
 // ----- The site folder --------------------------------------------------------------

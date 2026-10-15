@@ -1,4 +1,4 @@
-#### 2026-10-14 *0.5.0*
+#### 2026-10-15 *0.5.0*
 - **Desktop → At sign-in (Windows) is a choice of three:** *The Windows
   desktop*, *UltraDesktop beside Explorer* (what the switch did before:
   started now and at every sign-in, Explorer's taskbar hidden) and
@@ -7,6 +7,12 @@
   Explorer started in its place should UltraDesktop fail (framework changelog:
   `desktopshell-instead-of-explorer`). The choice always shows what is set, and
   a change that could not be made is said and undone on the page.
+
+#### 2026-10-14 *0.4.1*
+- **The desktop settings file is found in Application Support on macOS.**
+  UltraDesktop keeps `desktop.json` there now (UltraDesktop changelog 0.3.1);
+  the settings app reads and writes the same file through the same framework
+  rule, so the two never disagree about where it is.
 
 #### 2026-10-13 *0.4.0*
 - **Desktop → At sign-in (Windows): UltraDesktop in place of the Windows

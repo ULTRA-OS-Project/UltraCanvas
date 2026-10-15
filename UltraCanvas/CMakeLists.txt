@@ -97,7 +97,8 @@ option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires bac
 # be opted out for platforms where its dependency graph is impractical
 # (Android, WASM). Without it, raster image loading/saving and PixelFX compile
 # to their HAS_LIBVIPS-guarded fallbacks: PNG is read through cairo's own
-# reader, SVG through the Vector plugin, QOI is written but not read.
+# reader, JPEG / BMP / GIF through the bundled stb_image, SVG through the
+# Vector plugin, QOI is written but not read.
 option(ULTRACANVAS_ENABLE_VIPS "Enable libvips-backed raster image processing" ON)
 # WebAssembly only. ON builds with -pthread (Web Workers; the page then needs
 # the cross-origin isolation headers for SharedArrayBuffer). OFF builds a
@@ -223,9 +224,10 @@ if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     # (g_system_thread_new): error 'Not supported' during 'pthread_create'"
     # at the first icon. wasm-vips itself requires threads. So a
     # single-threaded program is a libvips-free one: PNG through cairo's
-    # reader, SVG through the Vector plugin, QOI written but not read.
+    # reader, JPEG / BMP / GIF through stb_image, SVG through the Vector
+    # plugin, QOI written but not read.
     if(NOT ULTRACANVAS_WASM_THREADS AND ULTRACANVAS_ENABLE_VIPS)
-        message(STATUS "WebAssembly: single-threaded build - libvips needs worker threads, ULTRACANVAS_ENABLE_VIPS is OFF (PNG through cairo's reader, SVG through the Vector plugin)")
+        message(STATUS "WebAssembly: single-threaded build - libvips needs worker threads, ULTRACANVAS_ENABLE_VIPS is OFF (PNG through cairo's reader, JPEG / BMP / GIF through stb_image, SVG through the Vector plugin)")
         set(ULTRACANVAS_ENABLE_VIPS OFF CACHE BOOL "Enable libvips-backed raster image processing" FORCE)
     endif()
 endif()
@@ -421,15 +423,28 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # has neither the framework nor its header, and the backend compiles the
     # enumeration out (__has_include) and reports no candidates there.
     find_library(UNIFORMTYPEIDENTIFIERS_FRAMEWORK UniformTypeIdentifiers)
-    find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
     find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
     # IOKit + CoreFoundation back the hardware probe
     # (OS/MacOS/UltraCanvasMacOSHardwareInfo.cpp): the registry walk for GPUs,
     # storage, USB and Bluetooth, and the CF property readers around it.
     find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    # OpenGL (CGL) backs only the GL surface. Apple has deprecated it since
+    # macOS 10.14, so it is looked up only when that surface is wanted, and an
+    # SDK without it turns the surface off instead of failing the configure -
+    # as a missing GLEW does on Windows. It was REQUIRED unconditionally, so
+    # even -DULTRACANVAS_ENABLE_GL=OFF could not configure without it. CI's
+    # "Verify OpenGL backend enabled" step still fails when CGL goes missing.
     if(ULTRACANVAS_ENABLE_GL)
-        set(ULTRACANVAS_HAS_CGL TRUE)
+        find_library(OPENGL_FRAMEWORK OpenGL)
+        if(OPENGL_FRAMEWORK)
+            set(ULTRACANVAS_HAS_CGL TRUE)
+        else()
+            message(WARNING "  OpenGL.framework NOT FOUND in the macOS SDK - disabling "
+                            "OpenGL surface support")
+            # Force the cache so the parent scope (demo GL sources) sees it too.
+            set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+        endif()
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
     # EGL + GLES 3 headers/libraries ship in every NDK sysroot; the GLES
@@ -1406,6 +1421,7 @@ endif()
 
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/StbRasterDecode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UCTextLayout.cpp
         # UltraCanvasPdfSurface: PDF output through the render context.
