@@ -1,5 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp
 // Startup and crash diagnostics for Windows builds. See the header for why.
+// Version: 1.0.1 - the crash dump folder, FONTCONFIG_FILE and the debug log path read
+//                  as UTF-8 (GetEnvUtf8); Widen then sees the UTF-8 it expects
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 
@@ -30,6 +32,7 @@
 #include <system_error>
 
 #include "../../include/UltraCanvasDebug.h"
+#include "../../include/UltraCanvasPathUtf8.h"   // GetEnvUtf8 / PathFromUtf8
 
 namespace UltraCanvas {
 
@@ -496,9 +499,11 @@ namespace UltraCanvas {
         void PrepareCrashDumpDir() {
             gCrashDumpDir[0] = L'\0';
             std::wstring dir;
-            if (const char* custom = std::getenv("ULTRACANVAS_CRASH_DUMP_DIR")) {
-                if (*custom) dir = Widen(custom);
-            }
+            // UTF-8 from the wide environment: Widen expects UTF-8, and the
+            // narrow getenv would have handed it the ANSI code page's bytes,
+            // so a folder named outside that code page came out mangled.
+            if (const std::string custom = UltraCanvas::GetEnvUtf8("ULTRACANVAS_CRASH_DUMP_DIR"); !custom.empty())
+                dir = Widen(custom);
             if (dir.empty()) {
                 wchar_t local[MAX_PATH * 2] = L"";
                 const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH * 2);
@@ -1020,9 +1025,9 @@ namespace UltraCanvas {
         // file which is not there. Logging whether the file exists is what makes
         // the line worth having -- "missing" here would mean that repair did not
         // happen, and text rendering is about to go wrong.
-        if (const char* fontconfig = std::getenv("FONTCONFIG_FILE")) {
+        if (const std::string fontconfig = UltraCanvas::GetEnvUtf8("FONTCONFIG_FILE"); !fontconfig.empty()) {
             std::error_code ec;
-            const bool present = std::filesystem::exists(fontconfig, ec);
+            const bool present = std::filesystem::exists(UltraCanvas::PathFromUtf8(fontconfig), ec);
             debugOutput << "UltraCanvas: FONTCONFIG_FILE = " << fontconfig
                         << (present ? " (present)" : " (MISSING)") << std::endl;
         }
@@ -1070,8 +1075,7 @@ namespace UltraCanvas {
         // write; the keyword values ("1", "stderr", ...) mean a console sink,
         // which a crashing GUI process cannot use.
         gCrashLogPath[0] = L'\0';
-        if (const char* setting = std::getenv("ULTRACANVAS_DEBUG_LOG")) {
-            const std::string value(setting);
+        if (const std::string value = UltraCanvas::GetEnvUtf8("ULTRACANVAS_DEBUG_LOG"); !value.empty()) {
             const bool isKeyword = value == "0" || value == "1" || value == "-" ||
                                    value == "on" || value == "off" || value == "no" ||
                                    value == "yes" || value == "none" || value == "true" ||

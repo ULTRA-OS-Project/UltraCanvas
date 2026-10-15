@@ -1,12 +1,15 @@
 // core/UltraCanvasDiskCache.cpp
 // The retention policy shared by every cache UltraCanvas keeps on disk.
 // See UltraCanvasDiskCache.h for why it lives in one place.
+// Version: 1.0.1 - the cache folder's variables (LOCALAPPDATA, HOME, XDG_CACHE_HOME,
+//                  TMPDIR) read as UTF-8 (GetEnvUtf8)
 // Version: 1.0.0
 // Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDiskCache.h"
-#include "UltraCanvasUtils.h"   // PathFromUtf8
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / GetEnvUtf8
+#include "UltraCanvasUtils.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -21,9 +24,11 @@ namespace fs = std::filesystem;
 
 namespace {
 
+    // UTF-8 (GetEnvUtf8): the value names a folder that PathFromUtf8 opens,
+    // and on Windows the narrow getenv answers in the ANSI code page, which
+    // cannot spell a profile folder named outside it.
     std::string EnvOrEmpty(const char* name) {
-        const char* value = std::getenv(name);
-        return (value && *value) ? std::string(value) : std::string();
+        return GetEnvUtf8(name);
     }
 
     // Compared as paths rather than as strings: fs::path::string_type is wide

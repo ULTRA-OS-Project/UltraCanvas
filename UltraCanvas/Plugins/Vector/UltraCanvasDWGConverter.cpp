@@ -21,6 +21,7 @@
 // implementation stays an optional external process. Without the tool the
 // export warns with that guidance and fails cleanly; the DXF the export is
 // built on is AutoCAD's own exchange format and opens everywhere DWG does.
+// Version: 1.3.1 - ULTRACANVAS_DXF2DWG / ULTRACANVAS_DWG2DXF read as UTF-8 and checked as paths
 // Version: 1.3.0
 // Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
@@ -32,6 +33,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include "UltraCanvasPathUtf8.h"
@@ -44,18 +46,24 @@ FormatCapabilities DWGConverter::GetCapabilities() const {
     return DXFConverter().GetCapabilities();
 }
 
+// The converter named by the variable, when it exists: read as UTF-8
+// (GetEnvUtf8) and checked as a path (PathFromUtf8), since on Windows the
+// narrow getenv and a narrow ifstream both go through the ANSI code page.
+static std::string ConverterFromEnv(const char* variable) {
+    const std::string env = UltraCanvas::GetEnvUtf8(variable);
+    std::error_code ec;
+    if (!env.empty() && std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(env), ec)) return env;
+    return {};
+}
+
 std::string DWGConverter::FindDxf2Dwg() {
-    if (const char* env = std::getenv("ULTRACANVAS_DXF2DWG")) {
-        if (*env && std::ifstream(env).good()) return env;
-    }
+    if (std::string env = ConverterFromEnv("ULTRACANVAS_DXF2DWG"); !env.empty()) return env;
     if (std::system("command -v dxf2dwg >/dev/null 2>&1") == 0) return "dxf2dwg";
     return {};
 }
 
 std::string DWGConverter::FindDwg2Dxf() {
-    if (const char* env = std::getenv("ULTRACANVAS_DWG2DXF")) {
-        if (*env && std::ifstream(env).good()) return env;
-    }
+    if (std::string env = ConverterFromEnv("ULTRACANVAS_DWG2DXF"); !env.empty()) return env;
     if (std::system("command -v dwg2dxf >/dev/null 2>&1") == 0) return "dwg2dxf";
     return {};
 }
