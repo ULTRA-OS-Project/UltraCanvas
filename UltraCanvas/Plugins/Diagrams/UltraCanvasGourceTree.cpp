@@ -1,10 +1,11 @@
 // Plugins/Diagrams/UltraCanvasGourceTree.cpp
 // Gource-style radial tree diagram for storage/filesystem visualization
+// Version: 1.0.4 - the key switch says the keys it ignores (default; -Wswitch)
 // Version: 1.0.3 - the F / Ctrl+E / Ctrl+Shift+C shortcuts match UCKeys letters
 //                  (the lowercase cases beside them were dead and warned)
 // Version: 1.0.2 - a press on empty space (deselect) is the tree's
 // Version: 1.0.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasGourceTree.h"
@@ -1743,6 +1744,9 @@ bool UltraCanvasGourceTree::HandleKeyDown(const UCEvent& event) {
                 CollapseAll();
                 return true;
             }
+            break;
+
+        default:
             break;
     }
     

@@ -1,8 +1,9 @@
 // Apps/UltraPaint/UltraPaintDialogs.cpp
 // New Image, Scale Image / Canvas Size, Text, Layer Properties, Import and
 // Colour to Alpha windows.
+// Version: 1.2.1 - Colour to Alpha: the picker in the framework's light style, as the panel's
 // Version: 1.2.0
-// Last Modified: 2026-09-13
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraPaintDialogs.h"
@@ -505,6 +506,11 @@ UltraPaintColourToAlphaDialog::UltraPaintColourToAlphaDialog(const UltraPaintCol
     // Same proportions the right-hand panel's picker uses, so it reads as the
     // same control.
     picker = CreateColorPicker("upc-colour", params.colour, 0, 0, 290, 300);
+    // The panel's light style, on the dialog's own grey rather than as a
+    // white block on it.
+    ColorPickerStyle pickerStyle = ColorPickerStyle::Light();
+    pickerStyle.backgroundColor = config_.backgroundColor;
+    picker->SetStyle(pickerStyle);
     picker->SetUIScale(0.78f);
     picker->SetShowAlpha(false);
     picker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);

@@ -530,6 +530,11 @@ jobs:
           # Build dependencies of the patched libcdr in UltraCanvas/third_party/libcdr.
           scripts/ci-apt.sh install libboost-dev liblcms2-dev libicu-dev
           scripts/ci-apt.sh install libzbar-dev
+          # Spell checking: Linux has no native backend, so without Hunspell the
+          # library builds with spell checking off (zero dictionaries) and
+          # SpellCheckerTest exercises none of the Hunspell path. The en_US
+          # dictionary is what the test and the text widgets load by default.
+          scripts/ci-apt.sh install libhunspell-dev hunspell-en-us
           # IODeviceManager's optional backends are compiled only when configure
           # finds their library; without these CI never builds them and a
           # compile error in one goes unseen. libudev: the hot-plug watcher
@@ -895,6 +900,20 @@ jobs:
             exit 1
           fi
           echo "UltraDatabase verified: SQLite + PostgreSQL"
+
+      # Spell checking also degrades quietly: no Hunspell and every text widget
+      # still builds, with no dictionaries and no red underlines. That passed
+      # CI unnoticed until 2026-10-15, so configure has to say it found it.
+      - name: Verify spell checking built with Hunspell (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -qE "Hunspell: [0-9]" configure.log; then
+            echo "::error::Hunspell was not found during configure (libhunspell-dev missing?) - spell checking would be off"
+            exit 1
+          fi
+          echo "Spell checking verified: $(grep -oE 'Hunspell: [0-9][^ ]*' configure.log | head -1)"
 
       # libcurl selection is asserted per platform so a silent regression is caught:
       #  - Linux (ubuntu-22.04, chosen for glibc portability): its system libcurl is
