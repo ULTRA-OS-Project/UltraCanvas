@@ -5,6 +5,7 @@
 // model and re-renders the preview; Save writes the site folder; Publish
 // writes the static site and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.8.2 - the site's settings in the property pane: ShowSiteSettings, SetSiteProperty
 // Version: 0.8.0 - the look: SetDark, the theme's colours on the columns and dialogs
 // Version: 0.7.4 - the rich editor's toolbar
 // Version: 0.7.3 - a richtext block edited in place with the RichTextEdit
@@ -92,6 +93,16 @@ public:
     bool CommitTextEdit(const std::string& text); // this text (tests)
     void CancelTextEdit();
 
+    // The site's own settings - name, tagline, address, language, owner -
+    // in the property pane, with no block selected: ShowSiteSettings puts
+    // them there (Site settings... in the side column), SetSiteProperty
+    // writes one ("name", "tagline", "url", "language", "owner"; the
+    // address without its trailing slash) and re-renders; false for a name
+    // it does not know. Selecting a page or a block leaves the settings.
+    void ShowSiteSettings();
+    bool IsShowingSiteSettings() const { return siteSettings; }
+    bool SetSiteProperty(const std::string& name, const std::string& value);
+
     // The look: the light or the dark theme (UltraPressTheme.h) on the
     // window and its dialogs; the page keeps the site's colours. Remembered
     // in the settings folder unless `remember` is off (the start-up value,
@@ -120,6 +131,7 @@ private:
     int selected = -1;
     bool dirty = false;
     bool dark = false;
+    bool siteSettings = false;             // the property pane shows the site, not a page or block
 
     Container side, pageArea, properties;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status;

@@ -1,6 +1,6 @@
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.8.1 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.8.2 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
 renderer on real elements, the WordPress importer, the publisher onto
 web hosts and the media library: a site as a folder of JSON files, the
@@ -40,7 +40,10 @@ with no folder - a double-click - or with a folder that holds no site, it
 opens the start window (`Apps/UltraPress/ui/UltraPressStart.h`): it says
 why, *Open a site folder…* goes through the folder dialog onto an existing
 site, and a name with *Create it in a folder…* writes the starter site into
-a folder of your choice; the editor opens from there.
+a folder of your choice; the editor opens from there. The sites opened last
+are offered first, as buttons under *Opened last* (the eight newest are
+kept in `<settings folder>/UltraPress/recent`). On Windows the installer
+puts *UltraPress* into the Start menu, which starts it this way.
 
 **Publish** writes the static site under `<site>/.ultrapress/publish` and
 uploads it onto the site's host on a worker thread; the status line under
@@ -58,8 +61,10 @@ block's properties, generated from the registry - a text input for a
 line, a text area for paragraphs and HTML, a checkbox for a flag, an
 integer for a number, and links, items and lists as JSON applied as soon
 as it parses - or, with no block selected, the page's title, description,
-status and pinning. Every change re-renders the page in the middle;
-*Save site* writes the folder (`ui/UltraPressWindow.h`).
+status and pinning. *Site settings…* in the side column puts the site
+itself there instead: name, tagline, address, language and owner. Every
+change re-renders the page in the middle; *Save site* writes the folder
+(`ui/UltraPressWindow.h`).
 
 The window has two looks. Its colours are a framework theme
 (`Apps/UltraPress/ui/UltraPressTheme.h`, `ThemeFor(dark)`: the brand's red accent, its

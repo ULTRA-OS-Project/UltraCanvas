@@ -20,6 +20,7 @@
 // ultrafibu, started with nothing it opens a window rather than printing
 // its usage: a double-click on Windows gave that usage a console that
 // closed before it could be read, which looked like a crash.
+// Version: 0.8.2 - the sites opened last are remembered for the start window
 // Version: 0.8.1 - no argument, or a folder without a site, opens the start window
 // Version: 0.8.0 - the look read from the settings folder before the window opens
 // Version: 0.6.0 - media
@@ -32,6 +33,7 @@
 #include "UltraPressBlocks.h"
 #include "UltraPressCli.h"
 #include "UltraPressModel.h"
+#include "UltraPressRecent.h"
 #include "UltraPressRender.h"
 #include "UltraPressStart.h"
 #include "UltraPressTheme.h"
@@ -172,12 +174,16 @@ int main(int argc, char* argv[]) {
     const bool dark = UltraPress::LoadLook(UltraPress::LookSettingsDirectory());
     UltraCanvasTheme::SetCurrent(UltraPress::ThemeFor(dark));
 
-    // Open a site folder in the editor; why not, or an empty string.
-    auto open = [dark](const std::string& dir) -> std::string {
+    // Open a site folder in the editor; why not, or an empty string. A site
+    // that opened is remembered for the start window's list.
+    const std::string settings = UltraPress::LookSettingsDirectory();
+    auto open = [dark, settings](const std::string& dir) -> std::string {
         UltraPress::Site site;
         std::vector<std::string> errors;
         if (!UltraPress::LoadSite(dir, site, errors)) return FirstError(errors, dir);
-        return OpenEditor(dir, std::move(site), dark);
+        const std::string error = OpenEditor(dir, std::move(site), dark);
+        if (error.empty()) UltraPress::RememberSite(settings, dir);
+        return error;
     };
 
     // With a site folder that opens, the editor and nothing else. Without
@@ -195,7 +201,8 @@ int main(int argc, char* argv[]) {
         hint = error;
     }
     g_start.onSiteChosen = open;
-    auto start = g_start.Build(hint, siteDir);
+    g_start.onSiteGone = [settings](const std::string& dir) { UltraPress::ForgetSite(settings, dir); };
+    auto start = g_start.Build(hint, siteDir, UltraPress::LoadRecentSites(settings));
     if (!start) return 1;
     start->Show();
     app.Run();

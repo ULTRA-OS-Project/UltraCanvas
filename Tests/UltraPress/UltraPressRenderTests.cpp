@@ -10,6 +10,7 @@
 #include "UltraPressBlocks.h"
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
+#include "UltraPressRecent.h"
 #include "UltraPressRender.h"
 #include "UltraPressTheme.h"
 #include "UltraPressWindow.h"
@@ -291,6 +292,44 @@ static void TestLook() {
     editor.SetDark(false, false);
     Check(!editor.IsDark() && !UltraCanvasTheme::Current().dark && UltraCanvasTheme::Current().name == "UltraPress light",
           "and back to the light one: " + before);
+
+    std::printf("The sites opened last\n");
+    const std::string recentDir = UltraCanvas::PathToUtf8(dir / "recent-settings");
+    Check(LoadRecentSites(recentDir).empty(), "nothing opened yet");
+    Check(RememberSite(recentDir, "/sites/one") && RememberSite(recentDir, "/sites/two/") &&
+              LoadRecentSites(recentDir) == std::vector<std::string>{"/sites/two", "/sites/one"},
+          "the last opened comes first, its spelling normalised");
+    Check(RememberSite(recentDir, "/sites/one") && LoadRecentSites(recentDir) == std::vector<std::string>{"/sites/one", "/sites/two"},
+          "a site opened again moves to the front, once");
+    for (int i = 0; i < 10; ++i) RememberSite(recentDir, "/sites/more" + std::to_string(i));
+    Check(LoadRecentSites(recentDir).size() == 8 && LoadRecentSites(recentDir).front() == "/sites/more9",
+          "eight are kept, the newest first");
+    Check(ForgetSite(recentDir, "/sites/more9") && LoadRecentSites(recentDir).front() == "/sites/more8" &&
+              LoadRecentSites(recentDir).size() == 7,
+          "a site is forgotten");
+    Check(LoadRecentSites("").empty() && !RememberSite("", "/x") && !ForgetSite("", "/x"),
+          "without a settings folder nothing is read or written");
+    fs::remove_all(dir, ec);
+
+    std::printf("The site's settings\n");
+    Check(!editor.IsShowingSiteSettings(), "the pane shows the page to start");
+    editor.ShowSiteSettings();
+    Check(editor.IsShowingSiteSettings() && editor.SelectedBlock() == -1, "Site settings... shows the site, no block selected");
+    Check(editor.SetSiteProperty("name", "Looks") && editor.CurrentSite().name == "Looks", "the name is written");
+    Check(editor.SetSiteProperty("url", "https://looks.example/") && editor.CurrentSite().url == "https://looks.example",
+          "the address loses its trailing slash");
+    Check(editor.SetSiteProperty("tagline", "A tagline") && editor.SetSiteProperty("language", "de") &&
+              editor.SetSiteProperty("owner", "Looks Ltd") && editor.CurrentSite().tagline == "A tagline" &&
+              editor.CurrentSite().language == "de" && editor.CurrentSite().owner == "Looks Ltd",
+          "tagline, language and owner are written");
+    Check(!editor.SetSiteProperty("colour", "red"), "an unknown setting is refused");
+    editor.ShowPage("home");
+    editor.ShowSiteSettings();
+    editor.SelectBlock(0);
+    Check(!editor.IsShowingSiteSettings() && editor.SelectedBlock() == 0, "selecting a block leaves the settings");
+    editor.ShowSiteSettings();
+    editor.ShowPage("home");
+    Check(!editor.IsShowingSiteSettings(), "and so does showing a page");
 }
 
 static void TestEditor() {

@@ -12,6 +12,7 @@
 // here; this window closes itself only once it has, because the
 // application ends the moment it has no window left. The same move as
 // UltraFIBU's start window.
+// Version: 0.8.2 - the sites opened last, offered first
 // Version: 0.8.1
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -24,6 +25,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraPress {
 
@@ -34,11 +36,16 @@ public:
     // an empty string, or returns why it could not, which this window shows
     // instead of closing.
     std::function<std::string(const std::string& siteDir)> onSiteChosen;
+    // Called with a recent folder that holds no site any more, so the caller
+    // can drop it from the list (UltraPressRecent.h).
+    std::function<void(const std::string& siteDir)> onSiteGone;
 
     // `hint` says why this window is showing instead of a site; `suggestion`
     // is the folder that was given and could not be opened, offered for a new
-    // site. Returns the window, to Show().
-    std::shared_ptr<UltraCanvas::UltraCanvasWindow> Build(const std::string& hint, const std::string& suggestion);
+    // site; `recent` the folders opened last, first first, each a button
+    // (the five newest). Returns the window, to Show().
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> Build(const std::string& hint, const std::string& suggestion,
+                                                          const std::vector<std::string>& recent = {});
     void Close();
 
 private:

@@ -12,14 +12,18 @@
 # Generates, in a temporary folder:
 #   - the Start-menu list: one entry per application, where an application
 #     is an executable built for the Windows GUI subsystem - read from its PE
-#     header, so a command-line tool (console subsystem) never gets one;
+#     header, so a command-line tool (console subsystem) never gets one -
+#     plus the console programs that are also windows (WINDOW_CONSOLE_APPS
+#     below: ultrapress, ultrafibu), which open their start window when
+#     started with nothing, as a shortcut starts them;
 #   - the removal list: every file it installs and every folder, deepest
 #     first, so the uninstaller removes exactly those and leaves a folder
 #     that still holds something of the user's;
 #   - the installer's icon from media/appicon/UltraCanvas.png, when
 #     ImageMagick is there to convert it.
+# Version: 0.2.0 - Start-menu entries for the console programs that are also windows
 # Version: 0.1.0
-# Last Modified: 2026-10-12
+# Last Modified: 2026-10-15
 set -e
 
 if [ $# -ne 4 ]; then
@@ -77,14 +81,35 @@ nsis_quote() {
 }
 
 # ===== THE START MENU =====
+# Console programs whose commands print into the prompt, and which are
+# therefore not GUI-subsystem executables, but open a window all the same:
+# started with nothing - as a shortcut starts them - they show their start
+# window (UltraPress's, UltraFIBU's). Each with the name its entry shows;
+# the framework closes the console a shortcut opens as the window comes up.
+WINDOW_CONSOLE_APPS="ultrapress:UltraPress ultrafibu:UltraFIBU"
+shortcut_name() {
+    local entry
+    for entry in $WINDOW_CONSOLE_APPS; do
+        [ "${entry%%:*}" = "$1" ] && { echo "${entry#*:}"; return; }
+    done
+    echo "$1"
+}
+is_window_console_app() {
+    local entry
+    for entry in $WINDOW_CONSOLE_APPS; do
+        [ "${entry%%:*}" = "$1" ] && return 0
+    done
+    return 1
+}
 : > "$SHORTCUTS"
 COUNT=0
 for exe in "$DIST"/*.exe; do
     [ -e "$exe" ] || continue
     name="$(basename "$exe" .exe)"
-    [ "$(pe_subsystem "$exe")" = "2" ] || continue
+    [ "$(pe_subsystem "$exe")" = "2" ] || is_window_console_app "$name" || continue
     q="$(nsis_quote "$name")"
-    printf 'CreateShortCut "$SMPROGRAMS\\${PRODUCT}\\%s.lnk" "$INSTDIR\\%s.exe"\n' "$q" "$q" >> "$SHORTCUTS"
+    label="$(nsis_quote "$(shortcut_name "$name")")"
+    printf 'CreateShortCut "$SMPROGRAMS\\${PRODUCT}\\%s.lnk" "$INSTDIR\\%s.exe"\n' "$label" "$q" >> "$SHORTCUTS"
     COUNT=$((COUNT + 1))
 done
 if [ "$COUNT" -eq 0 ]; then

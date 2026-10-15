@@ -609,7 +609,9 @@ from the same folder (`Windows/Installer/UltraCanvasSetup.nsi`, through
 `scripts/build-windows-installer.sh`; `pacman -S nsis` first). It installs for
 the current account without administrator rights, into
 `%LOCALAPPDATA%\Programs\UltraCanvas`. Every GUI program gets a Start-menu
-entry, and the suite gets an *Apps & features* entry. The finish page offers
+entry - and so do the two console programs that open a window when started
+with nothing, UltraPress and UltraFIBU - and the suite gets an *Apps &
+features* entry. The finish page offers
 UltraDesktop as the Windows desktop. The uninstaller gives the Windows desktop
 back first, then removes exactly the files it installed.
 `--no-sign` skips Authenticode signing when no certificate is present;

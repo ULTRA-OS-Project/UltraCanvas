@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.8.2 - the site's settings in the property pane
 // Version: 0.8.0 - the look: the theme's colours, light or dark, remembered in the settings folder
 // Version: 0.7.4 - the rich editor's toolbar: the formatting discoverable
 // Version: 0.7.3 - a richtext block edits in place
@@ -252,6 +253,7 @@ void EditorWindow::ApplyLook() {
 void EditorWindow::ShowPage(const std::string& slug) {
     current = slug;
     selected = -1;
+    siteSettings = false;
     RenderPreview();
     RebuildSide();
     RebuildProperties();
@@ -260,8 +262,35 @@ void EditorWindow::ShowPage(const std::string& slug) {
 void EditorWindow::SelectBlock(int index) {
     const Page* page = CurrentPageMutable();
     selected = page && index >= 0 && index < static_cast<int>(page->blocks.size()) ? index : -1;
+    siteSettings = false;
     RebuildSide();
     RebuildProperties();
+}
+
+void EditorWindow::ShowSiteSettings() {
+    selected = -1;
+    siteSettings = true;
+    RebuildSide();
+    RebuildProperties();
+}
+
+bool EditorWindow::SetSiteProperty(const std::string& name, const std::string& value) {
+    if (name == "name") site.name = value;
+    else if (name == "tagline") site.tagline = value;
+    else if (name == "url") {
+        // The model keeps the address without a trailing slash; the pages
+        // and the feed append their own paths to it.
+        std::string url = value;
+        while (!url.empty() && url.back() == '/') url.pop_back();
+        site.url = url;
+    } else if (name == "language") site.language = value;
+    else if (name == "owner") site.owner = value;
+    else return false;
+    dirty = true;
+    RenderPreview();
+    if (name == "name") RebuildSide();   // the column's title is the site's name
+    else SetStatus("Unsaved changes");
+    return true;
 }
 
 void EditorWindow::AddBlock(const std::string& type) {
@@ -779,6 +808,10 @@ void EditorWindow::RebuildSide() {
     media->SetFont(kFont, 12);
     media->onClick = [this]() { Later([this]() { ShowMediaLibrary(); }); };
     side->AddChild(media);
+    auto settings = SideButton("SiteSettings", "Site settings\xE2\x80\xA6", siteSettings);
+    settings->SetFont(kFont, 12);
+    settings->onClick = [this]() { Later([this]() { ShowSiteSettings(); }); };
+    side->AddChild(settings);
     auto lookToggle = SideButton("Look", dark ? "Light look" : "Dark look", false);
     lookToggle->SetFont(kFont, 12);
     lookToggle->onClick = [this]() { Later([this]() { SetDark(!dark); }); };
@@ -847,7 +880,6 @@ void EditorWindow::RebuildProperties() {
     if (!properties) return;
     properties->ClearChildren();
     Page* page = CurrentPageMutable();
-    if (!page) return;
     auto field = [&](const std::string& id, const std::string& caption) {
         properties->AddChild(Caption(id + "Caption", caption, LabelVariant::Body, 13));
         properties->AddChild(Gap(4));
@@ -873,6 +905,29 @@ void EditorWindow::RebuildProperties() {
         properties->AddChild(edit);
         properties->AddChild(Gap(10));
     };
+
+    if (siteSettings) {
+        // The site's own settings; each change goes into the model after the
+        // callback, as the page's title does, since the pane is not rebuilt.
+        properties->AddChild(Caption("PropsTitle", "SITE", LabelVariant::Heading));
+        properties->AddChild(Gap(10));
+        auto siteInput = [&](const std::string& id, const std::string& caption, const std::string& property, const std::string& value) {
+            field(id, caption);
+            input(id, value, [this, property](const std::string& text) {
+                Later([this, property, text]() { SetSiteProperty(property, text); });
+            });
+        };
+        siteInput("SiteName", "Name", "name", site.name);
+        siteInput("SiteTagline", "Tagline (under the name, and in the feed)", "tagline", site.tagline);
+        siteInput("SiteUrl", "Address (https://..., the published site's root)", "url", site.url);
+        siteInput("SiteLanguage", "Language (two letters, en or de)", "language", site.language);
+        siteInput("SiteOwner", "Owner (the organisation named in the feed and the structured data)", "owner", site.owner);
+        properties->AddChild(Gap(6));
+        properties->AddChild(Caption("PropsSiteHint", "The host the site publishes to is set with Host\xE2\x80\xA6 in the side column.",
+                                     LabelVariant::Muted, 13, false));
+        return;
+    }
+    if (!page) return;
 
     if (selected < 0 || selected >= static_cast<int>(page->blocks.size())) {
         properties->AddChild(Caption("PropsTitle", "PAGE", LabelVariant::Heading));

@@ -1,3 +1,20 @@
+#### 2026-10-15 *0.8.2*
+- **The site's settings in the window.** *Site settings…* in the side
+  column puts the site itself into the property pane: its name, tagline,
+  address (the published site's root, kept without a trailing slash),
+  language and owner, each written into the model as typed and the page
+  re-rendered; selecting a page or a block returns to them. Until now the
+  name came from the start window or `ultrapress new --name` and the
+  address stayed `https://example.org` unless `site.json` was edited.
+- **The sites opened last.** The editor remembers the folders it opened
+  (`<settings folder>/UltraPress/recent`, eight at most, the last first)
+  and the start window offers the five newest as buttons under *Opened
+  last*; a folder that holds no site any more is said so and dropped.
+- **A Start-menu entry on Windows.** The installer gave one only to
+  GUI-subsystem programs, so `ultrapress`, a console program for its
+  commands' sake, had none; it and `ultrafibu` now get theirs (*UltraPress*,
+  *UltraFIBU*), which start them with nothing - the start window.
+
 #### 2026-10-15 *0.8.1*
 - **Started with nothing, the program opens a start window instead of
   ending.** `ultrapress` with no argument - a double-click on Windows -
