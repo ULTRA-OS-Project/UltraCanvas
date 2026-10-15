@@ -69,9 +69,12 @@ void Send(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>&
     app.DispatchEvent(e);
 }
 
+// The design selector, not the HSV/HSL/RGB dropdown a picker in Dropdown
+// mode also has.
 std::shared_ptr<UltraCanvasDropdown> SelectorOf(const UltraCanvasColorPicker& picker) {
     for (const auto& child : picker.GetChildren()) {
-        if (auto dropdown = std::dynamic_pointer_cast<UltraCanvasDropdown>(child)) return dropdown;
+        auto dropdown = std::dynamic_pointer_cast<UltraCanvasDropdown>(child);
+        if (dropdown && dropdown->GetIdentifier() == picker.GetIdentifier() + "-design") return dropdown;
     }
     return nullptr;
 }

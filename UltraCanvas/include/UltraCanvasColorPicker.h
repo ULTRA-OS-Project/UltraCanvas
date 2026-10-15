@@ -10,6 +10,7 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
+// Version: 1.6.1 - the HSV/HSL/RGB dropdown is a real UltraCanvasDropdown, not painted
 // Version: 1.6.0 - optional design selector: a dropdown in the top-right corner
 //                  (colour circle / colour slider + square / colour rectangle)
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
@@ -35,6 +36,7 @@
 namespace UltraCanvas {
     class UltraCanvasTextInput;
     class UltraCanvasDropdown;
+    struct DropdownStyle;
 
 // ===== COLOUR MODEL USED BY THE CHANNEL EDITORS =====
     enum class ColorPickerModel {
@@ -426,7 +428,15 @@ namespace UltraCanvas {
         void DestroyFieldEditor();
         void PositionFieldEditor();
 
-        bool dropdownOpen = false;
+        // The HSV/HSL/RGB selector in Dropdown mode: a real dropdown child,
+        // built on first use, placed on modeButtonRect and drawn by this
+        // widget. Each entry's tooltip explains the model.
+        std::shared_ptr<UltraCanvasDropdown> modelDropdown;
+        void BuildModelDropdown();
+        // Select the current model and show it in Dropdown mode only.
+        void SyncModelDropdown();
+        // The child dropdowns wear the picker's colours, font and scale.
+        DropdownStyle ChildDropdownStyle(const DropdownStyle& base) const;
 
         // The design selector (SetShowWheelStyleSelector): a real dropdown
         // child, built on first use, placed and drawn by this widget.
@@ -511,14 +521,12 @@ namespace UltraCanvas {
                                float t, const Color& handleColor);
         float GradientBarPosition(const Rect2Df& rect, const Point2Df& p) const;
         void RenderSwatches(IRenderContext* ctx);
-        void RenderModeButton(IRenderContext* ctx);
         void RenderScreenPickButton(IRenderContext* ctx);
         void RenderHexField(IRenderContext* ctx);
         void RenderTabs(IRenderContext* ctx);
         void RenderSlidersHeader(IRenderContext* ctx);
         void RenderChannelRow(IRenderContext* ctx, int row);
         void RenderAlphaRow(IRenderContext* ctx);
-        void RenderDropdownPopup(IRenderContext* ctx);
         void RenderSliderTrackAndHandle(IRenderContext* ctx, int row, float t,
                                         const std::shared_ptr<IPaintPattern>& gradient,
                                         bool checkerUnder);

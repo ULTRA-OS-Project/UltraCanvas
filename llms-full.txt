@@ -17062,7 +17062,7 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.6.0
+**Version**: 1.6.1
 **Last Modified**: 2026-10-15
 **Author**: UltraCanvas Framework
 
@@ -17142,10 +17142,13 @@ natively with the framework's `IRenderContext` primitives.
   digits + `.`/`-`).
 - ✅ **Model selector** — either a **tab bar** (default) or a **dropdown**
   switches the channel editors between **HSV**, **HSL** and **RGB**. The two
-  presentations are mutually exclusive (`SetModeSelector`).
+  presentations are mutually exclusive (`SetModeSelector`). The dropdown is a
+  real `UltraCanvasDropdown` child, so its list opens as a popup above the
+  rest of the window.
 - ✅ **Hover tooltips** — resting the pointer over a model choice (HSV / HSL /
-  RGB) or a channel / hex label (H, S, V, A, L, R, G, B, Hex) shows a short
-  tooltip explaining what it is and its value range.
+  RGB: a tab, the dropdown, or an entry of its open list) or a channel / hex
+  label (H, S, V, A, L, R, G, B, Hex) shows a short tooltip explaining what it
+  is and its value range.
 - ✅ **Channel sliders** — three colour channels plus alpha, each with a live
   gradient track and an editable numeric value box. Two presentations
   (`SetSliderStyle`): **Thin** (thin track, overhanging handle) or **Thick**
@@ -21101,6 +21104,7 @@ struct DropdownItem {
     std::string text;          // Display text
     std::string value;         // Associated value
     std::string iconPath;      // Optional icon path
+    std::string tooltip;       // Shown over the item in the open list (optional)
     bool enabled = true;       // Is item selectable
     bool separator = false;    // Is this a separator
     bool selected = false;     // Checked state in multi-selection mode

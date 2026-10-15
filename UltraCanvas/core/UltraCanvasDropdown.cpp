@@ -1,6 +1,7 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-10-15 - DropdownItem::tooltip answers the list's ToolTipRole
 // Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: the icon alone on the button
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
@@ -24,6 +25,7 @@ namespace UltraCanvas {
 
         if (role == ListDataRole::DisplayRole)    return item.text;
         if (role == ListDataRole::DecorationRole) return item.iconPath;
+        if (role == ListDataRole::ToolTipRole)    return item.tooltip;
         if (role == DropdownValueRole)            return item.value;
         if (role == DropdownEnabledRole)          return item.enabled ? 1 : 0;
         if (role == DropdownSeparatorRole)        return item.separator ? 1 : 0;

@@ -1168,6 +1168,29 @@ else()
     message(STATUS "  ColorPickerDesignSelectorTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== COLOUR PICKER MODEL DROPDOWN TEST =====
+# The HSV/HSL/RGB selector in Dropdown mode is a real UltraCanvasDropdown
+# child (it was painted by hand): its entries and their tooltips, its place
+# at the right of the preview row, a choice switching the model, and the tab
+# bar hiding it. Opens a window, so it skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerModelDropdownTest...")
+    add_executable(ColorPickerModelDropdownTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerModelDropdownTest.cpp
+    )
+    target_include_directories(ColorPickerModelDropdownTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerModelDropdownTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerModelDropdownTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerModelDropdownTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerModelDropdownTest COMMAND ColorPickerModelDropdownTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerModelDropdownTest")
+else()
+    message(STATUS "  ColorPickerModelDropdownTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILE DIALOG TEST =====
 # The name a Save hands back (the chosen type's extension, always run), and
 # the dialog itself: the Up arrow and view glyphs centred in their buttons,

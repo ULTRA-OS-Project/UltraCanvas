@@ -1,5 +1,6 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
+// Version: 1.6.1 - the HSV/HSL/RGB dropdown is a real UltraCanvasDropdown, not painted
 // Version: 1.6.0 - optional design selector: a dropdown in the top-right corner
 //                  (colour circle / colour slider + square / colour rectangle)
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
@@ -127,15 +128,77 @@ namespace UltraCanvas {
         if (model == m) return;
         model = m;
         if (editField != EditField::NoEdit && editField != EditField::Hex) CancelEdit();
+        SyncModelDropdown();
         RequestRedraw();
     }
 
     void UltraCanvasColorPicker::SetModeSelector(ColorPickerModeSelector s) {
         if (modeSelector == s) return;
         modeSelector = s;
-        dropdownOpen = false;
         layoutValid = false;
+        SyncModelDropdown();
         RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::BuildModelDropdown() {
+        modelDropdown = CreateDropdown(GetIdentifier() + "-model", 0, 0, 10, 10);
+        const char* names[3] = {"HSV", "HSL", "RGB"};
+        for (int i = 0; i < 3; ++i) {
+            DropdownItem item(names[i]);
+            item.tooltip = ModelTooltip(static_cast<ColorPickerModel>(i));
+            modelDropdown->AddItem(item);
+        }
+        modelDropdown->SetAccessibleName("Colour model");
+        // Raw `this`: the dropdown is our own child.
+        modelDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+            if (index >= 0 && index < 3) SetModel(static_cast<ColorPickerModel>(index));
+        };
+        AddChild(modelDropdown);
+        layoutValid = false;                 // style and place it
+    }
+
+    void UltraCanvasColorPicker::SyncModelDropdown() {
+        const bool shown = modeSelector == ColorPickerModeSelector::Dropdown;
+        if (shown && !modelDropdown) BuildModelDropdown();
+        if (!modelDropdown) return;
+        RecalculateLayout();                 // restyles and places it
+        const int index = static_cast<int>(model);
+        if (modelDropdown->GetSelectedIndex() != index) {
+            modelDropdown->SetSelectedIndex(index, false);
+        }
+        const std::string tip = ModelTooltip(model);
+        if (modelDropdown->GetTooltip() != tip) modelDropdown->SetTooltip(tip);
+        if (!shown && modelDropdown->IsDropdownOpen()) modelDropdown->CloseDropdown();
+        if (modelDropdown->IsVisible() != shown) {
+            modelDropdown->SetVisible(shown);
+            RequestRedraw();
+        }
+    }
+
+    DropdownStyle UltraCanvasColorPicker::ChildDropdownStyle(const DropdownStyle& base) const {
+        // The dropdowns do not follow the theme: they match the dark surface
+        // they sit on, at the picker's scale.
+        DropdownStyle ds = base;
+        ds.normalColor = style.fieldColor;
+        ds.hoverColor = style.panelColor;
+        ds.pressedColor = style.panelColor;
+        ds.disabledColor = style.fieldColor;
+        ds.borderColor = style.fieldBorderColor;
+        ds.focusBorderColor = style.accentColor;
+        ds.normalTextColor = style.textColor;
+        ds.disabledTextColor = style.mutedTextColor;
+        ds.listBackgroundColor = style.panelColor;
+        ds.listBorderColor = style.fieldBorderColor;
+        ds.itemHoverColor = style.borderColor;
+        ds.itemSelectedColor = style.accentColor.WithAlpha(110);
+        ds.fontFamily = style.fontFamily;
+        ds.fontSize = Scaled(style.fontSize);
+        ds.cornerRadius = Scaled(style.cornerRadius);
+        ds.paddingLeft = Scaled(8.0f);
+        ds.paddingRight = Scaled(12.0f);
+        ds.arrowSize = Scaled(7.0f);
+        ds.itemHeight = std::round(Scaled(style.rowHeight));
+        return ds;
     }
 
     void UltraCanvasColorPicker::SetSliderStyle(ColorPickerSliderStyle s) {
@@ -521,33 +584,19 @@ namespace UltraCanvas {
         if (styleSelector) {
             const float selW = std::round(Scaled(44.0f));
             const float selH = std::round(Scaled(24.0f));
-            // The picker's own colours and scale: the selector does not
-            // follow the theme, it matches the dark surface it sits on.
-            DropdownStyle ds = styleSelector->GetStyle();
-            ds.normalColor = style.fieldColor;
-            ds.hoverColor = style.panelColor;
-            ds.pressedColor = style.panelColor;
-            ds.disabledColor = style.fieldColor;
-            ds.borderColor = style.fieldBorderColor;
-            ds.focusBorderColor = style.accentColor;
-            ds.normalTextColor = style.textColor;
-            ds.disabledTextColor = style.mutedTextColor;
-            ds.listBackgroundColor = style.panelColor;
-            ds.listBorderColor = style.fieldBorderColor;
-            ds.itemHoverColor = style.borderColor;
-            ds.itemSelectedColor = style.accentColor.WithAlpha(110);
-            ds.fontFamily = style.fontFamily;
-            ds.fontSize = Scaled(style.fontSize);
-            ds.cornerRadius = Scaled(style.cornerRadius);
+            DropdownStyle ds = ChildDropdownStyle(styleSelector->GetStyle());
             ds.paddingLeft = Scaled(6.0f);
-            ds.paddingRight = Scaled(12.0f);
-            ds.arrowSize = Scaled(7.0f);
             ds.iconSize = std::round(Scaled(18.0f));
             ds.iconPadding = Scaled(6.0f);
             ds.itemHeight = std::round(Scaled(26.0f));
             ds.buttonShowsText = false;      // the icon alone; the list names them
             styleSelector->SetStyle(ds);
             PlaceChildAt(styleSelector, Rect2Df(std::round(rightEdge - selW), std::round(pad), selW, selH));
+        }
+        // --- HSV/HSL/RGB dropdown (Dropdown mode): on the mode button's rect.
+        if (modelDropdown) {
+            modelDropdown->SetStyle(ChildDropdownStyle(modelDropdown->GetStyle()));
+            PlaceChildAt(modelDropdown, modeButtonRect);
         }
 
         layoutValid = true;
@@ -961,33 +1010,6 @@ namespace UltraCanvas {
         ctx->DrawLine(downEnd, Point2Dd(downEnd.x + ah, downEnd.y - ah));
     }
 
-    void UltraCanvasColorPicker::RenderModeButton(IRenderContext* ctx) {
-        ctx->SetFillPaint(style.fieldColor);
-        ctx->FillRoundedRectangle(Rect2Dd(modeButtonRect.x, modeButtonRect.y,
-                                          modeButtonRect.width, modeButtonRect.height),
-                                  Scaled(style.cornerRadius));
-        ctx->SetStrokePaint(style.fieldBorderColor);
-        ctx->SetStrokeWidth(1.0);
-        ctx->DrawRoundedRectangle(Rect2Dd(modeButtonRect.x, modeButtonRect.y,
-                                          modeButtonRect.width, modeButtonRect.height),
-                                  Scaled(style.cornerRadius));
-
-        const char* names[3] = {"HSV", "HSL", "RGB"};
-        SetFont(ctx);
-        ctx->SetTextAlignment(TextAlignment::Left);
-        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(names[(int)model],
-                            Rect2Dd(modeButtonRect.x + Scaled(8.0f), modeButtonRect.y,
-                                    modeButtonRect.width - Scaled(20.0f), modeButtonRect.height));
-
-        // Down triangle
-        float tx = modeButtonRect.x + modeButtonRect.width - Scaled(14.0f);
-        float ty = modeButtonRect.y + modeButtonRect.height * 0.5f - Scaled(2.0f);
-        ctx->SetFillPaint(style.mutedTextColor);
-        ctx->FillLinePath({Point2Dd(tx, ty), Point2Dd(tx + Scaled(8.0f), ty),
-                           Point2Dd(tx + Scaled(4.0f), ty + Scaled(5.0f))});
-    }
-
     void UltraCanvasColorPicker::RenderScreenPickButton(IRenderContext* ctx) {
         Rect2Dd r(screenPickRect.x, screenPickRect.y,
                   screenPickRect.width, screenPickRect.height);
@@ -1241,34 +1263,6 @@ namespace UltraCanvas {
         RenderValueBox(ctx, row, editing, std::string(buf));
     }
 
-    void UltraCanvasColorPicker::RenderDropdownPopup(IRenderContext* ctx) {
-        const char* names[3] = {"HSV", "HSL", "RGB"};
-        float itemH = Scaled(style.rowHeight);
-        float w = modeButtonRect.width;
-        float x = modeButtonRect.x;
-        float y = modeButtonRect.y + modeButtonRect.height + 2.0f;
-        Rect2Dd box(x, y, w, itemH * 3.0f);
-
-        ctx->SetFillPaint(style.fieldColor);
-        ctx->FillRoundedRectangle(box, Scaled(style.cornerRadius));
-        ctx->SetStrokePaint(style.fieldBorderColor);
-        ctx->SetStrokeWidth(1.0);
-        ctx->DrawRoundedRectangle(box, Scaled(style.cornerRadius));
-
-        for (int i = 0; i < 3; ++i) {
-            Rect2Dd item(x, y + i * itemH, w, itemH);
-            if ((int)model == i) {
-                ctx->SetFillPaint(style.accentColor.WithAlpha(120));
-                ctx->FillRectangle(item);
-            }
-            SetFont(ctx);
-            ctx->SetTextAlignment(TextAlignment::Left);
-            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-            ctx->DrawTextInRect(names[i], Rect2Dd(item.x + Scaled(8.0f), item.y,
-                                                  item.width - Scaled(12.0f), item.height));
-        }
-    }
-
     void UltraCanvasColorPicker::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         RecalculateLayout();
 
@@ -1303,7 +1297,8 @@ namespace UltraCanvas {
             RenderScreenPickButton(ctx);
         }
         if (modeSelector == ColorPickerModeSelector::Dropdown) {
-            RenderModeButton(ctx);
+            SyncModelDropdown();
+            if (modelDropdown && modelDropdown->IsVisible()) RenderChild(ctx, *modelDropdown);
         } else {
             RenderTabs(ctx);
         }
@@ -1318,8 +1313,6 @@ namespace UltraCanvas {
         // The design selector, over the corner of the colour area.
         SyncStyleSelector();
         if (styleSelector && styleSelector->IsVisible()) RenderChild(ctx, *styleSelector);
-
-        if (dropdownOpen) RenderDropdownPopup(ctx);
     }
 
     // ===================================================================
@@ -1356,21 +1349,6 @@ namespace UltraCanvas {
         // colour instead of the foreground (mirrors the eyedropper's
         // left=foreground / right=background rule).
         const bool adjust = (event.button == UCMouseButton::Right);
-
-        // Dropdown popup takes priority while open
-        if (dropdownOpen) {
-            float itemH = Scaled(style.rowHeight);
-            float x = modeButtonRect.x;
-            float y = modeButtonRect.y + modeButtonRect.height + 2.0f;
-            Rect2Df popup(x, y, modeButtonRect.width, itemH * 3.0f);
-            if (popup.Contains(p)) {
-                int idx = std::clamp((int)((p.y - y) / itemH), 0, 2);
-                SetModel((ColorPickerModel)idx);
-            }
-            dropdownOpen = false;
-            RequestRedraw();
-            return true;
-        }
 
         // Clicking inside the field being edited moves the caret (drag extends
         // the selection, double-click selects all); clicking anywhere else
@@ -1470,12 +1448,6 @@ namespace UltraCanvas {
             }
         }
 
-        if (modeSelector == ColorPickerModeSelector::Dropdown &&
-            modeButtonRect.Contains(p)) {
-            dropdownOpen = true;
-            RequestRedraw();
-            return true;
-        }
         if (hexFieldRect.Contains(p)) {
             BeginEdit(EditField::Hex, &p);
             return true;
@@ -1594,23 +1566,11 @@ namespace UltraCanvas {
         };
         std::string text;
 
-        // Model choices: HSV / HSL / RGB (tab bar, dropdown button, or the open
-        // dropdown list).
+        // Model choices on the tab bar. In Dropdown mode the dropdown shows
+        // its own tooltip, and its open list one per entry.
         if (modeSelector == ColorPickerModeSelector::TabBar) {
             for (int i = 0; i < 3; ++i) {
                 if (over(tabRects[i])) { text = ModelTooltip((ColorPickerModel)i); break; }
-            }
-        } else if (over(modeButtonRect)) {
-            text = ModelTooltip(model);
-        }
-        if (text.empty() && dropdownOpen) {
-            float itemH = Scaled(style.rowHeight);
-            float x = modeButtonRect.x;
-            float y = modeButtonRect.y + modeButtonRect.height + 2.0f;
-            Rect2Df popup(x, y, modeButtonRect.width, itemH * 3.0f);
-            if (over(popup)) {
-                int idx = std::clamp((int)((p.y - y) / itemH), 0, 2);
-                text = ModelTooltip((ColorPickerModel)idx);
             }
         }
 

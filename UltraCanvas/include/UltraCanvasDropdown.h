@@ -1,6 +1,7 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-10-15 - DropdownItem::tooltip: shown over the item in the open list
 // Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: an icon-only button
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
 #pragma once
@@ -33,6 +34,9 @@ namespace UltraCanvas {
         std::string text;
         std::string value;
         std::string iconPath;
+        // Shown when the pointer rests on the item in the open list (the
+        // list's ToolTipRole); empty shows none.
+        std::string tooltip;
         bool enabled = true;
         bool separator = false;
         bool selected = false;  // for multi-selection support

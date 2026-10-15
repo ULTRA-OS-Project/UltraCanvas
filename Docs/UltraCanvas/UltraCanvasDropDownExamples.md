@@ -47,6 +47,7 @@ struct DropdownItem {
     std::string text;          // Display text
     std::string value;         // Associated value
     std::string iconPath;      // Optional icon path
+    std::string tooltip;       // Shown over the item in the open list (optional)
     bool enabled = true;       // Is item selectable
     bool separator = false;    // Is this a separator
     bool selected = false;     // Checked state in multi-selection mode
