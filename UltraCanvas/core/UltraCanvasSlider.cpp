@@ -1,9 +1,10 @@
 // core/UltraCanvasSlider.cpp
 // Platform-independent slider component implementation
+// Version: 1.5.1 - the two key switches say the keys they ignore (default; -Wswitch)
 // Version: 1.5.0 - slider.handle, slider.handle-border
 // Version: 1.4.0 - SliderVisualStyle::FromTheme
 // Version: 1.3.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlider.h"
@@ -905,6 +906,9 @@ namespace UltraCanvas {
                     activeHandle = (activeHandle == RangeHandle::Lower) ? RangeHandle::Upper : RangeHandle::Lower;
                     RequestRedraw();
                     return true;
+
+                default:
+                    break;
             }
         } else {
             // Single handle mode - standard behavior
@@ -934,6 +938,9 @@ namespace UltraCanvas {
                 case UCKeys::PageDown:
                     SetValue(currentValue - increment * 10);
                     return true;
+
+                default:
+                    break;
             }
         }
 

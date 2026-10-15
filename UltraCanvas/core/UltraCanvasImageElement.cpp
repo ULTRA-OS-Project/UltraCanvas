@@ -1,5 +1,6 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
+// Version: 1.9.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
 // Version: 1.9.0 - SetBoxAspectRatio: a following height keeps the box's shape
 // Version: 1.8.0 - the error placeholder shows after a failed load (it read the message
 //                 from the image SetError had just replaced); SetTintColor tints the
@@ -13,7 +14,7 @@
 //                 tiled area; drawn tile by tile where a backend has no patterns
 // Version: 1.2.0 - an image positioned off-centre (SetImagePosition) is drawn into
 //                 ImageDrawRect, clipped to the content box
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageElement.h"
@@ -283,6 +284,9 @@ namespace UltraCanvas {
             case UCEventType::MouseUp:
                 HandleMouseUp(event);
                 return true;
+
+            default:
+                break;
         }
         return false;
     }

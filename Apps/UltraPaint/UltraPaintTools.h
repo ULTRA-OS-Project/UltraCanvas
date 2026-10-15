@@ -170,6 +170,7 @@ namespace PaintOptionWidgets {
     void AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
                      const std::vector<std::string>& items, int selected,
                      const std::function<void(int)>& onChange);
+    // A one-line hint under the controls, in quiet grey.
     void AddCaption(UltraCanvasContainer& panel, const std::string& id, const std::string& text);
     // The rows every brush-like tool shares.
     void AddBrushOptions(UltraCanvasContainer& panel, const std::string& idPrefix, UCBrushSettings& s,

@@ -10,6 +10,7 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
+// Version: 1.7.0 - ColorPickerStyle::Light() for a light window, Dark() for the default
 // Version: 1.6.1 - the HSV/HSL/RGB dropdown is a real UltraCanvasDropdown, not painted
 // Version: 1.6.0 - optional design selector: a dropdown in the top-right corner
 //                  (colour circle / colour slider + square / colour rectangle)
@@ -117,6 +118,16 @@ namespace UltraCanvas {
         // Fonts
         std::string fontFamily = "Sans";
         float fontSize = 13.0f;
+
+        // The two looks. Dark is what a style left as constructed already
+        // is: the picker's own charcoal panel with a red accent. Light is for
+        // a light window: a white surface, grey hairline fields and outlines,
+        // near-black text and a blue accent. A picker on a tinted surface
+        // (a dialog's off-white) sets backgroundColor to that surface, so it
+        // does not stand out as a block. Both leave uiScale at 1: set it with
+        // SetUIScale after SetStyle.
+        static ColorPickerStyle Dark() { return ColorPickerStyle(); }
+        static ColorPickerStyle Light();
     };
 
 // ===== COLOUR SPACE CONVERSION HELPERS =====
