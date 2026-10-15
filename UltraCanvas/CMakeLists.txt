@@ -524,6 +524,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterDocument.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBrushEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPaintSurface.cpp
+        # Text layers: the words drawn into a layer through the WYSIWYG element
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorRaster.cpp
         # The vector drawing viewer (VectorStorage::VectorDocument on screen,
         # zoom / pan / bounding-box selection). The model it shows is in

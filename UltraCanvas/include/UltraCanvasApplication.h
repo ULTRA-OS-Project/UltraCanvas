@@ -45,6 +45,15 @@ namespace UltraCanvas {
     // a name from kEmbeddedAllFonts appends to it as it is.
     std::string GetBundledFontsDir();
 
+    // Every font family this process can set text in: the fonts installed on
+    // the system (TrueType, OpenType, Type 1, ...) with the bundled ones and
+    // any added with RegisterFontFile, as the text engine sees them (Pango:
+    // fontconfig on Linux and Windows, CoreText on macOS). Scalable families
+    // only - a family that has bitmaps alone cannot be drawn at any size -
+    // sorted regardless of case, each name once. For a font picker; it is
+    // asked afresh on every call, so a font installed meanwhile is in it.
+    std::vector<std::string> GetInstalledFontFamilies();
+
     // Pins hinting / antialias / autohint / lcdfilter defaults for the bundled
     // DejaVu families so system fontconfig (which differs between MSYS2 and
     // Linux distros) cannot change how the framework's text looks. Pass the

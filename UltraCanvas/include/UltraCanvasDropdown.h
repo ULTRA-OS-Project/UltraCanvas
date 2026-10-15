@@ -1,6 +1,7 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-10-15 - type-ahead: letters typed in the open list go to the item starting with them
 // Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item
 // Last Modified: 2026-10-15 - DropdownItem::tooltip: shown over the item in the open list
 // Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: an icon-only button
@@ -20,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <algorithm>
+#include <chrono>
 #include <set>
 
 namespace UltraCanvas {
@@ -176,6 +178,12 @@ namespace UltraCanvas {
         int selectedIndex = -1;
         bool dropdownOpen = false;
         bool buttonPressed = false;
+
+        // Type-ahead in the open list: what has been typed, and when the last
+        // letter came (a pause starts a new prefix).
+        std::string typeAheadPrefix;
+        std::chrono::steady_clock::time_point typeAheadTime;
+        bool HandleTypeAhead(const UCEvent& event);
 
         // Multi-selection support
         bool multiSelectEnabled = false;

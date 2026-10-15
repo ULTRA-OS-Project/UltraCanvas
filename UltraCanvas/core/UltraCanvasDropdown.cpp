@@ -6,6 +6,7 @@
 // Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: the icon alone on the button
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
+#include <cctype>
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImage.h"
@@ -433,6 +434,7 @@ namespace UltraCanvas {
     void UltraCanvasDropdown::OpenDropdown() {
         if (!isPopup && !items.empty() && window) {
             dropdownOpen = true;
+            typeAheadPrefix.clear();   // each opening is typed into afresh
             dropdownModel->DataChanged();
             CalculateAndSetPopupSize();
 
@@ -602,6 +604,9 @@ namespace UltraCanvas {
         // keys to the list itself; without this the arrow keys moved the
         // highlight and Return chose nothing.
         popupListView->onItemActivated = [this](int row) { ChooseRow(row); };
+        // Letters typed while the list has the keyboard (the dropdown itself
+        // does not always take it) go to type-ahead as well.
+        popupListView->onKeyDown = [this](const UCEvent& event) { return dropdownOpen && HandleTypeAhead(event); };
 
         popupListView->onItemHovered = [this](int row) {
             if (row >= 0 && row < (int)items.size() && onItemHovered) {
@@ -879,8 +884,50 @@ namespace UltraCanvas {
                 return true;
 
             default:
-                return false;
+                return HandleTypeAhead(event);
         }
+    }
+
+    // Letters typed with the list open go to the first item whose text starts
+    // with them, regardless of case - the way a list of every installed font
+    // is browsed. Letters typed within a second of each other build one
+    // prefix ("Lib" for Liberation Sans); the same letter again steps on to
+    // the next item starting with it. Return then chooses it.
+    bool UltraCanvasDropdown::HandleTypeAhead(const UCEvent& event) {
+        if (event.ctrl || event.alt || event.meta) return false;
+        std::string typed = event.text;
+        if (typed.empty() && static_cast<unsigned char>(event.character) >= 32 && event.character != 127)
+            typed = std::string(1, event.character);
+        // Only what prints: Return, Tab and Backspace arrive with their
+        // control character as text too.
+        if (typed.empty() || typed == " ") return false;
+        if (std::any_of(typed.begin(), typed.end(), [](unsigned char c) { return c < 32 || c == 127; })) return false;
+        auto lower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return s;
+        };
+        const auto now = std::chrono::steady_clock::now();
+        if (now - typeAheadTime > std::chrono::seconds(1)) typeAheadPrefix.clear();
+        typeAheadTime = now;
+        // One letter repeated steps through the items starting with it.
+        const std::string add = lower(typed);
+        const bool repeat = typeAheadPrefix == add;
+        if (!repeat) typeAheadPrefix += add;
+
+        auto* sel = popupListView ? popupListView->GetSelection() : nullptr;
+        const int count = static_cast<int>(items.size());
+        const int current = sel ? sel->GetCurrentRow() : selectedIndex;
+        const int start = repeat || typeAheadPrefix.size() == add.size() ? current + 1 : std::max(0, current);
+        for (int n = 0; n < count; ++n) {
+            const int row = ((start + n) % count + count) % count;
+            const DropdownItem& item = items[static_cast<size_t>(row)];
+            if (item.separator || !item.enabled) continue;
+            if (lower(item.text).compare(0, typeAheadPrefix.size(), typeAheadPrefix) != 0) continue;
+            if (popupListView) popupListView->SetFocusedRow(row);
+            else if (sel) sel->Select(row);
+            return true;
+        }
+        return true;   // typed into the list; nothing starts with it
     }
 
     void UltraCanvasDropdown::HandleFocusLost() {

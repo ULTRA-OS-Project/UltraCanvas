@@ -1,11 +1,12 @@
 // Apps/UltraPaint/UltraPaintDialogs.h
 // UltraPaint's small parameter windows: New Image (size, background),
-// Scale Image, Canvas Size, the Text tool's entry, layer properties,
-// Colour to Alpha and the import question a dropped file asks. Each is an
-// UltraCanvasWindow built out of framework elements (spinners, dropdowns,
-// text input, colour picker, buttons) and reports through callbacks.
+// Scale Image, Canvas Size, layer properties, Colour to Alpha and the
+// import question a dropped file asks. Each is an UltraCanvasWindow built
+// out of framework elements (spinners, dropdowns, text input, colour picker,
+// buttons) and reports through callbacks.
+// Version: 1.3.0 - the Text tool's entry is gone: text is typed on the canvas
 // Version: 1.2.0
-// Last Modified: 2026-09-13
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -62,25 +63,6 @@ private:
     std::shared_ptr<UltraCanvasSpinner> widthSpin, heightSpin, percentSpin;
     std::shared_ptr<UltraCanvasCheckbox> keepAspect;
     std::shared_ptr<UltraCanvasDropdown> anchorDrop;
-};
-
-// ===== TEXT =====
-struct UltraPaintTextResult {
-    std::string text;
-    std::string font = "Sans";
-    int size = 32;
-    bool bold = false;
-};
-
-class UltraPaintTextDialog : public UltraCanvasWindow {
-public:
-    explicit UltraPaintTextDialog(const UltraPaintTextResult& initial);
-    std::function<void(const UltraPaintTextResult&)> onAccept;
-private:
-    std::shared_ptr<UltraCanvasTextInput> textInput;
-    std::shared_ptr<UltraCanvasDropdown> fontDrop;
-    std::shared_ptr<UltraCanvasSpinner> sizeSpin;
-    std::shared_ptr<UltraCanvasCheckbox> boldBox;
 };
 
 // ===== LAYER PROPERTIES =====

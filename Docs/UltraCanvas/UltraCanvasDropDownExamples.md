@@ -26,7 +26,7 @@ UltraCanvas/
 - **Icons**: An optional icon per item, shown in the list and on the button
 - **Multi-selection**: Optional checkbox mode for picking several items
 - **Styling**: One `DropdownStyle` structure for the button, the list and the scrollbar
-- **Keyboard Navigation**: Arrow keys, Page Up/Down, Home, End, Enter, Space and Escape
+- **Keyboard Navigation**: Arrow keys, Page Up/Down, Home, End, Enter, Space and Escape, and type-ahead (letters go to the item starting with them)
 - **Mouse Interaction**: Click to open/close, hover states, item selection
 - **Scrolling**: Automatic scrollbar when items exceed maximum visible count
 - **Callbacks**: Event callbacks for selection changes, dropdown open/close events
@@ -244,6 +244,13 @@ to the list:
 - **Return** or **Space**: Chooses the highlighted item and closes the list
   (toggles it in multi-selection mode) - the list's `onItemActivated`
 - **Escape**: Closes the list and keeps the chosen item
+- **Letters (type-ahead)**: go to the first item whose text starts with them,
+  regardless of case - "libe" to *Liberation Mono* in a list of every
+  installed font. Letters typed within a second of each other build one
+  prefix; the same letter again steps on to the next item starting with it;
+  each opening of the list starts afresh. Return then chooses it. The list
+  passes its keys to the dropdown through `UltraCanvasListView::onKeyDown`,
+  so this works whichever of the two has the keyboard.
 
 The dropdown's own key handling (Down/Space to open a closed dropdown,
 `onKeyDown` seeing each key first) applies only to keys delivered to the

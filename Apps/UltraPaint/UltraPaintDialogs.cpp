@@ -1,8 +1,9 @@
 // Apps/UltraPaint/UltraPaintDialogs.cpp
-// New Image, Scale Image / Canvas Size, Text, Layer Properties, Import and
+// New Image, Scale Image / Canvas Size, Layer Properties, Import and
 // Colour to Alpha windows.
+// Version: 1.3.0 - the Text window is gone: text is typed on the canvas
 // Version: 1.2.0
-// Last Modified: 2026-09-13
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraPaintDialogs.h"
@@ -220,58 +221,6 @@ void UltraPaintResizeDialog::SyncFromHeight() {
     if (keepAspect->IsChecked()) widthSpin->SetValue(std::max(1.0, std::round(h * origW / origH)));
     if (percentSpin) percentSpin->SetValue(h * 100.0 / origH);
     syncing = false;
-}
-
-// ===========================================================================
-// TEXT
-// ===========================================================================
-
-UltraPaintTextDialog::UltraPaintTextDialog(const UltraPaintTextResult& initial) : UltraCanvasWindow() {
-    config_.title = "Text";
-    config_.width = 420; config_.height = 210;
-    config_.minWidth = 320; config_.minHeight = 180;
-    config_.deleteOnClose = true;
-    SetPadding(12);
-    layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-
-    auto form = FormGrid("upt-form");
-    AddChild(form);
-
-    textInput = CreateTextInput("upt-text", 0, 0, 0, 26);
-    textInput->SetText(initial.text);
-    FormRow(form, "upt-text-row", "Text:", textInput);
-
-    fontDrop = CreateDropdown("upt-font", 0, 0, 160, 24);
-    for (const char* n : { "Sans", "Serif", "Monospace" }) fontDrop->AddItem(n);
-    fontDrop->SetSelectedIndex(initial.font == "Serif" ? 1 : initial.font == "Monospace" ? 2 : 0, false);
-    FormRow(form, "upt-font-row", "Font:", fontDrop);
-
-    sizeSpin = CreateIntSpinner("upt-size", 0, 0, 120, 24, 4, 500, initial.size, 1);
-    sizeSpin->SetSuffix(" px");
-    FormRow(form, "upt-size-row", "Size:", sizeSpin);
-
-    boldBox = std::make_shared<UltraCanvasCheckbox>("upt-bold", 0, 0, 0, 24, "Bold");
-    boldBox->SetChecked(initial.bold);
-    FormWideRow(form, boldBox);
-
-    AddChild(ButtonRow("upt-buttons", this, [this]() {
-        UltraPaintTextResult r;
-        r.text = textInput->GetText();
-        r.font = fontDrop->GetSelectedIndex() == 1 ? "Serif" : fontDrop->GetSelectedIndex() == 2 ? "Monospace" : "Sans";
-        r.size = static_cast<int>(sizeSpin->GetValue());
-        r.bold = boldBox->IsChecked();
-        if (onAccept) onAccept(r);
-    }, "Place"));
-    textInput->onEnterPressed = [this](const std::string&) -> bool {
-        UltraPaintTextResult r;
-        r.text = textInput->GetText();
-        r.font = fontDrop->GetSelectedIndex() == 1 ? "Serif" : fontDrop->GetSelectedIndex() == 2 ? "Monospace" : "Sans";
-        r.size = static_cast<int>(sizeSpin->GetValue());
-        r.bold = boldBox->IsChecked();
-        if (onAccept) onAccept(r);
-        Close();
-        return true;
-    };
 }
 
 // ===========================================================================

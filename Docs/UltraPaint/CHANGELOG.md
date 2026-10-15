@@ -1,3 +1,31 @@
+#### 2026-10-15 *0.2.22*
+- **Text is typed on the image, and stays text.** The Text tool no longer
+  asks for its words in a window and stamps them into the active layer: a
+  click on the canvas starts a text there (a drag, a box its lines wrap in)
+  and the words appear as they are typed - in their font, size and colour,
+  at the view's zoom, where they will be. The editor is the framework's
+  WYSIWYG element laid over the canvas, and the same element draws the text
+  into its layer, so what is typed is exactly what the layer gets, at any
+  zoom. Escape, Ctrl+Enter or a click outside finishes it.
+  - **Rich text:** bold, italic, underline, size, font and colour apply to the
+    selection or to what is typed next, so one text can mix them; alignment
+    (left, centre, right) per paragraph; Ctrl+B / I / U while typing.
+  - **Every installed font** is offered, not Sans / Serif / Monospace: the
+    *Font* list holds every scalable family on the system (with the bundled
+    ones), and typing the first letters in the open list jumps to one.
+  - **A text layer** ("T" in the Layers panel) keeps the words until it is
+    merged: click it with the Text tool, or *Layer > Edit Text*, to change
+    them; with the Text tool active the options and the colour change a
+    whole text layer; the Move tool moves it as text. *Merge Down*,
+    *Flatten*, scaling, flipping and rotating make it pixels; painting,
+    filling or filtering it asks first whether to rasterize it (*Layer >
+    Rasterize Layer*), and Undo makes it text again.
+  - **Projects keep it:** a `.ucraster` stores a text layer's words as an
+    OpenDocument text beside its PNG, so it opens as text again (a missing
+    font on another machine changes nothing until the text is edited).
+  Framework: text layers, `RenderTextLayer`, `GetInstalledFontFamilies`,
+  dropdown type-ahead (framework changelog, pending entry `text-layers`).
+
 #### 2026-10-14 *0.2.21*
 - **One UltraPaint at a time.** Opening a file while UltraPaint is already
   running opens it in the running copy (in a new window) instead of starting a

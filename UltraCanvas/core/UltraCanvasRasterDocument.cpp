@@ -8,12 +8,21 @@
 // place — they replace it with a new object — so unchanged layers are shared
 // between the snapshots and cost nothing. Attribute edits (name, opacity,
 // visibility, blend, lock) record just the attribute set.
+//
+// Text layers: a pixel edit takes the text off the layer in place and keeps
+// it in its undo entry (RasterUndoEntry::textBefore), the same way it keeps
+// the pixels; structural operations carry the text with the layer objects
+// they share or replace.
+// Version: 1.3.0 - text layers (RasterizeLayer, ReplaceLayer, in-place edit,
+//                 the text kept in .ucraster projects)
 // Version: 1.2.0 - SaveToFile without options writes with the user's save
 //                 settings for the format (UltraCanvasFileLoader), once set
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterDocument.h"
+#include "UltraCanvasRichDocument.h"
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasZipPackage.h"
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasFileLoader.h"   // the user's save settings per format
@@ -23,9 +32,14 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -37,6 +51,48 @@ namespace {
         std::string e = path.substr(dot + 1);
         std::transform(e.begin(), e.end(), e.begin(), [](unsigned char c) { return std::tolower(c); });
         return e;
+    }
+
+    // A text layer's words go into a project as an OpenDocument text: the
+    // framework's word-processing format, which keeps every run's font,
+    // size and colour, the paragraphs' alignment and spacing, lists, tables
+    // and pictures - and opens in any word processor. Its reader and writer
+    // work on files, so the bytes pass through a temporary one (an internal
+    // file of the program's, never one the user chose).
+    std::filesystem::path TemporaryOdtPath() {
+        static std::atomic<unsigned> counter{0};
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        return std::filesystem::temp_directory_path() /
+               PathFromUtf8("ucraster-text-" + std::to_string(stamp) + "-" +
+                            std::to_string(counter.fetch_add(1)) + ".odt");
+    }
+
+    bool RichDocumentToOdt(const UCRichDocument& document, std::vector<uint8_t>& bytes, std::string& error) {
+        std::error_code ec;
+        const std::filesystem::path file = TemporaryOdtPath();
+        bool ok = UCWordDocumentIO::SaveOdt(PathToUtf8(file), document, error);
+        if (ok) {
+            std::ifstream in(file, std::ios::binary);
+            bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+            ok = !bytes.empty();
+            if (!ok) error = "Could not read the text back";
+        }
+        std::filesystem::remove(file, ec);
+        return ok;
+    }
+
+    bool RichDocumentFromOdt(const std::vector<uint8_t>& bytes, UCRichDocument& document, std::string& error) {
+        std::error_code ec;
+        const std::filesystem::path file = TemporaryOdtPath();
+        bool ok;
+        {
+            std::ofstream out(file, std::ios::binary);
+            out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            ok = static_cast<bool>(out);
+        }
+        ok = ok && UCWordDocumentIO::LoadOdt(PathToUtf8(file), document, error);
+        std::filesystem::remove(file, ec);
+        return ok;
     }
 
     Rect2Di UnionRect(const Rect2Di& a, const Rect2Di& b) {
@@ -207,16 +263,17 @@ int UCRasterDocument::AddLayer(const std::string& name, const RasterPixel& fill)
     return AddLayer(std::make_shared<UCRasterLayer>(width, height, fill, n), -1);
 }
 
-int UCRasterDocument::AddLayer(std::shared_ptr<UCRasterLayer> layer, int atIndex) {
+int UCRasterDocument::AddLayer(std::shared_ptr<UCRasterLayer> layer, int atIndex, const std::string& label) {
     if (!layer) return -1;
     if (layer->GetWidth() != width || layer->GetHeight() != height) {
         auto fitted = std::make_shared<UCRasterLayer>(width, height, layer->name);
         fitted->visible = layer->visible; fitted->opacity = layer->opacity;
         fitted->blendMode = layer->blendMode; fitted->locked = layer->locked;
+        fitted->text = layer->text;
         fitted->CopyFrom(*layer, 0, 0);
         layer = fitted;
     }
-    BeginStructuralUndo("Add Layer");
+    BeginStructuralUndo(label);
     int idx = atIndex < 0 ? activeLayer + 1 : atIndex;
     idx = std::clamp(idx, 0, static_cast<int>(layers.size()));
     layers.insert(layers.begin() + idx, layer);
@@ -269,6 +326,7 @@ bool UCRasterDocument::MergeLayerDown(int index) {
     auto lower = layers[static_cast<size_t>(index - 1)];
     BeginStructuralUndo("Merge Down");
     auto merged = lower->Clone();
+    merged->text.reset();   // its pixels are no longer what its text draws
     if (upper->visible) merged->BlendFrom(*upper, 0, 0, upper->opacity, upper->blendMode);
     layers[static_cast<size_t>(index - 1)] = merged;
     layers.erase(layers.begin() + index);
@@ -291,12 +349,47 @@ bool UCRasterDocument::FlattenImage() {
     return true;
 }
 
-void UCRasterDocument::ReplaceLayer(int index, std::shared_ptr<UCRasterLayer> replacement, const std::string& label) {
-    if (index < 0 || index >= static_cast<int>(layers.size()) || !replacement) return;
+bool UCRasterDocument::ReplaceLayer(int index, std::shared_ptr<UCRasterLayer> replacement, const std::string& label) {
+    if (index < 0 || index >= static_cast<int>(layers.size()) || !replacement) return false;
+    if (replacement->GetWidth() != width || replacement->GetHeight() != height) return false;
     BeginStructuralUndo(label);
     layers[static_cast<size_t>(index)] = std::move(replacement);
     InvalidateComposite();
     EndStructuralUndo();
+    return true;
+}
+
+bool UCRasterDocument::RasterizeLayer(int index) {
+    auto l = GetLayer(index);
+    if (!l || !l->IsTextLayer()) return false;
+    auto copy = l->Clone();
+    copy->text.reset();
+    return ReplaceLayer(index, copy, "Rasterize Layer");
+}
+
+void UCRasterDocument::SetInPlaceEditLayer(const std::shared_ptr<UCRasterLayer>& layer) {
+    const auto previous = inPlaceEditLayer.lock();
+    if (previous == layer) return;
+    inPlaceEditLayer = layer;
+    // Only the pixels the two layers cover change in the composite: a text
+    // layer's box, or what a bitmap layer paints.
+    Rect2Di changed;
+    for (const auto& l : { previous, layer }) {
+        if (!l) continue;
+        Rect2Di covered;
+        if (l->text) {
+            const Rect2Dd box = l->text->GetBox();
+            const int x0 = static_cast<int>(std::floor(box.x)), y0 = static_cast<int>(std::floor(box.y));
+            covered = Rect2Di(x0, y0, static_cast<int>(std::ceil(box.x + box.width)) - x0,
+                              static_cast<int>(std::ceil(box.y + box.height)) - y0);
+        } else {
+            covered = l->GetOpaqueBounds();
+        }
+        changed = UnionRect(changed, covered);
+    }
+    if (changed.width <= 0 || changed.height <= 0) return;
+    InvalidateComposite(changed);
+    EmitPixels(changed);
 }
 
 // Attribute edits replace the layer object with a copy carrying the new
@@ -489,6 +582,9 @@ void UCRasterDocument::BeginEdit(const std::string& label, int layerIndex, const
     pendingEdit.rect = layer->ClipRect(rect);
     if (pendingEdit.rect.width <= 0 || pendingEdit.rect.height <= 0) return;
     pendingEdit.before = SnapshotRect(*layer, pendingEdit.rect);
+    // The pixels are about to stop being what the text draws.
+    pendingEdit.textBefore = layer->text;
+    layer->text.reset();
     editing = true;
 }
 
@@ -498,11 +594,16 @@ void UCRasterDocument::EndEdit() {
     auto layer = GetLayer(pendingEdit.layerIndex);
     if (!layer) return;
     pendingEdit.after = SnapshotRect(*layer, pendingEdit.rect);
-    if (pendingEdit.after == pendingEdit.before) return;   // nothing changed
+    if (pendingEdit.after == pendingEdit.before) {   // nothing changed
+        if (pendingEdit.textBefore) layer->text = pendingEdit.textBefore;
+        return;
+    }
     const Rect2Di r = pendingEdit.rect;
+    const bool rasterized = pendingEdit.textBefore != nullptr;
     PushUndo(std::move(pendingEdit));
     SetModified(true);
     NotifyChanged(r);
+    if (rasterized) EmitStructure();
     EmitState();
 }
 
@@ -518,10 +619,14 @@ void UCRasterDocument::RecordEdit(const std::string& label, int layerIndex, cons
     e.before = SnapshotRect(before, e.rect);
     e.after = SnapshotRect(*layer, e.rect);
     if (e.before == e.after) return;
+    e.textBefore = layer->text;
+    layer->text.reset();
     const Rect2Di r = e.rect;
+    const bool rasterized = e.textBefore != nullptr;
     PushUndo(std::move(e));
     SetModified(true);
     NotifyChanged(r);
+    if (rasterized) EmitStructure();
     EmitState();
 }
 
@@ -531,6 +636,7 @@ void UCRasterDocument::CancelEdit() {
     auto layer = GetLayer(pendingEdit.layerIndex);
     if (layer) {
         RestoreRect(*layer, pendingEdit.rect, pendingEdit.before);
+        if (pendingEdit.textBefore) layer->text = pendingEdit.textBefore;
         NotifyChanged(pendingEdit.rect);
     }
 }
@@ -545,6 +651,10 @@ void UCRasterDocument::ApplyPixels(const RasterUndoEntry& e, bool toAfter) {
     if (!layer) return;
     RestoreRect(*layer, e.rect, toAfter ? e.after : e.before);
     NotifyChanged(e.rect);
+    if (e.textBefore) {
+        layer->text = toAfter ? nullptr : e.textBefore;
+        EmitStructure();
+    }
 }
 
 void UCRasterDocument::ApplyProcessedLayer(const std::string& label, int layerIndex, const UCRasterLayer& processed) {
@@ -615,6 +725,7 @@ namespace {
         const Rect2Di b = sel.IsActive() ? sel.GetBounds() : src.GetRect();
         origin = Point2Di(b.x, b.y);
         auto out = src.CropCopy(b);
+        out->text.reset();   // a piece of the picture, not the words
         if (sel.IsActive()) {
             for (int y = 0; y < out->GetHeight(); ++y) {
                 uint8_t* row = out->Row(y);
@@ -768,11 +879,12 @@ std::shared_ptr<UCPixmap> UCRasterDocument::GetCompositePixmap() {
     if (rects.empty()) return composite;
     uint32_t* px = composite->GetPixelData();
     const int stride = composite->GetRawWidth();
+    const auto inPlace = inPlaceEditLayer.lock();
     for (const Rect2Di& r : rects) {
         for (int y = r.y; y < r.y + r.height; ++y)
             std::memset(px + static_cast<size_t>(y) * stride + r.x, 0, static_cast<size_t>(r.width) * 4);
         for (const auto& l : layers) {
-            if (!l || !l->visible || l->opacity <= 0.0f) continue;
+            if (!l || !l->visible || l->opacity <= 0.0f || l == inPlace) continue;
             l->CompositeOnto(px, width, height, stride, r, l->opacity, l->blendMode);
         }
     }
@@ -922,6 +1034,32 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
         jl.Set("opacity", static_cast<double>(l->opacity));
         jl.Set("blend", static_cast<int>(l->blendMode));
         jl.Set("file", "layers/" + std::to_string(i) + ".png");
+        if (l->text && l->text->document) {
+            // The words stay words: the box and the default font here, the
+            // rich text beside the PNG as an OpenDocument text.
+            const RasterTextContent& t = *l->text;
+            const std::string textFile = "layers/" + std::to_string(i) + ".odt";
+            JSONValue jt = JSONValue::MakeObject();
+            jt.Set("x", t.x);
+            jt.Set("y", t.y);
+            jt.Set("width", t.width);
+            jt.Set("height", t.height);
+            jt.Set("font", t.fontFamily);
+            jt.Set("sizePx", static_cast<double>(t.fontSizePx));
+            JSONValue colour = JSONValue::MakeArray();
+            for (int c : { t.colour.r, t.colour.g, t.colour.b, t.colour.a }) colour.Append(c);
+            jt.Set("colour", colour);
+            jt.Set("file", textFile);
+            jl.Set("text", jt);
+            std::vector<uint8_t> odt;
+            std::string odtError;
+            if (!RichDocumentToOdt(*t.document, odt, odtError) ||
+                !zip.AddEntry(textFile, odt.data(), odt.size(), false)) {
+                error = "Could not write the text of layer " + l->name +
+                        (odtError.empty() ? std::string() : ": " + odtError);
+                return false;
+            }
+        }
         arr.Append(jl);
         try {
             std::vector<uint8_t> png = PixelFX::FileIO::SaveToBuffer(l->ToPixelFX(), ".png");
@@ -980,6 +1118,32 @@ bool UCRasterDocument::LoadProject(const std::string& path, std::string& error) 
         layer->opacity = static_cast<float>(jl.Get("opacity").GetNumber(1.0));
         layer->blendMode = static_cast<RasterBlendMode>(std::clamp<int64_t>(jl.Get("blend").GetInteger(0), 0,
                                                         static_cast<int64_t>(RasterBlendMode::HardLight)));
+        // A text layer: its pixels are the PNG, its words come back from the
+        // OpenDocument text. A project whose text cannot be read still opens,
+        // the layer as the bitmap it shows.
+        const JSONValue& jt = jl.Get("text");
+        std::vector<uint8_t> odt;
+        auto words = std::make_shared<UCRichDocument>();
+        std::string odtError;
+        if (jt.IsObject() && zip.ReadEntry(jt.Get("file").GetString(), odt) &&
+            RichDocumentFromOdt(odt, *words, odtError)) {
+            auto content = std::make_shared<RasterTextContent>();
+            content->document = words;
+            content->x = jt.Get("x").GetNumber(0.0);
+            content->y = jt.Get("y").GetNumber(0.0);
+            content->width = std::max(1.0, jt.Get("width").GetNumber(static_cast<double>(w)));
+            content->height = std::max(0.0, jt.Get("height").GetNumber(0.0));
+            content->fontFamily = jt.Get("font").GetString("Sans");
+            content->fontSizePx = static_cast<float>(std::max(1.0, jt.Get("sizePx").GetNumber(32.0)));
+            const JSONValue& colour = jt.Get("colour");
+            if (colour.IsArray() && colour.GetSize() == 4) {
+                auto channel = [&](size_t c) {
+                    return static_cast<uint8_t>(std::clamp<int64_t>(colour.At(c).GetInteger(0), 0, 255));
+                };
+                content->colour = RasterPixel(channel(0), channel(1), channel(2), channel(3));
+            }
+            layer->text = content;
+        }
         loaded.push_back(layer);
     }
     if (loaded.empty()) { error = "Project has no layers"; return false; }
