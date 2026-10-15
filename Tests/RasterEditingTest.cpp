@@ -3,13 +3,15 @@
 // composite arithmetic, UCRasterSelection shapes and algebra, the brush
 // engine (strokes, opacity cap, fills, shapes, gradients, wand),
 // UCRasterDocument layers / undo / redo / selection-aware filters, colour
-// keying (Colour to Alpha), text layers (UltraCanvasRasterText.h), and the
-// PNG and .ucraster round trips (the last three only with libvips).
+// keying (Colour to Alpha), text layers (UltraCanvasRasterText.h), the paint
+// surface's view through a resize, and the PNG and .ucraster round trips (the
+// last three only with libvips).
+// Version: 1.4.0 - TestSurfaceFollowsResize: the view re-centres when the element is resized
 // Version: 1.3.0 - TestTextLayers, TestTextLayerProject: text layers stay
 //                  text until their pixels change, and survive a project
 // Version: 1.2.0 - TestLinesCurvesArrows: polylines in one pass, curves, arrows
 // Version: 1.1.0 - TestListeners: several observers of one document
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterLayer.h"
@@ -21,6 +23,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasApplication.h"   // GetInstalledFontFamilies
+#include "UltraCanvasPaintSurface.h"
 
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
@@ -1036,6 +1039,76 @@ static void TestTextLayerProject() {
 }
 #endif
 
+// Draws `surface` at `width` x `height`, as a window does after its layout
+// gave the element that size.
+static void RenderSurfaceAt(UltraCanvasPaintSurface& surface, float width, float height) {
+    surface.SetBounds(Rect2Df(0, 0, width, height));
+    std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(static_cast<int>(width), static_cast<int>(height)), nullptr);
+    CHECK(ctx != nullptr);
+    if (ctx) surface.Render(ctx.get(), Rect2Df(0, 0, width, height));
+}
+
+// A resized view shows what it showed: the image point at its centre stays
+// there, and an image smaller than the view is centred in it again - in the
+// next frame, not at the next edit of the document.
+static void TestSurfaceFollowsResize() {
+    auto doc = std::make_shared<UCRasterDocument>(800, 600, RasterPixel(255, 255, 255, 255));
+    auto surface = CreatePaintSurface("resize-test");
+    int viewChanges = 0;
+    surface->onViewChanged = [&]() { ++viewChanges; };
+    surface->SetDocument(doc);
+
+    // The first frame fits the image and centres it.
+    RenderSurfaceAt(*surface, 1000, 700);
+    const double zoom = surface->GetZoom();
+    CHECK(zoom > 0.5 && zoom < 1.5);
+    CHECK_NEAR(surface->GetTransform().originX, (1000 - 800 * zoom) / 2, 1);
+    CHECK_NEAR(surface->GetTransform().originY, (700 - 600 * zoom) / 2, 1);
+
+    // A larger window: the same zoom, the image centred in the new size.
+    viewChanges = 0;
+    RenderSurfaceAt(*surface, 1400, 900);
+    CHECK(surface->GetZoom() == zoom);
+    CHECK_NEAR(surface->GetTransform().originX, (1400 - 800 * zoom) / 2, 1);
+    CHECK_NEAR(surface->GetTransform().originY, (900 - 600 * zoom) / 2, 1);
+    CHECK(viewChanges == 1);   // the status bar and overlays hear of it
+
+    // A frame at the same size moves nothing.
+    viewChanges = 0;
+    RenderSurfaceAt(*surface, 1400, 900);
+    CHECK(viewChanges == 0);
+
+    // Zoomed in past the view: the point at the centre stays at the centre.
+    surface->SetZoom(4.0);
+    surface->ScrollToImagePoint(200, 150);
+    RenderSurfaceAt(*surface, 1000, 700);
+    const Point2Dd centre = surface->ViewToImage(Point2Di(500, 350));
+    CHECK_NEAR(centre.x, 200, 1);
+    CHECK_NEAR(centre.y, 150, 1);
+
+    // A view call between the resize and the next frame sees the new size.
+    // At 1200 x 800 the centre (600, 400) shows (200, 150) at 4x, so the
+    // pointer at (100, 100) is over (75, 75) - and zooming about the pointer
+    // keeps that point under it.
+    surface->SetBounds(Rect2Df(0, 0, 1200, 800));
+    surface->SetZoomAt(8.0, Point2Di(100, 100));
+    RenderSurfaceAt(*surface, 1200, 800);
+    const Point2Dd underPointer = surface->ViewToImage(Point2Di(100, 100));
+    CHECK_NEAR(underPointer.x, 75, 1);
+    CHECK_NEAR(underPointer.y, 75, 1);
+
+    // A loupe keeps the point SetLoupeView put at its centre.
+    auto loupe = CreatePaintSurface("resize-loupe");
+    loupe->SetLoupeMode(true);
+    loupe->SetDocument(doc);
+    loupe->SetBounds(Rect2Df(0, 0, 200, 200));
+    loupe->SetLoupeView(8.0, 50, 60);
+    RenderSurfaceAt(*loupe, 300, 240);
+    const Point2Dd loupeCentre = loupe->ViewToImage(Point2Di(150, 120));
+    CHECK_NEAR(loupeCentre.x, 50, 1);
+    CHECK_NEAR(loupeCentre.y, 60, 1);
+}
+
 int main() {
 #ifdef HAS_LIBVIPS
     if (VIPS_INIT("RasterEditingTest")) { std::printf("vips init failed\n"); return 1; }
@@ -1051,6 +1124,7 @@ int main() {
     TestDocument();
     TestInstalledFontFamilies();
     TestTextLayers();
+    TestSurfaceFollowsResize();
 #ifdef HAS_LIBVIPS
     TestTextLayerProject();
     TestPixelFXAndFiles();

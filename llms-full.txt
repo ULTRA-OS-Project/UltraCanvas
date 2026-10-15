@@ -45819,6 +45819,13 @@ over the canvas. The surface handles what every tool shares:
   200 % (see `IRenderContext::SetImageSmoothing`) so pixels read as pixels.
 - **Pan** with the middle button or Space+drag; `SetPanMode(true)` makes
   every drag a pan (a Pan tool).
+- **Resizing** (the window, a split pane) keeps the view on what it showed:
+  the image point at the centre of the view stays at its centre, at the same
+  zoom, and an image smaller than the view is centred in it again. It
+  happens in the frame that shows the new size - or at the next view call
+  (`SetZoom`, `ScrollToImagePoint`, ...) if that comes first - and
+  `onViewChanged` reports it, so overlays placed in view coordinates (an
+  editor over a text layer, the status bar's zoom) follow.
 - **Checkerboard** behind transparent pixels, a drop shadow and border, the
   **pixel grid** from 8× (`SetPixelGridThreshold`), the **selection
   outline** as marching ants (animated on an application timer only while
@@ -45858,7 +45865,8 @@ loupe->SetLoupeCrosshair(true, 8.0);   // the default: two diagonals, 8 px clear
 ```
 
 - `SetLoupeView(zoom, imageX, imageY)` puts that image point at the centre
-  of the element at that zoom (clamped to the surface's own 1 %..12800 %).
+  of the element at that zoom (clamped to the surface's own 1 %..12800 %);
+  it stays at the centre when the loupe is resized.
 - The **crosshair** is two translucent diagonals from the corners that stop
   `gap` pixels short of the centre, so the pixel under the pointer stays
   clear; a light line under a dark one reads on dark and light pixels alike.
@@ -45902,6 +45910,9 @@ drawing exactly the layer's pixels; staying text through attribute edits,
 canvas resizes and crops and becoming bitmaps through pixel edits, merges,
 flips, rotations and scaling, with undo making them text again; a project
 round trip that draws again to the same pixels), the installed font list, the
+surface's view through a resize (an image smaller than the view centred
+again in the next frame, a larger one keeping its centre point, zooming about
+the pointer between a resize and the frame, and a loupe keeping its point), the
 PNG and `.ucraster` round trips, and saving back over the file a document was
 opened from -- that the image survives the round trip, that the temporary
 file the save goes through leaves no trace, and that neither a save nor an export

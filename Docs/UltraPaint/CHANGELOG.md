@@ -25,6 +25,13 @@
     font on another machine changes nothing until the text is edited).
   Framework: text layers, `RenderTextLayer`, `GetInstalledFontFamilies`,
   dropdown type-ahead (framework changelog, pending entry `text-layers`).
+- **The canvas re-centres when the window is resized.** Growing the window
+  left the image where it was, off to one side of the new space, until the
+  next change to the document snapped it to the middle. It is now centred
+  again as the window changes size, at the same zoom; an image larger than
+  the view keeps the spot that was in the middle of it, and text being typed
+  stays on its box (framework changelog, pending entry
+  `paint-surface-follows-resize`).
 
 #### 2026-10-15 *0.2.22*
 - **The right-hand panel in UltraMail's look.** Colour, the active tool's
