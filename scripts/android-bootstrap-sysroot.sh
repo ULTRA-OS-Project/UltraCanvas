@@ -29,6 +29,12 @@
 #       .vcpkg/vcpkg and bootstrapped (as scripts/macos-deps.sh does).
 #   VCPKG_BINARY_SOURCES (optional)        - vcpkg's binary cache setting; CI
 #       points it at a cached directory (.github/workflows/android-build.yml).
+#   UC_ANDROID_SYSROOT (optional)          - where the libraries are installed
+#       (default: ~/.cache/ultracanvas/android-sysroot). Outside the source
+#       tree on purpose: the core library exports the sysroot's lib directory
+#       as a link directory, and CMake refuses to export one from inside the
+#       source tree (scripts/macos-deps.sh installs outside it for the same
+#       reason).
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -81,7 +87,7 @@ if [ ! -x "$vcpkg_root/vcpkg" ]; then
     exit 2
 fi
 
-sysroot="$repo/build-android-sysroot"
+sysroot="${UC_ANDROID_SYSROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/ultracanvas/android-sysroot}"
 mkdir -p "$sysroot"
 
 # vcpkg's android triplets read the NDK location from ANDROID_NDK_HOME and
