@@ -1192,8 +1192,10 @@ else()
 endif()
 
 # ===== DROPDOWN KEYBOARD TEST =====
-# Down / Up / Return choose an item of an open dropdown (the keys go to its
-# popup list); Escape keeps the choice, Return on the current item closes.
+# Down / Up / Return choose an item of an open dropdown; Escape keeps the
+# choice. The dropdown takes the keyboard focus (Tab, a click, Down / Space to
+# open), keeps it while its list is open, and SetAcceptsFocus(false) leaves it
+# out of the Tab order.
 # Opens a window, so it skips itself without a DISPLAY.
 if(TARGET UltraCanvas)
     message(STATUS "  Building DropdownKeyboardTest...")

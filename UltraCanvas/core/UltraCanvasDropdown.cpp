@@ -1,6 +1,7 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-10-15 - takes the keyboard focus (AcceptsFocus, a click focuses it)
 // Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item (onItemActivated)
 // Last Modified: 2026-10-15 - DropdownItem::tooltip answers the list's ToolTipRole
 // Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: the icon alone on the button
@@ -571,6 +572,10 @@ namespace UltraCanvas {
         dropdownModel->SetItems(&items);
         popupListView->SetModel(dropdownModel);
         popupListView->SetShowHeader(false);
+        // The dropdown keeps the keyboard focus while its list is open: a
+        // click on a row would otherwise move it to the list, which then
+        // closes and leaves the focus on nothing visible.
+        popupListView->SetAcceptsFocus(false);
 
         dropdownDelegate = std::make_shared<DropdownItemDelegate>();
         dropdownDelegate->SetStyle(&style);
@@ -805,6 +810,9 @@ namespace UltraCanvas {
 
         if (buttonRect.Contains(event.pointer)) {
             buttonPressed = true;
+            // A click gives the keyboard focus, as on a button: the keys then
+            // work the list it opens, and Tab goes on from here.
+            SetFocus(true);
             if (dropdownOpen) {
                 CloseDropdown();
             } else {
