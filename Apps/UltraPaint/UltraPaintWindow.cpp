@@ -689,14 +689,15 @@ void UltraPaintWindow::BuildRightPanel() {
     // The hue ring is capped by whatever vertical space the controls leave it,
     // so a picker sized by eye draws a wheel narrower than the panel. Ask for
     // the height at which the ring fills the panel's width instead.
-    const float pickerH = colorPicker->PreferredHeightForWidth(kRightInner);
-    colorPicker->SetSize(kRightInner, pickerH);
+    // SetElementSize, not SetSize: SetSize moves only the laid-out bounds, and
+    // the panel's next layout pass puts back the size the picker was created
+    // with. The declared height is also the picker's flex basis.
+    colorPicker->SetElementSize(Size2Df(kRightInner, colorPicker->PreferredHeightForWidth(kRightInner)));
     // Not stretched: the panel's content box is wider than what is visible
     // beside the scrollbar, and a stretched picker lays its hex field and
     // channel values out into the part that is covered.
     colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Start)
-                           .SetFlexBasis(CSSLayout::Dimension::Px(pickerH));
+                           .SetAlignSelf(CSSLayout::AlignSelf::Start);
     colorPicker->onColorChanged = [this](const Color& c) { foreground = RasterPixel(c); };
     colorPicker->onColorChanging = [this](const Color& c) { foreground = RasterPixel(c); };
     colorPicker->onBackgroundChanged = [this](const Color& c) { background = RasterPixel(c); };
