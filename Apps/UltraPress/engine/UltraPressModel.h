@@ -4,6 +4,7 @@
 // ordered tree of blocks. Everything here is data; the renderers (the HTML
 // emitter, later the element renderer) read it and never change it.
 // Design: Docs/Research/UltraPressDesignProposal.md §5.1.
+// Version: 0.7.1 - Hosting's comment names the data folder the hosts live in
 // Version: 0.7.0 - SplitParagraphs, TextLocation / SetBlockText, ResolveBlockPath: text edited in place
 // Version: 0.5.0 - the hosting target (where Publish uploads to)
 // Version: 0.1.0
@@ -80,7 +81,7 @@ struct Theme {
 
 // Where "Publish" puts the site: an UltraPress host account (an UltraCloud
 // account id - FTP, SFTP, WebDAV, Nextcloud - kept by the ultrapress program
-// under the settings folder, never in the site) and the folder on it that
+// in its data folder, never in the site) and the folder on it that
 // is the site's root, "/public_html" on a classic web host.
 struct Hosting {
     std::string account;

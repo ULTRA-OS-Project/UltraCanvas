@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.8.0 - the look: the theme's colours, light or dark, remembered in the settings folder
 // Version: 0.7.4 - the rich editor's toolbar: the formatting discoverable
 // Version: 0.7.3 - a richtext block edits in place
 // Version: 0.7.2 - an FAQ question edits in place; a paragraph field keeps its text when left
@@ -8,10 +9,11 @@
 // Version: 0.5.1 - Publish prunes
 // Version: 0.5.0 - Publish and Host...
 // Version: 0.3.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressWindow.h"
 #include "UltraPressMediaDialog.h"
+#include "UltraPressTheme.h"
 
 #include "UltraPressBlocks.h"
 #include "UltraPressPublish.h"
@@ -24,6 +26,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasPathUtf8.h"
 #include "HTMLReader/HTMLRichDocumentImporter.h"
@@ -51,18 +54,31 @@ namespace UltraPress {
 
 namespace {
 
-const Color kNight(13, 12, 34, 255);
+// The page in the middle is the site's: its canvas and the fields that
+// edit on it keep the site's paper and ink whatever the window's look.
+// Everything else takes the theme's colours (UltraPressTheme.h).
 const Color kPaper(255, 255, 255, 255);
 const Color kPaperSoft(243, 243, 246, 255);
-const Color kOnDark(208, 208, 220, 255);
 const Color kInk(32, 32, 32, 255);
-const Color kInkSoft(90, 90, 98, 255);
 const Color kAccent(169, 7, 7, 255);
 const Color kRule(220, 220, 224, 255);
 const char* kFont = "Ubuntu";
 
-std::shared_ptr<UltraCanvasLabel> Caption(const std::string& id, const std::string& text, const Color& color, float size = 12,
+// A label on a themed surface: its colour by its part, following the theme.
+std::shared_ptr<UltraCanvasLabel> Caption(const std::string& id, const std::string& text, LabelVariant variant, float size = 12,
                                           bool bold = true) {
+    auto label = CreateLabel(id, text);
+    label->SetFont(kFont, size, bold ? FontWeight::Bold : FontWeight::Normal);
+    label->SetWrap(TextWrap::WrapWord);
+    label->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
+    FollowTheme(label, variant);
+    return label;
+}
+
+// A label on the side column, in the column's own colours; the column is
+// rebuilt when the look changes, so the colour is read once.
+std::shared_ptr<UltraCanvasLabel> SideCaption(const std::string& id, const std::string& text, const Color& color, float size = 12,
+                                              bool bold = true) {
     auto label = CreateLabel(id, text);
     label->SetFont(kFont, size, bold ? FontWeight::Bold : FontWeight::Normal);
     label->SetTextColor(color);
@@ -72,10 +88,11 @@ std::shared_ptr<UltraCanvasLabel> Caption(const std::string& id, const std::stri
 }
 
 std::shared_ptr<UltraCanvasButton> SideButton(const std::string& id, const std::string& text, bool active) {
+    const SideColors side = SideColorsOf(UltraCanvasTheme::Current());
     auto button = CreateButton(id, 0, 0, 0, 30, text);
     button->SetFont(kFont, 14, active ? FontWeight::Bold : FontWeight::Normal);
-    button->SetColors(active ? Color(255, 255, 255, 36) : Colors::Transparent, Color(255, 255, 255, 24));
-    button->SetTextColors(active ? kPaper : kOnDark, kPaper);
+    button->SetColors(active ? side.active : Colors::Transparent, side.hover);
+    button->SetTextColors(active ? side.inkStrong : side.ink, side.inkStrong);
     button->SetBorder(0, Colors::Transparent);
     button->SetCornerRadius(6);
     button->SetTextAlign(TextAlignment::Left);
@@ -86,10 +103,11 @@ std::shared_ptr<UltraCanvasButton> SideButton(const std::string& id, const std::
 }
 
 std::shared_ptr<UltraCanvasButton> SmallButton(const std::string& id, const std::string& text) {
+    const SideColors side = SideColorsOf(UltraCanvasTheme::Current());
     auto button = CreateButton(id, 0, 0, 28, 26, text);
     button->SetFont(kFont, 13);
-    button->SetColors(Colors::Transparent, Color(255, 255, 255, 30));
-    button->SetTextColors(kOnDark, kPaper);
+    button->SetColors(Colors::Transparent, side.hover);
+    button->SetTextColors(side.ink, side.inkStrong);
     button->SetBorder(0, Colors::Transparent);
     button->SetCornerRadius(4);
     button->SetPadding(0, 4);
@@ -97,6 +115,22 @@ std::shared_ptr<UltraCanvasButton> SmallButton(const std::string& id, const std:
     button->layoutItem.SetFlexShrink(0);
     button->SetMouseCursor(UCMouseCursor::Hand);
     return button;
+}
+
+// A checkbox has no theme of its own: its label, box and mark take the
+// theme's ink and surfaces here, on the pane that is rebuilt on every look.
+void ThemeCheckbox(const std::shared_ptr<UltraCanvasCheckbox>& box) {
+    const ThemeRoles& r = UltraCanvasTheme::Current().roles;
+    CheckboxVisualStyle look = box->GetVisualStyle();
+    look.base.textColor = look.base.textHoverColor = r.ink;
+    look.base.textDisabledColor = r.inkFaint;
+    look.base.focusRingColor = r.focus.WithAlpha(128);
+    look.boxColor = r.well;
+    look.boxBorderColor = r.lineStrong;
+    look.boxHoverColor = r.hover;
+    look.boxPressedColor = r.pressed;
+    look.checkmarkColor = look.checkmarkHoverColor = r.ink;
+    box->SetVisualStyle(look);
 }
 
 std::shared_ptr<UltraCanvasContainer> Gap(float height) {
@@ -161,7 +195,6 @@ void EditorWindow::Build(const std::shared_ptr<UltraCanvasWindow>& window) {
     frame->layout.SetFlexRow();
 
     side = CreateScrollableContainer("Side", 0, 0, 0, 0, true, false);
-    side->SetBackgroundColor(kNight);
     side->SetElementSize(CSSLayout::Dimension::Px(270), CSSLayout::Dimension::Pct(100));
     side->layout.SetDisplay(CSSLayout::DisplayType::Block);
     side->SetPadding(16);
@@ -181,7 +214,6 @@ void EditorWindow::Build(const std::shared_ptr<UltraCanvasWindow>& window) {
     frame->AddChild(pageArea);
 
     properties = CreateScrollableContainer("Properties", 0, 0, 0, 0, true, false);
-    properties->SetBackgroundColor(kPaperSoft);
     properties->SetElementSize(CSSLayout::Dimension::Px(340), CSSLayout::Dimension::Pct(100));
     properties->layout.SetDisplay(CSSLayout::DisplayType::Block);
     properties->SetPadding(16);
@@ -189,8 +221,32 @@ void EditorWindow::Build(const std::shared_ptr<UltraCanvasWindow>& window) {
     frame->AddChild(properties);
 
     window->AddChild(frame);
+    ApplyLook();
     const std::string first = site.FindPage("home") ? "home" : site.pages.empty() ? "" : site.pages.front().slug;
     ShowPage(first);
+}
+
+void EditorWindow::SetDark(bool wantDark, bool remember) {
+    dark = wantDark;
+    if (remember && !SaveLook(LookSettingsDirectory(), dark)) SetStatus("The look could not be remembered");
+    ApplyLook();
+    if (side) {
+        RebuildSide();
+        RebuildProperties();
+    }
+}
+
+void EditorWindow::ApplyLook() {
+    // The theme is the look: every element that follows it re-styles
+    // itself (the application forwards the change to its windows); the
+    // columns, which have no theme of their own, take their surfaces here,
+    // and the side column is rebuilt in its own colours by the caller.
+    const UltraCanvasTheme theme = ThemeFor(dark);
+    if (UltraCanvasTheme::Current().name != theme.name) UltraCanvasTheme::SetCurrent(theme);
+    if (std::shared_ptr<UltraCanvasWindow> window = windowRef.lock()) window->SetBackgroundColor(theme.roles.ground);
+    if (side) side->SetBackgroundColor(SideColorsOf(theme).panel);
+    if (properties) properties->SetBackgroundColor(theme.roles.ground);
+    if (pageArea) pageArea->SetBackgroundColor(kPaper);   // the site's canvas, in both looks
 }
 
 void EditorWindow::ShowPage(const std::string& slug) {
@@ -688,25 +744,25 @@ void EditorWindow::CancelTextEdit() {
 void EditorWindow::RebuildSide() {
     if (!side) return;
     side->ClearChildren();
-    auto title = Caption("SideTitle", site.name, kPaper, 18);
+    const SideColors look = SideColorsOf(UltraCanvasTheme::Current());
+    auto title = SideCaption("SideTitle", site.name, look.inkStrong, 18);
     side->AddChild(title);
-    status = Caption("SideStatus", dirty ? "Unsaved changes" : "", kOnDark, 12, false);
+    status = SideCaption("SideStatus", dirty ? "Unsaved changes" : "", look.ink, 12, false);
     side->AddChild(status);
     side->AddChild(Gap(10));
     auto save = CreateButton("Save", 0, 0, 0, 32, "Save site");
     save->SetFont(kFont, 14, FontWeight::Bold);
-    save->SetColors(kAccent, Color(130, 5, 5, 255));
-    save->SetTextColors(kPaper);
     save->SetBorder(0, Colors::Transparent);
     save->SetCornerRadius(6);
     save->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(32));
+    FollowTheme(save, ButtonVariant::Primary);
     save->onClick = [this]() { Save(); };
     side->AddChild(save);
     side->AddChild(Gap(6));
     auto publish = CreateButton("Publish", 0, 0, 0, 32, "Publish");
     publish->SetFont(kFont, 14, FontWeight::Bold);
-    publish->SetColors(Color(255, 255, 255, 36), Color(255, 255, 255, 60));
-    publish->SetTextColors(kPaper);
+    publish->SetColors(look.active, look.strong);
+    publish->SetTextColors(look.inkStrong);
     publish->SetBorder(0, Colors::Transparent);
     publish->SetCornerRadius(6);
     publish->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(32));
@@ -723,9 +779,13 @@ void EditorWindow::RebuildSide() {
     media->SetFont(kFont, 12);
     media->onClick = [this]() { Later([this]() { ShowMediaLibrary(); }); };
     side->AddChild(media);
+    auto lookToggle = SideButton("Look", dark ? "Light look" : "Dark look", false);
+    lookToggle->SetFont(kFont, 12);
+    lookToggle->onClick = [this]() { Later([this]() { SetDark(!dark); }); };
+    side->AddChild(lookToggle);
 
     side->AddChild(Gap(18));
-    side->AddChild(Caption("PagesTitle", "PAGES", kAccent));
+    side->AddChild(SideCaption("PagesTitle", "PAGES", look.accent));
     side->AddChild(Gap(6));
     for (const Page* page : SortedPages(site, PageOrder::Stored)) {
         auto button = SideButton("Page" + page->slug, (page->pinned ? "\xE2\x98\x85 " : "") + page->title +
@@ -739,7 +799,7 @@ void EditorWindow::RebuildSide() {
     const Page* page = CurrentPageMutable();
     if (!page) return;
     side->AddChild(Gap(18));
-    side->AddChild(Caption("BlocksTitle", "BLOCKS OF " + page->title, kAccent));
+    side->AddChild(SideCaption("BlocksTitle", "BLOCKS OF " + page->title, look.accent));
     side->AddChild(Gap(6));
     for (size_t i = 0; i < page->blocks.size(); ++i) {
         const Block& block = page->blocks[i];
@@ -771,6 +831,7 @@ void EditorWindow::RebuildSide() {
     side->AddChild(Gap(8));
     auto add = CreateDropdown("AddBlock", 0, 0, 0, 30);
     add->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(30));
+    add->SetFollowTheme(true);
     add->AddItem("+ Add a block\xE2\x80\xA6", "");
     for (const BlockType& type : BlockRegistry::BuiltIn().All()) add->AddItem(type.title, type.name);
     add->SetSelectedIndex(0, false);
@@ -788,13 +849,14 @@ void EditorWindow::RebuildProperties() {
     Page* page = CurrentPageMutable();
     if (!page) return;
     auto field = [&](const std::string& id, const std::string& caption) {
-        properties->AddChild(Caption(id + "Caption", caption, kInk, 13));
+        properties->AddChild(Caption(id + "Caption", caption, LabelVariant::Body, 13));
         properties->AddChild(Gap(4));
     };
     auto input = [&](const std::string& id, const std::string& value, std::function<void(const std::string&)> onChange) {
         auto edit = CreateTextInput(id, 0, 0, 0, 32);
         edit->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(32));
         edit->SetFontSize(14);
+        edit->SetFollowTheme(true);
         edit->SetText(value);
         edit->onTextChanged = std::move(onChange);
         properties->AddChild(edit);
@@ -805,6 +867,7 @@ void EditorWindow::RebuildProperties() {
         edit->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(height));
         edit->SetFontSize(14);
         edit->SetWordWrap(true);
+        edit->SetFollowTheme(true);
         edit->SetText(value, false);
         edit->SetOnTextChanged(std::move(onChange));
         properties->AddChild(edit);
@@ -812,7 +875,7 @@ void EditorWindow::RebuildProperties() {
     };
 
     if (selected < 0 || selected >= static_cast<int>(page->blocks.size())) {
-        properties->AddChild(Caption("PropsTitle", "PAGE", kAccent));
+        properties->AddChild(Caption("PropsTitle", "PAGE", LabelVariant::Heading));
         properties->AddChild(Gap(10));
         field("PageTitle", "Title");
         input("PageTitle", page->title, [this](const std::string& text) {
@@ -826,6 +889,7 @@ void EditorWindow::RebuildProperties() {
         field("PageStatus", "Status");
         auto statusPick = CreateDropdown("PageStatus", 0, 0, 0, 30);
         statusPick->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(30));
+        statusPick->SetFollowTheme(true);
         const char* kStatuses[] = {"published", "draft", "scheduled"};
         for (int i = 0; i < 3; ++i) {
             statusPick->AddItem(kStatuses[i], kStatuses[i]);
@@ -839,23 +903,24 @@ void EditorWindow::RebuildProperties() {
         properties->AddChild(Gap(10));
         auto pinned = UltraCanvasCheckbox::CreateCheckbox("PagePinned", 0, 0, 0, 28, "Pinned (first in the page list)", page->pinned);
         pinned->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(28));
+        ThemeCheckbox(pinned);
         pinned->onStateChanged = [this, box = pinned.get()](CheckedState, CheckedState) {
             if (Page* p = CurrentPageMutable()) { p->pinned = box->IsChecked(); dirty = true; }
             Later([this]() { RebuildSide(); });
         };
         properties->AddChild(pinned);
         properties->AddChild(Gap(16));
-        properties->AddChild(Caption("PropsHint", "Pick a block on the left to edit its properties.", kInkSoft, 13, false));
+        properties->AddChild(Caption("PropsHint", "Pick a block on the left to edit its properties.", LabelVariant::Muted, 13, false));
         return;
     }
 
     Block& block = page->blocks[selected];
     const BlockType* type = BlockRegistry::BuiltIn().Find(block.type);
-    properties->AddChild(Caption("PropsTitle", type ? type->title : block.type, kAccent, 16));
-    if (type) properties->AddChild(Caption("PropsDescription", type->description, kInkSoft, 12, false));
+    properties->AddChild(Caption("PropsTitle", type ? type->title : block.type, LabelVariant::Heading, 16));
+    if (type) properties->AddChild(Caption("PropsDescription", type->description, LabelVariant::Muted, 12, false));
     properties->AddChild(Gap(12));
     if (!type) {
-        properties->AddChild(Caption("PropsUnknown", "This block type is not in the registry; the page skips it.", kInkSoft, 13, false));
+        properties->AddChild(Caption("PropsUnknown", "This block type is not in the registry; the page skips it.", LabelVariant::Muted, 13, false));
         return;
     }
     const int index = selected;
@@ -887,15 +952,15 @@ void EditorWindow::RebuildProperties() {
                 edit->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(32));
                 edit->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
                 edit->SetFontSize(14);
+                edit->SetFollowTheme(true);
                 edit->SetText(value.GetString());
                 edit->onTextChanged = [setProperty, name](const std::string& text) { setProperty(name, text); };
                 row->AddChild(edit);
                 auto pick = CreateButton(id + "Pick", 0, 0, 70, 32, "Pick\xE2\x80\xA6");
                 pick->SetFont(kFont, 13);
-                pick->SetColors(kPaperSoft, kRule);
-                pick->SetTextColors(kInk);
                 pick->SetBorder(1, kRule);
                 pick->SetCornerRadius(6);
+                FollowTheme(pick, ButtonVariant::Standard);
                 pick->SetElementSize(CSSLayout::Dimension::Px(70), CSSLayout::Dimension::Px(32));
                 pick->layoutItem.SetFlexShrink(0);
                 pick->SetMouseCursor(UCMouseCursor::Hand);
@@ -914,6 +979,7 @@ void EditorWindow::RebuildProperties() {
             case PropertyKind::Boolean: {
                 auto box = UltraCanvasCheckbox::CreateCheckbox(id, 0, 0, 0, 28, property.name, value.GetBoolean(false));
                 box->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(28));
+                ThemeCheckbox(box);
                 box->onStateChanged = [setProperty, name, raw = box.get()](CheckedState, CheckedState) { setProperty(name, raw->IsChecked()); };
                 properties->AddChild(box);
                 properties->AddChild(Gap(10));
