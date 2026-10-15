@@ -70312,6 +70312,11 @@ runtime statically, as Visual Studio's `devenv.com` does for `devenv.exe`.
   output), the companion hands the `.exe` its three handles, and Ctrl+C ends
   it.
 
+`ConsoleCompanionTest` (`Tests/ConsoleCompanionTest.cpp`, on the Windows CI
+rows) checks both cases on real Windows. For the console case it starts itself
+again in a hidden console of its own, types a line into it, reads the screen
+back and presses Ctrl+C there.
+
 An application embedding the framework in its own `WinMain` gets all of this by
 calling `UltraCanvasApplication::Initialize()` as usual; nothing extra is
 required.

@@ -1266,11 +1266,17 @@ jobs:
       # it and checks the work area makes room, minimizes and closes it, and
       # lists a Start menu it builds under a temp APPDATA and ProgramData.
       # ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS builds it without the Linux-only
-      # BUILD_TESTS; Linux runs it in the full pass.
+      # BUILD_TESTS; Linux runs it in the full pass. ConsoleCompanionTest
+      # beside it: the console companion (<App>.com) the command-line apps
+      # are typed through, redirected and on a console of its own - typed
+      # input read, output on the screen, Ctrl+C reaching the program.
       - name: Run DesktopShellTest (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^DesktopShellTest$"
+        run: |
+          set -e
+          ctest --output-on-failure --no-tests=error -R "^DesktopShellTest$"
+          ctest --output-on-failure --no-tests=error -R "^ConsoleCompanionTest$"
 
       # EmailCleaner's and UltraMail's engine suites on Windows. Both were
       # built here (see the note above "Run UltraNet tests") but only Linux

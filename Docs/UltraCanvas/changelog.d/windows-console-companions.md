@@ -20,6 +20,13 @@
     program.
 - `package-win.sh` and `scripts/package-ultracanvasstart.sh` ship the `.com`
   files, and their PE headers are checked like the `.exe` files'.
+- The new `ConsoleCompanionTest` (Windows CI rows) drives a probe made the
+  way the applications are, on real Windows:
+  - Redirected: the arguments arrive whole, stdout and stderr stay apart,
+    and the exit code comes back.
+  - On a console of its own, as typed at a prompt: the program prints into
+    the companion's console and reads a line typed there.
+  - Ctrl+C reaches the program, and the companion hands back its exit code.
 - The Windows CI rows check the installed applications:
   - every installed console-mode application has its companion;
   - each `.exe` is a GUI program and each `.com` a console program;
