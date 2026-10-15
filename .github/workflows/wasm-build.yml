@@ -17,15 +17,40 @@ name: WebAssembly build
 # without cross-origin isolation headers must serve, and since run 24 it
 # builds and passes its smoke test like the baseline.
 #
-# Manual dispatch only, on purpose: the wasm sysroot (glib, cairo, pango,
-# fontconfig, harfbuzz, libvips and their dependencies) takes the better part
-# of an hour to cross-compile and needs Ubuntu source packages, so it does not
-# belong in the per-PR matrix. The sysroot is cached on the hash of the
-# script and its patches; a warm run only builds the framework and the demo.
-# Run it from the Actions tab against a branch whenever a change touches
-# UltraCanvas/OS/WASM/ or the EMSCRIPTEN branches of the CMake files.
+# Runs on a pull request, and on a push to main, that touches what the
+# browser build is made of (the paths below): the backend, the sysroot
+# script and its patches, the CMake files with their EMSCRIPTEN branches,
+# the image loader with its libvips-free roads, the demo. Everything else
+# leaves it alone: the wasm sysroot (glib, cairo, pango, fontconfig,
+# harfbuzz, libvips and their dependencies) takes the better part of an hour
+# to cross-compile and needs Ubuntu source packages, but it is cached on the
+# hash of the script and its patches, so a run on a warm cache only builds
+# the framework and the demo, about 25 minutes for the five variants. A
+# manual dispatch from the Actions tab still works, against any branch,
+# with the Emscripten version as its one input.
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/wasm-build.yml'
+      - 'UltraCanvas/OS/WASM/**'
+      - 'cmake/UltraCanvasWasmSysroot.cmake'
+      - 'CMakeLists.txt'
+      - 'UltraCanvas/CMakeLists.txt'
+      - 'UltraCanvas/libspecific/Cairo/**'
+      - 'UltraCanvas/third_party/stb/**'
+      - 'Apps/DemoApp/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/wasm-build.yml'
+      - 'UltraCanvas/OS/WASM/**'
+      - 'cmake/UltraCanvasWasmSysroot.cmake'
+      - 'CMakeLists.txt'
+      - 'UltraCanvas/CMakeLists.txt'
+      - 'UltraCanvas/libspecific/Cairo/**'
+      - 'UltraCanvas/third_party/stb/**'
+      - 'Apps/DemoApp/**'
   workflow_dispatch:
     inputs:
       # Pinned, not 'latest': latest moves to a new release, major ones
@@ -41,6 +66,10 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
+
+env:
+  # The dispatch input, or the pinned default on a pull request or push.
+  EMSDK_VERSION: ${{ inputs.emsdk_version || '6.0.11' }}
 
 jobs:
   wasm:
@@ -111,8 +140,6 @@ jobs:
       # workflow's ccache.
       - name: Set up Emscripten
         timeout-minutes: 15
-        env:
-          EMSDK_VERSION: ${{ inputs.emsdk_version }}
         run: |
           git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
           cd "$RUNNER_TEMP/emsdk"
@@ -134,7 +161,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ env.SYSROOT }}
-          key: wasm-sysroot-${{ runner.os }}-${{ inputs.emsdk_version }}-threads${{ matrix.threads }}-${{ hashFiles('UltraCanvas/OS/WASM/build-wasm-sysroot.sh', 'UltraCanvas/OS/WASM/patches/**') }}
+          key: wasm-sysroot-${{ runner.os }}-${{ env.EMSDK_VERSION }}-threads${{ matrix.threads }}-${{ hashFiles('UltraCanvas/OS/WASM/build-wasm-sysroot.sh', 'UltraCanvas/OS/WASM/patches/**') }}
 
       - name: Build wasm sysroot
         if: steps.sysroot-cache.outputs.cache-hit != 'true'
@@ -197,7 +224,7 @@ jobs:
           gz() { gzip -9 -c "$1" | wc -c | awk '{ printf "%.2f MB", $1 / 1048576 }'; }
           br() { if command -v brotli >/dev/null; then brotli -q 11 -c "$1" | wc -c | awk '{ printf "%.2f MB", $1 / 1048576 }'; else echo "n/a"; fi; }
           {
-            echo "### WebAssembly demo sizes: ${{ matrix.variant }} (emsdk ${{ inputs.emsdk_version }}, \`$CONFIGURE\`)"
+            echo "### WebAssembly demo sizes: ${{ matrix.variant }} (emsdk ${{ env.EMSDK_VERSION }}, \`$CONFIGURE\`)"
             echo ""
             echo "| File | Raw | gzip -9 | brotli -q 11 |"
             echo "|---|---:|---:|---:|"

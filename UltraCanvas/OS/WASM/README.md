@@ -97,8 +97,13 @@ time. It is also a build without libvips, which the library's CMake forces
 (`ULTRACANVAS_ENABLE_VIPS=OFF`): libvips runs every image on a worker
 thread, a program without `-pthread` cannot start one, and GLib aborts on
 the refused `pthread_create` at the first text. Such a program reads PNG
-through cairo's own reader and SVG through the Vector plugin, nothing
-else. The two kinds of sysroot never share a directory.
+through cairo's own reader, JPEG, BMP and GIF through the bundled
+`stb_image` (`third_party/stb`) and SVG through the Vector plugin, nothing
+else. The script also strips `-pthread` from every `.pc` file it installs
+in that sysroot (glib's and its dependants' carry it), so a consumer's
+`pkg-config --cflags` does not quietly turn `__EMSCRIPTEN_PTHREADS__` on in
+a program without threads. The two kinds of sysroot never share a
+directory.
 
 ### 2. The library / an application
 
@@ -215,8 +220,10 @@ serve the build directory with `serve.py`, and open:
   file; the photos the page shows are placeholder tiles except the three in
   `media/images/ultraos/`.
 
-The manually dispatched `wasm-build.yml` workflow configures the repository
-root with `-DBUILD_WASM_DEMOS=ON`, so one library build gives all three
+The `wasm-build.yml` workflow - run on a pull request, and on a push to
+`main`, that touches the WebAssembly port, the sysroot script, the Cairo
+image code or the demo, and on a manual dispatch with an optional emsdk
+version - configures the repository root with `-DBUILD_WASM_DEMOS=ON`, so one library build gives all three
 pages, in five variants - `baseline`, `min-size` (`-Os`), `no-vips`,
 `four-fonts` (`-DUC_WASM_FONTS=...`, the four the front page uses) and
 `single-thread` - writes each variant's download sizes (raw, gzip, Brotli)
@@ -266,8 +273,10 @@ wasm pipeline runs; the only `__EMSCRIPTEN__` branch in them is the
   of download) and no BMP (ImageMagick). The demo's bitmap pages say so in
   place of the picture; an application gets "format not supported" from
   `UCImage`. A build without libvips (the `no-vips` and `single-thread`
-  variants) reads PNG through cairo's own reader and SVG through the Vector
-  plugin, nothing else.
+  variants) reads PNG through cairo's own reader, JPEG, BMP and GIF (first
+  frame) through the bundled `stb_image`, and SVG through the Vector
+  plugin, nothing else: no TIFF, WebP, HEIC or AVIF, and nothing is
+  written.
 - **SVG needs the Vector plugin registered**: the sysroot's libvips has no
   SVG loader (librsvg / resvg are not built), so `UCImage` reads an .svg
   through the vector preview seam the Vector plugin installs
