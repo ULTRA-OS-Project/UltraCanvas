@@ -27,11 +27,17 @@
   `OnEvent` in the button, image element, text input and Markdown view, the
   key handling of the segmented control, the slider (both modes) and the
   Gource tree (`-Wswitch`); `FontStyle::ToFontDesc` names the `Normal` slant
-  and weight it leaves as they are. `TooltipContent` builds its title, text,
+  and weight it leaves as they are; PixelFX's `Generate::CopyBlank` passes
+  its `0.0` without braces (`-Wbraced-scalar-init`). `TooltipContent` builds its title, text,
   bullet and separator blocks through a helper instead of a braced
   `{type, text}` that names two of the block's six fields, so the
   `-Wmissing-field-initializers` warning no longer appears in every file that
-  includes `UltraCanvasTooltipTypes.h`. No change in behaviour.
+  includes `UltraCanvasTooltipTypes.h`. And the vendored miniz no longer
+  prints its *"this path may not support large files"* `#pragma message` on
+  Linux: the core, VirtualFS and the tests compile it with
+  `_LARGEFILE64_SOURCE`, so glibc offers it the 64-bit file calls it prefers
+  (set in CMake - `third_party/` is left as vendored). No change in
+  behaviour.
 - **A key code outside the key table no longer reads past it.**
   `UltraCanvasApplicationBase::IsKeyPressed` indexed the 256-entry table with
   whatever key code it was given, and the platforms make a `UCKeys` out of any
