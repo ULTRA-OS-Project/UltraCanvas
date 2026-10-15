@@ -48,6 +48,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailTrace.cpp
     engine/UltraMailOneTimeCode.cpp
     engine/UltraMailPaths.cpp
+    engine/UltraMailResultText.cpp
 )
 
 add_library(UltraMailEngine STATIC ${ULTRAMAIL_ENGINE_SOURCES})

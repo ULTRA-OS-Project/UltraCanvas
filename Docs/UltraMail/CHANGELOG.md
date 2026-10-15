@@ -1,3 +1,17 @@
+#### 2026-10-15 *0.10.56*
+- **A failure names the server it talked to.** The sentence an alert leads
+  with for a failed network operation (`FriendlyMessage`) said *the mail
+  server* for every result code, whatever had been talked to, so a
+  one-click unsubscribe that could not reach the list's web server was
+  worded as a mail-server problem with advice about the account's server
+  address. The caller now names what it talked to - the mail server unless
+  it says otherwise - and the account advice (the password, the address and
+  port on the settings page) goes with the mail server only: *The sender's
+  unsubscribe server could not be found. Check your internet connection.*
+  An HTTP-level refusal says its status (*… answered with an error (HTTP
+  503).*). The helpers moved from the alert layer into the engine
+  (`UltraMailResultText.h`), where the tests read them.
+
 #### 2026-10-15 *0.10.55*
 - **A browser sign-in that fails before the browser opens says what
   failed.** When the sign-in service could not be reached - its name did not
