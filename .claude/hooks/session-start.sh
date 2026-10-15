@@ -30,9 +30,10 @@
 # for its live tests - PostgreSQL, Avahi and the IPP printer - whose tests
 # skip unless CI's environment asks for them. To add a package, append it.
 #
+# Version: 1.1.1 - Hunspell and the en_US dictionary, as CI now installs
 # Version: 1.1.0 - every library CI installs, not only libsodium
 # Version: 1.0.0
-# Last Modified: 2026-10-07
+# Last Modified: 2026-10-15
 # Author: UltraCanvas Framework
 set -u
 
@@ -60,6 +61,8 @@ PACKAGES=(
     libcurl4-openssl-dev libpsl-dev libc-ares-dev
     # UltraCrypt (credential vaults), UltraDatabase (SQLite, PostgreSQL client)
     libsodium-dev libsqlite3-dev libpq-dev
+    # spell checking (no native backend on Linux) and its default dictionary
+    libhunspell-dev hunspell-en-us
 )
 
 # The packages not installed yet, in one dpkg call.

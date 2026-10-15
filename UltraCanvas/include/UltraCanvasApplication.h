@@ -1,9 +1,10 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.8.1 - IsKeyPressed checks the key code against the table (KeyStateCount)
 // Version: 1.8.0 - keys aimed at a blocked window go to the modal
 // Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
-// Last Modified: 2026-08-03
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -230,8 +231,11 @@ namespace UltraCanvas {
         mutable std::mutex registeredFontsMutex_;
         std::vector<std::string> registeredFontFiles_;
 
-        // Keyboard state
-        bool keyStates[256];
+        // Keyboard state: one entry per key code below KeyStateCount. The
+        // platforms make a UCKeys out of any key code they are given, so every
+        // index into it is checked against the bound, not trusted.
+        static constexpr int KeyStateCount = 256;
+        bool keyStates[KeyStateCount];
         bool shiftHeld = false;
         bool ctrlHeld = false;
         bool altHeld = false;
@@ -303,7 +307,11 @@ namespace UltraCanvas {
         static void UnInstallWindowEventFilter(UltraCanvasUIElement* elem);
         static void MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem);
 
-        bool IsKeyPressed(UCKeys keyCode) { return keyStates[keyCode]; }
+        // False for a key code outside the table rather than a read past its end.
+        bool IsKeyPressed(UCKeys keyCode) const {
+            const int key = static_cast<int>(keyCode);
+            return key >= 0 && key < KeyStateCount && keyStates[key];
+        }
         // Keys the application currently believes are held down. Modal dialogs
         // snapshot this on open so a key that was already down when they
         // appeared cannot act as input to them.

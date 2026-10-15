@@ -5,10 +5,11 @@
 // border line, padding and caption strip are kept in sync through
 // RecalculatePadding() so the inherited container lays the children out
 // inside the visible frame, below the caption.
+// Version: 1.2.0 - the SectionCard preset (Colors::SectionCard*)
 // Version: 1.1.1 - the help tooltip is anchored at the info icon's top edge (tooltips
 //                 now sit above the spot passed)
 // Version: 1.1.0
-// Last Modified: 2026-06-15
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #include "UltraCanvasGroupBox.h"
 #include "UltraCanvasTooltipManager.h"
@@ -41,6 +42,23 @@ namespace UltraCanvas {
         s.headerBackgroundColor = Colors::Transparent;
         s.showHeaderSeparator   = true;
         s.contentPadding  = 12.0f;
+        return s;
+    }
+
+    GroupBoxVisualStyle GroupBoxVisualStyle::SectionCard() {
+        GroupBoxVisualStyle s;
+        s.backgroundColor       = Colors::SectionCardBackground;
+        s.borderColor           = Colors::SectionCardBorder;
+        s.borderWidth           = 1.0f;
+        s.cornerRadius          = 8.0f;
+        s.titleFont.fontSize    = 11.0f;
+        s.titleFont.fontWeight  = FontWeight::Bold;
+        s.titleColor            = Colors::SectionCardCaption;
+        s.titleIndent           = 8.0f;
+        s.titleVerticalPadding  = 4.0f;
+        s.headerBackgroundColor = Colors::Transparent;
+        s.showHeaderSeparator   = true;
+        s.contentPadding        = 8.0f;
         return s;
     }
 
