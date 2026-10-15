@@ -37,6 +37,7 @@
 # the image has none (no de_DE, checked 2026-10-15), so here they had never run.
 #
 # Version: 1.2.0 - the de_DE.UTF-8 locale the locale tests need
+# Version: 1.1.1 - Hunspell and the en_US dictionary, as CI now installs
 # Version: 1.1.0 - every library CI installs, not only libsodium
 # Version: 1.0.0
 # Last Modified: 2026-10-15
@@ -69,6 +70,8 @@ PACKAGES=(
     libsodium-dev libsqlite3-dev libpq-dev
     # locale-gen, for the comma-decimal locale below
     locales
+    # spell checking (no native backend on Linux) and its default dictionary
+    libhunspell-dev hunspell-en-us
 )
 
 # The comma-decimal locale the locale tests run under.

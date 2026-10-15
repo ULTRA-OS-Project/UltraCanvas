@@ -6,6 +6,7 @@
 // and pan.
 // Version: 1.2.0 - Text types on the canvas into a text layer; painting on a
 //                  text layer asks to rasterize it; Move moves a text as text
+// Version: 1.1.1 - AddCaption: the hints under a tool's options are quiet grey, not bold
 // Version: 1.1.0 - Polyline, Arrow and Curve
 // Version: 1.0.0
 // Last Modified: 2026-10-15
@@ -126,9 +127,11 @@ UltraCanvasDropdown* AddDropdown(UltraCanvasContainer& panel, const std::string&
 }
 
 void AddCaption(UltraCanvasContainer& panel, const std::string& id, const std::string& text) {
+    // A hint under the controls ("[ and ] change the size"): quiet grey, not
+    // bold, so it does not read as one more heading in the card.
     auto lbl = CreateLabel(id, 0, 0, 0, 20, text);
-    lbl->SetFontSize(11);
-    lbl->SetFontWeight(FontWeight::Bold);
+    lbl->SetFontSize(10.5f);
+    lbl->SetTextColor(Color(104, 112, 125, 255));
     lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     panel.AddChild(lbl);
 }

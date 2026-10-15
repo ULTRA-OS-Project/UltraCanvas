@@ -8,8 +8,9 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
-// Version: 1.5.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
+// Version: 1.6.0 - the Text tool types on the canvas: an UltraCanvasRichTextEdit over the
 //                  canvas at its zoom edits a text layer; Layer > Edit Text / Rasterize Layer
+// Version: 1.5.0 - the right panel's sections are group boxes (optionsPanel, layersPanel)
 // Version: 1.4.0 - BringForward: restores and raises the window (a file handed over by a
 //                  second start opens in a window of its own and comes to the front)
 // Version: 1.3.0 - toolSlots: the palette's tools in groups, one slot each, with a fold-out bar
@@ -33,6 +34,7 @@
 #include "UltraCanvasColorSwatchBar.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasGroupBox.h"
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasRichTextEdit.h"
@@ -280,9 +282,11 @@ private:
     std::shared_ptr<UltraCanvasContainer>      rightPanel;
     std::shared_ptr<UltraCanvasColorPicker>    colorPicker;
     std::shared_ptr<UltraCanvasColorSwatchBar> swatches;
-    std::shared_ptr<UltraCanvasContainer>      optionsPanel;
-    std::shared_ptr<UltraCanvasLabel>          optionsTitle;
-    std::shared_ptr<UltraCanvasContainer>      layersPanel;
+    // Two of the right panel's cards (BuildRightPanel; the Colour card holds
+    // the picker and swatches): the active tool's options, captioned with the
+    // tool's name, and Layers.
+    std::shared_ptr<UltraCanvasGroupBox>       optionsPanel;
+    std::shared_ptr<UltraCanvasGroupBox>       layersPanel;
     std::shared_ptr<UltraCanvasContainer>      layerRows;
     std::shared_ptr<UltraCanvasSlider>         layerOpacity;
     std::shared_ptr<UltraCanvasDropdown>       layerBlend;
