@@ -815,7 +815,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `GetVirtualDesktopCount` / `GetCurrentVirtualDesktop` /
     `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
     `MoveWindowToVirtualDesktop`.
-  - `GetScreenSize`, `ReserveScreenEdges` (a window's strips along the
+  - `GetScreenSize`, `ListScreens` (`DesktopScreenInfo` per monitor, the
+    primary first: `EnumDisplayMonitors` / RandR; a `WindowType::Desktop`
+    window goes on one through `WindowConfig::desktopArea`),
+    `ReserveScreenEdges` (a window's strips along the
     screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
     so maximised windows stop short of a desktop's bars), `CaptureScreen`
     (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
@@ -825,7 +828,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
     icons resolved; the Start menu's program shortcuts on Windows, launched
-    by opening the shortcut), `MatchApplication` (a window's entry, by
+    by opening the shortcut, and the Microsoft Store applications by
+    `appUserModelId`, started through `IApplicationActivationManager`), `MatchApplication` (a window's entry, by
     `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
     `FindProgram` (next to this executable first, then `PATH`).
   - `CanReplaceSystemDesktop` / `GetSystemDesktopReplacement` /
@@ -849,7 +853,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `Stop()` (joins) / `IsRunning`: a key combination that reaches this
     program from any window (X11 `XGrabKey` on its own connection and
     thread, Windows `RegisterHotKey` on its own thread; fails with a reason
-    elsewhere and when another program holds it).
+    elsewhere and when another program holds it). `"Super"` alone is a tap
+    of the Win key on Windows (a low-level keyboard hook), refused on X11.
   - `UltraCanvasTrayHost` - `Start(onChanged, &error)` / `Stop()` (joins) /
     `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon) /
     `Click(id, TrayClick)`: the notification area for a desktop that is the
@@ -903,7 +908,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   bar with the mouse wheel, with a chevron over the edge the items continue
   past that scrolls a page when clicked (`SetScrollHints`).
   `WindowType::Desktop` (`UltraCanvasWindow.h`) is
-  the screen-sized window at the bottom of the stack a desktop draws into.
+  the screen-sized window at the bottom of the stack a desktop draws into;
+  `WindowConfig::desktopArea` puts one on another monitor.
 
 - **UltraCanvasToolGroupButton** (`UltraCanvasToolGroupButton.h`) — several
   tools sharing one slot of a palette or toolbar: the slot shows one of them,

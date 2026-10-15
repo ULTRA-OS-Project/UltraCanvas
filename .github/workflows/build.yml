@@ -1394,9 +1394,73 @@ jobs:
         if: runner.os == 'Linux'
         run: BUILDDIR="$PWD/build" SKIP_BUILD=1 ./package-linux.sh
 
+      # NSIS for the installer: preinstalled on the Windows Server 2022 and
+      # Windows-on-Arm runner images, not on 2025's, and MSYS2 packages it
+      # for CLANG64 but not for CLANGARM64 - so the runner's own copy, else
+      # Chocolatey's. scripts/build-windows-installer.sh finds it there.
+      - name: NSIS for the installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @("${env:ProgramFiles(x86)}\NSIS\makensis.exe", "$env:ProgramFiles\NSIS\makensis.exe")
+          $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $found) {
+            choco install nsis --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "Chocolatey could not install NSIS (exit $LASTEXITCODE)" }
+            $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $found) { throw "makensis.exe is not where NSIS installs it" }
+          & $found /VERSION
+          Write-Host ""
+          Write-Host "makensis: $found"
+
       - name: Package (Windows)
         if: runner.os == 'Windows'
-        run: ./package-win.sh --no-sign
+        run: ./package-win.sh --no-sign --installer
+
+      # The installer, run as a user would - silently, into a folder of its
+      # own - and taken out again: everything it installs is where it
+      # belongs, the shell guard has no Start-menu entry, UltraDesktop is
+      # registered for Run boxes, and the uninstaller removes exactly what it
+      # put there. /D= and _?= must be last and unquoted, hence a path
+      # without spaces.
+      - name: Install and uninstall the installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-ChildItem -Filter 'UltraCanvas-Setup-Windows-*.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'package-win.sh --installer built no installer' }
+          "Installer: $($setup.Name), $([math]::Round($setup.Length / 1MB, 1)) MB"
+          $dir = Join-Path $env:RUNNER_TEMP 'UltraCanvasInstallTest'
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "The installer exited with $($p.ExitCode)" }
+          foreach ($file in 'UltraDesktop.exe', 'UOS-Settings.exe', 'UltraCanvasShellGuard.exe', 'Uninstall.exe') {
+            if (-not (Test-Path (Join-Path $dir $file))) { throw "$file was not installed" }
+          }
+          $installed = (Get-ChildItem $dir -Recurse -File).Count
+          "Installed: $installed files"
+          $appPath = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe').'(default)'
+          if ($appPath -ne (Join-Path $dir 'UltraDesktop.exe')) { throw "App Paths names '$appPath'" }
+          $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'UltraCanvas'
+          $links = @(Get-ChildItem $menu -Filter '*.lnk' | ForEach-Object Name)
+          "Start menu: $($links -join ', ')"
+          if ($links -notcontains 'UltraDesktop.lnk') { throw 'UltraDesktop has no Start-menu entry' }
+          if ($links -contains 'UltraCanvasShellGuard.lnk') { throw 'The shell guard got a Start-menu entry' }
+          if (-not (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\UltraCanvas' -ErrorAction SilentlyContinue)) {
+            throw 'No Apps & features entry'
+          }
+          # _?= runs the uninstaller in place and waits for it; it cannot
+          # delete itself then, everything else must go.
+          $p = Start-Process -FilePath (Join-Path $dir 'Uninstall.exe') -ArgumentList '/S', "_?=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "The uninstaller exited with $($p.ExitCode)" }
+          $left = @(Get-ChildItem $dir -Recurse -File | Where-Object Name -ne 'Uninstall.exe')
+          if ($left.Count -gt 0) { throw "Left behind: $(($left | Select-Object -First 10 | ForEach-Object FullName) -join ', ')" }
+          if (Test-Path $menu) { throw 'The Start-menu folder was left behind' }
+          if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe' -ErrorAction SilentlyContinue) {
+            throw 'The App Paths entry was left behind'
+          }
+          "Uninstalled: nothing of the $installed files left"
 
       # UltraCanvasStart on its own: the setup application has to reach a
       # computer that has nothing yet, so it ships as one small archive beside
@@ -1549,6 +1613,17 @@ jobs:
           name: UCDemo-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: |
             dist/
+          retention-days: 7
+
+      # The installer is LZMA-compressed already: stored as it is.
+      - name: Upload the installer (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvas-Setup-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
+          path: UltraCanvas-Setup-Windows-*.exe
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
       # The disk image only, not the dist-macos/ folders: upload-artifact

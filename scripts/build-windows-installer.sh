@@ -6,8 +6,11 @@
 # Usage:
 #   scripts/build-windows-installer.sh <dist dir> <version> <arch> <output.exe>
 #
-# Needs makensis: in the MSYS2 shell `pacman -S nsis` (or NSIS for Windows on
-# the PATH); on Linux `apt install nsis` builds the same installer.
+# Needs makensis: on the PATH (in the CLANG64 shell `pacman -S
+# mingw-w64-clang-x86_64-nsis`; on Linux `apt install nsis` builds the same
+# installer), else NSIS for Windows where its installer puts it (Program
+# Files) - CLANGARM64 has no NSIS package, and the CI runners carry that one.
+# MAKENSIS names another.
 #
 # Generates, in a temporary folder:
 #   - the Start-menu list: one entry per application, where an application
@@ -20,9 +23,10 @@
 #     that still holds something of the user's;
 #   - the installer's icon from media/appicon/UltraCanvas.png, when
 #     ImageMagick is there to convert it.
+# Version: 0.1.2 - makensis also from Program Files (the CI runners' NSIS)
 # Version: 0.1.1 - no Start-menu entry for UltraCanvasShellGuard
 # Version: 0.1.0
-# Last Modified: 2026-10-14
+# Last Modified: 2026-10-15
 set -e
 
 if [ $# -ne 4 ]; then
@@ -36,8 +40,18 @@ OUTFILE="$4"
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 NSI="$SCRIPT_DIR/Windows/Installer/UltraCanvasSetup.nsi"
 
-if ! command -v makensis >/dev/null 2>&1; then
-    echo "Error: makensis not found. Install NSIS: in the MSYS2 shell 'pacman -S nsis', on Linux 'apt install nsis'." >&2
+if [ -z "${MAKENSIS:-}" ]; then
+    if command -v makensis >/dev/null 2>&1; then
+        MAKENSIS=makensis
+    else
+        for candidate in "/c/Program Files (x86)/NSIS/makensis.exe" "/c/Program Files/NSIS/makensis.exe"; do
+            if [ -x "$candidate" ]; then MAKENSIS="$candidate"; break; fi
+        done
+    fi
+fi
+if [ -z "${MAKENSIS:-}" ]; then
+    echo "Error: makensis not found. Install NSIS: in the CLANG64 shell 'pacman -S mingw-w64-clang-x86_64-nsis'," >&2
+    echo "       on Windows the NSIS installer (Program Files), on Linux 'apt install nsis'." >&2
     exit 1
 fi
 if [ ! -d "$DIST" ] || [ -z "$(ls -A "$DIST")" ]; then
@@ -128,7 +142,7 @@ else
 fi
 
 # ===== BUILD =====
-makensis -V2 -INPUTCHARSET UTF8 \
+"$MAKENSIS" -V2 -INPUTCHARSET UTF8 \
     "-DUC_VERSION=$VERSION" \
     "-DUC_ARCH=$ARCH" \
     "-DUC_DIST=$(native_path "$DIST")" \

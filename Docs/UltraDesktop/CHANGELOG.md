@@ -11,7 +11,14 @@
     notifications (or a yellow marker and a tooltip where the build has no
     notification toasts);
   - offers *Sign out*, *Restart* and *Shut down* on the settings button's
-    right-click menu, each asked first.
+    right-click menu, each asked first;
+  - opens the Applications window on a tap of the Win key, where the Start
+    menu would open;
+  - covers the other monitors with its wallpaper instead of leaving them
+    black, following monitors plugged in or taken away.
+- **The Applications window lists the Microsoft Store apps** (Calculator,
+  Photos, Settings …) beside the Start menu's programs, with their tile
+  icons, and starts them as the Start menu does.
 - The sign-in starts UltraCanvasShellGuard, which starts UltraDesktop and
   starts Explorer for the session when UltraDesktop crashes three times in a
   minute or cannot start - so a broken update never leaves an empty screen.

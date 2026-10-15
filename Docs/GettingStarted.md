@@ -606,7 +606,10 @@ it, and without the entitlement the device is refused.
 collects every application with the DLLs it needs into one standalone zip.
 `--installer` also builds `UltraCanvas-Setup-Windows-<version>-<arch>.exe`
 from the same folder (`Windows/Installer/UltraCanvasSetup.nsi`, through
-`scripts/build-windows-installer.sh`; `pacman -S nsis` first). It installs for
+`scripts/build-windows-installer.sh`; first `pacman -S mingw-w64-clang-x86_64-nsis`
+in CLANG64, or NSIS for Windows, which CLANGARM64 has to use, as it has no NSIS
+package). CI builds the installer on both Windows rows, installs and
+uninstalls it once, and uploads it as an artifact. It installs for
 the current account without administrator rights, into
 `%LOCALAPPDATA%\Programs\UltraCanvas`. Every GUI program gets a Start-menu
 entry, and the suite gets an *Apps & features* entry. The finish page offers
@@ -617,7 +620,16 @@ back first, then removes exactly the files it installed.
 release uses. They read the certificate's password from
 `ULTRACANVAS_SIGN_PFX_PASSWORD` - set it in the shell, or as a secret on a
 build machine - and stop, saying so, when it is not set. The `.pfx` they
-export next to themselves is ignored by git: it holds the private key. The version in the `.exe` resource and the manifest comes from
+export next to themselves is ignored by git: it holds the private key.
+Until 2026-10 the password was written into the scripts, so it is in the
+repository's history: on the signing machine, set a new one in
+`ULTRACANVAS_SIGN_PFX_PASSWORD` and run each script once with
+`-Mode RotatePassword`. It exports the same certificate and key again under the
+new password, opens the result once to prove it, and replaces the old `.pfx`.
+When the certificate is not in the account's store, it also needs the old
+password, in `ULTRACANVAS_SIGN_OLD_PFX_PASSWORD`. It refuses the published
+password. Delete any other copy of the old `.pfx` - it still opens with the old
+password - and update the build machines' secret. The version in the `.exe` resource and the manifest comes from
 the app's changelog line; only the Windows resource files still carry a literal
 copy, because `windres` reads them from disk: run `./set-version.sh` after
 bumping the version; the CMake configure warns when they are stale and

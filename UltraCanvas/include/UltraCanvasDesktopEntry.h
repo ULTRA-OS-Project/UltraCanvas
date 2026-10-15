@@ -14,8 +14,9 @@
 // std::filesystem, so it is safe on background threads and costs no
 // dependency; nothing here launches anything (see UltraCanvasFileAssociations
 // for that).
+// Version: 1.3.0 - appUserModelId, for Microsoft Store applications on Windows
 // Version: 1.2.0 - shortcutPath, for the Start menu's applications on Windows
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -56,6 +57,11 @@ namespace UltraCanvas {
         // ones that name no plain program (an installer's advertised
         // shortcut). Empty for a desktop entry.
         std::string shortcutPath;
+        // Not from a desktop entry either: the AppUserModelID of a Microsoft
+        // Store application on Windows ("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"),
+        // which has no program file of its own to start and no shortcut on
+        // disk. Launching activates the application by it. Empty otherwise.
+        std::string appUserModelId;
     };
 
     // Extension test only, no file access.

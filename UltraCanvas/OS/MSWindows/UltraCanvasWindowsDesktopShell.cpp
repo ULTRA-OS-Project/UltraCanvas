@@ -30,10 +30,13 @@
 //     own thread, which pumps its messages in MsgWaitForMultipleObjectsEx.
 //   - Global shortcut: RegisterHotKey on the shortcut's thread. Explorer
 //     keeps most Win-key combinations for itself (Win+V among them), so
-//     those are reported as taken while it runs.
+//     those are reported as taken while it runs. "Super" alone is a tap of
+//     the Win key, seen through a low-level keyboard hook on that thread.
 //   - Applications: the Start menu's shortcuts, the user's and the
 //     machine's, named as the Start menu names them (desktop.ini) and
-//     launched by opening the shortcut, as Explorer does.
+//     launched by opening the shortcut, as Explorer does; and the Microsoft
+//     Store applications from the shell's Applications folder, launched
+//     through IApplicationActivationManager.
 //   - In place of the system's desktop, beside Explorer: a value under the
 //     user's Run key starts the desktop at sign-in, and Explorer's taskbar
 //     is set to hide itself; the taskbar's state before is kept and given
@@ -47,6 +50,9 @@
 //     the window every program's Shell_NotifyIcon talks to
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx.
+// Version: 1.3.0 - Microsoft Store applications (ListPackagedApplications,
+//                  LaunchPackagedApplication); "Super" alone, a tap of the
+//                  Win key
 // Version: 1.2.0 - DesktopReplacement::Instead, EndSession, LaunchShortcut;
 //                  our own Shell_TrayWnd is not Explorer's taskbar
 // Version: 1.1.0 - ReplaceSystemDesktop / RestoreSystemDesktop
@@ -82,8 +88,9 @@
 #include <mmdeviceapi.h>
 #include <objbase.h>
 #include <shellapi.h>
+#include <shlobj.h>     // SHGetKnownFolderItem
 #include <shlwapi.h>    // SHLoadIndirectString
-#include <shobjidl.h>   // IVirtualDesktopManager
+#include <shobjidl.h>   // IVirtualDesktopManager, IApplicationActivationManager
 
 #include <cairo/cairo.h>
 
@@ -187,6 +194,12 @@ namespace {
         {0xAA509086, 0x5CA9, 0x4C25, {0x8F, 0x95, 0x58, 0x9D, 0x3C, 0x07, 0xB4, 0x8A}};
     const CLSID kClsidMMDeviceEnumerator =
         {0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};
+    const CLSID kClsidApplicationActivationManager =
+        {0x45BA127D, 0x10A8, 0x46EA, {0x8A, 0xB7, 0x56, 0xEA, 0x90, 0x78, 0x94, 0x3C}};
+    const GUID kFolderIdAppsFolder =
+        {0x1E87508D, 0x89C2, 0x42F0, {0x8A, 0x7E, 0x64, 0x5A, 0x0F, 0x50, 0xCA, 0x58}};
+    const GUID kBhidEnumItems =
+        {0x94F60519, 0x2850, 0x4924, {0xAA, 0x5A, 0xD1, 0x5E, 0x84, 0x86, 0x80, 0x39}};
 
     // ===== THE PNG CACHE FOR ICONS =====
     // The taskbar and the app starter draw image files. An executable's or a
@@ -771,6 +784,59 @@ namespace {
         return stem.rfind(L"unins", 0) != 0 && stem.find(L"uninstall") == std::wstring::npos;
     }
 
+    // ===== MICROSOFT STORE APPLICATIONS =====
+    // A Store application has no shortcut on disk and no program file to
+    // start; the shell's Applications folder (shell:AppsFolder) - the list
+    // the Start menu itself is made from - names it by its AppUserModelID,
+    // "PackageFamilyName!AppId", with the name and the icon the Start menu
+    // shows. The desktop programs in the same folder come from the
+    // shortcuts already read, and carry no "!".
+
+    std::shared_ptr<UCPixmap> ShellItemIconPixmap(IShellItem* item, int size) {
+        IShellItemImageFactory* factory = nullptr;
+        if (FAILED(item->QueryInterface(__uuidof(IShellItemImageFactory), reinterpret_cast<void**>(&factory))))
+            return nullptr;
+        std::shared_ptr<UCPixmap> pixmap;
+        HBITMAP bitmap = nullptr;
+        if (SUCCEEDED(factory->GetImage(SIZE{size, size}, SIIGBF_ICONONLY, &bitmap)) && bitmap) {
+            pixmap = WindowsIcons::PixmapFromBitmap(bitmap);
+            DeleteObject(bitmap);
+        }
+        Release(factory);
+        return pixmap;
+    }
+
+    void ListPackagedApplications(int size, std::vector<UCDesktopEntry>& out) {
+        IShellItem* folder = nullptr;
+        if (FAILED(SHGetKnownFolderItem(kFolderIdAppsFolder, KF_FLAG_DEFAULT, nullptr, __uuidof(IShellItem),
+                                        reinterpret_cast<void**>(&folder))))
+            return;
+        IEnumShellItems* items = nullptr;
+        if (SUCCEEDED(folder->BindToHandler(nullptr, kBhidEnumItems, __uuidof(IEnumShellItems),
+                                            reinterpret_cast<void**>(&items)))) {
+            IShellItem* item = nullptr;
+            while (items->Next(1, &item, nullptr) == S_OK && item) {
+                PWSTR id = nullptr;
+                if (SUCCEEDED(item->GetDisplayName(SIGDN_PARENTRELATIVEPARSING, &id)) && id && std::wcschr(id, L'!')) {
+                    UCDesktopEntry entry;
+                    entry.kind = UCDesktopEntry::Kind::Application;
+                    entry.appUserModelId = Narrow(id);
+                    PWSTR name = nullptr;
+                    if (SUCCEEDED(item->GetDisplayName(SIGDN_NORMALDISPLAY, &name)) && name) entry.name = Narrow(name);
+                    CoTaskMemFree(name);
+                    if (entry.name.empty()) entry.name = entry.appUserModelId;
+                    entry.iconFile = CachedIconFile("aumid|" + entry.appUserModelId + "|" + std::to_string(size),
+                                                    [item, size]() { return ShellItemIconPixmap(item, size); });
+                    out.push_back(std::move(entry));
+                }
+                CoTaskMemFree(id);
+                Release(item);
+            }
+            Release(items);
+        }
+        Release(folder);
+    }
+
     std::vector<fs::path> StartMenuDirectories() {
         std::vector<fs::path> dirs;
         // The user's first, so that a user's shortcut wins over the
@@ -1036,6 +1102,40 @@ namespace {
         return it == named.end() ? 0 : it->second;
     }
 
+    // A tap of the Win key alone - pressed and let go with no other key in
+    // between - as a low-level keyboard hook sees it. RegisterHotKey takes
+    // no combination without a key, and a hook is how Explorer itself tells
+    // a tap that opens the Start menu from Win+E.
+    struct WinKeyTap {
+        bool winDown = false;
+        bool other = false;      // another key went down while Win was held
+        bool tapped = false;
+    };
+
+    thread_local WinKeyTap* t_tap = nullptr;
+
+    LRESULT CALLBACK OnLowLevelKey(int code, WPARAM wParam, LPARAM lParam) {
+        if (code == HC_ACTION && t_tap) {
+            const auto* key = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+            const bool down = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
+            const bool win = key->vkCode == VK_LWIN || key->vkCode == VK_RWIN;
+            if (win) {
+                if (down) {
+                    if (!t_tap->winDown) {   // not the auto-repeat of a held key
+                        t_tap->winDown = true;
+                        t_tap->other = false;
+                    }
+                } else {
+                    if (t_tap->winDown && !t_tap->other) t_tap->tapped = true;
+                    t_tap->winDown = false;
+                }
+            } else if (down && t_tap->winDown) {
+                t_tap->other = true;
+            }
+        }
+        return CallNextHookEx(nullptr, code, wParam, lParam);
+    }
+
 } // namespace
 
 // ===== SHARED WITH THE TRAY HOST =====
@@ -1257,6 +1357,28 @@ bool GetScreenSize(int& width, int& height) {
     return width > 0 && height > 0;
 }
 
+namespace {
+    BOOL CALLBACK CollectMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM param) {
+        MONITORINFO info = {};
+        info.cbSize = sizeof(info);
+        if (!GetMonitorInfoW(monitor, &info)) return TRUE;
+        DesktopScreenInfo screen;
+        screen.x = info.rcMonitor.left;
+        screen.y = info.rcMonitor.top;
+        screen.width = info.rcMonitor.right - info.rcMonitor.left;
+        screen.height = info.rcMonitor.bottom - info.rcMonitor.top;
+        screen.primary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0;
+        reinterpret_cast<std::vector<DesktopScreenInfo>*>(param)->push_back(screen);
+        return TRUE;
+    }
+} // namespace
+
+std::vector<DesktopScreenInfo> ListScreens() {
+    std::vector<DesktopScreenInfo> screens;
+    EnumDisplayMonitors(nullptr, nullptr, CollectMonitor, reinterpret_cast<LPARAM>(&screens));
+    return screens;
+}
+
 // Call it from the thread the window belongs to (the UI thread): the appbar
 // windows are made there.
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
@@ -1424,7 +1546,34 @@ bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out) {
             out.push_back(std::move(entry));
         }
     }
+    ListPackagedApplications(size, out);
     return true;
+}
+
+bool LaunchPackagedApplication(const std::string& appUserModelId, std::string& error) {
+    ComScope com;
+    const std::wstring id = Widen(appUserModelId);
+    IApplicationActivationManager* manager = nullptr;
+    HRESULT hr = CoCreateInstance(kClsidApplicationActivationManager, nullptr, CLSCTX_LOCAL_SERVER,
+                                  __uuidof(IApplicationActivationManager), reinterpret_cast<void**>(&manager));
+    if (SUCCEEDED(hr)) {
+        DWORD processId = 0;
+        hr = manager->ActivateApplication(id.c_str(), nullptr, AO_NONE, &processId);
+        Release(manager);
+        if (SUCCEEDED(hr)) return true;
+    }
+    // The shell's own way in: the Applications folder's item, opened.
+    const std::wstring item = L"shell:AppsFolder\\" + id;
+    SHELLEXECUTEINFOW info = {};
+    info.cbSize = sizeof(info);
+    info.fMask = SEE_MASK_FLAG_NO_UI;
+    info.lpFile = item.c_str();
+    info.nShow = SW_SHOWNORMAL;
+    if (ShellExecuteExW(&info)) return true;
+    char code[16] = {};
+    std::snprintf(code, sizeof code, "0x%08lX", static_cast<unsigned long>(hr));
+    error = "\"" + appUserModelId + "\" could not be started (error " + code + ").";
+    return false;
 }
 
 bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
@@ -1632,6 +1781,10 @@ struct ShortcutState {
     UINT key = 0;
     HANDLE wake = nullptr;
     bool registered = false;
+    // "Super" alone: a tap of the Win key, through a low-level hook.
+    bool winTap = false;
+    HHOOK hook = nullptr;
+    WinKeyTap tap;
 };
 
 ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
@@ -1654,8 +1807,21 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
         start = plus + 1;
     }
     if (key.empty()) {
-        error = "\"" + accelerator + "\" names no key.";
-        return nullptr;
+        // The Win key alone is a tap of it; any other modifier alone is not
+        // a shortcut.
+        if (modifiers != MOD_WIN) {
+            error = "\"" + accelerator + "\" names no key.";
+            return nullptr;
+        }
+        auto* state = new ShortcutState();
+        state->winTap = true;
+        state->wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!state->wake) {
+            delete state;
+            error = "No event for the shortcut's thread.";
+            return nullptr;
+        }
+        return state;
     }
     const UINT vk = VirtualKeyFor(key);
     if (vk == 0) {
@@ -1692,8 +1858,39 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
 
 // WM_HOTKEY arrives once per press (MOD_NOREPEAT: holding the keys repeats
 // nothing).
+// The Win key's tap: the hook is set on the shortcut's own thread, whose
+// pump (MsgWaitForMultipleObjectsEx) is where Windows calls it - promptly,
+// or Windows drops a hook that keeps the keyboard waiting.
+static bool WaitForWinKeyTap(ShortcutState* state) {
+    if (!state->hook) {
+        t_tap = &state->tap;
+        state->hook = SetWindowsHookExW(WH_KEYBOARD_LL, OnLowLevelKey, ThisModule(), 0);
+        if (!state->hook) {
+            t_tap = nullptr;
+            return false;
+        }
+    }
+    auto finish = [state]() {
+        if (state->hook) UnhookWindowsHookEx(state->hook);
+        state->hook = nullptr;
+        if (t_tap == &state->tap) t_tap = nullptr;
+        return false;
+    };
+    for (;;) {
+        const DWORD result = MsgWaitForMultipleObjectsEx(1, &state->wake, 200, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        if (result == WAIT_OBJECT_0 || result == WAIT_FAILED) return finish();   // woken to stop
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&msg);
+        if (state->tap.tapped) {
+            state->tap.tapped = false;
+            return true;
+        }
+    }
+}
+
 bool ShortcutWait(ShortcutState* state) {
     if (!state || !state->wake) return false;
+    if (state->winTap) return WaitForWinKeyTap(state);
     if (!state->registered) {
         if (!RegisterHotKey(nullptr, state->id, state->modifiers, state->key)) return false;
         state->registered = true;

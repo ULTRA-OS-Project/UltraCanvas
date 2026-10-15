@@ -6,9 +6,10 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.4.0 - Microsoft Store applications launch (appUserModelId), ListScreens
 // Version: 1.3.0 - DesktopReplacement::Instead, the tray host's thread, EndSession
 // Version: 1.2.0 - the platform's own application list; shortcut entries launch
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -225,6 +226,32 @@ bool UltraCanvasDesktopShell::GetScreenSize(int& width, int& height) {
     return DesktopShellBackend::GetScreenSize(width, height);
 }
 
+std::vector<DesktopScreenInfo> UltraCanvasDesktopShell::ListScreens() {
+    std::vector<DesktopScreenInfo> screens = DesktopShellBackend::ListScreens();
+    if (screens.empty()) {
+        DesktopScreenInfo only;
+        only.primary = true;
+        if (DesktopShellBackend::GetScreenSize(only.width, only.height)) screens.push_back(only);
+        return screens;
+    }
+    // The primary first, the rest left to right, top to bottom.
+    std::stable_sort(screens.begin(), screens.end(), [](const DesktopScreenInfo& a, const DesktopScreenInfo& b) {
+        if (a.primary != b.primary) return a.primary;
+        return a.x != b.x ? a.x < b.x : a.y < b.y;
+    });
+    // An X server names a primary monitor only once someone chose one; until
+    // then it is the one at the origin, else the leftmost.
+    if (!screens[0].primary) {
+        auto origin = std::find_if(screens.begin(), screens.end(), [](const DesktopScreenInfo& s) {
+            return s.x <= 0 && s.y <= 0 && s.x + s.width > 0 && s.y + s.height > 0;
+        });
+        if (origin == screens.end()) origin = screens.begin();
+        origin->primary = true;
+        std::rotate(screens.begin(), origin, origin + 1);
+    }
+    return screens;
+}
+
 bool UltraCanvasDesktopShell::ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom) {
     if (windowId == 0 || left < 0 || right < 0 || top < 0 || bottom < 0) return false;
     return DesktopShellBackend::ReserveScreenEdges(windowId, left, right, top, bottom);
@@ -394,6 +421,18 @@ const UCDesktopEntry* UltraCanvasDesktopShell::MatchApplication(const DesktopWin
 bool UltraCanvasDesktopShell::LaunchApplication(const UCDesktopEntry& entry,
                                                 const std::vector<std::string>& files,
                                                 std::string* error) {
+    if (!entry.appUserModelId.empty()) {
+        // A Microsoft Store application: no program file to hand files to -
+        // it opens them from its own dialog.
+        std::string reason;
+        if (!files.empty()) {
+            reason = "\"" + entry.name + "\" is a Microsoft Store application: open the files from inside it.";
+        } else if (DesktopShellBackend::LaunchPackagedApplication(entry.appUserModelId, reason)) {
+            return true;
+        }
+        if (error) *error = reason;
+        return false;
+    }
     if (!entry.shortcutPath.empty()) {
         // A Start-menu shortcut: opened the way Explorer opens it, so its
         // arguments, its working folder and the shortcuts that name no plain
@@ -791,6 +830,7 @@ namespace DesktopShellBackend {
     bool MoveWindowToVirtualDesktop(uint64_t, int) { return false; }
 
     bool GetScreenSize(int&, int&) { return false; }
+    std::vector<DesktopScreenInfo> ListScreens() { return {}; }
     bool ReserveScreenEdges(uint64_t, int, int, int, int) { return false; }
     bool CaptureScreen(const std::string&, std::string& error) {
         error = "Screenshots are not available on this platform yet.";
@@ -805,6 +845,10 @@ namespace DesktopShellBackend {
     bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
     bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
         return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
+    }
+    bool LaunchPackagedApplication(const std::string&, std::string& error) {
+        error = "Microsoft Store applications run on Windows only.";
+        return false;
     }
 
     bool CanReplaceSystemDesktop(DesktopReplacement) { return false; }

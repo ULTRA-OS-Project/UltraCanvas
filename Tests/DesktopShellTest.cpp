@@ -30,6 +30,7 @@
 //     icons added, changed, hidden, ballooned and removed, clicks in every
 //     NIM_SETVERSION form, Shell_NotifyIconGetRect - while the user's own
 //     taskbar is never touched.
+// Version: 1.5.0 - ListScreens, Microsoft Store applications, the Win key's tap
 // Version: 1.4.0 - instead of Explorer, the shell guard, the tray host
 // Version: 1.3.0 - ReplaceSystemDesktop / RestoreSystemDesktop
 // Last Modified: 2026-10-14
@@ -45,7 +46,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <initializer_list>
 #include <string>
+#include <utility>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
 
@@ -588,7 +591,12 @@ int main(int argc, char** argv) {
         WriteShortcut(machinePrograms / "Writer" / "Read me.lnk", "C:\\Program Files\\Writer\\readme.txt");
         WriteFile(machinePrograms / "Writer" / "Website.url", "[InternetShortcut]\r\nURL=https://example.com\r\n");
 
-        const auto apps = UltraCanvasDesktopShell::ListApplications(32);
+        // The Microsoft Store applications this machine has come from the
+        // shell, not from the Start menu built here: set apart.
+        std::vector<UCDesktopEntry> apps, store;
+        for (const UCDesktopEntry& entry : UltraCanvasDesktopShell::ListApplications(32)) {
+            (entry.appUserModelId.empty() ? apps : store).push_back(entry);
+        }
         Check(apps.size() == 2, "two applications in the Start menu (got " + std::to_string(apps.size()) + ")");
         if (apps.size() == 2) {
             Check(apps[0].name == "Localized Tool", "desktop.ini names a shortcut, and the list is sorted: " +
@@ -605,6 +613,25 @@ int main(int argc, char** argv) {
             window.appName = "writer";
             const UCDesktopEntry* entry = UltraCanvasDesktopShell::MatchApplication(window, apps);
             Check(entry && entry->name == "Writer", "a window of writer.exe belongs to the Writer shortcut");
+        }
+
+        // Microsoft Store applications: named, by their AppUserModelID,
+        // with no file of their own - however many this machine has.
+        size_t withIcon = 0;
+        bool wellFormed = true;
+        for (const UCDesktopEntry& entry : store) {
+            if (entry.name.empty() || entry.appUserModelId.find('!') == std::string::npos ||
+                !entry.shortcutPath.empty() || !entry.program.empty())
+                wellFormed = false;
+            if (!entry.iconFile.empty()) ++withIcon;
+        }
+        std::printf("  (%zu Microsoft Store applications here, %zu with an icon%s%s)\n", store.size(), withIcon,
+                    store.empty() ? "" : ", e.g. ", store.empty() ? "" : store[0].appUserModelId.c_str());
+        Check(wellFormed, "Store applications carry a name and their AppUserModelID, and no file");
+        if (!store.empty()) {
+            std::string why;
+            Check(!UltraCanvasDesktopShell::LaunchApplication(store[0], {"C:\\nothing.txt"}, &why) && !why.empty(),
+                  "a Store application is not handed files: " + why);
         }
     }
 #else
@@ -704,6 +731,21 @@ int main(int argc, char** argv) {
         Check(!UltraCanvasDesktopShell::ActivateWindow(0), "window 0 is refused");
         Check(!UltraCanvasDesktopShell::ReserveScreenEdges(0, 52, 48, 0, 0), "reserving edges for window 0 is refused");
         Check(!UltraCanvasDesktopShell::ReserveScreenEdges(1, -1, 0, 0, 0), "a negative edge is refused");
+        // The screens: the primary first, every one with a size - or none
+        // at all where there is no display.
+        const auto screens = UltraCanvasDesktopShell::ListScreens();
+        bool sized = true;
+        for (const DesktopScreenInfo& screen : screens) sized = sized && screen.width > 0 && screen.height > 0;
+        int screenWidth = 0, screenHeight = 0;
+        const bool haveScreen = UltraCanvasDesktopShell::GetScreenSize(screenWidth, screenHeight);
+        Check(sized && (!haveScreen || (!screens.empty() && screens[0].primary)),
+              "ListScreens answers, the primary first (" + std::to_string(screens.size()) + " screens)");
+#if defined(_WIN32)
+        Check(!screens.empty() && screens[0].x == 0 && screens[0].y == 0 && screens[0].width == screenWidth &&
+                  screens[0].height == screenHeight,
+              "the primary monitor is at 0,0 and is the screen GetScreenSize names (" +
+                  std::to_string(screenWidth) + "x" + std::to_string(screenHeight) + ")");
+#endif
         const DesktopDeviceActivity activity = UltraCanvasDesktopShell::ReadDeviceActivity();
         Check(activity.batteryPercent >= -1 && activity.batteryPercent <= 100, "battery percentage is in range");
         std::string error;
@@ -837,6 +879,42 @@ int main(int argc, char** argv) {
         const bool superV = shortcut.Start("Super+V", []() {}, &winV);
         std::printf("  (Super+V: %s)\n", superV ? "registered" : winV.c_str());
         shortcut.Stop();
+
+        // The Win key alone: a tap of it, with no other key in between.
+        std::string altAlone;
+        Check(!shortcut.Start("Alt", []() {}, &altAlone) && !altAlone.empty(),
+              "another modifier alone is no shortcut: " + altAlone);
+        UltraCanvasGlobalShortcut winKey;
+        std::atomic<int> taps{0};
+        std::string tapWhy;
+        Check(winKey.Start("Super", [&taps]() { ++taps; }, &tapWhy), "the Win key alone can be watched " + tapWhy);
+        const char* ciTap = std::getenv("CI");   // path-string-ok: ASCII flag
+        if (ciTap && std::string(ciTap) == "true") {
+            // Typed, on a CI runner only: Explorer opens its Start menu on
+            // the tap, which Escape closes again.
+            const auto keys = [](std::initializer_list<std::pair<WORD, bool>> sequence) {
+                std::vector<INPUT> inputs;
+                for (const auto& [vk, up] : sequence) {
+                    INPUT input = {};
+                    input.type = INPUT_KEYBOARD;
+                    input.ki.wVk = vk;
+                    input.ki.dwFlags = (up ? KEYEVENTF_KEYUP : 0) | (vk == VK_LWIN ? KEYEVENTF_EXTENDEDKEY : 0);
+                    inputs.push_back(input);
+                }
+                SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
+            };
+            PumpUntil([]() { return false; }, 500);   // the hook goes in on the shortcut's thread
+            keys({{VK_LWIN, false}, {VK_LSHIFT, false}, {VK_LSHIFT, true}, {VK_LWIN, true}});
+            PumpUntil([]() { return false; }, 500);
+            Check(taps.load() == 0, "Win with another key is no tap");
+            keys({{VK_LWIN, false}, {VK_LWIN, true}});
+            Check(PumpUntil([&taps]() { return taps.load() > 0; }, 3000), "a tap of the Win key is reported");
+            keys({{VK_ESCAPE, false}, {VK_ESCAPE, true}});
+            PumpUntil([]() { return false; }, 500);
+        } else {
+            std::printf("  (Win key tap: not typed outside a CI runner)\n");
+        }
+        winKey.Stop();
 
         DesktopScreenImage shot;
         std::string captureError;

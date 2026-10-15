@@ -3,6 +3,8 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.5.0 - LaunchPackagedApplication (Microsoft Store applications),
+//                  ListScreens
 // Version: 1.4.0 - DesktopReplacement::Instead, the tray host, EndSession
 // Version: 1.3.0 - the Windows backend; ListNativeApplications;
 //                  in place of the system's desktop
@@ -43,6 +45,8 @@ namespace DesktopShellBackend {
 
     // The screen.
     bool GetScreenSize(int& width, int& height);
+    // Every monitor, any order; empty when the platform tells none apart.
+    std::vector<DesktopScreenInfo> ListScreens();
     bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom);
     bool CaptureScreen(const std::string& pngPath, std::string& error);
     bool CaptureScreenImage(DesktopScreenImage& out, std::string& error);
@@ -56,6 +60,9 @@ namespace DesktopShellBackend {
     // desktop would (Windows: the .lnk through the shell). Only called for
     // an entry with shortcutPath set.
     bool LaunchShortcut(const std::string& shortcutPath, std::string& error);
+    // Start a Microsoft Store application by its AppUserModelID (an entry
+    // with appUserModelId set). False with the reason where there are none.
+    bool LaunchPackagedApplication(const std::string& appUserModelId, std::string& error);
 
     // In place of the system's desktop (UltraCanvasDesktopShell.h). The core
     // has checked that `program` is an existing absolute path, and that `how`

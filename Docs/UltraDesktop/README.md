@@ -282,7 +282,13 @@ start. UltraDesktop then also
   on the info panel, above its services: a click opens the program, a right
   click its menu, and their balloons appear as notifications;
 - offers **Sign out, Restart and Shut down** on the settings button's
-  right-click menu, which the Start menu would otherwise.
+  right-click menu, which the Start menu would otherwise;
+- opens its **Applications** window when the Win key is pressed and let go
+  on its own, where the Start menu would open (Win with another key is that
+  combination, not a tap);
+- puts the **wallpaper on every other monitor**, which would otherwise stay
+  black — a monitor plugged in or taken away is followed within a few
+  seconds.
 
 The sign-in actually starts *UltraCanvasShellGuard*, which starts
 UltraDesktop — and keeps the screen from ever staying empty:
@@ -322,9 +328,10 @@ same.
 | | On Windows |
 |---|---|
 | Running applications | every window Explorer's taskbar would show, with its program's icon; Microsoft Store apps by the program inside their frame |
-| Applications window | the Start menu's programs, named as the Start menu names them; Microsoft Store apps are not listed yet |
+| Applications window | the Start menu's programs, named as the Start menu names them, and the Microsoft Store apps (Calculator, Photos, Settings …) with their tile icons; instead of Explorer the Win key opens it |
 | Virtual desktops | the organiser follows Windows' desktops and switches between them while Explorer runs; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
 | Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
+| Other monitors | beside Explorer, Explorer's desktop shows there; instead of Explorer, UltraDesktop's wallpaper (the bars stay on the main monitor) |
 | RAM disc | no button unless a folder is set (UOS-Settings → Desktop → RAM disc) |
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |

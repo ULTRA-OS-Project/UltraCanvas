@@ -3,7 +3,9 @@
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
 // Version: 0.4.0 - Windows: instead of Explorer - the tray icons (StartTray,
-//                  RefreshTray), sign out / restart / shut down
+//                  RefreshTray), sign out / restart / shut down, the Win key
+//                  (appsShortcut_); the other screens' wallpaper
+//                  (CoverOtherScreens)
 // Version: 0.3.0 - Windows: in place of the Windows desktop and back (the
 //                  settings button's menu, --session), no RAM disc button
 //                  without a RAM disc
@@ -113,6 +115,7 @@ UltraDesktopWindow::~UltraDesktopWindow() {
     StopDevicePoll();
     shellMonitor_.Stop();
     trayHost_.Stop();
+    appsShortcut_.Stop();
     clipboardShortcut_.Stop();
     clipboardPanel_.reset();
     if (recorder_) recorder_->Detach();
@@ -144,6 +147,7 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     if (!window_) return false;
 
     BuildLayout();
+    CoverOtherScreens();
     StartNotifications();
 
     // The clipboard history the button shows: recorded here, kept on disk.
@@ -616,6 +620,10 @@ void UltraDesktopWindow::ApplySettings() {
     requestedDesktops_ = 0;
     RefreshDesktops();
     PlaceNotifications();   // the taskbar may have moved
+    // The other screens show the same picture.
+    for (const auto& wallpaper : screenWallpapers_) {
+        if (wallpaper) wallpaper->LoadFromFile(WallpaperPath());
+    }
 }
 
 // ===== NOTIFICATIONS =====
@@ -698,6 +706,14 @@ void UltraDesktopWindow::CheckSettingsFile() {
 void UltraDesktopWindow::OnTimer() {
     CheckSettingsFile();
     CheckDesktopSwitch();
+    {
+        // A monitor plugged in or out: every few seconds is soon enough.
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= nextScreenCheck_) {
+            nextScreenCheck_ = now + std::chrono::seconds(3);
+            CoverOtherScreens();
+        }
+    }
     if (windowsDirty_.exchange(false)) {
         RefreshDesktops();
         RefreshWindows();
@@ -1023,6 +1039,60 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
 
+// ===== EVERY SCREEN =====
+
+void UltraDesktopWindow::CoverOtherScreens() {
+    // What the desktop window covers, from 0,0: the primary monitor on
+    // Windows, the whole screen on X11.
+    // Beside Explorer, Explorer's desktop shows on the others, with its icons.
+    int coveredWidth = 0, coveredHeight = 0;
+    UltraCanvasDesktopShell::GetScreenSize(coveredWidth, coveredHeight);
+    std::vector<DesktopScreenInfo> others;
+    if (!UltraCanvasDesktopShell::IsSystemDesktopRunning()) {
+        for (const DesktopScreenInfo& screen : UltraCanvasDesktopShell::ListScreens()) {
+            const bool inside = screen.x >= 0 && screen.y >= 0 && screen.x + screen.width <= coveredWidth &&
+                                screen.y + screen.height <= coveredHeight;
+            if (!inside) others.push_back(screen);
+        }
+    }
+    if (others == otherScreens_ && screenWindows_.size() == others.size()) return;
+
+    for (const auto& window : screenWindows_) {
+        if (window) window->Close();
+    }
+    screenWindows_.clear();
+    screenWallpapers_.clear();
+    otherScreens_ = others;
+    for (size_t i = 0; i < others.size(); ++i) {
+        const DesktopScreenInfo& screen = others[i];
+        WindowConfig config;
+        config.title = std::string("UltraDesktop ") + ULTRADESKTOP_VERSION;
+        config.type = WindowType::Desktop;
+        config.desktopArea = Rect2Di(screen.x, screen.y, screen.width, screen.height);
+        config.backgroundColor = kBarInsetColor;
+        auto window = CreateWindow(config);
+        if (!window) {
+            debugOutput << "UltraDesktop: no window for the screen at " << screen.x << "," << screen.y << std::endl;
+            continue;
+        }
+        auto wallpaper = std::make_shared<UltraCanvasImageElement>("ScreenWallpaper" + std::to_string(i), 0, 0, 0, 0);
+        wallpaper->SetFitMode(ImageFitMode::Cover);
+        wallpaper->LoadFromFile(WallpaperPath());
+        int width = 0, height = 0;
+        window->GetWindowSize(width, height);
+        wallpaper->SetElementAbsolutePosition(Point2Df(0, 0));
+        wallpaper->SetElementSize(Size2Df(static_cast<float>(std::max(1, width)), static_cast<float>(std::max(1, height))));
+        window->AddChild(wallpaper);
+        UltraCanvasImageElement* picture = wallpaper.get();
+        window->onWindowResize = [picture](int w, int h) {
+            picture->SetElementSize(Size2Df(static_cast<float>(std::max(1, w)), static_cast<float>(std::max(1, h))));
+        };
+        window->Show();
+        screenWindows_.push_back(window);
+        screenWallpapers_.push_back(wallpaper);
+    }
+}
+
 // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====
 
 void UltraDesktopWindow::UseAsSystemDesktop(DesktopReplacement how) {
@@ -1080,6 +1150,14 @@ void UltraDesktopWindow::StartTray() {
     if (!trayHost_.Start([this]() { trayDirty_.store(true); }, &error)) {
         debugOutput << "UltraDesktop: the tray icons are not shown: " << error << std::endl;
     }
+    // No Start menu without Explorer: the Win key's tap opens ours.
+    error.clear();
+    const bool started = appsShortcut_.Start("Super", [this]() {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->PostToUIThread([this]() { OpenAppStarter(); });
+        }
+    }, &error);
+    if (!started) debugOutput << "UltraDesktop: the Win key does not open the applications: " << error << std::endl;
 }
 
 void UltraDesktopWindow::RefreshTray() {

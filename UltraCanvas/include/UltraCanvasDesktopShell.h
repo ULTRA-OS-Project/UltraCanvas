@@ -45,10 +45,12 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.5.0 - ListScreens; Microsoft Store applications on Windows;
+//                  "Super" alone, a tap of the Win key
 // Version: 1.4.0 - instead of the system's desktop (DesktopReplacement::Instead),
 //                  the notification area (UltraCanvasTrayHost), EndSession
 // Version: 1.3.0 - in place of the system's desktop (ReplaceSystemDesktop)
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -81,6 +83,22 @@ namespace UltraCanvas {
         bool minimized = false;
         bool skipTaskbar = false;       // asked to stay out of taskbars: panels, docks,
                                         // the desktop itself, tooltips
+    };
+
+    // ===== ONE SCREEN (A MONITOR) =====
+    // Physical pixels of the whole virtual screen. On Windows the primary
+    // monitor's top-left corner is 0,0, and a monitor left of or above it
+    // lies at negative coordinates; on X11 they are the root window's.
+    struct DesktopScreenInfo {
+        int  x = 0;
+        int  y = 0;
+        int  width = 0;
+        int  height = 0;
+        bool primary = false;
+        bool operator==(const DesktopScreenInfo& other) const {
+            return x == other.x && y == other.y && width == other.width && height == other.height &&
+                   primary == other.primary;
+        }
     };
 
     // ===== A CAPTURE OF THE SCREEN, IN MEMORY =====
@@ -200,6 +218,13 @@ namespace UltraCanvas {
 
         // ===== THE SCREEN =====
         static bool GetScreenSize(int& width, int& height);
+        // Every monitor, the primary first (Windows: EnumDisplayMonitors;
+        // X11: RandR's monitors, where no primary chosen means the one at the
+        // origin). Where the platform tells none apart, the one screen
+        // GetScreenSize reports; empty where it reports none either.
+        // A desktop covers the ones its own window does not with windows of
+        // WindowType::Desktop and WindowConfig::desktopArea.
+        static std::vector<DesktopScreenInfo> ListScreens();
         // Reserve strips along the screen's edges for `windowId` - a desktop's
         // bars, a dock - so that maximised and tiled windows stop short of
         // them (EWMH _NET_WM_STRUT_PARTIAL on X11, an appbar per edge on

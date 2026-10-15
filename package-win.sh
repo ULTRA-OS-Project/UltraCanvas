@@ -10,7 +10,9 @@
 #     --installer   Also build the installer from the same folder:
 #                   UltraCanvas-Setup-Windows-<version>-<arch>.exe beside the
 #                   zip (scripts/build-windows-installer.sh; needs NSIS -
-#                   `pacman -S nsis` in the MSYS2 shell)
+#                   `pacman -S mingw-w64-clang-x86_64-nsis` in CLANG64, or
+#                   NSIS for Windows, which CLANGARM64 has to use; CI builds
+#                   and installs it on every Windows row)
 #
 set -e
 

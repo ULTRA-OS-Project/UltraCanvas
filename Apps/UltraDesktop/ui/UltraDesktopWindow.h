@@ -29,11 +29,12 @@
 //
 // As the session's shell on Windows (--shell: instead of Explorer) it also
 // hosts the notification area - the programs' tray icons sit on the info
-// panel, above its services, and their balloons become toasts - and its
+// panel, above its services, and their balloons become toasts - its
 // settings button offers sign out, restart and shut down, which Explorer's
-// Start menu would otherwise.
+// Start menu would otherwise, and a tap of the Win key opens the
+// Applications window.
 // Version: 0.4.0 - Windows: instead of Explorer - the tray icons, sign out,
-//                  restart and shut down
+//                  restart and shut down, the Win key, every screen
 // Version: 0.3.0 - Windows: in place of the Windows desktop and back
 // Version: 0.2.0 - the notification toasts
 // Version: 0.1.0
@@ -176,6 +177,13 @@ private:
     // Sign out, restart, shut down - asked first.
     void ConfirmEndSession(UltraCanvas::SessionEnd how);
 
+    // ===== EVERY SCREEN =====
+    // The desktop window covers the primary monitor (Windows) or the whole
+    // screen (X11). While no Explorer desktop runs, a monitor outside it gets
+    // a desktop window of its own with the wallpaper, so no screen stays
+    // black; followed as monitors come and go.
+    void CoverOtherScreens();
+
     // ===== THE NOTIFICATION AREA (the shell session) =====
     void StartTray();
     // The tray icons on the info panel follow the host's list.
@@ -252,6 +260,15 @@ private:
     // balloon shown.
     UltraCanvas::UltraCanvasTrayHost trayHost_;
     std::atomic<bool> trayDirty_{false};
+    // As the shell: a tap of the Win key opens the Applications window, as
+    // it would open Explorer's Start menu.
+    UltraCanvas::UltraCanvasGlobalShortcut appsShortcut_;
+
+    // The other screens' windows, each with its wallpaper.
+    std::vector<UltraCanvas::DesktopScreenInfo> otherScreens_;
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> screenWindows_;
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasImageElement>> screenWallpapers_;
+    std::chrono::steady_clock::time_point nextScreenCheck_{};
     std::map<std::string, std::string> trayIcons_;
     std::map<std::string, std::string> trayTooltips_;
     std::map<std::string, uint64_t> trayBalloons_;

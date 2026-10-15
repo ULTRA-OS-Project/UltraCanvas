@@ -1,5 +1,6 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.7.0 - WindowConfig::desktopArea: a Desktop window on any monitor
 // Version: 2.6.0 - RefreshAfterFontChange(): lays out and draws everything again
 // Version: 2.5.0 - popups composite with their alpha over the window, and a popup's
 //                  drop shadow (GetPopupShadow) is painted beneath it
@@ -8,7 +9,7 @@
 //                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -104,6 +105,12 @@ namespace UltraCanvas {
         // Window class suffix (Windows only; empty = use "Main" default class)
         // Examples: "Dialog", "Tool", "Popup"
         std::string windowClassSuffix;
+
+        // WindowType::Desktop only: the part of the screen it covers, in
+        // physical pixels of the whole virtual screen - one monitor of
+        // UltraCanvasDesktopShell::ListScreens(), say. Empty (the default):
+        // the primary monitor on Windows, the whole screen on X11.
+        Rect2Di desktopArea;
     };
 
     struct PopupElement {
