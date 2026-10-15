@@ -1514,6 +1514,9 @@ jobs:
           }
           $installed = (Get-ChildItem $dir -Recurse -File).Count
           "Installed: $installed files"
+          # Test binaries never ship (package-win.sh leaves them out).
+          $tests = @(Get-ChildItem $dir -File | Where-Object { $_.Name -match '(Tests?\.(exe|com)|^ConsoleCompanionProbe\.)' })
+          if ($tests.Count -gt 0) { throw "Test binaries were installed: $(($tests | ForEach-Object Name) -join ', ')" }
           # The apps whose command line prints are GUI programs with a console
           # companion (cmake/UltraCanvasWindowsGuiApp.cmake): <App>.exe starts
           # without a console window, <App>.com is what a prompt runs for the

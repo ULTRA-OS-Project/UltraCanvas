@@ -61,7 +61,7 @@ mkdir -p "$DIST_DIR"
 # output to the build root (CMAKE_RUNTIME_OUTPUT_DIRECTORY), not build/bin.
 #
 # Test and diagnostic binaries (UltraNetTests, UltraNetApiStatus, *Test(s),
-# ultraai_test_*) must NOT ship: they are unsigned dev tools that open sockets
+# ultraai_test_*, ConsoleCompanionTest's probe and its .com) must NOT ship: they are unsigned dev tools that open sockets
 # and load plug-in DLLs, which behaviour-based AV heuristics flag — AVG's
 # Verhaltensschutz quarantined UltraNetApiStatus.exe from the 0.3.50 package
 # as IDP.Generic. End users have no use for them anyway.
@@ -75,7 +75,8 @@ mkdir -p "$DIST_DIR"
 for exe in ./build/*.exe ./build/bin/*.exe ./build/*.com ./build/bin/*.com; do
     [ -e "$exe" ] || continue
     case "$(basename "$exe")" in
-        *Test.exe|*Tests.exe|ultraai_test_*.exe|UltraNetApiStatus.exe)
+        *Test.exe|*Tests.exe|*Test.com|*Tests.com|ultraai_test_*.exe|UltraNetApiStatus.exe|\
+        ConsoleCompanionProbe.exe|ConsoleCompanionProbe.com)
             echo "  Skipping test/diagnostic binary: $(basename "$exe")"
             continue ;;
     esac

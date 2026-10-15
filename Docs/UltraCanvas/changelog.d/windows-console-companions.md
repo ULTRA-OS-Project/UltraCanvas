@@ -19,7 +19,9 @@
   - UltraFIBU's commands-only build, which has no window, stays a console
     program.
 - `package-win.sh` and `scripts/package-ultracanvasstart.sh` ship the `.com`
-  files, and their PE headers are checked like the `.exe` files'.
+  files, and their PE headers are checked like the `.exe` files'. The test's
+  probe stays out of the package, and the installer CI step fails if any
+  test program is installed.
 - The new `ConsoleCompanionTest` (Windows CI rows) drives a probe made the
   way the applications are, on real Windows:
   - Redirected: the arguments arrive whole, stdout and stderr stay apart,
