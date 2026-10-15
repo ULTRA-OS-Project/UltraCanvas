@@ -29,6 +29,7 @@
 - **`UltraCanvasDropdown` type-ahead:** letters typed in the open list go to
   the first item that starts with them, regardless of case; letters within a
   second build one prefix, the same letter again steps to the next match, and
-  Return chooses. `UltraCanvasListView` gains `onKeyDown` (a key reaches the
-  owner first, so type-ahead works whichever of the two has the keyboard) and
-  `SetFocusedRow` (the arrow keys' move, from code).
+  Return chooses. A focused dropdown takes the letters itself; for one left
+  out of the focus (`SetAcceptsFocus(false)`) the window hands the keys to
+  its open list, so `UltraCanvasListView` gains `onKeyDown` (a key reaches
+  the owner first) and `SetFocusedRow` (the arrow keys' move, from code).

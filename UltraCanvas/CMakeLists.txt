@@ -2627,10 +2627,12 @@ _ultracanvas_module_home(NetworkMonitor uc-networkmonitor)
 # wasmtime header reaches its users. Without an engine - the option off, or
 # a platform with no prebuilt library - the library still builds and every
 # call reports that there is no engine, so its users link everywhere.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR MINGW)
+    # Windows (MSYS2 CLANG64 / CLANGARM64): wasmtime's C API is built from
+    # its source release with the native Rust toolchain.
     set(_uc_wasm_host_default ON)
 else()
-    # Not yet built in CI on macOS or Windows; see UltraCanvasWasmtime.cmake.
+    # Not yet built in CI on macOS; see UltraCanvasWasmtime.cmake.
     set(_uc_wasm_host_default OFF)
 endif()
 option(ULTRACANVAS_ENABLE_WASM_HOST "Run WebAssembly modules through wasmtime (WasmHost, UltraWeb)" ${_uc_wasm_host_default})

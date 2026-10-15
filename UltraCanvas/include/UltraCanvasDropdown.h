@@ -2,6 +2,7 @@
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
 // Last Modified: 2026-10-15 - type-ahead: letters typed in the open list go to the item starting with them
+// Last Modified: 2026-10-15 - takes the keyboard focus (Tab, a click); SetAcceptsFocus
 // Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item
 // Last Modified: 2026-10-15 - DropdownItem::tooltip: shown over the item in the open list
 // Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: an icon-only button
@@ -189,6 +190,9 @@ namespace UltraCanvas {
         bool multiSelectEnabled = false;
         std::set<int> selectedIndices;
 
+        // Takes the keyboard focus (Tab, a click), as a button does.
+        bool canAcceptFocus = true;
+
         DropdownStyle style;
 
         // ListView popup components
@@ -240,6 +244,14 @@ namespace UltraCanvas {
         std::vector<int> GetSelectedIndices() const;
         std::vector<DropdownItem> GetSelectedItems() const;
         int GetSelectedCount() const { return static_cast<int>(selectedIndices.size()); }
+
+        // ===== KEYBOARD FOCUS =====
+        // A dropdown takes the focus like a button: Tab reaches it and a click
+        // gives it the focus. Focused, Down or Space opens it, and while it is
+        // open the keys move through the list and Return chooses. Off, it is
+        // left out of the Tab order and only the mouse opens it.
+        bool AcceptsFocus() const override { return canAcceptFocus; }
+        void SetAcceptsFocus(bool accept) { canAcceptFocus = accept; }
 
         // ===== DROPDOWN STATE =====
         void OpenDropdown();

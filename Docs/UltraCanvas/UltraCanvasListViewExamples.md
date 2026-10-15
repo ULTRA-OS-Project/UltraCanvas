@@ -8,7 +8,7 @@
 
 Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -869,6 +869,13 @@ a key, or the application through `GetSelection()->Select(row)` - after it
 rebuilt or re-sorted the rows and selected the one the user was on, Down moves
 to the row below that one. `ResetSelection()` clears the focus as well, so the
 first Down after it selects the first row.
+
+A list view takes the keyboard focus (Tab, a click) by default. A list that is
+part of another element turns that off with `SetAcceptsFocus(false)`, so the
+focus stays with the element - the dropdown does this for its popup list, which
+would otherwise take the focus on a click and then close with it. The keys
+above still work such a list while the window hands them to it (an open popup
+gets them when nothing focused takes them).
 
 ## Best Practices
 

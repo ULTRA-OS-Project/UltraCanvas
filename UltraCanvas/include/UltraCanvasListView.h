@@ -1,7 +1,9 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
-// Version: 1.4.0 - onKeyDown: a key reaches the owner first (a dropdown's
+// Version: 1.5.0 - onKeyDown: a key reaches the owner first (a dropdown's
 //                  type-ahead); SetFocusedRow: the arrow keys' move, from code
+// Version: 1.4.0 - SetAcceptsFocus: a list inside another element (a dropdown's
+//                  popup) leaves the keyboard focus with that element
 // Version: 1.3.0 - the hover follows the rows when they scroll under a still
 //                  pointer (a wheel scroll, EnsureRowVisible): hoveredRow,
 //                  onItemHovered and onCellHovered are re-reported
@@ -260,7 +262,12 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent& event) override;
         void SetBounds(const Rect2Df& bounds) override;
         void SetWindow(UltraCanvasWindowBase* win) override;
-        bool AcceptsFocus() const override { return true; }
+        // A view takes the keyboard focus (Tab, a click) by default. A list that
+        // is part of another element - a dropdown's popup list - turns it off,
+        // so the focus stays with that element while the list is open and a
+        // click on a row does not leave it on a list that then closes.
+        bool AcceptsFocus() const override { return acceptsFocus; }
+        void SetAcceptsFocus(bool accept) { acceptsFocus = accept; }
 
     protected:
         // After the view has taken in a change its model signalled - the rows
@@ -278,6 +285,7 @@ namespace UltraCanvas {
 
         // View state
         ListViewStyle viewStyle;
+        bool acceptsFocus = true;
 
         // Scrollbar
         std::shared_ptr<UltraCanvasScrollbar> verticalScrollbar;
