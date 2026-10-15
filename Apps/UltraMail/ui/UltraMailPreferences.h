@@ -4,6 +4,9 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.15.0 - switchOnQuietSec: how long alerts about failed mail checks
+//                   wait after the computer was switched on (Settings > Mail >
+//                   Connection)
 // Version: 0.14.0 - fetchSenderIcons and fetchSiteIcons default to off: a fresh
 //                   install contacts no third-party website until the reader
 //                   turns the download on (privacy by default)
@@ -150,6 +153,20 @@ struct Preferences {
     static int NearestCheckMailChoice(int seconds);
     // "20 seconds", "1 minute", "10 minutes".
     static std::string CheckMailLabel(int seconds);
+
+    // Settings > Mail > Connection: after the computer was switched on - when
+    // UltraMail starts or the computer wakes and its last connection to a mail
+    // server is more than ten minutes old (SwitchOnQuiet) - a background mail
+    // check that fails raises no alert for this many seconds, while the network
+    // comes up; 0 turns that off. One of SwitchOnQuietChoices().
+    static constexpr int kDefaultSwitchOnQuietSec = 120;
+    int switchOnQuietSec = kDefaultSwitchOnQuietSec;
+    // The periods offered: off, 30 seconds, 1, 2, 3, 5 and 10 minutes.
+    static const std::vector<int>& SwitchOnQuietChoices();
+    // The offered period nearest to `seconds` (a file edited by hand).
+    static int NearestSwitchOnQuietChoice(int seconds);
+    // "Off", "30 seconds", "2 minutes".
+    static std::string SwitchOnQuietLabel(int seconds);
 
     // Settings > Display > Notifications: when a sync brings new mail into an
     // inbox, a notification on screen - posted through UltraMessage, drawn by

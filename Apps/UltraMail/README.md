@@ -36,7 +36,12 @@ and **UltraDatabase** (local store) modules.
 > the exception: right after boot that is the network not being up yet, so it
 > is retried every minute and reported
 > only once the account has stayed unreachable for ten minutes
-> (`OfflineGrace` in `UltraMailSyncScheduler.h`). A **connection pill** at
+> (`OfflineGrace` in `UltraMailSyncScheduler.h`). And when UltraMail starts,
+> or the computer wakes, more than ten minutes after it last reached a mail
+> server (remembered in `last-connected` in the data folder), the computer was
+> most likely switched off: for two minutes (*Settings > Mail > Connection*) no
+> failure of a background check raises an alert, whatever its reason, and the
+> accounts held back are checked again afterwards (`SwitchOnQuiet`). A **connection pill** at
 > the right end of the status line shows the selected account's last contact
 > with its server (Not checked / Checking… / Connected / Offline / Failed);
 > its tooltip has the server, the times and the reason.
@@ -119,7 +124,9 @@ Apps/UltraMail/
     UltraMailSyncService.{h,cpp}  full-account sync (folders+inbox+bodies) over
                                   the SyncEngine, sync + background-thread variants
     UltraMailSyncScheduler.{h,cpp} per-account interval tracking; DueAccounts(now);
-                                  OfflineGrace holds back a not-yet-online failure
+                                  OfflineGrace holds back a not-yet-online failure;
+                                  SwitchOnQuiet holds back every failure alert for
+                                  a while after the computer was switched on
     UltraMailContactCollector.{h,cpp} auto-add mail senders/recipients to the
                                   address book (Other section) if new
     UltraMailFeedPublisher.{h,cpp} UltraMail on UltraMessage: new mail to the
@@ -180,7 +187,8 @@ Apps/UltraMail/
                                   HTML (WYSIWYG RichTextEdit + FormatBar, or
                                   HTML source); also on replies and forwards
     UltraMailSettingsDialog.{h,cpp} the Settings window (toolbar gear, as in
-                                  UltraFiler): Mail > New mail, Reading >
+                                  UltraFiler): Mail > New mail / Connection,
+                                  Reading >
                                   Layout / Messages, Privacy > Images /
                                   Sender icons, Display > Links /
                                   Notifications / Treeview
@@ -200,6 +208,13 @@ each page, *Restore default* in the bottom bar). Changes apply and are saved
   every few seconds and the scheduler starts the accounts that are due, so a
   new choice applies at once; an account still syncing from the last check is
   not synced a second time beside it.
+- *Mail > Connection* — how long alerts about failed mail checks wait after the
+  computer was switched on: not at all, 30 seconds, 1, 2 (the default), 3, 5 or
+  10 minutes. It applies when UltraMail starts, or the computer wakes, and its
+  last connection to a mail server is more than ten minutes old; a failed
+  background check then shows on the status line and in the connection pill
+  only, and the account is checked again when the time is up. Update always
+  reports at once.
 - *Reading > Layout* — a message opens beside the list or in its place.
 - *Reading > Messages* — HTML mail formatted or as plain text (nothing
   fetched); the message text size (11 / 12 / 14 / 16 px).

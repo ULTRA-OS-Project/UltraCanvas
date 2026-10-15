@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.32 - after the computer was switched on (the last connection to a
+//                   mail server more than ten minutes old), the alerts of failed
+//                   background checks wait for Settings > Mail > Connection's
+//                   period, and the accounts held back are checked again after it
 // Version: 0.9.31 - a password typed on the server settings page drops stored
 //                   OAuth tokens, so the account switches to it
 // Version: 0.9.30 - trusted and blocked senders: set at start, changed from the
@@ -200,6 +204,12 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     prefsPath_ = dataDir + "/preferences.ini";
     step.emplace("Preferences", 0);
     prefs_.Load(prefsPath_);
+    // When a mail server was last reached, in this run or an earlier one: long
+    // enough ago, and the computer was most likely just switched on - the
+    // first check's failure is then no alert (SwitchOnQuiet).
+    lastConnectedPath_ = dataDir + "/" + kLastConnectedFileName;
+    lastConnected_ = lastConnectedWritten_ = ReadLastConnected(lastConnectedPath_);
+    BeginSwitchOnQuiet("Start");
     // Which spam/scam warnings the content scan gives - before anything is
     // scanned, on the sync's threads or in the reading pane.
     SetThreatScanOptions(prefs_.scamWarnings);
@@ -774,6 +784,8 @@ void UltraMailApp::NoteConnection(const std::string& accountId, ConnectionState 
             c.lastOk = now;
             c.failures = 0;
             c.reason.clear();
+            switchOn_.Reached(accountId);   // nothing left to check again
+            RememberConnected();
             break;
         case ConnectionState::Unreachable:
         case ConnectionState::Failed:
@@ -862,6 +874,14 @@ void UltraMailApp::UpdateConnectionIndicator() {
     if (!info.reason.empty()) tip.AddRow("Reason", info.reason);
     if (info.failures > 1) tip.AddRow("Failed attempts", std::to_string(info.failures));
     tip.AddSeparator();
+    if (switchOn_.Held(account->accountId) &&
+        (info.state == ConnectionState::Unreachable || info.state == ConnectionState::Failed)) {
+        tip.AddText("The computer was probably just switched on, and the network may "
+                    "not be up yet. UltraMail checks again shortly and alerts only if "
+                    "the check still fails.");
+        connectionBadge_->SetTooltipContent(tip);
+        return;
+    }
     switch (info.state) {
         case ConnectionState::Unreachable:
             tip.AddText(offline_.InGrace(account->accountId, NowMonotonicSec())
@@ -2212,6 +2232,8 @@ void UltraMailApp::OnWokeFromSleep() {
     // Whatever was unreachable before the sleep is a fresh question now: a
     // first failure after the wake is held back like one right after boot.
     offline_.Clear();
+    // A long sleep is a switch-off as far as the network is concerned.
+    BeginSwitchOnQuiet("Wake from sleep");
     // Waiting messages too: the connection is probably back after the wake.
     if (OutboxPending() > 0)
         outboxRetry_.RetryAt(NowMonotonicSec() + kWakeSyncDelayMs / 1000 + 5);
@@ -2282,6 +2304,78 @@ void UltraMailApp::RetryUnreachableAccounts() {
         targets.push_back(sa);
     }
     SyncAccounts(targets, /*userInitiated=*/false);
+}
+
+void UltraMailApp::BeginSwitchOnQuiet(const std::string& when) {
+    const int64_t wallNow = static_cast<int64_t>(std::time(nullptr));
+    if (!switchOn_.Begin(lastConnected_, wallNow, NowMonotonicSec(), prefs_.switchOnQuietSec))
+        return;
+    const std::string last =
+        lastConnected_ <= 0     ? std::string("no connection to a mail server on record")
+        : wallNow < lastConnected_ ? std::string("the clock is behind the last connection")
+        : "the last connection to a mail server was " +
+              std::to_string((wallNow - lastConnected_) / 60) + " min ago";
+    Trace::Line(when + ": " + last + ", so the computer was probably switched off - "
+                "alerts about failed mail checks wait " +
+                Preferences::SwitchOnQuietLabel(prefs_.switchOnQuietSec));
+}
+
+bool UltraMailApp::HoldForSwitchOn(const std::string& accountId) {
+    if (!switchOn_.Quiet(NowMonotonicSec())) return false;
+    switchOn_.Hold(accountId);
+    ScheduleSwitchOnRecheck();
+    if (accountId == selectedAccount_) UpdateConnectionIndicator();   // says why no alert
+    return true;
+}
+
+void UltraMailApp::ScheduleSwitchOnRecheck() {
+    // One pending check, a second after the period ends, so that it is
+    // surely over when the check runs.
+    if (switchOnRecheckPending_) return;
+    auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    const int64_t wait = switchOn_.RemainingSec(NowMonotonicSec()) + 1;
+    switchOnRecheckPending_ = true;
+    app->StartTimer(static_cast<unsigned int>(wait * 1000), /*periodic=*/false,
+                    [this](UltraCanvas::TimerId) {
+                        switchOnRecheckPending_ = false;
+                        // A wake from sleep began a longer period meanwhile:
+                        // wait for its end instead.
+                        if (switchOn_.Quiet(NowMonotonicSec())) {
+                            ScheduleSwitchOnRecheck();
+                            return;
+                        }
+                        RecheckHeldAccounts();
+                    });
+}
+
+void UltraMailApp::RecheckHeldAccounts() {
+    // A background sync again: the period is over, so what fails now is
+    // reported - after the offline grace, when the server cannot be reached.
+    const std::vector<std::string> ids = switchOn_.TakeHeld();
+    if (ids.empty()) return;
+    std::vector<ScheduledAccount> targets;
+    for (const auto& a : accounts_) {
+        if (std::find(ids.begin(), ids.end(), a.accountId) == ids.end()) continue;
+        DiscoveryResult d = SettingsFor(a);
+        ScheduledAccount sa;
+        sa.accountId = a.accountId;
+        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        targets.push_back(sa);
+    }
+    SyncAccounts(targets, /*userInitiated=*/false);
+}
+
+void UltraMailApp::RememberConnected() {
+    const int64_t now = static_cast<int64_t>(std::time(nullptr));
+    lastConnected_ = now;
+    // The file is only read at the next start, against a ten-minute
+    // threshold: a minute out of date is close enough, and spares the disk a
+    // write on every check of every account.
+    if (lastConnectedPath_.empty()) return;
+    if (now >= lastConnectedWritten_ && now - lastConnectedWritten_ < kLastConnectedWriteSec)
+        return;
+    if (WriteLastConnected(lastConnectedPath_, now)) lastConnectedWritten_ = now;
 }
 
 void UltraMailApp::SyncAccount(const std::string& accountId) {
@@ -2373,6 +2467,9 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                     } else {
                         offline_.Reached(accountId);
                     }
+                    // Just switched on: no alert while the network comes up,
+                    // whatever the failure; checked again afterwards.
+                    if (!userInitiated && HoldForSwitchOn(accountId)) return;
                     // Once per run of failures, on Reload too: its account sync
                     // reports the same server in its own alert.
                     if (syncErrorReported_.insert(accountId).second) {
@@ -2563,6 +2660,12 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                     } else {
                         offline_.Reached(aid);   // the server answered: not a network gap
                     }
+                    // The computer was just switched on (SwitchOnQuiet): a
+                    // network only half up also breaks a connection off in
+                    // the TLS handshake or mid-read, so for that period no
+                    // failure of a background check raises an alert. The
+                    // account is checked again when it ends.
+                    if (!userInitiated && HoldForSwitchOn(aid)) return;
                     const bool firstReport = syncErrorReported_.insert(aid).second;
                     if (userInitiated || firstReport) {
                         AlertError(window_ ? window_.get() : nullptr,
@@ -3491,6 +3594,8 @@ void UltraMailApp::OpenSettings() {
         }
         ApplyLinkDisplay();
         ApplyCheckMailInterval();
+        // Turned off while a quiet period after switching on runs: it ends now.
+        if (prefs_.switchOnQuietSec <= 0) switchOn_.End();
         // New waiting-for-reply rules: the account bar's count and the list's
         // reply marks are worked out again.
         if (ApplyNeedsAnswerRules()) Refresh();
