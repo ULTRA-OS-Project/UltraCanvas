@@ -4,6 +4,8 @@
 // closed when the window opens, so it opens on the start page that says what
 // they hold.
 // Pages: Mail > New mail (how often every account is checked for new mail),
+// Mail > Connection (how long alerts about failed mail checks wait after the
+// computer was switched on),
 // Reading > Layout (the message beside the list or in its place, and
 // the folder tree's width - fitted to its names or a fixed number of pixels),
 // Reading > Messages (HTML mail formatted or as plain text, and the size of
@@ -23,6 +25,9 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.12.0 - Mail > Connection: how long alerts about failed mail checks
+//                   wait after the computer was switched on (a dropdown, off
+//                   to 10 minutes)
 // Version: 1.11.0 - Privacy > Sender icons: both downloads are off by default,
 //                   and "Restore default" turns them off
 // Version: 1.10.0 - Display > Treeview: the current account or all accounts
@@ -40,7 +45,7 @@
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -95,6 +100,7 @@ namespace {
     // Page ids double as tree node ids.
     constexpr const char* kPageMail        = "mail";
     constexpr const char* kPageNewMail     = "mail/new-mail";
+    constexpr const char* kPageConnection  = "mail/connection";
     constexpr const char* kPageReading     = "reading";
     constexpr const char* kPageLayout      = "reading/layout";
     constexpr const char* kPageMessages    = "reading/messages";
@@ -143,6 +149,9 @@ namespace {
 
         // Mail > New mail
         std::shared_ptr<UltraCanvasDropdown> checkMailDropdown;
+
+        // Mail > Connection
+        std::shared_ptr<UltraCanvasDropdown> switchOnQuietDropdown;
 
         // Reading > Layout
         std::shared_ptr<UltraCanvasRadio> paneBesideRadio;
@@ -394,6 +403,13 @@ namespace {
                     d->checkMailDropdown->SetSelectedIndex(static_cast<int>(i),
                                                            /*runNotifications=*/false);
         }
+        if (d->switchOnQuietDropdown) {
+            const auto& choices = Preferences::SwitchOnQuietChoices();
+            for (std::size_t i = 0; i < choices.size(); ++i)
+                if (choices[i] == p.switchOnQuietSec)
+                    d->switchOnQuietDropdown->SetSelectedIndex(static_cast<int>(i),
+                                                               /*runNotifications=*/false);
+        }
         if (d->paneBesideRadio)
             d->paneGroup.SelectButton(p.showReadingPane ? d->paneBesideRadio : d->paneInPlaceRadio);
         if (d->treeFitRadio)
@@ -485,6 +501,61 @@ namespace {
                 "A short interval signs in to the server more often. Some "
                 "providers limit how often that may happen; if an account starts "
                 "to report sign-in errors, choose a longer interval.");
+        return parts.page;
+    }
+
+    // ===== MAIL > CONNECTION =====
+    std::shared_ptr<UltraCanvasContainer> BuildConnectionPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-connection", "Connection",
+                "After the computer was switched on, alerts about mail checks that "
+                "fail wait:");
+
+        auto dropdown = CreateDropdown("um-set-switch-on-quiet", 0, 0, 160, kControlHeight + 4);
+        const auto& choices = Preferences::SwitchOnQuietChoices();
+        for (int seconds : choices)
+            dropdown->AddItem(seconds <= 0 ? std::string("Not at all")
+                                           : Preferences::SwitchOnQuietLabel(seconds),
+                              std::to_string(seconds));
+        {
+            DropdownStyle style = dropdown->GetStyle();
+            style.fontSize = kTextFontSize;
+            style.maxVisibleItems = static_cast<int>(choices.size());
+            dropdown->SetStyle(style);
+        }
+        for (std::size_t i = 0; i < choices.size(); ++i)
+            if (choices[i] == d->prefs->switchOnQuietSec)
+                dropdown->SetSelectedIndex(static_cast<int>(i), /*runNotifications=*/false);
+        dropdown->onSelectionChanged = [d](int index, const DropdownItem&) {
+            const auto& offered = Preferences::SwitchOnQuietChoices();
+            if (!d->prefs || index < 0 || index >= static_cast<int>(offered.size())) return;
+            d->prefs->switchOnQuietSec = offered[static_cast<std::size_t>(index)];
+            ApplyAndSave(d);
+        };
+        dropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        d->switchOnQuietDropdown = dropdown;
+        parts.body->AddChild(dropdown);
+
+        d->resets[kPageConnection] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->switchOnQuietSec = Preferences::kDefaultSwitchOnQuietSec;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-connection-note1",
+                "UltraMail remembers when it last reached a mail server. When it "
+                "starts, or the computer wakes up, and that was more than ten minutes "
+                "ago, the computer was most likely switched off - and right after it "
+                "is switched on, the network is often not up yet.");
+        AddNote(parts, "um-set-connection-note2",
+                "For the time chosen here, a mail check that fails in the background "
+                "says so on the status line and in the connection indicator only, not "
+                "in an alert. When the time is up, UltraMail checks those accounts "
+                "again and reports what still fails.");
+        AddNote(parts, "um-set-connection-note3",
+                "Update in the toolbar always reports at once. A server that cannot "
+                "be reached at all is tried again every minute and reported after ten "
+                "minutes, whatever is set here.");
         return parts.page;
     }
 
@@ -1089,7 +1160,9 @@ namespace {
         PageParts parts = MakePage("um-set-page-start", "Settings",
                 "Open a section on the left and choose the page to set:");
         AddNote(parts, "um-set-start-note0",
-                "Mail - how often every account is checked for new mail.");
+                "Mail - how often every account is checked for new mail, and how "
+                "long alerts about failed checks wait after the computer was "
+                "switched on.");
         AddNote(parts, "um-set-start-note1",
                 "Reading - where a message opens, how wide the folder list is, "
                 "whether HTML mail is shown formatted or as plain text, the size "
@@ -1193,6 +1266,7 @@ namespace {
         d->tree->SetRootNode(rootData);
         AddTreeNode(d, "settings", kPageMail, "Mail");
         AddTreeNode(d, kPageMail, kPageNewMail, "New mail");
+        AddTreeNode(d, kPageMail, kPageConnection, "Connection");
         AddTreeNode(d, "settings", kPageReading, "Reading");
         AddTreeNode(d, kPageReading, kPageLayout, "Layout");
         AddTreeNode(d, kPageReading, kPageMessages, "Messages");
@@ -1221,6 +1295,7 @@ namespace {
         content->AddChild(d->pageArea);
 
         AddPage(d, kPageNewMail, BuildNewMailPage(d));
+        AddPage(d, kPageConnection, BuildConnectionPage(d));
         AddPage(d, kPageLayout, BuildLayoutPage(d));
         AddPage(d, kPageMessages, BuildMessagesPage(d));
         AddPage(d, kPageWaiting, BuildWaitingPage(d));
