@@ -1,3 +1,20 @@
+#### 2026-10-15 *0.2.22*
+- **The right-hand panel in UltraMail's look.** Colour, the active tool's
+  options and Layers were bold headings over loose controls on a grey strip,
+  with the colour picker a dark block with a red accent in the middle of it.
+  Each is now a white card - a group box with a quiet grey caption over a
+  hairline, rounded corners and a hairline border - on a light page, the same
+  colours and metrics UltraMail's folder, message list and message cards use.
+  The picker takes the card's white, hairline fields and the accent blue; the
+  layer list reads as a list (no box around each name, a soft grey under the
+  pointer and the active layer on the light blue); the seven layer buttons are
+  flat, like the main toolbar's, and fit the panel - the last one, *Layer
+  properties*, was cut off at its edge, and the panel grew a horizontal
+  scrollbar for it; the tool card is captioned with the tool's name, and Zoom
+  and Pan, which have nothing to set, say so instead of showing an empty card;
+  and the hints under a tool's options (*"[ and ] change the size"*) are quiet
+  grey rather than one more bold line.
+
 #### 2026-10-14 *0.2.21*
 - **One UltraPaint at a time.** Opening a file while UltraPaint is already
   running opens it in the running copy (in a new window) instead of starting a

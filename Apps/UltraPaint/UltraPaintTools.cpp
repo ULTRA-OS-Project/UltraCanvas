@@ -4,9 +4,10 @@
 // airbrush, eraser, clone, smudge, dodge, burn), fill, gradient, the lines
 // (line, polyline, arrow, curve), shapes (rectangle, ellipse), text, zoom
 // and pan.
+// Version: 1.1.1 - AddCaption: the hints under a tool's options are quiet grey, not bold
 // Version: 1.1.0 - Polyline, Arrow and Curve
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraPaintTools.h"
@@ -121,9 +122,11 @@ void AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::
 }
 
 void AddCaption(UltraCanvasContainer& panel, const std::string& id, const std::string& text) {
+    // A hint under the controls ("[ and ] change the size"): quiet grey, not
+    // bold, so it does not read as one more heading in the card.
     auto lbl = CreateLabel(id, 0, 0, 0, 20, text);
-    lbl->SetFontSize(11);
-    lbl->SetFontWeight(FontWeight::Bold);
+    lbl->SetFontSize(10.5f);
+    lbl->SetTextColor(Color(104, 112, 125, 255));
     lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     panel.AddChild(lbl);
 }
