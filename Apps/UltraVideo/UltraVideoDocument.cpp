@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoDocument.cpp
 // The document and the .ultravideo file (UltraVideoDocument.h).
+// Version: 0.6.0 - DraftSettings
 // Version: 0.5.0 - KindOfPath from the engine's and FileLoader's lists (UltraVideoFormats)
 // Version: 0.4.0
 // Last Modified: 2026-10-13
@@ -271,6 +272,16 @@ std::string Document::Name() const {
 // The output size: the settings', else the first video's on the timeline
 // (a photo's own size says nothing about the video it goes into: pictures
 // alone make a 1080p video, as the engine's slideshow does)
+VideoFXExportSettings Document::DraftSettings() const {
+    VideoFXExportSettings settings = VideoFXExportSettings::Draft(360);
+    const int projectW = std::max(1, Width()), projectH = std::max(1, Height());
+    settings.width = std::max(16, static_cast<int>(std::lround(360.0 * projectW / projectH / 2.0)) * 2);
+    settings.music = project.settings.music;
+    settings.fitMode = project.settings.fitMode;
+    settings.frameRate = FrameRate();
+    return settings;
+}
+
 int Document::Width() const {
     if (project.settings.width > 0) return project.settings.width;
     for (const VideoFXSegment& s : project.segments)

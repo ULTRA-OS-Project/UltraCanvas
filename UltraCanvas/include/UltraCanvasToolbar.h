@@ -19,6 +19,7 @@
 // AddToolGroup puts several tools in one slot - an UltraCanvasToolGroupButton
 // showing one of them, whose bar of all of them folds out while the pointer
 // rests on it - as a paint program's palette groups its selection tools.
+// Version: 1.10.0 - ToolbarAppearance::FromTheme, ApplyTheme
 // Version: 1.9.0 - ToolbarAppearance::IconPixelSize(); buttons use it
 // Version: 1.8.0 - AddToolGroup: several tools sharing one slot, with a fold-out bar
 // Version: 1.7.0
@@ -127,6 +128,13 @@ namespace UltraCanvas {
         // Foreground (icon/text) color for disabled/inactive items. Used to grey
         // out icons rather than reusing the background color for the foreground.
         Color disabledForegroundColor = Color(150, 150, 150, 255);
+
+        // The theme's roles: the panel behind the bar, ink, hairline
+        // separators, the hover and pressed fills, faint ink when disabled
+        // over a base's own shape (sizes, fonts, flags), or a default one
+        static ToolbarAppearance FromTheme(const UltraCanvasTheme& theme, const ToolbarAppearance& base);
+        static ToolbarAppearance FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ToolbarAppearance()); }
+        static ToolbarAppearance FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 
 //        Color hoverForegroundColor = Colors::Black;
 //        Color activeForegroundColor = Colors::Black;
@@ -409,6 +417,7 @@ namespace UltraCanvas {
         // ===== RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetAppearance(ToolbarAppearance::FromTheme(theme, GetAppearance())); }
         // The reorder drag watches the window's pointer events (an item's
         // button consumes the press before this container would see it), so
         // the watch is installed when the toolbar reaches a window.

@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
 // Matrix diagram examples: L, T, X, Y and House arrangements with live presentation controls
+// Version: 1.4.0 - Pan & zoom and Editable switches; Open JSON... and Save JSON...
 // Version: 1.3.0 - Import table... button: a spreadsheet into an Imported tab
 // Version: 1.2.0 - House of Quality tab; numbers-or-bars roll-up control
 // Version: 1.1.0 - X and Y tabs; hub, header band and cell tint controls
@@ -18,6 +19,7 @@
 #include "UltraCanvasConfig.h"     // GetResourcesDir
 #include "UltraCanvasUtils.h"      // NormalizePath
 #include "UltraCanvasPathUtf8.h"   // PathToUtf8 / PathFromUtf8 for the file name
+#include "DataFormats/UltraCanvasJSON.h"
 #include <memory>
 #include <sstream>
 #include <string>
@@ -139,6 +141,8 @@ namespace UltraCanvas {
         auto swAxisTitles = addSwitch("matrixAxisTitles", "Axis titles", 446);
         auto swTint = addSwitch("matrixTint", "Tint cells", 474);
         auto swHeaderBand = addSwitch("matrixHeaderBand", "Form header", 502);
+        auto swPanZoom = addSwitch("matrixPanZoom", "Pan & zoom", 530);
+        auto swEditable = addSwitch("matrixEditable", "Editable", 558);
 
         // ===== DIAGRAM TABS =====
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
@@ -182,7 +186,7 @@ namespace UltraCanvas {
         readoutPanel->SetBackgroundColor(Color(255, 255, 255, 255));
         contentContainer->AddChild(readoutPanel);
 
-        auto readoutTitle = std::make_shared<UltraCanvasLabel>("matrixReadoutTitle", PAD, 10, 400, 20);
+        auto readoutTitle = std::make_shared<UltraCanvasLabel>("matrixReadoutTitle", PAD, 10, 160, 20);
         readoutTitle->SetText("SELECTION");
         readoutTitle->SetFontSize(11);
         readoutTitle->SetFontWeight(FontWeight::Bold);
@@ -345,6 +349,21 @@ namespace UltraCanvas {
             for (auto& diagram : *allDiagrams) diagram->SetHubMode(mode);
         };
 
+        swPanZoom->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
+            const bool on = (newState == CheckedState::Checked);
+            for (auto& diagram : *allDiagrams) {
+                diagram->SetPanZoomEnabled(on);
+                diagram->Viewport().SetControlsPosition(DiagramPanelPosition::TopRight);
+                diagram->Viewport().SetControlsVisible(on);
+            }
+        };
+
+        swEditable->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
+            for (auto& diagram : *allDiagrams) {
+                diagram->SetEditable(newState == CheckedState::Checked);
+            }
+        };
+
         swTint->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
             const bool on = (newState == CheckedState::Checked);
             for (auto& diagram : *allDiagrams) {
@@ -366,6 +385,8 @@ namespace UltraCanvas {
         swAxisTitles->SetChecked(true);
         swTint->SetChecked(false);
         swHeaderBand->SetChecked(true);
+        swPanZoom->SetChecked(false);
+        swEditable->SetChecked(false);
 
         // ===== IMPORT =====
         // A spreadsheet's tabular form - column labels across the top, row
@@ -376,9 +397,43 @@ namespace UltraCanvas {
                                                                 "Import table...");
         readoutPanel->AddChild(importButton);
 
+        // Puts an imported model in the "Imported" tab - added on the first
+        // import, dressed like the other tabs, reused after.
         auto importedDiagram = std::make_shared<std::shared_ptr<UltraCanvasMatrixDiagram>>();
-        importButton->onClick = [tabbedContainer, allDiagrams, importedDiagram, wireDiagram,
-                                 updateRanking, readoutText]() {
+        auto showImported = [tabbedContainer, allDiagrams, importedDiagram, wireDiagram,
+                             updateRanking, readoutText](const MatrixModel& model,
+                                                         const std::string& message) {
+            std::shared_ptr<UltraCanvasMatrixDiagram>& target = *importedDiagram;
+            if (!target) {
+                target = CreateMatrixDiagramElement("matrixImported", 0, 0, 780, 506, model);
+                const auto& first = allDiagrams->front();
+                target->SetDarkTheme(first->GetDarkTheme());
+                target->SetStyle(first->GetStyle());
+                target->SetTotals(first->GetTotals());
+                target->SetRollUp(first->GetRollUp());
+                target->SetHeaderFit(first->GetHeaderFit());
+                target->SetHubMode(first->GetHubMode());
+                target->SetEditable(first->GetEditable());
+                target->SetPanZoomEnabled(first->GetPanZoomEnabled());
+                target->Viewport().SetControlsPosition(DiagramPanelPosition::TopRight);
+                target->Viewport().SetControlsVisible(first->GetPanZoomEnabled());
+
+                auto tabContent = std::make_shared<UltraCanvasContainer>(
+                        "matrixImportedTab", 0, 0, 790, 516);
+                tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+                tabContent->AddChild(target);
+                tabbedContainer->AddTab("Imported", tabContent);
+                allDiagrams->push_back(target);
+                wireDiagram(target);
+            } else {
+                target->SetModel(model);
+            }
+            tabbedContainer->SetActiveTab(static_cast<int>(allDiagrams->size()) - 1);
+            readoutText->SetText(message);
+            updateRanking();
+        };
+
+        importButton->onClick = [showImported, readoutText]() {
             FileDialogOptions opts;
             opts.SetTitle("Import a matrix table")
                 .AddFilter("Comma-separated values (*.csv)", "csv")
@@ -387,8 +442,7 @@ namespace UltraCanvas {
                 .SetInitialDirectory(NormalizePath(GetResourcesDir() + "media/diagrams/matrix/"));
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
-                    [tabbedContainer, allDiagrams, importedDiagram, wireDiagram, updateRanking,
-                     readoutText](DialogResult result, const std::string& path) {
+                    [showImported, readoutText](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
 
                 // Read through the loader, as every user file is: it also
@@ -431,36 +485,69 @@ namespace UltraCanvas {
                                  + std::to_string(model.sets[1].Count()) + " columns, read on the "
                                  + used + " scale";
 
-                std::shared_ptr<UltraCanvasMatrixDiagram>& target = *importedDiagram;
-                if (!target) {
-                    // The first import adds a tab, dressed like the others.
-                    target = CreateMatrixDiagramElement("matrixImported", 0, 0, 780, 506, model);
-                    const auto& first = allDiagrams->front();
-                    target->SetDarkTheme(first->GetDarkTheme());
-                    target->SetStyle(first->GetStyle());
-                    target->SetTotals(first->GetTotals());
-                    target->SetRollUp(first->GetRollUp());
-                    target->SetHeaderFit(first->GetHeaderFit());
+                showImported(model, "Imported " + fileName + " - " + model.subtitle + ".");
+            });
+        };
 
-                    auto tabContent = std::make_shared<UltraCanvasContainer>(
-                            "matrixImportedTab", 0, 0, 790, 516);
-                    tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
-                    tabContent->AddChild(target);
-                    tabbedContainer->AddTab("Imported", tabContent);
-                    allDiagrams->push_back(target);
-                    wireDiagram(target);
-                } else {
-                    target->SetModel(model);
+        // ===== JSON =====
+        // The whole model - every panel, scale, cell and header field - where
+        // the table import carries one panel. Open JSON... shares the
+        // Imported tab; Save JSON... writes whichever tab is showing.
+        auto openJsonButton = std::make_shared<UltraCanvasButton>("matrixOpenJson", 335, 6, 145, 26,
+                                                                  "Open JSON...");
+        readoutPanel->AddChild(openJsonButton);
+        auto saveJsonButton = std::make_shared<UltraCanvasButton>("matrixSaveJson", 487, 6, 145, 26,
+                                                                  "Save JSON...");
+        readoutPanel->AddChild(saveJsonButton);
+
+        openJsonButton->onClick = [showImported, readoutText]() {
+            FileDialogOptions opts;
+            opts.SetTitle("Open a matrix diagram")
+                .AddFilter("Matrix diagram (*.json)", "json")
+                .AddFilter("All files", "*");
+            UltraCanvasFileLoader::OpenFileDialog(opts,
+                    [showImported, readoutText](DialogResult result, const std::string& path) {
+                if (result != DialogResult::OK || path.empty()) return;
+                const FileBytesResult loaded = UltraCanvasFileLoader::LoadFile(path);
+                if (!loaded.success) {
+                    readoutText->SetText("Could not open " + path + ": " + loaded.error);
+                    return;
                 }
+                MatrixModel model;
+                std::string error;
+                const std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
+                if (!ImportMatrixJson(std::string(loaded.bytes.begin(), loaded.bytes.end()), model, &error)) {
+                    readoutText->SetText("Could not read " + fileName + ": " + error);
+                    return;
+                }
+                showImported(model, "Opened " + fileName + ".");
+            });
+        };
 
-                tabbedContainer->SetActiveTab(static_cast<int>(allDiagrams->size()) - 1);
-                readoutText->SetText("Imported " + fileName + " - " + model.subtitle + ".");
-                updateRanking();
+        saveJsonButton->onClick = [activeDiagram, readoutText]() {
+            auto diagram = activeDiagram();
+            if (!diagram) return;
+            FileDialogOptions opts;
+            opts.SetTitle("Save the matrix diagram")
+                .AddFilter("Matrix diagram (*.json)", "json")
+                .SetDefaultExtension("json")
+                .SetDefaultFileName("matrix.json");
+            // The model is copied now: the dialog names a file later, and an
+            // edit made meanwhile belongs to the next save, not this one.
+            const MatrixModel model = diagram->GetModel();
+            UltraCanvasFileLoader::SaveFileDialog(opts,
+                    [model, readoutText](DialogResult result, const std::string& path) {
+                if (result != DialogResult::OK || path.empty()) return;
+                JSONSerializeOptions pretty;
+                pretty.pretty = true;
+                pretty.indentWidth = 2;
+                const bool saved = JSON::SerializeToFile(path, MatrixModelToJson(model), pretty);
+                readoutText->SetText(saved ? "Saved " + path : "Could not write " + path);
             });
         };
 
         // ===== ABOUT =====
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("matrixAboutTitle", PAD, 536, SIDEBAR_W, 20);
+        auto aboutTitle = std::make_shared<UltraCanvasLabel>("matrixAboutTitle", PAD, 590, SIDEBAR_W, 20);
         aboutTitle->SetText("ABOUT");
         aboutTitle->SetFontSize(11);
         aboutTitle->SetFontWeight(FontWeight::Bold);
@@ -468,11 +555,9 @@ namespace UltraCanvas {
         aboutTitle->SetAlignment(TextAlignment::Left);
         leftSidebar->AddChild(aboutTitle);
 
-        auto aboutText = std::make_shared<UltraCanvasLabel>("matrixAbout", PAD, 558, SIDEBAR_W, 104);
-        aboutText->SetText("Cells hold a named level, not a number - for continuous values "
-                           "use the Heatmap chart. Levels carry weights, so rows and columns "
-                           "roll up into totals and ranks. Hover a cell: its row and column "
-                           "light up in every panel that lists them.");
+        auto aboutText = std::make_shared<UltraCanvasLabel>("matrixAbout", PAD, 610, SIDEBAR_W, 56);
+        aboutText->SetText("Click a cell, then use the arrow keys and Tab. With Editable on, "
+                           "Space or a click steps a cell's level; Delete clears it.");
         aboutText->SetFontSize(10);
         aboutText->SetAlignment(TextAlignment::Left);
         aboutText->SetWrap(TextWrap::WrapWordChar);

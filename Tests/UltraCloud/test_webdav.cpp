@@ -1,6 +1,7 @@
 // Tests/UltraCloud/test_webdav.cpp
 // WebDAV helpers: paths, URLs, PROPFIND parsing, public-folder links; and the
 // provider's requests against a fake HTTP function.
+// Version: 0.2.0 - DELETE and MOVE
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -113,6 +114,40 @@ TEST(webdav_provider_sends_propfind_with_basic_auth) {
     REQUIRE_EQ(cap.auth, std::string("max:pw"));
     REQUIRE_EQ(entries.size(), (size_t)1);
     REQUIRE_EQ(entries[0].name, std::string("a.txt"));
+}
+
+TEST(webdav_provider_deletes_and_renames) {
+    struct Seen { std::string method, url, destination, overwrite; } seen;
+    HttpFn fake = [&seen](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
+        seen.method = req.customMethod;
+        seen.url = req.url;
+        seen.destination = req.headers.Get("Destination");
+        seen.overwrite = req.headers.Get("Overwrite");
+        resp.statusCode = 204;
+        UltraNetResult r; r.success = true; return r;
+    };
+    WebDavProvider dav(fake);
+    REQUIRE(dav.Capabilities().modify);
+    Account a; a.providerId = "webdav"; a.serverUrl = "https://dav.example.org/dav"; a.username = "max";
+    Credentials c; c.username = "max"; c.password = "pw";
+    REQUIRE(dav.Delete(a, c, "/site/old page/index.html", false));
+    REQUIRE_EQ(seen.method, std::string("DELETE"));
+    REQUIRE_EQ(seen.url, std::string("https://dav.example.org/dav/site/old%20page/index.html"));
+    REQUIRE(dav.Delete(a, c, "/site/old page", true));
+    REQUIRE_EQ(seen.url, std::string("https://dav.example.org/dav/site/old%20page/"));
+    REQUIRE(dav.Delete(a, c, "/", true).code == ResultCode::InvalidArgument);
+    REQUIRE(dav.Rename(a, c, "/site/a.txt", "b.txt"));
+    REQUIRE_EQ(seen.method, std::string("MOVE"));
+    REQUIRE_EQ(seen.url, std::string("https://dav.example.org/dav/site/a.txt"));
+    REQUIRE_EQ(seen.destination, std::string("https://dav.example.org/dav/site/b.txt"));
+    REQUIRE_EQ(seen.overwrite, std::string("F"));
+    REQUIRE(dav.Rename(a, c, "/site/a.txt", "x/y").code == ResultCode::InvalidArgument);
+    HttpFn gone = [](const UltraNetHttpRequest&, UltraNetResponse& resp) {
+        resp.statusCode = 404;
+        UltraNetResult r; r.success = false; r.message = "HTTP 404"; return r;
+    };
+    WebDavProvider missing(gone);
+    REQUIRE(missing.Delete(a, c, "/site/nothing", false).code == ResultCode::NotFound);
 }
 
 TEST(webdav_provider_maps_http_errors) {

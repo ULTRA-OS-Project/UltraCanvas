@@ -2,10 +2,12 @@
 // The WordPress importer. TinyXML2 reads the export (privately: no XML
 // type reaches the header); the HTML reader's parser and ExtractPlainText
 // read the bodies; the JSON module reads the block editor's attributes.
+// Version: 0.4.1 - attachments land flat in media/ under the library's clean names
 // Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressImport.h"
+#include "UltraPressMedia.h"
 
 #include "UltraPressBlocks.h"
 #include "UltraPressPublish.h"
@@ -423,13 +425,17 @@ std::string LanguageCode(const std::string& language) {
     return code.empty() ? std::string("en") : code;
 }
 
-std::string LocalMediaPath(const std::string& url) {
-    // https://example.org/wp-content/uploads/2026/10/picture.png → media/2026/10/picture.png
-    const size_t uploads = url.find("/uploads/");
-    std::string tail = uploads != std::string::npos ? url.substr(uploads + 9) : url.substr(url.rfind('/') + 1);
+// https://example.org/wp-content/uploads/2026/10/My Picture.PNG → media/my-picture.png:
+// the library's convention (UltraPressMedia.h, CleanMediaName), flat, so an
+// imported site and one built in the editor read alike; a second file of
+// the same name from another month gets "-2".
+std::string LocalMediaPath(const std::string& url, std::set<std::string>& taken) {
+    std::string tail = url.substr(url.rfind('/') + 1);
     const size_t query = tail.find('?');
     if (query != std::string::npos) tail = tail.substr(0, query);
-    return "media/" + tail;
+    const std::string name = CleanMediaName(tail, [&taken](const std::string& candidate) { return taken.count(candidate) > 0; });
+    taken.insert(name);
+    return "media/" + name;
 }
 
 std::string ReplaceAll(std::string text, const std::string& from, const std::string& to) {
@@ -556,9 +562,10 @@ bool ImportWordPress(const std::string& wxrXml, const ImportOptions& options, Si
 
     // Attachments: their URLs become media paths.
     std::vector<std::pair<std::string, std::string>> mediaMap;
+    std::set<std::string> mediaNames;
     for (const Item& item : items) {
         if (item.type != "attachment" || item.attachmentUrl.empty()) continue;
-        const std::string local = LocalMediaPath(item.attachmentUrl);
+        const std::string local = LocalMediaPath(item.attachmentUrl, mediaNames);
         mediaMap.emplace_back(item.attachmentUrl, local);
         report.media.emplace_back(item.attachmentUrl, local);
         ++report.attachments;

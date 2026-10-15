@@ -1,5 +1,6 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
+// Version: 2.11.0 - ApplyTheme: the tabs from the theme roles
 // Version: 2.10.0 - the overflow list opens anchored to its button: above it when there
 //                  is no room below
 // Version: 2.9.0 - the Modern style's indicator line has a colour and a thickness of its own
@@ -2639,5 +2640,35 @@ namespace UltraCanvas {
             data.userData = tabs[index]->userData;
         }
         return data;
+    }
+
+    void UltraCanvasTabbedContainer::ApplyTheme(const UltraCanvasTheme& theme) {
+        const ThemeRoles& r = theme.roles;
+        tabBarColor = r.panel;
+        activeTabColor = r.panel;
+        inactiveTabColor = r.panel;
+        hoveredTabColor = r.hover;
+        disabledTabColor = r.panel;
+        tabBorderColor = r.line;
+        tabContentBorderColor = r.line;
+        activeTabBorderColor = r.line;
+        inactiveTabBorderColor = Colors::Transparent;
+        hoveredTabBorderColor = Colors::Transparent;
+        activeTabIndicatorColor = r.accent;
+        activeTabTextColor = r.ink;
+        inactiveTabTextColor = r.inkMuted;
+        disabledTabTextColor = r.inkFaint;
+        closeButtonColor = r.inkMuted;
+        closeButtonHoverColor = r.danger;
+        contentAreaColor = r.panel;
+        tabSeparatorColor = r.line;
+        navButtonBackgroundColor = r.raised;
+        navButtonIconColor = r.ink;
+        newTabButtonColor = r.panel;
+        newTabButtonHoverColor = r.hover;
+        newTabButtonIconColor = r.inkMuted;
+        dragInsertionColor = r.accent;
+        dragGhostBorderColor = r.accent.WithAlpha(120);
+        RequestRedraw();
     }
 } // namespace UltraCanvas

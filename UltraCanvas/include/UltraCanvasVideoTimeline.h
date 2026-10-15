@@ -14,11 +14,13 @@
 // track places clips freely. That is the shape of an engine whose export is
 // a list of segments (VideoFX) with free overlays and music beside it.
 //
+// Version: 1.1.0 - ApplyTheme
 // Version: 1.0.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
@@ -105,6 +107,14 @@ struct VideoTimelineStyle {
 
     static VideoTimelineStyle LightPalette();
     static VideoTimelineStyle DarkPalette();
+    // The colours from a theme: the shared roles for the surfaces, lines,
+    // ink, accent, focus and danger, and the element's own roles - named
+    // "video-timeline.<role>", one per colour below from `playhead` on
+    // ("video-timeline.playhead", "video-timeline.clip-video-edge",
+    // "video-timeline.beat" ...) - where the theme names them, else the
+    // light or dark palette's. Sizes and fonts are the defaults.
+    static VideoTimelineStyle FromTheme(const UltraCanvasTheme& theme);
+    static VideoTimelineStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // A thumbnail provider: `frames` pictures spread over seconds `in`..`out` of
@@ -190,6 +200,7 @@ public:
     // ===== UIElement OVERRIDES =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(VideoTimelineStyle::FromTheme(theme)); }
     bool AcceptsFocus() const override { return true; }
     UCMouseCursor GetMouseCursor() const override;
     AccessibleRole GetAccessibleRole() const override { return AccessibleRole::List; }

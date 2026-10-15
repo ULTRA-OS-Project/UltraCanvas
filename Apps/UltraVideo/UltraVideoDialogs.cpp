@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoDialogs.cpp
 // The export dialog and the unsaved-changes question (UltraVideoDialogs.h).
+// Version: 0.3.0 - no palette parameter: the dialogs follow the theme (surface, message, buttons, captions)
 // Version: 0.2.0 - Browse offers the presets' types under FileLoader's names, and a type picked there picks its preset
 // Version: 0.1.0
 // Last Modified: 2026-10-13
@@ -71,7 +72,7 @@ std::string WithExtension(const std::string& path, const char* extension) {
 
 } // namespace
 
-void ShowExportDialog(UltraCanvasWindow* parent, const Document& doc, const Palette& p,
+void ShowExportDialog(UltraCanvasWindow* parent, const Document& doc,
                       std::function<void(const ExportChoice&)> onExport) {
     DialogConfig config;
     config.title = "Export " + doc.Name();
@@ -93,6 +94,7 @@ void ShowExportDialog(UltraCanvasWindow* parent, const Document& doc, const Pale
     presetRow->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto presetLabel = CreateLabel("uv.export.presetLabel", 0, 0, 90, 28, "Preset");
     presetLabel->layoutItem.SetFlexShrink(0);
+    FollowTheme(presetLabel, LabelVariant::Muted);
     presetRow->AddChild(presetLabel);
     auto preset = CreateDropdown("uv.export.preset", 0, 0, 340, 28);
     for (const Preset& pr : *presets) preset->AddItem(pr.label);
@@ -103,13 +105,14 @@ void ShowExportDialog(UltraCanvasWindow* parent, const Document& doc, const Pale
     pathRow->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto pathLabel = CreateLabel("uv.export.pathLabel", 0, 0, 90, 28, "Save as");
     pathLabel->layoutItem.SetFlexShrink(0);
+    FollowTheme(pathLabel, LabelVariant::Muted);
     pathRow->AddChild(pathLabel);
     auto path = CreateTextInput("uv.export.path", 0, 0, 250, 28);
     path->SetText(state->outputPath);
     path->onTextChanged = [state](const std::string& text) { state->outputPath = text; };
     path->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     pathRow->AddChild(path);
-    auto browse = MakeTextButton("uv.export.browse", "Browse\xE2\x80\xA6", p, 84);
+    auto browse = MakeTextButton("uv.export.browse", "Browse\xE2\x80\xA6", 84);
     UltraCanvasTextInput* pathField = path.get();
     UltraCanvasDropdown* presetBox = preset.get();
     // The presets' file types, the chosen one's first, under FileLoader's
@@ -160,7 +163,7 @@ void ShowExportDialog(UltraCanvasWindow* parent, const Document& doc, const Pale
 
     auto note = CreateLabel("uv.export.note", 0, 0, kContentWidth, 40,
                             "Music is mixed in under the clips' own sound. A cancelled or failed export leaves no file.");
-    note->SetTextColor(ToColor(p.InkMuted));
+    FollowTheme(note, LabelVariant::Muted);
 
     dialog->AddDialogElement(presetRow);
     dialog->AddDialogElement(pathRow);
@@ -168,6 +171,7 @@ void ShowExportDialog(UltraCanvasWindow* parent, const Document& doc, const Pale
     dialog->AddDialogElement(note);
     dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
     dialog->AddCustomButton("Export", DialogResult::OK, DialogButtonRole::Default);
+    dialog->SetFollowTheme(true);        // the dialog's surface, message and buttons with the window's look
     UltraCanvasDialogManager::ShowDialog(dialog, [state, onExport, parent](DialogResult result) {
         if (result != DialogResult::OK) return;
         if (state->outputPath.empty()) {
@@ -190,6 +194,7 @@ void AskToSave(UltraCanvasWindow* parent, const std::string& name, std::function
     dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
     dialog->AddCustomButton("Don't save", DialogResult::No, DialogButtonRole::Normal);
     dialog->AddCustomButton("Save", DialogResult::Yes, DialogButtonRole::Default);
+    dialog->SetFollowTheme(true);
     UltraCanvasDialogManager::ShowDialog(dialog, [onAnswer](DialogResult result) {
         if (!onAnswer) return;
         if (result == DialogResult::Yes) onAnswer(DiscardAnswer::Save);

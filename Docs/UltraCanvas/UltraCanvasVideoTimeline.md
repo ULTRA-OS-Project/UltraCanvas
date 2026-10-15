@@ -53,7 +53,11 @@ scrolling, fit; reorder on the magnetic main track with an insertion
 marker, free placement elsewhere; trim with snapping and a live readout;
 split with the blade tool or `S`; delete with ripple; duplicate; nudge;
 markers; the work area; rubber-band selection; file drop with an insertion
-marker; a context-menu hook; keyboard throughout. Light and dark palettes.
+marker; a context-menu hook; keyboard throughout. Light and dark palettes,
+and `VideoTimelineStyle::FromTheme` for the framework theme
+(`UltraCanvasTheme.md`): the shared roles for surfaces, ink, accent, focus
+and danger, the element's own `video-timeline.<role>` colours where the
+theme names them.
 
 Not yet: marker dragging, slip trimming (the tool is accepted and trims for
 now), retiming by `Ctrl`-drag, vertical scrolling of many tracks, resizing

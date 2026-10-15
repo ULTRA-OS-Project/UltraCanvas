@@ -5,11 +5,11 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 
 **Header:** `UltraCanvasTextArea.h`  
 **Implementation:** `UltraCanvasTextArea.cpp`  
-**Version:** 2.0.2  
+**Version:** 2.1.0 - `ApplyTheme`  
 **Last Modified:** 2026-10-10  
 **Author:** UltraCanvas Framework  
 
-<!-- doc-check: void SendChatText(); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
+<!-- doc-check: void SendChatText(); void SaveNote(const std::string& text); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
 
 ## Class Hierarchy
 ```
@@ -454,6 +454,17 @@ void ApplyDarkTheme();
 ```
 Applies dark color scheme with syntax highlighting.
 
+#### ApplyTheme
+```cpp
+void ApplyTheme(const UltraCanvasTheme& theme);
+```
+The light or dark preset by the theme's `dark` flag (the token colours),
+then the theme's roles for the surfaces and ink: the well behind the text,
+ink, the hover fill on the current line, the accent behind a selection,
+faint ink for the line numbers over the panel. A text area asked to follow
+the theme (`SetFollowTheme(true)`) does this on every theme change; see
+`Docs/UltraCanvas/UltraCanvasTheme.md`.
+
 #### ApplyLightTheme
 ```cpp
 void ApplyLightTheme();
@@ -516,6 +527,19 @@ std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 // Every KeyDown, before the area handles it (any editing mode, read-only too).
 // Return true to consume the key; false lets the area edit as usual.
 std::function<bool(const UCEvent&)> onBeforeKeyDown;
+
+// The keyboard focus arriving and leaving, the same two the text input has;
+// fired after the area's own handling, so onFocusLost reads the final text.
+std::function<void()> onFocusGained;
+std::function<void()> onFocusLost;
+```
+
+A field that keeps its text when it is left, whether it is a line or a
+paragraph:
+
+```cpp
+auto note = std::make_shared<UltraCanvasTextArea>("note", 0, 0, 400, 120);
+note->onFocusLost = [raw = note.get()]() { SaveNote(raw->GetText()); };   // your own save
 ```
 
 `onBeforeKeyDown` gives a key a meaning of its own without reimplementing the

@@ -105,15 +105,13 @@ log "=== UltraCanvas portable Linux packager (v$VERSION, $ARCH) ==="
 
 if [ "$SKIP_BUILD" != "1" ]; then
     log "Configuring + building (shared) into $BUILDDIR ..."
-    # Bake the UltraMail OAuth client into the release when the credentials are
-    # in the environment (CI secrets); harmless/empty otherwise. See
-    # Docs/UltraMail/AccountSetup.md section 3.
+    # UltraMail signs in through the ULTRA OS OAuth sign-in service
+    # (Server/OAuthCallback; the address is Apps/UltraMail/CMakeLists.txt's
+    # ULTRAMAIL_OAUTH_SERVICE_URL default), so no client credentials are
+    # baked into a release. See Docs/UltraMail/AccountSetup.md section 3.
     cmake -S "$PROJECTDIR" -B "$BUILDDIR" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DULTRACANVAS_BUILD_SHARED=ON \
-        -DULTRAMAIL_GOOGLE_CLIENT_ID="${ULTRAMAIL_GOOGLE_CLIENT_ID:-}" \
-        -DULTRAMAIL_GOOGLE_CLIENT_SECRET="${ULTRAMAIL_GOOGLE_CLIENT_SECRET:-}" \
-        -DULTRAMAIL_MICROSOFT_CLIENT_ID="${ULTRAMAIL_MICROSOFT_CLIENT_ID:-}"
+        -DULTRACANVAS_BUILD_SHARED=ON
     cmake --build "$BUILDDIR" -j"$(nproc)"
 else
     log "SKIP_BUILD=1 -> packaging existing build in $BUILDDIR"

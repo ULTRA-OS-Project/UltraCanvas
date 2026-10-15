@@ -1,9 +1,10 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.4.0 - WindowType::Desktop covers config.desktopArea when given
 // Version: 1.3.0 - WindowType::Notification: EWMH notification type, above,
 //                  sticky, out of taskbars, input hint off
 // Version: 1.2.0 - per-monitor HiDPI: physical surface/window, hybrid DPI detect
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -122,13 +123,16 @@ namespace UltraCanvas {
         }
 
         // The desktop window is the screen: whatever size was asked for, it
-        // covers the whole of it, from the top-left corner.
+        // covers the whole of it, from the top-left corner - or the area
+        // asked for (config.desktopArea), one monitor of it.
         if (config_.type == WindowType::Desktop) {
             RefreshDeviceScale();
-            config_.x = 0;
-            config_.y = 0;
-            config_.width  = std::max(1, PhysicalToLogical(DisplayWidth(display, screen)));
-            config_.height = std::max(1, PhysicalToLogical(DisplayHeight(display, screen)));
+            const bool area = config_.desktopArea.width > 0 && config_.desktopArea.height > 0;
+            config_.x = area ? config_.desktopArea.x : 0;
+            config_.y = area ? config_.desktopArea.y : 0;
+            config_.width  = std::max(1, PhysicalToLogical(area ? config_.desktopArea.width : DisplayWidth(display, screen)));
+            config_.height = std::max(1, PhysicalToLogical(area ? config_.desktopArea.height
+                                                                : DisplayHeight(display, screen)));
             config_.resizable = false;
         }
 

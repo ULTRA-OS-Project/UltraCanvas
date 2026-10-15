@@ -1,7 +1,10 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
+// Version: 1.11.0 - SetClearButtonText: a clear button with a word on it;
+//                  SetInputType(Search) shows the clear button
+// Version: 1.10.0 - TextInputStyle::FromTheme
 // Version: 1.9.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // V1.9.0: An input method's composition is drawn in the line at the caret,
 //   underlined, with the caret inside it; the scroll keeps that caret in view.
 //   Composing over a selection replaces the selection; committed text, an
@@ -208,6 +211,12 @@ namespace UltraCanvas {
         // it (Phone -> Text must not stay phone-formatted); a formatter the
         // caller set stays.
         if (formatterFromInputType) SetFormatter(TextFormatter::NoFormat());
+        // And the clear button Search showed (Search -> Text has none); one
+        // the caller turned on stays.
+        if (clearButtonFromInputType) {
+            showClearButton = false;
+            clearButtonFromInputType = false;
+        }
         auto setTypeFormatter = [this](const TextFormatter& typeFormatter) {
             SetFormatter(typeFormatter);
             formatterFromInputType = true;
@@ -239,9 +248,19 @@ namespace UltraCanvas {
             case TextInputType::Date:
                 setTypeFormatter(TextFormatter::Date());
                 break;
+            case TextInputType::Search:
+                // A search field is emptied often: it gets the clear button.
+                if (!showClearButton) {
+                    showClearButton = true;
+                    clearButtonFromInputType = true;
+                }
+                break;
             default:
                 break;
         }
+        // The clear button, when it came or went, changes the text area.
+        UpdateScrollOffset();
+        RequestRedraw();
     }
 
     void UltraCanvasTextInput::SetReadOnly(bool readonly) {
@@ -655,10 +674,48 @@ namespace UltraCanvas {
             rightOffset += passwordToggleSize + 4;
         }
 
-        int btnX = finalBounds.width - rightOffset - clearButtonSize - 2;
-        int btnY = (finalBounds.height - clearButtonSize) / 2;
+        const int btnWidth = GetClearButtonWidth();
+        int btnHeight = clearButtonSize;
+        if (!clearButtonText.empty()) {
+            // As tall as the word needs, inside the field's frame.
+            const int inner = static_cast<int>(finalBounds.height) - 2 * style.borderWidth - 4;
+            btnHeight = std::max(clearButtonSize,
+                                 std::min(inner, static_cast<int>(std::ceil(GetClearButtonFont().fontSize * 1.9))));
+        }
+        int btnX = finalBounds.width - rightOffset - btnWidth - 2;
+        int btnY = (finalBounds.height - btnHeight) / 2;
 
-        return Rect2Di(btnX, btnY, clearButtonSize, clearButtonSize);
+        return Rect2Di(btnX, btnY, btnWidth, btnHeight);
+    }
+
+    FontStyle UltraCanvasTextInput::GetClearButtonFont() const {
+        FontStyle font = style.fontStyle;
+        font.fontSize = std::max(8.0, font.fontSize * 0.85);
+        return font;
+    }
+
+    int UltraCanvasTextInput::GetClearButtonWidth() const {
+        if (clearButtonText.empty()) return clearButtonSize;
+        const FontStyle font = GetClearButtonFont();
+        int labelWidth = 0;
+        if (IRenderContext* ctx = GetRenderContext()) {
+            ctx->PushState();
+            ctx->SetFontStyle(font);
+            labelWidth = ctx->GetTextLineWidth(clearButtonText);
+            ctx->PopState();
+        } else {
+            // Not on a window yet: a fair guess, replaced at the first paint.
+            labelWidth = static_cast<int>(utf8_length(clearButtonText) * font.fontSize * 0.6f);
+        }
+        return labelWidth + 2 * kClearButtonLabelPadding;
+    }
+
+    void UltraCanvasTextInput::SetClearButtonText(const std::string& text) {
+        if (clearButtonText == text) return;
+        clearButtonText = text;
+        // The text area ends where the button begins.
+        UpdateScrollOffset();
+        RequestRedraw();
     }
 
     bool UltraCanvasTextInput::IsPasswordToggleVisible() const {
@@ -708,7 +765,7 @@ namespace UltraCanvas {
         }
 
         if (IsClearButtonVisible()) {
-            rightReduction += clearButtonSize + 4;
+            rightReduction += GetClearButtonWidth() + 4;
         }
 
         if (IsPasswordToggleVisible()) {
@@ -905,6 +962,24 @@ namespace UltraCanvas {
 
         Rect2Di btnBounds = GetClearButtonBounds();
         if (btnBounds.width <= 0) return;
+
+        if (!clearButtonText.empty()) {
+            // A small button: a tint of the border colour behind the word,
+            // deeper while the pointer is on it.
+            Color face = style.borderColor;
+            face.a = isClearButtonHovered ? 150 : 80;
+            ctx->PushState();
+            ctx->SetFillPaint(face);
+            ctx->FillRoundedRectangle(Rect2Dd(btnBounds.x, btnBounds.y, btnBounds.width, btnBounds.height),
+                                      std::min(4.0, btnBounds.height / 2.0));
+            ctx->SetFontStyle(GetClearButtonFont());
+            ctx->SetTextAlignment(TextAlignment::Center);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+            ctx->SetTextPaint(IsDisabled() ? style.disabledTextColor : style.textColor);
+            ctx->DrawTextInRect(clearButtonText, Rect2Dd(btnBounds.x, btnBounds.y, btnBounds.width, btnBounds.height));
+            ctx->PopState();
+            return;
+        }
 
         Color buttonColor = isClearButtonHovered ? clearButtonHoverColor : clearButtonColor;
 
@@ -1923,5 +1998,23 @@ namespace UltraCanvas {
         if (strength < 80.0f) return Color(163, 203, 56);  // Lime
         if (strength < 95.0f) return Color(40, 167, 69);   // Green
         return Color(25, 135, 84);                          // Dark Green
+    }
+
+    TextInputStyle TextInputStyle::FromTheme(const UltraCanvasTheme& theme, const TextInputStyle& base) {
+        TextInputStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.backgroundColor = r.well;
+        s.borderColor = r.lineStrong;
+        s.focusBorderColor = r.focus;
+        s.textColor = r.ink;
+        s.placeholderColor = r.inkFaint;
+        s.selectionColor = r.accent.WithAlpha(100);
+        s.caretColor = r.ink;
+        s.disabledBackgroundColor = r.panel;
+        s.disabledBorderColor = r.line;
+        s.disabledTextColor = r.inkFaint;
+        s.validBorderColor = r.lineStrong;
+        s.invalidBorderColor = r.danger;
+        return s;
     }
 }

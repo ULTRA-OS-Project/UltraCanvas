@@ -1,5 +1,6 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
+// Version: 2.10.0 - ApplyTheme
 // Version: 2.9.0 - the Modern style's indicator line has a colour and a thickness of its own
 // Version: 2.8.0 - drag reorder on vertical bars, auto-scroll at the strip's ends, a pill ghost
 // Version: 2.7.0 - a truncated title fills its width, one X weight, the open tab's own X colour
@@ -508,6 +509,10 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING (CORRECTED TO RETURN BOOL) =====
         bool OnEvent(const UCEvent& event) override;
+        // The theme's roles: the panel behind the bar and the content, the
+        // hover fill, ink and muted ink for the tabs, the accent indicator,
+        // hairline borders, the raised surface and ink for the nav buttons
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
         bool HandleMouseDown(const UCEvent& event);
         bool HandleMouseUp(const UCEvent& event);
         bool HandleMouseMove(const UCEvent& event);

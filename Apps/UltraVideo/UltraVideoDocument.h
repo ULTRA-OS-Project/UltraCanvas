@@ -5,6 +5,7 @@
 // `.ultravideo` file that holds all of it (Docs/Research/UltraVideoDesignProposal.md
 // §5.6, §9.2). The project inside the file is what VideoFX_ProjectToJson
 // writes, so `videofx render` works on it once extracted.
+// Version: 0.5.0 - DraftSettings: the draft render's settings, shared with the test
 // Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
@@ -166,6 +167,10 @@ public:
     int Height() const;
     double FrameRate() const;               // the settings', else the first video's, else 25
     double Length() const;                  // seconds of timeline, overlaps subtracted
+    // The draft the viewer plays with sound: 360 lines at the project's
+    // shape (a height alone would take the width from the first segment),
+    // quick to encode, the music and the project's rate and fit
+    VideoFX::VideoFXExportSettings DraftSettings() const;
 
     std::string NewClipId();
     std::string NewTitleId();

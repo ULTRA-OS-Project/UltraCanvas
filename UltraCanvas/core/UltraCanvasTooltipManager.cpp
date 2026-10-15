@@ -1,5 +1,6 @@
 // UltraCanvasTooltipManager.cpp
 // Implementation of tooltip system for UltraCanvas
+// Version: 1.2.0 - SetStyle static
 // Version: 2.4.1 - long words wrap between characters when they must, so a
 //                  URL or a path stays inside the tooltip's box
 // Version: 2.4.0 - the tooltip sits above and to the right of the pointer,

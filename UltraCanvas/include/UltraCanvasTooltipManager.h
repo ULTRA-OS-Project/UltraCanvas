@@ -1,5 +1,6 @@
 // include/UltraCanvasTooltipManager.h
 // Updated tooltip system compatible with unified UltraCanvas architecture
+// Version: 1.2.0 - SetStyle is the style every tooltip shown without one takes; GetStyle
 // Version: 2.1.1
 // Last Modified: 2026-04-27
 // Author: UltraCanvas Framework
@@ -50,8 +51,9 @@ namespace UltraCanvas {
         // inline styling, e.g. "<b>bold</b>")
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
 
+        // Without a style: the manager's (SetStyle), the framework's dark
+        // tooltip until one is set
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string& text, const Point2Di& position) {
-            TooltipStyle style;
             UpdateAndShowTooltip(win, text, position, style);
         }
 
@@ -61,7 +63,7 @@ namespace UltraCanvas {
 
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position) {
             UpdateAndShowTooltip(win, content, position,
-                                 content.styleOverride ? *content.styleOverride : TooltipStyle());
+                                 content.styleOverride ? *content.styleOverride : style);
         }
 
         // Hide current tooltip
@@ -71,13 +73,12 @@ namespace UltraCanvas {
         // Force immediate show/hide
         static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
         static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position) {
-            TooltipStyle style;
             UpdateAndShowTooltipImmediately(win, text, position, style);
         }
         static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position, const TooltipStyle& newStyle);
         static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position) {
             UpdateAndShowTooltipImmediately(win, content, position,
-                                            content.styleOverride ? *content.styleOverride : TooltipStyle());
+                                            content.styleOverride ? *content.styleOverride : style);
         }
 
 
@@ -110,7 +111,10 @@ namespace UltraCanvas {
 //        static UltraCanvasUIElement* GetTooltipSource() {
 //            return tooltipSource;
 //        }
-        void SetStyle(const TooltipStyle &newStyle);
+        // The style every tooltip shown without one takes - set it from the
+        // theme (TooltipStyle::FromTheme) when the window's theme changes
+        static void SetStyle(const TooltipStyle &newStyle);
+        static const TooltipStyle& GetStyle() { return style; }
 
         static const std::string& GetCurrentText() {
             return currentText;

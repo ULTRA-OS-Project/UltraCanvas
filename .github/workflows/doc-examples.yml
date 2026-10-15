@@ -14,7 +14,9 @@ name: Doc examples
 # what its snippets assume in a <!-- doc-check: ... --> comment. What the
 # baseline lists is the design documents (Proposal, Plan, Investigation),
 # whose code is of APIs not written yet; an entry that stops being found
-# means its API now exists and the file is rewritten.
+# means its API now exists, and fails the check until the file is rewritten
+# (--all --update-baseline), so the file stays the list of what the
+# proposals still wait for.
 #
 # Pinned to ubuntu-24.04: the docs pass against clang 18 and that release's
 # library headers; a baseline entry, should one ever be needed, is clang's

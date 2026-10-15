@@ -20,9 +20,11 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.3.0 - Desktop: at sign-in the Windows desktop, UltraDesktop
+//                  beside Explorer, or UltraDesktop instead of Explorer
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -40,7 +42,7 @@ namespace UltraCanvas {
     class UltraCanvasLabel;
     class UltraCanvasDropdown;
     class UltraCanvasTextInput;
-    class UltraCanvasSwitch;
+    enum class DesktopReplacement;   // UltraCanvasDesktopShell.h
 }
 
 namespace UOSSettings {
@@ -64,10 +66,11 @@ private:
     // the sticky notes in it are UltraDesktop's).
     void SaveDesktopPage();
     void BrowseWallpaper();
-    // On Windows: UltraDesktop at sign-in in place of the Windows desktop
-    // (on: switched over and started now; off: the Windows desktop is back,
-    // and a desktop the sign-in started closes).
-    void SetSystemDesktopReplaced(bool replaced);
+    // On Windows, what the sign-in starts: the Windows desktop (the way
+    // back: a desktop the sign-in started closes), UltraDesktop beside
+    // Explorer (switched over and started now), or UltraDesktop instead of
+    // Explorer (from the next sign-in).
+    void SetSystemDesktop(UltraCanvas::DesktopReplacement how);
     void BuildLastFolderPage();
     void ShowPage(const std::string& pageId);
     // Re-reads FileDialog.conf and fills the switch and the table from it.
@@ -91,7 +94,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> ramDisc_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> filer_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> desktops_;
-    std::shared_ptr<UltraCanvas::UltraCanvasSwitch> systemDesktop_;   // only where the platform has the switch
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> systemDesktop_;   // only where the platform has the switch
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> desktopStatus_;
 
     // ----- Last used folder -----

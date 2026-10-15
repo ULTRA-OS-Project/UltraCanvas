@@ -1,6 +1,7 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
+// Version: 1.10.0 - AlbumConfig::FromTheme
 // Version: 1.9.0
 // Last Modified: 2026-10-10
 // V1.8.0: A picture saved over shows its new content. The paths a paint drew
@@ -1911,4 +1912,17 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
+
+    AlbumConfig AlbumConfig::FromTheme(const UltraCanvasTheme& theme, const AlbumConfig& base) {
+        AlbumConfig c = base;
+        const ThemeRoles& r = theme.roles;
+        c.backgroundColor = r.panel;
+        c.itemBackgroundColor = r.raised;
+        c.borderColor = r.line;
+        c.captionColor = r.ink;
+        c.subtitleColor = r.inkMuted;
+        c.linkColor = r.accent;
+        c.selectionColor = r.accent;
+        return c;
+    }
 } // namespace UltraCanvas

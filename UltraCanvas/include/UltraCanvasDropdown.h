@@ -1,7 +1,10 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-10-08 - default bodies mark unused parameters (void)
+// Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item
+// Last Modified: 2026-10-15 - DropdownItem::tooltip: shown over the item in the open list
+// Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: an icon-only button
+// Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
 #pragma once
 
 #include "UltraCanvasUIElement.h"
@@ -32,6 +35,9 @@ namespace UltraCanvas {
         std::string text;
         std::string value;
         std::string iconPath;
+        // Shown when the pointer rests on the item in the open list (the
+        // list's ToolTipRole); empty shows none.
+        std::string tooltip;
         bool enabled = true;
         bool separator = false;
         bool selected = false;  // for multi-selection support
@@ -70,6 +76,14 @@ namespace UltraCanvas {
         Color checkboxCheckedColor = Color(100, 150, 255, 255);
         Color checkmarkColor = Colors::White;
 
+        // The theme's roles: the raised surface for the field (a button at
+        // rest) and the list, hover and pressed fills, ink, control borders, the accent
+        // behind a selected or checked item, the focus ring
+        // over a base's own shape (sizes, fonts, flags), or a default one
+        static DropdownStyle FromTheme(const UltraCanvasTheme& theme, const DropdownStyle& base);
+        static DropdownStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, DropdownStyle()); }
+        static DropdownStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
+
         // Dimensions
         float borderWidth = 1.0f;
         float cornerRadius = 2.0f;
@@ -83,6 +97,12 @@ namespace UltraCanvas {
         // Icon dimensions
         float iconSize = 16.0f;
         float iconPadding = 4.0f;
+
+        // The button shows the selected item's icon and text. Off, it shows
+        // the icon alone, centred beside the arrow - a compact picker whose
+        // list still names every item (and whose accessible value is still
+        // the selected item's text).
+        bool buttonShowsText = true;
 
         // Checkbox dimensions (for multi-select)
         float checkboxSize = 14.0f;
@@ -236,10 +256,14 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(DropdownStyle::FromTheme(theme, GetStyle())); }
 
     private:
         void CreatePopupListView();
         void WireListViewCallbacks();
+        // Choose a row of the list - a click, or Return on the highlight:
+        // select it and close (single), or toggle it (multi-selection).
+        void ChooseRow(int row);
         void ApplyStyleToListView();
         void CalculateAndSetPopupSize();
         Point2Df CalculatePopupPosition();

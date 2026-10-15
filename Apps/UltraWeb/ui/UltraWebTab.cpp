@@ -1,6 +1,7 @@
 // Apps/UltraWeb/ui/UltraWebTab.cpp
 // One browser tab (UltraWebTab.h): what used to be the whole window's page
 // or app, now one per tab.
+// Version: 0.2.0 - target="_blank" links go to the window (a new tab)
 // Version: 0.1.0
 // Last Modified: 2026-10-14
 // Author: UltraCanvas Framework / ULTRA OS
@@ -99,6 +100,9 @@ UltraWebTab::UltraWebTab(const std::string& id, Host host)
         SetStatus("Opening " + url + " with the system ...");
         OpenURL(url);
     };
+    if (host_.onOpenInNewTab) {
+        webView_->onOpenInNewWindow = [this](const std::string& url) { host_.onOpenInNewTab(*this, url); };
+    }
     // A file input's button: the system's (or the framework's) file dialog,
     // filtered by the input's accept="" list where it names extensions.
     webView_->onChooseFiles = [](bool multiple, const std::string& accept,
@@ -138,6 +142,7 @@ UltraWebTab::~UltraWebTab() {
     webView_->onLoadingChanged = nullptr;
     webView_->onLinkHovered = nullptr;
     webView_->onExternalLink = nullptr;
+    webView_->onOpenInNewWindow = nullptr;
     webView_->onNonHtml = nullptr;
 }
 

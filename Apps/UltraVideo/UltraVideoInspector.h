@@ -9,6 +9,7 @@
 // size, frame rate, fit. Every field reports an edit as a closure over the
 // document; the window applies it through the undo history and shows the
 // document again, so the inspector never writes the document itself.
+// Version: 0.5.0 - no caption or heading vectors: the labels follow the theme
 // Version: 0.4.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
@@ -69,7 +70,6 @@ private:
 
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs;
     std::shared_ptr<Container> clipPage, audioPage, projectPage;
-    std::vector<std::shared_ptr<Label>> captions, headings;
     std::vector<std::shared_ptr<Dropdown>> dropdowns;
     std::vector<std::shared_ptr<Slider>> sliders;
     std::vector<std::shared_ptr<Switch>> switches;

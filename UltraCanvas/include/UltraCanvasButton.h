@@ -1,5 +1,8 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.9.0 - ButtonVariant (Standard, Ghost, Primary, Selected): FromTheme maps the
+//                 theme onto a button's part; SetThemeVariant on the element
+// Version: 2.8.0 - ButtonStyle::FromTheme, ApplyTheme
 // Version: 2.7.1 - GetIconWidth / GetIconHeight
 // Version: 2.7.0 - onDoubleClick
 // Version: 2.6.0
@@ -36,6 +39,14 @@ namespace UltraCanvas {
     };
 
 // ===== SPLIT BUTTON STYLE =====
+    // A button's part in the window, which FromTheme maps the theme onto:
+    // Standard - the raised surface with the control border (a text button);
+    // Ghost - no fill at rest, the hover and pressed fills (an icon button in
+    // a bar); Primary - the accent fill with text on it (the one main
+    // action); Selected - a ghost button in its on state (the active tool, a
+    // toggle that is on): the soft accent fill with the accent for its ink
+    enum class ButtonVariant { Standard, Ghost, Primary, Selected };
+
     struct SplitButtonStyle {
         // Enable split button mode
         bool enabled = false;
@@ -118,6 +129,20 @@ namespace UltraCanvas {
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
         Point2Df shadowOffset = Point2Di(0, 0);
+
+        // The theme's roles, by the button's variant - Standard: the raised
+        // surface at rest, the hover and pressed fills, ink, the control
+        // border, the focus ring; Ghost: no fill at rest, the hover and
+        // pressed fills ("button.ghost-hover", "button.ghost-pressed" where
+        // a theme names them), ink; Primary: the accent, its hover, text on
+        // it ("button.primary", "button.primary-hover", "button.on-primary");
+        // Selected: the soft accent fill, the accent for the ink
+        // ("button.selected", "button.on-selected") - over a base's own
+        // shape (sizes, fonts, flags), or a default one
+        static ButtonStyle FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base,
+                                     ButtonVariant variant = ButtonVariant::Standard);
+        static ButtonStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ButtonStyle()); }
+        static ButtonStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
         // Split button style
         SplitButtonStyle splitStyle;
     };
@@ -130,6 +155,7 @@ namespace UltraCanvas {
         int mnemonicIndex = -1;
         std::shared_ptr<UCImage> icon;
         ButtonStyle style;
+        ButtonVariant themeVariant = ButtonVariant::Standard;
         ButtonIconPosition iconPosition = ButtonIconPosition::Left;
 
         // Icon properties
@@ -294,6 +320,15 @@ namespace UltraCanvas {
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent& event) override;
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(ButtonStyle::FromTheme(theme, GetStyle(), themeVariant)); }
+        // The button's part in the window for the theme (Standard unless
+        // set); a following button re-styles at once, so an active tool
+        // switches between Ghost and Selected with this alone
+        void SetThemeVariant(ButtonVariant variant) {
+            themeVariant = variant;
+            if (GetFollowTheme()) ApplyTheme(UltraCanvasTheme::Current());
+        }
+        ButtonVariant GetThemeVariant() const { return themeVariant; }
         bool AcceptsFocus() const override { return canAcceptFocus; }
         void SetAcceptsFocus(bool accept) { canAcceptFocus = accept; }
 

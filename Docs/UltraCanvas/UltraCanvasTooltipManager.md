@@ -1,6 +1,6 @@
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.4.0  
+**Version:** 2.5.0 - `TooltipStyle::FromTheme`; the manager's style is the one every tooltip shown without one takes  
 **Last Modified:** 2026-10-05  
 **Author:** UltraCanvas Framework
 
@@ -224,7 +224,15 @@ struct TooltipStyle {
 ```cpp
 static TooltipStyle TooltipStyle::Dark();   // the default dark theme
 static TooltipStyle TooltipStyle::Light();  // white background, dark text
+static TooltipStyle TooltipStyle::FromTheme(const UltraCanvasTheme& theme);   // Dark() or Light() by the theme, its roles over it
 ```
+
+A tooltip shown without a style takes the manager's
+(`UltraCanvasTooltipManager::SetStyle`, static; `GetStyle` reads it) - the
+framework's dark tooltip until one is set. The application sets it from
+the theme whenever the theme changes (`UltraCanvasTheme::SetCurrent`), so
+tooltips agree with the window's look without the application's help; see
+`Docs/UltraCanvas/UltraCanvasTheme.md`.
 
 ### Soft shadow
 

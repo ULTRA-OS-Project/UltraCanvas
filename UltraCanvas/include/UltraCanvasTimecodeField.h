@@ -9,11 +9,13 @@
 // frame past the rate) shows a danger border until it is corrected. It is an
 // input element in its own right - four segments, no caret - so it owns its
 // entry buffer; it is not built over the text input.
+// Version: 1.1.0 - ApplyTheme
 // Version: 1.0.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
@@ -42,6 +44,12 @@ struct TimecodeFieldStyle {
 
     static TimecodeFieldStyle LightPalette();
     static TimecodeFieldStyle DarkPalette();
+    // The colours from a theme's shared roles: the well behind the digits,
+    // the control border, the focus ring, danger for an entry that is not a
+    // timecode, the ink, the accent for the selected segment and the sign.
+    // Fonts and sizes are the defaults.
+    static TimecodeFieldStyle FromTheme(const UltraCanvasTheme& theme);
+    static TimecodeFieldStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 class UltraCanvasTimecodeField : public UltraCanvasUIElement {
@@ -83,6 +91,7 @@ public:
     // ===== UIElement OVERRIDES =====
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(TimecodeFieldStyle::FromTheme(theme)); }
     bool AcceptsFocus() const override { return !readout; }
     AccessibleRole GetAccessibleRole() const override { return AccessibleRole::TextField; }
     std::string GetAccessibleValueText() const override { return GetText(); }

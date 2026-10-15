@@ -1,0 +1,39 @@
+# systemd unit for the ULTRA OS OAuth sign-in service.
+#
+#   sudo cp deploy/oauth-callback.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now oauth-callback
+#
+# Expects the checkout (or `pip install .` of it) under /opt/oauth-callback
+# with a virtual environment in /opt/oauth-callback/venv, and the
+# registrations in /etc/oauth-callback.env (mode 0600, owner root), read by
+# systemd and handed to the process as its environment.
+
+[Unit]
+Description=ULTRA OS OAuth sign-in service (oauth-callback.ultraos.eu)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=oauth-callback
+Group=oauth-callback
+WorkingDirectory=/opt/oauth-callback
+EnvironmentFile=/etc/oauth-callback.env
+# One worker: the sign-ins in flight live in the process's memory.
+ExecStart=/opt/oauth-callback/venv/bin/python -m oauth_callback --host 127.0.0.1 --port 8787
+Restart=always
+RestartSec=3
+
+# The service needs nothing but outbound https and its own code.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

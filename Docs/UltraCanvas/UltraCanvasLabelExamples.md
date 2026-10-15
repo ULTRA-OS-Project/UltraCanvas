@@ -10,6 +10,7 @@ its text unless it is given a size.
 **Header:** `include/UltraCanvasLabel.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
+**Version:** 2.13.0 - the theme and the label's variant
 
 ## Features
 
@@ -78,6 +79,35 @@ label's style: they belong to every element (`SetBackgroundColor`,
 - `LabelStyle::SubHeaderStyle()`, `LabelStyle::CaptionStyle()`,
   `LabelStyle::StatusStyle()`: a sub-heading, a small muted caption, status
   bar text.
+
+### The theme and the label's variant
+
+`LabelStyle::FromTheme` colours a style from the framework theme
+(`UltraCanvasTheme`, `Docs/UltraCanvas/UltraCanvasTheme.md`), over a base
+whose font, alignment and wrap stay, by the label's **variant**:
+
+```cpp
+enum class LabelVariant {
+    Body,       // primary text: ink
+    Muted,      // secondary text - a note, a caption, a status line: muted ink
+    Faint,      // a hint, a placeholder: faint ink
+    Heading     // a panel or section title: ink
+};
+static LabelStyle LabelStyle::FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base,
+                                        LabelVariant variant = LabelVariant::Body);
+```
+
+A label told its variant and asked to follow the theme colours itself
+from the current theme, now and on every change:
+
+```cpp
+auto note = CreateLabel("note", 0, 0, 240, 18, "Select a clip, then click a preset.");
+note->SetThemeVariant(LabelVariant::Muted);
+note->SetFollowTheme(true);
+```
+
+A theme names `label.muted`, `label.faint` and `label.heading` as element
+roles where its design differs from the shared ink roles.
 
 ## Methods
 

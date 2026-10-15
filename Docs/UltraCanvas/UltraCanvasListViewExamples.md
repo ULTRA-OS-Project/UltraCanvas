@@ -697,14 +697,14 @@ iconList->onItemClicked = [statusLabel, iconModel](int row) {
 
 ### A custom delegate with clickable cells (the domain dashboard)
 
-The DemoApp's *Domain Dashboard* page
-(`Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp`) is a table whose
+The last section of the DemoApp's *List View* page, *Custom Delegate: Domain
+Dashboard* (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`), is a table whose
 cells are more than text: a link, a status, an action, a sparkline, a figure, a
 plan and a row-menu button. A list view does not hold elements per row; one
 `IItemDelegate` paints every cell from the model, and the view's cell
 callbacks make parts of the cells clickable. That is what keeps it fast at any
-size: only the rows on screen are painted (the page's *Add 1,000 domains*
-button shows it).
+size: only the rows on screen are painted (the *Add 1,000 domains* button
+under the table shows it).
 
 The model keeps records and answers text and tooltips per column; the delegate
 reads the record directly for what is not text (the sparkline's history):
@@ -851,7 +851,7 @@ first Down after it selects the first row.
 
 ## See Also
 
-- DemoApp → *Domain Dashboard* (`Apps/DemoApp/UltraCanvasListViewDashboardExamples.cpp`) — the custom-delegate example above, complete
+- DemoApp → *List View*, section 5 (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`) — the custom-delegate example above, complete
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — Hierarchical equivalent of ListView
 - [UltraCanvasScrollbar](UltraCanvasScrollbar.md) — Scrollbar used internally
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Static text display
