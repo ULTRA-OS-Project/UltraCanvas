@@ -1,6 +1,6 @@
 # Datenschutzerklärung — UltraMail
 
-**Version 1.0 (Entwurf zur rechtlichen Prüfung) · 10. Oktober 2026**
+**Version 1.1 (Entwurf zur rechtlichen Prüfung) · 15. Oktober 2026**
 
 Diese Erklärung beschreibt, welche personenbezogenen Daten die Anwendung
 **UltraMail** verarbeitet, wo diese Verarbeitung stattfindet, welche Dritten
@@ -54,9 +54,13 @@ Bestellung besteht [in der rechtlichen Prüfung bestätigen].
 ## 3. Was UltraMail auf Ihrem Gerät speichert
 
 Alles Folgende liegt im Datenordner von UltraMail auf Ihrem Rechner:
-`~/.local/share/UltraMail/` unter Linux und macOS (bzw.
-`$XDG_DATA_HOME/UltraMail/`, wenn diese Variable gesetzt ist),
-`%APPDATA%\UltraMail\` unter Windows.
+`~/.local/share/UltraMail/` unter Linux,
+`~/Library/Application Support/UltraMail/` unter macOS und
+`%APPDATA%\UltraMail\` unter Windows - bzw. auf jedem dieser Systeme
+`$XDG_DATA_HOME/UltraMail/`, wenn diese Variable gesetzt ist. Versionen vor
+0.10.52 legten den Ordner auch unter macOS in `~/.local/share/UltraMail/` ab;
+der erste Start einer späteren Version verschiebt ihn vollständig an den
+neuen Ort.
 
 | Daten | Was es ist | Wo |
 |---|---|---|

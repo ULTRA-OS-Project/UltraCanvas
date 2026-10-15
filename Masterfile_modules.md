@@ -802,8 +802,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
-  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp`, both behind the internal
-  `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. Public surface:
+  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
+  `UltraCanvasWindowsTrayHost.cpp` (the notification area), both behind the
+  internal `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. On
+  Windows also the standalone **UltraCanvasShellGuard** program
+  (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
+  instead of Explorer. Public surface:
   - `ListWindows` (`DesktopWindowInfo`: id, title, WM class, icon file
     resolved through the icon themes, desktop, pid, active, minimized,
     skipTaskbar), `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`,
@@ -811,7 +815,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `GetVirtualDesktopCount` / `GetCurrentVirtualDesktop` /
     `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
     `MoveWindowToVirtualDesktop`.
-  - `GetScreenSize`, `ReserveScreenEdges` (a window's strips along the
+  - `GetScreenSize`, `ListScreens` (`DesktopScreenInfo` per monitor, the
+    primary first: `EnumDisplayMonitors` / RandR; a `WindowType::Desktop`
+    window goes on one through `WindowConfig::desktopArea`),
+    `ReserveScreenEdges` (a window's strips along the
     screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
     so maximised windows stop short of a desktop's bars), `CaptureScreen`
     (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
@@ -821,14 +828,21 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
     icons resolved; the Start menu's program shortcuts on Windows, launched
-    by opening the shortcut), `MatchApplication` (a window's entry, by
+    by opening the shortcut, and the Microsoft Store applications by
+    `appUserModelId`, started through `IApplicationActivationManager`), `MatchApplication` (a window's entry, by
     `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
     `FindProgram` (next to this executable first, then `PATH`).
-  - `CanReplaceSystemDesktop` / `IsSystemDesktopReplaced` /
-    `ReplaceSystemDesktop` / `RestoreSystemDesktop` - a program (UltraDesktop)
-    in place of the system's desktop at sign-in, and the way back (Windows:
-    the user's Run key and Explorer's taskbar on auto-hide, its previous
-    state restored; elsewhere the session decides and the calls say so).
+  - `CanReplaceSystemDesktop` / `GetSystemDesktopReplacement` /
+    `IsSystemDesktopReplaced` / `ReplaceSystemDesktop` / `RestoreSystemDesktop`
+    / `IsSystemDesktopRunning` - a program (UltraDesktop) in place of the
+    system's desktop at sign-in, `DesktopReplacement::Beside` or `Instead`,
+    and the way back (Windows: beside, the user's Run key and Explorer's
+    taskbar on auto-hide, its previous state restored; instead, the account's
+    Winlogon shell setting naming UltraCanvasShellGuard, which restarts a
+    crashing desktop and starts Explorer for the session when it cannot run;
+    elsewhere the session decides and the calls say so).
+  - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
+    (Windows `ExitWindowsEx`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -839,7 +853,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `Stop()` (joins) / `IsRunning`: a key combination that reaches this
     program from any window (X11 `XGrabKey` on its own connection and
     thread, Windows `RegisterHotKey` on its own thread; fails with a reason
-    elsewhere and when another program holds it).
+    elsewhere and when another program holds it). `"Super"` alone is a tap
+    of the Win key on Windows (a low-level keyboard hook), refused on X11.
+  - `UltraCanvasTrayHost` - `Start(onChanged, &error)` / `Stop()` (joins) /
+    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon) /
+    `Click(id, TrayClick)`: the notification area for a desktop that is the
+    shell (Windows `Shell_TrayWnd` on its own thread; refused while Explorer's
+    taskbar runs, and on X11).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
@@ -888,7 +908,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   bar with the mouse wheel, with a chevron over the edge the items continue
   past that scrolls a page when clicked (`SetScrollHints`).
   `WindowType::Desktop` (`UltraCanvasWindow.h`) is
-  the screen-sized window at the bottom of the stack a desktop draws into.
+  the screen-sized window at the bottom of the stack a desktop draws into;
+  `WindowConfig::desktopArea` puts one on another monitor.
 
 - **UltraCanvasToolGroupButton** (`UltraCanvasToolGroupButton.h`) — several
   tools sharing one slot of a palette or toolbar: the slot shows one of them,

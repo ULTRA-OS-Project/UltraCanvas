@@ -1,5 +1,6 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.5.0 - WindowType::Desktop on any monitor (config.desktopArea)
 // Version: 1.4.0 - WindowType::Desktop: undecorated, the primary monitor's
 //                  size, out of the taskbar and Alt+Tab, on every virtual
 //                  desktop, kept below every other window
@@ -9,7 +10,7 @@
 // Version: 1.2.0 - WindowType::Notification: topmost, out of the taskbar, never activated
 // Version: 1.1.1 - window icon pixels converted to straight alpha
 // Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -202,10 +203,13 @@ namespace UltraCanvas {
         if (config_.alwaysOnTop)  exStyle |= WS_EX_TOPMOST;
 
         // The desktop window is the screen: whatever size was asked for, it
-        // covers the primary monitor, which is the one at 0,0.
+        // covers the primary monitor, which is the one at 0,0 - or the area
+        // asked for, another monitor (which may lie left of or above it).
+        const bool desktopArea = config_.type == WindowType::Desktop && config_.desktopArea.width > 0 &&
+                                 config_.desktopArea.height > 0;
         if (config_.type == WindowType::Desktop) {
-            config_.x = 0;
-            config_.y = 0;
+            config_.x = desktopArea ? config_.desktopArea.x : 0;
+            config_.y = desktopArea ? config_.desktopArea.y : 0;
         }
 
         // Seed the device scale from the monitor the window will open on. hwnd
@@ -216,8 +220,10 @@ namespace UltraCanvas {
         RefreshDeviceScale();
 
         if (config_.type == WindowType::Desktop) {
-            config_.width  = std::max(1, PhysicalToLogical(GetSystemMetrics(SM_CXSCREEN)));
-            config_.height = std::max(1, PhysicalToLogical(GetSystemMetrics(SM_CYSCREEN)));
+            const int physicalWidth = desktopArea ? config_.desktopArea.width : GetSystemMetrics(SM_CXSCREEN);
+            const int physicalHeight = desktopArea ? config_.desktopArea.height : GetSystemMetrics(SM_CYSCREEN);
+            config_.width  = std::max(1, PhysicalToLogical(physicalWidth));
+            config_.height = std::max(1, PhysicalToLogical(physicalHeight));
             config_.resizable = false;
             style &= ~WS_THICKFRAME;
         }
@@ -228,8 +234,9 @@ namespace UltraCanvas {
 
         int winWidth = rect.right - rect.left;
         int winHeight = rect.bottom - rect.top;
-        int winX = (config_.x >= 0) ? config_.x : CW_USEDEFAULT;
-        int winY = (config_.y >= 0) ? config_.y : CW_USEDEFAULT;
+        // A desktop window's position is its monitor's, negative or not.
+        int winX = (config_.x >= 0 || config_.type == WindowType::Desktop) ? config_.x : CW_USEDEFAULT;
+        int winY = (config_.y >= 0 || config_.type == WindowType::Desktop) ? config_.y : CW_USEDEFAULT;
 
         std::wstring wTitle = UltraCanvasWindowsApplication::Utf8ToUtf16(config_.title);
 
@@ -352,8 +359,11 @@ namespace UltraCanvas {
                 }
             }
         } else {
-            // No window yet: use the monitor under the configured position.
-            POINT pt = { config_.x >= 0 ? config_.x : 0, config_.y >= 0 ? config_.y : 0 };
+            // No window yet: use the monitor under the configured position
+            // (a desktop window's is its monitor's, left of or above the
+            // primary at negative coordinates).
+            const bool placed = config_.type == WindowType::Desktop;
+            POINT pt = { config_.x >= 0 || placed ? config_.x : 0, config_.y >= 0 || placed ? config_.y : 0 };
             HMONITOR mon = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
             bool got = false;
             if (HMODULE shcore = LoadLibraryW(L"shcore.dll")) {

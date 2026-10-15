@@ -1,3 +1,135 @@
+#### 2026-10-15 *0.9.306*
+- **`UltraCanvasDesktopShell`: a desktop instead of Explorer, not only
+  beside it.** `ReplaceSystemDesktop` takes a `DesktopReplacement`:
+  - `Beside`, as before: started from the `Run` key, Explorer's taskbar hidden.
+  - `Instead`: the account's own shell setting (Winlogon's `Shell` under
+    `HKEY_CURRENT_USER`, no administrator rights) names the new
+    **UltraCanvasShellGuard** followed by the desktop. It takes effect at the
+    next sign-in.
+  - Switching to one removes the other. `GetSystemDesktopReplacement()` says
+    which is set, and `RestoreSystemDesktop` undoes either. It removes a
+    shell setting only when that setting names the guard.
+  - `IsSystemDesktopRunning()` says whether Explorer's taskbar runs in this
+    session.
+  - Linux and the other platforms still answer that the session decides.
+- **UltraCanvasShellGuard** (`OS/MSWindows/ShellGuard/`, built beside the
+  applications) keeps a desktop that fails from leaving the screen empty:
+  - It starts the desktop and starts it again after a crash. The desktop gets
+    no console window, though UltraDesktop is a console program.
+  - It starts Explorer for the session after three failures within a minute,
+    when the desktop cannot start at all, or when it exits, unless the session
+    is ending. Should the desktop hang, it does so when the shell setting stops
+    naming the guard, after five seconds' grace.
+  - It does what Explorer would do at sign-in: signals the sign-in screen,
+    hides minimized windows, and starts the `Run`, `RunOnce`, policy `Run`
+    and Startup-folder programs, except those switched off in Task Manager.
+  - It links nothing of the framework and its C++ runtime statically, so it
+    starts even when the desktop's DLLs cannot.
+  - It logs to `%LOCALAPPDATA%\UltraCanvas\ShellGuard.log`.
+- **`UltraCanvasTrayHost`: the notification area for a desktop that is the
+  shell** (`OS/MSWindows/UltraCanvasWindowsTrayHost.cpp`).
+  - It is the `Shell_TrayWnd` every program's `Shell_NotifyIcon` talks to, on
+    a thread of its own, and asks the running programs to add their icons
+    again (`TaskbarCreated`).
+  - `ListIcons()` gives each icon as a `DesktopTrayIcon`: tooltip, a PNG of
+    the icon, the program, and the last balloon with a serial.
+  - `Click(id, TrayClick)` hands the program its click in every
+    `NIM_SETVERSION` form, double clicks included, and passes on the
+    foreground.
+  - It answers `Shell_NotifyIconGetRect` and drops icons whose window is gone.
+  - It refuses to start while Explorer's taskbar runs, and on X11.
+- **`EndSession(SessionEnd)` / `CanEndSession()`**: sign out, restart and
+  shut down (Windows: `ExitWindowsEx`), for a desktop with no Start menu
+  beside it.
+- While no Explorer taskbar runs, `LaunchApplication` opens a shortcut to a
+  bare `explorer.exe` (the Start menu's *File Explorer*) on *This PC*.
+  Started with nothing to open, Explorer would take over as a second
+  desktop. The backend opens shortcuts now (`LaunchShortcut`).
+- The Win32 backend no longer takes its own process's `Shell_TrayWnd` for
+  Explorer's taskbar: screen edges, the taskbar state and the desktop switch
+  look at other processes' windows only.
+- `DesktopShellTest` on the Windows CI rows also runs:
+  - the guard on itself as a desktop that crashes on request;
+  - the notification area on a Windows desktop of its own, through shell32's
+    real `Shell_NotifyIcon`;
+  - on CI only, the switch to instead-of-Explorer and back.
+- The Windows installer (`Windows/Installer/UltraCanvasSetup.nsi` 0.2.0):
+  - It registers `UltraDesktop` in App Paths, so *Run new task* finds it.
+  - It gives the guard no Start-menu entry.
+  - On uninstall it clears a shell setting that names the guard, even when
+    UltraDesktop no longer runs, and waits for the guard to hand over to
+    Explorer before removing the files.
+- **`UltraCanvasDesktopShell::ListScreens()`: every monitor.** It returns
+  `DesktopScreenInfo` values (position, size, `primary`), with the primary
+  first.
+  - Windows reads them with `EnumDisplayMonitors`; X11 reads RandR's
+    monitors.
+  - An X server where nobody chose a primary gives the monitor at the
+    origin as the primary.
+  - Where the platform tells no monitors apart, the list is the one screen
+    `GetScreenSize` reports.
+- **`WindowConfig::desktopArea`** places a `WindowType::Desktop` window on any
+  monitor, in physical pixels of the virtual screen.
+  - Empty means the primary monitor on Windows and the whole screen on X11,
+    as before.
+  - On Windows a desktop that is the shell covers the other monitors with
+    these windows, so they no longer stay black.
+- **Microsoft Store applications in `ListApplications` on Windows.**
+  - They come from the shell's *Applications* folder, which the Start menu's
+    list is made of.
+  - Each entry carries the new `UCDesktopEntry::appUserModelId`, its display
+    name and a PNG of its tile icon.
+  - `LaunchApplication` starts them through `IApplicationActivationManager`,
+    as the Start menu does, and refuses files for them with a reason.
+  - The backend contract adds `LaunchPackagedApplication`.
+- **`UltraCanvasGlobalShortcut::Start("Super")`: a tap of the Win key** on
+  Windows.
+  - A tap is the key pressed and let go with no other key between, so
+    `Super+E` is not one.
+  - A low-level keyboard hook on the shortcut's thread sees the key without
+    taking it from anyone.
+  - X11 refuses it, and any other modifier alone is refused everywhere.
+- **On X11, `Stop()` of the monitor and of a global shortcut no longer hangs
+  for good.** The wake pipe was blocking, so the drain after the wake waited
+  for a byte that never came. A program with a display hung on exit; without
+  one the monitor had no connection to stop. Both ends of the pipe no longer
+  block.
+  - CI never saw it: `DesktopShellTest` ran only without a display. The
+    Linux rows now also run it under Xvfb, where it drives the X11 backend.
+    The monitor has to report a root-window property, the virtual desktops
+    and RandR's monitors are read back, and every `Stop()` must return within
+    five seconds.
+  - A hang ends the test with a failure instead of holding the job.
+  - `ULTRACANVAS_TEST_DISPLAY_REQUIRED=1` makes a missing display fail
+    rather than skip.
+- Windows internals: `PixmapFromBitmap` turns an `HBITMAP` into a pixmap, and
+  takes back premultiplied alpha where the shell hands it over that way.
+- **The Windows installer is built in CI.**
+  - The Windows rows build the NSIS installer (`package-win.sh --installer`).
+  - They install it silently, check the files, *App Paths*, the Start-menu
+    entries and the uninstall entry, and uninstall it again, checking
+    nothing is left behind.
+  - The installer is uploaded as `UltraCanvas-Setup-Windows-<version>-<arch>`.
+  - The first run found two faults, both fixed here.
+    - `build-windows-installer.sh` handed makensis relative paths, which
+      makensis reads from the script's own folder. It now passes absolute
+      ones.
+    - The Start menu left out every application built as a console
+      program, UltraDesktop among them: only GUI programs got an entry. Now
+      every program with a desktop entry (`Apps/*/*.desktop`) gets one,
+      under that entry's name. GUI programs without an entry keep theirs,
+      and command-line tools still get none.
+  - `scripts/build-windows-installer.sh` finds NSIS on `PATH`, in its
+    Windows install folder, or at `MAKENSIS`.
+- **The signing scripts change the certificate's password**
+  (`SignUltraDemo.ps1` / `SignUltraTexter.ps1 -Mode RotatePassword`).
+  - The new password comes from `ULTRACANVAS_SIGN_PFX_PASSWORD`, and the old
+    one, when the certificate is not in the store, from
+    `ULTRACANVAS_SIGN_OLD_PFX_PASSWORD`.
+  - The PFX is exported again and checked before it replaces the old one.
+  - They refuse the password that was once published in this repository, and
+    any password under 12 characters.
+
 #### 2026-10-15 *0.9.305*
 - **The colour picker can offer its designs in a dropdown.**
   `UltraCanvasColorPicker::SetShowWheelStyleSelector(true)` (picker 1.6.0)
