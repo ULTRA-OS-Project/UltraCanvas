@@ -350,9 +350,13 @@ std::vector<std::string> ExpandWildcardDirectories(const std::string& pattern,
                 continue;
             }
             if (prefix.empty()) continue;   // a relative pattern cannot start with '*'
+            // `prefix` is UTF-8 text, so it goes through PathFromUtf8: handed
+            // over as it is, Windows read it in the ANSI code page and a
+            // folder named outside it (a Thai user name) listed nothing.
             std::error_code ec;
             std::filesystem::directory_iterator iterator(
-                prefix, std::filesystem::directory_options::skip_permission_denied, ec);
+                PathFromUtf8(prefix),
+                std::filesystem::directory_options::skip_permission_denied, ec);
             if (ec) {
                 if (refused && IsSystemRefusal(ec)) ++*refused;
                 continue;

@@ -58,12 +58,19 @@ bool IsProtectedPath(const std::string& path);
 class PathGuard {
 public:
     // Registers a root. Non-existent roots are kept (a rule may name a
-    // directory that is absent on this machine) but existing ones are
-    // canonicalized first, so a symlinked cache directory still matches the
-    // resolved paths handed to Check().
+    // directory that is absent on this machine). An existing one is kept
+    // twice: as given and with its symlinks resolved, and a path inside
+    // either counts as inside. The scanner walks the root as given, so its
+    // candidates carry the given spelling: on macOS $TMPDIR is
+    // /var/folders/..., and /var is a link to /private/var. Holding only the
+    // resolved form refused every one of them as outside the roots, and the
+    // temp-file rules found nothing there. The parent-chain check in Check()
+    // still compares against the resolved form only.
     void AllowRoot(const std::string& root);
     void Reset();
 
+    // The roots as given (normalized): what a remover rebuilds its guard
+    // from, resolving them again on its own machine and moment.
     const std::vector<std::string>& AllowedRoots() const { return roots_; }
 
     // The full check described at the top of this file.
@@ -74,7 +81,8 @@ public:
     bool IsInsideAllowedRoot(const std::string& path) const;
 
 private:
-    std::vector<std::string> roots_;
+    std::vector<std::string> roots_;          // as given, normalized
+    std::vector<std::string> resolvedRoots_;  // same order, symlinks resolved
 };
 
 } // namespace UltraCleaner
