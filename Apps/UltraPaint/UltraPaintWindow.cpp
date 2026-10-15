@@ -95,11 +95,9 @@ namespace {
     // panes are: white cards on a light page, each a group box whose caption
     // is a quiet bold grey over a hairline (GroupBoxVisualStyle::SectionCard),
     // with the colour picker in its light style (ColorPickerStyle::Light).
+    // The layer list's rows take the framework's list-row colours
+    // (Colors::ListRowHover / ListRowSelected), as UltraMail's lists do.
     constexpr float kPanelGap = 8.0f;    // between the cards, and around them
-    // The layer list's rows: a soft grey under the pointer, the active layer
-    // on a light tint of the accent blue.
-    const Color kRowHover   (243, 245, 248, 255);
-    const Color kRowSelected(226, 236, 253, 255);
 
     // The bitmap formats this build reads, as FileLoader's format inventory
     // says (UltraCanvasFileLoader::GetSupportedLoadExtensions) - not a list
@@ -706,7 +704,7 @@ void UltraPaintWindow::BuildRightPanel() {
     rightPanel->layout.SetFlexColumn().SetFlexGap(kPanelGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     rightPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     rightPanel->SetPadding(kPanelGap, 0, kPanelGap, kPanelGap);
-    rightPanel->SetBackgroundColor(GroupBoxVisualStyle::SectionCardPageColor());
+    rightPanel->SetBackgroundColor(Colors::SectionPage);
 
     // ----- colour -----
     auto colourPanel = PanelCard("up-color-card", "Colour");
@@ -766,8 +764,8 @@ void UltraPaintWindow::BuildRightPanel() {
     app.style = ToolbarStyle::Flat;
     app.itemSpacing = 4.0f;
     app.backgroundColor = layersPanel->GetVisualStyle().backgroundColor;
-    app.hoverBackgroundColor = kRowHover;
-    app.activeBackgroundColor = kRowSelected;
+    app.hoverBackgroundColor = Colors::ListRowHover;
+    app.activeBackgroundColor = Colors::ListRowSelected;
     buttons->SetAppearance(app);
     buttons->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     buttons->AddButton("up-l-add", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip("New layer");
@@ -787,7 +785,7 @@ void UltraPaintWindow::BuildRightPanel() {
             b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
             ButtonStyle flat = b->GetStyle();
             flat.cornerRadius = 6.0f;
-            flat.pressedColor = kRowSelected;
+            flat.pressedColor = Colors::ListRowSelected;
             b->SetStyle(flat);
         }
     }
@@ -1569,8 +1567,8 @@ void UltraPaintWindow::RebuildLayerPanel() {
             st.fontSize          = 11.0f;
             st.textAlign         = TextAlignment::Left;
             st.normalColor       = Colors::Transparent;
-            st.hoverColor        = kRowHover;
-            st.pressedColor      = kRowSelected;
+            st.hoverColor        = Colors::ListRowHover;
+            st.pressedColor      = Colors::ListRowSelected;
             st.borderWidth       = 0.0f;
             st.cornerRadius      = 5.0f;
             btn->SetStyle(st);

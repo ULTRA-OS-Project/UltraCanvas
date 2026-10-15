@@ -1,8 +1,10 @@
 // include/UltraCanvasCommonTypes.h
 // Unified common types and structures for UltraCanvas Framework
+// Version: 2.4.0 - Colors::SectionPage / SectionCard* (the section-card look) and
+//                  Colors::ListRowHover / ListRowSelected (rows of a list on such a card)
 // Version: 2.3.0 - ImagePosition / ImageAxisPosition and FitImageRect (CSS
 //                 object-fit + object-position), shared by image element and label
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -419,6 +421,22 @@ namespace Colors {
     // strongest thing on the page.
     inline constexpr Color ControlDisabled(238, 238, 238, 255);
     inline constexpr Color ControlDisabledBorder(202, 202, 202, 255);
+
+    // Sections of a window as white cards (GroupBoxVisualStyle::SectionCard,
+    // the look UltraMail's panes and UltraPaint's side panel share): the light
+    // page around and between the cards - on a white page a white card shows
+    // nothing but its hairline - the card, its hairline border, its caption.
+    inline constexpr Color SectionPage(245, 246, 248, 255);
+    inline constexpr Color SectionCardBackground(255, 255, 255, 255);
+    inline constexpr Color SectionCardBorder(226, 229, 234, 255);
+    inline constexpr Color SectionCardCaption(104, 112, 125, 255);
+
+    // The rows of a list on such a card (a message list, a folder tree, a
+    // layer list): a soft grey under the pointer, a light tint of the accent
+    // blue behind the selected row. Quieter than SelectionHover / Selection,
+    // which the classic controls use.
+    inline constexpr Color ListRowHover(243, 245, 248, 255);
+    inline constexpr Color ListRowSelected(226, 236, 253, 255);
 }
 
 // ===== COLOR UTILITY FUNCTIONS =====

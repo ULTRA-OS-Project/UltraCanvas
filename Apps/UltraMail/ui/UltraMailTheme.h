@@ -8,8 +8,9 @@
 // Nothing here paints anything. These are values handed to catalogue elements
 // through their own SetStyle / SetTextColor / SetBorders APIs, per the
 // framework rule that applications never hand-roll a widget.
-// Version: 0.6.0 - the page, card and card-caption look come from the framework's
-//                  GroupBoxVisualStyle::SectionCard (shared with UltraPaint)
+// Version: 0.6.0 - the page, card, card caption and list-row colours are the framework's
+//                  (Colors::SectionPage / SectionCard* / ListRow*, GroupBoxVisualStyle::
+//                  SectionCard), shared with UltraPaint
 // Version: 0.5.0 - ClickSurface::PassPointerThroughContent: a click on the
 //                  surface's text and icons reaches the surface
 // Version: 0.4.0 - StyleSegmented (the signature editor, the compose window)
@@ -38,14 +39,12 @@ namespace Theme {
 // ---------------------------------------------------------------------------
 // A near-white page with white cards, so a card reads as raised without a
 // shadow (the catalogue has no shadow primitive). The page, the card and its
-// border are the framework's SectionCard look, which UltraPaint's side panel
-// uses too: taken from it, so the two applications cannot drift apart.
-inline const UltraCanvas::Color kPageBackground =
-    UltraCanvas::GroupBoxVisualStyle::SectionCardPageColor();
-inline const UltraCanvas::Color kCardBackground =
-    UltraCanvas::GroupBoxVisualStyle::SectionCard().backgroundColor;
-inline const UltraCanvas::Color kCardBorder =
-    UltraCanvas::GroupBoxVisualStyle::SectionCard().borderColor;
+// border are the framework's section-card colours, which UltraPaint's side
+// panel uses too: taken from there, so the two applications cannot drift
+// apart. (Compile-time constants, so they are set before any other static.)
+inline const UltraCanvas::Color kPageBackground = UltraCanvas::Colors::SectionPage;
+inline const UltraCanvas::Color kCardBackground = UltraCanvas::Colors::SectionCardBackground;
+inline const UltraCanvas::Color kCardBorder     = UltraCanvas::Colors::SectionCardBorder;
 inline const UltraCanvas::Color kDivider        {234, 236, 240};
 inline const UltraCanvas::Color kSidebar        {249, 250, 251};
 
@@ -57,8 +56,10 @@ inline const UltraCanvas::Color kAccent         { 37,  99, 235};   // primary ac
 inline const UltraCanvas::Color kAccentHover    { 29,  78, 216};
 inline const UltraCanvas::Color kAccentPressed  { 30,  64, 175};
 inline const UltraCanvas::Color kAccentSoft     {232, 240, 254};   // tinted surfaces (selected)
-inline const UltraCanvas::Color kRowHover       {243, 245, 248};
-inline const UltraCanvas::Color kRowSelected    {226, 236, 253};
+// A list's rows on a card: the framework's list-row colours (UltraPaint's
+// layer list takes them too).
+inline const UltraCanvas::Color kRowHover       = UltraCanvas::Colors::ListRowHover;
+inline const UltraCanvas::Color kRowSelected    = UltraCanvas::Colors::ListRowSelected;
 
 // Counter tints: a soft background with a strong text colour of the same
 // hue. Blue = new today, green = unread from before today, orange = waiting

@@ -13,9 +13,10 @@
   scrollbar for it; the tool card is captioned with the tool's name, and Zoom
   and Pan, which have nothing to set, say so instead of showing an empty card;
   and the hints under a tool's options (*"[ and ] change the size"*) are quiet
-  grey rather than one more bold line. The cards and the picker's style are
-  the framework's (`GroupBoxVisualStyle::SectionCard()`,
-  `ColorPickerStyle::Light()`; framework changelog:
+  grey rather than one more bold line. The cards, the layer rows' tints and
+  the picker's style are the framework's (`GroupBoxVisualStyle::SectionCard()`,
+  `Colors::ListRowHover` / `ListRowSelected`, `ColorPickerStyle::Light()`;
+  framework changelog:
   `section-card-and-light-picker`), shared with UltraMail and UltraFiler
   rather than copied, and the picker in *Adjust > Colour to Alpha* takes the
   same light style, so the two pickers read as one control.

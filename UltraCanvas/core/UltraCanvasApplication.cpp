@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.10.1 - two -Wswitch / -Wtautological warnings in DispatchEvent fixed (the
+//                   key-state bound is checked on the key code as an int)
 // Version: 1.10.0 - a key delivered to a window a modal blocks goes to the modal, not dropped
 // Version: 1.9.0 - Initialize installs the theme change handler: every window re-styles, the tooltips too
 // Version: 1.8.0 - when the system fonts arrive after the start, or a font file is
@@ -15,7 +17,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -1418,8 +1420,12 @@ namespace UltraCanvas {
             ctrlHeld = event.ctrl;
             altHeld = event.alt;
             metaHeld = event.meta;
-            if (event.virtualKey >= 0 && event.virtualKey < 256) {
-                keyStates[event.virtualKey] = (event.type == UCEventType::KeyDown);
+            // As an int: the platforms make a UCKeys out of any key code
+            // (static_cast<UCKeys>(vk)), so the value is not bounded by the
+            // enum's own range, which is what the compiler reasons from.
+            const int key = static_cast<int>(event.virtualKey);
+            if (key >= 0 && key < 256) {
+                keyStates[key] = (event.type == UCEventType::KeyDown);
             }
         }
 
@@ -1501,6 +1507,9 @@ namespace UltraCanvas {
                     focusedWindow.reset();
                 }
                 return;
+            default:
+                // Everything else goes on to the window below.
+                break;
         }
         // Dispatch other events to focused element
         if (targetWindow) {

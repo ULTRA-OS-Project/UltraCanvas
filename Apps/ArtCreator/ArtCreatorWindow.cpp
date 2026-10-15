@@ -2,6 +2,7 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.8.1 - the colour picker in the framework's light style (ColorPickerStyle::Light)
 // Version: 1.8.0 - icon mode: File > New Icon (16 to 256 px), an Icon panel with the
 //                 icon size, a pixel grid, pointer snapping that puts lines of odd
 //                 pixel widths on pixel centres, Arrange > Snap to Pixels, the page
@@ -24,7 +25,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -670,7 +671,8 @@ void ArtCreatorWindow::BuildRightPanel() {
     rightPanel->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     rightPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     rightPanel->SetPadding(6);
-    rightPanel->SetBackgroundColor(Color(244, 244, 246, 255));
+    const Color panelGround(244, 244, 246, 255);
+    rightPanel->SetBackgroundColor(panelGround);
 
     // ----- icon: on top, and only in icon mode - the icon at its size -----
     BuildIconPanel();
@@ -678,6 +680,11 @@ void ArtCreatorWindow::BuildRightPanel() {
     // ----- colour: foreground = fill, background = line -----
     rightPanel->AddChild(PanelTitle("ac-color-title", "Colour (fill / line)"));
     colorPicker = CreateColorPicker("ac-color", fillColour, 0, 0, kRightInner, 300);
+    // The framework's light picker on the panel's grey: left as constructed it
+    // is a charcoal block with a red accent in the middle of a light panel.
+    ColorPickerStyle pickerStyle = ColorPickerStyle::Light();
+    pickerStyle.backgroundColor = panelGround;
+    colorPicker->SetStyle(pickerStyle);
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(lineColour);
     colorPicker->SetShowAlpha(true);
