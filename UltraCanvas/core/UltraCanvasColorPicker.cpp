@@ -1,7 +1,9 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
+// Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
+//                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -742,14 +744,13 @@ namespace UltraCanvas {
         ctx->DrawRectangle(f);
 
         // Selection marker
-        float mx = hlFieldRect.x + CurrentLightness() * hlFieldRect.width;
-        float my = hlFieldRect.y + (hue / 360.0f) * hlFieldRect.height;
+        const Point2Df m = HLMarkerPoint();
         ctx->SetStrokePaint(style.markerColor);
         ctx->SetStrokeWidth(2.0);
-        ctx->DrawCircle(Point2Dd(mx, my), Scaled(6.0f));
+        ctx->DrawCircle(Point2Dd(m.x, m.y), Scaled(6.0f));
         ctx->SetStrokePaint(style.markerOutline);
         ctx->SetStrokeWidth(1.0);
-        ctx->DrawCircle(Point2Dd(mx, my), Scaled(7.5f));
+        ctx->DrawCircle(Point2Dd(m.x, m.y), MarkerRadius());
     }
 
     void UltraCanvasColorPicker::RenderSVSquare(IRenderContext* ctx) {
@@ -781,14 +782,14 @@ namespace UltraCanvas {
         ctx->DrawRectangle(Rect2Dd(sq.x - 0.5, sq.y - 0.5, sq.width + 1.0, sq.height + 1.0));
 
         // Selection marker, on the centre of the pixel the value maps to
-        float mx = svRect.x + 0.5f + sat * std::max(1.0f, svRect.width - 1.0f);
-        float my = svRect.y + 0.5f + (1.0f - val) * std::max(1.0f, svRect.height - 1.0f);
+        const Point2Df m = SVMarkerPoint();
+        const double mx = m.x + 0.5, my = m.y + 0.5;
         ctx->SetStrokePaint(style.markerColor);
         ctx->SetStrokeWidth(2.0);
         ctx->DrawCircle(Point2Dd(mx, my), Scaled(6.0f));
         ctx->SetStrokePaint(style.markerOutline);
         ctx->SetStrokeWidth(1.0);
-        ctx->DrawCircle(Point2Dd(mx, my), Scaled(7.5f));
+        ctx->DrawCircle(Point2Dd(mx, my), MarkerRadius());
     }
 
     void UltraCanvasColorPicker::RenderSwatches(IRenderContext* ctx) {
@@ -1289,17 +1290,17 @@ namespace UltraCanvas {
             }
 
             if (wheelStyle == ColorPickerWheelStyle::HueLightnessField) {
-                if (hlFieldRect.Contains(p)) {
+                if (InAreaGrabZone(hlFieldRect, p)) {
                     if (adjust) BeginBackgroundEdit();
-                    dragTarget = DragTarget::HLField;
-                    UpdateHLFromPoint(p);
+                    StartAreaDrag(DragTarget::HLField, HLMarkerPoint(), p);
+                    UpdateHLFromPoint(p + dragGrabOffset);
                     Changed(false);
                     return true;
                 }
             } else if (wheelStyle == ColorPickerWheelStyle::HueLightnessSliders &&
                        lightBarRect.Contains(p)) {
                 if (adjust) BeginBackgroundEdit();
-                dragTarget = DragTarget::LightnessBar;
+                StartDrag(DragTarget::LightnessBar);
                 UpdateLightnessFromBar(p);
                 Changed(false);
                 return true;
@@ -1309,22 +1310,24 @@ namespace UltraCanvas {
                 float dist = std::sqrt(dx * dx + dy * dy);
                 if (dist >= ringInner && dist <= ringOuter) {
                     if (adjust) BeginBackgroundEdit();
-                    dragTarget = DragTarget::HueRing;
+                    StartDrag(DragTarget::HueRing);
                     UpdateHueFromPoint(p);
                     Changed(false);
                     return true;
                 }
             } else if (hueBarRect.Contains(p)) {
                 if (adjust) BeginBackgroundEdit();
-                dragTarget = DragTarget::HueBar;
+                StartDrag(DragTarget::HueBar);
                 UpdateHueFromBar(p);
                 Changed(false);
                 return true;
             }
-            if (!IsHueLightnessStyle() && svRect.Contains(p)) {
+            // The ring and the hue bar are tested first, so they keep the
+            // points where the grab zone's margin overlaps them.
+            if (!IsHueLightnessStyle() && InAreaGrabZone(svRect, p)) {
                 if (adjust) BeginBackgroundEdit();
-                dragTarget = DragTarget::SVSquare;
-                UpdateSVFromPoint(p);
+                StartAreaDrag(DragTarget::SVSquare, SVMarkerPoint(), p);
+                UpdateSVFromPoint(p + dragGrabOffset);
                 Changed(false);
                 return true;
             }
@@ -1391,7 +1394,7 @@ namespace UltraCanvas {
                     if (adjust) BeginBackgroundEdit();
                     DragTarget targets[4] = {DragTarget::Channel0, DragTarget::Channel1,
                                              DragTarget::Channel2, DragTarget::Alpha};
-                    dragTarget = targets[i];
+                    StartDrag(targets[i]);
                     ApplyDrag(p, false);
                     return true;
                 }
@@ -1531,17 +1534,66 @@ namespace UltraCanvas {
         Point2Df p(event.pointer.x, event.pointer.y);
         ApplyDrag(p, true);
         dragTarget = DragTarget::NoneTarget;
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            if (app->GetCapturedElement() == this) app->ReleaseMouse();
+        }
         // Commit the background colour and restore the foreground working state.
         if (editingBackground) EndBackgroundEdit();
         return true;
+    }
+
+    void UltraCanvasColorPicker::StartDrag(DragTarget target) {
+        dragTarget = target;
+        dragGrabOffset = Point2Df();
+        // Without the capture the moves go to whatever is under the pointer
+        // once it leaves the picker: the marker stopped short of an edge it
+        // was dragged past, and the release was lost, so the drag carried on
+        // under a pointer with no button down.
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+    }
+
+    Point2Df UltraCanvasColorPicker::SVMarkerPoint() const {
+        // The inverse of UpdateSVFromPoint(): the pointer position (pixel
+        // column / row) that picks the current saturation and value.
+        return Point2Df(svRect.x + sat * std::max(1.0f, svRect.width - 1.0f),
+                        svRect.y + (1.0f - val) * std::max(1.0f, svRect.height - 1.0f));
+    }
+
+    Point2Df UltraCanvasColorPicker::HLMarkerPoint() const {
+        // The inverse of UpdateHLFromPoint().
+        return Point2Df(hlFieldRect.x + CurrentLightness() * hlFieldRect.width,
+                        hlFieldRect.y + (hue / 360.0f) * hlFieldRect.height);
+    }
+
+    bool UltraCanvasColorPicker::InAreaGrabZone(const Rect2Df& area, const Point2Df& p) const {
+        if (area.width <= 0.0f || area.height <= 0.0f) return false;
+        // The marker is centred on the colour's pixel, so at an edge most of
+        // it lies outside the area: grab the whole of it, not only the part
+        // over the area. A press in the margin picks the nearest edge.
+        const float m = MarkerGrabMargin();
+        return Rect2Df(area.x - m, area.y - m, area.width + 2.0f * m,
+                       area.height + 2.0f * m).Contains(p);
+    }
+
+    void UltraCanvasColorPicker::StartAreaDrag(DragTarget target, const Point2Df& marker,
+                                               const Point2Df& p) {
+        StartDrag(target);
+        // On the marker: keep the colour and move it from where it was
+        // grabbed. Elsewhere the colour jumps to the pointer (no offset). An
+        // Adjust (background) edit always jumps: the marker on screen is the
+        // foreground's, and the background's is not drawn to be grabbed.
+        if (editingBackground) return;
+        const float dx = marker.x - p.x, dy = marker.y - p.y;
+        const float r = MarkerGrabMargin();
+        if (dx * dx + dy * dy <= r * r) dragGrabOffset = Point2Df(dx, dy);
     }
 
     void UltraCanvasColorPicker::ApplyDrag(const Point2Df& p, bool finished) {
         switch (dragTarget) {
             case DragTarget::HueRing:  UpdateHueFromPoint(p); break;
             case DragTarget::HueBar:   UpdateHueFromBar(p); break;
-            case DragTarget::SVSquare: UpdateSVFromPoint(p); break;
-            case DragTarget::HLField:  UpdateHLFromPoint(p); break;
+            case DragTarget::SVSquare: UpdateSVFromPoint(p + dragGrabOffset); break;
+            case DragTarget::HLField:  UpdateHLFromPoint(p + dragGrabOffset); break;
             case DragTarget::LightnessBar: UpdateLightnessFromBar(p); break;
             case DragTarget::Channel0:
             case DragTarget::Channel1:

@@ -10,8 +10,10 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
+// Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
+//                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -380,6 +382,10 @@ namespace UltraCanvas {
                                 HLField, LightnessBar,
                                 Channel0, Channel1, Channel2, Alpha };
         DragTarget dragTarget = DragTarget::NoneTarget;
+        // A press on the marker of the SV area or the hue x lightness field
+        // grabs it where it was hit: the drag moves it by the pointer's
+        // movement instead of first jumping its centre to the pointer.
+        Point2Df dragGrabOffset;
 
         // Right-button (Adjust) colour edits target the background instead of
         // the foreground. While such an edit is in progress the working HSV
@@ -497,8 +503,23 @@ namespace UltraCanvas {
         bool HandleMouseUp(const UCEvent& event);
         bool HandleKeyDown(const UCEvent& event);
 
+        // Sets the drag target and captures the mouse, so the drag keeps
+        // receiving moves and its release when the pointer leaves the picker.
+        void StartDrag(DragTarget target);
         void ApplyDrag(const Point2Df& p, bool finished);
         void UpdateHueFromPoint(const Point2Df& p);
+
+        // The selection marker of the SV area / hue x lightness field: its
+        // centre (in pointer coordinates, the point that maps back to the
+        // current colour) and its outer radius. The marker overhangs the area
+        // at the edges, so a press is taken within MarkerGrabMargin() of the
+        // area, and one on the marker grabs it (StartAreaDrag).
+        Point2Df SVMarkerPoint() const;
+        Point2Df HLMarkerPoint() const;
+        float MarkerRadius() const { return Scaled(7.5f); }
+        float MarkerGrabMargin() const { return MarkerRadius() + 1.0f; }
+        bool InAreaGrabZone(const Rect2Df& area, const Point2Df& p) const;
+        void StartAreaDrag(DragTarget target, const Point2Df& marker, const Point2Df& p);
 
         // ----- Background (Adjust) editing -----
         // Swap the working HSV state to the background colour for the duration

@@ -1121,6 +1121,29 @@ else()
     message(STATUS "  MouseClickBubblingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== COLOUR PICKER DRAG TEST =====
+# The SV marker is grabbed where it overhangs the area, a press on it keeps
+# the colour, and a drag (SV area or hue ring) keeps following the pointer -
+# and ends on its release - outside the picker. Opens a window, so it skips
+# itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerDragTest...")
+    add_executable(ColorPickerDragTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerDragTest.cpp
+    )
+    target_include_directories(ColorPickerDragTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerDragTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerDragTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerDragTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerDragTest COMMAND ColorPickerDragTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerDragTest")
+else()
+    message(STATUS "  ColorPickerDragTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILE DIALOG TEST =====
 # The name a Save hands back (the chosen type's extension, always run), and
 # the dialog itself: the Up arrow and view glyphs centred in their buttons,

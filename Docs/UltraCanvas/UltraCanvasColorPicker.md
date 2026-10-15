@@ -13,8 +13,8 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.5.0
-**Last Modified**: 2026-10-05
+**Version**: 1.5.1
+**Last Modified**: 2026-10-15
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -45,6 +45,11 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Saturation / Value area** — drag inside the square (Ring) or the
   maximised rectangle (Bar). The first pixel column/row is 0 and the last is
   100 %, and each pixel is drawn in exactly the colour a click on it picks.
+  The marker is grabbed wherever it is hit, including the part that hangs
+  over the area's edge: a press on it keeps the colour and the drag moves it
+  from there, while a press elsewhere (or just beside the area, which picks
+  the nearest edge) jumps the colour to the pointer. The hue × lightness
+  field's marker works the same way.
 - ✅ **Preview swatches** — foreground (current) vs. background (previous) colour,
   with a swap symbol tucked into the corner between the two swatches. Click the
   background swatch to revert.
@@ -245,6 +250,7 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 |--------|--------|
 | Drag on the hue ring / hue bar | Sets hue |
 | Drag inside the SV area | Sets saturation & value |
+| Press the SV marker and drag | Moves the marker from where it was grabbed, without first jumping |
 | Drag inside the hue × lightness field | Sets hue (vertical) and lightness (horizontal) at full saturation |
 | Drag the intensity bar | Sets lightness: white (left) → pure colour → black (right) |
 | Hover a swatch | Floods the whole widget surface with that colour for a big-area preview |
@@ -264,6 +270,10 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 | Click a tab or the dropdown | Switches HSV / HSL / RGB channel editors |
 | Click the disclosure arrow | Shows/hides the channel sliders (when collapsible) |
 | Drag a channel/alpha slider | Adjusts that component |
+
+Every drag captures the mouse: it keeps following the pointer outside the
+picker (clamped to the end of the scale) and ends where the button is
+released, wherever that is.
 
 ## Screen colour picker (eyedropper)
 
