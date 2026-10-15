@@ -5628,3 +5628,23 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
 endif()
+
+# UltraCanvasTreeView::SetFilterText: the rows matching a text, expanded to
+# them, and the tree put back when the filter ends. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewFilterTest...")
+    add_executable(TreeViewFilterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewFilterTest.cpp
+    )
+    target_include_directories(TreeViewFilterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewFilterTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewFilterTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewFilterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewFilterTest COMMAND TreeViewFilterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewFilterTest")
+else()
+    message(STATUS "  TreeViewFilterTest skipped (UltraCanvas target not present)")
+endif()
