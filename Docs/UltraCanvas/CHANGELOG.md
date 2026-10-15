@@ -1,3 +1,35 @@
+#### 2026-10-15 *0.9.298*
+- **A build without libvips reads JPEG, BMP and GIF.** `UCImage` in a build
+  configured with `ULTRACANVAS_ENABLE_VIPS=OFF` (the WebAssembly `no-vips`
+  and `single-thread` variants, the ones a static host without cross-origin
+  isolation headers serves) read PNG and SVG and nothing else, so a
+  photograph came up as "no decoder for this picture". The bundled
+  `stb_image` (`UltraCanvas/third_party/stb`, public domain, compiled to
+  nothing in a build with libvips) now decodes JPEG, BMP and the first
+  frame of a GIF through `libspecific/Cairo/StbRasterDecode`, on the same
+  road as PNG: size from the header at load, pixels when a pixmap is first
+  asked for, the fit modes as the libvips thumbnail path means them. The
+  demo's JPEG, BMP and GIF pages show their pictures in those variants; TIFF,
+  WebP, HEIC and AVIF still say the build cannot read them.
+- **The WebAssembly workflow runs on pull requests.** `wasm-build.yml` was
+  manual only, so a change to the port, the sysroot script, the Cairo image
+  code or the demo reached `main` untested in the browser. It now runs on a
+  pull request, and on a push to `main`, that touches one of those paths
+  (`.github/workflows/wasm-build.yml`, `UltraCanvas/OS/WASM/`,
+  `cmake/UltraCanvasWasmSysroot.cmake`, the two `CMakeLists.txt`,
+  `UltraCanvas/libspecific/Cairo/`, `UltraCanvas/third_party/stb/`,
+  `Apps/DemoApp/`); a manual dispatch still takes an emsdk version.
+- **The thread-less WebAssembly sysroot's `.pc` files no longer carry
+  `-pthread`.** glib's pkg-config file, and through it fontconfig's,
+  harfbuzz's, pixman's and libvips', added `-pthread` to the flags of every
+  consumer even in a sysroot built with `WASM_THREADS=0`, so a program
+  configured without threads was compiled with `__EMSCRIPTEN_PTHREADS__`
+  set - which is how pango's no-threads guard first missed. The sysroot
+  script now scrubs the flag from every installed `.pc` at the start of each
+  stage and at the end, so what `pkg-config` reports matches the sysroot.
+  Pango's no-threads patch still reads its explicit `PANGO_FC_NO_THREAD`
+  switch.
+
 #### 2026-10-14 *0.9.297*
 - **Matrix diagram: the House of Quality's competitive assessment.** Right of
   the grid, how customers rate your product and its rivals on each need: one
