@@ -1,7 +1,9 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-13 - the tree takes the keyboard focus; arrows, Page Up/Down,
-//                Home, End, Enter and Space act on the focused tree (UCKeys, every platform)
+// Last Modified: 2026-10-15 - SetFilterText: show only the rows matching a text, expanded
+//                to them, and put the tree back when the filter ends (TreeNode::IsShown)
+//                (2026-10-13: the tree takes the keyboard focus; arrows, Page Up/Down,
+//                Home, End, Enter and Space act on the focused tree (UCKeys, every platform))
 //                (2026-10-12: GetDropTargetNode, the row a drag would drop on)
 //                (2026-10-08: default bodies mark unused parameters (void))
 //                (2026-10-02: GetRequiredWidth, the width the widest row on show needs)
@@ -161,6 +163,14 @@ public:
     // Lazy-loading callers swap a placeholder child for the real children on
     // expansion; without this the node would silently snap shut.
     bool wasExpandedBeforeEmptied = false;
+    // Set by UltraCanvasTreeView::SetFilterText on a row the filter leaves
+    // out. It is kept apart from data.visible, which is the application's: a
+    // filter must neither show a row the application hid nor forget that the
+    // application hid it once the filter ends.
+    bool hiddenByFilter = false;
+    // Whether the node was expanded when the filter began - the state it
+    // goes back to when the filter ends.
+    bool expandedBeforeFilter = false;
     int level;                    // Depth in tree (0 = root level)
     bool selected;
     bool hovered;
@@ -180,6 +190,11 @@ public:
     TreeNode* FindDescendant(const std::string& nodeId);
 
     TreeNode* FirstChild() { return children.empty() ? nullptr : children[0].get(); };
+    // The first child on show (IsShown) - under a filter, perhaps not the first.
+    TreeNode* FirstShownChild() {
+        for (auto& child : children) if (child->IsShown()) return child.get();
+        return nullptr;
+    }
 
     // Sort direct children alphabetically (case-insensitive) by data.text.
     // recursive=true also sorts every descendant level. ascending=false reverses.
@@ -202,6 +217,11 @@ public:
     bool IsExpanded() const { return state == TreeNodeState::Expanded; }
     
     bool IsVisible() const;
+
+    // The row itself is on show: hidden neither by the application
+    // (data.visible) nor by the tree's filter. Says nothing about whether its
+    // parents are expanded - that is IsVisible().
+    bool IsShown() const { return data.visible && !hiddenByFilter; }
     
     // ===== UTILITY METHODS =====
     int GetVisibleChildCount() const;
@@ -220,6 +240,11 @@ private:
     std::vector<TreeNode*> selectedNodes;
     TreeNode* hoveredNode;
     TreeNode* focusedNode;
+
+    // SetFilterText: the text rows are matched against (empty: no filter)
+    // and how many rows' own text matched it.
+    std::string filterText;
+    int filterMatchCount = 0;
     
     // Visual properties
     int rowHeight;                  // Height of each row in pixels
@@ -371,6 +396,27 @@ public:
     void ToggleNode(TreeNode* node);
     void ExpandAll();
     void CollapseAll();
+
+    // ===== FILTER =====
+    // Show only the rows whose text contains `text` - in any case and any
+    // script - with the rows above them, expanded so every match is on
+    // screen, and the rows below a match (a heading that matches keeps its
+    // entries; expand it to see them). The other rows are hidden, not
+    // removed, and the tree scrolls to the top. An empty text ends the
+    // filter: every row comes back, the tree takes back the expanded state it
+    // had before the filter began, and the selected row - perhaps one picked
+    // while filtering - is scrolled into view. Setting the same text again
+    // applies it again, e.g. after rows were added. Only rows already in the
+    // tree are searched: a lazily-loaded node's children are found once they
+    // are loaded. A row the application hid (TreeNodeData::visible) stays
+    // hidden either way. No callback fires: the rows the filter opens are not
+    // the user's doing.
+    void SetFilterText(const std::string& text);
+    void ClearFilter() { SetFilterText(std::string()); }
+    const std::string& GetFilterText() const { return filterText; }
+    bool IsFiltered() const { return !filterText.empty(); }
+    // How many rows' own text the filter matches (0 when there is no filter).
+    int GetFilterMatchCount() const { return filterMatchCount; }
 
     // ===== VISUAL PROPERTIES =====
     void SetRowHeight(int height) { rowHeight = height; UpdateScrollbars(); }
@@ -609,6 +655,15 @@ private:
     // `node` and every descendant of it, appended to `out`. Used by RemoveNode
     // to find the pointers a subtree removal invalidates.
     static void CollectSubtree(TreeNode* node, std::vector<TreeNode*>& out);
+
+    // ===== FILTER =====
+    // Record every node's expanded state before a filter begins.
+    static void SaveExpansionBeforeFilter(TreeNode* node);
+    // Apply filterText to `node` and its subtree; `ancestorMatches` when a row
+    // above it matched. Returns whether the node or a row below it matched.
+    bool FilterSubtree(TreeNode* node, bool ancestorMatches);
+    // Show every row again and restore the expanded state saved before.
+    static void EndFilter(TreeNode* node);
 
     // ===== SCROLLBAR MANAGEMENT =====
     void CreateScrollbar();

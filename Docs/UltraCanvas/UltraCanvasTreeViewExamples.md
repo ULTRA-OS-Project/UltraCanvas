@@ -26,6 +26,7 @@ The `UltraCanvasTreeView` is a hierarchical tree view control component that pro
 - **Keyboard Navigation**: The tree takes the focus, and the arrow keys move the selection
 - **Mouse Interaction**: Click, double-click, drag & drop support
 - **Dynamic Updates**: Add, remove, expand, collapse nodes at runtime
+- **Filtering**: Narrow the tree to the rows matching a text, expanded to them, and put it back afterwards
 - **Event System**: Comprehensive event callbacks for user interactions
 
 ## Class Architecture
@@ -407,6 +408,57 @@ tree->SetAutoExpandSelectedNode(true);
 tree->ExpandAll();
 tree->onNodeSelected = [](TreeNode* node) { ShowPage(node->data.nodeId); };
 ```
+
+### Filtering
+
+```cpp
+void SetFilterText(const std::string& text);
+void ClearFilter();                          // SetFilterText("")
+const std::string& GetFilterText() const;
+bool IsFiltered() const;
+int GetFilterMatchCount() const;             // rows whose own text matched
+```
+
+`SetFilterText` narrows the tree to the rows whose text contains `text` -
+ignoring case, in any script - and the rows above them, which it expands so
+every match is on screen. A row that matches keeps the rows below it: a
+matching heading stays as it was, and its entries are there when it is
+expanded. Every other row is hidden, not removed, and the tree scrolls to the
+top. The root is the tree's frame, not a row to match: its title never keeps
+the whole tree on show.
+
+An empty text ends the filter. Every row comes back, every node takes back
+the expanded state it had before the filter began, and the selected row -
+perhaps one picked while filtering - is scrolled into view, its parents
+opened. Setting the same text again applies it again, to rows added since.
+
+The filter hides rows with its own flag (`TreeNode::hiddenByFilter`), apart
+from `TreeNodeData::visible`: a row the application hid neither matches nor
+comes back when the filter ends. `TreeNode::IsShown()` is both together.
+Only the nodes in the tree are searched - a lazily-loaded node's children
+are found once they are loaded - and no expand callback fires for the rows
+the filter opens.
+
+A filter field over a tree is a text input with its clear button, here with
+the word "Reset" on it (see [UltraCanvasTextInput](UltraCanvasTextInputExamples.md#clear-button)):
+
+<!-- doc-check:
+std::shared_ptr<UltraCanvasTreeView> tree;
+std::shared_ptr<UltraCanvasLabel> status;
+-->
+```cpp
+auto filter = std::make_shared<UltraCanvasTextInput>("TreeFilter", 0, 0, 300, 30);
+filter->SetPlaceholder("Filter components");
+filter->SetShowClearButton(true);
+filter->SetClearButtonText("Reset");
+filter->onTextChanged = [tree, status](const std::string& text) {
+    tree->SetFilterText(text);
+    status->SetText(text.empty() ? std::string()
+                                 : std::to_string(tree->GetFilterMatchCount()) + " found");
+};
+```
+
+The DemoApp's component tree has this field over it (`Apps/DemoApp/UltraCanvasDemo.cpp`).
 
 ### Visual Properties
 
@@ -897,12 +949,16 @@ public:
     TreeNode* parent;
     std::vector<std::unique_ptr<TreeNode>> children;
 
+    bool hiddenByFilter = false;        // set by UltraCanvasTreeView::SetFilterText
+    bool expandedBeforeFilter = false;  // the state the filter's end puts back
+
     // Child management
     TreeNode* AddChild(const TreeNodeData& childData);
     void RemoveChild(const std::string& nodeId);
     TreeNode* FindChild(const std::string& nodeId);
     TreeNode* FindDescendant(const std::string& nodeId);
     TreeNode* FirstChild();
+    TreeNode* FirstShownChild();        // the first child IsShown(): under a filter, maybe not the first
 
     // Sorting of the direct children (recursive=true: every level below too)
     void SortChildNodes(bool recursive = false, bool ascending = true);   // alphabetic
@@ -915,7 +971,8 @@ public:
     void Toggle();
     bool HasChildren() const;
     bool IsExpanded() const;
-    bool IsVisible() const;
+    bool IsVisible() const;   // shown, and every parent shown and expanded
+    bool IsShown() const;     // data.visible and not hidden by a filter
 
     // Utility methods
     int GetVisibleChildCount() const;

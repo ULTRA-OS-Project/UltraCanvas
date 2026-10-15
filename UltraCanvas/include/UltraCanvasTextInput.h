@@ -1,8 +1,10 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
+// Version: 1.12.0 - SetClearButtonText: the clear button can carry a word
+//                  ("Reset") instead of the cross
 // Version: 1.11.0 - TextInputStyle::FromTheme, ApplyTheme
 // Version: 1.10.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // V1.10.0: An input method's composition (pre-edit text) is drawn in the field,
 //   underlined at the caret, instead of in the input method's own window
 //   (DrawsTextComposition, GetCompositionText). It is never part of the text.
@@ -391,6 +393,8 @@ private:
     int clearButtonSize = 14;
     Color clearButtonColor = Color(150, 150, 150);
     Color clearButtonHoverColor = Color(200, 50, 50);
+    std::string clearButtonText;   // empty: the cross; else a small button with this word
+    static constexpr int kClearButtonLabelPadding = 7;   // each side of the word
 
     // ===== PASSWORD REVEAL ("EYE") BUTTON =====
     // Only ever shown for password fields; clicking it flips the mask off so the
@@ -513,6 +517,13 @@ public:
     // ===== CLEAR BUTTON =====
     void SetShowClearButton(bool show) { showClearButton = show; RequestRedraw(); }
     bool IsShowClearButton() const { return showClearButton; }
+    // A word on the clear button ("Reset", "Clear") instead of the cross: it
+    // becomes a small button inside the right end of the field, as wide as
+    // the word. It behaves exactly as the cross does - shown while there is
+    // text, and a click empties the field and calls onTextChanged and
+    // onCleared. An empty text puts the cross back.
+    void SetClearButtonText(const std::string& text);
+    const std::string& GetClearButtonText() const { return clearButtonText; }
 
     // ===== PASSWORD REVEAL =====
     // In-field eye button, on by default. Ignored unless the input is in
@@ -652,6 +663,10 @@ private:
 
     bool IsClearButtonVisible() const;
     Rect2Di GetClearButtonBounds() const;
+    // The word's font (a little smaller than the field's) and the button's
+    // width: the cross's square, or the word plus its padding.
+    FontStyle GetClearButtonFont() const;
+    int GetClearButtonWidth() const;
     void RenderClearButton(IRenderContext* ctx);
 
     bool IsPasswordToggleVisible() const;

@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.8 - treeFilterInput: a filter field over the component tree,
+//                 with a "Reset" button inside it (OnTreeFilterChanged)
 // Version: 1.0.7 - CreateListViewDashboardExamples is gone: the domain dashboard
 //                 is the last section of CreateListViewExamples' page
 // Version: 1.0.6 - DemoIconPath, SetFlatButtonIcon: flat icons instead of glyphs
@@ -188,6 +190,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasWindow> mainWindow;
         std::shared_ptr<InfoWindow> infoWindow;
         std::shared_ptr<UltraCanvasTreeView> categoryTreeView;
+        std::shared_ptr<UltraCanvasTextInput> treeFilterInput;   // filters categoryTreeView
         std::shared_ptr<UltraCanvasContainer> mainContainer;  // Main container for display area
         std::shared_ptr<DemoHeaderContainer> headerContainer;  // Header with title and buttons
         std::shared_ptr<UltraCanvasContainer> displayContainer;  // Content display area
@@ -232,6 +235,9 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLERS =====
         void OnTreeNodeSelected(TreeNode* node);
+        // The filter field's text changed: narrow the tree to it (empty: the
+        // whole tree again) and say in the status line how much it found.
+        void OnTreeFilterChanged(const std::string& text);
         void OnWindowResize(int newWidth, int newHeight);
 
         // ===== UTILITY METHODS =====

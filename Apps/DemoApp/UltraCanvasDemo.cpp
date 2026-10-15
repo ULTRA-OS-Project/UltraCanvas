@@ -1,10 +1,12 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.10 - A filter field over the component tree ("Reset" inside it); the List
+//                  View page holds the domain dashboard, which is no page of its own
 // Version: 1.0.9 - The image performance page is registered only with libvips, as it is built
 // Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
 //                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-15
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -18,6 +20,7 @@
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasTextUtils.h"   // Trim - the tree filter ignores surrounding spaces
 #include "UltraCanvasUtils.h"   // OpenURL — open markdown links in the system browser
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <iostream>
@@ -400,6 +403,25 @@ namespace UltraCanvas {
 
         debugOutput << "categoryTreeView created" << std::endl;
 
+        // Filter field over the tree: typing narrows the tree to the entries
+        // whose names contain the text, expanded so each one is on show. The
+        // "Reset" button inside the field - TextInput's clear button with a
+        // word on it - or Escape brings the whole tree back. Built without a
+        // width, so the sidebar's column stretches it.
+        treeFilterInput = std::make_shared<UltraCanvasTextInput>("CategoryTreeFilter", -1, 30);
+        treeFilterInput->SetPlaceholder("Filter components");
+        treeFilterInput->SetShowClearButton(true);
+        treeFilterInput->SetClearButtonText("Reset");
+        treeFilterInput->SetMargin(6, 8, 6, 8);
+        treeFilterInput->layoutItem.SetFlexShrink(0);
+        treeFilterInput->onTextChanged = [this](const std::string& text) { OnTreeFilterChanged(text); };
+        treeFilterInput->onEscapePressed = [this]() {
+            if (treeFilterInput->GetText().empty()) return false;
+            treeFilterInput->SetText("");   // SetText does not call onTextChanged
+            OnTreeFilterChanged("");
+            return true;
+        };
+
         // Create legend container below tree view
         legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer");
         legendContainer->SetBorderTop(1, Colors::Gray);
@@ -465,6 +487,7 @@ namespace UltraCanvas {
         // cross (horizontal) axis. justify-self is grid-only — adding it here would
         // convert layoutItem into a GridItem and discard the flex props above.
         categoryTreeView->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        categoryContainer->AddChild(treeFilterInput);
         categoryContainer->AddChild(categoryTreeView);
         categoryContainer->AddChild(legendContainer);
 
@@ -636,7 +659,8 @@ namespace UltraCanvas {
                 .AddVariant("textinput", "Single Line Input")
                 .AddVariant("textinput", "Multi-line Text Area")
                 .AddVariant("textinput", "Password Field")
-                .AddVariant("textinput", "Numeric Input");
+                .AddVariant("textinput", "Numeric Input")
+                .AddVariant("textinput", "Clear / \"Reset\" Button in the Field");
 
         basicBuilder.AddItem("autocomplete", "AutoComplete", "Text input with auto-complete suggestions",
                              ImplementationStatus::FullyImplemented,
@@ -2426,14 +2450,15 @@ namespace UltraCanvas {
             headerContainer->SetDemoTitle("ULTRA OS");
             headerContainer->SetSourceFile("");
             headerContainer->SetDocFile("");
-        } else if (node->IsExpanded() && node->data.showFirstChildOnExpand && node->FirstChild()) {
+        } else if (node->IsExpanded() && node->data.showFirstChildOnExpand && node->FirstShownChild()) {
             // Parent category with no display content of its own: "jump to first
             // entry" so selecting it reveals its first child example instead of
             // blanking the display. The tree already jumps when a node is first
             // expanded; this also covers re-selecting an already-open parent.
             // Only "ULTRA OS modules" carries its own content (handled above) and
-            // opts out via showFirstChildOnExpand = false.
-            categoryTreeView->SelectNode(node->FirstChild());
+            // opts out via showFirstChildOnExpand = false. Under a filter the
+            // first child may be hidden, so it is the first one on show.
+            categoryTreeView->SelectNode(node->FirstShownChild());
         } else {
             // Category selected - clear display
             ClearDisplay();
@@ -2441,6 +2466,27 @@ namespace UltraCanvas {
             headerContainer->SetDemoTitle("Category: " + node->data.text);
             headerContainer->SetSourceFile("");
             headerContainer->SetDocFile("");        }
+    }
+
+    void UltraCanvasDemoApplication::OnTreeFilterChanged(const std::string& text) {
+        if (!categoryTreeView) return;
+        const std::string filter = Trim(text);
+        categoryTreeView->SetFilterText(filter);
+        if (filter.empty()) {
+            // Back to what the status line said about the page on show.
+            if (demoItems.count(currentSelectedId)) {
+                UpdateStatusDisplay(currentSelectedId);
+            } else {
+                statusLabel->SetText("Select a component from the tree view to see examples");
+                statusLabel->SetTextColor(Colors::Black);
+            }
+            return;
+        }
+        const int matches = categoryTreeView->GetFilterMatchCount();
+        statusLabel->SetText(matches == 0 ? "Nothing matches \"" + filter + "\""
+                                          : std::to_string(matches) + (matches == 1 ? " entry matches \"" : " entries match \"") +
+                                            filter + "\"");
+        statusLabel->SetTextColor(matches == 0 ? Color(200, 0, 0, 255) : Colors::Black);
     }
 
     bool UltraCanvasDemoApplication::SelectDemoItem(const std::string& itemId) {

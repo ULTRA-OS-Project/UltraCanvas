@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasTextInputExamples.cpp
 // Implementation of all component example creators
+// Version: 1.3.0 - In-field buttons: the clear cross, and the same button as "Reset"
 // Version: 1.2.0
-// Last Modified: 2026-08-31
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -87,6 +88,45 @@ namespace UltraCanvas {
         // Text Area Component
         auto textAreaInput = std::make_shared<UltraCanvasTextArea>("TextArea", 20, 465, 300, 100);
         container->AddChild(textAreaInput);
+
+        // ===== IN-FIELD BUTTONS: CLEAR AND "RESET" =====
+        // The button inside the field is UltraCanvasTextInput's own:
+        // SetShowClearButton puts it at the right end while the field has
+        // text, and SetClearButtonText gives it a word instead of the cross -
+        // the demo's tree filter uses "Reset". A click empties the field and
+        // calls onTextChanged, then onCleared. Both start filled, so the
+        // buttons are on show.
+        auto clearLabel = std::make_shared<UltraCanvasLabel>("ClearButtonLabel", 20, 590, 300, 20);
+        clearLabel->SetText("Buttons inside the field: clear and \"Reset\"");
+        clearLabel->SetFontSize(12);
+        container->AddChild(clearLabel);
+
+        auto clearInput = std::make_shared<UltraCanvasTextInput>("ClearButtonInput", 20, 615, 300, 30);
+        clearInput->SetPlaceholder("Type, then click the cross...");
+        clearInput->SetShowClearButton(true);
+        clearInput->SetText("Click the cross to clear me");
+        container->AddChild(clearInput);
+
+        auto resetInput = std::make_shared<UltraCanvasTextInput>("ResetButtonInput", 20, 655, 300, 30);
+        resetInput->SetPlaceholder("Filter components");
+        resetInput->SetShowClearButton(true);
+        resetInput->SetClearButtonText("Reset");
+        resetInput->SetText("chart");
+        container->AddChild(resetInput);
+
+        auto clearStatus = std::make_shared<UltraCanvasLabel>("ClearButtonStatus", 20, 692, 300, 36);
+        clearStatus->SetText("SetShowClearButton(true) shows the button,\n"
+                             "SetClearButtonText(\"Reset\") gives it a word");
+        clearStatus->SetFontSize(11);
+        clearStatus->SetTextColor(Color(100, 100, 100));
+        container->AddChild(clearStatus);
+
+        clearInput->onCleared = [clearStatus]() {
+            clearStatus->SetText("The cross emptied the field\n(onTextChanged, then onCleared)");
+        };
+        resetInput->onCleared = [clearStatus]() {
+            clearStatus->SetText("\"Reset\" emptied the field\n(onTextChanged, then onCleared)");
+        };
 
 
         // ===== PASSWORD WITH BAR STRENGTH METER =====
