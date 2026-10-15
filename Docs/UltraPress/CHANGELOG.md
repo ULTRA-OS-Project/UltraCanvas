@@ -1,3 +1,28 @@
+#### 2026-10-15 *0.8.0*
+- **The look follows the framework's theme, light or dark.** The window
+  and its dialogs take their colours from an `UltraCanvasTheme`
+  (`ui/UltraPressTheme.h`: the brand's red accent, its ink and paper on the
+  framework's light preset, the red lifted on the dark one), so every
+  label, button, field, drop-down and dialog that follows the theme
+  re-styles itself when it switches; the side column keeps the brand's
+  night blue in both looks through the theme's own roles (`press.side`,
+  `press.on-side`, ...), and the page in the middle keeps the site's
+  colours, since it is the site. *Dark look* / *Light look* in the side
+  column switches; the choice is remembered in
+  `<settings folder>/UltraPress/look` and read before the window opens.
+- **The host list lives in the program's data folder.** `hosts.db` and the
+  credential vault beside it are kept where the framework keeps every
+  application's data (`UltraCanvasDataFolder.h`: `%APPDATA%\UltraPress`,
+  `~/Library/Application Support/UltraPress`, `~/.local/share/UltraPress`
+  or `$XDG_DATA_HOME/UltraPress`), not under the shared settings folder; a
+  list that 0.5 to 0.7 kept there is moved over whole, vault included, the
+  first time the hosts are opened (`Hosts::DataDirectory`,
+  `LegacyDirectories`, `AdoptLegacy`). The settings folder keeps the
+  settings - the look.
+- **CI runs the UltraCloud suite on macOS and Windows too.** It always ran
+  in the Linux pass; now the WebDAV verbs, the FTP options and the vault's
+  key path are checked on Apple's TLS and on Schannel as well.
+
 #### 2026-10-14 *0.7.4*
 - **The rich editor's toolbar.** Bold, italic, underline, a link (its
   address asked for in a dialog), the paragraph style (body text, three

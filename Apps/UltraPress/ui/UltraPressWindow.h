@@ -5,13 +5,14 @@
 // model and re-renders the preview; Save writes the site folder; Publish
 // writes the static site and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.8.0 - the look: SetDark, the theme's colours on the columns and dialogs
 // Version: 0.7.4 - the rich editor's toolbar
 // Version: 0.7.3 - a richtext block edited in place with the RichTextEdit
 // Version: 0.7.0 - text edited in place on the page
 // Version: 0.6.0 - the media library: Pick... on a picture property, Media library... in the side column
 // Version: 0.5.0 - Publish and Host...
 // Version: 0.3.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -91,6 +92,13 @@ public:
     bool CommitTextEdit(const std::string& text); // this text (tests)
     void CancelTextEdit();
 
+    // The look: the light or the dark theme (UltraPressTheme.h) on the
+    // window and its dialogs; the page keeps the site's colours. Remembered
+    // in the settings folder unless `remember` is off (the start-up value,
+    // which came from there, and the tests).
+    void SetDark(bool dark, bool remember = true);
+    bool IsDark() const { return dark; }
+
     const Site& CurrentSite() const { return site; }
     const std::string& CurrentPage() const { return current; }
     int SelectedBlock() const { return selected; }
@@ -102,6 +110,7 @@ private:
     void RenderPreview();
     void RebuildSide();
     void RebuildProperties();
+    void ApplyLook();                         // the theme and the columns' surfaces for `dark`
     void Later(std::function<void()> task);   // on the UI thread, after the current callback
     void SetStatus(const std::string& text);
 
@@ -110,6 +119,7 @@ private:
     std::string current;
     int selected = -1;
     bool dirty = false;
+    bool dark = false;
 
     Container side, pageArea, properties;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status;

@@ -16,6 +16,7 @@
 // There were two programs, ultrapress and UltraPress, until the macOS build
 // showed that two names differing only in case are one name on a
 // case-insensitive filesystem. One program, like ultrafibu.
+// Version: 0.8.0 - the look read from the settings folder before the window opens
 // Version: 0.6.0 - media
 // Version: 0.5.0 - hosts
 // Version: 0.4.1 - one program: the commands and the window
@@ -27,12 +28,14 @@
 #include "UltraPressCli.h"
 #include "UltraPressModel.h"
 #include "UltraPressRender.h"
+#include "UltraPressTheme.h"
 #include "UltraPressWindow.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
 
@@ -49,8 +52,6 @@
 using namespace UltraCanvas;
 
 namespace {
-
-const Color kPaper(255, 255, 255, 255);
 
 int Usage() {
     std::fprintf(stderr,
@@ -122,17 +123,23 @@ int main(int argc, char* argv[]) {
     static UltraCanvasApplication app;
     if (!app.Initialize(argv[0])) return 1;
 
+    // The look the user chose last, before the window is built, so that
+    // every element that follows the theme is born in it.
+    const bool dark = UltraPress::LoadLook(UltraPress::LookSettingsDirectory());
+    UltraCanvasTheme::SetCurrent(UltraPress::ThemeFor(dark));
+
     WindowConfig cfg;
     cfg.title = viewer.site.name + " - UltraPress " ULTRAPRESS_VERSION;
     cfg.width = 1500;
     cfg.height = 920;
-    cfg.backgroundColor = kPaper;
+    cfg.backgroundColor = UltraCanvasTheme::Current().roles.ground;
     auto window = CreateWindow(cfg);
     if (!window) return 1;
 
     // Static lifetime: under Emscripten Run() never returns and unwinds
     // main()'s frame while the loop keeps ticking.
     static UltraPress::EditorWindow editor(std::move(viewer.site), siteDir);
+    editor.SetDark(dark, false);
     editor.Build(window);
 #if defined(__EMSCRIPTEN__)
     window->Maximize();

@@ -1,10 +1,12 @@
 // Apps/UltraPress/ui/UltraPressMediaDialog.cpp
 // See UltraPressMediaDialog.h.
+// Version: 0.8.0 - the theme's colours, light or dark
 // Version: 0.7.1 - a picture's pixels in the row; Remove unused
 // Version: 0.6.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressMediaDialog.h"
+#include "UltraPressTheme.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
@@ -13,6 +15,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasSpacer.h"
+#include "UltraCanvasTheme.h"
 
 #include "UltraPressMedia.h"
 
@@ -25,14 +28,19 @@ namespace UltraPress {
 
 namespace {
 
-const Color kSurface(255, 255, 255, 255);
-const Color kInk(32, 32, 32, 255);
-const Color kInkSoft(90, 90, 98, 255);
-const Color kAccent(169, 7, 7, 255);
-const Color kRow(246, 246, 249, 255);
-const Color kRowSelected(255, 232, 232, 255);
-const Color kTile(230, 230, 236, 255);
+// Every colour is the theme's (UltraPressTheme.h): the dialog, its labels
+// and buttons follow it; the rows and tiles, built on every refill, read it.
 const char* kFont = "Ubuntu";
+
+// A muted note, or the error colour when `error`.
+void Note(const std::shared_ptr<UltraCanvasLabel>& label, bool error) {
+    if (error) {
+        label->SetFollowTheme(false);
+        label->SetTextColor(UltraCanvasTheme::Current().roles.danger);
+    } else {
+        FollowTheme(label, LabelVariant::Muted);
+    }
+}
 
 // Everything the rows and buttons need to reach, owned by their callbacks
 // for as long as the dialog lives. The dialog itself is a raw pointer: it
@@ -54,10 +62,9 @@ struct State {
 std::shared_ptr<UltraCanvasButton> PlainButton(const std::string& id, const std::string& text, float width, bool primary) {
     auto button = CreateButton(id, 0, 0, width, 32, text);
     button->SetFont(kFont, 14, primary ? FontWeight::Bold : FontWeight::Normal);
-    button->SetColors(primary ? kAccent : kRow, primary ? Color(130, 5, 5, 255) : kTile);
-    button->SetTextColors(primary ? kSurface : kInk);
-    button->SetBorder(0, Colors::Transparent);
+    button->SetBorder(primary ? 0 : 1, Colors::Transparent);
     button->SetCornerRadius(6);
+    FollowTheme(button, primary ? ButtonVariant::Primary : ButtonVariant::Standard);
     button->SetElementSize(CSSLayout::Dimension::Px(width), CSSLayout::Dimension::Px(32));
     button->layoutItem.SetFlexShrink(0);
     button->SetMouseCursor(UCMouseCursor::Hand);
@@ -65,13 +72,14 @@ std::shared_ptr<UltraCanvasButton> PlainButton(const std::string& id, const std:
 }
 
 void Refill(const std::shared_ptr<State>& st) {
+    const ThemeRoles& roles = UltraCanvasTheme::Current().roles;
     st->files = ListMedia(st->siteDir, st->site);
     if (st->selected >= static_cast<int>(st->files.size())) st->selected = -1;
     st->list->ClearChildren();
     if (st->files.empty()) {
         auto empty = CreateLabel("MediaEmpty", "No files yet. Add file\xE2\x80\xA6 copies a picture or a download into the site's media folder.");
         empty->SetFont(kFont, 14);
-        empty->SetTextColor(kInkSoft);
+        FollowTheme(empty, LabelVariant::Muted);
         empty->SetWrap(TextWrap::WrapWord);
         empty->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
         st->list->AddChild(empty);
@@ -83,7 +91,7 @@ void Refill(const std::shared_ptr<State>& st) {
         row->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
         row->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(64));
         row->layoutItem.SetFlexShrink(0);
-        row->SetBackgroundColor(active ? kRowSelected : kRow);
+        row->SetBackgroundColor(active ? roles.accentSoft : roles.well);
         row->SetBorderRadius(6);
         row->SetPadding(4, 6);
         if (file.kind == "image") {
@@ -96,14 +104,14 @@ void Refill(const std::shared_ptr<State>& st) {
             auto tile = CreateContainer("MediaTile" + std::to_string(i), 0, 0, 76, 56);
             tile->SetElementSize(CSSLayout::Dimension::Px(76), CSSLayout::Dimension::Px(56));
             tile->layoutItem.SetFlexShrink(0);
-            tile->SetBackgroundColor(kTile);
+            tile->SetBackgroundColor(roles.raised);
             tile->SetBorderRadius(6);
             tile->layout.SetFlexRow().SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
             const size_t dot = file.name.rfind('.');
             auto ext = CreateLabel("MediaExt" + std::to_string(i), dot == std::string::npos ? file.kind : file.name.substr(dot + 1));
             ext->SetFont(kFont, 12, FontWeight::Bold);
-            ext->SetTextColor(kInkSoft);
+            FollowTheme(ext, LabelVariant::Muted);
             tile->AddChild(ext);
             row->AddChild(tile);
         }
@@ -114,9 +122,8 @@ void Refill(const std::shared_ptr<State>& st) {
         auto button = CreateButton("MediaPick" + std::to_string(i), 0, 0, 0, 56,
                                    file.path + "\n" + file.kind + ", " + pixels + HumanSize(file.size) + ", " + uses);
         button->SetFont(kFont, 13, active ? FontWeight::Bold : FontWeight::Normal);
-        button->SetColors(Colors::Transparent, Color(0, 0, 0, 12));
-        button->SetTextColors(kInk);
         button->SetBorder(0, Colors::Transparent);
+        FollowTheme(button, ButtonVariant::Ghost);
         button->SetTextAlign(TextAlignment::Left);
         button->SetPadding(0, 6);
         button->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(56));
@@ -138,7 +145,7 @@ void Refill(const std::shared_ptr<State>& st) {
     if (st->chooseBtn) st->chooseBtn->SetDisabled(!any);
     if (any) {
         const MediaFile& file = st->files[static_cast<size_t>(st->selected)];
-        st->status->SetTextColor(kInkSoft);
+        Note(st->status, false);
         st->status->SetText(file.usedBy > 0 ? file.path + " is used " + std::to_string(file.usedBy) + " time(s); a used file cannot be removed"
                                            : file.path);
     } else {
@@ -169,11 +176,11 @@ void ShowMediaLibrary(UltraCanvasWindowBase* parent, const std::string& siteDire
 
     dialog->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
-    dialog->SetBackgroundColor(kSurface);
+    dialog->SetFollowTheme(true);   // the panel surface, the footer's buttons
 
     auto heading = CreateLabel("MediaHeading", "The site's media folder: pictures for the blocks, files for the downloads.");
     heading->SetFont(kFont, 13);
-    heading->SetTextColor(kInkSoft);
+    FollowTheme(heading, LabelVariant::Muted);
     heading->SetWrap(TextWrap::WrapWord);
     heading->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
     dialog->AddChild(heading);
@@ -186,7 +193,7 @@ void ShowMediaLibrary(UltraCanvasWindowBase* parent, const std::string& siteDire
 
     st->status = CreateLabel("MediaStatus", "");
     st->status->SetFont(kFont, 13);
-    st->status->SetTextColor(kInkSoft);
+    Note(st->status, false);
     st->status->SetWrap(TextWrap::WrapWord);
     st->status->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(36));
     st->status->layoutItem.SetFlexShrink(0);
@@ -222,7 +229,7 @@ void ShowMediaLibrary(UltraCanvasWindowBase* parent, const std::string& siteDire
             if (result != DialogResult::OK) return;
             std::string mediaPath, error;
             if (!ImportMedia(st->siteDir, path, mediaPath, error)) {
-                st->status->SetTextColor(kAccent);
+                Note(st->status, true);
                 st->status->SetText(error);
                 return;
             }
@@ -238,7 +245,7 @@ void ShowMediaLibrary(UltraCanvasWindowBase* parent, const std::string& siteDire
         if (st->selected < 0) return;
         std::string error;
         if (!RemoveMedia(st->siteDir, st->files[static_cast<size_t>(st->selected)].path, error, st->site)) {
-            st->status->SetTextColor(kAccent);
+            Note(st->status, true);
             st->status->SetText(error);
             return;
         }
@@ -251,7 +258,7 @@ void ShowMediaLibrary(UltraCanvasWindowBase* parent, const std::string& siteDire
         PruneMedia(st->siteDir, *st->site, removed, errors);
         st->selected = -1;
         Refill(st);
-        st->status->SetTextColor(errors.empty() ? kInkSoft : kAccent);
+        Note(st->status, !errors.empty());
         st->status->SetText(std::to_string(removed.size()) + " unused file(s) removed" + (errors.empty() ? "" : "; " + errors.front()));
         if (!removed.empty() && st->onChanged) st->onChanged();
     };

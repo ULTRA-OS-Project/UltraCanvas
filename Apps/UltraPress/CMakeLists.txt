@@ -5,6 +5,7 @@
 # emitter and the static publisher - and `ultrapress` on top of it: the
 # commands and, given a site folder, the editor window on the element
 # renderer.
+# Version: 0.8.0 - the theme (ui/UltraPressTheme.cpp)
 # Version: 0.6.0 - the media library dialog
 # Version: 0.5.0 - UltraPressHosting: the hosts, over UltraCloud
 # Version: 0.4.1 - one program: the commands and the window
@@ -87,7 +88,8 @@ endif()
 # generator wrote both targets' CMakeFiles into one directory and both
 # binaries to one path, and make stopped with "No rule to make target
 # ultrapress.dir/depend". UltraFIBU made the same move (one `ultrafibu`).
-add_executable(ultrapress ui/main.cpp ui/UltraPressWindow.cpp ui/UltraPressMediaDialog.cpp cli/UltraPressCli.cpp)
+add_executable(ultrapress ui/main.cpp ui/UltraPressWindow.cpp ui/UltraPressMediaDialog.cpp ui/UltraPressTheme.cpp
+    cli/UltraPressCli.cpp)
 target_compile_features(ultrapress PRIVATE cxx_std_20)
 target_include_directories(ultrapress PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ui

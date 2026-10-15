@@ -1210,6 +1210,19 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^UltraCleanerEngine$"
 
+      # UltraCloud's module suite - the account store on UltraDatabase, the
+      # secret stores on UltraVault, every provider against an injected fake
+      # (WebDAV's DELETE and MOVE, FTP's options, the SFTP key path through
+      # the vault) - is headless and contacts nothing. Linux runs it in the
+      # full pass below; here it runs on the two systems whose libcurl and
+      # whose profile paths differ - Apple's TLS and Schannel behind the
+      # providers, the UTF-16 file APIs under the vault's device key on
+      # Windows - so a verb that only works where it was written is caught.
+      - name: Run UltraCloud tests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^UltraCloud$"
+
       # Trusting a device's self-signed certificate on first use rests on
       # libcurl pinning a public key and handing back the server's
       # certificate, which each TLS library does its own way. Linux runs this

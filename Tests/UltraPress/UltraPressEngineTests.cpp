@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -604,6 +605,43 @@ static void TestDeploy() {
     fs::remove_all(dir, ec);
 
 #if ULTRAPRESS_HAS_ULTRACLOUD
+    std::printf("The hosts' folder\n");
+    {
+        // The data folder rule, pointed at a temp folder through the variable
+        // that wins on every platform; the 0.5 settings folder adopted whole.
+        const fs::path xdg = TempDir("hosts-data");
+        fs::create_directories(xdg, ec);
+#if defined(_WIN32)
+        _putenv_s("XDG_DATA_HOME", UltraCanvas::PathToUtf8(xdg).c_str());
+#else
+        setenv("XDG_DATA_HOME", UltraCanvas::PathToUtf8(xdg).c_str(), 1);
+#endif
+        const std::string dataDir = Hosts::DataDirectory();
+        Check(dataDir == UltraCanvas::PathToUtf8(xdg / "UltraPress"), "the hosts live in the data folder: " + dataDir);
+        const fs::path legacy = TempDir("hosts-settings") / "UltraCanvas" / "UltraPress";
+        fs::create_directories(legacy / "vault", ec);
+        WriteTextFile(UltraCanvas::PathToUtf8(legacy / "hosts.db"), "not really a database");
+        WriteTextFile(UltraCanvas::PathToUtf8(legacy / "vault" / "ultrapress.vault"), "sealed");
+        std::string moveError;
+        const std::string movedFrom = Hosts::AdoptLegacy(dataDir, {UltraCanvas::PathToUtf8(legacy)}, moveError);
+        std::string moved;
+        Check(movedFrom == UltraCanvas::PathToUtf8(legacy) && moveError.empty() && !fs::exists(legacy, ec) &&
+                  ReadTextFile(dataDir + "/hosts.db", moved) && moved == "not really a database" &&
+                  fs::is_regular_file(UltraCanvas::PathFromUtf8(dataDir) / "vault" / "ultrapress.vault", ec),
+              "a list the settings folder kept is moved into the data folder, vault and all: " + moveError);
+        Check(Hosts::AdoptLegacy(dataDir, {UltraCanvas::PathToUtf8(legacy)}, moveError).empty() && moveError.empty(),
+              "a second open moves nothing");
+        Check(!Hosts::LegacyDirectories().empty() && Contains(Hosts::LegacyDirectories().front(), "UltraPress"),
+              "the old place is named for the move: " + Hosts::LegacyDirectories().front());
+#if defined(_WIN32)
+        _putenv_s("XDG_DATA_HOME", "");
+#else
+        unsetenv("XDG_DATA_HOME");
+#endif
+        fs::remove_all(xdg, ec);
+        fs::remove_all(legacy.parent_path().parent_path(), ec);
+    }
+
     std::printf("The hosts, over the in-memory provider\n");
     Hosts hosts;
     Check(hosts.OpenInMemory() && hosts.IsOpen() && hosts.List().empty(), "the host list opens in memory, empty");

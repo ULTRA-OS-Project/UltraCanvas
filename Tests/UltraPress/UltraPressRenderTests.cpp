@@ -11,6 +11,7 @@
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
 #include "UltraPressRender.h"
+#include "UltraPressTheme.h"
 #include "UltraPressWindow.h"
 
 #include "UltraCanvasButton.h"
@@ -19,6 +20,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTheme.h"
 
 #include <chrono>
 #include <cstdio>
@@ -245,6 +247,52 @@ static void TestPaletteAndExample() {
     Check(FindButton(home.root, "Details") != nullptr && FindButton(home.root, "Donate") != nullptr, "the header and footer menus");
 }
 
+static void TestLook() {
+    using UltraCanvas::Color;
+    using UltraCanvas::UltraCanvasTheme;
+    std::printf("The look\n");
+    const UltraCanvasTheme light = ThemeFor(false);
+    const UltraCanvasTheme dark = ThemeFor(true);
+    Check(!light.dark && dark.dark && light.name == "UltraPress light" && dark.name == "UltraPress dark", "a light and a dark theme");
+    Check(light.roles.accent == Color(169, 7, 7, 255) && light.roles.ink == Color(32, 32, 32, 255) &&
+              light.roles.panel == Color(255, 255, 255, 255) && light.roles.onAccent == Color(255, 255, 255, 255),
+          "the light look is the brand's red on paper");
+    Check(dark.roles.accent != light.roles.accent && dark.roles.ground == UltraCanvasTheme::Dark().roles.ground &&
+              dark.roles.ink == UltraCanvasTheme::Dark().roles.ink,
+          "the dark look is the framework's dark preset with the red lifted");
+    Check(SideColorsOf(light).panel == Color(13, 12, 34, 255) && SideColorsOf(dark).panel == SideColorsOf(light).panel &&
+              light.HasRole("press.side") && dark.HasRole("press.on-side"),
+          "the side column is night blue in both looks, through the theme's own roles");
+    Check(light.Role("label.heading", Color()) == Color() && light.roles.inkMuted == Color(90, 90, 98, 255),
+          "headings are ink, notes the softer ink");
+
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() /
+        ("ultrapress-look-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::string settings = UltraCanvas::PathToUtf8(dir / "UltraPress");
+    Check(!LoadLook(settings), "no choice yet is the light look");
+    Check(SaveLook(settings, true) && LoadLook(settings), "the dark look is remembered");
+    Check(SaveLook(settings, false) && !LoadLook(settings), "and the light look again");
+    Check(!LoadLook("") && !SaveLook("", true), "without a settings folder nothing is read or written");
+    Check(!UltraPress::LookSettingsDirectory().empty() || UltraCanvas::GetEnvUtf8("HOME").empty(),
+          "the program's settings folder is named: " + UltraPress::LookSettingsDirectory());
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+
+    // The editor switches the current theme without a window; the look is
+    // not remembered from a test.
+    const std::string before = UltraCanvasTheme::Current().name;
+    Site site = CreateStarterSite("Look", "https://look.example");
+    EditorWindow editor(site, "");
+    Check(!editor.IsDark(), "the editor starts light");
+    editor.SetDark(true, false);
+    Check(editor.IsDark() && UltraCanvasTheme::Current().dark && UltraCanvasTheme::Current().name == "UltraPress dark",
+          "SetDark makes the dark theme current");
+    editor.SetDark(false, false);
+    Check(!editor.IsDark() && !UltraCanvasTheme::Current().dark && UltraCanvasTheme::Current().name == "UltraPress light",
+          "and back to the light one: " + before);
+}
+
 static void TestEditor() {
     std::printf("The editor without a window\n");
     namespace fs = std::filesystem;
@@ -431,6 +479,7 @@ int main() {
     TestStarterSite();
     TestEveryBlock();
     TestPaletteAndExample();
+    TestLook();
     TestEditor();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

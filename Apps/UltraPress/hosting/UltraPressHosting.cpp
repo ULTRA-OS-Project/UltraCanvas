@@ -1,13 +1,15 @@
 // Apps/UltraPress/hosting/UltraPressHosting.cpp
 // See UltraPressHosting.h.
+// Version: 0.6.0 - the data folder rule; the settings folder of 0.5 adopted
 // Version: 0.5.1 - the remove verb for pruning
 // Version: 0.5.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressHosting.h"
 
 #include <UltraCloud/UltraCloudMemory.h>
 
+#include "UltraCanvasDataFolder.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSettingsFolder.h"
 #include "UltraVault/UltraVaultDeviceKeyVault.h"
@@ -15,6 +17,7 @@
 #include "UltraNet/UltraNetCore.h"
 #endif
 
+#include <cstdio>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -32,10 +35,25 @@ struct Hosts::Impl {
 Hosts::Hosts() : impl(std::make_unique<Impl>()) {}
 Hosts::~Hosts() = default;
 
-std::string Hosts::ConfigDirectory() {
-    const fs::path folder = UltraCanvas::UltraCanvasSettingsFolder();
+namespace {
+const char* kHostListFile = "hosts.db";
+}
+
+std::string Hosts::DataDirectory() {
+    const fs::path folder = UltraCanvas::UltraCanvasDataFolder("UltraPress");
     if (folder.empty()) return "";
-    return UltraCanvas::PathToUtf8(folder / "UltraPress");
+    return UltraCanvas::PathToUtf8(folder);
+}
+
+std::vector<std::string> Hosts::LegacyDirectories() {
+    std::vector<std::string> dirs;
+    const fs::path settings = UltraCanvas::UltraCanvasSettingsFolder();
+    if (!settings.empty()) dirs.push_back(UltraCanvas::PathToUtf8(settings / "UltraPress"));
+    return dirs;
+}
+
+std::string Hosts::AdoptLegacy(const std::string& dataDir, const std::vector<std::string>& candidates, std::string& error) {
+    return UltraCanvas::AdoptLegacyDataFolder(dataDir, candidates, {kHostListFile}, error);
 }
 
 bool Hosts::IsHostProvider(const std::string& providerId) {
@@ -56,11 +74,17 @@ bool Hosts::Open(std::string& error) {
         return false;
     }
 #endif
-    const std::string dir = ConfigDirectory();
+    const std::string dir = DataDirectory();
     if (dir.empty()) {
-        error = "no settings folder to keep the host list in (no home directory)";
+        error = "no data folder to keep the host list in (no home directory)";
         return false;
     }
+    // A list kept under the settings folder by 0.5 to 0.7 moves here whole,
+    // the vault with it; a move that fails is said once and the list opens
+    // empty here, the old one untouched where it was.
+    std::string moveError;
+    AdoptLegacy(dir, LegacyDirectories(), moveError);
+    if (!moveError.empty()) std::fprintf(stderr, "ultrapress: %s\n", moveError.c_str());
     // SQLite creates the file but not the folders above it; the vault makes
     // its own folder on its first write.
     std::error_code ec;
@@ -69,9 +93,10 @@ bool Hosts::Open(std::string& error) {
         error = "cannot create " + dir + ": " + ec.message();
         return false;
     }
-    const UltraCloud::Result opened = impl->accounts.Open("ultrapress-hosts", dir + "/hosts.db");
+    const std::string list = dir + "/" + kHostListFile;
+    const UltraCloud::Result opened = impl->accounts.Open("ultrapress-hosts", list);
     if (!opened) {
-        error = "cannot open the host list " + dir + "/hosts.db: " + opened.message;
+        error = "cannot open the host list " + list + ": " + opened.message;
         return false;
     }
     impl->vault = UltraVault::DeviceKeyVault(dir + "/vault", {"ultrapress.vault", "press.ultrapress."});
