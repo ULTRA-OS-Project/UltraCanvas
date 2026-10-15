@@ -1,7 +1,9 @@
 // Tests/UltraMail/test_oauth.cpp
 // OAuth2 sign-in for mail providers: the provider table, the app registration
-// sources (Set / environment / INI), token bookkeeping, the sign-in + refresh
-// service behind test seams, and the token set stored in the credential vault.
+// sources (Set / environment / INI), the sign-in service (where it is, which
+// provider goes through it), token bookkeeping, the sign-in + refresh behind
+// test seams - directly and through the service - and the token set stored in
+// the credential vault.
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
@@ -198,6 +200,7 @@ TEST(oauth_complete_oob_rejects_an_address_without_a_code) {
 
 TEST(oauth_apps_come_from_set_env_or_ini_in_that_order) {
     OAuthApps::Clear();
+    OAuthApps::SetServiceUrl("off");   // a client of its own, or nothing
     SetEnv("ULTRAMAIL_GOOGLE_CLIENT_ID", "");
     REQUIRE(!OAuthApps::Has("google"));
 
@@ -228,8 +231,94 @@ TEST(oauth_apps_come_from_set_env_or_ini_in_that_order) {
     REQUIRE_EQ(OAuthApps::Get("google").clientId, std::string("from-set"));
 
     SetEnv("ULTRAMAIL_GOOGLE_CLIENT_ID", "");
-    OAuthApps::Clear();
+    OAuthApps::Clear();                 // drops the "off" too: the service is back
+    REQUIRE(OAuthApps::Has("google"));
+    OAuthApps::SetServiceUrl("off");
     REQUIRE(!OAuthApps::Has("google"));
+    OAuthApps::Clear();
+}
+
+// ---- the sign-in service ---------------------------------------------------
+
+TEST(oauth_service_url_comes_from_set_env_ini_or_the_build_in_that_order) {
+    OAuthApps::Clear();
+    SetEnv("ULTRAMAIL_OAUTH_SERVICE_URL", "");
+    // The address built into UltraNet (ULTRANET_OAUTH_SERVICE_URL at
+    // configure time); this test build keeps CMake's default, the public
+    // service. Clear() below leaves it in place.
+    REQUIRE_EQ(OAuthApps::ServiceUrl(), std::string("https://oauth-callback.ultraos.eu"));
+
+    // oauth.ini's [service] section, beside the providers' sections.
+    REQUIRE_EQ(OAuthApps::ParseIni(
+        "[Service]\n"
+        "url = https://cb.ini.example/\n"     // a trailing slash is dropped
+        "[google]\n"
+        "client_id = own-client\n"), 1);
+    REQUIRE_EQ(OAuthApps::ServiceUrl(), std::string("https://cb.ini.example"));
+
+    // The environment outranks the file ...
+    SetEnv("ULTRAMAIL_OAUTH_SERVICE_URL", "https://cb.env.example");
+    REQUIRE_EQ(OAuthApps::ServiceUrl(), std::string("https://cb.env.example"));
+    // ... and SetServiceUrl() outranks both; "off" turns the service off.
+    OAuthApps::SetServiceUrl("https://cb.set.example");
+    REQUIRE_EQ(OAuthApps::ServiceUrl(), std::string("https://cb.set.example"));
+    OAuthApps::SetServiceUrl("off");
+    REQUIRE(OAuthApps::ServiceUrl().empty());
+    OAuthApps::SetServiceUrl("");
+    REQUIRE_EQ(OAuthApps::ServiceUrl(), std::string("https://cb.env.example"));
+    SetEnv("ULTRAMAIL_OAUTH_SERVICE_URL", "none");
+    REQUIRE(OAuthApps::ServiceUrl().empty());
+
+    SetEnv("ULTRAMAIL_OAUTH_SERVICE_URL", "");
+    OAuthApps::Clear();
+    REQUIRE_EQ(OAuthApps::ServiceUrl(), std::string("https://oauth-callback.ultraos.eu"));
+}
+
+TEST(oauth_service_serves_a_provider_without_a_client_of_its_own) {
+    OAuthApps::Clear();
+    SetEnv("ULTRAMAIL_OAUTH_SERVICE_URL", "");
+    SetEnv("ULTRAMAIL_GOOGLE_CLIENT_ID", "");
+    OAuthApps::SetServiceUrl("https://cb.example");
+
+    // The three mail providers go through the service; anyone else does not.
+    REQUIRE(OAuthApps::IsServiceProvider("google"));
+    REQUIRE(OAuthApps::IsServiceProvider("microsoft"));
+    REQUIRE(OAuthApps::IsServiceProvider("yahoo"));
+    REQUIRE(!OAuthApps::IsServiceProvider("mastodon"));
+    REQUIRE(OAuthApps::UsesService("google"));
+    REQUIRE(OAuthApps::UsesService("yahoo"));
+    REQUIRE(OAuthApps::Has("google"));
+    REQUIRE(OAuthApps::Has("yahoo"));
+    REQUIRE(!OAuthApps::UsesService("mastodon"));
+    REQUIRE(!OAuthApps::Has("mastodon"));
+    // No client of its own: Get() stays unconfigured even though Has() is true.
+    REQUIRE(!OAuthApps::Get("google").IsConfigured());
+
+    // A client of its own bypasses the service for that provider only.
+    OAuthApps::Set("google", TestApp());
+    REQUIRE(!OAuthApps::UsesService("google"));
+    REQUIRE(OAuthApps::Has("google"));
+    REQUIRE(OAuthApps::UsesService("microsoft"));
+
+    // The service off: only the own client remains.
+    OAuthApps::SetServiceUrl("off");
+    REQUIRE(OAuthApps::Has("google"));
+    REQUIRE(!OAuthApps::Has("microsoft"));
+    REQUIRE(!OAuthApps::UsesService("google"));
+    OAuthApps::Clear();
+}
+
+TEST(oauth_service_config_names_the_service_the_provider_and_the_hint) {
+    OAuthApps::Clear();
+    OAuthApps::SetServiceUrl("https://cb.example/");
+    UltraNetOAuth2ServiceConfig cfg = OAuthServiceConfigFor("microsoft", "erika@outlook.com");
+    REQUIRE_EQ(cfg.serviceUrl, std::string("https://cb.example"));
+    REQUIRE_EQ(cfg.providerId, std::string("microsoft"));
+    REQUIRE_EQ(cfg.loginHint, std::string("erika@outlook.com"));
+    REQUIRE(cfg.scopes.empty());                       // the service's defaults
+    REQUIRE_EQ(cfg.clientName, std::string("UltraMail"));
+    REQUIRE(OAuthServiceConfigFor("google").loginHint.empty());
+    OAuthApps::Clear();
 }
 
 TEST(oauth_apps_load_file_tolerates_a_missing_file) {
@@ -279,6 +368,7 @@ TEST(oauth_tokens_expire_a_minute_early_and_keep_the_refresh_token) {
 
 TEST(oauth_sign_in_needs_an_app_and_hands_the_consent_url_to_the_browser) {
     OAuthApps::Clear();
+    OAuthApps::SetServiceUrl("off");
     SetEnv("ULTRAMAIL_GOOGLE_CLIENT_ID", "");
 
     int authorizeCalls = 0;
@@ -313,6 +403,77 @@ TEST(oauth_sign_in_needs_an_app_and_hands_the_consent_url_to_the_browser) {
     REQUIRE_EQ(tokens.accessToken, std::string("access"));
     REQUIRE_EQ(tokens.refreshToken, std::string("refresh"));
     REQUIRE_EQ(tokens.expiresAt, int64_t(100 + 3599 - 60));
+    OAuthApps::Clear();
+}
+
+TEST(oauth_sign_in_and_refresh_go_through_the_service_without_a_client) {
+    OAuthApps::Clear();
+    SetEnv("ULTRAMAIL_GOOGLE_CLIENT_ID", "");
+    OAuthApps::SetServiceUrl("https://cb.example");
+
+    int direct = 0, viaService = 0, refreshes = 0;
+    OAuthHooks hooks;
+    hooks.authorize = [&](const UltraNetOAuth2Config&, const std::function<void(const std::string&)>&,
+                          UltraNetOAuth2Token& out) {
+        ++direct;
+        out.accessToken = "direct"; out.expiresInSeconds = 3600;
+        return UltraNetResult::Ok();
+    };
+    hooks.serviceAuthorize = [&](const UltraNetOAuth2ServiceConfig& cfg,
+                                 const std::function<void(const std::string&)>& openUrl,
+                                 UltraNetOAuth2Token& out) {
+        ++viaService;
+        REQUIRE_EQ(cfg.serviceUrl, std::string("https://cb.example"));
+        REQUIRE_EQ(cfg.providerId, std::string("yahoo"));
+        REQUIRE_EQ(cfg.loginHint, std::string("erika@yahoo.com"));
+        openUrl("https://api.login.yahoo.com/oauth2/request_auth?state=s");
+        out.accessToken = "access"; out.refreshToken = "refresh"; out.expiresInSeconds = 3600;
+        return UltraNetResult::Ok();
+    };
+    hooks.serviceRefresh = [&](const UltraNetOAuth2ServiceConfig& cfg, const std::string& refreshToken,
+                               UltraNetOAuth2Token& out) {
+        ++refreshes;
+        REQUIRE_EQ(cfg.providerId, std::string("yahoo"));
+        REQUIRE_EQ(refreshToken, std::string("refresh"));
+        out.accessToken = "access2"; out.expiresInSeconds = 3600;
+        return UltraNetResult::Ok();
+    };
+    MailOAuth oauth(hooks);
+
+    // Yahoo, which signs in out-of-band when it has a client of its own,
+    // redirects to the service like everyone else here: a plain SignIn.
+    OAuthTokens tokens;
+    std::string opened;
+    REQUIRE(oauth.SignIn("yahoo", "erika@yahoo.com",
+                         [&](const std::string& u) { opened = u; }, tokens, 100));
+    REQUIRE_EQ(viaService, 1);
+    REQUIRE_EQ(direct, 0);
+    REQUIRE(opened.find("api.login.yahoo.com") != std::string::npos);
+    REQUIRE_EQ(tokens.accessToken, std::string("access"));
+    REQUIRE_EQ(tokens.expiresAt, int64_t(100 + 3600 - 60));
+
+    bool refreshed = false;
+    REQUIRE(oauth.EnsureFresh("yahoo", tokens, refreshed, 100 + 3600));
+    REQUIRE(refreshed);
+    REQUIRE_EQ(refreshes, 1);
+    REQUIRE_EQ(tokens.accessToken, std::string("access2"));
+    REQUIRE_EQ(tokens.refreshToken, std::string("refresh"));
+
+    // A client of its own takes the direct route instead.
+    OAuthApps::Set("yahoo", TestApp());
+    OAuthApps::Set("google", TestApp());
+    REQUIRE(oauth.SignIn("google", "erika@gmail.com", [](const std::string&) {}, tokens, 100));
+    REQUIRE_EQ(direct, 1);
+    REQUIRE_EQ(viaService, 1);
+
+    // The service off and no client: nothing is opened and the reason says so.
+    OAuthApps::Clear();
+    OAuthApps::SetServiceUrl("off");
+    UltraNetResult r = oauth.SignIn("microsoft", "erika@outlook.com",
+                                    [](const std::string&) {}, tokens, 100);
+    REQUIRE(!r);
+    REQUIRE(r.message.find("client id") != std::string::npos);
+    REQUIRE(r.message.find("service") != std::string::npos);
     OAuthApps::Clear();
 }
 

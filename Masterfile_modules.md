@@ -1377,7 +1377,23 @@ future.
   plus the prefixes modules add) > INI file > baked-in default, then the
   alias chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` family
   are profiles of it, so a Google client registered once serves Gmail and
-  Google Drive
+  Google Drive; `UltraNet_OAuth2SignInServiceUrl`,
+  `UltraNet_OAuth2SetSignInService`, `UltraNet_OAuth2SetBuiltInSignInService`,
+  `UltraNet_OAuth2SignInServiceEnvName` — the sign-in service's address
+  through the same tiers (Set > `<PREFIX>OAUTH_SERVICE_URL` > the INI file's
+  `[service] url` > the `ULTRANET_OAUTH_SERVICE_URL` build option), which a
+  provider without a client of its own signs in through
+- `UltraNet_OAuth2ServiceUrl`, `UltraNet_OAuth2ServiceBegin`,
+  `UltraNet_OAuth2ServiceWaitForCode`, `UltraNet_OAuth2ServiceExchangeCode`,
+  `UltraNet_OAuth2ServiceRefresh`, `UltraNet_OAuth2ServiceProviders`,
+  `UltraNet_OAuth2AuthorizeViaService`, `UltraNet_OAuth2ServiceParseSession`,
+  `UltraNet_OAuth2ServiceParseStatus` — the client of an OAuth2 *sign-in
+  service* (`UltraNetOAuth2Service.h`; `Server/OAuthCallback` is the
+  service): the service holds the client registrations and is the https
+  address the providers redirect to, the application sends only the PKCE
+  challenge and collects the code, and the exchange and the refresh go
+  through the service, which adds the secret. UltraMail signs in through
+  `https://oauth-callback.ultraos.eu` this way
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
