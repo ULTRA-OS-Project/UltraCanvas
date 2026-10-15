@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
 // Demonstration of the comprehensive colour picker widget.
+// Version: 1.4.0 - the full picker shows the design selector
 // Version: 1.3.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -31,7 +32,7 @@ namespace UltraCanvas {
 
         // --- Full picker: wheel + swatches + hex + tabs + channel sliders ---
         auto fullLabel = CreateLabel("FullPickerLabel", col1X, row1Y - 25, 300, 20);
-        fullLabel->SetText("Full picker (wheel, hex, HSV/HSL/RGB)");
+        fullLabel->SetText("Full picker • design selector (top right)");
         fullLabel->SetFontSize(12);
         container->AddChild(fullLabel);
 
@@ -39,6 +40,10 @@ namespace UltraCanvas {
         auto picker = CreateColorPicker("FullColorPicker", Color(0x85, 0xFF, 0xFB, 0xFF),
                                         col1X, row1Y, pickerW, pickerH);
         picker->SetBackgroundColor(Color(255, 0, 0, 255));
+        // The design selector in the top-right corner switches between the
+        // colour circle, the colour slider + square and the colour rectangle.
+        // Over a rectangular design it hides while a drag picks a colour.
+        picker->SetShowWheelStyleSelector(true);
         // No onScreenColorPick callback: clicking the eyedropper button arms the
         // built-in mode — the pointer becomes an eyedropper and the next click
         // samples the pixel under it (Select/left mouse -> foreground colour,

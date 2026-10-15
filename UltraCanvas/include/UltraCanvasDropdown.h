@@ -1,6 +1,7 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: an icon-only button
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
 #pragma once
 
@@ -91,6 +92,12 @@ namespace UltraCanvas {
         // Icon dimensions
         float iconSize = 16.0f;
         float iconPadding = 4.0f;
+
+        // The button shows the selected item's icon and text. Off, it shows
+        // the icon alone, centred beside the arrow - a compact picker whose
+        // list still names every item (and whose accessible value is still
+        // the selected item's text).
+        bool buttonShowsText = true;
 
         // Checkbox dimensions (for multi-select)
         float checkboxSize = 14.0f;

@@ -99,6 +99,10 @@ struct DropdownStyle {
     float iconSize = 16.0f;
     float iconPadding = 4.0f;
 
+    // false: the button shows the selected item's icon alone (the list
+    // still shows icon and text) - a compact, icon-only selector
+    bool buttonShowsText = true;
+
     // Checkbox dimensions (for multi-select)
     float checkboxSize = 14.0f;
     float checkboxPadding = 6.0f;
@@ -393,6 +397,25 @@ langs->AddItem("Rust", "rs");
 langs->onSelectedItemsChanged = [](const std::vector<DropdownItem>& picked) {
     std::cerr << picked.size() << " languages selected" << std::endl;
 };
+```
+
+### Icon-only Button
+
+With `buttonShowsText` off, the button shows just the selected item's icon,
+centred beside the arrow; the list still shows each item's icon and text, and
+the accessible value is still the selected item's text. The colour picker's
+design selector is one.
+
+```cpp
+auto view = CreateDropdown("view", 10, 120, 44, 24);
+view->AddItem("Details", "details", "media/icons/view-details.svg");
+view->AddItem("Icons", "icons", "media/icons/view-icons-medium.svg");
+DropdownStyle compact = view->GetStyle();
+compact.buttonShowsText = false;
+compact.iconSize = 18.0f;
+view->SetStyle(compact);
+view->SetSelectedIndex(0, false);
+view->SetAccessibleName("View");
 ```
 
 ## Performance Considerations

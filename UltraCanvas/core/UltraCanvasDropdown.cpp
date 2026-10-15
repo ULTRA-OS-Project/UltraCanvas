@@ -1,6 +1,7 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: the icon alone on the button
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasWindow.h"
@@ -683,41 +684,46 @@ namespace UltraCanvas {
 
         // Get display text
         std::string displayText = GetDisplayText();
+        // The selected item's icon (single selection only).
+        std::string iconPath;
+        if (!multiSelectEnabled && selectedIndex >= 0 && selectedIndex < (int)items.size()) {
+            iconPath = items[selectedIndex].iconPath;
+        }
+        const bool showText = style.buttonShowsText && !displayText.empty();
 
-        if (!displayText.empty()) {
+        if (showText || !iconPath.empty()) {
             ctx->PushState();
             int arrowSpace = static_cast<int>(style.arrowSize * 2 + 2);
             ctx->ClipRect(Rect2Di(buttonRect.x + 1, buttonRect.y,
                                   buttonRect.width - arrowSpace - 1, buttonRect.height));
 
-            ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize);
-            ctx->SetTextPaint(textColor);
-
-            Size2Di textSize = ctx->GetTextLineDimensions(displayText);
-
             int textX = buttonRect.x + (int)style.paddingLeft;
-            int textY = buttonRect.y + (buttonRect.height - textSize.height) / 2;
-
-            // Render icon if single selection and item has icon
-            if (!multiSelectEnabled && selectedIndex >= 0 && selectedIndex < (int)items.size()) {
-                const auto& item = items[selectedIndex];
-                if (!item.iconPath.empty()) {
-                    Rect2Di iconRect(
-                        textX,
-                        buttonRect.y + (buttonRect.height - (int)style.iconSize) / 2,
-                        (int)style.iconSize,
-                        (int)style.iconSize
-                    );
-                    auto icon = UCImage::Get(item.iconPath);
-                    if (icon && icon->IsValid()) {
-                        ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
-                    }
-                    textX += (int)(style.iconSize + style.iconPadding);
+            if (!iconPath.empty()) {
+                // Icon-only: centred in the space left of the arrow.
+                const int iconX = showText
+                    ? textX
+                    : buttonRect.x + (buttonRect.width - arrowSpace - (int)style.iconSize) / 2;
+                Rect2Di iconRect(
+                    iconX,
+                    buttonRect.y + (buttonRect.height - (int)style.iconSize) / 2,
+                    (int)style.iconSize,
+                    (int)style.iconSize
+                );
+                auto icon = UCImage::Get(iconPath);
+                if (icon && icon->IsValid()) {
+                    ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
                 }
+                textX += (int)(style.iconSize + style.iconPadding);
             }
 
-            ctx->DrawText(displayText, Point2Di(textX, textY));
+            if (showText) {
+                ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+                ctx->SetFontSize(style.fontSize);
+                ctx->SetTextPaint(textColor);
+                Size2Di textSize = ctx->GetTextLineDimensions(displayText);
+                int textY = buttonRect.y + (buttonRect.height - textSize.height) / 2;
+                ctx->DrawText(displayText, Point2Di(textX, textY));
+            }
             ctx->PopState();
         }
 

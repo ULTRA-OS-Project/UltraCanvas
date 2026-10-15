@@ -10,6 +10,8 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
+// Version: 1.6.0 - optional design selector: a dropdown in the top-right corner
+//                  (colour circle / colour slider + square / colour rectangle)
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
 //                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
@@ -32,6 +34,7 @@
 
 namespace UltraCanvas {
     class UltraCanvasTextInput;
+    class UltraCanvasDropdown;
 
 // ===== COLOUR MODEL USED BY THE CHANNEL EDITORS =====
     enum class ColorPickerModel {
@@ -257,6 +260,17 @@ namespace UltraCanvas {
         ColorPickerWheelStyle GetWheelStyle() const { return wheelStyle; }
         void SetWheelStyle(ColorPickerWheelStyle s);
 
+        // Optional design selector: a small dropdown in the top-right corner
+        // that lets the user switch between the three designs, each shown by
+        // its icon - colour circle (Ring), colour slider + square (Bar) and
+        // colour rectangle (HueLightnessField). Off by default. On the two
+        // rectangular designs it sits over the corner of the colour area, so
+        // it hides while a drag on the colour area or a colour bar runs and
+        // comes back on release; beside the circle it stays. With the
+        // HueLightnessSliders style no entry is selected.
+        bool GetShowWheelStyleSelector() const { return showWheelStyleSelector; }
+        void SetShowWheelStyleSelector(bool show);
+
         // Shape of the Bar style's saturation/value area: stretched over the
         // space above the controls (default), square, or square at
         // PixelExactSVSide pixels. A square area is centred, the hue
@@ -329,6 +343,10 @@ namespace UltraCanvas {
         std::function<void(const Color&)> onBackgroundChanged;
         std::function<void(const Color&)> onBackgroundChanging;
 
+        // The user chose a design in the design selector (not fired by
+        // SetWheelStyle). A host that remembers the choice saves it here.
+        std::function<void(ColorPickerWheelStyle)> onWheelStyleChanged;
+
         // Screen colour-picker ("eyedropper") request. Fired when the eyedropper
         // button next to the background swatch is clicked. When set, the host
         // takes over: it performs platform screen sampling and writes the pixel
@@ -374,6 +392,7 @@ namespace UltraCanvas {
         bool showValueSpinners = false;
         bool slidersCollapsible = false;
         bool slidersExpanded = true;
+        bool showWheelStyleSelector = false;
 
         // ----- Interaction state -----
         // No TextDrag member: selecting text by dragging is the editor
@@ -408,6 +427,16 @@ namespace UltraCanvas {
         void PositionFieldEditor();
 
         bool dropdownOpen = false;
+
+        // The design selector (SetShowWheelStyleSelector): a real dropdown
+        // child, built on first use, placed and drawn by this widget.
+        std::shared_ptr<UltraCanvasDropdown> styleSelector;
+        void BuildStyleSelector();
+        // Restyle, place, select the current design and show or hide it.
+        void SyncStyleSelector();
+        // True while a drag on the colour area / bars of a rectangular design
+        // runs: the selector over the area's corner is hidden then.
+        bool StyleSelectorHiddenByDrag() const;
 
         // Built-in eyedropper: true while waiting for the sampling click. The
         // window event filter is installed once (lazily) and stays installed,
@@ -584,6 +613,9 @@ namespace UltraCanvas {
         Rect2Df EditTextRect(EditField field) const; // inner text area
         bool EditTextCentered(EditField field) const;
         void RenderFieldEditor(IRenderContext* ctx); // draws the editor child
+        // This widget paints its own content and never its children: draws
+        // one child (the editor, the design selector) at its bounds.
+        void RenderChild(IRenderContext* ctx, UltraCanvasUIElement& child);
 
         // ----- Notification -----
         void Changed(bool finished);

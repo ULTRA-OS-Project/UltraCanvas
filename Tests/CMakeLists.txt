@@ -1144,6 +1144,30 @@ else()
     message(STATUS "  ColorPickerDragTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== COLOUR PICKER DESIGN SELECTOR TEST =====
+# The optional dropdown in the picker's top-right corner: three designs with
+# icons that load, the selection following SetWheelStyle, a choice switching
+# the design and reported once, hidden during a drag on a rectangular
+# design's colour area and shown again on release, kept beside the circle.
+# Opens a window, so it skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerDesignSelectorTest...")
+    add_executable(ColorPickerDesignSelectorTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerDesignSelectorTest.cpp
+    )
+    target_include_directories(ColorPickerDesignSelectorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerDesignSelectorTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerDesignSelectorTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerDesignSelectorTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerDesignSelectorTest COMMAND ColorPickerDesignSelectorTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerDesignSelectorTest")
+else()
+    message(STATUS "  ColorPickerDesignSelectorTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILE DIALOG TEST =====
 # The name a Save hands back (the chosen type's extension, always run), and
 # the dialog itself: the Up arrow and view glyphs centred in their buttons,
