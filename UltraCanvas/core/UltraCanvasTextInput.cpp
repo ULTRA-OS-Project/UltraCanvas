@@ -1,8 +1,9 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
+// Version: 1.10.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
 // Version: 1.10.0 - TextInputStyle::FromTheme
 // Version: 1.9.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // V1.9.0: An input method's composition is drawn in the line at the caret,
 //   underlined, with the caret inside it; the scroll keeps that caret in view.
 //   Composing over a selection replaces the selection; committed text, an
@@ -566,6 +567,9 @@ namespace UltraCanvas {
 
             case UCEventType::FocusLost:
                 return HandleFocusLost(event);
+
+            default:
+                break;
         }
         return false;
     }

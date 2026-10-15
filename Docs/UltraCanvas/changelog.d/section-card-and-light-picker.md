@@ -21,10 +21,22 @@
   changelogs: UltraMail 0.10.53, UltraPaint 0.2.22, UltraFiler 1.74.1,
   ArtCreator 0.7.1). Docs: `UltraCanvasGroupBoxExamples.md`,
   `UltraCanvasColorPicker.md`, `UltraCanvasListViewExamples.md`.
-- **Two compiler warnings in `UltraCanvasApplication.cpp` are gone.**
-  `DispatchEvent`'s event switch named four event types and let the other 40
-  fall through silently (`-Wswitch`); it now says so with a `default`. And
-  the bound check before `keyStates[virtualKey]` compared the enum with 256,
-  which clang reads as always true (`UCKeys` stops at 128) - but the
-  platforms make a `UCKeys` from any key code, so the check matters: it now
-  compares the key code as an int.
+- **The framework builds without the warnings it had.** Event and key
+  switches that handle a few cases and leave the rest to the code after them
+  say so with a `default` - `UltraCanvasApplication::DispatchEvent`,
+  `OnEvent` in the button, image element, text input and Markdown view, the
+  key handling of the segmented control, the slider (both modes) and the
+  Gource tree (`-Wswitch`); `FontStyle::ToFontDesc` names the `Normal` slant
+  and weight it leaves as they are. `TooltipContent` builds its title, text,
+  bullet and separator blocks through a helper instead of a braced
+  `{type, text}` that names two of the block's six fields, so the
+  `-Wmissing-field-initializers` warning no longer appears in every file that
+  includes `UltraCanvasTooltipTypes.h`. No change in behaviour.
+- **A key code outside the key table no longer reads past it.**
+  `UltraCanvasApplicationBase::IsKeyPressed` indexed the 256-entry table with
+  whatever key code it was given, and the platforms make a `UCKeys` out of any
+  code (`static_cast<UCKeys>(vk)`); it now answers false for one outside the
+  table. The table's size is one constant (`KeyStateCount`), which
+  `DispatchEvent` and `GetPressedKeys` use as well - `DispatchEvent`'s own
+  check compared the enum with 256, which clang read as always true, since
+  `UCKeys` stops at 128.

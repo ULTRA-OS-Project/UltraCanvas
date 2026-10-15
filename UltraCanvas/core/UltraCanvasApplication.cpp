@@ -1,7 +1,8 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
 // Version: 1.10.1 - two -Wswitch / -Wtautological warnings in DispatchEvent fixed (the
-//                   key-state bound is checked on the key code as an int)
+//                   key-state bound is checked on the key code as an int, against
+//                   KeyStateCount, as IsKeyPressed now does too)
 // Version: 1.10.0 - a key delivered to a window a modal blocks goes to the modal, not dropped
 // Version: 1.9.0 - Initialize installs the theme change handler: every window re-styles, the tooltips too
 // Version: 1.8.0 - when the system fonts arrive after the start, or a font file is
@@ -1287,7 +1288,7 @@ namespace UltraCanvas {
 
     std::vector<UCKeys> UltraCanvasApplicationBase::GetPressedKeys() const {
         std::vector<UCKeys> pressed;
-        for (int key = 0; key < 256; ++key) {
+        for (int key = 0; key < KeyStateCount; ++key) {
             if (keyStates[key]) {
                 pressed.push_back(static_cast<UCKeys>(key));
             }
@@ -1424,7 +1425,7 @@ namespace UltraCanvas {
             // (static_cast<UCKeys>(vk)), so the value is not bounded by the
             // enum's own range, which is what the compiler reasons from.
             const int key = static_cast<int>(event.virtualKey);
-            if (key >= 0 && key < 256) {
+            if (key >= 0 && key < KeyStateCount) {
                 keyStates[key] = (event.type == UCEventType::KeyDown);
             }
         }
