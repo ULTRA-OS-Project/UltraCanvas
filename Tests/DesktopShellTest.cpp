@@ -18,6 +18,14 @@
 // anywhere else that is skipped, so a developer's own taskbar and sign-in
 // are never touched.
 //
+// On X11 with a display - CI runs it a second time under Xvfb, with
+// ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 so a missing display fails rather than
+// skips - it drives the X11 backend: the monitor reports a root-window
+// property set the way a window manager sets it, the virtual desktops and
+// RandR's monitors are read back, a free combination is grabbed, and every
+// Stop() must return within seconds (a blocking wake pipe once hung them for
+// good; a hang ends the test with a failure instead of holding it).
+//
 // Two parts of the Windows backend run in programs of their own, safely
 // anywhere:
 //   - UltraCanvasShellGuard, started on this test as the "desktop" that
@@ -30,24 +38,30 @@
 //     icons added, changed, hidden, ballooned and removed, clicks in every
 //     NIM_SETVERSION form, Shell_NotifyIconGetRect - while the user's own
 //     taskbar is never touched.
+// Version: 1.6.0 - the X11 backend on a real display; Stop() within seconds
 // Version: 1.5.0 - ListScreens, Microsoft Store applications, the Win key's tap
 // Version: 1.4.0 - instead of Explorer, the shell guard, the tray host
 // Version: 1.3.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShell.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <future>
 #include <iterator>
+#include <memory>
 #include <initializer_list>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
@@ -67,6 +81,14 @@
 #include "ShellLinkTestSupport.h"
 #include <windows.h>
 #include <shellapi.h>   // SHAppBarMessage, Shell_NotifyIconW
+#endif
+
+// The platforms whose backend is X11 (UltraCanvasDesktopShellBackend.h).
+#if (defined(__linux__) && !defined(__ANDROID__)) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+    defined(__NetBSD__)
+#  define DESKTOPSHELLTEST_X11 1
+#  include <X11/Xlib.h>
+#  include <X11/Xatom.h>
 #endif
 
 namespace fs = std::filesystem;
@@ -486,6 +508,50 @@ int TrayChild() {
 }
 #endif
 
+#if defined(DESKTOPSHELLTEST_X11)
+// A step that must not hang - a Stop() joining a thread - on a thread of its
+// own. Still running after `ms`, it never returns, and nothing after it could
+// run either (the stuck join holds the process): say so and end the test.
+void FinishesWithin(const std::function<void()>& step, int ms, const std::string& what) {
+    auto finished = std::make_shared<std::promise<void>>();
+    std::future<void> done = finished->get_future();
+    std::thread([step, finished]() {
+        step();
+        finished->set_value();
+    }).detach();
+    if (done.wait_for(std::chrono::milliseconds(ms)) == std::future_status::ready) {
+        Check(true, what);
+        return;
+    }
+    Check(false, what + " - still running after " + std::to_string(ms / 1000) + " s, so the test ends here");
+    std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
+    std::fflush(stdout);
+    std::_Exit(1);
+}
+
+template <typename Done>
+bool WaitUntil(Done done, int ms) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    while (!done()) {
+        if (std::chrono::steady_clock::now() >= until) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return true;
+}
+
+// A root-window property, set or removed the way a window manager would.
+void SetRootCardinal(Display* display, const char* name, long value) {
+    XChangeProperty(display, DefaultRootWindow(display), XInternAtom(display, name, False), XA_CARDINAL, 32,
+                    PropModeReplace, reinterpret_cast<const unsigned char*>(&value), 1);
+    XFlush(display);
+}
+
+void DeleteRootProperty(Display* display, const char* name) {
+    XDeleteProperty(display, DefaultRootWindow(display), XInternAtom(display, name, False));
+    XFlush(display);
+}
+#endif
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -801,6 +867,67 @@ int main(int argc, char** argv) {
         Check(tray.ListIcons().empty() && !tray.Click("tray-1", TrayClick::Left), "and so no icons to click");
 #endif
     }
+
+#if defined(DESKTOPSHELLTEST_X11)
+    // ===== X11: THE BACKEND ON A REAL DISPLAY =====
+    {
+        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
+        const bool displayRequired = required && std::strcmp(required, "1") == 0;
+        Display* display = UltraCanvasDesktopShell::IsAvailable() ? XOpenDisplay(nullptr) : nullptr;
+        if (!display) {
+            Check(!displayRequired, "a display was required (ULTRACANVAS_TEST_DISPLAY_REQUIRED=1), and there is none");
+            if (!displayRequired) std::printf("  (no X display: the X11 backend's own checks are skipped)\n");
+        } else {
+            Check(UltraCanvasDesktopShell::GetBackendName() == "x11", "the backend is x11");
+
+            UltraCanvasDesktopShellMonitor monitor;
+            std::atomic<int> changes{0};
+            Check(monitor.Start([&changes]() { ++changes; }) && monitor.IsNative(),
+                  "the monitor watches on a connection of its own");
+            // No window manager here: the test sets the desktops as one would.
+            SetRootCardinal(display, "_NET_NUMBER_OF_DESKTOPS", 3);
+            SetRootCardinal(display, "_NET_CURRENT_DESKTOP", 1);
+            Check(WaitUntil([&changes]() { return changes.load() > 0; }, 5000),
+                  "the monitor reports the root window's change");
+            const int desktops = UltraCanvasDesktopShell::GetVirtualDesktopCount();
+            const int current = UltraCanvasDesktopShell::GetCurrentVirtualDesktop();
+            Check(desktops == 3 && current == 1, "the virtual desktops are read back (" + std::to_string(current + 1) +
+                                                     " of " + std::to_string(desktops) + ")");
+            FinishesWithin([&monitor]() { monitor.Stop(); }, 5000, "the monitor stops within seconds");
+            Check(!monitor.IsRunning(), "and is stopped");
+
+            UltraCanvasGlobalShortcut shortcut;
+            std::string why;
+            Check(shortcut.Start("Ctrl+Alt+Shift+F11", []() {}, &why), "a free combination is grabbed " + why);
+            FinishesWithin([&shortcut]() { shortcut.Stop(); }, 5000, "the shortcut stops within seconds");
+            Check(!shortcut.IsRunning(), "and is stopped");
+            std::string tap;
+            Check(!shortcut.Start("Super", []() {}, &tap) && !tap.empty() && !shortcut.IsRunning(),
+                  "the Win key alone is refused on X11: " + tap);
+
+            int rootWidth = 0, rootHeight = 0;
+            UltraCanvasDesktopShell::GetScreenSize(rootWidth, rootHeight);
+            const auto screens = UltraCanvasDesktopShell::ListScreens();
+            bool onRoot = !screens.empty();
+            for (const DesktopScreenInfo& screen : screens) {
+                onRoot = onRoot && screen.x >= 0 && screen.y >= 0 && screen.x + screen.width <= rootWidth &&
+                         screen.y + screen.height <= rootHeight;
+            }
+            Check(onRoot && screens[0].primary, "every monitor lies on the root window (" + std::to_string(rootWidth) +
+                                                    "x" + std::to_string(rootHeight) + "), the primary first: " +
+                                                    std::to_string(screens.size()) + " screens");
+            DesktopScreenImage shot;
+            std::string captureError;
+            Check(UltraCanvasDesktopShell::CaptureScreenImage(shot, &captureError) && shot.width == rootWidth &&
+                      shot.height == rootHeight,
+                  "the screen is captured at the root window's size " + captureError);
+
+            DeleteRootProperty(display, "_NET_CURRENT_DESKTOP");
+            DeleteRootProperty(display, "_NET_NUMBER_OF_DESKTOPS");
+            XCloseDisplay(display);
+        }
+    }
+#endif
 
 #if defined(_WIN32)
     // ===== WINDOWS: THE WIN32 BACKEND ON THE REAL DESKTOP =====

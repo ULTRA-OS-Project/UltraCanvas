@@ -5,7 +5,7 @@
 // Version: 0.4.0 - Windows: instead of Explorer - the tray icons (StartTray,
 //                  RefreshTray), sign out / restart / shut down, the Win key
 //                  (appsShortcut_); the other screens' wallpaper
-//                  (CoverOtherScreens)
+//                  (CoverOtherScreens, a closed one opened again)
 // Version: 0.3.0 - Windows: in place of the Windows desktop and back (the
 //                  settings button's menu, --session), no RAM disc button
 //                  without a RAM disc
@@ -1055,42 +1055,53 @@ void UltraDesktopWindow::CoverOtherScreens() {
             if (!inside) others.push_back(screen);
         }
     }
-    if (others == otherScreens_ && screenWindows_.size() == others.size()) return;
-
-    for (const auto& window : screenWindows_) {
-        if (window) window->Close();
-    }
-    screenWindows_.clear();
-    screenWallpapers_.clear();
-    otherScreens_ = others;
-    for (size_t i = 0; i < others.size(); ++i) {
-        const DesktopScreenInfo& screen = others[i];
-        WindowConfig config;
-        config.title = std::string("UltraDesktop ") + ULTRADESKTOP_VERSION;
-        config.type = WindowType::Desktop;
-        config.desktopArea = Rect2Di(screen.x, screen.y, screen.width, screen.height);
-        config.backgroundColor = kBarInsetColor;
-        auto window = CreateWindow(config);
-        if (!window) {
-            debugOutput << "UltraDesktop: no window for the screen at " << screen.x << "," << screen.y << std::endl;
-            continue;
+    const bool changed = others != otherScreens_;
+    if (changed) {
+        for (const auto& window : screenWindows_) {
+            if (window && window->IsCreated()) window->Close();
         }
-        auto wallpaper = std::make_shared<UltraCanvasImageElement>("ScreenWallpaper" + std::to_string(i), 0, 0, 0, 0);
-        wallpaper->SetFitMode(ImageFitMode::Cover);
-        wallpaper->LoadFromFile(WallpaperPath());
-        int width = 0, height = 0;
-        window->GetWindowSize(width, height);
-        wallpaper->SetElementAbsolutePosition(Point2Df(0, 0));
-        wallpaper->SetElementSize(Size2Df(static_cast<float>(std::max(1, width)), static_cast<float>(std::max(1, height))));
-        window->AddChild(wallpaper);
-        UltraCanvasImageElement* picture = wallpaper.get();
-        window->onWindowResize = [picture](int w, int h) {
-            picture->SetElementSize(Size2Df(static_cast<float>(std::max(1, w)), static_cast<float>(std::max(1, h))));
-        };
-        window->Show();
-        screenWindows_.push_back(window);
-        screenWallpapers_.push_back(wallpaper);
+        otherScreens_ = others;
+        screenWindows_.assign(others.size(), nullptr);
+        screenWallpapers_.assign(others.size(), nullptr);
     }
+    // A window closed since (Alt+F4) opens again, as does one that would not
+    // open the last time - the others stay as they are.
+    for (size_t i = 0; i < otherScreens_.size(); ++i) {
+        if (screenWindows_[i] && screenWindows_[i]->IsCreated()) continue;
+        OpenScreenWindow(i, changed);
+    }
+}
+
+void UltraDesktopWindow::OpenScreenWindow(size_t index, bool report) {
+    const DesktopScreenInfo& screen = otherScreens_[index];
+    WindowConfig config;
+    config.title = std::string("UltraDesktop ") + ULTRADESKTOP_VERSION;
+    config.type = WindowType::Desktop;
+    config.desktopArea = Rect2Di(screen.x, screen.y, screen.width, screen.height);
+    config.backgroundColor = kBarInsetColor;
+    auto window = CreateWindow(config);
+    if (!window) {
+        // Tried again at every check; said once.
+        if (report) {
+            debugOutput << "UltraDesktop: no window for the screen at " << screen.x << "," << screen.y << std::endl;
+        }
+        return;
+    }
+    auto wallpaper = std::make_shared<UltraCanvasImageElement>("ScreenWallpaper" + std::to_string(index), 0, 0, 0, 0);
+    wallpaper->SetFitMode(ImageFitMode::Cover);
+    wallpaper->LoadFromFile(WallpaperPath());
+    int width = 0, height = 0;
+    window->GetWindowSize(width, height);
+    wallpaper->SetElementAbsolutePosition(Point2Df(0, 0));
+    wallpaper->SetElementSize(Size2Df(static_cast<float>(std::max(1, width)), static_cast<float>(std::max(1, height))));
+    window->AddChild(wallpaper);
+    UltraCanvasImageElement* picture = wallpaper.get();
+    window->onWindowResize = [picture](int w, int h) {
+        picture->SetElementSize(Size2Df(static_cast<float>(std::max(1, w)), static_cast<float>(std::max(1, h))));
+    };
+    window->Show();
+    screenWindows_[index] = window;
+    screenWallpapers_[index] = wallpaper;
 }
 
 // ===== IN PLACE OF THE SYSTEM'S DESKTOP =====

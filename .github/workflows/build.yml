@@ -551,6 +551,9 @@ jobs:
           # stated where they are met. "Run unit tests" forbids its skip too,
           # as "Run the device TLS test" does on macOS and Windows.
           scripts/ci-apt.sh install python3 openssl
+          # A virtual X display for DesktopShellTest's X11 half (see "Run
+          # DesktopShellTest on a virtual display" below).
+          scripts/ci-apt.sh install xvfb xauth
           # UltraWin RemoteApp client (VM tier): FreeRDP is optional but
           # CI should compile it. 22.04 ships freerdp2; newer runners
           # will pick freerdp3-dev automatically once available.
@@ -1348,6 +1351,23 @@ jobs:
           # A skip here is indistinguishable from a pass, so forbid it.
           ULTRAFIBU_TEST_PG_REQUIRED: 1
         run: ctest --output-on-failure 2>&1 | tee ctest.log
+
+      # "Run unit tests" runs DesktopShellTest with no display, where the X11
+      # backend has nothing to talk to - so the monitor's and a global
+      # shortcut's Stop() went untested, and hung for good on any display
+      # until 2026-10-15 (a blocking wake pipe). On a virtual display the test
+      # drives the backend for real: the monitor sees a root property change,
+      # the virtual desktops and RandR's monitors are read, and every Stop()
+      # has to return within seconds. ULTRACANVAS_TEST_DISPLAY_REQUIRED turns
+      # "no display" into a failure, so a broken Xvfb cannot pass as a skip.
+      - name: Run DesktopShellTest on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1600x900x24 +extension RANDR"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^DesktopShellTest$"
 
       # ULTRAFIBU_TEST_PG_REQUIRED above turns a skip into a failure, so ctest
       # already covers "it ran". What it cannot cover is the test not existing

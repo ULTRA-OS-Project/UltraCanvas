@@ -15,7 +15,8 @@
   - opens the Applications window on a tap of the Win key, where the Start
     menu would open;
   - covers the other monitors with its wallpaper instead of leaving them
-    black, following monitors plugged in or taken away.
+    black, following monitors plugged in or taken away, and puts back a
+    wallpaper closed with Alt+F4 within a few seconds.
 - **The Applications window lists the Microsoft Store apps** (Calculator,
   Photos, Settings …) beside the Start menu's programs, with their tile
   icons, and starts them as the Start menu does.

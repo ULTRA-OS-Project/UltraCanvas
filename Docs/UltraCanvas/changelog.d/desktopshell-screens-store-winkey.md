@@ -33,6 +33,14 @@
   for a byte that never came. A program with a display hung on exit; without
   one the monitor had no connection to stop. Both ends of the pipe no longer
   block.
+  - CI never saw it: `DesktopShellTest` ran only without a display. The
+    Linux rows now also run it under Xvfb, where it drives the X11 backend.
+    The monitor has to report a root-window property, the virtual desktops
+    and RandR's monitors are read back, and every `Stop()` must return within
+    five seconds.
+  - A hang ends the test with a failure instead of holding the job.
+  - `ULTRACANVAS_TEST_DISPLAY_REQUIRED=1` makes a missing display fail
+    rather than skip.
 - Windows internals: `PixmapFromBitmap` turns an `HBITMAP` into a pixmap, and
   takes back premultiplied alpha where the shell hands it over that way.
 - **The Windows installer is built in CI.**

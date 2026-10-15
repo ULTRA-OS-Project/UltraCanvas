@@ -84407,7 +84407,7 @@ start. UltraDesktop then also
   combination, not a tap);
 - puts the **wallpaper on every other monitor**, which would otherwise stay
   black — a monitor plugged in or taken away is followed within a few
-  seconds.
+  seconds, and so is one whose wallpaper was closed (Alt+F4).
 
 The sign-in actually starts *UltraCanvasShellGuard*, which starts
 UltraDesktop — and keeps the screen from ever staying empty:

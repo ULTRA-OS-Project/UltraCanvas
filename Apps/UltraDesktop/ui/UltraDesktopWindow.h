@@ -181,8 +181,11 @@ private:
     // The desktop window covers the primary monitor (Windows) or the whole
     // screen (X11). While no Explorer desktop runs, a monitor outside it gets
     // a desktop window of its own with the wallpaper, so no screen stays
-    // black; followed as monitors come and go.
+    // black; followed as monitors come and go, and a window closed (Alt+F4)
+    // opens again at the next check.
     void CoverOtherScreens();
+    // The window for otherScreens_[index]; `report` says a failure once.
+    void OpenScreenWindow(size_t index, bool report);
 
     // ===== THE NOTIFICATION AREA (the shell session) =====
     void StartTray();

@@ -24,7 +24,8 @@ endif()
 # list from desktop entries, the screenshot file name, and the monitor's
 # lifetime. Points XDG_RUNTIME_DIR and XDG_DATA_HOME at a throwaway directory,
 # so it never depends on what the machine has installed and needs no display.
-# On Windows also the Win32 backend, on the runner's desktop.
+# With an X display (the Linux CI rows run it again under xvfb-run) also the
+# X11 backend; on Windows the Win32 backend, on the runner's desktop.
 if(TARGET UltraCanvas)
     message(STATUS "  Building DesktopShellTest...")
     add_executable(DesktopShellTest
