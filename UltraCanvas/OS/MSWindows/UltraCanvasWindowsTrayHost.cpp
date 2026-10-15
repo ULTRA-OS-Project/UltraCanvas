@@ -11,7 +11,8 @@
 //     programs send the same bytes - behind a two-word header. The answer
 //     is the call's result.
 //   - dwData 3: Shell_NotifyIconGetRect asking where an icon is on screen,
-//     answered with the corners packed into the result.
+//     twice: its top-left corner, then its size, each packed into the
+//     result (shell32 adds the two up for the rectangle's other corner).
 //   - dwData 0: SHAppBarMessage, which this host does not answer: a program
 //     asking where the taskbar is hears "nowhere" and places itself.
 // The layout is not documented; it is the one Cairo's ManagedShell, ReactOS
@@ -26,8 +27,10 @@
 // so a desktop busy drawing never stalls a program's Shell_NotifyIcon. The
 // icons' HICON copies are only ever touched on that thread; the list the
 // desktop reads is guarded by a mutex.
+// Version: 1.0.1 - Shell_NotifyIconGetRect's second question is the size,
+//                  not the bottom-right corner
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0A00
@@ -118,7 +121,7 @@ namespace {
     // Shell_NotifyIconGetRect's question.
     struct IconLocationQuery32 {
         uint32_t signature;
-        uint32_t message;           // 1: the top-left corner, 2: the bottom-right one
+        uint32_t message;           // 1: the top-left corner, 2: the size
         uint32_t cbSize;
         uint32_t padding;
         uint32_t hWnd;
@@ -309,7 +312,7 @@ namespace {
         }
         constexpr int kHalf = 8;
         if (query.message == 1) return MAKELPARAM(at.x - kHalf, at.y - kHalf);
-        if (query.message == 2) return MAKELPARAM(at.x + kHalf, at.y + kHalf);
+        if (query.message == 2) return MAKELPARAM(2 * kHalf, 2 * kHalf);
         return 0;
     }
 
