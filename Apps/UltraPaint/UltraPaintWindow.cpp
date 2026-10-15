@@ -717,13 +717,14 @@ void UltraPaintWindow::BuildRightPanel() {
     // The hue ring is capped by whatever vertical space the controls leave it,
     // so a picker sized by eye draws a wheel narrower than the card. Ask for
     // the height at which the ring fills the card's width instead.
-    const float pickerH = colorPicker->PreferredHeightForWidth(cardInner);
-    colorPicker->SetSize(cardInner, pickerH);
+    // SetElementSize, not SetSize: SetSize moves only the laid-out bounds, and
+    // the card's next layout pass puts back the size the picker was created
+    // with. The declared height is also the picker's flex basis.
+    colorPicker->SetElementSize(Size2Df(cardInner, colorPicker->PreferredHeightForWidth(cardInner)));
     // Not stretched: the picker lays its hex field and channel values out to
     // the width it is given, and that is the card's inner width exactly.
     colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Start)
-                           .SetFlexBasis(CSSLayout::Dimension::Px(pickerH));
+                           .SetAlignSelf(CSSLayout::AlignSelf::Start);
     colorPicker->onColorChanged = [this](const Color& c) { foreground = RasterPixel(c); };
     colorPicker->onColorChanging = [this](const Color& c) { foreground = RasterPixel(c); };
     colorPicker->onBackgroundChanged = [this](const Color& c) { background = RasterPixel(c); };

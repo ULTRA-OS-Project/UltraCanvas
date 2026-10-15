@@ -10,7 +10,7 @@ CMakeFiles/
 .claude/settings.local.json
 .idea/
 .vscode/
-# A build machine's real UltraMail OAuth credentials (see oauth.local.cmake.example)
+# A build machine's private OAuth sign-in service address (see oauth.local.cmake.example)
 /cmake/oauth.local.cmake
 /cmake-build-debug/
 /cmake-build-release/

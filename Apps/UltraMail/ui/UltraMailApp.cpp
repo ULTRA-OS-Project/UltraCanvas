@@ -213,8 +213,9 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // nothing reads or writes a secret before then.
     step.emplace("Credential vault and OAuth clients", 0);
     vault_ = CredentialVault(dataDir + "/vault");
-    // The OAuth client UltraMail signs in to Google with (see README, "Google
-    // sign-in"): ULTRAMAIL_GOOGLE_CLIENT_ID in the environment, else oauth.ini.
+    // The browser sign-in runs through the ULTRA OS sign-in service by default
+    // (README, "OAuth2 sign-in"); oauth.ini in the data folder may name another
+    // service ([service] url) or a client of this installation's own.
     OAuthApps::LoadFile(dataDir + "/oauth.ini");
 
     // The address book + outbox are global (account-independent) stores. A
@@ -3612,10 +3613,12 @@ void UltraMailApp::ReportMissingOAuthClient(const std::string& providerId) {
     std::string upper = providerId;
     for (char& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     AlertWarning(parent, "UltraMail cannot sign in to " + name + " yet.",
-                 "No OAuth client is configured for it. Put the client id of an "
-                 "OAuth client registered with " + name + " into " + dataDir_
-                 + "/oauth.ini under [" + providerId + "] (client_id = …), or set "
-                 "ULTRAMAIL_" + upper + "_CLIENT_ID — see Docs/UltraMail/AccountSetup.md.");
+                 "The sign-in service is turned off in this build and no OAuth client "
+                 "is configured for " + name + ". Name a service in " + dataDir_
+                 + "/oauth.ini under [service] (url = …) or ULTRAMAIL_OAUTH_SERVICE_URL, "
+                 "or put the client id of an OAuth client registered with " + name
+                 + " under [" + providerId + "] (client_id = …) or ULTRAMAIL_" + upper
+                 + "_CLIENT_ID — see Docs/UltraMail/AccountSetup.md.");
 }
 
 ServerSettingsDialog::Verifier UltraMailApp::LoginVerifier(
@@ -3687,13 +3690,14 @@ void UltraMailApp::CompleteAccountSetup(const AccountDraft& draft, const Discove
                 AlertWarning(parent, "The account was added, but UltraMail cannot "
                                      "sign in to " + OAuthProviderDisplayName(provider)
                                      + " yet.",
-                             "No OAuth client is configured for it. Put the client "
-                             "id of an OAuth client registered with "
-                             + OAuthProviderDisplayName(provider) + " into " + dataDir_
-                             + "/oauth.ini under [" + provider + "] (client_id = …), or "
-                             "set ULTRAMAIL_" + upper + "_CLIENT_ID — see "
-                             "Docs/UltraMail/AccountSetup.md. Alternatively add the "
-                             "account again with an app password.");
+                             "The sign-in service is turned off in this build and no "
+                             "OAuth client is configured for "
+                             + OAuthProviderDisplayName(provider) + ". Name a service in "
+                             + dataDir_ + "/oauth.ini under [service] (url = …) or "
+                             "ULTRAMAIL_OAUTH_SERVICE_URL, or a client of your own under ["
+                             + provider + "] (client_id = …) or ULTRAMAIL_" + upper
+                             + "_CLIENT_ID — see Docs/UltraMail/AccountSetup.md. "
+                             "Alternatively add the account again with an app password.");
                 return;
             }
             // The tokens go into the vault, so open it before the browser
@@ -3845,11 +3849,13 @@ bool UltraMailApp::MaybeOfferReauth(const std::string& accountId, UltraNetResult
 void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::string& email,
                                     const std::string& providerId,
                                     std::function<void()> onReauthed) {
-    // Out-of-band providers (Yahoo) can't redirect to a loopback listener, so
-    // they take a separate flow: open the browser, then prompt for the code the
-    // provider shows (or the https redirect address it lands on) rather than
-    // waiting on a socket.
-    if (OAuthUsesPastedCode(OAuthApps::Get(providerId).redirectUri)) {
+    // A provider signed in directly with a client of its own whose redirect
+    // can't reach a loopback listener (Yahoo's "oob") takes a separate flow:
+    // open the browser, then prompt for the code the provider shows (or the
+    // https redirect address it lands on) rather than waiting on a socket.
+    // Through the sign-in service every provider redirects to the service.
+    if (!OAuthApps::UsesService(providerId)
+        && OAuthUsesPastedCode(OAuthApps::Get(providerId).redirectUri)) {
         StartOAuthOobSignIn(accountId, email, providerId, std::move(onReauthed));
         return;
     }
@@ -3857,9 +3863,10 @@ void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::str
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
     const std::string providerName = OAuthProviderDisplayName(providerId);
 
-    // The wait dialog's Cancel only detaches the flow: UltraNet keeps listening
-    // for the redirect until its timeout, and whatever arrives then is dropped.
-    // (The listener sits on an ephemeral port, so a retry is never blocked.)
+    // The wait dialog's Cancel only detaches the flow: UltraNet keeps waiting
+    // for the redirect (at the service, or on the loopback listener) until its
+    // timeout, and whatever arrives then is dropped. (The listener sits on an
+    // ephemeral port, so a retry is never blocked.)
     auto cancelled = std::make_shared<std::atomic<bool>>(false);
     std::weak_ptr<UltraCanvasModalDialog> waiting =
         OAuthWaitDialog::Show(parent, providerName, email,

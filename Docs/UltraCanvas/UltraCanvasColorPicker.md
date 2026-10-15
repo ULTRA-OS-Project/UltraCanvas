@@ -13,7 +13,7 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Last Modified**: 2026-10-15
 **Author**: UltraCanvas Framework
 
@@ -42,9 +42,25 @@ natively with the framework's `IRenderContext` primitives.
   Both hue × lightness styles pick at **full saturation** (HSL S = 1); the
   hue is kept at black and white so the markers stay on the chosen colour,
   and the channel sliders below still edit any colour.
+- ✅ **Design selector** (optional) — `SetShowWheelStyleSelector(true)` puts
+  a small dropdown in the top-right corner that lets the user switch between
+  the three designs, each shown by its icon: **colour circle** (`Ring`),
+  **colour slider + square** (`Bar`) and **colour rectangle**
+  (`HueLightnessField`). The button shows the current design's icon alone;
+  the list names each one. On the two rectangular designs it sits over the
+  corner of the colour area, so it **hides while a drag on the colour area or
+  a colour bar runs** and comes back on release; beside the circle the corner
+  is free and it stays. `onWheelStyleChanged` reports the user's choice (not
+  `SetWheelStyle`), for a host that remembers it. The icons are
+  `media/icons/colorpicker/{ring,bar,field}.svg`.
 - ✅ **Saturation / Value area** — drag inside the square (Ring) or the
   maximised rectangle (Bar). The first pixel column/row is 0 and the last is
   100 %, and each pixel is drawn in exactly the colour a click on it picks.
+  The marker is grabbed wherever it is hit, including the part that hangs
+  over the area's edge: a press on it keeps the colour and the drag moves it
+  from there, while a press elsewhere (or just beside the area, which picks
+  the nearest edge) jumps the colour to the pointer. The hue × lightness
+  field's marker works the same way.
 - ✅ **Preview swatches** — foreground (current) vs. background (previous) colour,
   with a swap symbol tucked into the corner between the two swatches. Click the
   background swatch to revert.
@@ -77,10 +93,13 @@ natively with the framework's `IRenderContext` primitives.
   digits + `.`/`-`).
 - ✅ **Model selector** — either a **tab bar** (default) or a **dropdown**
   switches the channel editors between **HSV**, **HSL** and **RGB**. The two
-  presentations are mutually exclusive (`SetModeSelector`).
+  presentations are mutually exclusive (`SetModeSelector`). The dropdown is a
+  real `UltraCanvasDropdown` child, so its list opens as a popup above the
+  rest of the window.
 - ✅ **Hover tooltips** — resting the pointer over a model choice (HSV / HSL /
-  RGB) or a channel / hex label (H, S, V, A, L, R, G, B, Hex) shows a short
-  tooltip explaining what it is and its value range.
+  RGB: a tab, the dropdown, or an entry of its open list) or a channel / hex
+  label (H, S, V, A, L, R, G, B, Hex) shows a short tooltip explaining what it
+  is and its value range.
 - ✅ **Channel sliders** — three colour channels plus alpha, each with a live
   gradient track and an editable numeric value box. Two presentations
   (`SetSliderStyle`): **Thin** (thin track, overhanging handle) or **Thick**
@@ -136,6 +155,7 @@ namespace UltraCanvas {
         void SetModeSelector(ColorPickerModeSelector s); // tab bar OR dropdown
         void SetSliderStyle(ColorPickerSliderStyle s);   // thin / thick bars
         void SetWheelStyle(ColorPickerWheelStyle s);     // ring / bar / hue x lightness
+        void SetShowWheelStyleSelector(bool show);       // design dropdown, top right
         void SetSVAreaShape(ColorPickerSVAreaShape s);   // Bar: fill / 1:1 / 1:1 at 256 px
         static constexpr int PixelExactSVSide = 256;     // one pixel per 8-bit step
         void SetShowValueSpinners(bool show);            // < > arrows in value box
@@ -163,6 +183,7 @@ namespace UltraCanvas {
 
         std::function<void(const Color&)> onColorChanged;
         std::function<void(const Color&)> onColorChanging;
+        std::function<void(ColorPickerWheelStyle)> onWheelStyleChanged; // user's design choice
         std::function<void(bool foreground)> onScreenColorPick; // host override
     };
 }
@@ -209,6 +230,13 @@ picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessField);
 // short, so size the widget to fit what is left:
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessSliders);
 picker->SetElementSize(UltraCanvas::Size2Df(290, picker->PreferredHeightForWidth(290)));
+
+// Let the user choose the design (circle, slider + square, rectangle) from
+// a dropdown in the top-right corner, and remember the choice:
+picker->SetShowWheelStyleSelector(true);
+picker->onWheelStyleChanged = [](UltraCanvas::ColorPickerWheelStyle design) {
+    printf("Design: %d\n", static_cast<int>(design));   // e.g. save it in the settings
+};
 
 // < and > stepper arrows inside the numeric value fields:
 picker->SetShowValueSpinners(true);
@@ -267,8 +295,11 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 |--------|--------|
 | Drag on the hue ring / hue bar | Sets hue |
 | Drag inside the SV area | Sets saturation & value |
+| Press the SV marker and drag | Moves the marker from where it was grabbed, without first jumping |
 | Drag inside the hue × lightness field | Sets hue (vertical) and lightness (horizontal) at full saturation |
 | Drag the intensity bar | Sets lightness: white (left) → pure colour → black (right) |
+| Click the design selector (top right, when shown) | Lists colour circle / colour slider + square / colour rectangle; picking one switches the design |
+| Drag on a rectangular design's colour area or bar | Hides the design selector until the button is released |
 | Hover a swatch | Floods the whole widget surface with that colour for a big-area preview |
 | Click background (previous) swatch | Reverts to the background colour |
 | Click the corner swap symbol | Swaps foreground and background colours |
@@ -286,6 +317,10 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 | Click a tab or the dropdown | Switches HSV / HSL / RGB channel editors |
 | Click the disclosure arrow | Shows/hides the channel sliders (when collapsible) |
 | Drag a channel/alpha slider | Adjusts that component |
+
+Every drag captures the mouse: it keeps following the pointer outside the
+picker (clamped to the end of the scale) and ends where the button is
+released, wherever that is.
 
 ## Screen colour picker (eyedropper)
 

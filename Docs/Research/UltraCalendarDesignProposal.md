@@ -338,13 +338,19 @@ that unification is one step later, not a rewrite:
   `MethodFor(account)`. The calendar adds no vault code of its own.
 - The Google and Microsoft OAuth *app registrations* come from **UltraNet's
   shared OAuth2 app registry** (`UltraNetOAuth2Apps.h`, framework 0.9.34):
-  `UltraNet_OAuth2GetApp("google")` returns whatever UltraMail baked in
-  (`UltraMailOAuthDefaults.h.in`, `cmake/oauth.local.cmake`), an `oauth.ini`
-  named, or the environment set, with the calendar scopes added to that same
-  registration. The calendar adds its `ULTRACALENDAR_` environment prefix as
-  a profile, the way UltraMail and UltraCloud do, and nothing else. One
-  consent screen, one CASA question (mail's restricted scope needs it;
-  calendar's sensitive scope does not).
+  by default the sign-in goes through the **OAuth2 sign-in service** the
+  registry names (`UltraNet_OAuth2SignInServiceUrl`, built in as
+  `ULTRANET_OAUTH_SERVICE_URL`; `Server/OAuthCallback` is the service,
+  `UltraNetOAuth2Service.h` the client), which holds the registration and
+  its secret, so the calendar ships none - it asks the service for
+  `google` with the calendar scopes added to the service's allow-list.
+  `UltraNet_OAuth2GetApp("google")` still returns a client of the
+  installation's own when an `oauth.ini` or the environment names one, and
+  the calendar then signs in directly as UltraMail and UltraCloud do. The
+  calendar adds its `ULTRACALENDAR_` environment prefix as a profile, the
+  way UltraMail and UltraCloud do, and nothing else. One consent screen,
+  one CASA question (mail's restricted scope needs it; calendar's sensitive
+  scope does not).
 
 ### 4.6 The stay-or-migrate choice is a first-class flow
 

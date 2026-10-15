@@ -1,6 +1,11 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.6.0 - ColorPickerStyle::Light()
+// Version: 1.7.0 - ColorPickerStyle::Light()
+// Version: 1.6.1 - the HSV/HSL/RGB dropdown is a real UltraCanvasDropdown, not painted
+// Version: 1.6.0 - optional design selector: a dropdown in the top-right corner
+//                  (colour circle / colour slider + square / colour rectangle)
+// Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
+//                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
 // Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
@@ -11,6 +16,7 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
 #include <cstdio>
@@ -32,6 +38,16 @@ namespace UltraCanvas {
         s.markerColor      = Colors::White;
         s.markerOutline    = Color( 90,  96, 106, 255);
         return s;
+    }
+
+    namespace {
+        // The design selector's entries, in list order.
+        constexpr ColorPickerWheelStyle SelectorStyles[] = {
+            ColorPickerWheelStyle::Ring,
+            ColorPickerWheelStyle::Bar,
+            ColorPickerWheelStyle::HueLightnessField
+        };
+        constexpr int SelectorStyleCount = 3;
     }
 
     // ===================================================================
@@ -128,15 +144,77 @@ namespace UltraCanvas {
         if (model == m) return;
         model = m;
         if (editField != EditField::NoEdit && editField != EditField::Hex) CancelEdit();
+        SyncModelDropdown();
         RequestRedraw();
     }
 
     void UltraCanvasColorPicker::SetModeSelector(ColorPickerModeSelector s) {
         if (modeSelector == s) return;
         modeSelector = s;
-        dropdownOpen = false;
         layoutValid = false;
+        SyncModelDropdown();
         RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::BuildModelDropdown() {
+        modelDropdown = CreateDropdown(GetIdentifier() + "-model", 0, 0, 10, 10);
+        const char* names[3] = {"HSV", "HSL", "RGB"};
+        for (int i = 0; i < 3; ++i) {
+            DropdownItem item(names[i]);
+            item.tooltip = ModelTooltip(static_cast<ColorPickerModel>(i));
+            modelDropdown->AddItem(item);
+        }
+        modelDropdown->SetAccessibleName("Colour model");
+        // Raw `this`: the dropdown is our own child.
+        modelDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+            if (index >= 0 && index < 3) SetModel(static_cast<ColorPickerModel>(index));
+        };
+        AddChild(modelDropdown);
+        layoutValid = false;                 // style and place it
+    }
+
+    void UltraCanvasColorPicker::SyncModelDropdown() {
+        const bool shown = modeSelector == ColorPickerModeSelector::Dropdown;
+        if (shown && !modelDropdown) BuildModelDropdown();
+        if (!modelDropdown) return;
+        RecalculateLayout();                 // restyles and places it
+        const int index = static_cast<int>(model);
+        if (modelDropdown->GetSelectedIndex() != index) {
+            modelDropdown->SetSelectedIndex(index, false);
+        }
+        const std::string tip = ModelTooltip(model);
+        if (modelDropdown->GetTooltip() != tip) modelDropdown->SetTooltip(tip);
+        if (!shown && modelDropdown->IsDropdownOpen()) modelDropdown->CloseDropdown();
+        if (modelDropdown->IsVisible() != shown) {
+            modelDropdown->SetVisible(shown);
+            RequestRedraw();
+        }
+    }
+
+    DropdownStyle UltraCanvasColorPicker::ChildDropdownStyle(const DropdownStyle& base) const {
+        // The dropdowns do not follow the theme: they match the dark surface
+        // they sit on, at the picker's scale.
+        DropdownStyle ds = base;
+        ds.normalColor = style.fieldColor;
+        ds.hoverColor = style.panelColor;
+        ds.pressedColor = style.panelColor;
+        ds.disabledColor = style.fieldColor;
+        ds.borderColor = style.fieldBorderColor;
+        ds.focusBorderColor = style.accentColor;
+        ds.normalTextColor = style.textColor;
+        ds.disabledTextColor = style.mutedTextColor;
+        ds.listBackgroundColor = style.panelColor;
+        ds.listBorderColor = style.fieldBorderColor;
+        ds.itemHoverColor = style.borderColor;
+        ds.itemSelectedColor = style.accentColor.WithAlpha(110);
+        ds.fontFamily = style.fontFamily;
+        ds.fontSize = Scaled(style.fontSize);
+        ds.cornerRadius = Scaled(style.cornerRadius);
+        ds.paddingLeft = Scaled(8.0f);
+        ds.paddingRight = Scaled(12.0f);
+        ds.arrowSize = Scaled(7.0f);
+        ds.itemHeight = std::round(Scaled(style.rowHeight));
+        return ds;
     }
 
     void UltraCanvasColorPicker::SetSliderStyle(ColorPickerSliderStyle s) {
@@ -149,7 +227,70 @@ namespace UltraCanvas {
         if (wheelStyle == s) return;
         wheelStyle = s;
         layoutValid = false;
+        SyncStyleSelector();
         RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetShowWheelStyleSelector(bool show) {
+        if (showWheelStyleSelector == show) return;
+        showWheelStyleSelector = show;
+        if (show && !styleSelector) BuildStyleSelector();
+        layoutValid = false;
+        SyncStyleSelector();
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::BuildStyleSelector() {
+        styleSelector = CreateDropdown(GetIdentifier() + "-design", 0, 0, 10, 10);
+        const std::string icons = GetResourcesDir() + "media/icons/colorpicker/";
+        styleSelector->AddItem("Colour circle", "ring", NormalizePath(icons + "ring.svg"));
+        styleSelector->AddItem("Colour slider + square", "bar", NormalizePath(icons + "bar.svg"));
+        styleSelector->AddItem("Colour rectangle", "field", NormalizePath(icons + "field.svg"));
+        styleSelector->SetTooltip("Colour picker design");
+        styleSelector->SetAccessibleName("Colour picker design");
+        // Raw `this`: the selector is our own child.
+        styleSelector->onSelectionChanged = [this](int index, const DropdownItem&) {
+            if (index < 0 || index >= SelectorStyleCount) return;
+            const ColorPickerWheelStyle chosen = SelectorStyles[index];
+            if (chosen == wheelStyle) return;
+            SetWheelStyle(chosen);
+            if (onWheelStyleChanged) onWheelStyleChanged(chosen);
+        };
+        AddChild(styleSelector);
+    }
+
+    bool UltraCanvasColorPicker::StyleSelectorHiddenByDrag() const {
+        // Beside the circle the corner is free; on the rectangular designs the
+        // selector covers the corner of the area the drag is picking from.
+        if (wheelStyle == ColorPickerWheelStyle::Ring) return false;
+        switch (dragTarget) {
+            case DragTarget::HueBar:
+            case DragTarget::SVSquare:
+            case DragTarget::HLField:
+            case DragTarget::LightnessBar:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    void UltraCanvasColorPicker::SyncStyleSelector() {
+        if (!styleSelector) return;
+        RecalculateLayout();                 // restyles and places it
+        int index = -1;
+        for (int i = 0; i < SelectorStyleCount; ++i) {
+            if (SelectorStyles[i] == wheelStyle) index = i;
+        }
+        if (styleSelector->GetSelectedIndex() != index) {
+            styleSelector->SetSelectedIndex(index, false);
+        }
+        const bool visible = showWheelStyleSelector && showColorWheel &&
+                             !StyleSelectorHiddenByDrag();
+        if (!visible && styleSelector->IsDropdownOpen()) styleSelector->CloseDropdown();
+        if (styleSelector->IsVisible() != visible) {
+            styleSelector->SetVisible(visible);
+            RequestRedraw();
+        }
     }
 
     void UltraCanvasColorPicker::SetSVAreaShape(ColorPickerSVAreaShape s) {
@@ -184,6 +325,7 @@ namespace UltraCanvas {
         if (showColorWheel == show) return;
         showColorWheel = show;
         layoutValid = false;
+        SyncStyleSelector();
         RequestRedraw();
     }
 
@@ -450,6 +592,27 @@ namespace UltraCanvas {
             rowLabelRects[i] = Rect2Df();
             rowValueRects[i] = Rect2Df();
             rowSliderRects[i] = Rect2Df();
+        }
+
+        // --- Design selector: top-right corner, over the wheel area. Beside
+        //     the circle that corner is free; on a rectangular design it
+        //     covers the area's corner (and hides while a drag picks there).
+        if (styleSelector) {
+            const float selW = std::round(Scaled(44.0f));
+            const float selH = std::round(Scaled(24.0f));
+            DropdownStyle ds = ChildDropdownStyle(styleSelector->GetStyle());
+            ds.paddingLeft = Scaled(6.0f);
+            ds.iconSize = std::round(Scaled(18.0f));
+            ds.iconPadding = Scaled(6.0f);
+            ds.itemHeight = std::round(Scaled(26.0f));
+            ds.buttonShowsText = false;      // the icon alone; the list names them
+            styleSelector->SetStyle(ds);
+            PlaceChildAt(styleSelector, Rect2Df(std::round(rightEdge - selW), std::round(pad), selW, selH));
+        }
+        // --- HSV/HSL/RGB dropdown (Dropdown mode): on the mode button's rect.
+        if (modelDropdown) {
+            modelDropdown->SetStyle(ChildDropdownStyle(modelDropdown->GetStyle()));
+            PlaceChildAt(modelDropdown, modeButtonRect);
         }
 
         layoutValid = true;
@@ -758,14 +921,13 @@ namespace UltraCanvas {
         ctx->DrawRectangle(f);
 
         // Selection marker
-        float mx = hlFieldRect.x + CurrentLightness() * hlFieldRect.width;
-        float my = hlFieldRect.y + (hue / 360.0f) * hlFieldRect.height;
+        const Point2Df m = HLMarkerPoint();
         ctx->SetStrokePaint(style.markerColor);
         ctx->SetStrokeWidth(2.0);
-        ctx->DrawCircle(Point2Dd(mx, my), Scaled(6.0f));
+        ctx->DrawCircle(Point2Dd(m.x, m.y), Scaled(6.0f));
         ctx->SetStrokePaint(style.markerOutline);
         ctx->SetStrokeWidth(1.0);
-        ctx->DrawCircle(Point2Dd(mx, my), Scaled(7.5f));
+        ctx->DrawCircle(Point2Dd(m.x, m.y), MarkerRadius());
     }
 
     void UltraCanvasColorPicker::RenderSVSquare(IRenderContext* ctx) {
@@ -797,14 +959,14 @@ namespace UltraCanvas {
         ctx->DrawRectangle(Rect2Dd(sq.x - 0.5, sq.y - 0.5, sq.width + 1.0, sq.height + 1.0));
 
         // Selection marker, on the centre of the pixel the value maps to
-        float mx = svRect.x + 0.5f + sat * std::max(1.0f, svRect.width - 1.0f);
-        float my = svRect.y + 0.5f + (1.0f - val) * std::max(1.0f, svRect.height - 1.0f);
+        const Point2Df m = SVMarkerPoint();
+        const double mx = m.x + 0.5, my = m.y + 0.5;
         ctx->SetStrokePaint(style.markerColor);
         ctx->SetStrokeWidth(2.0);
         ctx->DrawCircle(Point2Dd(mx, my), Scaled(6.0f));
         ctx->SetStrokePaint(style.markerOutline);
         ctx->SetStrokeWidth(1.0);
-        ctx->DrawCircle(Point2Dd(mx, my), Scaled(7.5f));
+        ctx->DrawCircle(Point2Dd(mx, my), MarkerRadius());
     }
 
     void UltraCanvasColorPicker::RenderSwatches(IRenderContext* ctx) {
@@ -862,33 +1024,6 @@ namespace UltraCanvas {
         ctx->DrawLine(leftEnd, Point2Dd(leftEnd.x + ah, leftEnd.y + ah));
         ctx->DrawLine(downEnd, Point2Dd(downEnd.x - ah, downEnd.y - ah));
         ctx->DrawLine(downEnd, Point2Dd(downEnd.x + ah, downEnd.y - ah));
-    }
-
-    void UltraCanvasColorPicker::RenderModeButton(IRenderContext* ctx) {
-        ctx->SetFillPaint(style.fieldColor);
-        ctx->FillRoundedRectangle(Rect2Dd(modeButtonRect.x, modeButtonRect.y,
-                                          modeButtonRect.width, modeButtonRect.height),
-                                  Scaled(style.cornerRadius));
-        ctx->SetStrokePaint(style.fieldBorderColor);
-        ctx->SetStrokeWidth(1.0);
-        ctx->DrawRoundedRectangle(Rect2Dd(modeButtonRect.x, modeButtonRect.y,
-                                          modeButtonRect.width, modeButtonRect.height),
-                                  Scaled(style.cornerRadius));
-
-        const char* names[3] = {"HSV", "HSL", "RGB"};
-        SetFont(ctx);
-        ctx->SetTextAlignment(TextAlignment::Left);
-        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(names[(int)model],
-                            Rect2Dd(modeButtonRect.x + Scaled(8.0f), modeButtonRect.y,
-                                    modeButtonRect.width - Scaled(20.0f), modeButtonRect.height));
-
-        // Down triangle
-        float tx = modeButtonRect.x + modeButtonRect.width - Scaled(14.0f);
-        float ty = modeButtonRect.y + modeButtonRect.height * 0.5f - Scaled(2.0f);
-        ctx->SetFillPaint(style.mutedTextColor);
-        ctx->FillLinePath({Point2Dd(tx, ty), Point2Dd(tx + Scaled(8.0f), ty),
-                           Point2Dd(tx + Scaled(4.0f), ty + Scaled(5.0f))});
     }
 
     void UltraCanvasColorPicker::RenderScreenPickButton(IRenderContext* ctx) {
@@ -1144,34 +1279,6 @@ namespace UltraCanvas {
         RenderValueBox(ctx, row, editing, std::string(buf));
     }
 
-    void UltraCanvasColorPicker::RenderDropdownPopup(IRenderContext* ctx) {
-        const char* names[3] = {"HSV", "HSL", "RGB"};
-        float itemH = Scaled(style.rowHeight);
-        float w = modeButtonRect.width;
-        float x = modeButtonRect.x;
-        float y = modeButtonRect.y + modeButtonRect.height + 2.0f;
-        Rect2Dd box(x, y, w, itemH * 3.0f);
-
-        ctx->SetFillPaint(style.fieldColor);
-        ctx->FillRoundedRectangle(box, Scaled(style.cornerRadius));
-        ctx->SetStrokePaint(style.fieldBorderColor);
-        ctx->SetStrokeWidth(1.0);
-        ctx->DrawRoundedRectangle(box, Scaled(style.cornerRadius));
-
-        for (int i = 0; i < 3; ++i) {
-            Rect2Dd item(x, y + i * itemH, w, itemH);
-            if ((int)model == i) {
-                ctx->SetFillPaint(style.accentColor.WithAlpha(120));
-                ctx->FillRectangle(item);
-            }
-            SetFont(ctx);
-            ctx->SetTextAlignment(TextAlignment::Left);
-            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-            ctx->DrawTextInRect(names[i], Rect2Dd(item.x + Scaled(8.0f), item.y,
-                                                  item.width - Scaled(12.0f), item.height));
-        }
-    }
-
     void UltraCanvasColorPicker::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         RecalculateLayout();
 
@@ -1206,7 +1313,8 @@ namespace UltraCanvas {
             RenderScreenPickButton(ctx);
         }
         if (modeSelector == ColorPickerModeSelector::Dropdown) {
-            RenderModeButton(ctx);
+            SyncModelDropdown();
+            if (modelDropdown && modelDropdown->IsVisible()) RenderChild(ctx, *modelDropdown);
         } else {
             RenderTabs(ctx);
         }
@@ -1218,7 +1326,9 @@ namespace UltraCanvas {
             if (showAlpha) RenderAlphaRow(ctx);
         }
 
-        if (dropdownOpen) RenderDropdownPopup(ctx);
+        // The design selector, over the corner of the colour area.
+        SyncStyleSelector();
+        if (styleSelector && styleSelector->IsVisible()) RenderChild(ctx, *styleSelector);
     }
 
     // ===================================================================
@@ -1256,21 +1366,6 @@ namespace UltraCanvas {
         // left=foreground / right=background rule).
         const bool adjust = (event.button == UCMouseButton::Right);
 
-        // Dropdown popup takes priority while open
-        if (dropdownOpen) {
-            float itemH = Scaled(style.rowHeight);
-            float x = modeButtonRect.x;
-            float y = modeButtonRect.y + modeButtonRect.height + 2.0f;
-            Rect2Df popup(x, y, modeButtonRect.width, itemH * 3.0f);
-            if (popup.Contains(p)) {
-                int idx = std::clamp((int)((p.y - y) / itemH), 0, 2);
-                SetModel((ColorPickerModel)idx);
-            }
-            dropdownOpen = false;
-            RequestRedraw();
-            return true;
-        }
-
         // Clicking inside the field being edited moves the caret (drag extends
         // the selection, double-click selects all); clicking anywhere else
         // commits the edit first.
@@ -1305,17 +1400,17 @@ namespace UltraCanvas {
             }
 
             if (wheelStyle == ColorPickerWheelStyle::HueLightnessField) {
-                if (hlFieldRect.Contains(p)) {
+                if (InAreaGrabZone(hlFieldRect, p)) {
                     if (adjust) BeginBackgroundEdit();
-                    dragTarget = DragTarget::HLField;
-                    UpdateHLFromPoint(p);
+                    StartAreaDrag(DragTarget::HLField, HLMarkerPoint(), p);
+                    UpdateHLFromPoint(p + dragGrabOffset);
                     Changed(false);
                     return true;
                 }
             } else if (wheelStyle == ColorPickerWheelStyle::HueLightnessSliders &&
                        lightBarRect.Contains(p)) {
                 if (adjust) BeginBackgroundEdit();
-                dragTarget = DragTarget::LightnessBar;
+                StartDrag(DragTarget::LightnessBar);
                 UpdateLightnessFromBar(p);
                 Changed(false);
                 return true;
@@ -1325,22 +1420,24 @@ namespace UltraCanvas {
                 float dist = std::sqrt(dx * dx + dy * dy);
                 if (dist >= ringInner && dist <= ringOuter) {
                     if (adjust) BeginBackgroundEdit();
-                    dragTarget = DragTarget::HueRing;
+                    StartDrag(DragTarget::HueRing);
                     UpdateHueFromPoint(p);
                     Changed(false);
                     return true;
                 }
             } else if (hueBarRect.Contains(p)) {
                 if (adjust) BeginBackgroundEdit();
-                dragTarget = DragTarget::HueBar;
+                StartDrag(DragTarget::HueBar);
                 UpdateHueFromBar(p);
                 Changed(false);
                 return true;
             }
-            if (!IsHueLightnessStyle() && svRect.Contains(p)) {
+            // The ring and the hue bar are tested first, so they keep the
+            // points where the grab zone's margin overlaps them.
+            if (!IsHueLightnessStyle() && InAreaGrabZone(svRect, p)) {
                 if (adjust) BeginBackgroundEdit();
-                dragTarget = DragTarget::SVSquare;
-                UpdateSVFromPoint(p);
+                StartAreaDrag(DragTarget::SVSquare, SVMarkerPoint(), p);
+                UpdateSVFromPoint(p + dragGrabOffset);
                 Changed(false);
                 return true;
             }
@@ -1367,12 +1464,6 @@ namespace UltraCanvas {
             }
         }
 
-        if (modeSelector == ColorPickerModeSelector::Dropdown &&
-            modeButtonRect.Contains(p)) {
-            dropdownOpen = true;
-            RequestRedraw();
-            return true;
-        }
         if (hexFieldRect.Contains(p)) {
             BeginEdit(EditField::Hex, &p);
             return true;
@@ -1407,7 +1498,7 @@ namespace UltraCanvas {
                     if (adjust) BeginBackgroundEdit();
                     DragTarget targets[4] = {DragTarget::Channel0, DragTarget::Channel1,
                                              DragTarget::Channel2, DragTarget::Alpha};
-                    dragTarget = targets[i];
+                    StartDrag(targets[i]);
                     ApplyDrag(p, false);
                     return true;
                 }
@@ -1491,23 +1582,11 @@ namespace UltraCanvas {
         };
         std::string text;
 
-        // Model choices: HSV / HSL / RGB (tab bar, dropdown button, or the open
-        // dropdown list).
+        // Model choices on the tab bar. In Dropdown mode the dropdown shows
+        // its own tooltip, and its open list one per entry.
         if (modeSelector == ColorPickerModeSelector::TabBar) {
             for (int i = 0; i < 3; ++i) {
                 if (over(tabRects[i])) { text = ModelTooltip((ColorPickerModel)i); break; }
-            }
-        } else if (over(modeButtonRect)) {
-            text = ModelTooltip(model);
-        }
-        if (text.empty() && dropdownOpen) {
-            float itemH = Scaled(style.rowHeight);
-            float x = modeButtonRect.x;
-            float y = modeButtonRect.y + modeButtonRect.height + 2.0f;
-            Rect2Df popup(x, y, modeButtonRect.width, itemH * 3.0f);
-            if (over(popup)) {
-                int idx = std::clamp((int)((p.y - y) / itemH), 0, 2);
-                text = ModelTooltip((ColorPickerModel)idx);
             }
         }
 
@@ -1547,17 +1626,68 @@ namespace UltraCanvas {
         Point2Df p(event.pointer.x, event.pointer.y);
         ApplyDrag(p, true);
         dragTarget = DragTarget::NoneTarget;
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            if (app->GetCapturedElement() == this) app->ReleaseMouse();
+        }
         // Commit the background colour and restore the foreground working state.
         if (editingBackground) EndBackgroundEdit();
+        SyncStyleSelector();                 // back after a drag hid it
         return true;
+    }
+
+    void UltraCanvasColorPicker::StartDrag(DragTarget target) {
+        dragTarget = target;
+        dragGrabOffset = Point2Df();
+        // Without the capture the moves go to whatever is under the pointer
+        // once it leaves the picker: the marker stopped short of an edge it
+        // was dragged past, and the release was lost, so the drag carried on
+        // under a pointer with no button down.
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+        SyncStyleSelector();                 // hides it over a rectangular area
+    }
+
+    Point2Df UltraCanvasColorPicker::SVMarkerPoint() const {
+        // The inverse of UpdateSVFromPoint(): the pointer position (pixel
+        // column / row) that picks the current saturation and value.
+        return Point2Df(svRect.x + sat * std::max(1.0f, svRect.width - 1.0f),
+                        svRect.y + (1.0f - val) * std::max(1.0f, svRect.height - 1.0f));
+    }
+
+    Point2Df UltraCanvasColorPicker::HLMarkerPoint() const {
+        // The inverse of UpdateHLFromPoint().
+        return Point2Df(hlFieldRect.x + CurrentLightness() * hlFieldRect.width,
+                        hlFieldRect.y + (hue / 360.0f) * hlFieldRect.height);
+    }
+
+    bool UltraCanvasColorPicker::InAreaGrabZone(const Rect2Df& area, const Point2Df& p) const {
+        if (area.width <= 0.0f || area.height <= 0.0f) return false;
+        // The marker is centred on the colour's pixel, so at an edge most of
+        // it lies outside the area: grab the whole of it, not only the part
+        // over the area. A press in the margin picks the nearest edge.
+        const float m = MarkerGrabMargin();
+        return Rect2Df(area.x - m, area.y - m, area.width + 2.0f * m,
+                       area.height + 2.0f * m).Contains(p);
+    }
+
+    void UltraCanvasColorPicker::StartAreaDrag(DragTarget target, const Point2Df& marker,
+                                               const Point2Df& p) {
+        StartDrag(target);
+        // On the marker: keep the colour and move it from where it was
+        // grabbed. Elsewhere the colour jumps to the pointer (no offset). An
+        // Adjust (background) edit always jumps: the marker on screen is the
+        // foreground's, and the background's is not drawn to be grabbed.
+        if (editingBackground) return;
+        const float dx = marker.x - p.x, dy = marker.y - p.y;
+        const float r = MarkerGrabMargin();
+        if (dx * dx + dy * dy <= r * r) dragGrabOffset = Point2Df(dx, dy);
     }
 
     void UltraCanvasColorPicker::ApplyDrag(const Point2Df& p, bool finished) {
         switch (dragTarget) {
             case DragTarget::HueRing:  UpdateHueFromPoint(p); break;
             case DragTarget::HueBar:   UpdateHueFromBar(p); break;
-            case DragTarget::SVSquare: UpdateSVFromPoint(p); break;
-            case DragTarget::HLField:  UpdateHLFromPoint(p); break;
+            case DragTarget::SVSquare: UpdateSVFromPoint(p + dragGrabOffset); break;
+            case DragTarget::HLField:  UpdateHLFromPoint(p + dragGrabOffset); break;
             case DragTarget::LightnessBar: UpdateLightnessFromBar(p); break;
             case DragTarget::Channel0:
             case DragTarget::Channel1:
@@ -1993,11 +2123,15 @@ namespace UltraCanvas {
         // and never paints its children, so it draws the editor itself.
         PositionFieldEditor();
         if (!fieldEditor) return;
-        Rect2Df eb = fieldEditor->GetBounds();
+        RenderChild(ctx, *fieldEditor);
+    }
+
+    void UltraCanvasColorPicker::RenderChild(IRenderContext* ctx, UltraCanvasUIElement& child) {
+        Rect2Df b = child.GetBounds();
         ctx->PushState();
-        ctx->ClipRect(Rect2Dd(eb.x, eb.y, eb.width, eb.height));
-        ctx->Translate(Point2Df(eb.x, eb.y));
-        fieldEditor->Render(ctx, Rect2Df(0, 0, eb.width, eb.height));
+        ctx->ClipRect(Rect2Dd(b.x, b.y, b.width, b.height));
+        ctx->Translate(Point2Df(b.x, b.y));
+        child.Render(ctx, Rect2Df(0, 0, b.width, b.height));
         ctx->PopState();
     }
 

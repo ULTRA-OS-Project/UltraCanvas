@@ -212,10 +212,11 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
         keyRow.SetVisible(id == "ftp");
         if (caps.needsOAuth) {
             addBtn->SetText("Sign in in browser");
-            hint->SetText(HasOAuthApp(id)
+            hint->SetText(CanSignIn(id)
                 ? "Your browser opens " + p->DisplayName() + "'s sign-in page; come back here when it says you are done."
-                : "No OAuth client id is configured for " + p->DisplayName()
-                  + " — set ULTRACLOUD_" + id + "_CLIENT_ID (see Docs/Modules/UltraCloud/README.md).");
+                : "The sign-in service is off and no OAuth client id is configured for " + p->DisplayName()
+                  + " — set ULTRACLOUD_OAUTH_SERVICE_URL or ULTRACLOUD_" + id
+                  + "_CLIENT_ID (see Docs/Modules/UltraCloud/README.md).");
         } else {
             addBtn->SetText("Add account");
             hint->SetText(id == "nextcloud"
@@ -269,8 +270,8 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
         if (!caps.needsOAuth && a.username.empty() && a.providerId != "memory") {
             status->SetText("Enter the user name."); return;
         }
-        if (caps.needsOAuth && !HasOAuthApp(a.providerId)) {
-            status->SetText("No OAuth client id configured for this provider."); return;
+        if (caps.needsOAuth && !CanSignIn(a.providerId)) {
+            status->SetText("The sign-in service is off and no OAuth client id is configured for this provider."); return;
         }
 
         status->SetTextColor(Color(60, 60, 60, 255));

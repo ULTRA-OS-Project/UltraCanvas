@@ -1,4 +1,4 @@
-#### 2026-10-15 *0.10.53*
+#### 2026-10-15 *0.10.54*
 - **The cards and list rows are the framework's.** The page, the white cards
   and their captions (the Folders, message list and Message panes) are drawn
   from the framework's `GroupBoxVisualStyle::SectionCard()` preset and its
@@ -7,6 +7,54 @@
   UltraMail's own copies of the same values. UltraPaint's side panel uses
   them too, so the two keep looking alike. No visible change (framework
   changelog: `section-card-and-light-picker`).
+
+#### 2026-10-15 *0.10.53*
+- **The browser sign-in goes through the ULTRA OS sign-in service, and
+  UltraMail carries no OAuth secret any more.** Gmail, Outlook / Microsoft
+  365 and Yahoo sign in through `https://oauth-callback.ultraos.eu`
+  (`Server/OAuthCallback`, a small FastAPI application behind nginx): the
+  service holds the providers' OAuth client registrations - the client id
+  and the secret, which used to be baked into every build - and is the
+  public https address the providers send the browser back to. UltraMail
+  asks the service to start the sign-in (sending only the PKCE challenge),
+  opens the consent page, collects the authorization code from the service
+  once the provider has redirected there, and exchanges it - and later
+  refreshes the token - through the service. The PKCE verifier never leaves
+  UltraMail, so the code is useless to anyone else; the service stores
+  nothing. What changes for the user:
+  - **Yahoo signs in like everyone else.** Yahoo insists on an https
+    redirect, which a desktop program cannot be, so the sign-in used to end
+    on a code to copy out of the browser and paste into a dialog. Now
+    Yahoo's page sends the browser to the service, which says *Signed in
+    with Yahoo*, and the dialog is gone. (The app password stays the
+    recommended way in until Yahoo grants the client its Mail permission.)
+  - **The baked-in client is gone.** `ULTRAMAIL_GOOGLE_CLIENT_ID` and the
+    other configure-time credentials, their XOR obfuscation and
+    `scripts/generate_oauth_defaults.py` are removed; the service's address
+    is built into the framework's UltraNet instead
+    (`ULTRANET_OAUTH_SERVICE_URL`, default the public service,
+    `cmake/oauth.local.cmake` may set it, empty = none), one setting for the
+    process. `package-linux.sh` passes no credentials any more.
+  - **The composer's cloud links sign in the same way.** *Attach cloud
+    link…* with Google Drive, OneDrive or Dropbox goes through the service
+    too (UltraCloud), so those accounts need no client of their own either;
+    before, a build without a baked-in client could not sign in to them at
+    all.
+  - **An installation can point elsewhere, or sign in directly.**
+    `[service] url = …` in `oauth.ini` or `ULTRAMAIL_OAUTH_SERVICE_URL`
+    names another service, `off` turns it off; a client of the
+    installation's own (`[google] client_id = …`, `ULTRAMAIL_*_CLIENT_ID`)
+    still works as before and bypasses the service for that provider -
+    with Yahoo's pasted code in that case. The hint that said "no OAuth
+    client is configured" now says the service is off, and what to set.
+  - **A sign-in from an earlier build cannot be refreshed through the
+    service**, because its refresh token belongs to the old client. The
+    next refresh fails with *The sign-in has expired; sign in again*, and
+    *Sign in with …* on the account's settings page signs in anew.
+  Framework: the client side is UltraNet's (`UltraNetOAuth2Service.h`,
+  framework changelog `oauth2-sign-in-service`). The privacy notice
+  (`Docs/Legal/Privacy/UltraMail.md`) names the service as a recipient of
+  the sign-in's authorization code and refresh traffic.
 
 #### 2026-10-13 *0.10.52*
 - **The data folder is `~/Library/Application Support/UltraMail` on macOS.**
