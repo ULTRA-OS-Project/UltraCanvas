@@ -124,11 +124,13 @@ jobs:
             -DPKG_CONFIG_ARGN=--static \
             -DCMAKE_BUILD_TYPE=Release
 
+      # -k 0: past a failing source, so one run lists every one (the core
+      # was never compiled for Android before this workflow).
       - name: Build the core library
         run: |
           sysroot="$RUNNER_TEMP/android-sysroot/$TRIPLET"
           export PKG_CONFIG_LIBDIR="$sysroot/lib/pkgconfig:$sysroot/share/pkgconfig"
-          cmake --build build-android --target UltraCanvas --parallel "$(nproc)"
+          cmake --build build-android --target UltraCanvas --parallel "$(nproc)" -- -k 0
 
       - name: Upload the CMake logs
         if: failure()
