@@ -63,8 +63,12 @@ vips::VImage Quarters() {
             p[2] = (!right && low) || (right && low) ? 255 : 0;
             p[3] = x < 6 && y < 6 ? 0 : 255;
         }
-    return vips::VImage::new_from_memory_copy(px.data(), px.size(), 40, 30, 4, VIPS_FORMAT_UCHAR)
-            .copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_sRGB));
+    // new_from_memory, not the C++ new_from_memory_copy, which older libvips
+    // (Ubuntu 22.04's 8.12) has not got: copied into libvips' own memory
+    // before `px` goes
+    return vips::VImage::new_from_memory(px.data(), px.size(), 40, 30, 4, VIPS_FORMAT_UCHAR)
+            .copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_sRGB))
+            .copy_memory();
 }
 
 // The picture at `path` shows the four quarters and the transparent corner.
