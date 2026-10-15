@@ -24,12 +24,18 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
+// Version: 1.1.4 - ListScreens (RandR monitors); the wake pipes no longer
+//                  block: draining one after the wake hung Stop() for good
+// Version: 1.1.3 - DesktopReplacement, EndSession and the tray host (none of
+//                  them here: the session owns the desktop, the sign-out and
+//                  the tray, which on X11 is a protocol of its own)
 // Version: 1.1.2 - ListNativeApplications (none: desktop entries are the list);
 //                  ReplaceSystemDesktop (none: the session starts the desktop)
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
+#include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
@@ -44,6 +50,7 @@
 #include <sstream>
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <atomic>
 #include <poll.h>
 #include <sys/stat.h>
@@ -52,6 +59,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
+#include <X11/extensions/Xrandr.h>
 #include <X11/XKBlib.h>
 #include <cairo/cairo.h>
 
@@ -394,6 +402,24 @@ namespace {
         Atom interesting[5] = {None, None, None, None, None};
     };
 
+    // The pipe a Wake writes to and a Wait drains. Both ends do not block:
+    // the drain reads until the pipe is empty, which on a blocking pipe
+    // waits for a byte that never comes, and a full pipe already wakes.
+    bool OpenWakePipe(int fds[2]) {
+        if (::pipe(fds) != 0) return false;
+        for (int i = 0; i < 2; ++i) {
+            const int flags = ::fcntl(fds[i], F_GETFL);
+            if (flags < 0 || ::fcntl(fds[i], F_SETFL, flags | O_NONBLOCK) != 0 ||
+                ::fcntl(fds[i], F_SETFD, FD_CLOEXEC) != 0) {
+                ::close(fds[0]);
+                ::close(fds[1]);
+                fds[0] = fds[1] = -1;
+                return false;
+            }
+        }
+        return true;
+    }
+
 } // namespace
 
 // ===== BACKEND =====
@@ -517,6 +543,28 @@ bool GetScreenSize(int& width, int& height) {
     width = DisplayWidth(d, screen);
     height = DisplayHeight(d, screen);
     return width > 0 && height > 0;
+}
+
+// RandR's monitors - what the window code reads for each monitor's DPI.
+std::vector<DesktopScreenInfo> ListScreens() {
+    std::vector<DesktopScreenInfo> screens;
+    std::lock_guard<std::mutex> lock(g_queryMutex);
+    Display* d = QueryDisplay();
+    if (!d) return screens;
+    ScopedErrorHandler quiet;
+    int count = 0;
+    XRRMonitorInfo* monitors = XRRGetMonitors(d, DefaultRootWindow(d), True, &count);
+    for (int i = 0; monitors && i < count; ++i) {
+        DesktopScreenInfo screen;
+        screen.x = monitors[i].x;
+        screen.y = monitors[i].y;
+        screen.width = monitors[i].width;
+        screen.height = monitors[i].height;
+        screen.primary = monitors[i].primary != 0;
+        if (screen.width > 0 && screen.height > 0) screens.push_back(screen);
+    }
+    if (monitors) XRRFreeMonitors(monitors);
+    return screens;
 }
 
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
@@ -649,16 +697,34 @@ bool CaptureScreen(const std::string& pngPath, std::string& error) {
 
 // Desktop entries are this platform's application list; the core reads them.
 bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
+// No entry here has a shortcut; opened like any file should one ever come.
+bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
+    return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
+}
+bool LaunchPackagedApplication(const std::string&, std::string& error) {
+    error = "Microsoft Store applications run on Windows only.";
+    return false;
+}
 
 // The session decides which desktop runs - on ULTRA OS, UltraDesktop's own
 // session file - so there is nothing for a program to switch.
-bool CanReplaceSystemDesktop() { return false; }
-bool IsSystemDesktopReplaced() { return false; }
-bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, std::string& error) {
+bool CanReplaceSystemDesktop(DesktopReplacement) { return false; }
+DesktopReplacement GetSystemDesktopReplacement() { return DesktopReplacement::Off; }
+bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, DesktopReplacement,
+                          std::string& error) {
     error = "On this system the session starts the desktop; choose UltraDesktop's session at sign-in.";
     return false;
 }
 bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
+bool IsSystemDesktopRunning() { return true; }              // whatever the session started is the system's
+
+// Signing out is the session manager's (logind, the display manager), which
+// this backend does not talk to yet.
+bool CanEndSession() { return false; }
+bool EndSession(SessionEnd, std::string& error) {
+    error = "Signing out, restarting and shutting down go through the session's own menu here.";
+    return false;
+}
 
 void ReadDeviceActivity(DesktopDeviceActivity& activity) {
     ProbeAudio(activity);
@@ -677,7 +743,7 @@ MonitorState* MonitorOpen() {
     if (!d) return nullptr;
     auto* state = new MonitorState();
     state->display = d;
-    if (::pipe(state->wakePipe) != 0) {
+    if (!OpenWakePipe(state->wakePipe)) {
         XCloseDisplay(d);
         delete state;
         return nullptr;
@@ -836,7 +902,7 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
     state->display = d;
     state->keycode = keycode;
     state->modifiers = modifiers;
-    if (::pipe(state->wakePipe) != 0) {
+    if (!OpenWakePipe(state->wakePipe)) {
         XCloseDisplay(d);
         delete state;
         error = "No pipe for the shortcut's thread.";
@@ -910,6 +976,23 @@ void ShortcutClose(ShortcutState* state) {
     if (state->wakePipe[1] >= 0) ::close(state->wakePipe[1]);
     delete state;
 }
+
+// ===== THE NOTIFICATION AREA =====
+// An X11 tray is the system-tray protocol (a selection and XEmbed) or
+// StatusNotifierItem over D-Bus, neither of which this backend hosts yet.
+
+struct TrayHostState {};
+
+TrayHostState* TrayHostOpen(std::string& error) {
+    error = "Hosting the notification area is not available on X11 yet.";
+    return nullptr;
+}
+bool TrayHostAttach(TrayHostState*, std::string&) { return false; }
+bool TrayHostWait(TrayHostState*) { return false; }
+void TrayHostWake(TrayHostState*) {}
+void TrayHostClose(TrayHostState*) {}
+std::vector<DesktopTrayIcon> TrayHostIcons(TrayHostState*) { return {}; }
+bool TrayHostClick(TrayHostState*, const std::string&, TrayClick) { return false; }
 
 } // namespace DesktopShellBackend
 } // namespace UltraCanvas

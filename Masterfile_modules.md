@@ -802,8 +802,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
-  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp`, both behind the internal
-  `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. Public surface:
+  `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
+  `UltraCanvasWindowsTrayHost.cpp` (the notification area), both behind the
+  internal `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. On
+  Windows also the standalone **UltraCanvasShellGuard** program
+  (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
+  instead of Explorer. Public surface:
   - `ListWindows` (`DesktopWindowInfo`: id, title, WM class, icon file
     resolved through the icon themes, desktop, pid, active, minimized,
     skipTaskbar), `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`,
@@ -811,7 +815,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `GetVirtualDesktopCount` / `GetCurrentVirtualDesktop` /
     `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
     `MoveWindowToVirtualDesktop`.
-  - `GetScreenSize`, `ReserveScreenEdges` (a window's strips along the
+  - `GetScreenSize`, `ListScreens` (`DesktopScreenInfo` per monitor, the
+    primary first: `EnumDisplayMonitors` / RandR; a `WindowType::Desktop`
+    window goes on one through `WindowConfig::desktopArea`),
+    `ReserveScreenEdges` (a window's strips along the
     screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
     so maximised windows stop short of a desktop's bars), `CaptureScreen`
     (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
@@ -821,14 +828,21 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     USB device count, battery, keyboard layout, plus `warnings`.
   - `ListApplications` (menu-visible desktop entries, user overrides system,
     icons resolved; the Start menu's program shortcuts on Windows, launched
-    by opening the shortcut), `MatchApplication` (a window's entry, by
+    by opening the shortcut, and the Microsoft Store applications by
+    `appUserModelId`, started through `IApplicationActivationManager`), `MatchApplication` (a window's entry, by
     `StartupWMClass` first), `LaunchApplication`, `LaunchProgram` /
     `FindProgram` (next to this executable first, then `PATH`).
-  - `CanReplaceSystemDesktop` / `IsSystemDesktopReplaced` /
-    `ReplaceSystemDesktop` / `RestoreSystemDesktop` - a program (UltraDesktop)
-    in place of the system's desktop at sign-in, and the way back (Windows:
-    the user's Run key and Explorer's taskbar on auto-hide, its previous
-    state restored; elsewhere the session decides and the calls say so).
+  - `CanReplaceSystemDesktop` / `GetSystemDesktopReplacement` /
+    `IsSystemDesktopReplaced` / `ReplaceSystemDesktop` / `RestoreSystemDesktop`
+    / `IsSystemDesktopRunning` - a program (UltraDesktop) in place of the
+    system's desktop at sign-in, `DesktopReplacement::Beside` or `Instead`,
+    and the way back (Windows: beside, the user's Run key and Explorer's
+    taskbar on auto-hide, its previous state restored; instead, the account's
+    Winlogon shell setting naming UltraCanvasShellGuard, which restarts a
+    crashing desktop and starts Explorer for the session when it cannot run;
+    elsewhere the session decides and the calls say so).
+  - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
+    (Windows `ExitWindowsEx`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -839,7 +853,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `Stop()` (joins) / `IsRunning`: a key combination that reaches this
     program from any window (X11 `XGrabKey` on its own connection and
     thread, Windows `RegisterHotKey` on its own thread; fails with a reason
-    elsewhere and when another program holds it).
+    elsewhere and when another program holds it). `"Super"` alone is a tap
+    of the Win key on Windows (a low-level keyboard hook), refused on X11.
+  - `UltraCanvasTrayHost` - `Start(onChanged, &error)` / `Stop()` (joins) /
+    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon) /
+    `Click(id, TrayClick)`: the notification area for a desktop that is the
+    shell (Windows `Shell_TrayWnd` on its own thread; refused while Explorer's
+    taskbar runs, and on X11).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
@@ -888,7 +908,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   bar with the mouse wheel, with a chevron over the edge the items continue
   past that scrolls a page when clicked (`SetScrollHints`).
   `WindowType::Desktop` (`UltraCanvasWindow.h`) is
-  the screen-sized window at the bottom of the stack a desktop draws into.
+  the screen-sized window at the bottom of the stack a desktop draws into;
+  `WindowConfig::desktopArea` puts one on another monitor.
 
 - **UltraCanvasToolGroupButton** (`UltraCanvasToolGroupButton.h`) — several
   tools sharing one slot of a palette or toolbar: the slot shows one of them,
@@ -1377,7 +1398,23 @@ future.
   plus the prefixes modules add) > INI file > baked-in default, then the
   alias chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` family
   are profiles of it, so a Google client registered once serves Gmail and
-  Google Drive
+  Google Drive; `UltraNet_OAuth2SignInServiceUrl`,
+  `UltraNet_OAuth2SetSignInService`, `UltraNet_OAuth2SetBuiltInSignInService`,
+  `UltraNet_OAuth2SignInServiceEnvName` — the sign-in service's address
+  through the same tiers (Set > `<PREFIX>OAUTH_SERVICE_URL` > the INI file's
+  `[service] url` > the `ULTRANET_OAUTH_SERVICE_URL` build option), which a
+  provider without a client of its own signs in through
+- `UltraNet_OAuth2ServiceUrl`, `UltraNet_OAuth2ServiceBegin`,
+  `UltraNet_OAuth2ServiceWaitForCode`, `UltraNet_OAuth2ServiceExchangeCode`,
+  `UltraNet_OAuth2ServiceRefresh`, `UltraNet_OAuth2ServiceProviders`,
+  `UltraNet_OAuth2AuthorizeViaService`, `UltraNet_OAuth2ServiceParseSession`,
+  `UltraNet_OAuth2ServiceParseStatus` — the client of an OAuth2 *sign-in
+  service* (`UltraNetOAuth2Service.h`; `Server/OAuthCallback` is the
+  service): the service holds the client registrations and is the https
+  address the providers redirect to, the application sends only the PKCE
+  challenge and collects the code, and the exchange and the refresh go
+  through the service, which adds the secret. UltraMail signs in through
+  `https://oauth-callback.ultraos.eu` this way
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
@@ -1788,9 +1825,10 @@ the OAuth client id is configuration in UltraNet's shared app registry —
 `SetOAuthApp`, `ULTRACLOUD_<PROVIDER>_CLIENT_ID`, or the client UltraMail
 registered, since `googledrive` falls back to `google` and `onedrive` to
 `microsoft`), FTP / FTPS / SFTP over UltraNet's FTP
-surface (the one provider that can also delete and rename, so a file manager
-can carry an FTP server as a drive; no share links, and SFTP authenticates
-with a password only), and an in-memory demo provider. Providers
+surface (delete and rename too, so a file manager can carry an FTP server
+as a drive; no share links; SFTP signs in with a password or a private
+key), WebDAV and Nextcloud delete and rename as well (DELETE, MOVE), and an
+in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
 Accounts persist on UltraDatabase (`AccountStore`), secrets go to the

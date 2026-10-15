@@ -1,3 +1,13 @@
+#### 2026-10-14 *0.8.0*
+- **Links that ask for a new window open in a new tab.** This covers
+  `target="_blank"`, a target naming a window, and links without a target
+  on a page with `<base target="_blank">`. The new tab becomes the active
+  one, and the page the link was on stays in its own tab with its history.
+  `_self`, `_parent` and `_top` open in the same tab, and `mailto:` still
+  goes to the system's mail client.
+  - Built on the web view's new `onOpenInNewWindow` (framework); the tab
+    passes such links to the window (`UltraWebTab::Host::onOpenInNewTab`).
+
 #### 2026-10-14 *0.7.0*
 - **Tabs.** A tab strip above the toolbar. Each tab has its own page and
   back / forward history, or its own running app, and the toolbar, the

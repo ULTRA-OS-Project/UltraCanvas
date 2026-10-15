@@ -7,6 +7,7 @@
 #include "test_framework.h"
 
 #include <UltraCloud/UltraCloudFtp.h>
+#include <UltraCloud/UltraCloudMemory.h>
 #include <UltraCloud/UltraCloudWebDav.h>   // the "not a drive" side of the new verbs
 
 #include <memory>
@@ -75,6 +76,8 @@ struct Capture {
     bool useTls = false;
     bool implicitTls = false;
     bool createMissingDirs = false;
+    std::string keyFile;
+    std::string keyPassphrase;
     std::vector<UltraNetFtpEntry> listing;
 };
 
@@ -87,6 +90,8 @@ FtpOps FakeOps(Capture& cap) {
         cap.useTls = opt.useTls;
         cap.implicitTls = opt.implicitTls;
         cap.createMissingDirs = opt.createMissingDirs;
+        cap.keyFile = opt.sshPrivateKeyFile;
+        cap.keyPassphrase = opt.sshKeyPassphrase;
     };
     ops.list = [&cap, note](const std::string& url, std::vector<UltraNetFtpEntry>& out,
                             const UltraNetFtpOptions& opt) {
@@ -441,6 +446,24 @@ TEST(ftp_has_no_share_links) {
                                 link).code == ResultCode::Unsupported);
 }
 
+TEST(sftp_private_key_reaches_the_options) {
+    // The key's path goes down as it is for sftp://, with the password as
+    // the key's passphrase; an ftp:// account with a key set gets none of it.
+    Capture cap;
+    FtpProvider ftp(FakeOps(cap));
+    Account a; a.providerId = "ftp"; a.serverUrl = "sftp://files.example.org"; a.username = "erika";
+    Credentials c; c.password = "pass-or-passphrase"; c.privateKeyFile = "/home/erika/.ssh/id_ed25519";
+    REQUIRE(ftp.Verify(a, c));
+    REQUIRE_EQ(cap.keyFile, std::string("/home/erika/.ssh/id_ed25519"));
+    REQUIRE_EQ(cap.keyPassphrase, std::string("pass-or-passphrase"));
+    REQUIRE_EQ(cap.password, std::string("pass-or-passphrase"));
+    Account plain = a; plain.serverUrl = "ftp://files.example.org";
+    cap = Capture();
+    REQUIRE(ftp.Verify(plain, c));
+    REQUIRE_EQ(cap.keyFile, std::string(""));
+    REQUIRE_EQ(cap.keyPassphrase, std::string(""));
+}
+
 TEST(ftp_is_registered_as_a_built_in_provider) {
     RegisterBuiltInProviders();
     const std::shared_ptr<ICloudProvider> p = GetProvider("ftp");
@@ -450,12 +473,13 @@ TEST(ftp_is_registered_as_a_built_in_provider) {
 }
 
 TEST(providers_that_are_not_drives_report_unsupported) {
-    // The two new verbs default to Unsupported, so the providers that cannot
-    // change what is on the server say so rather than appearing to succeed.
-    WebDavProvider dav;
-    Account a; a.serverUrl = "https://dav.example.org";
-    Credentials c; c.password = "pw";
-    REQUIRE(dav.Delete(a, c, "/x", false).code == ResultCode::Unsupported);
-    REQUIRE(dav.Rename(a, c, "/x", "y").code == ResultCode::Unsupported);
-    REQUIRE(!dav.Capabilities().modify);
+    // The two verbs default to Unsupported, so a provider that cannot change
+    // what is on the server says so rather than appearing to succeed. The
+    // in-memory fake is one; WebDAV grew the verbs (test_webdav.cpp).
+    MemoryProvider memory;
+    Account a; a.accountId = "memory-x";
+    Credentials c;
+    REQUIRE(memory.Delete(a, c, "/x", false).code == ResultCode::Unsupported);
+    REQUIRE(memory.Rename(a, c, "/x", "y").code == ResultCode::Unsupported);
+    REQUIRE(!memory.Capabilities().modify);
 }

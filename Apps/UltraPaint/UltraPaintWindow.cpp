@@ -3,6 +3,9 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 1.6.0 - the right panel in UltraMail's look: Colour, the tool's options and
+//                  Layers are the framework's SectionCard group boxes on its page colour,
+//                  the colour picker is ColorPickerStyle::Light, the layer list reads as a list
 // Version: 1.5.0 - BringForward: restores and raises the window
 // Version: 1.4.0 - Open / Import / Save As / Export offer FileLoader's format lists (every
 //                  bitmap type this build reads / writes), not the editor's own
@@ -84,9 +87,17 @@ namespace {
     constexpr int   kToolButton    = 36;   // a tool's button, square, 4 px around its 28 px icon
     constexpr int   kToolIcon      = 28;
     constexpr int   kRightWidth    = 300;
-    constexpr int   kRightInner    = 262;   // what is visible next to the scrollbar
+    constexpr int   kRightInner    = 268;   // what is visible next to the scrollbar, less its gap
     constexpr int   kStatusHeight  = 24;
     constexpr float kRowH          = 24.0f;
+
+    // The right panel is the framework's SectionCard look, as UltraMail's
+    // panes are: white cards on a light page, each a group box whose caption
+    // is a quiet bold grey over a hairline (GroupBoxVisualStyle::SectionCard),
+    // with the colour picker in its light style (ColorPickerStyle::Light).
+    // The layer list's rows take the framework's list-row colours
+    // (Colors::ListRowHover / ListRowSelected), as UltraMail's lists do.
+    constexpr float kPanelGap = 8.0f;    // between the cards, and around them
 
     // The bitmap formats this build reads, as FileLoader's format inventory
     // says (UltraCanvasFileLoader::GetSupportedLoadExtensions) - not a list
@@ -198,13 +209,23 @@ namespace {
     }
 
     // ui-reuse-exempt: helper that only sizes framework elements; nothing is painted here.
-    std::shared_ptr<UltraCanvasLabel> PanelTitle(const std::string& id, const std::string& text) {
-        auto l = CreateLabel(id, 0, 0, 0, 22, text);
-        l->SetFontSize(12);
-        l->SetFontWeight(FontWeight::Bold);
-        l->SetTextColor(Color(60, 60, 70, 255));
-        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        return l;
+    // One section of the right panel: a SectionCard captioned `title`, its
+    // content a column. As wide as what is visible beside the scrollbar, as
+    // tall as its content.
+    std::shared_ptr<UltraCanvasGroupBox> PanelCard(const std::string& id, const std::string& title) {
+        auto card = CreateGroupBox(id, 0, 0, kRightInner, 0, title);
+        card->SetFrameStyle(GroupBoxFrameStyle::Header);
+        card->SetVisualStyle(GroupBoxVisualStyle::SectionCard());
+        card->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        card->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+        return card;
+    }
+
+    // What a card leaves its content: its width, less its border and its
+    // padding on each side.
+    float CardInnerWidth(const UltraCanvasGroupBox& card) {
+        const GroupBoxVisualStyle& s = card.GetVisualStyle();
+        return kRightInner - 2.0f * (s.borderWidth + s.contentPadding);
     }
 }
 
@@ -675,36 +696,51 @@ void UltraPaintWindow::BuildToolPalette() {
 
 void UltraPaintWindow::BuildRightPanel() {
     rightPanel = CreateScrollableContainer("up-right", 0, 0, kRightWidth, 0);
-    rightPanel->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // Up and down only: the cards are as wide as what the vertical scrollbar
+    // leaves, and a horizontal bar would only scroll the strip that one takes.
+    ContainerStyle rightStyle = rightPanel->GetContainerStyle();
+    rightStyle.autoShowHorizontalScrollbar = false;
+    rightPanel->SetContainerStyle(rightStyle);
+    rightPanel->layout.SetFlexColumn().SetFlexGap(kPanelGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     rightPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    rightPanel->SetPadding(6);
-    rightPanel->SetBackgroundColor(Color(244, 244, 246, 255));
+    rightPanel->SetPadding(kPanelGap, 0, kPanelGap, kPanelGap);
+    rightPanel->SetBackgroundColor(Colors::SectionPage);
 
     // ----- colour -----
-    rightPanel->AddChild(PanelTitle("up-color-title", "Colour"));
-    colorPicker = CreateColorPicker("up-color", foreground.ToColor(), 0, 0, kRightInner, 300);
+    auto colourPanel = PanelCard("up-color-card", "Colour");
+    const float cardInner = CardInnerWidth(*colourPanel);
+    colorPicker = CreateColorPicker("up-color", foreground.ToColor(), 0, 0, cardInner, 300);
+    colorPicker->SetStyle(ColorPickerStyle::Light());
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(background.ToColor());
     colorPicker->SetShowAlpha(true);
     // The hue ring is capped by whatever vertical space the controls leave it,
-    // so a picker sized by eye draws a wheel narrower than the panel. Ask for
-    // the height at which the ring fills the panel's width instead.
-    const float pickerH = colorPicker->PreferredHeightForWidth(kRightInner);
-    colorPicker->SetSize(kRightInner, pickerH);
-    // Not stretched: the panel's content box is wider than what is visible
-    // beside the scrollbar, and a stretched picker lays its hex field and
-    // channel values out into the part that is covered.
+    // so a picker sized by eye draws a wheel narrower than the card. Ask for
+    // the height at which the ring fills the card's width instead.
+    // SetElementSize, not SetSize: SetSize moves only the laid-out bounds, and
+    // the card's next layout pass puts back the size the picker was created
+    // with. The declared height is also the picker's flex basis.
+    colorPicker->SetElementSize(Size2Df(cardInner, colorPicker->PreferredHeightForWidth(cardInner)));
+    // Not stretched: the picker lays its hex field and channel values out to
+    // the width it is given, and that is the card's inner width exactly.
     colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Start)
-                           .SetFlexBasis(CSSLayout::Dimension::Px(pickerH));
+                           .SetAlignSelf(CSSLayout::AlignSelf::Start);
     colorPicker->onColorChanged = [this](const Color& c) { foreground = RasterPixel(c); };
     colorPicker->onColorChanging = [this](const Color& c) { foreground = RasterPixel(c); };
     colorPicker->onBackgroundChanged = [this](const Color& c) { background = RasterPixel(c); };
     colorPicker->onBackgroundChanging = [this](const Color& c) { background = RasterPixel(c); };
-    rightPanel->AddChild(colorPicker);
+    colourPanel->AddChild(colorPicker);
 
-    swatches = CreateColorSwatchBar("up-swatches", 0, 0, kRightInner, 44);
+    swatches = CreateColorSwatchBar("up-swatches", 0, 0, cardInner, 44);
     swatches->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // Outlined as the picker above them outlines its fields, so a white
+    // swatch still shows its edge on the white card.
+    const ColorPickerStyle& pickerStyle = colorPicker->GetStyle();
+    ColorSwatchBarStyle swatchStyle = swatches->GetStyle();
+    swatchStyle.border         = pickerStyle.fieldBorderColor;
+    swatchStyle.hoverBorder    = pickerStyle.mutedTextColor;
+    swatchStyle.selectedBorder = pickerStyle.accentColor;
+    swatches->SetStyle(swatchStyle);
     swatches->onColorSelected = [this](const Color& c) {
         foreground = RasterPixel(c);
         colorPicker->SetForegroundColor(c, false);
@@ -713,26 +749,24 @@ void UltraPaintWindow::BuildRightPanel() {
     swatches->onColorAdjustSelected = [this](const Color& c) {
         colorPicker->SetBackgroundColor(c, true);
     };
-    rightPanel->AddChild(swatches);
+    colourPanel->AddChild(swatches);
+    rightPanel->AddChild(colourPanel);
 
-    // ----- tool options -----
-    optionsTitle = PanelTitle("up-options-title", "Tool Options");
-    rightPanel->AddChild(optionsTitle);
-    optionsPanel = std::make_shared<UltraCanvasContainer>("up-options", 0, 0, kRightInner, 0);
-    optionsPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    optionsPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    // ----- tool options: captioned with the active tool's name -----
+    optionsPanel = PanelCard("up-options", "Tool Options");
     rightPanel->AddChild(optionsPanel);
 
     // ----- layers -----
-    rightPanel->AddChild(PanelTitle("up-layers-title", "Layers"));
-    layersPanel = std::make_shared<UltraCanvasContainer>("up-layers", 0, 0, kRightInner, 0);
-    layersPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    layersPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    layersPanel = PanelCard("up-layers", "Layers");
 
     auto buttons = std::make_shared<UltraCanvasToolbar>("up-layer-buttons", 0, 0, 0, 30);
     ToolbarAppearance app = buttons->GetAppearance();
     app.showIconLabels = false;
-    app.backgroundColor = Color(244, 244, 246, 255);
+    app.style = ToolbarStyle::Flat;
+    app.itemSpacing = 4.0f;
+    app.backgroundColor = layersPanel->GetVisualStyle().backgroundColor;
+    app.hoverBackgroundColor = Colors::ListRowHover;
+    app.activeBackgroundColor = Colors::ListRowSelected;
     buttons->SetAppearance(app);
     buttons->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     buttons->AddButton("up-l-add", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip("New layer");
@@ -742,6 +776,20 @@ void UltraPaintWindow::BuildRightPanel() {
     buttons->AddButton("up-l-down", "", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); })->SetTooltip("Move down");
     buttons->AddButton("up-l-merge", "", IconPath("layer-merge.svg"), [this]() { CmdLayerMergeDown(); })->SetTooltip("Merge down");
     buttons->AddButton("up-l-props", "", IconPath("layer-props.svg"), [this]() { CmdLayerProperties(); })->SetTooltip("Layer properties");
+    // Flat, as the main toolbar's, and just round their 24 px icons: the
+    // seven of them fit the card's width (in the toolbar's own size, the
+    // last one was cut off by the panel's edge).
+    for (auto& c : buttons->Children()) {
+        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
+            b->SetPadding(3);
+            b->SetElementSize(Size2Df(30, 30));
+            b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            ButtonStyle flat = b->GetStyle();
+            flat.cornerRadius = 6.0f;
+            flat.pressedColor = Colors::ListRowSelected;
+            b->SetStyle(flat);
+        }
+    }
     layersPanel->AddChild(buttons);
 
     auto opRow = std::make_shared<UltraCanvasContainer>("up-l-oprow", 0, 0, 0, kRowH);
@@ -1418,17 +1466,16 @@ void UltraPaintWindow::RebuildToolOptions() {
     optionsPanel->ClearChildren();
     PaintTool* t = ActiveTool();
     if (!t) return;
-    optionsTitle->SetText(t->name);
+    optionsPanel->SetTitle(t->name);
     t->BuildOptions(toolContext, *optionsPanel, [this]() {
         if (auto* a = ActiveTool()) {
             surface->SetCursorRadius(a->CursorRadius(toolContext));
             surface->SetCursorSquare(a->CursorSquare(toolContext));
         }
     });
-    // size the panel to its rows
-    float h = 0;
-    for (const auto& c : optionsPanel->GetChildren()) h += c->GetHeight() + 3;
-    optionsPanel->SetBounds(Rect2Df(0, 0, kRightInner, h));
+    // Zoom and Pan have nothing to set: say so rather than show an empty card.
+    if (optionsPanel->GetChildren().empty())
+        PaintOptionWidgets::AddCaption(*optionsPanel, "up-options-none", "No options for this tool");
     rightPanel->RequestRedraw();
 }
 
@@ -1514,8 +1561,17 @@ void UltraPaintWindow::RebuildLayerPanel() {
             btn->SetCanToggled(true);
             btn->SetPressed(i == active);
             btn->SetTooltip("Double-click to rename");
+            // A row of a list, as UltraMail's: no box, the name from the
+            // left, a soft grey under the pointer and the active layer on
+            // the light accent tint.
             ButtonStyle st = btn->GetStyle();
-            st.fontSize = 11.0f;
+            st.fontSize          = 11.0f;
+            st.textAlign         = TextAlignment::Left;
+            st.normalColor       = Colors::Transparent;
+            st.hoverColor        = Colors::ListRowHover;
+            st.pressedColor      = Colors::ListRowSelected;
+            st.borderWidth       = 0.0f;
+            st.cornerRadius      = 5.0f;
             btn->SetStyle(st);
             btn->onToggle = [this, i](bool) {
                 document->SetActiveLayerIndex(i);
@@ -1536,14 +1592,12 @@ void UltraPaintWindow::RebuildLayerPanel() {
         renameField->SetFocus(true);
         renameField->SelectAll();
     }
-    layerRows->SetBounds(Rect2Df(0, 0, kRightInner, static_cast<float>(n) * 28.0f));
     if (auto layer = document->GetActiveLayer()) {
         layerOpacity->SetValue(layer->opacity * 100.0f);
         const auto& modes = AllRasterBlendModes();
         const auto it = std::find(modes.begin(), modes.end(), layer->blendMode);
         layerBlend->SetSelectedIndex(it == modes.end() ? 0 : static_cast<int>(it - modes.begin()), false);
     }
-    layersPanel->SetBounds(Rect2Df(0, 0, kRightInner, 30 + kRowH + 6 + static_cast<float>(n) * 28.0f + 8));
     rightPanel->RequestRedraw();
 }
 

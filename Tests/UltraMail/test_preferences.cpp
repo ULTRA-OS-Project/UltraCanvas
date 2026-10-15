@@ -2,6 +2,7 @@
 // The app-wide preferences behind the Settings window: the remote-image
 // policy, trusted websites (domain matching) and the reading options survive
 // a save and a load, and an old file keeps the defaults.
+// Version: 0.6.0 - switch_on_quiet_sec (Settings > Mail > Connection)
 // Version: 0.5.0 - the sender-icon downloads are off by default
 // Version: 0.4.0 - folder_tree_content, account_order
 // Version: 0.3.0 - trusted_senders, blocked_senders
@@ -184,6 +185,50 @@ TEST(preferences_check_mail_interval_choices) {
     Preferences bad;
     REQUIRE(bad.Load(path));
     REQUIRE_EQ(bad.checkMailEverySec, 300);                      // keeps the default
+    std::remove(path.c_str());
+}
+
+// Settings > Mail > Connection offers off and six periods; a number edited
+// into the file by hand comes back as the nearest of them, and a save keeps
+// the choice.
+TEST(preferences_switch_on_quiet_choices) {
+    const std::vector<int> expected = { 0, 30, 60, 120, 180, 300, 600 };
+    REQUIRE(Preferences::SwitchOnQuietChoices() == expected);
+    REQUIRE_EQ(Preferences::kDefaultSwitchOnQuietSec, 120);
+    REQUIRE_EQ(Preferences().switchOnQuietSec, 120);
+
+    REQUIRE_EQ(Preferences::NearestSwitchOnQuietChoice(0), 0);
+    REQUIRE_EQ(Preferences::NearestSwitchOnQuietChoice(-30), 0);     // below off: off
+    REQUIRE_EQ(Preferences::NearestSwitchOnQuietChoice(15), 0);      // a tie: the shorter
+    REQUIRE_EQ(Preferences::NearestSwitchOnQuietChoice(100), 120);
+    REQUIRE_EQ(Preferences::NearestSwitchOnQuietChoice(240), 180);   // a tie: the shorter
+    REQUIRE_EQ(Preferences::NearestSwitchOnQuietChoice(7200), 600);  // above the longest
+
+    REQUIRE_EQ(Preferences::SwitchOnQuietLabel(0), std::string("Off"));
+    REQUIRE_EQ(Preferences::SwitchOnQuietLabel(30), std::string("30 seconds"));
+    REQUIRE_EQ(Preferences::SwitchOnQuietLabel(120), std::string("2 minutes"));
+
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "ultramail_prefs_switch_on.ini").string();
+    {
+        std::ofstream f(UltraCanvas::PathFromUtf8(path));
+        f << "switch_on_quiet_sec = 290\n";
+    }
+    Preferences in;
+    REQUIRE(in.Load(path));
+    REQUIRE_EQ(in.switchOnQuietSec, 300);
+    in.switchOnQuietSec = 0;
+    REQUIRE(in.Save(path));
+    Preferences back;
+    REQUIRE(back.Load(path));
+    REQUIRE_EQ(back.switchOnQuietSec, 0);                            // off survives
+    {
+        std::ofstream f(UltraCanvas::PathFromUtf8(path));
+        f << "switch_on_quiet_sec = soon\n";
+    }
+    Preferences bad;
+    REQUIRE(bad.Load(path));
+    REQUIRE_EQ(bad.switchOnQuietSec, 120);                           // keeps the default
     std::remove(path.c_str());
 }
 

@@ -1,4 +1,5 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
+// Version: 0.7.1 - a private key row for SFTP
 // Version: 0.7.0 - the shared_ptr form: the sign-in thread holds the service
 //                  until it ends
 // Last Modified: 2026-10-14
@@ -153,6 +154,12 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
     password->SetPlaceholder("password or app password");
     auto passwordRow = addRow("cloudAccPass", "Password", password);
 
+    // SFTP with a key: the private key file's path; the password above is
+    // then its passphrase (and the server's password, failing the key).
+    auto keyFile = CreateTextInput("cloudAccKey", 0, 0, 0, UiStyle::kControlHeight);
+    keyFile->SetPlaceholder("~/.ssh/id_ed25519 (sftp:// only; optional)");
+    auto keyRow = addRow("cloudAccKey", "Private key", keyFile);
+
     auto publicUrl = CreateTextInput("cloudAccPublic", 0, 0, 0, UiStyle::kControlHeight);
     publicUrl->SetPlaceholder("https://files.example.org/pub (links = this URL + path)");
     auto publicRow = addRow("cloudAccPublic", "Public URL", publicUrl);
@@ -191,7 +198,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
 
     // Show only the rows the chosen provider needs. OAuth providers sign in
     // through the browser: no user / password rows, and the button says so.
-    auto applyProvider = [providers, serverRow, publicRow, passwordRow, userRow, provider,
+    auto applyProvider = [providers, serverRow, publicRow, passwordRow, userRow, keyRow, provider,
                           hint, addBtn]() {
         int idx = provider->GetSelectedIndex();
         if (idx < 0 || idx >= static_cast<int>(providers.size())) return;
@@ -202,17 +209,20 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
         publicRow.SetVisible(id == "webdav");
         userRow.SetVisible(!caps.needsOAuth);
         passwordRow.SetVisible(!caps.needsOAuth && id != "memory");
+        keyRow.SetVisible(id == "ftp");
         if (caps.needsOAuth) {
             addBtn->SetText("Sign in in browser");
-            hint->SetText(HasOAuthApp(id)
+            hint->SetText(CanSignIn(id)
                 ? "Your browser opens " + p->DisplayName() + "'s sign-in page; come back here when it says you are done."
-                : "No OAuth client id is configured for " + p->DisplayName()
-                  + " — set ULTRACLOUD_" + id + "_CLIENT_ID (see Docs/Modules/UltraCloud/README.md).");
+                : "The sign-in service is off and no OAuth client id is configured for " + p->DisplayName()
+                  + " — set ULTRACLOUD_OAUTH_SERVICE_URL or ULTRACLOUD_" + id
+                  + "_CLIENT_ID (see Docs/Modules/UltraCloud/README.md).");
         } else {
             addBtn->SetText("Add account");
             hint->SetText(id == "nextcloud"
                 ? "Nextcloud: create an app password under Settings → Security and use it here."
                 : id == "webdav" ? "Links need a public URL that serves the same folder as the DAV root."
+                : id == "ftp" ? "ftp://, ftps://, ftpes:// or sftp://. An SFTP key: its file above, the passphrase as the password."
                 : "");
         }
     };
@@ -253,14 +263,15 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
         Credentials c;
         c.username = a.username;
         c.password = password->GetText();
+        c.privateKeyFile = a.providerId == "ftp" ? keyFile->GetText() : std::string();
 
         const auto caps = providers[static_cast<std::size_t>(idx)]->Capabilities();
         if (caps.needsServerUrl && a.serverUrl.empty()) { status->SetText("Enter the server URL."); return; }
         if (!caps.needsOAuth && a.username.empty() && a.providerId != "memory") {
             status->SetText("Enter the user name."); return;
         }
-        if (caps.needsOAuth && !HasOAuthApp(a.providerId)) {
-            status->SetText("No OAuth client id configured for this provider."); return;
+        if (caps.needsOAuth && !CanSignIn(a.providerId)) {
+            status->SetText("The sign-in service is off and no OAuth client id is configured for this provider."); return;
         }
 
         status->SetTextColor(Color(60, 60, 60, 255));

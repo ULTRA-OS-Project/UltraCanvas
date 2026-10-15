@@ -1121,6 +1121,98 @@ else()
     message(STATUS "  MouseClickBubblingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== COLOUR PICKER DRAG TEST =====
+# The SV marker is grabbed where it overhangs the area, a press on it keeps
+# the colour, and a drag (SV area or hue ring) keeps following the pointer -
+# and ends on its release - outside the picker. Opens a window, so it skips
+# itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerDragTest...")
+    add_executable(ColorPickerDragTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerDragTest.cpp
+    )
+    target_include_directories(ColorPickerDragTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerDragTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerDragTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerDragTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerDragTest COMMAND ColorPickerDragTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerDragTest")
+else()
+    message(STATUS "  ColorPickerDragTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== COLOUR PICKER DESIGN SELECTOR TEST =====
+# The optional dropdown in the picker's top-right corner: three designs with
+# icons that load, the selection following SetWheelStyle, a choice switching
+# the design and reported once, hidden during a drag on a rectangular
+# design's colour area and shown again on release, kept beside the circle.
+# Opens a window, so it skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerDesignSelectorTest...")
+    add_executable(ColorPickerDesignSelectorTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerDesignSelectorTest.cpp
+    )
+    target_include_directories(ColorPickerDesignSelectorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerDesignSelectorTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerDesignSelectorTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerDesignSelectorTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerDesignSelectorTest COMMAND ColorPickerDesignSelectorTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerDesignSelectorTest")
+else()
+    message(STATUS "  ColorPickerDesignSelectorTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== COLOUR PICKER MODEL DROPDOWN TEST =====
+# The HSV/HSL/RGB selector in Dropdown mode is a real UltraCanvasDropdown
+# child (it was painted by hand): its entries and their tooltips, its place
+# at the right of the preview row, a choice switching the model, and the tab
+# bar hiding it. Opens a window, so it skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerModelDropdownTest...")
+    add_executable(ColorPickerModelDropdownTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerModelDropdownTest.cpp
+    )
+    target_include_directories(ColorPickerModelDropdownTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerModelDropdownTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerModelDropdownTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerModelDropdownTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerModelDropdownTest COMMAND ColorPickerModelDropdownTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerModelDropdownTest")
+else()
+    message(STATUS "  ColorPickerModelDropdownTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== DROPDOWN KEYBOARD TEST =====
+# Down / Up / Return choose an item of an open dropdown (the keys go to its
+# popup list); Escape keeps the choice, Return on the current item closes.
+# Opens a window, so it skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DropdownKeyboardTest...")
+    add_executable(DropdownKeyboardTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DropdownKeyboardTest.cpp
+    )
+    target_include_directories(DropdownKeyboardTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DropdownKeyboardTest PRIVATE cxx_std_20)
+    target_link_libraries(DropdownKeyboardTest PRIVATE UltraCanvas)
+    set_target_properties(DropdownKeyboardTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DropdownKeyboardTest COMMAND DropdownKeyboardTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DropdownKeyboardTest")
+else()
+    message(STATUS "  DropdownKeyboardTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILE DIALOG TEST =====
 # The name a Save hands back (the chosen type's extension, always run), and
 # the dialog itself: the Up arrow and view glyphs centred in their buttons,
@@ -1374,6 +1466,12 @@ message(STATUS "  Building EBookArchiveTest...")
 
 # miniz is C; the top-level project only declares C++.
 enable_language(C)
+# glibc's 64-bit file calls for miniz, as UltraCanvas/CMakeLists.txt explains:
+# without them it warns (#pragma message) in every test that compiles it.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_property(SOURCE ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+                 APPEND PROPERTY COMPILE_DEFINITIONS _LARGEFILE64_SOURCE)
+endif()
 
 add_executable(EBookArchiveTest
     ${CMAKE_CURRENT_SOURCE_DIR}/EBookArchiveTest.cpp
@@ -2962,12 +3060,17 @@ message(STATUS "    Test registered: SequenceModelTest")
 # sparse cell storage, the weighted row/column roll-ups, stable column ranking,
 # validation, the CSV codec in both directions and the shipped samples. UI-free.
 message(STATUS "  Building MatrixModelTest...")
+# The JSON interchange compiles the JSON wrapper and its vendored engine in
+# directly, as MindMapIOTest does, so the model still needs no UI stack.
 add_executable(MatrixModelTest
     ${CMAKE_CURRENT_SOURCE_DIR}/MatrixModelTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasMatrixModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
 )
 target_include_directories(MatrixModelTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
 )
 target_compile_features(MatrixModelTest PRIVATE cxx_std_20)
 # ImportMatrixTable and the importance column read numbers through the
@@ -5622,4 +5725,24 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: TreeViewKeyboardTest")
 else()
     message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
+endif()
+
+# UltraCanvasTreeView::SetFilterText: the rows matching a text, expanded to
+# them, and the tree put back when the filter ends. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewFilterTest...")
+    add_executable(TreeViewFilterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewFilterTest.cpp
+    )
+    target_include_directories(TreeViewFilterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewFilterTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewFilterTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewFilterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewFilterTest COMMAND TreeViewFilterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewFilterTest")
+else()
+    message(STATUS "  TreeViewFilterTest skipped (UltraCanvas target not present)")
 endif()

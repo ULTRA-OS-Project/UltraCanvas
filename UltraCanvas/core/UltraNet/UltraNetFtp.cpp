@@ -15,6 +15,7 @@
 // is not asked for it again (ListingFormats). Before both, every folder an
 // FTP drive showed cost a login - two on a server without MLSD, such as
 // vsftpd, which logged in once to be refused and again to ask with LIST.
+// Version: 0.6.0 - SFTP with a private key
 // Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework / ULTRA OS
@@ -220,6 +221,20 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
         curl_easy_setopt(h, CURLOPT_USE_SSL,
                          opt.implicitTls ? CURLUSESSL_ALL : CURLUSESSL_TRY);
     }
+    // SFTP with a key: the key first, the password after it when there is
+    // one. Without a key libcurl's default (every method it has) stands, so
+    // an sftp:// server that takes a password keeps working as before. The
+    // options only matter to sftp:// and are ignored by the FTP handlers.
+    if (!opt.sshPrivateKeyFile.empty()) {
+        curl_easy_setopt(h, CURLOPT_SSH_PRIVATE_KEYFILE, opt.sshPrivateKeyFile.c_str());
+        if (!opt.sshPublicKeyFile.empty())
+            curl_easy_setopt(h, CURLOPT_SSH_PUBLIC_KEYFILE, opt.sshPublicKeyFile.c_str());
+        if (!opt.sshKeyPassphrase.empty())
+            curl_easy_setopt(h, CURLOPT_KEYPASSWD, opt.sshKeyPassphrase.c_str());
+        long methods = CURLSSH_AUTH_PUBLICKEY;
+        if (!opt.credentials.password.empty()) methods |= CURLSSH_AUTH_PASSWORD;
+        curl_easy_setopt(h, CURLOPT_SSH_AUTH_TYPES, methods);
+    }
     curl_easy_setopt(h, CURLOPT_FTP_USE_EPSV, opt.passiveMode ? 1L : 0L);
     curl_easy_setopt(h, CURLOPT_FTP_CREATE_MISSING_DIRS,
                      opt.createMissingDirs ? 1L : 0L);
@@ -312,7 +327,10 @@ public:
               : !opt.useTls     ? "none - plain FTP, password and data unencrypted"
               : opt.implicitTls ? "implicit (TLS from connect)"
                                 : "explicit (AUTH TLS; continues without it when refused)";
-        c.signIn = opt.credentials.username.empty() ? "anonymous" : "user name and password";
+        c.signIn = opt.credentials.username.empty()      ? "anonymous"
+                 : !opt.sshPrivateKeyFile.empty()         ? "user name and private key " + opt.sshPrivateKeyFile +
+                                                            (opt.credentials.password.empty() ? "" : ", then the password")
+                                                          : "user name and password";
     }
     ~DiagnosticsContext() { ultranet_curlerror::CurrentContext() = saved_; }
     DiagnosticsContext(const DiagnosticsContext&) = delete;

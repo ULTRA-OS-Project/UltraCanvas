@@ -2,6 +2,8 @@
 // The persistent clipboard history: SQLite index (UltraDatabase), payloads as
 // encrypted files named by a keyed hash, image thumbnails, retention, the
 // recorder lease. See include/UltraCanvasClipboardHistory.h.
+// Version: 1.2.1 - the key lives in the desktop's settings folder (UltraCanvasDesktopSettingsFolder):
+//                  Application Support on macOS, moved there from ~/.config once
 // Version: 1.2.0 - the policy's iconSide
 // Version: 1.1.2 - the folder is the framework's machine-local data root (UltraCanvasLocalDataFolderRoot)
 // Version: 1.1.1 - $XDG_DATA_HOME names the data folder on every platform, as for the applications
@@ -14,7 +16,8 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasFileError.h"
 #include "UltraCanvasImage.h"
-#include "UltraCanvasDataFolder.h"   // UltraCanvasLocalDataFolderRoot
+#include "UltraCanvasDataFolder.h"       // UltraCanvasLocalDataFolderRoot
+#include "UltraCanvasSettingsFolder.h"   // UltraCanvasDesktopSettingsFolder
 #include "UltraCanvasPathUtf8.h"
 #include "DataFormats/UltraCanvasJSON.h"
 #include <UltraCrypt/UltraCryptCore.h>
@@ -870,15 +873,13 @@ std::string UltraCanvasClipboardHistory::DefaultDirectory() {
 }
 
 // Beside the desktop's own settings, apart from the data it unlocks.
+// The desktop's settings folder (UltraCanvasSettingsFolder.h), beside
+// desktop.json: %APPDATA%\ultraos on Windows, Application Support/ultraos on
+// macOS, $XDG_CONFIG_HOME or ~/.config/ultraos elsewhere. On macOS a key an
+// earlier version kept under ~/.config is moved there once, with the folder.
 std::string UltraCanvasClipboardHistory::DefaultKeyPath() {
-    fs::path root;
-#if defined(_WIN32)
-    if (const std::string appData = GetEnvUtf8("APPDATA"); !appData.empty()) root = PathFromUtf8(appData);
-#else
-    if (const std::string config = GetEnvUtf8("XDG_CONFIG_HOME"); !config.empty()) root = PathFromUtf8(config);
-    else if (const std::string home = GetEnvUtf8("HOME"); !home.empty()) root = PathFromUtf8(home) / ".config";
-#endif
-    return root.empty() ? "" : PathToUtf8(root / "ultraos" / "clipboard.key");
+    const fs::path folder = UltraCanvasDesktopSettingsFolder();
+    return folder.empty() ? "" : PathToUtf8(folder / "clipboard.key");
 }
 
 bool UltraCanvasClipboardHistory::IsAvailable() {

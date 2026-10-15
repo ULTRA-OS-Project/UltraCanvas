@@ -48,6 +48,10 @@ inline int RunAll() {
                         t.name.c_str(), e.what());
             ++failed;
         }
+        // Under ctest stdout is a pipe and fully buffered: without this a
+        // crash lost every line, and the first macOS run showed nothing but
+        // "SegFault".
+        std::fflush(stdout);
     }
     std::printf("\nUltraCleaner engine tests: %d passed, %d failed\n", passed, failed);
     return failed == 0 ? 0 : 1;

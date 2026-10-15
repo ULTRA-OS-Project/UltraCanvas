@@ -660,7 +660,9 @@ number anywhere else, and never introduce a new literal copy of one:
    joins that list once its examples compile, and is fixed, not baselined. The design documents (a Proposal,
    Plan or Investigation) describe APIs not written yet, so their findings
    are listed in `scripts/doc_examples_baseline.txt` until the API exists;
-   a component doc must never be added there.
+   a component doc must never be added there. Writing one of those APIs
+   makes its entries stop being found, which fails the check until the file
+   is rewritten (`--all --update-baseline`) in the same change.
    Changing a header can therefore fail a doc you did not touch: fix that
    doc in the same change. A name a snippet takes from the application - a
    `window`, a callback the reader writes, a version macro - is declared in

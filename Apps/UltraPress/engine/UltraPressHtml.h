@@ -6,6 +6,7 @@
 // built-in stylesheet that makes it read as a document; the WebAssembly
 // renderer takes the viewport over when it has started (Phase 1 of
 // Docs/Research/UltraPressDesignProposal.md, §4.4). Decided 2026-10-13.
+// Version: 0.2.0 - HtmlOptions::siteDirectory: width and height on every <img>, the social card's size
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -26,6 +27,11 @@ struct HtmlOptions {
     // The UltraWeb app of the site ("site.wasm"), as <link rel="ultraweb-app">
     // (UltraWebProposal.md §4.3). Empty: none.
     std::string ultrawebApp;
+    // The site folder: with it, every <img> of a media picture carries its
+    // width and height (read from the file's header, UltraPressMedia.h), so
+    // a browser lays the page out before the picture arrives, and the
+    // social card names its size. Empty: no sizes.
+    std::string siteDirectory;
     bool includeStyle = true;          // the built-in stylesheet
     std::string generator = "UltraPress";
 };

@@ -47,6 +47,7 @@ struct DropdownItem {
     std::string text;          // Display text
     std::string value;         // Associated value
     std::string iconPath;      // Optional icon path
+    std::string tooltip;       // Shown over the item in the open list (optional)
     bool enabled = true;       // Is item selectable
     bool separator = false;    // Is this a separator
     bool selected = false;     // Checked state in multi-selection mode
@@ -98,6 +99,10 @@ struct DropdownStyle {
     // Icon dimensions
     float iconSize = 16.0f;
     float iconPadding = 4.0f;
+
+    // false: the button shows the selected item's icon alone (the list
+    // still shows icon and text) - a compact, icon-only selector
+    bool buttonShowsText = true;
 
     // Checkbox dimensions (for multi-select)
     float checkboxSize = 14.0f;
@@ -232,12 +237,17 @@ The dropdown handles various event types:
 - **Item hover, click and wheel scrolling** are handled by the popup list view
 
 ### Keyboard Events
-- **Down/Space** (closed): Opens the dropdown
-- **Up/Down, Page Up/Page Down, Home/End** (open): Move through the list
-- **Return** (open): Selects the focused item (toggles it in multi-selection mode)
-- **Space** (open, multi-selection): Toggles the focused item
-- **Escape**: Closes dropdown
-- `onKeyDown` sees every key first; returning true stops the default handling
+The dropdown does not take the keyboard focus (`AcceptsFocus()` is false), so
+it is opened with the mouse. While its list is open the window hands the keys
+to the list:
+- **Up/Down, Page Up/Page Down, Home/End**: Move the highlight through the list
+- **Return** or **Space**: Chooses the highlighted item and closes the list
+  (toggles it in multi-selection mode) - the list's `onItemActivated`
+- **Escape**: Closes the list and keeps the chosen item
+
+The dropdown's own key handling (Down/Space to open a closed dropdown,
+`onKeyDown` seeing each key first) applies only to keys delivered to the
+dropdown itself, which does not happen while it cannot take the focus.
 
 ### Focus Events
 - **FocusLost**: Closes the dropdown (not in multi-selection mode)
@@ -393,6 +403,25 @@ langs->AddItem("Rust", "rs");
 langs->onSelectedItemsChanged = [](const std::vector<DropdownItem>& picked) {
     std::cerr << picked.size() << " languages selected" << std::endl;
 };
+```
+
+### Icon-only Button
+
+With `buttonShowsText` off, the button shows just the selected item's icon,
+centred beside the arrow; the list still shows each item's icon and text, and
+the accessible value is still the selected item's text. The colour picker's
+design selector is one.
+
+```cpp
+auto view = CreateDropdown("view", 10, 120, 44, 24);
+view->AddItem("Details", "details", "media/icons/view-details.svg");
+view->AddItem("Icons", "icons", "media/icons/view-icons-medium.svg");
+DropdownStyle compact = view->GetStyle();
+compact.buttonShowsText = false;
+compact.iconSize = 18.0f;
+view->SetStyle(compact);
+view->SetSelectedIndex(0, false);
+view->SetAccessibleName("View");
 ```
 
 ## Performance Considerations

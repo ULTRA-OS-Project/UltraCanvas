@@ -1,4 +1,4 @@
-**Status:** **Phases 1, 2 and 3 are implemented** as `UltraCanvasMatrixDiagram` +
+**Status:** **Phases 1–4 are implemented** as `UltraCanvasMatrixDiagram` +
 `UltraCanvasMatrixModel` — see
 [`UltraCanvasMatrixDiagram.md`](UltraCanvasMatrixDiagram.md) for the guide.
 Phase 1 delivered the model (C1–C3, C5, C7), the `L` and `T` shapes, the totals
@@ -51,8 +51,25 @@ Departures from the plan below:
   House, but it is new data (per-row ratings of competitors), not layout, and
   D6 did not include it. It would be the natural next addition to `House`.
 
-Still open: Phase 4 (I5 pan/zoom, I6 keyboard navigation, X3 JSON, Q5 editing)
-and the competitive-assessment block.
+Phase 4 (2026-10-14) delivered I5 pan and zoom through the shared
+`UltraCanvasDiagramViewport` (opt-in, so a diagram that fits its element is
+unchanged), I6 keyboard navigation, X3 JSON for the whole model, and Q5
+cycle-on-click editing (`SetEditable`), as §9 Q5 recommended. Two choices worth
+recording:
+
+* **Arrow keys move on the screen, not in the model.** A turned X quadrant's
+  model rows run across, a Y panel's along a seam, a roof's at 45°; each
+  neighbour is scored by how far its lattice step goes the arrow's way, and
+  ties go to the row step so the same key always lands on the same cell.
+* **JSON cells are keyed by item id**, not index, so a file survives its items
+  being reordered; the import runs the result through `Validate()`.
+
+The competitive-assessment block followed: `MatrixModel::competitors` and
+`ratings` (keyed by need and competitor id, 1..`ratingMax`), drawn right of the
+House's grid as one marker per need per competitor, joined row to row, with the
+competitors in the legend and the ratings in JSON.
+
+Still open: D7 `C` (deferred per Q3) and C4 attribute gutters (deferred).
 
 **Revision 3 (2026-08-10) — scope correction.** Reference images 1, 2 and 7 are
 architectural room-adjacency matrices, and adjacency data is already modelled by

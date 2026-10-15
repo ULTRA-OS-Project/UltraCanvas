@@ -1,6 +1,7 @@
 // Plugins/LaTeX/UltraCanvasLaTeXBackend.cpp
 // MicroTeX -> UltraCanvas rendering backend implementation.
 // See UltraCanvasLaTeXBackend.h for the design overview.
+// Version: 1.1.1 - MICROTEX_FONTDIR and ULTRACANVAS_LATEX_ENGINE read as UTF-8 (GetEnvUtf8)
 // Version: 1.1.0
 // Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
@@ -18,7 +19,7 @@
 #include "microtex.h"
 #include "unimath/font_src.h"
 
-#include <cstdlib>              // getenv
+#include <cstdlib>
 #include <fstream>
 #include <memory>
 
@@ -65,7 +66,9 @@ unsigned g_fontDirGeneration = 0;
 std::vector<std::string> FontSearchDirs() {
     std::vector<std::string> dirs;
     if (!g_userFontDir.empty()) dirs.push_back(g_userFontDir);
-    if (const char* env = std::getenv("MICROTEX_FONTDIR"); env && *env) dirs.emplace_back(env);
+    // UTF-8 (GetEnvUtf8): a folder, opened through PathFromUtf8 below; the
+    // narrow getenv answers in the ANSI code page on Windows.
+    if (const std::string env = GetEnvUtf8("MICROTEX_FONTDIR"); !env.empty()) dirs.push_back(env);
     // The framework's own resource root first - every other media/ consumer
     // (icons, fonts, the demo's .tex files) resolves through it. That is
     // <exe>/share/ in a dev build (the root CMake copies media/ to
@@ -296,8 +299,7 @@ std::vector<std::string> GetLaTeXEngineFontSearchDirs() { return FontSearchDirs(
 
 bool UseNativeLaTeXEngine() {
     static const bool native = [] {
-        if (const char* env = std::getenv("ULTRACANVAS_LATEX_ENGINE"); env && *env) {
-            const std::string v = env;
+        if (const std::string v = GetEnvUtf8("ULTRACANVAS_LATEX_ENGINE"); !v.empty()) {
             if (v == "native" || v == "1" || v == "on") return true;
             if (v == "microtex" || v == "0" || v == "off") return false;
         }

@@ -104,6 +104,7 @@ TEST(RemoverRefusesAnItemPathThatLeftTheAllowedRoots) {
     const std::string precious = tree.File("precious/keep.txt", 10);
 
     ScanReport report = ScanOf(cache);
+    REQUIRE_EQ(report.items.size(), static_cast<size_t>(1));
     // Simulates a report whose items were tampered with between the scan and
     // the clean: the guard is rebuilt from allowedRoots, not from the items.
     report.items[0].path = precious;
@@ -160,8 +161,9 @@ TEST(RemoverCountsItemsThatVanishedBeforeTheClean) {
     tree.File("cache/a.bin", 10);
 
     ScanReport report = ScanOf(cache);
+    REQUIRE_EQ(report.items.size(), static_cast<size_t>(1));
     std::error_code ec;
-    std::filesystem::remove(report.items[0].path, ec);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(report.items[0].path), ec);
 
     RemovalOptions options;
     options.mode = RemovalMode::DeletePermanently;
@@ -170,6 +172,31 @@ TEST(RemoverCountsItemsThatVanishedBeforeTheClean) {
     const RemovalReport result = remover.Remove(report, options);
     REQUIRE_EQ(result.skippedMissing, static_cast<size_t>(1));
     REQUIRE(result.failures.empty());
+}
+
+// macOS's temp folder is /var/folders/..., and /var is a link to
+// /private/var. The scan reports items under the spelling it walked; the
+// remover rebuilds its guard from the report's roots and has to accept them.
+TEST(RemoverDeletesUnderARootReachedThroughASymlink) {
+    TempTree tree;
+    tree.File("real/cache/a.bin", 10);
+    std::error_code ec;
+    std::filesystem::create_directory_symlink(
+        UltraCanvas::PathFromUtf8(tree.Path("real")),
+        UltraCanvas::PathFromUtf8(tree.Path("link")), ec);
+    if (ec) return;   // filesystem without symlinks (some CI Windows runners)
+
+    ScanReport report = ScanOf(tree.Path("link/cache"));
+    REQUIRE_EQ(report.items.size(), static_cast<size_t>(1));
+
+    RemovalOptions options;
+    options.mode = RemovalMode::DeletePermanently;
+    Remover remover;
+    const RemovalReport result = remover.Remove(report, options);
+
+    REQUIRE_EQ(result.removedItems, static_cast<size_t>(1));
+    REQUIRE(!tree.Exists("real/cache/a.bin"));
+    REQUIRE(tree.Exists("real/cache"));          // the root itself survives
 }
 
 TEST(RemoverReportsProgressAndStopsWhenCancelled) {
@@ -260,6 +287,16 @@ private:
     std::pair<std::string, bool> oldXdg_;
 };
 
+// Where the platform's trash keeps its files, relative to HOME: the XDG
+// trash's files/ on Linux, ~/.Trash itself on macOS (TrashDir()). The tests
+// used the Linux one everywhere, so on macOS the remover - rightly - saw no
+// trash there and moved the file.
+#if defined(__APPLE__)
+const std::string kTrashFiles = ".Trash";
+#else
+const std::string kTrashFiles = ".local/share/Trash/files";
+#endif
+
 // A rule that clears whatever directory it is pointed at, standing in for the
 // real trash rule without depending on the platform rule table.
 CleanRule TrashContentsRule(const std::string& root) {
@@ -277,8 +314,8 @@ TEST(MoveToTrashLeavesWhatIsAlreadyInTheTrashAlone) {
     TempTree tree;
     ScopedHome home(tree.Path());
 
-    const std::string files = tree.Dir(".local/share/Trash/files");
-    tree.File(".local/share/Trash/files/already-deleted.bin", 40);
+    const std::string files = tree.Dir(kTrashFiles);
+    tree.File(kTrashFiles + "/already-deleted.bin", 40);
 
     Scanner scanner;
     ScanReport report = scanner.Scan({ TrashContentsRule(files) });
@@ -296,7 +333,7 @@ TEST(MoveToTrashLeavesWhatIsAlreadyInTheTrashAlone) {
     REQUIRE_EQ(result.freedBytes, static_cast<uint64_t>(0));
     REQUIRE_EQ(result.skippedAlreadyInTrash, static_cast<size_t>(1));
     REQUIRE(result.failures.empty());
-    REQUIRE(tree.Exists(".local/share/Trash/files/already-deleted.bin"));
+    REQUIRE(tree.Exists(kTrashFiles + "/already-deleted.bin"));
 
     size_t entries = 0;
     std::error_code ec;
@@ -311,8 +348,8 @@ TEST(PermanentDeleteIsWhatActuallyEmptiesTheTrash) {
     TempTree tree;
     ScopedHome home(tree.Path());
 
-    const std::string files = tree.Dir(".local/share/Trash/files");
-    tree.File(".local/share/Trash/files/already-deleted.bin", 40);
+    const std::string files = tree.Dir(kTrashFiles);
+    tree.File(kTrashFiles + "/already-deleted.bin", 40);
 
     Scanner scanner;
     ScanReport report = scanner.Scan({ TrashContentsRule(files) });
@@ -327,6 +364,6 @@ TEST(PermanentDeleteIsWhatActuallyEmptiesTheTrash) {
     REQUIRE_EQ(result.removedItems, static_cast<size_t>(1));
     REQUIRE_EQ(result.freedBytes, static_cast<uint64_t>(40));
     REQUIRE_EQ(result.skippedAlreadyInTrash, static_cast<size_t>(0));
-    REQUIRE(!tree.Exists(".local/share/Trash/files/already-deleted.bin"));
+    REQUIRE(!tree.Exists(kTrashFiles + "/already-deleted.bin"));
 }
 #endif
