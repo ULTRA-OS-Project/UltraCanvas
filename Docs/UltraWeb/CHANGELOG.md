@@ -1,3 +1,11 @@
+#### 2026-10-15 *0.8.1*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `UltraWeb.exe` is a GUI program now. Beside it, `UltraWeb.com`
+  is its console companion, which a prompt runs for the bare name: `UltraWeb
+  --check` starts the `.exe`, waits for it and returns its exit code, as
+  before. Typed as `UltraWeb.exe`, the prompt no longer waits (framework
+  changelog: `windows-console-companions`).
+
 #### 2026-10-14 *0.8.0*
 - **Links that ask for a new window open in a new tab.** This covers
   `target="_blank"`, a target naming a window, and links without a target

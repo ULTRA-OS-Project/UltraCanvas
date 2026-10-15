@@ -69,7 +69,10 @@ mkdir -p "$DIST_DIR"
 # RUNTIME_OUTPUT_DIRECTORY to bin/ (UltraFIBU and ultrapress do), and globbing
 # only the root is why such an app is built by CI and then missing from the
 # package.
-for exe in ./build/*.exe ./build/bin/*.exe; do
+# The .com files are the console companions of the applications whose command
+# line prints (cmake/UltraCanvasWindowsGuiApp.cmake): UltraCleaner.com runs
+# UltraCleaner.exe from a prompt and waits for it.
+for exe in ./build/*.exe ./build/bin/*.exe ./build/*.com ./build/bin/*.com; do
     [ -e "$exe" ] || continue
     case "$(basename "$exe")" in
         *Test.exe|*Tests.exe|ultraai_test_*.exe|UltraNetApiStatus.exe)
@@ -159,6 +162,7 @@ VERIFY_ARCH="${MSYSTEM_CARCH:-x86_64}"
 echo ""
 echo "Verifying PE headers ($VERIFY_ARCH)..."
 VERIFY_FILES=("$DIST_DIR"/*.exe "$DIST_DIR"/*.dll)
+for companion in "$DIST_DIR"/*.com; do [ -e "$companion" ] && VERIFY_FILES+=("$companion"); done
 [ -f "$DIST_DIR/lib/UltraCanvasLaTeX.dll" ] && VERIFY_FILES+=("$DIST_DIR/lib/UltraCanvasLaTeX.dll")
 if ! "$SCRIPT_DIR/scripts/verify-pe.sh" "$VERIFY_ARCH" "${VERIFY_FILES[@]}"; then
     echo "Error: a packaged executable or DLL is not a valid $VERIFY_ARCH Windows binary (see above)" >&2

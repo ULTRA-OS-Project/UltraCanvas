@@ -1469,8 +1469,9 @@ jobs:
       # The installer, run as a user would - silently, into a folder of its
       # own - and taken out again: everything it installs is where it
       # belongs, the shell guard has no Start-menu entry, UltraDesktop is
-      # registered for Run boxes, and the uninstaller removes exactly what it
-      # put there. /D= and _?= must be last and unquoted, hence a path
+      # registered for Run boxes, the command-line apps come with their
+      # console companions, and the uninstaller removes exactly what it put
+      # there. /D= and _?= must be last and unquoted, hence a path
       # without spaces.
       - name: Install and uninstall the installer (Windows)
         if: runner.os == 'Windows'
@@ -1488,6 +1489,32 @@ jobs:
           }
           $installed = (Get-ChildItem $dir -Recurse -File).Count
           "Installed: $installed files"
+          # The apps whose command line prints are GUI programs with a console
+          # companion (cmake/UltraCanvasWindowsGuiApp.cmake): <App>.exe starts
+          # without a console window, <App>.com is what a prompt runs for the
+          # bare name, and it waits and hands back the exit code.
+          function Get-Subsystem([string]$path) {
+            $bytes = [IO.File]::ReadAllBytes($path)
+            [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 60) + 92)
+          }
+          $companions = @()
+          foreach ($app in 'UltraDesktop', 'UltraCleaner', 'UltraNetMonitor', 'UltraWeb', 'UltraClaude',
+                           'UltraCanvasStart', 'DeviceExplorer', 'ultrafibu', 'ultrapress') {
+            $exe = Join-Path $dir "$app.exe"
+            if (-not (Test-Path $exe)) { continue }
+            $com = Join-Path $dir "$app.com"
+            if (-not (Test-Path $com)) { throw "$app.exe was installed without its console companion $app.com" }
+            if ((Get-Subsystem $exe) -ne 2) { throw "$app.exe is not a GUI program" }
+            if ((Get-Subsystem $com) -ne 3) { throw "$app.com is not a console program" }
+            $companions += $app
+          }
+          if ($companions -notcontains 'UltraDesktop') { throw 'UltraDesktop has no console companion' }
+          "Console companions: $($companions -join ', ')"
+          $version = cmd /c "cd /d $dir && UltraDesktop --version"
+          if ($LASTEXITCODE -ne 0 -or -not ($version -match '^UltraDesktop ')) {
+            throw "UltraDesktop --version from a prompt: exit $LASTEXITCODE, '$version'"
+          }
+          "UltraDesktop --version from a prompt: $($version -join ' / ')"
           $appPath = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\UltraDesktop.exe').'(default)'
           if ($appPath -ne (Join-Path $dir 'UltraDesktop.exe')) { throw "App Paths names '$appPath'" }
           $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'UltraCanvas'

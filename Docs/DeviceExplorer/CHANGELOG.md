@@ -1,3 +1,12 @@
+#### 2026-10-15 *0.2.2*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `DeviceExplorer.exe` is a GUI program now. Beside it,
+  `DeviceExplorer.com` is its console companion, which a prompt runs for the
+  bare name: `DeviceExplorer --list` starts the `.exe`, waits for it and
+  returns its exit code, as before. Typed as `DeviceExplorer.exe`, the
+  prompt no longer waits (framework changelog:
+  `windows-console-companions`).
+
 #### 2026-10-12 *0.2.1*
 - **One DeviceExplorer at a time.** Starting DeviceExplorer while it is
   already running brings the open window forward (restored if minimised; an

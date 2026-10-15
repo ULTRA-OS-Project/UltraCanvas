@@ -2442,31 +2442,34 @@ endif()
 # --version still print. UltraMail calls it in its own CMakeLists.txt, as do
 # the standalone UltraTexter and AnchorPoint builds.
 #
-# Left as console programs, because their command-line modes print into the
-# prompt they were typed at, and a GUI-subsystem program cannot make that
-# prompt wait for it or see its exit code: DeviceExplorer (--list),
-# UltraCleaner (--scan), UltraNetMonitor (--list), UltraCanvasStart (--check),
-# UltraWeb (--check), UltraClaude (--print) and UltraFIBU (its commands).
-# Double-clicked, they close the console Windows opened for them as their
-# window comes up (ReleaseOwnConsole() in
-# OS/MSWindows/UltraCanvasWindowsDiagnostics.h). Debug builds keep the console.
-#
-# UltraDesktop prints too (--windows, --apps, --devices), but it is a GUI
-# program all the same: it is the desktop, started at every sign-in, from
-# the Start menu and by UOS-Settings, and a console window flashing up each
-# time is worse than a prompt that does not wait for a listing (piped, as in
-# `UltraDesktop --windows | more`, it does).
+# The apps whose command-line modes print into the prompt they were typed at
+# - DeviceExplorer (--list), UltraCleaner (--scan), UltraNetMonitor (--list),
+# UltraCanvasStart (--check), UltraWeb (--check), UltraClaude (--print) and
+# UltraDesktop (--windows) - are GUI programs as well, each with a console
+# companion beside it (ultracanvas_windows_console_companion()): <App>.com,
+# which cmd and PowerShell run for the bare name, starts the .exe, waits for
+# it and returns its exit code. So the prompt waits as for a console program,
+# and the Start menu, Explorer and the sign-in start the .exe without a
+# console window. ultrafibu and ultrapress do the same in their own
+# CMakeLists.txt. Debug builds keep the console.
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraAuthenticator UltraPassword UltraVideo
-            UltraDesktop)
+            UltraClipboard UltraAuthenticator UltraPassword UltraVideo)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()
     endforeach()
     unset(_uc_gui_app)
+    foreach(_uc_console_app
+            DeviceExplorer UltraCleaner UltraNetMonitor UltraCanvasStart UltraWeb
+            UltraClaude UltraDesktop)
+        if(TARGET ${_uc_console_app})
+            ultracanvas_windows_console_companion(${_uc_console_app})
+        endif()
+    endforeach()
+    unset(_uc_console_app)
 endif()
 
 add_custom_target(copy_assets

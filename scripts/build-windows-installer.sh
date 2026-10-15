@@ -105,9 +105,9 @@ nsis_quote() {
 
 # ===== THE START MENU =====
 # An application is a program with a desktop entry (Apps/*/*.desktop, which
-# the Linux menus read too), named as the entry names it: the programs built
-# as console programs for their command-line modes (UltraCleaner --scan,
-# UltraWeb --check ...) are applications all the same.
+# the Linux menus read too), named as the entry names it, whatever its
+# subsystem. A console companion (<App>.com) is never an entry: the Start menu
+# starts the .exe.
 # UltraDesktop's entry says NoDisplay - a Linux session starts the desktop -
 # but on Windows the Start menu is where one starts it to try it. A GUI
 # program with no entry (Texter, UltraCanvasDemo) is listed under its own

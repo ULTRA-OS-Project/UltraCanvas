@@ -1,3 +1,11 @@
+#### 2026-10-15 *0.24.5*
+- **No console window on Windows when it is started from the Start menu or
+  Explorer.** `ultrafibu.exe` is a GUI program now. Beside it,
+  `ultrafibu.com` is its console companion, which a prompt runs for the bare
+  name: `ultrafibu info buch.db` starts the `.exe`, waits for it and returns
+  its exit code, as before. Typed as `ultrafibu.exe`, the prompt no longer
+  waits (framework changelog: `windows-console-companions`).
+
 #### 2026-10-12 *0.24.4*
 - **One UltraFIBU at a time.** Starting the UltraFIBU window while it is
   already running - with or without a file - brings the open window forward
