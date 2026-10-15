@@ -23,6 +23,8 @@
 #     that still holds something of the user's;
 #   - the installer's icon from media/appicon/UltraCanvas.png, when
 #     ImageMagick is there to convert it.
+# Version: 0.1.3 - the folder and the output as absolute paths: makensis reads
+#                  a relative one from the .nsi file's folder, not from here
 # Version: 0.1.2 - makensis also from Program Files (the CI runners' NSIS)
 # Version: 0.1.1 - no Start-menu entry for UltraCanvasShellGuard
 # Version: 0.1.0
@@ -63,9 +65,14 @@ case "$VERSION" in
     *) echo "Error: version '$VERSION' is not x.y.z" >&2; exit 1 ;;
 esac
 
+# makensis reads a relative path from the .nsi file's folder
+# (Windows/Installer), not from where it was started: both made absolute.
+DIST="$(cd "$DIST" && pwd)"
+mkdir -p "$(dirname "$OUTFILE")"
+OUTFILE="$(cd "$(dirname "$OUTFILE")" && pwd)/$(basename "$OUTFILE")"
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$(dirname "$OUTFILE")"
 SHORTCUTS="$WORK/shortcuts.nsh"
 REMOVE="$WORK/remove.nsh"
 
