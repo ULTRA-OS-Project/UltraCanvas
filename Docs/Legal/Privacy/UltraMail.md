@@ -1,6 +1,6 @@
 # Privacy declaration — UltraMail
 
-**Version 1.0 (draft for legal review) · 10 October 2026**
+**Version 1.1 (draft for legal review) · 15 October 2026**
 
 This declaration explains what personal data the **UltraMail** application
 processes, where that processing happens, which third parties it contacts and
@@ -50,8 +50,11 @@ required to [confirm with legal review].
 ## 3. What UltraMail stores on your device
 
 All of the following is stored in UltraMail's data folder on your computer:
-`~/.local/share/UltraMail/` on Linux and macOS (or `$XDG_DATA_HOME/UltraMail/`
-when that variable is set), `%APPDATA%\UltraMail\` on Windows.
+`~/.local/share/UltraMail/` on Linux, `~/Library/Application Support/UltraMail/`
+on macOS and `%APPDATA%\UltraMail\` on Windows - or
+`$XDG_DATA_HOME/UltraMail/` on any of them when that variable is set. Versions
+before 0.10.52 kept the folder in `~/.local/share/UltraMail/` on macOS too;
+the first start of a later version moves it, whole, to the new place.
 
 | Data | What it is | Where |
 |---|---|---|
