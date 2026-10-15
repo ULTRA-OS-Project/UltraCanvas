@@ -1556,7 +1556,12 @@ future.
   plus the prefixes modules add) > INI file > baked-in default, then the
   alias chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` family
   are profiles of it, so a Google client registered once serves Gmail and
-  Google Drive
+  Google Drive; `UltraNet_OAuth2SignInServiceUrl`,
+  `UltraNet_OAuth2SetSignInService`, `UltraNet_OAuth2SetBuiltInSignInService`,
+  `UltraNet_OAuth2SignInServiceEnvName` — the sign-in service's address
+  through the same tiers (Set > `<PREFIX>OAUTH_SERVICE_URL` > the INI file's
+  `[service] url` > the `ULTRANET_OAUTH_SERVICE_URL` build option), which a
+  provider without a client of its own signs in through
 - `UltraNet_OAuth2ServiceUrl`, `UltraNet_OAuth2ServiceBegin`,
   `UltraNet_OAuth2ServiceWaitForCode`, `UltraNet_OAuth2ServiceExchangeCode`,
   `UltraNet_OAuth2ServiceRefresh`, `UltraNet_OAuth2ServiceProviders`,
@@ -76658,20 +76663,34 @@ which is how the tests drive every provider through fake servers.
 ### OAuth2 sign-in
 
 The hosted providers sign in through the system browser: `CloudService::
-SignInAccount` asks the provider for its OAuth2 config, UltraNet runs the
-PKCE authorization-code flow against a loopback redirect
-(`UltraNet_OAuth2AuthorizeInteractive`), the tokens land in the secret
-store, and the provider's account-info call fills the user name. An expired
+SignInAccount` asks the provider to sign in, the tokens land in the secret
+store, and the provider's account-info call fills the user name. By default
+the sign-in goes through the **OAuth2 sign-in service** UltraNet's registry
+names (`UltraNet_OAuth2SignInServiceUrl`, built in as ULTRA OS's
+`https://oauth-callback.ultraos.eu`; `Server/OAuthCallback` is the
+service): it holds the OAuth client registrations, so the application ships
+no client id or secret, and it is the https address the providers redirect
+to. The provider sends only the PKCE challenge and its scopes, collects the
+authorization code from the service and exchanges it - and later refreshes
+the token - through the service (`UltraNet_OAuth2AuthorizeViaService`,
+`UltraNet_OAuth2ServiceRefresh`). Google Drive signs in as the service's
+`google`, OneDrive as its `microsoft`, Dropbox as its `dropbox`
+(`OAuthProviderBase::SignInServiceProviderId`). A provider that has an
+**OAuth app registration of its own** (below) bypasses the service: UltraNet
+runs the PKCE authorization-code flow against a loopback redirect
+(`UltraNet_OAuth2AuthorizeInteractive`) and refreshes directly. An expired
 access token is renewed from the refresh token inside `CloudService::Resolve`
 before any call uses it, and the renewal is stored. A token the service
 rejects (HTTP 401) although it had not expired here - revoked early, a clock
 that is off, or one that ran out while a request waited on a service
 limiting requests - is renewed the same way and the call made once more.
 
-Each provider needs an **OAuth app registration** — a client id (and, for
-confidential clients, a secret) the ULTRA OS project or the app vendor
-registers with Dropbox, Microsoft and Google. It is configuration, never a
-literal in the code:
+An installation that would rather not go through the service - a private
+registration, a build without a service (`-DULTRANET_OAUTH_SERVICE_URL=""`),
+`ULTRACLOUD_OAUTH_SERVICE_URL=off` - gives a provider an **OAuth app
+registration** of its own — a client id (and, for confidential clients, a
+secret) registered with Dropbox, Microsoft or Google. It is configuration,
+never a literal in the code:
 
 ```cpp
 UltraCloud::OAuthApp app;
@@ -76682,8 +76701,14 @@ UltraCloud::SetOAuthApp("dropbox", app);
 
 or, without code, the environment: `ULTRACLOUD_DROPBOX_CLIENT_ID`,
 `ULTRACLOUD_ONEDRIVE_CLIENT_ID`, `ULTRACLOUD_GOOGLEDRIVE_CLIENT_ID` (plus
-`_CLIENT_SECRET` and `_REDIRECT_URI` where needed). Until one is set the
-add-account dialog says so and the provider's `SignIn` returns `Unsupported`.
+`_CLIENT_SECRET` and `_REDIRECT_URI` where needed). `UsesSignInService(id)`
+says whether a provider goes through the service, `CanSignIn(id)` whether it
+can be signed in to at all; when neither a service nor a registration is
+there the add-account dialog says so and the provider's `SignIn` returns
+`Unsupported`. The service's address is the registry's one setting
+(`ULTRACLOUD_OAUTH_SERVICE_URL` or `ULTRANET_OAUTH_SERVICE_URL` in the
+environment, an INI file's `[service] url`, the built-in default), shared
+with UltraMail.
 
 The registration lives in **UltraNet's OAuth2 app registry**
 (`<UltraNet/UltraNetOAuth2Apps.h>`), one per process and shared with
@@ -76919,7 +76944,7 @@ providers.
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory`; `SetThreadSignInCancel`, `SignInCancelled` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
-| `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
+| `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
@@ -79327,7 +79352,7 @@ planned (see the status table below).
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
-| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
+| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
@@ -79522,7 +79547,7 @@ if (r) {
 // id and secret and is the https address the provider redirects to, so the
 // application carries only the service's address. Blocking - a worker thread.
 UltraNetOAuth2ServiceConfig svc;
-svc.serviceUrl = "https://oauth-callback.ultraos.eu";
+svc.serviceUrl = UltraNet_OAuth2SignInServiceUrl();   // the registry's: built in, or configured
 svc.providerId = "google";                        // "microsoft", "yahoo"
 svc.loginHint  = "erika@gmail.com";               // preselects the account
 svc.clientName = "UltraMail";                     // for the service's log
@@ -84657,24 +84682,29 @@ Yahoo with a client of its own (below).
 
 ### Where the service is
 
-The address is baked into the build - `ULTRAMAIL_OAUTH_SERVICE_URL` in
-[`Apps/UltraMail/CMakeLists.txt`](../../Apps/UltraMail/CMakeLists.txt),
-default `https://oauth-callback.ultraos.eu`; a gitignored
-`cmake/oauth.local.cmake` (see
-[`cmake/oauth.local.cmake.example`](../../cmake/oauth.local.cmake.example))
-may set it for a private build, and `-DULTRAMAIL_OAUTH_SERVICE_URL=""` builds
+The address is built into the framework's UltraNet module, one setting for
+every application and module in a process - `ULTRANET_OAUTH_SERVICE_URL` in
+[`UltraCanvas/CMakeLists.txt`](../../UltraCanvas/CMakeLists.txt), default
+`https://oauth-callback.ultraos.eu`; a gitignored `cmake/oauth.local.cmake`
+(see [`cmake/oauth.local.cmake.example`](../../cmake/oauth.local.cmake.example))
+may set it for a private build, and `-DULTRANET_OAUTH_SERVICE_URL=""` builds
 without one. It is the **lowest-priority** source, so a user or admin can
-point an existing build elsewhere without a rebuild, in decreasing priority:
+point an existing build elsewhere without a rebuild, in decreasing priority
+(`UltraNet/UltraNetOAuth2Apps.h`):
 
-- `OAuthApps::SetServiceUrl()` in code;
-- `ULTRAMAIL_OAUTH_SERVICE_URL` in the environment;
+- `OAuthApps::SetServiceUrl()` in code (`UltraNet_OAuth2SetSignInService`);
+- `ULTRAMAIL_OAUTH_SERVICE_URL` or `ULTRANET_OAUTH_SERVICE_URL` in the
+  environment;
 - `[service]` / `url = …` in `oauth.ini` in the data folder (the table
   below);
-- the baked-in address.
+- the built-in address.
 
-The value `off` (or `none`) at any of these turns the service off. Whether
-it is on, UltraMail's start-up trace says, and the wizard's hint says when a
-provider cannot be signed in to at all.
+The value `off` (or `none`) at any of these turns the service off. The
+wizard's hint says when a provider cannot be signed in to at all. The same
+setting serves the composer's *Attach cloud link…* sign-ins: Google Drive,
+OneDrive and Dropbox go through the service too (UltraCloud, under the
+service's `google`, `microsoft` and `dropbox`), unless a client of their own
+is configured.
 
 ### Signing in with an OAuth client of your own
 
@@ -86849,7 +86879,8 @@ und der Anbieter übergibt UltraMail ein Token, das im Tresor gespeichert und
 für IMAP und SMTP verwendet wird. Ihr Anbieter-Passwort sieht UltraMail nie.
 
 Die Anmeldung läuft über den **ULTRA OS Anmeldedienst** unter
-`oauth-callback.ultraos.eu`, den wir betreiben: Er hält die
+`oauth-callback.ultraos.eu`, betrieben von der ULTRA OS Development GmbH (der
+in Abschnitt 1 genannten Verantwortlichen): Er hält die
 OAuth-Client-Registrierung, mit der sich UltraMail anmeldet (so dass kein
 Geheimnis im Programm steckt), und er ist die Adresse, an die der Anbieter
 Ihren Browser nach der Zustimmung zurückschickt. UltraMail übermittelt ihm den
@@ -86859,8 +86890,8 @@ ihm einen einmaligen Autorisierungscode; UltraMail tauscht diesen Code, und
 später das Refresh-Token, über den Dienst ein. Der Dienst hält eine Anmeldung
 höchstens zehn Minuten im Arbeitsspeicher und speichert nichts - kein Token,
 keine Adresse - auf der Festplatte; sein Webserver protokolliert die üblichen
-Verbindungsdaten (Ihre IP-Adresse, Zeitpunkt, Pfad) bis zu 14 Tage und hält
-den Autorisierungscode aus dem Protokoll heraus. Ist die Anmeldung so
+Verbindungsdaten (Ihre IP-Adresse, Zeitpunkt, Pfad), löscht das Protokoll
+nach 14 Tagen und hält den Autorisierungscode daraus heraus. Ist die Anmeldung so
 eingerichtet, dass sie direkt mit einem eigenen OAuth-Client läuft (Abschnitt
 3 von `Docs/UltraMail/AccountSetup.md`), wird der Dienst nicht kontaktiert.
 
@@ -86870,7 +86901,8 @@ den Anbieter; der Name des Anbieters, diese Adresse, der einmalige Code und
 die Tokens im Durchlauf sowie Ihre IP-Adresse an den Anmeldedienst.
 **Empfänger:** Google LLC, Microsoft Corporation oder Yahoo (Oath Holdings
 Inc.) als eigene Verantwortliche nach ihren eigenen Datenschutzerklärungen;
-und wir als Betreiber des Anmeldedienstes (Abschnitt 1).
+und die ULTRA OS Development GmbH als Betreiberin des Anmeldedienstes
+(Abschnitt 1).
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO; der Anbieter verlangt
 dieses Verfahren, und der Dienst ist der Weg, auf dem UltraMail es
 durchführt. **Einstellung:** Wo der Anbieter ein App-Passwort anbietet,
@@ -86952,7 +86984,8 @@ oder Google Drive) und fügt den Freigabelink in die Nachricht ein. Das
 geschieht nur, wenn Sie die Funktion verwenden. Die Datei und Ihre
 Zugangsdaten für diesen Dienst gehen an den von Ihnen gewählten Dienst nach
 dessen eigener Datenschutzerklärung. Dropbox, OneDrive und Google Drive melden
-sich wie in 5.2 beschrieben über den Browser an.
+sich wie in 5.2 beschrieben über den Browser und den ULTRA OS Anmeldedienst
+an; dessen Empfänger und Rechtsgrundlage gelten.
 
 ### 5.7 Links, die Sie anklicken
 
@@ -87173,7 +87206,8 @@ provider hands UltraMail a token that it stores in the vault and uses for IMAP
 and SMTP. Your provider password is never seen by UltraMail.
 
 The sign-in passes through the **ULTRA OS sign-in service** at
-`oauth-callback.ultraos.eu`, operated by us: it holds the OAuth client
+`oauth-callback.ultraos.eu`, operated by ULTRA OS Development GmbH (the
+controller named in section 1): it holds the OAuth client
 registration UltraMail signs in as (so no secret ships in the program) and it
 is the address the provider sends your browser back to after you approve.
 UltraMail sends it the provider's name, the e-mail address you typed (as the
@@ -87181,8 +87215,8 @@ sign-in hint) and a one-time PKCE challenge; the provider sends it a one-time
 authorization code; UltraMail then exchanges that code, and later the refresh
 token, through the service. The service keeps a sign-in in memory for at most
 ten minutes and stores nothing - no token, no address - on disk; its web
-server logs the usual connection data (your IP address, time, path) for up to
-14 days and keeps the authorization code out of the log. Where the sign-in
+server logs the usual connection data (your IP address, time, path), deletes
+the log after 14 days, and keeps the authorization code out of it. Where the sign-in
 is configured to run directly with an OAuth client of your own (section 3 of
 `Docs/UltraMail/AccountSetup.md`), the service is not contacted.
 
@@ -87191,8 +87225,8 @@ whatever you enter on the provider's page, to the provider; the provider's
 name, that address, the one-time code and the tokens in transit, and your IP
 address, to the sign-in service. **Recipients:** Google LLC, Microsoft
 Corporation or Yahoo (Oath Holdings Inc.), as their own controllers under
-their own privacy policies; and we, as the operator of the sign-in service
-(section 1). **Legal basis:** Art. 6(1)(b) GDPR; the provider requires this
+their own privacy policies; and ULTRA OS Development GmbH, as the operator
+of the sign-in service (section 1). **Legal basis:** Art. 6(1)(b) GDPR; the provider requires this
 method, and the service is how UltraMail performs it. **Setting:** you can
 use an app password instead where the provider offers one; then neither the
 browser sign-in nor the service is involved.
@@ -87261,7 +87295,8 @@ of yours (Nextcloud / ownCloud, a WebDAV server, Dropbox, OneDrive or Google
 Drive) and inserts the share link into the message. This happens only when you
 use the feature. The file and your credentials for that service go to the
 service you chose, under its own privacy policy. Dropbox, OneDrive and Google
-Drive sign in through the browser as described in 5.2.
+Drive sign in through the browser and the ULTRA OS sign-in service as
+described in 5.2; the service's recipients and legal basis apply.
 
 ### 5.7 Links you click
 

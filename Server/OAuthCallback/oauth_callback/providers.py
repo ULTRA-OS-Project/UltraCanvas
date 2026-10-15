@@ -1,9 +1,11 @@
 """The provider table: endpoints, scopes and consent parameters per provider.
 
 This is the server-side twin of OAuthConfigFor() in
-Apps/UltraMail/engine/UltraMailOAuth.cpp: the same endpoints and the same
-scopes, so an account signed in either way gets a token IMAP and SMTP accept.
-The registration behind it (client id, secret) comes from the settings.
+Apps/UltraMail/engine/UltraMailOAuth.cpp and of the OAuthConfig() of
+UltraCloud's providers: the same endpoints and the same scopes, so an
+account signed in either way gets a token the mail servers and the cloud
+APIs accept. The registration behind it (client id, secret) comes from the
+settings.
 """
 
 from __future__ import annotations
@@ -51,7 +53,10 @@ GOOGLE_DRIVE_FILE = "https://www.googleapis.com/auth/drive.file"
 MICROSOFT_IMAP = "https://outlook.office.com/IMAP.AccessAsUser.All"
 MICROSOFT_SMTP = "https://outlook.office.com/SMTP.Send"
 MICROSOFT_FILES = "Files.ReadWrite"
+MICROSOFT_USER = "User.Read"
 OFFLINE_ACCESS = "offline_access"
+DROPBOX_SCOPES = ("account_info.read", "files.metadata.read", "files.content.read",
+                  "files.content.write", "sharing.read", "sharing.write")
 
 PROVIDERS: dict[str, Provider] = {
     "google": Provider(
@@ -79,7 +84,9 @@ PROVIDERS: dict[str, Provider] = {
         # The Outlook resource scopes IMAP and SMTP XOAUTH2 accept;
         # offline_access is what yields a refresh token.
         default_scopes=(MICROSOFT_IMAP, MICROSOFT_SMTP, OFFLINE_ACCESS),
-        allowed_scopes=frozenset({MICROSOFT_IMAP, MICROSOFT_SMTP, MICROSOFT_FILES, OFFLINE_ACCESS}),
+        # Files and User.Read are what UltraCloud's OneDrive sign-in asks for.
+        allowed_scopes=frozenset({MICROSOFT_IMAP, MICROSOFT_SMTP, MICROSOFT_FILES, MICROSOFT_USER,
+                                  OFFLINE_ACCESS}),
         extra_auth_params={"prompt": "select_account"},
         secret_in_body=True,
         scopes_on_token_request=True,
@@ -98,5 +105,18 @@ PROVIDERS: dict[str, Provider] = {
         extra_auth_params={},
         # Yahoo authenticates the client with HTTP Basic on get_token.
         secret_in_body=False,
+    ),
+    "dropbox": Provider(
+        id="dropbox",
+        display_name="Dropbox",
+        authorization_endpoint="https://www.dropbox.com/oauth2/authorize",
+        token_endpoint="https://api.dropboxapi.com/oauth2/token",
+        # What UltraCloud's Dropbox provider asks for: files, metadata and
+        # sharing, for the composer's cloud links.
+        default_scopes=DROPBOX_SCOPES,
+        allowed_scopes=frozenset(DROPBOX_SCOPES),
+        # A refresh token is only issued for offline token access.
+        extra_auth_params={"token_access_type": "offline"},
+        secret_in_body=True,
     ),
 }

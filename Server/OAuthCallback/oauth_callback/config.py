@@ -97,7 +97,7 @@ def _as_float(value: str, default: float) -> float:
 
 
 def load_settings(env: dict[str, str] | None = None,
-                  provider_ids: tuple[str, ...] = ("google", "microsoft", "yahoo")) -> Settings:
+                  provider_ids: tuple[str, ...] = ("google", "microsoft", "yahoo", "dropbox")) -> Settings:
     """Build the settings from `env` (default: the process environment), after
     merging an OAUTH_CALLBACK_ENV_FILE (default: ./.env) underneath it."""
     source = dict(os.environ if env is None else env)

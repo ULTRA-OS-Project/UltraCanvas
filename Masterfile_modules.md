@@ -1377,7 +1377,12 @@ future.
   plus the prefixes modules add) > INI file > baked-in default, then the
   alias chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` family
   are profiles of it, so a Google client registered once serves Gmail and
-  Google Drive
+  Google Drive; `UltraNet_OAuth2SignInServiceUrl`,
+  `UltraNet_OAuth2SetSignInService`, `UltraNet_OAuth2SetBuiltInSignInService`,
+  `UltraNet_OAuth2SignInServiceEnvName` — the sign-in service's address
+  through the same tiers (Set > `<PREFIX>OAUTH_SERVICE_URL` > the INI file's
+  `[service] url` > the `ULTRANET_OAUTH_SERVICE_URL` build option), which a
+  provider without a client of its own signs in through
 - `UltraNet_OAuth2ServiceUrl`, `UltraNet_OAuth2ServiceBegin`,
   `UltraNet_OAuth2ServiceWaitForCode`, `UltraNet_OAuth2ServiceExchangeCode`,
   `UltraNet_OAuth2ServiceRefresh`, `UltraNet_OAuth2ServiceProviders`,

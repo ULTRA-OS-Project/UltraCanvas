@@ -50,45 +50,13 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailPaths.cpp
 )
 
-# ── The OAuth sign-in service (compiled-in default) ─────────────────────────
-# UltraMail signs in to Google / Microsoft / Yahoo through the ULTRA OS sign-in
-# service (Server/OAuthCallback): the service holds the OAuth client
-# registrations and their secrets and is the public https address the
-# providers redirect to, so the application carries nothing but the service's
-# address. This is that address, baked in as the lowest-priority source -
-# OAuthApps::SetServiceUrl() / ULTRAMAIL_OAUTH_SERVICE_URL / oauth.ini's
-# [service] url override it at run time, and a locally configured client
-# (oauth.ini, ULTRAMAIL_<PROVIDER>_CLIENT_ID) for a provider bypasses the
-# service for that provider. Empty = no service unless configured at run time.
-# A gitignored cmake/oauth.local.cmake may set() it for a private build - see
-# cmake/oauth.local.cmake.example.
-set(ULTRAMAIL_OAUTH_SERVICE_URL "https://oauth-callback.ultraos.eu"
-    CACHE STRING "The OAuth sign-in service UltraMail signs in through (empty = none)")
-
-set(_um_oauth_local "${CMAKE_SOURCE_DIR}/cmake/oauth.local.cmake")
-if(EXISTS "${_um_oauth_local}")
-    include("${_um_oauth_local}")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_um_oauth_local}")
-endif()
-
-set(_um_oauth_tmpl "${CMAKE_CURRENT_SOURCE_DIR}/engine/UltraMailOAuthDefaults.h.in")
-set(_um_oauth_hdr  "${CMAKE_CURRENT_BINARY_DIR}/generated/UltraMailOAuthDefaults.h")
-set(UM_OAUTH_SERVICE_URL_C "\"${ULTRAMAIL_OAUTH_SERVICE_URL}\"")
-configure_file("${_um_oauth_tmpl}" "${_um_oauth_hdr}" @ONLY)
-if(ULTRAMAIL_OAUTH_SERVICE_URL)
-    message(STATUS "  [✓] UltraMail OAuth sign-in service - ${ULTRAMAIL_OAUTH_SERVICE_URL}")
-else()
-    message(STATUS "  [−] UltraMail OAuth sign-in service - NONE (oauth.ini / environment only)")
-endif()
-
 add_library(UltraMailEngine STATIC ${ULTRAMAIL_ENGINE_SOURCES})
 set_target_properties(UltraMailEngine PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME "ultramail_engine")
 target_compile_features(UltraMailEngine PUBLIC cxx_std_20)
 target_include_directories(UltraMailEngine
-    PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/engine
-    PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
 # Mail-account passwords live in UltraVault (Argon2id + XChaCha20-Poly1305 via
 # UltraCrypt), not in a format of UltraMail's own.

@@ -20,10 +20,16 @@
     recommended way in until Yahoo grants the client its Mail permission.)
   - **The baked-in client is gone.** `ULTRAMAIL_GOOGLE_CLIENT_ID` and the
     other configure-time credentials, their XOR obfuscation and
-    `scripts/generate_oauth_defaults.py` are removed; the build bakes in
-    the service's address instead (`ULTRAMAIL_OAUTH_SERVICE_URL`, default
-    the public service, `cmake/oauth.local.cmake` may set it, empty = none).
-    `package-linux.sh` passes no credentials any more.
+    `scripts/generate_oauth_defaults.py` are removed; the service's address
+    is built into the framework's UltraNet instead
+    (`ULTRANET_OAUTH_SERVICE_URL`, default the public service,
+    `cmake/oauth.local.cmake` may set it, empty = none), one setting for the
+    process. `package-linux.sh` passes no credentials any more.
+  - **The composer's cloud links sign in the same way.** *Attach cloud
+    link…* with Google Drive, OneDrive or Dropbox goes through the service
+    too (UltraCloud), so those accounts need no client of their own either;
+    before, a build without a baked-in client could not sign in to them at
+    all.
   - **An installation can point elsewhere, or sign in directly.**
     `[service] url = …` in `oauth.ini` or `ULTRAMAIL_OAUTH_SERVICE_URL`
     names another service, `off` turns it off; a client of the

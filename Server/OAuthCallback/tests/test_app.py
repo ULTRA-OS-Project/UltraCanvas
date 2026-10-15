@@ -32,6 +32,7 @@ def settings(**overrides) -> Settings:
             "google": ClientRegistration("g-id.apps.googleusercontent.com", "g-secret"),
             "microsoft": ClientRegistration("ms-id"),
             "yahoo": ClientRegistration("y-id", "y-secret"),
+            "dropbox": ClientRegistration("d-id", "d-secret"),
         },
         **overrides,
     )
@@ -112,6 +113,25 @@ def test_microsoft_and_yahoo_consent_urls(client):
     assert q["redirect_uri"] == "https://oauth-callback.example/callback/yahoo"
 
 
+def test_dropbox_asks_for_offline_access_and_the_cloud_scopes(client, provider):
+    body, _ = start(client, "dropbox")
+    url = urlsplit(body["authorization_url"])
+    q = {k: v[0] for k, v in parse_qs(url.query).items()}
+    assert url.netloc == "www.dropbox.com"
+    assert q["token_access_type"] == "offline"
+    assert "files.content.write" in q["scope"] and "sharing.write" in q["scope"]
+    assert q["redirect_uri"] == "https://oauth-callback.example/callback/dropbox"
+    r = client.post("/v1/token", data={"provider": "dropbox", "grant_type": "refresh_token",
+                                       "refresh_token": "rt"})
+    assert r.status_code == 200
+    assert provider.last_form()["client_secret"] == "d-secret"
+    # UltraCloud's OneDrive scopes pass the Microsoft allow-list.
+    _, challenge = pkce()
+    r = client.post("/v1/sessions", data={"provider": "microsoft", "code_challenge": challenge,
+                                          "scope": "Files.ReadWrite User.Read offline_access"})
+    assert r.status_code == 200
+
+
 def test_scopes_outside_the_allowlist_are_refused(client):
     _, challenge = pkce()
     r = client.post("/v1/sessions", data={"provider": "google", "code_challenge": challenge,
@@ -139,7 +159,7 @@ def test_a_provider_without_a_client_id_is_not_served(provider):
     s.clients["microsoft"] = ClientRegistration("")
     app = create_app(s, provider_transport=provider.transport())
     with TestClient(app) as c:
-        assert c.get("/v1/providers").json() == {"providers": "google yahoo"}
+        assert c.get("/v1/providers").json() == {"providers": "dropbox google yahoo"}
         _, challenge = pkce()
         r = c.post("/v1/sessions", data={"provider": "microsoft", "code_challenge": challenge})
         assert r.status_code == 404

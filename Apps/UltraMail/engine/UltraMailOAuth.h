@@ -24,10 +24,13 @@
 //     build with no service. The lookup is the framework's (UltraNet's OAuth2
 //     app registry, shared with UltraCloud); OAuthApps is UltraMail's profile.
 //
-// Where the service is: OAuthApps::SetServiceUrl() > ULTRAMAIL_OAUTH_SERVICE_URL
-// in the environment > "[service] url =" in oauth.ini > the address baked into
-// the build (Apps/UltraMail/CMakeLists.txt, UltraMailOAuthDefaults.h.in). The
-// value "off" (or "none") at any tier turns the service off.
+// Where the service is: UltraNet's registry knows (UltraNetOAuth2Apps.h) -
+// OAuthApps::SetServiceUrl() > ULTRAMAIL_OAUTH_SERVICE_URL (or
+// ULTRANET_OAUTH_SERVICE_URL) in the environment > "[service] url =" in
+// oauth.ini > the address built into UltraNet (the ULTRANET_OAUTH_SERVICE_URL
+// CMake option). The value "off" (or "none") at any tier turns the service
+// off. One setting for the process: UltraCloud's Drive and OneDrive sign-ins
+// read the same one.
 // Version: 0.6.0 - the sign-in service: no client secret in the application, Yahoo redirects
 // Version: 0.5.0 - Yahoo takes an app password again, beside the browser sign-in
 // Version: 0.4.0 - ExtractOAuthCode, OAuthUsesPastedCode (https redirects pasted back)
@@ -90,11 +93,13 @@ public:
     static std::string DefaultRedirectUri(const std::string& providerId);
 
     // ---- the sign-in service --------------------------------------------
-    // Where the service is, resolved as the header says: Set > environment >
-    // INI > baked in. "" when there is none (or it was turned off).
+    // Where the service is (UltraNet_OAuth2SignInServiceUrl, with UltraMail's
+    // environment prefix registered): Set > environment > INI > built in.
+    // "" when there is none (or it was turned off).
     static std::string ServiceUrl();
     // Name a service from code (tests, a settings page): "" drops the
     // override, "off" turns the service off whatever the other tiers say.
+    // Process-wide: UltraNet_OAuth2SetSignInService.
     static void SetServiceUrl(const std::string& url);
     // True when `providerId` signs in through the service: no client of its
     // own is configured, the service is on, and it is one of the providers
@@ -112,8 +117,8 @@ public:
     static int ParseIni(const std::string& text);
 
     // Forget everything Set(), SetServiceUrl() or LoadFile() registered, in
-    // the shared registry and the service tiers (tests). The environment and
-    // the baked-in service stay.
+    // the shared registry (tests). The environment and the built-in service
+    // stay.
     static void Clear();
 
     // Make sure the profile is registered with the shared registry (the

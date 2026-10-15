@@ -2,8 +2,10 @@
 
 A small [FastAPI](https://fastapi.tiangolo.com/) service that runs at
 `https://oauth-callback.ultraos.eu` and stands between UltraMail and the
-OAuth2 providers of mail accounts: **Google** (Gmail), **Microsoft**
-(Outlook.com, Microsoft 365) and **Yahoo**.
+OAuth2 providers of mail accounts - **Google** (Gmail), **Microsoft**
+(Outlook.com, Microsoft 365) and **Yahoo** - and, for the composer's cloud
+links (UltraCloud), **Google Drive**, **OneDrive** and **Dropbox**, under the
+same `google` and `microsoft` registrations plus a `dropbox` one.
 
 It exists for two reasons:
 
@@ -35,7 +37,7 @@ status, in the shape of an OAuth2 token error.
 
 | | Who calls | What |
 |---|---|---|
-| `POST /v1/sessions` | the application | Start a sign-in. Form: `provider` (`google`, `microsoft`, `yahoo`), `code_challenge` (PKCE S256), `code_challenge_method=S256`, optional `login_hint` (the address), `scope` (space-separated, from the provider's allow-list; empty = the mail scopes) and `client` (a name for the log). Answer: `{"session_id": "...", "authorization_url": "https://accounts.google.com/...", "expires_in": 600}`. The application opens the URL in the browser. |
+| `POST /v1/sessions` | the application | Start a sign-in. Form: `provider` (`google`, `microsoft`, `yahoo`, `dropbox`), `code_challenge` (PKCE S256), `code_challenge_method=S256`, optional `login_hint` (the address), `scope` (space-separated, from the provider's allow-list; empty = the mail scopes) and `client` (a name for the log). Answer: `{"session_id": "...", "authorization_url": "https://accounts.google.com/...", "expires_in": 600}`. The application opens the URL in the browser. |
 | `GET /callback/{provider}` | the provider, through the browser | The registered redirect URI. Records the `code` (or `error`) for the sign-in the `state` names and shows a "Signed in" page. |
 | `GET /v1/sessions/{id}?wait=N` | the application | Collect the answer, waiting up to N seconds (30 at most) for the browser. `{"status": "pending", "expires_in": 412}`, `{"status": "ready", "code": "..."}` or `{"status": "error", "error": "access_denied", "error_description": "..."}`. A ready or error answer is delivered once; afterwards, and after the sign-in expired, the session is 404 `unknown_session`. |
 | `POST /v1/token` | the application | The provider's token endpoint with the registration added. Form: `provider`, `grant_type=authorization_code` with `code` and `code_verifier`, or `grant_type=refresh_token` with `refresh_token`. The provider's answer comes back verbatim, with the provider's status code (`access_token`, `refresh_token`, `expires_in`, or `error` / `error_description`). |
@@ -53,7 +55,10 @@ usable to ask a user for anything we did not decide on.
 
 The counterpart in the framework is `UltraNet/UltraNetOAuth2Service.h`
 (`UltraNet_OAuth2AuthorizeViaService`, `UltraNet_OAuth2ServiceRefresh`), and
-UltraMail's `OAuthApps::ServiceUrl()` says where the service is.
+UltraNet's app registry says where the service is
+(`UltraNet_OAuth2SignInServiceUrl`: built in as the `ULTRANET_OAUTH_SERVICE_URL`
+CMake option, overridden by the environment or an `oauth.ini`). UltraMail
+and UltraCloud both read that one setting.
 
 ## Registering the clients
 
@@ -88,6 +93,13 @@ secrets into the service's environment file (below).
   Yahoo grants on request (<https://senders.yahooinc.com/developer/developer-access/>);
   without it Yahoo issues a token that IMAP and SMTP reject, and UltraMail
   users fall back to an app password.
+- **Dropbox.** [Dropbox App Console](https://www.dropbox.com/developers/apps)
+  → create a scoped app with the redirect URI
+  `https://oauth-callback.ultraos.eu/callback/dropbox` and the permissions
+  `account_info.read`, `files.metadata.read`, `files.content.read`,
+  `files.content.write`, `sharing.read` and `sharing.write`; the *App key*
+  and *App secret* go in the environment file. Only the composer's cloud
+  links need it; leave it empty otherwise.
 
 ## Running it
 
@@ -118,6 +130,7 @@ sudo python3 -m venv venv && sudo venv/bin/pip install .
 sudo install -m 0600 -o root -g root .env.example /etc/oauth-callback.env   # then edit it
 sudo cp deploy/oauth-callback.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now oauth-callback
+sudo cp deploy/logrotate /etc/logrotate.d/oauth-callback
 sudo cp deploy/nginx.conf /etc/nginx/sites-available/oauth-callback.ultraos.eu
 sudo ln -s /etc/nginx/sites-available/oauth-callback.ultraos.eu /etc/nginx/sites-enabled/
 sudo certbot --nginx -d oauth-callback.ultraos.eu
@@ -128,7 +141,8 @@ curl https://oauth-callback.ultraos.eu/healthz
 The service listens on `127.0.0.1:8787` only; nginx terminates TLS, adds the
 security headers, limits each address to 30 requests a minute (the service
 has its own limit of 60 behind it) and keeps the redirect's query string -
-the authorization code - out of its access log. **One worker**: the sign-ins
+the authorization code - out of its access log, which `deploy/logrotate`
+deletes after 14 days, as UltraMail's privacy notice promises. **One worker**: the sign-ins
 in flight are in the process's memory, so `--workers 2` would lose half of
 them. The log never carries a code or a token, only the provider and the
 outcome.
@@ -139,7 +153,7 @@ All through the environment (or the `.env` file `OAUTH_CALLBACK_ENV_FILE`
 points at; the environment wins over the file), see
 [`.env.example`](.env.example): `OAUTH_CALLBACK_PUBLIC_URL`,
 `OAUTH_CALLBACK_<PROVIDER>_CLIENT_ID` / `_CLIENT_SECRET` for `GOOGLE`,
-`MICROSOFT` and `YAHOO`, and the optional `SESSION_TTL`, `RESULT_TTL`,
+`MICROSOFT`, `YAHOO` and `DROPBOX`, and the optional `SESSION_TTL`, `RESULT_TTL`,
 `RATE_LIMIT`, `TRUST_PROXY` and `PROVIDER_TIMEOUT`. A provider whose client
 id is empty is not served (404 `unknown_provider`), and
 `/v1/providers` says which are.
@@ -156,7 +170,7 @@ Server/OAuthCallback/
 │   ├── ratelimit.py    per-address sliding window
 │   └── __main__.py     `python -m oauth_callback`
 ├── tests/test_app.py   the whole protocol against mocked providers
-├── deploy/             nginx.conf, oauth-callback.service
+├── deploy/             nginx.conf, oauth-callback.service, logrotate
 ├── .env.example
 └── pyproject.toml
 ```

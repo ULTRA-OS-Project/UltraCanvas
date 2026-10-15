@@ -472,6 +472,14 @@ if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR ON)
 endif()
 
+# A build machine's private OAuth settings (the sign-in service UltraNet is
+# built with), kept out of the repository - see cmake/oauth.local.cmake.example.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
+endif()
+
 add_subdirectory(UltraCanvas)
 
 # ===== WEBASSEMBLY DEMOS =====

@@ -6,68 +6,11 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOAuth.h"
 
-#include "UltraMailOAuthDefaults.h"   // generated at configure time (build tree)
-#include "UltraCanvasPathUtf8.h"      // PathFromUtf8
-
 #include <cctype>
 #include <cstdlib>
 #include <ctime>
-#include <fstream>
-#include <iterator>
-#include <mutex>
 
 namespace UltraMail {
-
-namespace {
-
-// The service tiers above the baked-in default: SetServiceUrl() and
-// oauth.ini's [service] section. The environment is read on each lookup.
-std::mutex  g_serviceMutex;
-std::string g_serviceUrlSet;    // SetServiceUrl(); "" = no override
-std::string g_serviceUrlIni;    // ParseIni's [service] url; "" = none
-
-std::string Trim(const std::string& s) {
-    std::size_t a = 0, b = s.size();
-    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
-    return s.substr(a, b - a);
-}
-
-std::string Lower(std::string s) {
-    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return s;
-}
-
-// "off", "none", "0", "no": the service is turned off at this tier.
-bool IsOff(const std::string& value) {
-    const std::string v = Lower(Trim(value));
-    return v == "off" || v == "none" || v == "0" || v == "no" || v == "false";
-}
-
-// The "[service]\nurl = ..." of an oauth.ini. "" when the file has none.
-// '#' and ';' start comments; the section name is case-insensitive.
-std::string ServiceUrlFromIni(const std::string& text) {
-    std::string section, url;
-    std::size_t i = 0;
-    while (i <= text.size()) {
-        std::size_t nl = text.find('\n', i);
-        if (nl == std::string::npos) nl = text.size();
-        std::string line = Trim(text.substr(i, nl - i));
-        i = nl + 1;
-        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
-        if (line.front() == '[' && line.back() == ']') {
-            section = Lower(Trim(line.substr(1, line.size() - 2)));
-            continue;
-        }
-        if (section != "service") continue;
-        const std::size_t eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        if (Lower(Trim(line.substr(0, eq))) == "url") url = Trim(line.substr(eq + 1));
-    }
-    return url;
-}
-
-} // namespace
 
 // ===== OAuthApps ==============================================================
 
@@ -108,26 +51,12 @@ bool OAuthApps::IsServiceProvider(const std::string& providerId) {
 }
 
 std::string OAuthApps::ServiceUrl() {
-    std::string value;
-    {
-        std::lock_guard<std::mutex> lock(g_serviceMutex);
-        value = g_serviceUrlSet;
-        if (value.empty()) {
-            if (const char* env = std::getenv("ULTRAMAIL_OAUTH_SERVICE_URL"))   // ASCII URL
-                value = env;
-        }
-        if (Trim(value).empty()) value = g_serviceUrlIni;
-    }
-    if (Trim(value).empty()) value = defaults::kOAuthServiceUrl;
-    value = Trim(value);
-    if (IsOff(value)) return std::string();
-    while (!value.empty() && value.back() == '/') value.pop_back();
-    return value;
+    EnsureRegistered();   // the ULTRAMAIL_OAUTH_SERVICE_URL prefix
+    return UltraNet_OAuth2SignInServiceUrl();
 }
 
 void OAuthApps::SetServiceUrl(const std::string& url) {
-    std::lock_guard<std::mutex> lock(g_serviceMutex);
-    g_serviceUrlSet = Trim(url);
+    UltraNet_OAuth2SetSignInService(url);
 }
 
 bool OAuthApps::UsesService(const std::string& providerId) {
@@ -142,28 +71,16 @@ bool OAuthApps::Has(const std::string& providerId) {
 
 int OAuthApps::ParseIni(const std::string& text) {
     EnsureRegistered();
-    {
-        const std::string url = ServiceUrlFromIni(text);
-        std::lock_guard<std::mutex> lock(g_serviceMutex);
-        if (!url.empty()) g_serviceUrlIni = url;
-    }
-    // The registry ignores [service] (no client_id), so the text goes whole.
-    return UltraNet_OAuth2ParseAppsIni(text);
+    return UltraNet_OAuth2ParseAppsIni(text);   // [service] url included
 }
 
 int OAuthApps::LoadFile(const std::string& path) {
     EnsureRegistered();
-    std::ifstream is(UltraCanvas::PathFromUtf8(path));
-    if (!is) return 0;
-    const std::string text((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
-    return ParseIni(text);
+    return UltraNet_OAuth2LoadAppsFile(path);
 }
 
 void OAuthApps::Clear() {
     UltraNet_OAuth2ClearApps();
-    std::lock_guard<std::mutex> lock(g_serviceMutex);
-    g_serviceUrlSet.clear();
-    g_serviceUrlIni.clear();
 }
 
 // ===== Providers ==============================================================

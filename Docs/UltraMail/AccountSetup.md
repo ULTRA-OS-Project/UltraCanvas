@@ -231,24 +231,29 @@ Yahoo with a client of its own (below).
 
 ### Where the service is
 
-The address is baked into the build - `ULTRAMAIL_OAUTH_SERVICE_URL` in
-[`Apps/UltraMail/CMakeLists.txt`](../../Apps/UltraMail/CMakeLists.txt),
-default `https://oauth-callback.ultraos.eu`; a gitignored
-`cmake/oauth.local.cmake` (see
-[`cmake/oauth.local.cmake.example`](../../cmake/oauth.local.cmake.example))
-may set it for a private build, and `-DULTRAMAIL_OAUTH_SERVICE_URL=""` builds
+The address is built into the framework's UltraNet module, one setting for
+every application and module in a process - `ULTRANET_OAUTH_SERVICE_URL` in
+[`UltraCanvas/CMakeLists.txt`](../../UltraCanvas/CMakeLists.txt), default
+`https://oauth-callback.ultraos.eu`; a gitignored `cmake/oauth.local.cmake`
+(see [`cmake/oauth.local.cmake.example`](../../cmake/oauth.local.cmake.example))
+may set it for a private build, and `-DULTRANET_OAUTH_SERVICE_URL=""` builds
 without one. It is the **lowest-priority** source, so a user or admin can
-point an existing build elsewhere without a rebuild, in decreasing priority:
+point an existing build elsewhere without a rebuild, in decreasing priority
+(`UltraNet/UltraNetOAuth2Apps.h`):
 
-- `OAuthApps::SetServiceUrl()` in code;
-- `ULTRAMAIL_OAUTH_SERVICE_URL` in the environment;
+- `OAuthApps::SetServiceUrl()` in code (`UltraNet_OAuth2SetSignInService`);
+- `ULTRAMAIL_OAUTH_SERVICE_URL` or `ULTRANET_OAUTH_SERVICE_URL` in the
+  environment;
 - `[service]` / `url = …` in `oauth.ini` in the data folder (the table
   below);
-- the baked-in address.
+- the built-in address.
 
-The value `off` (or `none`) at any of these turns the service off. Whether
-it is on, UltraMail's start-up trace says, and the wizard's hint says when a
-provider cannot be signed in to at all.
+The value `off` (or `none`) at any of these turns the service off. The
+wizard's hint says when a provider cannot be signed in to at all. The same
+setting serves the composer's *Attach cloud link…* sign-ins: Google Drive,
+OneDrive and Dropbox go through the service too (UltraCloud, under the
+service's `google`, `microsoft` and `dropbox`), unless a client of their own
+is configured.
 
 ### Signing in with an OAuth client of your own
 

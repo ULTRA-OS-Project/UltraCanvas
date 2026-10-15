@@ -61,7 +61,7 @@ planned (see the status table below).
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
-| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
+| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
@@ -256,7 +256,7 @@ if (r) {
 // id and secret and is the https address the provider redirects to, so the
 // application carries only the service's address. Blocking - a worker thread.
 UltraNetOAuth2ServiceConfig svc;
-svc.serviceUrl = "https://oauth-callback.ultraos.eu";
+svc.serviceUrl = UltraNet_OAuth2SignInServiceUrl();   // the registry's: built in, or configured
 svc.providerId = "google";                        // "microsoft", "yahoo"
 svc.loginHint  = "erika@gmail.com";               // preselects the account
 svc.clientName = "UltraMail";                     // for the service's log

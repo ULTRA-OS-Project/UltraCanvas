@@ -159,7 +159,8 @@ und der Anbieter übergibt UltraMail ein Token, das im Tresor gespeichert und
 für IMAP und SMTP verwendet wird. Ihr Anbieter-Passwort sieht UltraMail nie.
 
 Die Anmeldung läuft über den **ULTRA OS Anmeldedienst** unter
-`oauth-callback.ultraos.eu`, den wir betreiben: Er hält die
+`oauth-callback.ultraos.eu`, betrieben von der ULTRA OS Development GmbH (der
+in Abschnitt 1 genannten Verantwortlichen): Er hält die
 OAuth-Client-Registrierung, mit der sich UltraMail anmeldet (so dass kein
 Geheimnis im Programm steckt), und er ist die Adresse, an die der Anbieter
 Ihren Browser nach der Zustimmung zurückschickt. UltraMail übermittelt ihm den
@@ -169,8 +170,8 @@ ihm einen einmaligen Autorisierungscode; UltraMail tauscht diesen Code, und
 später das Refresh-Token, über den Dienst ein. Der Dienst hält eine Anmeldung
 höchstens zehn Minuten im Arbeitsspeicher und speichert nichts - kein Token,
 keine Adresse - auf der Festplatte; sein Webserver protokolliert die üblichen
-Verbindungsdaten (Ihre IP-Adresse, Zeitpunkt, Pfad) bis zu 14 Tage und hält
-den Autorisierungscode aus dem Protokoll heraus. Ist die Anmeldung so
+Verbindungsdaten (Ihre IP-Adresse, Zeitpunkt, Pfad), löscht das Protokoll
+nach 14 Tagen und hält den Autorisierungscode daraus heraus. Ist die Anmeldung so
 eingerichtet, dass sie direkt mit einem eigenen OAuth-Client läuft (Abschnitt
 3 von `Docs/UltraMail/AccountSetup.md`), wird der Dienst nicht kontaktiert.
 
@@ -180,7 +181,8 @@ den Anbieter; der Name des Anbieters, diese Adresse, der einmalige Code und
 die Tokens im Durchlauf sowie Ihre IP-Adresse an den Anmeldedienst.
 **Empfänger:** Google LLC, Microsoft Corporation oder Yahoo (Oath Holdings
 Inc.) als eigene Verantwortliche nach ihren eigenen Datenschutzerklärungen;
-und wir als Betreiber des Anmeldedienstes (Abschnitt 1).
+und die ULTRA OS Development GmbH als Betreiberin des Anmeldedienstes
+(Abschnitt 1).
 **Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO; der Anbieter verlangt
 dieses Verfahren, und der Dienst ist der Weg, auf dem UltraMail es
 durchführt. **Einstellung:** Wo der Anbieter ein App-Passwort anbietet,
@@ -262,7 +264,8 @@ oder Google Drive) und fügt den Freigabelink in die Nachricht ein. Das
 geschieht nur, wenn Sie die Funktion verwenden. Die Datei und Ihre
 Zugangsdaten für diesen Dienst gehen an den von Ihnen gewählten Dienst nach
 dessen eigener Datenschutzerklärung. Dropbox, OneDrive und Google Drive melden
-sich wie in 5.2 beschrieben über den Browser an.
+sich wie in 5.2 beschrieben über den Browser und den ULTRA OS Anmeldedienst
+an; dessen Empfänger und Rechtsgrundlage gelten.
 
 ### 5.7 Links, die Sie anklicken
 

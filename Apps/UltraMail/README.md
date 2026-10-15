@@ -311,12 +311,13 @@ the consent URL it answers with, collects the authorization code from it
 once the provider has redirected there, and exchanges the code - and later
 refreshes the token - through the service, which adds the registration. The
 PKCE verifier never leaves UltraMail (`UltraNet/UltraNetOAuth2Service.h` is
-the client side). The service's address is baked in
-(`ULTRAMAIL_OAUTH_SERVICE_URL` in `CMakeLists.txt`) and overridden by
-`ULTRAMAIL_OAUTH_SERVICE_URL` in the environment or `[service] url =` in
-`oauth.ini` in the data folder (`~/.local/share/UltraMail/` on Linux,
-`%APPDATA%\UltraMail\` on Windows, `~/Library/Application Support/UltraMail/`
-on macOS); `off` turns it off.
+the client side). The service's address is built into UltraNet
+(`ULTRANET_OAUTH_SERVICE_URL` in `UltraCanvas/CMakeLists.txt`, one setting
+for the process that the composer's Google Drive, OneDrive and Dropbox
+sign-ins read too) and overridden by `ULTRAMAIL_OAUTH_SERVICE_URL` in the
+environment or `[service] url =` in `oauth.ini` in the data folder
+(`~/.local/share/UltraMail/` on Linux, `%APPDATA%\UltraMail\` on Windows,
+`~/Library/Application Support/UltraMail/` on macOS); `off` turns it off.
 
 An installation can still sign in to a provider **directly**, with an OAuth
 client of its own, which bypasses the service for that provider: `[google]`

@@ -231,7 +231,9 @@ TEST(oauth_apps_come_from_set_env_or_ini_in_that_order) {
     REQUIRE_EQ(OAuthApps::Get("google").clientId, std::string("from-set"));
 
     SetEnv("ULTRAMAIL_GOOGLE_CLIENT_ID", "");
-    UltraNet_OAuth2ClearApps();
+    OAuthApps::Clear();                 // drops the "off" too: the service is back
+    REQUIRE(OAuthApps::Has("google"));
+    OAuthApps::SetServiceUrl("off");
     REQUIRE(!OAuthApps::Has("google"));
     OAuthApps::Clear();
 }
@@ -241,8 +243,9 @@ TEST(oauth_apps_come_from_set_env_or_ini_in_that_order) {
 TEST(oauth_service_url_comes_from_set_env_ini_or_the_build_in_that_order) {
     OAuthApps::Clear();
     SetEnv("ULTRAMAIL_OAUTH_SERVICE_URL", "");
-    // The build's default (ULTRAMAIL_OAUTH_SERVICE_URL at configure time);
-    // this test build keeps CMake's default, the public service.
+    // The address built into UltraNet (ULTRANET_OAUTH_SERVICE_URL at
+    // configure time); this test build keeps CMake's default, the public
+    // service. Clear() below leaves it in place.
     REQUIRE_EQ(OAuthApps::ServiceUrl(), std::string("https://oauth-callback.ultraos.eu"));
 
     // oauth.ini's [service] section, beside the providers' sections.
