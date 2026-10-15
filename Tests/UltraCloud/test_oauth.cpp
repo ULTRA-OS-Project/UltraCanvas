@@ -97,12 +97,85 @@ TEST(sign_in_and_refresh_through_hooks) {
     REQUIRE_EQ(c.token, std::string("access-2"));
     REQUIRE_EQ(c.refreshToken, std::string("refresh-1"));   // kept
 
-    // No app configured → Unsupported with a helpful message.
+    // No app configured and the sign-in service off → Unsupported with a
+    // helpful message.
     SetOAuthApp("dropbox", OAuthApp{});
+    UltraNet_OAuth2SetSignInService("off");
+    REQUIRE(!UsesSignInService("dropbox"));
+    REQUIRE(!CanSignIn("dropbox"));
     Credentials d;
     Result r = dropbox.SignIn(a, [](const std::string&) {}, d);
     REQUIRE(r.code == ResultCode::Unsupported);
     REQUIRE(r.message.find("ULTRACLOUD_dropbox_CLIENT_ID") != std::string::npos);
+    REQUIRE(dropbox.RefreshCredentials(a, c).code == ResultCode::Unsupported);
+    UltraNet_OAuth2SetSignInService("");
+}
+
+TEST(sign_in_and_refresh_through_the_sign_in_service_without_an_app) {
+    // No app of its own: the provider goes through the sign-in service the
+    // registry names, under the identity provider's id and with its scopes.
+    SetOAuthApp("googledrive", OAuthApp{});
+    SetOAuthApp("google", OAuthApp{});
+    UltraNet_OAuth2SetSignInService("https://cb.example/");
+    REQUIRE(UsesSignInService("googledrive"));
+    REQUIRE(CanSignIn("googledrive"));
+    REQUIRE(!HasOAuthApp("googledrive"));
+
+    int direct = 0, viaService = 0, refreshes = 0;
+    OAuthHooks hooks;
+    hooks.authorize = [&](const UltraNetOAuth2Config&, const std::function<void(const std::string&)>&,
+                          UltraNetOAuth2Token& out) {
+        ++direct; out.accessToken = "direct"; return Ok();
+    };
+    hooks.serviceAuthorize = [&](const UltraNetOAuth2ServiceConfig& cfg,
+                                 const std::function<void(const std::string&)>& openUrl,
+                                 UltraNetOAuth2Token& out) {
+        ++viaService;
+        REQUIRE_EQ(cfg.serviceUrl, std::string("https://cb.example"));
+        REQUIRE_EQ(cfg.providerId, std::string("google"));     // not "googledrive"
+        REQUIRE_EQ(cfg.scopes.size(), std::size_t(1));
+        REQUIRE_EQ(cfg.scopes[0], std::string("https://www.googleapis.com/auth/drive"));
+        REQUIRE_EQ(cfg.clientName, std::string("UltraCloud"));
+        openUrl("https://accounts.google.com/o/oauth2/v2/auth?state=s");
+        out.accessToken = "svc-1"; out.refreshToken = "svc-r"; out.expiresInSeconds = 3600;
+        return Ok();
+    };
+    hooks.serviceRefresh = [&](const UltraNetOAuth2ServiceConfig& cfg, const std::string& refreshToken,
+                               UltraNetOAuth2Token& out) {
+        ++refreshes;
+        REQUIRE_EQ(cfg.providerId, std::string("google"));
+        REQUIRE_EQ(refreshToken, std::string("svc-r"));
+        out.accessToken = "svc-2"; out.expiresInSeconds = 1800;
+        return Ok();
+    };
+    GoogleDriveProvider drive(nullptr, hooks);
+    Account a; a.providerId = "googledrive";
+    Credentials c;
+    std::string openedUrl;
+    REQUIRE(drive.SignIn(a, [&](const std::string& url) { openedUrl = url; }, c));
+    REQUIRE_EQ(viaService, 1);
+    REQUIRE_EQ(direct, 0);
+    REQUIRE(openedUrl.find("accounts.google.com") != std::string::npos);
+    REQUIRE_EQ(c.token, std::string("svc-1"));
+    REQUIRE_EQ(c.refreshToken, std::string("svc-r"));
+    REQUIRE(drive.RefreshCredentials(a, c));
+    REQUIRE_EQ(refreshes, 1);
+    REQUIRE_EQ(c.token, std::string("svc-2"));
+    REQUIRE_EQ(c.refreshToken, std::string("svc-r"));
+
+    // OneDrive is the service's "microsoft"; Dropbox keeps its own name.
+    REQUIRE_EQ(OneDriveProvider().OAuthServiceConfig().providerId, std::string("microsoft"));
+    REQUIRE_EQ(DropboxProvider().OAuthServiceConfig().providerId, std::string("dropbox"));
+
+    // An app of its own takes the direct route and bypasses the service.
+    OAuthApp app; app.clientId = "own";
+    SetOAuthApp("googledrive", app);
+    REQUIRE(!UsesSignInService("googledrive"));
+    REQUIRE(drive.SignIn(a, [](const std::string&) {}, c));
+    REQUIRE_EQ(direct, 1);
+    REQUIRE_EQ(viaService, 1);
+    SetOAuthApp("googledrive", OAuthApp{});
+    UltraNet_OAuth2SetSignInService("");
 }
 
 TEST(service_refreshes_expired_token_and_stores_it) {

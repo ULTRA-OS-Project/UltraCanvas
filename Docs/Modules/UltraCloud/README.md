@@ -93,20 +93,34 @@ which is how the tests drive every provider through fake servers.
 ### OAuth2 sign-in
 
 The hosted providers sign in through the system browser: `CloudService::
-SignInAccount` asks the provider for its OAuth2 config, UltraNet runs the
-PKCE authorization-code flow against a loopback redirect
-(`UltraNet_OAuth2AuthorizeInteractive`), the tokens land in the secret
-store, and the provider's account-info call fills the user name. An expired
+SignInAccount` asks the provider to sign in, the tokens land in the secret
+store, and the provider's account-info call fills the user name. By default
+the sign-in goes through the **OAuth2 sign-in service** UltraNet's registry
+names (`UltraNet_OAuth2SignInServiceUrl`, built in as ULTRA OS's
+`https://oauth-callback.ultraos.eu`; `Server/OAuthCallback` is the
+service): it holds the OAuth client registrations, so the application ships
+no client id or secret, and it is the https address the providers redirect
+to. The provider sends only the PKCE challenge and its scopes, collects the
+authorization code from the service and exchanges it - and later refreshes
+the token - through the service (`UltraNet_OAuth2AuthorizeViaService`,
+`UltraNet_OAuth2ServiceRefresh`). Google Drive signs in as the service's
+`google`, OneDrive as its `microsoft`, Dropbox as its `dropbox`
+(`OAuthProviderBase::SignInServiceProviderId`). A provider that has an
+**OAuth app registration of its own** (below) bypasses the service: UltraNet
+runs the PKCE authorization-code flow against a loopback redirect
+(`UltraNet_OAuth2AuthorizeInteractive`) and refreshes directly. An expired
 access token is renewed from the refresh token inside `CloudService::Resolve`
 before any call uses it, and the renewal is stored. A token the service
 rejects (HTTP 401) although it had not expired here - revoked early, a clock
 that is off, or one that ran out while a request waited on a service
 limiting requests - is renewed the same way and the call made once more.
 
-Each provider needs an **OAuth app registration** — a client id (and, for
-confidential clients, a secret) the ULTRA OS project or the app vendor
-registers with Dropbox, Microsoft and Google. It is configuration, never a
-literal in the code:
+An installation that would rather not go through the service - a private
+registration, a build without a service (`-DULTRANET_OAUTH_SERVICE_URL=""`),
+`ULTRACLOUD_OAUTH_SERVICE_URL=off` - gives a provider an **OAuth app
+registration** of its own — a client id (and, for confidential clients, a
+secret) registered with Dropbox, Microsoft or Google. It is configuration,
+never a literal in the code:
 
 ```cpp
 UltraCloud::OAuthApp app;
@@ -117,8 +131,14 @@ UltraCloud::SetOAuthApp("dropbox", app);
 
 or, without code, the environment: `ULTRACLOUD_DROPBOX_CLIENT_ID`,
 `ULTRACLOUD_ONEDRIVE_CLIENT_ID`, `ULTRACLOUD_GOOGLEDRIVE_CLIENT_ID` (plus
-`_CLIENT_SECRET` and `_REDIRECT_URI` where needed). Until one is set the
-add-account dialog says so and the provider's `SignIn` returns `Unsupported`.
+`_CLIENT_SECRET` and `_REDIRECT_URI` where needed). `UsesSignInService(id)`
+says whether a provider goes through the service, `CanSignIn(id)` whether it
+can be signed in to at all; when neither a service nor a registration is
+there the add-account dialog says so and the provider's `SignIn` returns
+`Unsupported`. The service's address is the registry's one setting
+(`ULTRACLOUD_OAUTH_SERVICE_URL` or `ULTRANET_OAUTH_SERVICE_URL` in the
+environment, an INI file's `[service] url`, the built-in default), shared
+with UltraMail.
 
 The registration lives in **UltraNet's OAuth2 app registry**
 (`<UltraNet/UltraNetOAuth2Apps.h>`), one per process and shared with
@@ -354,7 +374,7 @@ providers.
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory`; `SetThreadSignInCancel`, `SignInCancelled` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, every request logged, a throttled request sent again, HTTP → Result with the service's reason), `RateLimitPolicy`, `SetThreadRateLimitPolicy` |
 | `UltraCloudLog.h` | The session log: `LogKind`, `LogLine`, `LogCallback`, `SetThreadLog`, `ThreadLogActive`, `LogToThread`; `LoggableUrl`, `ServerErrorReason`, `RetryAfterSeconds` |
-| `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
+| `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `UsesSignInService` / `CanSignIn` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry and its sign-in service), `OAuthHooks`, `OAuthProviderBase` (`OAuthConfig`, `SignInServiceProviderId`, `OAuthServiceConfig`) |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |

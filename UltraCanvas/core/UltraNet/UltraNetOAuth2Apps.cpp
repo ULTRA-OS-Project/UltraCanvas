@@ -1,7 +1,9 @@
 // core/UltraNet/UltraNetOAuth2Apps.cpp
 // The process-wide OAuth2 app registry: Set() > environment > INI file >
-// built-in, then the alias chain. Pure bookkeeping over a few maps behind one
-// mutex; no networking, no crypto. See the header for the contract.
+// built-in, then the alias chain - and the sign-in service through the same
+// tiers. Pure bookkeeping over a few maps behind one mutex; no networking, no
+// crypto. See the header for the contract.
+// Version: 0.2.0 - the sign-in service is a setting of the registry
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNet/UltraNetOAuth2Apps.h"
@@ -16,6 +18,12 @@
 #include <sstream>
 #include "../../include/UltraCanvasPathUtf8.h"
 
+// The sign-in service built into this UltraNet: the ULTRANET_OAUTH_SERVICE_URL
+// CMake option (UltraCanvas/CMakeLists.txt), "" in a build without one.
+#ifndef ULTRANET_OAUTH_SERVICE_URL
+#define ULTRANET_OAUTH_SERVICE_URL ""
+#endif
+
 namespace {
 
 struct Registry {
@@ -25,6 +33,10 @@ struct Registry {
     std::map<std::string, UltraNetOAuth2App> file;      // tier 3
     std::map<std::string, UltraNetOAuth2App> builtIn;   // tier 4
     std::map<std::string, std::string>       aliases;
+    // The sign-in service, the same tiers (the environment is read on lookup).
+    std::string serviceSet;                              // tier 1
+    std::string serviceFile;                             // tier 3
+    std::string serviceBuiltIn{ULTRANET_OAUTH_SERVICE_URL};   // tier 4
 };
 
 Registry& Reg() { static Registry r; return r; }
@@ -129,6 +141,7 @@ void UltraNet_OAuth2SetAppAlias(const std::string& providerId, const std::string
 
 int UltraNet_OAuth2ParseAppsIni(const std::string& text) {
     std::map<std::string, UltraNetOAuth2App> parsed;
+    std::string serviceUrl;
     std::istringstream in(text);
     std::string line, section;
     while (std::getline(in, line)) {
@@ -142,6 +155,10 @@ int UltraNet_OAuth2ParseAppsIni(const std::string& text) {
         if (eq == std::string::npos || section.empty()) continue;
         const std::string key   = Lower(Trim(line.substr(0, eq)));
         const std::string value = Trim(line.substr(eq + 1));
+        if (section == "service") {
+            if (key == "url" && !value.empty()) serviceUrl = value;
+            continue;
+        }
         UltraNetOAuth2App& app = parsed[section];
         if      (key == "client_id")     app.clientId     = value;
         else if (key == "client_secret") app.clientSecret = value;
@@ -149,6 +166,7 @@ int UltraNet_OAuth2ParseAppsIni(const std::string& text) {
     }
     int count = 0;
     std::lock_guard<std::mutex> lock(Reg().mutex);
+    if (!serviceUrl.empty()) Reg().serviceFile = serviceUrl;
     for (auto& [id, app] : parsed) {
         if (!app.IsConfigured()) continue;
         Reg().file[id] = app;
@@ -186,4 +204,60 @@ void UltraNet_OAuth2ClearApps() {
     std::lock_guard<std::mutex> lock(Reg().mutex);
     Reg().set.clear();
     Reg().file.clear();
+    Reg().serviceSet.clear();
+    Reg().serviceFile.clear();
+}
+
+// ---- The sign-in service ----------------------------------------------------
+
+namespace {
+
+// "off", "none", "0", "no", "false": the service is turned off at this tier.
+bool ServiceOff(const std::string& value) {
+    const std::string v = Lower(value);
+    return v == "off" || v == "none" || v == "0" || v == "no" || v == "false";
+}
+
+} // namespace
+
+std::string UltraNet_OAuth2SignInServiceEnvName(const std::string& prefix) {
+    // "ULTRANET_OAUTH_" + "SERVICE_URL"; a module prefix + "OAUTH_SERVICE_URL".
+    const std::string tail = "OAUTH_";
+    const bool endsWithOAuth = prefix.size() >= tail.size()
+        && prefix.compare(prefix.size() - tail.size(), tail.size(), tail) == 0;
+    return prefix + (endsWithOAuth ? "SERVICE_URL" : "OAUTH_SERVICE_URL");
+}
+
+std::string UltraNet_OAuth2SignInServiceUrl() {
+    std::string value;
+    std::vector<std::string> prefixes;
+    {
+        std::lock_guard<std::mutex> lock(Reg().mutex);
+        value = Trim(Reg().serviceSet);
+        prefixes = Reg().prefixes;
+    }
+    if (value.empty()) {
+        for (const std::string& prefix : prefixes) {
+            value = Trim(Env(UltraNet_OAuth2SignInServiceEnvName(prefix)));
+            if (!value.empty()) break;
+        }
+    }
+    if (value.empty()) {
+        std::lock_guard<std::mutex> lock(Reg().mutex);
+        value = Trim(Reg().serviceFile);
+        if (value.empty()) value = Trim(Reg().serviceBuiltIn);
+    }
+    if (ServiceOff(value)) return std::string();
+    while (!value.empty() && value.back() == '/') value.pop_back();
+    return value;
+}
+
+void UltraNet_OAuth2SetSignInService(const std::string& url) {
+    std::lock_guard<std::mutex> lock(Reg().mutex);
+    Reg().serviceSet = Trim(url);
+}
+
+void UltraNet_OAuth2SetBuiltInSignInService(const std::string& url) {
+    std::lock_guard<std::mutex> lock(Reg().mutex);
+    Reg().serviceBuiltIn = Trim(url);
 }

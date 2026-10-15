@@ -39,9 +39,25 @@
 // has its own loopback default and fills it in — Google and Microsoft ignore
 // the port of a loopback URI, other providers want the registered one.
 //
+// Beside the apps, the registry knows the *sign-in service*
+// (UltraNetOAuth2Service.h): the web service a provider without a client of
+// its own signs in through, which holds the registrations and receives the
+// providers' redirects. UltraNet_OAuth2SignInServiceUrl() resolves it through
+// the same tiers - UltraNet_OAuth2SetSignInService() > the environment
+// (<PREFIX>OAUTH_SERVICE_URL for every registered prefix, so
+// ULTRANET_OAUTH_SERVICE_URL, ULTRAMAIL_OAUTH_SERVICE_URL,
+// ULTRACLOUD_OAUTH_SERVICE_URL) > "[service]\nurl = ..." in the INI file >
+// the address built in (the ULTRANET_OAUTH_SERVICE_URL CMake option, by
+// default ULTRA OS's https://oauth-callback.ultraos.eu, or what
+// UltraNet_OAuth2SetBuiltInSignInService() set). The value "off" (or "none")
+// at any tier turns the service off. A consumer decides for itself whether
+// a provider goes through the service: UltraMail and UltraCloud send a
+// provider there when no app names it.
+//
 // Thread-safe; nothing throws. A desktop OAuth client's id and secret are not
 // confidential (the flow's safety is PKCE + loopback + the user's consent), so
 // this is configuration, not a secret store: tokens go to UltraVault.
+// Version: 0.2.0 - the sign-in service is a setting of the registry
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -90,7 +106,8 @@ void UltraNet_OAuth2SetAppAlias(const std::string& providerId, const std::string
 // Tier 3: parse INI text ("[google]\nclient_id = ...\nclient_secret = ...\n
 // redirect_uri = ...") into the file tier. Section names are provider ids,
 // case-insensitive; '#' and ';' start comments; a section without a client id
-// is ignored. Returns the number of providers registered. Later loads replace
+// is ignored. "[service]\nurl = ..." sets the file tier of the sign-in
+// service. Returns the number of providers registered. Later loads replace
 // a provider's earlier file entry.
 int UltraNet_OAuth2ParseAppsIni(const std::string& text);
 // Read and parse a file. A missing or unreadable file is not an error: 0.
@@ -103,7 +120,25 @@ int UltraNet_OAuth2LoadAppsFile(const std::string& path);
 UltraNetOAuth2App UltraNet_OAuth2GetApp(const std::string& providerId);
 bool UltraNet_OAuth2HasApp(const std::string& providerId);
 
-// Forget every Set() registration and every file entry. The environment,
-// the built-in defaults, the prefixes and the aliases stay — they describe
-// the build and the process, not a session. For tests.
+// Forget every Set() registration and every file entry, the sign-in
+// service's included. The environment, the built-in defaults, the prefixes
+// and the aliases stay — they describe the build and the process, not a
+// session. For tests.
 void UltraNet_OAuth2ClearApps();
+
+// ---- The sign-in service ----------------------------------------------------
+
+// Where the sign-in service is, through the tiers in the header comment: the
+// address without a trailing '/', or "" when there is none or it is off.
+std::string UltraNet_OAuth2SignInServiceUrl();
+// Tier 1: name the service from code (a settings page, tests). "" drops the
+// override; "off" turns the service off whatever the other tiers say.
+void UltraNet_OAuth2SetSignInService(const std::string& url);
+// Tier 4: replace the address built into this UltraNet (the
+// ULTRANET_OAUTH_SERVICE_URL CMake option) for the process - a module or
+// application that carries its own default. "" = no built-in service.
+void UltraNet_OAuth2SetBuiltInSignInService(const std::string& url);
+// The environment variable name a tier-2 lookup reads under a prefix:
+// "ULTRANET_OAUTH_SERVICE_URL" for the always-registered prefix,
+// "ULTRAMAIL_OAUTH_SERVICE_URL" for "ULTRAMAIL_".
+std::string UltraNet_OAuth2SignInServiceEnvName(const std::string& prefix);
