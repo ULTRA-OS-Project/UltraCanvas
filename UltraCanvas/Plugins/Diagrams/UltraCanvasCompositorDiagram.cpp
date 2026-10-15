@@ -305,7 +305,7 @@ std::string FormatNumberShort(double v, double step) {
     else if (step >= 0.01) decimals = 2;
     else decimals = 3;
     char buf[32];
-    std::snprintf(buf, sizeof(buf), "%.*f", decimals, v);
+    std::snprintf(buf, sizeof(buf), "%.*f", decimals, v);   // locale-ok: text drawn in the widget
     return buf;
 }
 
