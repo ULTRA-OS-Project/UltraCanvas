@@ -3982,17 +3982,20 @@ void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::str
         OAuthTokens tokens;
         UltraNetResult r = oauth_.SignIn(providerId, email,
             [](const std::string& url) { UltraCanvas::OpenURL(url); }, tokens);
+        // The reason in the sign-in's own words (the service, the provider's
+        // refusal), not the mail-server wording: no mail server was involved.
+        const std::string why = r ? std::string() : OAuthSignInFailureText(providerId, r);
 
         auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
         if (!app) return;
         app->PostToUIThread([this, accountId, email, providerName, parent, cancelled,
-                             waiting, r, tokens, onReauthed]() {
+                             waiting, r, why, tokens, onReauthed]() {
             if (cancelled->load()) return;
             OAuthWaitDialog::Close(waiting);
             if (!r) {
                 AlertError(parent, "Signing in to " + providerName + " for " + email
                                    + " did not succeed, so its mail cannot be fetched.",
-                           FriendlyMessage(r) + " Add the account again to retry.");
+                           why + " Add the account again to retry.");
                 return;
             }
             if (!vault_.StoreOAuthTokens(accountId, tokens)) {
@@ -4023,7 +4026,7 @@ void UltraMailApp::StartOAuthOobSignIn(const std::string& accountId, const std::
     if (!began) {
         AlertError(parent, "Signing in to " + providerName + " for " + email
                            + " could not be started.",
-                   FriendlyMessage(began) + " Add the account again to retry.");
+                   OAuthSignInFailureText(providerId, began) + " Add the account again to retry.");
         return;
     }
     UltraCanvas::OpenURL(consentUrl);
@@ -4036,15 +4039,16 @@ void UltraMailApp::StartOAuthOobSignIn(const std::string& accountId, const std::
                          codeVerifier, onReauthed]() {
                 OAuthTokens tokens;
                 UltraNetResult r = oauth_.CompleteOob(providerId, code, codeVerifier, tokens);
+                const std::string why = r ? std::string() : OAuthSignInFailureText(providerId, r);
 
                 auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
                 if (!app) return;
-                app->PostToUIThread([this, accountId, email, providerName, parent, r, tokens,
+                app->PostToUIThread([this, accountId, email, providerName, parent, r, why, tokens,
                                      onReauthed]() {
                     if (!r) {
                         AlertError(parent, "Signing in to " + providerName + " for " + email
                                            + " did not succeed, so its mail cannot be fetched.",
-                                   FriendlyMessage(r) + " Add the account again to retry.");
+                                   why + " Add the account again to retry.");
                         return;
                     }
                     if (!vault_.StoreOAuthTokens(accountId, tokens)) {
