@@ -4,8 +4,8 @@
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
 // Version: 1.6.0 - the right panel in UltraMail's look: Colour, the tool's options and
-//                  Layers are white cards (group boxes with a quiet caption) on a light
-//                  page, the colour picker matches them, the layer list reads as a list
+//                  Layers are the framework's SectionCard group boxes on its page colour,
+//                  the colour picker is ColorPickerStyle::Light, the layer list reads as a list
 // Version: 1.5.0 - BringForward: restores and raises the window
 // Version: 1.4.0 - Open / Import / Save As / Export offer FileLoader's format lists (every
 //                  bitmap type this build reads / writes), not the editor's own
@@ -91,28 +91,15 @@ namespace {
     constexpr int   kStatusHeight  = 24;
     constexpr float kRowH          = 24.0f;
 
-    // The right panel's look is UltraMail's (Apps/UltraMail/ui/UltraMailTheme.h):
-    // a near-white page with white cards on it, each a group box whose caption
-    // is a quiet bold grey over a hairline, so a section reads as raised
-    // without a shadow and the two applications look alike side by side.
-    const Color kPanelPage     (245, 246, 248, 255);
-    const Color kCardBackground(255, 255, 255, 255);
-    const Color kCardBorder    (226, 229, 234, 255);
-    // Outlines of controls on a card (the picker's fields, the swatches): a
-    // step darker than the card's border, so white still shows its edge.
-    const Color kControlOutline(203, 208, 216, 255);
-    const Color kTextPrimary   ( 24,  28,  35, 255);
-    const Color kTextSecondary (104, 112, 125, 255);
-    const Color kTextMuted     (142, 150, 163, 255);
-    const Color kAccent        ( 37,  99, 235, 255);
-    const Color kRowHover      (243, 245, 248, 255);
-    const Color kRowSelected   (226, 236, 253, 255);
-    constexpr float kPanelGap    = 8.0f;    // between the cards, and around them
-    constexpr float kCardRadius  = 8.0f;
-    constexpr float kCardPadding = 8.0f;    // inside a card, around its content
-    // What a card leaves its content: the card is kRightInner wide, less its
-    // 1 px border and the padding on each side.
-    constexpr float kCardInner   = kRightInner - 2.0f * (1.0f + kCardPadding);
+    // The right panel is the framework's SectionCard look, as UltraMail's
+    // panes are: white cards on a light page, each a group box whose caption
+    // is a quiet bold grey over a hairline (GroupBoxVisualStyle::SectionCard),
+    // with the colour picker in its light style (ColorPickerStyle::Light).
+    constexpr float kPanelGap = 8.0f;    // between the cards, and around them
+    // The layer list's rows: a soft grey under the pointer, the active layer
+    // on a light tint of the accent blue.
+    const Color kRowHover   (243, 245, 248, 255);
+    const Color kRowSelected(226, 236, 253, 255);
 
     // The bitmap formats this build reads, as FileLoader's format inventory
     // says (UltraCanvasFileLoader::GetSupportedLoadExtensions) - not a list
@@ -224,43 +211,23 @@ namespace {
     }
 
     // ui-reuse-exempt: helper that only sizes framework elements; nothing is painted here.
-    // One section of the right panel: a white card captioned `title`, its
+    // One section of the right panel: a SectionCard captioned `title`, its
     // content a column. As wide as what is visible beside the scrollbar, as
     // tall as its content.
     std::shared_ptr<UltraCanvasGroupBox> PanelCard(const std::string& id, const std::string& title) {
         auto card = CreateGroupBox(id, 0, 0, kRightInner, 0, title);
         card->SetFrameStyle(GroupBoxFrameStyle::Header);
-        GroupBoxVisualStyle s = GroupBoxVisualStyle::Card();
-        s.backgroundColor      = kCardBackground;
-        s.borderColor          = kCardBorder;
-        s.cornerRadius         = kCardRadius;
-        s.titleColor           = kTextSecondary;
-        s.titleFont.fontSize   = 11.0f;
-        s.titleFont.fontWeight = FontWeight::Bold;
-        s.titleIndent          = 10.0f;
-        s.titleVerticalPadding = 5.0f;
-        s.contentPadding       = kCardPadding;
-        card->SetVisualStyle(s);
+        card->SetVisualStyle(GroupBoxVisualStyle::SectionCard());
         card->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         card->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
         return card;
     }
 
-    // The colour picker on a card: the card's white, hairline fields and the
-    // accent blue, instead of the picker's own dark panel and red.
-    ColorPickerStyle CardPickerStyle(float uiScale) {
-        ColorPickerStyle s;
-        s.backgroundColor  = kCardBackground;
-        s.panelColor       = kPanelPage;
-        s.borderColor      = kControlOutline;
-        s.textColor        = kTextPrimary;
-        s.mutedTextColor   = kTextSecondary;
-        s.fieldColor       = kCardBackground;
-        s.fieldBorderColor = kControlOutline;
-        s.accentColor      = kAccent;
-        s.markerOutline    = Color(90, 96, 106, 255);
-        s.uiScale          = uiScale;
-        return s;
+    // What a card leaves its content: its width, less its border and its
+    // padding on each side.
+    float CardInnerWidth(const UltraCanvasGroupBox& card) {
+        const GroupBoxVisualStyle& s = card.GetVisualStyle();
+        return kRightInner - 2.0f * (s.borderWidth + s.contentPadding);
     }
 }
 
@@ -739,19 +706,21 @@ void UltraPaintWindow::BuildRightPanel() {
     rightPanel->layout.SetFlexColumn().SetFlexGap(kPanelGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     rightPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     rightPanel->SetPadding(kPanelGap, 0, kPanelGap, kPanelGap);
-    rightPanel->SetBackgroundColor(kPanelPage);
+    rightPanel->SetBackgroundColor(GroupBoxVisualStyle::SectionCardPageColor());
 
     // ----- colour -----
     auto colourPanel = PanelCard("up-color-card", "Colour");
-    colorPicker = CreateColorPicker("up-color", foreground.ToColor(), 0, 0, kCardInner, 300);
-    colorPicker->SetStyle(CardPickerStyle(0.78f));
+    const float cardInner = CardInnerWidth(*colourPanel);
+    colorPicker = CreateColorPicker("up-color", foreground.ToColor(), 0, 0, cardInner, 300);
+    colorPicker->SetStyle(ColorPickerStyle::Light());
+    colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(background.ToColor());
     colorPicker->SetShowAlpha(true);
     // The hue ring is capped by whatever vertical space the controls leave it,
     // so a picker sized by eye draws a wheel narrower than the card. Ask for
     // the height at which the ring fills the card's width instead.
-    const float pickerH = colorPicker->PreferredHeightForWidth(kCardInner);
-    colorPicker->SetSize(kCardInner, pickerH);
+    const float pickerH = colorPicker->PreferredHeightForWidth(cardInner);
+    colorPicker->SetSize(cardInner, pickerH);
     // Not stretched: the picker lays its hex field and channel values out to
     // the width it is given, and that is the card's inner width exactly.
     colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
@@ -763,12 +732,15 @@ void UltraPaintWindow::BuildRightPanel() {
     colorPicker->onBackgroundChanging = [this](const Color& c) { background = RasterPixel(c); };
     colourPanel->AddChild(colorPicker);
 
-    swatches = CreateColorSwatchBar("up-swatches", 0, 0, kCardInner, 44);
+    swatches = CreateColorSwatchBar("up-swatches", 0, 0, cardInner, 44);
     swatches->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // Outlined as the picker above them outlines its fields, so a white
+    // swatch still shows its edge on the white card.
+    const ColorPickerStyle& pickerStyle = colorPicker->GetStyle();
     ColorSwatchBarStyle swatchStyle = swatches->GetStyle();
-    swatchStyle.border         = kControlOutline;
-    swatchStyle.hoverBorder    = kTextMuted;
-    swatchStyle.selectedBorder = kAccent;
+    swatchStyle.border         = pickerStyle.fieldBorderColor;
+    swatchStyle.hoverBorder    = pickerStyle.mutedTextColor;
+    swatchStyle.selectedBorder = pickerStyle.accentColor;
     swatches->SetStyle(swatchStyle);
     swatches->onColorSelected = [this](const Color& c) {
         foreground = RasterPixel(c);
@@ -793,7 +765,7 @@ void UltraPaintWindow::BuildRightPanel() {
     app.showIconLabels = false;
     app.style = ToolbarStyle::Flat;
     app.itemSpacing = 4.0f;
-    app.backgroundColor = kCardBackground;
+    app.backgroundColor = layersPanel->GetVisualStyle().backgroundColor;
     app.hoverBackgroundColor = kRowHover;
     app.activeBackgroundColor = kRowSelected;
     buttons->SetAppearance(app);
@@ -826,7 +798,6 @@ void UltraPaintWindow::BuildRightPanel() {
     opRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     auto opLabel = CreateLabel("up-l-oplabel", 0, 0, 52, kRowH, "Opacity");
     opLabel->SetFontSize(11);
-    opLabel->SetTextColor(kTextSecondary);
     opLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     opRow->AddChild(opLabel);
     layerOpacity = CreateHorizontalSlider("up-l-opacity", 0, 0, 100, kRowH, 0, 100);
@@ -1600,9 +1571,6 @@ void UltraPaintWindow::RebuildLayerPanel() {
             st.normalColor       = Colors::Transparent;
             st.hoverColor        = kRowHover;
             st.pressedColor      = kRowSelected;
-            st.normalTextColor   = kTextPrimary;
-            st.hoverTextColor    = kTextPrimary;
-            st.pressedTextColor  = kTextPrimary;
             st.borderWidth       = 0.0f;
             st.cornerRadius      = 5.0f;
             btn->SetStyle(st);

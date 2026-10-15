@@ -1,3 +1,11 @@
+#### 2026-10-15 *1.74.1*
+- **The colour popup's picker is the framework's light picker.** Settings >
+  Display > Treeview opens the colour picker with the framework's
+  `ColorPickerStyle::Light()` (on the popup's own off-white) instead of a
+  light style of UltraFiler's own: the same picker UltraPaint shows, with a
+  deeper blue accent and lighter, cooler grey field outlines (framework
+  changelog: `section-card-and-light-picker`).
+
 #### 2026-10-14 *1.74.0*
 - **Cloud drives have a connection log too.** The round network button in
   a folder display's bottom-left corner was only there on FTP / FTPS / SFTP

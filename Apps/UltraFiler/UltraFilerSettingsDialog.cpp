@@ -39,8 +39,9 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.16.1 - the colour popup's picker is the framework's ColorPickerStyle::Light
 // Version: 1.16.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -514,21 +515,6 @@ namespace {
         return box;
     }
 
-    // A colour picker restyled for the dialog's light surface.
-    ColorPickerStyle LightPickerStyle() {
-        ColorPickerStyle s;
-        s.backgroundColor = Color(249, 249, 251, 255);
-        s.panelColor      = Color(240, 240, 244, 255);
-        s.borderColor     = Color(210, 210, 216, 255);
-        s.textColor       = kTextColor;
-        s.mutedTextColor  = Color(120, 120, 126, 255);
-        s.fieldColor      = Color(255, 255, 255, 255);
-        s.fieldBorderColor = Color(190, 190, 196, 255);
-        s.accentColor     = Color(60, 140, 220, 255);
-        s.markerOutline   = Color(90, 90, 96, 255);
-        return s;
-    }
-
     // ===== COLOUR BOX + PICKER POPUP =====
 
     // The box showing a configured colour. It is a button filled with that
@@ -612,11 +598,15 @@ namespace {
 
         popup->window->layout.SetFlexColumn()
                              .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        popup->window->SetBackgroundColor(Color(249, 249, 251, 255));
+        const Color popupSurface(249, 249, 251, 255);
+        popup->window->SetBackgroundColor(popupSurface);
 
         popup->picker = CreateColorPicker("ufl-set-popup-picker", initial,
                                           0, 0, 280, 380);
-        popup->picker->SetStyle(LightPickerStyle());
+        // The framework's light picker, on the popup's surface.
+        ColorPickerStyle pickerStyle = ColorPickerStyle::Light();
+        pickerStyle.backgroundColor = popupSurface;
+        popup->picker->SetStyle(pickerStyle);
         popup->picker->SetUIScale(0.85f);
         popup->picker->SetShowAlpha(false);   // tree rows are painted opaque
         popup->picker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);

@@ -10,7 +10,7 @@ visually frames a set of related child elements under a caption. It extends
 layout, and scrolling machinery while adding a titled frame and optional
 interactive behaviour.
 
-**Version:** 1.0.1
+**Version:** 1.3.0
 **Header:** `include/UltraCanvasGroupBox.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -24,8 +24,11 @@ interactive behaviour.
 - **Full Visual Styling**: border colour/width, corner radius, background fill,
   caption font/colour, header background and separator, content padding — all via
   `GroupBoxVisualStyle`.
-- **Style Presets**: `GroupBoxVisualStyle::Default()` and
-  `GroupBoxVisualStyle::Card()` (iOS-like grouped card).
+- **Style Presets**: `GroupBoxVisualStyle::Default()`,
+  `GroupBoxVisualStyle::Card()` (iOS-like grouped card) and
+  `GroupBoxVisualStyle::SectionCard()` (a window section as a white card on
+  the light page of `GroupBoxVisualStyle::SectionCardPageColor()` - the look
+  UltraMail's panes and UltraPaint's side panel share).
 - **Activator (checkbox or switch)**: an optional checkbox- or switch-style
   toggle in the title bar that enables/disables (greys out) the contained
   children. It can be placed on the **left or right** side of the title bar.
@@ -149,6 +152,33 @@ auto gb = CreateGroupBox("info", 20, 20, 300, 160, "GROUPBOX");
 gb->SetFrameStyle(GroupBoxFrameStyle::Header);
 gb->SetVisualStyle(GroupBoxVisualStyle::Card());
 gb->SetCollapsible(true);
+```
+
+### Sections of a window as cards
+
+`SectionCard()` is one section of a window as a white card: a hairline border,
+8 px corners, the caption in bold grey over a hairline separator, 8 px of
+padding inside. It is drawn for the `Header` frame style and for a page of
+`SectionCardPageColor()` around the cards - on a white page a white card shows
+nothing but its hairline. Applications that share it look alike, and stay
+alike when the preset changes; UltraMail and UltraPaint both build their
+cards from it. Change what the content needs, not the look: the caption's
+size to the application's body size, the padding.
+
+```cpp
+auto panel = CreateContainer("sidePanel", 0, 0, 300, 0);
+panel->layout.SetFlexColumn().SetFlexGap(8);
+panel->SetPadding(8);
+panel->SetBackgroundColor(GroupBoxVisualStyle::SectionCardPageColor());
+
+auto layers = CreateGroupBox("layers", 0, 0, 268, 0, "Layers");
+layers->SetFrameStyle(GroupBoxFrameStyle::Header);
+GroupBoxVisualStyle card = GroupBoxVisualStyle::SectionCard();
+card.titleFont.fontSize = 9.0f;     // the application's body size
+card.contentPadding = 6.0f;
+layers->SetVisualStyle(card);
+layers->layout.SetFlexColumn().SetFlexGap(4);
+panel->AddChild(layers);
 ```
 
 ## Demo

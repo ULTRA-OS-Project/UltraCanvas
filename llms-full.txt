@@ -17062,8 +17062,8 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.5.0
-**Last Modified**: 2026-10-05
+**Version**: 1.6.0
+**Last Modified**: 2026-10-15
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -17191,6 +17191,7 @@ namespace UltraCanvas {
         void SetSlidersCollapsible(bool collapsible, bool expanded = false);
         void SetSlidersExpanded(bool expanded);
         void SetUIScale(float scale);                    // 0.6 = 60% sized picker
+        void SetStyle(const ColorPickerStyle& s);        // ColorPickerStyle::Light() / Dark()
 
         void SetShowColorWheel(bool show);               // compact mode when false
         void SetShowAlpha(bool show);
@@ -17267,6 +17268,27 @@ picker->SetSlidersCollapsible(true, false);
 // A 60% sized picker (pair the scale with a smaller widget size):
 auto small = UltraCanvas::CreateColorPicker("small", color, 20, 20, 174, 282);
 small->SetUIScale(0.6f);
+```
+
+### Light and dark styles
+
+A picker draws its own surface, and left as constructed it is the dark one: a
+charcoal panel with a red accent. In a light window take
+`ColorPickerStyle::Light()` - a white surface, grey hairline fields and
+outlines, near-black text and a blue accent - rather than filling in the
+colours by hand. `ColorPickerStyle::Dark()` names the default. On a surface
+that is not white (a dialog's grey), set `backgroundColor` to that surface so
+the picker does not stand out as a block. The presets leave `uiScale` at 1, so
+scale after setting the style.
+
+```cpp
+picker->SetStyle(UltraCanvas::ColorPickerStyle::Light());
+picker->SetUIScale(0.78f);
+
+// On a dialog's own grey:
+UltraCanvas::ColorPickerStyle onGrey = UltraCanvas::ColorPickerStyle::Light();
+onGrey.backgroundColor = UltraCanvas::Colors::WindowBackground;
+picker->SetStyle(onGrey);
 ```
 
 ### Compact (sliders-only) variant
@@ -31598,7 +31620,7 @@ visually frames a set of related child elements under a caption. It extends
 layout, and scrolling machinery while adding a titled frame and optional
 interactive behaviour.
 
-**Version:** 1.0.1
+**Version:** 1.3.0
 **Header:** `include/UltraCanvasGroupBox.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -31612,8 +31634,11 @@ interactive behaviour.
 - **Full Visual Styling**: border colour/width, corner radius, background fill,
   caption font/colour, header background and separator, content padding — all via
   `GroupBoxVisualStyle`.
-- **Style Presets**: `GroupBoxVisualStyle::Default()` and
-  `GroupBoxVisualStyle::Card()` (iOS-like grouped card).
+- **Style Presets**: `GroupBoxVisualStyle::Default()`,
+  `GroupBoxVisualStyle::Card()` (iOS-like grouped card) and
+  `GroupBoxVisualStyle::SectionCard()` (a window section as a white card on
+  the light page of `GroupBoxVisualStyle::SectionCardPageColor()` - the look
+  UltraMail's panes and UltraPaint's side panel share).
 - **Activator (checkbox or switch)**: an optional checkbox- or switch-style
   toggle in the title bar that enables/disables (greys out) the contained
   children. It can be placed on the **left or right** side of the title bar.
@@ -31737,6 +31762,33 @@ auto gb = CreateGroupBox("info", 20, 20, 300, 160, "GROUPBOX");
 gb->SetFrameStyle(GroupBoxFrameStyle::Header);
 gb->SetVisualStyle(GroupBoxVisualStyle::Card());
 gb->SetCollapsible(true);
+```
+
+### Sections of a window as cards
+
+`SectionCard()` is one section of a window as a white card: a hairline border,
+8 px corners, the caption in bold grey over a hairline separator, 8 px of
+padding inside. It is drawn for the `Header` frame style and for a page of
+`SectionCardPageColor()` around the cards - on a white page a white card shows
+nothing but its hairline. Applications that share it look alike, and stay
+alike when the preset changes; UltraMail and UltraPaint both build their
+cards from it. Change what the content needs, not the look: the caption's
+size to the application's body size, the padding.
+
+```cpp
+auto panel = CreateContainer("sidePanel", 0, 0, 300, 0);
+panel->layout.SetFlexColumn().SetFlexGap(8);
+panel->SetPadding(8);
+panel->SetBackgroundColor(GroupBoxVisualStyle::SectionCardPageColor());
+
+auto layers = CreateGroupBox("layers", 0, 0, 268, 0, "Layers");
+layers->SetFrameStyle(GroupBoxFrameStyle::Header);
+GroupBoxVisualStyle card = GroupBoxVisualStyle::SectionCard();
+card.titleFont.fontSize = 9.0f;     // the application's body size
+card.contentPadding = 6.0f;
+layers->SetVisualStyle(card);
+layers->layout.SetFlexColumn().SetFlexGap(4);
+panel->AddChild(layers);
 ```
 
 ## Demo

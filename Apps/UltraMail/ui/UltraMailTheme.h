@@ -8,11 +8,13 @@
 // Nothing here paints anything. These are values handed to catalogue elements
 // through their own SetStyle / SetTextColor / SetBorders APIs, per the
 // framework rule that applications never hand-roll a widget.
+// Version: 0.6.0 - the page, card and card-caption look come from the framework's
+//                  GroupBoxVisualStyle::SectionCard (shared with UltraPaint)
 // Version: 0.5.0 - ClickSurface::PassPointerThroughContent: a click on the
 //                  surface's text and icons reaches the surface
 // Version: 0.4.0 - StyleSegmented (the signature editor, the compose window)
 // Version: 0.3.0 - sender-badge colours (kTrust*) and the badge metric
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -35,10 +37,15 @@ namespace Theme {
 // Colour
 // ---------------------------------------------------------------------------
 // A near-white page with white cards, so a card reads as raised without a
-// shadow (the catalogue has no shadow primitive).
-inline const UltraCanvas::Color kPageBackground {245, 246, 248};
-inline const UltraCanvas::Color kCardBackground {255, 255, 255};
-inline const UltraCanvas::Color kCardBorder     {226, 229, 234};
+// shadow (the catalogue has no shadow primitive). The page, the card and its
+// border are the framework's SectionCard look, which UltraPaint's side panel
+// uses too: taken from it, so the two applications cannot drift apart.
+inline const UltraCanvas::Color kPageBackground =
+    UltraCanvas::GroupBoxVisualStyle::SectionCardPageColor();
+inline const UltraCanvas::Color kCardBackground =
+    UltraCanvas::GroupBoxVisualStyle::SectionCard().backgroundColor;
+inline const UltraCanvas::Color kCardBorder =
+    UltraCanvas::GroupBoxVisualStyle::SectionCard().borderColor;
 inline const UltraCanvas::Color kDivider        {234, 236, 240};
 inline const UltraCanvas::Color kSidebar        {249, 250, 251};
 
@@ -97,7 +104,7 @@ constexpr float kSizeSmall     = 8.0f;
 constexpr float kPagePadding   = 10.0f;   // gutter between the window edge and content
 constexpr float kGap           = 8.0f;    // gap between cards / rows
 constexpr float kInnerGap      = 6.0f;    // gap inside a row
-constexpr float kCardRadius    = 8.0f;
+inline const float kCardRadius = UltraCanvas::GroupBoxVisualStyle::SectionCard().cornerRadius;
 constexpr float kControlRadius = 5.0f;
 constexpr float kControlHeight = 24.0f;   // buttons and inputs (UltraFiler: 22)
 constexpr float kToolbarHeight = 28.0f;
@@ -196,17 +203,11 @@ inline void ApplyCard(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>& 
     c->SetBorders(1.0f, kCardBorder, radius);
 }
 
-// A group box drawn as a card with a quiet caption.
+// A group box drawn as a card with a quiet caption: the framework's
+// SectionCard, with the caption at the body size.
 inline UltraCanvas::GroupBoxVisualStyle CardGroupBox(float contentPadding = kGap) {
-    UltraCanvas::GroupBoxVisualStyle s = UltraCanvas::GroupBoxVisualStyle::Card();
-    s.backgroundColor       = kCardBackground;
-    s.borderColor           = kCardBorder;
-    s.cornerRadius          = kCardRadius;
-    s.titleColor            = kTextSecondary;
+    UltraCanvas::GroupBoxVisualStyle s = UltraCanvas::GroupBoxVisualStyle::SectionCard();
     s.titleFont.fontSize    = kSizeBody;
-    s.titleFont.fontWeight  = UltraCanvas::FontWeight::Bold;
-    s.titleIndent           = 8.0f;
-    s.titleVerticalPadding  = 4.0f;
     s.contentPadding        = contentPadding;
     return s;
 }

@@ -5,8 +5,11 @@
 // titled frame, an optional activator (checkbox or switch, on either side of
 // the title bar) that enables/disables the contents, an optional info icon
 // with help text, and optional collapsible behaviour.
+// Version: 1.3.0 - GroupBoxVisualStyle::SectionCard() and SectionCardPageColor(): one
+//                  section of a window as a white card on a light page (UltraMail's
+//                  panes, UltraPaint's side panel), shared instead of copied per app
 // Version: 1.2.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -83,6 +86,18 @@ namespace UltraCanvas {
         static GroupBoxVisualStyle Default();
         // iOS-like grouped card: filled rounded background, bold header, separator.
         static GroupBoxVisualStyle Card();
+        // One section of a window as a white card - UltraMail's folder,
+        // message-list and message panes, UltraPaint's side panel: a hairline
+        // border, 8 px corners and the caption in bold grey over a hairline
+        // separator. Meant for GroupBoxFrameStyle::Header, on a page of
+        // SectionCardPageColor(). The caption is 11 px: an application with
+        // another body size sets titleFont.fontSize to it, and contentPadding
+        // to what its content wants (8 px here).
+        static GroupBoxVisualStyle SectionCard();
+        // The light page SectionCard is drawn to sit on. A white card on a
+        // white ground shows nothing but its hairline, so the space around
+        // and between the cards is filled with this.
+        static Color SectionCardPageColor();
     };
 
 // ===== GROUP BOX =====

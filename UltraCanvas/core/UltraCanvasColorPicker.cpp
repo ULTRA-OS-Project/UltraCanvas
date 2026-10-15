@@ -1,7 +1,8 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
+// Version: 1.6.0 - ColorPickerStyle::Light()
 // Version: 1.5.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -17,6 +18,21 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+    ColorPickerStyle ColorPickerStyle::Light() {
+        ColorPickerStyle s;
+        s.backgroundColor  = Color(255, 255, 255, 255);
+        s.panelColor       = Color(245, 246, 248, 255);
+        s.borderColor      = Color(203, 208, 216, 255);
+        s.textColor        = Color( 24,  28,  35, 255);
+        s.mutedTextColor   = Color(104, 112, 125, 255);
+        s.fieldColor       = Color(255, 255, 255, 255);
+        s.fieldBorderColor = Color(203, 208, 216, 255);
+        s.accentColor      = Color( 37,  99, 235, 255);
+        s.markerColor      = Colors::White;
+        s.markerOutline    = Color( 90,  96, 106, 255);
+        return s;
+    }
 
     // ===================================================================
     // Construction

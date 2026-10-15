@@ -13,8 +13,8 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.5.0
-**Last Modified**: 2026-10-05
+**Version**: 1.6.0
+**Last Modified**: 2026-10-15
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -142,6 +142,7 @@ namespace UltraCanvas {
         void SetSlidersCollapsible(bool collapsible, bool expanded = false);
         void SetSlidersExpanded(bool expanded);
         void SetUIScale(float scale);                    // 0.6 = 60% sized picker
+        void SetStyle(const ColorPickerStyle& s);        // ColorPickerStyle::Light() / Dark()
 
         void SetShowColorWheel(bool show);               // compact mode when false
         void SetShowAlpha(bool show);
@@ -218,6 +219,27 @@ picker->SetSlidersCollapsible(true, false);
 // A 60% sized picker (pair the scale with a smaller widget size):
 auto small = UltraCanvas::CreateColorPicker("small", color, 20, 20, 174, 282);
 small->SetUIScale(0.6f);
+```
+
+### Light and dark styles
+
+A picker draws its own surface, and left as constructed it is the dark one: a
+charcoal panel with a red accent. In a light window take
+`ColorPickerStyle::Light()` - a white surface, grey hairline fields and
+outlines, near-black text and a blue accent - rather than filling in the
+colours by hand. `ColorPickerStyle::Dark()` names the default. On a surface
+that is not white (a dialog's grey), set `backgroundColor` to that surface so
+the picker does not stand out as a block. The presets leave `uiScale` at 1, so
+scale after setting the style.
+
+```cpp
+picker->SetStyle(UltraCanvas::ColorPickerStyle::Light());
+picker->SetUIScale(0.78f);
+
+// On a dialog's own grey:
+UltraCanvas::ColorPickerStyle onGrey = UltraCanvas::ColorPickerStyle::Light();
+onGrey.backgroundColor = UltraCanvas::Colors::WindowBackground;
+picker->SetStyle(onGrey);
 ```
 
 ### Compact (sliders-only) variant
