@@ -46,3 +46,11 @@
   `DispatchEvent` and `GetPressedKeys` use as well - `DispatchEvent`'s own
   check compared the enum with 256, which clang read as always true, since
   `UCKeys` stops at 128.
+- **CI's Linux builds have spell checking.** Linux has no native spell
+  backend, and CI installed neither Hunspell nor Enchant, so both Linux rows
+  built every text widget with spell checking off (zero dictionaries) and
+  `SpellCheckerTest` skipped all of its dictionary-backed checks - with only
+  a configure warning to say so. CI now installs `libhunspell-dev` and the `hunspell-en-us`
+  dictionary, and a *Verify spell checking built with Hunspell* step fails
+  the job when configure does not find it. Cloud sessions install the same
+  two packages (`.claude/hooks/session-start.sh`).
