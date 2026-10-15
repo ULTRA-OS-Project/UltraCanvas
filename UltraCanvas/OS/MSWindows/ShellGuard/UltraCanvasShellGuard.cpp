@@ -36,8 +36,10 @@
 // Exit codes: 0 the desktop exited normally (or Explorer took over), 1 it
 // could not be started, 2 no program was named, 3 it failed three times in a
 // minute.
+// Version: 1.0.1 - the desktop starts with no console window (UltraDesktop is
+//                  a console program)
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #ifndef UNICODE
@@ -448,7 +450,10 @@ namespace {
         startup.cb = sizeof(startup);
         PROCESS_INFORMATION process = {};
         const std::wstring folder = FolderOf(program);
-        if (!CreateProcessW(program.c_str(), buffer.data(), nullptr, nullptr, FALSE, 0, nullptr,
+        // UltraDesktop is a console program (for --windows); started from
+        // here, which has no console, it would get a console window of its
+        // own at every sign-in until it closed it. No window for it, then.
+        if (!CreateProcessW(program.c_str(), buffer.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
                             folder.empty() ? nullptr : folder.c_str(), &startup, &process)) {
             running.error = GetLastError();
             return running;

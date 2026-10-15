@@ -49,6 +49,15 @@
     entries and the uninstall entry, and uninstall it again, checking
     nothing is left behind.
   - The installer is uploaded as `UltraCanvas-Setup-Windows-<version>-<arch>`.
+  - The first run found two faults, both fixed here.
+    - `build-windows-installer.sh` handed makensis relative paths, which
+      makensis reads from the script's own folder. It now passes absolute
+      ones.
+    - The Start menu left out every application built as a console
+      program, UltraDesktop among them: only GUI programs got an entry. Now
+      every program with a desktop entry (`Apps/*/*.desktop`) gets one,
+      under that entry's name. GUI programs without an entry keep theirs,
+      and command-line tools still get none.
   - `scripts/build-windows-installer.sh` finds NSIS on `PATH`, in its
     Windows install folder, or at `MAKENSIS`.
 - **The signing scripts change the certificate's password**

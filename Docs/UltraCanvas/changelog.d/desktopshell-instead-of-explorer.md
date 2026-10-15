@@ -13,7 +13,8 @@
   - Linux and the other platforms still answer that the session decides.
 - **UltraCanvasShellGuard** (`OS/MSWindows/ShellGuard/`, built beside the
   applications) keeps a desktop that fails from leaving the screen empty:
-  - It starts the desktop and starts it again after a crash.
+  - It starts the desktop and starts it again after a crash. The desktop gets
+    no console window, though UltraDesktop is a console program.
   - It starts Explorer for the session after three failures within a minute,
     when the desktop cannot start at all, or when it exits, unless the session
     is ending. Should the desktop hang, it does so when the shell setting stops

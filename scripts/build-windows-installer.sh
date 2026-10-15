@@ -23,6 +23,9 @@
 #     that still holds something of the user's;
 #   - the installer's icon from media/appicon/UltraCanvas.png, when
 #     ImageMagick is there to convert it.
+# Version: 0.1.4 - the Start menu lists every program with a desktop entry,
+#                  under its name - UltraDesktop and the other console-built
+#                  applications included - and GUI programs without one
 # Version: 0.1.3 - the folder and the output as absolute paths: makensis reads
 #                  a relative one from the .nsi file's folder, not from here
 # Version: 0.1.2 - makensis also from Program Files (the CI runners' NSIS)
@@ -101,26 +104,54 @@ nsis_quote() {
 }
 
 # ===== THE START MENU =====
-# GUI programs that are not applications: UltraCanvasShellGuard is what the
-# sign-in starts when UltraDesktop runs instead of Explorer - started from
-# the Start menu it would only start UltraDesktop.
+# An application is a program with a desktop entry (Apps/*/*.desktop, which
+# the Linux menus read too), named as the entry names it: UltraDesktop and
+# the others built as console programs for their command-line modes
+# (UltraCleaner --scan, UltraWeb --check ...) are applications all the same.
+# UltraDesktop's entry says NoDisplay - a Linux session starts the desktop -
+# but on Windows the Start menu is where one starts it to try it. A GUI
+# program with no entry (Texter, UltraCanvasDemo) is listed under its own
+# name; a console program with none (ultramsg, videofx) is a command-line
+# tool and is not.
+# Not applications: UltraCanvasShellGuard is what the sign-in starts when
+# UltraDesktop runs instead of Explorer - started from the Start menu it
+# would only start UltraDesktop.
 NOT_APPLICATIONS=" UltraCanvasShellGuard "
+ENTRY_NAMES="$WORK/entry-names"
+: > "$ENTRY_NAMES"
+for entry in "$SCRIPT_DIR"/Apps/*/*.desktop; do
+    [ -f "$entry" ] || continue
+    program="$(sed -n 's/^Exec=//p' "$entry" | head -n1 | awk '{print $1}')"
+    title="$(sed -n 's/^Name=//p' "$entry" | head -n1 | tr -d '\r')"
+    program="$(basename "$program")"
+    [ -n "$program" ] || continue
+    # A name that is no Windows file name keeps the program's.
+    case "$title" in ""|*[\\/:*?\"\<\>\|]*) title="$program" ;; esac
+    printf '%s\t%s\n' "$(printf '%s' "$program" | tr '[:upper:]' '[:lower:]')" "$title" >> "$ENTRY_NAMES"
+done
 : > "$SHORTCUTS"
 COUNT=0
+LISTED=""
 for exe in "$DIST"/*.exe; do
     [ -e "$exe" ] || continue
     name="$(basename "$exe" .exe)"
     case "$NOT_APPLICATIONS" in *" $name "*) continue ;; esac
-    [ "$(pe_subsystem "$exe")" = "2" ] || continue
-    q="$(nsis_quote "$name")"
-    printf 'CreateShortCut "$SMPROGRAMS\\${PRODUCT}\\%s.lnk" "$INSTDIR\\%s.exe"\n' "$q" "$q" >> "$SHORTCUTS"
+    lower="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+    title="$(awk -F'\t' -v p="$lower" '$1 == p { print $2; exit }' "$ENTRY_NAMES")"
+    if [ -z "$title" ]; then
+        [ "$(pe_subsystem "$exe")" = "2" ] || continue
+        title="$name"
+    fi
+    printf 'CreateShortCut "$SMPROGRAMS\\${PRODUCT}\\%s.lnk" "$INSTDIR\\%s.exe"\n' \
+        "$(nsis_quote "$title")" "$(nsis_quote "$name")" >> "$SHORTCUTS"
     COUNT=$((COUNT + 1))
+    LISTED="$LISTED${LISTED:+, }$title"
 done
 if [ "$COUNT" -eq 0 ]; then
-    echo "Error: no Windows GUI program in '$DIST' - nothing for the Start menu" >&2
+    echo "Error: no application in '$DIST' - nothing for the Start menu" >&2
     exit 1
 fi
-echo "  Start menu: $COUNT applications"
+echo "  Start menu: $COUNT applications ($LISTED)"
 
 # ===== WHAT THE UNINSTALLER REMOVES =====
 : > "$REMOVE"
