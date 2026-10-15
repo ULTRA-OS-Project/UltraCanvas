@@ -1686,9 +1686,18 @@ void UltraMailApp::UnsubscribeWith(const MessageEnvelope& env, const std::string
                         info.oneClickUrl, std::vector<uint8_t>(form.begin(), form.end()),
                         response, options);
                     const bool ok = r && response.statusCode >= 200 && response.statusCode < 300;
-                    const std::string why = !r ? r.message
-                        : "The server answered " + std::to_string(response.statusCode) + " "
-                          + response.statusMessage + ".";
+                    // The list's own web server answered, or did not: say so
+                    // in those words - no mail server was involved.
+                    static const std::string kListServer = "the sender's unsubscribe server";
+                    std::string why;
+                    if (!r) {
+                        why = FriendlyMessage(r, kListServer);
+                        const std::string detail = DetailLine(r, kListServer);
+                        if (!detail.empty()) why += " (" + detail + ")";
+                    } else {
+                        why = "The sender's unsubscribe server answered "
+                            + std::to_string(response.statusCode) + " " + response.statusMessage + ".";
+                    }
                     auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
                     if (!app) return;
                     app->PostToUIThread([this, info, sender, ok, why]() {
