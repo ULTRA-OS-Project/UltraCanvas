@@ -1,3 +1,30 @@
+#### 2026-10-15 *0.9.308*
+- **A dropdown takes the keyboard focus.** `UltraCanvasDropdown` returned
+  false from `AcceptsFocus()`, so Tab never reached it and its own keys -
+  Down or Space to open it - were never delivered: a dropdown could only be
+  opened with the mouse. It takes the focus now as a button does, from Tab
+  and from a click, and draws `focusBorderColor` while focused;
+  `SetAcceptsFocus(false)` leaves one out of the Tab order again. Dropdowns
+  therefore join the Tab order of every dialog that has one. The focus stays
+  on the dropdown while its list is open: `UltraCanvasListView` (1.4.0) gains
+  `SetAcceptsFocus`, and the popup list turns it off - a click on an entry
+  used to move the focus to the list, which then closed. `DropdownKeyboardTest`
+  covers Tab, a click, Down / Space / Return / Escape and the opt-out.
+- **WasmHost runs WebAssembly on Windows.** The MSYS2 CLANG64 / CLANGARM64
+  builds had no engine, because wasmtime publishes no library for their
+  `gnullvm` ABI. `cmake/UltraCanvasWasmtime.cmake` (1.2.0) now builds
+  wasmtime's C API from its source release there, offline, with the native
+  Rust toolchain (`mingw-w64-clang-*-rust`, which the Vectorizer plugin
+  already needs).
+  - The source release is hash-checked like the prebuilt archives.
+  - Only the features WasmHost uses are built: Cranelift, WebAssembly
+    text, WASI, parallel compilation, and the GC behind exceptions.
+  - `ULTRACANVAS_ENABLE_WASM_HOST` is now on by default for MinGW builds.
+    Without a Rust toolchain the build carries on without an engine and
+    says why, and the no-engine message names the package to install.
+  - `ULTRACANVAS_WASMTIME_FROM_SOURCE=ON` takes the same path on any
+    platform.
+
 #### 2026-10-15 *0.9.307*
 - **A shared card look for window sections, and a light colour picker.**
   UltraMail's panes and UltraPaint's side panel each kept their own copy of
