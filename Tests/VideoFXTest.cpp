@@ -10,10 +10,11 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
+// Version: 0.14.1 - a frame that failed to extract reads as black, not a crash
 // Version: 0.14.0 - VideoFX_GetFileFormats: every type it writes written and read back;
 //                  VideoFX_SetPictureReader: picture types the application reads
 // Version: 0.13.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -1114,9 +1115,12 @@ static bool Exists(const std::string& p) {
     return fs::exists(UltraCanvas::PathFromUtf8(p), ec);
 }
 
-// Average of a frame's centre 8x8 block
+// Average of a frame's centre 8x8 block. A frame that is not valid (its
+// extraction failed, which a check already reported) reads as black rather
+// than ending the run on a stray read.
 static void CentreColour(const VideoFXFrame& f, double& r, double& g, double& b) {
     r = g = b = 0.0;
+    if (!f.IsValid() || f.width < 8 || f.height < 8) return;
     int n = 0;
     for (int y = f.height / 2 - 4; y < f.height / 2 + 4; ++y)
         for (int x = f.width / 2 - 4; x < f.width / 2 + 4; ++x) {
@@ -1128,6 +1132,8 @@ static void CentreColour(const VideoFXFrame& f, double& r, double& g, double& b)
 }
 
 static void PixelAt(const VideoFXFrame& f, int x, int y, int& r, int& g, int& b) {
+    r = g = b = 0;
+    if (!f.IsValid() || x < 0 || y < 0 || x >= f.width || y >= f.height) return;
     const uint8_t* p = &f.pixels[(static_cast<size_t>(y) * f.width + x) * 4];
     r = p[0]; g = p[1]; b = p[2];
 }

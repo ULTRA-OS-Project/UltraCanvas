@@ -22,7 +22,7 @@ segments.
 > VA-API, AMF, VideoToolbox, Media Foundation) by choice, voice-overs and
 > sound effects placed at any time, GIF and
 > audio-only output, lossless cut, the background job and the `videofx`
-> command-line tool work today, on FFmpeg 4.4 to 8.x.
+> command-line tool work today, on FFmpeg 4.4 to 9.x.
 > Keyframed parameters are planned (see *Roadmap*).
 
 ---
