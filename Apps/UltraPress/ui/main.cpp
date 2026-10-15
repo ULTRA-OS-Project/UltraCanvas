@@ -7,6 +7,7 @@
 // properties on the right (ui/UltraPressWindow.h). The renderer is the one
 // that becomes the published page under Emscripten.
 //
+//   ultrapress                       the start window: open a site folder, or create a site
 //   ultrapress <site-dir>            open a site folder in the editor
 //   ultrapress <site-dir> --check    render every page without a window and
 //                                    print the element counts and warnings
@@ -15,19 +16,24 @@
 //
 // There were two programs, ultrapress and UltraPress, until the macOS build
 // showed that two names differing only in case are one name on a
-// case-insensitive filesystem. One program, like ultrafibu.
+// case-insensitive filesystem. One program, like ultrafibu. And like
+// ultrafibu, started with nothing it opens a window rather than printing
+// its usage: a double-click on Windows gave that usage a console that
+// closed before it could be read, which looked like a crash.
+// Version: 0.8.1 - no argument, or a folder without a site, opens the start window
 // Version: 0.8.0 - the look read from the settings folder before the window opens
 // Version: 0.6.0 - media
 // Version: 0.5.0 - hosts
 // Version: 0.4.1 - one program: the commands and the window
 // Version: 0.3.0 - editing: blocks added, moved, removed and their properties changed; Save
 // Version: 0.2.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressBlocks.h"
 #include "UltraPressCli.h"
 #include "UltraPressModel.h"
 #include "UltraPressRender.h"
+#include "UltraPressStart.h"
 #include "UltraPressTheme.h"
 #include "UltraPressWindow.h"
 
@@ -56,6 +62,7 @@ namespace {
 int Usage() {
     std::fprintf(stderr,
                  "UltraPress %s\n"
+                 "  ultrapress                      the start window: open a site folder, or create a site\n"
                  "  ultrapress <site-dir>           open a site folder in the editor\n"
                  "  ultrapress <site-dir> --check   render every page without a window, print what was built\n"
                  "  ultrapress <command> ...        new, check, page, publish, import, hosts, media; `ultrapress help` lists them\n"
@@ -92,59 +99,105 @@ int RunCheck(const UltraPress::Site& site, const std::string& siteDir) {
     return failures == 0 ? 0 : 1;
 }
 
+// The site folder's errors as one line for the start window.
+std::string FirstError(const std::vector<std::string>& errors, const std::string& siteDir) {
+    for (const std::string& error : errors) std::fprintf(stderr, "%s\n", error.c_str());
+    return errors.empty() ? "\"" + siteDir + "\" could not be opened as a site." : errors.front();
+}
+
+// Static lifetime: under Emscripten Run() never returns and unwinds
+// main()'s frame while the loop keeps ticking.
+std::unique_ptr<UltraPress::EditorWindow> g_editor;
+UltraPress::StartWindow g_start;
+
+// Opens the editor on a loaded site: the main window, the look, the site.
+// Why not, as one line, or an empty string.
+std::string OpenEditor(const std::string& siteDir, UltraPress::Site site, bool dark) {
+    for (const UltraPress::ValidationIssue& issue : UltraPress::ValidateSite(site)) {
+        std::fprintf(stderr, "%s %s: %s\n", issue.page.c_str(), issue.path.c_str(), issue.message.c_str());
+    }
+    WindowConfig cfg;
+    cfg.title = site.name + " - UltraPress " ULTRAPRESS_VERSION;
+    cfg.width = 1500;
+    cfg.height = 920;
+    cfg.backgroundColor = UltraCanvasTheme::Current().roles.ground;
+    auto window = CreateWindow(cfg);
+    if (!window) return "The editor window could not be created.";
+    g_editor = std::make_unique<UltraPress::EditorWindow>(std::move(site), siteDir);
+    g_editor->SetDark(dark, false);
+    g_editor->Build(window);
+#if defined(__EMSCRIPTEN__)
+    window->Maximize();
+#endif
+    window->Show();
+    return std::string();
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
     std::vector<std::string> args(argv + 1, argv + argc);
-    if (args.empty()) return Usage();
-    if (args[0] == "--version" || args[0] == "-v") {
+    if (!args.empty() && (args[0] == "--version" || args[0] == "-v")) {
         std::printf("UltraPress %s\n", ULTRAPRESS_VERSION);
         return 0;
     }
-    if (IsCommand(args[0])) return UltraPress::CommandLine(argc, argv);
-    const std::string siteDir = args[0];
+    if (!args.empty() && IsCommand(args[0])) return UltraPress::CommandLine(argc, argv);
+    const std::string siteDir = args.empty() ? std::string() : args[0];
     bool check = false;
     for (size_t i = 1; i < args.size(); ++i) {
         if (args[i] == "--check") check = true;
         else return Usage();
     }
 
-    struct { UltraPress::Site site; } viewer;
-    std::vector<std::string> errors;
-    if (!UltraPress::LoadSite(siteDir, viewer.site, errors)) {
-        for (const std::string& error : errors) std::fprintf(stderr, "%s\n", error.c_str());
-        return 1;
+    if (check) {
+        // Without a window: the folder has to be a site, and the answer goes
+        // to the prompt that asked.
+        UltraPress::Site site;
+        std::vector<std::string> errors;
+        if (!UltraPress::LoadSite(siteDir, site, errors)) {
+            FirstError(errors, siteDir);
+            return 1;
+        }
+        for (const UltraPress::ValidationIssue& issue : UltraPress::ValidateSite(site)) {
+            std::fprintf(stderr, "%s %s: %s\n", issue.page.c_str(), issue.path.c_str(), issue.message.c_str());
+        }
+        return RunCheck(site, siteDir);
     }
-    for (const UltraPress::ValidationIssue& issue : UltraPress::ValidateSite(viewer.site)) {
-        std::fprintf(stderr, "%s %s: %s\n", issue.page.c_str(), issue.path.c_str(), issue.message.c_str());
-    }
-    if (check) return RunCheck(viewer.site, siteDir);
 
     static UltraCanvasApplication app;
     if (!app.Initialize(argv[0])) return 1;
 
-    // The look the user chose last, before the window is built, so that
+    // The look the user chose last, before any window is built, so that
     // every element that follows the theme is born in it.
     const bool dark = UltraPress::LoadLook(UltraPress::LookSettingsDirectory());
     UltraCanvasTheme::SetCurrent(UltraPress::ThemeFor(dark));
 
-    WindowConfig cfg;
-    cfg.title = viewer.site.name + " - UltraPress " ULTRAPRESS_VERSION;
-    cfg.width = 1500;
-    cfg.height = 920;
-    cfg.backgroundColor = UltraCanvasTheme::Current().roles.ground;
-    auto window = CreateWindow(cfg);
-    if (!window) return 1;
+    // Open a site folder in the editor; why not, or an empty string.
+    auto open = [dark](const std::string& dir) -> std::string {
+        UltraPress::Site site;
+        std::vector<std::string> errors;
+        if (!UltraPress::LoadSite(dir, site, errors)) return FirstError(errors, dir);
+        return OpenEditor(dir, std::move(site), dark);
+    };
 
-    // Static lifetime: under Emscripten Run() never returns and unwinds
-    // main()'s frame while the loop keeps ticking.
-    static UltraPress::EditorWindow editor(std::move(viewer.site), siteDir);
-    editor.SetDark(dark, false);
-    editor.Build(window);
-#if defined(__EMSCRIPTEN__)
-    window->Maximize();
-#endif
-    window->Show();
+    // With a site folder that opens, the editor and nothing else. Without
+    // one, or with a folder that is not a site, the start window says so and
+    // offers to open or create one.
+    std::string hint;
+    if (siteDir.empty()) {
+        hint = "No site is open yet. Open a site folder, or create a new site.";
+    } else {
+        const std::string error = open(siteDir);
+        if (error.empty()) {
+            app.Run();
+            return 0;
+        }
+        hint = error;
+    }
+    g_start.onSiteChosen = open;
+    auto start = g_start.Build(hint, siteDir);
+    if (!start) return 1;
+    start->Show();
     app.Run();
     return 0;
 }

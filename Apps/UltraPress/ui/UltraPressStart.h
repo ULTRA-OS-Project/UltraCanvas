@@ -1,0 +1,56 @@
+// Apps/UltraPress/ui/UltraPressStart.h
+// The window that appears when there is no site to show yet: open a site
+// folder, or create a new site in one.
+//
+// Started with no argument - a double-click on the program - ultrapress
+// used to print its usage to a console and end, and on Windows that
+// console closed again before anybody could read it, which looked exactly
+// like a crash. A folder that held no site ended the same way. Now both
+// open this window, which says why, and offers the two ways on: the
+// folder dialog onto an existing site, or a name and a folder for a new
+// one (the starter site `ultrapress new` writes). The editor opens from
+// here; this window closes itself only once it has, because the
+// application ends the moment it has no window left. The same move as
+// UltraFIBU's start window.
+// Version: 0.8.1
+// Author: UltraCanvas Framework / ULTRA OS
+#pragma once
+
+#include "UltraCanvasButton.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasTextInput.h"
+#include "UltraCanvasWindow.h"
+
+#include <functional>
+#include <memory>
+#include <string>
+
+namespace UltraPress {
+
+class StartWindow {
+public:
+    // Called with the site folder the user settled on: one just created, or
+    // an existing one chosen. The caller opens it in the editor and returns
+    // an empty string, or returns why it could not, which this window shows
+    // instead of closing.
+    std::function<std::string(const std::string& siteDir)> onSiteChosen;
+
+    // `hint` says why this window is showing instead of a site; `suggestion`
+    // is the folder that was given and could not be opened, offered for a new
+    // site. Returns the window, to Show().
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> Build(const std::string& hint, const std::string& suggestion);
+    void Close();
+
+private:
+    void OpenExisting();
+    void CreateNew();
+    void HandOver(const std::string& siteDir);
+    void Say(const std::string& text, bool error);
+
+    std::string suggestion_;
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> name_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> status_;
+};
+
+} // namespace UltraPress

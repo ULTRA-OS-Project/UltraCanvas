@@ -1,3 +1,16 @@
+#### 2026-10-15 *0.8.1*
+- **Started with nothing, the program opens a start window instead of
+  ending.** `ultrapress` with no argument - a double-click on Windows -
+  printed its usage to a console that closed again before it could be
+  read, which looked like a crash; a folder that held no site ended the
+  same way. Both now open a start window (`ui/UltraPressStart.h`) that
+  says why and offers the two ways on: *Open a site folder…* through the
+  folder dialog onto an existing site, or a name and *Create it in a
+  folder…* for a new one (the starter site `ultrapress new` writes; a
+  folder that already holds a site is refused). The editor opens from
+  there and the start window closes once it has, the way UltraFIBU's
+  does. `ultrapress <site-dir> --check` still answers at the prompt.
+
 #### 2026-10-15 *0.8.0*
 - **The look follows the framework's theme, light or dark.** The window
   and its dialogs take their colours from an `UltraCanvasTheme`
