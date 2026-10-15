@@ -136,6 +136,10 @@ Apps/UltraMail/
     UltraMailNewMail.{h,cpp}      which stored mail is news (above the inbox's
                                   highest UID before the sync) and the
                                   notification's words
+    UltraMailResultText.{h,cpp}   a failed network operation in words: the alert's
+                                  sentence per result code, naming what was talked
+                                  to (the mail server unless the caller says), and
+                                  the details line (FriendlyMessage, DetailLine)
     UltraMailOneTimeCode.{h,cpp}  the one-time codes in a message (a sign-in
                                   code), in any language: by their shape, and
                                   the word for "code" beside them or in the
