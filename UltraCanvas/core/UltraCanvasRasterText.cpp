@@ -106,12 +106,14 @@ std::shared_ptr<UCRasterLayer> RenderTextLayer(const RasterTextContent& content,
     result->document = stated;
 
     // The element edits what it is given, so it gets a copy of that copy.
-    UltraCanvasRichTextEdit element("RasterTextRender", 0, 0, static_cast<float>(boxWidth), kMeasureHeight);
-    element.SetStyle(style);
-    element.SetSpellCheckEnabled(false);
-    element.SetShowComments(false);
-    element.SetReadOnly(true);
-    element.SetDocument(std::make_shared<UCRichDocument>(*stated));
+    // Shared, as elements are: some of what it does asks for itself that way.
+    auto element = std::make_shared<UltraCanvasRichTextEdit>("RasterTextRender", 0, 0,
+                                                             static_cast<float>(boxWidth), kMeasureHeight);
+    element->SetStyle(style);
+    element->SetSpellCheckEnabled(false);
+    element->SetShowComments(false);
+    element->SetReadOnly(true);
+    element->SetDocument(std::make_shared<UCRichDocument>(*stated));
 
     // Lay out first, for the height the text takes ...
     std::unique_ptr<IRenderContext> measure = CreateRenderContext(Size2Di(boxWidth, 1), nullptr);
@@ -119,8 +121,8 @@ std::shared_ptr<UCRasterLayer> RenderTextLayer(const RasterTextContent& content,
         error = "Could not create an offscreen render context";
         return nullptr;
     }
-    element.Render(measure.get(), Rect2Df(0, 0, static_cast<float>(boxWidth), kMeasureHeight));
-    result->height = std::max(0.0f, element.GetContentHeight());
+    element->Render(measure.get(), Rect2Df(0, 0, static_cast<float>(boxWidth), kMeasureHeight));
+    result->height = std::max(0.0f, element->GetContentHeight());
     const int boxHeight = std::max(1, static_cast<int>(std::ceil(result->height)));
     if (boxHeight > kMaxBoxSide) {
         error = "The text is too long for one text layer";
@@ -139,10 +141,10 @@ std::shared_ptr<UCRasterLayer> RenderTextLayer(const RasterTextContent& content,
         error = "Could not create an offscreen render context";
         return nullptr;
     }
-    element.SetBounds(Rect2Df(0, 0, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
-    element.InvalidateDocument();
+    element->SetBounds(Rect2Df(0, 0, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
+    element->InvalidateDocument();
     ctx->Clear(Colors::Transparent);
-    element.Render(ctx.get(), Rect2Df(0, 0, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
+    element->Render(ctx.get(), Rect2Df(0, 0, static_cast<float>(boxWidth), static_cast<float>(boxHeight)));
     ctx->FlushToSurface(pixmap.GetSurface(), Point2Dd(0, 0));
     pixmap.MarkDirty();
     pixmap.Flush();

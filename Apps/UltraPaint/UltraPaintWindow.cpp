@@ -56,11 +56,11 @@
 #endif
 
 #include <algorithm>
-#include <map>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <map>
 
 // ULTRAPAINT_VERSION comes from the build alone: CMake reads the first line of
 // Docs/UltraPaint/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -738,6 +738,7 @@ void UltraPaintWindow::BuildRightPanel() {
     swatches->onColorSelected = [this](const Color& c) {
         foreground = RasterPixel(c);
         colorPicker->SetForegroundColor(c, false);
+        ApplyTextOption("colour");   // as the picker does
     };
     // Right click on a swatch sets the background colour.
     swatches->onColorAdjustSelected = [this](const Color& c) {
@@ -1657,7 +1658,7 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
     auto session = std::make_unique<TextEditSession>();
     std::shared_ptr<UCRichDocument> words;
     auto layer = layerIndex >= 0 ? document->GetLayer(layerIndex) : nullptr;
-    if (layer && layer->text) {
+    if (layer && layer->text && layer->text->document) {
         if (layer->locked) {
             if (statusHint) statusHint->SetText("The text layer is locked");
             return;

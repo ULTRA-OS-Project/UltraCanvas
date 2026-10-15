@@ -848,16 +848,16 @@ static void TestTextLayers() {
     // The editor the Text tool puts on the canvas, at 1:1, draws exactly the
     // pixels the layer holds: that is the WYSIWYG promise.
     {
-        UltraCanvasRichTextEdit editor("probe", 0, 0, 180, 400);
-        PrepareTextLayerEditor(editor, *layer->text, 1.0);
-        editor.SetDocument(std::make_shared<UCRichDocument>(*content.document));
+        auto editor = std::make_shared<UltraCanvasRichTextEdit>("probe", 0, 0, 180, 400);
+        PrepareTextLayerEditor(*editor, *layer->text, 1.0);
+        editor->SetDocument(std::make_shared<UCRichDocument>(*content.document));
         const int h = static_cast<int>(std::ceil(box.height));
-        editor.SetBounds(Rect2Df(0, 0, 180, static_cast<float>(h)));
+        editor->SetBounds(Rect2Df(0, 0, 180, static_cast<float>(h)));
         UCPixmap pixmap;
         CHECK(pixmap.Init(180, h));
         auto ctx = CreateRenderContext(Size2Di(180, h), nullptr);
         ctx->Clear(Colors::Transparent);
-        editor.Render(ctx.get(), Rect2Df(0, 0, 180, static_cast<float>(h)));
+        editor->Render(ctx.get(), Rect2Df(0, 0, 180, static_cast<float>(h)));
         ctx->FlushToSurface(pixmap.GetSurface(), Point2Dd(0, 0));
         pixmap.MarkDirty();
         pixmap.Flush();
@@ -867,9 +867,9 @@ static void TestTextLayers() {
             for (int x = 0; x < 180; ++x)
                 if (static_cast<int>(px[static_cast<size_t>(y) * pixmap.GetRawWidth() + x] >> 24) != layer->GetPixel(10 + x, 8 + y).a) ++differing;
         CHECK(differing == 0);
-        CHECK(std::abs(editor.GetContentHeight() - box.height) < 0.01);
-        editor.SetZoom(8.0f);   // a canvas zoom past a word processor's 5x
-        CHECK(editor.GetZoom() == 8.0f);
+        CHECK(std::abs(editor->GetContentHeight() - box.height) < 0.01);
+        editor->SetZoom(8.0f);   // a canvas zoom past a word processor's 5x
+        CHECK(editor->GetZoom() == 8.0f);
     }
 
     // In the document.
