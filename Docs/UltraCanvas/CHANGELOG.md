@@ -1,3 +1,57 @@
+#### 2026-10-15 *0.9.304*
+- **DemoApp: the Domain Dashboard is part of the List View page.** It was a
+  page of its own under Extended Functionality, right after List View, though
+  it is a list view example like the four on that page. It is now that page's
+  last section, *5. Custom Delegate: Domain Dashboard*, full width below the
+  other four - scroll down to it - with its own status line and *Add 1,000
+  domains* button, and the List View page's *Source* button now shows its
+  code too (`UltraCanvasListViewDashboardExamples.cpp` is folded into
+  `UltraCanvasListViewExamples.cpp`).
+- **A tree view can be filtered: `UltraCanvasTreeView::SetFilterText`.** It
+  narrows the tree to the rows whose text contains the filter - ignoring case,
+  in any script - with the rows above them, expanded so every match is on
+  screen; a heading that matches keeps its entries. An empty text ends the
+  filter and puts the tree back: every row, the expanded state it had before
+  the filter began, and the selected row scrolled into view.
+  `GetFilterMatchCount` says how many rows matched. The filter hides rows with
+  its own flag (`TreeNode::hiddenByFilter`, `TreeNode::IsShown`), so a row the
+  application hid through `TreeNodeData::visible` stays hidden, and "jump to
+  first entry" goes to the first child on show (`TreeNode::FirstShownChild`).
+  `TreeViewFilterTest` covers it.
+- **The text input's clear button can carry a word: `SetClearButtonText`.**
+  `SetClearButtonText("Reset")` makes the in-field clear button a small
+  "Reset" button at the right end of the field instead of the cross - same
+  behaviour, sized to the word (TextInput 1.12.0).
+- **DemoApp: a filter field over the component tree.** Typing narrows the
+  tree to the pages whose names contain the text, opened to them, and the
+  status line says how many matched; "Reset" inside the field, or Escape,
+  brings the whole tree back. The *Text Input* page shows the in-field
+  buttons: the clear cross and the same button as "Reset".
+- **A `TextInputType::Search` field has its clear button.** The type was
+  described as a "search field with clear button", but nothing read it: a
+  Search field looked and behaved like a plain one. `SetInputType(Search)`
+  now shows the clear button, and changing the type away from Search takes
+  it away again - unless the caller turned it on with `SetShowClearButton`.
+  `TextInputBehaviourTest` covers it.
+- **DemoApp's Text Input page: the two text areas have a frame** (a text area
+  has none of its own, so the empty one could not be seen at all), and the
+  titles "Basic Password Field (eye reveals text)" and "Complete Setup: ..."
+  are no longer cut off.
+
+#### 2026-10-15 *0.9.303*
+- **The last environment variables that name a path are read as UTF-8.**
+  Four places still read them through the narrow `getenv`, which on Windows
+  answers in the ANSI code page: the disk cache's folder (`LOCALAPPDATA`,
+  `HOME`, `XDG_CACHE_HOME`, `TMPDIR`), the LaTeX plugin's `MICROTEX_FONTDIR`,
+  the DWG converter's `ULTRACANVAS_DXF2DWG` / `ULTRACANVAS_DWG2DXF` (whose
+  existence check also opened the path narrowly), and the Windows
+  diagnostics' `ULTRACANVAS_CRASH_DUMP_DIR`, `FONTCONFIG_FILE` and
+  `ULTRACANVAS_DEBUG_LOG` - where the crash dump folder was then widened as
+  if it were UTF-8, so a folder named outside the code page came out mangled.
+  All go through `GetEnvUtf8` now. Reads that stay narrow are the ones that
+  should: ASCII flags on the crash path, and Linux-, macOS- and Android-only
+  code, where the environment is UTF-8 already.
+
 #### 2026-10-15 *0.9.302*
 - **The desktop's settings folder is in the header too:
   `UltraCanvasDesktopSettingsFolder()`.** `desktop.json` (UltraDesktop,

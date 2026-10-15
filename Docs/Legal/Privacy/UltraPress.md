@@ -1,11 +1,11 @@
 # Privacy declaration — UltraPress
 
-**Version 0.2 (draft for legal review) · 13 October 2026**
+**Version 0.3 (draft for legal review) · 15 October 2026**
 
 This declaration explains what personal data the **UltraPress** application
 processes, where that processing happens, which third parties it contacts and
 why, and what rights you have under the General Data Protection Regulation
-(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.5 - the
+(GDPR). It is published at www.ultraos.eu and covers UltraPress 0.8 - the
 `ultrapress` program, its commands and its editor window - on Linux,
 Windows, macOS and ULTRA OS. It does
 not cover the website itself, other ULTRA OS applications, any ULTRA OS
@@ -58,9 +58,10 @@ required to [confirm with legal review].
 | The site folder | `site.json`, `theme.json`, `menus.json`, `pages/*.json` and `media/`: the site's name, address, owner, menus, pages, pictures and downloads, all written by you; a file you add through the media library (`ultrapress media add`, the window's Add file…) is copied into `media/` | the folder you name, e.g. `ultrapress new mysite` |
 | The published site | one HTML file per page, `sitemap.xml`, `robots.txt`, `feed.xml`, `.htaccess` and a copy of `media/` | the output folder you name, e.g. `ultrapress publish mysite out`; the window uses `<site>/.ultrapress/publish` |
 | The upload record | `.ultrapress-deploy.json`: for each host, the name and a fingerprint (size and a hash of the content, not the content) of every file uploaded, so the next publish sends only what changed | beside the published site |
-| The host list | the hosts you added: the kind (FTP, WebDAV, Nextcloud), the server address, your user name, the folder, a display name | `hosts.db` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere) |
+| The host list | the hosts you added: the kind (FTP, WebDAV, Nextcloud), the server address, your user name, the folder, a display name | `hosts.db` in the program's data folder (`%APPDATA%\UltraPress` on Windows, `~/Library/Application Support/UltraPress` on macOS, `~/.local/share/UltraPress` elsewhere, or `$XDG_DATA_HOME/UltraPress` where that is set); a list that UltraPress 0.5 to 0.7 kept under `UltraPress` in the shared UltraCanvas settings folder is moved there, whole, the first time the hosts are opened |
 | The host passwords | the password of each host, and for an SFTP host the path of the private key file you named (the key itself stays where it is) | the encrypted credential vault `vault/` beside `hosts.db`, opened with a key file the program writes on your device (UltraVault) |
 | The site's host | the id of the host the site publishes to and the folder on it; no password | `hosting` in `site.json` |
+| The look | one word, `dark` or `light`: which look of the window you chose last | `look` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere) |
 
 UltraPress writes no caches, logs or history files of its own. Its messages
 go to the terminal it was started from, or to the window's status line.
@@ -75,7 +76,7 @@ purpose but writing the pages.
 ### 3.1 How sensitive data is protected
 
 The host passwords are the one secret UltraPress stores. They are kept in
-an encrypted vault (UltraVault) under the settings folder; the key that
+an encrypted vault (UltraVault) in the program's data folder; the key that
 opens it is a file the program writes beside the vault with permissions for
 your user alone, so the program can sign in to your host without asking
 again. Anyone who can read your user's files can open the vault. The site

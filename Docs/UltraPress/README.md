@@ -1,6 +1,6 @@
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.7.0 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.8.0 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
 renderer on real elements, the WordPress importer, the publisher onto
 web hosts and the media library: a site as a folder of JSON files, the
@@ -21,6 +21,8 @@ framework itself, compiled to WebAssembly, with a plain HTML shadow of every
 page for search engines, link previews, mail clients and screen readers.
 
 This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
+
+<!-- doc-check: UltraCanvas::UltraCanvasTheme ThemeFor(bool dark); -->
 
 ## The window
 
@@ -52,6 +54,16 @@ integer for a number, and links, items and lists as JSON applied as soon
 as it parses - or, with no block selected, the page's title, description,
 status and pinning. Every change re-renders the page in the middle;
 *Save site* writes the folder (`ui/UltraPressWindow.h`).
+
+The window has two looks. Its colours are a framework theme
+(`Apps/UltraPress/ui/UltraPressTheme.h`, `ThemeFor(dark)`: the brand's red accent, its
+ink and paper on the framework's light preset; the red lifted on the dark
+one), and every element of the columns and the dialogs follows that theme,
+so *Dark look* / *Light look* in the side column switches them all at
+once; the side column keeps its night blue in both, through the theme's
+own `press.*` roles, and the page in the middle keeps the site's colours,
+because it is the site. The choice is remembered in
+`<settings folder>/UltraPress/look` and read before the window opens.
 
 The page is rendered on real UltraCanvas elements by the block renderer
 (`Apps/UltraPress/render/UltraPressRender.h`, target `UltraPressRender`),
@@ -216,10 +228,13 @@ in-memory provider.
 
 `Apps/UltraPress/hosting/UltraPressHosting.h`, target `UltraPressHosting`,
 built where UltraCloud is (`-DBUILD_ULTRACLOUD=ON`, the default): `Hosts`
-opens the program's host list - UltraCloud accounts in `hosts.db` under
-`<settings folder>/UltraPress` (`UltraCanvasSettingsFolder()`), their
-passwords in the credential vault beside it, the way UltraFiler keeps its
-remote drives - and gives `DeployFolder` an `Uploader` onto one of them
+opens the program's host list - UltraCloud accounts in `hosts.db` in the
+program's data folder (`UltraCanvasDataFolder("UltraPress")`:
+`%APPDATA%\UltraPress`, `~/Library/Application Support/UltraPress`,
+`~/.local/share/UltraPress`; `Hosts::DataDirectory`), their passwords in
+the credential vault beside it, the way UltraMail keeps its accounts; a
+list that 0.5 to 0.7 kept under the settings folder is moved over on the
+first open (`AdoptLegacy`) - and gives `DeployFolder` an `Uploader` onto one of them
 (`UploaderFor`). The providers are UltraCloud's: `ftp` (an `ftp://`,
 `ftps://`, `ftpes://` or `sftp://` server; the upload creates missing
 folders itself), `webdav` and `nextcloud` (`https://`; folders through
