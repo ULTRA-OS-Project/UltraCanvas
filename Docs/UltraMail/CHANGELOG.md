@@ -1,3 +1,30 @@
+#### 2026-10-15 *0.10.54*
+- **No connection alert while a computer that was just switched on is still
+  getting online.** UltraMail now remembers when it last reached a mail
+  server (`last-connected` in the data folder, written at most once a
+  minute). When it starts, or the computer wakes, and that was more than ten
+  minutes ago, the computer was most likely switched off - and right after it
+  is switched on, the network is often not up yet. For the two minutes that
+  follow, a background mail check (or a folder opened) that fails raises no
+  alert, *whatever the reason*: the failure shows on the status line, and the
+  connection pill's tooltip says the computer was probably just switched on.
+  When the time is up, the accounts held back are checked once more, and only
+  what still fails then is reported.
+  - Until now only "the server could not be reached at all" was held back
+    (for ten minutes, which stays as it was). A network that is only half up
+    also breaks a connection off in the TLS handshake or in the middle of a
+    read - on Windows a certificate revocation check that cannot get out yet
+    can fail the handshake - and a clock not yet set after boot can make a good
+    certificate look expired; each of those raised *"New mail could not be
+    fetched"* at once.
+  - *Settings > Mail > Connection* sets how long: not at all, 30 seconds, 1,
+    2 (the default), 3, 5 or 10 minutes (`switch_on_quiet_sec` in
+    `preferences.ini`). Update in the toolbar always reports at once.
+  - A restart of UltraMail on a computer that was online a moment ago is not
+    a switch-on: there is nothing held back then. A missing or unreadable
+    `last-connected` file counts as switched off, the safe side.
+  - The timing trace says when the period began, and why.
+
 #### 2026-10-15 *0.10.53*
 - **The browser sign-in goes through the ULTRA OS sign-in service, and
   UltraMail carries no OAuth secret any more.** Gmail, Outlook / Microsoft
