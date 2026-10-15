@@ -25,8 +25,8 @@ Companion documents: [`Concept.md`](Concept.md) (the design),
 4. The first time, UltraMail asks you to **choose a master password**. It
    encrypts your account passwords and sign-ins on disk and is never stored
    itself — if you forget it, you enter your account passwords again.
-5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page; come
-   back to UltraMail when it says you are done.
+5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page;
+   when it says *Signed in - you can close this tab*, come back to UltraMail.
 6. The inbox is fetched right away. Later, every account is synced every
    five minutes - or as often as *Settings > Mail > New mail* says, from every
    20 seconds to every 10 minutes - and **Update** (the download icon) fetches
@@ -60,10 +60,11 @@ Google rejects the normal account password in mail programs, and UltraMail
 signs in to Gmail through the browser only: the wizard shows no password
 field for a Gmail address. UltraMail opens Google's consent page in your
 browser with your address preselected; allow UltraMail to read and send your
-mail. Released builds ship with a Google OAuth client already configured, so
-there is nothing to set up. A build packaged without one says so in the
-wizard's hint and cannot add a Gmail account until one is configured — see
-[section 3](#3-oauth-clients-for-the-browser-sign-in) for packagers.
+mail. The sign-in runs through the ULTRA OS sign-in service, so there is
+nothing to set up. A build with the service turned off says so in the
+wizard's hint and cannot add a Gmail account until a service or an OAuth
+client is configured — see [section 3](#3-the-sign-in-service-and-oauth-clients--for-people-building-or-packaging-ultramail)
+for packagers.
 
 ### Outlook.com, Hotmail, Live, Microsoft 365 (`outlook.com`, `hotmail.com`, `live.com`, `msn.com`, `office365.com`)
 
@@ -76,9 +77,9 @@ wizard's hint and cannot add a Gmail account until one is configured — see
 Microsoft has retired password sign-in ("basic authentication") for IMAP and
 SMTP on personal Outlook.com accounts and in Microsoft 365, and app passwords
 are gone with it. Leave the password field empty; UltraMail opens Microsoft's
-sign-in page in your browser. Released builds ship with a Microsoft OAuth client
-already configured, so there is nothing to set up (packagers: see
-[section 3](#3-oauth-clients-for-the-browser-sign-in)).
+sign-in page in your browser. The sign-in runs through the ULTRA OS sign-in
+service, so there is nothing to set up (packagers: see
+[section 3](#3-the-sign-in-service-and-oauth-clients--for-people-building-or-packaging-ultramail)).
 
 For a **Microsoft 365 work or school** mailbox the tenant administrator must
 leave **IMAP** and **Authenticated SMTP** enabled for the mailbox (Exchange
@@ -102,17 +103,16 @@ app passwords; those can only use the browser sign-in.
 
 **Browser sign-in.** It only works once Yahoo has granted UltraMail's OAuth
 client access to Mail, which Yahoo does per app (see
-[section 3](#3-oauth-clients-for-the-browser-sign-in)); until then Yahoo
+[section 3](#3-the-sign-in-service-and-oauth-clients--for-people-building-or-packaging-ultramail)); until then Yahoo
 signs you in but its mail servers reject the login. Leave the password field
-empty; UltraMail opens Yahoo's consent page in your browser. Because Yahoo does not redirect back to a desktop app, its page shows a
-short **authorization code** after you approve — copy it and paste it into the
-dialog UltraMail shows, and the sign-in completes. If the browser instead lands
-on a page that cannot be reached (an address starting `https://127.0.0.1`),
-copy that whole address from the address bar and paste it; UltraMail takes the
-code from it. Released builds ship with a
-Yahoo OAuth client already configured, so there is nothing to set up (if your
-build was packaged without one, see
-[section 3](#3-oauth-clients-for-the-browser-sign-in)).
+empty; UltraMail opens Yahoo's consent page in your browser, and after you
+approve, Yahoo sends the browser to the ULTRA OS sign-in service, which says
+*Signed in with Yahoo* - come back to UltraMail. Nothing to copy or paste:
+Yahoo insists on an https redirect, which the service is and a desktop
+program cannot be. (An installation that signs in to Yahoo with an OAuth
+client of its own, section 3, still gets the paste-the-code dialog instead:
+copy the code Yahoo shows, or the whole `https://127.0.0.1…` address the
+browser lands on, into it.)
 
 ### iCloud Mail (`icloud.com`, `me.com`, `mac.com`)
 
@@ -196,75 +196,70 @@ The normal password works. Posteo's optional two-factor authentication
 protects the webmail sign-in only; mail programs keep using the account
 password.
 
-## 3. OAuth clients for the browser sign-in — for people building or packaging UltraMail
+## 3. The sign-in service and OAuth clients — for people building or packaging UltraMail
 
-**If you are just using UltraMail, skip this section.** Released builds ship with
-a Google, a Microsoft and a Yahoo OAuth client already baked in, so the browser
-sign-in works with nothing to configure. This section is for whoever builds or
-packages UltraMail.
+**If you are just using UltraMail, skip this section.** The browser sign-in
+for Gmail, Outlook and Yahoo works with nothing to configure: UltraMail signs
+in through the **ULTRA OS sign-in service** at
+`https://oauth-callback.ultraos.eu`. This section is for whoever builds or
+packages UltraMail, or runs a service of their own.
 
-The browser sign-in for Gmail, Outlook and Yahoo runs as an OAuth *client* that
-the provider must know. Register one per provider once (below), then bake it into
-the build so end users never touch a config file.
+The browser sign-in runs as an OAuth *client* that the provider must know - a
+client id and, for Google and Yahoo, a client secret. UltraMail ships
+**neither**. The registrations live on the sign-in service
+([`Server/OAuthCallback`](../../Server/OAuthCallback/README.md) in the
+repository, a small FastAPI application behind nginx), which is also the
+public https address the providers redirect the browser to:
 
-A desktop OAuth client's credentials are **not confidential** — Google itself
-treats a desktop client's secret as non-secret, and Microsoft's and Yahoo's
-desktop clients have no secret at all. The sign-in's safety comes from PKCE + the
-loopback redirect (or Yahoo's out-of-band code) + the user's own consent, not
-from hiding the id/secret. So baking them into the binary is the norm
-(Thunderbird, Evolution, K-9 all do it).
+1. UltraMail makes a PKCE verifier and asks the service to start a sign-in,
+   sending only the PKCE challenge and your address; the service answers
+   with the provider's consent URL, which UltraMail opens in your browser.
+2. You sign in with the provider; the provider sends the browser to
+   `https://oauth-callback.ultraos.eu/callback/<provider>`, which shows
+   *Signed in* and keeps the authorization code for UltraMail.
+3. UltraMail collects the code and exchanges it - through the service, which
+   adds the client id and the secret - for the access and refresh tokens.
+   Both go into the credential vault. The refresh, later, goes the same way.
 
-Yahoo is a special case: it forces https redirect URIs, which a loopback listener
-cannot serve, so UltraMail uses Yahoo's **out-of-band** flow — after consent
-Yahoo shows a code the user pastes into the app. There is no redirect URI to
-register; the Yahoo app just needs API permission for Mail, and you supply its
-**Client ID (Consumer Key)** only (public client, no secret).
+PKCE stays end to end: the verifier never leaves UltraMail, so the code is
+useless to anyone else - the browser, the service, a log. The service keeps
+nothing: a sign-in in flight lives in its memory for ten minutes at most,
+tokens pass through and are never stored. Yahoo, which refuses loopback
+redirect URIs, redirects to the service like every other provider, so its
+paste-the-code dialog is only needed by an installation that signs in to
+Yahoo with a client of its own (below).
 
-Yahoo does not offer the Mail permission in its developer console any more:
-apply for commercial IMAP/SMTP access with the Developer Access form at
-<https://senders.yahooinc.com/developer/developer-access/> (questions:
-mail-api@yahooinc.com). Until it is granted, Yahoo users sign in with an app
-password.
+### Where the service is
 
-Thunderbird registers its Yahoo client with the redirect `https://127.0.0.1`
-and the scopes `mail-w ycal-w sdct-w` instead. A Yahoo app registered that way
-works too: set `redirect_uri = https://127.0.0.1` for it, and UltraMail takes
-the same paste-back route, with the user pasting the address the browser lands
-on. Whichever redirect is used, the app must hold the **Mail** permission:
-without it Yahoo issues a token that IMAP and SMTP reject.
+The address is baked into the build - `ULTRAMAIL_OAUTH_SERVICE_URL` in
+[`Apps/UltraMail/CMakeLists.txt`](../../Apps/UltraMail/CMakeLists.txt),
+default `https://oauth-callback.ultraos.eu`; a gitignored
+`cmake/oauth.local.cmake` (see
+[`cmake/oauth.local.cmake.example`](../../cmake/oauth.local.cmake.example))
+may set it for a private build, and `-DULTRAMAIL_OAUTH_SERVICE_URL=""` builds
+without one. It is the **lowest-priority** source, so a user or admin can
+point an existing build elsewhere without a rebuild, in decreasing priority:
 
-### Baking the client into the build
+- `OAuthApps::SetServiceUrl()` in code;
+- `ULTRAMAIL_OAUTH_SERVICE_URL` in the environment;
+- `[service]` / `url = …` in `oauth.ini` in the data folder (the table
+  below);
+- the baked-in address.
 
-Register the clients (below), then supply them at **configure time** one of two
-ways:
+The value `off` (or `none`) at any of these turns the service off. Whether
+it is on, UltraMail's start-up trace says, and the wizard's hint says when a
+provider cannot be signed in to at all.
 
-- **Local file (easiest).** Copy [`cmake/oauth.local.cmake.example`](../../cmake/oauth.local.cmake.example)
-  to `cmake/oauth.local.cmake` (that name is gitignored), fill in the ids/secret,
-  and reconfigure. `Apps/UltraMail/CMakeLists.txt` picks it up automatically.
-- **CMake `-D` (for CI).** Pass them on the configure line from your CI secrets:
+### Signing in with an OAuth client of your own
 
-  ```sh
-  cmake -S . -B build \
-      -DULTRAMAIL_GOOGLE_CLIENT_ID="1234567890-abc.apps.googleusercontent.com" \
-      -DULTRAMAIL_GOOGLE_CLIENT_SECRET="GOCSPX-…" \
-      -DULTRAMAIL_YAHOO_CLIENT_ID="dj0yJmk9…" \
-      -DULTRAMAIL_MICROSOFT_CLIENT_ID="00000000-1111-2222-3333-444444444444"
-  ```
-
-The values are XOR-obfuscated in the binary by default (so a plain `strings`
-does not surface them; `-DULTRAMAIL_OAUTH_OBFUSCATE=OFF` stores them verbatim).
-A build configured with none of these bakes in nothing and behaves as before.
-Obfuscation uses a small Python helper (`scripts/generate_oauth_defaults.py`) at
-configure time; a build with no credentials, or with obfuscation off, needs no
-Python.
-
-### Overriding a baked-in client at runtime
-
-The baked-in client is the **lowest-priority** source, so a user or admin can
-point an existing build at a different client without a rebuild — useful for
-rotation or a private registration. In decreasing priority: `OAuthApps::Set()`
-(in code) > the environment > `oauth.ini` in the data folder > the baked-in
-client. Drop an `oauth.ini` in:
+An installation that would rather not go through the service - a private
+registration, a build without a service, a developer testing a provider -
+configures a client per provider at run time. A provider with a client of its
+own signs in **directly**, as earlier versions did (UltraNet's OAuth2 client:
+authorization code + PKCE, the redirect caught on an ephemeral loopback port,
+or Yahoo's pasted code), and bypasses the service for that provider only. In
+decreasing priority: `OAuthApps::Set()` (in code) > the environment >
+`oauth.ini` in the data folder:
 
 | Platform | Data folder |
 |---|---|
@@ -275,6 +270,14 @@ client. Drop an `oauth.ini` in:
 `$XDG_DATA_HOME`, when set, wins on every platform (`Apps/UltraMail/engine/UltraMailPaths.h`).
 
 ```ini
+# Another sign-in service (a private deployment of Server/OAuthCallback),
+# or "off" to use clients of your own only.
+[service]
+url = https://oauth-callback.example.org
+
+# A client of your own: this provider then signs in directly, not through
+# the service. A desktop client's credentials are not confidential - the
+# flow's safety is PKCE + the loopback redirect + your consent.
 [google]
 client_id     = 1234567890-abc.apps.googleusercontent.com
 client_secret = GOCSPX-…
@@ -290,8 +293,8 @@ The environment works too: `ULTRAMAIL_GOOGLE_CLIENT_ID`,
 `ULTRAMAIL_GOOGLE_CLIENT_SECRET`, `ULTRAMAIL_MICROSOFT_CLIENT_ID`,
 `ULTRAMAIL_YAHOO_CLIENT_ID` (an optional `…_REDIRECT_URI` overrides the
 provider's default), as do the shared names `ULTRANET_OAUTH_GOOGLE_CLIENT_ID` /
-`ULTRANET_OAUTH_MICROSOFT_CLIENT_ID`. When no client is configured by any of
-these, the wizard says so.
+`ULTRANET_OAUTH_MICROSOFT_CLIENT_ID`. When neither the service nor a client is
+configured, the wizard says so.
 
 The lookup is the framework's — UltraNet's OAuth2 app registry
 (`UltraNet/UltraNetOAuth2Apps.h`), one per process — and UltraMail's
@@ -299,80 +302,80 @@ The lookup is the framework's — UltraNet's OAuth2 app registry
 cloud link…" sign-ins: a Google client configured for Gmail by any of the
 means above is also the client Google Drive signs in with, and the Microsoft
 one serves OneDrive, as long as the registration's consent screen carries
-those scopes as well (the Google Cloud and Entra steps below; add the Drive
-and `Files.ReadWrite` scopes there if you want that).
+those scopes as well.
+
+Registering a client for the direct flow:
+
+- **Google:** [Google Cloud console](https://console.cloud.google.com/) →
+  *APIs & Services → Credentials → Create credentials → OAuth client ID*,
+  application type **Desktop app**. No redirect URI needs registering:
+  desktop clients accept any loopback port, and UltraMail uses
+  `http://127.0.0.1:<port>/callback`.
+- **Microsoft:** [Microsoft Entra admin center](https://entra.microsoft.com/)
+  → *App registrations → New registration*, supported account types
+  *Accounts in any organizational directory and personal Microsoft accounts*;
+  under *Authentication* the platform **Mobile and desktop applications**
+  with the redirect URI `http://127.0.0.1` and **Allow public client flows**
+  on (no secret); under *API permissions* the delegated
+  `IMAP.AccessAsUser.All` and `SMTP.Send` from *Office 365 Exchange Online*,
+  plus `offline_access`. UltraMail redirects to `http://127.0.0.1:<port>/`;
+  Microsoft ignores the port of a loopback URI.
+- **Yahoo:** [Yahoo developer console](https://developer.yahoo.com/apps/) →
+  create an app with the **Mail** API permission; the *Client ID (Consumer
+  Key)* only. Yahoo forces https redirect URIs, which a loopback listener
+  cannot serve, so UltraMail uses the out-of-band flow with such a client:
+  `redirect_uri=oob`, and the consent page shows a code the user pastes in.
+  A Yahoo app registered Thunderbird's way, with the redirect
+  `https://127.0.0.1`, works too with `redirect_uri = https://127.0.0.1` in
+  `oauth.ini`: the user pastes the address the browser lands on.
+
+### Registering the clients for the service
+
+How the service is deployed, and how each provider's client is registered
+with the redirect URI `https://oauth-callback.ultraos.eu/callback/<provider>`,
+is in the service's own [README](../../Server/OAuthCallback/README.md). In
+short: Google needs a **Web application** client with that redirect URI and
+`ultraos.eu` among the consent screen's authorised domains; Microsoft a
+**Web** platform with that redirect URI and a client secret; Yahoo an app
+with that redirect URI and the **Mail** permission.
+
+Yahoo does not offer the Mail permission in its developer console any more:
+apply for commercial IMAP/SMTP access with the Developer Access form at
+<https://senders.yahooinc.com/developer/developer-access/> (questions:
+mail-api@yahooinc.com). Until it is granted, Yahoo issues a token that IMAP
+and SMTP reject, and Yahoo users sign in with an app password.
 
 ### ⚠️ Google verification is required before Gmail works for the public
 
-Registering and baking in a Google client is **not enough** to let arbitrary
-users sign in to Gmail. The `https://mail.google.com/` scope is a Google
-*restricted* scope. While your OAuth consent screen is in **Testing** it serves
-only the addresses you add under *Test users* (max 100), and Google revokes
-those users' refresh tokens after **7 days** (the "*The sign-in has expired*"
-row in [section 6](#6-when-it-does-not-work)). To lift both limits you must
-**publish** the consent screen and pass Google's **security assessment (CASA)** —
-an annual, paid review through a Google-approved assessor. Until then, Gmail
-browser sign-in is usable for testing only; the app-password path (section 2)
-has no such limit. Microsoft has no equivalent restricted-scope review —
-publisher verification only removes the "unverified app" banner.
-
-### Google
-
-1. In the [Google Cloud console](https://console.cloud.google.com/) create a
-   project and open *APIs & Services → OAuth consent screen*. Choose
-   *External*. While the app stays in *Testing*, add every address that will
-   sign in under *Test users* — the `https://mail.google.com/` scope is
-   restricted, so an unverified app serves only its test users.
-2. *APIs & Services → Credentials → Create credentials → OAuth client ID*,
-   application type **Desktop app**. Copy the client id and the client
-   secret into `oauth.ini`.
-3. No redirect URI needs registering: desktop clients accept any loopback
-   port. UltraMail uses `http://127.0.0.1:<port>/callback`.
-
-### Microsoft
-
-1. In the [Microsoft Entra admin center](https://entra.microsoft.com/) open
-   *Identity → Applications → App registrations → New registration*.
-   Supported account types: **Accounts in any organizational directory and
-   personal Microsoft accounts** (covers outlook.com / hotmail.com as well as
-   Microsoft 365 tenants).
-2. Under *Authentication* add the platform **Mobile and desktop
-   applications** with the redirect URI `http://127.0.0.1`, and switch
-   **Allow public client flows** on. No client secret is needed.
-3. Under *API permissions* add the *delegated* permissions
-   `IMAP.AccessAsUser.All` and `SMTP.Send` from *Office 365 Exchange Online*
-   (found under *APIs my organization uses*), plus `offline_access`.
-4. Copy the *Application (client) ID* into `oauth.ini`. UltraMail redirects
-   to `http://127.0.0.1:<port>/`; Microsoft ignores the port of a loopback
-   URI.
-
-### Yahoo
-
-1. In the [Yahoo Developer console](https://developer.yahoo.com/apps/) create
-   an app. Under **API Permissions** grant **Mail** (read/write). Yahoo derives
-   the token's access from these app permissions, not from an OAuth scope
-   parameter — UltraMail sends no `scope` (Yahoo returns `invalid_scope` for
-   one), so the Mail permission here is what makes IMAP/SMTP work.
-2. Yahoo forces https redirect URIs, which a desktop loopback listener cannot
-   serve, so UltraMail uses the **out-of-band** flow: set the redirect/callback
-   to `oob` (or leave a placeholder — UltraMail sends `redirect_uri=oob` and
-   Yahoo returns the code on-screen). No local port is involved.
-3. Copy the **Client ID (Consumer Key)** (it looks like `dj0yJmk9…`) into
-   `oauth.ini` as `[yahoo] client_id`. Yahoo is used as a **public client**, so
-   the Consumer Secret is not needed.
+Registering a Google client is **not enough** to let arbitrary users sign in
+to Gmail. The `https://mail.google.com/` scope is a Google *restricted*
+scope. While the OAuth consent screen is in **Testing** it serves only the
+addresses added under *Test users* (max 100), and Google revokes those
+users' refresh tokens after **7 days** (the "*The sign-in has expired*" row
+in [section 6](#6-when-it-does-not-work)). To lift both limits the consent
+screen must be **published** and pass Google's **security assessment
+(CASA)** — an annual, paid review through a Google-approved assessor. Until
+then, Gmail browser sign-in is usable for testing only; the app-password
+path (section 2) has no such limit. Microsoft has no equivalent
+restricted-scope review — publisher verification only removes the
+"unverified app" banner.
 
 ### What happens during the sign-in
 
-UltraMail generates a one-time PKCE challenge, opens the provider's consent
-page in the system browser (never in an embedded view) with your address as
-the login hint, listens on an ephemeral loopback port for the redirect, and
-exchanges the code for an access token and a refresh token. Both go into the
-credential vault. **Yahoo is the exception:** it cannot redirect to a loopback
-port, so instead of listening, UltraMail shows a dialog and you paste the code
-Yahoo displays after consent; the exchange then proceeds the same way. Each IMAP
-or SMTP session then authenticates with XOAUTH2; an expired access token is
-refreshed through the provider before the session starts. Cancelling the "Sign
-in with …" dialog abandons the attempt; add the account again to retry.
+UltraMail generates a one-time PKCE challenge, asks the sign-in service to
+start the sign-in, opens the provider's consent page in the system browser
+(never in an embedded view) with your address as the login hint, waits for
+the provider's redirect to arrive at the service, collects the code from it
+and exchanges the code - through the service - for an access token and a
+refresh token. Both go into the credential vault. With a client of its own
+(above), UltraMail listens on an ephemeral loopback port for the redirect
+instead and exchanges the code itself; Yahoo cannot redirect to a loopback
+port, so with a Yahoo client of its own UltraMail shows a dialog and you
+paste the code Yahoo displays after consent. Each IMAP or SMTP session then
+authenticates with XOAUTH2; an expired access token is refreshed through the
+provider - via the service, or directly - before the session starts.
+Cancelling the "Sign in with …" dialog abandons the attempt; add the account
+again to retry.
 
 ## 4. On the machine
 
@@ -469,7 +472,8 @@ Gmail, Outlook and Yahoo.
 | UltraMail says | What to do |
 |---|---|
 | *New mail could not be fetched … authentication failed* | iCloud: you typed the account password; use an app-specific password (section 2). Gmail, Outlook and Yahoo take no password: open the account's Settings and use *Sign in with …*. |
-| *No OAuth client is configured for Google / Microsoft* | This build was packaged without a baked-in OAuth client. Rebuild with one (section 3) or drop an `oauth.ini` in the data folder. |
+| *The sign-in service is turned off in this build and no OAuth client is configured* | The build was configured with `-DULTRAMAIL_OAUTH_SERVICE_URL=""`, or `off` was set. Name a service (`[service] url =` in `oauth.ini`, or `ULTRAMAIL_OAUTH_SERVICE_URL`) or a client of your own (section 3). |
+| *The sign-in service did not answer / could not start the sign-in* | `oauth-callback.ultraos.eu` could not be reached, or a proxy blocks it. Check the network; an installation behind a firewall can run its own service (section 3). |
 | *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
 | *Server settings for …* opens on Update | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
@@ -479,6 +483,6 @@ Gmail, Outlook and Yahoo.
 | *… security certificate is not valid …* with a reason in brackets | The reason is the TLS library's own: *unable to get local issuer certificate* (the server sends an incomplete chain, or a program such as a virus scanner intercepts the connection with its own certificate), *certificate has expired*, *self-signed certificate*, or *no alternative certificate subject name matches* (the certificate is for another host name — use the host it names). On Windows the reasons start with *schannel:* — *the certificate or certificate chain is based on an untrusted root* means Windows itself does not trust the server's root (a self-signed or company certificate: install its root in Windows' *Trusted Root Certification Authorities*); builds from before 2026-09-28 also said it for Let's Encrypt servers, because they checked against the bundled `cacert.pem` instead of Windows' own certificate store. |
 | *… sign-in was rejected* with the right password | The server may not accept the method *Automatic* picked. Set *Sign-in (IMAP)* / *Sign-in (SMTP)* to *Normal password* (or what the provider's help page names) and Save again. |
 | *New mail could not be fetched … host not found / connection refused* | A server name or port on the settings page is wrong. Add the account again with the same address and correct the page. A background sync, or opening a folder, raises this only after the account has been unreachable for ten minutes, so a computer that has just started, or a laptop between two networks, does not: the status line shows the reason meanwhile and the account is retried every minute. Update reports it at once. |
-| *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days). Add the account again to sign in anew. |
+| *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days), or it was issued to a different OAuth client than the one this installation now signs in as - an account signed in with a build before the sign-in service cannot be refreshed through it. Add the account again, or use *Sign in with …* on its settings page, to sign in anew. |
 | *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |
 | *Your mail account passwords are locked* | Enter the master password — Update, sending, or adding an account asks for it. |

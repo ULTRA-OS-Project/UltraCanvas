@@ -64,7 +64,7 @@ when that variable is set), `%APPDATA%\UltraMail\` on Windows.
 | Sender icons | Icons of the services and websites that write to you (see 5.4) | `cache/sender-icons/` |
 | Preferences | Your settings, including which senders may load remote pictures and which websites you trust | `preferences.ini` |
 | Cloud storage accounts | The cloud storage accounts you add for "Attach cloud link" (see 5.6) | `cloud.db` |
-| OAuth client registration | If you register your own OAuth client with Google or Microsoft: its client id and secret | `oauth.ini` |
+| OAuth client registration | If you register your own OAuth client with Google, Microsoft or Yahoo, or name another sign-in service: its client id and secret, the service's address | `oauth.ini` |
 | Timing trace | A log of what UltraMail is doing and how long each step takes, for performance diagnosis. It names accounts and folders and timings, not message contents. It is emptied at every start and never leaves your device. `ULTRAMAIL_TRACE=0` turns it off | `trace.log` |
 
 ### 3.1 How credentials are protected
@@ -143,13 +143,30 @@ with PKCE). UltraMail opens the page, you sign in with the provider, and the
 provider hands UltraMail a token that it stores in the vault and uses for IMAP
 and SMTP. Your provider password is never seen by UltraMail.
 
+The sign-in passes through the **ULTRA OS sign-in service** at
+`oauth-callback.ultraos.eu`, operated by us: it holds the OAuth client
+registration UltraMail signs in as (so no secret ships in the program) and it
+is the address the provider sends your browser back to after you approve.
+UltraMail sends it the provider's name, the e-mail address you typed (as the
+sign-in hint) and a one-time PKCE challenge; the provider sends it a one-time
+authorization code; UltraMail then exchanges that code, and later the refresh
+token, through the service. The service keeps a sign-in in memory for at most
+ten minutes and stores nothing - no token, no address - on disk; its web
+server logs the usual connection data (your IP address, time, path) for up to
+14 days and keeps the authorization code out of the log. Where the sign-in
+is configured to run directly with an OAuth client of your own (section 3 of
+`Docs/UltraMail/AccountSetup.md`), the service is not contacted.
+
 **Data transmitted:** the e-mail address you typed (as a sign-in hint), and
-whatever you enter on the provider's page, to the provider only.
-**Recipients:** Google LLC, Microsoft Corporation or Yahoo (Oath Holdings
-Inc.), as their own controllers under their own privacy policies.
-**Legal basis:** Art. 6(1)(b) GDPR; the provider requires this method.
-**Setting:** you can use an app password instead where the provider offers
-one; then no browser sign-in takes place.
+whatever you enter on the provider's page, to the provider; the provider's
+name, that address, the one-time code and the tokens in transit, and your IP
+address, to the sign-in service. **Recipients:** Google LLC, Microsoft
+Corporation or Yahoo (Oath Holdings Inc.), as their own controllers under
+their own privacy policies; and we, as the operator of the sign-in service
+(section 1). **Legal basis:** Art. 6(1)(b) GDPR; the provider requires this
+method, and the service is how UltraMail performs it. **Setting:** you can
+use an app password instead where the provider offers one; then neither the
+browser sign-in nor the service is involved.
 
 ### 5.3 Pictures in HTML mail ("remote images")
 

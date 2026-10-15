@@ -50,25 +50,21 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailPaths.cpp
 )
 
-# ── Built-in OAuth client credentials (compiled-in fallback) ─────────────────
-# The Google / Yahoo / Microsoft OAuth *client* a shipped build signs in as, baked into
-# the binary as the lowest-priority fallback (Set() / env / oauth.ini override
-# it — see OAuthApps::Get). Empty by default, so a plain dev/CI/test build bakes
-# in nothing and behaves exactly as before. To ship a preconfigured build,
-# either -D these on the configure line (e.g. from CI secrets) or drop a local,
-# gitignored cmake/oauth.local.cmake that set()s them — see
-# Docs/UltraMail/AccountSetup.md and cmake/oauth.local.cmake.example.
-set(ULTRAMAIL_GOOGLE_CLIENT_ID     "" CACHE STRING "Baked-in Google OAuth client id")
-set(ULTRAMAIL_GOOGLE_CLIENT_SECRET "" CACHE STRING "Baked-in Google OAuth client secret")
-set(ULTRAMAIL_YAHOO_CLIENT_ID     "" CACHE STRING "Baked-in Yahoo OAuth client id")
-set(ULTRAMAIL_MICROSOFT_CLIENT_ID  "" CACHE STRING "Baked-in Microsoft OAuth client id")
-option(ULTRAMAIL_OAUTH_OBFUSCATE "XOR-obfuscate baked-in OAuth credentials" ON)
-# High-bit key so ASCII credentials never XOR to a NUL (which truncates a C
-# string). Anti-scraping friction only — the key ships in the same binary.
-set(ULTRAMAIL_OAUTH_XOR_KEY "183" CACHE STRING "XOR key for baked-in credential obfuscation (1..255)")
+# ── The OAuth sign-in service (compiled-in default) ─────────────────────────
+# UltraMail signs in to Google / Microsoft / Yahoo through the ULTRA OS sign-in
+# service (Server/OAuthCallback): the service holds the OAuth client
+# registrations and their secrets and is the public https address the
+# providers redirect to, so the application carries nothing but the service's
+# address. This is that address, baked in as the lowest-priority source -
+# OAuthApps::SetServiceUrl() / ULTRAMAIL_OAUTH_SERVICE_URL / oauth.ini's
+# [service] url override it at run time, and a locally configured client
+# (oauth.ini, ULTRAMAIL_<PROVIDER>_CLIENT_ID) for a provider bypasses the
+# service for that provider. Empty = no service unless configured at run time.
+# A gitignored cmake/oauth.local.cmake may set() it for a private build - see
+# cmake/oauth.local.cmake.example.
+set(ULTRAMAIL_OAUTH_SERVICE_URL "https://oauth-callback.ultraos.eu"
+    CACHE STRING "The OAuth sign-in service UltraMail signs in through (empty = none)")
 
-# A build machine's real credentials, kept out of the repo. When present it
-# set(... CACHE ... FORCE)s the three vars above.
 set(_um_oauth_local "${CMAKE_SOURCE_DIR}/cmake/oauth.local.cmake")
 if(EXISTS "${_um_oauth_local}")
     include("${_um_oauth_local}")
@@ -77,57 +73,12 @@ endif()
 
 set(_um_oauth_tmpl "${CMAKE_CURRENT_SOURCE_DIR}/engine/UltraMailOAuthDefaults.h.in")
 set(_um_oauth_hdr  "${CMAKE_CURRENT_BINARY_DIR}/generated/UltraMailOAuthDefaults.h")
-set(_um_oauth_have OFF)
-if(ULTRAMAIL_GOOGLE_CLIENT_ID OR ULTRAMAIL_GOOGLE_CLIENT_SECRET
-   OR ULTRAMAIL_YAHOO_CLIENT_ID OR ULTRAMAIL_MICROSOFT_CLIENT_ID)
-    set(_um_oauth_have ON)
-endif()
-
-if(_um_oauth_have AND ULTRAMAIL_OAUTH_OBFUSCATE)
-    # Obfuscated: a Python helper does the per-byte XOR and writes the header.
-    # Credentials pass through the environment, never the command line, so they
-    # stay out of any process listing.
-    find_program(ULTRAMAIL_PYTHON3 NAMES python3 python)
-    if(NOT ULTRAMAIL_PYTHON3)
-        message(FATAL_ERROR "UltraMail: baked-in OAuth credentials with obfuscation "
-            "need python3. Install it, or reconfigure with -DULTRAMAIL_OAUTH_OBFUSCATE=OFF.")
-    endif()
-    set(_um_oauth_gen "${CMAKE_SOURCE_DIR}/scripts/generate_oauth_defaults.py")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
-    execute_process(
-        COMMAND ${CMAKE_COMMAND} -E env
-                "UM_GOOGLE_ID=${ULTRAMAIL_GOOGLE_CLIENT_ID}"
-                "UM_GOOGLE_SECRET=${ULTRAMAIL_GOOGLE_CLIENT_SECRET}"
-                "UM_YAHOO_ID=${ULTRAMAIL_YAHOO_CLIENT_ID}"
-                "UM_MICROSOFT_ID=${ULTRAMAIL_MICROSOFT_CLIENT_ID}"
-                "${ULTRAMAIL_PYTHON3}" "${_um_oauth_gen}"
-                --template "${_um_oauth_tmpl}"
-                --out "${_um_oauth_hdr}"
-                --xor-key "${ULTRAMAIL_OAUTH_XOR_KEY}"
-        RESULT_VARIABLE _um_oauth_rc)
-    if(NOT _um_oauth_rc EQUAL 0)
-        message(FATAL_ERROR "UltraMail: generating ${_um_oauth_hdr} failed (${_um_oauth_rc}).")
-    endif()
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        "${_um_oauth_tmpl}" "${_um_oauth_gen}")
-    message(STATUS "  [✓] UltraMail OAuth client - BAKED IN (obfuscated)")
+set(UM_OAUTH_SERVICE_URL_C "\"${ULTRAMAIL_OAUTH_SERVICE_URL}\"")
+configure_file("${_um_oauth_tmpl}" "${_um_oauth_hdr}" @ONLY)
+if(ULTRAMAIL_OAUTH_SERVICE_URL)
+    message(STATUS "  [✓] UltraMail OAuth sign-in service - ${ULTRAMAIL_OAUTH_SERVICE_URL}")
 else()
-    # Empty (dev/test) or plain: configure_file, no Python dependency.
-    if(_um_oauth_have)
-        set(UM_GOOGLE_ID_C     "\"${ULTRAMAIL_GOOGLE_CLIENT_ID}\"")
-        set(UM_GOOGLE_SECRET_C "\"${ULTRAMAIL_GOOGLE_CLIENT_SECRET}\"")
-        set(UM_YAHOO_ID_C     "\"${ULTRAMAIL_YAHOO_CLIENT_ID}\"")
-        set(UM_MICROSOFT_ID_C  "\"${ULTRAMAIL_MICROSOFT_CLIENT_ID}\"")
-        message(STATUS "  [✓] UltraMail OAuth client - BAKED IN (plain)")
-    else()
-        set(UM_GOOGLE_ID_C     "\"\"")
-        set(UM_GOOGLE_SECRET_C "\"\"")
-        set(UM_YAHOO_ID_C     "\"\"")
-        set(UM_MICROSOFT_ID_C  "\"\"")
-    endif()
-    set(UM_OBFUSCATED "0")
-    set(UM_XOR_KEY    "0")
-    configure_file("${_um_oauth_tmpl}" "${_um_oauth_hdr}" @ONLY)
+    message(STATUS "  [−] UltraMail OAuth sign-in service - NONE (oauth.ini / environment only)")
 endif()
 
 add_library(UltraMailEngine STATIC ${ULTRAMAIL_ENGINE_SOURCES})
