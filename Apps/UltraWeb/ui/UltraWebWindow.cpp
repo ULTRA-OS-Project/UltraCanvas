@@ -55,6 +55,19 @@ std::shared_ptr<UltraCanvasContainer> MakeBar(const std::string& id) {
     return bar;
 }
 
+// A toolbar button showing one of UltraWeb's icons (media/icons/ultraweb),
+// drawn in the button's text colour - grey while it is disabled.
+std::shared_ptr<UltraCanvasButton> MakeIconButton(const std::string& id, const std::string& icon) {
+    auto button = CreateButton(id, 0, 0, 34, 28, "");
+    ButtonStyle style = button->GetStyle();
+    style.useIconAsMask = true;
+    button->SetStyle(style);
+    button->SetIcon(GetResourcesDir() + "media/icons/ultraweb/" + icon);
+    button->SetIconSize(16, 16);
+    button->layoutItem.SetFlexShrink(0);
+    return button;
+}
+
 } // namespace
 
 UltraWebWindow::UltraWebWindow() : alive_(std::make_shared<bool>(true)) {}
@@ -115,11 +128,13 @@ bool UltraWebWindow::Initialize() {
     page_->AddChild(tabStrip_);
 
     auto toolbar = MakeBar("uwToolbar");
-    backButton_ = CreateButton("uwBack", 0, 0, 34, 28, "\xE2\x86\x90");        // ←
+    // Back and forward are icons, not the arrow characters: Windows' UI
+    // font has no U+2190 / U+2192, and they showed as empty boxes there.
+    backButton_ = MakeIconButton("uwBack", "back.svg");
     backButton_->SetTooltip("Back");
     backButton_->SetOnClick([this]() { if (auto* tab = ActiveTab()) tab->GoBack(); });
     toolbar->AddChild(backButton_);
-    forwardButton_ = CreateButton("uwForward", 0, 0, 34, 28, "\xE2\x86\x92");  // →
+    forwardButton_ = MakeIconButton("uwForward", "forward.svg");
     forwardButton_->SetTooltip("Forward");
     forwardButton_->SetOnClick([this]() { if (auto* tab = ActiveTab()) tab->GoForward(); });
     toolbar->AddChild(forwardButton_);

@@ -22,7 +22,9 @@ REM   pacman -S mingw-w64-clang-x86_64-curl-winssl   (UltraNet)
 REM Optional, for the plug-ins the CI build enables:
 REM   pacman -S mingw-w64-clang-x86_64-libcdr mingw-w64-clang-x86_64-librevenge
 REM   pacman -S mingw-w64-clang-x86_64-lcms2 mingw-w64-clang-x86_64-icu mingw-w64-clang-x86_64-boost
-REM   pacman -S mingw-w64-clang-x86_64-rust          (Vectorizer)
+REM   pacman -S mingw-w64-clang-x86_64-rust          (Vectorizer, and UltraWeb's
+REM                                                   WebAssembly engine: wasmtime
+REM                                                   is built from source here)
 REM   pacman -S mingw-w64-clang-x86_64-mupdf mingw-w64-clang-x86_64-libmupdf
 REM   pacman -S mingw-w64-clang-x86_64-leptonica mingw-w64-clang-x86_64-tesseract-ocr
 REM The complete, current list is the "Setup MSYS2 (Windows)" step in

@@ -11,6 +11,7 @@
 // API: measured at 7 ns per empty call against 82 ns for the checked one
 // (Docs/UltraWeb/Feasibility/results.md).
 //
+// Version: 1.0.1 - the no-engine message names the Windows remedy
 // Version: 1.0.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework / ULTRA OS
@@ -441,8 +442,9 @@ WasmStatus UltraCanvasWasm_WatToWasm(std::string_view wat, std::vector<uint8_t>&
 
 namespace {
 const char* const kNoEngine =
-    "this build has no WebAssembly engine (configure with ULTRACANVAS_ENABLE_WASM_HOST=ON "
-    "on a platform with a wasmtime C API)";
+    "this build has no WebAssembly engine (configure with ULTRACANVAS_ENABLE_WASM_HOST=ON; "
+    "on Windows (MSYS2) install the native Rust toolchain, mingw-w64-clang-x86_64-rust, "
+    "so the build can compile wasmtime)";
 }
 
 struct UltraCanvasWasmInstance::Impl {};
