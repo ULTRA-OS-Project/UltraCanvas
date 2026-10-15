@@ -2446,15 +2446,22 @@ endif()
 # prompt they were typed at, and a GUI-subsystem program cannot make that
 # prompt wait for it or see its exit code: DeviceExplorer (--list),
 # UltraCleaner (--scan), UltraNetMonitor (--list), UltraCanvasStart (--check),
-# UltraWeb (--check), UltraClaude (--print), UltraDesktop (--windows) and
-# UltraFIBU (its commands). Double-clicked, they close the console Windows
-# opened for them as their window comes up (ReleaseOwnConsole() in
+# UltraWeb (--check), UltraClaude (--print) and UltraFIBU (its commands).
+# Double-clicked, they close the console Windows opened for them as their
+# window comes up (ReleaseOwnConsole() in
 # OS/MSWindows/UltraCanvasWindowsDiagnostics.h). Debug builds keep the console.
+#
+# UltraDesktop prints too (--windows, --apps, --devices), but it is a GUI
+# program all the same: it is the desktop, started at every sign-in, from
+# the Start menu and by UOS-Settings, and a console window flashing up each
+# time is worse than a prompt that does not wait for a listing (piped, as in
+# `UltraDesktop --windows | more`, it does).
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraAuthenticator UltraPassword UltraVideo)
+            UltraClipboard UltraAuthenticator UltraPassword UltraVideo
+            UltraDesktop)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()

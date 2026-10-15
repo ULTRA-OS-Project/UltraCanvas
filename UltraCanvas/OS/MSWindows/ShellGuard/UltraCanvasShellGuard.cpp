@@ -450,9 +450,10 @@ namespace {
         startup.cb = sizeof(startup);
         PROCESS_INFORMATION process = {};
         const std::wstring folder = FolderOf(program);
-        // UltraDesktop is a console program (for --windows); started from
-        // here, which has no console, it would get a console window of its
-        // own at every sign-in until it closed it. No window for it, then.
+        // A desktop built as a console program (UltraDesktop's Debug build,
+        // another program) would get a console window of its own at every
+        // sign-in, started from here, which has no console. No window for it.
+        // A GUI program, UltraDesktop's Release build, is not affected.
         if (!CreateProcessW(program.c_str(), buffer.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
                             folder.empty() ? nullptr : folder.c_str(), &startup, &process)) {
             running.error = GetLastError();
