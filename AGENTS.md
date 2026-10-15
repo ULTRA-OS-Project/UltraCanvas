@@ -342,7 +342,11 @@ every credential-vault test failed here while passing in CI, and VideoFX, the
 PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
 were not built at all. A cold container takes about a minute, a warm one a
 fraction of a second; it never blocks the session, and when an install fails
-it says so in one line in the session's context. The services CI starts for
+it says so in one line in the session's context. It also generates the
+comma-decimal locale `de_DE.UTF-8`, as CI's Linux rows do: the tests that hold
+file formats to dot-decimal numbers (`HTMLReaderTest`, `ModelLocaleDecimalTest`,
+`DiagramJsonLocaleTest` and the rest) skip without one, and the image has none.
+The services CI starts for
 its live tests (PostgreSQL, Avahi, the IPP printer) are not set up; those
 tests skip. A test that fails here but passes in CI because a library is
 missing is fixed by adding the package to that list, not by treating the

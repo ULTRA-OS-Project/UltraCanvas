@@ -20,12 +20,14 @@
 // media/3D, which was given the hull it never had. Without it only the
 // synthetic cases run.
 //
+// Version: 1.2.0 - the frame rate is written dot-decimal under a comma-decimal locale
 // Version: 1.1.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "Models/MS3D/UltraCanvasMS3DConverter.h"
 
+#include <clocale>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -140,7 +142,8 @@ private:
 // material, no joints, and no optional tail.
 static std::vector<uint8_t> Quad(float transparency = 1.0f,
                                  const std::string& texture = "",
-                                 int smoothingGroup = 0) {
+                                 int smoothingGroup = 0,
+                                 float framesPerSecond = 30.0f) {
     Builder b;
     b.Header();
     b.U16(4);
@@ -152,7 +155,7 @@ static std::vector<uint8_t> Quad(float transparency = 1.0f,
     b.Group("Panel", {0, 1}, 0);
     b.U16(1);
     b.Material("Paint", transparency, texture);
-    b.AnimationHeader(30.0f, 0.0f, 60);
+    b.AnimationHeader(framesPerSecond, 0.0f, 60);
     b.U16(0);
     return b.Take();
 }
@@ -709,6 +712,29 @@ static void TestSample(const char* path) {
           "and it is symmetric about that axis, as a canopy down the centreline is");
 }
 
+// The frame rate is kept as text in the document's metadata, and written
+// dot-decimal: std::to_string made it "12,500000" on a comma-decimal desktop.
+// Skipped where no such locale is installed.
+static void TestFrameRateIgnoresLocale() {
+    std::printf("Frame rate under a comma-decimal locale\n");
+    const char* original = std::setlocale(LC_ALL, nullptr);
+    const std::string saved = original ? original : "C";
+    const char* comma = nullptr;
+    for (const char* candidate : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "de_DE"}) {
+        if (std::setlocale(LC_ALL, candidate)) { comma = candidate; break; }
+    }
+    if (!comma) {
+        std::setlocale(LC_ALL, saved.c_str());
+        std::printf("  [SKIP] no comma-decimal locale installed\n");
+        return;
+    }
+    auto doc = Read(Quad(1.0f, "", 0, 12.5f));
+    std::setlocale(LC_ALL, saved.c_str());
+    Check(doc && doc->Metadata.count("ms3d.framesPerSecond") == 1 &&
+          doc->Metadata.at("ms3d.framesPerSecond") == "12.5",
+          "12.5 frames per second is written 12.5 under " + std::string(comma));
+}
+
 int main(int argc, char** argv) {
     TestRecognition();
     TestGeometry();
@@ -719,6 +745,7 @@ int main(int argc, char** argv) {
     TestSkinning();
     TestOptionalTail();
     TestRefusals();
+    TestFrameRateIgnoresLocale();
     if (argc > 1) TestSample(argv[1]);
     else std::printf("Sample: skipped (pass an .ms3d path to run it)\n");
 

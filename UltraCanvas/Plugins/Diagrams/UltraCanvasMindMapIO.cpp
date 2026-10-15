@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <locale>
 #include <sstream>
 #include <cmath>
 #include "UltraCanvasPathUtf8.h"
@@ -403,6 +404,7 @@ MindMapImportResult UltraCanvasMindMapIO::FromFreeMind(MindMapModel& model,
 
 std::string UltraCanvasMindMapIO::ToFreeMind(const MindMapModel& model) {
     std::ostringstream out;
+    out.imbue(std::locale::classic());   // dot-decimal, whatever the host's C++ locale
     out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     out << "<map version=\"1.0.1\">\n";
 
@@ -511,6 +513,7 @@ MindMapImportResult UltraCanvasMindMapIO::FromOpml(MindMapModel& model,
 
 std::string UltraCanvasMindMapIO::ToOpml(const MindMapModel& model, const std::string& title) {
     std::ostringstream out;
+    out.imbue(std::locale::classic());   // dot-decimal, whatever the host's C++ locale
     out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     out << "<opml version=\"2.0\">\n";
     out << "  <head>\n    <title>" << EscapeXml(title) << "</title>\n  </head>\n";
@@ -875,6 +878,7 @@ std::string UltraCanvasMindMapIO::ToSvg(const MindMapModel& model,
                                         const MindMapLayoutResult& layout,
                                         const MindMapSvgOptions& options) {
     std::ostringstream out;
+    out.imbue(std::locale::classic());   // dot-decimal, whatever the host's C++ locale
 
     const DiagramContentBounds& bounds = layout.contentBounds;
     if (!bounds.IsUsable()) {

@@ -27,13 +27,9 @@ Apps/UltraNetMonitor/main.cpp::locale-parse::atof
 UltraCanvas/OS/Linux/UltraCanvasLinuxHardwareInfo.cpp::locale-parse::strtod
 UltraCanvas/Plugins/Charts/UltraCanvasCircularInfoGraphic.cpp::locale-parse::atof
 UltraCanvas/Plugins/Charts/UltraCanvasPopulationChart.cpp::locale-parse::strtod
-UltraCanvas/Plugins/Diagrams/UltraCanvasCompositorDiagram.cpp::locale-write::out
-UltraCanvas/Plugins/Diagrams/UltraCanvasMindMapIO.cpp::locale-write::out
-UltraCanvas/Plugins/Diagrams/UltraCanvasNodeDiagram.cpp::locale-write::out
 UltraCanvas/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp::locale-parse::strtof
 UltraCanvas/Plugins/Documents/Word/UltraCanvasWordFormatInternal.h::locale-parse::strtof
 UltraCanvas/Plugins/LaTeX/UltraCanvasMathParser.cpp::locale-parse::strtof
-UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp::locale-write::to_string
 UltraCanvas/Plugins/Vector/EPS/UltraCanvasEPSPlugin.cpp::locale-parse::strtod
 UltraCanvas/Plugins/Vector/UltraCanvasDWGDecoder.cpp::locale-write::printf
 UltraCanvas/Plugins/Vector/UltraCanvasDXFConverter.cpp::locale-write::printf

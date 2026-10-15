@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <locale>
 #include <sstream>
 
 namespace UltraCanvas {
@@ -2551,6 +2552,7 @@ bool UltraCanvasCompositorDiagram::TryConnect(
 
 std::string UltraCanvasCompositorDiagram::ToJson() const {
     std::ostringstream out;
+    out.imbue(std::locale::classic());   // dot-decimal, whatever the host's C++ locale
     out << "{\n";
     out << "  \"version\": \"0.1.0\",\n";
     out << "  \"viewport\": {\n";
@@ -2996,6 +2998,7 @@ void UltraCanvasCompositorDiagram::Copy() {
         return;
     }
     std::ostringstream out;
+    out.imbue(std::locale::classic());   // dot-decimal, whatever the host's C++ locale
     out << "{\n  \"nodes\": [\n";
     bool first = true;
     for (const auto& id : nodeOrder) {

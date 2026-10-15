@@ -2159,6 +2159,7 @@ add_executable(Model3DSTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelMesh3D.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # FormatFloatClassic
 )
 target_include_directories(Model3DSTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -2377,6 +2378,7 @@ add_executable(ModelMS3DTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # FormatFloatClassic
 )
 target_include_directories(ModelMS3DTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -5599,6 +5601,28 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MediaViewerSaveTest")
 else()
     message(STATUS "  MediaViewerSaveTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== DIAGRAM JSON UNDER A COMMA-DECIMAL LOCALE =====
+# The node and compositor diagrams' JSON is the same text under a
+# comma-decimal C++ global locale as under "C" (their streams are pinned to
+# the classic locale). Headless; skips where no such locale is installed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DiagramJsonLocaleTest...")
+    add_executable(DiagramJsonLocaleTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DiagramJsonLocaleTest.cpp
+    )
+    target_include_directories(DiagramJsonLocaleTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DiagramJsonLocaleTest PRIVATE cxx_std_20)
+    target_link_libraries(DiagramJsonLocaleTest PRIVATE UltraCanvas)
+    set_target_properties(DiagramJsonLocaleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DiagramJsonLocaleTest COMMAND DiagramJsonLocaleTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DiagramJsonLocaleTest")
+else()
+    message(STATUS "  DiagramJsonLocaleTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== ICO / QOI TEST =====

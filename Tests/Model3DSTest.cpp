@@ -9,6 +9,13 @@
 // Pass the .3ds path as argv[1]; without it only the malformed-input cases
 // run, so the test still means something in a checkout without media.
 //
+// The numbers the reader keeps as text (a material's shininess strength, a
+// camera's target and bank, in Extras) are written dot-decimal: read under a
+// comma-decimal locale a file gives the very same text as under "C" - the
+// sample, and a file made here that has both (the sample has neither).
+// Skipped where no such locale is installed.
+//
+// Version: 1.1.0 - extras are the same text under a comma-decimal locale
 // Version: 1.0.0
 // Last Modified: 2026-09-10
 // Author: UltraCanvas Framework
@@ -16,9 +23,14 @@
 #include "Models/3DS/UltraCanvas3DSConverter.h"
 #include "Models/UltraCanvasModelMesh3D.h"
 
+#include <cctype>
+#include <clocale>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <cstring>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -170,10 +182,151 @@ static void TestSample(const char* path) {
     std::printf("  (%zu warnings reported)\n", warnings.size());
 }
 
+// Every Extras and Metadata entry of a document, keyed by where it is.
+static std::map<std::string, std::string> AllExtras(const ModelDocument& doc) {
+    std::map<std::string, std::string> all;
+    for (const auto& [key, value] : doc.Metadata) all["document/" + key] = value;
+    for (size_t i = 0; i < doc.Materials.size(); ++i)
+        for (const auto& [key, value] : doc.Materials[i].Extras)
+            all["material" + std::to_string(i) + "/" + key] = value;
+    for (size_t i = 0; i < doc.Nodes.size(); ++i)
+        for (const auto& [key, value] : doc.Nodes[i].Extras)
+            all["node" + std::to_string(i) + "/" + key] = value;
+    return all;
+}
+
+// A 3DS chunk: id, length (header included), body.
+static std::vector<uint8_t> Chunk(uint16_t id, const std::vector<uint8_t>& body) {
+    std::vector<uint8_t> out;
+    const uint32_t length = static_cast<uint32_t>(body.size() + 6);
+    out.push_back(static_cast<uint8_t>(id & 0xFF));
+    out.push_back(static_cast<uint8_t>(id >> 8));
+    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>((length >> (8 * i)) & 0xFF));
+    out.insert(out.end(), body.begin(), body.end());
+    return out;
+}
+static void Append(std::vector<uint8_t>& out, const std::vector<uint8_t>& more) { out.insert(out.end(), more.begin(), more.end()); }
+static void AppendF32(std::vector<uint8_t>& out, float v) {
+    uint32_t bits;
+    std::memcpy(&bits, &v, 4);
+    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>((bits >> (8 * i)) & 0xFF));
+}
+static void AppendU16(std::vector<uint8_t>& out, uint16_t v) {
+    out.push_back(static_cast<uint8_t>(v & 0xFF));
+    out.push_back(static_cast<uint8_t>(v >> 8));
+}
+static void AppendName(std::vector<uint8_t>& out, const std::string& name) {
+    out.insert(out.end(), name.begin(), name.end());
+    out.push_back(0);
+}
+
+// One triangle, a material whose shininess strength is 35 %, and a camera
+// whose target and bank have fractions - every number the reader keeps as
+// text.
+static std::vector<uint8_t> MakeExtrasFile() {
+    std::vector<uint8_t> points;
+    AppendU16(points, 3);
+    for (float v : {0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f, 0.f}) AppendF32(points, v);
+    std::vector<uint8_t> faces;
+    AppendU16(faces, 1);
+    for (uint16_t v : {0, 1, 2, 0}) AppendU16(faces, v);
+    std::vector<uint8_t> tri;
+    Append(tri, Chunk(0x4110, points));
+    Append(tri, Chunk(0x4120, faces));
+    std::vector<uint8_t> mesh;
+    AppendName(mesh, "tri");
+    Append(mesh, Chunk(0x4100, tri));
+
+    std::vector<uint8_t> percent;
+    AppendF32(percent, 0.35f);
+    std::vector<uint8_t> matName;
+    AppendName(matName, "shiny");
+    std::vector<uint8_t> material;
+    Append(material, Chunk(0xA000, matName));
+    Append(material, Chunk(0xA041, Chunk(0x0031, percent)));
+
+    std::vector<uint8_t> cameraBody;
+    for (float v : {10.f, 20.f, 30.f, 1.5f, 2.25f, -3.75f, 12.5f, 35.f}) AppendF32(cameraBody, v);
+    std::vector<uint8_t> camera;
+    AppendName(camera, "cam");
+    Append(camera, Chunk(0x4700, cameraBody));
+
+    std::vector<uint8_t> editor;
+    Append(editor, Chunk(0xAFFF, material));
+    Append(editor, Chunk(0x4000, mesh));
+    Append(editor, Chunk(0x4000, camera));
+    return Chunk(0x4D4D, Chunk(0x3D3D, editor));
+}
+
+// Imports `path` (or `data` when it is not empty) under "C" and under a
+// comma-decimal locale; false (and a skip line) where none is installed.
+static bool ImportInBothLocales(const char* path, const std::vector<uint8_t>& data,
+                                std::shared_ptr<ModelDocument>& inC,
+                                std::shared_ptr<ModelDocument>& inComma, std::string& comma) {
+    const char* original = std::setlocale(LC_ALL, nullptr);
+    const std::string saved = original ? original : "C";
+    ThreeDSConverter conv;
+    ConversionOptions options;
+    auto import = [&]() { return data.empty() ? conv.Import(path, options) : conv.ImportFromMemory(data, options); };
+    std::setlocale(LC_ALL, "C");
+    inC = import();
+    for (const char* candidate : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "de_DE"}) {
+        if (std::setlocale(LC_ALL, candidate)) { comma = candidate; break; }
+    }
+    if (comma.empty()) {
+        std::setlocale(LC_ALL, saved.c_str());
+        std::printf("  [SKIP] no comma-decimal locale installed\n");
+        return false;
+    }
+    inComma = import();
+    std::setlocale(LC_ALL, saved.c_str());
+    return true;
+}
+
+static void TestExtrasIgnoreLocale() {
+    std::printf("Extras under a comma-decimal locale\n");
+    std::shared_ptr<ModelDocument> inC, inComma;
+    std::string comma;
+    if (!ImportInBothLocales(nullptr, MakeExtrasFile(), inC, inComma, comma)) return;
+    if (!inC || !inComma) { Check(false, "the made file imports in both locales"); return; }
+    const auto c = AllExtras(*inC);
+    const auto commaExtras = AllExtras(*inComma);
+    bool shininess = false, target = false, bank = false;
+    for (const auto& [key, value] : commaExtras) {
+        if (key.find("3ds.shininessStrength") != std::string::npos) shininess = value == "0.35";
+        if (key.find("3ds.target") != std::string::npos) target = value == "1.5 2.25 -3.75";
+        if (key.find("3ds.bank") != std::string::npos) bank = value == "12.5";
+    }
+    Check(shininess, "the shininess strength is written 0.35 under " + comma);
+    Check(target, "the camera target is written 1.5 2.25 -3.75");
+    Check(bank, "the camera bank is written 12.5");
+    Check(c == commaExtras, "every extra reads the same as under C");
+}
+
+static void TestSampleIgnoresLocale(const char* path) {
+    std::printf("Sample under a comma-decimal locale\n");
+    std::shared_ptr<ModelDocument> inC, inComma;
+    std::string comma;
+    if (!ImportInBothLocales(path, {}, inC, inComma, comma)) return;
+    if (!inC || !inComma) { Check(false, "the sample imports in both locales"); return; }
+    const auto c = AllExtras(*inC);
+    const auto commaExtras = AllExtras(*inComma);
+    Check(c == commaExtras, "every extra reads the same under " + comma + " as under C");
+    bool dotDecimal = true;
+    for (const auto& [key, value] : commaExtras) {
+        for (size_t i = 1; i + 1 < value.size(); ++i)
+            if (value[i] == ',' && std::isdigit(static_cast<unsigned char>(value[i - 1])) &&
+                std::isdigit(static_cast<unsigned char>(value[i + 1]))) dotDecimal = false;
+    }
+    Check(dotDecimal, "no extra holds a decimal comma");
+}
+
 int main(int argc, char** argv) {
     TestMalformed();
     TestCapabilities();
+    TestExtrasIgnoreLocale();
     if (argc > 1) TestSample(argv[1]);
+    if (argc > 1) TestSampleIgnoresLocale(argv[1]);
     else std::printf("Sample: skipped (pass a .3ds path to run it)\n");
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
