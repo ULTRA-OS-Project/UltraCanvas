@@ -1,7 +1,8 @@
 // Plugins/Models/STL/UltraCanvasSTLElement.cpp
 // Implementation of the STL viewer element (GL viewer + non-GL fallback)
+// Version: 1.1.0 - Android: OpenGL ES 3 headers and GLSL ES 3.00 shaders
 // Version: 1.0.0
-// Last Modified: 2026-06-21
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSTLElement.h"
@@ -22,12 +23,26 @@
     #include <OpenGL/gl3ext.h>
 #elif defined(_WIN32)
     #include <GL/glew.h>
+#elif defined(__ANDROID__)
+    // OpenGL ES 3 (the EGL context GLContextManagerEGL_Android creates): every
+    // call below is in it.
+    #include <GLES3/gl3.h>
 #else
     #ifndef GL_GLEXT_PROTOTYPES
     #define GL_GLEXT_PROTOTYPES
     #endif
     #include <GL/gl.h>
     #include <GL/glext.h>
+#endif
+
+// The shaders' first lines: GLSL 3.30 on desktop OpenGL, GLSL ES 3.00 (with a
+// float precision, which ES fragment shaders must name) on OpenGL ES.
+#if defined(__ANDROID__)
+    #define UC_STL_GLSL_VERTEX   "#version 300 es\n"
+    #define UC_STL_GLSL_FRAGMENT "#version 300 es\nprecision highp float;\n"
+#else
+    #define UC_STL_GLSL_VERTEX   "#version 330 core\n"
+    #define UC_STL_GLSL_FRAGMENT "#version 330 core\n"
 #endif
 #endif // ULTRACANVAS_ENABLE_GL
 
@@ -40,7 +55,7 @@ namespace {
     constexpr float kPi = 3.14159265358979323846f;
 
     const char* kVertexShader =
-        "#version 330 core\n"
+        UC_STL_GLSL_VERTEX
         "layout(location = 0) in vec3 aPos;\n"
         "layout(location = 1) in vec3 aNormal;\n"
         "uniform mat4 uMVP;\n"
@@ -52,7 +67,7 @@ namespace {
         "}\n";
 
     const char* kFragmentShader =
-        "#version 330 core\n"
+        UC_STL_GLSL_FRAGMENT
         "in vec3 vNormal;\n"
         "uniform vec3 uLightDir;\n"
         "uniform vec3 uColor;\n"
