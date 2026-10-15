@@ -1,3 +1,9 @@
+#### 2026-10-14 *0.4.1*
+- **The desktop settings file is found in Application Support on macOS.**
+  UltraDesktop keeps `desktop.json` there now (UltraDesktop changelog 0.3.1);
+  the settings app reads and writes the same file through the same framework
+  rule, so the two never disagree about where it is.
+
 #### 2026-10-13 *0.4.0*
 - **Desktop → At sign-in (Windows): UltraDesktop in place of the Windows
   desktop.** On switches over at once and for every sign-in after. Off brings
