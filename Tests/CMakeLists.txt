@@ -1191,6 +1191,28 @@ else()
     message(STATUS "  ColorPickerModelDropdownTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== DROPDOWN KEYBOARD TEST =====
+# Down / Up / Return choose an item of an open dropdown (the keys go to its
+# popup list); Escape keeps the choice, Return on the current item closes.
+# Opens a window, so it skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DropdownKeyboardTest...")
+    add_executable(DropdownKeyboardTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DropdownKeyboardTest.cpp
+    )
+    target_include_directories(DropdownKeyboardTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DropdownKeyboardTest PRIVATE cxx_std_20)
+    target_link_libraries(DropdownKeyboardTest PRIVATE UltraCanvas)
+    set_target_properties(DropdownKeyboardTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DropdownKeyboardTest COMMAND DropdownKeyboardTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DropdownKeyboardTest")
+else()
+    message(STATUS "  DropdownKeyboardTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILE DIALOG TEST =====
 # The name a Save hands back (the chosen type's extension, always run), and
 # the dialog itself: the Up arrow and view glyphs centred in their buttons,

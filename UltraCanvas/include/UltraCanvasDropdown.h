@@ -1,6 +1,7 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item
 // Last Modified: 2026-10-15 - DropdownItem::tooltip: shown over the item in the open list
 // Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: an icon-only button
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
@@ -260,6 +261,9 @@ namespace UltraCanvas {
     private:
         void CreatePopupListView();
         void WireListViewCallbacks();
+        // Choose a row of the list - a click, or Return on the highlight:
+        // select it and close (single), or toggle it (multi-selection).
+        void ChooseRow(int row);
         void ApplyStyleToListView();
         void CalculateAndSetPopupSize();
         Point2Df CalculatePopupPosition();

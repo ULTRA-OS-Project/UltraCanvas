@@ -1,6 +1,7 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
+// Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item (onItemActivated)
 // Last Modified: 2026-10-15 - DropdownItem::tooltip answers the list's ToolTipRole
 // Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: the icon alone on the button
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme
@@ -582,18 +583,25 @@ namespace UltraCanvas {
         ApplyStyleToListView();
     }
 
-    void UltraCanvasDropdown::WireListViewCallbacks() {
-        popupListView->onItemClicked = [this](int row) {
-            if (row < 0 || row >= (int)items.size()) return;
-            if (items[row].separator || !items[row].enabled) return;
+    void UltraCanvasDropdown::ChooseRow(int row) {
+        if (row < 0 || row >= (int)items.size()) return;
+        if (items[row].separator || !items[row].enabled) return;
 
-            if (multiSelectEnabled) {
-                SetItemSelected(row, !IsItemSelected(row));
-            } else {
-                SetSelectedIndex(row);
-                CloseDropdown();
-            }
-        };
+        if (multiSelectEnabled) {
+            SetItemSelected(row, !IsItemSelected(row));
+        } else {
+            SetSelectedIndex(row);
+            CloseDropdown();
+        }
+    }
+
+    void UltraCanvasDropdown::WireListViewCallbacks() {
+        popupListView->onItemClicked = [this](int row) { ChooseRow(row); };
+        // Return (or Space) on the highlighted row. The dropdown does not take
+        // the keyboard focus, so while the list is open the window hands the
+        // keys to the list itself; without this the arrow keys moved the
+        // highlight and Return chose nothing.
+        popupListView->onItemActivated = [this](int row) { ChooseRow(row); };
 
         popupListView->onItemHovered = [this](int row) {
             if (row >= 0 && row < (int)items.size() && onItemHovered) {
@@ -850,17 +858,7 @@ namespace UltraCanvas {
             case UCKeys::Return: {
                 // Get the focused row from the ListView's selection
                 auto* sel = popupListView->GetSelection();
-                int focusedRow = sel ? sel->GetCurrentRow() : -1;
-
-                if (focusedRow >= 0 && focusedRow < (int)items.size() &&
-                    !items[focusedRow].separator && items[focusedRow].enabled) {
-                    if (multiSelectEnabled) {
-                        SetItemSelected(focusedRow, !IsItemSelected(focusedRow));
-                    } else {
-                        SetSelectedIndex(focusedRow);
-                        CloseDropdown();
-                    }
-                }
+                ChooseRow(sel ? sel->GetCurrentRow() : -1);
                 return true;
             }
 

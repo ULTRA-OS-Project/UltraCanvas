@@ -237,12 +237,17 @@ The dropdown handles various event types:
 - **Item hover, click and wheel scrolling** are handled by the popup list view
 
 ### Keyboard Events
-- **Down/Space** (closed): Opens the dropdown
-- **Up/Down, Page Up/Page Down, Home/End** (open): Move through the list
-- **Return** (open): Selects the focused item (toggles it in multi-selection mode)
-- **Space** (open, multi-selection): Toggles the focused item
-- **Escape**: Closes dropdown
-- `onKeyDown` sees every key first; returning true stops the default handling
+The dropdown does not take the keyboard focus (`AcceptsFocus()` is false), so
+it is opened with the mouse. While its list is open the window hands the keys
+to the list:
+- **Up/Down, Page Up/Page Down, Home/End**: Move the highlight through the list
+- **Return** or **Space**: Chooses the highlighted item and closes the list
+  (toggles it in multi-selection mode) - the list's `onItemActivated`
+- **Escape**: Closes the list and keeps the chosen item
+
+The dropdown's own key handling (Down/Space to open a closed dropdown,
+`onKeyDown` seeing each key first) applies only to keys delivered to the
+dropdown itself, which does not happen while it cannot take the focus.
 
 ### Focus Events
 - **FocusLost**: Closes the dropdown (not in multi-selection mode)
