@@ -12,7 +12,8 @@
     (left, centre, right) per paragraph; Ctrl+B / I / U while typing.
   - **Every installed font** is offered, not Sans / Serif / Monospace: the
     *Font* list holds every scalable family on the system (with the bundled
-    ones), and typing the first letters in the open list jumps to one.
+    ones), and typing the start of a name in the open list jumps to it,
+    spaces and all (*"liberation s"* for Liberation Serif).
   - **A text layer** ("T" in the Layers panel) keeps the words until it is
     merged: click it with the Text tool, or *Layer > Edit Text*, to change
     them; with the Text tool active the options and the colour change a

@@ -260,8 +260,9 @@ dropdown, drawn with `focusBorderColor`.
 - **Letters (type-ahead)**: go to the first item whose text starts with them,
   regardless of case - "libe" to *Liberation Mono* in a list of every
   installed font. Letters typed within a second of each other build one
-  prefix; the same letter again steps on to the next item starting with it;
-  each opening of the list starts afresh. Return then chooses it. Focused, the
+  prefix, spaces included once it has begun ("liberation s"); the same
+  letter again steps on to the next item starting with it; each opening of
+  the list starts afresh. Return then chooses it. Focused, the
   dropdown takes the letters itself; one left out of the focus
   (`SetAcceptsFocus(false)`) leaves the keys to its open list, which passes
   them on through `UltraCanvasListView::onKeyDown` - type-ahead works either

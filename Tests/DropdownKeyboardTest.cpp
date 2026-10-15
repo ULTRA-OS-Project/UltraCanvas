@@ -257,6 +257,13 @@ int main() {
     TEST("'D' finds 'DejaVu Sans'; 'q' after it finds nothing and moves nothing",
          dropdown->GetSelectedIndex() == 0);
 
+    // A space carries on a name being typed: font names have them.
+    Mouse(app, window, UCEventType::MouseDown, 60, 32);
+    Mouse(app, window, UCEventType::MouseUp, 60, 32);
+    Type(app, window, "liberation s");
+    Key(app, window, UCKeys::Return, "\r");
+    TEST("'liberation s' then Return chooses 'Liberation Serif'", dropdown->GetSelectedIndex() == 4);
+
     // Focused, the dropdown takes the letters itself.
     dropdown->SetAcceptsFocus(true);
     chosen.clear();
@@ -268,6 +275,17 @@ int main() {
     Key(app, window, UCKeys::Return, "\r");
     TEST("focused, 'frees' then Return chooses 'FreeSans'",
          dropdown->GetSelectedIndex() == 2 && chosen.size() == 1 && chosen.back() == 2);
+    Mouse(app, window, UCEventType::MouseDown, 60, 32);
+    Mouse(app, window, UCEventType::MouseUp, 60, 32);
+    Type(app, window, "liberation se");
+    Key(app, window, UCKeys::Return, "\r");
+    TEST("focused, 'liberation se' then Return chooses 'Liberation Serif', not 'Liberation Mono'",
+         dropdown->GetSelectedIndex() == 4);
+    // A space with nothing typed before it is not type-ahead: the focused,
+    // closed dropdown opens on it, as before.
+    Key(app, window, UCKeys::Space, " ");
+    TEST("Space still opens the focused dropdown", dropdown->IsDropdownOpen());
+    Key(app, window, UCKeys::Escape);
 
     std::cerr << "========================================" << std::endl;
     std::cerr << "Tests: " << testCount << ", failed: " << failCount << std::endl;

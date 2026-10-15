@@ -886,7 +886,8 @@ namespace UltraCanvas {
                     }
                     return true;
                 }
-                return false;
+                // A space in the middle of a name being typed ("liberation s").
+                return HandleTypeAhead(event);
 
             case UCKeys::Escape:
                 CloseDropdown();
@@ -900,8 +901,9 @@ namespace UltraCanvas {
     // Letters typed with the list open go to the first item whose text starts
     // with them, regardless of case - the way a list of every installed font
     // is browsed. Letters typed within a second of each other build one
-    // prefix ("Lib" for Liberation Sans); the same letter again steps on to
-    // the next item starting with it. Return then chooses it.
+    // prefix ("Lib" for Liberation Sans), spaces included once it has begun
+    // ("liberation s"); the same letter again steps on to the next item
+    // starting with it. Return then chooses it.
     bool UltraCanvasDropdown::HandleTypeAhead(const UCEvent& event) {
         if (event.ctrl || event.alt || event.meta) return false;
         std::string typed = event.text;
@@ -909,14 +911,18 @@ namespace UltraCanvas {
             typed = std::string(1, event.character);
         // Only what prints: Return, Tab and Backspace arrive with their
         // control character as text too.
-        if (typed.empty() || typed == " ") return false;
+        if (typed.empty()) return false;
         if (std::any_of(typed.begin(), typed.end(), [](unsigned char c) { return c < 32 || c == 127; })) return false;
+        const auto now = std::chrono::steady_clock::now();
+        const bool fresh = typeAheadPrefix.empty() || now - typeAheadTime > std::chrono::seconds(1);
+        // A space carries on a name being typed; on its own it is the list's
+        // (it toggles an item of a multi-selection).
+        if (typed == " " && fresh) return false;
         auto lower = [](std::string s) {
             std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             return s;
         };
-        const auto now = std::chrono::steady_clock::now();
-        if (now - typeAheadTime > std::chrono::seconds(1)) typeAheadPrefix.clear();
+        if (fresh) typeAheadPrefix.clear();
         typeAheadTime = now;
         // One letter repeated steps through the items starting with it.
         const std::string add = lower(typed);

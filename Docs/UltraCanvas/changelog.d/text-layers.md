@@ -28,7 +28,8 @@
   checkbox reads, where the toggles flip).
 - **`UltraCanvasDropdown` type-ahead:** letters typed in the open list go to
   the first item that starts with them, regardless of case; letters within a
-  second build one prefix, the same letter again steps to the next match, and
+  second build one prefix (spaces too, once it has begun: "liberation s"),
+  the same letter again steps to the next match, and
   Return chooses. A focused dropdown takes the letters itself; for one left
   out of the focus (`SetAcceptsFocus(false)`) the window hands the keys to
   its open list, so `UltraCanvasListView` gains `onKeyDown` (a key reaches
