@@ -49,8 +49,9 @@ empty tab with the address bar ready for typing; a tab's **×**, or
 **Ctrl+Shift+Tab** go to the next and previous tab, **Ctrl+L** selects the
 address. Tabs can be dragged along the strip to reorder them. A tab shows
 its page's title (its address for an app); the window's title follows the
-active tab. An app in a background tab keeps running. Links that ask for a
-new window (`target="_blank"`) still open in the same tab.
+active tab. An app in a background tab keeps running. A link that asks for
+a new window - `target="_blank"`, a named target, or a page's
+`<base target="_blank">` - opens in a new tab, which becomes the active one.
 
 `--check` loads local addresses only (about:, paths, `file://`), starts the
 app with an invisible root, and exits 0 when it started — useful for an app's
@@ -405,6 +406,5 @@ clipboard, fetching beyond the app's origin without CORS, a larger store,
 and keeping a private-network address from a public app; CORS preflight
 requests; C++ element proxies generated from the framework headers; the
 macOS, Windows and packaging builds. For pages (Phase 2): bookmarks, a
-history, the downloads list and the open tabs kept across runs, and links
-with `target="_blank"` in a new tab;
+history, the downloads list and the open tabs kept across runs;
 then modern layout beyond flex and grid, the live DOM, and JavaScript.

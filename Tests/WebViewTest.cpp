@@ -5,7 +5,8 @@
 // reload, back and forward restore pages and their scroll positions, a
 // failed load shows an error page, pictures that arrive later rebuild the
 // page, a non-HTML answer goes to the host, mailto: links go to the host,
-// and a page left before it answered never replaces the next one.
+// a page left before it answered never replaces the next one, and
+// target="_blank" links go to the host as new windows.
 //
 // Headless: the view is laid out by the CSSLayout engine on an offscreen
 // render context; "the next turn of the UI loop" is a queue the test runs.
@@ -502,6 +503,77 @@ static void TestDownloadKeepsPage() {
     Check(!f.urls.empty() && f.urls.back() == "https://x.org/list", "onUrlChanged said so");
 }
 
+static void TestNewWindowLinks() {
+    std::printf("target=\"_blank\" links go to the host as new windows\n");
+    Fixture f;
+    std::vector<std::string> opened;
+    f.view->onOpenInNewWindow = [&](const std::string& u) { opened.push_back(u); };
+    f.web.Add("https://x.org/", "<title>Home</title><p>"
+                                "<a href='/a' target='_blank'>new A</a> "
+                                "<a href='/b'>same B</a> "
+                                "<a href='/c' target='_SELF'>self C</a> "
+                                "<a href='/d' target='help'>named D</a> "
+                                "<a href='mailto:me@x.org' target='_blank'>mail</a></p>");
+    for (const char* page : { "/a", "/b", "/c", "/d" })
+        f.web.Add(std::string("https://x.org") + page, std::string("<title>") + page + "</title><p>p</p>");
+    f.view->Navigate("https://x.org/");
+    f.Settle();
+    auto* links = f.Label("new A");
+    Check(links && links->onLinkActivated, "the links are clickable");
+    if (!links || !links->onLinkActivated) return;
+
+    links->onLinkActivated("/a");
+    Check(opened.empty(), "nothing happens inside the click");
+    f.Settle();
+    Check(opened.size() == 1 && opened[0] == "https://x.org/a", "target=_blank: the host opens the absolute address");
+    Check(f.view->GetTitle() == "Home", "and this view stays on its page");
+
+    links->onLinkActivated("/d");
+    f.Settle();
+    Check(opened.size() == 2 && opened[1] == "https://x.org/d", "a named target is another window too");
+
+    links->onLinkActivated("mailto:me@x.org");
+    f.Settle();
+    Check(opened.size() == 2 && f.external.size() == 1, "mailto: with _blank still goes to the system");
+
+    links->onLinkActivated("/c");
+    f.Settle();
+    Check(opened.size() == 2 && f.view->GetTitle() == "/c", "_self (any case) opens here");
+    f.view->GoBack();
+    f.Settle();
+    links = f.Label("same B");
+    if (links && links->onLinkActivated) links->onLinkActivated("/b");
+    f.Settle();
+    Check(opened.size() == 2 && f.view->GetTitle() == "/b", "no target opens here");
+
+    // <base target="_blank">: every link without its own target.
+    f.web.Add("https://x.org/based", "<head><title>Based</title><base target='_blank'></head>"
+                                     "<p><a href='/a'>based A</a> <a href='/c' target='_self'>own C</a></p>");
+    f.view->Navigate("https://x.org/based");
+    f.Settle();
+    links = f.Label("based A");
+    Check(links && links->onLinkActivated, "a page with <base target>");
+    if (!links || !links->onLinkActivated) return;
+    links->onLinkActivated("/a");
+    f.Settle();
+    Check(opened.size() == 3 && opened[2] == "https://x.org/a" && f.view->GetTitle() == "Based",
+          "<base target=_blank> opens links elsewhere");
+    links->onLinkActivated("/c");
+    f.Settle();
+    Check(opened.size() == 3 && f.view->GetTitle() == "/c", "a link's own target=_self wins over <base>");
+
+    // A host that opens no windows: such links open in the view.
+    Fixture plain;
+    plain.web.Add("https://x.org/", "<title>Home</title><p><a href='/a' target='_blank'>new A</a></p>");
+    plain.web.Add("https://x.org/a", "<title>A</title><p>a</p>");
+    plain.view->Navigate("https://x.org/");
+    plain.Settle();
+    auto* only = plain.Label("new A");
+    if (only && only->onLinkActivated) only->onLinkActivated("/a");
+    plain.Settle();
+    Check(plain.view->GetTitle() == "A", "without onOpenInNewWindow a _blank link opens in the view");
+}
+
 int main() {
     UCImage::InitializeImageSubsysterm("WebViewTest");
     TestLoadAndLinks();
@@ -513,6 +585,7 @@ int main() {
     TestForms();
     TestFileUpload();
     TestDownloadKeepsPage();
+    TestNewWindowLinks();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }
