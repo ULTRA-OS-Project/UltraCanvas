@@ -1,3 +1,15 @@
+#### 2026-10-16 *0.2.25*
+- **Password-protected images.** *File > Password Protection...* gives the
+  image a password; saved as an UltraCanvas layered image (`.ucd`) it is then
+  encrypted - an Argon2id key, every section sealed with XChaCha20-Poly1305 -
+  and opens only with that password, which cannot be recovered. *Hide the
+  preview too* leaves the thumbnail out as well. The dialog also changes the
+  password or removes the protection. Opening a protected `.ucd` - from Open,
+  a drop or the command line - asks for its password, again after a wrong
+  one, and *Save* keeps it protected; *Save* or *Save As* to another format
+  says first that the file goes without the protection (framework
+  changelog, pending entry `ucd-password-protection`).
+
 #### 2026-10-16 *0.2.24*
 - **Layered images in the UCD format.** *Save As* offers *UltraCanvas layered
   image (.ucd)* beside the *UltraPaint project*: an UltraCanvas Document

@@ -1329,7 +1329,9 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
   `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`),
   `SaveUCD/LoadUCD` (`.ucd`, the UCD 2.1 layered image: layers, blend modes,
-  text layers as `UCTF` text frames, a PNG thumbnail; no libvips), and the
+  text layers as `UCTF` text frames, a PNG thumbnail; no libvips; password
+  protection with `SetUCDPassword` / `LoadUCD(path, error, password)` /
+  `IsPasswordProtected`), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
   notifications (single slots) and `AddListener/RemoveListener` for several
   observers of one document.
@@ -1345,7 +1347,10 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Writer` (descriptor, PNG thumbnail, sections, `INDX` first, staged write),
   `Reader` (`Open/OpenBuffer`, `FindSections`, `Decode`: zlib / gzip),
   `ReadHeaderAndThumbnail` (a filer's read), the sub-format preamble and
-  little-endian `ByteWriter` / `ByteReader`. No encryption yet. Doc:
+  little-endian `ByteWriter` / `ByteReader`; password protection (UCD 2.2):
+  `Writer::SetPassword`, `Reader::NeedsPassword/Unlock` (Argon2id key,
+  XChaCha20-Poly1305 per section, through UltraCrypt; fails closed without
+  libsodium, `EncryptionAvailable()`). Doc:
   `Docs/UltraCanvas/UltraCanvasUCDContainer.md`.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
@@ -6618,9 +6623,12 @@ Status: **Draft specification** — reference for the v2 implementation of
 `UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`. Revision **2.1** adds
 layered images (§4.7: the `LAYR` layer stack, several `BMAP` sections, text
 frames that stay text) and pins down what 2.0 left open — the `INDX` layout
-(§4.2.1) and the deflate and gzip stream formats (§2.3). The container itself
-(`UltraCanvasUCDContainer.h`) and layered images (`UCRasterDocument`, `*.ucd`)
-are implemented; the other content types are still to come.
+(§4.2.1) and the deflate and gzip stream formats (§2.3). Revision **2.2**
+defines password protection byte for byte: the `SECU` record and the layout
+of an encrypted section (§4.3.1, §4.3.2). The container itself
+(`UltraCanvasUCDContainer.h`, password protection included) and layered images
+(`UCRasterDocument`, `*.ucd`) are implemented; SuperVault and the other content
+types are still to come.
 
 UCD v2 is a multipurpose container for documents, forms, vector graphics and
 window/UI descriptions, with room for bitmap graphics and video in the future.
@@ -6718,7 +6726,7 @@ Detection rules:
 | Offset | Size | Field | Values / meaning |
 |---|---|---|---|
 | 12 | 1 | Version major | `2` for this specification |
-| 13 | 1 | Version minor | `1` for this revision (`0`: written before layered images; read the same way) |
+| 13 | 1 | Version minor | `2` for this revision (`1`: before §4.3.1–4.3.2 were defined; `0`: before layered images — all read the same way) |
 | 14 | 1 | Body encoding | `0` = binary (default), `1` = XML text (debug), `2` = JSON text (debug) |
 | 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). *Deflate* is a zlib stream (RFC 1950: two header bytes, the deflate data, an Adler-32 checksum) — what HTTP calls the `deflate` coding; *gzip* is a gzip member (RFC 1952). Both carry a checksum, so a damaged section is detected rather than decoded into wrong pixels. |
 | 16 | 1 | Key source | `0` = none (body not encrypted), `1` = password (key derived with Argon2id from the `SECU` parameters), `2` = SuperVault remote authorization (see 4.4). **The cipher is always XChaCha20-Poly1305** — see 4.3. |
@@ -6813,7 +6821,7 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `SC3D` | One 3D scene/model | Payload starts with the sub-format preamble (4.5). |
 | `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
 | `LOCL` | Localization string table for one locale (see 4.6) | One section per locale; loaded on demand via `INDX`. |
-| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. | Never encrypted (it is the input to decryption). |
+| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. Layout in 4.3.1. | Never encrypted or compressed (it is the input to decryption); required when key source = `1`. |
 | `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when key source = `2`. |
 | `XTND` | Reserved for vendor/application extensions | Readers must skip unknown types. |
 
@@ -6871,6 +6879,54 @@ Per section, in this order:
    `SECU` parameters, or supplied by SuperVault (4.4). Each encrypted section
    carries its own random 192-bit nonce; the section header is passed as
    associated data, so editing it invalidates the tag.
+
+#### 4.3.1 `SECU` layout (key source `1`, password)
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | Record version | `1` |
+| 1 | 1 | KDF | `1` = Argon2id — the only code point |
+| 2 | 1 | AEAD | `1` = XChaCha20-Poly1305 — the only code point |
+| 3 | 1 | Reserved | `0x00` |
+| 4 | 4 | Passes | uint32, Argon2id time cost |
+| 8 | 4 | Memory | uint32, Argon2id memory cost in KiB |
+| 12 | 4 | Parallelism | uint32, Argon2id lanes; `1` |
+| 16 | 16 | Salt | random per save |
+| 32 | 4 | Permissions | uint32, bit 0 print, bit 1 copy, bit 2 edit, bit 3 form-fill (`1` = allowed); advisory — anyone with the password has the content |
+| 36 | 24 | Check nonce | random |
+| 60 | 16 | Check tag | the XChaCha20-Poly1305 tag of an **empty** message under the document key, this nonce, and as associated data the ASCII bytes `UCD-SECU` followed by bytes 0–35 of this record |
+
+The **document key** is 32 bytes of Argon2id over the password's UTF-8 bytes
+with this salt and these costs. The check tag lets a reader tell a wrong
+password ("the password is not right") from a damaged section ("the file is
+damaged") before it decrypts anything, and binds the stored costs, so they
+cannot be lowered without the password.
+
+A reader refuses a record whose costs no honest writer would choose — more
+than 64 passes or more than 4 GiB of memory — before deriving anything, so a
+hostile file cannot make it allocate without bound.
+
+#### 4.3.2 An encrypted section
+
+An encrypted section has bit 0 of its section flags set, and its payload as
+stored is:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 24 | Nonce, random per section and per save |
+| 24 | n | Ciphertext: XChaCha20-Poly1305 of the payload *after* compression — the compression byte names what the decrypted bytes are |
+| 24 + n | 16 | Tag |
+
+The associated data is the section's 12-byte header exactly as stored (type,
+the stored length — `40 + n` — compression byte, flags, reserved), so a
+header edited to name another type, length or compression fails the tag.
+
+Writer rules for key source `1`: the header's `ENCRYPTED` flag is set; the
+`SECU` section comes before every encrypted one; every section is encrypted
+except `INDX`, `SECU`, `SVLT` and, at the writer's choice, `META`. The `INDX`
+still lists every section's type and lengths, as the section headers do — the
+sizes of a protected document are not secret, its content is. `PRIVATE` (§2.4)
+leaves the thumbnail out as well.
 
 **One cipher, one KDF — deliberately.** UCD is our own format, so it offers no
 algorithm menu: every writer emits XChaCha20-Poly1305 with Argon2id, and every
@@ -7252,6 +7308,16 @@ signature; loaders should keep the v1 read path during a transition period.
 
 A 2.0 reader opens a 2.1 layered image as the 2.0 rules allow: it skips the
 unknown `LAYR` and shows the first `BMAP`, or the thumbnail.
+
+### 7.2 Changes in 2.2
+
+| Aspect | 2.1 | 2.2 |
+|---|---|---|
+| Version minor | `1` | `2` |
+| `SECU` | contents named, layout open | layout defined (4.3.1), with a check tag that tells a wrong password from a damaged file |
+| Encrypted sections | "carries its own nonce" | nonce, ciphertext, tag; the stored header is the associated data (4.3.2) |
+
+Files without a password are written exactly as in 2.1.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAIExamples.md
@@ -40114,7 +40180,7 @@ tool and a missing plugin should stop it running.
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
-| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
+| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or text view (header summary) |
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
 | `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
 
@@ -40258,9 +40324,15 @@ recognised by the 12-byte signature of the fixed header, read through the
 container engine (`UltraCanvasUCDContainer.h`). The viewer shows what the
 format deliberately makes available without parsing the body:
 
-- the **embedded preview thumbnail** (raw HEIC/PNG stored directly after the
-  fixed header) on the image surface, when present — respecting the
-  `PRIVATE` flag, which suppresses the preview;
+- a **layered image** (`UCBitmap`) whole: its layers read through
+  `UCRasterDocument::LoadUCD` and composited, at full size - the picture,
+  not the 256 px thumbnail - and zoomable like a photo (it is still not an
+  image to turn or save from here);
+- otherwise the **embedded preview thumbnail** (raw HEIC/PNG stored
+  directly after the fixed header) on the image surface, when present —
+  respecting the `PRIVATE` flag, which suppresses the preview. A
+  password-protected layered image comes here: the viewer does not ask for
+  passwords;
 - otherwise a **header summary** in the text view.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
@@ -40268,8 +40340,10 @@ container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`,
 `UCBitmap` …), version, body encoding, compression, encryption (always
 XChaCha20-Poly1305; the key from a password or from SuperVault) and
 thumbnail info. A `*.ucd` file without a valid v2 signature (e.g. a v1
-document) gets a summary saying why. A layered image (`UCBitmap`) shows its
-thumbnail here; `UCRasterDocument` opens it with its layers.
+document) gets a summary saying why. For a layered image it adds the size
+and the layer count, and a *Shown* row says what the pane shows - the image
+at full size, or the thumbnail and why not the image (password-protected,
+damaged).
 
 ## Details panel
 
@@ -45792,6 +45866,10 @@ doc->SaveToFile("out.png", err);               // flattened, format by extension
                                                // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
 doc->SaveToFile("work.ucd", err);              // layers kept, as a UCD layered image
+doc->SetUCDPassword("tulip");                  // ... and from now on password-protected
+doc->SaveToFile("work.ucd", err);
+UCRasterDocument reopened;
+reopened.LoadUCD("work.ucd", err, "tulip");    // UCRasterDocument::IsPasswordProtected says it needs one
 ```
 
 ### Layered files
@@ -45811,6 +45889,16 @@ extension (`IsProjectFile` is true for both, `IsUCDFile` for the first):
   (`ExtractEmbeddedPreviewBytes`, the media viewer). Needs no libvips. A
   `UCBitmap` file without a stack opens as one layer; a text frame this cannot
   read leaves its layer the bitmap it shows.
+
+  **Password-protected** (UCD 2.2): `SetUCDPassword(password, hidePreview)`
+  makes every later `SaveUCD` encrypt the file (Argon2id key,
+  XChaCha20-Poly1305 per section; `hidePreview` leaves the thumbnail out
+  too), an empty password takes it off, and `HasUCDPassword` /
+  `GetUCDHidesPreview` say what is set. `IsPasswordProtected(path)` reads
+  only the header; `LoadUCD(path, error, password)` opens such a file - a
+  wrong password fails with `UCD::kWrongPassword`, without one it says the
+  file needs it - and keeps the password, so the next save is protected
+  again. Loading anything else clears it.
 - **`.ucraster`, an UltraPaint project** (`SaveProject` / `LoadProject`,
   libvips): a ZIP of `document.json`, one PNG per layer and an OpenDocument
   text per text layer.
@@ -66818,6 +66906,7 @@ on. The format itself is specified in
 | `UCD::Writer` | Builds a file: a type descriptor, an optional PNG thumbnail, sections; writes an `INDX` first and stages the write |
 | `UCD::Reader` | Reads a whole file: header, thumbnail, every section as stored; decodes a section on request |
 | `UCD::ReadHeaderAndThumbnail` | A filer's read: the 28-byte header and the raw thumbnail, the body untouched |
+| `Writer::SetPassword` / `Reader::Unlock` | Password protection (key source 1): an Argon2id key, every section but `INDX` and `SECU` sealed with XChaCha20-Poly1305 |
 | `UCD::AppendPreamble` / `ReadPreamble` | The 8-byte sub-format preamble a `VECT` / `BMAP` / `VIDS` / `AUDS` / `SC3D` payload starts with |
 | `UCD::ByteWriter` / `ByteReader` | Little-endian, bounds-checked bytes - what section payloads are built from |
 
@@ -66845,13 +66934,13 @@ std::string error;
 if (!writer.WriteToFile(path, error)) { /* the file that was there is untouched */ }
 ```
 
-- The header is version **2.1**, binary body, deflate by default, key source
-  none; the thumbnail flags say PNG.
+- The header is version **2.2**, binary body, deflate by default, key source
+  none (password, with `SetPassword`); the thumbnail flags say PNG.
 - Sections are written in the order added, after an `INDX` that lists each
   one's type, offset, stored and whole length.
 - `WriteToFile` writes through `WriteFileAtomically`: a failure leaves the
   previous file as it was. `WriteToBuffer` gives the bytes.
-- Only *Uncompressed* and *Deflate* are written; there is no encryption yet.
+- Only *Uncompressed* and *Deflate* are written.
 
 ## Reading
 
@@ -66882,13 +66971,60 @@ if (reader.Open(path, error)) {
 - `Open` reads the whole file and lists every section, unknown types
   included - the caller skips what it does not know (the spec's
   forward-compatibility rule).
-- `Decode` gives the payload as serialized: it inflates zlib and gzip
-  sections (checksums checked), resolves the header-default code `0xFF`, and
-  refuses - with the reason - an encrypted section, LZMA, a damaged stream,
-  or a section that would decompress past `limit` (2 GiB by default).
+- `Decode` gives the payload as serialized: it decrypts a section once the
+  reader is unlocked, inflates zlib and gzip sections (checksums checked),
+  resolves the header-default code `0xFF`, and refuses - with the reason - an
+  encrypted section before `Unlock`, LZMA, a damaged stream, or a section
+  that would decompress past `limit` (2 GiB by default).
 - Refused outright, with a message: a damaged signature (all 12 bytes are
   checked), a version 1 file (`UCD\x01`), a later **major** version, a file
   cut short. A later **minor** version reads.
+
+## Password protection
+
+```cpp
+#include "UltraCanvasUCDContainer.h"
+using namespace UltraCanvas;
+
+if (UCD::EncryptionAvailable()) {             // UltraCrypt with libsodium
+    UCD::Writer writer("UCBitmap");
+    writer.SetPassword("correct horse", /*hidePreview=*/false);
+    writer.AddSection("BMAP", payload);
+    std::string error;
+    writer.WriteToFile(path, error);
+}
+
+UCD::Reader reader;
+std::string error;
+if (reader.Open(path, error) && reader.NeedsPassword()) {
+    if (!reader.Unlock("correct horse", error)) {
+        if (error == UCD::kWrongPassword) { /* ask again */ }
+        else { /* damaged, SuperVault, no libsodium ... - say why */ }
+    }
+}
+```
+
+- `SetPassword` (spec section 4.3, key source `1`): the writer derives a
+  32-byte key with **Argon2id** (UltraCrypt's recommended cost - 3 passes,
+  64 MiB - and a fresh salt every write), puts a `SECU` record straight after
+  the `INDX`, and seals every other section with **XChaCha20-Poly1305**
+  after compressing it: a fresh 24-byte nonce, the section's 12-byte header
+  as associated data, so a header changed on disk fails like a changed
+  payload. The header gets key source `1` and the `ENCRYPTED` flag;
+  `hidePreview` adds `PRIVATE` and leaves the thumbnail out. The password is
+  held in an `UltraCryptSecureBuffer` (zeroed when freed); an empty one
+  protects nothing.
+- A protected file opens as any other - header, thumbnail, section list;
+  `NeedsPassword()` says its sections will not decode yet. `Unlock` reads
+  the `SECU`, refuses costs over 64 passes or 4 GiB before deriving
+  anything, and checks the key against the record's check tag, so a wrong
+  password (`UCD::kWrongPassword`) is told apart from a damaged file.
+- A build without libsodium fails closed: `EncryptionAvailable()` is false,
+  `WriteToBuffer` refuses rather than writing the file unprotected, and
+  `Unlock` says why. SuperVault (key source `2`) is refused with a message.
+- `UCRasterDocument` carries a password for its `.ucd` (`SetUCDPassword`,
+  `LoadUCD(path, error, password)`, `IsPasswordProtected`): see
+  [`UltraCanvasPaintSurface.md`](UltraCanvasPaintSurface.md), *Layered files*.
 
 ## The filer's read
 
@@ -66915,7 +67051,10 @@ out.
 bytes a writer puts down, the round trip through a buffer and a file, the
 header-default code, gzip, an unknown section, LZMA and encrypted sections
 refused, damaged checksums, the refusals above, the preamble and the byte
-helpers. `RasterEditingTest` covers layered images on top of it, and
+helpers - and password protection: the bytes a protected file puts down,
+a wrong and the right password, a tampered payload and a tampered header, a
+hostile `SECU` cost refused, a fresh salt on every save, a private document,
+and failing closed without libsodium. `RasterEditingTest` covers layered images on top of it, and
 `EmbeddedPreviewTest` the thumbnail as an embedded preview.
 
 ==============================================================================

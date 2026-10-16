@@ -84,7 +84,7 @@ tool and a missing plugin should stop it running.
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
-| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
+| `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or text view (header summary) |
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
 | `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
 
@@ -228,9 +228,15 @@ recognised by the 12-byte signature of the fixed header, read through the
 container engine (`UltraCanvasUCDContainer.h`). The viewer shows what the
 format deliberately makes available without parsing the body:
 
-- the **embedded preview thumbnail** (raw HEIC/PNG stored directly after the
-  fixed header) on the image surface, when present — respecting the
-  `PRIVATE` flag, which suppresses the preview;
+- a **layered image** (`UCBitmap`) whole: its layers read through
+  `UCRasterDocument::LoadUCD` and composited, at full size - the picture,
+  not the 256 px thumbnail - and zoomable like a photo (it is still not an
+  image to turn or save from here);
+- otherwise the **embedded preview thumbnail** (raw HEIC/PNG stored
+  directly after the fixed header) on the image surface, when present —
+  respecting the `PRIVATE` flag, which suppresses the preview. A
+  password-protected layered image comes here: the viewer does not ask for
+  passwords;
 - otherwise a **header summary** in the text view.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
@@ -238,8 +244,10 @@ container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`,
 `UCBitmap` …), version, body encoding, compression, encryption (always
 XChaCha20-Poly1305; the key from a password or from SuperVault) and
 thumbnail info. A `*.ucd` file without a valid v2 signature (e.g. a v1
-document) gets a summary saying why. A layered image (`UCBitmap`) shows its
-thumbnail here; `UCRasterDocument` opens it with its layers.
+document) gets a summary saying why. For a layered image it adds the size
+and the layer count, and a *Shown* row says what the pane shows - the image
+at full size, or the thumbnail and why not the image (password-protected,
+damaged).
 
 ## Details panel
 

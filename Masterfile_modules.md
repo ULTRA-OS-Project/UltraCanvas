@@ -1150,7 +1150,9 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
   `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`),
   `SaveUCD/LoadUCD` (`.ucd`, the UCD 2.1 layered image: layers, blend modes,
-  text layers as `UCTF` text frames, a PNG thumbnail; no libvips), and the
+  text layers as `UCTF` text frames, a PNG thumbnail; no libvips; password
+  protection with `SetUCDPassword` / `LoadUCD(path, error, password)` /
+  `IsPasswordProtected`), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
   notifications (single slots) and `AddListener/RemoveListener` for several
   observers of one document.
@@ -1166,7 +1168,10 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Writer` (descriptor, PNG thumbnail, sections, `INDX` first, staged write),
   `Reader` (`Open/OpenBuffer`, `FindSections`, `Decode`: zlib / gzip),
   `ReadHeaderAndThumbnail` (a filer's read), the sub-format preamble and
-  little-endian `ByteWriter` / `ByteReader`. No encryption yet. Doc:
+  little-endian `ByteWriter` / `ByteReader`; password protection (UCD 2.2):
+  `Writer::SetPassword`, `Reader::NeedsPassword/Unlock` (Argon2id key,
+  XChaCha20-Poly1305 per section, through UltraCrypt; fails closed without
+  libsodium, `EncryptionAvailable()`). Doc:
   `Docs/UltraCanvas/UltraCanvasUCDContainer.md`.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,

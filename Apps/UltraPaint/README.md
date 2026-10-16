@@ -136,7 +136,8 @@ JPEG, ...) holds the text as the pixels it shows.
 
 - **File:** New (presets, background), New Window, Open, Import Image
   (merge into this image or open a new window), Save, Save As, Export with
-  Options (the framework's format dialog), Quit.
+  Options (the framework's format dialog), Password Protection (see *Files*),
+  Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
   as New Image, Paste Last Copied Image (Ctrl+Alt+V), Delete, Fill with
   Foreground / Background, Settings. When Paste finds no picture on the
@@ -217,16 +218,31 @@ a list of its own. *Save* / *Save As* write the flattened image in the
 format of the extension; *Export with Options* adds the per-format knobs.
 Layered work is kept in one of the two **layered images** FileLoader lists:
 
-- **`.ucd`, an UltraCanvas layered image** - the UCD 2.1 container
+- **`.ucd`, an UltraCanvas layered image** - the UCD 2.2 container
   (`Docs/UltraCanvas/UCD-FileFormat-v2.md`): every layer's pixels, name,
   visibility, lock, opacity and blend mode, a text layer's words as a text
-  frame, and a thumbnail a file manager or UltraViewer shows without opening
-  the layers;
+  frame, and a thumbnail a file manager shows without opening the layers
+  (UltraViewer shows the layers themselves, at full size); it can be
+  password-protected (below);
 - **`.ucraster`, an UltraPaint project** - a ZIP with `document.json` and one
   PNG per layer, and for a text layer its words as an OpenDocument text
   (`layers/<n>.odt`).
 
 Both open with their layers, and their text layers as text again.
+
+**Password protection.** *File > Password Protection...* gives the image a
+password (typed twice): saved as a `.ucd`, the file is then encrypted with
+it - UCD 2.2, an Argon2id key and XChaCha20-Poly1305 for every section - and
+nothing in it opens without the password, which cannot be recovered. *Hide
+the preview too* leaves the thumbnail out as well, so a file manager shows
+nothing of the picture. The same dialog changes the password or removes the
+protection; either takes effect at the next save. Opening a protected `.ucd`
+(Open, a drop, the command line) asks for its password, and again if it is
+not right; once open, *Save* keeps it protected. *Save* or *Save As* to any
+other format says first that the file goes without the protection - only a
+`.ucd` carries a password. Needs the framework built with libsodium
+(UltraCrypt); without it the dialog says so and nothing is written
+unprotected that was meant to be protected.
 
 ### Dropping a file on the canvas
 
