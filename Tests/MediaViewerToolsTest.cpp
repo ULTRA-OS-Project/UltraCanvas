@@ -7,13 +7,21 @@
 // must not tint the drawing browsed to next - with the sliders hidden there
 // would be no way to take it off.
 //
+// A layered UltraCanvas document (*.ucd, UCBitmap) is shown whole - its
+// layers composited at full size, not the 256 px thumbnail it carries - and
+// zooms like a picture; a password-protected one shows only its thumbnail,
+// and a private one nothing at all.
+//
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.1.0 - layered *.ucd images: full size; protected: the thumbnail
 // Version: 1.0.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasRasterDocument.h"
+#include "UltraCanvasUCDContainer.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasToolbar.h"
@@ -163,6 +171,44 @@ int main() {
         std::cout << "\nsample.pdf\n";
         Check(!viewer->GetAvailableTools().colour, "sample.pdf: offers no colour adjustments or Curves");
         CheckToolbarMatches(*viewer, "sample.pdf");
+    }
+
+    // ----- A layered UltraCanvas document -----
+    std::cout << "\nLayered *.ucd images\n";
+    {
+        UCRasterDocument picture(400, 300);
+        picture.AddLayer("Over", RasterPixel(200, 40, 40, 128));
+        const fs::path plain = dir / "layered.ucd";
+        const fs::path locked = dir / "locked.ucd";
+        const fs::path hidden = dir / "hidden.ucd";
+        std::string error;
+        bool saved = picture.SaveToFile(PathToUtf8(plain), error);
+        if (UCD::EncryptionAvailable()) {
+            picture.SetUCDPassword("tulip");
+            saved = saved && picture.SaveToFile(PathToUtf8(locked), error);
+            picture.SetUCDPassword("tulip", true);
+            saved = saved && picture.SaveToFile(PathToUtf8(hidden), error);
+        }
+        Check(saved, "the documents are written" + (error.empty() ? std::string() : ": " + error));
+
+        viewer->SetFiles({ PathToUtf8(plain) });
+        auto shown = viewer->GetSurface()->GetImage();
+        Check(shown && shown->IsValid() && shown->GetWidth() == 400 && shown->GetHeight() == 300,
+              "layered.ucd: shown at its full 400 x 300, not as its thumbnail");
+        Expect(*viewer, plain, true, false, false, false);
+
+        if (UCD::EncryptionAvailable()) {
+            viewer->SetFiles({ PathToUtf8(locked) });
+            shown = viewer->GetSurface()->GetImage();
+            Check(shown && shown->IsValid() && shown->GetWidth() == 256 && shown->GetHeight() == 192,
+                  "locked.ucd: password-protected, so its 256 px thumbnail shows");
+            viewer->SetFiles({ PathToUtf8(hidden) });
+            shown = viewer->GetSurface()->GetImage();
+            Check(!shown, "hidden.ucd: private as well - no picture at all");
+            Expect(*viewer, hidden, false, false, false, false);
+        } else {
+            std::cout << "  (no libsodium in this build: the protected cases are skipped)\n";
+        }
     }
 
     // ----- The adjustments panel and the adjustments themselves -----

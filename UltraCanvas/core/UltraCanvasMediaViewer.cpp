@@ -1,6 +1,9 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.10.0 - a layered *.ucd image (UCBitmap) is shown whole: its layers composited at
+//                   full size (UCRasterDocument::LoadUCD), not the 256 px thumbnail; a
+//                   password-protected one shows its thumbnail and the details say why
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
@@ -55,6 +58,8 @@
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
 #include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
 #include "UltraCanvasUCDContainer.h"   // a *.ucd's header and thumbnail
+#include "UltraCanvasRasterDocument.h"  // ... and a layered image's layers
+#include "miniz.h"                      // which reach the image surface as a PNG
 #include "UltraCanvasSupportedFormats.h" // what the image pipeline can rasterize
 #include "UltraCanvasVectorPreview.h"   // the readers a registered plugin lends core
 #include "UltraCanvasVectorElement.h"   // the view a drawing is shown in
@@ -241,6 +246,10 @@ struct UCDPreview {
     std::string          problem;         // why not, or why the thumbnail is missing
     UCD::Header          header;
     std::vector<uint8_t> thumbnail;       // raw HEIC / PNG; empty without one
+    // A layered image (UCBitmap) read whole - see ReadUCDPicture.
+    std::shared_ptr<UCImage> picture;     // its layers composited; null when not shown
+    int                  layers = 0;
+    std::string          pictureProblem;  // why it is not shown, when it is a UCBitmap
 };
 
 static UCDPreview ReadUCDPreview(const std::string& path) {
@@ -251,6 +260,46 @@ static UCDPreview ReadUCDPreview(const std::string& path) {
     // A private document shows no preview, even one stored against the rule.
     if (p.header.IsPrivate()) p.thumbnail.clear();
     return p;
+}
+
+// A layered image is more than its thumbnail: the picture it holds, its
+// layers composited at full size, is what the viewer shows. Not for a
+// password-protected one - a viewer does not ask for passwords - nor for any
+// other content type; `pictureProblem` says why for the details.
+static void ReadUCDPicture(const std::string& path, UCDPreview& p) {
+    if (!p.valid || p.header.descriptor != "UCBitmap") return;
+    if (p.header.IsEncrypted()) {
+        p.pictureProblem = "password-protected";
+        return;
+    }
+    UCRasterDocument doc;
+    std::string error;
+    if (!doc.LoadUCD(path, error)) {
+        p.pictureProblem = error;
+        return;
+    }
+    auto flat = doc.Flatten();
+    if (!flat || !flat->IsValid()) {
+        p.pictureProblem = "its layers could not be composited";
+        return;
+    }
+    // The surface takes encoded images, so the composite goes there as a
+    // PNG - at miniz's fastest level, since it is read straight back.
+    size_t length = 0;
+    void* png = tdefl_write_image_to_png_file_in_memory_ex(flat->Data(), flat->GetWidth(), flat->GetHeight(),
+                                                           4, &length, 1, MZ_FALSE);
+    if (!png) {
+        p.pictureProblem = "its picture could not be encoded";
+        return;
+    }
+    auto picture = UCImage::LoadFromMemory(static_cast<const uint8_t*>(png), length);
+    mz_free(png);
+    if (!picture || !picture->IsValid()) {
+        p.pictureProblem = "its picture could not be decoded";
+        return;
+    }
+    p.picture = picture;
+    p.layers = doc.GetLayerCount();
 }
 
 // Friendly name of the primary content type a UCD descriptor announces.
@@ -304,14 +353,28 @@ static std::string BuildUCDDetailsText(const std::string& path,
            hdr.keySource == 2 ? "XChaCha20-Poly1305, key from SuperVault remote authorization" :
                                 "XChaCha20-Poly1305")
        << (hdr.IsPrivate() ? " (private)" : "") << "\n";
+    if (ucd.picture) {
+        os << "Image: " << ucd.picture->GetWidth() << " x " << ucd.picture->GetHeight() << " px, "
+           << ucd.layers << (ucd.layers == 1 ? " layer" : " layers") << "\n";
+    }
     if (hdr.HasThumbnail()) {
         os << "Thumbnail: " << (hdr.ThumbnailIsPng() ? "PNG" : "HEIC") << ", "
            << HumanSize(hdr.thumbnailLength)
-           << (thumbShown ? " (shown)" : " (could not be decoded)") << "\n";
+           << (ucd.picture ? "" : thumbShown ? " (shown)" : " (could not be decoded)") << "\n";
     } else {
         os << "Thumbnail: none\n";
     }
-    os << "\nPreview only \xE2\x80\x94 the viewer shows the thumbnail the document carries.\n";
+    // What the pane shows, as a row of its own (a line with a colon is one).
+    if (ucd.picture) {
+        os << "Shown: the image at full size, its layers composited\n";
+    } else if (!ucd.pictureProblem.empty()) {
+        os << "Shown: "
+           << (thumbShown ? "the thumbnail - the image itself is not (" + ucd.pictureProblem + ")"
+                          : "nothing - the image is not (" + ucd.pictureProblem + ") and there is no thumbnail")
+           << "\n";
+    } else {
+        os << "\nPreview only \xE2\x80\x94 the viewer shows the thumbnail the document carries.\n";
+    }
     return os.str();
 }
 
@@ -2200,17 +2263,19 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         handled = true;
     }
     if (!handled && kind == MediaKind::UCDoc) {
-        // UltraCanvas Document container: the embedded preview thumbnail -
-        // stored raw right after the fixed header exactly so viewers can
-        // preview without parsing the body - or, without one, a header
-        // summary in the text view. The details popup gets the container
-        // information either way.
-        const UCDPreview ucd = ReadUCDPreview(path);
-        std::shared_ptr<UCImage> thumb;
-        if (!ucd.thumbnail.empty()) thumb = UCImage::LoadFromMemory(ucd.thumbnail);
-        bool thumbShown = thumb && thumb->IsValid();
+        // UltraCanvas Document container: a layered image's own picture,
+        // its layers composited at full size; else the embedded preview
+        // thumbnail - stored raw right after the fixed header exactly so
+        // viewers can preview without parsing the body - or, without one, a
+        // header summary in the text view. The details popup gets the
+        // container information either way.
+        UCDPreview ucd = ReadUCDPreview(path);
+        ReadUCDPicture(path, ucd);
+        std::shared_ptr<UCImage> thumb = ucd.picture;
+        if (!thumb && !ucd.thumbnail.empty()) thumb = UCImage::LoadFromMemory(ucd.thumbnail);
+        const bool thumbShown = !ucd.picture && thumb && thumb->IsValid();
         ucdDetails = BuildUCDDetailsText(path, ucd, thumbShown);
-        if (thumbShown) {
+        if (thumb && thumb->IsValid()) {
             ShowView(MediaKind::Image);
             surface->ShowImage(thumb, transition, transitionDurationMs, animated,
                                SurfaceAdjustmentsFor(path));
@@ -2410,8 +2475,9 @@ void UltraCanvasMediaViewer::UpdateToolAvailability() {
             auto img = surface ? surface->GetImage() : nullptr;
             if (path.empty() || !img || !img->IsValid() || surface->HasDecodeFailure()) break;
             t.zoom = true;
-            // A *.ucd thumbnail stands in for a document: it can be looked
-            // at more closely, but it is not an image to turn or save.
+            // A *.ucd stands in for a document - its thumbnail, or a layered
+            // image's layers composited: it can be looked at more closely,
+            // but it is not an image to turn or save here.
             if (ClassifyFile(path) == MediaKind::UCDoc) break;
             t.transform = true;
             t.save = true;
