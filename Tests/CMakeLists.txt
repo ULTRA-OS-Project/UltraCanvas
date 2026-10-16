@@ -3153,42 +3153,13 @@ add_test(NAME VirtualFSPathTest COMMAND VirtualFSPathTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VirtualFSPathTest")
 
-# ===== VIDEOFX TEST =====
-# VideoFXTest is defined in VideoFXTests.cmake, which the top level also
-# includes on its own (ULTRACANVAS_BUILD_VIDEOFX_TESTS) where BUILD_TESTS is
-# off. The UltraVideo tests below go where it does (VIDEOFX_RUNTIME_DIR: bin/,
-# the build root on Windows), so Windows finds the VideoFX DLL beside them.
+# ===== VIDEOFX AND ULTRAVIDEO DOCUMENT TESTS =====
+# VideoFXTest and UltraVideoDocumentTest are defined in VideoFXTests.cmake,
+# which the top level also includes on its own (ULTRACANVAS_BUILD_VIDEOFX_TESTS)
+# where BUILD_TESTS is off. The draft test below goes where they do
+# (VIDEOFX_RUNTIME_DIR: bin/, the build root on Windows), so Windows finds the
+# VideoFX DLL beside it.
 include(${CMAKE_CURRENT_SOURCE_DIR}/VideoFXTests.cmake)
-
-# ===== ULTRAVIDEO DOCUMENT TEST =====
-# UltraVideo's document, mapping and history without a display: media the
-# engine probes, the timeline model derived from the document, every reported
-# change written back, undo, and the .ultravideo round trip. Skips itself
-# without the FFmpeg engine.
-if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
-    message(STATUS "  Building UltraVideoDocumentTest...")
-    add_executable(UltraVideoDocumentTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/UltraVideoDocumentTest.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoDocument.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoFormats.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoMapping.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoHistory.cpp
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo/UltraVideoProxies.cpp
-    )
-    target_include_directories(UltraVideoDocumentTest PRIVATE
-        ${ULTRACANVAS_ROOT}/Apps/UltraVideo
-        ${ULTRACANVAS_INCLUDE_DIR}
-    )
-    target_link_libraries(UltraVideoDocumentTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
-    target_compile_definitions(UltraVideoDocumentTest PRIVATE UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
-    target_compile_features(UltraVideoDocumentTest PRIVATE cxx_std_20)
-    set_target_properties(UltraVideoDocumentTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${VIDEOFX_RUNTIME_DIR}
-    )
-    add_test(NAME UltraVideoDocumentTest COMMAND UltraVideoDocumentTest
-             WORKING_DIRECTORY ${VIDEOFX_RUNTIME_DIR})
-    message(STATUS "    Test registered: UltraVideoDocumentTest")
-endif()
 
 # ===== ULTRAVIDEO DRAFT TEST =====
 # The draft the viewer plays with sound, without a display: rendered with
@@ -5822,6 +5793,28 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: TreeViewKeyboardTest")
 else()
     message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TREE VIEW SCROLL BUTTONS TEST =====
+# The tree view's floating "move to the top" and "go to the selected entry"
+# buttons: when each shows, where it sits, and what a click on it does.
+# Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewScrollButtonsTest...")
+    add_executable(TreeViewScrollButtonsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewScrollButtonsTest.cpp
+    )
+    target_include_directories(TreeViewScrollButtonsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewScrollButtonsTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewScrollButtonsTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewScrollButtonsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewScrollButtonsTest COMMAND TreeViewScrollButtonsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewScrollButtonsTest")
+else()
+    message(STATUS "  TreeViewScrollButtonsTest skipped (UltraCanvas target not present)")
 endif()
 
 # UltraCanvasTreeView::SetFilterText: the rows matching a text, expanded to

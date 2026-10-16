@@ -1178,10 +1178,12 @@ namespace UltraCanvas {
         for (auto* chain : PressChains()) {
             std::replace(chain->begin(), chain->end(), elem, static_cast<UltraCanvasUIElement*>(nullptr));
         }
-        auto win = elem->GetWindow();
-        if (win && win->_focusedElement == elem) {
-            win->_focusedElement = nullptr;
-        }
+        // Forget the element as any window's focus, not only the window it
+        // names now: an element whose window pointer was already cleared or
+        // moved could otherwise stay a window's focused element after it was
+        // freed, and the next focus change walked its freed parent chain
+        // (the Demo crashed in IsDescendantOf when leaving the Album page).
+        UltraCanvasWindowBase::ForgetFocusedElement(elem);
     }
 
     // ===== MODAL WINDOW MANAGEMENT =====
