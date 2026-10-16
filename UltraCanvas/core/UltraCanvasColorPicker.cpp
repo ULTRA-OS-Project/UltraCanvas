@@ -2,7 +2,8 @@
 // Implementation of the comprehensive colour picker widget.
 // Version: 1.8.0 - the design selector offers the colour + brightness sliders too;
 //                  the HSV/HSL/RGB tabs collapse with the channel sliders;
-//                  SetAutoHeight: the widget's height follows its content
+//                  SetAutoHeight: the widget's height follows its content;
+//                  onSlidersExpandedChanged reports the user opening or folding them
 // Version: 1.7.0 - ColorPickerStyle::Light()
 // Version: 1.6.1 - the HSV/HSL/RGB dropdown is a real UltraCanvasDropdown, not painted
 // Version: 1.6.0 - optional design selector: a dropdown in the top-right corner

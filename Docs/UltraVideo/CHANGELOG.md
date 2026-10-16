@@ -1,3 +1,56 @@
+#### 2026-10-16 *0.7.0*
+- **Effects on overlay clips.** The bin's effect presets now also work on
+  a clip on the overlay lane, by a click with it selected or by dragging
+  the preset onto it. They change only that clip's own picture, such as a
+  picture-in-picture video in black and white or a softened logo, and
+  leave the picture under it untouched. (A drop on an overlay clip used to
+  say effects go on the main track's clips.)
+  - The inspector lists the overlay clip's effects, each with its strength
+    slider and remove button, as it does for a main-track clip.
+  - A blur's radius follows the overlay file's own height.
+  - The clip shows its effects badge on the overlay lane, and the
+    `.ultravideo` file keeps the effects with the overlay span.
+  - This needs VideoFX 0.16.0 (`VideoFXOverlay::effects`).
+  - (`EffectTarget`, `Document::EffectsOf`, `ApplyEffectPreset` and
+    `SetEffectAmount` taking a target; tested in `UltraVideoDocumentTest`.)
+- **A slider's drag is one undo step.** Before, every value a slider in
+  the inspector passed through while it was dragged was an undo step of
+  its own, so undoing a volume change could take dozens of steps. Now the
+  whole drag is one step, and the viewer still follows it as it moves.
+  - This covers every slider in the inspector: the clip's speed and its
+    effects' strengths, a title's size and fades, an overlay's size,
+    opacity and fades, a sound clip's volume and fades, and the music's
+    volume, fades, crossfade and ducking level.
+  - Drags on the timeline already were one step each: a move, a trim, a
+    fade knob or a transition's length. The timeline reports them once,
+    when the mouse is let go. `VideoTimelineElementTest` now checks that a
+    fade knob reports nothing while it moves.
+  - A key press on a slider is a step of its own.
+  - So is a second drag of the same slider, and any edit after a save,
+    an undo or a redo.
+  - (`History::Push` with a merge key and `History::EndMerge`, wired to
+    every inspector slider in one place, `Inspector::MergeSliderDrags`.
+    Tested in `UltraVideoDocumentTest`, which now builds an inspector
+    without a display and drags its music-volume slider.)
+- **Blurs in the preview over proxies look as they will in the export.**
+  VideoFX 0.16.0 scales a blur's radius to the proxy's picture. Before, on
+  a proxy half as tall, *Strong blur* looked twice as strong in the viewer
+  as in the export.
+
+#### 2026-10-16 *0.6.1*
+- **A project saved on Windows finds its media on Linux and macOS.** The
+  `.ultravideo` file holds the media bin's, the titles' fonts', the overlays'
+  and the sounds' paths relative to its folder, and on Windows it wrote them
+  with `\` between the parts (`media\beach.mp4`) - a file name, not a folder,
+  everywhere else. They are written with `/` on every system now
+  (`FileText` in `UltraVideoDocument.cpp`), as the engine's own project text
+  already was; Windows reads `/` as well. No project written before is
+  affected in practice: UltraVideo did not start on Windows until framework
+  0.9.312 (`libVideoFX.dll` was not found).
+- `UltraVideoDocumentTest` runs on the Windows CI rows as well
+  (`ULTRACANVAS_BUILD_VIDEOFX_TESTS`), and fails on a `\` between a saved
+  path's parts.
+
 #### 2026-10-14 *0.6.0*
 - **Clips keep their faces when they fill the frame.** The wizard's *Keep
   faces in shot* now covers the clips as well as the photos: a clip of

@@ -1,9 +1,10 @@
 // Apps/UltraVideo/UltraVideoInspector.cpp
 // The inspector's three tabs (UltraVideoInspector.h).
+// Version: 0.7.0 - an overlay clip's effects rows; every slider's drag one undo step
 // Version: 0.6.0 - a video clip's Keep faces in shot (the Fill crop around them)
 // Version: 0.5.0 - the tabs, dropdowns, fields, sliders, switches, buttons and labels follow the theme
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
@@ -118,7 +119,37 @@ std::shared_ptr<UltraCanvasContainer> Inspector::Row(const std::shared_ptr<Conta
 
 void Inspector::Edit(const std::string& label, std::function<void(Document&)> edit) {
     if (updating) return;
-    if (onEdit) onEdit(label, std::move(edit));
+    if (onEdit) onEdit(label, std::move(edit), dragKey);
+}
+
+// A slider passes every value of a drag to onValueChanging and the one it
+// settles on to onValueChanged at the release (or a key press's value
+// alone). Both run the slider's own handler, under its id as the merge key;
+// the release, with or without a last value, closes the step.
+void Inspector::MergeSliderDrags() {
+    for (const std::shared_ptr<Slider>& s : sliders) {
+        const std::function<void(float)> changed = s->onValueChanged;
+        if (!changed) continue;
+        const std::string key = "slider:" + s->GetIdentifier();
+        s->onValueChanging = [this, changed, key](float v) {
+            if (updating) return;
+            dragKey = key;
+            changed(v);
+            dragKey.clear();
+        };
+        s->onValueChanged = [this, changed, key](float v) {
+            if (updating) return;
+            dragKey = key;
+            changed(v);
+            dragKey.clear();
+            if (onEditEnd) onEditEnd();
+        };
+        const std::function<void(const UCEvent&)> released = s->onRelease;
+        s->onRelease = [this, released](const UCEvent& e) {
+            if (released) released(e);
+            if (onEditEnd) onEditEnd();      // a drag back to where it began reports no value
+        };
+    }
 }
 
 std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
@@ -601,21 +632,20 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
             VideoFXEffect shown = shownEffects[static_cast<size_t>(i)];
             shown.amount = v;
             namePtr->SetText(DescribeEffect(shown));
-            const int index = segment;
+            const EffectTarget target = Target();
             const double value = v;
-            Edit("Set effect strength", [index, i, value](Document& d) {
-                if (index >= 0) d.SetEffectAmount(static_cast<size_t>(index), static_cast<size_t>(i), value);
+            Edit("Set effect strength", [target, i, value](Document& d) {
+                d.SetEffectAmount(target, static_cast<size_t>(i), value);
             });
         };
         sliders.push_back(amount);
         row->AddChild(amount);
         auto remove = MakeIconButton(id + ".remove", "trash", "Remove this effect");
         remove->SetOnClick([this, i]() {
-            const int index = segment;
-            Edit("Remove effect", [index, i](Document& d) {
-                if (index < 0 || static_cast<size_t>(index) >= d.project.segments.size()) return;
-                std::vector<VideoFXEffect>& effects = d.project.segments[static_cast<size_t>(index)].effects;
-                if (static_cast<size_t>(i) < effects.size()) effects.erase(effects.begin() + i);
+            const EffectTarget target = Target();
+            Edit("Remove effect", [target, i](Document& d) {
+                std::vector<VideoFXEffect>* effects = d.EffectsOf(target);
+                if (effects && static_cast<size_t>(i) < effects->size()) effects->erase(effects->begin() + i);
             });
         });
         row->AddChild(remove);
@@ -633,10 +663,9 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     removeEffects = MakeTextButton("uv.insp.removeEffects", "Remove all effects", 150);
     removeEffects->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
     removeEffects->SetOnClick([this]() {
-        const int index = segment;
-        Edit("Remove effects", [index](Document& d) {
-            if (index >= 0 && static_cast<size_t>(index) < d.project.segments.size())
-                d.project.segments[static_cast<size_t>(index)].effects.clear();
+        const EffectTarget target = Target();
+        Edit("Remove effects", [target](Document& d) {
+            if (std::vector<VideoFXEffect>* effects = d.EffectsOf(target)) effects->clear();
         });
     });
     effectRows->AddChild(removeEffects);
@@ -782,6 +811,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> Inspector::Build(const Palette& p) {
     }
     for (auto& s : switches) s->SetFollowTheme(true);   // with the switch.thumb roles
 
+    MergeSliderDrags();
     ApplyPalette(p);
     return tabs;
 }
@@ -804,6 +834,10 @@ void Inspector::ApplyPalette(const Palette& p) {
 // ============================================================================
 // showing the document
 // ============================================================================
+EffectTarget Inspector::Target() const {
+    return segment >= 0 ? EffectTarget{segment, -1} : EffectTarget{-1, overlay};
+}
+
 void Inspector::ShowClipTab() {
     if (tabs) tabs->SetActiveTab(0);
 }
@@ -831,9 +865,10 @@ void Inspector::Show(const Document& doc, int index, int titleIndex, int overlay
     titleRows->SetVisible(hasTitle);
     overlayRows->SetVisible(hasOverlay);
     soundRows->SetVisible(hasSound);
-    effectRows->SetVisible(hasClip);
-    if (hasClip) {
-        const std::vector<VideoFXEffect>& effects = doc.project.segments[static_cast<size_t>(index)].effects;
+    // a main-track clip's effects, or an overlay clip's own picture's
+    effectRows->SetVisible(hasClip || hasOverlay);
+    if (hasClip || hasOverlay) {
+        const std::vector<VideoFXEffect>& effects = *doc.EffectsOf(Target());
         shownEffects = effects;
         effectsNone->SetVisible(effects.empty());
         for (int i = 0; i < kEffectRows; ++i) {

@@ -16,4 +16,32 @@
     <generic-icon name="image-x-generic"/>
     <glob pattern="*.ucraster"/>
   </mime-type>
+  <!--
+    UltraCanvas Documents (UCD v2, Docs/UltraCanvas/UCD-FileFormat-v2.md):
+    every content type shares the signature 0x89 'U' 'C' ... CR LF 0x1A, and
+    the eight characters after the 0x89 say which one it is. A layered image
+    is "UCBitmap": that is what UltraPaint opens.
+  -->
+  <mime-type type="application/x-ultracanvas-document">
+    <comment>UltraCanvas document</comment>
+    <comment xml:lang="de">UltraCanvas-Dokument</comment>
+    <glob pattern="*.ucd"/>
+    <magic priority="50">
+      <match type="string" offset="0" value="\x89UC">
+        <match type="string" offset="9" value="\r\n\x1a"/>
+      </match>
+    </magic>
+  </mime-type>
+  <mime-type type="image/x-ultracanvas-bitmap">
+    <comment>UltraCanvas layered image</comment>
+    <comment xml:lang="de">UltraCanvas-Ebenenbild</comment>
+    <sub-class-of type="application/x-ultracanvas-document"/>
+    <generic-icon name="image-x-generic"/>
+    <!-- The same glob as the generic type: two types claiming *.ucd make
+         the desktop look at the content, and the signature decides. -->
+    <glob pattern="*.ucd"/>
+    <magic priority="60">
+      <match type="string" offset="0" value="\x89UCBitmap\r\n\x1a"/>
+    </magic>
+  </mime-type>
 </mime-info>

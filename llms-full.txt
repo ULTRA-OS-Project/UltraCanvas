@@ -1327,7 +1327,9 @@ engine; these classes hold the pixels being edited and hand them to it.
   ApplyFilterToLayer/PreviewFilter` (selection-aware PixelFX ops),
   `CopySelection/CopySelectionMerged/DeleteSelection/FillSelection`,
   `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
-  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`), and the
+  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`),
+  `SaveUCD/LoadUCD` (`.ucd`, the UCD 2.1 layered image: layers, blend modes,
+  text layers as `UCTF` text frames, a PNG thumbnail; no libvips), and the
   `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
   notifications (single slots) and `AddListener/RemoveListener` for several
   observers of one document.
@@ -1338,6 +1340,13 @@ engine; these classes hold the pixels being edited and hand them to it.
   FillCoverage/StampMask/FloodFill/MagicWandMask/FillGradient/SampleColour`,
   with `FlattenCubicBezier` and `ArrowShape` for previews (`FillCompositing`:
   Blend paints over, Replace sets the pixels, alpha included). No libvips needed.
+- **UCD container** (`UltraCanvasUCDContainer.{h,cpp}`, namespace `UCD`) — the
+  UltraCanvas Document v2 container (`Docs/UltraCanvas/UCD-FileFormat-v2.md`):
+  `Writer` (descriptor, PNG thumbnail, sections, `INDX` first, staged write),
+  `Reader` (`Open/OpenBuffer`, `FindSections`, `Decode`: zlib / gzip),
+  `ReadHeaderAndThumbnail` (a filer's read), the sub-format preamble and
+  little-endian `ByteWriter` / `ByteReader`. No encryption yet. Doc:
+  `Docs/UltraCanvas/UltraCanvasUCDContainer.md`.
 - **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
   fit, checkerboard, pixel grid, marching ants, brush cursor,
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
@@ -2406,7 +2415,8 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXSegment`, `VideoFXSourceKind`, `VideoFXExportSettings`,
   `VideoFXContainer`, `VideoFXVideoCodec`, `VideoFXAudioCodec`,
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
-  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
+  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay` (an image
+  or video overlay's own colour and detail `effects`),
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
@@ -6605,7 +6615,12 @@ FILE: Docs/UltraCanvas/UCD-FileFormat-v2.md
 # UltraCanvas Document File Format v2.0 (UCD v2)
 
 Status: **Draft specification** — reference for the v2 implementation of
-`UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`.
+`UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`. Revision **2.1** adds
+layered images (§4.7: the `LAYR` layer stack, several `BMAP` sections, text
+frames that stay text) and pins down what 2.0 left open — the `INDX` layout
+(§4.2.1) and the deflate and gzip stream formats (§2.3). The container itself
+(`UltraCanvasUCDContainer.h`) and layered images (`UCRasterDocument`, `*.ucd`)
+are implemented; the other content types are still to come.
 
 UCD v2 is a multipurpose container for documents, forms, vector graphics and
 window/UI descriptions, with room for bitmap graphics and video in the future.
@@ -6616,7 +6631,8 @@ One container format serves all content types:
 - saveable/fillable forms
 - vector graphics (XAR-like feature set)
 - website-like pages with CSS-style layout and text styles
-- future: bitmap graphics, video
+- layered bitmap images whose text stays editable text (§4.7)
+- future: video
 
 Design goals:
 
@@ -6680,7 +6696,7 @@ ASCII, at most 8 characters, padded with `0x00` to exactly 8 bytes.
 | `UCForm` | `55 43 46 6F 72 6D 00 00` | Saveable / fillable form |
 | `UCVector` | `55 43 56 65 63 74 6F 72` | Vector graphics (XAR-like) |
 | `UCWindow` | `55 43 57 69 6E 64 6F 77` | Window/UI description (IDE templates) |
-| `UCBitmap` | `55 43 42 69 74 6D 61 70` | Bitmap graphics (future) |
+| `UCBitmap` | `55 43 42 69 74 6D 61 70` | Bitmap graphics: one image, or a layered image (§4.7) |
 | `UCVideo` | `55 43 56 69 64 65 6F 00` | Video (future) |
 | `UCAudio` | `55 43 41 75 64 69 6F 00` | Audio (future) |
 | `UC3D` | `55 43 33 44 00 00 00 00` | 3D scenes/models (future) |
@@ -6702,9 +6718,9 @@ Detection rules:
 | Offset | Size | Field | Values / meaning |
 |---|---|---|---|
 | 12 | 1 | Version major | `2` for this specification |
-| 13 | 1 | Version minor | `0` |
+| 13 | 1 | Version minor | `1` for this revision (`0`: written before layered images; read the same way) |
 | 14 | 1 | Body encoding | `0` = binary (default), `1` = XML text (debug), `2` = JSON text (debug) |
-| 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). |
+| 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). *Deflate* is a zlib stream (RFC 1950: two header bytes, the deflate data, an Adler-32 checksum) — what HTTP calls the `deflate` coding; *gzip* is a gzip member (RFC 1952). Both carry a checksum, so a damaged section is detected rather than decoded into wrong pixels. |
 | 16 | 1 | Key source | `0` = none (body not encrypted), `1` = password (key derived with Argon2id from the `SECU` parameters), `2` = SuperVault remote authorization (see 4.4). **The cipher is always XChaCha20-Poly1305** — see 4.3. |
 | 17 | 1 | Flags | See 2.4 |
 | 18 | 2 | Reserved | Must be `0x0000`; readers must ignore |
@@ -6782,7 +6798,7 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 
 | ID | Content | Notes |
 |---|---|---|
-| `INDX` | Section index: array of (type ID, absolute offset, stored length, uncompressed length) | Optional but recommended as the **first** section; enables random access without scanning. |
+| `INDX` | Section index: array of (type ID, absolute offset, stored length, uncompressed length) — layout in 4.2.1 | Optional but recommended as the **first** section; enables random access without scanning. Stored uncompressed and unencrypted. |
 | `META` | Document metadata: title, author, dates, custom properties, file UUID (random, set at creation), default locale (see 4.6) | May be left unencrypted in an `ENCRYPTED` file unless `PRIVATE` is set. |
 | `STYL` | Stylesheet: named styles for fonts, padding, margins, colors — CSS-like, referencing the `UltraCanvas::CSSLayout` property set | Shared styles referenced by ID from pages/components. |
 | `WNDW` | Window definitions (`UCWindowData`) | IDE templates / window content. |
@@ -6790,7 +6806,8 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `FORM` | Form field definitions, validation rules, saved field values | |
 | `VECT` | Vector graphics document (serialized `VectorStorage::VectorDocument`: layers, paths, gradients, masks, filters, text-on-path …) | XAR-like feature set. Payload starts with the sub-format preamble (4.5). |
 | `MEDI` | One embedded media resource (image/audio/video/font), MIME-typed | One section per resource; already-compressed media should set compression `0` (none). |
-| `BMAP` | One native bitmap image | Payload starts with the sub-format preamble (4.5). |
+| `BMAP` | One native bitmap image | Payload starts with the sub-format preamble (4.5). A layered image holds one per layer (4.7). |
+| `LAYR` | The layer stack of a layered image: canvas size, then each layer's name, visibility, lock, opacity, blend mode and placement, and which `BMAP` (and `VECT` text frame) holds its content | At most one per file. Added in 2.1 — see 4.7. |
 | `VIDS` | One native video stream | Payload starts with the sub-format preamble (4.5). |
 | `AUDS` | One native audio stream | Payload starts with the sub-format preamble (4.5). |
 | `SC3D` | One 3D scene/model | Payload starts with the sub-format preamble (4.5). |
@@ -6805,13 +6822,42 @@ Rules:
 - Unknown section types must be skipped using the payload length — this is
   the forward-compatibility mechanism.
 - Multiple sections of the same type are allowed where it makes sense
-  (`PAGE`, `MEDI`, `VECT`, `WNDW`, `LOCL`).
+  (`PAGE`, `MEDI`, `VECT`, `WNDW`, `LOCL`, and `BMAP` in a layered image).
+  Sections of one type are numbered from `0` in file order; that number is
+  how one section names another (a `LAYR` layer names its `BMAP` and
+  `VECT`).
 - Each `WNDW` section contains exactly **one** window definition; the window
   ID lives inside the payload and must be unique file-wide. Windows
   reference each other (e.g. a main window opening a child) by window ID.
 - The content-type descriptor in the signature declares the primary sections
   a file is expected to contain (e.g. `UCVector` → at least one `VECT`), but
   mixed documents are valid.
+
+#### 4.2.1 `INDX` layout
+
+The index lists every *other* section of the file, in file order. It is
+stored with compression `0` and never encrypted, so a reader can use it
+straight from the bytes it read.
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | Record version | `1` |
+| 1 | 3 | Reserved | `0x000000` |
+| 4 | 4 | Entry count | uint32 |
+| 8 | 20 × n | Entries | see below |
+
+Each entry:
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 4 | Type ID | The section's FourCC |
+| 4 | 8 | Offset | uint64, absolute file offset of the section's 12-byte header |
+| 12 | 4 | Stored length | uint32, the payload length in the section header |
+| 16 | 4 | Uncompressed length | uint32, the payload's length once decompressed (and decrypted) — what a reader allocates |
+
+The sections themselves remain the truth: a reader that finds an index
+disagreeing with them (an offset that is not a section header of that type)
+ignores the index and scans.
 
 ### 4.3 Compression and encryption pipeline
 
@@ -6906,7 +6952,7 @@ time both the app and the service recompute/compare it, which detects:
 
 - The variable-size key material (up to 1 MiB) is supported as specified;
   note that beyond 32 random bytes the *cryptographic* strength of the
-  derived AES-256 key no longer increases — the large blob's value is
+  derived 256-bit XChaCha20-Poly1305 key no longer increases — the large blob's value is
   operational (the service can rotate/partition it, embed policy, or pad it
   so blob size reveals nothing), not brute-force resistance.
 - `PRIVATE` flag semantics apply as usual; SuperVault files may still carry a
@@ -6950,7 +6996,8 @@ unavailable rather than failing the whole file.
 |---|---|---|
 | `VECT` | `UCVS` | Native serialized `VectorStorage::VectorDocument` (default) |
 | `VECT` | `SVG ` | Embedded SVG document (pass-through, UTF-8 text) |
-| `BMAP` | `UCRW` | Native raw pixels: uint16 width, uint16 height, uint8 pixel format (`0` = RGBA8, `1` = RGB8, `2` = GRAY8, `3` = RGBA16), 3 reserved bytes, then rows top-down, unpadded |
+| `VECT` | `UCTF` | Text frame: rich text set in a box — a layered image's text layer (layout in 4.7.3). Added in 2.1 |
+| `BMAP` | `UCRW` | Native raw pixels: uint16 width, uint16 height, uint8 pixel format (`0` = RGBA8, `1` = RGB8, `2` = GRAY8, `3` = RGBA16), 3 reserved bytes, then rows top-down, unpadded. Alpha is straight (not premultiplied); RGBA16 samples are little-endian |
 | `BMAP` | `PNG ` / `JPEG` / `HEIC` / `WEBP` / `AVIF` | Embedded image file (pass-through) |
 | `VIDS` | `WEBM` / `MP4 ` | Embedded container file (pass-through) |
 | `VIDS` | `AV1 ` / `H264` / `H265` / `VP9 ` | Elementary stream (timing/index data to be defined with the UCVideo payload spec) |
@@ -6970,7 +7017,7 @@ Rules:
   loaders used for standalone files), so sub-format support automatically
   tracks plugin support.
 - Already-compressed sub-formats (everything except `UCRW`, `PCM `, `UCVS`,
-  `SVG `, `GLTF`, `OBJ `, `STL `) should be stored with section
+  `UCTF`, `SVG `, `GLTF`, `OBJ `, `STL `) should be stored with section
   compression = none.
 - Every future content-section definition (e.g. the full `UCVideo` payload
   spec) must keep this preamble as its first 8 bytes; new FourCCs are added
@@ -7043,6 +7090,115 @@ single file, atomic, translations can never desynchronize from the layout.
 Overlays exist for the language-pack workflow (adding or fixing a
 translation without re-shipping the document).
 
+### 4.7 Layered images (added in 2.1)
+
+A **layered image** is what a bitmap editor saves to keep its work: a stack
+of layers, each with its own pixels, name, visibility, opacity and blend
+mode, some of them **text** — words in a box, still editable — until the
+user merges them into pixels. In UCD it is:
+
+- the descriptor `UCBitmap`;
+- one `LAYR` section, the stack (4.7.1);
+- one `BMAP` per layer: its pixels (for a text layer, the pixels the text
+  was drawn into — what it shows);
+- one `VECT` with sub-format `UCTF` per text layer: its words (4.7.3);
+- a thumbnail of the composite (recommended: PNG, 256 px on the longest
+  edge, so a filer previews the picture without decoding a layer).
+
+A file is readable at three depths, and each is correct: a filer shows the
+thumbnail; a viewer that knows `BMAP` but not text composites the layers'
+pixels and shows exactly the picture; an editor that also reads `UCTF` gets
+its text layers back as text. A `UCBitmap` file **without** `LAYR` is one
+image: its first `BMAP`.
+
+#### 4.7.1 `LAYR` layout
+
+Binary (body encoding `0`), compressed like any section. Multi-byte values
+little-endian; `float32` is IEEE 754 binary32.
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | Record version | `1` |
+| 1 | 3 | Reserved | `0x000000` |
+| 4 | 4 | Canvas width | uint32, pixels, ≥ 1 |
+| 8 | 4 | Canvas height | uint32, pixels, ≥ 1 |
+| 12 | 4 | Active layer | int32, the layer an editor selects on opening; `-1` = none |
+| 16 | 4 | Layer count | uint32, ≥ 1 |
+| 20 | … | Layer records | one per layer, **bottom first** (the first record is drawn first) |
+
+Each layer record starts with its own length, so a later revision can append
+fields that older readers skip:
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 4 | Record length | uint32, bytes of the record **after** this field |
+| 4 | 1 | Flags | bit 0 = visible, bit 1 = locked (editors refuse to paint on it); bits 2–7 reserved |
+| 5 | 1 | Blend mode | see 4.7.2 |
+| 6 | 2 | Reserved | `0x0000` |
+| 8 | 4 | Opacity | float32, `0.0`–`1.0` |
+| 12 | 4 | X | int32, where the bitmap's left edge lies on the canvas |
+| 16 | 4 | Y | int32, where the bitmap's top edge lies on the canvas |
+| 20 | 4 | Bitmap | uint32, the layer's `BMAP` (its number among the file's `BMAP` sections, 4.2); `0xFFFFFFFF` = none (a transparent layer) |
+| 24 | 4 | Text | uint32, the layer's `UCTF` text frame (its number among the file's `VECT` sections); `0xFFFFFFFF` = a bitmap layer |
+| 28 | 2 | Name length | uint16, bytes |
+| 30 | n | Name | UTF-8 |
+
+The bitmap may be smaller than the canvas and may lie partly outside it;
+what falls outside is not part of the image. Pixels the bitmap does not cover
+are transparent.
+
+#### 4.7.2 Compositing
+
+Layers are composited bottom first over a transparent canvas. A layer
+contributes nothing when it is not visible; otherwise each pixel's alpha is
+scaled by the opacity and the colour is blended with what lies below by the
+blend mode, using the separable formulas of the W3C *Compositing and
+Blending* specification, then composited source-over.
+
+| Code | Mode | Code | Mode |
+|---|---|---|---|
+| `0` | Normal | `6` | Difference |
+| `1` | Multiply | `7` | Addition (linear dodge; sum clipped to white) |
+| `2` | Screen | `8` | Subtract (dest − source, clipped to black) |
+| `3` | Overlay | `9` | Soft light |
+| `4` | Darken | `10` | Hard light |
+| `5` | Lighten | | |
+
+A reader meeting a code it does not know composites that layer as Normal.
+
+#### 4.7.3 `UCTF` text frame layout
+
+The words of a text layer: rich text — runs with their own fonts, sizes,
+colours, weights, slants and underlines; paragraphs with their alignment and
+spacing — laid out in a box the width of which the lines wrap at. After the
+8-byte preamble (`'UCTF'`, version `1`):
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 8 | 8 | X | float64, the box's left edge, canvas pixels |
+| 16 | 8 | Y | float64, the box's top edge |
+| 24 | 8 | Width | float64, the width the lines wrap at |
+| 32 | 8 | Height | float64, the height the text took when it was last laid out |
+| 40 | 4 | Colour | R, G, B, A bytes (straight alpha): the colour of a run that states none |
+| 44 | 4 | Font size | float32, pixels: the size of a run that states none |
+| 48 | 2 | Font family length | uint16 |
+| 50 | n | Font family | UTF-8: the font of a run that states none |
+| … | 4 | Text encoding | FourCC of what follows: `'ODT '` = an OpenDocument Text package (ODF 1.2, `application/vnd.oasis.opendocument.text`) |
+| … | 4 | Text length | uint32 |
+| … | n | Text | the rich text in that encoding |
+
+Rules:
+
+- The layer's `BMAP` holds what the text **shows**; the frame holds what it
+  **is**. A reader displays the bitmap and keeps it until the text is edited,
+  so a font missing on the reading machine changes nothing on screen until
+  then. An editor that changes the text draws it again into the bitmap before
+  saving.
+- Writers state paragraph spacing explicitly in the rich text, so that the
+  text lays out the same when read back.
+- A reader that cannot decode the text encoding keeps the layer as the
+  bitmap layer it shows.
+
 ## 5. Binary vs. text body encoding
 
 Header byte 14 selects the encoding of *all* structured section payloads:
@@ -7083,6 +7239,19 @@ both modes — only the payload bytes differ.
 
 File extension stays `.ucd`. v1 files are distinguished by their old 4-byte
 signature; loaders should keep the v1 read path during a transition period.
+
+### 7.1 Changes in 2.1
+
+| Aspect | 2.0 | 2.1 |
+|---|---|---|
+| Version minor | `0` | `1` |
+| Bitmap graphics | descriptor reserved for the future; one `BMAP` | layered images: `LAYR` stack, one `BMAP` per layer (4.7) |
+| Text in images | none | `VECT` sub-format `UCTF`, a text frame that stays editable (4.7.3) |
+| `INDX` | contents named, layout open | layout defined (4.2.1) |
+| Compression codes | "deflate", "gzip" | zlib stream (RFC 1950), gzip member (RFC 1952) |
+
+A 2.0 reader opens a 2.1 layered image as the 2.0 rules allow: it skips the
+unknown `LAYR` and shows the first `BMAP`, or the thumbnail.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAIExamples.md
@@ -17252,6 +17421,8 @@ natively with the framework's `IRenderContext` primitives.
   `PreferredHeightForWidth` sizes a collapsible PixelExact picker for its
   **expanded** sliders, which then open into the free space under the
   controls and leave the area exact in both states.
+  `onSlidersExpandedChanged` reports the user opening or folding the section
+  (not `SetSlidersExpanded`), for a host that remembers it.
 - ✅ **Auto height** — `SetAutoHeight(true)` makes the widget take the height
   its content needs and keep it as the content changes: the colour
   definitions opened or closed, another design chosen (also from the design
@@ -17328,6 +17499,7 @@ namespace UltraCanvas {
         std::function<void(const Color&)> onColorChanged;
         std::function<void(const Color&)> onColorChanging;
         std::function<void(ColorPickerWheelStyle)> onWheelStyleChanged; // user's design choice
+        std::function<void(bool expanded)> onSlidersExpandedChanged; // user opened / folded the section
         std::function<void(bool foreground)> onScreenColorPick; // host override
     };
 }
@@ -17386,8 +17558,12 @@ picker->onWheelStyleChanged = [](UltraCanvas::ColorPickerWheelStyle design) {
 picker->SetShowValueSpinners(true);
 
 // Hide the colour definitions (the HSV / HSL / RGB tabs and the four
-// sliders) behind a disclosure icon, collapsed by default:
+// sliders) behind a disclosure icon, collapsed by default, and remember
+// whether the user leaves them open:
 picker->SetSlidersCollapsible(true, false);
+picker->onSlidersExpandedChanged = [](bool expanded) {
+    printf("Channels %s\n", expanded ? "open" : "folded");   // e.g. save it in the settings
+};
 
 // In a toolbox column: let the picker's height follow what it shows, so the
 // tools below move up when the colour definitions fold away:
@@ -23777,13 +23953,23 @@ every platform:
   but without the Filer's hover icon menu (Copy / Cut / Rename / Delete over
   the file under the pointer): a picker chooses files rather than managing
   them. `hoverIconMenu` below brings it back;
-- the file-name field, and below it the file-type filter: a dropdown, or a row
-  of toggle buttons (see [Filter toggles](#filter-toggles)). Typing a name
-  narrows the listing to the entries that have it in their name. In a Save
-  dialog a big **logo of the type being saved** sits left of the two rows,
+- the **File name** field and beside it the **File type** dropdown, each
+  with its name written above it - or, with toggles (see
+  [Filter toggles](#filter-toggles)), the name over a **Show** row. Typing a
+  name narrows the listing to the entries that have it in their name. In a
+  Save dialog a big **logo of the type being saved** sits left of the fields,
   "Drag to Folder" under it - drag it onto a folder to save there
-  ([The file icon](#the-file-icon)) - and a **Settings** button ends the type
-  row, for how that type is written ([Save settings](#save-settings)).
+  ([The file icon](#the-file-icon)) - and a **Settings** button follows the
+  type, for how that type is written ([Save settings](#save-settings));
+- the **Open** / **Save** / **Select Folder** button (the dialog's OK, in the
+  theme's accent) and **Cancel**, at the right of a footer band.
+
+It is laid out like the platforms' current dialogs (the Windows 11 print
+dialog): a plain panel, the folder tree and the listing in rounded frames, and
+the buttons on a band of their own under a hairline. The colours are the
+theme's (`UltraCanvasTheme::Current()` when the dialog is made, or the one
+`ApplyTheme` gives it): the panel, the `ground` band, `line` frames and
+divider, and the fields and buttons in the theme's own styles.
 
 ## Opening one
 
@@ -23893,7 +24079,7 @@ between folders.
   dialog open on that name. A caller that asks itself, or appends to the
   file, turns this off with `confirmOverwrite = false`
   (`FileDialogOptions::SetConfirmOverwrite(false)`).
-- **Select folder** lists folders only. OK answers the folder highlighted in
+- **Select folder** lists folders only. Select Folder (OK) answers the folder highlighted in
   the listing, else the folder being shown.
 - Return in the path field goes to the folder typed there. A file path opens
   its folder and puts the name into the name field.
@@ -24023,7 +24209,7 @@ A press that is released without moving is a click (`onClick`).
 
 How a file is written is often a choice: JPEG's quality, PNG's compression,
 whether a TIFF is LZW or Deflate. The **Settings** button at the end of a
-Save dialog's type row (after "Files of type") shows the settings of the type being saved - a checkbox, a slider
+Save dialog's type row (after "File type") shows the settings of the type being saved - a checkbox, a slider
 or a list per setting - and stores them on OK. The dialog is the controls
 alone: its title names the format ("PNG settings"), each setting's tooltip
 says what it does, the controls make one column with a slider's value beside
@@ -24179,7 +24365,7 @@ media viewer offers an SVG this way and draws it again at the size chosen.
 For an Open dialog whose filters are *kinds* of file rather than one format
 each, a dropdown of long extension lists is hard to read. With
 `filterToggles` set (`FileDialogOptions::SetFilterToggles(true)` through the
-loader), the "Files of type" dropdown becomes a **Show:** row of toggle
+loader), the "File type" dropdown becomes a **Show** row of toggle
 buttons, one per filter, labelled with the filter's description:
 
 ```cpp
@@ -40095,9 +40281,9 @@ ASCII that the syntax tokenizer would otherwise recognise and open as source.
 ### UltraCanvas Documents (`MediaKind::UCDoc`)
 
 `*.ucd` containers (see `Docs/UltraCanvas/UCD-FileFormat-v2.md`) are
-recognised by the 12-byte signature of the fixed header. Until the UCD v2
-engine lands the viewer shows what the format deliberately makes available
-without parsing the body:
+recognised by the 12-byte signature of the fixed header, read through the
+container engine (`UltraCanvasUCDContainer.h`). The viewer shows what the
+format deliberately makes available without parsing the body:
 
 - the **embedded preview thumbnail** (raw HEIC/PNG stored directly after the
   fixed header) on the image surface, when present — respecting the
@@ -40105,10 +40291,12 @@ without parsing the body:
 - otherwise a **header summary** in the text view.
 
 The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
-container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`, …),
-version, body encoding, compression, encryption and thumbnail info. A
-`*.ucd` file without a valid v2 signature (e.g. a v1 XML/JSON document) gets
-a summary saying so.
+container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`,
+`UCBitmap` …), version, body encoding, compression, encryption (always
+XChaCha20-Poly1305; the key from a password or from SuperVault) and
+thumbnail info. A `*.ucd` file without a valid v2 signature (e.g. a v1
+document) gets a summary saying why. A layered image (`UCBitmap`) shows its
+thumbnail here; `UCRasterDocument` opens it with its layers.
 
 ## Details panel
 
@@ -45569,7 +45757,7 @@ them back. The first application built on it is **UltraPaint**
 |---|---|---|
 | `UCRasterLayer` | One straight-RGBA 8-bit pixel buffer with name / visibility / lock / opacity / blend mode; blend arithmetic; compositing onto a premultiplied pixmap; PixelFX round trip | `include/UltraCanvasRasterLayer.h`, `core/UltraCanvasRasterLayer.cpp` |
 | `UCRasterSelection` | Soft coverage mask (0..255 per pixel): rectangle, ellipse, polygon, arbitrary mask; replace / add / subtract / intersect; feather, grow, shrink, invert; marching-ants outline | `include/UltraCanvasRasterSelection.h`, `core/UltraCanvasRasterSelection.cpp` |
-| `UCRasterDocument` | The layer stack of one canvas: layer operations, whole-image geometry, pixel-edit brackets and structural snapshots for undo / redo, selection-aware filter application, cached composite pixmap, file load / save, layered `.ucraster` projects | `include/UltraCanvasRasterDocument.h`, `core/UltraCanvasRasterDocument.cpp` |
+| `UCRasterDocument` | The layer stack of one canvas: layer operations, whole-image geometry, pixel-edit brackets and structural snapshots for undo / redo, selection-aware filter application, cached composite pixmap, file load / save, layered files: UCD layered images (`.ucd`) and `.ucraster` projects | `include/UltraCanvasRasterDocument.h`, `core/UltraCanvasRasterDocument.cpp` |
 | `RasterTextContent`, `RenderTextLayer` | Text layers: words kept as a rich document in a box on the canvas (`UCRasterLayer::text`), drawn into the layer through the WYSIWYG element that also edits them on the canvas, editable until the layer is merged or rasterized | `include/UltraCanvasRasterText.h`, `core/UltraCanvasRasterText.cpp` |
 | `UCBrushStroke`, `RasterPaint` | The brush engine: interactive strokes (dabs with spacing, hardness, opacity vs flow, paint / erase / clone / smudge / dodge / burn) and one-shot operations (anti-aliased shapes, flood fill, magic wand, gradients, mask stamping, eyedropper) | `include/UltraCanvasBrushEngine.h`, `core/UltraCanvasBrushEngine.cpp` |
 | `UltraCanvasPaintSurface` | The element: zoom / pan view of a document with checkerboard, pixel grid, selection ants and brush cursor; forwards pointer events in image coordinates to the tool the host installs | `include/UltraCanvasPaintSurface.h`, `core/UltraCanvasPaintSurface.cpp` |
@@ -45630,7 +45818,36 @@ std::string err;
 doc->SaveToFile("out.png", err);               // flattened, format by extension, with the
                                                // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
+doc->SaveToFile("work.ucd", err);              // layers kept, as a UCD layered image
 ```
+
+### Layered files
+
+Two formats keep the layers - names, visibility, lock, opacity, blend mode -
+and a text layer's words as text; `SaveToFile` / `LoadFromFile` pick them by
+extension (`IsProjectFile` is true for both, `IsUCDFile` for the first):
+
+- **`.ucd`, a UCD layered image** (`SaveUCD` / `LoadUCD`): the UltraCanvas
+  Document container, revision 2.1, descriptor `UCBitmap`
+  (`Docs/UltraCanvas/UCD-FileFormat-v2.md`, section 4.7). A `LAYR` section
+  holds the stack; each layer's pixels are a raw RGBA `BMAP` (deflated); each
+  text layer's words are a `UCTF` text frame - the box, the default font, size
+  and colour, and the rich text as an OpenDocument text. A PNG thumbnail of
+  the composite (256 px on the longer side) sits right after the header, so a
+  file manager or viewer shows the picture without decoding a layer
+  (`ExtractEmbeddedPreviewBytes`, the media viewer). Needs no libvips. A
+  `UCBitmap` file without a stack opens as one layer; a text frame this cannot
+  read leaves its layer the bitmap it shows.
+- **`.ucraster`, an UltraPaint project** (`SaveProject` / `LoadProject`,
+  libvips): a ZIP of `document.json`, one PNG per layer and an OpenDocument
+  text per text layer.
+
+Both are in FileLoader's inventory as `MediaFormatCategory::LayeredImage`, so
+an editor's Open and Save As take them from there
+(`AddLoadTypes(..., {MediaFormatCategory::LayeredImage})`,
+`AddSaveTypes(opts, MediaFormatCategory::LayeredImage)`). The container
+itself - header, thumbnail, sections, compression - is
+`UltraCanvasUCDContainer.h` (`Docs/UltraCanvas/UltraCanvasUCDContainer.md`).
 
 ### Undo
 
@@ -45900,7 +46117,9 @@ over the canvas. The surface handles what every tool shares:
   happens in the frame that shows the new size - or at the next view call
   (`SetZoom`, `ScrollToImagePoint`, ...) if that comes first - and
   `onViewChanged` reports it, so overlays placed in view coordinates (an
-  editor over a text layer, the status bar's zoom) follow.
+  editor over a text layer, the status bar's zoom) follow. A document change
+  that comes first (a layer added, the canvas resized) brings the view to the
+  new size itself and reports it the same way.
 - **Checkerboard** behind transparent pixels, a drop shadow and border, the
   **pixel grid** from 8× (`SetPixelGridThreshold`), the **selection
   outline** as marching ants (animated on an application timer only while
@@ -45970,7 +46189,7 @@ libvips is part of UltraCanvas on every platform; the one build without it is
 a single-threaded WebAssembly program, where it cannot run. There the layer,
 selection, document, brush engine and surface compile without
 `HAS_LIBVIPS`. What disappears is `ToPixelFX` / `FromPixelFX`,
-`ApplyFilter` / `PreviewFilter`, file load / save and `.ucraster` projects;
+`ApplyFilter` / `PreviewFilter`, file load / save and layered files (`.ucd`, `.ucraster`);
 `ScaleImage` falls back to the layer's bilinear resample. Text layers are
 drawn without libvips (through the render context); only keeping them in a
 project needs it, as every project does.
@@ -45990,7 +46209,10 @@ round trip that draws again to the same pixels), the installed font list, the
 surface's view through a resize (an image smaller than the view centred
 again in the next frame, a larger one keeping its centre point, zooming about
 the pointer between a resize and the frame, and a loupe keeping its point), the
-PNG and `.ucraster` round trips, and saving back over the file a document was
+PNG, `.ucraster` and `.ucd` round trips (every layer attribute, the text
+layers' words, the thumbnail's size, a single-image `UCBitmap`, a text frame it
+cannot read, a later revision's extra layer field, a v1 file and a document
+with no image refused), and saving back over the file a document was
 opened from -- that the image survives the round trip, that the temporary
 file the save goes through leaves no trace, and that neither a save nor an export
 which fails inside the encoder leaves a mark on the file that was already
@@ -65556,7 +65778,7 @@ The `UltraCanvasTreeView` is a hierarchical tree view control component that pro
 - **Connecting Lines**: Dotted or solid parent/child connectors, root level included
 - **Visual Customization**: Colors, fonts, line styles, and spacing
 - **Scrolling**: Automatic scrollbar when content exceeds viewport
-- **Scroll-to-Top Button**: Floating "move to the top" affordance for long trees
+- **Scroll-to-Top / Scroll-to-Selection Buttons**: Floating "move to the top" and "go to the selected entry" affordances for long trees
 - **Keyboard Navigation**: The tree takes the focus, and the arrow keys move the selection
 - **Mouse Interaction**: Click, double-click, drag & drop support
 - **Dynamic Updates**: Add, remove, expand, collapse nodes at runtime
@@ -66121,12 +66343,14 @@ backupTree->onNodeCheckChanged = [backupTree](TreeNode*, TreeCheckState) {
 };
 ```
 
-### Scroll-to-Top Button
+### Scroll-to-Top and Scroll-to-Selection Buttons
 
-When a tree grows past its viewport, getting back to the root can take a lot of
-wheel turns. The tree therefore draws a small floating **"move to the top"**
-button over the bottom-right corner of its content area once the view has been
-scrolled down:
+When a tree grows past its viewport, getting back to the root - or back to the
+row you selected - can take a lot of wheel turns. The tree therefore draws two
+small floating buttons over the bottom-right corner of its content area: a
+**"move to the top"** button once the view has been scrolled down, and directly
+above it a **"go to the selected entry"** button (a dot with an arrow pointing
+at it) while the selected row is out of view.
 
 ```cpp
 void SetShowScrollToTopButton(bool show);
@@ -66139,6 +66363,14 @@ bool    IsScrollToTopButtonActive() const;   // on screen right now?
 Rect2Di GetScrollToTopButtonRect() const;   // element-local rect (empty when inactive)
 
 void ScrollToTop();                          // what the button does; callable directly
+
+void SetShowScrollToSelectionButton(bool show);
+bool GetShowScrollToSelectionButton() const;
+
+bool    IsScrollToSelectionButtonActive() const;   // on screen right now?
+Rect2Di GetScrollToSelectionButtonRect() const;   // element-local rect (empty when inactive)
+
+void ScrollToSelection();                    // what that button does; callable directly
 ```
 
 The other scrolling calls bring a node into view or move the view by pixels:
@@ -66157,23 +66389,35 @@ Behaviour:
   visible area, so a tree that overflows by a row or two never grows a button.
 - **Appears only once the user has scrolled down**: while the first row is on
   screen there is nothing to go back to, so the button stays hidden.
-- **Dodges the end of the list**: as the view approaches the bottom, the button
-  slides up so it never covers the last `TreeScrollToTopStyle::keepClearRows`
-  (3 by default) rows. Away from the bottom it rests in the corner.
+- **Always rests in the corner**, also at the end of the list.
 - **Never overlaps the vertical scrollbar** — it is placed to the left of it.
 - Clicking it jumps back to the first row, animated when the scrollbar has
   smooth scrolling enabled. The click is consumed by the button, so the row
   underneath is neither selected nor expanded.
 
-`UltraCanvasColumnsTreeView` inherits the button, and it is placed below the
-optional column header band.
+The scroll-to-selection button:
+
+- **Enabled by default.** `SetShowScrollToSelectionButton(false)` turns it off.
+- **Sits directly above the top button's corner slot** - in the same place
+  whether or not the top button is showing, so it never jumps under the
+  pointer.
+- **Appears only while the selected row is not fully on screen**: scrolled
+  away, or hidden under a collapsed parent. With no selection, or a selected
+  row hidden by a filter, it stays hidden.
+- Clicking it opens the collapsed parents of the first selected node and
+  brings its row to the middle of the view, animated when the scrollbar has
+  smooth scrolling enabled. The selection itself does not change, and the
+  click does not reach the row underneath.
+- It shares `TreeScrollToTopStyle` with the top button.
+
+`UltraCanvasColumnsTreeView` inherits both buttons, and they are placed below
+the optional column header band.
 
 ```cpp
 struct TreeScrollToTopStyle {
     int   size            = 24;    // button width/height in px
-    int   margin          = 8;     // gap between the button and the content edges
-    int   minHiddenRows   = 3;     // show only when MORE than this many rows are out of view
-    int   keepClearRows   = 3;     // rows at the end of the tree the button must never cover
+    int   margin          = 8;     // gap between a button and the content edges / the other button
+    int   minHiddenRows   = 3;     // top button: show only when MORE than this many rows are out of view
     float cornerRadius    = 12.0f; // 0 => square; >= size/2 => fully rounded
     Color background      = Color(0x3C, 0x3C, 0x3C, 0xC0);
     Color hoverBackground = Color(0x1E, 0x1E, 0x1E, 0xF0);
@@ -66182,20 +66426,21 @@ struct TreeScrollToTopStyle {
 };
 ```
 
-Example — a larger, lighter button that keeps five rows clear:
+Example — larger, blue buttons that wait for five hidden rows:
 
 ```cpp
 auto tree = std::make_shared<UltraCanvasTreeView>("FileTree", 20, 50, 300, 400);
 
 TreeScrollToTopStyle style;
 style.size            = 32;
-style.keepClearRows   = 5;
+style.minHiddenRows   = 5;
 style.background      = Color(0x20, 0x60, 0xC0, 0xC0);
 style.hoverBackground = Color(0x20, 0x60, 0xC0, 0xF0);
 tree->SetScrollToTopButtonStyle(style);
 
-// ...or switch the affordance off entirely:
+// ...or switch the affordances off entirely:
 // tree->SetShowScrollToTopButton(false);
+// tree->SetShowScrollToSelectionButton(false);
 ```
 
 ### Measuring the Tree
@@ -66379,7 +66624,8 @@ auto treeView = TreeViewBuilder("MyTree", 10, 10, 300, 400)
 ```
 
 The builder also offers `SetShowRootLines()`, `SetShowCheckboxes()`,
-`SetAutoSortChildren()`, `SetScrollToTopButtonStyle()` and the callback setters
+`SetAutoSortChildren()`, `SetScrollToTopButtonStyle()`,
+`SetShowScrollToSelectionButton()` and the callback setters
 `OnNodeSelected()`, `OnNodeDoubleClicked()`, `OnNodeExpanded()`,
 `OnNodeCollapsed()`, `OnNodeRightClicked()` and `OnNodeCheckChanged()`.
 
@@ -66580,6 +66826,124 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 - [UltraCanvasContainer](UltraCanvasContainer.md) - Container for tree views
 - [UltraCanvasEvent](UltraCanvasEvent.md) - Event system documentation
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) - Rendering system
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasUCDContainer.md
+==============================================================================
+
+# UltraCanvas UCD Container
+
+<!-- doc-check: std::string path; std::vector<uint8_t> png; std::vector<uint8_t> payload; -->
+
+`UltraCanvasUCDContainer.h` reads and writes the **UltraCanvas Document
+container, version 2** (`*.ucd`): the layer every UCD content type is built
+on. The format itself is specified in
+[`UCD-FileFormat-v2.md`](UCD-FileFormat-v2.md); this page is the API.
+
+| Part | What it is |
+|---|---|
+| `UCD::Writer` | Builds a file: a type descriptor, an optional PNG thumbnail, sections; writes an `INDX` first and stages the write |
+| `UCD::Reader` | Reads a whole file: header, thumbnail, every section as stored; decodes a section on request |
+| `UCD::ReadHeaderAndThumbnail` | A filer's read: the 28-byte header and the raw thumbnail, the body untouched |
+| `UCD::AppendPreamble` / `ReadPreamble` | The 8-byte sub-format preamble a `VECT` / `BMAP` / `VIDS` / `AUDS` / `SC3D` payload starts with |
+| `UCD::ByteWriter` / `ByteReader` | Little-endian, bounds-checked bytes - what section payloads are built from |
+
+It does not interpret sections. A layered image's `LAYR` / `BMAP` / `VECT`
+belong to `UCRasterDocument` (`SaveToFile` / `LoadFromFile` on a `*.ucd`, see
+[`UltraCanvasPaintSurface.md`](UltraCanvasPaintSurface.md), *Layered files*);
+the container hands each content type payload bytes.
+
+## Writing
+
+```cpp
+#include "UltraCanvasUCDContainer.h"
+using namespace UltraCanvas;
+
+UCD::Writer writer("UCBitmap");          // the descriptor: at most 8 ASCII characters
+writer.SetThumbnailPng(png);             // raw, straight after the header
+std::vector<uint8_t> bitmap;
+UCD::AppendPreamble(bitmap, "UCRW", 1);  // what the payload's encoding is
+UCD::ByteWriter w(bitmap);
+w.U16(2); w.U16(2); w.U8(0); w.Zeros(3); // UCRW: width, height, RGBA8, reserved
+w.Zeros(2 * 2 * 4);                      // the pixels
+writer.AddSection("BMAP", bitmap);       // deflated (a zlib stream) by default
+writer.AddSection("MEDI", payload, UCD::Compression::Uncompressed);   // already compressed
+std::string error;
+if (!writer.WriteToFile(path, error)) { /* the file that was there is untouched */ }
+```
+
+- The header is version **2.1**, binary body, deflate by default, key source
+  none; the thumbnail flags say PNG.
+- Sections are written in the order added, after an `INDX` that lists each
+  one's type, offset, stored and whole length.
+- `WriteToFile` writes through `WriteFileAtomically`: a failure leaves the
+  previous file as it was. `WriteToBuffer` gives the bytes.
+- Only *Uncompressed* and *Deflate* are written; there is no encryption yet.
+
+## Reading
+
+```cpp
+#include "UltraCanvasUCDContainer.h"
+using namespace UltraCanvas;
+
+UCD::Reader reader;
+std::string error;
+if (reader.Open(path, error)) {
+    const UCD::Header& h = reader.GetHeader();      // descriptor, version, flags ...
+    for (const UCD::Section* s : reader.FindSections("BMAP")) {   // file order
+        std::vector<uint8_t> bytes;
+        if (!reader.Decode(*s, bytes, error)) continue;           // damaged, encrypted ...
+        std::string fourcc;
+        uint8_t version = 0;
+        if (UCD::ReadPreamble(bytes, fourcc, version) && fourcc == "UCRW") {
+            UCD::ByteReader r(bytes.data() + UCD::kPreambleSize, bytes.size() - UCD::kPreambleSize);
+            uint16_t width = 0, height = 0;
+            r.U16(width); r.U16(height);
+            if (!r.Ok()) continue;                  // a read past the end fails
+        }
+    }
+    (void)h;
+}
+```
+
+- `Open` reads the whole file and lists every section, unknown types
+  included - the caller skips what it does not know (the spec's
+  forward-compatibility rule).
+- `Decode` gives the payload as serialized: it inflates zlib and gzip
+  sections (checksums checked), resolves the header-default code `0xFF`, and
+  refuses - with the reason - an encrypted section, LZMA, a damaged stream,
+  or a section that would decompress past `limit` (2 GiB by default).
+- Refused outright, with a message: a damaged signature (all 12 bytes are
+  checked), a version 1 file (`UCD\x01`), a later **major** version, a file
+  cut short. A later **minor** version reads.
+
+## The filer's read
+
+```cpp
+#include "UltraCanvasUCDContainer.h"
+using namespace UltraCanvas;
+
+UCD::Header header;
+std::vector<uint8_t> thumbnail;
+std::string error;
+if (UCD::ReadHeaderAndThumbnail(path, header, thumbnail, error) && header.HasThumbnail()) {
+    // thumbnail holds a PNG (header.ThumbnailIsPng()) or HEIC file
+}
+```
+
+It reads 28 bytes and the thumbnail - nothing of the body. This is what
+`ExtractEmbeddedPreviewBytes` returns for a `.ucd` (UltraFiler's thumbnails)
+and what the media viewer shows; both leave a `PRIVATE` document's preview
+out.
+
+## Tests
+
+`Tests/UCDContainerTest.cpp` (`UCDContainerTest`): the header and `INDX`
+bytes a writer puts down, the round trip through a buffer and a file, the
+header-default code, gzip, an unknown section, LZMA and encrypted sections
+refused, damaged checksums, the refusals above, the preamble and the byte
+helpers. `RasterEditingTest` covers layered images on top of it, and
+`EmbeddedPreviewTest` the thumbnail as an embedded preview.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasUIElements.md
@@ -73128,6 +73492,11 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
 **Spreadsheets:** ODS, XLSX, CSV, TSV (load + save), XLS — Excel 97-2003 and 5.0/95 (load)
+
+**Layered images** (`MediaFormatCategory::LayeredImage`): `.ucd`, the UCD 2.1
+layered image (load + save, no libvips needed), and `.ucraster`, the UltraPaint
+project (load + save, libvips) - files that keep an image's layers and its text
+layers as text, read and written by `UCRasterDocument`.
 **Transparent decompression:** GZIP, zlib, Zstandard, LZ4 (streams, by content — not archive containers; use VirtualFS for ZIP/7z/TAR)
 
 *...and easily extensible for custom graphics formats via the plugin registry*
@@ -81914,7 +82283,11 @@ by hand:
   Ogg, 3GP, MP3, M4A, AAC, WAV, FLAC, Opus, WMA, AIFF and others. Each is
   `canRead` when FFmpeg has its demuxer, and `canWrite` when an export writes
   it: the muxer and the container's usual encoders are there. `container`
-  then names the `VideoFXContainer` an export to it uses.
+  then names the `VideoFXContainer` an export to it uses. An encoder FFmpeg
+  marks experimental does not count, here or anywhere VideoFX picks or lists
+  one: FFmpeg's own Vorbis encoder takes stereo only, so a build without
+  libvorbis writes no Vorbis (Ogg then takes another of its codecs, or is
+  not written).
 - Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
   FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its demuxer
   opens it, but a phone's HEIC is a grid of tiles in a stream group, which
@@ -82091,8 +82464,10 @@ VideoFX_Export(timeline, "final.mp4", settings);
   be taken for a whole proxy.
 - **Switching.** `VideoFX_UseProxies(timeline)` returns the timeline with
   every clip that has a proxy replaced by it; trims, speed, effects and
-  overlays are kept. A `Crop` effect, which is in the clip's pixels, is
-  scaled to the proxy's. A picture-in-picture video at its own pixel size
+  overlays are kept. The effects measured in the clip's pixels - a
+  `Crop`'s rectangle and a `Blur`'s radius, on a segment or on a
+  picture-in-picture video - are scaled to the proxy's, so the preview looks
+  as the export will. A picture-in-picture video at its own pixel size
   (`imageHeight` 0) keeps its original, since a proxy would shrink it.
 - **Give the output size.** With `width` and `height` 0 an export or preview
   takes its size from the first segment, which over proxies is the proxy.
@@ -82561,6 +82936,7 @@ clip.overlays = { title, logo, cam };
 | `fadeIn`, `fadeOut`, `opacity` | Seconds; 0..1 |
 | **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = the default font (below) |
 | **Image:** `imagePath` or `image`, `imageHeight` | A PNG keeps its transparency; `image` takes RGBA pixels from memory (for example a picture UltraCanvas rendered); `imageHeight` 0 = its own pixel size |
+| **Image or video:** `effects` | The picture's own look: colour and detail effects (brightness, contrast, saturation, gamma, exposure, hue, temperature, greyscale, sepia, invert, blur, sharpen, denoise, vignette) applied in order to the overlay's picture before it is sized, in its own pixels; its transparency is kept. Geometry, fades, LUTs and sound effects are refused here, as are effects on a text overlay (`InvalidArgument` when the export is planned). Saved in project files. |
 | **Video:** `videoPath`, `videoStart`, `imageHeight` | Picture-in-picture: the file's picture plays from `videoStart` seconds into it from the overlay's `start` on, at its own speed, upright, without its sound; when the file ends before the overlay does its last frame holds. `imageHeight` sizes it like an image (0 = the file's own pixels). `VideoFXOverlay::Video` makes one from a path, anchor, height and start second. The file is checked when the export is planned, so a missing one fails before anything is written. |
 
 Text is taken literally — `:`, quotes, `%` and backslashes need no escaping.
@@ -82919,6 +83295,7 @@ generates its own clips, so it needs no media files.
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
 | 3g | Free audio clips: voice-overs and sound effects at given times, trimmed, faded, the music ducking under voice-overs | **Done** |
+| 3h | Effects on image and video overlays: colour and detail, transparency kept | **Done** |
 | 3 | Keyframed effect and overlay parameters | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
@@ -86909,9 +87286,10 @@ lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
 playhead. The *Effects* tab holds the presets for the clips on the main
-track - a click puts one on the selected clip, or drag one onto a clip
-(the clip under the pointer shows a dashed ring and the status line names
-it; `Esc` lets go): the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
+track and the overlay lane (an overlay clip's effects change its own
+picture only) - a click puts one on the selected clip, or drag one onto a
+clip (the clip under the pointer shows a dashed ring and the status line
+names it; `Esc` lets go): the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
 *Dramatic*, *Black and white*, *Sepia*, *Vintage* and *Brighter*, and under
 *Blur and detail* *Soft blur*, *Strong blur*, *Sharpen* and *Reduce noise*.
 A preset is the engine's own effects (a look is a few of them: Warm is
@@ -86997,7 +87375,7 @@ drop files on the lane. An overlay clip is moved, trimmed, split and
 deleted like any clip; trimming its left edge moves into the file, and a
 video clip cannot be stretched past the file's end. The inspector sets its
 length, place (nine positions), size as a share of the frame's height,
-opacity and fades. The viewer shows it while editing, and like a title it
+opacity, fades and its effects (from the bin's *Effects* tab). The viewer shows it while editing, and like a title it
 is cut into one overlay per main-track clip it crosses when the engine
 renders, so it runs across a cut.
 
@@ -87085,7 +87463,10 @@ is no undo step.
 ## Undo, projects and export
 
 `Ctrl+Z` and `Ctrl+Shift+Z` (or `Ctrl+Y`) undo and redo every edit; the
-app bar's buttons name what they would undo. `Ctrl+S` saves the project as
+app bar's buttons name what they would undo. A drag is one step, however
+far it went: a slider in the inspector, and on the timeline a move, a trim,
+a fade knob or a transition's length (the timeline reports these when the
+mouse is let go). `Ctrl+S` saves the project as
 a `.ultravideo` file, `Ctrl+Shift+S` under a new name, `Ctrl+O` opens one,
 `Ctrl+N` starts afresh; closing with unsaved changes asks. The file is
 JSON: the engine's own project (what `videofx render` takes) with the bin,
@@ -87139,8 +87520,7 @@ headless, the player part skips itself without GStreamer plugins).
 
 ## Not yet
 
-Effect presets on overlay clips and stills of the overlay lane (an effect
-dropped on one says so). The proposal's roadmap (§11) has the order.
+The proposal's roadmap (§11) has the order.
 
 ==============================================================================
 FILE: Docs/UltraPress/README.md

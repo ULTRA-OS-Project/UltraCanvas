@@ -2,11 +2,13 @@
 // Editable raster view: zoom / pan, checkerboard, pixel grid, marching-ants
 // selection, brush cursor, and pointer events forwarded to the active tool
 // in image coordinates.
+// Version: 1.2.1 - a document change that moves the view (a pending resize, a new canvas size)
+//                  reports it through onViewChanged
 // Version: 1.2.0 - FollowResize: a resized view keeps the image point at its centre (and
 //                  re-centres an image smaller than itself) at once, not at the next edit
 // Version: 1.1.1 - the surfaces showing one document share one marching-ants clock
 // Version: 1.1.0 - loupe mode: a second surface that shows the pixels around a point magnified
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPaintSurface.h"
@@ -50,7 +52,18 @@ void UltraCanvasPaintSurface::HookDocument() {
         InvalidateRect(Rect2Df(static_cast<float>(std::floor(v.x)) - 2.0f, static_cast<float>(std::floor(v.y)) - 2.0f,
                                static_cast<float>(std::ceil(v.width)) + 4.0f, static_cast<float>(std::ceil(v.height)) + 4.0f));
     };
-    l.structureChanged = [this]() { ClampView(); RequestRedraw(); };
+    l.structureChanged = [this]() {
+        // The clamp follows a resize no frame has shown yet and keeps a
+        // resized canvas in view, so it can move the view: say so, as every
+        // other view change does - an overlay placed in view coordinates (an
+        // editor over a text) moves with it.
+        const PaintViewTransform before = view;
+        ClampView();
+        const bool moved = view.originX != before.originX || view.originY != before.originY ||
+                           view.zoom != before.zoom;
+        if (moved && onViewChanged) onViewChanged();
+        RequestRedraw();
+    };
     l.selectionChanged = [this]() {
         if (document->GetSelection().IsActive()) StartAntsTimer(); else StopAntsTimer();
         RequestRedraw();

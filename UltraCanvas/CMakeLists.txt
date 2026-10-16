@@ -1006,6 +1006,8 @@ set(ULTRACANVAS_CORE_SOURCES
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
+        # The UCD v2 container (*.ucd): header, thumbnail, sections, INDX
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUCDContainer.cpp
         # OLE2 compound files (the legacy Office containers: .doc, .xls)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCompoundFile.cpp
         # UCRichDocument: the block/run document model + its Markdown/HTML/plain

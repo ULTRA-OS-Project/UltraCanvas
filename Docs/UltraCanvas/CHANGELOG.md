@@ -1,3 +1,126 @@
+#### 2026-10-16 *0.9.322*
+- **`UltraCanvasPaintSurface` reports a view move caused by the document.**
+  A document change (a layer added, the canvas resized) clamps the view, and
+  since the view follows a resize, a change between a resize and the next
+  frame moved the view there and then - without `onViewChanged`, so overlays
+  placed in view coordinates (UltraPaint's editor over a text) stayed where
+  they were until the next redraw. The listener now reports any move it
+  makes; a change that moves nothing reports nothing.
+- **UCD v2: the container is implemented, and layered images are its first
+  content type.** `UltraCanvasUCDContainer.h` reads and writes the UltraCanvas
+  Document container (`Docs/UltraCanvas/UCD-FileFormat-v2.md`): the signature
+  and fixed header, the raw thumbnail, length-prefixed sections, an `INDX`
+  written first, zlib sections written and zlib / gzip read (miniz, no
+  libvips), unknown sections listed rather than refused, every refusal named
+  (a v1 file, a later major version, a truncated file, a damaged stream, an
+  encrypted section). The spec gains revision **2.1**: layered images (section
+  4.7: the `LAYR` stack, one `BMAP` per layer, `UCTF` text frames that keep a
+  text layer's words as text), the `INDX` layout, and the deflate / gzip stream
+  formats pinned down; its SuperVault note no longer says AES.
+  `UCRasterDocument` saves and opens them (`SaveUCD` / `LoadUCD`, `*.ucd`
+  through `SaveToFile` / `LoadFromFile`; `IsProjectFile` covers both layered
+  formats). FileLoader's inventory has a **`MediaFormatCategory::LayeredImage`**
+  (`ucd`, and `ucraster` with libvips), filed by UltraFiler as images; a
+  `.ucd`'s thumbnail is an embedded preview (`ExtractEmbeddedPreviewBytes`), so
+  UltraFiler thumbnails it, and the media viewer reads UCD headers through the
+  container (its Details name the key source the spec defines, not an AES
+  cipher). Docs: `UltraCanvasUCDContainer.md`, `UltraCanvasPaintSurface.md`
+  (*Layered files*).
+
+#### 2026-10-16 *0.9.321*
+- **VideoFX 0.16.0: effects on image and video overlays.** A new field,
+  `VideoFXOverlay::effects`, gives an overlay's own picture a look. It works
+  on a logo or a picture-in-picture video, without touching the picture
+  under it.
+  - Colour and detail effects only: brightness, contrast, saturation,
+    gamma, exposure, hue, temperature, greyscale, sepia, invert, blur,
+    sharpen, denoise and vignette.
+  - They are applied in order, before the overlay is sized, in its own
+    pixels.
+  - The overlay's transparency is kept. Its alpha is split off before the
+    effects and merged back after them
+    (`Internal::BuildOverlayEffectGraph`).
+  - Refused with `InvalidArgument` when the export is planned:
+    - geometry, fades, LUTs and sound effects on an overlay;
+    - any effect on a text overlay.
+  - The export, the preview and project files (`overlays[].effects`) all
+    carry them.
+  - **Proxies keep the look of a blur.** `VideoFX_UseProxies` now scales a
+    `Blur`'s radius to the proxy's picture, as it already scaled a `Crop`'s
+    rectangle, for both segments and picture-in-picture videos. Before,
+    over a proxy half as tall, a blur looked twice as strong in the preview
+    as in the export.
+  - Tested in `VideoFXTest`:
+    - the filter text, and what is accepted and refused;
+    - a half-transparent picture turned grey with its transparent half
+      still showing what is under it, in the preview and the export;
+    - a sepia picture-in-picture video;
+    - a project round trip;
+    - blur radii scaled on proxies.
+
+#### 2026-10-16 *0.9.320*
+- **The Open and Save dialogs look like the platforms' current dialogs.**
+  `UltraCanvasFileDialog` is laid out like the Windows 11 print dialog: a
+  plain panel, the name of each field written above it ("File name", "File
+  type" side by side, or the name over a "Show" row of toggles), the folder
+  tree and the listing in rounded frames, 32-pixel fields and buttons with
+  rounded corners, and the buttons at the right of a footer band under a
+  hairline. The OK button says what it does - **Open**, **Save** or **Select
+  Folder** - in the theme's accent. Its colours come from the theme
+  (`UltraCanvasTheme::Current()`, or `ApplyTheme`), so it follows a dark
+  theme too.
+
+#### 2026-10-16 *0.9.319*
+- **VideoFX 0.15.1: no experimental encoder is chosen, listed or reported.**
+  Built on an FFmpeg without libvorbis, VideoFX took FFmpeg's own Vorbis
+  encoder for Ogg (and Vorbis in WebM and MKV) and reported Ogg as written,
+  but that encoder is marked experimental and takes stereo only: any other
+  export failed with "Cannot open the vorbis encoder: Operation not
+  permitted". Every encoder VideoFX picks, lists (`VideoFX_ListVideoEncoders`)
+  or counts (`VideoFX_IsAudioEncoderAvailable`, `VideoFX_GetFileFormats`) now
+  comes through `FindEncoderByName` (`VideoFXBackend.h`), which leaves out
+  the ones FFmpeg marks experimental - its own Vorbis and Opus encoders. Ogg
+  then takes Opus or FLAC, or is not reported as written; the two places
+  that opened an experimental encoder in experimental mode are gone.
+  Reproduced on FFmpeg 9.0.2 without libvorbis, where `VideoFXTest`'s "every
+  type it writes is written, and read back" failed on Ogg and now passes.
+- **The Windows CI rows run `UltraVideoDocumentTest` too**, beside
+  `VideoFXTest` (`ULTRACANVAS_BUILD_VIDEOFX_TESTS`, now in
+  `Tests/VideoFXTests.cmake`): UltraVideo's document on the engine, and the
+  `.ultravideo` file's paths written with `/` on Windows (UltraVideo 0.6.1).
+
+#### 2026-10-16 *0.9.318*
+- **Switching Demo pages could crash on a freed focused element.** Leaving
+  the Album page for the Colour Picker sometimes crashed with an access
+  violation in `IsDescendantOf`: the window still held a focus pointer to an
+  element that had been destroyed, because destroying an element only cleared
+  the focus of the window it named at that moment. Every window alive in the
+  process, whether registered with the application or not (popups, tool
+  windows), now forgets a destroyed element as its focus
+  (`UltraCanvasWindowBase::ForgetFocusedElement`), and an element gives up its
+  focus whenever it leaves its window, including a move to another window.
+  An element destroyed while focused in a window it does not belong to is
+  reported on `debugOutput`, so the next bookkeeping slip of this kind shows
+  up in a debug log instead of as a crash.
+
+#### 2026-10-16 *0.9.317*
+- **The tree view's "move to the top" button stays in its corner.** It used to
+  slide up as the view neared the end of the list, so it would not cover the
+  last rows; that moved it under the pointer and is gone, together with
+  `TreeScrollToTopStyle::keepClearRows`. The button now always rests in the
+  bottom-right corner of the rows.
+- **The tree view has a "go to the selected entry" button.** Directly above the
+  top button's corner slot, a second floating button - a dot with an arrow
+  pointing at it - shows while the selected row is not fully on screen
+  (scrolled away, or under a collapsed parent). A click opens the collapsed
+  parents and brings the row to the middle of the view, animated with smooth
+  scrolling; the selection does not change. On by default,
+  `SetShowScrollToSelectionButton(false)` (also on `TreeViewBuilder`) switches
+  it off, `ScrollToSelection()` does the same from code, and it shares
+  `TreeScrollToTopStyle` with the top button. `UltraCanvasColumnsTreeView`
+  inherits it. The DemoApp's multi-select tree has a check box for it, and
+  `Tests/TreeViewScrollButtonsTest.cpp` covers both buttons.
+
 #### 2026-10-16 *0.9.316*
 - **A button grows to fit its text.** Buttons were given fixed widths sized
   for their English labels, and a longer label - a translation, a larger

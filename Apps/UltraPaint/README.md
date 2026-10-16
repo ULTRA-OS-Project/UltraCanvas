@@ -109,7 +109,7 @@ For an opaque colour the two are the same. *Opacity* applies to both: at
 0.5, Replace takes the area half way to the colour. The colour's alpha is
 the *A* slider of the colour panel (the last two digits of *Hex*). A
 transparent area is saved as such in a format with alpha (PNG, WebP, TIFF,
-`.ucraster`); a JPEG has none.
+`.ucd`, `.ucraster`); a JPEG has none.
 
 ### Text layers
 
@@ -134,9 +134,10 @@ until it is merged** - *Merge Down* and *Flatten* make it pixels, as do
 and keeps it text. Painting on it with a brush, a fill or a shape, or running
 a filter, an adjustment, *Fill* or *Delete* on it, asks first whether to
 **rasterize** it (*Layer > Rasterize Layer* does that directly); Undo makes it
-text again. A `.ucraster` project keeps text layers as text - the words are
-stored as an OpenDocument text beside the layer's PNG - while every flat
-format (PNG, JPEG, ...) holds the text as the pixels it shows.
+text again. The two layered formats keep text layers as text - a `.ucd`
+UltraCanvas layered image as a text frame, a `.ucraster` project as an
+OpenDocument text beside the layer's PNG - while every flat format (PNG,
+JPEG, ...) holds the text as the pixels it shows.
 
 ## Menus
 
@@ -220,9 +221,19 @@ Opens and saves the formats the framework's FileLoader lists for this build
 PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL, TGA, QOI, ICO, camera RAW,
 … - whatever libvips and the framework's plugins read and write here), not
 a list of its own. *Save* / *Save As* write the flattened image in the
-format of the extension; *Export with Options* adds the per-format knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
-and one PNG per layer, and for a text layer its words as an OpenDocument
-text (`layers/<n>.odt`), so it opens as text again.
+format of the extension; *Export with Options* adds the per-format knobs.
+Layered work is kept in one of the two **layered images** FileLoader lists:
+
+- **`.ucd`, an UltraCanvas layered image** - the UCD 2.1 container
+  (`Docs/UltraCanvas/UCD-FileFormat-v2.md`): every layer's pixels, name,
+  visibility, lock, opacity and blend mode, a text layer's words as a text
+  frame, and a thumbnail a file manager or UltraViewer shows without opening
+  the layers;
+- **`.ucraster`, an UltraPaint project** - a ZIP with `document.json` and one
+  PNG per layer, and for a text layer its words as an OpenDocument text
+  (`layers/<n>.odt`).
+
+Both open with their layers, and their text layers as text again.
 
 ### Dropping a file on the canvas
 
@@ -287,7 +298,7 @@ the desktop offer the drop at all is the shortcut in
 UltraPaint reads and whose `Exec=UltraPaint %F` is expanded with the dropped
 paths.
 
-`make install` puts it, the `.ucraster` MIME type and the application icon
+`make install` puts it, the `.ucraster` and `.ucd` MIME types and the application icon
 where the desktop looks:
 
 ```bash
@@ -306,6 +317,7 @@ binary.
 UltraPaint                 # blank canvas
 UltraPaint photo.jpg       # open an image
 UltraPaint work.ucraster   # open a layered project
+UltraPaint work.ucd        # open an UltraCanvas layered image
 UltraPaint logo.svg        # asks for the raster size, then opens it
 UltraPaint part.stl        # asks for the view and the size, then opens it
 UltraPaint a.png b.png     # one window each - what a drop on the icon expands to
@@ -338,4 +350,4 @@ and brushes build without it.
 | `UltraPaintTools.{h,cpp}` | The tools and their option panels |
 | `UltraPaintFilters.{h,cpp}` | The PixelFX filter catalogue and the parameter dialog |
 | `UltraPaintDialogs.{h,cpp}` | New Image, Scale / Canvas Size, Text, Layer Properties, Colour to Alpha, Import (drop / vector raster size) |
-| `UltraPaint.desktop`, `UltraPaint-mimetypes.xml` | The freedesktop shortcut the desktop launches and drops files onto, and the `.ucraster` MIME type |
+| `UltraPaint.desktop`, `UltraPaint-mimetypes.xml` | The freedesktop shortcut the desktop launches and drops files onto, and the MIME types of `.ucraster` and `.ucd` (an UltraCanvas document; a layered image recognised by its `UCBitmap` signature) |

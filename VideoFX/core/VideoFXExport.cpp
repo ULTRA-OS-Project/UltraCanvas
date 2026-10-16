@@ -12,6 +12,8 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
+// Version: 0.16.0 - an image or video overlay's effects, its alpha kept round them
+// Version: 0.15.1 - encoders through FindEncoderByName; none opened as experimental
 // Version: 0.15.0 - a video segment's keepInView / keepFacesInView place the Fill crop
 // Version: 0.14.1 - every frame reaches a filter graph through
 //                  FeedBufferSource (FFmpeg 9 refuses frames past a trim)
@@ -19,7 +21,7 @@
 //                  build reads (the host's picture types too), and the ones an
 //                  export writes
 // Version: 0.13.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "VideoFXBackend.h"
@@ -951,7 +953,7 @@ VideoFXResult Exporter::PlanOutput() {
             // Say whether FFmpeg lacks it or the machine cannot run it
             std::string built;
             for (const EncoderCandidate& e : VideoEncoderCandidates(candidates.front()))
-                if (e.kind == a && avcodec_find_encoder_by_name(e.name)) built = e.name;
+                if (e.kind == a && FindEncoderByName(e.name)) built = e.name;
             const std::string what = std::string(VideoFX_AccelerationName(a)) + " " + VideoCodecName(candidates.front());
             return Fail(VideoFXResult::EncoderNotAvailable,
                         built.empty() ? "No " + what + " encoder in this FFmpeg build"
@@ -1072,7 +1074,6 @@ VideoFXResult Exporter::OpenVideoEncoder() {
     c->framerate = frameRate;
     c->thread_count = settings.threads;
     if (name == "mjpeg") c->color_range = AVCOL_RANGE_JPEG;
-    if (vcodec->capabilities & AV_CODEC_CAP_EXPERIMENTAL) c->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
     if (ofmt->flags & AVFMT_GLOBALHEADER) c->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
     // Quality / rate control
@@ -1174,7 +1175,6 @@ VideoFXResult Exporter::OpenAudioEncoder() {
     } else if (name == "libvorbis" || name == "vorbis") {
         c->bit_rate = channels == 1 ? 96000 : 160000;
     }
-    if (acodec->capabilities & AV_CODEC_CAP_EXPERIMENTAL) c->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
     if (ofmt->flags & AVFMT_GLOBALHEADER) c->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
     int err = avcodec_open2(c, acodec, nullptr);
@@ -1284,7 +1284,12 @@ std::string Exporter::SegmentVideoGraph(const SegmentPlan& plan, const std::stri
         }
         const std::string base = "vfxbase" + std::to_string(label), ov = "vfxov" + std::to_string(label);
         ++label;
-        done += chain + "[" + base + "];[" + name + "]" + imageChain + "[" + ov + "];";
+        // The overlay's own look first, on its picture before it is sized
+        std::string input = name, effects, error;
+        if (!o.effects.empty() &&
+            BuildOverlayEffectGraph(o.effects, name, name + "fx", "vfx" + name + "fx", effects, error))
+            input = name + "fx";
+        done += chain + "[" + base + "];" + effects + "[" + input + "]" + imageChain + "[" + ov + "];";
         chain = "[" + base + "][" + ov + "]" + overlayFilter;
     }
     AppendFilter(chain, std::string("format=") + av_get_pix_fmt_name(stageFmt));

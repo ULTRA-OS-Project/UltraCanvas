@@ -72,6 +72,18 @@ TEST(IsPathInsideRespectsBoundaries) {
     REQUIRE(IsPathInside("/anything", "/"));
 }
 
+TEST(BackslashSeparatesOnlyOnWindows) {
+#ifdef _WIN32
+    REQUIRE(IsPathInside("C:\\Users\\u\\x", "C:/Users/u"));
+    REQUIRE(NormalizeForCompare("C:\\Users\\U\\") == "c:/users/u");
+#else
+    // "/home/user/.cache\x" is a file in the home folder, not in the cache:
+    // '\' is a character of its name here
+    REQUIRE(IsPathInside("/home/user/.cache\\x", "/home/user/.cache") == false);
+    REQUIRE(NormalizeForCompare("/home/user/a\\") == "/home/user/a\\");
+#endif
+}
+
 TEST(WildcardExpansionListsMatchingDirectories) {
     TempTree tree;
     tree.Dir("profiles/Default/Cache");

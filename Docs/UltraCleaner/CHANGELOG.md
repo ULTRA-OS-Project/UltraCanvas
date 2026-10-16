@@ -1,3 +1,13 @@
+#### 2026-10-16 *0.65*
+- **On Linux and macOS a `\` in a name is no longer read as a folder
+  separator.** The path guard compared paths after turning every `\` into
+  `/`, so `/home/user/.cache\x` - a file in the home folder - counted as
+  inside `~/.cache`, and a folder a wildcard rule matched was scanned under
+  the wrong name; a trailing `\` was stripped as if it were a separator.
+  `\` separates a path's parts on Windows only, and only there is it turned
+  into `/` or stripped (`IsSeparator` and `ToForwardSlashes` in
+  `UltraCleanerPaths.cpp`). `test_paths.cpp` checks both sides.
+
 #### 2026-10-15 *0.64*
 - **No console window on Windows when it is started from the Start menu or
   Explorer.** `UltraCleaner.exe` is a GUI program now. Beside it,
