@@ -712,8 +712,26 @@ void UltraCanvasSpreadsheet::RenderFreezeLines(IRenderContext* ctx) {
     }
 }
 
+void UltraCanvasSpreadsheet::LayoutSheetTabs(std::vector<Rect2Di>& tabs, Rect2Di& addButton) const {
+    const int navWidth = 60;
+    const int addWidth = 24;
+    const int tabY = sheetTabsBounds_.y;
+    const int tabHeight = sheetTabsBounds_.height;
+    const int right = sheetTabsBounds_.x + sheetTabsBounds_.width;
+    int tabX = sheetTabsBounds_.x + 4 + navWidth;
+
+    tabs.clear();
+    for (const auto& sheet : sheets_) {
+        int tabWidth = static_cast<int>(sheet->GetName().length() * 8) + 20;
+        // Always keep room for the "+" button after the last tab drawn.
+        if (!tabs.empty() && tabX + tabWidth + addWidth > right) break;
+        tabs.emplace_back(tabX, tabY, tabWidth, tabHeight);
+        tabX += tabWidth;
+    }
+    addButton = Rect2Di(tabX, tabY, addWidth, tabHeight);
+}
+
 void UltraCanvasSpreadsheet::RenderSheetTabs(IRenderContext* ctx) {
-    int tabX = sheetTabsBounds_.x + 4;
     int tabY = sheetTabsBounds_.y;
     int tabHeight = sheetTabsBounds_.height;
     
@@ -727,48 +745,47 @@ void UltraCanvasSpreadsheet::RenderSheetTabs(IRenderContext* ctx) {
     ctx->SetStrokePaint(gridlineColor_);
     ctx->DrawRectangle(Rect2Df(sheetTabsBounds_.x, tabY, navWidth, tabHeight));
 
-    tabX += navWidth;
+    std::vector<Rect2Di> tabs;
+    Rect2Di addButton;
+    LayoutSheetTabs(tabs, addButton);
 
     // Sheet tabs
     ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
     ctx->SetFontSize(11);
-    for (int i = 0; i < static_cast<int>(sheets_.size()); ++i) {
+    for (int i = 0; i < static_cast<int>(tabs.size()); ++i) {
         const auto& sheet = sheets_[i];
+        const Rect2Di& tab = tabs[i];
         std::string name = sheet->GetName();
-        int tabWidth = static_cast<int>(name.length() * 8) + 20;
 
         // Tab background
         ctx->SetFillPaint(i == activeSheetIndex_ ? sheetTabActiveColor_ : sheetTabInactiveColor_);
-        ctx->FillRectangle(Rect2Df(tabX, tabY, tabWidth, tabHeight));
+        ctx->FillRectangle(Rect2Df(tab.x, tab.y, tab.width, tab.height));
 
         // Tab border
         ctx->SetStrokePaint(gridlineColor_);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(Rect2Df(tabX, tabY, tabWidth, tabHeight));
+        ctx->DrawRectangle(Rect2Df(tab.x, tab.y, tab.width, tab.height));
 
         // Tab color indicator
         if (sheet->GetTabColor() != Colors::Transparent) {
             ctx->SetFillPaint(sheet->GetTabColor());
-            ctx->FillRectangle(Rect2Df(tabX, tabY + tabHeight - 3, tabWidth, 3));
+            ctx->FillRectangle(Rect2Df(tab.x, tab.y + tab.height - 3, tab.width, 3));
         }
 
         // Tab name
         ctx->SetTextPaint(Colors::Black);
-        ctx->DrawText(name, Point2Df(tabX + 10,
-                      tabY + (tabHeight - ctx->GetTextLineHeight(name)) / 2));
-
-        tabX += tabWidth;
-
-        if (tabX >= sheetTabsBounds_.x + sheetTabsBounds_.width - 100) break;
+        ctx->DrawText(name, Point2Df(tab.x + 10,
+                      tab.y + (tab.height - ctx->GetTextLineHeight(name)) / 2));
     }
 
     // Add sheet button
     ctx->SetFillPaint(headerBackgroundColor_);
-    ctx->FillRectangle(Rect2Df(tabX, tabY, 24, tabHeight));
+    ctx->FillRectangle(Rect2Df(addButton.x, addButton.y, addButton.width, addButton.height));
     ctx->SetStrokePaint(gridlineColor_);
-    ctx->DrawRectangle(Rect2Df(tabX, tabY, 24, tabHeight));
+    ctx->DrawRectangle(Rect2Df(addButton.x, addButton.y, addButton.width, addButton.height));
     ctx->SetTextPaint(Colors::Black);
-    ctx->DrawText("+", Point2Df(tabX + 8, tabY + (tabHeight - ctx->GetTextLineHeight("+")) / 2));
+    ctx->DrawText("+", Point2Df(addButton.x + (addButton.width - ctx->GetTextLineWidth("+")) / 2,
+                                addButton.y + (addButton.height - ctx->GetTextLineHeight("+")) / 2));
 }
 
 void UltraCanvasSpreadsheet::RenderScrollbars(IRenderContext* ctx) {
@@ -1062,7 +1079,10 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
         }
         
         case HitArea::SheetTab: {
-            if (hit.tabIndex >= 0 && hit.tabIndex < static_cast<int>(sheets_.size())) {
+            if (hit.addSheetButton) {
+                // "+" appends a sheet with the next free name and opens it.
+                if (AddSheet("")) SetActiveSheet(static_cast<int>(sheets_.size()) - 1);
+            } else if (hit.tabIndex >= 0 && hit.tabIndex < static_cast<int>(sheets_.size())) {
                 SetActiveSheet(hit.tabIndex);
             }
             break;
@@ -1389,15 +1409,18 @@ UltraCanvasSpreadsheet::HitTestResult UltraCanvasSpreadsheet::HitTest(int x, int
     // Sheet tabs
     if (showSheetTabs_ && sheetTabsBounds_.Contains(x, y)) {
         result.area = HitArea::SheetTab;
-        // Calculate which tab was clicked
-        int tabX = sheetTabsBounds_.x + 64;
-        for (int i = 0; i < static_cast<int>(sheets_.size()); ++i) {
-            int tabWidth = static_cast<int>(sheets_[i]->GetName().length() * 8) + 20;
-            if (x >= tabX && x < tabX + tabWidth) {
-                result.tabIndex = i;
-                break;
+        std::vector<Rect2Di> tabs;
+        Rect2Di addButton;
+        LayoutSheetTabs(tabs, addButton);
+        if (addButton.Contains(x, y)) {
+            result.addSheetButton = true;
+        } else {
+            for (int i = 0; i < static_cast<int>(tabs.size()); ++i) {
+                if (tabs[i].Contains(x, y)) {
+                    result.tabIndex = i;
+                    break;
+                }
             }
-            tabX += tabWidth;
         }
         return result;
     }

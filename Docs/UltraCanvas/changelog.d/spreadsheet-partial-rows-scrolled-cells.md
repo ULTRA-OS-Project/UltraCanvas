@@ -8,3 +8,8 @@
   border; cells before the scroll position now lie outside the cell area and
   are clipped, as are the clipboard outline, the auto-fill handle and the
   in-cell editor.
+- **Spreadsheet: the "+" button beside the sheet tabs adds a sheet.** It was
+  drawn but never handled a click. It now appends a sheet with the next free
+  name ("Sheet2", ...) and switches to it. Tabs and the button are laid out
+  once for drawing and clicking, so a click on a tab always selects the tab
+  drawn there, and the button stays in view when many tabs do not fit.

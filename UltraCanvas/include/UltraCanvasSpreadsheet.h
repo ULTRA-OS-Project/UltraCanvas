@@ -519,6 +519,9 @@ private:
     void RenderFormulaRangeHighlights(IRenderContext* ctx);
     void RenderFreezeLines(IRenderContext* ctx);
     void RenderSheetTabs(IRenderContext* ctx);
+    // Tab rectangles (as many as fit) and the "+" button; shared by drawing
+    // and hit-testing so a click lands on what is drawn.
+    void LayoutSheetTabs(std::vector<Rect2Di>& tabs, Rect2Di& addButton) const;
     void RenderScrollbars(IRenderContext* ctx);
     void RenderCellEditor(IRenderContext* ctx);   // draws the editor child
     void RenderClipboardIndicator(IRenderContext* ctx);
@@ -539,7 +542,8 @@ private:
                          Cell, ColumnResizer, RowResizer, SheetTab, 
                          HorizontalScrollbar, VerticalScrollbar, AutoFillHandle,
                          ColumnSortButton };
-    struct HitTestResult { HitArea area = HitArea::None; int row = -1; int col = -1; int tabIndex = -1; };
+    struct HitTestResult { HitArea area = HitArea::None; int row = -1; int col = -1; int tabIndex = -1;
+                           bool addSheetButton = false; };
     HitTestResult HitTest(int x, int y) const;
 
     // Header sort buttons: the block they sort (false when the selection is
