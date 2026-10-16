@@ -9,9 +9,11 @@
 //
 // Distinct from UltraCanvasZoomPanImage (a read-only viewer of a UCImage)
 // and UltraCanvasMediaSurface (the media viewer's display): this one edits.
+// Version: 1.2.0 - a resized view keeps the image point at its centre and re-centres an
+//                  image smaller than itself at once (FollowResize)
 // Version: 1.1.1 - the surfaces showing one document share one marching-ants clock
 // Version: 1.1.0 - loupe mode: a second surface that shows the pixels around a point magnified
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -60,6 +62,11 @@ public:
     std::shared_ptr<UCRasterDocument> GetDocument() const { return document; }
 
     // ===== VIEW =====
+    // When the element is resized (the window, a split pane), the image
+    // point at the centre of the view stays at its centre, and an image
+    // smaller than the view is centred in it again - from the next frame on,
+    // or the next view call, whichever comes first. A loupe keeps the point
+    // SetLoupeView put at its centre the same way.
     const PaintViewTransform& GetTransform() const { return view; }
     double GetZoom() const { return view.zoom; }
     // 1.0 == 100 %. Zooms about the centre of the view.
@@ -143,6 +150,11 @@ public:
 private:
     PaintPointerEvent MakePointerEvent(const UCEvent& e) const;
     void ClampView();
+    // Brings the view to a new element size: shifts the origin by half the
+    // change, so the image point at the centre stays there. True when it
+    // moved the view (not while a fit is pending: the fit lays the view out
+    // for the new size). Every view call runs it first.
+    bool FollowResize();
     void StartAntsTimer();
     void StopAntsTimer();
     void DrawCheckerboard(IRenderContext* ctx, const Rect2Dd& area);
@@ -157,6 +169,9 @@ private:
     UCRasterDocument::ListenerId documentListener = 0;
     PaintViewTransform view;
     bool fitPending = true;
+    // The element size `view` was laid out for (FollowResize).
+    float viewWidth = 0.0f;
+    float viewHeight = 0.0f;
 
     bool showPixelGrid = true;
     double pixelGridThreshold = 8.0;

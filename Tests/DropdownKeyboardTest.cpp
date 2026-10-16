@@ -14,9 +14,14 @@
 // Tab and from a click, keeping it while its list is open, so a click on an
 // entry still chooses it. SetAcceptsFocus(false) leaves it out again.
 //
+// Type-ahead: letters typed in the open list go to the item that starts with
+// them - what a list of every installed font needs - and Return still chooses
+// (Linux reports Return with "\r" as its text, which is not a letter).
+//
 // Every event goes through the application's own dispatch. Opens a real
 // window, so it runs under Xvfb (xvfb-run -a) and skips itself without a
 // DISPLAY.
+// Version: 1.2.0 - type-ahead, through the focused dropdown and through its open list
 // Version: 1.1.0 - the dropdown takes the keyboard focus: Tab, a click, Down / Space
 // Version: 1.0.0
 // Last Modified: 2026-10-15
@@ -28,6 +33,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasWindow.h"
 
+#include <cctype>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -68,13 +74,24 @@ void Mouse(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>
 }
 
 void Key(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>& window,
-         UCKeys key) {
+         UCKeys key, const std::string& text = "") {
     UCEvent e;
     e.type = UCEventType::KeyDown;
     e.virtualKey = key;
+    e.text = text;
+    if (text.size() == 1) e.character = text[0];
     e.targetWindow = window;
     e.nativeWindowHandle = window->GetNativeHandle();
     app.DispatchEvent(e);
+}
+
+// A letter as the Linux backend sends it: the key and its text.
+void Type(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>& window,
+          const std::string& letters) {
+    for (char c : letters) {
+        const char upper = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        Key(app, window, static_cast<UCKeys>(upper), std::string(1, c));
+    }
 }
 
 } // namespace
@@ -204,6 +221,71 @@ int main() {
     Key(app, window, UCKeys::Return);
     TEST("and the keys still work its open list",
          dropdown->GetSelectedIndex() == 1 && chosen.size() == 1 && chosen.back() == 1);
+
+    // ----- Type-ahead -----
+    // The dropdown still does not take the focus (above), so the window hands
+    // the keys to its open list, which passes the letters on to it.
+    dropdown->ClearItems();
+    for (const char* font : { "DejaVu Sans", "FreeMono", "FreeSans", "Liberation Mono", "Liberation Serif", "Sans" })
+        dropdown->AddItem(font);
+    dropdown->SetSelectedIndex(5, false);
+    chosen.clear();
+    Mouse(app, window, UCEventType::MouseDown, 60, 32);
+    Mouse(app, window, UCEventType::MouseUp, 60, 32);
+    TEST("the font list opens", dropdown->IsDropdownOpen());
+    Type(app, window, "libe");
+    Key(app, window, UCKeys::Return, "\r");
+    TEST("'libe' then Return chooses 'Liberation Mono'", dropdown->GetSelectedIndex() == 3);
+    TEST("Return closes the list after type-ahead", !dropdown->IsDropdownOpen());
+    TEST("the choice is reported", chosen.size() == 1 && chosen.back() == 3);
+
+    // The same letter again steps on through the items starting with it.
+    chosen.clear();
+    Mouse(app, window, UCEventType::MouseDown, 60, 32);
+    Mouse(app, window, UCEventType::MouseUp, 60, 32);
+    Type(app, window, "f");
+    Type(app, window, "f");
+    Key(app, window, UCKeys::Return, "\r");
+    TEST("'f', 'f' passes FreeMono for FreeSans", dropdown->GetSelectedIndex() == 2);
+
+    // Upper or lower case alike, and a letter nothing starts with moves nothing.
+    Mouse(app, window, UCEventType::MouseDown, 60, 32);
+    Mouse(app, window, UCEventType::MouseUp, 60, 32);
+    Type(app, window, "D");
+    Type(app, window, "q");
+    Key(app, window, UCKeys::Return, "\r");
+    TEST("'D' finds 'DejaVu Sans'; 'q' after it finds nothing and moves nothing",
+         dropdown->GetSelectedIndex() == 0);
+
+    // A space carries on a name being typed: font names have them.
+    Mouse(app, window, UCEventType::MouseDown, 60, 32);
+    Mouse(app, window, UCEventType::MouseUp, 60, 32);
+    Type(app, window, "liberation s");
+    Key(app, window, UCKeys::Return, "\r");
+    TEST("'liberation s' then Return chooses 'Liberation Serif'", dropdown->GetSelectedIndex() == 4);
+
+    // Focused, the dropdown takes the letters itself.
+    dropdown->SetAcceptsFocus(true);
+    chosen.clear();
+    Mouse(app, window, UCEventType::MouseDown, 60, 32);
+    Mouse(app, window, UCEventType::MouseUp, 60, 32);
+    TEST("a click opens the font list and focuses the dropdown",
+         dropdown->IsDropdownOpen() && dropdown->IsFocused());
+    Type(app, window, "frees");
+    Key(app, window, UCKeys::Return, "\r");
+    TEST("focused, 'frees' then Return chooses 'FreeSans'",
+         dropdown->GetSelectedIndex() == 2 && chosen.size() == 1 && chosen.back() == 2);
+    Mouse(app, window, UCEventType::MouseDown, 60, 32);
+    Mouse(app, window, UCEventType::MouseUp, 60, 32);
+    Type(app, window, "liberation se");
+    Key(app, window, UCKeys::Return, "\r");
+    TEST("focused, 'liberation se' then Return chooses 'Liberation Serif', not 'Liberation Mono'",
+         dropdown->GetSelectedIndex() == 4);
+    // A space with nothing typed before it is not type-ahead: the focused,
+    // closed dropdown opens on it, as before.
+    Key(app, window, UCKeys::Space, " ");
+    TEST("Space still opens the focused dropdown", dropdown->IsDropdownOpen());
+    Key(app, window, UCKeys::Escape);
 
     std::cerr << "========================================" << std::endl;
     std::cerr << "Tests: " << testCount << ", failed: " << failCount << std::endl;

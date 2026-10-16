@@ -26,7 +26,7 @@ UltraCanvas/
 - **Icons**: An optional icon per item, shown in the list and on the button
 - **Multi-selection**: Optional checkbox mode for picking several items
 - **Styling**: One `DropdownStyle` structure for the button, the list and the scrollbar
-- **Keyboard Navigation**: Arrow keys, Page Up/Down, Home, End, Enter, Space and Escape
+- **Keyboard Navigation**: Arrow keys, Page Up/Down, Home, End, Enter, Space and Escape, and type-ahead (letters go to the item starting with them)
 - **Mouse Interaction**: Click to open/close, hover states, item selection
 - **Scrolling**: Automatic scrollbar when items exceed maximum visible count
 - **Callbacks**: Event callbacks for selection changes, dropdown open/close events
@@ -257,6 +257,16 @@ dropdown, drawn with `focusBorderColor`.
 - **Tab / Shift+Tab**: Move the focus on; an open list closes
 - `onKeyDown` sees every key the focused dropdown gets first; returning true
   stops the default handling
+- **Letters (type-ahead)**: go to the first item whose text starts with them,
+  regardless of case - "libe" to *Liberation Mono* in a list of every
+  installed font. Letters typed within a second of each other build one
+  prefix, spaces included once it has begun ("liberation s"); the same
+  letter again steps on to the next item starting with it; each opening of
+  the list starts afresh. Return then chooses it. Focused, the
+  dropdown takes the letters itself; one left out of the focus
+  (`SetAcceptsFocus(false)`) leaves the keys to its open list, which passes
+  them on through `UltraCanvasListView::onKeyDown` - type-ahead works either
+  way.
 
 `SetAcceptsFocus(false)` leaves a dropdown out of the Tab order and a click no
 longer focuses it. Its open list still answers the keys then - the window hands

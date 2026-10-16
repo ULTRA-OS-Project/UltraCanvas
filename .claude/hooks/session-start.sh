@@ -30,6 +30,13 @@
 # for its live tests - PostgreSQL, Avahi and the IPP printer - whose tests
 # skip unless CI's environment asks for them. To add a package, append it.
 #
+# It also generates a comma-decimal locale, de_DE.UTF-8, as CI does. The tests
+# that hold file formats to dot-decimal numbers (HTMLReaderTest,
+# HTMLRichImportTest, ModelLocaleDecimalTest, MindMapIOTest, Model3DSTest,
+# ModelMS3DTest, DiagramJsonLocaleTest) run under one and skip without it - and
+# the image has none (no de_DE, checked 2026-10-15), so here they had never run.
+#
+# Version: 1.2.0 - the de_DE.UTF-8 locale the locale tests need
 # Version: 1.1.1 - Hunspell and the en_US dictionary, as CI now installs
 # Version: 1.1.0 - every library CI installs, not only libsodium
 # Version: 1.0.0
@@ -61,9 +68,17 @@ PACKAGES=(
     libcurl4-openssl-dev libpsl-dev libc-ares-dev
     # UltraCrypt (credential vaults), UltraDatabase (SQLite, PostgreSQL client)
     libsodium-dev libsqlite3-dev libpq-dev
+    # locale-gen, for the comma-decimal locale below
+    locales
     # spell checking (no native backend on Linux) and its default dictionary
     libhunspell-dev hunspell-en-us
 )
+
+# The comma-decimal locale the locale tests run under.
+COMMA_LOCALE="de_DE.UTF-8"
+has_comma_locale() {
+    locale -a 2>/dev/null | grep -qix -e 'de_DE.utf8' -e 'de_DE.UTF-8'
+}
 
 # The packages not installed yet, in one dpkg call.
 missing_packages() {
@@ -77,15 +92,21 @@ missing_packages() {
 }
 
 mapfile -t missing < <(missing_packages)
-[ "${#missing[@]}" -eq 0 ] && exit 0
+need_locale=0
+has_comma_locale || need_locale=1
+[ "${#missing[@]}" -eq 0 ] && [ "$need_locale" -eq 0 ] && exit 0
 
 if [ "$(id -u)" -eq 0 ]; then
     as_root=()
 elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
     as_root=(sudo -n)
 else
-    echo "Cloud setup: cannot install ${missing[*]} (not root, no sudo);" \
-         "the build leaves out what needs them and those tests skip or fail in this session."
+    if [ "${#missing[@]}" -gt 0 ]; then
+        echo "Cloud setup: cannot install ${missing[*]} (not root, no sudo);" \
+             "the build leaves out what needs them and those tests skip or fail in this session."
+    fi
+    [ "$need_locale" -eq 1 ] &&
+        echo "Cloud setup: cannot generate $COMMA_LOCALE (not root, no sudo); the locale tests skip."
     exit 0
 fi
 
@@ -100,7 +121,7 @@ apt_install() {
 # first attempt fails, so a warm container does not pay for an update. One
 # name apt does not know fails the whole batch, so the last resort installs
 # them one at a time and keeps what it can.
-if ! apt_install "${missing[@]}"; then
+if [ "${#missing[@]}" -gt 0 ] && ! apt_install "${missing[@]}"; then
     ${as_root[@]+"${as_root[@]}"} apt-get update >>"$log" 2>&1
     if ! apt_install "${missing[@]}"; then
         for p in "${missing[@]}"; do apt_install "$p" || true; done
@@ -111,5 +132,13 @@ mapfile -t still < <(missing_packages)
 if [ "${#still[@]}" -gt 0 ]; then
     echo "Cloud setup: installing ${still[*]} failed (see $log);" \
          "the build leaves out what needs them and those tests skip or fail in this session."
+fi
+
+# locale-gen names the locale in /etc/locale.gen and builds it into the
+# archive every program reads; a second run finds it there and returns.
+if [ "$need_locale" -eq 1 ]; then
+    ${as_root[@]+"${as_root[@]}"} locale-gen "$COMMA_LOCALE" >>"$log" 2>&1
+    has_comma_locale ||
+        echo "Cloud setup: generating $COMMA_LOCALE failed (see $log); the locale tests skip."
 fi
 exit 0

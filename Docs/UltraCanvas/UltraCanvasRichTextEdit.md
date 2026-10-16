@@ -219,11 +219,18 @@ editor->SetFontSize(14.0f);
 editor->SetTextColor("#CC0000");
 editor->SetLink("https://example.com");
 editor->ClearFormatting();
+
+RichCharFormatDelta exactly;     // set, rather than flip: a checkbox's state
+exactly.setBold = true;
+exactly.bold = false;
+editor->ApplyCharFormat(exactly);
 ```
 
 With a selection these apply to it. With a collapsed caret they **arm** the
 format for the next typed character — pressing Bold and carrying on typing does
-what a word processor does.
+what a word processor does. `ApplyCharFormat` sets what the delta names to
+the value given, where the toggles flip it - the call for a panel of
+checkboxes, which knows what it wants rather than what the text has.
 
 ### Paragraph formatting
 
@@ -983,6 +990,7 @@ back. `ExportToPdf` is built on the same three.
 ```cpp
 editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
+editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
 ```
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
@@ -991,6 +999,14 @@ it (with the desk either side) is wider than the element a horizontal
 scrollbar appears - drag it, Shift+wheel, or let the caret take the view
 along. `GetHorizontalScrollOffset` / `SetHorizontalScrollOffset` read and set
 it. UltraTexter's zoom box sets a word-processing tab's zoom.
+
+The text is laid out in document space and the zoom only scales the drawing,
+so the same words at another zoom wrap and sit exactly as they do at 100 %.
+That is what lets the element edit text lying on a zoomable canvas: a bitmap
+editor's text layer is drawn by this element at 1:1, and edited on the
+canvas by it at the canvas's zoom, with every glyph where the layer's pixels
+will be ([text layers](UltraCanvasPaintSurface.md#text-layers)).
+`SetZoomRange` widens the 0.25-5 range to whatever the canvas allows.
 
 ## What is not implemented yet
 
