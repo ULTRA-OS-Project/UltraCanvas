@@ -1191,6 +1191,30 @@ else()
     message(STATUS "  ColorPickerModelDropdownTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== COLOUR PICKER AUTO HEIGHT TEST =====
+# The HSV/HSL/RGB tabs fold away with the channel sliders under the disclosure
+# row, and with SetAutoHeight the widget takes the height its content needs -
+# in a flex column what is below it moves as the section opens and closes or
+# another design is chosen. Opens a window, so it skips itself without a
+# DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ColorPickerAutoHeightTest...")
+    add_executable(ColorPickerAutoHeightTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ColorPickerAutoHeightTest.cpp
+    )
+    target_include_directories(ColorPickerAutoHeightTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ColorPickerAutoHeightTest PRIVATE cxx_std_20)
+    target_link_libraries(ColorPickerAutoHeightTest PRIVATE UltraCanvas)
+    set_target_properties(ColorPickerAutoHeightTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ColorPickerAutoHeightTest COMMAND ColorPickerAutoHeightTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ColorPickerAutoHeightTest")
+else()
+    message(STATUS "  ColorPickerAutoHeightTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== DROPDOWN KEYBOARD TEST =====
 # Down / Up / Return choose an item of an open dropdown; Escape keeps the
 # choice. The dropdown takes the keyboard focus (Tab, a click, Down / Space to

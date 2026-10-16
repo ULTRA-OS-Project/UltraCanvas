@@ -10,6 +10,9 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
+// Version: 1.8.0 - the design selector offers the colour + brightness sliders too;
+//                  the HSV/HSL/RGB tabs collapse with the channel sliders;
+//                  SetAutoHeight: the widget's height follows its content
 // Version: 1.7.0 - ColorPickerStyle::Light() for a light window, Dark() for the default
 // Version: 1.6.1 - the HSV/HSL/RGB dropdown is a real UltraCanvasDropdown, not painted
 // Version: 1.6.0 - optional design selector: a dropdown in the top-right corner
@@ -17,7 +20,7 @@
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
 //                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -274,13 +277,14 @@ namespace UltraCanvas {
         void SetWheelStyle(ColorPickerWheelStyle s);
 
         // Optional design selector: a small dropdown in the top-right corner
-        // that lets the user switch between the three designs, each shown by
-        // its icon - colour circle (Ring), colour slider + square (Bar) and
-        // colour rectangle (HueLightnessField). Off by default. On the two
-        // rectangular designs it sits over the corner of the colour area, so
-        // it hides while a drag on the colour area or a colour bar runs and
-        // comes back on release; beside the circle it stays. With the
-        // HueLightnessSliders style no entry is selected.
+        // that lets the user switch between the four designs, each shown by
+        // its icon - colour circle (Ring), colour slider + square (Bar),
+        // colour rectangle (HueLightnessField) and colour + brightness sliders
+        // (HueLightnessSliders). Off by default. On the two rectangular
+        // designs it sits over the corner of the colour area, so it hides
+        // while a drag on the colour area or the colour bar runs and comes
+        // back on release; beside the circle it stays, and the two sliders
+        // end short of it.
         bool GetShowWheelStyleSelector() const { return showWheelStyleSelector; }
         void SetShowWheelStyleSelector(bool show);
 
@@ -306,13 +310,14 @@ namespace UltraCanvas {
         bool GetShowValueSpinners() const { return showValueSpinners; }
         void SetShowValueSpinners(bool show);
 
-        // When collapsible, the channel sliders hide behind a disclosure row
+        // When collapsible, the colour definitions - the HSV / HSL / RGB tab
+        // bar and the channel sliders under it - hide behind a disclosure row
         // (dropdown icon); `expanded` selects the initial state and defaults to
         // collapsed — the point of collapsing is a compact footprint, so a
-        // collapsible picker starts collapsed. The widget keeps a fixed size:
-        // expanding the sliders shrinks the colour-shading area by exactly the
-        // space the sliders occupy (and collapsing gives it back), rather than
-        // resizing the widget.
+        // collapsible picker starts collapsed. By default the widget keeps a
+        // fixed size: expanding shrinks the colour-shading area by exactly the
+        // space the section takes (and collapsing gives it back). With
+        // SetAutoHeight(true) the widget grows and shrinks instead.
         bool GetSlidersCollapsible() const { return slidersCollapsible; }
         void SetSlidersCollapsible(bool collapsible, bool expanded = false);
         bool GetSlidersExpanded() const { return slidersExpanded; }
@@ -337,8 +342,20 @@ namespace UltraCanvas {
         // opening them does not shrink the area below exact.
         float PreferredHeightForWidth(float width) const;
 
+        // The widget sets its own height to what its content needs at its
+        // width, and keeps it so as the content changes: the channel section
+        // opened or closed, another design chosen, the alpha row, the UI
+        // scale. In a flex column - a toolbox panel - what is below the picker
+        // moves up and down with it, so a collapsed picker takes only the room
+        // it uses. Off by default: the widget keeps the size it was given and
+        // the colour area takes or gives the space. The height is
+        // PreferredHeightForWidth's, except that a collapsed PixelExact area
+        // reserves no room for the sliders - the widget grows for them.
+        bool GetAutoHeight() const { return autoHeight; }
+        void SetAutoHeight(bool on);
+
         const ColorPickerStyle& GetStyle() const { return style; }
-        void SetStyle(const ColorPickerStyle& s) { style = s; layoutValid = false; RequestRedraw(); }
+        void SetStyle(const ColorPickerStyle& s) { style = s; layoutValid = false; FitHeightToContent(); RequestRedraw(); }
 
         // Convenience: scale the whole picker UI (metrics + fonts). 0.6 gives a
         // 60% sized picker; pair it with a proportionally smaller widget size.
@@ -406,6 +423,7 @@ namespace UltraCanvas {
         bool slidersCollapsible = false;
         bool slidersExpanded = true;
         bool showWheelStyleSelector = false;
+        bool autoHeight = false;
 
         // ----- Interaction state -----
         // No TextDrag member: selecting text by dragging is the editor
@@ -513,6 +531,16 @@ namespace UltraCanvas {
         void RecalculateLayout();
         float Scaled(float v) const { return v * std::max(0.1f, style.uiScale); }
         bool SlidersVisible() const { return !slidersCollapsible || slidersExpanded; }
+        // The HSV/HSL/RGB tab bar belongs to the channel section: shown in
+        // TabBar mode while the section is (collapsible pickers: open).
+        bool TabsVisible() const {
+            return modeSelector == ColorPickerModeSelector::TabBar && SlidersVisible();
+        }
+        // Height for `width`; reserveCollapsedSliders keeps room for the
+        // sliders of a collapsed PixelExact picker (PreferredHeightForWidth).
+        float HeightForWidth(float width, bool reserveCollapsedSliders) const;
+        // SetAutoHeight: take the height the content needs, in the layout too.
+        void FitHeightToContent();
         // Height of everything below the wheel: swatches / hex, the mode tabs
         // and the channel sliders.
         float ControlsHeight() const;

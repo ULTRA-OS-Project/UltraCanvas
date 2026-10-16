@@ -2,18 +2,22 @@
 // The colour picker's optional design selector.
 //
 // SetShowWheelStyleSelector(true) puts a dropdown in the picker's top-right
-// corner offering the three designs - colour circle (Ring), colour slider +
-// square (Bar) and colour rectangle (HueLightnessField) - each with its icon.
-// On the rectangular designs it covers the corner of the colour area, so it
-// hides while a drag on the area or a colour bar runs and comes back on
-// release; beside the circle it stays. The button shows only the icon
-// (DropdownStyle::buttonShowsText = false).
+// corner offering the four designs - colour circle (Ring), colour slider +
+// square (Bar), colour rectangle (HueLightnessField) and colour + brightness
+// sliders (HueLightnessSliders) - each with its icon. On the rectangular
+// designs it covers the corner of the colour area, so it hides while a drag on
+// the area or a colour bar runs and comes back on release; beside the circle it
+// stays, and the two sliders end short of it, so the whole colour range is
+// left of it. The button shows only the icon (DropdownStyle::buttonShowsText =
+// false).
 //
 // Every press goes through the application's own dispatch, at window
 // coordinates. Opens a real window, so it runs under Xvfb (xvfb-run -a) and
 // skips itself without a DISPLAY.
+// Version: 1.1.0 - four designs: the colour + brightness sliders, ending short
+//                  of the selector
 // Version: 1.0.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -122,8 +126,8 @@ int main() {
     if (!selector) return 1;
 
     // ----- Three designs, each with an icon that loads -----
-    TEST("it offers three designs", selector->GetItemCount() == 3);
-    bool iconsLoad = selector->GetItemCount() == 3;
+    TEST("it offers four designs", selector->GetItemCount() == 4);
+    bool iconsLoad = selector->GetItemCount() == 4;
     for (const auto& item : selector->GetItems()) {
         auto image = UCImage::Get(item.iconPath);
         if (item.iconPath.empty() || !image || !image->IsValid()) {
@@ -146,7 +150,7 @@ int main() {
     picker->SetWheelStyle(ColorPickerWheelStyle::Bar);
     TEST("SetWheelStyle moves the selection", selector->GetSelectedIndex() == 1);
     picker->SetWheelStyle(ColorPickerWheelStyle::HueLightnessSliders);
-    TEST("the two-sliders style selects none of the three", selector->GetSelectedIndex() == -1);
+    TEST("the colour + brightness sliders are the fourth design", selector->GetSelectedIndex() == 3);
     TEST("SetWheelStyle does not report a choice", chosen.empty());
 
     // ----- Choosing a design -----
@@ -201,6 +205,23 @@ int main() {
     TEST("a drag on the circle's square starts", app.GetCapturedElement() == picker.get());
     TEST("beside the circle the selector stays during a drag", Visible(selector));
     Send(app, window, UCEventType::MouseUp, PickerW * 0.5f, 140);
+
+    // ----- The colour + brightness sliders end short of the selector -----
+    picker->SetWheelStyle(ColorPickerWheelStyle::HueLightnessSliders);
+    DisplayTest::Frame(window, {picker});
+    TEST("choosing it in code selects the fourth entry", selector->GetSelectedIndex() == 3);
+    // The colour bar is the top one, a bar high from the top padding. It
+    // ends a row gap short of the selector, so a press 8 px left of the
+    // selector is on its last pixels: the end of the colour range.
+    const float barY = pad + picker->GetStyle().hueBarHeight * 0.5f;
+    const float barEndX = b.x - 8.0f;
+    picker->SetHSV(30.0f, 1.0f, 1.0f, false);
+    Send(app, window, UCEventType::MouseDown, barEndX, barY);
+    TEST("a press just left of the selector is on the colour bar's end",
+         app.GetCapturedElement() == picker.get() && picker->GetHue() > 350.0f);
+    TEST("a drag on a slider leaves the selector shown", Visible(selector));
+    Send(app, window, UCEventType::MouseUp, barEndX, barY);
+    TEST("and does not open it", !selector->IsDropdownOpen());
 
     // ----- Hidden with the wheel, and when switched off -----
     picker->SetShowColorWheel(false);
