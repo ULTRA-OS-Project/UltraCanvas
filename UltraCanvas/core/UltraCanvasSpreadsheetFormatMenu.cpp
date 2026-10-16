@@ -205,6 +205,48 @@ std::vector<MenuItemData> BuildColumnItems(UltraCanvasSpreadsheet* sheet) {
     return items;
 }
 
+// The Sort submenu: sort the selected rows by the active cell's column, or by
+// any column of the selection, ascending or descending. Only the selected rows
+// move, each keeping its cells together (SortSelectionByColumn); it is offered
+// for the selections that show header sort buttons, and a block holding
+// formulas asks first, as those buttons do.
+std::vector<MenuItemData> BuildSortItems(UltraCanvasSpreadsheet* sheet) {
+    std::vector<MenuItemData> items;
+    const CellRange sel = sheet->GetSelection();
+    if (!sheet->IsSelectionSortable()) {
+        MenuItemData hint = MenuItemData::Action("Select a block of two or more rows to sort", []() {});
+        hint.enabled = false;
+        items.push_back(hint);
+        return items;
+    }
+    const int firstCol = sel.start.col;
+    const int lastCol = sel.end.col;
+
+    const int activeCol = std::clamp(sheet->GetActiveCell().col, firstCol, lastCol);
+    const std::string activeName = CellAddress::ColumnToLetter(activeCol);
+    auto sortBy = [sheet](int column, SortOrder order) {
+        return [sheet, column, order]() { sheet->RequestSortSelectionByColumn(column, order); };
+    };
+
+    items.push_back(MenuItemData::Action("Ascending by column " + activeName + " (A to Z, 0 to 9)",
+                                         sortBy(activeCol, SortOrder::Ascending)));
+    items.push_back(MenuItemData::Action("Descending by column " + activeName + " (Z to A, 9 to 0)",
+                                         sortBy(activeCol, SortOrder::Descending)));
+
+    if (lastCol > firstCol) {
+        std::vector<MenuItemData> ascending, descending;
+        for (int col = firstCol; col <= lastCol; ++col) {
+            const std::string label = "Column " + CellAddress::ColumnToLetter(col);
+            ascending.push_back(MenuItemData::Action(label, sortBy(col, SortOrder::Ascending)));
+            descending.push_back(MenuItemData::Action(label, sortBy(col, SortOrder::Descending)));
+        }
+        items.push_back(MenuItemData::Separator());
+        items.push_back(MenuItemData::Submenu("Ascending by", ascending));
+        items.push_back(MenuItemData::Submenu("Descending by", descending));
+    }
+    return items;
+}
+
 } // namespace
 
 // ============================================================================
@@ -331,6 +373,7 @@ std::vector<MenuItemData> BuildSpreadsheetFormatMenuItems(UltraCanvasSpreadsheet
     items.push_back(MenuItemData::Submenu("Text colour", BuildColorItems(sheet, /*background*/false)));
     items.push_back(MenuItemData::Submenu("Background", BuildColorItems(sheet, /*background*/true)));
     items.push_back(MenuItemData::Separator());
+    items.push_back(MenuItemData::Submenu("Sort", BuildSortItems(sheet)));
     items.push_back(MenuItemData::Submenu("Column and row size", BuildColumnItems(sheet)));
     items.push_back(MenuItemData::Separator());
     items.push_back(MenuItemData::Action("Merge cells", [sheet]() { sheet->MergeSelection(); }));

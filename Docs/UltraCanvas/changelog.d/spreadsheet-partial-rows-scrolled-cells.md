@@ -20,3 +20,15 @@
   code or with "+" scrolls the active tab into view. Tab widths are measured
   in the tab font instead of guessed at 8 px per byte, so long and non-Latin
   names fit; a name wider than the whole strip is clipped inside its tab.
+- **Spreadsheet: Sort in the right-click menu.** A Sort submenu sorts the
+  selected block ascending or descending by the right-clicked cell's column,
+  or by any column of the selection through "Ascending by" / "Descending by"
+  submenus - the same sort as the header buttons, offered for the same
+  selections, with the same warning before moving formulas.
+  `RequestSortSelectionByColumn()` (formerly the private `RequestHeaderSort`)
+  and `IsSelectionSortable()` are public.
+- **Spreadsheet: a formula's ranges are highlighted for every formula cell.**
+  Selecting a formula cell outlines the ranges it reads, but only once the
+  engine had parsed the formula - which it does on first evaluation - so in a
+  loaded workbook `=SUM(D2:D8)` showed no outline while `=SUM(C2:C8)` beside
+  it did. The highlight parses an unparsed formula itself.

@@ -9,3 +9,7 @@
 - **DemoApp: button labels without "...".** The demo pages' buttons dropped
   the trailing "..." / "…" ("Open Spreadsheet File", "Import CSV", "Save",
   "Open video", "Upload image", ...); the hints that quote a label match.
+- **Button: an icon above or below the text is measured by height.** The
+  measured width added the icon's width beside the text for every icon
+  position, so a button with its icon on top (or a Center icon, which hides
+  the text) measured far wider than it draws.

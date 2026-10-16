@@ -251,7 +251,7 @@ void UltraCanvasSpreadsheet::RenderColumnHeaders(IRenderContext* ctx) {
     ctx->PopState();
 }
 
-void UltraCanvasSpreadsheet::RequestHeaderSort(int column, SortOrder order) {
+void UltraCanvasSpreadsheet::RequestSortSelectionByColumn(int column, SortOrder order) {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;
     const CellRange range = GetSelection();
@@ -1110,7 +1110,7 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
             if (IsEditing()) StopEditing(true);
             const bool ascending = !(GetHeaderSortColumn() == hit.col && headerSortAscending_);
             mouseDown_ = false;   // the warning dialog may take the button release
-            RequestHeaderSort(hit.col, ascending ? SortOrder::Ascending : SortOrder::Descending);
+            RequestSortSelectionByColumn(hit.col, ascending ? SortOrder::Ascending : SortOrder::Descending);
             break;
         }
         

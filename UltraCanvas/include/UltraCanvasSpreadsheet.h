@@ -399,6 +399,14 @@ public:
     // move, and every selected column moves with them, so each row of the
     // block stays together; cells outside the selection are not touched.
     void SortSelectionByColumn(int column, SortOrder order);
+    // SortSelectionByColumn as the header sort buttons and the context
+    // menu's Sort entries run it: when the block holds formulas (and the
+    // formula warning is on) it first asks, OK/Cancel, whether to go ahead.
+    void RequestSortSelectionByColumn(int column, SortOrder order);
+    // Whether the selection can be sorted that way: one rectangular block of
+    // two or more rows, not whole columns or rows, not over merged cells -
+    // the selections that show header sort buttons.
+    bool IsSelectionSortable() const { CellRange range; return GetHeaderSortableRange(range); }
 
     // ===== AUTO-FILL =====
     // Fill `destination` - the selection extended down, up, right or left -
@@ -562,9 +570,6 @@ private:
     Rect2Di GetHeaderSortButtonRect(int colX, int colWidth) const;
     void RenderHeaderSortButton(IRenderContext* ctx, const Rect2Di& button, bool sorted,
                                 bool ascending, const Color& color);
-    // A header sort button was clicked: sorts, after the formula warning
-    // when the block holds formulas.
-    void RequestHeaderSort(int column, SortOrder order);
     // The fill-handle drag's destination for a pointer over (row, col): the
     // source extended along the axis the pointer has moved furthest out on.
     CellRange AutoFillTargetFor(int row, int col) const;

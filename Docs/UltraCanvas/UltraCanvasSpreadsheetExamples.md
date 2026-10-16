@@ -21,7 +21,7 @@
 - **Cell Formatting**: Fonts (bold/italic/underline), fills, borders, alignment, and number formats (currency, percentage, scientific, date/time)
 - **Layout Control**: Per-column widths, per-row heights, hidden rows/columns, merged cells, and freeze panes
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
-- **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
+- **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, sorting, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
 - **Data Tools**: Sorting, auto-filter, find/replace, named ranges, and data validation
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
@@ -701,8 +701,9 @@ sheet->SetColumnWidth(0, 120, /*explicitWidth*/ true);
 
 `UltraCanvasSpreadsheetFormatMenu.h` builds the standard formatting menu for the
 current selection: alignment (horizontal, vertical, wrap), number-format presets,
-font style and size, text and background colour, column/row sizing, and
-merge/unmerge. Each number preset shows a live sample rendered through the same
+font style and size, text and background colour, sorting the selected rows
+(see [Sorting from the context menu](#sorting-from-the-context-menu)),
+column/row sizing, and merge/unmerge. Each number preset shows a live sample rendered through the same
 formatter the cells use, so the menu shows exactly what the cell will show.
 
 The grid opens it on a right-click, with no application code at all — the click
@@ -737,6 +738,25 @@ Rebuild the items each time the menu opens (`PopulateSpreadsheetFormatMenu`)
 so the ticks and radio marks reflect the cell that was just clicked.
 `SpreadsheetNumberFormatPresets()` returns the preset list on its own — label,
 `NumberFormat` and sample — if you want to drive a dropdown or a dialog with it.
+
+## Sorting from the context menu
+
+The right-click menu has a **Sort** submenu that sorts the selected block the
+way the header sort buttons do (see
+[Sorting a selection from the header](#sorting-a-selection-from-the-header)):
+only the selected rows move, each keeping its cells together.
+
+- **Ascending by column X** / **Descending by column X** - by the column of
+  the active cell (the cell that was right-clicked).
+- **Ascending by** / **Descending by** - a submenu listing every column of the
+  selection, to sort by another one.
+
+It is offered for the same selections as the header buttons - one block of
+two or more rows, not whole columns or rows, not over merged cells - and
+otherwise shows one disabled hint. A block that holds formulas asks first, as
+the buttons do. From code: `RequestSortSelectionByColumn(column, order)` sorts
+with that warning, `SortSelectionByColumn` without it, and
+`IsSelectionSortable()` says whether the selection can be sorted.
 
 ## Fill handle
 
