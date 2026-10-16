@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.2.1 - InstallPreview counts only the missing ones switched on
 // Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
 // Version: 0.1.2 - the guide names the steps, not the pages
 // Version: 0.1.1 - AiGuide per assistant
@@ -108,11 +109,19 @@ std::string InstallPreview(const Plan& plan) {
     }
     const size_t missing = plan.MissingCount();
     if (missing == 0) return "Everything the chosen features need is installed: Install has nothing to do.";
-    const std::string count = std::to_string(missing) + " missing";
+    const size_t skipped = plan.SkippedCount();
     const PlanStep* install = nullptr;
     for (const auto& step : plan.steps) {
         if (step.kind == StepKind::Install && !step.argv.empty()) { install = &step; break; }
     }
+    if (skipped == missing && !install) {
+        return "All " + std::to_string(missing) + " missing are switched off: Install has nothing to do. "
+               "Switch one on to install it.";
+    }
+    const std::string count =
+        skipped == 0      ? std::to_string(missing) + " missing"
+      : skipped < missing ? std::to_string(missing - skipped) + " switched on (of " + std::to_string(missing) + " missing)"
+                          : std::string("ones that cannot be checked");
     if (!install || plan.profile.packageManagerPath.empty()) {
         return "No package manager was found, so Install cannot run here: install the " + count +
                " yourself and press Check again. Next goes on anyway.";

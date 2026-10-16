@@ -1,5 +1,6 @@
 // Tests/UltraCanvasStart/test_plan.cpp
 // The plan, the SDK names and the report.
+// Version: 0.1.1 - a check switched off is left out of the install
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -66,6 +67,43 @@ TEST(BuildPlan_installs_only_what_the_checks_miss) {
     REQUIRE(cairo);
     REQUIRE(pango);
     REQUIRE(!cmake);
+}
+
+TEST(BuildPlan_leaves_out_what_is_switched_off) {
+    const SystemProfile profile = UbuntuProfile();
+    Choices choices;
+    choices.platform = Platform::Linux;
+    std::vector<CheckResult> checks(2);
+    checks[0].dependencyId = "cairo"; checks[0].checked = true; checks[0].present = false;
+    checks[0].packageName = "libcairo2-dev";
+    checks[1].dependencyId = "pango"; checks[1].checked = true; checks[1].present = false;
+    checks[1].packageName = "libpango1.0-dev";
+
+    choices.SetSkipped("cairo", true);
+    choices.SetSkipped("cairo", true);
+    REQUIRE_EQ(choices.skipped.size(), size_t(1));
+    Plan plan = BuildPlan(profile, choices, checks);
+    REQUIRE_EQ(plan.MissingCount(), size_t(2));
+    REQUIRE_EQ(plan.SkippedCount(), size_t(1));
+    REQUIRE(plan.steps.front().kind == StepKind::Install);
+    bool cairo = false, pango = false;
+    for (const auto& a : plan.steps.front().argv) {
+        cairo |= a == "libcairo2-dev";
+        pango |= a == "libpango1.0-dev";
+    }
+    REQUIRE(!cairo);
+    REQUIRE(pango);
+    REQUIRE(RenderReport(plan).find("switched off, not installed") != std::string::npos);
+
+    // Both off: no install step at all.
+    choices.SetSkipped("pango", true);
+    plan = BuildPlan(profile, choices, checks);
+    REQUIRE(plan.steps.front().kind != StepKind::Install);
+
+    // Back on.
+    choices.SetSkipped("cairo", false);
+    REQUIRE(!choices.Skips("cairo"));
+    REQUIRE(BuildPlan(profile, choices, checks).steps.front().kind == StepKind::Install);
 }
 
 TEST(BuildPlan_for_another_platform_lists_everything) {

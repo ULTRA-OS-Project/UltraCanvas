@@ -3,6 +3,7 @@
 // machine has, what the programmer chose, what the checks found and the plan
 // the two together produce. Plain data, no UI, shared by the GUI, the CLI
 // modes and the test suite.
+// Version: 0.1.2 - Choices::skipped: the Tools step's switches leave a package out
 // Version: 0.1.1 - Assistant: which AI the programmer works with
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -146,9 +147,14 @@ struct Choices {
     bool cloudOnly = false;          // ...and has no compiler locally (GettingStarted-Cloud.md)
     std::string projectFolder;       // UTF-8; where the application lives
     std::string appName = "MyApp";
+    // Dependency ids the programmer switched off on the Tools step: missing,
+    // but left out of the install (they install it another way, or not at all).
+    std::vector<std::string> skipped;
 
     bool Has(DependencyGroup group) const;
     void Set(DependencyGroup group, bool on);
+    bool Skips(const std::string& dependencyId) const;
+    void SetSkipped(const std::string& dependencyId, bool skip);
 };
 
 // ===== THE PLAN =====
@@ -178,6 +184,8 @@ struct Plan {
     std::vector<std::string> notes;   // things worth knowing that are not steps
 
     size_t MissingCount() const;
+    // Of those, the ones switched off (Choices::skipped): not installed.
+    size_t SkippedCount() const;
 };
 
 // ===== VERSIONS =====

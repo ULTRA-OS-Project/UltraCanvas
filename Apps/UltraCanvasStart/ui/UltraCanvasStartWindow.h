@@ -139,6 +139,7 @@ private:
     // ===== VIEW UPDATES =====
     void ReadChoicesFromPanes();
     void RefreshCheckRows();
+    void RefreshInstallBadge();        // the count above the rows
     void RefreshInstallPreview();      // from the plan; RefreshPlan calls it
     bool CanInstall() const;           // something missing, and a package manager here to install it
     void RefreshFrameworkStep();

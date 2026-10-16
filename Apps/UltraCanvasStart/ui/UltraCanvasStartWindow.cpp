@@ -1,4 +1,6 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
+// Version: 0.4.1 - the Tools step: a missing row's switch can be flipped,
+//                  off leaves that package out of the install
 // Version: 0.4.0 - step 6, Build: the skeleton compiled from the window (StartBuild),
 //                  the first prompt and the report after it
 // Version: 0.3.1 - the Tools step: a row per check with a switch for whether
@@ -1206,7 +1208,6 @@ void UltraCanvasStartWindow::ReadChoicesFromPanes() {
 void UltraCanvasStartWindow::RefreshCheckRows() {
     if (!checksList_) return;
     checksList_->ClearChildren();
-    size_t missing = 0;
     DependencyGroup current = DependencyGroup::Toolchain;
     for (size_t i = 0; i < checks_.size(); ++i) {
         const CheckResult& c = checks_[i];
@@ -1218,11 +1219,30 @@ void UltraCanvasStartWindow::RefreshCheckRows() {
             current = c.group;
         }
         const bool there = c.checked && c.present && c.versionOk;
-        if (c.checked && !there) ++missing;
         auto row = Theme::MakeRow(id, Theme::kRowHeight + 2.0f);
-        auto indicator = Theme::MakeIndicatorSwitch(id + ".switch", there);
-        indicator->SetAccessibleName(c.title + (there ? ": installed" : c.checked ? ": missing" : ": not checked"));
-        row->AddChild(indicator);
+        if (there || c.packageName.empty()) {
+            // Installed, or nothing here installs it: the switch only reports.
+            auto indicator = Theme::MakeIndicatorSwitch(id + ".switch", there);
+            indicator->SetAccessibleName(c.title + (there ? ": installed" : c.checked ? ": missing" : ": not checked"));
+            row->AddChild(indicator);
+        } else {
+            // Missing or unchecked: on installs it with the rest, off leaves it
+            // out. The rows stay; only the plan, the preview and the badge
+            // follow (rebuilding the rows here would delete this switch).
+            const std::string dependencyId = c.dependencyId;
+            const std::string name = c.title + (c.checked ? ": missing" : ": not checked");
+            auto choice = Theme::MakeChoiceSwitch(id + ".switch", !choices_.Skips(dependencyId));
+            choice->SetAccessibleName(name + (choice->IsChecked() ? ", will be installed" : ", switched off"));
+            auto* raw = choice.get();
+            choice->onStateChanged = [this, raw, dependencyId, name](CheckedState, CheckedState state) {
+                const bool on = state == CheckedState::Checked;
+                choices_.SetSkipped(dependencyId, !on);
+                raw->SetAccessibleName(name + (on ? ", will be installed" : ", switched off"));
+                RefreshPlan();
+                RefreshInstallBadge();
+            };
+            row->AddChild(choice);
+        }
         const std::string detail = CheckDetail(c);
         const Color detailColor = (c.checked && !there) ? Theme::kWarnText : Theme::kTextSecondary;
         auto text = Theme::MakeText(id + ".text", "", Theme::kSizeBody);
@@ -1237,7 +1257,18 @@ void UltraCanvasStartWindow::RefreshCheckRows() {
     }
     checksList_->InvalidateLayout();
     checksList_->RequestRedraw();
-    if (installBadge_) {
+    RefreshInstallBadge();
+}
+
+void UltraCanvasStartWindow::RefreshInstallBadge() {
+    if (!installBadge_) return;
+    size_t missing = 0, skipped = 0;
+    for (const CheckResult& c : checks_) {
+        if (!c.checked || (c.present && c.versionOk)) continue;
+        ++missing;
+        if (choices_.Skips(c.dependencyId)) ++skipped;
+    }
+    {
         if (checks_.empty()) {
             installBadge_->SetText("not checked yet");
             installBadge_->SetVariant(BadgeVariant::Neutral);
@@ -1245,7 +1276,8 @@ void UltraCanvasStartWindow::RefreshCheckRows() {
             installBadge_->SetText("everything installed");
             installBadge_->SetVariant(BadgeVariant::Successful);
         } else {
-            installBadge_->SetText(std::to_string(missing) + " missing");
+            installBadge_->SetText(std::to_string(missing) + " missing" +
+                                   (skipped ? ", " + std::to_string(skipped) + " off" : std::string()));
             installBadge_->SetVariant(BadgeVariant::Warning);
         }
     }

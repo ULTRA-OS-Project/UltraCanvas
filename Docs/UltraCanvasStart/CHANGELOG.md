@@ -1,3 +1,13 @@
+#### 2026-10-16 *0.4.2*
+- **The Tools step's switches can be flipped.** A missing or not checkable
+  row's switch was a read-only indicator, so a click did nothing. It is a
+  choice now: on (the default) installs that package with the rest, off
+  leaves it out of *Install what is missing*, of the command shown above
+  the rows and of the report (`(switched off, not installed)`). The badge
+  says *N missing, M off*; with every missing one off, Install has nothing
+  to do and says so. Installed rows stay on and locked, and the choice
+  survives *Check again* (`Choices::skipped`, `Plan::SkippedCount`).
+
 #### 2026-10-15 *0.4.1*
 - **No console window on Windows when it is started from the Start menu or
   Explorer.** `UltraCanvasStart.exe` is a GUI program now. Beside it,

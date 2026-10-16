@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
+// Version: 0.1.4 - a check switched off on the Tools step is not installed
 // Version: 0.1.3 - the steps, not the pages, in the plan's wording
 // Version: 0.1.2 - the plan and the report name the chosen assistant
 // Version: 0.1.1 - notes are one action each, in Markdown; the report prints them plain
@@ -86,7 +87,7 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         // Only what the checks say is missing, plus the ones that cannot be
         // checked (the manager skips installed ones anyway).
         for (const auto& check : checks) {
-            if (check.packageName.empty()) continue;
+            if (check.packageName.empty() || choices.Skips(check.dependencyId)) continue;
             const bool wanted = !check.checked || !check.present || !check.versionOk;
             if (wanted && std::find(packages.begin(), packages.end(), check.packageName) == packages.end()) {
                 packages.push_back(check.packageName);
@@ -213,7 +214,10 @@ std::string RenderReport(const Plan& plan) {
                 std::string line = std::string("    [") + mark + "] " + c->title;
                 if (!c->version.empty()) line += "  " + c->version;
                 if (!c->present || !c->versionOk || !c->checked) line += "  (" + c->detail + ")";
-                if (!c->packageName.empty() && (!c->present || !c->versionOk)) line += "  -> " + c->packageName;
+                if (!c->packageName.empty() && (!c->present || !c->versionOk || !c->checked)) {
+                    line += plan.choices.Skips(c->dependencyId) ? "  (switched off, not installed)"
+                                                                : "  -> " + c->packageName;
+                }
                 out += line + "\n";
             }
         }
