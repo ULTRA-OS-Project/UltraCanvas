@@ -1848,6 +1848,7 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAIAppSettings.cpp
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
+        Apps/UltraAIApp/UltraAITranslatorDialog.cpp
     )
     # One copy per user (UltraCanvasSingleInstance.h).
     ultracanvas_single_instance(UltraAIApp)
