@@ -574,6 +574,7 @@ private:
     void UpdateFormulaBar();
     void CommitEdit();
     Point2Di CellToScreen(int row, int col) const;
+    Rect2Df CellAreaRect() const;   // the scrolling cell area, below/right of the headers
     CellAddress ScreenToCell(int x, int y) const;
     CellRange GetVisibleRange() const;
     bool IsCellVisible(int row, int col) const;

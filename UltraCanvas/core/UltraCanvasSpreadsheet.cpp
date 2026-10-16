@@ -199,6 +199,12 @@ void UltraCanvasSpreadsheet::RenderColumnHeaders(IRenderContext* ctx) {
     const bool sortable = GetHeaderSortableRange(sortRange);
     const int sortedColumn = GetHeaderSortColumn();
     
+    // The last column is usually only partly in view: clip its header at the
+    // grid's right edge, as the cells below it are, instead of letting it run
+    // under the vertical scrollbar.
+    ctx->PushState();
+    ctx->ClipRect(Rect2Df(startX, headerY, gridBounds_.x + gridBounds_.width - startX, headerHeight));
+
     int x = startX;
     for (int col = visible.start.col; col <= visible.end.col && x < gridBounds_.x + gridBounds_.width; ++col) {
         if (sheet->IsColumnHidden(col)) continue;
@@ -242,6 +248,7 @@ void UltraCanvasSpreadsheet::RenderColumnHeaders(IRenderContext* ctx) {
 
         x += colWidth;
     }
+    ctx->PopState();
 }
 
 void UltraCanvasSpreadsheet::RequestHeaderSort(int column, SortOrder order) {
@@ -326,6 +333,12 @@ void UltraCanvasSpreadsheet::RenderRowHeaders(IRenderContext* ctx) {
     CellRange visible = GetVisibleRange();
     const auto& selection = sheet->GetSelection();
     
+    // The last row is usually only partly in view: clip its header at the
+    // grid's bottom edge so it is cut off in step with its cells, instead of
+    // being drawn whole across the horizontal scrollbar's row.
+    ctx->PushState();
+    ctx->ClipRect(Rect2Df(headerX, startY, headerWidth, gridBounds_.y + gridBounds_.height - startY));
+
     int y = startY;
     for (int row = visible.start.row; row <= visible.end.row && y < gridBounds_.y + gridBounds_.height; ++row) {
         if (sheet->IsRowHidden(row)) continue;
@@ -361,6 +374,7 @@ void UltraCanvasSpreadsheet::RenderRowHeaders(IRenderContext* ctx) {
 
         y += rowHeight;
     }
+    ctx->PopState();
 }
 
 void UltraCanvasSpreadsheet::RenderCells(IRenderContext* ctx) {
@@ -373,9 +387,7 @@ void UltraCanvasSpreadsheet::RenderCells(IRenderContext* ctx) {
     
     // Clip to cell area
     ctx->PushState();
-    ctx->ClipRect(Rect2Df(startX, startY,
-                  gridBounds_.width - (showRowHeaders_ ? SpreadsheetLimits::RowHeaderWidth : 0),
-                  gridBounds_.height - (showColumnHeaders_ ? SpreadsheetLimits::HeaderRowHeight : 0)));
+    ctx->ClipRect(CellAreaRect());
 
     int y = startY;
     for (int row = visible.start.row; row <= visible.end.row; ++row) {
@@ -553,9 +565,7 @@ void UltraCanvasSpreadsheet::RenderSelection(IRenderContext* ctx) {
     
     // Clip to cell area
     ctx->PushState();
-    ctx->ClipRect(Rect2Df(startX, startY,
-                  gridBounds_.width - (showRowHeaders_ ? SpreadsheetLimits::RowHeaderWidth : 0),
-                  gridBounds_.height - (showColumnHeaders_ ? SpreadsheetLimits::HeaderRowHeight : 0)));
+    ctx->ClipRect(CellAreaRect());
 
     // Draw selection ranges (fill)
     ctx->SetFillPaint(selectionColor_);
@@ -636,9 +646,7 @@ void UltraCanvasSpreadsheet::RenderFormulaRangeHighlights(IRenderContext* ctx) {
 
     // Clip to the cell area so highlights never spill over the headers.
     ctx->PushState();
-    ctx->ClipRect(Rect2Df(startX, startY,
-                  gridBounds_.width - (showRowHeaders_ ? SpreadsheetLimits::RowHeaderWidth : 0),
-                  gridBounds_.height - (showColumnHeaders_ ? SpreadsheetLimits::HeaderRowHeight : 0)));
+    ctx->ClipRect(CellAreaRect());
 
     // A small palette so multiple referenced ranges read as distinct, mirroring
     // the coloured precedents desktop spreadsheets draw while editing a formula.
@@ -764,6 +772,18 @@ void UltraCanvasSpreadsheet::RenderSheetTabs(IRenderContext* ctx) {
 }
 
 void UltraCanvasSpreadsheet::RenderScrollbars(IRenderContext* ctx) {
+    // The box under the row headers, left of the horizontal scrollbar, closes
+    // off the header column instead of leaving a white gap below the last row.
+    if (horizontalScrollBounds_.x > gridBounds_.x) {
+        Rect2Df corner(gridBounds_.x, horizontalScrollBounds_.y,
+                       horizontalScrollBounds_.x - gridBounds_.x, horizontalScrollBounds_.height);
+        ctx->SetFillPaint(headerBackgroundColor_);
+        ctx->FillRectangle(corner);
+        ctx->SetStrokePaint(gridlineColor_);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRectangle(corner);
+    }
+
     // Horizontal scrollbar
     ctx->SetFillPaint(Color(240, 240, 240));
     ctx->FillRectangle(Rect2Df(horizontalScrollBounds_.x, horizontalScrollBounds_.y,
@@ -819,6 +839,9 @@ void UltraCanvasSpreadsheet::RenderCellEditor(IRenderContext* ctx) {
     PositionCellEditor();
     Rect2Df eb = cellEditor->GetBounds();
     ctx->PushState();
+    // An in-cell editor scrolled partly out of view is cut at the cell area's
+    // edges like the cell it covers.
+    if (editMode_ == SpreadsheetEditMode::InCellEditing) ctx->ClipRect(CellAreaRect());
     ctx->ClipRect(Rect2Dd(eb.x, eb.y, eb.width, eb.height));
     ctx->Translate(Point2Df(eb.x, eb.y));
     cellEditor->Render(ctx, Rect2Df(0, 0, eb.width, eb.height));
@@ -835,12 +858,15 @@ void UltraCanvasSpreadsheet::RenderClipboardIndicator(IRenderContext* ctx) {
     Point2Di topLeft = CellToScreen(clipboardRange_.start.row, clipboardRange_.start.col);
     Point2Di bottomRight = CellToScreen(clipboardRange_.end.row + 1, clipboardRange_.end.col + 1);
     
+    ctx->PushState();
+    ctx->ClipRect(CellAreaRect());
     ctx->SetStrokePaint(Colors::Black);
     ctx->SetStrokeWidth(1.0f);
     ctx->SetLineDash(UCDashPattern({4.0, 4.0}));
     ctx->DrawRectangle(Rect2Df(topLeft.x, topLeft.y,
                   bottomRight.x - topLeft.x, bottomRight.y - topLeft.y));
     ctx->SetLineDash(UCDashPattern{});
+    ctx->PopState();
 }
 
 void UltraCanvasSpreadsheet::RenderAutoFillHandle(IRenderContext* ctx) {
@@ -854,6 +880,9 @@ void UltraCanvasSpreadsheet::RenderAutoFillHandle(IRenderContext* ctx) {
     const auto& range = selection.selections[0];
     Point2Di corner = CellToScreen(range.end.row + 1, range.end.col + 1);
     
+    ctx->PushState();
+    ctx->ClipRect(CellAreaRect());
+
     // Draw small square handle
     int handleSize = 6;
     ctx->SetFillPaint(selectionBorderColor_);
@@ -870,6 +899,7 @@ void UltraCanvasSpreadsheet::RenderAutoFillHandle(IRenderContext* ctx) {
         ctx->DrawRectangle(Rect2Df(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y));
         ctx->SetLineDash(UCDashPattern());
     }
+    ctx->PopState();
 }
 
 CellRange UltraCanvasSpreadsheet::AutoFillTargetFor(int row, int col) const {
@@ -1492,14 +1522,35 @@ Point2Di UltraCanvasSpreadsheet::CellToScreen(int row, int col) const {
             x += sheet->GetColumnWidth(c);
         }
     }
+    // A cell scrolled out to the left/top sits before the cell area, so the
+    // clip hides it (or the part of a range that is out of view) rather
+    // than it being drawn over the first visible column/row.
+    for (int c = col; c < scrollCol; ++c) {
+        if (!sheet->IsColumnHidden(c)) {
+            x -= sheet->GetColumnWidth(c);
+        }
+    }
     
     for (int r = scrollRow; r < row; ++r) {
         if (!sheet->IsRowHidden(r)) {
             y += sheet->GetRowHeight(r);
         }
     }
+    for (int r = row; r < scrollRow; ++r) {
+        if (!sheet->IsRowHidden(r)) {
+            y -= sheet->GetRowHeight(r);
+        }
+    }
     
     return Point2Di(x, y);
+}
+
+Rect2Df UltraCanvasSpreadsheet::CellAreaRect() const {
+    const int left = showRowHeaders_ ? SpreadsheetLimits::RowHeaderWidth : 0;
+    const int top = showColumnHeaders_ ? SpreadsheetLimits::HeaderRowHeight : 0;
+    return Rect2Df(gridBounds_.x + left, gridBounds_.y + top,
+                   std::max(0.0f, static_cast<float>(gridBounds_.width - left)),
+                   std::max(0.0f, static_cast<float>(gridBounds_.height - top)));
 }
 
 CellAddress UltraCanvasSpreadsheet::ScreenToCell(int x, int y) const {
