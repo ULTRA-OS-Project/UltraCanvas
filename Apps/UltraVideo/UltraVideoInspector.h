@@ -1,18 +1,22 @@
 // Apps/UltraVideo/UltraVideoInspector.h
 // The inspector (Docs/Research/UltraVideoDesignProposal.md §6.4): three tabs
 // of catalogue elements. Clip - the selected clip's name, in and out, speed,
-// mute, its effects (each with a strength slider, each removable), the transition into it, a still's
+// mute, its effects (each with a strength slider, each removable; an
+// overlay clip's too), the transition into it, a still's
 // motion and framing; a title's
 // text and look, an overlay's place and size, a voice-over's or sound
 // effect's volume, fades and ducking. Audio - the
 // music: the songs, volume, fades, crossfade, loop, ducking. Project - name,
 // size, frame rate, fit. Every field reports an edit as a closure over the
 // document; the window applies it through the undo history and shows the
-// document again, so the inspector never writes the document itself.
+// document again, so the inspector never writes the document itself. A
+// slider's edits while it is dragged carry its id as the merge key, so a
+// whole drag is one undo step; its release ends the step (onEditEnd).
+// Version: 0.7.0 - an overlay clip's effects; a slider's drag as one undo step
 // Version: 0.6.0 - a clip's Keep faces in shot switch
 // Version: 0.5.0 - no caption or heading vectors: the labels follow the theme
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -48,7 +52,8 @@ public:
     void ShowAudioTab();
 
     // An edit of the document, named for the history
-    std::function<void(const std::string& label, std::function<void(Document&)> edit)> onEdit;
+    std::function<void(const std::string& label, std::function<void(Document&)> edit, const std::string& mergeKey)> onEdit;
+    std::function<void()> onEditEnd;       // a slider let go: its drag's undo step is complete
     std::function<void()> onAddMusic;      // the Audio tab's Add song: a file dialog, the window's
     // The Project tab's "Preview from proxies": a view setting, not an edit
     // (no undo step), the window's to apply
@@ -68,6 +73,10 @@ private:
     std::shared_ptr<Label> Heading(const std::shared_ptr<Container>& page, const std::string& id, const std::string& text);
     void Edit(const std::string& label, std::function<void(Document&)> edit);
     void StyleControls(const Palette& palette);
+    EffectTarget Target() const;    // whose effects the rows edit: the segment, else the overlay clip
+    // Every slider's edits as one undo step per drag (or per key press)
+    void MergeSliderDrags();
+    std::string dragKey;            // the slider whose edit is being made, "" for any other field
 
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs;
     std::shared_ptr<Container> clipPage, audioPage, projectPage;

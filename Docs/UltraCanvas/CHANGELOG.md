@@ -1,3 +1,75 @@
+#### 2026-10-16 *0.9.322*
+- **`UltraCanvasPaintSurface` reports a view move caused by the document.**
+  A document change (a layer added, the canvas resized) clamps the view, and
+  since the view follows a resize, a change between a resize and the next
+  frame moved the view there and then - without `onViewChanged`, so overlays
+  placed in view coordinates (UltraPaint's editor over a text) stayed where
+  they were until the next redraw. The listener now reports any move it
+  makes; a change that moves nothing reports nothing.
+- **UCD v2: the container is implemented, and layered images are its first
+  content type.** `UltraCanvasUCDContainer.h` reads and writes the UltraCanvas
+  Document container (`Docs/UltraCanvas/UCD-FileFormat-v2.md`): the signature
+  and fixed header, the raw thumbnail, length-prefixed sections, an `INDX`
+  written first, zlib sections written and zlib / gzip read (miniz, no
+  libvips), unknown sections listed rather than refused, every refusal named
+  (a v1 file, a later major version, a truncated file, a damaged stream, an
+  encrypted section). The spec gains revision **2.1**: layered images (section
+  4.7: the `LAYR` stack, one `BMAP` per layer, `UCTF` text frames that keep a
+  text layer's words as text), the `INDX` layout, and the deflate / gzip stream
+  formats pinned down; its SuperVault note no longer says AES.
+  `UCRasterDocument` saves and opens them (`SaveUCD` / `LoadUCD`, `*.ucd`
+  through `SaveToFile` / `LoadFromFile`; `IsProjectFile` covers both layered
+  formats). FileLoader's inventory has a **`MediaFormatCategory::LayeredImage`**
+  (`ucd`, and `ucraster` with libvips), filed by UltraFiler as images; a
+  `.ucd`'s thumbnail is an embedded preview (`ExtractEmbeddedPreviewBytes`), so
+  UltraFiler thumbnails it, and the media viewer reads UCD headers through the
+  container (its Details name the key source the spec defines, not an AES
+  cipher). Docs: `UltraCanvasUCDContainer.md`, `UltraCanvasPaintSurface.md`
+  (*Layered files*).
+
+#### 2026-10-16 *0.9.321*
+- **VideoFX 0.16.0: effects on image and video overlays.** A new field,
+  `VideoFXOverlay::effects`, gives an overlay's own picture a look. It works
+  on a logo or a picture-in-picture video, without touching the picture
+  under it.
+  - Colour and detail effects only: brightness, contrast, saturation,
+    gamma, exposure, hue, temperature, greyscale, sepia, invert, blur,
+    sharpen, denoise and vignette.
+  - They are applied in order, before the overlay is sized, in its own
+    pixels.
+  - The overlay's transparency is kept. Its alpha is split off before the
+    effects and merged back after them
+    (`Internal::BuildOverlayEffectGraph`).
+  - Refused with `InvalidArgument` when the export is planned:
+    - geometry, fades, LUTs and sound effects on an overlay;
+    - any effect on a text overlay.
+  - The export, the preview and project files (`overlays[].effects`) all
+    carry them.
+  - **Proxies keep the look of a blur.** `VideoFX_UseProxies` now scales a
+    `Blur`'s radius to the proxy's picture, as it already scaled a `Crop`'s
+    rectangle, for both segments and picture-in-picture videos. Before,
+    over a proxy half as tall, a blur looked twice as strong in the preview
+    as in the export.
+  - Tested in `VideoFXTest`:
+    - the filter text, and what is accepted and refused;
+    - a half-transparent picture turned grey with its transparent half
+      still showing what is under it, in the preview and the export;
+    - a sepia picture-in-picture video;
+    - a project round trip;
+    - blur radii scaled on proxies.
+
+#### 2026-10-16 *0.9.320*
+- **The Open and Save dialogs look like the platforms' current dialogs.**
+  `UltraCanvasFileDialog` is laid out like the Windows 11 print dialog: a
+  plain panel, the name of each field written above it ("File name", "File
+  type" side by side, or the name over a "Show" row of toggles), the folder
+  tree and the listing in rounded frames, 32-pixel fields and buttons with
+  rounded corners, and the buttons at the right of a footer band under a
+  hairline. The OK button says what it does - **Open**, **Save** or **Select
+  Folder** - in the theme's accent. Its colours come from the theme
+  (`UltraCanvasTheme::Current()`, or `ApplyTheme`), so it follows a dark
+  theme too.
+
 #### 2026-10-16 *0.9.319*
 - **VideoFX 0.15.1: no experimental encoder is chosen, listed or reported.**
   Built on an FFmpeg without libvorbis, VideoFX took FFmpeg's own Vorbis

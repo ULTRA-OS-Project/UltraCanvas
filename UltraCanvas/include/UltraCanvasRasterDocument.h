@@ -23,10 +23,12 @@
 // and rotating. Rendering the text is not the document's job: a host renders
 // a text layer with RenderTextLayer (UltraCanvasRasterText.h) and puts it in
 // with AddLayer or ReplaceLayer.
+// Version: 1.3.0 - layered UltraCanvas documents (*.ucd, UCD 2.1 UCBitmap): SaveUCD / LoadUCD,
+//                  text layers kept as text frames
 // Version: 1.2.0 - text layers: RasterizeLayer, public ReplaceLayer,
 //                  SetInPlaceEditLayer; .ucraster keeps the text
 // Version: 1.1.0 - AddListener / RemoveListener: several observers of one document
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -251,6 +253,19 @@ public:
     // another machine changes nothing until the text is edited.
     bool SaveProject(const std::string& path, std::string& error);
     bool LoadProject(const std::string& path, std::string& error);
+    // Layered UltraCanvas document (*.ucd): the UCD 2.1 layered image
+    // (Docs/UltraCanvas/UCD-FileFormat-v2.md, section 4.7) - descriptor
+    // UCBitmap, a LAYR layer stack, each layer's pixels as a raw RGBA BMAP,
+    // each text layer's words as a UCTF text frame (its box, default font and
+    // the rich text as an OpenDocument text), and a PNG thumbnail of the
+    // composite for filers. Keeps everything a project keeps; needs no
+    // libvips. LoadUCD also opens a UCBitmap file without a layer stack, as
+    // one layer.
+    bool SaveUCD(const std::string& path, std::string& error);
+    bool LoadUCD(const std::string& path, std::string& error);
+    static bool IsUCDFile(const std::string& path);
+    // A layered file - *.ucraster or *.ucd: SaveToFile / LoadFromFile keep
+    // its layers, text layers included, rather than flatten them.
     static bool IsProjectFile(const std::string& path);
 
     const std::string& GetFilePath() const { return filePath; }

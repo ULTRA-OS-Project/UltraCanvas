@@ -12,6 +12,7 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
+// Version: 0.16.0 - an image or video overlay's effects, its alpha kept round them
 // Version: 0.15.1 - encoders through FindEncoderByName; none opened as experimental
 // Version: 0.15.0 - a video segment's keepInView / keepFacesInView place the Fill crop
 // Version: 0.14.1 - every frame reaches a filter graph through
@@ -1283,7 +1284,12 @@ std::string Exporter::SegmentVideoGraph(const SegmentPlan& plan, const std::stri
         }
         const std::string base = "vfxbase" + std::to_string(label), ov = "vfxov" + std::to_string(label);
         ++label;
-        done += chain + "[" + base + "];[" + name + "]" + imageChain + "[" + ov + "];";
+        // The overlay's own look first, on its picture before it is sized
+        std::string input = name, effects, error;
+        if (!o.effects.empty() &&
+            BuildOverlayEffectGraph(o.effects, name, name + "fx", "vfx" + name + "fx", effects, error))
+            input = name + "fx";
+        done += chain + "[" + base + "];" + effects + "[" + input + "]" + imageChain + "[" + ov + "];";
         chain = "[" + base + "][" + ov + "]" + overlayFilter;
     }
     AppendFilter(chain, std::string("format=") + av_get_pix_fmt_name(stageFmt));

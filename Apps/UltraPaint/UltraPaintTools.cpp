@@ -4,12 +4,14 @@
 // airbrush, eraser, clone, smudge, dodge, burn), fill, gradient, the lines
 // (line, polyline, arrow, curve), shapes (rectangle, ellipse), text, zoom
 // and pan.
+// Version: 1.2.1 - the Text tool's Font and Align lists give the keyboard back to the text
+//                  when they close without a choice
 // Version: 1.2.0 - Text types on the canvas into a text layer; painting on a
 //                  text layer asks to rasterize it; Move moves a text as text
 // Version: 1.1.1 - AddCaption: the hints under a tool's options are quiet grey, not bold
 // Version: 1.1.0 - Polyline, Arrow and Curve
 // Version: 1.0.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 
 #include "UltraPaintTools.h"
@@ -1292,6 +1294,14 @@ public:
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
         auto notify = ctx.textOptionChanged;
+        // A list closed without a choice - Escape, or the item it already
+        // had - keeps the keyboard; while a text is being typed it goes back
+        // there, as it does after a choice.
+        auto done = ctx.textControlDone;
+        auto handBack = [done](UltraCanvasDropdown* list) {
+            if (!list || !done) return;
+            list->onDropdownClosed = [done, list]() { done(*list); };
+        };
         // Every font the system has, not a short list of our own.
         std::vector<std::string> families = GetInstalledFontFamilies();
         if (families.empty()) families = { "Sans", "Serif", "Monospace" };
@@ -1312,6 +1322,7 @@ public:
             fonts->SetStyle(style);
             fonts->SetTooltip(std::to_string(families.size()) + " fonts installed");
         }
+        handBack(fonts);
         AddSliderRow(panel, "text-size", "Size", 4, 400, static_cast<float>(o->textSize), 1, true,
                      [o, notify](float v) { o->textSize = static_cast<int>(v); if (notify) notify("size"); });
         AddCheckbox(panel, "text-bold", "Bold", o->textBold,
@@ -1320,8 +1331,8 @@ public:
                     [o, notify](bool v) { o->textItalic = v; if (notify) notify("italic"); });
         AddCheckbox(panel, "text-underline", "Underline", o->textUnderline,
                     [o, notify](bool v) { o->textUnderline = v; if (notify) notify("underline"); });
-        AddDropdown(panel, "text-align", "Align", { "Left", "Centre", "Right" }, o->textAlign,
-                    [o, notify](int i) { o->textAlign = std::clamp(i, 0, 2); if (notify) notify("align"); });
+        handBack(AddDropdown(panel, "text-align", "Align", { "Left", "Centre", "Right" }, o->textAlign,
+                             [o, notify](int i) { o->textAlign = std::clamp(i, 0, 2); if (notify) notify("align"); }));
         AddCaption(panel, "text-colour", "Colour: the foreground colour");
         AddCaption(panel, "text-hint", "Editable until merged");
     }
