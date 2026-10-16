@@ -2,8 +2,8 @@
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.1.0 - the theme and the button's variant  
-**Last Modified:** 2026-10-14  
+**Version:** 1.2.0 - a button grows to fit its text  
+**Last Modified:** 2026-10-16  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -434,6 +434,30 @@ container->AddChild(autoBtn);
 autoBtn->SetText("This is a longer text that will auto-resize");
 ```
 
+### A Fixed Width Is a Minimum
+
+A button with text never comes out narrower than its text. A width given in
+the constructor or `SetSize()` is the least the button takes: when the text
+needs more - a translation, a larger font - the button grows to it, and it
+returns to the given width when the text is short again. In a flex row that is
+too narrow, a button is not shrunk below its text either (CSS's
+`min-width: auto`). So a label can be translated without checking every
+button's width by hand.
+
+```cpp
+auto button = CreateButton("Open", 10, 10, 80, 30, "Open");
+button->SetText("Ouvrir le fichier");   // grows past 80 px to fit
+button->SetText("OK");                  // back to 80 px
+
+// A button that must keep its width, and may cut its text
+button->SetGrowToFitText(false);
+```
+
+A button that grows keeps its position and grows to the right. In a row of
+absolutely placed buttons it can then reach its neighbour; lay such rows out
+with a flex container (see the Layout documentation) so the buttons after it
+move along. Buttons without text (icon-only tools) are not affected.
+
 ### Split Button (a primary action plus a menu)
 
 A split button is one button with two sections: the primary one runs the
@@ -505,6 +529,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |
 | 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
 | 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |

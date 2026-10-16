@@ -58,7 +58,7 @@ namespace UltraCanvas {
 #endif
     }
 
-    // A "Save as…" button for one CDR tile: native save dialog offering SVG
+    // A "Save as" button for one CDR tile: native save dialog offering SVG
     // (the tile's currently shown page, through the CDR plugin) and XAR (the
     // first page, through SaveCDRAsXAR). Outcome lands in the shared status
     // label.
@@ -68,7 +68,7 @@ namespace UltraCanvas {
             const std::string& cdrFile,
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
         auto btn = std::make_shared<UltraCanvasButton>(id, x, y, w, h);
-        btn->SetText("Save as…");
+        btn->SetText("Save as");
         btn->SetFontSize(10);
         btn->onClick = [cdrElement, cdrFile, statusLabel]() {
             if (!cdrElement->IsLoaded()) {
@@ -131,7 +131,7 @@ namespace UltraCanvas {
 
         // Description
         auto description = std::make_shared<UltraCanvasLabel>("CDRDescription", 10, 45, 700, 40);
-        description->SetText("Click on CDR images to open them in the media viewer. Use navigation buttons for multi-page files.\n\"Save as…\" exports the shown page to SVG (XAR listed, writer not finished yet). Supports CDR, CMX, CCX, CDT.");
+        description->SetText("Click on CDR images to open them in the media viewer. Use navigation buttons for multi-page files.\n\"Save as\" exports the shown page to SVG (XAR listed, writer not finished yet). Supports CDR, CMX, CCX, CDT.");
         description->SetFontSize(12);
         description->SetTextColor(Color(80, 80, 80, 255));
         container->AddChild(description);
@@ -146,7 +146,7 @@ namespace UltraCanvas {
 
         // One tile per sample drawing in media/vector/CDR/. Each carries the
         // controls the element exposes: page navigation for multi-page
-        // documents, zoom / fit, and "Save as..." for the shown page.
+        // documents, zoom / fit, and "Save as" for the shown page.
         auto makeTile = [&](const std::string& id, int x, int y,
                             const std::string& fileName) {
             auto tile = std::make_shared<UltraCanvasContainer>(id, x, y, 300, 300);
@@ -310,7 +310,7 @@ namespace UltraCanvas {
                 "of the three at 725 draw calls.\n\n"
                 "All three are single-page, so the page arrows stay inert here;\n"
                 "zoom and fit work in place, a click opens the drawing\n"
-                "in the media viewer, and \"Save as...\" writes the shown page out\n"
+                "in the media viewer, and \"Save as\" writes the shown page out\n"
                 "through the plugin's SVG exporter."
         );
         howText->SetFontSize(11);

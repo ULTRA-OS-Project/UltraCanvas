@@ -407,6 +407,71 @@ namespace UltraCanvas {
         return Size2Df(contentW, contentH);
     }
 
+    void UltraCanvasButton::SetGrowToFitText(bool grow) {
+        if (growToFitText == grow) return;
+        growToFitText = grow;
+        if (FitWidthToText(GetRenderContext())) InvalidateLayout();
+        RequestRedraw();
+    }
+
+    bool UltraCanvasButton::FitWidthToText(IRenderContext* rc) {
+        using CSSLayout::DimensionUnit;
+        const bool isFixed = size.width.unit == DimensionUnit::Pixels;
+        const bool isGrown = grownWidth > 0.f && isFixed && size.width.value == grownWidth;
+        // A width set since the last fit (SetSize, a style) is the new given width.
+        if (isFixed && !isGrown) {
+            declaredWidth = size.width.value;
+            grownWidth = -1.f;
+        }
+        if (!rc) return false;
+
+        // The border-box width the text needs; 0 when there is nothing to fit.
+        float needed = 0.f;
+        const bool hasText = !text.empty() ||
+            (style.splitStyle.enabled && !style.splitStyle.secondaryText.empty());
+        if (growToFitText && hasText) {
+            rc->PushState();
+            Size2Df content = MeasureContentSize(rc);
+            rc->PopState();
+            needed = content.width + style.shadowOffset.x;
+            if (box.boxSizing == CSSLayout::BoxSizing::BorderBox) {
+                needed += GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+            }
+            needed = std::ceil(needed);
+        }
+
+        bool changed = false;
+
+        // The text width is also the least a flex row may shrink the button
+        // to (CSS's min-width: auto). A minimum the application set is kept.
+        const bool ownMin = !boxConstraints || boxConstraints->minWidth.isAuto() ||
+            (fitMinWidth > 0.f && boxConstraints->minWidth.unit == DimensionUnit::Pixels &&
+             boxConstraints->minWidth.value == fitMinWidth);
+        if (ownMin) {
+            if (needed > 0.f && needed != fitMinWidth) {
+                if (!boxConstraints) boxConstraints = CSSLayout::BoxConstraints{};
+                boxConstraints->minWidth = CSSLayout::Dimension::Px(needed);
+                fitMinWidth = needed;
+                changed = true;
+            } else if (needed <= 0.f && fitMinWidth > 0.f) {
+                boxConstraints->minWidth = CSSLayout::Dimension::Auto();
+                fitMinWidth = -1.f;
+                changed = true;
+            }
+        }
+
+        // A fixed width grows to the text and returns when the text shrinks.
+        if (isFixed) {
+            const float target = std::max(declaredWidth, needed);
+            if (target != size.width.value) {
+                size.width = CSSLayout::Dimension::Px(target);
+                grownWidth = target > declaredWidth ? target : -1.f;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     Size2Df UltraCanvasButton::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
                                                  const CSSLayout::LayoutContext& /*ctx*/) {
         IRenderContext* rc = GetRenderContext();
@@ -415,6 +480,7 @@ namespace UltraCanvas {
             // the block path resolves from size.width/height or the constraints.
             return Size2Df(0.f, 0.f);
         }
+        FitWidthToText(rc);
         // A button doesn't wrap, so the content size is width-independent.
         rc->PushState();
         Size2Df content = MeasureContentSize(rc);
@@ -430,6 +496,7 @@ namespace UltraCanvas {
             return;
         }
 
+        FitWidthToText(rc);
         const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
         const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
 
@@ -1005,6 +1072,9 @@ namespace UltraCanvas {
 
 // ===== MAIN RENDER METHOD =====
     void UltraCanvasButton::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+        // A layout that read the fixed width before the button measured its
+        // text (a flex row's base size) gets the fitted width on the next pass.
+        if (FitWidthToText(ctx)) InvalidateLayout();
         if (style.splitStyle.enabled) {
             DrawSplitButton(ctx);
         } else {

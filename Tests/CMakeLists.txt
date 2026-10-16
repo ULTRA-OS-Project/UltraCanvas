@@ -3839,6 +3839,20 @@ add_test(NAME ButtonIconPixelTest COMMAND ButtonIconPixelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ButtonIconPixelTest")
 
+message(STATUS "  Building ButtonGrowToFitTest...")
+add_executable(ButtonGrowToFitTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ButtonGrowToFitTest.cpp
+)
+target_include_directories(ButtonGrowToFitTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ButtonGrowToFitTest PRIVATE cxx_std_20)
+target_link_libraries(ButtonGrowToFitTest PRIVATE UltraCanvas)
+set_target_properties(ButtonGrowToFitTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ButtonGrowToFitTest COMMAND ButtonGrowToFitTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ButtonGrowToFitTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own

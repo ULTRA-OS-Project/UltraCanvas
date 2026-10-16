@@ -559,7 +559,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     auto saveBtn = std::make_shared<UltraCanvasButton>(
         "VecSaveBtn", pad, 590, outputInnerW, 36);
-    saveBtn->SetText("Save SVG…");
+    saveBtn->SetText("Save SVG");
     SetFlatButtonIcon(*saveBtn, "menu/save.svg");
     saveBtn->SetFontSize(12);
     saveBtn->SetColors(kSaveBtn, kSaveBtnH);
@@ -696,7 +696,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
         const std::string outPath = TempSvgPath();
         if (!WriteFile(outPath, r.svg)) {
             statusLabel->SetText("Traced OK, but the preview file could not be written");
-            detailLabel->SetText("Use \"Save SVG…\" to write the result elsewhere");
+            detailLabel->SetText("Use \"Save SVG\" to write the result elsewhere");
             return;
         }
         if (!outputImage->LoadFromFile(outPath, true)) {
@@ -776,7 +776,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     const int btnY = 590;
     auto openBtn = std::make_shared<UltraCanvasButton>(
         "VecOpenBtn", pad, btnY, 130, 36);
-    openBtn->SetText("Open…");
+    openBtn->SetText("Open");
     SetFlatButtonIcon(*openBtn, "menu/folder.svg");
     openBtn->SetFontSize(12);
     openBtn->SetColors(kNeutralBtn, kNeutralBtnH);
@@ -805,7 +805,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
                 describeInput();
 
                 // The SVG on the right belongs to the previous bitmap — drop it
-                // so "Save SVG…" can never write a stale result under the new
+                // so "Save SVG" can never write a stale result under the new
                 // source's name.
                 lastSvg->clear();
                 saveBtn->SetDisabled(true);

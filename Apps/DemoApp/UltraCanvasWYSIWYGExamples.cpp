@@ -457,7 +457,7 @@ namespace UltraCanvas {
         // ===== ROW 1: DOCUMENT AND STRUCTURE =====
         auto documentBar = MakeToolbar("wysiwygDocumentBar", 72);
 
-        MakeToolbarButton(documentBar->AddButton("wysiwygOpen", "Open…", Icon("folder-open.svg"),
+        MakeToolbarButton(documentBar->AddButton("wysiwygOpen", "Open", Icon("folder-open.svg"),
             [raw]() {
                 FileDialogOptions options;
                 options.SetTitle("Open Document");
@@ -486,7 +486,7 @@ namespace UltraCanvas {
                     });
             }), "Open a document: ODT, DOCX, DOC, LaTeX, Markdown or text");
 
-        MakeToolbarButton(documentBar->AddButton("wysiwygSave", "Save as…", Icon("save.svg"),
+        MakeToolbarButton(documentBar->AddButton("wysiwygSave", "Save as", Icon("save.svg"),
             [raw]() {
                 FileDialogOptions options;
                 options.SetTitle("Save Document As").SetDefaultFileName("document.odt");
@@ -973,7 +973,7 @@ namespace UltraCanvas {
         MakeToolbarButton(bar->AddButton("wysiwygIntlRedo", "", Icon("redo.svg"),
             [editor]() { editor->Redo(); }), "Redo (Ctrl+Y)");
         bar->AddSeparator();
-        MakeToolbarButton(bar->AddButton("wysiwygIntlSave", "Save as…", Icon("save.svg"),
+        MakeToolbarButton(bar->AddButton("wysiwygIntlSave", "Save as", Icon("save.svg"),
             [editor, statusLabel]() {
                 FileDialogOptions options;
                 options.SetTitle("Save Document As").SetDefaultFileName("multilingual.odt");
