@@ -1,5 +1,6 @@
 // Tests/UltraCanvasStart/test_plan.cpp
 // The plan, the SDK names and the report.
+// Version: 0.1.3 - an installed MSYS2 is updated first; RunStep streams its lines
 // Version: 0.1.2 - Windows without MSYS2: winget sets it up before pacman
 // Version: 0.1.1 - a check switched off is left out of the install
 // Version: 0.1.0
@@ -7,7 +8,10 @@
 #include "test_framework.h"
 
 #include "StartPlan.h"
+
+#include <algorithm>
 #include "StartGuide.h"
+#include "StartRunner.h"
 #include "StartSdk.h"
 #include "StartSystem.h"
 
@@ -146,7 +150,32 @@ TEST(BuildPlan_on_Windows_without_MSYS2_sets_it_up_first) {
     profile.packageManagerPath = "C:/msys64/usr/bin/pacman.exe";
     const Plan found = BuildPlan(profile, choices, checks);
     for (const auto& step : found.steps) REQUIRE(!step.setsUpPackageManager);
+    // ...but it is updated before pacman -S: old package lists 404.
+    REQUIRE(found.steps.size() >= 3);
+    REQUIRE_EQ(found.steps[0].argv[0], std::string("C:/msys64/usr/bin/bash.exe"));
+    REQUIRE_EQ(found.steps[0].argv.back(), std::string("pacman -Syuu --noconfirm"));
+    REQUIRE(found.steps[0].mayFail);
+    REQUIRE(!found.steps[1].mayFail);
+    REQUIRE_EQ(found.steps[2].argv[0], std::string("C:/msys64/usr/bin/pacman.exe"));
+    REQUIRE(InstallPreview(found).find("Install updates MSYS2, installs the 1 missing") == 0);
 }
+
+#if !defined(_WIN32)
+TEST(RunStep_hands_over_the_lines_as_they_come) {
+    PlanStep step;
+    step.kind = StepKind::Install;
+    step.argv = { "/bin/sh", "-c", "printf 'one\\ntwo\\r'; printf 'err\\n' >&2; printf three" };
+    std::vector<std::string> lines;
+    const RunResult result = RunStep(step, UbuntuProfile(), [&](const std::string& line) { lines.push_back(line); });
+    REQUIRE(result.Succeeded());
+    REQUIRE_EQ(lines.size(), size_t(4));
+    REQUIRE(std::find(lines.begin(), lines.end(), "one") != lines.end());
+    REQUIRE(std::find(lines.begin(), lines.end(), "two") != lines.end());
+    REQUIRE(std::find(lines.begin(), lines.end(), "err") != lines.end());
+    REQUIRE_EQ(lines.back(), std::string("three"));
+    REQUIRE(result.output.find("one\ntwo") == 0);
+}
+#endif
 
 TEST(BuildPlan_for_another_platform_lists_everything) {
     const SystemProfile profile = UbuntuProfile();

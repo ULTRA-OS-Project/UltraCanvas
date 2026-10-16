@@ -20,6 +20,16 @@
   the output says to install App Installer or MSYS2 by hand. Every install
   command runs with the MSYS2 bin directories on its PATH and `MSYSTEM`
   set (`StartRunner` 0.1.1), so pacman's hooks find their programs.
+- **An installed MSYS2 is updated before pacman installs.** On an old
+  MSYS2 the package lists name files the mirrors no longer have, and
+  `pacman -S` alone failed with 404s. Install now runs `pacman -Syuu` in a
+  login shell twice (`Msys2UpdateSteps`; the first run may end in a core
+  update without stopping the install), then `pacman -S`.
+- **The install and build output appear as they come**, line by line,
+  instead of when each command ends: the MSYS2 set-up and a large install
+  take minutes. `RunStep` and `BuildProject` hand over the output through
+  the framework's new `RunProcessCaptured` `onOutput` callback
+  (framework changelog: `process-output-as-it-comes`).
 - **Any stage of the stepper can be clicked**, ahead as well as back; Next
   and Back stay as one-step shortcuts. The stepper is locked while a
   check, an install or a build runs.

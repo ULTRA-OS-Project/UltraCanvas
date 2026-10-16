@@ -1,7 +1,8 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
 // Version: 0.4.2 - Windows without MSYS2: Install sets it up with winget, updates
 //                  it and installs the missing with its pacman, then finds it
-//                  again; any stage of the stepper can be clicked
+//                  again; any stage of the stepper can be clicked; the install
+//                  and build output as it comes
 // Version: 0.4.1 - the Tools step: a missing row's switch can be flipped,
 //                  off leaves that package out of the install
 // Version: 0.4.0 - step 6, Build: the skeleton compiled from the window (StartBuild),
@@ -904,7 +905,7 @@ void UltraCanvasStartWindow::StartInstall() {
                            : "This runs the package manager:\n\n") + commands +
         (elevation ? "\nIt needs administrator rights; the system will ask for your password." : "") +
         (setsUp ? "\nWindows may ask for administrator rights for the MSYS2 installer. "
-                  "It takes several minutes; the output appears when each command ends."
+                  "It takes several minutes; the output appears as it comes."
                 : profile_.packageManager == PackageManager::Msys2Pacman
                       ? "\nOn Windows the packages are installed into the MSYS2 tree." : ""),
         setsUp ? "Install MSYS2 and the development packages?" : "Install the development packages?",
@@ -928,9 +929,14 @@ void UltraCanvasStartWindow::StartInstall() {
                         SetStatus(status);
                         if (installOutput_) installOutput_->AppendText(head);
                     });
-                    const RunResult result = RunStep(step, profile);
-                    std::string tail = result.output;
-                    if (!tail.empty() && tail.back() != '\n') tail += '\n';
+                    // The output line by line as it comes: the MSYS2 set-up
+                    // and a large install take minutes.
+                    const RunResult result = RunStep(step, profile, [this](const std::string& line) {
+                        RunOnUiThread([this, line]() {
+                            if (installOutput_) installOutput_->AppendText(line + "\n");
+                        });
+                    });
+                    std::string tail;
                     if (!result.started) {
                         tail += result.error + "\n";
                         if (step.setsUpPackageManager && step.argv.front() == "winget") {
@@ -1124,7 +1130,7 @@ void UltraCanvasStartWindow::StartBuild() {
     const std::string folder = choices_.projectFolder;
     const SystemProfile profile = profile_;
     worker_ = std::thread([this, folder, profile]() {
-        // Each command's line and output reach the console as it finishes.
+        // Each command's line and output reach the console as they come.
         const BuildResult result = BuildProject(folder, profile, [this](const std::string& text) {
             RunOnUiThread([this, text]() { if (buildOutput_) buildOutput_->AppendText(text); });
         });

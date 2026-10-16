@@ -674,7 +674,8 @@ namespace UltraCanvas {
     ProcessOutput RunProcessCaptured(
             const std::vector<std::string>& argv,
             const std::vector<unsigned char>& input,
-            const std::vector<std::pair<std::string, std::string>>& extraEnvironment) {
+            const std::vector<std::pair<std::string, std::string>>& extraEnvironment,
+            const ProcessOutputCallback& onOutput) {
 
         ProcessOutput result;
         if (argv.empty() || argv[0].empty()) {
@@ -805,17 +806,28 @@ namespace UltraCanvas {
         // and both sides would wait for the other forever.
         std::vector<unsigned char> capturedOut;
         std::string capturedErr;
+        // The two readers take turns at onOutput: its contract is one call at a time.
+        std::mutex callbackMutex;
+        auto report = [&](const char* data, size_t size, bool fromError) {
+            if (!onOutput) return;
+            std::lock_guard<std::mutex> lock(callbackMutex);
+            onOutput(data, size, fromError);
+        };
         std::thread outReader([&]() {
             char buffer[64 * 1024];
             DWORD got = 0;
-            while (ReadFile(outRead, buffer, sizeof(buffer), &got, nullptr) && got > 0)
+            while (ReadFile(outRead, buffer, sizeof(buffer), &got, nullptr) && got > 0) {
                 capturedOut.insert(capturedOut.end(), buffer, buffer + got);
+                report(buffer, got, false);
+            }
         });
         std::thread errReader([&]() {
             char buffer[8 * 1024];
             DWORD got = 0;
-            while (ReadFile(errRead, buffer, sizeof(buffer), &got, nullptr) && got > 0)
+            while (ReadFile(errRead, buffer, sizeof(buffer), &got, nullptr) && got > 0) {
                 capturedErr.append(buffer, got);
+                report(buffer, got, true);
+            }
         });
 
         size_t written = 0;
@@ -954,6 +966,7 @@ namespace UltraCanvas {
                 if (got > 0) {
                     result.standardOutput.insert(result.standardOutput.end(),
                                                  buffer, buffer + got);
+                    if (onOutput) onOutput(buffer, static_cast<size_t>(got), false);
                 } else if (got == 0 || (errno != EINTR && errno != EAGAIN)) {
                     CloseIfOpen(outPipe[0]);
                 }
@@ -963,6 +976,7 @@ namespace UltraCanvas {
                 const ssize_t got = ::read(errPipe[0], buffer, sizeof(buffer));
                 if (got > 0) {
                     result.standardError.append(buffer, static_cast<size_t>(got));
+                    if (onOutput) onOutput(buffer, static_cast<size_t>(got), true);
                 } else if (got == 0 || (errno != EINTR && errno != EAGAIN)) {
                     CloseIfOpen(errPipe[0]);
                 }

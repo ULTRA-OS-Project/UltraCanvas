@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.2.3 - MSYS2 is updated first
 // Version: 0.2.2 - InstallPreview: MSYS2 set up by winget first, every command listed
 // Version: 0.2.1 - InstallPreview counts only the missing ones switched on
 // Version: 0.2.0 - CheckDetail and InstallPreview instead of ChecksMarkdown
@@ -140,6 +141,9 @@ std::string InstallPreview(const Plan& plan) {
     if (setsUp) {
         return "MSYS2 is not installed: Install sets it up with winget (Windows may ask for administrator "
                "rights), updates it, installs the " + count + " with its pacman, then checks again:" + commands;
+    }
+    if (plan.profile.packageManager == PackageManager::Msys2Pacman) {
+        return "Install updates MSYS2, installs the " + count + " with its pacman, then checks again:" + commands;
     }
     return "Install runs " + PackageManagerName(plan.profile.packageManager) + " for the " + count + ", then checks again" +
            (elevation ? "; it asks for administrator rights" : "") + ":" + commands;

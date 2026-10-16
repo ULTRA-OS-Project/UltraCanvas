@@ -3,6 +3,7 @@
 // the package that provides it on each package manager, and the command that
 // installs a list of packages. Mirrors step 1 of Docs/GettingStarted.md and
 // the CI install steps; change those and this together.
+// Version: 0.1.2 - Msys2UpdateSteps
 // Version: 0.1.1 - Msys2SetupSteps: winget installs MSYS2, a login shell updates it
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -44,7 +45,13 @@ PlanStep InstallStep(PackageManager manager, const std::vector<std::string>& pac
 // starts it for the first time (which sets up pacman's keyring) and updates
 // it - twice, because a core update ends the first run. Every argument is a
 // constant: the shell line is ours, nothing from the machine goes into it.
+// Only the winget step is marked setsUpPackageManager.
 std::vector<PlanStep> Msys2SetupSteps(const std::string& root);
+
+// An MSYS2 at `root`: pacman -Syuu in a login shell, twice, before pacman -S.
+// An old installation's package lists name files the mirrors no longer
+// have, so -S alone fails with 404s; and -Sy alone would be a partial upgrade.
+std::vector<PlanStep> Msys2UpdateSteps(const std::string& root);
 
 std::string Msys2PackagePrefix(const std::string& architecture);
 std::string Msys2PackageForArchitecture(const std::string& package,

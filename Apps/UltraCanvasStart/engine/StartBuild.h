@@ -4,6 +4,7 @@
 // toolchain, the SDK and the skeleton work together before the hand-over,
 // and so a test can compile what ScaffoldProject writes. Everything runs
 // through RunProcessCaptured with an argument list, never a shell.
+// Version: 0.1.1 - onOutput as it comes
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -39,7 +40,8 @@ std::string BuildCommandsText(const std::string& folder);
 
 // Runs the commands and waits for them; stops at the first failure.
 // `onOutput`, when given, receives each command's line (`$ ...`) and its
-// output once it has finished (RunProcessCaptured does not stream). On
+// output as it comes, in chunks that are not lines (from the calling thread
+// or a reader thread, never two at once). On
 // Windows the MSYS2 bin directories are put on PATH for the child, as the
 // CLANG64 shell would have them.
 BuildResult BuildProject(const std::string& folder, const SystemProfile& profile,

@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
+// Version: 0.1.6 - an installed MSYS2 is updated before pacman installs
 // Version: 0.1.5 - Windows without MSYS2: winget sets it up before pacman installs
 // Version: 0.1.4 - a check switched off on the Tools step is not installed
 // Version: 0.1.3 - the steps, not the pages, in the plan's wording
@@ -105,6 +106,8 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
     const bool setUpMsys2 = local && target == Platform::Windows && profile.msysPrefix.empty() && !packages.empty();
     if (setUpMsys2) {
         for (auto& step : Msys2SetupSteps(kMsys2DefaultRoot)) plan.steps.push_back(std::move(step));
+    } else if (local && target == Platform::Windows && !packages.empty()) {
+        for (auto& step : Msys2UpdateSteps(profile.msysPrefix)) plan.steps.push_back(std::move(step));
     }
     if (!packages.empty()) {
         std::string program;

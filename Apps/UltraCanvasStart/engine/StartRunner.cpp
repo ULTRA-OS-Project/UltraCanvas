@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartRunner.cpp
+// Version: 0.1.2 - the output line by line as it comes (RunProcessCaptured's onOutput)
 // Version: 0.1.1 - on Windows the MSYS2 bin directories on the child's PATH and
 //                  MSYSTEM set, found again when MSYS2 was installed meanwhile
 // Version: 0.1.0
@@ -11,7 +12,6 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 
-#include <sstream>
 
 namespace UltraCanvasStart {
 
@@ -70,7 +70,28 @@ RunResult RunStep(const PlanStep& step, const SystemProfile& profile,
             environment.emplace_back("MSYSTEM", here.architecture == "arm64" ? "CLANGARM64" : "CLANG64");
         }
     }
-    const auto output = UltraCanvas::RunProcessCaptured(argv, {}, environment);
+    // Lines as they come, per stream; pacman and winget end a progress
+    // line with '\r', which counts as an end too.
+    std::string pending[2];
+    UltraCanvas::ProcessOutputCallback chunk;
+    if (onLine) {
+        chunk = [&pending, &onLine](const char* data, size_t size, bool fromError) {
+            std::string& line = pending[fromError ? 1 : 0];
+            for (size_t i = 0; i < size; ++i) {
+                const char c = data[i];
+                if (c == '\n' || c == '\r') {
+                    if (!line.empty()) onLine(line);
+                    line.clear();
+                } else {
+                    line += c;
+                }
+            }
+        };
+    }
+    const auto output = UltraCanvas::RunProcessCaptured(argv, {}, environment, chunk);
+    if (onLine) {
+        for (const auto& rest : pending) if (!rest.empty()) onLine(rest);
+    }
     result.started = output.started;
     result.exitCode = output.exitCode;
     result.error = output.error;
@@ -78,11 +99,6 @@ RunResult RunStep(const PlanStep& step, const SystemProfile& profile,
     if (!output.standardError.empty()) {
         if (!result.output.empty() && result.output.back() != '\n') result.output += '\n';
         result.output += output.standardError;
-    }
-    if (onLine) {
-        std::istringstream in(result.output);
-        std::string line;
-        while (std::getline(in, line)) onLine(line);
     }
     return result;
 }
