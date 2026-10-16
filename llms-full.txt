@@ -85173,8 +85173,10 @@ is no undo step.
 ## Undo, projects and export
 
 `Ctrl+Z` and `Ctrl+Shift+Z` (or `Ctrl+Y`) undo and redo every edit; the
-app bar's buttons name what they would undo. A drag of a slider in the
-inspector is one step, however many values it passed through. `Ctrl+S` saves the project as
+app bar's buttons name what they would undo. A drag is one step, however
+far it went: a slider in the inspector, and on the timeline a move, a trim,
+a fade knob or a transition's length (the timeline reports these when the
+mouse is let go). `Ctrl+S` saves the project as
 a `.ultravideo` file, `Ctrl+Shift+S` under a new name, `Ctrl+O` opens one,
 `Ctrl+N` starts afresh; closing with unsaved changes asks. The file is
 JSON: the engine's own project (what `videofx render` takes) with the bin,

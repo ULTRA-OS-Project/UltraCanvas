@@ -19,6 +19,10 @@
     effects' strengths, a title's size and fades, an overlay's size,
     opacity and fades, a sound clip's volume and fades, and the music's
     volume, fades, crossfade and ducking level.
+  - Drags on the timeline already were one step each: a move, a trim, a
+    fade knob or a transition's length. The timeline reports them once,
+    when the mouse is let go. `VideoTimelineElementTest` now checks that a
+    fade knob reports nothing while it moves.
   - A key press on a slider is a step of its own.
   - So is a second drag of the same slider, and any edit after a save,
     an undo or a redo.
