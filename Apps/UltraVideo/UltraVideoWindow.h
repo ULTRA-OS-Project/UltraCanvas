@@ -8,6 +8,7 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
+// Version: 0.7.0 - presets on overlay clips; Edit's merge key for a slider's drag
 // Version: 0.6.0 - an effect preset dragged from its bin button onto a clip
 // Version: 0.5.0 - OpenFiles: files handed over by a second start
 // Version: 0.4.0
@@ -80,7 +81,8 @@ private:
     void ApplyPalette();
 
     // the document
-    void Edit(const std::string& label, const std::function<void(Document&)>& edit);
+    // `mergeKey`: a slider being dragged, whose edits fold into one undo step
+    void Edit(const std::string& label, const std::function<void(Document&)>& edit, const std::string& mergeKey = "");
     void RefreshAll();                 // after any change of the document
     void RefreshAppBar();
     void RefreshBin();
@@ -144,6 +146,9 @@ private:
     void AddTitle(const std::string& styleKey, double at);
     void ApplyEffect(const std::string& presetKey);         // a bin preset on the selected main-track clip
     void ApplyEffectTo(const std::string& presetKey, const std::string& clipId);
+    // Whose effects a clip id names - a main-track segment or an overlay clip - and its name
+    EffectTarget EffectTargetOf(const std::string& clipId) const;
+    std::string EffectClipName(EffectTarget target) const;
     void AddOverlay(const std::string& path, double at);     // a file over the picture, on V2
     void ChooseOverlay(double at);                           // ... from a file dialog
     void AddSound(const std::string& path, double at, bool voiceOver);   // a file's sound on A2

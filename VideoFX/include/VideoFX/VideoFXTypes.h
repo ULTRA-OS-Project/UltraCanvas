@@ -2,6 +2,7 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
+// Version: 0.16.0 - VideoFXOverlay::effects: an image or video overlay's own look
 // Version: 0.15.0 - keepInView / keepFacesInView on a video segment: the Fill crop
 //                  stays around the regions (faces found in a sampled frame)
 // Version: 0.14.0 - VideoFXFileFormat / VideoFXFileKind (VideoFX_GetFileFormats),
@@ -261,6 +262,15 @@ struct VideoFXOverlay {
     // `imageHeight` and placed like an image.
     std::string videoPath;
     double videoStart = 0.0;        // seconds into the file where it begins
+
+    // ---- the picture's look (image or video) ----
+    // Colour and detail effects on the overlay's own picture, in order,
+    // before it is sized: brightness to invert (not LUT), blur, sharpen,
+    // denoise, vignette - in the overlay's own pixels. Its transparency is
+    // kept. Geometry, fades and sound effects are not taken here (an
+    // overlay is placed, faded and silent by the fields around this), nor
+    // any effect on a text overlay.
+    std::vector<VideoFXEffect> effects;
 
     // ---- placement ----
     VideoFXAnchor anchor = VideoFXAnchor::Bottom;

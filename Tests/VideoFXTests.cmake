@@ -49,6 +49,7 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
         ${_UV_DIR}/UltraVideoMapping.cpp
         ${_UV_DIR}/UltraVideoHistory.cpp
         ${_UV_DIR}/UltraVideoProxies.cpp
+        ${_UV_DIR}/UltraVideoInspector.cpp
     )
     target_include_directories(UltraVideoDocumentTest PRIVATE
         ${_UV_DIR}

@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.9.0 - presets on overlay clips, by click or drop; a slider's drag one undo step
 // Version: 0.8.0 - an effect preset dragged from its bin button onto a clip
 // Version: 0.7.0 - the panels, controls, buttons, labels and dialogs follow the theme; the draft at the project's shape, its settings from the document
 // Version: 0.6.0 - OpenFiles: files handed over by a second start
@@ -120,7 +121,10 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
     binPane->AddChild(BuildMediaBin());
     viewerPane_->AddChild(viewer_.Build(*palette_));
     inspectorTabs_ = inspector_.Build(*palette_);
-    inspector_.onEdit = [this](const std::string& label, std::function<void(Document&)> edit) { Edit(label, edit); };
+    inspector_.onEdit = [this](const std::string& label, std::function<void(Document&)> edit, const std::string& mergeKey) {
+        Edit(label, edit, mergeKey);
+    };
+    inspector_.onEditEnd = [this]() { history_.EndMerge(); };
     inspector_.onAddMusic = [this]() { ImportMedia(); };
     inspector_.onUseProxies = [this](bool on) { SetUseProxies(on); };
     proxies_.onDone = [this](const std::string& clip, ProxyMaker::State state) { ProxyDone(clip, state); };
@@ -714,10 +718,11 @@ void UltraVideoWindow::ApplyPalette() {
 // ============================================================================
 // the document
 // ============================================================================
-void UltraVideoWindow::Edit(const std::string& label, const std::function<void(Document&)>& edit) {
+void UltraVideoWindow::Edit(const std::string& label, const std::function<void(Document&)>& edit,
+                            const std::string& mergeKey) {
     Document before = document_;
     edit(document_);
-    history_.Push(label, before, document_);
+    history_.Push(label, before, document_, mergeKey);
     InvalidateDraft();
     RefreshAll();
 }
@@ -1090,11 +1095,11 @@ void UltraVideoWindow::BeginEffectDrag(std::string key) {   // by value: the cal
         if (b->GetIdentifier() == std::string("uv.bin.effect.") + key) { b->SetPressed(false); b->SetHovered(false); }
     effectDrag_ = key;
     effectHover_.clear();
-    Message(std::string("Drop ") + preset->label + " on a clip on the main track. Esc lets go.");
+    Message(std::string("Drop ") + preset->label + " on a clip on the main track or the overlay lane. Esc lets go.");
 }
 
-// The clip under the pointer is the target while it is on the main track;
-// the timeline rings it, the status line names it, the drop applies the preset
+// The clip under the pointer is the target while it is on the main track or
+// the overlay lane; the timeline rings it, the status line names it, the drop applies the preset
 void UltraVideoWindow::DragEffect(const UCEvent& source, bool drop) {
     if (effectDrag_.empty()) return;
     const EffectPreset* preset = FindEffectPreset(effectDrag_);
@@ -1105,21 +1110,22 @@ void UltraVideoWindow::DragEffect(const UCEvent& source, bool drop) {
         const Point2Df local = timeline_->MapToLocal(inWindow);
         clipId = timeline_->ClipAt(local.x, local.y, &trackId);
     }
-    const int index = clipId.empty() ? -1 : SegmentOfClip(document_, clipId);
-    const std::string hover = index >= 0 ? "clip:" + clipId : clipId.empty() ? "" : "other";
+    const EffectTarget target = EffectTargetOf(clipId);
+    const bool takes = target.segment >= 0 || target.overlay >= 0;
+    const std::string hover = takes ? "clip:" + clipId : clipId.empty() ? "" : "other";
     if (!drop) {
         if (hover == effectHover_) return;
         effectHover_ = hover;
-        if (timeline_) timeline_->SetDropTargetClip(index >= 0 ? clipId : "");
-        if (index >= 0) Message("Drop to put " + label + " on " + ClipName(document_, static_cast<size_t>(index)) + ".");
-        else if (!clipId.empty()) Message("Effects go on the main track's clips in this release.");
-        else Message("Drop " + label + " on a clip on the main track. Esc lets go.");
+        if (timeline_) timeline_->SetDropTargetClip(takes ? clipId : "");
+        if (takes) Message("Drop to put " + label + " on " + EffectClipName(target) + ".");
+        else if (!clipId.empty()) Message("Effects go on clips on the main track and the overlay lane, not on titles or sounds.");
+        else Message("Drop " + label + " on a clip on the main track or the overlay lane. Esc lets go.");
         return;
     }
     const std::string key = effectDrag_;
     CancelEffectDrag();
-    if (index >= 0) ApplyEffectTo(key, clipId);
-    else if (!clipId.empty()) Message("Effects go on the main track's clips in this release: nothing applied.");
+    if (takes) ApplyEffectTo(key, clipId);
+    else if (!clipId.empty()) Message("Effects go on clips on the main track and the overlay lane, not on titles or sounds: nothing applied.");
     else Message("Dropped outside a clip: nothing applied.");
 }
 
@@ -1537,8 +1543,9 @@ void UltraVideoWindow::AddTitle(const std::string& styleKey, double at) {
 }
 
 void UltraVideoWindow::ApplyEffect(const std::string& key) {
-    if (SegmentOfClip(document_, selectedClip_) < 0) {
-        Message("Select a clip on the main track first, or drag the effect onto one.");
+    const EffectTarget target = EffectTargetOf(selectedClip_);
+    if (target.segment < 0 && target.overlay < 0) {
+        Message("Select a clip on the main track or the overlay lane first, or drag the effect onto one.");
         return;
     }
     ApplyEffectTo(key, selectedClip_);
@@ -1547,20 +1554,33 @@ void UltraVideoWindow::ApplyEffect(const std::string& key) {
 void UltraVideoWindow::ApplyEffectTo(const std::string& key, const std::string& clipId) {
     const EffectPreset* preset = FindEffectPreset(key);
     if (!preset) return;
-    const int index = SegmentOfClip(document_, clipId);
-    if (index < 0) return;
+    // a main-track clip, or an overlay clip's own picture
+    const EffectTarget target = EffectTargetOf(clipId);
+    if (target.segment < 0 && target.overlay < 0) return;
     if (selectedClip_ != clipId) {   // the clip it lands on is the one the inspector shows
         selectedClip_ = clipId;
         if (timeline_) timeline_->SetSelection({clipId});
     }
     Document trial = document_;
-    if (!trial.ApplyEffectPreset(static_cast<size_t>(index), key)) {
+    if (!trial.ApplyEffectPreset(target, key)) {
         Message(std::string(preset->label) + " is already on this clip.");
         return;
     }
-    Edit(std::string("Apply ") + preset->label, [index, key](Document& d) { d.ApplyEffectPreset(static_cast<size_t>(index), key); });
+    Edit(std::string("Apply ") + preset->label, [target, key](Document& d) { d.ApplyEffectPreset(target, key); });
     inspector_.ShowClipTab();
-    Message(std::string(preset->label) + " on " + ClipName(document_, static_cast<size_t>(index)) + ": the inspector lists its effects.");
+    Message(std::string(preset->label) + " on " + EffectClipName(target) + ": the inspector lists its effects.");
+}
+
+EffectTarget UltraVideoWindow::EffectTargetOf(const std::string& clipId) const {
+    const int segment = clipId.empty() ? -1 : SegmentOfClip(document_, clipId);
+    return segment >= 0 ? EffectTarget{segment, -1} : EffectTarget{-1, clipId.empty() ? -1 : document_.OverlayIndex(clipId)};
+}
+
+std::string UltraVideoWindow::EffectClipName(EffectTarget target) const {
+    if (target.segment >= 0) return ClipName(document_, static_cast<size_t>(target.segment));
+    if (target.overlay >= 0 && static_cast<size_t>(target.overlay) < document_.overlays.size())
+        return document_.overlays[static_cast<size_t>(target.overlay)].Name();
+    return "";
 }
 
 void UltraVideoWindow::AddOverlay(const std::string& path, double at) {
