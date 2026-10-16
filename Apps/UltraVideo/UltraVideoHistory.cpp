@@ -1,7 +1,7 @@
 // Apps/UltraVideo/UltraVideoHistory.cpp
 // The undo history (UltraVideoHistory.h).
-// Version: 0.1.0
-// Last Modified: 2026-10-11
+// Version: 0.5.0
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #include "UltraVideoHistory.h"
 
@@ -17,7 +17,13 @@ void KeepView(Document& target, const Document& current) {
 }
 }
 
-void History::Push(const std::string& label, const Document& before, const Document& after) {
+void History::Push(const std::string& label, const Document& before, const Document& after,
+                   const std::string& mergeKey) {
+    if (!mergeKey.empty() && mergeKey == openKey && index > 0 && index == entries.size() && cleanIndex != index) {
+        entries.back().after = after;
+        return;
+    }
+    openKey = mergeKey;
     entries.resize(index);
     entries.push_back(Entry{label, before, after});
     if (entries.size() > kMaxEntries) {
@@ -29,6 +35,7 @@ void History::Push(const std::string& label, const Document& before, const Docum
 
 bool History::Undo(Document& document) {
     if (!CanUndo()) return false;
+    openKey.clear();
     --index;
     Document restored = entries[index].before;
     KeepView(restored, document);
@@ -38,6 +45,7 @@ bool History::Undo(Document& document) {
 
 bool History::Redo(Document& document) {
     if (!CanRedo()) return false;
+    openKey.clear();
     Document restored = entries[index].after;
     KeepView(restored, document);
     document = std::move(restored);
@@ -49,6 +57,7 @@ void History::Clear() {
     entries.clear();
     index = 0;
     cleanIndex = 0;
+    openKey.clear();
 }
 
 } // namespace UltraVideo

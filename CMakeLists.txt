@@ -1171,11 +1171,12 @@ if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
 endif()
 
-# ===== VIDEOFX TEST WITHOUT THE FULL SUITE =====
-# VideoFXTest alone, for builds that leave BUILD_TESTS off (the Windows CI
-# rows): the engine on the FFmpeg the Windows package ships, through the
-# Windows file names, cache folder and fonts.
-option(ULTRACANVAS_BUILD_VIDEOFX_TESTS "Build VideoFXTest without BUILD_TESTS" OFF)
+# ===== VIDEOFX TESTS WITHOUT THE FULL SUITE =====
+# VideoFXTest and UltraVideoDocumentTest alone, for builds that leave
+# BUILD_TESTS off (the Windows CI rows): the engine on the FFmpeg the Windows
+# package ships, through the Windows file names, cache folder and fonts, and
+# UltraVideo's .ultravideo file written there.
+option(ULTRACANVAS_BUILD_VIDEOFX_TESTS "Build VideoFXTest and UltraVideoDocumentTest without BUILD_TESTS" OFF)
 if(ULTRACANVAS_BUILD_VIDEOFX_TESTS AND NOT BUILD_TESTS)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VideoFXTests.cmake)
@@ -1847,6 +1848,7 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAIAppSettings.cpp
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
+        Apps/UltraAIApp/UltraAITranslatorDialog.cpp
     )
     # One copy per user (UltraCanvasSingleInstance.h).
     ultracanvas_single_instance(UltraAIApp)

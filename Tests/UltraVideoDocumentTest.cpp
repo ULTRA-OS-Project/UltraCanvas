@@ -3,19 +3,26 @@
 // media the engine probes, segments from media, the timeline model derived
 // from the document, every reported change written back, undo and redo, and
 // the .ultravideo file round trip with relative media paths and missing
-// media reported; the title, overlay and voice-and-sound lanes; the effect
-// presets and their strength. Needs the VideoFX engine (FFmpeg) for the probes and the
-// clips it generates; without it the suite skips itself.
+// media reported; undo, with a slider's drag in the inspector as one step;
+// the title, overlay and voice-and-sound lanes; the effect presets and their
+// strength, on main-track clips and overlay clips. Needs the VideoFX engine
+// (FFmpeg) for the probes and the clips it generates; without it the suite
+// skips itself.
+// Version: 0.8.0 - effects on overlay clips; a slider's drag as one undo step
+// Version: 0.6.1 - runs on Windows too: the file holds '/' between a path's parts
+// Version: 0.7.0 - the palettes' contrast, as the tokens promise it
 // Version: 0.6.0 - a HEIC imported and exported through the framework's image reader
 // Version: 0.5.0 - the files it takes are FileLoader's lists, as the engine reads them
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoFormats.h"
 #include "UltraVideoHistory.h"
+#include "UltraVideoInspector.h"
 #include "UltraVideoMapping.h"
 #include "UltraVideoProxies.h"
+#include "UltraVideoTokens.h"
 
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
@@ -59,7 +66,9 @@ static std::string TempPath(const std::string& name) {
         fs::create_directories(d / "media");
         return d;
     }();
-    return PathToUtf8(dir / PathFromUtf8(name));
+    // Normal form: on Windows '\' throughout, as the paths a load gives back
+    // ("media/x" appended as it is would keep its '/')
+    return PathToUtf8((dir / PathFromUtf8(name)).lexically_normal());
 }
 
 static VideoFXFrame Solid(int w, int h, uint8_t r, uint8_t g, uint8_t b) {
@@ -662,6 +671,36 @@ int main() {
         }
         CHECK(ends, ("every slider's ends render a frame" + endsFailed).c_str());
 
+        // an overlay clip's own picture
+        Document od = plain;
+        CHECK(od.AddOverlay(clip, 0.5) == 0, "an overlay clip");
+        const EffectTarget pipTarget{-1, 0};
+        CHECK(od.EffectsOf(pipTarget) == &od.overlays[0].look.effects && od.EffectsOf(EffectTarget{}) == nullptr &&
+              od.EffectsOf(EffectTarget{-1, 4}) == nullptr, "an overlay's effects are its look's; none or no such clip: nothing");
+        CHECK(od.ApplyEffectPreset(pipTarget, "bw") && od.overlays[0].look.effects.size() == 2 && od.project.segments[0].effects.empty(),
+              "Black and white on the overlay, not on the clip under it");
+        CHECK(!od.ApplyEffectPreset(pipTarget, "bw"), "a second click does not double it");
+        CHECK(od.ApplyEffectPreset(pipTarget, "strongblur") && Near(od.overlays[0].look.effects[2].amount, 3.5, 1e-9),
+              "a blur from the overlay's own 240 lines (its effects work before it is sized)");
+        CHECK(od.SetEffectAmount(pipTarget, 2, 6.0) && Near(od.overlays[0].look.effects[2].amount, 6.0, 1e-9), "its strength set");
+        const std::vector<VideoFXSegment> pipEngine = od.SegmentsForEngine();
+        CHECK(pipEngine[0].overlays.size() == 1 && pipEngine[0].overlays[0].effects.size() == 3, "the engine's overlay carries them");
+        const TimelineModel om = BuildTimelineModel(od);
+        const TimelineTrack* ovLane = om.FindTrack(kOverlayTrackId);
+        CHECK(ovLane && ovLane->clips.size() == 1 && ovLane->clips[0].hasEffects, "the overlay clip shows the effects badge");
+        VideoFXFrame pipFrame;
+        CHECK(VideoFX_RenderFrame(pipEngine, 1.0, pipFrame, {}, 160, 120) == VideoFXResult::Ok && pipFrame.IsValid(), "and renders");
+        const std::string ofx = TempPath("overlay-effects.ultravideo");
+        std::string oerr;
+        CHECK(od.Save(ofx, oerr), ("save with overlay effects: " + oerr).c_str());
+        Document oback;
+        CHECK(Document::Load(ofx, oback, oerr, nullptr), ("load with overlay effects: " + oerr).c_str());
+        CHECK(oback.overlays.size() == 1 && oback.overlays[0].look.effects.size() == 3 &&
+              oback.overlays[0].look.effects[0].type == VideoFXEffectType::Grayscale && Near(oback.overlays[0].look.effects[2].amount, 6.0, 1e-9),
+              "the overlay's effects come back");
+        CHECK(oback.SegmentsForEngine()[0].overlays.size() == 1 && oback.SegmentsForEngine()[0].overlays[0].effects.size() == 3,
+              "and are not doubled by the engine's copy in the file");
+
         const std::string efile = TempPath("effects.ultravideo");
         std::string eerror;
         CHECK(ed.Save(efile, eerror), ("save with effects: " + eerror).c_str());
@@ -738,6 +777,79 @@ int main() {
     history.Push("Another", doc, doc);
     CHECK(!history.CanRedo(), "a new edit drops the redo branch");
 
+    // a slider's drag: its edits fold into one step
+    {
+        History drag;
+        Document d;
+        d.project.settings.music.volume = 1.0;
+        auto step = [&](double v, const std::string& key) {
+            Document was = d;
+            d.project.settings.music.volume = v;
+            drag.Push("Set music volume", was, d, key);
+        };
+        step(0.9, "slider:vol");
+        step(0.7, "slider:vol");
+        step(0.5, "slider:vol");
+        CHECK(drag.CanUndo() && drag.UndoLabel() == "Set music volume", "a drag is one step");
+        CHECK(drag.Undo(d) && Near(d.project.settings.music.volume, 1.0, 1e-9) && !drag.CanUndo(), "undone at once, back to where it began");
+        CHECK(drag.Redo(d) && Near(d.project.settings.music.volume, 0.5, 1e-9), "redone to where it ended");
+        step(0.4, "slider:vol");
+        CHECK(drag.Undo(d) && Near(d.project.settings.music.volume, 0.5, 1e-9) && drag.CanUndo(), "after an undo or redo the next drag is a step of its own");
+        drag.Redo(d);
+        drag.EndMerge();
+        step(0.3, "slider:vol");
+        CHECK(drag.Undo(d) && Near(d.project.settings.music.volume, 0.4, 1e-9), "a release ends the step: the next drag of the same slider is its own");
+        drag.Redo(d);
+        step(0.2, "slider:fade");
+        step(0.1, "slider:vol");
+        CHECK(drag.Undo(d) && Near(d.project.settings.music.volume, 0.2, 1e-9), "another slider's edit is its own step");
+        drag.Redo(d);
+        drag.MarkClean();
+        step(0.05, "slider:vol");
+        CHECK(!drag.IsClean() && drag.Undo(d) && drag.IsClean() && Near(d.project.settings.music.volume, 0.1, 1e-9),
+              "an edit after a save never folds into the saved step");
+        drag.Redo(d);
+        step(0.6, "");
+        step(0.65, "");
+        CHECK(drag.Undo(d) && Near(d.project.settings.music.volume, 0.6, 1e-9), "edits without a key stay one step each");
+    }
+
+    // the inspector's sliders: a drag's values under the slider's own key, the release closing the step
+    {
+        Inspector inspector;
+        auto tabs = inspector.Build(PaletteFor(true));
+        Document shown;
+        shown.Import(song);
+        shown.AppendMedia(*shown.FindMedia(song));                // the music
+        inspector.Show(shown, -1);
+        std::vector<std::string> keys;
+        int ends = 0;
+        Document edited = shown;
+        inspector.onEdit = [&](const std::string&, std::function<void(Document&)> e, const std::string& key) {
+            e(edited);
+            keys.push_back(key);
+        };
+        inspector.onEditEnd = [&]() { ++ends; };
+        UltraCanvasSlider* volume = nullptr;
+        for (int t = 0; t < tabs->GetTabCount() && !volume; ++t)
+            if (auto page = std::dynamic_pointer_cast<UltraCanvasContainer>(tabs->GetTabContent(t)))
+                volume = dynamic_cast<UltraCanvasSlider*>(page->FindChildById("uv.insp.musicVolume"));
+        CHECK(volume && volume->onValueChanging && volume->onValueChanged && volume->onRelease, "the music volume slider, wired for drags");
+        if (volume) {
+            volume->onValueChanging(0.9f);
+            volume->onValueChanging(0.7f);
+            CHECK(keys.size() == 2 && keys[0] == "slider:uv.insp.musicVolume" && keys[1] == keys[0] && ends == 0,
+                  "a drag's values carry the slider's key, the step still open");
+            CHECK(Near(edited.project.settings.music.volume, 0.7, 1e-6), "and edit as they go");
+            volume->onValueChanged(0.6f);
+            CHECK(keys.size() == 3 && keys[2] == keys[0] && ends == 1 && Near(edited.project.settings.music.volume, 0.6, 1e-6),
+                  "the value it settles on, then the step closed");
+            UCEvent up;
+            volume->onRelease(up);
+            CHECK(ends == 2, "a release closes it too (a drag back to where it began reports no value)");
+        }
+    }
+
     std::printf("\n-- the file --\n");
     const std::string file = TempPath("trip.ultravideo");
     doc.project.title = "Summer trip";
@@ -752,6 +864,9 @@ int main() {
         if (f) { char buf[4096]; size_t n; while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n); std::fclose(f); }
         CHECK(text.find("\"format\": \"ultravideo\"") != std::string::npos, "an ultravideo file");
         CHECK(text.find("media/pattern.mkv") != std::string::npos && text.find(TempPath("media/pattern.mkv")) == std::string::npos, "media paths relative to the file");
+        // "media\\" in the JSON text is a '\' after "media" in a path: a
+        // project saved on Windows would not find its media elsewhere
+        CHECK(text.find("media\\\\") == std::string::npos, "'/' between the parts on every system");
     }
     Document loaded;
     std::vector<std::string> missing;
@@ -981,6 +1096,34 @@ int main() {
     }
 
     fs::remove_all(PathFromUtf8(TempPath("")), ec);
+    // ---- the palettes read as the tokens promise (screens/tokens/tokens.json) ----
+    {
+        auto luminance = [](const Tokens::RGBA& c) {
+            auto channel = [](int v) { const double s = v / 255.0; return s <= 0.03928 ? s / 12.92 : std::pow((s + 0.055) / 1.055, 2.4); };
+            return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+        };
+        auto contrast = [&](const Tokens::RGBA& a, const Tokens::RGBA& b) {
+            const double la = luminance(a), lb = luminance(b);
+            return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+        };
+        for (const Tokens::Palette* p : {&Tokens::Dark, &Tokens::Light}) {
+            const std::string n = p == &Tokens::Dark ? "dark: " : "light: ";
+            const Tokens::RGBA all[] = {p->Bg000, p->Bg100, p->Bg200, p->Bg300, p->Bg400, p->Bg500};
+            bool ink = true, focus = true, muted = true;
+            for (const Tokens::RGBA& s : all) { ink = ink && contrast(p->Ink, s) >= 4.5; focus = focus && contrast(p->Focus, s) >= 3.0; }
+            for (const Tokens::RGBA& s : {p->Bg000, p->Bg100, p->Bg200, p->Bg300, p->Bg400}) muted = muted && contrast(p->InkMuted, s) >= 4.5;
+            CHECK(ink, (n + "ink reads 4.5:1 on every surface").c_str());
+            CHECK(focus, (n + "the focus ring shows 3:1 on every surface").c_str());
+            CHECK(muted, (n + "muted ink reads 4.5:1 on bg-000 to bg-400").c_str());
+            CHECK(contrast(p->InkFaint, p->Bg100) >= 4.5 && contrast(p->InkFaint, p->Bg200) >= 4.5 && contrast(p->InkFaint, p->Bg300) >= 4.5,
+                  (n + "faint ink reads 4.5:1 on bg-100 to bg-300").c_str());
+            CHECK(contrast(p->LineStrong, p->Bg100) >= 3.0 && contrast(p->LineStrong, p->Bg300) >= 3.0,
+                  (n + "the strong line shows 3:1 on bg-100 and bg-300").c_str());
+            CHECK(contrast(p->OnAccent, p->Accent) >= 4.5 && contrast(p->Accent, p->Bg100) >= 3.0,
+                  (n + "text on the accent reads, the accent shows on the panel").c_str());
+        }
+    }
+
     std::printf("\n%d of %d checks passed\n", testCount - failCount, testCount);
     return failCount ? 1 : 0;
 }

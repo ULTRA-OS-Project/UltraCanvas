@@ -1,7 +1,9 @@
 // Apps/UltraVideo/UltraVideoMapping.cpp
 // Document <-> timeline model (UltraVideoMapping.h).
+// Version: 0.5.0 - an overlay clip with effects shows the effects badge
+// Version: 0.4.0 - a story's clips keep faces in shot when they fill the frame
 // Version: 0.3.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #include "UltraVideoMapping.h"
 
@@ -131,6 +133,9 @@ Document BuildStoryDocument(const StoryChoice& choice, const std::vector<VideoFX
             if (!m || !m->error.empty()) continue;
             segment = VideoFXSegment::FromFile(m->path);
             segment.transitionIn = transition;
+            // Read by the engine when the project fills the frame (Cover):
+            // the crop stays around the faces of a frame from the clip's middle
+            segment.keepFacesInView = choice.keepFaces;
             if (choice.captionsFromNames) caption = CaptionFromName(f);
         }
         doc.project.segments.push_back(segment);
@@ -305,6 +310,7 @@ TimelineModel BuildTimelineModel(const Document& doc) {
         clip.sourceIn = v.sourceIn;
         const MediaItem* m = doc.FindMedia(v.path);
         clip.sourceLength = m && !v.IsStill() ? m->duration : 0.0;
+        clip.hasEffects = !v.look.effects.empty();
         overlayTrack.clips.push_back(clip);
     }
     std::stable_sort(overlayTrack.clips.begin(), overlayTrack.clips.end(),

@@ -125,7 +125,8 @@ namespace UltraCanvas {
         multiTree->AddNode("cat2", TreeNodeData("item3", "Item 3"));
 
         // Enough rows to overflow the 200px viewport, so the floating
-        // "move to the top" button in the bottom-right corner shows up.
+        // "move to the top" and "go to selection" buttons in the bottom-right
+        // corner show up.
         for (int cat = 3; cat <= 8; ++cat) {
             std::string catId = "cat" + std::to_string(cat);
             multiTree->AddNode("multi_root", TreeNodeData(catId, "Category " + std::to_string(cat)));
@@ -145,6 +146,15 @@ namespace UltraCanvas {
             multiTree->SetShowScrollToTopButton(newState == CheckedState::Checked);
         };
         multiBox->AddChild(scrollTopCheckbox);
+
+        // Scroll-to-selection button toggle (also on by default): select a row,
+        // scroll it away, and the button above the top button brings it back.
+        auto scrollSelCheckbox = TreeDemoOption(
+            "ScrollToSelectionCheckbox", "Show \"go to selection\" button", true);
+        scrollSelCheckbox->onStateChanged = [multiTree](CheckedState, CheckedState newState) {
+            multiTree->SetShowScrollToSelectionButton(newState == CheckedState::Checked);
+        };
+        multiBox->AddChild(scrollSelCheckbox);
 
         // ----- Debugger "Variables" panel: Classic vs Modern columns -----
         // Demonstrates the columnar display mode (Name / Type / Value with an accent

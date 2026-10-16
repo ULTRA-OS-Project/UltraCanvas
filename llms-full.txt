@@ -2406,7 +2406,8 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXSegment`, `VideoFXSourceKind`, `VideoFXExportSettings`,
   `VideoFXContainer`, `VideoFXVideoCodec`, `VideoFXAudioCodec`,
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
-  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
+  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay` (an image
+  or video overlay's own colour and detail `effects`),
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
   `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
   `VideoFXMusic` (`VideoFXExportSettings::music`), `VideoFXDuckingPreset`,
@@ -13662,8 +13663,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.1.0 - the theme and the button's variant  
-**Last Modified:** 2026-10-14  
+**Version:** 1.2.0 - a button grows to fit its text  
+**Last Modified:** 2026-10-16  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -14121,6 +14122,30 @@ container->AddChild(autoBtn);
 autoBtn->SetText("This is a longer text that will auto-resize");
 ```
 
+### A Fixed Width Is a Minimum
+
+A button with text never comes out narrower than its text. A width given in
+the constructor or `SetSize()` is the least the button takes: when the text
+needs more - a translation, a larger font - the button grows to it, and it
+returns to the given width when the text is short again. In a flex row that is
+too narrow, a button is not shrunk below its text either (CSS's
+`min-width: auto`). So a label can be translated without checking every
+button's width by hand.
+
+```cpp
+auto button = CreateButton("Open", 10, 10, 80, 30, "Open");
+button->SetText("Ouvrir le fichier");   // grows past 80 px to fit
+button->SetText("OK");                  // back to 80 px
+
+// A button that must keep its width, and may cut its text
+button->SetGrowToFitText(false);
+```
+
+A button that grows keeps its position and grows to the right. In a row of
+absolutely placed buttons it can then reach its neighbour; lay such rows out
+with a flex container (see the Layout documentation) so the buttons after it
+move along. Buttons without text (icon-only tools) are not affected.
+
 ### Split Button (a primary action plus a menu)
 
 A split button is one button with two sections: the primary one runs the
@@ -14192,6 +14217,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |
 | 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
 | 1.0.4 | 2026-10-11 | Icons are drawn on whole pixels (Rendering) |
@@ -26457,13 +26483,23 @@ every platform:
   but without the Filer's hover icon menu (Copy / Cut / Rename / Delete over
   the file under the pointer): a picker chooses files rather than managing
   them. `hoverIconMenu` below brings it back;
-- the file-name field, and below it the file-type filter: a dropdown, or a row
-  of toggle buttons (see [Filter toggles](#filter-toggles)). Typing a name
-  narrows the listing to the entries that have it in their name. In a Save
-  dialog a big **logo of the type being saved** sits left of the two rows,
+- the **File name** field and beside it the **File type** dropdown, each
+  with its name written above it - or, with toggles (see
+  [Filter toggles](#filter-toggles)), the name over a **Show** row. Typing a
+  name narrows the listing to the entries that have it in their name. In a
+  Save dialog a big **logo of the type being saved** sits left of the fields,
   "Drag to Folder" under it - drag it onto a folder to save there
-  ([The file icon](#the-file-icon)) - and a **Settings** button ends the type
-  row, for how that type is written ([Save settings](#save-settings)).
+  ([The file icon](#the-file-icon)) - and a **Settings** button follows the
+  type, for how that type is written ([Save settings](#save-settings));
+- the **Open** / **Save** / **Select Folder** button (the dialog's OK, in the
+  theme's accent) and **Cancel**, at the right of a footer band.
+
+It is laid out like the platforms' current dialogs (the Windows 11 print
+dialog): a plain panel, the folder tree and the listing in rounded frames, and
+the buttons on a band of their own under a hairline. The colours are the
+theme's (`UltraCanvasTheme::Current()` when the dialog is made, or the one
+`ApplyTheme` gives it): the panel, the `ground` band, `line` frames and
+divider, and the fields and buttons in the theme's own styles.
 
 ## Opening one
 
@@ -26573,7 +26609,7 @@ between folders.
   dialog open on that name. A caller that asks itself, or appends to the
   file, turns this off with `confirmOverwrite = false`
   (`FileDialogOptions::SetConfirmOverwrite(false)`).
-- **Select folder** lists folders only. OK answers the folder highlighted in
+- **Select folder** lists folders only. Select Folder (OK) answers the folder highlighted in
   the listing, else the folder being shown.
 - Return in the path field goes to the folder typed there. A file path opens
   its folder and puts the name into the name field.
@@ -26703,7 +26739,7 @@ A press that is released without moving is a click (`onClick`).
 
 How a file is written is often a choice: JPEG's quality, PNG's compression,
 whether a TIFF is LZW or Deflate. The **Settings** button at the end of a
-Save dialog's type row (after "Files of type") shows the settings of the type being saved - a checkbox, a slider
+Save dialog's type row (after "File type") shows the settings of the type being saved - a checkbox, a slider
 or a list per setting - and stores them on OK. The dialog is the controls
 alone: its title names the format ("PNG settings"), each setting's tooltip
 says what it does, the controls make one column with a slider's value beside
@@ -26859,7 +26895,7 @@ media viewer offers an SVG this way and draws it again at the size chosen.
 For an Open dialog whose filters are *kinds* of file rather than one format
 each, a dropdown of long extension lists is hard to read. With
 `filterToggles` set (`FileDialogOptions::SetFilterToggles(true)` through the
-loader), the "Files of type" dropdown becomes a **Show:** row of toggle
+loader), the "File type" dropdown becomes a **Show** row of toggle
 buttons, one per filter, labelled with the filter's description:
 
 ```cpp
@@ -62329,13 +62365,14 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 ## Features
 
 - **Editable Grid**: Click-to-edit cells with an in-cell editor and a formula bar
-- **Multiple Worksheets**: Add, insert, remove, rename, move, and copy sheets with tabs
+- **Multiple Worksheets**: Add, insert, remove, rename, move, and copy sheets with tabs; the tab strip's "+" button adds a sheet, and its ◀ ▶ buttons scroll through tabs that do not fit
 - **Typed Cells**: Text, Number, Boolean, Date/Time, Currency, Percentage, Error, and Formula values
 - **Formula Engine**: OpenFormula-compatible parser/evaluator (`=SUM(C2:C8)`, `=SUM(D2:D8)/SUM(C2:C8)`, etc.) with automatic recalculation and circular-reference detection, and some 150 Excel-compatible functions — `VLOOKUP`, `INDEX` and `MATCH`, `SUMIF` and `SUMIFS`, `COUNTIF` and `COUNTIFS`, `SUMPRODUCT`, text, date, statistical and financial functions (see [Formula language and functions](#formula-language-and-functions))
 - **Cell Formatting**: Fonts (bold/italic/underline), fills, borders, alignment, and number formats (currency, percentage, scientific, date/time)
 - **Layout Control**: Per-column widths, per-row heights, hidden rows/columns, merged cells, and freeze panes
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
-- **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
+- **Function Menu**: an **fx** button at the end of the formula bar lists every formula function by category and A to Z, and inserts the one picked (see [Function menu](#function-menu))
+- **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, sorting, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
 - **Data Tools**: Sorting, auto-filter, find/replace, named ranges, and data validation
 - **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
@@ -63015,8 +63052,9 @@ sheet->SetColumnWidth(0, 120, /*explicitWidth*/ true);
 
 `UltraCanvasSpreadsheetFormatMenu.h` builds the standard formatting menu for the
 current selection: alignment (horizontal, vertical, wrap), number-format presets,
-font style and size, text and background colour, column/row sizing, and
-merge/unmerge. Each number preset shows a live sample rendered through the same
+font style and size, text and background colour, sorting the selected rows
+(see [Sorting from the context menu](#sorting-from-the-context-menu)),
+column/row sizing, and merge/unmerge. Each number preset shows a live sample rendered through the same
 formatter the cells use, so the menu shows exactly what the cell will show.
 
 The grid opens it on a right-click, with no application code at all — the click
@@ -63051,6 +63089,61 @@ Rebuild the items each time the menu opens (`PopulateSpreadsheetFormatMenu`)
 so the ticks and radio marks reflect the cell that was just clicked.
 `SpreadsheetNumberFormatPresets()` returns the preset list on its own — label,
 `NumberFormat` and sample — if you want to drive a dropdown or a dialog with it.
+
+## Function menu
+
+The **fx** button at the right end of the formula bar opens a menu of every
+function the formula engine knows - a submenu per category (Date and time,
+Financial, Information, Logical, Lookup, Math, Statistical, Text) and one with
+all of them A to Z. Each entry shows the call with its argument names -
+`ROUND(number, num_digits)`, `IF(logical_test, value_if_true, [value_if_false])`,
+`SUM(number1, [number2], ...)` (square brackets: optional; `...`: more of the
+same) - and the function's description.
+Picking one inserts the call:
+
+| When | The formula bar gets |
+|---|---|
+| editing a formula | `NAME()` at the caret |
+| on a formula cell, not editing | the formula wrapped: `=A1/B1` becomes `=ROUND(A1/B1)` |
+| on any other cell | `=NAME()` |
+
+The caret is left inside the call - between the parentheses, or before the
+closing one of a wrapped formula - ready for the arguments.
+
+While a formula is typed - in the formula bar or in the cell - a hint under
+the editor shows the signature of the function call the caret is in, with
+the argument being typed in **bold**, and the description below it. It
+follows the caret: into a nested call, and on to the next argument after each
+`,` (or `;`); text in quotes and array constants `{...}` are skipped.
+
+The argument names are the ones Excel uses. From code:
+`GetFunctionLibrary().GetSignature("ROUND")` gives the signature,
+`GetSignatureArguments()` the arguments one by one, and
+`FindFormulaCallAtCaret(formula, caret, name, argument)` the call and argument
+at a position in a formula. Functions an
+application registers on the engine appear too; the menu is rebuilt each time
+it opens. From code: `InsertFunction("ROUND")` does what a pick does,
+`BuildSpreadsheetFunctionMenuItems()` returns the items for a menu of your
+own, and `SetFunctionMenuEnabled(false)` removes the button.
+
+## Sorting from the context menu
+
+The right-click menu has a **Sort** submenu that sorts the selected block the
+way the header sort buttons do (see
+[Sorting a selection from the header](#sorting-a-selection-from-the-header)):
+only the selected rows move, each keeping its cells together.
+
+- **Ascending by column X** / **Descending by column X** - by the column of
+  the active cell (the cell that was right-clicked).
+- **Ascending by** / **Descending by** - a submenu listing every column of the
+  selection, to sort by another one.
+
+It is offered for the same selections as the header buttons - one block of
+two or more rows, not whole columns or rows, not over merged cells - and
+otherwise shows one disabled hint. A block that holds formulas asks first, as
+the buttons do. From code: `RequestSortSelectionByColumn(column, order)` sorts
+with that warning, `SortSelectionByColumn` without it, and
+`IsSelectionSortable()` says whether the selection can be sorted.
 
 ## Fill handle
 
@@ -67306,7 +67399,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.5.0 - the modal dialog follows the theme
+**Version:** 1.6.0 - the readability the presets keep, measured by the test
 **Last Modified:** 2026-10-12
 **Author:** UltraCanvas Framework
 
@@ -67373,6 +67466,30 @@ on-accent and soft-accent roles otherwise. The label's variants
 dialog follows the theme too (`ModalDialogStyle::FromTheme`, the dialog's
 `ApplyTheme`): the panel role behind its sections, ink for the message,
 its footer buttons by their role.
+
+### Readability
+
+Both presets keep these contrast ratios (WCAG 2 relative luminance), and
+`UltraCanvasThemeTest` measures them so they cannot slip:
+
+| Ink | Reaches | On |
+|---|---|---|
+| `ink` | 4.5:1 | every surface |
+| `inkMuted` | 4.5:1 | `ground`, `panel`, `well`, `raised`, `hover` |
+| `inkFaint` | 4.5:1 | `panel`, `well`, `raised` - where ruler labels, placeholders and disabled text sit |
+| `lineStrong` | 3:1 | `panel`, `raised` - a control border, a grip |
+| `focus` | 3:1 | every surface |
+| `danger` | 4.5:1 | `panel` |
+| `onAccent` | 4.5:1 | `accent` (`Light`'s is the Windows blue on white, 4.4995) |
+
+`Dark`'s greys came from the dark menu, tooltip and text area and hold
+these as they are: the faint ink is 4.7:1 on `raised` and 5.6:1 on
+`panel`. `Light` differs from the elements' defaults in one colour:
+`lineStrong` is a mid grey (128) rather than `ButtonShadow` (160, 2.6:1 on
+white), so a border an element draws because it follows the theme reaches
+3:1; an element styled by hand keeps its default border. A theme of your
+own should hold the same ratios on the surfaces each ink is meant for -
+muted text is not for `pressed`, faint text not for `hover`.
 
 ## Using it
 
@@ -70222,7 +70339,7 @@ The `UltraCanvasTreeView` is a hierarchical tree view control component that pro
 - **Connecting Lines**: Dotted or solid parent/child connectors, root level included
 - **Visual Customization**: Colors, fonts, line styles, and spacing
 - **Scrolling**: Automatic scrollbar when content exceeds viewport
-- **Scroll-to-Top Button**: Floating "move to the top" affordance for long trees
+- **Scroll-to-Top / Scroll-to-Selection Buttons**: Floating "move to the top" and "go to the selected entry" affordances for long trees
 - **Keyboard Navigation**: The tree takes the focus, and the arrow keys move the selection
 - **Mouse Interaction**: Click, double-click, drag & drop support
 - **Dynamic Updates**: Add, remove, expand, collapse nodes at runtime
@@ -70787,12 +70904,14 @@ backupTree->onNodeCheckChanged = [backupTree](TreeNode*, TreeCheckState) {
 };
 ```
 
-### Scroll-to-Top Button
+### Scroll-to-Top and Scroll-to-Selection Buttons
 
-When a tree grows past its viewport, getting back to the root can take a lot of
-wheel turns. The tree therefore draws a small floating **"move to the top"**
-button over the bottom-right corner of its content area once the view has been
-scrolled down:
+When a tree grows past its viewport, getting back to the root - or back to the
+row you selected - can take a lot of wheel turns. The tree therefore draws two
+small floating buttons over the bottom-right corner of its content area: a
+**"move to the top"** button once the view has been scrolled down, and directly
+above it a **"go to the selected entry"** button (a dot with an arrow pointing
+at it) while the selected row is out of view.
 
 ```cpp
 void SetShowScrollToTopButton(bool show);
@@ -70805,6 +70924,14 @@ bool    IsScrollToTopButtonActive() const;   // on screen right now?
 Rect2Di GetScrollToTopButtonRect() const;   // element-local rect (empty when inactive)
 
 void ScrollToTop();                          // what the button does; callable directly
+
+void SetShowScrollToSelectionButton(bool show);
+bool GetShowScrollToSelectionButton() const;
+
+bool    IsScrollToSelectionButtonActive() const;   // on screen right now?
+Rect2Di GetScrollToSelectionButtonRect() const;   // element-local rect (empty when inactive)
+
+void ScrollToSelection();                    // what that button does; callable directly
 ```
 
 The other scrolling calls bring a node into view or move the view by pixels:
@@ -70823,23 +70950,35 @@ Behaviour:
   visible area, so a tree that overflows by a row or two never grows a button.
 - **Appears only once the user has scrolled down**: while the first row is on
   screen there is nothing to go back to, so the button stays hidden.
-- **Dodges the end of the list**: as the view approaches the bottom, the button
-  slides up so it never covers the last `TreeScrollToTopStyle::keepClearRows`
-  (3 by default) rows. Away from the bottom it rests in the corner.
+- **Always rests in the corner**, also at the end of the list.
 - **Never overlaps the vertical scrollbar** — it is placed to the left of it.
 - Clicking it jumps back to the first row, animated when the scrollbar has
   smooth scrolling enabled. The click is consumed by the button, so the row
   underneath is neither selected nor expanded.
 
-`UltraCanvasColumnsTreeView` inherits the button, and it is placed below the
-optional column header band.
+The scroll-to-selection button:
+
+- **Enabled by default.** `SetShowScrollToSelectionButton(false)` turns it off.
+- **Sits directly above the top button's corner slot** - in the same place
+  whether or not the top button is showing, so it never jumps under the
+  pointer.
+- **Appears only while the selected row is not fully on screen**: scrolled
+  away, or hidden under a collapsed parent. With no selection, or a selected
+  row hidden by a filter, it stays hidden.
+- Clicking it opens the collapsed parents of the first selected node and
+  brings its row to the middle of the view, animated when the scrollbar has
+  smooth scrolling enabled. The selection itself does not change, and the
+  click does not reach the row underneath.
+- It shares `TreeScrollToTopStyle` with the top button.
+
+`UltraCanvasColumnsTreeView` inherits both buttons, and they are placed below
+the optional column header band.
 
 ```cpp
 struct TreeScrollToTopStyle {
     int   size            = 24;    // button width/height in px
-    int   margin          = 8;     // gap between the button and the content edges
-    int   minHiddenRows   = 3;     // show only when MORE than this many rows are out of view
-    int   keepClearRows   = 3;     // rows at the end of the tree the button must never cover
+    int   margin          = 8;     // gap between a button and the content edges / the other button
+    int   minHiddenRows   = 3;     // top button: show only when MORE than this many rows are out of view
     float cornerRadius    = 12.0f; // 0 => square; >= size/2 => fully rounded
     Color background      = Color(0x3C, 0x3C, 0x3C, 0xC0);
     Color hoverBackground = Color(0x1E, 0x1E, 0x1E, 0xF0);
@@ -70848,20 +70987,21 @@ struct TreeScrollToTopStyle {
 };
 ```
 
-Example — a larger, lighter button that keeps five rows clear:
+Example — larger, blue buttons that wait for five hidden rows:
 
 ```cpp
 auto tree = std::make_shared<UltraCanvasTreeView>("FileTree", 20, 50, 300, 400);
 
 TreeScrollToTopStyle style;
 style.size            = 32;
-style.keepClearRows   = 5;
+style.minHiddenRows   = 5;
 style.background      = Color(0x20, 0x60, 0xC0, 0xC0);
 style.hoverBackground = Color(0x20, 0x60, 0xC0, 0xF0);
 tree->SetScrollToTopButtonStyle(style);
 
-// ...or switch the affordance off entirely:
+// ...or switch the affordances off entirely:
 // tree->SetShowScrollToTopButton(false);
+// tree->SetShowScrollToSelectionButton(false);
 ```
 
 ### Measuring the Tree
@@ -71045,7 +71185,8 @@ auto treeView = TreeViewBuilder("MyTree", 10, 10, 300, 400)
 ```
 
 The builder also offers `SetShowRootLines()`, `SetShowCheckboxes()`,
-`SetAutoSortChildren()`, `SetScrollToTopButtonStyle()` and the callback setters
+`SetAutoSortChildren()`, `SetScrollToTopButtonStyle()`,
+`SetShowScrollToSelectionButton()` and the callback setters
 `OnNodeSelected()`, `OnNodeDoubleClicked()`, `OnNodeExpanded()`,
 `OnNodeCollapsed()`, `OnNodeRightClicked()` and `OnNodeCheckChanged()`.
 
@@ -73470,8 +73611,8 @@ child elements of its own)
 **Tests:** `Tests/VideoTimelineModelTest.cpp` (the model, without a display)
 **Design:** the screens and specifications in `Apps/UltraVideo/screens/`, and
 `Docs/Research/UltraVideoDesignProposal.md` §7
-**Version:** 1.0.0
-**Last Modified:** 2026-10-11
+**Version:** 1.2.0
+**Last Modified:** 2026-10-14
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -73605,6 +73746,8 @@ double seconds = timeline->XToSeconds(400.0f);   // local x -> time
 float x = timeline->SecondsToX(seconds);
 std::string trackId;
 std::string clipId = timeline->ClipAt(400.0f, 120.0f, &trackId);
+timeline->SetDropTargetClip(clipId);         // a dashed focus ring: where a drop the app carries lands
+timeline->SetDropTargetClip("");             // ... cleared
 ```
 
 ### Providers
@@ -86853,7 +86996,11 @@ by hand:
   Ogg, 3GP, MP3, M4A, AAC, WAV, FLAC, Opus, WMA, AIFF and others. Each is
   `canRead` when FFmpeg has its demuxer, and `canWrite` when an export writes
   it: the muxer and the container's usual encoders are there. `container`
-  then names the `VideoFXContainer` an export to it uses.
+  then names the `VideoFXContainer` an export to it uses. An encoder FFmpeg
+  marks experimental does not count, here or anywhere VideoFX picks or lists
+  one: FFmpeg's own Vorbis encoder takes stereo only, so a build without
+  libvorbis writes no Vorbis (Ogg then takes another of its codecs, or is
+  not written).
 - Still pictures (`Picture`) are read when a decoder opens them. AVIF needs
   FFmpeg 6. FFmpeg is not asked to read HEIC: from FFmpeg 7.0 its demuxer
   opens it, but a phone's HEIC is a grid of tiles in a stream group, which
@@ -87030,8 +87177,10 @@ VideoFX_Export(timeline, "final.mp4", settings);
   be taken for a whole proxy.
 - **Switching.** `VideoFX_UseProxies(timeline)` returns the timeline with
   every clip that has a proxy replaced by it; trims, speed, effects and
-  overlays are kept. A `Crop` effect, which is in the clip's pixels, is
-  scaled to the proxy's. A picture-in-picture video at its own pixel size
+  overlays are kept. The effects measured in the clip's pixels - a
+  `Crop`'s rectangle and a `Blur`'s radius, on a segment or on a
+  picture-in-picture video - are scaled to the proxy's, so the preview looks
+  as the export will. A picture-in-picture video at its own pixel size
   (`imageHeight` 0) keeps its original, since a proxy would shrink it.
 - **Give the output size.** With `width` and `height` 0 an export or preview
   takes its size from the first segment, which over proxies is the proxy.
@@ -87145,6 +87294,17 @@ needs skin colour in its middle, and one that too few overlapping windows
 agree on is dropped. A black and white photo cannot use the skin test, so an
 occasional stray box survives there; it only makes the move frame a little
 more of the picture. Set `keepFacesInView = false` for plain motion.
+
+A **video clip** keeps its people the same way when the export's `fitMode`
+is `Fill` (a portrait phone clip filling a 16:9 frame loses its sides, a
+landscape clip in a portrait frame its top and bottom): `keepInView` on a
+file segment places the crop window around the regions instead of the
+picture's centre, and `keepFacesInView` finds them itself in one frame from
+the middle of the clip's used range (found once per clip, whatever the
+preview asks later). A clip with no face found keeps the centred crop. The
+regions are fractions of the picture as the file shows it, before the
+segment's effects. Under `Letterbox` and `Stretch` nothing is cropped and
+both are ignored.
 
 An application with a better detector plugs it in instead: UltraAI's vision
 analyser (`VisionTask::FaceDetection`), the operating system's (Vision on
@@ -87489,6 +87649,7 @@ clip.overlays = { title, logo, cam };
 | `fadeIn`, `fadeOut`, `opacity` | Seconds; 0..1 |
 | **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = the default font (below) |
 | **Image:** `imagePath` or `image`, `imageHeight` | A PNG keeps its transparency; `image` takes RGBA pixels from memory (for example a picture UltraCanvas rendered); `imageHeight` 0 = its own pixel size |
+| **Image or video:** `effects` | The picture's own look: colour and detail effects (brightness, contrast, saturation, gamma, exposure, hue, temperature, greyscale, sepia, invert, blur, sharpen, denoise, vignette) applied in order to the overlay's picture before it is sized, in its own pixels; its transparency is kept. Geometry, fades, LUTs and sound effects are refused here, as are effects on a text overlay (`InvalidArgument` when the export is planned). Saved in project files. |
 | **Video:** `videoPath`, `videoStart`, `imageHeight` | Picture-in-picture: the file's picture plays from `videoStart` seconds into it from the overlay's `start` on, at its own speed, upright, without its sound; when the file ends before the overlay does its last frame holds. `imageHeight` sizes it like an image (0 = the file's own pixels). `VideoFXOverlay::Video` makes one from a path, anchor, height and start second. The file is checked when the export is planned, so a missing one fails before anything is written. |
 
 Text is taken literally — `:`, quotes, `%` and backslashes need no escaping.
@@ -87534,7 +87695,7 @@ the container's usual codecs, sensible quality". Set only what matters:
 | `audioCodec` | `Auto` | AAC (MP4/MOV/MKV), Opus (WebM), MP3, PCM (WAV), FLAC; `Disabled` drops sound |
 | `width`, `height` | first segment | Give one and the other follows the aspect ratio |
 | `frameRate` | first segment | 30 for generated clips, 12 for GIF |
-| `fitMode` | `Letterbox` | `Fill` crops to cover, `Stretch` distorts |
+| `fitMode` | `Letterbox` | `Fill` crops to cover (around a segment's `keepInView` / its faces), `Stretch` distorts |
 | `quality` | codec default | 0..100 → CRF / qscale per encoder |
 | `videoBitRate`, `audioBitRate` | 0 | Set to use a bit rate instead of quality |
 | `encoderPreset` | — | e.g. `"veryfast"` for x264 / x265 |
@@ -87847,6 +88008,7 @@ generates its own clips, so it needs no media files.
 | 3e | Built-in face detector (OpenCV's frontal-face model, own evaluator); slideshows frame faces by default | **Done** |
 | 3f | Picture-in-picture: video overlays with position, size, opacity, fades and a time range, in the export and the preview | **Done** |
 | 3g | Free audio clips: voice-overs and sound effects at given times, trimmed, faded, the music ducking under voice-overs | **Done** |
+| 3h | Effects on image and video overlays: colour and detail, transparency kept | **Done** |
 | 3 | Keyframed effect and overlay parameters | Planned |
 | 4a | Project files (`.vfxproj`, JSON): timelines and slideshows with music and settings, relative media paths, missing media reported | **Done** |
 | 4b | Waveforms: the loudness envelope of a file's sound, block by block, in the shape `UltraCanvasWaveformElement` draws | **Done** |
@@ -91836,8 +91998,11 @@ field filters the bin by name. The *Music* tab lists the songs, each with
 lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. The *Effects* tab holds one-click presets for the selected
-clip on the main track: the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
+playhead. The *Effects* tab holds the presets for the clips on the main
+track and the overlay lane (an overlay clip's effects change its own
+picture only) - a click puts one on the selected clip, or drag one onto a
+clip (the clip under the pointer shows a dashed ring and the status line
+names it; `Esc` lets go): the colour looks *Warm*, *Cool*, *Vivid*, *Faded*,
 *Dramatic*, *Black and white*, *Sepia*, *Vintage* and *Brighter*, and under
 *Blur and detail* *Soft blur*, *Strong blur*, *Sharpen* and *Reduce noise*.
 A preset is the engine's own effects (a look is a few of them: Warm is
@@ -91923,7 +92088,7 @@ drop files on the lane. An overlay clip is moved, trimmed, split and
 deleted like any clip; trimming its left edge moves into the file, and a
 video clip cannot be stretched past the file's end. The inspector sets its
 length, place (nine positions), size as a share of the frame's height,
-opacity and fades. The viewer shows it while editing, and like a title it
+opacity, fades and its effects (from the bin's *Effects* tab). The viewer shows it while editing, and like a title it
 is cut into one overlay per main-track clip it crosses when the engine
 renders, so it runs across a cut.
 
@@ -91967,7 +92132,9 @@ song or none; with a song, *Fit the video to the song's length* paces the
 photos so the show ends with it and *Change pictures on the beat* cuts on
 the engine's beats; a dropdown names the clips' own sound so the music
 dips under it the right way. **3 Style**: the transition between pictures
-and its length, *Keep faces in shot* while the camera pans over photos,
+and its length, *Keep faces in shot* while the camera pans over photos
+and when a clip of another shape fills the frame (the engine finds them
+in a frame from the clip's middle and crops around them),
 photos and clips of another shape whole on a blurred background (clips:
 whole, with bars), filling the frame, or whole with bars, *Captions from
 the file names*, a fade in and out. *Make video* asks the engine for the
@@ -91981,7 +92148,9 @@ are offered first; a song in the bin becomes the music.
 ### The inspector
 
 - **Clip**: the selected clip's name and what it is; for a video its *In*
-  and *Out* as timecode fields and its *Speed*; for a photo or a card its
+  and *Out* as timecode fields, its *Speed* and *Keep faces in shot* (for
+  a clip of another shape that fills the frame, the project's framing on
+  the *Project* tab); for a photo or a card its
   *Length*, and for a photo the *Motion* (auto, still, zoom, pan), the
   *Framing* and *Keep faces in shot*; *Mute*; the clip's **Effects**, one
   row per effect by what it does (*Warmer 30 %*, *Blur 3.5 px*) with a
@@ -92007,7 +92176,10 @@ is no undo step.
 ## Undo, projects and export
 
 `Ctrl+Z` and `Ctrl+Shift+Z` (or `Ctrl+Y`) undo and redo every edit; the
-app bar's buttons name what they would undo. `Ctrl+S` saves the project as
+app bar's buttons name what they would undo. A drag is one step, however
+far it went: a slider in the inspector, and on the timeline a move, a trim,
+a fade knob or a transition's length (the timeline reports these when the
+mouse is let go). `Ctrl+S` saves the project as
 a `.ultravideo` file, `Ctrl+Shift+S` under a new name, `Ctrl+O` opens one,
 `Ctrl+N` starts afresh; closing with unsaved changes asks. The file is
 JSON: the engine's own project (what `videofx render` takes) with the bin,
@@ -92061,9 +92233,7 @@ headless, the player part skips itself without GStreamer plugins).
 
 ## Not yet
 
-Effect presets on overlay clips and stills of the overlay lane, and effects
-dragged from the bin onto a clip. The proposal's roadmap (§11) has the
-order.
+The proposal's roadmap (§11) has the order.
 
 ==============================================================================
 FILE: Docs/UltraPress/README.md

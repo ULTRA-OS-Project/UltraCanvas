@@ -7,6 +7,7 @@
 #include "UltraCanvasSpreadsheetFormatMenu.h"
 #include "UltraCanvasWindow.h"
 #include <algorithm>
+#include <map>
 #include <cmath>
 #include <sstream>
 
@@ -205,6 +206,48 @@ std::vector<MenuItemData> BuildColumnItems(UltraCanvasSpreadsheet* sheet) {
     return items;
 }
 
+// The Sort submenu: sort the selected rows by the active cell's column, or by
+// any column of the selection, ascending or descending. Only the selected rows
+// move, each keeping its cells together (SortSelectionByColumn); it is offered
+// for the selections that show header sort buttons, and a block holding
+// formulas asks first, as those buttons do.
+std::vector<MenuItemData> BuildSortItems(UltraCanvasSpreadsheet* sheet) {
+    std::vector<MenuItemData> items;
+    const CellRange sel = sheet->GetSelection();
+    if (!sheet->IsSelectionSortable()) {
+        MenuItemData hint = MenuItemData::Action("Select a block of two or more rows to sort", []() {});
+        hint.enabled = false;
+        items.push_back(hint);
+        return items;
+    }
+    const int firstCol = sel.start.col;
+    const int lastCol = sel.end.col;
+
+    const int activeCol = std::clamp(sheet->GetActiveCell().col, firstCol, lastCol);
+    const std::string activeName = CellAddress::ColumnToLetter(activeCol);
+    auto sortBy = [sheet](int column, SortOrder order) {
+        return [sheet, column, order]() { sheet->RequestSortSelectionByColumn(column, order); };
+    };
+
+    items.push_back(MenuItemData::Action("Ascending by column " + activeName + " (A to Z, 0 to 9)",
+                                         sortBy(activeCol, SortOrder::Ascending)));
+    items.push_back(MenuItemData::Action("Descending by column " + activeName + " (Z to A, 9 to 0)",
+                                         sortBy(activeCol, SortOrder::Descending)));
+
+    if (lastCol > firstCol) {
+        std::vector<MenuItemData> ascending, descending;
+        for (int col = firstCol; col <= lastCol; ++col) {
+            const std::string label = "Column " + CellAddress::ColumnToLetter(col);
+            ascending.push_back(MenuItemData::Action(label, sortBy(col, SortOrder::Ascending)));
+            descending.push_back(MenuItemData::Action(label, sortBy(col, SortOrder::Descending)));
+        }
+        items.push_back(MenuItemData::Separator());
+        items.push_back(MenuItemData::Submenu("Ascending by", ascending));
+        items.push_back(MenuItemData::Submenu("Descending by", descending));
+    }
+    return items;
+}
+
 } // namespace
 
 // ============================================================================
@@ -331,11 +374,75 @@ std::vector<MenuItemData> BuildSpreadsheetFormatMenuItems(UltraCanvasSpreadsheet
     items.push_back(MenuItemData::Submenu("Text colour", BuildColorItems(sheet, /*background*/false)));
     items.push_back(MenuItemData::Submenu("Background", BuildColorItems(sheet, /*background*/true)));
     items.push_back(MenuItemData::Separator());
+    items.push_back(MenuItemData::Submenu("Sort", BuildSortItems(sheet)));
     items.push_back(MenuItemData::Submenu("Column and row size", BuildColumnItems(sheet)));
     items.push_back(MenuItemData::Separator());
     items.push_back(MenuItemData::Action("Merge cells", [sheet]() { sheet->MergeSelection(); }));
     items.push_back(MenuItemData::Action("Unmerge cells", [sheet]() { sheet->UnmergeSelection(); }));
     return items;
+}
+
+std::vector<MenuItemData> BuildSpreadsheetFunctionMenuItems(UltraCanvasSpreadsheet* sheet) {
+    std::vector<MenuItemData> items;
+    SpreadsheetFormulaEngine* engine = sheet ? sheet->GetFormulaEngine() : nullptr;
+    if (!engine) return items;
+    const FormulaFunctionLibrary& library = engine->GetFunctionLibrary();
+
+    // name -> definition, sorted; and the categories they fall in, sorted.
+    std::map<std::string, const FunctionDefinition*> byName;
+    std::map<std::string, std::vector<const FunctionDefinition*>> byCategory;
+    for (const auto& name : library.GetFunctionNames()) {
+        const FunctionDefinition* def = library.GetFunction(name);
+        if (!def) continue;
+        byName[def->name] = def;
+    }
+    for (const auto& [name, def] : byName) {
+        std::string category = def->category.empty() ? std::string("Other") : def->category;
+        if (category == "DateTime") category = "Date and time";
+        byCategory[category].push_back(def);
+    }
+
+    auto entry = [sheet, &library](const FunctionDefinition* def) {
+        const std::string name = def->name;
+        // The label is the call with its argument names: ROUND(number, num_digits).
+        MenuItemData item = MenuItemData::Action(library.GetSignature(name),
+                                                 [sheet, name]() { sheet->InsertFunction(name); });
+        // The description sits in the right-hand column, where a menu shows
+        // shortcuts, and in full in the tooltip.
+        item.shortcut = def->description;
+        item.tooltip = def->description;
+        item.ellipsize = EllipsizeMode::EllipsizeEnd;
+        return item;
+    };
+
+    items.push_back(MenuItemData::Header("Insert function (" + std::to_string(byName.size()) + ")"));
+    for (const auto& [category, defs] : byCategory) {
+        std::vector<MenuItemData> sub;
+        for (const auto* def : defs) sub.push_back(entry(def));
+        items.push_back(MenuItemData::Submenu(category + " (" + std::to_string(defs.size()) + ")", sub));
+    }
+    items.push_back(MenuItemData::Separator());
+    std::vector<MenuItemData> all;
+    for (const auto& [name, def] : byName) all.push_back(entry(def));
+    items.push_back(MenuItemData::Submenu("All functions A to Z", all));
+    return items;
+}
+
+void UltraCanvasSpreadsheet::ShowFunctionMenuAt(int windowX, int windowY) {
+    UltraCanvasWindowBase* window = GetWindow();
+    if (!window) return;
+    if (!functionMenu_) {
+        functionMenu_ = std::make_shared<UltraCanvasMenu>(GetIdentifier() + "_FunctionMenu", 0, 0, 260, 0);
+        functionMenu_->SetMenuType(MenuType::PopupMenu);
+    }
+    // Rebuilt each time: an application may register functions later.
+    functionMenu_->Clear();
+    for (const auto& item : BuildSpreadsheetFunctionMenuItems(this)) functionMenu_->AddItem(item);
+
+    PopupElementSettings settings;
+    settings.closeByEscapeKey = true;
+    settings.closeByClickOutside = true;
+    functionMenu_->OpenMenu(Point2Di(windowX, windowY), *window, settings);
 }
 
 void PopulateSpreadsheetFormatMenu(UltraCanvasMenu& menu, UltraCanvasSpreadsheet* sheet) {

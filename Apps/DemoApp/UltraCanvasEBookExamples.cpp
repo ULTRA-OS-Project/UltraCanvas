@@ -81,7 +81,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     header->box.padding.right = CSSLayout::Dimension::Px(8);
     header->SetBackgroundColor(Color(235, 235, 235, 255));
 
-    auto openBtn = std::make_shared<UltraCanvasButton>("EBookDemoOpen", "Open...");
+    auto openBtn = std::make_shared<UltraCanvasButton>("EBookDemoOpen", "Open");
     openBtn->size.width = CSSLayout::Dimension::Px(90);
     openBtn->size.height = CSSLayout::Dimension::Px(30);
     header->AddChild(openBtn);

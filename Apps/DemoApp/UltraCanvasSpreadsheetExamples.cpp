@@ -131,15 +131,15 @@ namespace UltraCanvas {
 
         // ===== TOOLBAR: Open / Import / Save buttons + status label =====
         auto openBtn = std::make_shared<UltraCanvasButton>("ssOpenBtn", 20, 50, 190, 30,
-                                                           "Open Spreadsheet File…");
+                                                           "Open Spreadsheet File");
         root->AddChild(openBtn);
 
         auto importBtn = std::make_shared<UltraCanvasButton>("ssImportBtn", 218, 50, 150, 30,
-                                                             "Import CSV…");
+                                                             "Import CSV");
         root->AddChild(importBtn);
 
         auto saveBtn = std::make_shared<UltraCanvasButton>("ssSaveBtn", 376, 50, 110, 30,
-                                                           "Save…");
+                                                           "Save");
         root->AddChild(saveBtn);
 
         auto formatBtn = std::make_shared<UltraCanvasButton>("ssFormatBtn", 494, 50, 130, 30,

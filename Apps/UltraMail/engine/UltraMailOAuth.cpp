@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailOAuth.cpp
+// Version: 0.6.2 - OAuthSignInFailureText words an unreachable service as FriendlyMessage does
 // Version: 0.6.1 - OAuthSignInFailureText; the trace says which way a sign-in goes
 // Version: 0.6.0 - the sign-in service: no client secret in the application, Yahoo redirects
 // Version: 0.5.0 - Yahoo takes an app password again, beside the browser sign-in
@@ -6,6 +7,7 @@
 // Version: 0.3.0 - OAuthApps is a profile of UltraNet's shared OAuth2 app registry
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOAuth.h"
+#include "UltraMailResultText.h"
 #include "UltraMailTrace.h"
 
 #include <cctype>
@@ -196,12 +198,9 @@ UltraNetOAuth2ServiceConfig OAuthServiceConfigFor(const std::string& providerId,
 }
 
 std::string OAuthSignInFailureText(const std::string& providerId, const UltraNetResult& result) {
-    std::string text = result.message.empty() ? std::string("the sign-in did not complete")
-                                              : result.message;
-    text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
-    if (text.back() != '.' && text.back() != '!' && text.back() != '?') text += '.';
-    // A transport failure before the browser could open: the service itself
-    // was out of reach, which is where to look.
+    // A transport failure before the browser could open, on the way to the
+    // sign-in service: the service itself was out of reach, which is where to
+    // look - in the wording every other failure uses for what it talked to.
     bool unreachable = false;
     switch (result.code) {
         case UltraNetResultCode::HostNotFound:
@@ -222,9 +221,15 @@ std::string OAuthSignInFailureText(const std::string& providerId, const UltraNet
     }
     if (unreachable && OAuthApps::UsesService(providerId)) {
         const std::string url = OAuthApps::ServiceUrl();
-        text += " The sign-in service at " + url + " could not be reached: check the internet "
-                "connection, and that " + url + "/healthz answers in a browser.";
+        return FriendlyMessage(result, "the sign-in service") + " It is at " + url
+             + ": check that " + url + "/healthz answers in a browser.";
     }
+    // The provider's own refusal, or a sign-in straight to the provider with
+    // a client of its own: the framework's reason, in sentence case.
+    std::string text = result.message.empty() ? std::string("the sign-in did not complete")
+                                              : result.message;
+    text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
+    if (text.back() != '.' && text.back() != '!' && text.back() != '?') text += '.';
     return text;
 }
 

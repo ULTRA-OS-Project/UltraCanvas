@@ -1,3 +1,205 @@
+#### 2026-10-16 *0.9.321*
+- **VideoFX 0.16.0: effects on image and video overlays.** A new field,
+  `VideoFXOverlay::effects`, gives an overlay's own picture a look. It works
+  on a logo or a picture-in-picture video, without touching the picture
+  under it.
+  - Colour and detail effects only: brightness, contrast, saturation,
+    gamma, exposure, hue, temperature, greyscale, sepia, invert, blur,
+    sharpen, denoise and vignette.
+  - They are applied in order, before the overlay is sized, in its own
+    pixels.
+  - The overlay's transparency is kept. Its alpha is split off before the
+    effects and merged back after them
+    (`Internal::BuildOverlayEffectGraph`).
+  - Refused with `InvalidArgument` when the export is planned:
+    - geometry, fades, LUTs and sound effects on an overlay;
+    - any effect on a text overlay.
+  - The export, the preview and project files (`overlays[].effects`) all
+    carry them.
+  - **Proxies keep the look of a blur.** `VideoFX_UseProxies` now scales a
+    `Blur`'s radius to the proxy's picture, as it already scaled a `Crop`'s
+    rectangle, for both segments and picture-in-picture videos. Before,
+    over a proxy half as tall, a blur looked twice as strong in the preview
+    as in the export.
+  - Tested in `VideoFXTest`:
+    - the filter text, and what is accepted and refused;
+    - a half-transparent picture turned grey with its transparent half
+      still showing what is under it, in the preview and the export;
+    - a sepia picture-in-picture video;
+    - a project round trip;
+    - blur radii scaled on proxies.
+
+#### 2026-10-16 *0.9.320*
+- **The Open and Save dialogs look like the platforms' current dialogs.**
+  `UltraCanvasFileDialog` is laid out like the Windows 11 print dialog: a
+  plain panel, the name of each field written above it ("File name", "File
+  type" side by side, or the name over a "Show" row of toggles), the folder
+  tree and the listing in rounded frames, 32-pixel fields and buttons with
+  rounded corners, and the buttons at the right of a footer band under a
+  hairline. The OK button says what it does - **Open**, **Save** or **Select
+  Folder** - in the theme's accent. Its colours come from the theme
+  (`UltraCanvasTheme::Current()`, or `ApplyTheme`), so it follows a dark
+  theme too.
+
+#### 2026-10-16 *0.9.319*
+- **VideoFX 0.15.1: no experimental encoder is chosen, listed or reported.**
+  Built on an FFmpeg without libvorbis, VideoFX took FFmpeg's own Vorbis
+  encoder for Ogg (and Vorbis in WebM and MKV) and reported Ogg as written,
+  but that encoder is marked experimental and takes stereo only: any other
+  export failed with "Cannot open the vorbis encoder: Operation not
+  permitted". Every encoder VideoFX picks, lists (`VideoFX_ListVideoEncoders`)
+  or counts (`VideoFX_IsAudioEncoderAvailable`, `VideoFX_GetFileFormats`) now
+  comes through `FindEncoderByName` (`VideoFXBackend.h`), which leaves out
+  the ones FFmpeg marks experimental - its own Vorbis and Opus encoders. Ogg
+  then takes Opus or FLAC, or is not reported as written; the two places
+  that opened an experimental encoder in experimental mode are gone.
+  Reproduced on FFmpeg 9.0.2 without libvorbis, where `VideoFXTest`'s "every
+  type it writes is written, and read back" failed on Ogg and now passes.
+- **The Windows CI rows run `UltraVideoDocumentTest` too**, beside
+  `VideoFXTest` (`ULTRACANVAS_BUILD_VIDEOFX_TESTS`, now in
+  `Tests/VideoFXTests.cmake`): UltraVideo's document on the engine, and the
+  `.ultravideo` file's paths written with `/` on Windows (UltraVideo 0.6.1).
+
+#### 2026-10-16 *0.9.318*
+- **Switching Demo pages could crash on a freed focused element.** Leaving
+  the Album page for the Colour Picker sometimes crashed with an access
+  violation in `IsDescendantOf`: the window still held a focus pointer to an
+  element that had been destroyed, because destroying an element only cleared
+  the focus of the window it named at that moment. Every window alive in the
+  process, whether registered with the application or not (popups, tool
+  windows), now forgets a destroyed element as its focus
+  (`UltraCanvasWindowBase::ForgetFocusedElement`), and an element gives up its
+  focus whenever it leaves its window, including a move to another window.
+  An element destroyed while focused in a window it does not belong to is
+  reported on `debugOutput`, so the next bookkeeping slip of this kind shows
+  up in a debug log instead of as a crash.
+
+#### 2026-10-16 *0.9.317*
+- **The tree view's "move to the top" button stays in its corner.** It used to
+  slide up as the view neared the end of the list, so it would not cover the
+  last rows; that moved it under the pointer and is gone, together with
+  `TreeScrollToTopStyle::keepClearRows`. The button now always rests in the
+  bottom-right corner of the rows.
+- **The tree view has a "go to the selected entry" button.** Directly above the
+  top button's corner slot, a second floating button - a dot with an arrow
+  pointing at it - shows while the selected row is not fully on screen
+  (scrolled away, or under a collapsed parent). A click opens the collapsed
+  parents and brings the row to the middle of the view, animated with smooth
+  scrolling; the selection does not change. On by default,
+  `SetShowScrollToSelectionButton(false)` (also on `TreeViewBuilder`) switches
+  it off, `ScrollToSelection()` does the same from code, and it shares
+  `TreeScrollToTopStyle` with the top button. `UltraCanvasColumnsTreeView`
+  inherits it. The DemoApp's multi-select tree has a check box for it, and
+  `Tests/TreeViewScrollButtonsTest.cpp` covers both buttons.
+
+#### 2026-10-16 *0.9.316*
+- **A button grows to fit its text.** Buttons were given fixed widths sized
+  for their English labels, and a longer label - a translation, a larger
+  font - ran past the button's edges. A width given in the constructor or
+  `SetSize()` is now the least a button with text takes: it grows when the
+  text needs more and returns to the given width when the text is short
+  again, and a flex row too narrow for its buttons no longer shrinks one
+  below its text (`min-width: auto`). `SetGrowToFitText(false)` keeps a
+  fixed width; buttons without text are not affected.
+- **DemoApp: button labels without "...".** The demo pages' buttons dropped
+  the trailing "..." / "…" ("Open Spreadsheet File", "Import CSV", "Save",
+  "Open video", "Upload image", ...); the hints that quote a label match.
+- **Button: an icon above or below the text is measured by height.** The
+  measured width added the icon's width beside the text for every icon
+  position, so a button with its icon on top (or a Center icon, which hides
+  the text) measured far wider than it draws.
+- **Spreadsheet: the grid's edges are drawn cleanly.** The row header of the
+  last, partly visible row was drawn whole across the horizontal scrollbar's
+  row while its cells were cut off, so the bottom of the grid looked broken;
+  row and column headers are now clipped at the grid edge together with their
+  cells, and the box under the row headers beside the horizontal scrollbar is
+  filled. A selected cell scrolled out of view (A1 after scrolling to column
+  D) was still painted over the first visible column, with its selection
+  border; cells before the scroll position now lie outside the cell area and
+  are clipped, as are the clipboard outline, the auto-fill handle and the
+  in-cell editor.
+- **Spreadsheet: the "+" button beside the sheet tabs adds a sheet.** It was
+  drawn but never handled a click. It now appends a sheet with the next free
+  name ("Sheet2", ...) and switches to it. Tabs and the button are laid out
+  once for drawing and clicking, so a click on a tab always selects the tab
+  drawn there, and the button stays in view when many tabs do not fit.
+- **Spreadsheet: every sheet tab can be reached.** The box left of the tabs
+  was an empty placeholder, so with more sheets than fit the rest could not be
+  clicked. It now holds ◀ ▶ buttons that scroll the strip one tab at a time
+  (greyed when there is nothing further that way), and switching sheets in
+  code or with "+" scrolls the active tab into view. Tab widths are measured
+  in the tab font instead of guessed at 8 px per byte, so long and non-Latin
+  names fit; a name wider than the whole strip is clipped inside its tab.
+- **Spreadsheet: Sort in the right-click menu.** A Sort submenu sorts the
+  selected block ascending or descending by the right-clicked cell's column,
+  or by any column of the selection through "Ascending by" / "Descending by"
+  submenus - the same sort as the header buttons, offered for the same
+  selections, with the same warning before moving formulas.
+  `RequestSortSelectionByColumn()` (formerly the private `RequestHeaderSort`)
+  and `IsSelectionSortable()` are public.
+- **Spreadsheet: a formula's ranges are highlighted for every formula cell.**
+  Selecting a formula cell outlines the ranges it reads, but only once the
+  engine had parsed the formula - which it does on first evaluation - so in a
+  loaded workbook `=SUM(D2:D8)` showed no outline while `=SUM(C2:C8)` beside
+  it did. The highlight parses an unparsed formula itself.
+- **Spreadsheet: an "fx" function menu in the formula bar.** A button at the
+  bar's right end lists all formula functions - a submenu per category and
+  one A to Z - with each one's description. Picking one inserts it at the
+  caret while editing, wraps the cell's formula (=A1/B1 becomes
+  =ROUND(A1/B1)), or starts =NAME(); the caret is left inside the call.
+  `InsertFunction()`, `BuildSpreadsheetFunctionMenuItems()` and
+  `SetFunctionMenuEnabled()` are public.
+- **Spreadsheet: the formula bar no longer shows its text twice while
+  editing.** The bar drew the text and the editor drew it again 10 px to the
+  right, so a formula read "==SUM(...)"; the bar now leaves the text to the
+  editor, which sits where the text was.
+- **Spreadsheet: every function names its arguments, and a hint shows them
+  while typing.** Most of the 150 built-in functions were registered without
+  argument names, so they could only be listed by a one-line description. All
+  now carry the names Excel uses: the fx menu lists `ROUND(number,
+  num_digits)`, `IF(logical_test, value_if_true, [value_if_false])`, ...; and
+  while a formula is typed, a hint under the editor shows the call the caret
+  is in with the current argument in bold. `GetSignature()`,
+  `GetSignatureArguments()` and `FindFormulaCallAtCaret()` are public.
+
+#### 2026-10-16 *0.9.315*
+- **`UltraCanvasTheme` 1.2.0: the presets' readability, measured.** `Light`'s
+  `lineStrong` is a mid grey (128) instead of `ButtonShadow` (160): a control
+  border drawn by an element that follows the theme now reaches 3:1 on
+  `panel` and `raised` (it was 2.6:1 on white); hand-styled elements keep
+  their default. `Dark`'s greys hold the same promises as they were. The
+  promises - ink 4.5:1 on every surface, muted ink 4.5:1 down to `hover`,
+  faint ink 4.5:1 on `panel`, `well` and `raised`, `lineStrong` 3:1 on
+  `panel` and `raised`, `focus` 3:1 everywhere, text on the accent 4.5:1 -
+  are in `UltraCanvasTheme.md` and `UltraCanvasThemeTest` measures them.
+- **`UltraCanvasVideoTimeline` 1.2.0: `SetDropTargetClip`.** An application
+  that carries a drop of its own onto the timeline (UltraVideo drags an
+  effect preset from its bin onto a clip) names the clip under the pointer
+  and the element rings it with a dashed focus line until the name is
+  cleared; `ClipAt` finds the clip, so the whole drag stays in the app's
+  own event filter. The element's own drop path for files is unchanged.
+- **VideoFX 0.15.0: a video clip that fills the frame keeps its people.**
+  `VideoFXSegment::keepInView` and `keepFacesInView` now mean something on a
+  file segment when the export's `fitMode` is `Fill`: the crop window is
+  placed around the regions instead of the picture's centre, and with
+  `keepFacesInView` the engine finds the faces itself in one frame from the
+  middle of the clip's used range (once per clip; the preview plans the same
+  segments for every frame). A bad region on a file segment is refused as
+  it is on a photo. Nothing changes under `Letterbox` or `Stretch`, or for a
+  clip with no region and no face.
+
+#### 2026-10-16 *0.9.314*
+- **The STL viewer compiles for Android.** `UltraCanvasSTLElement.cpp` is part
+  of the core library. Its GL viewer included desktop OpenGL's `<GL/gl.h>`,
+  which the Android NDK does not have, and its shaders were written for GLSL
+  3.30 only, which OpenGL ES rejects.
+  - On Android it includes `<GLES3/gl3.h>`. Every call it makes is in OpenGL
+    ES 3.
+  - Its shaders begin with `#version 300 es`, and the fragment shader adds
+    the float precision that ES requires.
+  - Desktop OpenGL is unchanged. `glslangValidator` accepts both shaders as
+    GLSL ES 3.00.
+
 #### 2026-10-16 *0.9.313*
 - **The doc-examples check caches its precompiled header in CI.**
   `scripts/check_doc_examples.py` reuses the precompiled header of all public

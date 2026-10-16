@@ -1,9 +1,12 @@
 // Apps/UltraVideo/UltraVideoDocument.cpp
 // The document and the .ultravideo file (UltraVideoDocument.h).
+// Version: 0.7.0 - an overlay clip's effects (EffectTarget, EffectsOf), kept in
+//                 the file
+// Version: 0.6.1 - paths written with '/' on every system (FileText)
 // Version: 0.6.0 - DraftSettings
 // Version: 0.5.0 - KindOfPath from the engine's and FileLoader's lists (UltraVideoFormats)
 // Version: 0.4.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoFormats.h"
@@ -21,6 +24,7 @@
 #include <locale>
 #include <sstream>
 #include <system_error>
+#include <utility>
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -47,22 +51,72 @@ std::string Clock(double seconds) {
     return out.str();
 }
 
+// A path as the file holds it: '/' between the parts on every system, as in
+// the engine's project text, so a project saved on Windows finds its media on
+// Linux and macOS (where '\' is part of a name, and stays)
+std::string FileText(std::string path) {
+#ifdef _WIN32
+    std::replace(path.begin(), path.end(), '\\', '/');
+#endif
+    return path;
+}
+
 // Paths in the file are relative to its folder when they are inside it
 std::string Relative(const std::string& path, const fs::path& base) {
-    if (base.empty()) return path;
+    if (base.empty()) return FileText(path);
     std::error_code ec;
     const fs::path p = PathFromUtf8(path);
     const fs::path rel = fs::relative(p, base, ec);
-    if (ec || rel.empty()) return path;
+    if (ec || rel.empty()) return FileText(path);
     const std::string text = PathToUtf8(rel);
-    if (text.rfind("..", 0) == 0) return path;
-    return text;
+    if (text.rfind("..", 0) == 0) return FileText(path);
+    return FileText(text);
 }
 
 std::string Absolute(const std::string& path, const fs::path& base) {
     const fs::path p = PathFromUtf8(path);
     if (p.is_absolute() || base.empty()) return path;
     return PathToUtf8((base / p).lexically_normal());
+}
+
+// An overlay clip's effects in the file: the engine's names for the colour
+// and detail effects an overlay takes (VideoFXOverlay::effects)
+constexpr std::pair<VideoFXEffectType, const char*> kOverlayEffectNames[] = {
+    {VideoFXEffectType::Brightness, "brightness"}, {VideoFXEffectType::Contrast, "contrast"},
+    {VideoFXEffectType::Saturation, "saturation"}, {VideoFXEffectType::Gamma, "gamma"},
+    {VideoFXEffectType::Exposure, "exposure"}, {VideoFXEffectType::Hue, "hue"},
+    {VideoFXEffectType::Temperature, "temperature"}, {VideoFXEffectType::Grayscale, "grayscale"},
+    {VideoFXEffectType::Sepia, "sepia"}, {VideoFXEffectType::Invert, "invert"},
+    {VideoFXEffectType::Blur, "blur"}, {VideoFXEffectType::Sharpen, "sharpen"},
+    {VideoFXEffectType::Denoise, "denoise"}, {VideoFXEffectType::Vignette, "vignette"}};
+
+JSONValue OverlayEffectsToJson(const std::vector<VideoFXEffect>& effects) {
+    JSONValue list = JSONValue::MakeArray();
+    for (const VideoFXEffect& e : effects) {
+        for (const auto& [type, name] : kOverlayEffectNames) {
+            if (type != e.type) continue;
+            JSONValue o = JSONValue::MakeObject();
+            o.Set("type", name);
+            o.Set("amount", e.amount);
+            list.Append(o);
+        }
+    }
+    return list;
+}
+
+std::vector<VideoFXEffect> OverlayEffectsFromJson(const JSONValue& list) {
+    std::vector<VideoFXEffect> effects;
+    for (size_t i = 0; i < list.GetSize(); ++i) {
+        const std::string name = list.At(i).Get("type").GetString();
+        for (const auto& [type, known] : kOverlayEffectNames) {
+            if (name != known) continue;
+            VideoFXEffect e;
+            e.type = type;
+            e.amount = list.At(i).Get("amount").GetNumber(0.0);
+            effects.push_back(e);
+        }
+    }
+    return effects;
 }
 
 JSONValue MarkerToJson(const TimelineMarker& m) {
@@ -314,33 +368,47 @@ std::string Document::Describe() const {
     return out.str();
 }
 
-bool Document::ApplyEffectPreset(size_t index, const std::string& key) {
+std::vector<VideoFXEffect>* Document::EffectsOf(EffectTarget t) {
+    return const_cast<std::vector<VideoFXEffect>*>(static_cast<const Document*>(this)->EffectsOf(t));
+}
+
+const std::vector<VideoFXEffect>* Document::EffectsOf(EffectTarget t) const {
+    if (t.segment >= 0) return static_cast<size_t>(t.segment) < project.segments.size() ? &project.segments[static_cast<size_t>(t.segment)].effects : nullptr;
+    if (t.overlay >= 0) return static_cast<size_t>(t.overlay) < overlays.size() ? &overlays[static_cast<size_t>(t.overlay)].look.effects : nullptr;
+    return nullptr;
+}
+
+bool Document::ApplyEffectPreset(EffectTarget target, const std::string& key) {
     const EffectPreset* preset = FindEffectPreset(key);
-    if (!preset || index >= project.segments.size()) return false;
-    VideoFXSegment& s = project.segments[index];
-    // The picture's height for a blur: the file's, else the output's
+    std::vector<VideoFXEffect>* onto = EffectsOf(target);
+    if (!preset || !onto) return false;
+    // The picture's height for a blur: the file's (the overlay's own picture
+    // for an overlay clip, whose effects work before it is sized), else the output's
+    const std::string& path = target.segment >= 0 ? project.segments[static_cast<size_t>(target.segment)].path
+                                                  : overlays[static_cast<size_t>(target.overlay)].path;
     int height = 0;
-    if (const MediaItem* m = FindMedia(s.path)) height = m->height;
+    if (const MediaItem* m = FindMedia(path)) height = m->height;
     if (height <= 0) height = Height();
     std::vector<VideoFXEffect> effects = preset->effects;
     for (VideoFXEffect& e : effects)
         if (e.type == VideoFXEffectType::Blur) e.amount = std::max(0.5, std::round(e.amount * height * 2.0) / 2.0);
-    if (s.effects.size() >= effects.size()) {
+    if (onto->size() >= effects.size()) {
         bool same = true;
-        const size_t from = s.effects.size() - effects.size();
+        const size_t from = onto->size() - effects.size();
         for (size_t i = 0; i < effects.size() && same; ++i) {
-            const VideoFXEffect& a = s.effects[from + i];
+            const VideoFXEffect& a = (*onto)[from + i];
             same = a.type == effects[i].type && std::fabs(a.amount - effects[i].amount) < 1e-9;
         }
         if (same) return false;
     }
-    s.effects.insert(s.effects.end(), effects.begin(), effects.end());
+    onto->insert(onto->end(), effects.begin(), effects.end());
     return true;
 }
 
-bool Document::SetEffectAmount(size_t index, size_t effect, double amount) {
-    if (index >= project.segments.size()) return false;
-    std::vector<VideoFXEffect>& effects = project.segments[index].effects;
+bool Document::SetEffectAmount(EffectTarget target, size_t effect, double amount) {
+    std::vector<VideoFXEffect>* list = EffectsOf(target);
+    if (!list) return false;
+    std::vector<VideoFXEffect>& effects = *list;
     if (effect >= effects.size()) return false;
     const EffectRange range = RangeOfEffect(effects[effect].type);
     if (!range.adjustable) return false;
@@ -690,6 +758,7 @@ bool Document::Save(const std::string& toPath, std::string& error) {
         o.Set("y", v.look.y);
         o.Set("size", v.look.imageHeight);
         o.Set("opacity", v.look.opacity);
+        o.Set("effects", OverlayEffectsToJson(v.look.effects));
         pips.Append(o);
     }
     root.Set("overlays", pips);
@@ -861,6 +930,7 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
             v.look.x = o.Get("x").GetNumber(0.0);
             v.look.y = o.Get("y").GetNumber(0.0);
             v.look.opacity = o.Get("opacity").GetNumber(1.0);
+            v.look.effects = OverlayEffectsFromJson(o.Get("effects"));
             if (v.id.empty() || v.path.empty()) continue;
             loaded.overlays.push_back(v);
         }

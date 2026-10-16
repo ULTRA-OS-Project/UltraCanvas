@@ -394,7 +394,7 @@ namespace UltraCanvas {
         // ImportMatrixTable into an "Imported" tab. Two sample sheets ship in
         // media/diagrams/matrix/, where the dialog opens.
         auto importButton = std::make_shared<UltraCanvasButton>("matrixImport", 640, 6, 145, 26,
-                                                                "Import table...");
+                                                                "Import table");
         readoutPanel->AddChild(importButton);
 
         // Puts an imported model in the "Imported" tab - added on the first
@@ -494,10 +494,10 @@ namespace UltraCanvas {
         // the table import carries one panel. Open JSON... shares the
         // Imported tab; Save JSON... writes whichever tab is showing.
         auto openJsonButton = std::make_shared<UltraCanvasButton>("matrixOpenJson", 335, 6, 145, 26,
-                                                                  "Open JSON...");
+                                                                  "Open JSON");
         readoutPanel->AddChild(openJsonButton);
         auto saveJsonButton = std::make_shared<UltraCanvasButton>("matrixSaveJson", 487, 6, 145, 26,
-                                                                  "Save JSON...");
+                                                                  "Save JSON");
         readoutPanel->AddChild(saveJsonButton);
 
         openJsonButton->onClick = [showImported, readoutText]() {
