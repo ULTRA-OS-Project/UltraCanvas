@@ -1,3 +1,29 @@
+#### 2026-10-16 *0.9.315*
+- **`UltraCanvasTheme` 1.2.0: the presets' readability, measured.** `Light`'s
+  `lineStrong` is a mid grey (128) instead of `ButtonShadow` (160): a control
+  border drawn by an element that follows the theme now reaches 3:1 on
+  `panel` and `raised` (it was 2.6:1 on white); hand-styled elements keep
+  their default. `Dark`'s greys hold the same promises as they were. The
+  promises - ink 4.5:1 on every surface, muted ink 4.5:1 down to `hover`,
+  faint ink 4.5:1 on `panel`, `well` and `raised`, `lineStrong` 3:1 on
+  `panel` and `raised`, `focus` 3:1 everywhere, text on the accent 4.5:1 -
+  are in `UltraCanvasTheme.md` and `UltraCanvasThemeTest` measures them.
+- **`UltraCanvasVideoTimeline` 1.2.0: `SetDropTargetClip`.** An application
+  that carries a drop of its own onto the timeline (UltraVideo drags an
+  effect preset from its bin onto a clip) names the clip under the pointer
+  and the element rings it with a dashed focus line until the name is
+  cleared; `ClipAt` finds the clip, so the whole drag stays in the app's
+  own event filter. The element's own drop path for files is unchanged.
+- **VideoFX 0.15.0: a video clip that fills the frame keeps its people.**
+  `VideoFXSegment::keepInView` and `keepFacesInView` now mean something on a
+  file segment when the export's `fitMode` is `Fill`: the crop window is
+  placed around the regions instead of the picture's centre, and with
+  `keepFacesInView` the engine finds the faces itself in one frame from the
+  middle of the clip's used range (once per clip; the preview plans the same
+  segments for every frame). A bad region on a file segment is refused as
+  it is on a photo. Nothing changes under `Letterbox` or `Stretch`, or for a
+  clip with no region and no face.
+
 #### 2026-10-16 *0.9.314*
 - **The STL viewer compiles for Android.** `UltraCanvasSTLElement.cpp` is part
   of the core library. Its GL viewer included desktop OpenGL's `<GL/gl.h>`,
