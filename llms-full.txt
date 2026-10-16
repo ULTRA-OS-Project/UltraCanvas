@@ -58716,7 +58716,10 @@ so the ticks and radio marks reflect the cell that was just clicked.
 The **fx** button at the right end of the formula bar opens a menu of every
 function the formula engine knows - a submenu per category (Date and time,
 Financial, Information, Logical, Lookup, Math, Statistical, Text) and one with
-all of them A to Z. Each entry shows the function's name and its description.
+all of them A to Z. Each entry shows the call with its argument names -
+`ROUND(number, num_digits)`, `IF(logical_test, value_if_true, [value_if_false])`,
+`SUM(number1, [number2], ...)` (square brackets: optional; `...`: more of the
+same) - and the function's description.
 Picking one inserts the call:
 
 | When | The formula bar gets |
@@ -58726,7 +58729,19 @@ Picking one inserts the call:
 | on any other cell | `=NAME()` |
 
 The caret is left inside the call - between the parentheses, or before the
-closing one of a wrapped formula - ready for the arguments. Functions an
+closing one of a wrapped formula - ready for the arguments.
+
+While a formula is typed - in the formula bar or in the cell - a hint under
+the editor shows the signature of the function call the caret is in, with
+the argument being typed in **bold**, and the description below it. It
+follows the caret: into a nested call, and on to the next argument after each
+`,` (or `;`); text in quotes and array constants `{...}` are skipped.
+
+The argument names are the ones Excel uses. From code:
+`GetFunctionLibrary().GetSignature("ROUND")` gives the signature,
+`GetSignatureArguments()` the arguments one by one, and
+`FindFormulaCallAtCaret(formula, caret, name, argument)` the call and argument
+at a position in a formula. Functions an
 application registers on the engine appear too; the menu is rebuilt each time
 it opens. From code: `InsertFunction("ROUND")` does what a pick does,
 `BuildSpreadsheetFunctionMenuItems()` returns the items for a menu of your

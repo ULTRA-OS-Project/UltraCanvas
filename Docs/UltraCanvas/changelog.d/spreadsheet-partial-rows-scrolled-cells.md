@@ -43,3 +43,11 @@
   editing.** The bar drew the text and the editor drew it again 10 px to the
   right, so a formula read "==SUM(...)"; the bar now leaves the text to the
   editor, which sits where the text was.
+- **Spreadsheet: every function names its arguments, and a hint shows them
+  while typing.** Most of the 150 built-in functions were registered without
+  argument names, so they could only be listed by a one-line description. All
+  now carry the names Excel uses: the fx menu lists `ROUND(number,
+  num_digits)`, `IF(logical_test, value_if_true, [value_if_false])`, ...; and
+  while a formula is typed, a hint under the editor shows the call the caret
+  is in with the current argument in bold. `GetSignature()`,
+  `GetSignatureArguments()` and `FindFormulaCallAtCaret()` are public.

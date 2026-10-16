@@ -118,6 +118,11 @@ void UltraCanvasSpreadsheet::Render(IRenderContext* ctx, const Rect2Df& dirtyRec
         RenderScrollbars(ctx);
     }
 
+    // Over everything else: it may reach across the headers and the grid.
+    if (IsEditing()) {
+        RenderFunctionHint(ctx);
+    }
+
     ctx->PopState();
 }
 
@@ -959,6 +964,83 @@ void UltraCanvasSpreadsheet::RenderCellEditor(IRenderContext* ctx) {
     ctx->ClipRect(Rect2Dd(eb.x, eb.y, eb.width, eb.height));
     ctx->Translate(Point2Df(eb.x, eb.y));
     cellEditor->Render(ctx, Rect2Df(0, 0, eb.width, eb.height));
+    ctx->PopState();
+}
+
+void UltraCanvasSpreadsheet::RenderFunctionHint(IRenderContext* ctx) {
+    if (!cellEditor || !formulaEngine_) return;
+    // A caret moved inside the editor repainted only the editor; the hint
+    // beside it needs the whole grid repainted once.
+    const size_t caret = cellEditor->GetCaretPosition();
+    if (caret != functionHintCaret_) {
+        functionHintCaret_ = caret;
+        Invalidate();
+    }
+    const std::string& text = cellEditor->GetText();
+    if (text.empty() || text[0] != '=') return;
+    std::string name;
+    int argIndex = 0;
+    if (!FindFormulaCallAtCaret(text, caret, name, argIndex)) return;
+    const FormulaFunctionLibrary& library = formulaEngine_->GetFunctionLibrary();
+    const FunctionDefinition* def = library.GetFunction(name);
+    if (!def) return;
+    const std::vector<std::string> args = library.GetSignatureArguments(name);
+    // Past the named arguments of a function that takes more, "..." is the
+    // argument being typed.
+    const int current = args.empty() ? -1 : std::min(argIndex, static_cast<int>(args.size()) - 1);
+
+    // The signature as pieces: plain, the current argument bold, plain.
+    struct Piece { std::string text; bool bold; };
+    std::vector<Piece> pieces;
+    pieces.push_back({ def->name + "(", false });
+    for (int i = 0; i < static_cast<int>(args.size()); ++i) {
+        if (i) pieces.push_back({ ", ", false });
+        pieces.push_back({ args[i], i == current });
+    }
+    pieces.push_back({ ")", false });
+
+    ctx->PushState();
+    ctx->SetFontSize(11);
+    auto widthOf = [&](const Piece& p) {
+        ctx->SetFontFace("Arial", p.bold ? FontWeight::Bold : FontWeight::Normal, FontSlant::Normal);
+        return ctx->GetTextLineWidth(p.text);
+    };
+    int signatureW = 0;
+    for (const auto& p : pieces) signatureW += widthOf(p);
+    ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
+    const int descW = def->description.empty() ? 0 : ctx->GetTextLineWidth(def->description);
+    const int lineH = std::max(14, static_cast<int>(ctx->GetTextLineHeight("Ag")));
+    const int pad = 5;
+    const int lines = def->description.empty() ? 1 : 2;
+    int boxW = std::max(signatureW, descW) + 2 * pad;
+    const int boxH = lines * lineH + 2 * pad;
+
+    // Under the editor, kept inside the grid's width.
+    const Rect2Df editor = EditorRect();
+    int x = static_cast<int>(editor.x) - 3;
+    const int y = static_cast<int>(editor.y + editor.height) + 4;
+    boxW = std::min(boxW, static_cast<int>(GetWidth()) - 4);
+    x = std::max(2, std::min(x, static_cast<int>(GetWidth()) - boxW - 2));
+
+    ctx->SetFillPaint(Color(255, 255, 225));
+    ctx->FillRectangle(Rect2Df(x, y, boxW, boxH));
+    ctx->SetStrokePaint(Color(160, 160, 160));
+    ctx->SetStrokeWidth(1.0f);
+    ctx->DrawRectangle(Rect2Df(x, y, boxW, boxH));
+    ctx->ClipRect(Rect2Df(x + 1, y + 1, boxW - 2, boxH - 2));
+
+    int tx = x + pad;
+    ctx->SetTextPaint(Colors::Black);
+    for (const auto& p : pieces) {
+        const int w = widthOf(p);
+        ctx->DrawText(p.text, Point2Df(tx, y + pad));
+        tx += w;
+    }
+    if (!def->description.empty()) {
+        ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
+        ctx->SetTextPaint(Color(90, 90, 90));
+        ctx->DrawText(def->description, Point2Df(x + pad, y + pad + lineH));
+    }
     ctx->PopState();
 }
 
@@ -1906,6 +1988,8 @@ void UltraCanvasSpreadsheet::BuildCellEditor(const std::string& initialText,
         if (onFormulaBarChange) onFormulaBarChange();
         Invalidate();
     };
+    // A caret moved by the keys or the mouse moves the function hint along.
+    cellEditor->onSelectionChanged = [this](size_t, size_t) { Invalidate(); };
     cellEditor->onEnterPressed = [this](const std::string&) {
         StopEditing(true);
         MoveActiveCell(1, 0);
@@ -1928,6 +2012,7 @@ void UltraCanvasSpreadsheet::DestroyCellEditor() {
     // Enter / Escape reach us from inside the editor's own key handler, so
     // detaching must not drop the last reference while that frame runs.
     editor->onTextChanged = nullptr;
+    editor->onSelectionChanged = nullptr;
     editor->onEnterPressed = nullptr;
     editor->onEscapePressed = nullptr;
     RemoveChild(editor);

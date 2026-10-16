@@ -402,9 +402,11 @@ std::vector<MenuItemData> BuildSpreadsheetFunctionMenuItems(UltraCanvasSpreadshe
         byCategory[category].push_back(def);
     }
 
-    auto entry = [sheet](const FunctionDefinition* def) {
+    auto entry = [sheet, &library](const FunctionDefinition* def) {
         const std::string name = def->name;
-        MenuItemData item = MenuItemData::Action(name, [sheet, name]() { sheet->InsertFunction(name); });
+        // The label is the call with its argument names: ROUND(number, num_digits).
+        MenuItemData item = MenuItemData::Action(library.GetSignature(name),
+                                                 [sheet, name]() { sheet->InsertFunction(name); });
         // The description sits in the right-hand column, where a menu shows
         // shortcuts, and in full in the tooltip.
         item.shortcut = def->description;

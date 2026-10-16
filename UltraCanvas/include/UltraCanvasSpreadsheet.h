@@ -163,6 +163,9 @@ private:
     // The formula bar's function menu and its "fx" button.
     std::shared_ptr<UltraCanvasMenu> functionMenu_;
     bool functionMenuEnabled_ = true;
+    // The caret the function hint was last drawn for: the editor moves its
+    // caret (arrow keys) without telling us, and repaints only itself.
+    size_t functionHintCaret_ = static_cast<size_t>(-1);
 
     // Header sort buttons (see SetHeaderSortEnabled). The last header sort is
     // remembered by sheet, range and column so its header can show the
@@ -558,7 +561,10 @@ private:
     int SheetTabWidth(const std::string& name) const;
     void EnsureSheetTabVisible(int index);
     void RenderScrollbars(IRenderContext* ctx);
-    void RenderCellEditor(IRenderContext* ctx);   // draws the editor child
+    void RenderCellEditor(IRenderContext* ctx);
+    // While a formula is typed, the signature of the function call the caret
+    // is in, under the editor, with the argument being typed in bold.
+    void RenderFunctionHint(IRenderContext* ctx);   // draws the editor child
     void RenderClipboardIndicator(IRenderContext* ctx);
     void RenderAutoFillHandle(IRenderContext* ctx);
     

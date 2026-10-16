@@ -62,14 +62,62 @@ int main() {
     }
     Check(inCategories == names.size(), "and each one sits in exactly one category submenu");
     const MenuItemData* math = Find(items, "Math");
-    const MenuItemData* sum = math ? Find(math->subItems, "SUM") : nullptr;
+    const MenuItemData* sum = math ? Find(math->subItems, "SUM(") : nullptr;
     Check(sum && !sum->shortcut.empty() && sum->tooltip == sum->shortcut,
           "SUM is under Math, with its description beside it and as its tooltip");
+    Check(sum && sum->label == "SUM(number1, [number2], ...)", "labelled with its signature: " +
+          (sum ? sum->label : std::string("-")));
     if (all && all->subItems.size() > 1) {
         Check(all->subItems[0].label < all->subItems[1].label, "the A to Z list is sorted");
     }
     for (const auto& item : items) {
         if (item.type == MenuItemType::Submenu) std::printf("    %s\n", item.label.c_str());
+    }
+
+    std::printf("\n-- every function names its arguments --\n");
+    {
+        const auto& library = grid->GetFormulaEngine()->GetFunctionLibrary();
+        int unnamed = 0, mismatched = 0;
+        for (const auto& name : names) {
+            const FunctionDefinition* def = library.GetFunction(name);
+            int required = 0;
+            for (const auto& arg : def->args) if (!arg.optional) ++required;
+            const int named = static_cast<int>(def->args.size());
+            if (def->minArgs > 0 && named == 0) {
+                ++unnamed;
+                std::printf("    no argument names: %s\n", name.c_str());
+            } else if (required != def->minArgs || (def->maxArgs >= 0 && named > def->maxArgs)) {
+                ++mismatched;
+                std::printf("    names do not match %d..%d arguments: %s\n", def->minArgs, def->maxArgs,
+                            library.GetSignature(name).c_str());
+            }
+        }
+        Check(unnamed == 0, "every function that takes arguments names them");
+        Check(mismatched == 0, "the required names match each function's argument count");
+        Check(library.GetSignature("ROUND") == "ROUND(number, num_digits)", library.GetSignature("ROUND"));
+        Check(library.GetSignature("IF") == "IF(logical_test, value_if_true, [value_if_false])",
+              library.GetSignature("IF"));
+        Check(library.GetSignature("PI") == "PI()", library.GetSignature("PI"));
+        Check(library.GetSignature("COUNTIFS") == "COUNTIFS(criteria_range1, criteria1, ...)",
+              library.GetSignature("COUNTIFS"));
+    }
+
+    std::printf("\n-- the call the caret is in, while typing --\n");
+    {
+        auto at = [](const std::string& f, size_t caret) {
+            std::string name; int arg = -1;
+            if (!FindFormulaCallAtCaret(f, caret, name, arg)) return std::string("none");
+            return name + "#" + std::to_string(arg);
+        };
+        const std::string f = "=ROUND(SUM(A1:A3), 2)";
+        Check(at(f, 7) == "ROUND#0", "=ROUND(| : ROUND, first argument: " + at(f, 7));
+        Check(at(f, 11) == "SUM#0", "=ROUND(SUM(| : the inner SUM: " + at(f, 11));
+        Check(at(f, 18) == "ROUND#1", "after the comma: ROUND, second argument: " + at(f, 18));
+        Check(at(f, f.size()) == "none", "after the closing parenthesis: no call");
+        Check(at("=IF(\"a,b\", ", 11) == "IF#1", "a comma inside a string does not count");
+        Check(at("=ROUND((A1+B1", 13) == "ROUND#0", "a group belongs to the call around it");
+        Check(at("=SUM({1,2,3}, ", 14) == "SUM#1", "commas in an array constant do not count");
+        Check(at("=round(a1;", 10) == "ROUND#1", "lower case, and ';' as separator");
     }
 
     std::printf("\n-- picking a function --\n");
