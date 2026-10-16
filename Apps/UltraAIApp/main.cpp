@@ -17,6 +17,7 @@
 #include "UltraCanvasSingleInstance.h"
 #ifdef ULTRAAI_HAS_ULTRAVAULT
 #include <UltraVault/UltraVault.h>
+#include <UltraVault/UltraVaultDeviceKeyVault.h>
 #endif
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasDebug.h"
@@ -106,11 +107,33 @@ int main(int argc, char* argv[]) {
         UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
 #ifdef ULTRAAI_HAS_ULTRAVAULT
-        // Open the credential vault for the session: the encrypted-file
-        // backend when ULTRAVAULT_FILE / ULTRAVAULT_PASSPHRASE are set,
-        // an in-memory store otherwise. Cloud API keys entered in the
-        // Chat dialog land here, not in widgets.
-        UltraVault::Initialize();
+        // Open the credential vault for the session. ULTRAVAULT_FILE /
+        // ULTRAVAULT_PASSPHRASE still win when both are set; otherwise persist
+        // to an encrypted vault file in the app config dir, unlocked without a
+        // prompt by a random device key beside it — so API keys entered in the
+        // Settings dialog survive a restart. A bare Initialize() with no env
+        // config falls back to an in-memory store that is wiped on exit, which
+        // is why a key set one session failed with "no api key passed in" the
+        // next. DeviceKeyVault::TryAutoUnlock opens the same global UltraVault
+        // the Settings dialog and the adapters Put/Get against.
+        const char* vaultFile = std::getenv("ULTRAVAULT_FILE");
+        const char* vaultPass = std::getenv("ULTRAVAULT_PASSPHRASE");
+        if (vaultFile && *vaultFile && vaultPass && *vaultPass) {
+            UltraVault::Initialize();
+        } else {
+            UltraVault::DeviceKeyVault vault(
+                UltraAIApp::EndpointStore::ConfigDir(),
+                UltraVault::DeviceKeyVaultProfile{"credentials.vault",
+                                                  "ai.endpoint."});
+            if (!vault.TryAutoUnlock()) {
+                std::cerr << "UltraVault: could not open the persistent "
+                             "credential vault ("
+                          << UltraVault::DeviceKeyVault::DescribeUnlockStatus(
+                                 vault.GetLastUnlockStatus())
+                          << "); API keys will not persist this session\n";
+                UltraVault::Initialize();   // session-only in-memory fallback
+            }
+        }
 #endif
 
         // Load the configured endpoints (endpoints.json). A missing file is

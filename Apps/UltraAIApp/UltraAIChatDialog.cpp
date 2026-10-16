@@ -181,7 +181,7 @@ void UltraAIChatDialog::CreateChatDialog() {
     RebuildEndpointPicker();
 }
 
-void UltraAIChatDialog::RebuildEndpointPicker() {
+void UltraAIChatDialog::RebuildEndpointPicker(const std::string& selectId) {
     chatEndpoints_ = EndpointStore::Instance().ForCapability(AICapability::Chat);
     if (!endpointPicker_) return;
 
@@ -192,11 +192,16 @@ void UltraAIChatDialog::RebuildEndpointPicker() {
         SetStatus("No chat endpoint configured. Click Settings to add one.");
         return;
     }
-    for (const auto& e : chatEndpoints_) {
+    // Keep the caller's endpoint selected (by its stable id) across a rebuild;
+    // fall back to the first when it's empty or no longer in the list.
+    int selectIndex = 0;
+    for (size_t i = 0; i < chatEndpoints_.size(); ++i) {
+        const auto& e = chatEndpoints_[i];
         endpointPicker_->AddItem((e.name.empty() ? e.id : e.name) +
                                  "   (" + e.providerId + ")");
+        if (!selectId.empty() && e.id == selectId) selectIndex = static_cast<int>(i);
     }
-    endpointPicker_->SetSelectedIndex(0, false);
+    endpointPicker_->SetSelectedIndex(selectIndex, false);
     SetStatus("");
 }
 
@@ -260,7 +265,10 @@ void UltraAIChatDialog::OnSend() {
 
     sending_ = true;
     if (sendButton_) sendButton_->SetText("Sending...");
-    SetStatus("Contacting " + endpoint.providerId + "...");
+    // Name the endpoint the user picked (e.g. "ai.ultraos.eu"), not its
+    // provider id — the server being contacted is the endpoint, not "openai".
+    const std::string epLabel = endpoint.name.empty() ? endpoint.id : endpoint.name;
+    SetStatus("Contacting " + epLabel + "...");
 
     TextLLMConfig chatCfg = ToTextLLMConfig(endpoint);
     ChatRequest req;
@@ -399,8 +407,9 @@ void UltraAIChatDialog::OnOpenSettings() {
     auto dlg = std::make_shared<UltraAISettingsDialog>();
     dlg->CreateSettingsDialog(selectId);
     dlg->ShowModal(this);
-    // Reflect any endpoint changes made while the dialog was open.
-    RebuildEndpointPicker();
+    // Reflect any endpoint changes made while the dialog was open, keeping the
+    // endpoint the user had selected rather than snapping back to the first.
+    RebuildEndpointPicker(selectId);
 }
 
 void UltraAIChatDialog::RefreshAttachmentChips() {

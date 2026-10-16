@@ -276,15 +276,37 @@ private:
     }
 };
 
-// The model is asked for JSON only, but a chat model may still wrap it in
-// a code fence or a sentence. Take the outermost object.
+// The model is asked for JSON only, but a chat model may still wrap it in a
+// code fence or a sentence, or keep talking after the object. Start at the
+// first '{' and walk to its matching '}', tracking string literals (and their
+// escapes) so braces or quotes inside a translated string don't end the object
+// early. Anything before the first brace (prose, a ```json fence) or after the
+// matching close (a trailing fence, a sentence, a second hallucinated object)
+// is discarded — a plain first-brace-to-last-brace span would swallow it and
+// break the parse.
 std::string ExtractJsonObject(const std::string& reply) {
     const size_t open = reply.find('{');
-    const size_t close = reply.rfind('}');
-    if (open == std::string::npos || close == std::string::npos || close < open) {
-        return {};
+    if (open == std::string::npos) return {};
+    int depth = 0;
+    bool inString = false;
+    bool escaped = false;
+    for (size_t i = open; i < reply.size(); ++i) {
+        const char c = reply[i];
+        if (inString) {
+            if (escaped)        escaped = false;
+            else if (c == '\\') escaped = true;
+            else if (c == '"')  inString = false;
+            continue;
+        }
+        if (c == '"') {
+            inString = true;
+        } else if (c == '{') {
+            ++depth;
+        } else if (c == '}') {
+            if (--depth == 0) return reply.substr(open, i - open + 1);
+        }
     }
-    return reply.substr(open, close - open + 1);
+    return {};   // unbalanced / truncated — the caller reports "not JSON"
 }
 
 std::string Trim(const std::string& s) {
